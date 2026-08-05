@@ -166,7 +166,7 @@ class ChannelDownloadController extends Controller
         ]);
 
         try {
-            $this->downloadService->downloadProduct($channel, $data['shop_id'], $data['external_product_id']);
+            $this->downloadService->downloadProductManual($channel, $data['shop_id'], $data['external_product_id'], $request->user()?->id);
         } catch (\RuntimeException $e) {
             return $this->errorResponse(
                 'Gagal mengunduh produk.',

@@ -135,7 +135,7 @@ class ChannelSearchDownloadTest extends TestCase
             ->assertJsonPath('data.0.external_product_id', '555100');
     }
 
-    public function test_download_product_creates_download_status_product(): void
+    public function test_download_product_creates_master_status_product(): void
     {
         Category::create(['name' => 'Root', 'is_active' => true]);
 
@@ -156,12 +156,56 @@ class ChannelSearchDownloadTest extends TestCase
         $this->assertNotNull($variant);
 
         $product = Product::find($variant->product_id);
-        $this->assertSame(Product::STATUS_DOWNLOAD, $product->status);
+        $this->assertSame(Product::STATUS_MASTER, $product->status);
 
         $this->assertDatabaseHas('product_channel_mappings', [
             'product_id' => $product->id,
             'channel_shop_id' => $this->lazadaShop->id,
             'external_product_id' => '555100',
+        ]);
+    }
+
+    public function test_download_product_records_download_transaction_history(): void
+    {
+        Category::create(['name' => 'Root', 'is_active' => true]);
+
+        Http::fake([
+            'api.lazada.co.id/rest/product/item/get*' => Http::response([
+                'code' => '0', 'data' => $this->lazadaItem(),
+            ], 200),
+        ]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/lazada/download-product', [
+                'shop_id' => 'LZ-100',
+                'external_product_id' => '555100',
+            ])
+            ->assertStatus(200);
+
+        $this->assertDatabaseHas('download_transactions', [
+            'channel_shop_id' => $this->lazadaShop->id,
+            'executed_by' => $this->user->id,
+            'state' => 'done',
+            'total_downloaded' => 1,
+        ]);
+    }
+
+    public function test_download_product_not_found_records_failed_transaction(): void
+    {
+        Http::fake([
+            'api.lazada.co.id/rest/product/item/get*' => Http::response(['code' => '0', 'data' => []], 200),
+        ]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/lazada/download-product', [
+                'shop_id' => 'LZ-100',
+                'external_product_id' => 'NON-EXISTENT',
+            ])
+            ->assertStatus(422);
+
+        $this->assertDatabaseHas('download_transactions', [
+            'channel_shop_id' => $this->lazadaShop->id,
+            'state' => 'failed',
         ]);
     }
 

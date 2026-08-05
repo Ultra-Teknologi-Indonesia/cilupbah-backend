@@ -87,15 +87,11 @@ class ChannelDownloadService
         return $count;
     }
 
-    /**
-     * @return array{items: array, next_offset: int|null, has_more: bool}
-     */
     public function searchProducts(string $channel, string $shopId, string $query, int $offset = 0, int $limit = 20): array
     {
         $this->assertSupported($channel);
         $ch = strtolower($channel);
 
-        // Shopee: paginasi asli (infinite scroll) memakai offset Shopee sebagai cursor.
         if ($ch === 'shopee') {
             $paged = app(ShopeeProductService::class)->searchProductsPaged($shopId, $query, $offset, $limit);
 
@@ -106,7 +102,6 @@ class ChannelDownloadService
             ];
         }
 
-        // Channel lain belum paginasi: kembalikan seluruh hasil di halaman pertama saja.
         if ($offset > 0) {
             return ['items' => [], 'next_offset' => null, 'has_more' => false];
         }
@@ -156,6 +151,31 @@ class ChannelDownloadService
 
             return $r;
         }, $results);
+    }
+
+    public function downloadProductManual(string $channel, string $shopId, string $externalProductId, ?string $executedBy = null): DownloadTransaction
+    {
+        $this->assertSupported($channel);
+        $channelShopId = $this->requireChannelShopId($shopId);
+
+        $transaction = DownloadTransaction::create([
+            'channel_shop_id' => $channelShopId,
+            'executed_by' => $executedBy,
+            'state' => DownloadTransaction::STATE_DOWNLOADING,
+            'all_product' => 1,
+        ]);
+
+        try {
+            $this->downloadProduct($channel, $shopId, $externalProductId);
+        } catch (\Throwable $e) {
+            $transaction->markFailed($e->getMessage());
+
+            throw $e;
+        }
+
+        $transaction->markDone(1, 0);
+
+        return $transaction;
     }
 
     public function downloadProduct(string $channel, string $shopId, string $externalProductId): bool
