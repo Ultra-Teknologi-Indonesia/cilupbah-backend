@@ -48,6 +48,20 @@ class LazadaTransactionMapperTest extends TestCase
         $this->assertTrue($result['is_settled']);
     }
 
+    public function test_free_shipping_max_fee_and_lazcoins_discount_are_bucketed(): void
+    {
+        $result = (new LazadaTransactionMapper())->map([
+            $this->row('Free Shipping Max Fee', '-843.00'),
+            $this->row('LazCoins Discount', '-155.00'),
+        ]);
+
+        $this->assertSame(843.0, $result['seller_shipping_borne']);
+        $this->assertSame(155.0, $result['seller_voucher']);
+
+        $byType = collect($result['fee_lines'])->keyBy('fee_type');
+        $this->assertFalse($byType->has('other'), 'Free Shipping Max Fee & LazCoins Discount tidak boleh jatuh ke other');
+    }
+
     public function test_payment_fee_correction_offsets_not_adds(): void
     {
         $result = (new LazadaTransactionMapper())->map([

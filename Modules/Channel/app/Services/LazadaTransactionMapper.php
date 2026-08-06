@@ -13,12 +13,14 @@ class LazadaTransactionMapper
         'order processing fee'                          => 'order_processing_fee',
         'sod - cod charge'                              => 'service_fee',
         'lazcoins discount promotion fee'               => 'seller_voucher',
+        'lazcoins discount'                             => 'seller_voucher',
 
         'payment fee refund - correction for sod-cod'   => 'transaction_fee',
 
         'shipping fee'                                  => 'seller_shipping_borne',
         'shipping fee paid by seller'                   => 'seller_shipping_borne',
         'reverse shipping fee'                          => 'seller_shipping_borne',
+        'free shipping max fee'                         => 'seller_shipping_borne',
         'voucher'                                       => 'seller_voucher',
         'seller voucher'                                => 'seller_voucher',
         'promotional charges'                           => 'seller_voucher',

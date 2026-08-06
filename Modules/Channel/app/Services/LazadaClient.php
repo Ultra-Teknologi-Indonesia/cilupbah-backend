@@ -12,6 +12,17 @@ class LazadaClient
 
     protected const TOKEN_ERROR_CODES = ['IllegalAccessToken', 'InvalidAccessToken', 'AppCallLimit.TokenExpired'];
 
+    /** Penanda error transien Lazada yang layak diulang (frequency-ban, RPC timeout, gangguan sesaat). */
+    protected const TRANSIENT_MARKERS = [
+        'api access frequency exceeds the limit',
+        'rpc timeout',
+        'servicetimeout',
+        'service is currently unavailable',
+        'systemerror',
+    ];
+
+    protected const MAX_ATTEMPTS = 3;
+
     protected string $appKey;
     protected string $appSecret;
     protected string $authUrl;
@@ -31,63 +42,131 @@ class LazadaClient
 
     public function request(string $method, string $apiPath, array $params = [], ?string $accessToken = null): array
     {
-        $params = array_merge($params, [
-            'app_key' => $this->appKey,
-            'sign_method' => 'sha256',
-            'timestamp' => (string) (int) (microtime(true) * 1000),
-        ]);
+        $baseParams = $params;
 
-        if ($accessToken) {
-            $params['access_token'] = $accessToken;
-        }
-
-        $params['sign'] = $this->generateSign($apiPath, $params);
-
-        $this->throttle();
-
-        $url = $this->baseUrl . $apiPath;
-        $response = strtoupper($method) === 'GET'
-            ? Http::timeout(30)->connectTimeout(15)->get($url, $params)
-            : Http::asForm()->timeout(30)->connectTimeout(15)->post($url, $params);
-
-        $data = $response->json() ?? [];
-
-        if ($response->failed()) {
-            $message = is_array($data) ? ($data['message'] ?? $response->body()) : $response->body();
-
-            Log::error('Lazada API HTTP Error', [
-                'path' => $apiPath,
-                'status' => $response->status(),
-                'message' => $message,
+        for ($attempt = 1; ; $attempt++) {
+            // Timestamp & sign harus fresh tiap percobaan (Lazada menolak timestamp basi).
+            $signed = array_merge($baseParams, [
+                'app_key' => $this->appKey,
+                'sign_method' => 'sha256',
+                'timestamp' => (string) (int) (microtime(true) * 1000),
             ]);
 
-            throw new \Exception('Lazada API Error: ' . $message);
-        }
-
-        if (($data['code'] ?? '0') !== '0') {
-            $detail = $this->formatErrorDetail($data['detail'] ?? $data['error_detail'] ?? null);
-
-            Log::error('Lazada API Error', [
-                'path' => $apiPath,
-                'code' => $data['code'] ?? null,
-                'message' => $data['message'] ?? null,
-                'detail' => $detail !== '' ? $detail : null,
-                'request_id' => $data['request_id'] ?? null,
-            ]);
-
-            if (in_array((string) ($data['code'] ?? ''), self::TOKEN_ERROR_CODES, true)) {
-                throw new TokenExpiredException('lazada', $data['message'] ?? 'Lazada access token expired');
+            if ($accessToken) {
+                $signed['access_token'] = $accessToken;
             }
 
-            $reason = trim((string) ($data['message'] ?? $data['code'] ?? 'Unknown error'));
-            if ($detail !== '' && ! str_contains($reason, $detail)) {
-                $reason = $reason !== '' ? $reason . ' — ' . $detail : $detail;
+            $signed['sign'] = $this->generateSign($apiPath, $signed);
+
+            $this->throttle();
+
+            $url = $this->baseUrl . $apiPath;
+
+            try {
+                $response = strtoupper($method) === 'GET'
+                    ? Http::timeout(30)->connectTimeout(15)->get($url, $signed)
+                    : Http::asForm()->timeout(30)->connectTimeout(15)->post($url, $signed);
+            } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                if ($attempt < self::MAX_ATTEMPTS) {
+                    Log::warning('Lazada API koneksi/timeout, retry', ['path' => $apiPath, 'attempt' => $attempt]);
+                    $this->backoff($attempt);
+
+                    continue;
+                }
+
+                throw new \Exception('Lazada API Error: ' . $e->getMessage(), 0, $e);
             }
 
-            throw new \Exception('Lazada API Error: ' . $reason);
+            $data = $response->json() ?? [];
+
+            if ($response->failed()) {
+                $message = is_array($data) ? ($data['message'] ?? $response->body()) : $response->body();
+
+                if ($attempt < self::MAX_ATTEMPTS && $this->isTransient((string) ($data['code'] ?? ''), (string) $message)) {
+                    Log::warning('Lazada API HTTP transien, retry', ['path' => $apiPath, 'attempt' => $attempt, 'status' => $response->status()]);
+                    $this->backoff($attempt);
+
+                    continue;
+                }
+
+                Log::error('Lazada API HTTP Error', [
+                    'path' => $apiPath,
+                    'status' => $response->status(),
+                    'message' => $message,
+                ]);
+
+                throw new \Exception('Lazada API Error: ' . $message);
+            }
+
+            if (($data['code'] ?? '0') !== '0') {
+                $detail = $this->formatErrorDetail($data['detail'] ?? $data['error_detail'] ?? null);
+                $code = (string) ($data['code'] ?? '');
+
+                if (in_array($code, self::TOKEN_ERROR_CODES, true)) {
+                    Log::error('Lazada API Error', [
+                        'path' => $apiPath,
+                        'code' => $code,
+                        'message' => $data['message'] ?? null,
+                        'detail' => $detail !== '' ? $detail : null,
+                        'request_id' => $data['request_id'] ?? null,
+                    ]);
+
+                    throw new TokenExpiredException('lazada', $data['message'] ?? 'Lazada access token expired');
+                }
+
+                if ($attempt < self::MAX_ATTEMPTS && $this->isTransient($code, trim(((string) ($data['message'] ?? '')) . ' ' . $detail))) {
+                    Log::warning('Lazada API transien, retry', [
+                        'path' => $apiPath,
+                        'attempt' => $attempt,
+                        'code' => $code,
+                        'message' => $data['message'] ?? null,
+                    ]);
+                    $this->backoff($attempt);
+
+                    continue;
+                }
+
+                Log::error('Lazada API Error', [
+                    'path' => $apiPath,
+                    'code' => $code,
+                    'message' => $data['message'] ?? null,
+                    'detail' => $detail !== '' ? $detail : null,
+                    'request_id' => $data['request_id'] ?? null,
+                ]);
+
+                $reason = trim((string) ($data['message'] ?? $code ?: 'Unknown error'));
+                if ($detail !== '' && ! str_contains($reason, $detail)) {
+                    $reason = $reason !== '' ? $reason . ' — ' . $detail : $detail;
+                }
+
+                throw new \Exception('Lazada API Error: ' . $reason);
+            }
+
+            return $data;
+        }
+    }
+
+    protected function isTransient(string $code, string $message): bool
+    {
+        $haystack = strtolower(trim($code . ' ' . $message));
+
+        if ($haystack === '') {
+            return false;
         }
 
-        return $data;
+        foreach (self::TRANSIENT_MARKERS as $marker) {
+            if (str_contains($haystack, $marker)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected function backoff(int $attempt): void
+    {
+        // 1s, 2s, 4s ... dibatasi 8s. Menutup frequency-ban (~1s) & RPC timeout.
+        sleep(min(2 ** ($attempt - 1), 8));
     }
 
     protected function formatErrorDetail($detail): string

@@ -45,9 +45,16 @@ class LazadaToInternalOrderMapper
         ) ?: 'Lazada Buyer';
 
         $subTotal = array_sum(array_column($items, 'amount'));
-        $shippingFee = (float) ($lazadaOrder['shipping_fee'] ?? 0);
+        // `shipping_fee` Lazada = ongkir logistik gross (mis. 107rb) yang biasanya disubsidi (free shipping),
+        // BUKAN yang dibayar buyer. Grand total (price) sudah otoritatif → turunkan ongkir buyer-paid darinya.
+        $grossShippingFee = (float) ($lazadaOrder['shipping_fee'] ?? 0);
         $voucher = (float) ($lazadaOrder['voucher'] ?? 0);
         $taxTotal = array_sum(array_column($items, 'tax_amount'));
+
+        $grandTotal = isset($lazadaOrder['price'])
+            ? (float) $lazadaOrder['price']
+            : ($subTotal + $grossShippingFee - $voucher);
+        $buyerPaidShipping = max(0.0, round($grandTotal - $subTotal, 2));
 
         $isPaid = ! in_array($lazadaStatus, ['unpaid', 'failed'], true);
 
@@ -64,9 +71,9 @@ class LazadaToInternalOrderMapper
             'seller_shipping_borne' => isset($lazadaOrder['shipping_fee_discount_seller']) ? (float) $lazadaOrder['shipping_fee_discount_seller'] : null,
             'platform_shipping_rebate' => isset($lazadaOrder['shipping_fee_discount_platform']) ? (float) $lazadaOrder['shipping_fee_discount_platform'] : null,
             'total_tax' => $taxTotal,
-            'shipping_cost' => $shippingFee,
+            'shipping_cost' => $buyerPaidShipping,
             'insurance_cost' => 0,
-            'grand_total' => isset($lazadaOrder['price']) ? (float) $lazadaOrder['price'] : ($subTotal + $shippingFee - $voucher),
+            'grand_total' => $grandTotal,
 
             'shipping_full_name' => trim(($address['first_name'] ?? '') . ' ' . ($address['last_name'] ?? '')) ?: null,
             'shipping_phone' => $address['phone'] ?? null,
@@ -85,7 +92,9 @@ class LazadaToInternalOrderMapper
             'cancel_reason' => $channelStatus === 'CANCELLED'
                 ? ($lazadaOrder['reason'] ?? $lazadaOrder['cancel_reason'] ?? $orderItems[0]['reason'] ?? $orderItems[0]['reason_detail'] ?? null)
                 : null,
-            'cancel_by' => $channelStatus === 'CANCELLED' ? ($lazadaOrder['cancel_initiator'] ?? null) : null,
+            'cancel_by' => $channelStatus === 'CANCELLED'
+                ? ($lazadaOrder['cancel_initiator'] ?? $orderItems[0]['cancel_return_initiator'] ?? null)
+                : null,
             'payment_method' => $lazadaOrder['payment_method'] ?? null,
             'payment_method_name' => $lazadaOrder['payment_method'] ?? null,
             'tracking_number' => $orderItems[0]['tracking_code'] ?? null,
