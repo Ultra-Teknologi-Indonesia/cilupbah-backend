@@ -11,6 +11,15 @@ use Modules\Product\Models\ProductSyncLog;
 
 class LazadaProductService
 {
+    /**
+     * Batas halaman /products/get. Lazada RPC timeout pada limit>=30 (verifikasi dry-run prod:
+     * 10=~3.8s OK, 20=~9.9s OK, 30=~33s RPC timeout). Payload produk penuh terlalu berat untuk
+     * RPC internal Lazada di atas 20.
+     */
+    private const PULL_PAGE_LIMIT = 20;     // job background: minimalkan jumlah call (aman < ~30s RPC)
+
+    private const SEARCH_PAGE_LIMIT = 10;   // interaktif: cepat & aman lewat gateway walau loop beberapa halaman
+
     public function __construct(
         protected LazadaClient $client,
         protected LazadaToInternalProductMapper $inboundMapper,
@@ -74,7 +83,7 @@ class LazadaProductService
 
         $statuses = [];
         $offset = 0;
-        $limit = 50;
+        $limit = self::PULL_PAGE_LIMIT;
 
         do {
             $params = ['filter' => 'all', 'offset' => $offset, 'limit' => $limit];
@@ -394,7 +403,7 @@ class LazadaProductService
         $needle  = trim(mb_strtolower($query));
         $results = [];
         $offset  = 0;
-        $limit   = 50;
+        $limit   = self::SEARCH_PAGE_LIMIT;
         $pages   = 0;
 
         do {
@@ -458,7 +467,7 @@ class LazadaProductService
         $failed = 0;
         $total = 0;
         $offset = 0;
-        $limit = 50;
+        $limit = self::PULL_PAGE_LIMIT;
         $pages = 0;
         $maxPages = (int) config('channel.download_max_pages', 10000);
 
@@ -573,7 +582,7 @@ class LazadaProductService
         $channelShopId = $shop->id;
         $updated = 0;
         $offset = 0;
-        $limit = 50;
+        $limit = self::PULL_PAGE_LIMIT;
 
         do {
             $params = ['filter' => 'all', 'offset' => $offset, 'limit' => $limit];

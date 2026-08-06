@@ -327,6 +327,55 @@ class LazadaProductSyncTest extends TestCase
         $this->assertEquals('777100', $pvcm->external_sku_id);
     }
 
+    public function test_pull_products_requests_safe_page_limit_to_avoid_rpc_timeout(): void
+    {
+        // Regresi: Lazada /products/get RPC timeout pada limit>=30 (verifikasi dry-run prod).
+        // pullProducts wajib memakai page limit aman (<=20) agar download penuh tidak menggantung.
+        Category::create(['name' => 'Root', 'is_active' => true]);
+
+        Http::fake([
+            'api.lazada.co.id/rest/products/get*' => Http::response([
+                'code' => '0',
+                'data' => ['total_products' => 1, 'products' => [$this->sampleLazadaProduct()]],
+            ], 200),
+        ]);
+
+        app(LazadaProductService::class)->pullProducts('LZ-100');
+
+        Http::assertSent(function ($request) {
+            if (! str_contains($request->url(), '/products/get')) {
+                return false;
+            }
+            parse_str(parse_url($request->url(), PHP_URL_QUERY) ?? '', $query);
+
+            return isset($query['limit']) && (int) $query['limit'] === 20;
+        });
+    }
+
+    public function test_search_products_uses_small_interactive_page_limit(): void
+    {
+        // Regresi: search interaktif dilewatkan gateway (Cloudflare ~100s) & bisa loop beberapa
+        // halaman, jadi page limit harus kecil (10) supaya tetap cepat dan tidak RPC timeout.
+        Http::fake([
+            'api.lazada.co.id/rest/products/get*' => Http::response([
+                'code' => '0',
+                'data' => ['total_products' => 1, 'products' => [$this->sampleLazadaProduct()]],
+            ], 200),
+        ]);
+
+        $results = app(LazadaProductService::class)->searchProducts('LZ-100', '');
+
+        $this->assertNotEmpty($results);
+        Http::assertSent(function ($request) {
+            if (! str_contains($request->url(), '/products/get')) {
+                return false;
+            }
+            parse_str(parse_url($request->url(), PHP_URL_QUERY) ?? '', $query);
+
+            return isset($query['limit']) && (int) $query['limit'] === 10;
+        });
+    }
+
     public function test_generic_download_endpoint_accepts_lazada(): void
     {
         \Illuminate\Support\Facades\Queue::fake();
