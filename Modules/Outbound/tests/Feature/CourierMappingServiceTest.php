@@ -43,7 +43,7 @@ class CourierMappingServiceTest extends TestCase
 
     public function test_jtr_abbreviation_is_cargo_across_channels(): void
     {
-        // Shopee tulis "Trucking", Lazada tulis singkatan "JTR" — dua-duanya JNE kargo → CARGO.
+
         $this->assertSame('CARGO', $this->service->resolveShipmentType('JNE Trucking (JTR)'));
         $this->assertSame('CARGO', $this->service->resolveShipmentType('JNE JTR'));
     }
@@ -55,7 +55,7 @@ class CourierMappingServiceTest extends TestCase
 
     public function test_gojek_and_gosend_unify_to_one_code(): void
     {
-        // Lazada "Gojek" & Shopee "GoSend Instant" = layanan sama → satu code, satu grup manifest.
+
         $this->assertSame('gosend', $this->service->resolveCode('Gojek'));
         $this->assertSame('gosend', $this->service->resolveCode('GoSend Instant'));
         $this->assertSame('INSTANT', $this->service->resolveShipmentType('Gojek'));

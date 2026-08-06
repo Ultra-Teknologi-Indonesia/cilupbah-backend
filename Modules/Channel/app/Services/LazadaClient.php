@@ -12,7 +12,6 @@ class LazadaClient
 
     protected const TOKEN_ERROR_CODES = ['IllegalAccessToken', 'InvalidAccessToken', 'AppCallLimit.TokenExpired'];
 
-    /** Penanda error transien Lazada yang layak diulang (frequency-ban, RPC timeout, gangguan sesaat). */
     protected const TRANSIENT_MARKERS = [
         'api access frequency exceeds the limit',
         'rpc timeout',
@@ -45,7 +44,7 @@ class LazadaClient
         $baseParams = $params;
 
         for ($attempt = 1; ; $attempt++) {
-            // Timestamp & sign harus fresh tiap percobaan (Lazada menolak timestamp basi).
+
             $signed = array_merge($baseParams, [
                 'app_key' => $this->appKey,
                 'sign_method' => 'sha256',
@@ -165,7 +164,7 @@ class LazadaClient
 
     protected function backoff(int $attempt): void
     {
-        // 1s, 2s, 4s ... dibatasi 8s. Menutup frequency-ban (~1s) & RPC timeout.
+
         sleep(min(2 ** ($attempt - 1), 8));
     }
 

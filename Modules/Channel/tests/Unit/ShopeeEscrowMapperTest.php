@@ -165,7 +165,7 @@ class ShopeeEscrowMapperTest extends TestCase
 
     public function test_gross_amount_prefers_selling_price_over_original_price(): void
     {
-        // Data asli produksi: harga coret 50.000, harga jual 12.750, escrow 9.715.
+
         $result = (new ShopeeEscrowMapper())->map($this->escrow([
             'order_original_price' => 50000,
             'order_selling_price'  => 12750,
