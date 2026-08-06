@@ -185,6 +185,53 @@ class ShopeeEscrowMapperTest extends TestCase
         $this->assertSame(50000.0, $result['gross_amount']);
     }
 
+    public function test_gross_prefers_discounted_price_and_reconciles_to_escrow(): void
+    {
+        // Order riil #260803DC17STDF: order_selling_price 230000 tapi order_discounted_price 228050
+        // (diskon bundle order-level 1950 belum terpotong di selling_price). Basis seller = discounted.
+        $result = (new ShopeeEscrowMapper())->map($this->escrow([
+            'order_selling_price'         => 230000,
+            'order_discounted_price'      => 228050,
+            'order_original_price'        => 600000,
+            'commission_fee'              => 22805,
+            'service_fee'                 => 9122,
+            'seller_order_processing_fee' => 1250,
+            'actual_shipping_fee'         => 36500,
+            'buyer_paid_shipping_fee'     => 36500,
+            'shopee_shipping_rebate'      => 0,
+            'escrow_amount'               => 194873,
+        ]));
+
+        $this->assertSame(228050.0, $result['gross_amount']);
+
+        $recon = $result['gross_amount']
+            - $result['commission_fee'] - $result['service_fee'] - $result['order_processing_fee']
+            - (float) $result['seller_shipping_borne'];
+        $this->assertSame(194873.0, $recon);
+        $this->assertSame(194873.0, $result['settlement_amount']);
+    }
+
+    public function test_withholding_tax_is_added_on_top_of_escrow_tax(): void
+    {
+        $result = (new ShopeeEscrowMapper())->map($this->escrow([
+            'escrow_amount'   => 50000,
+            'escrow_tax'      => 1500,
+            'withholding_tax' => 95,
+        ]));
+
+        $this->assertSame(1595.0, $result['total_tax']);
+    }
+
+    public function test_withholding_tax_alone_becomes_total_tax(): void
+    {
+        $result = (new ShopeeEscrowMapper())->map($this->escrow([
+            'escrow_amount'   => 50000,
+            'withholding_tax' => 382,
+        ]));
+
+        $this->assertSame(382.0, $result['total_tax']);
+    }
+
     public function test_fee_lines_skip_zero_amount_components(): void
     {
         $result = (new ShopeeEscrowMapper())->map($this->escrow([
