@@ -26,8 +26,13 @@ class ShopeeToInternalOrderMapper
 
         $logisticsChannelId = $shopeeOrder['logistics_channel_id']
             ?? ($shopeeOrder['package_list'][0]['logistics_channel_id'] ?? null);
-        $shippingType = ($logisticsChannelId !== null && in_array((string) $logisticsChannelId, $instantChannelIds, true))
-            ? 'INSTANT'
+        $isInstantChannel = $logisticsChannelId !== null && in_array((string) $logisticsChannelId, $instantChannelIds, true);
+        $shippingType = $isInstantChannel ? 'INSTANT' : null;
+        // Sinyal instant otoritatif Shopee (by logistics_channel_id). Tri-state:
+        // true = channel instant resmi; false = Shopee memastikan BUKAN instant
+        // (mencegah regex nama seperti "Same Day" salah-tandai INSTANT); null = tak ada data.
+        $channelInstant = (! empty($instantChannelIds) && $logisticsChannelId !== null)
+            ? $isInstantChannel
             : null;
 
         $shopeeStatus = strtolower((string) ($shopeeOrder['order_status'] ?? 'unpaid'));
@@ -89,7 +94,7 @@ class ShopeeToInternalOrderMapper
             'is_paid' => $isPaid,
             'is_canceled' => $channelStatus === 'CANCELLED',
             'is_cod' => $isCod,
-            'priority_fulfillment' => false,
+            'priority_fulfillment' => \Modules\Outbound\Support\InstantOrderClassifier::isPriority($shopeeOrder['shipping_carrier'] ?? null),
             'is_split_order' => ! empty($shopeeOrder['split_up']),
 
             'cancel_reason' => $channelStatus === 'CANCELLED'
@@ -108,6 +113,7 @@ class ShopeeToInternalOrderMapper
             'tracking_number' => $shopeeOrder['tracking_number'] ?? null,
             'shipping_provider' => $shopeeOrder['shipping_carrier'] ?? null,
             'shipping_type' => $shippingType,
+            'channel_instant' => $channelInstant,
             'buyer_message' => $shopeeOrder['note'] ?? $shopeeOrder['message_to_seller'] ?? null,
             'seller_note' => $shopeeOrder['note'] ?? null,
             'paid_time' => $isPaid ? $this->parseTimestamp($shopeeOrder['pay_time'] ?? $shopeeOrder['create_time'] ?? null) : null,

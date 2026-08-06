@@ -106,7 +106,7 @@ class LazadaToInternalOrderMapper
             'channel_updated_at' => $this->parseDateNullable($lazadaOrder['updated_at'] ?? null),
             'source' => 'lazada',
             'is_cod' => strtoupper($lazadaOrder['payment_method'] ?? '') === 'COD',
-            'priority_fulfillment' => false,
+            'priority_fulfillment' => \Modules\Outbound\Support\InstantOrderClassifier::isPriority($orderItems[0]['shipment_provider'] ?? null),
             'items' => $items,
         ];
     }

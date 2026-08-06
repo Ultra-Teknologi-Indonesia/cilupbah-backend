@@ -15,4 +15,18 @@ class InstantOrderClassifier
         }
         return false;
     }
+
+    /**
+     * Deteksi tier prioritas (mis. "Instant Prioritas", "SPX Instant Prioritas",
+     * "Priority") dari nama layanan/kurir. Cocokkan "priorit" (prioritas/priority).
+     */
+    public static function isPriority(?string $shippingProvider, ?string $shippingType = null): bool
+    {
+        foreach ([$shippingProvider, $shippingType] as $val) {
+            if ($val && preg_match('/priorit/i', $val)) {
+                return true;
+            }
+        }
+        return false;
+    }
 }

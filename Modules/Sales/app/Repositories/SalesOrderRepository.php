@@ -492,8 +492,9 @@ class SalesOrderRepository
         $resolvedCourierId = $shippingProvider
             ? ($courierMapper->resolveCourierId($shippingProvider) ?? ($existing->courier_id ?? null))
             : ($existing->courier_id ?? null);
+        $channelInstant = array_key_exists('channel_instant', $orderData) ? $orderData['channel_instant'] : null;
         $resolvedShipmentType = $shippingProvider
-            ? ($courierMapper->resolveShipmentType((string) $shippingProvider) ?: ($existing->resolved_shipment_type ?? null))
+            ? ($courierMapper->resolveShipmentType((string) $shippingProvider, $channelInstant) ?: ($existing->resolved_shipment_type ?? null))
             : ($existing->resolved_shipment_type ?? null);
 
         $orderRow = [

@@ -49,4 +49,32 @@ class ShopeeInstantMappingTest extends TestCase
         $this->assertNull($grab['shipping_type']);
         $this->assertTrue(InstantOrderClassifier::isInstant($grab['shipping_provider'], $grab['shipping_type']));
     }
+
+    public function test_channel_instant_signal_is_tri_state(): void
+    {
+        $mapper = app(ShopeeToInternalOrderMapper::class);
+
+        // channel resmi instant -> true
+        $instant = $mapper->map($this->order(['logistics_channel_id' => 90003]), 'shop-1', ['90003']);
+        $this->assertTrue($instant['channel_instant']);
+
+        // channel id dikenal tapi TIDAK di daftar instant (daftar non-kosong) -> false otoritatif
+        $notInstant = $mapper->map($this->order(['logistics_channel_id' => 12345, 'shipping_carrier' => 'Same Day']), 'shop-1', ['90003']);
+        $this->assertFalse($notInstant['channel_instant']);
+
+        // tak ada data instant (daftar kosong) -> null (jatuh ke heuristik nama)
+        $noData = $mapper->map($this->order(['logistics_channel_id' => 12345]), 'shop-1', []);
+        $this->assertNull($noData['channel_instant']);
+    }
+
+    public function test_priority_fulfillment_detected_from_carrier_name(): void
+    {
+        $mapper = app(ShopeeToInternalOrderMapper::class);
+
+        $prio = $mapper->map($this->order(['shipping_carrier' => 'SPX Instant Prioritas', 'logistics_channel_id' => 90003]), 'shop-1', ['90003']);
+        $this->assertTrue($prio['priority_fulfillment']);
+
+        $plain = $mapper->map($this->order(['shipping_carrier' => 'SPX Instant', 'logistics_channel_id' => 90003]), 'shop-1', ['90003']);
+        $this->assertFalse($plain['priority_fulfillment']);
+    }
 }

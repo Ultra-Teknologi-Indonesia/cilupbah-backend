@@ -66,7 +66,8 @@ class TikTokToInternalOrderMapper
             || strtoupper($tiktokOrder['payment_method_code'] ?? '') === 'COD';
 
         $priorityFulfillment = ! empty($tiktokOrder['is_replacement_order'])
-            || ($tiktokOrder['fulfillment_priority_level'] ?? 0) > 0;
+            || ($tiktokOrder['fulfillment_priority_level'] ?? 0) > 0
+            || \Modules\Outbound\Support\InstantOrderClassifier::isPriority($shippingProvider);
 
         $cancelInitiator = $channelStatus === 'CANCELLED'
             ? ($tiktokOrder['cancellation_initiator'] ?? null)
