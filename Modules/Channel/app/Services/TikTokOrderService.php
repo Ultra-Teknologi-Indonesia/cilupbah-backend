@@ -659,14 +659,35 @@ class TikTokOrderService
                 ? now()->setTimestamp((int) $ret['update_time'])->toIso8601String()
                 : null;
 
+            // TikTok 202309: refund_amount adalah objek uang {refund_total, currency, ...},
+            // shipping_fee_amount adalah list [{seller_paid_return_shipping_fee, ...}].
+            // (float) langsung atas array = selalu 1.0 → harus ambil subfield yang benar.
+            $refundRaw = $ret['refund_amount'] ?? null;
+            if (is_array($refundRaw)) {
+                $refundAmount = isset($refundRaw['refund_total']) && $refundRaw['refund_total'] !== ''
+                    ? (float) $refundRaw['refund_total'] : null;
+                $refundCurrency = $refundRaw['currency'] ?? null;
+            } else {
+                $refundAmount = ($refundRaw !== null && $refundRaw !== '') ? (float) $refundRaw : null;
+                $refundCurrency = $ret['currency'] ?? null;
+            }
+
+            $shipRaw = $ret['shipping_fee_amount'] ?? null;
+            $shipBlock = [];
+            if (is_array($shipRaw)) {
+                $shipBlock = isset($shipRaw[0]) && is_array($shipRaw[0]) ? $shipRaw[0] : $shipRaw;
+            }
+            $sellerReturnShipping = isset($shipBlock['seller_paid_return_shipping_fee']) && $shipBlock['seller_paid_return_shipping_fee'] !== ''
+                ? (float) $shipBlock['seller_paid_return_shipping_fee'] : null;
+
             return [
                 'channel_status' => isset($ret['return_status']) ? (string) $ret['return_status'] : null,
-                'reason_code' => $ret['return_reason_key'] ?? null,
-                'reason_text' => $ret['return_reason'] ?? null,
-                'refund_amount' => isset($ret['refund_amount']) ? (float) $ret['refund_amount'] : null,
-                'refund_currency' => $ret['currency'] ?? null,
+                'reason_code' => $ret['return_reason'] ?? $ret['return_reason_key'] ?? null,
+                'reason_text' => $ret['return_reason_text'] ?? $ret['return_reason'] ?? null,
+                'refund_amount' => $refundAmount,
+                'refund_currency' => $refundCurrency,
                 'shipping_fee_original' => null,
-                'shipping_fee_return' => isset($ret['shipping_fee_amount']) ? (float) $ret['shipping_fee_amount'] : null,
+                'shipping_fee_return' => $sellerReturnShipping,
                 'tracking_number' => $tracking ? (string) $tracking : null,
                 'carrier' => $carrier ? (string) $carrier : null,
                 'shipped_at' => $shippedAt,

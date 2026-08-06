@@ -48,6 +48,50 @@ class TikTokOrderOpsTest extends TestCase
         ]);
     }
 
+    public function test_fetch_return_detail_parses_tiktok_money_objects(): void
+    {
+        $returnId = '4041827037794371092';
+
+        Http::fake([
+            self::BASE . '/return_refund/202309/returns/search*' => Http::response([
+                'code' => 0,
+                'data' => ['return_orders' => [[
+                    'return_id'          => $returnId,
+                    'order_id'           => self::ORDER_ID,
+                    'return_status'      => 'RETURN_OR_REFUND_REQUEST_PENDING',
+                    'return_reason'      => 'buyer_return_and_refund_suspected_counterfeit',
+                    'return_reason_text' => 'Suspected counterfeit',
+                    'update_time'        => 1718000000,
+                    'refund_amount'      => [
+                        'currency'            => 'IDR',
+                        'refund_subtotal'     => '35000',
+                        'refund_shipping_fee' => '0',
+                        'refund_tax'          => '0',
+                        'buyer_service_fee'   => '1000',
+                        'refund_total'        => '36360',
+                    ],
+                    'shipping_fee_amount' => [[
+                        'currency'                          => 'IDR',
+                        'buyer_paid_return_shipping_fee'    => '0',
+                        'platform_paid_return_shipping_fee' => '0',
+                        'seller_paid_return_shipping_fee'   => '32000',
+                    ]],
+                ]]],
+            ], 200),
+        ]);
+
+        $detail = app(\Modules\Channel\Services\TikTokOrderService::class)
+            ->fetchReturnDetail('TT-700', $returnId);
+
+        // Ambil refund_total dari objek uang, bukan (float) atas array yang selalu 1.
+        $this->assertSame(36360.0, $detail['refund_amount']);
+        $this->assertSame('IDR', $detail['refund_currency']);
+        $this->assertSame(32000.0, $detail['shipping_fee_return']);
+        $this->assertSame('buyer_return_and_refund_suspected_counterfeit', $detail['reason_code']);
+        $this->assertSame('Suspected counterfeit', $detail['reason_text']);
+        $this->assertSame('RETURN_OR_REFUND_REQUEST_PENDING', $detail['channel_status']);
+    }
+
     private function orderDetail(string $status): array
     {
         return [
