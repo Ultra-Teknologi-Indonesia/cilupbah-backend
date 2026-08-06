@@ -62,6 +62,8 @@ class CourierMappingService
         'alfatrex' => 'alfatrex',
         'bluebird' => 'bluebird',
         'indopaket' => 'indopaket',
+        'royal express' => 'rex',
+        'rara' => 'rara',
     ];
 
     public function resolveCode(string $name): string

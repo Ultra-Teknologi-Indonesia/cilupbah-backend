@@ -76,6 +76,20 @@ class CourierMappingServiceTest extends TestCase
         $this->assertSame('indopaket', $this->service->resolveCode('Indopaket'));
     }
 
+    public function test_rara_is_classified_instant(): void
+    {
+        $this->assertSame('INSTANT', $this->service->resolveShipmentType('Rara'));
+    }
+
+    public function test_royal_express_unifies_with_rex_code(): void
+    {
+
+        $this->assertSame('rex', $this->service->resolveCode('Royal Express'));
+        $this->assertSame('rex', $this->service->resolveCode('REX'));
+
+        $this->assertSame('alfatrex', $this->service->resolveCode('Alfatrex (Ambil di Alfamart)'));
+    }
+
     public function test_gojek_and_gosend_unify_to_one_code(): void
     {
 

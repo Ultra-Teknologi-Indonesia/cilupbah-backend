@@ -4,7 +4,7 @@ namespace Modules\Outbound\Support;
 
 class InstantOrderClassifier
 {
-    public const REGEX = 'instant|instan|same[- ]?day|grab|gojek|gosend|lalamove|borzo|bluebird|paxel same';
+    public const REGEX = 'instant|instan|same[- ]?day|grab|gojek|gosend|lalamove|borzo|bluebird|rara|paxel same';
 
     public static function isInstant(?string $shippingProvider, ?string $shippingType = null): bool
     {
