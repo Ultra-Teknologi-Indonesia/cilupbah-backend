@@ -58,7 +58,7 @@ class CourierMappingService
         'tiktok shipping' => 'tiktok_shipping',
         'lazada logistics' => 'lazada_logistics',
         'lex id' => 'lex',
-        // 'alfatrex' harus menang atas substring 'rex' (Royal Express) via longest-match.
+
         'alfatrex' => 'alfatrex',
         'bluebird' => 'bluebird',
         'indopaket' => 'indopaket',

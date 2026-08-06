@@ -659,9 +659,6 @@ class TikTokOrderService
                 ? now()->setTimestamp((int) $ret['update_time'])->toIso8601String()
                 : null;
 
-            // TikTok 202309: refund_amount adalah objek uang {refund_total, currency, ...},
-            // shipping_fee_amount adalah list [{seller_paid_return_shipping_fee, ...}].
-            // (float) langsung atas array = selalu 1.0 → harus ambil subfield yang benar.
             $refundRaw = $ret['refund_amount'] ?? null;
             if (is_array($refundRaw)) {
                 $refundAmount = isset($refundRaw['refund_total']) && $refundRaw['refund_total'] !== ''

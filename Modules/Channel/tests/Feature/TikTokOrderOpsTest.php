@@ -83,7 +83,6 @@ class TikTokOrderOpsTest extends TestCase
         $detail = app(\Modules\Channel\Services\TikTokOrderService::class)
             ->fetchReturnDetail('TT-700', $returnId);
 
-        // Ambil refund_total dari objek uang, bukan (float) atas array yang selalu 1.
         $this->assertSame(36360.0, $detail['refund_amount']);
         $this->assertSame('IDR', $detail['refund_currency']);
         $this->assertSame(32000.0, $detail['shipping_fee_return']);

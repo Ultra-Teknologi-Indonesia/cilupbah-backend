@@ -11,14 +11,10 @@ use Modules\Product\Models\ProductSyncLog;
 
 class LazadaProductService
 {
-    /**
-     * Batas halaman /products/get. Lazada RPC timeout pada limit>=30 (verifikasi dry-run prod:
-     * 10=~3.8s OK, 20=~9.9s OK, 30=~33s RPC timeout). Payload produk penuh terlalu berat untuk
-     * RPC internal Lazada di atas 20.
-     */
-    private const PULL_PAGE_LIMIT = 20;     // job background: minimalkan jumlah call (aman < ~30s RPC)
 
-    private const SEARCH_PAGE_LIMIT = 10;   // interaktif: cepat & aman lewat gateway walau loop beberapa halaman
+    private const PULL_PAGE_LIMIT = 20;     
+
+    private const SEARCH_PAGE_LIMIT = 10;   
 
     public function __construct(
         protected LazadaClient $client,

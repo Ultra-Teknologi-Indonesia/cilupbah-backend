@@ -329,8 +329,7 @@ class LazadaProductSyncTest extends TestCase
 
     public function test_pull_products_requests_safe_page_limit_to_avoid_rpc_timeout(): void
     {
-        // Regresi: Lazada /products/get RPC timeout pada limit>=30 (verifikasi dry-run prod).
-        // pullProducts wajib memakai page limit aman (<=20) agar download penuh tidak menggantung.
+
         Category::create(['name' => 'Root', 'is_active' => true]);
 
         Http::fake([
@@ -354,8 +353,7 @@ class LazadaProductSyncTest extends TestCase
 
     public function test_search_products_uses_small_interactive_page_limit(): void
     {
-        // Regresi: search interaktif dilewatkan gateway (Cloudflare ~100s) & bisa loop beberapa
-        // halaman, jadi page limit harus kecil (10) supaya tetap cepat dan tidak RPC timeout.
+
         Http::fake([
             'api.lazada.co.id/rest/products/get*' => Http::response([
                 'code' => '0',
