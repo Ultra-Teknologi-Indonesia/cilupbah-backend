@@ -41,6 +41,39 @@ class CourierMappingServiceTest extends TestCase
         $this->assertSame('CARGO', $this->service->resolveShipmentType('JNE Cargo'));
     }
 
+    public function test_jtr_abbreviation_is_cargo_across_channels(): void
+    {
+        // Shopee tulis "Trucking", Lazada tulis singkatan "JTR" — dua-duanya JNE kargo → CARGO.
+        $this->assertSame('CARGO', $this->service->resolveShipmentType('JNE Trucking (JTR)'));
+        $this->assertSame('CARGO', $this->service->resolveShipmentType('JNE JTR'));
+    }
+
+    public function test_borzo_is_classified_instant(): void
+    {
+        $this->assertSame('INSTANT', $this->service->resolveShipmentType('BORZO'));
+    }
+
+    public function test_gojek_and_gosend_unify_to_one_code(): void
+    {
+        // Lazada "Gojek" & Shopee "GoSend Instant" = layanan sama → satu code, satu grup manifest.
+        $this->assertSame('gosend', $this->service->resolveCode('Gojek'));
+        $this->assertSame('gosend', $this->service->resolveCode('GoSend Instant'));
+        $this->assertSame('INSTANT', $this->service->resolveShipmentType('Gojek'));
+    }
+
+    public function test_jne_cargo_from_shopee_and_lazada_group_together(): void
+    {
+        $orders = [
+            (object) ['id' => 'S', 'source' => 'shopee', 'shipping_provider' => 'JNE Trucking (JTR)'],
+            (object) ['id' => 'L', 'source' => 'lazada', 'shipping_provider' => 'JNE JTR'],
+        ];
+
+        $groups = $this->service->groupOrdersForManifest($orders);
+
+        $this->assertArrayHasKey('jne|CARGO', $groups);
+        $this->assertCount(2, $groups['jne|CARGO']['orders']);
+    }
+
     public function test_verified_mapping_is_not_overwritten_on_resync(): void
     {
         $mapping = $this->service->record('shopee', 'Mystery Courier', 'X-1');

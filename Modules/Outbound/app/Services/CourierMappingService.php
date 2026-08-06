@@ -42,6 +42,8 @@ class CourierMappingService
         'gosend' => 'gosend',
         'go-send same day' => 'gosend',
         'go-send instant' => 'gosend',
+        'gojek' => 'gosend',
+        'go-jek' => 'gosend',
         'grabexpress' => 'grabexpress',
         'grab express' => 'grabexpress',
         'grab' => 'grabexpress',
@@ -95,7 +97,7 @@ class CourierMappingService
 
         return match (true) {
             str_contains($lower, 'next day') || str_contains($lower, 'nextday') => 'EXPRESS',
-            str_contains($lower, 'cargo') || str_contains($lower, 'trucking') || str_contains($lower, 'kargo') => 'CARGO',
+            str_contains($lower, 'cargo') || str_contains($lower, 'trucking') || str_contains($lower, 'kargo') || str_contains($lower, 'jtr') => 'CARGO',
             default => 'REGULAR',
         };
     }
