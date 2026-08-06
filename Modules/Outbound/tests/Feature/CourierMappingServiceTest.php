@@ -53,6 +53,29 @@ class CourierMappingServiceTest extends TestCase
         $this->assertSame('INSTANT', $this->service->resolveShipmentType('BORZO'));
     }
 
+    public function test_bluebird_same_day_is_classified_instant(): void
+    {
+
+        $this->assertSame('INSTANT', $this->service->resolveShipmentType('Bluebird Kirim'));
+        $this->assertSame('bluebird', $this->service->resolveCode('Bluebird Kirim'));
+    }
+
+    public function test_alfatrex_does_not_collide_with_rex_courier(): void
+    {
+
+        $this->assertSame('alfatrex', $this->service->resolveCode('Alfatrex (Ambil di Alfamart)'));
+        $this->assertNotSame('rex', $this->service->resolveCode('Alfatrex (Ambil di Alfamart)'));
+
+        $this->assertSame('rex', $this->service->resolveCode('REX'));
+    }
+
+    public function test_indopaket_unifies_across_channels(): void
+    {
+
+        $this->assertSame('indopaket', $this->service->resolveCode('Indopaket (Ambil di Indomaret)'));
+        $this->assertSame('indopaket', $this->service->resolveCode('Indopaket'));
+    }
+
     public function test_gojek_and_gosend_unify_to_one_code(): void
     {
 
