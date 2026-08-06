@@ -30,7 +30,7 @@ class LazadaTransactionMapper
 
     private const GROSS_NAMES = ['item price credit'];
 
-    private const REFUND_NAMES = ['refund', 'item price credit refund'];
+    private const REFUND_NAMES = ['refund', 'item price credit refund', 'reversal item price'];
 
     public function map(array $transactions): array
     {
@@ -92,6 +92,10 @@ class LazadaTransactionMapper
             }
 
             $feeType = self::FEE_MAP[$feeName] ?? null;
+
+            if ($feeType === null && str_starts_with($feeName, 'reversal ')) {
+                $feeType = self::FEE_MAP[substr($feeName, strlen('reversal '))] ?? null;
+            }
 
             if ($feeType === null) {
 

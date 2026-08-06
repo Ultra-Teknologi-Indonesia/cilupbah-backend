@@ -64,9 +64,21 @@ class LazadaToInternalOrderMapperStatusTest extends TestCase
         $this->assertSame('Tidak ingin pesanan ini lagi', $internal['cancel_reason']);
     }
 
+    public function test_cancel_by_captured_for_returned_orders_too(): void
+    {
+        $internal = (new LazadaToInternalOrderMapper())->map(
+            ['order_id' => 900300, 'statuses' => ['returned'], 'price' => '30000.00'],
+            [['sku' => 'X', 'paid_price' => '30000', 'cancel_return_initiator' => 'buyer-return']],
+            'LZ-100'
+        );
+
+        $this->assertSame('RETURNED', $internal['channel_status']);
+        $this->assertSame('buyer-return', $internal['cancel_by']);
+    }
+
     public function test_shipping_cost_is_buyer_paid_not_gross_logistics(): void
     {
-        // Free shipping: gross shipping_fee 107rb tapi buyer bayar price=23500 (=item) → ongkir buyer 0.
+
         $free = (new LazadaToInternalOrderMapper())->map(
             ['order_id' => 1, 'statuses' => ['delivered'], 'price' => '23500.00', 'shipping_fee' => 107000],
             [['sku' => 'A', 'paid_price' => '23500']],
@@ -75,7 +87,6 @@ class LazadaToInternalOrderMapperStatusTest extends TestCase
         $this->assertSame(0.0, $free['shipping_cost']);
         $this->assertSame(23500.0, $free['grand_total']);
 
-        // Buyer betul-betul bayar ongkir: item 20rb + ongkir 5rb → price 25rb.
         $paid = (new LazadaToInternalOrderMapper())->map(
             ['order_id' => 2, 'statuses' => ['delivered'], 'price' => '25000.00', 'shipping_fee' => 5000],
             [['sku' => 'A', 'paid_price' => '20000']],

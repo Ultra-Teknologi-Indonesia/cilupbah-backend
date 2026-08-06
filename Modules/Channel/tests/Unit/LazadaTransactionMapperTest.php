@@ -62,6 +62,27 @@ class LazadaTransactionMapperTest extends TestCase
         $this->assertFalse($byType->has('other'), 'Free Shipping Max Fee & LazCoins Discount tidak boleh jatuh ke other');
     }
 
+    public function test_return_reversal_lines_map_refund_and_offset_fees(): void
+    {
+
+        $result = (new LazadaTransactionMapper())->map([
+            $this->row('Payment Fee', '-546.00'),
+            $this->row('Item Price Credit', '30,000.00'),
+            $this->row('Reversal Item Price', '-30,000.00'),
+            $this->row('Reversal Commission', '2,454.00'),
+            $this->row('Commission', '-2,454.00'),
+            $this->row('Free Shipping Max Fee', '-1,832.00'),
+            $this->row('Order Processing Fee', '-1,250.00'),
+            $this->row('Reversal Order Processing Fee', '1,250.00'),
+        ]);
+
+        $this->assertSame(30000.0, $result['refund_total']);        
+        $this->assertSame(0.0, $result['commission_fee']);          
+        $this->assertSame(0.0, $result['order_processing_fee']);    
+        $this->assertSame(30000.0, $result['gross_amount']);        
+        $this->assertSame(-2378.0, $result['settlement_amount']);   
+    }
+
     public function test_payment_fee_correction_offsets_not_adds(): void
     {
         $result = (new LazadaTransactionMapper())->map([

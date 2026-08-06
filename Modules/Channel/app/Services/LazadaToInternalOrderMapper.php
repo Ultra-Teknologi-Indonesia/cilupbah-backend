@@ -45,8 +45,7 @@ class LazadaToInternalOrderMapper
         ) ?: 'Lazada Buyer';
 
         $subTotal = array_sum(array_column($items, 'amount'));
-        // `shipping_fee` Lazada = ongkir logistik gross (mis. 107rb) yang biasanya disubsidi (free shipping),
-        // BUKAN yang dibayar buyer. Grand total (price) sudah otoritatif → turunkan ongkir buyer-paid darinya.
+
         $grossShippingFee = (float) ($lazadaOrder['shipping_fee'] ?? 0);
         $voucher = (float) ($lazadaOrder['voucher'] ?? 0);
         $taxTotal = array_sum(array_column($items, 'tax_amount'));
@@ -92,7 +91,7 @@ class LazadaToInternalOrderMapper
             'cancel_reason' => $channelStatus === 'CANCELLED'
                 ? ($lazadaOrder['reason'] ?? $lazadaOrder['cancel_reason'] ?? $orderItems[0]['reason'] ?? $orderItems[0]['reason_detail'] ?? null)
                 : null,
-            'cancel_by' => $channelStatus === 'CANCELLED'
+            'cancel_by' => in_array($channelStatus, ['CANCELLED', 'RETURNED'], true)
                 ? ($lazadaOrder['cancel_initiator'] ?? $orderItems[0]['cancel_return_initiator'] ?? null)
                 : null,
             'payment_method' => $lazadaOrder['payment_method'] ?? null,
