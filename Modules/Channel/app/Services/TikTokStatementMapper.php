@@ -61,8 +61,12 @@ class TikTokStatementMapper
             $revenue = $sku['revenue_breakdown'] ?? [];
             $gross += $this->abs($this->num($revenue, 'subtotal_before_discount_amount'));
             $sellerVoucher += $this->abs($this->num($revenue, 'seller_discount_amount'));
+            // refund_subtotal_before_discount_amount = subtotal yang direfund (negatif).
+            // seller_discount_refund_amount = voucher yang DIKEMBALIKAN ke seller (positif) →
+            // mengurangi refund bersih, jadi harus dikurangkan, bukan ditambahkan. Kalau ditambah,
+            // order refund-penuh (net=0) jadi tak rekonsiliasi.
             $refund += $this->abs($this->num($revenue, 'refund_subtotal_before_discount_amount'))
-                + $this->abs($this->num($revenue, 'seller_discount_refund_amount'));
+                - $this->abs($this->num($revenue, 'seller_discount_refund_amount'));
 
             $feeTax = $sku['fee_tax_breakdown'] ?? [];
             $fee = $feeTax['fee'] ?? [];
@@ -87,9 +91,12 @@ class TikTokStatementMapper
 
         $shippingCost = $this->num($data, 'shipping_cost_amount');
         $sellerShippingBorne = ($shippingCost !== null && $shippingCost < 0) ? abs($shippingCost) : null;
+        $platformShippingRebate = ($shippingCost !== null && $shippingCost > 0) ? $shippingCost : null;
 
-        $shippingBreakdown = $data['shipping_cost_breakdown'] ?? [];
-        $platformShippingRebate = $this->abs($this->num($shippingBreakdown, 'shipping_fee_discount_amount')) ?: null;
+        $feeTaxTotal = $this->abs($this->num($data, 'fee_tax_amount'));
+        $categorizedFee = $commission + $service + $transaction + $affiliate + $processing + $totalTax;
+        $otherFee = $feeTaxTotal > 0.0 ? round($feeTaxTotal - $categorizedFee, 2) : 0.0;
+        $otherFee = $otherFee > 0.009 ? $otherFee : null;
 
         $isSettled = ($orderSettlement !== null && (string) $revenueAmount !== '0')
             || ! empty($data['sku_transactions']);
@@ -103,6 +110,7 @@ class TikTokStatementMapper
             'transaction_fee'          => $transaction ?: null,
             'affiliate_commission'     => $affiliate ?: null,
             'order_processing_fee'     => $processing ?: null,
+            'other_fee'                => $otherFee,
             'seller_shipping_borne'    => $sellerShippingBorne,
             'platform_shipping_rebate' => $platformShippingRebate,
             'settlement_amount'        => $orderSettlement,
@@ -122,6 +130,7 @@ class TikTokStatementMapper
             'transaction_fee'          => 'transaction_fee_amount',
             'affiliate_commission'     => 'affiliate_commission_amount',
             'order_processing_fee'     => 'dt_handling_fee_amount',
+            'other_fee'                => 'other_fee_amount',
             'seller_shipping_borne'    => 'shipping_cost_amount',
             'platform_shipping_rebate' => 'shipping_fee_discount_amount',
         ]);

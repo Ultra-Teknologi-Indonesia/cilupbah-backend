@@ -49,6 +49,7 @@ class SettlementReportExport implements FromCollection, WithHeadings, WithMappin
         $otherFees = $this->num($order->transaction_fee)
             + $this->num($order->affiliate_commission)
             + $this->num($order->order_processing_fee)
+            + $this->num($order->other_fee)
             + $this->num($order->total_tax)
             + $this->num($order->insurance_cost);
 

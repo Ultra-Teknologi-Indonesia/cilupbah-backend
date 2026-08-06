@@ -49,6 +49,7 @@ class SalesOrder extends Model implements HasMedia
         'transaction_fee',
         'affiliate_commission',
         'order_processing_fee',
+        'other_fee',
         'seller_shipping_borne',
         'platform_shipping_rebate',
         'settlement_amount',
