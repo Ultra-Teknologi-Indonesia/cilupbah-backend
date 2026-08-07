@@ -50,10 +50,15 @@ class ShopeeToInternalOrderMapper
 
         $address = $shopeeOrder['recipient_address'] ?? [];
 
-        $subTotal = array_sum(array_column($items, 'amount'));
-        $totalDisc = array_sum(array_column($items, 'disc_amount'));
+        // Konvensi kanonik lintas-channel (samakan dgn TikTok & OrderTotals::grandTotal):
+        // sub_total = harga ASLI (gross), total_disc = diskon produk, sehingga
+        // sub_total - total_disc = harga bersih produk. Hindari FE dobel-kurang.
+        $netProductTotal = array_sum(array_column($items, 'amount'));   // net per baris (setelah diskon)
+        $totalDisc = array_sum(array_column($items, 'disc_amount'));    // diskon produk (seller)
+        $subTotal = $netProductTotal + $totalDisc;                      // gross = net + diskon
         $shippingFee = (float) ($shopeeOrder['estimated_shipping_fee'] ?? 0);
-        $grandTotal = isset($shopeeOrder['total_amount']) ? (float) $shopeeOrder['total_amount'] : ($subTotal + $shippingFee);
+        // grand_total OTORITATIF dari channel; fallback berbasis NET agar tak dobel diskon.
+        $grandTotal = isset($shopeeOrder['total_amount']) ? (float) $shopeeOrder['total_amount'] : ($netProductTotal + $shippingFee);
 
         $isPaid = $shopeeStatus !== 'unpaid';
 
