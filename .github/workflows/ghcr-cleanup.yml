@@ -1,0 +1,36 @@
+name: GHCR Cleanup (retensi rollback)
+
+# Menjaga jumlah versi image di GHCR tetap terbatas TAPI cukup dalam untuk
+# rollback. WAJIB karena host produksi (k3s) & VPS staging hanya menyimpan
+# image yang sedang jalan — satu-satunya sumber rollback adalah registry ini.
+# Simpan 15 rilis terakhir.
+#
+# Catatan izin: package ini milik organisasi. Kalau GITHUB_TOKEN kena
+# "insufficient scopes"/403, buat PAT (classic) dengan scope `delete:packages`
+# + `read:packages`, simpan sebagai secret GHCR_CLEANUP_TOKEN, lalu ganti
+# `token:` di bawah ke ${{ secrets.GHCR_CLEANUP_TOKEN }}.
+
+on:
+  schedule:
+    - cron: "0 4 * * 0" # tiap Minggu 04:00 UTC
+  workflow_dispatch:
+
+permissions:
+  packages: write
+
+jobs:
+  cleanup:
+    name: Hapus versi image lama (sisakan 15)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prune versi lama
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: cilupbah
+          package-type: container
+          # Simpan 15 versi TERBARU; sisanya dihapus. Rollback window = 15 rilis.
+          min-versions-to-keep: 15
+          # false = versi lama yang masih bertag pun ikut dihapus setelah 15
+          # terbaru (bukan cuma yang untagged).
+          delete-only-untagged-versions: false
+          token: ${{ secrets.GITHUB_TOKEN }}

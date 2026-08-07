@@ -195,4 +195,13 @@ jobs:
             # 7. Restart Horizon Queue Worker
             docker exec cilupbah-staging php artisan horizon:terminate || true
 
+            # 8. Cleanup image lama — sisakan HANYA yang sedang jalan (KEEP=1).
+            # Ditaruh SETELAH up -d + migrasi sukses; `set -e` sudah menghentikan
+            # script di atas kalau deploy gagal, jadi image lama tetap utuh untuk
+            # rollback. `prune -af` menghapus image yang tak dirujuk container
+            # manapun — Docker menjamin image yang sedang jalan tidak ikut terhapus.
+            # Rollback ditangani ci-cd-production.yml (pin versi dari GHCR).
+            docker image prune -af
+            docker builder prune -af
+
             echo "Deployment Success"
