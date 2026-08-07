@@ -3,6 +3,7 @@
 namespace Modules\Dashboard\Services;
 
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Cache;
 use Modules\Dashboard\Repositories\DashboardRepository;
 use Modules\Inventory\Repositories\MonitorStockRepository;
 use Modules\Outbound\Services\OutboundFulfillmentService;
@@ -31,6 +32,22 @@ class DashboardService
         $dateTo     = $filters['date_to'] ?? null;
         $locationId = $filters['location_id'] ?? null;
 
+        // Cache TTL-pendek: summary ini menjalankan agregasi berat (revenue,
+        // stock value SUM(on_hand*avg_cost), getTabCounts 12 count berkorelasi)
+        // tiap load. TTL 60 dtk memangkas beban DB tanpa membuat angka terasa
+        // basi. Self-expiring — tak perlu invalidasi observer.
+        $cacheKey = sprintf(
+            'dashboard:summary:%s:%s:%s',
+            $dateFrom ?? '-',
+            $dateTo ?? '-',
+            $locationId ?? '-',
+        );
+
+        return Cache::remember($cacheKey, 60, fn () => $this->buildSummary($dateFrom, $dateTo, $locationId));
+    }
+
+    private function buildSummary(?string $dateFrom, ?string $dateTo, ?string $locationId): array
+    {
         $orderAggregates = $this->dashboardRepository->orderAggregates($dateFrom, $dateTo);
 
         $tabCounts = $this->salesOrderRepository->getTabCounts();

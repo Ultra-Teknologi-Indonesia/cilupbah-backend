@@ -256,10 +256,12 @@ class PutawayController extends Controller
         } catch (\App\Exceptions\UserFacingException $e) {
             throw $e;
         } catch (\Exception $e) {
+            report($e);
+
             return $this->errorResponse(
                 'Gagal memproses aksi.',
                 404,
-                ['detail' => $e->getMessage()],
+                app()->environment('production') ? null : ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
             );
         }
@@ -296,10 +298,12 @@ class PutawayController extends Controller
         } catch (\App\Exceptions\UserFacingException $e) {
             throw $e;
         } catch (\Exception $e) {
+            report($e);
+
             return $this->errorResponse(
                 'Gagal menetapkan.',
                 422,
-                ['detail' => $e->getMessage()],
+                app()->environment('production') ? null : ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
             );
         }
@@ -327,10 +331,12 @@ class PutawayController extends Controller
         } catch (\App\Exceptions\UserFacingException $e) {
             throw $e;
         } catch (\Exception $e) {
+            report($e);
+
             return $this->errorResponse(
                 'Gagal memulai.',
                 422,
-                ['detail' => $e->getMessage()],
+                app()->environment('production') ? null : ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
             );
         }
@@ -374,10 +380,12 @@ class PutawayController extends Controller
                 'Penempatan ditolak',
             );
         } catch (\Exception $e) {
+            report($e);
+
             return $this->errorResponse(
                 'Gagal memproses aksi.',
                 422,
-                ['detail' => $e->getMessage()],
+                app()->environment('production') ? null : ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
             );
         }
@@ -421,10 +429,12 @@ class PutawayController extends Controller
         } catch (\App\Exceptions\UserFacingException $e) {
             throw $e;
         } catch (\Exception $e) {
+            report($e);
+
             return $this->errorResponse(
                 'Gagal menghapus.',
                 422,
-                ['detail' => $e->getMessage()],
+                app()->environment('production') ? null : ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
             );
         }
@@ -466,10 +476,12 @@ class PutawayController extends Controller
         } catch (\App\Exceptions\UserFacingException $e) {
             throw $e;
         } catch (\Exception $e) {
+            report($e);
+
             return $this->errorResponse(
                 'Gagal menghapus.',
                 422,
-                ['detail' => $e->getMessage()],
+                app()->environment('production') ? null : ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
             );
         }
@@ -497,10 +509,12 @@ class PutawayController extends Controller
         } catch (\App\Exceptions\UserFacingException $e) {
             throw $e;
         } catch (\Exception $e) {
+            report($e);
+
             return $this->errorResponse(
                 'Gagal menyelesaikan.',
                 422,
-                ['detail' => $e->getMessage()],
+                app()->environment('production') ? null : ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
             );
         }
@@ -595,7 +609,7 @@ class PutawayController extends Controller
             return $this->errorResponse(
                 'Gagal membuat PDF putaway.',
                 500,
-                ['detail' => $e->getMessage()],
+                app()->environment('production') ? null : ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
             );
         }
@@ -633,7 +647,7 @@ class PutawayController extends Controller
             return $this->errorResponse(
                 'Gagal membuat PDF putaway bulk.',
                 500,
-                ['detail' => $e->getMessage()],
+                app()->environment('production') ? null : ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
             );
         }
@@ -662,10 +676,12 @@ class PutawayController extends Controller
         } catch (\App\Exceptions\UserFacingException $e) {
             throw $e;
         } catch (\Exception $e) {
+            report($e);
+
             return $this->errorResponse(
                 'Gagal menghapus.',
                 422,
-                ['detail' => $e->getMessage()],
+                app()->environment('production') ? null : ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
             );
         }
@@ -697,10 +713,12 @@ class PutawayController extends Controller
         } catch (\App\Exceptions\UserFacingException $e) {
             throw $e;
         } catch (\Exception $e) {
+            report($e);
+
             return $this->errorResponse(
                 'Gagal menghapus.',
                 422,
-                ['detail' => $e->getMessage()],
+                app()->environment('production') ? null : ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
             );
         }

@@ -1187,7 +1187,10 @@ class SalesOrderService
                         $locationId = $this->resolveLocationId($order);
                         $order->update(['location_id' => $locationId]);
                     } catch (\Exception $e) {
-
+                        Log::warning('SalesOrderService: gagal resolusi location_id, order dibuat tanpa lokasi', [
+                            'order_id' => $order->id,
+                            'error' => $e->getMessage(),
+                        ]);
                     }
                 }
 
@@ -1709,7 +1712,10 @@ class SalesOrderService
                     $locationId = $this->resolveLocationId($order);
                     $order->update(['location_id' => $locationId]);
                 } catch (\Exception $e) {
-
+                    Log::warning('SalesOrderService: gagal resolusi location_id, order dibuat tanpa lokasi', [
+                        'order_id' => $order->id,
+                        'error' => $e->getMessage(),
+                    ]);
                 }
             }
 
