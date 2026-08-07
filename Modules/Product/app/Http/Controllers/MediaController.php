@@ -5,11 +5,13 @@ namespace Modules\Product\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreMediaRequest;
 use App\Http\Resources\MediaResource;
+use App\Models\Upload;
 use App\Services\UploadService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use OpenApi\Attributes as OA;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 #[OA\Tag(name: 'Media', description: 'Manajemen file terpusat (R2)')]
 class MediaController extends Controller
@@ -94,6 +96,14 @@ class MediaController extends Controller
     )]
     public function replace(StoreMediaRequest $request, string $uuid): JsonResponse
     {
+        $existing = $this->uploadService->findByUuid($uuid);
+
+        if (! $existing) {
+            return $this->errorResponse('File tidak ditemukan.', 404);
+        }
+
+        $this->authorizeMediaMutation($existing);
+
         $media = $this->uploadService->replace($uuid, $request->file('file'));
 
         if (! $media) {
@@ -116,15 +126,37 @@ class MediaController extends Controller
     )]
     public function destroy(string $uuid): JsonResponse
     {
+        $media = $this->uploadService->findByUuid($uuid);
 
-        \Modules\Product\Models\ProductMedia::where('media_uuid', $uuid)->delete();
-
-        $deleted = $this->uploadService->delete($uuid);
-
-        if (! $deleted) {
+        if (! $media) {
             return $this->errorResponse('File tidak ditemukan.', 404);
         }
 
+        $this->authorizeMediaMutation($media);
+
+        \Modules\Product\Models\ProductMedia::where('media_uuid', $uuid)->delete();
+
+        $this->uploadService->delete($uuid);
+
         return $this->successResponse(null, 'File berhasil dihapus.');
+    }
+
+    /**
+     * Endpoint media bersifat self-service (tanpa gate permission di route), jadi
+     * aksi destruktif (replace/hapus) dijaga di sini: hanya pengunggah aslinya
+     * (uploaded_by) atau user dengan izin kelola produk yang boleh. Mencegah IDOR
+     * — role serendah picker tak bisa hapus/ganti berkas milik user lain.
+     */
+    private function authorizeMediaMutation(Media $media): void
+    {
+        $user = Auth::user();
+
+        $ownerModel = $media->model;
+        $uploadedBy = $ownerModel instanceof Upload ? $ownerModel->uploaded_by : null;
+
+        $owns = $uploadedBy !== null && (string) $uploadedBy === (string) $user->id;
+        $privileged = $user->can('edit-produk') || $user->can('delete-produk');
+
+        abort_unless($owns || $privileged, 403, 'Anda tidak berwenang mengubah berkas ini.');
     }
 }

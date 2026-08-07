@@ -22,7 +22,22 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->trustProxies(at: '*');
+        // Jangan percaya X-Forwarded-* dari SEMUA sumber (at:'*') — itu membuat
+        // $request->ip() bisa dipalsukan lewat header sehingga rate-limit login
+        // per-IP bisa dilewati. Hanya percaya proxy di range privat (ingress k3s /
+        // reverse-proxy docker); penyerang publik tak pernah terkoneksi dari IP
+        // privat. Bisa dioverride via env TRUSTED_PROXIES (dipisah koma).
+        $trustedProxies = env('TRUSTED_PROXIES');
+        $middleware->trustProxies(at: $trustedProxies
+            ? array_map('trim', explode(',', $trustedProxies))
+            : [
+                '10.0.0.0/8',
+                '172.16.0.0/12',
+                '192.168.0.0/16',
+                '127.0.0.1',
+                'fc00::/7',
+                '::1',
+            ]);
         $middleware->alias([
             'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
