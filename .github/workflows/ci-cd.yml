@@ -119,27 +119,6 @@ jobs:
           git tag ${{ steps.version.outputs.new_tag }}
           git push origin ${{ steps.version.outputs.new_tag }}
 
-      # Isi ulang dropdown versi di form deploy production (workflow_dispatch
-      # tak bisa mengisi choice dari GHCR secara dinamis, jadi daftar di-bake ke
-      # YAML dan disegarkan CI tiap rilis). Ambil 10 tag versi terbaru, tulis di
-      # antara marker BEGIN/END_VERSIONS. Commit [skip ci] agar tak memicu ulang.
-      - name: Refresh daftar versi di ci-cd-production.yml
-        run: |
-          FILE=".github/workflows/ci-cd-production.yml"
-          BODY=$(git tag -l 'v*' --sort=-v:refname | head -n 10 | sed 's/^/          - /')
-          awk -v body="$BODY" '
-            /# BEGIN_VERSIONS/ { print; print body; skip=1; next }
-            /# END_VERSIONS/   { skip=0 }
-            !skip { print }
-          ' "$FILE" > "$FILE.tmp" && mv "$FILE.tmp" "$FILE"
-          if ! git diff --quiet "$FILE"; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add "$FILE"
-            git commit -m "chore(ci): refresh daftar versi deploy production [skip ci]"
-            git push origin HEAD:${{ github.ref_name }}
-          fi
-
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
 

@@ -8,14 +8,10 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Pilih versi. 'latest' = deploy versi terbaru otomatis; vX.Y.Z = rollback ke versi itu."
+        description: "Biarkan 'latest' = deploy versi terbaru otomatis. Isi vX.Y.Z (mis. v1.0.110) untuk rollback."
         required: true
-        type: choice
         default: latest
-        options:
-          - latest
-          # BEGIN_VERSIONS (di-generate otomatis oleh CI staging tiap rilis — jangan edit manual)
-          # END_VERSIONS
+        type: string
 
 jobs:
   # ─────────────────────────────────────────────
