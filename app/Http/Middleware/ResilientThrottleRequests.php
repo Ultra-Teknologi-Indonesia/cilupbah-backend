@@ -6,13 +6,6 @@ use App\Support\ErrorReporter;
 use Closure;
 use Illuminate\Routing\Middleware\ThrottleRequests;
 
-// Throttle yang fail-open: bila penyimpanan penghitung (Redis) gagal diakses,
-// request tetap diloloskan alih-alih memblokir semua pengguna. Gangguan pada
-// penghitung tidak boleh menghentikan operasi gudang.
-//
-// Aman terhadap "double run": kegagalan hanya di-fail-open bila terjadi SEBELUM
-// controller dijalankan. Jika error datang dari controller ($next), ia dilempar
-// ulang apa adanya — bukan ditelan atau dijalankan dua kali.
 class ResilientThrottleRequests extends ThrottleRequests
 {
     public function handle($request, Closure $next, ...$args)

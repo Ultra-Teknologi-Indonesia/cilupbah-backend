@@ -32,10 +32,6 @@ class DashboardService
         $dateTo     = $filters['date_to'] ?? null;
         $locationId = $filters['location_id'] ?? null;
 
-        // Cache TTL-pendek: summary ini menjalankan agregasi berat (revenue,
-        // stock value SUM(on_hand*avg_cost), getTabCounts 12 count berkorelasi)
-        // tiap load. TTL 60 dtk memangkas beban DB tanpa membuat angka terasa
-        // basi. Self-expiring — tak perlu invalidasi observer.
         $cacheKey = sprintf(
             'dashboard:summary:%s:%s:%s',
             $dateFrom ?? '-',

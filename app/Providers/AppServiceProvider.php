@@ -9,9 +9,7 @@ class AppServiceProvider extends ServiceProvider
 
     public function register(): void
     {
-        // Penghitung rate-limit memakai store khusus (config ratelimit.store).
-        // 'redis' = atomik, cepat, dan tahan hot-key (satu IP gudang dipakai
-        // banyak pekerja). Null = ikut cache store default.
+
         $this->app->singleton(\Illuminate\Cache\RateLimiter::class, function ($app) {
             return new \Illuminate\Cache\RateLimiter(
                 $app->make('cache')->store(config('ratelimit.store'))
@@ -58,9 +56,6 @@ class AppServiceProvider extends ServiceProvider
             return \Illuminate\Cache\RateLimiting\Limit::perSecond(10)->by($shopId);
         });
 
-        // Login (tamu): dikunci per email+IP supaya banyak pekerja di satu WiFi
-        // gudang tak saling menghabiskan jatah. Backstop per-IP menahan
-        // credential-stuffing (satu IP menyemprot banyak email).
         \Illuminate\Support\Facades\RateLimiter::for('login', function (\Illuminate\Http\Request $request) {
             $email = \Illuminate\Support\Str::lower(trim((string) $request->input('email')));
             $ip = (string) $request->ip();
@@ -73,7 +68,6 @@ class AppServiceProvider extends ServiceProvider
             ];
         });
 
-        // Lupa-password/OTP (tamu): per email+IP, ember terpisah per aksi (nama route).
         \Illuminate\Support\Facades\RateLimiter::for('forgot_password', function (\Illuminate\Http\Request $request) {
             $email = \Illuminate\Support\Str::lower(trim((string) $request->input('email')));
             $ip = (string) $request->ip();
@@ -87,10 +81,6 @@ class AppServiceProvider extends ServiceProvider
             ];
         });
 
-        // Jaring global seluruh API. Ter-autentikasi dikunci per identitas pengguna
-        // (token Sanctum) -> WiFi gudang bersama tak relevan. Tamu dikunci per-IP.
-        // Webhook & OAuth callback marketplace punya throttle sendiri + volume tinggi
-        // dari IP marketplace -> dilepas dari jaring global agar tak ke-drop.
         \Illuminate\Support\Facades\RateLimiter::for('api', function (\Illuminate\Http\Request $request) {
             $name = (string) ($request->route()?->getName() ?? '');
 
@@ -109,8 +99,6 @@ class AppServiceProvider extends ServiceProvider
                 ->by('api|ip|'.$request->ip());
         });
 
-        // Tier endpoint mahal (export/bulk/cetak massal/sync/download/laporan).
-        // Dipasang selektif via 'throttle:heavy'; dikunci per identitas juga.
         \Illuminate\Support\Facades\RateLimiter::for('heavy', function (\Illuminate\Http\Request $request) {
             $user = $request->user('sanctum');
             $key = $user ? 'heavy|u|'.$user->getAuthIdentifier() : 'heavy|ip|'.$request->ip();
