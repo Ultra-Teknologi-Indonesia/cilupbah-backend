@@ -8,9 +8,14 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Versi image yang mau di-deploy, contoh: v1.0.5 (lihat di tab Packages repo)"
+        description: "Pilih versi. 'latest' = deploy versi terbaru otomatis; vX.Y.Z = rollback ke versi itu."
         required: true
-        type: string
+        type: choice
+        default: latest
+        options:
+          - latest
+          # BEGIN_VERSIONS (di-generate otomatis oleh CI staging tiap rilis — jangan edit manual)
+          # END_VERSIONS
 
 jobs:
   # ─────────────────────────────────────────────
@@ -21,14 +26,29 @@ jobs:
   validate-input:
     name: Validate Version Input
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
     steps:
-      - name: Cek format versi
+      - name: Checkout (untuk baca git tag saat resolve 'latest')
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve versi
+        id: resolve
         run: |
-          VERSION="${{ inputs.version }}"
-          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Format versi salah. Harus seperti v1.0.5"
-            exit 1
+          V="${{ inputs.version }}"
+          if [ "$V" = "latest" ]; then
+            V=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+            if [ -z "$V" ]; then
+              echo "Tak ada tag vX.Y.Z di repo."; exit 1
+            fi
+            echo "'latest' → $V"
           fi
+          if [[ ! "$V" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Versi tidak valid: $V"; exit 1
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
 
       - name: Login GHCR (read-only)
         uses: docker/login-action@v3
@@ -39,8 +59,8 @@ jobs:
 
       - name: Cek image ada di GHCR
         run: |
-          docker manifest inspect ghcr.io/ultra-teknologi-indonesia/cilupbah:${{ inputs.version }} > /dev/null
-          echo "Image ${{ inputs.version }} ditemukan di GHCR, lanjut deploy."
+          docker manifest inspect ghcr.io/ultra-teknologi-indonesia/cilupbah:${{ steps.resolve.outputs.version }} > /dev/null
+          echo "Image ${{ steps.resolve.outputs.version }} ditemukan di GHCR, lanjut deploy."
 
   # ─────────────────────────────────────────────
   # Job ini pakai `environment: production`.
@@ -68,7 +88,7 @@ jobs:
           script: |
             set -e
 
-            VERSION="${{ inputs.version }}"
+            VERSION="${{ needs.validate-input.outputs.version }}"
             IMAGE="ghcr.io/ultra-teknologi-indonesia/cilupbah:${VERSION}"
 
             echo "Deploying $IMAGE ke production..."
