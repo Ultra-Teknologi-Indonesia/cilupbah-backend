@@ -2,8 +2,9 @@
 
 namespace Modules\Report\Providers;
 
-use Nwidart\Modules\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
+use Modules\Report\Console\Commands\CleanupExportJobsCommand;
+use Nwidart\Modules\Support\ModuleServiceProvider;
 
 class ReportServiceProvider extends ModuleServiceProvider
 {
@@ -16,5 +17,17 @@ class ReportServiceProvider extends ModuleServiceProvider
         EventServiceProvider::class,
         RouteServiceProvider::class,
     ];
+
+    protected array $commands = [
+        CleanupExportJobsCommand::class,
+    ];
+
+    protected function configureSchedules(Schedule $schedule): void
+    {
+        $schedule->command('reports:cleanup-export-jobs')
+            ->daily()
+            ->withoutOverlapping()
+            ->runInBackground();
+    }
 
 }

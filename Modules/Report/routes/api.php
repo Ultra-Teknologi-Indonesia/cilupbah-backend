@@ -1,9 +1,14 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Modules\Report\Http\Controllers\ExportJobController;
 use Modules\Report\Http\Controllers\ReportController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
+
+    Route::get('reports/exports/{export}', [ExportJobController::class, 'show'])->name('reports.exports.show');
+    Route::get('reports/exports/{export}/download', [ExportJobController::class, 'download'])->name('reports.exports.download');
+
     Route::middleware('role_or_permission:owner|view-laporan-persediaan')->group(function () {
         Route::get('reports/putaway', [ReportController::class, 'putaway'])->name('reports.putaway');
         Route::get('reports/receive', [ReportController::class, 'receive'])->name('reports.receive');
@@ -37,6 +42,13 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('reports/wms/putaway-list/export', [ReportController::class, 'putawayListExport'])->name('reports.wms.putaway-list.export');
         Route::get('reports/wms/shipment-by-courier/export', [ReportController::class, 'shipmentByCourierExport'])->name('reports.wms.shipment-by-courier.export');
         Route::post('reports/wms/pick-list/xlsx', [ReportController::class, 'pickListDetailExcel'])->name('reports.wms.pick-list.xlsx');
+
+        Route::get('reports/wms/transfer/export/async', [ReportController::class, 'transferExportAsync'])->name('reports.wms.transfer.export.async');
+        Route::get('reports/wms/order-performance/export/async', [ReportController::class, 'orderPerformanceExportAsync'])->name('reports.wms.order-performance.export.async');
+        Route::get('reports/wms/putaway-performance/export/async', [ReportController::class, 'putawayPerformanceExportAsync'])->name('reports.wms.putaway-performance.export.async');
+        Route::get('reports/wms/putaway-list/export/async', [ReportController::class, 'putawayListExportAsync'])->name('reports.wms.putaway-list.export.async');
+        Route::get('reports/wms/shipment-by-courier/export/async', [ReportController::class, 'shipmentByCourierExportAsync'])->name('reports.wms.shipment-by-courier.export.async');
+        Route::post('reports/wms/pick-list/xlsx/async', [ReportController::class, 'pickListDetailExcelAsync'])->name('reports.wms.pick-list.xlsx.async');
     });
     Route::middleware('role_or_permission:owner|view-laporan-hpp')->group(function () {
         Route::get('reports/hpp', [ReportController::class, 'hpp'])->name('reports.hpp');
@@ -59,6 +71,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     });
     Route::middleware('role_or_permission:owner|export-laporan-stok-minus')->group(function () {
         Route::get('reports/negative-stock/export', [ReportController::class, 'negativeStockExport'])->name('reports.negative-stock.export');
+        Route::get('reports/negative-stock/export/async', [ReportController::class, 'negativeStockExportAsync'])->name('reports.negative-stock.export.async');
     });
 
     Route::get('lazada/get-document', [ReportController::class, 'lazadaGetDocument'])->name('lazada.get-document')->middleware('role_or_permission:owner|export-pengiriman');

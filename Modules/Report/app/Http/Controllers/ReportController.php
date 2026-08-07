@@ -57,6 +57,7 @@ use Modules\Report\Services\RincianPendapatanReportService;
 use Modules\Report\Services\SalesListReportService;
 use Modules\Report\Services\SalesProductReportService;
 use Modules\Report\Services\SalesReturnReportService;
+use Modules\Report\Services\ExportManager;
 use Modules\Report\Services\ShipmentByCourierReportService;
 use OpenApi\Attributes as OA;
 
@@ -67,6 +68,50 @@ class ReportController extends Controller
         protected ReportService $reportService,
         protected PdfRenderer $pdfRenderer,
     ) {}
+
+    private function queueExport(ExportManager $exports, string $type, array $params): JsonResponse
+    {
+        $job = $exports->queue(request()->user(), $type, $params);
+
+        return response()->json([
+            'data' => ['export_id' => $job->id, 'status' => $job->status],
+        ], 202);
+    }
+
+    public function negativeStockExportAsync(NegativeStockExportRequest $request, ExportManager $exports): JsonResponse
+    {
+        return $this->queueExport($exports, 'negative-stock', $request->validated());
+    }
+
+    public function transferExportAsync(TransferExportRequest $request, ExportManager $exports): JsonResponse
+    {
+        return $this->queueExport($exports, 'transfer', $request->validated());
+    }
+
+    public function orderPerformanceExportAsync(OrderPerformanceExportRequest $request, ExportManager $exports): JsonResponse
+    {
+        return $this->queueExport($exports, 'order-performance', $request->validated());
+    }
+
+    public function putawayPerformanceExportAsync(PutawayPerformanceExportRequest $request, ExportManager $exports): JsonResponse
+    {
+        return $this->queueExport($exports, 'putaway-performance', $request->validated());
+    }
+
+    public function putawayListExportAsync(PutawayListExportRequest $request, ExportManager $exports): JsonResponse
+    {
+        return $this->queueExport($exports, 'putaway-list', $request->validated());
+    }
+
+    public function shipmentByCourierExportAsync(ShipmentByCourierExportRequest $request, ExportManager $exports): JsonResponse
+    {
+        return $this->queueExport($exports, 'shipment-by-courier', $request->validated());
+    }
+
+    public function pickListDetailExcelAsync(PickListDetailExcelRequest $request, ExportManager $exports): JsonResponse
+    {
+        return $this->queueExport($exports, 'picklist-detail-photo', $request->validated());
+    }
 
     #[OA\Get(
         path: '/api/v1/reports/putaway',
