@@ -36,3 +36,11 @@ Schedule::command('horizon:snapshot')->everyFiveMinutes();
 Schedule::job(new \Modules\Outbound\Jobs\RefreshInstantTrackingJob())
     ->everyThreeMinutes()
     ->withoutOverlapping();
+
+// Heartbeat liveness: menyentuh file tiap menit dari dalam loop schedule:work.
+// Bila loop scheduler hang (hidup tapi berhenti menjadwalkan), file jadi basi
+// dan liveness probe k8s (04-scheduler.yaml) me-restart pod. File bersifat
+// ephemeral per-pod (storage/framework), aman ditimpa.
+Schedule::call(function () {
+    @touch(storage_path('framework/scheduler-heartbeat'));
+})->everyMinute()->name('scheduler-heartbeat');

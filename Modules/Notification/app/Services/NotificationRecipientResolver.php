@@ -61,6 +61,10 @@ class NotificationRecipientResolver
             $owners = User::role(self::OWNER_ROLE)->pluck('id')->all();
             $ids = array_merge($ids, $owners);
         } catch (\Throwable $e) {
+            Log::warning('NotificationRecipientResolver: gagal resolusi penerima owner', [
+                'role' => self::OWNER_ROLE,
+                'error' => $e->getMessage(),
+            ]);
         }
 
         return array_values(array_unique(array_filter($ids)));

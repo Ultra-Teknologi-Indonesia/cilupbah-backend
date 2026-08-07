@@ -22,3 +22,16 @@ spec:
           envFrom:
             - secretRef:
                 name: cilupbah-env
+          # Deteksi scheduler yang hang (hidup tapi berhenti menjadwalkan):
+          # task 'scheduler-heartbeat' (routes/console.php) menyentuh file ini
+          # tiap menit. Bila file lebih tua dari 180 dtk, probe gagal → restart.
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - test $(( $(date +%s) - $(stat -c %Y /var/www/html/storage/framework/scheduler-heartbeat 2>/dev/null || echo 0) )) -lt 180
+            initialDelaySeconds: 120
+            periodSeconds: 60
+            timeoutSeconds: 10
+            failureThreshold: 3

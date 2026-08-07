@@ -335,6 +335,8 @@ class AuthService
         }
 
         DB::table('personal_access_tokens')
+            ->where('tokenable_type', $user->getMorphClass())
+            ->where('tokenable_id', $user->id)
             ->whereIn('id', $this->pairTokenIds($user, $tokenId))
             ->delete();
     }
