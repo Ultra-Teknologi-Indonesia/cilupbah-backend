@@ -28,9 +28,7 @@ class ShopeeToInternalOrderMapper
             ?? ($shopeeOrder['package_list'][0]['logistics_channel_id'] ?? null);
         $isInstantChannel = $logisticsChannelId !== null && in_array((string) $logisticsChannelId, $instantChannelIds, true);
         $shippingType = $isInstantChannel ? 'INSTANT' : null;
-        // Sinyal instant otoritatif Shopee (by logistics_channel_id). Tri-state:
-        // true = channel instant resmi; false = Shopee memastikan BUKAN instant
-        // (mencegah regex nama seperti "Same Day" salah-tandai INSTANT); null = tak ada data.
+
         $channelInstant = (! empty($instantChannelIds) && $logisticsChannelId !== null)
             ? $isInstantChannel
             : null;
@@ -50,14 +48,11 @@ class ShopeeToInternalOrderMapper
 
         $address = $shopeeOrder['recipient_address'] ?? [];
 
-        // Konvensi kanonik lintas-channel (samakan dgn TikTok & OrderTotals::grandTotal):
-        // sub_total = harga ASLI (gross), total_disc = diskon produk, sehingga
-        // sub_total - total_disc = harga bersih produk. Hindari FE dobel-kurang.
-        $netProductTotal = array_sum(array_column($items, 'amount'));   // net per baris (setelah diskon)
-        $totalDisc = array_sum(array_column($items, 'disc_amount'));    // diskon produk (seller)
-        $subTotal = $netProductTotal + $totalDisc;                      // gross = net + diskon
+        $netProductTotal = array_sum(array_column($items, 'amount'));   
+        $totalDisc = array_sum(array_column($items, 'disc_amount'));    
+        $subTotal = $netProductTotal + $totalDisc;                      
         $shippingFee = (float) ($shopeeOrder['estimated_shipping_fee'] ?? 0);
-        // grand_total OTORITATIF dari channel; fallback berbasis NET agar tak dobel diskon.
+
         $grandTotal = isset($shopeeOrder['total_amount']) ? (float) $shopeeOrder['total_amount'] : ($netProductTotal + $shippingFee);
 
         $isPaid = $shopeeStatus !== 'unpaid';

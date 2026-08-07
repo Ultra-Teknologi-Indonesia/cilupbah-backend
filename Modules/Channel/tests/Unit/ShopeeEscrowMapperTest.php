@@ -187,8 +187,7 @@ class ShopeeEscrowMapperTest extends TestCase
 
     public function test_gross_prefers_discounted_price_and_reconciles_to_escrow(): void
     {
-        // Order riil #260803DC17STDF: order_selling_price 230000 tapi order_discounted_price 228050
-        // (diskon bundle order-level 1950 belum terpotong di selling_price). Basis seller = discounted.
+
         $result = (new ShopeeEscrowMapper())->map($this->escrow([
             'order_selling_price'         => 230000,
             'order_discounted_price'      => 228050,

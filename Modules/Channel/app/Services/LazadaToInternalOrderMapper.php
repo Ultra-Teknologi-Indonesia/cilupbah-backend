@@ -44,18 +44,14 @@ class LazadaToInternalOrderMapper
             ($lazadaOrder['customer_first_name'] ?? '') . ' ' . ($lazadaOrder['customer_last_name'] ?? '')
         ) ?: 'Lazada Buyer';
 
-        // Konvensi kanonik lintas-channel (samakan dgn TikTok & OrderTotals::grandTotal):
-        // sub_total = harga ASLI (gross), total_disc = diskon PRODUK, net = sub_total - total_disc.
-        // Voucher order-level dipisah ke seller_voucher/platform_voucher (bukan total_disc).
-        $netProductTotal = array_sum(array_column($items, 'amount'));   // net (setelah diskon produk)
-        $totalDisc = array_sum(array_column($items, 'disc_amount'));    // diskon produk
-        $subTotal = $netProductTotal + $totalDisc;                      // gross
+        $netProductTotal = array_sum(array_column($items, 'amount'));   
+        $totalDisc = array_sum(array_column($items, 'disc_amount'));    
+        $subTotal = $netProductTotal + $totalDisc;                      
 
         $grossShippingFee = (float) ($lazadaOrder['shipping_fee'] ?? 0);
         $voucher = (float) ($lazadaOrder['voucher'] ?? 0);
         $taxTotal = array_sum(array_column($items, 'tax_amount'));
 
-        // grand_total OTORITATIF dari channel; fallback berbasis NET agar tak dobel diskon.
         $grandTotal = isset($lazadaOrder['price'])
             ? (float) $lazadaOrder['price']
             : ($netProductTotal + $grossShippingFee - $voucher);
@@ -128,7 +124,7 @@ class LazadaToInternalOrderMapper
 
         foreach ($orderItems as $row) {
             $sku = $row['sku'] ?? $row['shop_sku'] ?? null;
-            // item_price = harga asli (gross) per unit; paid_price = setelah diskon seller (net).
+
             $itemPrice = (float) ($row['item_price'] ?? $row['paid_price'] ?? 0);
             $paidPrice = (float) ($row['paid_price'] ?? $row['item_price'] ?? 0);
             $prodDisc = max(0.0, $itemPrice - $paidPrice);
@@ -140,19 +136,18 @@ class LazadaToInternalOrderMapper
                     'sku' => $sku,
                     'description' => trim(($row['name'] ?? '') . (! empty($row['variation']) ? ' - ' . $row['variation'] : '')),
                     'qty_in_base' => 0,
-                    'price' => $itemPrice,   // gross original
-                    'disc' => $prodDisc,     // diskon produk per unit
+                    'price' => $itemPrice,   
+                    'disc' => $prodDisc,     
                     'disc_amount' => 0,
                     'tax_amount' => 0,
                     'amount' => 0,
                 ];
             }
 
-            // Lazada: 1 baris = 1 unit. disc_amount = diskon PRODUK (bukan voucher — voucher di level order).
             $grouped[$key]['qty_in_base']++;
             $grouped[$key]['disc_amount'] += $prodDisc;
             $grouped[$key]['tax_amount'] += (float) ($row['tax_amount'] ?? 0);
-            $grouped[$key]['amount'] += $paidPrice;   // net (setelah diskon produk)
+            $grouped[$key]['amount'] += $paidPrice;   
         }
 
         return array_values($grouped);

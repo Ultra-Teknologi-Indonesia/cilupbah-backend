@@ -61,10 +61,7 @@ class TikTokStatementMapper
             $revenue = $sku['revenue_breakdown'] ?? [];
             $gross += $this->abs($this->num($revenue, 'subtotal_before_discount_amount'));
             $sellerVoucher += $this->abs($this->num($revenue, 'seller_discount_amount'));
-            // refund_subtotal_before_discount_amount = subtotal yang direfund (negatif).
-            // seller_discount_refund_amount = voucher yang DIKEMBALIKAN ke seller (positif) →
-            // mengurangi refund bersih, jadi harus dikurangkan, bukan ditambahkan. Kalau ditambah,
-            // order refund-penuh (net=0) jadi tak rekonsiliasi.
+
             $refund += $this->abs($this->num($revenue, 'refund_subtotal_before_discount_amount'))
                 - $this->abs($this->num($revenue, 'seller_discount_refund_amount'));
 

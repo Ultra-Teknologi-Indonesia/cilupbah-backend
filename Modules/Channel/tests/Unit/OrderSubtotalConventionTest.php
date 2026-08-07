@@ -7,15 +7,6 @@ use Modules\Channel\Services\ShopeeToInternalOrderMapper;
 use Modules\Channel\Services\TikTokToInternalOrderMapper;
 use Tests\TestCase;
 
-/**
- * Konvensi kanonik lintas-channel untuk rincian pesanan:
- *   sub_total   = harga ASLI (gross, sebelum diskon produk)
- *   total_disc  = diskon produk (seller)
- *   sub_total - total_disc = harga bersih produk (net)
- *   grand_total = OTORITATIF dari channel (yang dibayar pembeli), bukan dihitung ulang
- *
- * Sejalan dgn Modules\Sales\Support\OrderTotals::grandTotal (net = sub_total - total_disc).
- */
 class OrderSubtotalConventionTest extends TestCase
 {
     public function test_shopee_sub_total_is_gross_and_disc_reconciles_to_net(): void
@@ -23,7 +14,7 @@ class OrderSubtotalConventionTest extends TestCase
         $order = [
             'order_sn'     => 'SP-CONV-1',
             'order_status' => 'completed',
-            'total_amount' => 9000,   // buyer paid (mis. setelah subsidi platform) — OTORITATIF
+            'total_amount' => 9000,   
             'estimated_shipping_fee' => 9700,
             'item_list'    => [
                 [
@@ -48,7 +39,7 @@ class OrderSubtotalConventionTest extends TestCase
             'order_sn'     => 'SP-CONV-2',
             'order_status' => 'ready_to_ship',
             'estimated_shipping_fee' => 10000,
-            // tak ada total_amount -> fallback
+
             'item_list'    => [
                 ['item_id' => 1, 'model_sku' => 'A', 'model_original_price' => 50000, 'model_discounted_price' => 15000, 'model_quantity_purchased' => 2],
             ],
@@ -56,7 +47,6 @@ class OrderSubtotalConventionTest extends TestCase
 
         $m = (new ShopeeToInternalOrderMapper())->map($order, 'shop-1');
 
-        // net = 15000*2 = 30000 ; fallback = net + shipping (BUKAN gross), tak dobel diskon.
         $this->assertSame(100000.0, (float) $m['sub_total']);
         $this->assertSame(70000.0, (float) $m['total_disc']);
         $this->assertSame(40000.0, (float) $m['grand_total']);
@@ -90,7 +80,7 @@ class OrderSubtotalConventionTest extends TestCase
         $order = [
             'order_id'       => 'LZ-CONV-1',
             'statuses'       => ['pending'],
-            'price'          => 45000,   // OTORITATIF
+            'price'          => 45000,   
             'shipping_fee'   => 5450,
             'voucher'        => 5450,
             'voucher_seller' => 5450,
@@ -113,7 +103,7 @@ class OrderSubtotalConventionTest extends TestCase
 
     public function test_lazada_no_product_discount_yields_zero_total_disc_even_with_voucher(): void
     {
-        // Regresi bug lama: total_disc dulu = order voucher. Kini harus 0 saat tak ada diskon produk.
+
         $order = [
             'order_id'       => 'LZ-CONV-2',
             'statuses'       => ['pending'],

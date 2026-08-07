@@ -54,15 +54,12 @@ class ShopeeInstantMappingTest extends TestCase
     {
         $mapper = app(ShopeeToInternalOrderMapper::class);
 
-        // channel resmi instant -> true
         $instant = $mapper->map($this->order(['logistics_channel_id' => 90003]), 'shop-1', ['90003']);
         $this->assertTrue($instant['channel_instant']);
 
-        // channel id dikenal tapi TIDAK di daftar instant (daftar non-kosong) -> false otoritatif
         $notInstant = $mapper->map($this->order(['logistics_channel_id' => 12345, 'shipping_carrier' => 'Same Day']), 'shop-1', ['90003']);
         $this->assertFalse($notInstant['channel_instant']);
 
-        // tak ada data instant (daftar kosong) -> null (jatuh ke heuristik nama)
         $noData = $mapper->map($this->order(['logistics_channel_id' => 12345]), 'shop-1', []);
         $this->assertNull($noData['channel_instant']);
     }

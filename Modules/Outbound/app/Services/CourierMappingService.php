@@ -90,12 +90,6 @@ class CourierMappingService
         return str_replace([' ', '.', '-'], '_', $lower);
     }
 
-    /**
-     * @param  bool|null  $channelInstant  Sinyal instant otoritatif dari channel (mis. Shopee by
-     *                                      logistics_channel_id). true = paksa INSTANT; false =
-     *                                      channel memastikan BUKAN instant (abaikan regex nama
-     *                                      seperti "Same Day"); null = tak ada sinyal, pakai nama.
-     */
     public function resolveShipmentType(string $name, ?bool $channelInstant = null): string
     {
 
@@ -216,8 +210,6 @@ class CourierMappingService
 
         $code = $this->resolveCode($providerName);
 
-        // Utamakan resolved_shipment_type yang sudah dihitung saat ingestion (menghormati
-        // sinyal instant otoritatif channel), agar grouping manifest konsisten dgn tampilan.
         $shipmentType = (isset($order->resolved_shipment_type) && $order->resolved_shipment_type !== null && $order->resolved_shipment_type !== '')
             ? (string) $order->resolved_shipment_type
             : $this->resolveShipmentType($providerName);

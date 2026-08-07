@@ -80,8 +80,6 @@ class TikTokToInternalOrderMapper
             'customer_name'      => $tiktokOrder['buyer_email'] ?? ($tiktokOrder['buyer_nickname'] ?? 'TikTok Buyer'),
             'transaction_date'   => isset($tiktokOrder['create_time']) ? date('Y-m-d H:i:s', $tiktokOrder['create_time']) : now(),
 
-            // Konvensi kanonik lintas-channel: sub_total = harga ASLI (gross),
-            // total_disc = diskon produk, sehingga sub_total - total_disc = net produk.
             'sub_total'          => isset($payment['original_total_product_price']) ? (float) $payment['original_total_product_price'] : 0,
             'total_disc'         => isset($payment['seller_discount']) ? (float) $payment['seller_discount'] : 0,
 

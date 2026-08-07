@@ -22,10 +22,6 @@ class ShopeeEscrowMapper
 
         $settlement = $this->num($income, 'escrow_amount');
 
-        // order_discounted_price = harga barang setelah SEMUA diskon seller (item + order-level),
-        // inilah basis yang dikreditkan ke seller (= cost_of_goods_sold di payload Shopee).
-        // order_selling_price bisa lebih tinggi (mis. diskon bundle order-level belum dipotong) →
-        // memakainya sebagai gross membuat breakdown tak rekonsiliasi ke escrow_amount.
         $grossAmount = $this->num($income, 'order_discounted_price')
             ?? $this->num($income, 'order_selling_price')
             ?? $this->num($income, 'order_original_price')
@@ -74,8 +70,7 @@ class ShopeeEscrowMapper
 
         $tax = $this->num($income, 'escrow_tax')
             ?? $this->sumPresent($income, ['final_product_vat_tax', 'final_shipping_vat_tax']);
-        // withholding_tax (PPh) dipotong langsung dari payout seller, terpisah dari VAT/escrow_tax →
-        // harus ditambahkan agar total_tax lengkap (bukan ?? yang menimpa).
+
         $withholdingTax = $this->num($income, 'withholding_tax');
         if ($withholdingTax !== null) {
             $tax = ($tax ?? 0) + $withholdingTax;

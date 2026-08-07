@@ -97,8 +97,7 @@ class TikTokStatementMapperTest extends TestCase
 
     public function test_uncategorized_fee_captured_as_other_fee_residual(): void
     {
-        // fee_tax_amount total = -10250, tapi hanya 9000 yang masuk kategori baku;
-        // sisa 1250 (vn_fix_infrastructure_fee) harus jadi other_fee agar breakdown rekonsiliasi.
+
         $result = (new TikTokStatementMapper())->map([
             'currency'          => 'IDR',
             'settlement_amount' => '34750',
@@ -116,7 +115,7 @@ class TikTokStatementMapperTest extends TestCase
                         'dynamic_commission_amount'         => '-1800',
                         'mall_service_fee_amount'           => '-810',
                         'bonus_cashback_service_fee_amount' => '-2025',
-                        'vn_fix_infrastructure_fee'         => '-1250', // di luar whitelist
+                        'vn_fix_infrastructure_fee'         => '-1250', 
                     ],
                     'tax' => [],
                 ],
@@ -127,7 +126,6 @@ class TikTokStatementMapperTest extends TestCase
         $this->assertSame(2835.0, $result['service_fee']);
         $this->assertSame(1250.0, $result['other_fee']);
 
-        // gross - voucher - komisi - service - other = net
         $recon = $result['gross_amount'] - $result['seller_voucher']
             - $result['commission_fee'] - $result['service_fee'] - $result['other_fee'];
         $this->assertSame(34750.0, $recon);
@@ -135,7 +133,7 @@ class TikTokStatementMapperTest extends TestCase
 
     public function test_fully_refunded_order_nets_returned_voucher(): void
     {
-        // Order refund-penuh: voucher yang dikembalikan (seller_discount_refund) mengurangi refund bersih.
+
         $result = (new TikTokStatementMapper())->map([
             'currency'          => 'IDR',
             'settlement_amount' => '0',
@@ -155,7 +153,7 @@ class TikTokStatementMapperTest extends TestCase
 
         $this->assertSame(100000.0, $result['gross_amount']);
         $this->assertSame(70000.0, $result['seller_voucher']);
-        $this->assertSame(30000.0, $result['refund_total']); // 100000 - 70000
+        $this->assertSame(30000.0, $result['refund_total']); 
         $this->assertSame(0.0, $result['gross_amount'] - $result['seller_voucher'] - $result['refund_total']);
     }
 
@@ -166,7 +164,7 @@ class TikTokStatementMapperTest extends TestCase
             'settlement_amount'    => '48000',
             'revenue_amount'       => '45000',
             'fee_tax_amount'       => '0',
-            'shipping_cost_amount' => '3000', // net positif = subsidi/rebate bersih
+            'shipping_cost_amount' => '3000', 
             'sku_transactions'     => [[
                 'revenue_breakdown' => ['subtotal_before_discount_amount' => '45000'],
                 'fee_tax_breakdown' => ['fee' => [], 'tax' => []],

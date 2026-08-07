@@ -208,22 +208,22 @@ class CourierMappingServiceTest extends TestCase
 
     public function test_authoritative_channel_instant_signal_overrides_name_regex(): void
     {
-        // Sinyal channel = false: "Same Day" TIDAK dianggap instant (perbaikan divergensi Shopee).
+
         $this->assertSame('REGULAR', $this->service->resolveShipmentType('Same Day', false));
         $this->assertSame('REGULAR', $this->service->resolveShipmentType('GoSend Same Day', false));
-        // Cargo/Express tetap terjaga meski channel bilang bukan instant.
+
         $this->assertSame('CARGO', $this->service->resolveShipmentType('Hemat Kargo', false));
         $this->assertSame('EXPRESS', $this->service->resolveShipmentType('Next Day', false));
-        // Sinyal channel = true: paksa INSTANT.
+
         $this->assertSame('INSTANT', $this->service->resolveShipmentType('Apapun', true));
-        // Tanpa sinyal (null): perilaku lama berbasis nama tetap.
+
         $this->assertSame('INSTANT', $this->service->resolveShipmentType('Same Day', null));
         $this->assertSame('INSTANT', $this->service->resolveShipmentType('Same Day'));
     }
 
     public function test_manifest_grouping_honors_stored_resolved_shipment_type(): void
     {
-        // Shopee "Same Day" tersimpan REGULAR (sinyal otoritatif); nama saja akan bilang INSTANT.
+
         $orders = [
             (object) ['id' => 'X', 'source' => 'shopee', 'shipping_provider' => 'Same Day', 'resolved_shipment_type' => 'REGULAR'],
         ];
