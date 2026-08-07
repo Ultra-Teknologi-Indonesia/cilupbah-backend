@@ -33,6 +33,12 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
                 return true;
             }
 
+            $allowed = (array) config('horizon.allowed_emails', []);
+
+            if ($user !== null && in_array($user->email, $allowed, true)) {
+                return true;
+            }
+
             return $user !== null && method_exists($user, 'hasRole') && $user->hasRole('owner');
         });
     }

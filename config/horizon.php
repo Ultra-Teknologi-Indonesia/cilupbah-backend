@@ -17,7 +17,12 @@ return [
         Str::slug(env('APP_NAME', 'laravel'), '_').'_horizon:'
     ),
 
-    'middleware' => ['web'],
+    'middleware' => ['web', \App\Http\Middleware\HorizonBasicAuth::class],
+
+    'allowed_emails' => array_values(array_filter(array_map(
+        'trim',
+        explode(',', (string) env('HORIZON_ALLOWED_EMAILS', ''))
+    ))),
 
     'waits' => [
         'redis:default' => 60,
