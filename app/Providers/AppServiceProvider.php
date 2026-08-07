@@ -9,7 +9,14 @@ class AppServiceProvider extends ServiceProvider
 
     public function register(): void
     {
-
+        // Penghitung rate-limit memakai store khusus (config ratelimit.store).
+        // 'redis' = atomik, cepat, dan tahan hot-key (satu IP gudang dipakai
+        // banyak pekerja). Null = ikut cache store default.
+        $this->app->singleton(\Illuminate\Cache\RateLimiter::class, function ($app) {
+            return new \Illuminate\Cache\RateLimiter(
+                $app->make('cache')->store(config('ratelimit.store'))
+            );
+        });
     }
 
     public function boot(): void
@@ -49,6 +56,66 @@ class AppServiceProvider extends ServiceProvider
             }
 
             return \Illuminate\Cache\RateLimiting\Limit::perSecond(10)->by($shopId);
+        });
+
+        // Login (tamu): dikunci per email+IP supaya banyak pekerja di satu WiFi
+        // gudang tak saling menghabiskan jatah. Backstop per-IP menahan
+        // credential-stuffing (satu IP menyemprot banyak email).
+        \Illuminate\Support\Facades\RateLimiter::for('login', function (\Illuminate\Http\Request $request) {
+            $email = \Illuminate\Support\Str::lower(trim((string) $request->input('email')));
+            $ip = (string) $request->ip();
+
+            return [
+                \Illuminate\Cache\RateLimiting\Limit::perMinute((int) config('ratelimit.login.per_email', 10))
+                    ->by($email !== '' ? 'login|'.$email.'|'.$ip : 'login|ip|'.$ip),
+                \Illuminate\Cache\RateLimiting\Limit::perMinute((int) config('ratelimit.login.per_ip', 60))
+                    ->by('login-ip|'.$ip),
+            ];
+        });
+
+        // Lupa-password/OTP (tamu): per email+IP, ember terpisah per aksi (nama route).
+        \Illuminate\Support\Facades\RateLimiter::for('forgot_password', function (\Illuminate\Http\Request $request) {
+            $email = \Illuminate\Support\Str::lower(trim((string) $request->input('email')));
+            $ip = (string) $request->ip();
+            $action = (string) ($request->route()?->getName() ?? 'forgot');
+
+            return [
+                \Illuminate\Cache\RateLimiting\Limit::perMinute((int) config('ratelimit.forgot_password.per_email', 10))
+                    ->by($email !== '' ? 'forgot|'.$action.'|'.$email.'|'.$ip : 'forgot|'.$action.'|ip|'.$ip),
+                \Illuminate\Cache\RateLimiting\Limit::perMinute((int) config('ratelimit.forgot_password.per_ip', 60))
+                    ->by('forgot-ip|'.$ip),
+            ];
+        });
+
+        // Jaring global seluruh API. Ter-autentikasi dikunci per identitas pengguna
+        // (token Sanctum) -> WiFi gudang bersama tak relevan. Tamu dikunci per-IP.
+        // Webhook & OAuth callback marketplace punya throttle sendiri + volume tinggi
+        // dari IP marketplace -> dilepas dari jaring global agar tak ke-drop.
+        \Illuminate\Support\Facades\RateLimiter::for('api', function (\Illuminate\Http\Request $request) {
+            $name = (string) ($request->route()?->getName() ?? '');
+
+            if (str_contains($name, '.webhook') || str_contains($name, '.callback')) {
+                return \Illuminate\Cache\RateLimiting\Limit::none();
+            }
+
+            $user = $request->user('sanctum');
+
+            if ($user) {
+                return \Illuminate\Cache\RateLimiting\Limit::perMinute((int) config('ratelimit.api.per_identity', 300))
+                    ->by('api|u|'.$user->getAuthIdentifier());
+            }
+
+            return \Illuminate\Cache\RateLimiting\Limit::perMinute((int) config('ratelimit.api.per_ip', 600))
+                ->by('api|ip|'.$request->ip());
+        });
+
+        // Tier endpoint mahal (export/bulk/cetak massal/sync/download/laporan).
+        // Dipasang selektif via 'throttle:heavy'; dikunci per identitas juga.
+        \Illuminate\Support\Facades\RateLimiter::for('heavy', function (\Illuminate\Http\Request $request) {
+            $user = $request->user('sanctum');
+            $key = $user ? 'heavy|u|'.$user->getAuthIdentifier() : 'heavy|ip|'.$request->ip();
+
+            return \Illuminate\Cache\RateLimiting\Limit::perMinute((int) config('ratelimit.heavy.per_identity', 30))->by($key);
         });
 
         \Illuminate\Database\Eloquent\Builder::macro('allowedSearch', function (...$columns) {

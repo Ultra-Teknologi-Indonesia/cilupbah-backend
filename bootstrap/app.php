@@ -29,12 +29,23 @@ return Application::configure(basePath: dirname(__DIR__))
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
             'dev.only' => \App\Http\Middleware\DevOnly::class,
             'client.channel' => \App\Http\Middleware\ResolveClientChannel::class,
+            // Semua penggunaan 'throttle' (grup & route) memakai versi fail-open:
+            // bila penghitung (Redis) tumbang, request diloloskan, bukan diblokir.
+            'throttle' => \App\Http\Middleware\ResilientThrottleRequests::class,
         ]);
 
-        $middleware->api(prepend: [
-            \App\Http\Middleware\ResolveClientChannel::class,
-            \App\Http\Middleware\RejectNonAccessToken::class,
-        ]);
+        $middleware->api(
+            prepend: [
+                \App\Http\Middleware\ResolveClientChannel::class,
+                \App\Http\Middleware\RejectNonAccessToken::class,
+            ],
+            append: [
+                // Jaring global seluruh API: per-user bila login, per-IP bila tamu.
+                // Berjalan setelah RejectNonAccessToken; user diresolusi via guard
+                // sanctum di dalam limiter (tak bergantung urutan middleware).
+                'throttle:api',
+            ],
+        );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         Integration::handles($exceptions);
