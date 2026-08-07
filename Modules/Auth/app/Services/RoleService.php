@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Auth\Repositories\RoleRepository;
+use Modules\Auth\Support\PermissionCatalog;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class RoleService
@@ -89,6 +90,8 @@ class RoleService
             if ($role->name === 'owner') {
                 throw new HttpException(403, 'Permission role owner tidak dapat diubah (owner punya akses penuh).');
             }
+
+            $permissionNames = PermissionCatalog::withViewPrerequisites($permissionNames);
 
             $role->syncPermissions($permissionNames);
 

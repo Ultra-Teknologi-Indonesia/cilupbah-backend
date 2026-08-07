@@ -22,7 +22,9 @@ class RbacPermissionSeeder extends Seeder
                 continue;
             }
 
-            $permissionNames = PermissionCatalog::resolveGrants($tokens);
+            $permissionNames = PermissionCatalog::withViewPrerequisites(
+                PermissionCatalog::resolveGrants($tokens),
+            );
             $role->syncPermissions($permissionNames);
         }
 

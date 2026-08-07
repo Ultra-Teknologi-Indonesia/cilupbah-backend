@@ -128,4 +128,55 @@ class RbacCatalogTest extends TestCase
             ])
             ->assertStatus(403);
     }
+
+    public function test_write_permissions_imply_view_of_their_resource(): void
+    {
+        $this->assertContains(
+            'view-produk',
+            PermissionCatalog::withViewPrerequisites(['create-produk']),
+            'create-produk harus menyertakan view-produk.'
+        );
+
+        $this->assertContains(
+            'view-produk',
+            PermissionCatalog::withViewPrerequisites(['hide-product']),
+            'Extra permission juga menyertakan view resource-nya.'
+        );
+
+        $this->assertSame(
+            ['view-produk'],
+            PermissionCatalog::withViewPrerequisites(['view-produk']),
+            'View-only tidak berubah.'
+        );
+    }
+
+    public function test_role_and_user_sync_auto_grant_view_for_write_actions(): void
+    {
+        $role = Role::where('name', 'checker')->first();
+
+        $this->actingAs($this->owner, 'sanctum')
+            ->putJson("/api/v1/roles/{$role->id}/permissions", [
+                'permissions' => ['create-produk'],
+            ])
+            ->assertStatus(200);
+
+        $this->assertTrue($role->fresh()->hasPermissionTo('view-produk'));
+        $this->assertTrue($role->fresh()->hasPermissionTo('create-produk'));
+
+        $target = User::factory()->create();
+        $target->assignRole('picker');
+
+        $this->actingAs($this->owner, 'sanctum')
+            ->putJson("/api/v1/users/{$target->id}/permissions", [
+                'permissions' => ['delete-produk'],
+            ])
+            ->assertStatus(200);
+
+        $target->refresh();
+        $this->assertTrue($target->hasDirectPermission('delete-produk'));
+        $this->assertTrue(
+            $target->hasDirectPermission('view-produk'),
+            'view-produk harus otomatis ditambahkan saat memberi delete-produk.'
+        );
+    }
 }

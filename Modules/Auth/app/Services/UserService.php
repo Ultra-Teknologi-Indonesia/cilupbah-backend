@@ -3,6 +3,7 @@
 namespace Modules\Auth\Services;
 
 use App\Models\User;
+use Modules\Auth\Support\PermissionCatalog;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection as SupportCollection;
@@ -91,7 +92,9 @@ class UserService
             $user->assignRole($data['roles']);
 
             if (array_key_exists('permissions', $data)) {
-                $user->syncPermissions($data['permissions'] ?? []);
+                $user->syncPermissions(
+                    PermissionCatalog::withViewPrerequisites($data['permissions'] ?? []),
+                );
             }
 
             if (array_key_exists('location_ids', $data)) {
@@ -147,7 +150,9 @@ class UserService
             $user->syncRoles($data['roles']);
 
             if (array_key_exists('permissions', $data)) {
-                $user->syncPermissions($data['permissions'] ?? []);
+                $user->syncPermissions(
+                    PermissionCatalog::withViewPrerequisites($data['permissions'] ?? []),
+                );
             }
 
             if (array_key_exists('location_ids', $data)) {
@@ -173,7 +178,9 @@ class UserService
                 throw new HttpException(403, 'Hak akses owner tidak dapat diubah (owner punya akses penuh).');
             }
 
-            $user->syncPermissions($permissionNames);
+            $user->syncPermissions(
+                PermissionCatalog::withViewPrerequisites($permissionNames),
+            );
 
             $this->historyRepository->createHistory([
                 'actor_id' => Auth::id(),

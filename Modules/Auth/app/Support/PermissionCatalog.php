@@ -121,6 +121,43 @@ class PermissionCatalog
         return array_keys($resolved);
     }
 
+    public static function withViewPrerequisites(array $names): array
+    {
+        $map = self::viewPrerequisiteMap();
+        $result = [];
+
+        foreach ($names as $name) {
+            $result[$name] = true;
+            if (isset($map[$name])) {
+                $result[$map[$name]] = true;
+            }
+        }
+
+        return array_keys($result);
+    }
+
+    private static function viewPrerequisiteMap(): array
+    {
+        $map = [];
+
+        foreach (self::config()['groups'] ?? [] as $group) {
+            foreach ($group['resources'] ?? [] as $resource) {
+                if (! in_array('view', $resource['actions'] ?? [], true)) {
+                    continue;
+                }
+
+                $viewName = "view-{$resource['key']}";
+                foreach (self::resourcePermissionNames($resource) as $name) {
+                    if ($name !== $viewName) {
+                        $map[$name] = $viewName;
+                    }
+                }
+            }
+        }
+
+        return $map;
+    }
+
     public static function findResource(string $resourceKey): ?array
     {
         foreach (self::config()['groups'] ?? [] as $group) {
