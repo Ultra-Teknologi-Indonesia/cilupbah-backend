@@ -45,7 +45,8 @@ class WooCommerceWebhookController extends Controller
         $shop = $this->shopRepository->findConnectedByStoreUrl($source);
 
         if (! $shop) {
-            Log::warning('WooCommerce webhook: toko tidak ditemukan.', ['source' => $source]);
+
+            $this->quarantine($topic, $source, $rawBody, 'Toko WooCommerce tidak ditemukan dari source URL.');
 
             return response('', 200);
         }
@@ -81,6 +82,9 @@ class WooCommerceWebhookController extends Controller
         $payload = json_decode($rawBody, true);
 
         if (! is_array($payload) || empty($payload['id'])) {
+
+            $this->quarantine($topic, $source, $rawBody, 'Payload WooCommerce tidak valid atau tanpa id.', is_array($payload) ? $payload : null);
+
             return response('', 200);
         }
 
@@ -107,5 +111,30 @@ class WooCommerceWebhookController extends Controller
             $topic,
             $payload,
         ) !== null;
+    }
+
+    protected function quarantine(string $topic, string $source, string $rawBody, string $reason, ?array $payload = null): void
+    {
+        $eventKey = 'woocommerce:anomaly:' . md5($source . '|' . $topic . '|' . $rawBody);
+
+        $row = $this->inbox->recordFirstDelivery(
+            'woocommerce',
+            null,
+            $eventKey,
+            $topic,
+            $payload ?? ['_source' => $source, '_raw' => mb_substr($rawBody, 0, 5000)],
+        );
+
+        if ($row === null) {
+            return; 
+        }
+
+        $row->markFailed($reason);
+
+        \Modules\Sales\Jobs\AdminAlertJob::dispatch(
+            'WooCommerce webhook tidak dapat diproses',
+            $reason,
+            ['source' => $source, 'topic' => $topic, 'inbox_id' => $row->id],
+        );
     }
 }

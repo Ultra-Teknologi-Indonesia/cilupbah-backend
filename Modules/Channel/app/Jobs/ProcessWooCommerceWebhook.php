@@ -101,33 +101,21 @@ class ProcessWooCommerceWebhook implements ShouldQueue
             ]];
 
         foreach ($refundEntries as $refund) {
-            try {
-                $refundId = (string) ($refund['id'] ?? '');
-                if ($refundId === '') {
-                    continue;
-                }
-
-                $reason = (string) ($refund['reason'] ?? '');
-                $salesReturn = app(\Modules\Sales\Services\SalesReturnService::class)->createFromChannel([
-                    'source'            => 'woocommerce',
-                    'channel_order_id'  => $orderId,
-                    'channel_return_id' => $refundId,
-                    'channel_shop_id'   => $this->shopId,
-                    'reason'            => $reason !== '' ? $reason : 'Refund WooCommerce',
-                    'created_by'        => 'system:woocommerce-webhook',
-                ]);
-
-                if ($salesReturn) {
-                    \Modules\Sales\Jobs\SyncReturnTrackingJob::dispatch((string) $salesReturn->id);
-                    \Modules\Sales\Jobs\SyncReturnDetailJob::dispatch((string) $salesReturn->id);
-                }
-            } catch (\Throwable $e) {
-                Log::warning('WooCommerce auto SalesReturn gagal: ' . $e->getMessage(), [
-                    'shop_id' => $this->shopId,
-                    'order_id' => $orderId,
-                    'refund_id' => $refund['id'] ?? null,
-                ]);
+            $refundId = (string) ($refund['id'] ?? '');
+            if ($refundId === '') {
+                continue;
             }
+
+            $reason = (string) ($refund['reason'] ?? '');
+
+            \Modules\Sales\Jobs\ProcessChannelReturnJob::dispatch([
+                'source'            => 'woocommerce',
+                'channel_order_id'  => $orderId,
+                'channel_return_id' => $refundId,
+                'channel_shop_id'   => $this->shopId,
+                'reason'            => $reason !== '' ? $reason : 'Refund WooCommerce',
+                'created_by'        => 'system:woocommerce-webhook',
+            ]);
         }
     }
 
@@ -145,13 +133,17 @@ class ProcessWooCommerceWebhook implements ShouldQueue
 
     public function failed(\Throwable $e): void
     {
-
         Cache::forget(self::idempotencyKey($this->shopId, $this->topic, $this->payload));
 
-        Log::error('ProcessWooCommerceWebhook gagal permanen: ' . $e->getMessage(), [
-            'shop_id' => $this->shopId,
-            'topic' => $this->topic,
-            'resource_id' => $this->resourceId,
-        ]);
+        \Modules\Channel\Support\WebhookFailureHandler::record(
+            'woocommerce',
+            self::idempotencyKey($this->shopId, $this->topic, $this->payload),
+            [
+                'shop_id' => $this->shopId,
+                'topic' => $this->topic,
+                'resource_id' => $this->resourceId,
+            ],
+            $e,
+        );
     }
 }

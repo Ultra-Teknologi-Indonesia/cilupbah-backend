@@ -8,34 +8,39 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Schedule::command('lazada:refresh-tokens')->dailyAt('02:00')->withoutOverlapping();
+Schedule::command('lazada:refresh-tokens')->dailyAt('02:00')->withoutOverlapping()->onOneServer();
 
-Schedule::command('channel:alert-reauth')->dailyAt('08:00')->withoutOverlapping();
+Schedule::command('channel:alert-reauth')->dailyAt('08:00')->withoutOverlapping()->onOneServer();
 
-Schedule::command('shopee:refresh-tokens')->hourly()->withoutOverlapping();
-Schedule::command('tiktok:refresh-tokens')->hourly()->withoutOverlapping();
+Schedule::command('shopee:refresh-tokens')->hourly()->withoutOverlapping()->onOneServer();
+Schedule::command('tiktok:refresh-tokens')->hourly()->withoutOverlapping()->onOneServer();
 
-Schedule::command('products:poll-review-status')->everyThirtyMinutes()->withoutOverlapping();
+Schedule::command('products:poll-review-status')->everyThirtyMinutes()->withoutOverlapping()->onOneServer();
 
-Schedule::command('channel-downloads:reap-stale')->everyFiveMinutes()->withoutOverlapping();
+Schedule::command('channel-downloads:reap-stale')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
 
-Schedule::command('channel:webhooks-replay')->everyFifteenMinutes()->withoutOverlapping();
+Schedule::command('channel:webhooks-replay')->everyFifteenMinutes()->withoutOverlapping()->onOneServer();
 
-Schedule::command('channel:evaluate-order-sync')->everyFifteenMinutes()->withoutOverlapping();
+Schedule::command('channel:evaluate-order-sync')->everyFifteenMinutes()->withoutOverlapping()->onOneServer();
 
-Schedule::command('orders:sync-finance')->dailyAt('03:00')->withoutOverlapping();
-Schedule::command('settlements:sync')->dailyAt('03:30')->withoutOverlapping();
+Schedule::command('orders:sync-finance')->dailyAt('03:00')->withoutOverlapping()->onOneServer();
+Schedule::command('settlements:sync')->dailyAt('03:30')->withoutOverlapping()->onOneServer();
 
-Schedule::command('returns:sync-tracking')->everyThirtyMinutes()->withoutOverlapping();
-Schedule::command('returns:sync-detail')->everyThirtyMinutes()->withoutOverlapping();
+Schedule::command('returns:sync-tracking')->everyThirtyMinutes()->withoutOverlapping()->onOneServer();
+Schedule::command('returns:sync-detail')->everyThirtyMinutes()->withoutOverlapping()->onOneServer();
 
-Schedule::command('raise-products:auto-raise')->everyThirtyMinutes()->withoutOverlapping();
+Schedule::command('channel:reconcile-ingestion')->hourly()->withoutOverlapping()->onOneServer();
+
+Schedule::command('channel:reconcile-orders')->hourlyAt(30)->withoutOverlapping()->onOneServer();
+
+Schedule::command('raise-products:auto-raise')->everyThirtyMinutes()->withoutOverlapping()->onOneServer();
 
 Schedule::command('horizon:snapshot')->everyFiveMinutes();
 
 Schedule::job(new \Modules\Outbound\Jobs\RefreshInstantTrackingJob())
     ->everyThreeMinutes()
-    ->withoutOverlapping();
+    ->withoutOverlapping()
+    ->onOneServer();
 
 Schedule::call(function () {
     @touch(storage_path('framework/scheduler-heartbeat'));

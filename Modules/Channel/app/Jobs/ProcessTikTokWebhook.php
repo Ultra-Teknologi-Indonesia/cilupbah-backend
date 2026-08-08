@@ -319,23 +319,15 @@ class ProcessTikTokWebhook implements ShouldQueue
 
     protected function createChannelReturn(string $shopId, string $orderId, ?string $channelReturnId, string $reason): void
     {
-        try {
-            $salesReturn = app(\Modules\Sales\Services\SalesReturnService::class)->createFromChannel([
-                'source'            => 'tiktok',
-                'channel_order_id'  => $orderId,
-                'channel_return_id' => $channelReturnId,
-                'channel_shop_id'   => $shopId,
-                'reason'            => $reason,
-                'created_by'        => 'system:tiktok-webhook',
-            ]);
 
-            if ($salesReturn) {
-                \Modules\Sales\Jobs\SyncReturnTrackingJob::dispatch((string) $salesReturn->id);
-                \Modules\Sales\Jobs\SyncReturnDetailJob::dispatch((string) $salesReturn->id);
-            }
-        } catch (\Throwable $e) {
-            Log::warning('TikTok auto SalesReturn gagal: ' . $e->getMessage(), ['order_id' => $orderId]);
-        }
+        \Modules\Sales\Jobs\ProcessChannelReturnJob::dispatch([
+            'source'            => 'tiktok',
+            'channel_order_id'  => $orderId,
+            'channel_return_id' => $channelReturnId,
+            'channel_shop_id'   => $shopId,
+            'reason'            => $reason,
+            'created_by'        => 'system:tiktok-webhook',
+        ]);
     }
 
     protected function handleDeauthorization(ChannelShopRepository $shops, string $shopId): void
@@ -497,6 +489,14 @@ class ProcessTikTokWebhook implements ShouldQueue
     {
         Cache::forget(self::idempotencyKey($this->payload));
 
-        Log::error('ProcessTikTokWebhook gagal permanen: ' . $e->getMessage(), ['payload' => $this->payload]);
+        \Modules\Channel\Support\WebhookFailureHandler::record(
+            'tiktok',
+            self::idempotencyKey($this->payload),
+            [
+                'shop_id' => $this->payload['shop_id'] ?? null,
+                'type' => $this->payload['type'] ?? null,
+            ],
+            $e,
+        );
     }
 }

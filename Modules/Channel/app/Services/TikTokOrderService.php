@@ -30,6 +30,37 @@ class TikTokOrderService
         $this->orderRepository = $orderRepository;
     }
 
+    public function listRecentOrderIds(string $shopId, int $maxPages = 3): array
+    {
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (! $shop || ! $shop->access_token) {
+            return [];
+        }
+
+        $ids = [];
+        $nextPageToken = '';
+
+        for ($page = 0; $page < $maxPages; $page++) {
+            $queries = ['shop_cipher' => $shop->shop_cipher ?? '', 'page_size' => 100];
+            $body = ['sort_by' => 'CREATE_TIME', 'sort_type' => 'DESC'];
+            if ($nextPageToken !== '') {
+                $body['next_page_token'] = $nextPageToken;
+            }
+
+            $res = $this->client->request('POST', '/order/202309/orders/search', $queries, $body, $shop->access_token);
+            foreach ($res['data']['orders'] ?? [] as $order) {
+                $ids[] = (string) ($order['id'] ?? '');
+            }
+
+            $nextPageToken = $res['data']['next_page_token'] ?? '';
+            if ($nextPageToken === '') {
+                break;
+            }
+        }
+
+        return array_values(array_filter($ids));
+    }
+
     public function pullOrders(string $shopId): int
     {
         if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
@@ -140,15 +171,11 @@ class TikTokOrderService
             return;
         }
 
-        Log::info('TikTok instant/sameday order payload (riset pickup_code)', [
-            'shop_id'            => $shopId,
-            'order_id'           => $item['id'] ?? null,
-            'top_level_keys'     => array_keys($item),
-            'shipping_type'      => $item['shipping_type'] ?? null,
-            'fulfillment_type'   => $item['fulfillment_type'] ?? null,
-            'delivery_option_id' => $item['delivery_option_id'] ?? null,
-            'tracking_number'    => $item['tracking_number'] ?? null,
-            'packages'           => $item['packages'] ?? null,
+        Log::debug('TikTok instant/sameday order diproses', [
+            'shop_id'          => $shopId,
+            'order_id'         => $item['id'] ?? null,
+            'shipping_type'    => $item['shipping_type'] ?? null,
+            'fulfillment_type' => $item['fulfillment_type'] ?? null,
         ]);
     }
 

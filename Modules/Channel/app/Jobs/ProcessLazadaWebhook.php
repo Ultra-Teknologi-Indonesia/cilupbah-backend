@@ -117,23 +117,14 @@ class ProcessLazadaWebhook implements ShouldQueue
             return;
         }
 
-        try {
-            $salesReturn = app(\Modules\Sales\Services\SalesReturnService::class)->createFromChannel([
-                'source'            => 'lazada',
-                'channel_order_id'  => $channelOrderId,
-                'channel_return_id' => $data['reverse_order_id'] ?? null,
-                'channel_shop_id'   => $sellerId,
-                'reason'            => $data['reverse_status'] ?? $data['order_status'] ?? 'Retur Lazada',
-                'created_by'        => 'system:lazada-webhook',
-            ]);
-
-            if ($salesReturn) {
-                \Modules\Sales\Jobs\SyncReturnTrackingJob::dispatch((string) $salesReturn->id);
-                \Modules\Sales\Jobs\SyncReturnDetailJob::dispatch((string) $salesReturn->id);
-            }
-        } catch (\Throwable $e) {
-            Log::warning('Lazada auto SalesReturn gagal: ' . $e->getMessage(), ['channel_order_id' => $channelOrderId]);
-        }
+        \Modules\Sales\Jobs\ProcessChannelReturnJob::dispatch([
+            'source'            => 'lazada',
+            'channel_order_id'  => $channelOrderId,
+            'channel_return_id' => $data['reverse_order_id'] ?? null,
+            'channel_shop_id'   => $sellerId,
+            'reason'            => $data['reverse_status'] ?? $data['order_status'] ?? 'Retur Lazada',
+            'created_by'        => 'system:lazada-webhook',
+        ]);
     }
 
     protected function handleFulfillmentEvent(LazadaOrderService $orderService, string $sellerId, array $data): void
@@ -340,6 +331,14 @@ class ProcessLazadaWebhook implements ShouldQueue
 
         Cache::forget(self::idempotencyKey($this->payload));
 
-        Log::error('ProcessLazadaWebhook gagal permanen: ' . $e->getMessage(), ['payload' => $this->payload]);
+        \Modules\Channel\Support\WebhookFailureHandler::record(
+            'lazada',
+            self::idempotencyKey($this->payload),
+            [
+                'seller_id' => $this->payload['seller_id'] ?? null,
+                'message_type' => $this->payload['message_type'] ?? null,
+            ],
+            $e,
+        );
     }
 }

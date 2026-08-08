@@ -9,6 +9,7 @@ use Modules\Channel\Enums\WebhookInboxStatus;
 use Modules\Channel\Jobs\ProcessShopeeWebhook;
 use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Repositories\ChannelWebhookInboxRepository;
+use Modules\Sales\Jobs\AdminAlertJob;
 use Tests\TestCase;
 
 class WebhookInboxTest extends TestCase
@@ -62,7 +63,7 @@ class WebhookInboxTest extends TestCase
         $this->assertSame(1, (int) ChannelWebhookInbox::query()->where('event_key', 'stuck-1')->value('attempts'));
     }
 
-    public function test_replay_ignores_recent_processed_and_maxed_events(): void
+    public function test_replay_ignores_recent_and_processed_events(): void
     {
         Queue::fake();
 
@@ -76,6 +77,16 @@ class WebhookInboxTest extends TestCase
             'event_type' => '3', 'payload' => ['shop_id' => 'SH1'],
             'status' => WebhookInboxStatus::PROCESSED, 'received_at' => now()->subMinutes(30),
         ]);
+
+        Artisan::call('channel:webhooks-replay', ['--minutes' => 15]);
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_replay_dead_letters_exhausted_events_with_alert(): void
+    {
+        Queue::fake();
+
         ChannelWebhookInbox::create([
             'channel' => 'shopee', 'shop_id' => 'SH1', 'event_key' => 'maxed',
             'event_type' => '3', 'payload' => ['shop_id' => 'SH1'], 'attempts' => 5,
@@ -84,6 +95,11 @@ class WebhookInboxTest extends TestCase
 
         Artisan::call('channel:webhooks-replay', ['--minutes' => 15]);
 
-        Queue::assertNothingPushed();
+        Queue::assertNotPushed(ProcessShopeeWebhook::class);
+        Queue::assertPushed(AdminAlertJob::class, 1);
+        $this->assertSame(
+            WebhookInboxStatus::FAILED,
+            ChannelWebhookInbox::query()->where('event_key', 'maxed')->value('status'),
+        );
     }
 }

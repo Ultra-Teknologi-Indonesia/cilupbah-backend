@@ -255,23 +255,14 @@ class ProcessShopeeWebhook implements ShouldQueue
 
         $orderService->pullOrderById($shopId, $orderSn);
 
-        try {
-            $salesReturn = app(\Modules\Sales\Services\SalesReturnService::class)->createFromChannel([
-                'source'            => 'shopee',
-                'channel_order_id'  => $orderSn,
-                'channel_return_id' => $data['return_sn'] ?? $data['refund_id'] ?? null,
-                'channel_shop_id'   => $shopId,
-                'reason'            => $data['reason'] ?? 'Retur Shopee',
-                'created_by'        => 'system:shopee-webhook',
-            ]);
-
-            if ($salesReturn) {
-                \Modules\Sales\Jobs\SyncReturnTrackingJob::dispatch((string) $salesReturn->id);
-                \Modules\Sales\Jobs\SyncReturnDetailJob::dispatch((string) $salesReturn->id);
-            }
-        } catch (\Throwable $e) {
-            Log::warning('Shopee auto SalesReturn gagal: ' . $e->getMessage(), ['ordersn' => $orderSn]);
-        }
+        \Modules\Sales\Jobs\ProcessChannelReturnJob::dispatch([
+            'source'            => 'shopee',
+            'channel_order_id'  => $orderSn,
+            'channel_return_id' => $data['return_sn'] ?? $data['refund_id'] ?? null,
+            'channel_shop_id'   => $shopId,
+            'reason'            => $data['reason'] ?? 'Retur Shopee',
+            'created_by'        => 'system:shopee-webhook',
+        ]);
     }
 
     protected function logItemEvent(ChannelDownloadService $downloadService, string $shopId, array $data): void
@@ -317,9 +308,16 @@ class ProcessShopeeWebhook implements ShouldQueue
 
     public function failed(\Throwable $e): void
     {
-
         Cache::forget(self::idempotencyKey($this->payload));
 
-        Log::error('ProcessShopeeWebhook gagal permanen: ' . $e->getMessage(), ['payload' => $this->payload]);
+        \Modules\Channel\Support\WebhookFailureHandler::record(
+            'shopee',
+            self::idempotencyKey($this->payload),
+            [
+                'shop_id' => $this->payload['shop_id'] ?? null,
+                'code' => $this->payload['code'] ?? null,
+            ],
+            $e,
+        );
     }
 }

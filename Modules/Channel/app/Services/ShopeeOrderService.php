@@ -71,6 +71,47 @@ class ShopeeOrderService
         return 1;
     }
 
+    public function listRecentOrderIds(string $shopId, ?int $timeFrom = null): array
+    {
+        $shop = $this->requireShop($shopId);
+
+        return $this->fetchOrderSns($shop, $timeFrom ?: now()->subDays(2)->timestamp);
+    }
+
+    public function listChannelReturns(string $shopId, int $maxPages = 10, int $pageSize = 50): array
+    {
+        $shop = $this->requireShop($shopId);
+        $returns = [];
+        $pageNo = 0;
+
+        for ($page = 0; $page < $maxPages; $page++) {
+            $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request(
+                'GET',
+                '/api/v2/returns/get_return_list',
+                ['page_no' => $pageNo, 'page_size' => $pageSize],
+                $token,
+                $shop->shop_id,
+            ));
+
+            $rows = $res['response']['return'] ?? [];
+            foreach ($rows as $row) {
+                $returns[] = [
+                    'order_sn' => (string) ($row['order_sn'] ?? ''),
+                    'return_sn' => (string) ($row['return_sn'] ?? ''),
+                    'reason' => (string) ($row['reason'] ?? ''),
+                ];
+            }
+
+            if (count($rows) < $pageSize || ! ($res['response']['more'] ?? false)) {
+                break;
+            }
+
+            $pageNo++;
+        }
+
+        return $returns;
+    }
+
     protected function fetchOrderSns(object $shop, int $timeFrom): array
     {
         $orderSns = [];

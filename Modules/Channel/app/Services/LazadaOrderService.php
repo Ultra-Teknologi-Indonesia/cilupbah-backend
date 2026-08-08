@@ -26,37 +26,83 @@ class LazadaOrderService
 
         $shop = $this->requireShop($shopId);
 
-        $params = [
-            'sort_by' => 'updated_at',
-            'sort_direction' => 'DESC',
-            'offset' => 0,
-            'limit' => 100,
-            'update_after' => $updatedAfter ?: now()->subDays(7)->toIso8601String(),
-        ];
-
-        $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/orders/get', $params, $token));
-
-        $orders = $res['data']['orders'] ?? [];
-        if (empty($orders)) {
-            return 0;
-        }
-
-        $itemsByOrder = $this->fetchItemsForOrders($shop, array_column($orders, 'order_id'));
-
+        $updateAfter = $updatedAfter ?: now()->subDays(7)->toIso8601String();
+        $limit = 100;
+        $offset = 0;
         $count = 0;
-        foreach ($orders as $order) {
-            $orderId = (string) ($order['order_id'] ?? '');
 
-            try {
-                $internal = $this->mapper->map($order, $itemsByOrder[$orderId] ?? [], $shopId);
-                $this->orderService->upsertFromChannel($internal);
-                $count++;
-            } catch (\Throwable $e) {
-                Log::error("Lazada: gagal upsert order {$orderId}: " . $e->getMessage());
+        $maxPages = 100;
+
+        for ($page = 0; $page < $maxPages; $page++) {
+            $params = [
+                'sort_by' => 'updated_at',
+                'sort_direction' => 'ASC',
+                'offset' => $offset,
+                'limit' => $limit,
+                'update_after' => $updateAfter,
+            ];
+
+            $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/orders/get', $params, $token));
+
+            $orders = $res['data']['orders'] ?? [];
+            if (empty($orders)) {
+                break;
             }
+
+            $itemsByOrder = $this->fetchItemsForOrders($shop, array_column($orders, 'order_id'));
+
+            foreach ($orders as $order) {
+                $orderId = (string) ($order['order_id'] ?? '');
+
+                try {
+                    $internal = $this->mapper->map($order, $itemsByOrder[$orderId] ?? [], $shopId);
+                    $this->orderService->upsertFromChannel($internal);
+                    $count++;
+                } catch (\Throwable $e) {
+                    Log::error("Lazada: gagal upsert order {$orderId}: " . $e->getMessage());
+                }
+            }
+
+            if (count($orders) < $limit) {
+                break;
+            }
+
+            $offset += $limit;
         }
 
         return $count;
+    }
+
+    public function listRecentOrderIds(string $shopId, ?string $updatedAfter = null): array
+    {
+        $shop = $this->requireShop($shopId);
+        $updateAfter = $updatedAfter ?: now()->subDays(2)->toIso8601String();
+        $limit = 100;
+        $offset = 0;
+        $ids = [];
+
+        for ($page = 0; $page < 100; $page++) {
+            $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/orders/get', [
+                'sort_by' => 'updated_at',
+                'sort_direction' => 'ASC',
+                'offset' => $offset,
+                'limit' => $limit,
+                'update_after' => $updateAfter,
+            ], $token));
+
+            $orders = $res['data']['orders'] ?? [];
+            foreach ($orders as $order) {
+                $ids[] = (string) ($order['order_id'] ?? '');
+            }
+
+            if (count($orders) < $limit) {
+                break;
+            }
+
+            $offset += $limit;
+        }
+
+        return array_values(array_filter($ids));
     }
 
     public function pullOrderById(string $shopId, string $orderId): int

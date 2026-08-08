@@ -162,23 +162,21 @@ class ShopeeWebhookTest extends TestCase
         ]);
     }
 
-    public function test_return_update_push_creates_sales_return(): void
+    public function test_return_update_push_dispatches_channel_return_job(): void
     {
+        Queue::fake();
+
         $orderService = Mockery::mock(ShopeeOrderService::class);
         $orderService->shouldReceive('pullOrderById')->once()->with('778899', '2606SHOPEE01');
-
-        $returnService = Mockery::mock(\Modules\Sales\Services\SalesReturnService::class);
-        $returnService->shouldReceive('createFromChannel')->once()
-            ->with(Mockery::on(fn ($p) => ($p['source'] ?? null) === 'shopee'
-                && ($p['channel_order_id'] ?? null) === '2606SHOPEE01'
-                && ($p['channel_return_id'] ?? null) === 'RET-1'))
-            ->andReturn(null);
-        $this->app->instance(\Modules\Sales\Services\SalesReturnService::class, $returnService);
 
         (new ProcessShopeeWebhook($this->orderPayload([
             'code' => 29,
             'data' => ['ordersn' => '2606SHOPEE01', 'return_sn' => 'RET-1', 'reason' => 'Barang rusak'],
         ])))->handle($orderService, app(ChannelDownloadService::class));
+
+        Queue::assertPushed(\Modules\Sales\Jobs\ProcessChannelReturnJob::class, fn ($job) => ($job->payload['source'] ?? null) === 'shopee'
+            && ($job->payload['channel_order_id'] ?? null) === '2606SHOPEE01'
+            && ($job->payload['channel_return_id'] ?? null) === 'RET-1');
     }
 
     public function test_configured_push_url_used_for_signature(): void

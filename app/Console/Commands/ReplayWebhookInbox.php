@@ -29,6 +29,8 @@ class ReplayWebhookInbox extends Command
         $maxAttempts = (int) $this->option('max-attempts');
         $threshold = now()->subMinutes($minutes);
 
+        $this->deadLetterExhausted($threshold, $maxAttempts);
+
         $rows = ChannelWebhookInbox::query()
             ->where('status', WebhookInboxStatus::RECEIVED)
             ->where('received_at', '<', $threshold)
@@ -76,5 +78,36 @@ class ReplayWebhookInbox extends Command
         $this->info("Dispatch ulang {$dispatched} webhook masuk yang macet.");
 
         return self::SUCCESS;
+    }
+
+    private function deadLetterExhausted(\Illuminate\Support\Carbon $threshold, int $maxAttempts): void
+    {
+        $exhausted = ChannelWebhookInbox::query()
+            ->where('status', WebhookInboxStatus::RECEIVED)
+            ->where('received_at', '<', $threshold)
+            ->where('attempts', '>=', $maxAttempts)
+            ->orderBy('received_at')
+            ->limit(500)
+            ->get();
+
+        foreach ($exhausted as $row) {
+            $row->markFailed("Replay habis setelah {$row->attempts} percobaan — webhook tidak pernah berhasil diproses.");
+
+            \Modules\Sales\Jobs\AdminAlertJob::dispatch(
+                "Webhook {$row->channel} macet permanen (dead-letter)",
+                "Event {$row->event_type} gagal diproses setelah {$row->attempts} percobaan replay.",
+                [
+                    'channel' => $row->channel,
+                    'shop_id' => $row->shop_id,
+                    'event_key' => $row->event_key,
+                    'event_type' => $row->event_type,
+                    'inbox_id' => $row->id,
+                ],
+            );
+        }
+
+        if ($exhausted->isNotEmpty()) {
+            $this->warn("{$exhausted->count()} webhook macet ditandai FAILED (dead-letter) + alert.");
+        }
     }
 }
