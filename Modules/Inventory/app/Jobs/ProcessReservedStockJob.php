@@ -37,6 +37,17 @@ class ProcessReservedStockJob implements ShouldQueue
         foreach ($reservedStock->items as $item) {
             $this->withStockLock($item->item_id, $reservedStock->location_id, function () use ($item, $reservedStock, $inventoryRepository, $movementRepository) {
                 DB::transaction(function () use ($item, $reservedStock, $inventoryRepository, $movementRepository) {
+
+                    if ($movementRepository->movementExists(
+                        $reservedStock->reserved_stock_no,
+                        $item->item_id,
+                        $reservedStock->location_id,
+                        $item->bin_id,
+                        'RESERVE',
+                    )) {
+                        return;
+                    }
+
                     $inventory = $inventoryRepository->findExactForUpdate(
                         $item->item_id,
                         $reservedStock->location_id,

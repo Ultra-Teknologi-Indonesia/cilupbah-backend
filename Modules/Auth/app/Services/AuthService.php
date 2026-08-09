@@ -268,6 +268,8 @@ class AuthService
 
         $this->userRepository->update($user, ['password' => Hash::make($newPassword)]);
 
+        $this->userRepository->deleteTokens($user);
+
         return true;
     }
 

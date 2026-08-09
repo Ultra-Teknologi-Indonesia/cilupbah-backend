@@ -3,6 +3,8 @@
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
          bootstrap="vendor/autoload.php"
          colors="true"
+         failOnWarning="true"
+         failOnRisky="true"
 >
     <testsuites>
         <testsuite name="Unit">
@@ -25,7 +27,12 @@
     <source>
         <include>
             <directory>app</directory>
+            <directory>Modules</directory>
         </include>
+        <exclude>
+            <directory>Modules/*/database</directory>
+            <directory>Modules/*/tests</directory>
+        </exclude>
     </source>
     <php>
         <ini name="memory_limit" value="1G"/>

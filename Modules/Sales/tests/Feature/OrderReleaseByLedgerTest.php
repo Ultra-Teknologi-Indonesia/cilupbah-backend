@@ -183,7 +183,7 @@ class OrderReleaseByLedgerTest extends TestCase
         $this->stock()->reserve('REL-6', $v->id, $this->locationId, 7, 'SO-REL-6');
 
         DB::table('sales_orders')->where('id', $order->id)
-            ->update(['status' => 'ready-to-ship']);
+            ->update(['status' => 'packed']);
         $order->refresh();
 
         $released = $this->stock()->releaseReservationByTransaction($order->salesorder_no);
@@ -203,6 +203,6 @@ class OrderReleaseByLedgerTest extends TestCase
 
         $this->expectException(\Modules\Sales\Exceptions\InvalidStatusTransitionException::class);
 
-        app(SalesOrderService::class)->updateOrder($order, ['status' => 'ready-to-ship']);
+        app(SalesOrderService::class)->updateOrder($order, ['status' => 'unknown-status']);
     }
 }

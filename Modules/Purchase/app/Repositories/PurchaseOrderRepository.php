@@ -3,6 +3,7 @@
 namespace Modules\Purchase\Repositories;
 
 use Modules\Purchase\Models\PurchaseOrder;
+use Modules\Purchase\Models\PurchaseOrderActivity;
 use Modules\Purchase\Models\PurchaseOrderItem;
 use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Models\InboundItem;
@@ -55,6 +56,14 @@ class PurchaseOrderRepository
             ->defaultSort('-created_at')
             ->paginate($limit)
             ->appends(request()->query());
+    }
+
+    public function paginateActivities(string $purchaseOrderId, int $perPage)
+    {
+        return PurchaseOrderActivity::where('purchase_order_id', $purchaseOrderId)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->cursorPaginate($perPage);
     }
 
     public function findById(string $id): ?PurchaseOrder

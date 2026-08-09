@@ -141,12 +141,6 @@ class MediaController extends Controller
         return $this->successResponse(null, 'File berhasil dihapus.');
     }
 
-    /**
-     * Endpoint media bersifat self-service (tanpa gate permission di route), jadi
-     * aksi destruktif (replace/hapus) dijaga di sini: hanya pengunggah aslinya
-     * (uploaded_by) atau user dengan izin kelola produk yang boleh. Mencegah IDOR
-     * — role serendah picker tak bisa hapus/ganti berkas milik user lain.
-     */
     private function authorizeMediaMutation(Media $media): void
     {
         $user = Auth::user();

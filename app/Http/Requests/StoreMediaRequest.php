@@ -14,7 +14,7 @@ class StoreMediaRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'file' => ['required', 'file', 'max:51200'], 
+            'file' => ['required', 'file', 'max:51200', 'mimes:jpg,jpeg,png,webp,gif,pdf'],
         ];
     }
 
@@ -24,6 +24,7 @@ class StoreMediaRequest extends FormRequest
             'file.required' => 'File wajib diunggah.',
             'file.file' => 'Unggahan harus berupa file yang valid.',
             'file.max' => 'Ukuran file maksimal 50MB.',
+            'file.mimes' => 'Tipe file tidak didukung. Gunakan gambar (jpg, png, webp, gif) atau PDF.',
         ];
     }
 }

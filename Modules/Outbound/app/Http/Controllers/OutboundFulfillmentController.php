@@ -179,9 +179,7 @@ class OutboundFulfillmentController extends Controller
 
             $order = $this->fulfillmentService->findOrderByNo($request->order_no);
         } catch (\Throwable $e) {
-            // Pindah ke ready-to-pick bersifat best-effort (re-scan order yang sudah
-            // pindah itu wajar). Order tetap dikembalikan untuk UI scan, tapi
-            // kegagalan TIDAK lagi ditelan diam-diam — dicatat ke log + Sentry.
+
             report($e);
             \Illuminate\Support\Facades\Log::warning('getOrderByNo: moveToReadyToPick gagal', [
                 'order_no' => $request->order_no,

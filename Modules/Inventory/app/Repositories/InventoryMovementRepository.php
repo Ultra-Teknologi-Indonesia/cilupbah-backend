@@ -27,6 +27,34 @@ class InventoryMovementRepository
             ->exists();
     }
 
+    public function movementExists(string $transactionNumber, string $itemId, string $locationId, ?string $binId, string $source): bool
+    {
+        return InventoryMovement::where('transaction_number', $transactionNumber)
+            ->where('item_id', $itemId)
+            ->where('location_id', $locationId)
+            ->where('source', $source)
+            ->when(
+                $binId === null,
+                fn ($q) => $q->whereNull('bin_id'),
+                fn ($q) => $q->where('bin_id', $binId),
+            )
+            ->exists();
+    }
+
+    public function findMovement(string $transactionNumber, string $itemId, string $locationId, ?string $binId, string $source): ?InventoryMovement
+    {
+        return InventoryMovement::where('transaction_number', $transactionNumber)
+            ->where('item_id', $itemId)
+            ->where('location_id', $locationId)
+            ->where('source', $source)
+            ->when(
+                $binId === null,
+                fn ($q) => $q->whereNull('bin_id'),
+                fn ($q) => $q->where('bin_id', $binId),
+            )
+            ->first();
+    }
+
     public function getByTransactionNumber(string $transactionNumber): Collection
     {
         return InventoryMovement::where('transaction_number', $transactionNumber)

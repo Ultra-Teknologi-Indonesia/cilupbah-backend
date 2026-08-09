@@ -22,6 +22,8 @@ class ProcessSalesOrderImportJob implements ShouldQueue
 
     public int $timeout = 1800;
 
+    public int $tries = 1;
+
     public function __construct(public string $batchId)
     {
         $this->onQueue(config('queue.names.sales', 'default'));
@@ -34,6 +36,13 @@ class ProcessSalesOrderImportJob implements ShouldQueue
     ): void {
         $batch = SalesOrderImportBatch::find($this->batchId);
         if (! $batch) {
+            return;
+        }
+
+        if (in_array($batch->state, [
+            SalesOrderImportBatch::STATE_DONE,
+            SalesOrderImportBatch::STATE_DONE_WITH_ERRORS,
+        ], true)) {
             return;
         }
 

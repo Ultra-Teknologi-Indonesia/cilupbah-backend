@@ -56,6 +56,13 @@ class ProcessWooCommerceWebhook implements ShouldQueue
             return;
         }
 
+        $idempotencyKey = self::idempotencyKey($this->shopId, $this->topic, $this->payload);
+        if (! Cache::add($idempotencyKey, true, now()->addHours(24))) {
+            Log::info("WooCommerce webhook already processed (key: {$idempotencyKey})");
+
+            return;
+        }
+
         $resource = strtok($this->topic, '.');
 
         match ($resource) {

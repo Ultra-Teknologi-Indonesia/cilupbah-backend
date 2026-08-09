@@ -16,6 +16,7 @@ class SalesPayment extends Model
         'amount',
         'payment_date',
         'payment_method',
+        'payment_method_id',
         'reference_no',
         'notes',
         'created_by',
@@ -29,5 +30,10 @@ class SalesPayment extends Model
     public function invoice(): BelongsTo
     {
         return $this->belongsTo(SalesInvoice::class, 'sales_invoice_id');
+    }
+
+    public function paymentMethod(): BelongsTo
+    {
+        return $this->belongsTo(PaymentMethod::class, 'payment_method_id');
     }
 }

@@ -838,7 +838,13 @@ class ShipmentController extends Controller
     )]
     public function refreshTracking(string $id): JsonResponse
     {
-        \Modules\Outbound\Jobs\RefreshInstantTrackingJob::dispatchSync($id);
+        // Best-effort: refresh sinkron agar data segar saat FE refetch, tapi kegagalan
+        // API kurir tak boleh menjatuhkan request (hindari 500) — endpoint tetap 202.
+        try {
+            \Modules\Outbound\Jobs\RefreshInstantTrackingJob::dispatchSync($id);
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         return $this->successResponse(null, 'Refresh tracking diproses.', 202);
     }

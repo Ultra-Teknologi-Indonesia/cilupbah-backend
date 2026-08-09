@@ -63,25 +63,14 @@ class ShopeeWebhookController extends Controller
 
             if (! $this->isValidSignature($request, $rawBody)) {
 
-                $mustVerify = config('services.shopee.verify_push_signature', true)
-                    || app()->environment('production')
-                    || ! $this->hasPushSecret();
-
-                if ($mustVerify) {
-                    Log::warning('Shopee push signature tidak valid', [
-                        'ip' => $request->ip(),
-                        'url' => $request->url(),
-                        'push_url' => $this->resolvePushUrl($request),
-                    ]);
-                    $result = 'invalid_signature_401';
-
-                    return response('', 401);
-                }
-
-                Log::warning('Shopee push signature mismatch — diproses tanpa verifikasi (verify_push_signature=false)', [
+                Log::warning('Shopee push signature tidak valid', [
                     'ip' => $request->ip(),
+                    'url' => $request->url(),
+                    'push_url' => $this->resolvePushUrl($request),
                 ]);
-                $result = 'signature_bypassed';
+                $result = 'invalid_signature_401';
+
+                return response('', 401);
             }
 
             if (! is_array($payload)) {
@@ -128,8 +117,9 @@ class ShopeeWebhookController extends Controller
             Log::warning('Shopee push signature mismatch', [
                 'push_url_used' => $pushUrl,
                 'request_url' => $request->url(),
-                'expected' => $expected,
-                'provided' => strtolower($provided),
+
+                'expected_prefix' => substr($expected, 0, 8),
+                'provided_prefix' => substr(strtolower($provided), 0, 8),
                 'key_source' => $pushPartnerKey !== '' ? 'push_partner_key' : 'partner_key',
                 'body_len' => strlen($rawBody),
             ]);

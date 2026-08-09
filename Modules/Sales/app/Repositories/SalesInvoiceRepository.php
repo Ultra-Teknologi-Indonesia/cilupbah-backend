@@ -105,6 +105,8 @@ class SalesInvoiceRepository
     public function generateInvoiceNo(): string
     {
         $prefix = 'INV-' . now()->format('Ymd') . '-';
+
+        DB::select('SELECT pg_advisory_xact_lock(hashtext(?))', ['docnum:' . $prefix]);
         $lastInvoice = SalesInvoice::where('invoice_number', 'like', $prefix . '%')
             ->orderByDesc('invoice_number')
             ->first();

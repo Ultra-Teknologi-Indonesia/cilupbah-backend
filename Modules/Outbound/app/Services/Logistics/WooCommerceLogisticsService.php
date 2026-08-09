@@ -25,11 +25,10 @@ class WooCommerceLogisticsService implements MarketPlaceLogisticsInterface
 
     public function readyToShip(SalesOrder $order): array
     {
-        $order->update(['status' => 'ready-to-ship']);
 
         return [
             'status'  => 'skipped',
-            'message' => 'Order manual/WooCommerce: ditandai siap dikirim secara lokal (tidak ada API RTS).',
+            'message' => 'Order manual/WooCommerce: sudah siap dikirim (status packed); tidak ada API RTS marketplace.',
         ];
     }
 

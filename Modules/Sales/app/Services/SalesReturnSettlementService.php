@@ -128,10 +128,13 @@ class SalesReturnSettlementService
 
     private function recomputeTotal(string $settlementId): void
     {
-        $settlement = SalesReturnSettlement::findOrFail($settlementId);
-        $settlement->total_amount = (float) $settlement->invoices()->sum('amount')
-            + (float) $settlement->refunds()->sum('amount');
-        $settlement->save();
+
+        DB::transaction(function () use ($settlementId) {
+            $settlement = SalesReturnSettlement::lockForUpdate()->findOrFail($settlementId);
+            $settlement->total_amount = (float) $settlement->invoices()->sum('amount')
+                + (float) $settlement->refunds()->sum('amount');
+            $settlement->save();
+        });
     }
 
     public function getRefunds(int $limit = 10)

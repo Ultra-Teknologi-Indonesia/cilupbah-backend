@@ -2,6 +2,8 @@
 
 namespace Modules\Channel\Services;
 
+use Illuminate\Support\Facades\Log;
+
 class LazadaToInternalOrderMapper
 {
 
@@ -30,6 +32,8 @@ class LazadaToInternalOrderMapper
         'shipped_back_failed' => 'SHIPPED',
         'lost_by_3pl' => 'SHIPPED',
         'damaged_by_3pl' => 'SHIPPED',
+        'package_scrapped' => 'SHIPPED',
+        'package_returned' => 'RETURNED',
     ];
 
     public function map(array $lazadaOrder, array $orderItems, string $shopId): array
@@ -37,7 +41,11 @@ class LazadaToInternalOrderMapper
         $items = $this->groupItems($orderItems);
 
         $lazadaStatus = strtolower((string) ($lazadaOrder['statuses'][0] ?? $lazadaOrder['status'] ?? 'unpaid'));
-        $channelStatus = self::STATUS_MAP[$lazadaStatus] ?? 'UNPAID';
+        $channelStatus = self::STATUS_MAP[$lazadaStatus] ?? null;
+        if ($channelStatus === null) {
+            Log::warning("Lazada: order status tidak dikenal '{$lazadaStatus}' untuk order " . ($lazadaOrder['order_id'] ?? $lazadaOrder['order_number'] ?? ''));
+            $channelStatus = strtoupper($lazadaStatus) ?: 'UNPAID';
+        }
 
         $address = $lazadaOrder['address_shipping'] ?? [];
         $customerName = trim(

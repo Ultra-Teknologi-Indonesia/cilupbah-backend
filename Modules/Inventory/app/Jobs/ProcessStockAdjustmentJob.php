@@ -50,6 +50,20 @@ class ProcessStockAdjustmentJob implements ShouldQueue
 
             $this->withStockLock($item->item_id, $adjustment->location_id, function () use ($item, $adjustment, $inventoryRepository, $movementRepository, &$totalSignedValue) {
                 DB::transaction(function () use ($item, $adjustment, $inventoryRepository, $movementRepository, &$totalSignedValue) {
+
+                    $existing = $movementRepository->findMovement(
+                        $adjustment->adjustment_no,
+                        $item->item_id,
+                        $adjustment->location_id,
+                        $item->bin_id,
+                        'ADJUSTMENT',
+                    );
+                    if ($existing) {
+                        $totalSignedValue += (float) ($existing->total_cost ?? 0);
+
+                        return;
+                    }
+
                     if (! empty($item->bin_id) && (float) $item->difference_qty > 0) {
                         app(BinOccupancyGuard::class)->assertBinFitsSku($item->bin_id, $item->item_id);
                         app(SkuHomeBinGuard::class)->assertSkuFitsBin($adjustment->location_id, $item->item_id, $item->bin_id);

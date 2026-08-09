@@ -31,6 +31,8 @@ class LazadaToInternalOrderMapperStatusTest extends TestCase
             'shipped_back_failed' => ['shipped_back_failed', 'SHIPPED'],
             'lost_by_3pl' => ['lost_by_3pl', 'SHIPPED'],
             'damaged_by_3pl' => ['damaged_by_3pl', 'SHIPPED'],
+            'package_scrapped' => ['package_scrapped', 'SHIPPED'],
+            'package_returned' => ['package_returned', 'RETURNED'],
         ];
     }
 
@@ -40,6 +42,14 @@ class LazadaToInternalOrderMapperStatusTest extends TestCase
         $internal = $this->mapWithStatus($lazadaStatus);
 
         $this->assertSame($expectedChannelStatus, $internal['channel_status']);
+        $this->assertNotSame('UNPAID', $internal['channel_status']);
+    }
+
+    public function test_unknown_status_is_passed_through_visibly_not_silently_unpaid(): void
+    {
+        $internal = $this->mapWithStatus('some_future_lazada_status');
+
+        $this->assertSame('SOME_FUTURE_LAZADA_STATUS', $internal['channel_status']);
         $this->assertNotSame('UNPAID', $internal['channel_status']);
     }
 

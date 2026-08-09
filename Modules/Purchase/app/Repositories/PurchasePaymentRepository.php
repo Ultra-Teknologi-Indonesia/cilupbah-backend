@@ -6,6 +6,7 @@ use Modules\Purchase\Models\PurchasePayment;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
 
 class PurchasePaymentRepository
 {
@@ -41,6 +42,8 @@ class PurchasePaymentRepository
     public function generatePaymentNo(): string
     {
         $prefix = 'PPAY-' . now()->format('Ymd') . '-';
+
+        DB::select('SELECT pg_advisory_xact_lock(hashtext(?))', ['docnum:' . $prefix]);
         $last = PurchasePayment::where('payment_number', 'like', $prefix . '%')
             ->orderByDesc('payment_number')
             ->value('payment_number');

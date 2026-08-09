@@ -79,6 +79,13 @@ class ProcessShopeeWebhook implements ShouldQueue
             return;
         }
 
+        $idempotencyKey = self::idempotencyKey($this->payload);
+        if (! Cache::add($idempotencyKey, true, now()->addHours(24))) {
+            Log::info("Shopee webhook already processed (key: {$idempotencyKey})");
+
+            return;
+        }
+
         match ($code) {
             self::PUSH_SHOP_DEAUTHORIZED => $this->handleDeauthorized($shopId),
             self::PUSH_ORDER_STATUS,

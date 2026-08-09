@@ -142,24 +142,35 @@ class IssueController extends Controller
 
         $csv = "ID,Token,Judul,Platform,Kategori,Prioritas,Status,Pelapor,Kontak,Assigned,Dibuat\n";
         foreach ($issues as $issue) {
-            $csv .= implode(',', [
+            $csv .= implode(',', array_map([$this, 'csvCell'], [
                 $issue->id,
                 $issue->tracking_token,
-                '"' . str_replace('"', '""', $issue->title) . '"',
+                $issue->title,
                 $issue->platform,
                 $issue->category?->name ?? '-',
                 $issue->priority,
                 $issue->status,
-                '"' . str_replace('"', '""', $issue->reporter_name) . '"',
+                $issue->reporter_name,
                 $issue->reporter_contact ?? '-',
                 $issue->assigned_to ?? '-',
                 $issue->created_at->format('Y-m-d H:i'),
-            ]) . "\n";
+            ])) . "\n";
         }
 
         return response($csv, 200, [
             'Content-Type' => 'text/csv',
             'Content-Disposition' => 'attachment; filename="issues-' . now()->format('Y-m-d') . '.csv"',
         ]);
+    }
+
+    private function csvCell($value): string
+    {
+        $value = (string) ($value ?? '');
+
+        if ($value !== '' && in_array($value[0], ['=', '+', '-', '@', "\t", "\r"], true)) {
+            $value = "'" . $value;
+        }
+
+        return '"' . str_replace('"', '""', $value) . '"';
     }
 }

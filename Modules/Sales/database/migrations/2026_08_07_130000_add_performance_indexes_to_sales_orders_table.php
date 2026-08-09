@@ -3,15 +3,6 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 
-/**
- * Index performa untuk halaman daftar pesanan (jalur terpadat):
- * - created_at        : default sort (-created_at) di tab "semua"
- * - transaction_date  : filter rentang tanggal (whereDateFrom/whereDateTo)
- * - (status,created_at): daftar per-tab (status) yang tetap terurut created_at
- *
- * Dibangun CONCURRENTLY agar TIDAK mengunci tulis pada tabel besar saat deploy.
- * Karena itu migrasi ini berjalan di luar transaksi.
- */
 return new class extends Migration
 {
     public $withinTransaction = false;

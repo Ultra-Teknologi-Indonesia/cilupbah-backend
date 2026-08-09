@@ -39,6 +39,15 @@ class RoutePermissionCoverageTest extends TestCase
         'api/v1/profile/sessions/revoke-others',
         'api/v1/profile/sessions/{id}/revoke',
 
+        'api/v1/reports/exports/{export}',
+        'api/v1/reports/exports/{export}/download',
+
+        'api/v1/regions/countries',
+        'api/v1/regions/provinces',
+        'api/v1/regions/cities/{province_id}',
+        'api/v1/regions/districts/{city_id}',
+        'api/v1/regions/villages/{district_id}',
+
         'issues/{issue}',
     ];
 

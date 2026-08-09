@@ -33,6 +33,19 @@ class ChannelWebhookInboxRepository
         ]);
 
         if ($inserted === 0) {
+            $existing = ChannelWebhookInbox::query()->where('event_key', $eventKey)->first();
+
+            if ($existing && $existing->status === WebhookInboxStatus::FAILED) {
+                $existing->update([
+                    'status' => WebhookInboxStatus::RECEIVED,
+                    'attempts' => 0,
+                    'payload' => $payload,
+                    'received_at' => $now,
+                ]);
+
+                return $existing;
+            }
+
             return null;
         }
 

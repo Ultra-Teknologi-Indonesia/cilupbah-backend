@@ -6,18 +6,17 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Purchase\Http\Resources\PurchaseOrderActivityResource;
-use Modules\Purchase\Models\PurchaseOrderActivity;
+use Modules\Purchase\Repositories\PurchaseOrderRepository;
 
 class PurchaseOrderActivityController extends Controller
 {
+    public function __construct(protected PurchaseOrderRepository $repository) {}
+
     public function index(string $id, Request $request): JsonResponse
     {
         $perPage = min(max((int) $request->query('per_page', 50), 10), 200);
 
-        $activities = PurchaseOrderActivity::where('purchase_order_id', $id)
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
-            ->cursorPaginate($perPage);
+        $activities = $this->repository->paginateActivities($id, $perPage);
 
         return response()->json([
             'data' => PurchaseOrderActivityResource::collection($activities->items()),

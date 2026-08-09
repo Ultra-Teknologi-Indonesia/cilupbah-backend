@@ -38,7 +38,10 @@ class InventoryServiceProvider extends ModuleServiceProvider
 
     protected function configureSchedules(Schedule $schedule): void
     {
-        $schedule->job(new \Modules\Inventory\Jobs\ReleaseExpiredReservationsJob)->hourly();
+        $schedule->job(new \Modules\Inventory\Jobs\ReleaseExpiredReservationsJob)
+            ->hourly()
+            ->withoutOverlapping()
+            ->onOneServer();
 
         $schedule->command('replenishment:auto-detect')
             ->everyFiveMinutes()

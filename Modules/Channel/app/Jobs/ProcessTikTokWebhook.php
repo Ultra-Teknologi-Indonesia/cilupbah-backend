@@ -442,6 +442,9 @@ class ProcessTikTokWebhook implements ShouldQueue
 
     private function acknowledgeShoplessEvent(int $type): void
     {
+
+        ChannelWebhookInbox::markProcessedByKey(self::idempotencyKey($this->payload));
+
         $isInventoryChanged = isset($this->payload['event_id'], $this->payload['seller_id'])
             && (isset($this->payload['quantity_snapshot_after_change']) || isset($this->payload['change_detail']));
 

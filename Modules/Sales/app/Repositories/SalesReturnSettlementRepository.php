@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Repositories;
 
+use Illuminate\Support\Facades\DB;
 use Modules\Sales\Models\SalesReturnSettlement;
 use Modules\Sales\Models\SalesReturnSettlementInvoice;
 use Modules\Sales\Models\SalesReturnSettlementRefund;
@@ -86,6 +87,8 @@ class SalesReturnSettlementRepository
     public function generateSettlementNo(): string
     {
         $prefix = 'RS-' . now()->format('Ymd') . '-';
+
+        DB::select('SELECT pg_advisory_xact_lock(hashtext(?))', ['docnum:' . $prefix]);
         $last = SalesReturnSettlement::where('settlement_number', 'like', $prefix . '%')
             ->orderByDesc('settlement_number')
             ->first();

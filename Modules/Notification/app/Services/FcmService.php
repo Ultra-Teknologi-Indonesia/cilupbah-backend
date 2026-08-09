@@ -108,7 +108,10 @@ class FcmService
                 return $response->json('access_token');
             }
 
-            Log::error('FCM: OAuth token request failed', ['body' => $response->body()]);
+            Log::error('FCM: OAuth token request failed', [
+                'status' => $response->status(),
+                'reason' => \Illuminate\Support\Str::limit((string) $response->reason(), 200),
+            ]);
             return null;
         });
     }

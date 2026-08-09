@@ -31,7 +31,9 @@ class PasswordResetService
         $user = $this->userRepository->findByEmail($email);
 
         if (! $user) {
-            Log::info('Password reset request untuk email tidak terdaftar', ['email' => $email]);
+            Log::info('Password reset request untuk email tidak terdaftar', [
+                'email' => \Illuminate\Support\Str::mask($email, '*', 2),
+            ]);
 
             return;
         }

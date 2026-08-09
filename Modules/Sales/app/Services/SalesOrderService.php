@@ -116,7 +116,10 @@ class SalesOrderService
 
     public function getTabCounts(): array
     {
-        return $this->orderRepository->getTabCounts();
+
+        $cacheKey = 'sales:tab-counts:u:' . (auth()->id() ?? 'guest');
+
+        return Cache::remember($cacheKey, now()->addSeconds(30), fn () => $this->orderRepository->getTabCounts());
     }
 
     public function getOrderById($id)
@@ -1187,6 +1190,7 @@ class SalesOrderService
                         $locationId = $this->resolveLocationId($order);
                         $order->update(['location_id' => $locationId]);
                     } catch (\Exception $e) {
+                        report($e);
                         Log::warning('SalesOrderService: gagal resolusi location_id, order dibuat tanpa lokasi', [
                             'order_id' => $order->id,
                             'error' => $e->getMessage(),
@@ -1712,6 +1716,7 @@ class SalesOrderService
                     $locationId = $this->resolveLocationId($order);
                     $order->update(['location_id' => $locationId]);
                 } catch (\Exception $e) {
+                    report($e);
                     Log::warning('SalesOrderService: gagal resolusi location_id, order dibuat tanpa lokasi', [
                         'order_id' => $order->id,
                         'error' => $e->getMessage(),

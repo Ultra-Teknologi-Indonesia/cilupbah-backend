@@ -78,6 +78,13 @@ class ProcessLazadaWebhook implements ShouldQueue
             return;
         }
 
+        $idempotencyKey = self::idempotencyKey($this->payload);
+        if (! Cache::add($idempotencyKey, true, now()->addHours(24))) {
+            Log::info("Lazada webhook already processed (key: {$idempotencyKey})");
+
+            return;
+        }
+
         if ($this->isTokenExpiryMessage($messageType, $data)) {
             $this->handleTokenExpiry($authService, $sellerId);
 

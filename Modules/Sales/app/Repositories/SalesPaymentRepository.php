@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Repositories;
 
+use Illuminate\Support\Facades\DB;
 use Modules\Sales\Models\SalesPayment;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
@@ -41,6 +42,8 @@ class SalesPaymentRepository
     public function generatePaymentNo(): string
     {
         $prefix = 'PAY-' . now()->format('Ymd') . '-';
+
+        DB::select('SELECT pg_advisory_xact_lock(hashtext(?))', ['docnum:' . $prefix]);
         $last = SalesPayment::where('payment_number', 'like', $prefix . '%')
             ->orderByDesc('payment_number')
             ->first();
