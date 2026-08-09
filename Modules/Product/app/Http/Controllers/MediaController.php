@@ -20,6 +20,7 @@ class MediaController extends Controller
 
     public function __construct(
         protected UploadService $uploadService,
+        protected \Modules\Product\Services\MediaCleanupService $mediaCleanup,
     ) {}
 
     #[OA\Post(
@@ -134,7 +135,7 @@ class MediaController extends Controller
 
         $this->authorizeMediaMutation($media);
 
-        \Modules\Product\Models\ProductMedia::where('media_uuid', $uuid)->delete();
+        $this->mediaCleanup->unlinkByMediaUuid($uuid);
 
         $this->uploadService->delete($uuid);
 

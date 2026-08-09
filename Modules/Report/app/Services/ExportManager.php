@@ -38,6 +38,30 @@ class ExportManager
         return $job;
     }
 
+    public function findOwnedOrFail(string $exportId, int $userId): ExportJob
+    {
+        $job = ExportJob::findOrFail($exportId);
+        abort_unless($job->user_id === $userId, 403);
+
+        return $job;
+    }
+
+    public function statusPayload(ExportJob $job): array
+    {
+        return [
+            'id' => $job->id,
+            'type' => $job->type,
+            'status' => $job->status,
+            'file_name' => $job->file_name,
+            'error' => $job->isFailed()
+                ? 'Gagal membuat berkas export. Coba lagi atau persempit rentang data.'
+                : null,
+            'download_url' => $job->isReady()
+                ? route('reports.exports.download', $job->id)
+                : null,
+        ];
+    }
+
     public function build(string $type, array $params): object
     {
         $this->assertKnown($type);

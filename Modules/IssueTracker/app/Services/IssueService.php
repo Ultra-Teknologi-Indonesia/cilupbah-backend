@@ -21,6 +21,16 @@ class IssueService
         return $this->repository->getStatusCounts();
     }
 
+    public function getActiveCategories(): Collection
+    {
+        return $this->repository->getActiveCategories();
+    }
+
+    public function findByTrackingToken(string $token): Issue
+    {
+        return $this->repository->findByTrackingToken($token);
+    }
+
     public function getPaginatedIssues(array $filters): LengthAwarePaginator
     {
         return $this->repository->getPaginated($filters);

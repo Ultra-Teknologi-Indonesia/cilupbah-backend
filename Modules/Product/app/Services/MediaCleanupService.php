@@ -28,6 +28,11 @@ class MediaCleanupService
             ->all();
     }
 
+    public function unlinkByMediaUuid(string $mediaUuid): int
+    {
+        return ProductMedia::where('media_uuid', $mediaUuid)->delete();
+    }
+
     public function pruneOrphans(iterable $mediaUuids): int
     {
         $deleted = 0;

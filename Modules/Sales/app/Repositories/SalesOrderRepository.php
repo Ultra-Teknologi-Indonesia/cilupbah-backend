@@ -5,12 +5,25 @@ namespace Modules\Sales\Repositories;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Models\SalesOrderStatusHistory;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
 
 class SalesOrderRepository
 {
     private const ORDER_SORTS = ['created_at', 'transaction_date', 'grand_total', 'salesorder_no'];
+
+    public function paginateStatusHistory(string $salesOrderId, int $perPage)
+    {
+        SalesOrder::findOrFail($salesOrderId);
+
+        return SalesOrderStatusHistory::query()
+            ->with('order:id,salesorder_no')
+            ->where('salesorder_id', $salesOrderId)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->cursorPaginate($perPage);
+    }
 
     public function getPaginatedOrders()
     {

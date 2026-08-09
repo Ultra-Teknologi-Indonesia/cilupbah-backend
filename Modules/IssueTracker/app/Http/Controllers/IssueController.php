@@ -7,7 +7,6 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Storage;
 use Modules\IssueTracker\Http\Requests\StoreIssueRequest;
 use Modules\IssueTracker\Models\Issue;
-use Modules\IssueTracker\Models\IssueCategory;
 use Modules\IssueTracker\Models\IssueComment;
 use Modules\IssueTracker\Services\IssueService;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
@@ -29,7 +28,7 @@ class IssueController extends Controller
 
     public function create()
     {
-        $categories = IssueCategory::active()->orderBy('sort_order')->get();
+        $categories = $this->service->getActiveCategories();
 
         return view('issue-tracker::create', compact('categories'));
     }
@@ -48,7 +47,7 @@ class IssueController extends Controller
 
     public function track(string $token)
     {
-        $issue = Issue::where('tracking_token', $token)->firstOrFail();
+        $issue = $this->service->findByTrackingToken($token);
 
         return redirect()->route('issues.show', $issue);
     }

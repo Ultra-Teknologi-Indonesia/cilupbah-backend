@@ -5,9 +5,19 @@ namespace Modules\IssueTracker\Repositories;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Modules\IssueTracker\Models\Issue;
+use Modules\IssueTracker\Models\IssueCategory;
 
 class IssueRepository
 {
+    public function getActiveCategories(): Collection
+    {
+        return IssueCategory::active()->orderBy('sort_order')->get();
+    }
+
+    public function findByTrackingToken(string $token): Issue
+    {
+        return Issue::where('tracking_token', $token)->firstOrFail();
+    }
 
     public function getStatusCounts(): array
     {
