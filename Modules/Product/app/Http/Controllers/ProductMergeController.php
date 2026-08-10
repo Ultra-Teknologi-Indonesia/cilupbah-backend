@@ -6,11 +6,16 @@ use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use DomainException;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Modules\Product\Http\Requests\ApplyMergeRequest;
 use Modules\Product\Http\Requests\AutoMergeRequest;
 use Modules\Product\Http\Requests\BulkMasterNamesRequest;
 use Modules\Product\Http\Requests\BulkMergeProductsRequest;
+use Modules\Product\Http\Requests\CatalogQueryRequest;
+use Modules\Product\Http\Requests\MergeQueryRequest;
+use Modules\Product\Http\Requests\UnmergeMasterRequest;
+use Modules\Product\Http\Resources\AppliedMergeResource;
+use Modules\Product\Http\Resources\MergeGroupResource;
+use Modules\Product\Http\Resources\MergeSuggestionResource;
 use Modules\Product\Services\ProductMergeService;
 
 class ProductMergeController extends Controller
@@ -19,43 +24,47 @@ class ProductMergeController extends Controller
 
     public function __construct(private ProductMergeService $service) {}
 
-    public function catalog(Request $request): JsonResponse
+    public function catalog(CatalogQueryRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'filter' => 'nullable|in:all,merged,unmerged,hidden',
-            'q' => 'nullable|string',
-            'page' => 'nullable|integer|min:1',
-            'limit' => 'nullable|integer|min:1|max:500',
-        ]);
-
         $result = $this->service->catalog(
-            $validated['filter'] ?? 'all',
-            (string) ($validated['q'] ?? ''),
-            (int) ($validated['page'] ?? 1),
-            (int) ($validated['limit'] ?? 50),
+            $request->filter(),
+            $request->search(),
+            $request->pageNumber(),
+            $request->perPage(),
         );
 
-        return $this->successResponse($result['rows'], 'Get product catalog success', 200, [
-            'current_page' => $result['page'],
-            'per_page' => $result['limit'],
-            'total' => $result['total'],
-            'last_page' => (int) max(1, ceil($result['total'] / $result['limit'])),
-            'counts' => $result['counts'],
-        ]);
+        return $this->successResponse(
+            MergeGroupResource::collection($result['rows'])->resolve($request),
+            'Get product catalog success',
+            200,
+            [
+                'current_page' => $result['page'],
+                'per_page' => $result['limit'],
+                'total' => $result['total'],
+                'last_page' => (int) max(1, ceil($result['total'] / $result['limit'])),
+                'counts' => $result['counts'],
+            ],
+        );
     }
 
-    public function suggestions(Request $request): JsonResponse
+    public function suggestions(MergeQueryRequest $request): JsonResponse
     {
-        $data = $this->service->suggestions((string) $request->query('q', ''));
+        $data = $this->service->suggestions($request->search());
 
-        return $this->successResponse($data, 'Get merge suggestions success');
+        return $this->successResponse(
+            MergeSuggestionResource::collection($data)->resolve($request),
+            'Get merge suggestions success',
+        );
     }
 
-    public function applied(Request $request): JsonResponse
+    public function applied(MergeQueryRequest $request): JsonResponse
     {
-        $data = $this->service->listMerges((string) $request->query('q', ''));
+        $data = $this->service->listMerges($request->search());
 
-        return $this->successResponse($data, 'Get applied merges success');
+        return $this->successResponse(
+            AppliedMergeResource::collection($data)->resolve($request),
+            'Get applied merges success',
+        );
     }
 
     public function auto(AutoMergeRequest $request): JsonResponse
@@ -94,10 +103,9 @@ class ProductMergeController extends Controller
         return $this->successResponse($result, 'Produk dilepas dari master');
     }
 
-    public function unmergeMaster(Request $request): JsonResponse
+    public function unmergeMaster(UnmergeMasterRequest $request): JsonResponse
     {
-        $validated = $request->validate(['master_name' => 'required|string']);
-        $result = $this->service->unmergeMaster($validated['master_name']);
+        $result = $this->service->unmergeMaster($request->validated()['master_name']);
 
         return $this->successResponse($result, "{$result['removed']} produk di-unmerge");
     }

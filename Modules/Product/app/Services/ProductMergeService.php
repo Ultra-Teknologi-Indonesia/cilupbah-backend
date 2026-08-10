@@ -5,8 +5,6 @@ namespace Modules\Product\Services;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 use Modules\Product\Models\Product;
-use Modules\Product\Models\ProductMerge;
-use Modules\Product\Models\ProductMergeHidden;
 use Modules\Product\Repositories\ProductMergeRepository;
 use Modules\Product\Support\SkuGrouping;
 use Ramsey\Uuid\Uuid;
@@ -23,7 +21,7 @@ class ProductMergeService
 
     public function catalog(string $filter = 'all', string $q = '', int $page = 1, int $limit = 50): array
     {
-        $products = $this->repo->masterProducts();
+        $products = $this->repo->catalogProducts();
         $mergeMap = $this->repo->mergeMap();
         $hiddenSet = array_flip($this->repo->hiddenNames());
 
@@ -45,19 +43,13 @@ class ProductMergeService
                     'product_count' => 0,
                     'sku_count' => 0,
                     'products' => [],
-                    'skus' => [],      
-                    'channels' => [],  
+                    'skus' => [],
+                    'channels' => [],
                 ];
             }
 
             $g = &$groups[$key];
             $g['product_count']++;
-            if (! $g['foto']) {
-                $foto = $this->primaryImage($p);
-                if ($foto) {
-                    $g['foto'] = $foto;
-                }
-            }
             if (! $g['category'] && $p->category) {
                 $g['category'] = $p->category->name;
             }
@@ -78,19 +70,6 @@ class ProductMergeService
                 'variant_skus' => $variantSkus,
                 'merged' => $master !== null,
             ];
-
-            foreach ($p->channelMappings as $cm) {
-                $shop = $cm->channelShop;
-                if (! $shop) {
-                    continue;
-                }
-                $g['channels'][$cm->channel_shop_id] = [
-                    'channel_shop_id' => $cm->channel_shop_id,
-                    'shop_name' => $shop->shop_name,
-                    'channel_name' => $shop->channel->name ?? null,
-                    'channel_code' => $shop->channel->code ?? null,
-                ];
-            }
             unset($g);
         }
 
@@ -116,8 +95,7 @@ class ProductMergeService
         $out = [];
         foreach ($groups as $g) {
             $g['skus'] = array_keys($g['skus']);
-            $g['channels'] = array_values($g['channels']);
-            $g['channel_count'] = count($g['channels']);
+            $g['channel_count'] = 0;
             $out[] = $g;
         }
 
@@ -165,6 +143,7 @@ class ProductMergeService
 
         $total = count($out);
         $paged = array_slice($out, ($page - 1) * $limit, $limit);
+        $paged = $this->hydratePresentation($paged);
 
         return [
             'rows' => $paged,
@@ -177,7 +156,7 @@ class ProductMergeService
 
     public function suggestions(string $q = ''): array
     {
-        $products = $this->repo->masterProducts();
+        $products = $this->repo->liteProducts();
         $mergeMap = $this->repo->mergeMap();
 
         $rows = $products->map(fn ($p) => [
@@ -219,7 +198,7 @@ class ProductMergeService
             }
             $rawSet = array_unique(array_map(fn ($p) => $p['name'], $group));
             if (! $existing && count($rawSet) === 1) {
-                continue; 
+                continue;
             }
 
             $master = $existing ?? $this->pickMasterName($group);
@@ -286,7 +265,7 @@ class ProductMergeService
                     'master_name' => $name,
                     'product_count' => 0,
                     'products' => [],
-                    'channels' => [], 
+                    'channels' => [],
                 ];
             }
             $grouped[$name]['product_count']++;
@@ -349,7 +328,7 @@ class ProductMergeService
             $namePatternGroups ?? self::DEFAULT_NAME_PATTERN_GROUPS
         );
 
-        $products = $this->repo->masterProducts();
+        $products = $this->repo->liteProducts();
         $mergeMap = $this->repo->mergeMap();
 
         $rows = $products->map(fn ($p) => [
@@ -383,7 +362,7 @@ class ProductMergeService
             }
             $groupAllSize[$key] = ($groupAllSize[$key] ?? 0) + 1;
             if (isset($mergeMap[$p['id']])) {
-                continue; 
+                continue;
             }
             $byKey[$key][] = $p;
         }
@@ -414,7 +393,7 @@ class ProductMergeService
             'updated_at' => $now,
         ], $toApply);
 
-        $merged = ProductMerge::query()->insertOrIgnore($insertRows);
+        $merged = $this->repo->insertMergesIgnore($insertRows);
 
         return ['merged' => $merged, 'groups_affected' => count($byKey)];
     }
@@ -427,7 +406,7 @@ class ProductMergeService
         }
         $productIds = array_values(array_unique($productIds));
 
-        $found = Product::query()->whereIn('id', $productIds)->pluck('id')->all();
+        $found = $this->repo->existingProductIds($productIds);
         $missing = array_values(array_diff($productIds, $found));
         if (! empty($missing)) {
             throw new DomainException(
@@ -452,14 +431,9 @@ class ProductMergeService
             $productNames
         ));
 
-        $mergedIds = ProductMerge::query()
-            ->whereIn('master_name', $productNames)
-            ->pluck('product_id')
-            ->all();
+        $mergedIds = $this->repo->productIdsForMasters($productNames);
 
-        $nameIds = Product::query()
-            ->where('status', Product::STATUS_MASTER)
-            ->get(['id', 'name'])
+        $nameIds = $this->repo->masterIdNames()
             ->filter(fn ($p) => isset($targetNormKeys[SkuGrouping::normalizeName($p->name)]))
             ->pluck('id')
             ->all();
@@ -476,7 +450,7 @@ class ProductMergeService
 
     public function unmerge(string $productId): array
     {
-        ProductMerge::query()->where('product_id', $productId)->delete();
+        $this->repo->deleteMergeByProduct($productId);
 
         return ['ok' => true];
     }
@@ -485,7 +459,7 @@ class ProductMergeService
     {
         return DB::transaction(function () use ($masterName) {
             $this->cascadeHiddenOnUnmerge([$masterName]);
-            $removed = ProductMerge::query()->where('master_name', $masterName)->delete();
+            $removed = $this->repo->deleteMergesByMaster($masterName);
 
             return ['removed' => $removed];
         });
@@ -495,7 +469,7 @@ class ProductMergeService
     {
         return DB::transaction(function () use ($masterNames) {
             $this->cascadeHiddenOnUnmerge($masterNames);
-            $removed = ProductMerge::query()->whereIn('master_name', $masterNames)->delete();
+            $removed = $this->repo->deleteMergesByMasters($masterNames);
 
             return ['removed' => $removed, 'masters' => count($masterNames)];
         });
@@ -511,28 +485,22 @@ class ProductMergeService
             'updated_at' => $now,
         ], array_values(array_unique($masterNames)));
 
-        $hidden = ProductMergeHidden::query()->insertOrIgnore($rows);
+        $hidden = $this->repo->insertHiddenIgnore($rows);
 
         return ['hidden' => $hidden, 'total' => count($masterNames)];
     }
 
     public function bulkUnhide(array $masterNames): array
     {
-        $unhidden = ProductMergeHidden::query()->whereIn('master_name', $masterNames)->delete();
+        $unhidden = $this->repo->deleteHidden($masterNames);
 
         return ['unhidden' => $unhidden];
     }
 
     private function applyMergeToProducts(array $productIds, string $masterName): void
     {
-        $currentMerges = ProductMerge::query()
-            ->whereIn('product_id', $productIds)
-            ->pluck('master_name', 'product_id')
-            ->all();
-        $names = Product::query()
-            ->whereIn('id', $productIds)
-            ->pluck('name', 'id')
-            ->all();
+        $currentMerges = $this->repo->mergeMapFor($productIds);
+        $names = $this->repo->productNames($productIds);
 
         $oldEff = [];
         foreach ($productIds as $id) {
@@ -543,12 +511,11 @@ class ProductMergeService
         }
         $oldEffNames = array_keys($oldEff);
 
-        $wasHidden = ! empty($oldEffNames)
-            && ProductMergeHidden::query()->whereIn('master_name', $oldEffNames)->exists();
+        $wasHidden = ! empty($oldEffNames) && $this->repo->hiddenExistsAny($oldEffNames);
 
-        ProductMerge::query()->whereIn('product_id', $productIds)->delete();
+        $this->repo->deleteMergesForProducts($productIds);
         $now = now();
-        ProductMerge::query()->insert(array_map(fn ($id) => [
+        $this->repo->insertMerges(array_map(fn ($id) => [
             'id' => Uuid::uuid7()->toString(),
             'product_id' => $id,
             'master_name' => $masterName,
@@ -557,13 +524,10 @@ class ProductMergeService
         ], $productIds));
 
         if (! empty($oldEffNames)) {
-            ProductMergeHidden::query()
-                ->whereIn('master_name', $oldEffNames)
-                ->where('master_name', '!=', $masterName)
-                ->delete();
+            $this->repo->deleteHiddenExcept($oldEffNames, $masterName);
         }
         if ($wasHidden) {
-            ProductMergeHidden::query()->firstOrCreate(['master_name' => $masterName]);
+            $this->repo->ensureHidden($masterName);
         }
     }
 
@@ -572,20 +536,13 @@ class ProductMergeService
         if (empty($masterNames)) {
             return;
         }
-        $hiddenSet = array_flip(
-            ProductMergeHidden::query()->whereIn('master_name', $masterNames)->pluck('master_name')->all()
-        );
+        $hiddenSet = array_flip($this->repo->hiddenNamesIn($masterNames));
         if (empty($hiddenSet)) {
             return;
         }
 
-        $merges = ProductMerge::query()
-            ->whereIn('master_name', array_keys($hiddenSet))
-            ->get(['product_id', 'master_name']);
-        $names = Product::query()
-            ->whereIn('id', $merges->pluck('product_id')->all())
-            ->pluck('name', 'id')
-            ->all();
+        $merges = $this->repo->mergesByMasters(array_keys($hiddenSet));
+        $names = $this->repo->productNames($merges->pluck('product_id')->all());
 
         $toHide = [];
         foreach ($merges as $m) {
@@ -597,9 +554,50 @@ class ProductMergeService
             }
         }
         foreach (array_keys($toHide) as $n) {
-            ProductMergeHidden::query()->firstOrCreate(['master_name' => $n]);
+            $this->repo->ensureHidden($n);
         }
-        ProductMergeHidden::query()->whereIn('master_name', array_keys($hiddenSet))->delete();
+        $this->repo->deleteHidden(array_keys($hiddenSet));
+    }
+
+    /**
+     * Phase-2 hydration: attach primary photo + channels to the paginated
+     * groups only. These fields are presentational and never affect grouping,
+     * filtering, search, sort or counts.
+     */
+    private function hydratePresentation(array $paged): array
+    {
+        $ids = [];
+        foreach ($paged as $g) {
+            foreach ($g['products'] as $pr) {
+                $ids[] = $pr['id'];
+            }
+        }
+
+        $pres = $this->repo->presentation(array_values(array_unique($ids)));
+        $mediaBy = $pres['mediaByProduct'];
+        $channelsBy = $pres['channelsByProduct'];
+
+        foreach ($paged as &$g) {
+            $foto = null;
+            $channels = [];
+            foreach ($g['products'] as $pr) {
+                if ($foto === null) {
+                    $candidate = $this->primaryImageFromRows($mediaBy[$pr['id']] ?? []);
+                    if ($candidate) {
+                        $foto = $candidate;
+                    }
+                }
+                foreach ($channelsBy[$pr['id']] ?? [] as $c) {
+                    $channels[$c['channel_shop_id']] = $c;
+                }
+            }
+            $g['foto'] = $foto;
+            $g['channels'] = array_values($channels);
+            $g['channel_count'] = count($g['channels']);
+        }
+        unset($g);
+
+        return $paged;
     }
 
     private function representativeSku(Product $p): ?string
@@ -614,14 +612,18 @@ class ProductMergeService
         return $p->sku;
     }
 
-    private function primaryImage(Product $p): ?string
+    private function primaryImageFromRows(array $rows): ?string
     {
-        if (! $p->relationLoaded('media')) {
+        if (empty($rows)) {
             return null;
         }
-        $primary = $p->media->firstWhere('is_primary', true) ?? $p->media->first();
+        foreach ($rows as $r) {
+            if (! empty($r['is_primary'])) {
+                return $r['url'] ?? null;
+            }
+        }
 
-        return $primary->url ?? null;
+        return $rows[0]['url'] ?? null;
     }
 
     private function pickMasterName(array $group): string
