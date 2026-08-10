@@ -4,6 +4,7 @@ namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Channel\Contracts\ChunkedDownloadable;
 use Modules\Channel\Exceptions\TokenExpiredException;
 use Modules\Channel\Repositories\ChannelProductRepository;
 use Modules\Channel\Repositories\ChannelShopRepository;
@@ -12,7 +13,7 @@ use Modules\Product\Models\ProductSyncLog;
 use Modules\Product\Models\ProductVariantChannelMapping;
 use Ramsey\Uuid\Uuid;
 
-class ShopeeProductService
+class ShopeeProductService implements ChunkedDownloadable
 {
     public function __construct(
         protected ShopeeClient $client,
@@ -290,6 +291,71 @@ class ShopeeProductService
         }
 
         return $count;
+    }
+
+    public function listProductIds(string $shopId): array
+    {
+        $shop = $this->requireShop($shopId);
+
+        $ids = [];
+        $offset = 0;
+        $pageSize = 50;
+        $pages = 0;
+        $maxPages = (int) config('channel.download_max_pages', 10000);
+
+        do {
+            $list = \Modules\Channel\Support\ChannelRetry::run('shopee', fn () => $this->fetchItemList($shop, $offset, $pageSize));
+
+            foreach ($this->extractItemIds($list) as $id) {
+                $ids[] = (string) $id;
+            }
+
+            $hasNext = (bool) ($list['has_next_page'] ?? false);
+            $offset = (int) ($list['next_offset'] ?? ($offset + $pageSize));
+            $pages++;
+        } while ($hasNext && $pages < $maxPages);
+
+        return array_values(array_unique($ids));
+    }
+
+    public function downloadProductIds(string $shopId, array $externalIds): array
+    {
+        $shop = $this->requireShop($shopId);
+        $productService = app(\Modules\Product\Services\ProductService::class);
+        $mapper = app(ShopeeToInternalProductMapper::class);
+
+        $downloaded = 0;
+        $failed = 0;
+
+        foreach (array_chunk($externalIds, 50) as $chunk) {
+            $chunkInts = array_map('intval', $chunk);
+            $baseInfo = \Modules\Channel\Support\ChannelRetry::run('shopee', fn () => $this->fetchBaseInfo($shop, $chunkInts));
+
+            foreach ($baseInfo as $item) {
+                try {
+                    $item = $this->hydrateModels($shop, $item);
+                    if ($this->persistItem($shop, $shopId, $item, $mapper, $productService)) {
+                        $downloaded++;
+                    }
+                } catch (\Throwable $e) {
+                    $failed++;
+                    Log::error('Shopee chunk gagal item ' . ($item['item_id'] ?? '?') . ': ' . $e->getMessage());
+
+                    ProductSyncLog::record([
+                        'channel_shop_id' => $shop->id,
+                        'action' => ProductSyncLog::ACTION_DOWNLOAD,
+                        'status' => ProductSyncLog::STATUS_FAILED,
+                        'payload' => [
+                            'external_product_id' => $item['item_id'] ?? null,
+                            'title' => $item['item_name'] ?? null,
+                        ],
+                        'error_message' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+
+        return ['downloaded' => $downloaded, 'failed' => $failed];
     }
 
     public function pullProductById(string $shopId, string $externalProductId): bool

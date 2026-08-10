@@ -2,9 +2,13 @@
 
 namespace Modules\Channel\Services;
 
+use Illuminate\Bus\Batch;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Modules\Channel\Contracts\ChunkedDownloadable;
 use Modules\Channel\Jobs\DownloadProductsJob;
+use Modules\Channel\Jobs\ProcessDownloadChunkJob;
 use Modules\Channel\Models\DownloadTransaction;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Product\Models\ProductChannelMapping;
@@ -243,5 +247,89 @@ class ChannelDownloadService
             'woocommerce' => fn (string $shopId) => app(WooCommerceProductService::class)->pullProducts($shopId, $onProgress),
             default => throw new \RuntimeException("Channel '{$channel}' belum didukung untuk download", 422),
         };
+    }
+
+    protected function pullerServiceFor(string $channel): ?ChunkedDownloadable
+    {
+        $service = match (strtolower($channel)) {
+            'shopee' => app(ShopeeProductService::class),
+            'tiktok' => app(TikTokProductService::class),
+            'lazada' => app(LazadaProductService::class),
+            'woocommerce' => app(WooCommerceProductService::class),
+            default => null,
+        };
+
+        return $service instanceof ChunkedDownloadable ? $service : null;
+    }
+
+    public function supportsBatch(string $channel): bool
+    {
+        $enabled = array_filter(array_map('trim', explode(',', (string) env('DOWNLOAD_BATCH_CHANNELS', ''))));
+
+        return in_array(strtolower($channel), $enabled, true)
+            && $this->pullerServiceFor($channel) !== null;
+    }
+
+    public function downloadChunk(string $channel, string $shopId, array $externalIds): array
+    {
+        $puller = $this->pullerServiceFor($channel);
+        if (! $puller) {
+            return ['downloaded' => 0, 'failed' => count($externalIds)];
+        }
+
+        return $puller->downloadProductIds($shopId, $externalIds);
+    }
+
+    public function dispatchBatched(DownloadTransaction $transaction, string $channel, string $shopId): void
+    {
+        $puller = $this->pullerServiceFor($channel);
+        if (! $puller) {
+            $transaction->markFailed("Channel '{$channel}' tak mendukung batch download");
+
+            return;
+        }
+
+        $ids = $puller->listProductIds($shopId);
+
+        $transaction->update([
+            'state' => DownloadTransaction::STATE_DOWNLOADING,
+            'all_product' => count($ids),
+            'total_downloaded' => 0,
+            'total_failed' => 0,
+            'progress_percent' => $ids === [] ? 100 : 0,
+        ]);
+
+        if ($ids === []) {
+            $transaction->update(['state' => DownloadTransaction::STATE_DONE, 'progress_percent' => 100]);
+
+            return;
+        }
+
+        $chunkSize = max(1, (int) env('DOWNLOAD_BATCH_CHUNK', 50));
+        $trxId = $transaction->id;
+
+        $jobs = array_map(
+            fn (array $chunk) => new ProcessDownloadChunkJob($trxId, $channel, $shopId, $chunk),
+            array_chunk($ids, $chunkSize),
+        );
+
+        Bus::batch($jobs)
+            ->name("download:{$trxId}")
+            ->onConnection('redis-long')
+            ->onQueue(config('queue.names.downloads'))
+            ->finally(function (Batch $batch) use ($trxId) {
+                $t = DownloadTransaction::find($trxId);
+                if (! $t) {
+                    return;
+                }
+
+                $t->update([
+                    'state' => $batch->hasFailures() && (int) $t->total_downloaded === 0
+                        ? DownloadTransaction::STATE_FAILED
+                        : DownloadTransaction::STATE_DONE,
+                    'progress_percent' => 100,
+                ]);
+            })
+            ->dispatch();
     }
 }

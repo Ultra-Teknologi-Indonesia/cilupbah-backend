@@ -45,6 +45,12 @@ class DownloadProductsJob implements ShouldQueue
             return;
         }
 
+        if ($service->supportsBatch($this->channel)) {
+            $service->dispatchBatched($transaction, $this->channel, $this->shopId);
+
+            return;
+        }
+
         $transaction->markDownloading();
 
         $lastUpdate = 0;
