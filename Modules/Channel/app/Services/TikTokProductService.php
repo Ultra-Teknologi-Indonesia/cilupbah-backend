@@ -370,7 +370,7 @@ class TikTokProductService
                 try {
 
                     $detail       = $details[(string) ($item['id'] ?? '')] ?? $item;
-                    $internalData = app(ChannelAssetImporter::class)->import($mapper->map($detail, $shopId));
+                    $internalData = $mapper->map($detail, $shopId);
                     $insertedId   = $productService->upsertFromChannel($internalData, $matchedExisting, $variantIds);
 
                     if ($insertedId) {
@@ -531,7 +531,7 @@ class TikTokProductService
             return false;
         }
 
-        $internalData = app(ChannelAssetImporter::class)->import($mapper->map($detail, $shopId));
+        $internalData = $mapper->map($detail, $shopId);
         $insertedId   = $productService->upsertFromChannel($internalData, $matchedExisting, $variantIds);
 
         if (!$insertedId) {

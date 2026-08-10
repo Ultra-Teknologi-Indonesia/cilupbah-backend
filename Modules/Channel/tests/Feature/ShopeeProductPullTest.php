@@ -11,6 +11,7 @@ use Modules\Channel\Jobs\DownloadProductsJob;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\ShopeeProductService;
+use Modules\Product\Jobs\MirrorProductMediaJob;
 use Tests\TestCase;
 
 class ShopeeProductPullTest extends TestCase
@@ -218,5 +219,25 @@ class ShopeeProductPullTest extends TestCase
             ->assertStatus(202);
 
         Queue::assertPushed(DownloadProductsJob::class);
+    }
+
+    public function test_pull_offloads_media_to_async_mirror_jobs(): void
+    {
+        Queue::fake();
+        $this->fakeWithModels();
+
+        app(ShopeeProductService::class)->pullProducts('778899');
+
+        $product = DB::table('products')->where('name', 'Kaos Shopee')->first();
+        $this->assertNotNull($product);
+        $this->assertTrue(
+            DB::table('product_media')
+                ->where('product_id', $product->id)
+                ->where('url', 'https://img.shopee/1.jpg')
+                ->exists(),
+            'media disimpan dengan URL eksternal, bukan diunduh inline saat pull'
+        );
+
+        Queue::assertPushed(MirrorProductMediaJob::class);
     }
 }

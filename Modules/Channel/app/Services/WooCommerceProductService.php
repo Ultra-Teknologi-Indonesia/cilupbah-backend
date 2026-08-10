@@ -208,7 +208,7 @@ class WooCommerceProductService
     {
         $matchedExisting = false;
         $variantIds = [];
-        $internalData = app(ChannelAssetImporter::class)->import($this->inboundMapper->map($item, $shopId));
+        $internalData = $this->inboundMapper->map($item, $shopId);
         $insertedId = $productService->upsertFromChannel($internalData, $matchedExisting, $variantIds);
         if (! $insertedId) {
             return false;

@@ -442,7 +442,7 @@ class ShopeeProductService
     {
         $matchedExisting = false;
         $variantIds = [];
-        $internalData = app(ChannelAssetImporter::class)->import($mapper->map($item, $shopId));
+        $internalData = $mapper->map($item, $shopId);
         $insertedId = $productService->upsertFromChannel($internalData, $matchedExisting, $variantIds);
         if (! $insertedId) {
             return false;
