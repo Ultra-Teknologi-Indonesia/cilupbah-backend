@@ -295,6 +295,10 @@ class ProductService
                 'is_stored', 'is_sold', 'is_purchased', 'purchase_lead_time',
             ]);
 
+            if (isset($productData['sku']) && trim((string) $productData['sku']) === '') {
+                $productData['sku'] = null;
+            }
+
             foreach ([
                 'sales_account_id', 'sales_return_account_id',
                 'inventory_account_id', 'cogs_account_id',
@@ -796,6 +800,10 @@ class ProductService
                 'is_stored', 'is_sold', 'is_purchased',
                 'purchase_lead_time', 'package_contents',
             ]);
+
+            if (isset($productData['sku']) && trim((string) $productData['sku']) === '') {
+                $productData['sku'] = null;
+            }
 
             $productData['status'] = $data['status'] ?? Product::STATUS_MASTER;
             $productData['verified_at'] = $data['verified_at'] ?? null;

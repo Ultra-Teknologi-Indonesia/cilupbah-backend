@@ -65,15 +65,25 @@ class ProductWriteRepository
         return DB::table('products')->where('id', $productId)->value('category_id');
     }
 
+    private function blankSkuToNull(array $row): array
+    {
+        if (array_key_exists('sku', $row) && is_string($row['sku']) && trim($row['sku']) === '') {
+            $row['sku'] = null;
+        }
+
+        return $row;
+    }
+
     public function updateProductRow(string $productId, array $data): void
     {
+        $data = $this->blankSkuToNull($data);
         $data['updated_at'] = now();
         DB::table('products')->where('id', $productId)->update($data);
     }
 
     public function insertProductRow(array $row): void
     {
-        DB::table('products')->insert($row);
+        DB::table('products')->insert($this->blankSkuToNull($row));
     }
 
     public function deleteProductLevelMedia(string $productId): void
@@ -104,12 +114,12 @@ class ProductWriteRepository
 
     public function updateVariantRow(string $variantId, array $data): void
     {
-        DB::table('product_variants')->where('id', $variantId)->update($data);
+        DB::table('product_variants')->where('id', $variantId)->update($this->blankSkuToNull($data));
     }
 
     public function insertVariantRow(array $row): void
     {
-        DB::table('product_variants')->insert($row);
+        DB::table('product_variants')->insert($this->blankSkuToNull($row));
     }
 
     public function variantIdByProductAndSku(string $productId, string $sku): ?string

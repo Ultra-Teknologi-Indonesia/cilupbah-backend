@@ -107,6 +107,7 @@ class ChannelDownloadEmptySkuTest extends TestCase
             'price_info' => [['current_price' => 30000]],
         ], 'SHOP-778899');
         $this->assertEquals('TOPI-REAL', $withItemSku['variants'][0]['sku']);
+        $this->assertEquals('TOPI-REAL', $withItemSku['sku']);
 
         $withoutItemSku = app(ShopeeToInternalProductMapper::class)->map([
             'item_id' => 555300,
@@ -115,6 +116,7 @@ class ChannelDownloadEmptySkuTest extends TestCase
             'price_info' => [['current_price' => 30000]],
         ], 'SHOP-778899');
         $this->assertNull($withoutItemSku['variants'][0]['sku']);
+        $this->assertNull($withoutItemSku['sku']);
     }
 
     public function test_tiktok_mapper_returns_null_sku_when_seller_sku_empty(): void
