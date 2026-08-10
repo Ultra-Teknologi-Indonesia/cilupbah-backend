@@ -6,6 +6,7 @@ use Modules\Channel\Console\Commands\AlertChannelReauth;
 use Modules\Channel\Console\Commands\BackfillDownloadHistory;
 use Modules\Channel\Console\Commands\BackfillShopeeShopNames;
 use Modules\Channel\Console\Commands\EvaluateOrderSyncHealth;
+use Modules\Channel\Console\Commands\MonitorDownloadHealth;
 use Modules\Channel\Console\Commands\ReapStaleDownloadTransactions;
 use Modules\Channel\Console\Commands\SyncTikTokAttributes;
 use Modules\Channel\Models\ChannelShop;
@@ -30,6 +31,7 @@ class ChannelServiceProvider extends ModuleServiceProvider
         BackfillDownloadHistory::class,
         BackfillShopeeShopNames::class,
         EvaluateOrderSyncHealth::class,
+        MonitorDownloadHealth::class,
         ReapStaleDownloadTransactions::class,
         SyncTikTokAttributes::class,
     ];
