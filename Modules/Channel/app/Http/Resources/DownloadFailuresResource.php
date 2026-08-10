@@ -10,7 +10,7 @@ class DownloadFailuresResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        /** @var DownloadFailureReport $report */
+
         $report = $this->resource;
         $transaction = $report->transaction;
 

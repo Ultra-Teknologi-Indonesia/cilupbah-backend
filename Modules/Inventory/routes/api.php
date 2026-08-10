@@ -96,11 +96,19 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
             Route::get('products', [\Modules\Inventory\Http\Controllers\InventorySettingController::class, 'products'])->name('inventory.settings.products');
             Route::get('export/rack-allocation', [\Modules\Inventory\Http\Controllers\InventorySettingController::class, 'exportRackAllocation'])->name('inventory.settings.export.rack');
             Route::get('import/template/{type}', [\Modules\Inventory\Http\Controllers\InventorySettingController::class, 'importTemplate'])->name('inventory.settings.import.template');
+
+            Route::get('rack-import/batches', [\Modules\Inventory\Http\Controllers\RackImportController::class, 'batches'])->name('inventory.settings.rack-import.batches');
+            Route::get('rack-import/batches/{batch}', [\Modules\Inventory\Http\Controllers\RackImportController::class, 'show'])->whereUuid('batch')->name('inventory.settings.rack-import.show');
+            Route::get('rack-import/batches/{batch}/rows', [\Modules\Inventory\Http\Controllers\RackImportController::class, 'rows'])->whereUuid('batch')->name('inventory.settings.rack-import.rows');
+            Route::get('rack-import/batches/{batch}/errors/download', [\Modules\Inventory\Http\Controllers\RackImportController::class, 'downloadErrors'])->whereUuid('batch')->name('inventory.settings.rack-import.errors');
         });
         Route::middleware('role_or_permission:owner|edit-pengaturan-persediaan')->group(function () {
             Route::patch('products/{itemId}', [\Modules\Inventory\Http\Controllers\InventorySettingController::class, 'updateThresholds'])->whereUuid('itemId')->name('inventory.settings.products.update');
             Route::post('import/{type}/preview', [\Modules\Inventory\Http\Controllers\InventorySettingController::class, 'importPreview'])->name('inventory.settings.import.preview');
             Route::post('import/{type}/confirm', [\Modules\Inventory\Http\Controllers\InventorySettingController::class, 'importConfirm'])->name('inventory.settings.import.confirm');
+
+            Route::post('rack-import', [\Modules\Inventory\Http\Controllers\RackImportController::class, 'upload'])->name('inventory.settings.rack-import.upload');
+            Route::post('rack-import/batches/{batch}/confirm', [\Modules\Inventory\Http\Controllers\RackImportController::class, 'confirm'])->whereUuid('batch')->name('inventory.settings.rack-import.confirm');
         });
     });
 
