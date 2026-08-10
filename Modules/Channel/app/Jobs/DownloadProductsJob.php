@@ -34,6 +34,12 @@ class DownloadProductsJob implements ShouldQueue
 
     public function handle(ChannelDownloadService $service): void
     {
+        @ini_set('memory_limit', '256M');
+
+        $hub = \Sentry\SentrySdk::getCurrentHub();
+        $hub->getTransaction()?->setSampled(false);
+        $hub->setSpan(null);
+
         $transaction = DownloadTransaction::find($this->transactionId);
         if (! $transaction) {
             return;
