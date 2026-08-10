@@ -12,6 +12,7 @@ use Modules\Outbound\Repositories\OutboundFulfillmentRepository;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\ShopeeOrderService;
+use Modules\Outbound\Contracts\DriverCallResult;
 use Modules\Outbound\Services\Logistics\LogisticsGateway;
 
 class OutboundFulfillmentService
@@ -22,6 +23,56 @@ class OutboundFulfillmentService
         protected OutboundFulfillmentRepository $fulfillmentRepository,
         protected LogisticsGateway $logisticsGateway,
     ) {}
+
+    public function resolveDriverCallOrderIds(array $orderIds, array $shipmentIds): array
+    {
+        if (! empty($shipmentIds)) {
+            $fromShipments = ShipmentOrder::query()
+                ->whereIn('shipment_id', $shipmentIds)
+                ->pluck('order_id')
+                ->all();
+            $orderIds = array_merge($orderIds, $fromShipments);
+        }
+
+        return array_values(array_unique(array_map('strval', $orderIds)));
+    }
+
+    public function dispatchInstantDriverCalls(array $orderIds, int $shipperId): DriverCallResult
+    {
+        $orders = Order::query()
+            ->whereIn('id', $orderIds)
+            ->get(['id', 'source', 'driver_call_status']);
+
+        $groupedFresh = [];
+        $groupedRetry = [];
+        foreach ($orders as $order) {
+            $key = strtolower((string) ($order->source ?? 'manual')) ?: 'manual';
+            if ($order->driver_call_status === 'failed') {
+                $groupedRetry[$key][] = (string) $order->id;
+            } else {
+                $groupedFresh[$key][] = (string) $order->id;
+            }
+        }
+
+        $foundIds = array_map('strval', $orders->pluck('id')->all());
+        $missing = array_values(array_diff($orderIds, $foundIds));
+
+        $aggregate = new DriverCallResult(array_map(fn ($id) => [
+            'order_id' => $id,
+            'status' => DriverCallResult::STATUS_FAILED,
+            'message' => 'Pesanan tidak ditemukan.',
+        ], $missing));
+
+        foreach ($groupedFresh as $source => $ids) {
+            $aggregate = $aggregate->merge($this->logisticsGateway->for($source)->callDriver($ids, $shipperId));
+        }
+
+        foreach ($groupedRetry as $source => $ids) {
+            $aggregate = $aggregate->merge($this->logisticsGateway->for($source)->retryCallDriver($ids, $shipperId));
+        }
+
+        return $aggregate;
+    }
 
     public function readyToShip(array $orderIds): array
     {

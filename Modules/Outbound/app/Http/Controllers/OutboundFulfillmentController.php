@@ -6,10 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Modules\Outbound\Contracts\DriverCallResult;
-use Modules\Outbound\Services\Logistics\LogisticsGateway;
 use Modules\Outbound\Services\OutboundFulfillmentService;
-use Modules\Sales\Models\SalesOrder;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Outbound - Fulfillment', description: 'API Endpoints for Outbound Fulfillment Queue Views')]
@@ -19,7 +16,6 @@ class OutboundFulfillmentController extends Controller
 
     public function __construct(
         protected OutboundFulfillmentService $fulfillmentService,
-        protected LogisticsGateway $logisticsGateway,
     ) {}
 
     #[OA\Get(
@@ -496,55 +492,19 @@ class OutboundFulfillmentController extends Controller
             'shipment_ids.*' => ['required', 'string'],
         ]);
 
-        $shipperId = (int) $validated['shipper_id'];
-        $orderIds = $validated['order_ids'] ?? [];
-
-        if (! empty($validated['shipment_ids'] ?? [])) {
-            $fromShipments = \Modules\Outbound\Models\ShipmentOrder::query()
-                ->whereIn('shipment_id', $validated['shipment_ids'])
-                ->pluck('order_id')
-                ->all();
-            $orderIds = array_values(array_unique(array_merge($orderIds, $fromShipments)));
-        }
+        $orderIds = $this->fulfillmentService->resolveDriverCallOrderIds(
+            $validated['order_ids'] ?? [],
+            $validated['shipment_ids'] ?? [],
+        );
 
         if (empty($orderIds)) {
             return $this->errorResponse('order_ids atau shipment_ids wajib diisi.', 422);
         }
 
-        $orders = SalesOrder::query()
-            ->whereIn('id', $orderIds)
-            ->get(['id', 'source', 'driver_call_status']);
-
-        $groupedFresh = [];
-        $groupedRetry = [];
-        foreach ($orders as $order) {
-            $key = strtolower((string) ($order->source ?? 'manual')) ?: 'manual';
-            $bucket = $order->driver_call_status === 'failed' ? 'retry' : 'fresh';
-            if ($bucket === 'retry') {
-                $groupedRetry[$key][] = (string) $order->id;
-            } else {
-                $groupedFresh[$key][] = (string) $order->id;
-            }
-        }
-
-        $foundIds = $orders->pluck('id')->all();
-        $missing = array_values(array_diff($orderIds, array_map('strval', $foundIds)));
-
-        $aggregate = new DriverCallResult(array_map(fn ($id) => [
-            'order_id' => $id,
-            'status' => DriverCallResult::STATUS_FAILED,
-            'message' => 'Pesanan tidak ditemukan.',
-        ], $missing));
-
-        foreach ($groupedFresh as $source => $ids) {
-            $adapter = $this->logisticsGateway->for($source);
-            $aggregate = $aggregate->merge($adapter->callDriver($ids, $shipperId));
-        }
-
-        foreach ($groupedRetry as $source => $ids) {
-            $adapter = $this->logisticsGateway->for($source);
-            $aggregate = $aggregate->merge($adapter->retryCallDriver($ids, $shipperId));
-        }
+        $aggregate = $this->fulfillmentService->dispatchInstantDriverCalls(
+            $orderIds,
+            (int) $validated['shipper_id'],
+        );
 
         $summary = $aggregate->summary();
 

@@ -34,9 +34,7 @@ class BulkShippingLabelController extends Controller
         $key = "bulk-label:{$userId}";
         if (RateLimiter::tooManyAttempts($key, 5)) {
             $seconds = RateLimiter::availableIn($key);
-            return response()->json([
-                'message' => "Terlalu sering. Coba lagi dalam {$seconds} detik.",
-            ], 429);
+            return $this->errorResponse("Terlalu sering. Coba lagi dalam {$seconds} detik.", 429);
         }
         RateLimiter::hit($key, 60);
 
@@ -51,7 +49,7 @@ class BulkShippingLabelController extends Controller
 
         ProcessBulkShippingLabelJob::dispatch($batch->id);
 
-        return response()->json(['batch_id' => $batch->id], 202);
+        return $this->successResponse(['batch_id' => $batch->id], null, 202);
     }
 
     public function show(Request $req, BulkShippingLabelBatch $batch): JsonResponse
@@ -68,7 +66,7 @@ class BulkShippingLabelController extends Controller
 
         $retryable = $batch->items->filter(fn ($i) => $i->isRecoverable())->count();
 
-        return response()->json([
+        return $this->successResponse([
             'id' => $batch->id,
             'status' => $batch->status,
             'total' => $batch->total_count,
@@ -173,9 +171,7 @@ class BulkShippingLabelController extends Controller
             ->all();
 
         if (empty($recoverableOrderIds)) {
-            return response()->json([
-                'message' => 'Tidak ada label gagal yang bisa dicoba ulang.',
-            ], 422);
+            return $this->errorResponse('Tidak ada label gagal yang bisa dicoba ulang.', 422);
         }
 
         $newBatch = $this->svc->createBatch(
@@ -186,9 +182,9 @@ class BulkShippingLabelController extends Controller
 
         ProcessBulkShippingLabelJob::dispatch($newBatch->id);
 
-        return response()->json([
+        return $this->successResponse([
             'batch_id' => $newBatch->id,
             'retried_count' => count($recoverableOrderIds),
-        ], 202);
+        ], null, 202);
     }
 }

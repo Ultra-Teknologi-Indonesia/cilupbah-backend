@@ -21,7 +21,9 @@ class BulkShippingLabelControllerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->seed(\Database\Seeders\RoleSeeder::class);
         $this->user = User::factory()->create();
+        $this->user->assignRole('owner');
         $this->actingAs($this->user, 'sanctum');
     }
 
@@ -41,9 +43,9 @@ class BulkShippingLabelControllerTest extends TestCase
             ],
         ]);
 
-        $res->assertStatus(202)->assertJsonStructure(['batch_id']);
+        $res->assertStatus(202)->assertJsonStructure(['data' => ['batch_id']]);
 
-        $batchId = $res->json('batch_id');
+        $batchId = $res->json('data.batch_id');
         $this->assertDatabaseHas('bulk_shipping_label_batches', [
             'id' => $batchId,
             'user_id' => $this->user->id,
@@ -88,11 +90,11 @@ class BulkShippingLabelControllerTest extends TestCase
 
         $this->getJson("/api/v1/sales/shipping-labels/bulk/{$batch->id}")
             ->assertOk()
-            ->assertJsonPath('id', $batch->id)
-            ->assertJsonPath('status', 'processing')
-            ->assertJsonPath('total', 2)
-            ->assertJsonPath('done', 1)
-            ->assertJsonPath('pdf_url', null);
+            ->assertJsonPath('data.id', $batch->id)
+            ->assertJsonPath('data.status', 'processing')
+            ->assertJsonPath('data.total', 2)
+            ->assertJsonPath('data.done', 1)
+            ->assertJsonPath('data.pdf_url', null);
     }
 
     public function test_download_pdf_404_when_not_ready(): void
@@ -180,7 +182,7 @@ class BulkShippingLabelControllerTest extends TestCase
 
         $this->postJson("/api/v1/sales/shipping-labels/bulk/{$batch->id}/retry-failed")
             ->assertStatus(202)
-            ->assertJsonStructure(['batch_id']);
+            ->assertJsonStructure(['data' => ['batch_id']]);
 
         Bus::assertDispatched(ProcessBulkShippingLabelJob::class);
     }

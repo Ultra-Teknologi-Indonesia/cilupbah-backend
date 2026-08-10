@@ -73,9 +73,7 @@ class ReportController extends Controller
     {
         $job = $exports->queue(request()->user(), $type, $params);
 
-        return response()->json([
-            'data' => ['export_id' => $job->id, 'status' => $job->status],
-        ], 202);
+        return $this->successResponse(['export_id' => $job->id, 'status' => $job->status], null, 202);
     }
 
     public function negativeStockExportAsync(NegativeStockExportRequest $request, ExportManager $exports): JsonResponse
@@ -565,12 +563,10 @@ class ReportController extends Controller
     {
         $validated = $request->validated();
 
-        return response()->json([
-            'data' => $this->reportService->pickListLookup(
-                $validated['search'] ?? null,
-                (int) ($validated['per_page'] ?? 20),
-            ),
-        ]);
+        return $this->successResponse($this->reportService->pickListLookup(
+            $validated['search'] ?? null,
+            (int) ($validated['per_page'] ?? 20),
+        ));
     }
 
     #[OA\Get(
@@ -604,7 +600,7 @@ class ReportController extends Controller
     )]
     public function shipmentFilterOptions(): JsonResponse
     {
-        return response()->json(['data' => $this->reportService->shipmentFilterOptions()]);
+        return $this->successResponse($this->reportService->shipmentFilterOptions());
     }
 
     #[OA\Post(
@@ -675,12 +671,10 @@ class ReportController extends Controller
     {
         $validated = $request->validated();
 
-        return response()->json([
-            'data' => $service->lookup(
-                $validated['date'],
-                $validated['location_id'],
-            ),
-        ]);
+        return $this->successResponse($service->lookup(
+            $validated['date'],
+            $validated['location_id'],
+        ));
     }
 
     #[OA\Post(

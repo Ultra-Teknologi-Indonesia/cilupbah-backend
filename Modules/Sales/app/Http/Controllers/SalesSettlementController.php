@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Sales\Services\SalesSettlementService;
+use Modules\Sales\Http\Resources\SalesSettlementResource;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Sales Settlements', description: 'API Endpoints for Marketplace Settlements')]
@@ -58,6 +59,6 @@ class SalesSettlementController extends Controller
             return $this->errorResponse('Settlement tidak ditemukan', 404);
         }
 
-        return $this->successResponse($settlement, 'Detail settlement berhasil diambil');
+        return $this->successResponse(new SalesSettlementResource($settlement), 'Detail settlement berhasil diambil');
     }
 }

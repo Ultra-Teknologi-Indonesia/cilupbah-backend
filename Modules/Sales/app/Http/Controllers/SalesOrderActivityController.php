@@ -21,14 +21,16 @@ class SalesOrderActivityController extends Controller
 
         $paginator = $this->repository->paginateStatusHistory($id, $perPage);
 
-        return response()->json([
-            'data' => SalesOrderActivityResource::collection($paginator->items()),
-            'meta' => [
+        return $this->successResponse(
+            SalesOrderActivityResource::collection($paginator->items()),
+            null,
+            200,
+            [
                 'next_cursor' => $paginator->nextCursor()?->encode(),
                 'prev_cursor' => $paginator->previousCursor()?->encode(),
                 'per_page'    => $perPage,
                 'has_more'    => $paginator->hasMorePages(),
             ],
-        ]);
+        );
     }
 }

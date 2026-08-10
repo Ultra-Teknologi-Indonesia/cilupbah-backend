@@ -17,9 +17,7 @@ class ExportJobController extends Controller
     {
         $job = $this->exports->findOwnedOrFail($export, $request->user()->id);
 
-        return response()->json([
-            'data' => $this->exports->statusPayload($job),
-        ]);
+        return $this->successResponse($this->exports->statusPayload($job));
     }
 
     public function download(Request $request, string $export): StreamedResponse

@@ -15,19 +15,15 @@ class WebhookFailedRedeliveryTest extends TestCase
     {
         $repo = app(ChannelWebhookInboxRepository::class);
 
-        // Pengiriman pertama → RECEIVED + sinyal dispatch (non-null).
         $first = $repo->recordFirstDelivery('shopee', 'S1', 'evt-1', 'order', ['v' => 1]);
         $this->assertNotNull($first);
 
-        // Duplikat saat masih RECEIVED → dianggap duplikat (null, tak reproses).
         $dupWhileReceived = $repo->recordFirstDelivery('shopee', 'S1', 'evt-1', 'order', ['v' => 2]);
         $this->assertNull($dupWhileReceived);
 
-        // Event di-dead-letter (FAILED).
         $first->markFailed('boom');
         $this->assertSame(WebhookInboxStatus::FAILED, $first->fresh()->status);
 
-        // Marketplace me-redeliver event FAILED → beri kesempatan reproses: non-null + reset RECEIVED.
         $redeliver = $repo->recordFirstDelivery('shopee', 'S1', 'evt-1', 'order', ['v' => 3]);
         $this->assertNotNull($redeliver);
         $this->assertSame(WebhookInboxStatus::RECEIVED, $redeliver->fresh()->status);

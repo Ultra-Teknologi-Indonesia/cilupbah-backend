@@ -15,6 +15,7 @@ use Modules\Sales\Http\Requests\SalesReturnReportRequest;
 use Modules\Sales\Http\Requests\StoreSalesReturnRequest;
 use Modules\Sales\Http\Resources\SalesReturnAppealResource;
 use Modules\Sales\Http\Resources\SalesReturnReportResource;
+use Modules\Sales\Http\Resources\SalesReturnResource;
 use Modules\Sales\Services\SalesReturnChannelActionService;
 use Modules\Sales\Services\SalesReturnDetailSyncService;
 use Modules\Sales\Services\SalesReturnService;
@@ -94,7 +95,7 @@ class SalesReturnController extends Controller
             return $this->errorResponse('Sales return tidak ditemukan', 404);
         }
 
-        return $this->successResponse($return, 'Detail sales return berhasil diambil');
+        return $this->successResponse(new SalesReturnResource($return), 'Detail sales return berhasil diambil');
     }
 
     #[OA\Post(
@@ -130,7 +131,7 @@ class SalesReturnController extends Controller
     {
         $return = $this->returnService->create($request->validated());
 
-        return $this->successResponse($return, 'Sales return berhasil dibuat', 201);
+        return $this->successResponse(new SalesReturnResource($return), 'Sales return berhasil dibuat', 201);
     }
 
     #[OA\Post(
@@ -156,7 +157,7 @@ class SalesReturnController extends Controller
     {
         $return = $this->returnService->accept($id, $request->only('processed_by', 'items'));
 
-        return $this->successResponse($return, 'Return diterima, Inbound GRN dibuat');
+        return $this->successResponse(new SalesReturnResource($return), 'Return diterima, Inbound GRN dibuat');
     }
 
     #[OA\Post(
@@ -183,7 +184,7 @@ class SalesReturnController extends Controller
     {
         $return = $this->returnService->reject($id, $request->only('processed_by', 'reason'));
 
-        return $this->successResponse($return, 'Return ditolak');
+        return $this->successResponse(new SalesReturnResource($return), 'Return ditolak');
     }
 
     #[OA\Post(
@@ -209,7 +210,7 @@ class SalesReturnController extends Controller
     {
         $return = $this->returnService->complete($id, $request->only('processed_by'));
 
-        return $this->successResponse($return, 'Return selesai');
+        return $this->successResponse(new SalesReturnResource($return), 'Return selesai');
     }
 
     #[OA\Post(
@@ -235,7 +236,7 @@ class SalesReturnController extends Controller
 
         $this->trackingSyncService->syncOne($return);
 
-        return $this->successResponse($this->returnService->getById($id), 'Sinkronisasi resi retur selesai');
+        return $this->successResponse(new SalesReturnResource($this->returnService->getById($id)), 'Sinkronisasi resi retur selesai');
     }
 
     #[OA\Post(
@@ -261,7 +262,7 @@ class SalesReturnController extends Controller
 
         $this->detailSyncService->syncOne($return);
 
-        return $this->successResponse($this->returnService->getById($id), 'Sinkronisasi detail retur selesai');
+        return $this->successResponse(new SalesReturnResource($this->returnService->getById($id)), 'Sinkronisasi detail retur selesai');
     }
 
     #[OA\Get(
@@ -315,7 +316,7 @@ class SalesReturnController extends Controller
 
         $this->channelActionService->acceptForChannel($return);
 
-        return $this->successResponse($this->returnService->getById($id), 'Retur berhasil disetujui di marketplace');
+        return $this->successResponse(new SalesReturnResource($this->returnService->getById($id)), 'Retur berhasil disetujui di marketplace');
     }
 
     #[OA\Post(
@@ -351,7 +352,7 @@ class SalesReturnController extends Controller
 
         $this->channelActionService->rejectForChannel($return, $validated['reason_id'], $validated['note'] ?? null);
 
-        return $this->successResponse($this->returnService->getById($id), 'Retur berhasil ditolak di marketplace');
+        return $this->successResponse(new SalesReturnResource($this->returnService->getById($id)), 'Retur berhasil ditolak di marketplace');
     }
 
     #[OA\Get(

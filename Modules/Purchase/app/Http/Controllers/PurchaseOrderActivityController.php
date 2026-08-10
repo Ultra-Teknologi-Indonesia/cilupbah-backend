@@ -18,14 +18,16 @@ class PurchaseOrderActivityController extends Controller
 
         $activities = $this->repository->paginateActivities($id, $perPage);
 
-        return response()->json([
-            'data' => PurchaseOrderActivityResource::collection($activities->items()),
-            'meta' => [
+        return $this->successResponse(
+            PurchaseOrderActivityResource::collection($activities->items()),
+            null,
+            200,
+            [
                 'next_cursor' => $activities->nextCursor()?->encode(),
                 'prev_cursor' => $activities->previousCursor()?->encode(),
                 'per_page'    => $perPage,
                 'has_more'    => $activities->hasMorePages(),
             ],
-        ]);
+        );
     }
 }

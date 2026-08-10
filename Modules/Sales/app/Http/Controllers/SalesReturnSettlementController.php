@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Sales\Services\SalesReturnSettlementService;
+use Modules\Sales\Http\Resources\SalesReturnSettlementResource;
+use Modules\Sales\Http\Resources\SalesReturnSettlementInvoiceResource;
+use Modules\Sales\Http\Resources\SalesReturnSettlementRefundResource;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Sales Return Settlements', description: 'API Endpoints for Return Settlements')]
@@ -63,7 +66,7 @@ class SalesReturnSettlementController extends Controller
 
         $settlement = $this->service->create($validated);
 
-        return $this->successResponse($settlement, 'Return settlement berhasil dibuat', 201);
+        return $this->successResponse(new SalesReturnSettlementResource($settlement), 'Return settlement berhasil dibuat', 201);
     }
 
     #[OA\Get(
@@ -87,7 +90,7 @@ class SalesReturnSettlementController extends Controller
             return $this->errorResponse('Return settlement tidak ditemukan', 404);
         }
 
-        return $this->successResponse($settlement);
+        return $this->successResponse(new SalesReturnSettlementResource($settlement));
     }
 
     #[OA\Post(
@@ -106,7 +109,7 @@ class SalesReturnSettlementController extends Controller
     {
         $settlement = $this->service->confirm($id);
 
-        return $this->successResponse($settlement, 'Settlement berhasil dikonfirmasi');
+        return $this->successResponse(new SalesReturnSettlementResource($settlement), 'Settlement berhasil dikonfirmasi');
     }
 
     #[OA\Post(
@@ -125,7 +128,7 @@ class SalesReturnSettlementController extends Controller
     {
         $settlement = $this->service->complete($id);
 
-        return $this->successResponse($settlement, 'Settlement berhasil diselesaikan');
+        return $this->successResponse(new SalesReturnSettlementResource($settlement), 'Settlement berhasil diselesaikan');
     }
 
     #[OA\Delete(
@@ -195,7 +198,7 @@ class SalesReturnSettlementController extends Controller
 
         $entry = $this->service->createInvoice($validated);
 
-        return $this->successResponse($entry, 'Settlement invoice berhasil dibuat', 201);
+        return $this->successResponse(new SalesReturnSettlementInvoiceResource($entry), 'Settlement invoice berhasil dibuat', 201);
     }
 
     #[OA\Get(
@@ -219,7 +222,7 @@ class SalesReturnSettlementController extends Controller
             return $this->errorResponse('Settlement invoice tidak ditemukan', 404);
         }
 
-        return $this->successResponse($entry);
+        return $this->successResponse(new SalesReturnSettlementInvoiceResource($entry));
     }
 
     #[OA\Get(
@@ -278,7 +281,7 @@ class SalesReturnSettlementController extends Controller
 
         $refund = $this->service->createRefund($validated);
 
-        return $this->successResponse($refund, 'Refund berhasil dibuat', 201);
+        return $this->successResponse(new SalesReturnSettlementRefundResource($refund), 'Refund berhasil dibuat', 201);
     }
 
     #[OA\Get(
@@ -302,7 +305,7 @@ class SalesReturnSettlementController extends Controller
             return $this->errorResponse('Refund tidak ditemukan', 404);
         }
 
-        return $this->successResponse($refund);
+        return $this->successResponse(new SalesReturnSettlementRefundResource($refund));
     }
 
     #[OA\Delete(

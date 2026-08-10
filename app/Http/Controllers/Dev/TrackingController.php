@@ -4,12 +4,17 @@ namespace App\Http\Controllers\Dev;
 
 use App\Http\Controllers\Controller;
 use App\Models\TrackingItem;
+use App\Services\TrackingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class TrackingController extends Controller
 {
+    public function __construct(private TrackingService $tracking) {}
+
+    private const FILTER_KEYS = ['domain', 'status', 'pic', 'source', 'q'];
+
     public function index()
     {
         return view('dev.tracking');
@@ -17,21 +22,10 @@ class TrackingController extends Controller
 
     public function data(Request $request)
     {
-        $items = $this->filtered($request)
-            ->orderByRaw("CASE source WHEN 'legacy' THEN 0 WHEN 'epic' THEN 1 ELSE 2 END")
-            ->orderBy('domain')
-            ->orderBy('id')
-            ->get();
-
         return $this->successResponse([
-            'items' => $items,
-            'summary' => $this->summary(),
-        ], null, 200, [
-            'domains' => TrackingItem::query()->distinct()->orderBy('domain')->pluck('domain'),
-            'pics' => TrackingItem::query()->whereNotNull('pic')->distinct()->orderBy('pic')->pluck('pic'),
-            'statuses' => TrackingItem::STATUSES,
-            'sources' => ['legacy', 'epic', 'omnichannel'],
-        ]);
+            'items' => $this->tracking->list($request->only(self::FILTER_KEYS)),
+            'summary' => $this->tracking->summary(),
+        ], null, 200, $this->tracking->filterOptions());
     }
 
     public function update(Request $request, TrackingItem $item)
@@ -43,19 +37,17 @@ class TrackingController extends Controller
             'updated_by' => ['sometimes', 'nullable', 'string', 'max:60'],
         ]);
 
-        $item->fill($validated)->save();
-
         return $this->successResponse([
             'ok' => true,
-            'item' => $item->fresh(),
-            'summary' => $this->summary(),
+            'item' => $this->tracking->update($item, $validated),
+            'summary' => $this->tracking->summary(),
         ]);
     }
 
     public function export(Request $request): StreamedResponse
     {
         $format = $request->query('format', 'csv');
-        $items = $this->filtered($request)->orderBy('domain')->orderBy('id')->get();
+        $items = $this->tracking->exportList($request->only(self::FILTER_KEYS));
         $stamp = now()->format('Ymd_His');
 
         if ($format === 'md') {
@@ -78,44 +70,4 @@ class TrackingController extends Controller
         }, "dev-tracker-{$stamp}.csv", ['Content-Type' => 'text/csv']);
     }
 
-    private function filtered(Request $request)
-    {
-        return TrackingItem::query()
-            ->when($request->filled('domain'), fn ($q) => $q->where('domain', $request->domain))
-            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
-            ->when($request->filled('pic'), fn ($q) => $q->where('pic', $request->pic))
-            ->when($request->filled('source'), fn ($q) => $q->where('source', $request->source))
-            ->when($request->filled('q'), function ($q) use ($request) {
-                $term = '%'.$request->q.'%';
-                $q->where(fn ($w) => $w->where('endpoint', 'ilike', $term)->orWhere('function_id', 'ilike', $term));
-            });
-    }
-
-    private function summary(): array
-    {
-        $base = fn () => TrackingItem::query();
-        $byStatus = fn ($q) => [
-            'total' => (clone $q)->count(),
-            'done' => (clone $q)->where('status', 'done')->count(),
-            'in_progress' => (clone $q)->where('status', 'in_progress')->count(),
-            'todo' => (clone $q)->where('status', 'todo')->count(),
-            'blocked' => (clone $q)->where('status', 'blocked')->count(),
-        ];
-
-        $perDomain = [];
-        foreach (TrackingItem::query()->distinct()->orderBy('domain')->pluck('domain') as $dom) {
-            $perDomain[$dom] = $byStatus($base()->where('domain', $dom));
-        }
-
-        $perPic = [];
-        foreach (['Darriel', 'Rasyid'] as $pic) {
-            $perPic[$pic] = $byStatus($base()->where('pic', $pic));
-        }
-
-        return [
-            'overall' => $byStatus($base()),
-            'per_domain' => $perDomain,
-            'per_pic' => $perPic,
-        ];
-    }
 }

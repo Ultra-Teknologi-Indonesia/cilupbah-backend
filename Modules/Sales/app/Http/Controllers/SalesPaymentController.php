@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Sales\Services\SalesPaymentService;
 use Modules\Sales\Http\Requests\StoreSalesPaymentRequest;
+use Modules\Sales\Http\Resources\SalesPaymentResource;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Sales Payments', description: 'API Endpoints for Sales Payments')]
@@ -64,7 +65,7 @@ class SalesPaymentController extends Controller
     {
         $payment = $this->paymentService->create($request->validated());
 
-        return $this->successResponse($payment, 'Payment berhasil dibuat', 201);
+        return $this->successResponse(new SalesPaymentResource($payment), 'Payment berhasil dibuat', 201);
     }
 
     #[OA\Get(
@@ -88,7 +89,7 @@ class SalesPaymentController extends Controller
             return $this->errorResponse('Payment tidak ditemukan', 404);
         }
 
-        return $this->successResponse($payment, 'Detail payment berhasil diambil');
+        return $this->successResponse(new SalesPaymentResource($payment), 'Detail payment berhasil diambil');
     }
 
     #[OA\Delete(

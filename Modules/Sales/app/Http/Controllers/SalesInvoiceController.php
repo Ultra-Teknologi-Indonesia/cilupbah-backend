@@ -7,6 +7,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Sales\Services\SalesInvoiceService;
 use Modules\Sales\Http\Requests\StoreSalesInvoiceRequest;
+use Modules\Sales\Http\Resources\SalesInvoiceResource;
+use Modules\Sales\Http\Resources\SalesPaymentResource;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Sales Invoices', description: 'API Endpoints for Sales Invoices')]
@@ -74,7 +76,7 @@ class SalesInvoiceController extends Controller
     {
         $invoice = $this->invoiceService->createOrUpdate($request->validated());
 
-        return $this->successResponse($invoice, 'Invoice berhasil dibuat', 201);
+        return $this->successResponse(new SalesInvoiceResource($invoice), 'Invoice berhasil dibuat', 201);
     }
 
     #[OA\Get(
@@ -98,7 +100,7 @@ class SalesInvoiceController extends Controller
             return $this->errorResponse('Invoice tidak ditemukan', 404);
         }
 
-        return $this->successResponse($invoice, 'Detail invoice berhasil diambil');
+        return $this->successResponse(new SalesInvoiceResource($invoice), 'Detail invoice berhasil diambil');
     }
 
     #[OA\Get(
@@ -207,7 +209,7 @@ class SalesInvoiceController extends Controller
 
         $invoice = $this->invoiceService->createFromOrder($validated);
 
-        return $this->successResponse($invoice, 'Invoice berhasil dibuat dari order', 201);
+        return $this->successResponse(new SalesInvoiceResource($invoice), 'Invoice berhasil dibuat dari order', 201);
     }
 
     #[OA\Post(
@@ -245,6 +247,9 @@ class SalesInvoiceController extends Controller
 
         $result = $this->invoiceService->createFromOrderWithPayment($validated);
 
-        return $this->successResponse($result, 'Invoice dan payment berhasil dibuat', 201);
+        return $this->successResponse([
+            'invoice' => new SalesInvoiceResource($result['invoice']),
+            'payment' => new SalesPaymentResource($result['payment']),
+        ], 'Invoice dan payment berhasil dibuat', 201);
     }
 }
