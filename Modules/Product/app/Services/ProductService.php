@@ -17,6 +17,7 @@ use Modules\Inventory\Support\StockSummary;
 use Modules\Product\Jobs\MirrorProductMediaJob;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
+use Modules\Product\Support\ProductIngestSanitizer;
 use Modules\Product\Models\ProductMedia;
 use Modules\Product\Models\Attribute;
 use Modules\Product\Repositories\ProductRepository;
@@ -216,6 +217,7 @@ class ProductService
 
     public function upsertFromChannel(array $data, ?bool &$matchedExisting = null, ?array &$variantIds = null)
     {
+        $data = ProductIngestSanitizer::sanitize($data);
         $variantIds = [];
         $parentSku = $data['sku'] ?? null;
         $productId = null;
