@@ -3,7 +3,9 @@
 namespace Modules\Channel\Repositories;
 
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Collection;
 use Modules\Channel\Models\DownloadTransaction;
+use Modules\Product\Models\ProductSyncLog;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
 
@@ -36,6 +38,18 @@ class DownloadTransactionRepository
         return DownloadTransaction::query()
             ->with(self::RELATIONS)
             ->findOrFail($id);
+    }
+
+    public function failureLogs(DownloadTransaction $transaction): Collection
+    {
+        return ProductSyncLog::query()
+            ->where('channel_shop_id', $transaction->channel_shop_id)
+            ->where('action', ProductSyncLog::ACTION_DOWNLOAD)
+            ->where('status', ProductSyncLog::STATUS_FAILED)
+            ->where('created_at', '>=', $transaction->created_at)
+            ->where('created_at', '<=', $transaction->updated_at)
+            ->orderByDesc('created_at')
+            ->get(['payload', 'error_message', 'created_at']);
     }
 
     public function paginateShopProducts(string $channelShopId): LengthAwarePaginator

@@ -7,9 +7,11 @@ use App\Traits\ApiResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Modules\Channel\Http\Resources\DownloadFailuresResource;
 use Modules\Channel\Http\Resources\DownloadTransactionResource;
 use Modules\Channel\Models\DownloadTransaction;
 use Modules\Channel\Repositories\DownloadTransactionRepository;
+use Modules\Channel\Services\DownloadFailureService;
 
 class DownloadTransactionController extends Controller
 {
@@ -82,5 +84,19 @@ class DownloadTransactionController extends Controller
             'per_page' => $products->perPage(),
             'total' => $products->total(),
         ]);
+    }
+
+    public function failures(Request $request, string $id, DownloadFailureService $service): JsonResponse
+    {
+        try {
+            $transaction = $this->repository->find($id);
+        } catch (ModelNotFoundException) {
+            return $this->errorResponse('Transaksi download tidak ditemukan', 404);
+        }
+
+        return $this->successResponse(
+            (new DownloadFailuresResource($service->report($transaction)))->resolve($request),
+            'Get download failures success',
+        );
     }
 }

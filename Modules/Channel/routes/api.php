@@ -31,6 +31,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
         Route::get('download-transactions', [\Modules\Channel\Http\Controllers\DownloadTransactionController::class, 'index']);
         Route::get('download-transactions/{id}', [\Modules\Channel\Http\Controllers\DownloadTransactionController::class, 'show']);
+        Route::get('download-transactions/{id}/failures', [\Modules\Channel\Http\Controllers\DownloadTransactionController::class, 'failures']);
     });
 
     Route::middleware('role_or_permission:owner|edit-integrasi-channel')->group(function () {
