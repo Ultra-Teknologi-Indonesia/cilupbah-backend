@@ -19,11 +19,12 @@ class MasterFeedRepository
         'channelMappings.channelShop.channel',
     ];
 
-    public function paginate(string $status, ?string $updatedSince = null): LengthAwarePaginator
+    public function paginate(string $status, ?string $updatedSince = null, array $excludeIds = []): LengthAwarePaginator
     {
         return QueryBuilder::for(Product::class)
             ->where('status', $status)
             ->when($updatedSince, fn ($query) => $query->where('updated_at', '>=', $updatedSince))
+            ->when(! empty($excludeIds), fn ($query) => $query->whereNotIn('id', $excludeIds))
             ->with(self::RELATIONS)
             ->allowedSearch('name', 'sku')
             ->allowedFilters(
@@ -115,6 +116,83 @@ class MasterFeedRepository
             ->defaultSort('-updated_at')
             ->paginate(request('per_page', 20))
             ->appends(request()->query());
+    }
+
+    /**
+     * Build the display-time merge grouping. For every set of products that
+     * share a master_name, one is chosen as the representative row and the
+     * others are hidden from the flat feed (their data is folded into the
+     * representative). When nothing is merged this returns an inert context so
+     * the feed stays byte-identical to the non-merge-aware behaviour.
+     *
+     * @return array{active: bool, repToMaster: array<string,string>, repToMembers: array<string,array<int,string>>, nonRepIds: array<int,string>}
+     */
+    public function mergeContext(): array
+    {
+        $merges = \Modules\Product\Models\ProductMerge::query()->get(['product_id', 'master_name']);
+        if ($merges->isEmpty()) {
+            return ['active' => false, 'repToMaster' => [], 'repToMembers' => [], 'nonRepIds' => []];
+        }
+
+        $byMaster = [];
+        foreach ($merges as $m) {
+            $byMaster[$m->master_name][$m->product_id] = true;
+        }
+
+        $names = Product::query()
+            ->whereIn('id', $merges->pluck('product_id')->all())
+            ->pluck('name', 'id')
+            ->all();
+
+        $repToMaster = [];
+        $repToMembers = [];
+        $nonRepIds = [];
+
+        foreach ($byMaster as $master => $idSet) {
+            $ids = array_keys($idSet);
+            sort($ids);
+
+            $rep = null;
+            foreach ($ids as $id) {
+                if (($names[$id] ?? null) === $master) {
+                    $rep = $id;
+                    break;
+                }
+            }
+            $rep ??= $ids[0];
+
+            $repToMaster[$rep] = $master;
+            $repToMembers[$rep] = $ids;
+            foreach ($ids as $id) {
+                if ($id !== $rep) {
+                    $nonRepIds[] = $id;
+                }
+            }
+        }
+
+        return [
+            'active' => true,
+            'repToMaster' => $repToMaster,
+            'repToMembers' => $repToMembers,
+            'nonRepIds' => $nonRepIds,
+        ];
+    }
+
+    /**
+     * @param  string[]  $ids
+     * @return \Illuminate\Support\Collection<string, Product>
+     */
+    public function loadSiblings(array $ids): \Illuminate\Support\Collection
+    {
+        if (empty($ids)) {
+            return collect();
+        }
+
+        return Product::query()
+            ->whereIn('id', $ids)
+            ->with(self::RELATIONS)
+            ->get()
+            ->keyBy('id');
     }
 
     public function find(string $id, string $status): Product

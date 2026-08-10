@@ -27,6 +27,9 @@ class MasterItemResource extends JsonResource
             'total_variants' => $this->resource->relationLoaded('variants') ? $this->variants->count() : 0,
             'online_status' => $this->onlineStatus(),
             'thumbnail' => $this->productThumbnail(),
+            'is_merged' => (bool) ($this->is_merged ?? false),
+            'master_name' => $this->merge_master_name ?? null,
+            'member_ids' => $this->merge_member_ids ?? [$this->id],
         ];
     }
 
