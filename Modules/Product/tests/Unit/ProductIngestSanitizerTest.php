@@ -36,6 +36,38 @@ class ProductIngestSanitizerTest extends TestCase
         $this->assertNull($out['variants'][0]['barcode']);
     }
 
+    public function test_dedupes_duplicate_variant_sku_within_product(): void
+    {
+        $out = ProductIngestSanitizer::sanitize([
+            'name' => 'Soft Case',
+            'variants' => [
+                ['sku' => 'ROSE-RED-XR', 'sell_price' => 100],
+                ['sku' => 'ROSE-RED-XR', 'sell_price' => 200],
+                ['sku' => 'BLUE-XR', 'sell_price' => 300],
+                ['sku' => null, 'sell_price' => 400],
+                ['sku' => null, 'sell_price' => 500],
+            ],
+        ]);
+
+        $skus = array_map(fn ($v) => $v['sku'], $out['variants']);
+        $this->assertSame(['ROSE-RED-XR', 'BLUE-XR', null, null], $skus);
+        $this->assertSame(100, $out['variants'][0]['sell_price']);
+    }
+
+    public function test_nullifies_duplicate_variant_barcode_within_product(): void
+    {
+        $out = ProductIngestSanitizer::sanitize([
+            'name' => 'X',
+            'variants' => [
+                ['sku' => 'A', 'barcode' => '123'],
+                ['sku' => 'B', 'barcode' => '123'],
+            ],
+        ]);
+
+        $this->assertSame('123', $out['variants'][0]['barcode']);
+        $this->assertNull($out['variants'][1]['barcode']);
+    }
+
     public function test_drops_invalid_media_urls_keeps_http(): void
     {
         $out = ProductIngestSanitizer::sanitize([

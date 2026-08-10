@@ -38,9 +38,47 @@ class ProductIngestSanitizer
 
                 return $variant;
             }, $data['variants']);
+
+            $data['variants'] = self::dedupeVariants($data['variants']);
         }
 
         return $data;
+    }
+
+    private static function dedupeVariants(array $variants): array
+    {
+        $seenSku = [];
+        $seenBarcode = [];
+        $out = [];
+
+        foreach ($variants as $variant) {
+            if (! is_array($variant)) {
+                $out[] = $variant;
+
+                continue;
+            }
+
+            $sku = $variant['sku'] ?? null;
+            if ($sku !== null) {
+                if (isset($seenSku[$sku])) {
+                    continue;
+                }
+                $seenSku[$sku] = true;
+            }
+
+            $barcode = $variant['barcode'] ?? null;
+            if ($barcode !== null) {
+                if (isset($seenBarcode[$barcode])) {
+                    $variant['barcode'] = null;
+                } else {
+                    $seenBarcode[$barcode] = true;
+                }
+            }
+
+            $out[] = $variant;
+        }
+
+        return array_values($out);
     }
 
     private static function code($value, int $max): ?string
