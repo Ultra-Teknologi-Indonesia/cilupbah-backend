@@ -28,7 +28,7 @@ class ProductFeedQuery
     public static function configure(QueryBuilder $query): QueryBuilder
     {
         return self::applyCriteria($query)
-            ->allowedSorts(self::SORTS)
+            ->allowedSorts(...self::SORTS)
             ->defaultSort(self::DEFAULT_SORT);
     }
 
@@ -40,7 +40,7 @@ class ProductFeedQuery
     {
         return $query
             ->allowedSearch(...self::SEARCHABLE)
-            ->allowedFilters(self::filters());
+            ->allowedFilters(...self::filters());
     }
 
     /**
