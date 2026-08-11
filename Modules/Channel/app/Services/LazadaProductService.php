@@ -420,6 +420,11 @@ class LazadaProductService
             $products = $res['data']['products'] ?? [];
 
             foreach ($products as $item) {
+                $status = strtolower((string) ($item['status'] ?? ''));
+                if ($status !== '' && $status !== 'active' && $status !== 'live') {
+                    continue;
+                }
+
                 $name      = (string) ($item['attributes']['name'] ?? '');
                 $sellerSku = null;
                 foreach ($item['skus'] ?? [] as $sku) {

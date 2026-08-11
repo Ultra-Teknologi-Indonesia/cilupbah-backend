@@ -470,6 +470,10 @@ class TikTokProductService
             }
 
             foreach ($res['data']['products'] ?? [] as $item) {
+                if (isset($item['status']) && strtoupper((string) $item['status']) !== 'ACTIVATE') {
+                    continue;
+                }
+
                 $title     = (string) ($item['title'] ?? '');
                 $sellerSku = null;
                 foreach ($item['skus'] ?? [] as $sku) {

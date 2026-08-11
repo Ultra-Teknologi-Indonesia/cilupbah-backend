@@ -102,6 +102,9 @@ class WooCommerceProductService
             if (! is_array($item)) {
                 continue;
             }
+            if (isset($item['status']) && $item['status'] !== 'publish') {
+                continue;
+            }
             $results[] = [
                 'external_product_id' => (string) ($item['id'] ?? ''),
                 'name' => (string) ($item['name'] ?? ''),

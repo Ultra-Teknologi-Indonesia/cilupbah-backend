@@ -110,6 +110,43 @@ class ChannelSearchDownloadTest extends TestCase
         $this->assertSame('lazada', $results[0]['channel_code']);
     }
 
+    public function test_search_excludes_non_active_tiktok_products(): void
+    {
+        $inactive = $this->tiktokItem();
+        $inactive['id'] = 'TIKTOK-PROD-INACTIVE';
+        $inactive['status'] = 'SELLER_DEACTIVATED';
+
+        Http::fake([
+            '*products/search*' => Http::response([
+                'code' => 0,
+                'data' => ['products' => [$this->tiktokItem(), $inactive]],
+            ], 200),
+        ]);
+
+        $results = app(TikTokProductService::class)->searchProducts('SHOP-TT', '');
+
+        $this->assertCount(1, $results);
+        $this->assertSame('TIKTOK-PROD-1', $results[0]['external_product_id']);
+    }
+
+    public function test_search_excludes_non_active_lazada_products(): void
+    {
+        $inactive = $this->lazadaItem();
+        $inactive['item_id'] = 555200;
+        $inactive['status'] = 'inactive';
+
+        Http::fake([
+            'api.lazada.co.id/rest/products/get*' => Http::response([
+                'code' => '0', 'data' => ['products' => [$this->lazadaItem(), $inactive]],
+            ], 200),
+        ]);
+
+        $results = app(LazadaProductService::class)->searchProducts('LZ-100', '');
+
+        $this->assertCount(1, $results);
+        $this->assertSame('555100', $results[0]['external_product_id']);
+    }
+
     public function test_search_filters_out_non_matching_query(): void
     {
         Http::fake([
