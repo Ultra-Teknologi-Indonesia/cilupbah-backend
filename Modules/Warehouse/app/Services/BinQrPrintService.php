@@ -20,7 +20,7 @@ class BinQrPrintService
         'a4_multi',
     ];
 
-    public const STORAGE_DISK = 'local';
+    public const STORAGE_DISK = 's3';
 
     public const STORAGE_DIR = 'qr-jobs';
 
@@ -94,7 +94,7 @@ class BinQrPrintService
                 'total' => $job->total_bins,
                 'percent' => $job->progressPercent(),
             ],
-            'error_message' => \App\Support\FriendlyError::generic($job->error_message, 'Gagal membuat PDF label rak. Coba lagi.'),
+            'error_message' => empty($job->error_message) ? null : \App\Support\FriendlyError::generic($job->error_message, 'Gagal membuat PDF label rak. Coba lagi.'),
             'started_at' => optional($job->started_at)->toIso8601String(),
             'completed_at' => optional($job->completed_at)->toIso8601String(),
             'download_url' => $job->status === QrPrintJob::STATUS_READY
