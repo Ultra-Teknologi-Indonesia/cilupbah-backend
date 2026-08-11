@@ -559,11 +559,6 @@ class ProductMergeService
         $this->repo->deleteHidden(array_keys($hiddenSet));
     }
 
-    /**
-     * Phase-2 hydration: attach primary photo + channels to the paginated
-     * groups only. These fields are presentational and never affect grouping,
-     * filtering, search, sort or counts.
-     */
     private function hydratePresentation(array $paged): array
     {
         $ids = [];

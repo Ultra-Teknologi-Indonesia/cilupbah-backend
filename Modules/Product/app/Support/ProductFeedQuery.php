@@ -7,13 +7,6 @@ use Modules\Product\Models\Category;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
 
-/**
- * Single source of truth for the product feed's search, filters and sort.
- *
- * Reused by every product feed surface (master list, downloaded list) and by
- * the merge-aware matching pass so the exact same search/filter semantics apply
- * whether we query representative rows or scan member products.
- */
 class ProductFeedQuery
 {
     public const SEARCHABLE = ['name', 'sku'];
@@ -22,9 +15,6 @@ class ProductFeedQuery
 
     public const DEFAULT_SORT = '-updated_at';
 
-    /**
-     * Apply search + filters + sort to a feed query (list surfaces).
-     */
     public static function configure(QueryBuilder $query): QueryBuilder
     {
         return self::applyCriteria($query)
@@ -32,10 +22,6 @@ class ProductFeedQuery
             ->defaultSort(self::DEFAULT_SORT);
     }
 
-    /**
-     * Apply only search + filters (no sort/pagination). Used by the merge
-     * matching pass that scans every member product.
-     */
     public static function applyCriteria(QueryBuilder $query): QueryBuilder
     {
         return $query
@@ -43,10 +29,6 @@ class ProductFeedQuery
             ->allowedFilters(...self::filters());
     }
 
-    /**
-     * Deterministic whitelist sort applied to a plain Eloquent builder (used by
-     * the merge-aware representative query, which resolves criteria upfront).
-     */
     public static function applySort(Builder $query): Builder
     {
         $sort = (string) request()->query('sort', self::DEFAULT_SORT);
@@ -61,18 +43,12 @@ class ProductFeedQuery
         return $query->orderBy($column, $direction);
     }
 
-    /**
-     * Whether the current request carries any search or filter criteria.
-     */
     public static function hasCriteria(): bool
     {
         return filled(request()->query('search'))
             || ! empty(array_filter((array) request()->query('filter', [])));
     }
 
-    /**
-     * @return AllowedFilter[]
-     */
     public static function filters(): array
     {
         return [
@@ -99,9 +75,6 @@ class ProductFeedQuery
         ];
     }
 
-    /**
-     * Expand a category filter into the category and all of its descendants.
-     */
     public static function categoryWithDescendants($values): array
     {
         $roots = array_filter(array_map('intval', (array) $values));

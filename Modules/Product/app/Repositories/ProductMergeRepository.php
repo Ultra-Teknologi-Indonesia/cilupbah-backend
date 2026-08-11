@@ -10,11 +10,7 @@ use Modules\Product\Models\ProductMergeHidden;
 
 class ProductMergeRepository
 {
-    /**
-     * Phase-1 catalog load: only what grouping, filtering, search, sort and
-     * counts need (name, category, variant SKUs). Media and channel joins are
-     * intentionally excluded — they are presentational and hydrated per-page.
-     */
+
     public function catalogProducts(): LazyCollection
     {
         return Product::query()
@@ -27,10 +23,6 @@ class ProductMergeRepository
             ->lazy();
     }
 
-    /**
-     * Minimal load for suggestions / auto-merge: they only read the product
-     * name and one representative SKU.
-     */
     public function liteProducts(): LazyCollection
     {
         return Product::query()
@@ -40,13 +32,6 @@ class ProductMergeRepository
             ->lazy();
     }
 
-    /**
-     * Presentational data (primary photo + channels) for a bounded set of
-     * products — the current catalog page only.
-     *
-     * @param  string[]  $productIds
-     * @return array{mediaByProduct: array<string, array<int, array{url: ?string, is_primary: bool}>>, channelsByProduct: array<string, array<int, array{channel_shop_id: string, shop_name: string, channel_name: ?string, channel_code: ?string}>>}
-     */
     public function presentation(array $productIds): array
     {
         $mediaByProduct = [];
@@ -123,10 +108,6 @@ class ProductMergeRepository
             ->lazy();
     }
 
-    /**
-     * @param  string[]  $productIds
-     * @return string[] ids that exist in products
-     */
     public function existingProductIds(array $productIds): array
     {
         return Product::query()->whereIn('id', $productIds)->pluck('id')->all();
@@ -137,9 +118,6 @@ class ProductMergeRepository
         return Product::query()->whereIn('id', $productIds)->pluck('name', 'id')->all();
     }
 
-    /**
-     * @return Collection<int, object{id: string, name: string}>
-     */
     public function masterIdNames(): Collection
     {
         return Product::query()
@@ -185,9 +163,6 @@ class ProductMergeRepository
         return ProductMerge::query()->whereIn('master_name', $masterNames)->delete();
     }
 
-    /**
-     * @return Collection<int, ProductMerge>
-     */
     public function mergesByMasters(array $masterNames): Collection
     {
         return ProductMerge::query()

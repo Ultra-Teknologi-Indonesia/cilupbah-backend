@@ -41,10 +41,6 @@ class MasterFeedService
         return $this->repository->find($id, Product::STATUS_MASTER);
     }
 
-    /**
-     * Fold sibling products (variants, media, channels) into the representative
-     * row so merged products render as a single master with combined data.
-     */
     private function applyMergeGrouping(LengthAwarePaginator $paginator, array $context): void
     {
         $repToMaster = $context['repToMaster'];

@@ -182,15 +182,15 @@ class RackAllocationClassifierTest extends TestCase
         $this->assertStringContainsString('1 rak 1 SKU', $rec['message']);
     }
 
-    public function test_no_pending_stock_is_error(): void
+    public function test_no_pending_stock_is_still_place(): void
     {
         $loc = $this->kecil();
-        $this->bin($loc, 'O-A1-K1-X1');
-        $v = $this->variant(); 
+        $target = $this->bin($loc, 'O-A1-K1-X1');
+        $v = $this->variant();
 
         $rec = $this->classifyOne(['sku' => $v->sku, 'location' => $loc->location_name, 'bin' => 'O-A1-K1-X1']);
 
-        $this->assertSame(RackImportBatch::STATUS_ERROR, $rec['status']);
-        $this->assertStringContainsString('Tidak ada stok pending', $rec['message']);
+        $this->assertSame(RackImportBatch::STATUS_PLACE, $rec['status']);
+        $this->assertSame($target->id, $rec['bin_id']);
     }
 }

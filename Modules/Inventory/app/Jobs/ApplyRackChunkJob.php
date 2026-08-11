@@ -54,9 +54,18 @@ class ApplyRackChunkJob implements ShouldQueue
             }
 
             try {
-                $placer->placeSkuToBin($row->location_id, $row->bin_id, $row->item_id, $userId);
-                $row->update(['status' => RackImportBatch::STATUS_PLACED, 'message' => 'Berhasil ditempatkan.']);
-                $success++;
+                $placed = $placer->placeSkuToBin($row->location_id, $row->bin_id, $row->item_id, $userId);
+
+                if ($placed > 0) {
+                    $row->update(['status' => RackImportBatch::STATUS_PLACED, 'message' => "Berhasil ditempatkan {$placed} unit."]);
+                    $success++;
+                } else {
+                    $row->update([
+                        'status' => RackImportBatch::STATUS_ERROR,
+                        'message' => 'Tidak ada stok yang bisa ditempatkan (stok belum masuk gudang ini).',
+                    ]);
+                    $failed++;
+                }
             } catch (\Throwable $e) {
                 Log::warning("ApplyRackChunkJob row {$row->id} failed: " . $e->getMessage());
                 $row->update([

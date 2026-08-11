@@ -157,6 +157,43 @@ class RackImportJobsTest extends TestCase
         $this->assertSame($target->id, app(SkuHomeBinGuard::class)->currentHomeBinId($loc->id, $v->id));
     }
 
+    public function test_apply_job_without_stock_is_error_not_false_success(): void
+    {
+        $loc = $this->kecil();
+        $target = $this->bin($loc, 'O-A1-K1-X1');
+        $v = $this->variant(); 
+
+        $batch = RackImportBatch::create([
+            'batch_no' => 'RAK-TEST-' . Str::random(4),
+            'executed_by' => $this->user->id,
+            'original_filename' => 'test.csv',
+            'stored_path' => 'x',
+            'state' => RackImportBatch::STATE_CONFIRMING,
+            'place_rows' => 1,
+        ]);
+
+        $row = RackImportRow::create([
+            'batch_id' => $batch->id,
+            'row_no' => 2,
+            'raw_sku' => $v->sku,
+            'raw_location' => $loc->location_name,
+            'raw_bin' => 'O-A1-K1-X1',
+            'item_id' => $v->id,
+            'location_id' => $loc->id,
+            'bin_id' => $target->id,
+            'status' => RackImportBatch::STATUS_PLACE,
+            'created_at' => now(),
+        ]);
+
+        ApplyRackChunkJob::dispatchSync($batch->id, [$row->id]);
+
+        $row->refresh();
+        $batch->refresh();
+        $this->assertSame(RackImportBatch::STATUS_ERROR, $row->status);
+        $this->assertSame(0, (int) $batch->success_rows);
+        $this->assertNull(app(SkuHomeBinGuard::class)->currentHomeBinId($loc->id, $v->id));
+    }
+
     public function test_start_confirm_is_atomic(): void
     {
         $batch = RackImportBatch::create([

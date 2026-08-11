@@ -3,7 +3,6 @@
 namespace Modules\Inventory\Services\RackImport;
 
 use Illuminate\Support\Facades\DB;
-use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\RackImportBatch;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
@@ -116,10 +115,6 @@ class RackAllocationClassifier
             }
         }
 
-        if (! isset($maps['pending'][$location->id . '|' . $variant->id])) {
-            return $error('Tidak ada stok pending untuk ditempatkan (SKU belum diterima di gudang ini).');
-        }
-
         return $base + ['status' => RackImportBatch::STATUS_PLACE, 'message' => 'Akan ditempatkan ke rak ini saat disimpan.'];
     }
 
@@ -189,27 +184,12 @@ class RackAllocationClassifier
                 });
         }
 
-        $pending = [];
-        if (! empty($itemIds)) {
-            Inventory::query()->pendingPlacement()
-                ->whereIn('inventories.location_id', $locationIds)
-                ->whereIn('inventories.item_id', $itemIds)
-                ->where('inventories.on_hand', '>', 0)
-                ->select('inventories.location_id', 'inventories.item_id')
-                ->distinct()
-                ->get()
-                ->each(function ($r) use (&$pending) {
-                    $pending[$r->location_id . '|' . $r->item_id] = true;
-                });
-        }
-
         return [
             'variants' => $variants,
             'names' => $names,
             'bins' => $bins,
             'homeBins' => $homeBins,
             'occupants' => $occupants,
-            'pending' => $pending,
         ];
     }
 }

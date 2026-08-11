@@ -17,13 +17,15 @@ class RackPlacementService
         private InventoryService $inventoryService,
     ) {}
 
-    public function placeSkuToBin(string $locationId, string $binId, string $itemId, string $userId): void
+    public function placeSkuToBin(string $locationId, string $binId, string $itemId, string $userId): int
     {
         app(SkuHomeBinGuard::class)->assertSkuFitsBin($locationId, $itemId, $binId);
         app(BinOccupancyGuard::class)->assertBinFitsSku($binId, $itemId);
 
-        $this->withStockLock($itemId, $locationId, function () use ($locationId, $binId, $itemId, $userId) {
-            DB::transaction(function () use ($locationId, $binId, $itemId, $userId) {
+        $placed = 0;
+
+        $this->withStockLock($itemId, $locationId, function () use ($locationId, $binId, $itemId, $userId, &$placed) {
+            DB::transaction(function () use ($locationId, $binId, $itemId, $userId, &$placed) {
                 $sources = Inventory::query()->pendingPlacement()
                     ->where('inventories.location_id', $locationId)
                     ->where('inventories.item_id', $itemId)
@@ -46,8 +48,11 @@ class RackPlacementService
                         'serial_no'          => $row->serial_no ?? '',
                         'created_by'         => "user:{$userId}",
                     ]);
+                    $placed += $qty;
                 }
             });
         });
+
+        return $placed;
     }
 }

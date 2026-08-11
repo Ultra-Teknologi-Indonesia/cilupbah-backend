@@ -20,9 +20,6 @@ class MasterFeedRepository
         'channelMappings.channelShop.channel',
     ];
 
-    /**
-     * @param  array  $context  the merge grouping context from mergeContext()
-     */
     public function paginate(string $status, ?string $updatedSince, array $context): LengthAwarePaginator
     {
         if (! ($context['active'] ?? false)) {
@@ -49,10 +46,6 @@ class MasterFeedRepository
             ->appends(request()->query());
     }
 
-    /**
-     * Flat feed used when nothing is merged — byte-identical to the original
-     * (non-merge-aware) behaviour.
-     */
     private function plainFeedQuery(string $status, ?string $updatedSince): LengthAwarePaginator
     {
         return ProductFeedQuery::configure(
@@ -65,15 +58,6 @@ class MasterFeedRepository
             ->appends(request()->query());
     }
 
-    /**
-     * Representative rows only, optionally restricted to the masters whose
-     * members matched the search/filter criteria. Search/filter are already
-     * resolved into $restrictRepIds so they are NOT re-applied here (that would
-     * re-filter on the representative alone).
-     *
-     * @param  string[]  $nonRepIds
-     * @param  string[]|null  $restrictRepIds  null = no criteria (show all masters)
-     */
     private function mergeAwareQuery(
         string $status,
         ?string $updatedSince,
@@ -94,13 +78,6 @@ class MasterFeedRepository
             ->appends(request()->query());
     }
 
-    /**
-     * Scan EVERY product (representatives and hidden members alike) for the
-     * current search/filter criteria, then map each match back to its
-     * representative. A master surfaces when ANY of its members matches.
-     *
-     * @return string[] representative ids to keep
-     */
     private function matchingRepresentativeIds(string $status, ?string $updatedSince, array $memberToRep): array
     {
         $matchedIds = ProductFeedQuery::applyCriteria(
@@ -117,15 +94,6 @@ class MasterFeedRepository
         return array_keys($repIds);
     }
 
-    /**
-     * Build the display-time merge grouping. For every set of products that
-     * share a master_name, one is chosen as the representative row and the
-     * others are hidden from the flat feed (their data is folded into the
-     * representative). When nothing is merged this returns an inert context so
-     * the feed stays byte-identical to the non-merge-aware behaviour.
-     *
-     * @return array{active: bool, repToMaster: array<string,string>, repToMembers: array<string,array<int,string>>, memberToRep: array<string,string>, nonRepIds: array<int,string>}
-     */
     public function mergeContext(): array
     {
         $merges = ProductMerge::query()->get(['product_id', 'master_name']);
@@ -186,10 +154,6 @@ class MasterFeedRepository
         ];
     }
 
-    /**
-     * @param  string[]  $ids
-     * @return Collection<string, Product>
-     */
     public function loadSiblings(array $ids): Collection
     {
         if (empty($ids)) {
