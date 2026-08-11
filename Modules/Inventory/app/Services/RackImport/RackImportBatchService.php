@@ -10,7 +10,7 @@ use Modules\Inventory\Models\RackImportRow;
 
 class RackImportBatchService
 {
-    public const DISK = 'local';
+    public const DISK = 's3';
     public const DIR = 'imports/rack-allocation';
 
     public function createFromUpload(UploadedFile $file, ?string $userId): RackImportBatch

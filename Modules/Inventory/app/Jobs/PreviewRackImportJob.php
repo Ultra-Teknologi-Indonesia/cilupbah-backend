@@ -47,7 +47,27 @@ class PreviewRackImportJob implements ShouldQueue
         }
 
         $classifier = app(RackAllocationClassifier::class);
-        $absolutePath = $disk->path($batch->stored_path);
+
+        // Disk import bisa berupa storage bersama (S3/R2) yang tak punya path lokal,
+        // sedangkan reader butuh file lokal (fopen/PhpSpreadsheet). Salin ke temp dulu.
+        $ext = pathinfo($batch->stored_path, PATHINFO_EXTENSION) ?: 'csv';
+        $tmp = tempnam(sys_get_temp_dir(), 'rackimp_');
+        $absolutePath = $tmp.'.'.$ext;
+        @rename($tmp, $absolutePath);
+
+        $src = $disk->readStream($batch->stored_path);
+        if ($src === null) {
+            @unlink($absolutePath);
+            $batches->markPreviewFailed($batch, 'File import tidak ditemukan.');
+
+            return;
+        }
+        $dst = fopen($absolutePath, 'w');
+        stream_copy_to_stream($src, $dst);
+        fclose($dst);
+        if (is_resource($src)) {
+            fclose($src);
+        }
 
         $total = 0;
         $counts = [
@@ -74,6 +94,8 @@ class PreviewRackImportJob implements ShouldQueue
             $batches->markPreviewFailed($batch, $e->getMessage());
 
             return;
+        } finally {
+            @unlink($absolutePath);
         }
 
         if ($total === 0) {

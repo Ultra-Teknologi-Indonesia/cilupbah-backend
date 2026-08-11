@@ -82,7 +82,7 @@ class RackImportJobsTest extends TestCase
 
     public function test_preview_job_stages_rows_and_counts(): void
     {
-        Storage::fake('local');
+        Storage::fake(RackImportBatchService::DISK);
 
         $loc = $this->kecil();
         $staging = $this->bin($loc, 'STAGE-1', inbound: true);
@@ -95,7 +95,7 @@ class RackImportJobsTest extends TestCase
             . "BOGUS-SKU,{$loc->location_name},O-A1-K1-X1\n";
 
         $path = RackImportBatchService::DIR . '/test.csv';
-        Storage::disk('local')->put($path, $csv);
+        Storage::disk(RackImportBatchService::DISK)->put($path, $csv);
 
         $batch = RackImportBatch::create([
             'batch_no' => 'RAK-TEST-' . Str::random(4),
