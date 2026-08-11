@@ -150,11 +150,18 @@ class ChannelDownloadService
             }
         }
 
-        return array_map(function ($r) use ($downloaded) {
+        $flagged = array_map(function ($r) use ($downloaded) {
             $r['already_downloaded'] = isset($downloaded[(string) ($r['external_product_id'] ?? '')]);
 
             return $r;
         }, $results);
+
+        usort(
+            $flagged,
+            fn ($a, $b) => (($a['already_downloaded'] ?? false) ? 1 : 0) <=> (($b['already_downloaded'] ?? false) ? 1 : 0)
+        );
+
+        return $flagged;
     }
 
     public function downloadProductManual(string $channel, string $shopId, string $externalProductId, ?string $executedBy = null): DownloadTransaction
