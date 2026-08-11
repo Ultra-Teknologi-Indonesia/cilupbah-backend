@@ -80,6 +80,14 @@ class SyncProductToChannelJob implements ShouldQueue
             return;
         }
 
+        if ($shop->is_shadow_mode) {
+            Log::info("SyncProductToChannelJob skipped: Shop is in shadow mode (read-only).", [
+                'product_id' => $this->productId,
+                'channel_shop_id' => $this->channelShopId
+            ]);
+            return;
+        }
+
         $channelCode = $shop->channel->code ?? 'tiktok';
         $this->channelCodeResolved = $channelCode;
 

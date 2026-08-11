@@ -18,6 +18,10 @@ use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
+/**
+ * @property bool $is_shadow
+ * @mixin \Illuminate\Database\Eloquent\Builder
+ */
 class SalesOrder extends Model implements HasMedia
 {
     use HasUuid7, InteractsWithMedia, HasFactory;
@@ -154,6 +158,7 @@ class SalesOrder extends Model implements HasMedia
         'internal_store_id',
         'salesman_id',
         'is_manual',
+        'is_shadow',
         'no_ref',
         'note',
         'delivery_method',
@@ -195,6 +200,7 @@ class SalesOrder extends Model implements HasMedia
         'is_split_order'                => 'boolean',
         'actual_shipping_fee_confirmed' => 'boolean',
         'is_manual'                     => 'boolean',
+        'is_shadow'                     => 'boolean',
         'price_includes_tax'            => 'boolean',
         'contact_channel'   => \Modules\Sales\Enums\ContactChannel::class,
         'customer_decision' => \Modules\Sales\Enums\CustomerDecision::class,

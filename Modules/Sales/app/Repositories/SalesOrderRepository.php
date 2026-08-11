@@ -597,6 +597,7 @@ class SalesOrderRepository
             'channel_updated_at'  => $orderData['channel_updated_at'] ?? null,
             'return_due_date'     => $orderData['return_due_date'] ?? null,
             'source'              => $orderData['source'],
+            'is_shadow'           => $orderData['is_shadow'] ?? ($existing->is_shadow ?? false),
             'updated_at'          => now(),
         ];
 

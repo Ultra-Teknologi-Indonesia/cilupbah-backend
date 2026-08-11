@@ -472,7 +472,7 @@ class SalesOrderService
         $source = strtolower((string) $order->source);
 
         if (! in_array($source, ['tiktok', 'shopee', 'lazada'], true)) {
-            throw new \App\Exceptions\UserFacingException('Tidak dapat membatalkan', 'Request cancel ke marketplace hanya untuk pesanan TikTok, Shopee, atau Lazada.');
+            throw new UserFacingException('Tidak dapat membatalkan', 'Request cancel ke marketplace hanya untuk pesanan TikTok, Shopee, atau Lazada.');
         }
 
         if ($order->status === 'cancelled' || $order->is_canceled) {
@@ -481,11 +481,11 @@ class SalesOrderService
 
         $fromStatus = SalesOrderStatus::tryFrom((string) $order->status);
         if ($fromStatus === null || ! $fromStatus->canTransitionTo(SalesOrderStatus::CANCELLED)) {
-            throw new \App\Exceptions\UserFacingException('Tidak dapat membatalkan', "Pesanan berstatus {$order->status} tidak dapat dibatalkan.");
+            throw new UserFacingException('Tidak dapat membatalkan', "Pesanan berstatus {$order->status} tidak dapat dibatalkan.");
         }
 
         if ($order->channel_cancel_status === 'pending') {
-            throw new \App\Exceptions\UserFacingException('Sedang diproses', 'Permintaan pembatalan untuk pesanan ini sedang diproses.');
+            throw new UserFacingException('Sedang diproses', 'Permintaan pembatalan untuk pesanan ini sedang diproses.');
         }
 
         if ($source === 'tiktok' && empty($order->channel_status_raw)) {
@@ -515,7 +515,7 @@ class SalesOrderService
         $order = SalesOrder::findOrFail($orderId);
 
         if ($order->status === 'cancelled' || $order->is_canceled) {
-            throw new \App\Exceptions\UserFacingException('Sudah dibatalkan', 'Pesanan sudah dibatalkan, tidak bisa dilanjutkan.');
+            throw new UserFacingException('Sudah dibatalkan', 'Pesanan sudah dibatalkan, tidak bisa dilanjutkan.');
         }
 
         if ($order->channel_cancel_status !== null) {
@@ -560,7 +560,7 @@ class SalesOrderService
             return;
         }
 
-        throw new \App\Exceptions\UserFacingException(
+        throw new UserFacingException(
             'Status tidak dapat dibatalkan',
             "Pesanan {$source} berstatus {$channelStatus} tidak dapat dibatalkan seller. "
             . 'Diizinkan: ' . implode(', ', $eligible) . '.'
@@ -572,11 +572,11 @@ class SalesOrderService
         try {
             $validKeys = array_column($this->cancelReasonsForOrder($order), 'key');
         } catch (\Throwable $e) {
-            throw new \App\Exceptions\UserFacingException('Gagal memuat alasan', 'Gagal memuat daftar alasan pembatalan. Coba lagi.', 502);
+            throw new UserFacingException('Gagal memuat alasan', 'Gagal memuat daftar alasan pembatalan. Coba lagi.', 502);
         }
 
         if (! in_array($reason, $validKeys, true)) {
-            throw new \App\Exceptions\UserFacingException('Alasan tidak valid', "Alasan pembatalan tidak valid untuk {$source}.");
+            throw new UserFacingException('Alasan tidak valid', "Alasan pembatalan tidak valid untuk {$source}.");
         }
     }
 
@@ -828,7 +828,7 @@ class SalesOrderService
                     $liveRow = $liveResult['response']['result_list'][0] ?? [];
                     $liveStatus = strtoupper((string) ($liveRow['status'] ?? ''));
                 } catch (\Throwable $e) {
-                    \Illuminate\Support\Facades\Log::warning('getShippingLabel: live get_shipping_document_result gagal, pakai cache', [
+                    Log::warning('getShippingLabel: live get_shipping_document_result gagal, pakai cache', [
                         'order_id' => $order->id,
                         'error' => $e->getMessage(),
                     ]);
@@ -1376,7 +1376,7 @@ class SalesOrderService
 
             if ($newStatus === 'cancelled'
                 && in_array(strtolower((string) $order->source), ['tiktok', 'shopee', 'lazada', 'tokopedia', 'woocommerce'], true)) {
-                throw new \App\Exceptions\UserFacingException(
+                throw new UserFacingException(
                     'Gunakan Ajukan Pembatalan',
                     'Pembatalan pesanan marketplace harus melalui aksi Ajukan Pembatalan (request-cancel), bukan ubah status.'
                 );
@@ -1648,6 +1648,15 @@ class SalesOrderService
         $channelStatus = $orderData['channel_status'] ?? 'UNKNOWN';
         $mappedStatus = $this->mapChannelStatusToInternal($channelStatus);
         $source = $orderData['source'] ?? null;
+
+        if (isset($orderData['channel_shop_id']) && !isset($orderData['is_shadow'])) {
+            $isShadowMode = DB::table('channel_shops')
+                ->where('shop_id', $orderData['channel_shop_id'])
+                ->value('is_shadow_mode');
+            if ($isShadowMode) {
+                $orderData['is_shadow'] = true;
+            }
+        }
 
         if (array_key_exists('channel_status', $orderData) && $orderData['channel_status'] !== null && $orderData['channel_status'] !== '') {
             $orderData['channel_status_raw'] = $orderData['channel_status'];
@@ -2056,6 +2065,9 @@ class SalesOrderService
 
     private function reserveStockForOrder(SalesOrder $order, bool $enforce = true): void
     {
+        if ($order->is_shadow) {
+            return;
+        }
         foreach ($order->items as $item) {
             $this->reserveStockForItem($order, $item, $enforce);
         }
@@ -2081,6 +2093,9 @@ class SalesOrderService
 
     private function pickStockForOrder(SalesOrder $order): void
     {
+        if ($order->is_shadow) {
+            return;
+        }
         foreach ($order->items as $item) {
             if (! $item->item_id) {
                 continue;
@@ -2100,6 +2115,9 @@ class SalesOrderService
 
     private function releaseStockForOrder(SalesOrder $order): void
     {
+        if ($order->is_shadow) {
+            return;
+        }
         $this->releaseStockForStatus($order, $order->status);
     }
 
@@ -2131,7 +2149,7 @@ class SalesOrderService
     {
         $locationId = $this->resolveLocationId($order);
 
-        $binAllocations = \Modules\Outbound\Models\PicklistItem::where('order_id', $order->id)
+        $binAllocations = PicklistItem::where('order_id', $order->id)
             ->whereNotNull('bin_id')
             ->get(['item_id', 'sku', 'bin_id', 'qty_picked', 'qty_ordered'])
             ->groupBy('item_id');

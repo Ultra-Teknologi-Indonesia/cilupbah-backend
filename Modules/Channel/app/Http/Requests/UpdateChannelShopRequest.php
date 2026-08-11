@@ -18,6 +18,7 @@ class UpdateChannelShopRequest extends FormRequest
         return [
             'is_active' => 'sometimes|boolean',
             'order_sync_enabled' => 'sometimes|boolean',
+            'is_shadow_mode' => 'sometimes|boolean',
             'stock_source_mode' => 'sometimes|in:location,total',
             'location_id' => [
                 'nullable',
@@ -33,7 +34,7 @@ class UpdateChannelShopRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $v) {
-            $fields = ['is_active', 'order_sync_enabled', 'stock_source_mode', 'location_id'];
+            $fields = ['is_active', 'order_sync_enabled', 'is_shadow_mode', 'stock_source_mode', 'location_id'];
             if (collect($fields)->every(fn ($f) => ! $this->has($f))) {
                 $v->errors()->add('is_active', 'Minimal satu pengaturan wajib diisi.');
             }
@@ -45,6 +46,7 @@ class UpdateChannelShopRequest extends FormRequest
         return [
             'is_active.boolean' => 'is_active harus boolean.',
             'order_sync_enabled.boolean' => 'order_sync_enabled harus boolean.',
+            'is_shadow_mode.boolean' => 'is_shadow_mode harus boolean.',
             'stock_source_mode.in' => 'stock_source_mode harus location atau total.',
             'location_id.required_if' => 'Gudang wajib dipilih saat mode location.',
             'location_id.exists' => 'Gudang tidak ditemukan atau tidak aktif.',
