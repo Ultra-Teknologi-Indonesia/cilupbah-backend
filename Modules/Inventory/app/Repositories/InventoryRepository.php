@@ -555,14 +555,32 @@ class InventoryRepository
             ->with('bin:id,bin_final_code');
 
         if ($strategy === 'fifo') {
-            return $query
-                ->orderByBinMovement('fifo')
-                ->get();
+            $inventories = $query->orderByBinMovement('fifo')->get();
+        } else {
+            $inventories = $query->orderBy('created_at')->get();
         }
 
-        return $query
-            ->orderBy('created_at')
+        $assignedBinIds = $inventories->pluck('bin_id')->filter()->unique()->all();
+
+        $assignments = \Modules\Inventory\Models\SkuRackAssignment::where('item_id', $itemId)
+            ->when($locationId, fn($q) => $q->where('location_id', $locationId))
+            ->whereNotIn('bin_id', $assignedBinIds ?: ['-1'])
+            ->with('bin:id,bin_final_code')
             ->get();
+
+        foreach ($assignments as $assignment) {
+            $fakeInv = new Inventory([
+                'item_id' => $itemId,
+                'bin_id' => $assignment->bin_id,
+                'location_id' => $assignment->location_id,
+                'on_hand' => 0,
+                'avg_cost' => 0,
+            ]);
+            $fakeInv->setRelation('bin', $assignment->bin);
+            $inventories->push($fakeInv);
+        }
+
+        return $inventories;
     }
 
     public function findBinByFinalCode(string $binCode)

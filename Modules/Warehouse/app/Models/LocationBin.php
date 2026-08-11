@@ -77,4 +77,9 @@ class LocationBin extends Model
                 ->orWhere('inventories.on_order', '>', 0);
         });
     }
+
+    public function skuRackAssignments(): HasMany
+    {
+        return $this->hasMany(\Modules\Inventory\Models\SkuRackAssignment::class, 'bin_id');
+    }
 }

@@ -24,4 +24,9 @@ class SkuRackAssignment extends Model
     {
         return $this->belongsTo(LocationBin::class, 'bin_id');
     }
+
+    public function item(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Product\Models\ProductVariant::class, 'item_id');
+    }
 }

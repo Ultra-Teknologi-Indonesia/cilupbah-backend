@@ -32,24 +32,43 @@ class LocationBinResource extends JsonResource
 
     protected function buildSkuSummary(): array
     {
-        if (! $this->relationLoaded('activeInventories')) {
-            return [];
+        $skus = collect();
+
+        if ($this->relationLoaded('activeInventories') && $this->activeInventories) {
+            $this->activeInventories->each(function ($inv) use ($skus) {
+                $skus->push([
+                    'item_id' => $inv->item_id,
+                    'sku' => $inv->product?->sku,
+                    'name' => $inv->product?->product?->name,
+                    'on_hand' => (int) $inv->on_hand,
+                    'on_order' => (int) $inv->on_order,
+                ]);
+            });
         }
 
-        return $this->activeInventories
-            ->groupBy('item_id')
-            ->map(function ($group) {
-                $variant = $group->first()->product;
+        if ($this->relationLoaded('skuRackAssignments') && $this->skuRackAssignments) {
+            $this->skuRackAssignments->each(function ($assignment) use ($skus) {
+                if (! $skus->contains('item_id', $assignment->item_id)) {
+                    $skus->push([
+                        'item_id' => $assignment->item_id,
+                        'sku' => $assignment->item?->sku,
+                        'name' => $assignment->item?->product?->name,
+                        'on_hand' => 0,
+                        'on_order' => 0,
+                    ]);
+                }
+            });
+        }
 
-                return [
-                    'variant_id' => $group->first()->item_id,
-                    'sku' => $variant?->sku,
-                    'name' => $variant?->product?->name,
-                    'on_hand' => (int) $group->sum('on_hand'),
-                    'on_order' => (int) $group->sum('on_order'),
-                ];
-            })
-            ->values()
-            ->all();
+        return $skus->groupBy('item_id')->map(function ($group) {
+            $first = $group->first();
+            return [
+                'variant_id' => $first['item_id'],
+                'sku' => $first['sku'],
+                'name' => $first['name'],
+                'on_hand' => $group->sum('on_hand'),
+                'on_order' => $group->sum('on_order'),
+            ];
+        })->values()->all();
     }
 }

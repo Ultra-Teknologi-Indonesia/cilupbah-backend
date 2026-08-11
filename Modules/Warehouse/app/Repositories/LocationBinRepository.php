@@ -22,7 +22,7 @@ class LocationBinRepository
     public function findByLocationPaginated(string $locationId): LengthAwarePaginator
     {
         $base = LocationBin::where('location_id', $locationId)
-            ->with(['activeInventories.product.product']);
+            ->with(['activeInventories.product.product', 'skuRackAssignments.item.product']);
 
         return QueryBuilder::for($base)
             ->allowedSearch(
