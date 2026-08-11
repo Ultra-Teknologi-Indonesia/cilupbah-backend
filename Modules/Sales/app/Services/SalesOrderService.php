@@ -2064,6 +2064,48 @@ class SalesOrderService
         };
     }
 
+    /**
+     * Mengubah order shadow jadi order sungguhan saat cutover migrasi.
+     *
+     * Hanya order yang belum diproses (pending/reserved) yang layak dipromosikan;
+     * order yang di sistem lama sudah dipick/dipack/dikirim tetap jadi arsip
+     * shadow, karena fulfillment-nya tidak pernah terjadi di sini.
+     *
+     * Stok direservasi tanpa enforce supaya kekurangan stok tercatat sebagai
+     * selisih yang bisa ditindaklanjuti, bukan menggagalkan seluruh cutover.
+     */
+    public function promoteFromShadow(SalesOrder $order): bool
+    {
+        if (! $order->is_shadow || ! self::isPromotableFromShadow($order)) {
+            return false;
+        }
+
+        DB::transaction(function () use ($order) {
+            $order->is_shadow = false;
+            $order->save();
+
+            $canonical = SalesOrderStatus::tryFrom((string) $order->status)?->canonical();
+
+            if ($canonical === SalesOrderStatus::RESERVED) {
+                $order->load('items');
+                $this->reserveStockForOrder($order, false);
+            }
+        });
+
+        return true;
+    }
+
+    public static function isPromotableFromShadow(SalesOrder $order): bool
+    {
+        if ($order->is_canceled) {
+            return false;
+        }
+
+        $canonical = SalesOrderStatus::tryFrom((string) $order->status)?->canonical();
+
+        return in_array($canonical, [SalesOrderStatus::PENDING, SalesOrderStatus::RESERVED], true);
+    }
+
     private function reserveStockForOrder(SalesOrder $order, bool $enforce = true): void
     {
         if (ShadowOrderGuard::blocks($order, 'reserve_stock')) {
