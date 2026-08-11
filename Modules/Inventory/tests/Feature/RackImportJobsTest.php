@@ -18,6 +18,8 @@ use Modules\Product\Models\ProductVariant;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 use Modules\Warehouse\Services\BinMultiSkuRuleService;
+use Modules\Inventory\Models\SkuRackAssignment;
+use Modules\Inventory\Services\RackImport\RackAssignmentService;
 use Modules\Warehouse\Services\SkuHomeBinGuard;
 use Tests\TestCase;
 
@@ -157,7 +159,7 @@ class RackImportJobsTest extends TestCase
         $this->assertSame($target->id, app(SkuHomeBinGuard::class)->currentHomeBinId($loc->id, $v->id));
     }
 
-    public function test_apply_job_without_stock_is_error_not_false_success(): void
+    public function test_apply_job_without_stock_records_assignment_and_opens_gate(): void
     {
         $loc = $this->kecil();
         $target = $this->bin($loc, 'O-A1-K1-X1');
@@ -189,9 +191,29 @@ class RackImportJobsTest extends TestCase
 
         $row->refresh();
         $batch->refresh();
-        $this->assertSame(RackImportBatch::STATUS_ERROR, $row->status);
-        $this->assertSame(0, (int) $batch->success_rows);
-        $this->assertNull(app(SkuHomeBinGuard::class)->currentHomeBinId($loc->id, $v->id));
+        $this->assertSame(RackImportBatch::STATUS_PLACED, $row->status);
+        $this->assertSame(1, (int) $batch->success_rows);
+
+        $this->assertSame($target->id, app(SkuHomeBinGuard::class)->currentHomeBinId($loc->id, $v->id));
+        $this->assertDatabaseHas('sku_rack_assignments', [
+            'location_id' => $loc->id,
+            'item_id' => $v->id,
+            'bin_id' => $target->id,
+        ]);
+    }
+
+    public function test_planned_assignment_enforces_one_rack_one_sku(): void
+    {
+        $loc = $this->kecil();
+        $rak = $this->bin($loc, 'O-A1-K1-X1');
+        $a = $this->variant();
+        $b = $this->variant();
+
+        $svc = app(RackAssignmentService::class);
+        $svc->assign($loc->id, $rak->id, $a->id, $this->user->id);
+
+        $this->expectException(\DomainException::class);
+        $svc->assign($loc->id, $rak->id, $b->id, $this->user->id);
     }
 
     public function test_start_confirm_is_atomic(): void

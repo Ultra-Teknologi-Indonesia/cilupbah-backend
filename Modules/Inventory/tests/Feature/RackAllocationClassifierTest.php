@@ -7,6 +7,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\RackImportBatch;
+use Modules\Inventory\Models\SkuRackAssignment;
 use Modules\Inventory\Services\RackImport\RackAllocationClassifier;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
@@ -192,5 +193,39 @@ class RackAllocationClassifierTest extends TestCase
 
         $this->assertSame(RackImportBatch::STATUS_PLACE, $rec['status']);
         $this->assertSame($target->id, $rec['bin_id']);
+    }
+
+    public function test_already_assigned_sku_is_already(): void
+    {
+        $loc = $this->kecil();
+        $rak = $this->bin($loc, 'O-A1-K1-X1');
+        $v = $this->variant();
+        SkuRackAssignment::create([
+            'location_id' => $loc->id,
+            'item_id' => $v->id,
+            'bin_id' => $rak->id,
+        ]);
+
+        $rec = $this->classifyOne(['sku' => $v->sku, 'location' => $loc->location_name, 'bin' => 'O-A1-K1-X1']);
+
+        $this->assertSame(RackImportBatch::STATUS_ALREADY, $rec['status']);
+    }
+
+    public function test_assigned_elsewhere_is_manual_move(): void
+    {
+        $loc = $this->kecil();
+        $home = $this->bin($loc, 'O-A1-K1-X1');
+        $this->bin($loc, 'O-B2-K1-X9');
+        $v = $this->variant();
+        SkuRackAssignment::create([
+            'location_id' => $loc->id,
+            'item_id' => $v->id,
+            'bin_id' => $home->id,
+        ]);
+
+        $rec = $this->classifyOne(['sku' => $v->sku, 'location' => $loc->location_name, 'bin' => 'O-B2-K1-X9']);
+
+        $this->assertSame(RackImportBatch::STATUS_MANUAL_MOVE, $rec['status']);
+        $this->assertSame('O-A1-K1-X1', $rec['current_bin']);
     }
 }

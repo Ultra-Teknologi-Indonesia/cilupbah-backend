@@ -8,6 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\Putaway;
+use Modules\Inventory\Models\SkuRackAssignment;
 use Modules\Inventory\Models\PutawayItem;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
@@ -30,10 +31,10 @@ class PutawayRackAssignmentTest extends TestCase
 
     private function regularLocation(): Location
     {
-
-        return Location::factory()->create([
-            'location_code' => Location::SYSTEM_KECIL_CODE,
-        ]);
+        return Location::where('location_code', Location::SYSTEM_KECIL_CODE)->first()
+            ?? Location::factory()->create([
+                'location_code' => Location::SYSTEM_KECIL_CODE,
+            ]);
     }
 
     private function pusatLocation(): Location
@@ -221,5 +222,39 @@ class PutawayRackAssignmentTest extends TestCase
 
         $this->assertNotNull($row);
         $this->assertTrue($row['is_rack_assigned']);
+    }
+
+    public function test_planned_assignment_opens_gate_and_locks_target_rack(): void
+    {
+        $loc = $this->regularLocation();
+        $inbound = $this->makeBin($loc, 'INB', true);
+        $planned = $this->makeBin($loc, 'PLAN');
+        $wrong = $this->makeBin($loc, 'WRONG');
+        $variant = $this->makeVariant();
+
+        SkuRackAssignment::create([
+            'location_id' => $loc->id,
+            'item_id' => $variant->id,
+            'bin_id' => $planned->id,
+        ]);
+
+        $putaway = $this->makePutaway($loc);
+        $item = $this->addItem($putaway, $inbound, $variant);
+
+        $wrongRes = $this->postJson(
+            "/api/v1/putaway/{$putaway->id}/items/{$item->id}/process",
+            ['destination_bin_id' => $wrong->id, 'qty' => 1],
+        );
+        $this->assertStringContainsString(
+            'dialokasikan ke rak tertentu',
+            (string) $wrongRes->json('message'),
+        );
+
+        $okRes = $this->postJson(
+            "/api/v1/putaway/{$putaway->id}/items/{$item->id}/process",
+            ['destination_bin_id' => $planned->id, 'qty' => 1],
+        );
+        $this->assertStringNotContainsString('Rak belum diassign', (string) $okRes->json('message'));
+        $this->assertStringNotContainsString('dialokasikan ke rak tertentu', (string) $okRes->json('message'));
     }
 }

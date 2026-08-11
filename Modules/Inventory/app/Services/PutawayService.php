@@ -716,6 +716,12 @@ class PutawayService
             if ($guard->currentHomeBinId($putaway->location_id, $item->item_id) === null) {
                 throw new \DomainException('Rak belum diassign, silahkan hubungi admin.');
             }
+
+            $plannedBin = $guard->assignedBinId($putaway->location_id, $item->item_id);
+            $destBin = $data['destination_bin_id'] ?? null;
+            if ($plannedBin !== null && $destBin !== null && (string) $destBin !== (string) $plannedBin) {
+                throw new \DomainException('Item ini sudah dialokasikan ke rak tertentu; tidak bisa ditempatkan ke rak lain.');
+            }
         }
 
         if ($putaway->status === Putaway::STATUS_NOT_STARTED) {

@@ -4,6 +4,7 @@ namespace Modules\Inventory\Services\RackImport;
 
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Models\RackImportBatch;
+use Modules\Inventory\Models\SkuRackAssignment;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Modules\Warehouse\Models\Location;
@@ -180,6 +181,26 @@ class RackAllocationClassifier
                 ->select('bin_id', 'item_id')
                 ->get()
                 ->each(function ($r) use (&$occupants) {
+                    $occupants[$r->bin_id] ??= $r->item_id;
+                });
+        }
+
+        if (! empty($itemIds) || ! empty($binIds)) {
+            SkuRackAssignment::query()
+                ->join('location_bins', 'location_bins.id', '=', 'sku_rack_assignments.bin_id')
+                ->whereIn('sku_rack_assignments.location_id', $locationIds)
+                ->where(function ($w) use ($itemIds, $binIds) {
+                    $w->whereIn('sku_rack_assignments.item_id', $itemIds)
+                        ->orWhereIn('sku_rack_assignments.bin_id', $binIds);
+                })
+                ->get([
+                    'sku_rack_assignments.location_id',
+                    'sku_rack_assignments.item_id',
+                    'sku_rack_assignments.bin_id',
+                    'location_bins.bin_final_code',
+                ])
+                ->each(function ($r) use (&$homeBins, &$occupants) {
+                    $homeBins[$r->location_id . '|' . $r->item_id] ??= ['bin_id' => $r->bin_id, 'bin_code' => $r->bin_final_code];
                     $occupants[$r->bin_id] ??= $r->item_id;
                 });
         }

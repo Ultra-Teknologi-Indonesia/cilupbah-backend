@@ -4,6 +4,7 @@ namespace Modules\Warehouse\Services;
 
 use DomainException;
 use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Models\SkuRackAssignment;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 
@@ -75,7 +76,7 @@ class SkuHomeBinGuard
 
     public function currentHomeBinId(string $locationId, string $itemId): ?string
     {
-        return Inventory::query()
+        $stockHome = Inventory::query()
             ->where('location_id', $locationId)
             ->where('item_id', $itemId)
             ->whereNotNull('bin_id')
@@ -88,6 +89,20 @@ class SkuHomeBinGuard
 
                     ->where('bin_final_code', '!=', self::DEFAULT_BIN_CODE);
             })
+            ->value('bin_id');
+
+        if ($stockHome !== null) {
+            return $stockHome;
+        }
+
+        return $this->assignedBinId($locationId, $itemId);
+    }
+
+    public function assignedBinId(string $locationId, string $itemId): ?string
+    {
+        return SkuRackAssignment::query()
+            ->where('location_id', $locationId)
+            ->where('item_id', $itemId)
             ->value('bin_id');
     }
 

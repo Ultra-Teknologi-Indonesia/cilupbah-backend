@@ -11,6 +11,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Inventory\Models\RackImportBatch;
 use Modules\Inventory\Models\RackImportRow;
+use Modules\Inventory\Services\RackImport\RackAssignmentService;
 use Modules\Inventory\Services\RackImport\RackImportBatchService;
 use Modules\Inventory\Services\RackImport\RackPlacementService;
 
@@ -54,18 +55,16 @@ class ApplyRackChunkJob implements ShouldQueue
             }
 
             try {
+                app(RackAssignmentService::class)->assign($row->location_id, $row->bin_id, $row->item_id, $userId);
                 $placed = $placer->placeSkuToBin($row->location_id, $row->bin_id, $row->item_id, $userId);
 
-                if ($placed > 0) {
-                    $row->update(['status' => RackImportBatch::STATUS_PLACED, 'message' => "Berhasil ditempatkan {$placed} unit."]);
-                    $success++;
-                } else {
-                    $row->update([
-                        'status' => RackImportBatch::STATUS_ERROR,
-                        'message' => 'Tidak ada stok yang bisa ditempatkan (stok belum masuk gudang ini).',
-                    ]);
-                    $failed++;
-                }
+                $row->update([
+                    'status' => RackImportBatch::STATUS_PLACED,
+                    'message' => $placed > 0
+                        ? "Alokasi rak disiapkan (+{$placed} unit ditempatkan)."
+                        : 'Alokasi rak disiapkan (stok menyusul).',
+                ]);
+                $success++;
             } catch (\Throwable $e) {
                 Log::warning("ApplyRackChunkJob row {$row->id} failed: " . $e->getMessage());
                 $row->update([
