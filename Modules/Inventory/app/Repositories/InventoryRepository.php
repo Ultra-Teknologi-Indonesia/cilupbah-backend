@@ -81,14 +81,18 @@ class InventoryRepository
 
         $assignedBinIds = $inventories->pluck('bin_id')->filter()->unique()->all();
 
-        $assignments = \Modules\Inventory\Models\SkuRackAssignment::where('item_id', $itemId)
-            ->whereNotIn('bin_id', $assignedBinIds ?: ['-1'])
+        $assignmentQuery = \Modules\Inventory\Models\SkuRackAssignment::where('item_id', $itemId)
             ->with([
                 'bin:id,location_id,bin_final_code,floor_code,row_code,column_code,zone_id',
                 'bin.location:id,location_name',
                 'bin.zone:id,zone_code,zone_name'
-            ])
-            ->get();
+            ]);
+            
+        if (!empty($assignedBinIds)) {
+            $assignmentQuery->whereNotIn('bin_id', $assignedBinIds);
+        }
+        
+        $assignments = $assignmentQuery->get();
 
         foreach ($assignments as $assignment) {
             $fakeInv = new Inventory([
@@ -589,11 +593,15 @@ class InventoryRepository
 
         $assignedBinIds = $inventories->pluck('bin_id')->filter()->unique()->all();
 
-        $assignments = \Modules\Inventory\Models\SkuRackAssignment::where('item_id', $itemId)
+        $assignmentQuery = \Modules\Inventory\Models\SkuRackAssignment::where('item_id', $itemId)
             ->when($locationId, fn($q) => $q->where('location_id', $locationId))
-            ->whereNotIn('bin_id', $assignedBinIds ?: ['-1'])
-            ->with('bin:id,bin_final_code')
-            ->get();
+            ->with('bin:id,bin_final_code');
+            
+        if (!empty($assignedBinIds)) {
+            $assignmentQuery->whereNotIn('bin_id', $assignedBinIds);
+        }
+        
+        $assignments = $assignmentQuery->get();
 
         foreach ($assignments as $assignment) {
             $fakeInv = new Inventory([
