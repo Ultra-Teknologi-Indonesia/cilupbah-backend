@@ -354,6 +354,23 @@ class LocationBinController extends Controller
         return $this->successResponse($items, 'Daftar SKU siap putaway berhasil diambil');
     }
 
+    public function eligibleSkus(Request $request, string $locationId, string $binId): JsonResponse
+    {
+        $search = $request->query('search');
+        $perPage = (int) $request->query('per_page', 50);
+        $page = (int) $request->query('page', 1);
+
+        $paginator = $this->binService->getEligibleSkusForBin(
+            $locationId,
+            $binId,
+            is_string($search) ? $search : null,
+            $perPage,
+            $page
+        );
+
+        return $this->successPaginatedResponse($paginator, 'Daftar SKU valid untuk rak berhasil diambil');
+    }
+
     public function assignSku(AssignSkuLocationBinRequest $request, string $locationId, string $binId): JsonResponse
     {
         try {

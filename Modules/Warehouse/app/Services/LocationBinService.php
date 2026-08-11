@@ -266,9 +266,74 @@ class LocationBinService
         return $query->update($updateData);
     }
 
+    public function getEligibleSkusForBin(string $locationId, string $binId, ?string $search = null, int $perPage = 20, int $page = 1)
+    {
+        $occupancyGuard = app(BinOccupancyGuard::class);
+        $occupantId = $occupancyGuard->currentOccupantItemId($binId);
+        
+        $bin = $this->binRepository->findById($binId);
+        $location = $this->locationRepository->find($locationId);
+        
+        $isGuarded = false;
+        if ($bin && $location && $location->enforcesStrictBinSku()) {
+            $isGuarded = ! $bin->is_inbound && $bin->is_stock_acknowledged && ! app(BinMultiSkuRuleService::class)->allowsMultiSku($bin);
+        }
+
+        $query = ProductVariant::with(['media', 'product:id,name', 'product.media']);
+
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('sku', 'ilike', "%{$search}%")
+                  ->orWhereHas('product', function ($q2) use ($search) {
+                      $q2->where('name', 'ilike', "%{$search}%");
+                  });
+            });
+        }
+
+        if ($isGuarded && $occupantId) {
+            $query->where('id', $occupantId);
+        } else if ($location && $location->enforcesStrictBinSku()) {
+            $query->whereDoesntHave('inventories', function ($q) use ($locationId, $binId) {
+                $q->where('location_id', $locationId)
+                  ->whereNotNull('bin_id')
+                  ->where('bin_id', '!=', $binId)
+                  ->where(function ($w) {
+                      $w->where('on_hand', '>', 0)->orWhere('on_order', '>', 0);
+                  })
+                  ->whereHas('bin', function ($q2) {
+                      $q2->where('is_inbound', false)
+                         ->where('is_stock_acknowledged', true)
+                         ->where('bin_final_code', '!=', \Modules\Warehouse\Services\SkuHomeBinGuard::DEFAULT_BIN_CODE);
+                  });
+            });
+
+            $query->whereNotIn('id', function ($q) use ($locationId, $binId) {
+                $q->select('item_id')
+                  ->from('sku_rack_assignments')
+                  ->where('location_id', $locationId)
+                  ->where('bin_id', '!=', $binId);
+            });
+        }
+
+        $paginator = $query->paginate($perPage, ['*'], 'page', $page);
+        
+        // Transform the results to match the PendingPutawaySku format
+        $paginator->getCollection()->transform(function ($variant) {
+            return [
+                'variant_id' => $variant->id,
+                'sku' => $variant->sku,
+                'name' => $variant->product?->name,
+                'thumbnail' => $variant->media->first()?->url ?? $variant->product?->media->first()?->url,
+                'pending_qty' => 0, // No longer strictly pending putaway qty
+            ];
+        });
+
+        return $paginator;
+    }
+
     public function getPendingPutawaySkus(string $locationId, ?string $search = null, int $limit = 200): array
     {
-        $location = Location::find($locationId);
+        $location = $this->locationRepository->find($locationId);
         if (! $location || ! $location->enforcesStrictBinSku()) {
             return [];
         }
@@ -349,7 +414,7 @@ class LocationBinService
 
     public function assignSkuToBin(string $locationId, string $binId, string $itemId, string $userId): array
     {
-        $location = Location::find($locationId);
+        $location = $this->locationRepository->find($locationId);
         if (! $location) {
             throw new ModelNotFoundException('Lokasi tidak ditemukan.');
         }
@@ -439,7 +504,7 @@ class LocationBinService
 
     public function moveSkuToBin(string $locationId, string $sourceBinId, string $itemId, string $destinationBinId, string $userId): array
     {
-        $location = Location::find($locationId);
+        $location = $this->locationRepository->find($locationId);
         if (! $location) {
             throw new ModelNotFoundException('Lokasi tidak ditemukan.');
         }
@@ -518,7 +583,7 @@ class LocationBinService
 
     public function removeSkuFromBin(string $locationId, string $binId, string $itemId, string $createdBy): array
     {
-        $location = Location::find($locationId);
+        $location = $this->locationRepository->find($locationId);
         if (! $location) {
             throw new ModelNotFoundException('Lokasi tidak ditemukan.');
         }

@@ -69,6 +69,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('locations/{locationId}/bins/import/template', [LocationBinController::class, 'importTemplate'])->whereUuid('locationId')->name('warehouse.bins.import.template');
         Route::get('locations/{locationId}/bins/print-qr', [LocationBinController::class, 'printQr'])->whereUuid('locationId')->name('warehouse.bins.print-qr');
         Route::get('locations/{locationId}/pending-putaway-skus', [LocationBinController::class, 'pendingPutawaySkus'])->whereUuid('locationId')->name('warehouse.bins.pending-putaway-skus');
+        Route::get('locations/{locationId}/bins/{binId}/eligible-skus', [LocationBinController::class, 'eligibleSkus'])->whereUuid('locationId')->whereUuid('binId')->name('warehouse.bins.eligible-skus');
     });
     Route::middleware('role_or_permission:owner|edit-manajemen-rak')->group(function () {
         Route::post('locations/{locationId}/bins/print-qr-job', [LocationBinController::class, 'printQrJob'])->whereUuid('locationId')->name('warehouse.bins.print-qr-job');
