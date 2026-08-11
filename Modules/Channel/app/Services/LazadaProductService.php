@@ -361,6 +361,13 @@ class LazadaProductService
             return false;
         }
 
+        $status = strtolower((string) ($item['status'] ?? ''));
+        if ($status !== '' && $status !== 'active' && $status !== 'live') {
+            Log::info("Lazada download dilewati: item {$itemId} tidak aktif (status {$status})");
+
+            return false;
+        }
+
         $productService = app(\Modules\Product\Services\ProductService::class);
 
         try {
@@ -495,6 +502,11 @@ class LazadaProductService
             $products = $res['data']['products'] ?? [];
 
             foreach ($products as $item) {
+                $status = strtolower((string) ($item['status'] ?? ''));
+                if ($status !== '' && $status !== 'active' && $status !== 'live') {
+                    continue;
+                }
+
                 try {
                     $matchedExisting = false;
                     $variantIds = [];

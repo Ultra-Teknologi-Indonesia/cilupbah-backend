@@ -369,6 +369,10 @@ class ShopeeProductService implements ChunkedDownloadable
             return false;
         }
 
+        if (isset($item['item_status']) && strtoupper((string) $item['item_status']) !== 'NORMAL') {
+            return false;
+        }
+
         $item = $this->hydrateModels($shop, $item);
 
         if (! $this->persistItem($shop, $shopId, $item, $mapper, $productService)) {

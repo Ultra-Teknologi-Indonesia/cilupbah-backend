@@ -246,6 +246,30 @@ class ChannelSearchDownloadTest extends TestCase
         ]);
     }
 
+    public function test_single_download_skips_non_active_lazada_product(): void
+    {
+        $inactive = $this->lazadaItem();
+        $inactive['status'] = 'inactive';
+
+        Http::fake([
+            'api.lazada.co.id/rest/product/item/get*' => Http::response([
+                'code' => '0', 'data' => $inactive,
+            ], 200),
+        ]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/lazada/download-product', [
+                'shop_id' => 'LZ-100',
+                'external_product_id' => '555100',
+            ])
+            ->assertStatus(422);
+
+        $this->assertDatabaseMissing('product_channel_mappings', [
+            'channel_shop_id' => $this->lazadaShop->id,
+            'external_product_id' => '555100',
+        ]);
+    }
+
     public function test_download_product_unsupported_channel_returns_422(): void
     {
         $blibli = Channel::create(['code' => 'blibli', 'name' => 'Blibli', 'is_active' => true]);

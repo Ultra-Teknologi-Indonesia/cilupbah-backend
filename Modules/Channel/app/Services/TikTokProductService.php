@@ -369,6 +369,10 @@ class TikTokProductService
             });
 
             foreach ($products as $item) {
+                if (isset($item['status']) && strtoupper((string) $item['status']) !== 'ACTIVATE') {
+                    continue;
+                }
+
                 try {
 
                     $detail       = $details[(string) ($item['id'] ?? '')] ?? $item;
@@ -535,6 +539,12 @@ class TikTokProductService
 
         $detail = $this->fetchProductDetail($shop, $externalProductId, $accessToken);
         if (! $detail) {
+            return false;
+        }
+
+        if (isset($detail['status']) && strtoupper((string) $detail['status']) !== 'ACTIVATE') {
+            Log::info("TikTok download dilewati: produk {$externalProductId} tidak aktif (status {$detail['status']})");
+
             return false;
         }
 

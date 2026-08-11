@@ -75,6 +75,10 @@ class WooCommerceProductService
             return false;
         }
 
+        if (isset($item['status']) && $item['status'] !== 'publish') {
+            return false;
+        }
+
         $item = $this->hydrateVariations($shop, $item);
 
         if (! $this->persistItem($shop, $shopId, $item, $productService)) {
