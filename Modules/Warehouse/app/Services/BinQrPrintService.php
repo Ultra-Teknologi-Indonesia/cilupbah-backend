@@ -20,9 +20,9 @@ class BinQrPrintService
         'a4_multi',
     ];
 
-    public const STORAGE_DISK = 's3';
+    public const string STORAGE_DISK = 's3';
 
-    public const STORAGE_DIR = 'qr-jobs';
+    public const string STORAGE_DIR = 'qr-jobs';
 
     public function binsQueryForPrint(string $locationId, ?array $binIds = null)
     {
