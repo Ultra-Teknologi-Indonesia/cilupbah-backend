@@ -21,4 +21,15 @@ class ProductMerge extends Model
     {
         return $this->belongsTo(Product::class);
     }
+
+    protected static function booted(): void
+    {
+        static::saved(function () {
+            \Illuminate\Support\Facades\Cache::forget('product_merges_context');
+        });
+
+        static::deleted(function () {
+            \Illuminate\Support\Facades\Cache::forget('product_merges_context');
+        });
+    }
 }

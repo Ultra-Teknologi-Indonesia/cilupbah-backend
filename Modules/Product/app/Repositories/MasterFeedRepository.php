@@ -96,62 +96,64 @@ class MasterFeedRepository
 
     public function mergeContext(): array
     {
-        $merges = ProductMerge::query()->get(['product_id', 'master_name']);
-        if ($merges->isEmpty()) {
+        return \Illuminate\Support\Facades\Cache::remember('product_merges_context', 300, function () {
+            $merges = ProductMerge::query()->get(['product_id', 'master_name']);
+            if ($merges->isEmpty()) {
+                return [
+                    'active' => false,
+                    'repToMaster' => [],
+                    'repToMembers' => [],
+                    'memberToRep' => [],
+                    'nonRepIds' => [],
+                ];
+            }
+
+            $byMaster = [];
+            foreach ($merges as $m) {
+                $byMaster[$m->master_name][$m->product_id] = true;
+            }
+
+            $names = Product::query()
+                ->whereIn('id', $merges->pluck('product_id')->all())
+                ->pluck('name', 'id')
+                ->all();
+
+            $repToMaster = [];
+            $repToMembers = [];
+            $memberToRep = [];
+            $nonRepIds = [];
+
+            foreach ($byMaster as $master => $idSet) {
+                $ids = array_keys($idSet);
+                sort($ids);
+
+                $rep = null;
+                foreach ($ids as $id) {
+                    if (($names[$id] ?? null) === $master) {
+                        $rep = $id;
+                        break;
+                    }
+                }
+                $rep ??= $ids[0];
+
+                $repToMaster[$rep] = $master;
+                $repToMembers[$rep] = $ids;
+                foreach ($ids as $id) {
+                    $memberToRep[$id] = $rep;
+                    if ($id !== $rep) {
+                        $nonRepIds[] = $id;
+                    }
+                }
+            }
+
             return [
-                'active' => false,
-                'repToMaster' => [],
-                'repToMembers' => [],
-                'memberToRep' => [],
-                'nonRepIds' => [],
+                'active' => true,
+                'repToMaster' => $repToMaster,
+                'repToMembers' => $repToMembers,
+                'memberToRep' => $memberToRep,
+                'nonRepIds' => $nonRepIds,
             ];
-        }
-
-        $byMaster = [];
-        foreach ($merges as $m) {
-            $byMaster[$m->master_name][$m->product_id] = true;
-        }
-
-        $names = Product::query()
-            ->whereIn('id', $merges->pluck('product_id')->all())
-            ->pluck('name', 'id')
-            ->all();
-
-        $repToMaster = [];
-        $repToMembers = [];
-        $memberToRep = [];
-        $nonRepIds = [];
-
-        foreach ($byMaster as $master => $idSet) {
-            $ids = array_keys($idSet);
-            sort($ids);
-
-            $rep = null;
-            foreach ($ids as $id) {
-                if (($names[$id] ?? null) === $master) {
-                    $rep = $id;
-                    break;
-                }
-            }
-            $rep ??= $ids[0];
-
-            $repToMaster[$rep] = $master;
-            $repToMembers[$rep] = $ids;
-            foreach ($ids as $id) {
-                $memberToRep[$id] = $rep;
-                if ($id !== $rep) {
-                    $nonRepIds[] = $id;
-                }
-            }
-        }
-
-        return [
-            'active' => true,
-            'repToMaster' => $repToMaster,
-            'repToMembers' => $repToMembers,
-            'memberToRep' => $memberToRep,
-            'nonRepIds' => $nonRepIds,
-        ];
+        });
     }
 
     public function loadSiblings(array $ids): Collection
