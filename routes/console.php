@@ -50,6 +50,11 @@ Schedule::command('channel:pull-shadow-orders')
     ->onOneServer()
     ->runInBackground();
 
+Schedule::command('channel:monitor-shadow-pull')
+    ->hourly()
+    ->withoutOverlapping()
+    ->onOneServer();
+
 Schedule::call(function () {
     @touch(storage_path('framework/scheduler-heartbeat'));
 })->everyMinute()->name('scheduler-heartbeat');

@@ -28,7 +28,22 @@ class DashboardRepository
                 ->select('source', DB::raw('COUNT(*) as total'))
                 ->groupBy('source')
                 ->pluck('total', 'source'),
+            'data_starts_at' => $this->orderDataStartsAt(),
         ];
+    }
+
+    /**
+     * Histori sebelum sistem ini tidak dimigrasi, jadi angka penjualan punya
+     * titik awal. Tanpa penanda ini, rentang yang melewati titik itu terbaca
+     * seolah omzet anjlok, padahal datanya memang belum ada.
+     */
+    private function orderDataStartsAt(): ?string
+    {
+        $earliest = SalesOrder::query()
+            ->excludeShadow()
+            ->min('transaction_date');
+
+        return $earliest ? (string) $earliest : null;
     }
 
     public function stockValue(?string $locationId): float

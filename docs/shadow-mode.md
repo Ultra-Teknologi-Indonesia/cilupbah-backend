@@ -1,8 +1,8 @@
 # Shadow Mode — Migrasi Jubelio ke Superapp
 
 Dokumen ini menjelaskan apa itu Shadow Mode, apa saja yang sudah dibangun, cara
-memakainya, cara mematikan dan menghapusnya saat migrasi selesai, dan
-rekomendasi tahap berikutnya (stok).
+memakainya, cara mematikan dan menghapusnya saat migrasi selesai, rencana tahap
+stok, dan peta jalan lengkap sampai lepas dari Jubelio (bagian 8).
 
 ---
 
@@ -161,8 +161,6 @@ tidak keputusan cutover jadi soal perasaan:
 - Semua selisih yang tersisa **bisa dijelaskan** penyebabnya, bukan sekadar
   kecil.
 
----
-
 ### 3.5 Gladi resik fulfillment (wajib sebelum cutover)
 
 Shadow order hanya membuktikan **sisi baca**. Jalur tulis — minta AWB, cetak
@@ -186,6 +184,8 @@ Volumenya kecil, tapi harus direncanakan — bukan ditemukan belakangan.
 
 Sepuluh order yang tuntas dari terima sampai terkirim lebih meyakinkan daripada
 sebulan shadow order.
+
+---
 
 ## 4. Mematikan Shadow Mode saat cutover
 
@@ -449,22 +449,118 @@ biaya menyimpannya nol, biaya kehilangannya sangat mahal.
 
 Supaya tidak ada yang mengira ini sudah lengkap:
 
-- **Test otomatis untuk invariant belum ditulis.** Empat yang paling penting:
-  toko dengan `stock_push_enabled` mati tidak pernah push ke channel; order
-  shadow tidak menghasilkan ledger stok; order shadow tidak masuk query sync
-  keuangan; jendela tarik selalu terpangkas ke cutoff.
 - **Belum ada satu pun command di dokumen ini yang pernah dijalankan terhadap
-  data sungguhan.** Semuanya baru lolos pemeriksaan sintaksis. Jalankan dengan
-  `--dry-run` / `--limit` di satu toko lebih dulu.
+  data sungguhan.** Test otomatis sudah ditulis tapi belum pernah dieksekusi —
+  butuh `composer install` dan database test. Jalankan test dulu, baru command
+  dengan `--dry-run` / `--limit` di satu toko.
 - **Integrasi API ke Jubelio belum ada** — rekonsiliasi masih lewat CSV export.
+  Ini terhalang kredensial, bukan pekerjaan yang bisa diselesaikan dari sisi kode.
 - **Pembacaan stok live belum diuji terhadap respons asli** ketiga marketplace.
   Bentuk respons stok Shopee/TikTok/Lazada dibaca defensif dengan beberapa
-  kemungkinan nama field; kalau kolom "Listing tak terbaca" tinggi saat pertama
-  dijalankan, kemungkinan besar pemetaan field-nya yang perlu disesuaikan, bukan
-  datanya yang salah.
-- **Alert kalau shadow pull mati** belum ada — kegagalan baru ketahuan saat ada
-  yang membuka laporan.
-- **Penanda diskontinuitas laporan** di tanggal cutoff belum ada. Karena histori
-  tidak dimigrasi, grafik akan terlihat "mulai dari nol" di tanggal itu.
-- **Runbook cutover dan rollback operasional** (langkah per langkah, siapa
-  melakukan apa, jam berapa) belum ditulis.
+  kemungkinan nama field. **Ini titik paling mungkin bermasalah di percobaan
+  pertama** — kalau kolom "Listing tak terbaca" tinggi, yang perlu disesuaikan
+  biasanya pemetaan field-nya, bukan datanya.
+- **Penanda diskontinuitas baru tersedia di API** (`data_starts_at` di ringkasan
+  dashboard); tampilan di UI belum dibuat.
+- **Serah terima stok sengaja tidak punya UI** — command dengan konfirmasi lebih
+  aman daripada toggle yang bisa terpencet.
+- **Gap analysis fitur Jubelio belum dikerjakan** (bagian 8, G0). Ini pekerjaan
+  wawancara tim admin, bukan pekerjaan kode, dan hasilnya bisa mengubah jadwal.
+
+---
+
+## 8. Peta jalan: dari shadow order sampai lepas dari Jubelio
+
+Enam tahap. Yang menentukan lamanya bukan tahap order atau stok, melainkan ekor
+settlement di tahap 5 — settlement marketplace mendarat 7–30+ hari setelah
+order, dan Jubelio tidak bisa dimatikan sebelum yang terakhir tuntas.
+
+### G0 — Persiapan (sebelum shadow order dinyalakan)
+
+| Langkah | Sifat |
+|---|---|
+| Gap analysis: fitur apa yang dipakai tim admin harian di Jubelio tapi belum ada di sini | wawancara, bukan kode |
+| Sepakati cutoff per toko dan siapa PIC-nya | keputusan |
+| Sepakati kriteria kelulusan order (bagian 3.4) dan stok (bagian 6.4) | keputusan |
+| Jalankan test dan uji semua command dengan `--dry-run` di satu toko | teknis |
+
+Gap analysis paling mahal kalau ditunda. Kalau baru ketahuan saat cutover,
+pilihannya tinggal dua-duanya buruk: tunda cutover, atau paksa tim bekerja tanpa
+alat.
+
+### G1 — Shadow order (2–4 minggu)
+
+Nyalakan Shadow Mode per toko, biarkan tarik inkremental berjalan, rekonsiliasi
+harian. Sistem ini belum menulis apa pun ke marketplace.
+
+**Keluar dari tahap ini kalau:** kriteria bagian 3.4 terpenuhi per toko.
+
+### G2 — Gladi resik fulfillment (beberapa hari)
+
+`channel:shadow-promote` untuk 5–10 order nyata di satu toko kecil, fulfill
+penuh sampai barang terkirim. Ini menutup satu-satunya lubang yang tidak bisa
+ditutup shadow order: jalur tulis AWB, label, dan ship belum pernah dijalankan.
+
+**Keluar dari tahap ini kalau:** semua order pilot terkirim tanpa intervensi
+manual di luar yang direncanakan.
+
+### G3 — Cutover order, per toko
+
+`channel:shadow-off`. Sejak titik ini order difulfill di sistem ini, tapi
+**stok masih milik Jubelio** — push stok tetap mati karena flagnya terpisah.
+
+Keputusan yang harus sudah diambil sebelum menjalankan: order in-flight
+diselesaikan di mana (umumnya di Jubelio, artinya tanpa `--promote`).
+
+### G4 — Cutover stok, per toko (bagian 6)
+
+Rekonsiliasi stok harian → serah terima satu toko di jam sepi → amati 24–48 jam
+→ toko berikutnya. Toko tidak ditutup; yang dijamin adalah satu penulis.
+
+**Keluar dari tahap ini kalau:** semua toko diserahkan dan kriteria bagian 6.4
+terpenuhi, tanpa rollback dalam 2 minggu terakhir.
+
+### G5 — Ekor: retur dan settlement (1–2 bulan)
+
+Tahap terpanjang, dan satu-satunya yang tidak bisa dipercepat.
+
+- Retur untuk order pra-cutover diselesaikan di Jubelio; pasca-cutover di sini.
+  Keduanya harus dipantau selama masa transisi.
+- Settlement pra-cutover terus mendarat di Jubelio. Tentukan sistem mana yang
+  jadi buku resmi untuk tiap periode, dan bagaimana konsolidasinya untuk
+  akuntansi dan pajak.
+- Kepemilikan listing, harga, dan promo berpindah penuh ke sini. Kalau ini tidak
+  diputuskan, tim admin akan diam-diam terus memakai Jubelio dan divergensi
+  masuk lewat pintu belakang.
+
+**Keluar dari tahap ini kalau:** settlement terakhir untuk order pra-cutover
+sudah mendarat dan terekonsiliasi.
+
+### G6 — Decommission dan bersih-bersih
+
+Urutannya penting:
+
+1. Hypercare 2–4 minggu: pengawasan ketat, PIC bernama, wewenang rollback jelas.
+2. Ekspor final data Jubelio sebagai arsip (histori tidak dimigrasi ke sini —
+   keputusan klien — jadi arsip inilah satu-satunya jejak data lama).
+3. **Cabut otorisasi aplikasi Jubelio di seller center Shopee/TikTok/Lazada.**
+   Mematikan sync lewat pengaturan Jubelio hanya jaminan lunak; selama
+   otorisasinya hidup, satu klik atau satu bug bisa membuatnya menulis stok
+   lagi. Ini satu-satunya jaminan keras bahwa penulis tinggal satu.
+4. Akhiri langganan Jubelio dan cabut akses user.
+5. Hapus arsip order shadow (`channel:shadow-purge`), lalu hapus kode shadow
+   (checklist bagian 5.2), lalu migrasi drop kolom.
+
+Langkah 3 baru boleh dilakukan **setelah** hypercare lewat, karena mencabut
+otorisasi juga menutup jalan rollback.
+
+### Ringkasan jalur rollback per tahap
+
+| Tahap | Kalau bermasalah |
+|---|---|
+| G1 | Matikan Shadow Mode. Tidak ada dampak — sistem ini belum menulis apa pun |
+| G2 | Selesaikan order pilot manual di Jubelio |
+| G3 | Nyalakan lagi Shadow Mode toko itu; order kembali dikerjakan di Jubelio |
+| G4 | `channel:stock-rollback --shop=...`, lalu nyalakan lagi sync stok Jubelio |
+| G5 | Tidak ada rollback teknis — ini soal kesepakatan buku resmi |
+| G6 | Setelah otorisasi dicabut, tidak ada jalan kembali. Karena itu urutannya begitu |
