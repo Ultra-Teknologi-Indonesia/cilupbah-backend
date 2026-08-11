@@ -87,7 +87,29 @@ class ChannelStockResolver
             $result[$variantId] = max(0, (int) $bundleAvailable);
         }
 
-        return $result;
+        return $this->applyPushBuffer($shop, $result);
+    }
+
+    /**
+     * Buffer pengaman saat serah terima stok dari sistem lama: angka yang dikirim
+     * ke marketplace sengaja dibuat lebih konservatif selama beberapa hari
+     * pertama, untuk meredam oversell ketika kedua sistem belum sepenuhnya
+     * sinkron. Diterapkan di sini supaya semua jalur push memakai angka yang
+     * sama — termasuk pratinjau rekonsiliasi.
+     */
+    private function applyPushBuffer(ChannelShop $shop, array $available): array
+    {
+        $buffer = (int) ($shop->stock_push_buffer ?? 0);
+
+        if ($buffer <= 0) {
+            return $available;
+        }
+
+        foreach ($available as $variantId => $qty) {
+            $available[$variantId] = max(0, (int) $qty - $buffer);
+        }
+
+        return $available;
     }
 
     public function sourceLocationIds(ChannelShop $shop): array

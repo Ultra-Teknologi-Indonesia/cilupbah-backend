@@ -71,6 +71,7 @@ class ChannelService
         if ($turningOn) {
             $data['shadow_started_at'] = now();
             $data['shadow_last_pulled_at'] = null;
+            $data['stock_push_enabled'] = false;
         }
 
         return $data;

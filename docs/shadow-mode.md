@@ -33,6 +33,9 @@ adalah rekonsiliasi dan kriteria kelulusan yang disepakati di depan.
 | `channel_shops` | `is_shadow_mode` | Toko sedang dalam mode shadow |
 | `channel_shops` | `shadow_started_at` | Cutoff: batas awal scope perbandingan |
 | `channel_shops` | `shadow_last_pulled_at` | Cursor tarik inkremental |
+| `channel_shops` | `stock_push_enabled` | Sistem ini boleh menulis stok/harga ke toko ini |
+| `channel_shops` | `stock_push_buffer` | Buffer pengaman (unit) yang dikurangkan saat push |
+| `channel_shops` | `stock_handover_at` | Kapan kepemilikan stok toko ini diserahterimakan |
 | `sales_orders` | `is_shadow` | Order hasil tarik paralel, tidak difulfill di sini |
 
 `shadow_started_at` diisi otomatis saat Shadow Mode dinyalakan lewat API. Untuk
@@ -44,14 +47,23 @@ tanggal tertentu), setel manual**, karena kolom inilah batas scope rekonsiliasi.
 
 | Tempat | Perilaku |
 |---|---|
-| `SyncProductToChannelJob` | Toko shadow dilewati — **tidak ada push stok/harga ke marketplace** |
+| `SyncProductToChannelJob` | Dilewati kalau `stock_push_enabled` mati — **tidak ada push stok/harga ke marketplace** |
 | `ShadowOrderGuard` | Order shadow tidak reserve/pick/release stok, dan setiap percobaan dicatat di log |
 | `SalesOrder::excludeShadow()` | Dipakai di sync keuangan, settlement, dashboard, laporan, dan list order |
 | List order | Order shadow disembunyikan secara default |
 
-Konsekuensi penting: **`is_shadow_mode` berfungsi sebagai kill switch push stok
-per toko.** Menyalakannya menghentikan push dari sistem ini seketika, tanpa
-deploy. Sifat ini dipakai lagi di fase stok (lihat bagian 6).
+**Order dan stok dikendalikan flag terpisah.** `is_shadow_mode` mengatur mode
+order (tarik paralel, tidak difulfill); `stock_push_enabled` mengatur boleh
+tidaknya sistem ini menulis stok ke marketplace. Keduanya sengaja dipisah karena
+rencananya order pindah lebih dulu, stok menyusul per toko — kalau digabung,
+cutover order akan langsung menyalakan push stok padahal stok belum siap.
+
+Menyalakan Shadow Mode otomatis mematikan `stock_push_enabled`. Mematikan
+Shadow Mode **tidak** menyalakannya kembali — itu langkah terpisah dan disengaja
+(bagian 6).
+
+`stock_push_enabled` juga berfungsi sebagai **kill switch push stok per toko**:
+mematikannya menghentikan push seketika, tanpa deploy.
 
 ### 2.3 Command
 
@@ -59,8 +71,15 @@ deploy. Sifat ini dipakai lagi di fase stok (lihat bagian 6).
 |---|---|
 | `channel:pull-shadow-orders` | Tarik order toko shadow (terjadwal tiap 15 menit) |
 | `channel:shadow-reconcile` | Bandingkan order shadow dengan export sistem lama |
-| `channel:shadow-off` | Matikan Shadow Mode saat cutover |
+| `channel:shadow-promote` | Keluarkan order tertentu dari shadow, untuk gladi resik fulfillment |
+| `channel:shadow-off` | Matikan Shadow Mode saat cutover order |
 | `channel:shadow-purge` | Hapus arsip order shadow setelah selesai |
+| `channel:stock-reconcile` | Bandingkan stok WMS vs listing marketplace vs sistem lama (tanpa mengirim) |
+| `channel:stock-handover` | Aktifkan push stok untuk satu toko (serah terima stok) |
+| `channel:stock-rollback` | Hentikan push stok — kembalikan kepemilikan ke sistem lama |
+
+Semua command yang mengubah data punya `--dry-run`; yang destruktif (`shadow-purge`)
+default-nya hanya menampilkan rencana dan butuh `--force`.
 
 ### 2.4 API
 
@@ -103,6 +122,9 @@ Perilaku yang perlu diketahui:
   telat. Order yang tertarik dua kali di-upsert, tidak diduplikasi.
 - Shopee membatasi rentang 15 hari per request; backfill panjang dipecah
   otomatis jadi window 14 hari.
+- **Cutoff adalah lantai keras.** Klien memutuskan histori sebelum sistem ini
+  tidak dimigrasi, jadi jendela apa pun — termasuk `--from` manual — dipangkas
+  ke `shadow_started_at`, dan pemangkasannya dilaporkan, bukan diam-diam.
 - Toko yang gagal tidak menghentikan toko lain; command keluar dengan status
   gagal supaya monitoring menangkapnya.
 
@@ -140,6 +162,30 @@ tidak keputusan cutover jadi soal perasaan:
   kecil.
 
 ---
+
+### 3.5 Gladi resik fulfillment (wajib sebelum cutover)
+
+Shadow order hanya membuktikan **sisi baca**. Jalur tulis — minta AWB, cetak
+label, tandai dikirim, ajukan batal — belum pernah dijalankan sungguhan, padahal
+itu jalur paling berisiko: AWB gagal terbit berarti order tidak bisa dikirim,
+dan dampaknya ke pembeli dan skor toko terasa dalam hitungan jam.
+
+Ambil 5–10 order nyata di satu toko kecil, keluarkan dari shadow, lalu fulfill
+penuh lewat sistem ini sampai barang terkirim. Toko tetap shadow, jadi push stok
+tetap mati dan risikonya terbatas pada order yang dipilih.
+
+```bash
+php artisan channel:shadow-promote --order=SO-000123 --dry-run
+php artisan channel:shadow-promote --order=SO-000123 --order=SO-000124
+```
+
+Konsekuensi yang harus disengaja: order yang dipromosikan terpotong stoknya di
+dua sistem, dan sistem lama juga akan mencoba menerbitkan AWB-nya. **Tandai
+order pilot selesai manual di sistem lama** dan sesuaikan selisih stoknya.
+Volumenya kecil, tapi harus direncanakan — bukan ditemukan belakangan.
+
+Sepuluh order yang tuntas dari terima sampai terkirim lebih meyakinkan daripada
+sebulan shadow order.
 
 ## 4. Mematikan Shadow Mode saat cutover
 
@@ -200,9 +246,17 @@ Backend — hapus file:
 - `Modules/Channel/app/Console/Commands/PullShadowOrdersCommand.php`
 - `Modules/Channel/app/Console/Commands/ShadowReconcileCommand.php`
 - `Modules/Channel/app/Console/Commands/ShadowOffCommand.php`
+- `Modules/Channel/app/Console/Commands/ShadowPromoteCommand.php`
 - `Modules/Channel/app/Console/Commands/ShadowPurgeCommand.php`
+- `Modules/Channel/app/Console/Commands/StockReconcileCommand.php`
 - `Modules/Channel/app/Exceptions/UnsupportedShadowChannelException.php`
 - `Modules/Sales/app/Support/ShadowOrderGuard.php`
+
+**Jangan** hapus `StockHandoverCommand`, `StockRollbackCommand`,
+`ChannelLiveStockReader`, dan kolom `stock_push_enabled` / `stock_push_buffer`
+— itu bukan perkakas migrasi. Kill switch push stok per toko dan pembaca stok
+listing tetap berguna setelah migrasi selesai, misal saat menonaktifkan satu
+toko sementara atau menyelidiki selisih stok.
 
 Backend — hapus bagian shadow di file berikut:
 
@@ -277,33 +331,73 @@ Sisa selisih setelah pergerakannya cocok adalah ketimpangan saldo awal. Catat
 sebagai satu penyesuaian pembukaan dengan alasan khusus, lalu tutup. Jangan
 diperdebatkan berhari-hari — yang penting pergerakannya cocok sejak titik itu.
 
-**S2 — Shadow stock (baca saja).** Bangun rekonsiliasi stok tiga arah harian:
-**WMS internal vs Jubelio vs angka live di listing marketplace.** Kolom ketiga
-yang paling penting — itulah angka yang dilihat pembeli, dan itu yang menentukan
-oversell. Perkakas yang ada sekarang (`channel:reconcile-*`) hanya menyamakan
-status listing, belum kuantitas stok, jadi ini pekerjaan baru.
+**S2 dan S3 — Shadow stock + dry-run push, dalam satu command.**
 
-**S3 — Dry-run push (shadow write).** Superapp menghitung payload stok yang
-*akan* dikirim per listing, mencatatnya, dan membandingkannya dengan angka live
-— **tanpa mengirim apa pun**. Ini fase dengan rasio manfaat/risiko terbaik:
-mayoritas kecelakaan migrasi stok berasal dari salah mapping SKU, salah lokasi
-sumber stok, atau salah hitung bundle, dan semuanya ketahuan di sini tanpa
-paparan sama sekali.
+`channel:stock-reconcile` membandingkan tiga sisi sekaligus: **WMS internal vs
+angka live di listing marketplace vs sistem lama (CSV, opsional).** Kolom kedua
+yang paling menentukan — itulah angka yang dilihat pembeli.
+
+Command ini sekaligus **dry-run push**, dan itu bukan kebetulan: angka WMS yang
+ditampilkan dihitung lewat `ChannelStockResolver` — jalur yang sama persis
+dipakai push sungguhan, termasuk mode sumber stok, perhitungan bundle, dan
+buffer. Kalau angkanya salah di sini, ia akan salah juga saat dikirim; bedanya
+di sini tidak ada yang terkirim.
+
+```bash
+# Semua toko aktif, tampilkan semua SKU
+php artisan channel:stock-reconcile
+
+# Satu toko, hanya yang selisih, plus pembanding sistem lama
+php artisan channel:stock-reconcile --shop=778899 --only-diff \
+  --jubelio=/path/stok-jubelio.csv
+
+# Uji cepat 20 produk dulu sebelum menjalankan penuh
+php artisan channel:stock-reconcile --shop=778899 --limit=20
+
+# Toleransi 1 unit dianggap cocok
+php artisan channel:stock-reconcile --tolerance=1
+```
+
+CSV sistem lama butuh kolom `sku` dan `qty`. Hasil ditulis ke
+`storage/app/stock-reconcile/` supaya trennya bisa diikuti antar hari. Jalankan
+harian, dan **jangan lanjut ke S4 sebelum match rate memenuhi bagian 6.4.**
+
+Kolom "Listing tak terbaca" perlu diperhatikan: itu listing yang stoknya gagal
+diambil dari marketplace. Kalau angkanya besar, hasil rekonsiliasi belum bisa
+dipercaya — perbaiki dulu penyebabnya sebelum menilai match rate.
 
 **S4 — Serah terima per toko.** Untuk satu toko, pada jam paling sepi:
 
 1. Matikan sinkronisasi stok Jubelio **untuk toko itu** (toko tetap buka).
-2. Segera nyalakan push superapp untuk toko itu (matikan `is_shadow_mode`).
+2. Segera aktifkan push dari sistem ini untuk toko itu:
 
-Jeda di antaranya hitungan menit. Selama jeda, angka di marketplace adalah angka
-terakhir dari Jubelio — masih mendekati benar, dan akan terkoreksi di push
-pertama superapp. Mulai dari toko dengan omzet paling kecil, amati 24–48 jam,
-baru lanjut ke toko berikutnya.
+```bash
+# Lihat rencananya dulu
+php artisan channel:stock-handover --shop=778899 --buffer=3 --dry-run
 
-**S5 — Buffer pengaman.** Hari-hari pertama setelah serah terima, push dengan
-buffer (misal kirim angka yang lebih konservatif dari saldo sebenarnya) untuk
-meredam oversell selama angka belum stabil. Lepas buffer setelah rekonsiliasi
-bersih.
+# Jalankan (akan menanyakan konfirmasi bahwa sync Jubelio sudah dimatikan)
+php artisan channel:stock-handover --shop=778899 --buffer=3
+```
+
+Command ini menolak jalan kalau toko masih dalam mode shadow order — cutover
+order harus selesai lebih dulu. Setelah aktif, resync stok awal langsung
+diantrikan supaya angka di marketplace segera dikoreksi.
+
+Jeda antara langkah 1 dan 2 hitungan menit. Selama jeda, angka di marketplace
+adalah angka terakhir dari Jubelio — masih mendekati benar. Mulai dari toko
+dengan omzet paling kecil, amati 24–48 jam, baru lanjut ke toko berikutnya.
+
+**S5 — Buffer pengaman.** Opsi `--buffer=N` mengurangi N unit dari setiap angka
+yang dikirim, untuk meredam oversell selama angka belum stabil. Buffer
+diterapkan di `ChannelStockResolver`, jadi semua jalur push memakainya —
+termasuk pratinjau di `channel:stock-reconcile`, sehingga yang Anda lihat saat
+pratinjau benar-benar yang akan dikirim.
+
+Lepas buffer setelah rekonsiliasi bersih:
+
+```bash
+php artisan channel:stock-handover --shop=778899 --buffer=0 --force
+```
 
 **S6 — Akhiri kerja dobel per scope.** Begitu satu toko diserahkan, inbound dan
 penyesuaian untuk stok itu **hanya** di superapp. Kerja dobel tanpa tanggal
@@ -315,11 +409,20 @@ tanggal berakhir yang tertulis.
 
 Kalau setelah serah terima ada yang tidak beres:
 
-1. Nyalakan lagi `is_shadow_mode` untuk toko itu → push dari sistem ini berhenti
-   seketika (dijamin oleh guard di `SyncProductToChannelJob`).
-2. Nyalakan lagi sinkronisasi stok Jubelio untuk toko itu.
+```bash
+php artisan channel:stock-rollback --shop=778899
+```
 
-Satu toggle, tanpa deploy, tanpa menutup toko. Karena itu **jangan hapus konfigurasi
+Push dari sistem ini berhenti seketika (dijamin oleh guard di
+`SyncProductToChannelJob`). Command ini sengaja **tanpa konfirmasi** — arahnya
+aman, yang mahal justru menundanya — dan sengaja dipisah dari `stock-handover`
+supaya di situasi tertekan namanya gampang diingat. Tanpa `--shop`, semua toko
+dihentikan sekaligus.
+
+Langkah keduanya manual dan wajib: **nyalakan lagi sinkronisasi stok Jubelio**
+untuk toko itu, supaya marketplace tetap punya satu penulis.
+
+Satu command, tanpa deploy, tanpa menutup toko. Karena itu **jangan hapus konfigurasi
 sinkronisasi di Jubelio** sampai semua toko selesai diserahkan dan stabil —
 biaya menyimpannya nol, biaya kehilangannya sangat mahal.
 
@@ -346,10 +449,22 @@ biaya menyimpannya nol, biaya kehilangannya sangat mahal.
 
 Supaya tidak ada yang mengira ini sudah lengkap:
 
-- **Test otomatis untuk invariant shadow belum ditulis.** Tiga yang paling
-  penting: toko shadow tidak pernah push ke channel, order shadow tidak
-  menghasilkan ledger stok, order shadow tidak masuk query sync keuangan.
+- **Test otomatis untuk invariant belum ditulis.** Empat yang paling penting:
+  toko dengan `stock_push_enabled` mati tidak pernah push ke channel; order
+  shadow tidak menghasilkan ledger stok; order shadow tidak masuk query sync
+  keuangan; jendela tarik selalu terpangkas ke cutoff.
+- **Belum ada satu pun command di dokumen ini yang pernah dijalankan terhadap
+  data sungguhan.** Semuanya baru lolos pemeriksaan sintaksis. Jalankan dengan
+  `--dry-run` / `--limit` di satu toko lebih dulu.
 - **Integrasi API ke Jubelio belum ada** — rekonsiliasi masih lewat CSV export.
-- **Rekonsiliasi stok (S2) dan dry-run push (S3) belum dibangun.**
+- **Pembacaan stok live belum diuji terhadap respons asli** ketiga marketplace.
+  Bentuk respons stok Shopee/TikTok/Lazada dibaca defensif dengan beberapa
+  kemungkinan nama field; kalau kolom "Listing tak terbaca" tinggi saat pertama
+  dijalankan, kemungkinan besar pemetaan field-nya yang perlu disesuaikan, bukan
+  datanya yang salah.
+- **Alert kalau shadow pull mati** belum ada — kegagalan baru ketahuan saat ada
+  yang membuka laporan.
+- **Penanda diskontinuitas laporan** di tanggal cutoff belum ada. Karena histori
+  tidak dimigrasi, grafik akan terlihat "mulai dari nol" di tanggal itu.
 - **Runbook cutover dan rollback operasional** (langkah per langkah, siapa
   melakukan apa, jam berapa) belum ditulis.

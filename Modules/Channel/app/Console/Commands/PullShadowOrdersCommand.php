@@ -71,6 +71,13 @@ class PullShadowOrdersCommand extends Command
                 $windowEnd = $explicitTo ?: $runStartedAt->copy();
                 $windowStart = $explicitFrom ?: $this->resolveWindowStart($shop, $windowEnd, $isFull);
 
+                // Data sebelum cutoff sengaja tidak diambil (keputusan klien: histori
+                // sistem lama tidak dimigrasi), jadi cutoff adalah lantai keras.
+                if ($shop->shadow_started_at && $windowStart->lessThan($shop->shadow_started_at)) {
+                    $this->warn("   Jendela dipangkas ke cutoff toko ({$shop->shadow_started_at->setTimezone(self::TIMEZONE)->format('d/m/Y H:i')} WIB).");
+                    $windowStart = $shop->shadow_started_at->copy();
+                }
+
                 if ($windowStart->greaterThanOrEqualTo($windowEnd)) {
                     $rows[] = [$shop->shop_name, $channelCode, '-', 'dilewati (jendela kosong)'];
                     continue;

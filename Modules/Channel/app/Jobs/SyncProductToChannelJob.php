@@ -80,10 +80,11 @@ class SyncProductToChannelJob implements ShouldQueue
             return;
         }
 
-        if ($shop->is_shadow_mode) {
-            Log::info("SyncProductToChannelJob skipped: Shop is in shadow mode (read-only).", [
+        if (! $shop->stock_push_enabled) {
+            Log::info("SyncProductToChannelJob skipped: Push stok/harga toko ini belum diaktifkan (belum serah terima stok).", [
                 'product_id' => $this->productId,
-                'channel_shop_id' => $this->channelShopId
+                'channel_shop_id' => $this->channelShopId,
+                'is_shadow_mode' => (bool) $shop->is_shadow_mode,
             ]);
             return;
         }

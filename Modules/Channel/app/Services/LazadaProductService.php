@@ -339,6 +339,33 @@ class LazadaProductService
         return $result;
     }
 
+    /**
+     * Detail listing apa adanya dari Lazada, dipakai rekonsiliasi stok untuk
+     * membaca kuantitas yang sedang tayang.
+     */
+    public function fetchLiveProduct(string $shopId, string $itemId): ?array
+    {
+        $shop = $this->shopRepository->findByShopId($shopId);
+
+        if (! $shop || ! $shop->access_token) {
+            return null;
+        }
+
+        $params = ['item_id' => $itemId];
+
+        try {
+            $res = $this->client->request('GET', '/product/item/get', $params, $shop->access_token);
+        } catch (TokenExpiredException $e) {
+            $this->authService->refreshStoreToken((string) $shop->id);
+            $shop = $this->shopRepository->findByShopId($shopId);
+            $res = $this->client->request('GET', '/product/item/get', $params, $shop->access_token);
+        }
+
+        $item = $res['data'] ?? null;
+
+        return is_array($item) && $item !== [] ? $item : null;
+    }
+
     public function pullProductById(string $shopId, string $itemId): bool
     {
         $shop = $this->shopRepository->findByShopId($shopId);

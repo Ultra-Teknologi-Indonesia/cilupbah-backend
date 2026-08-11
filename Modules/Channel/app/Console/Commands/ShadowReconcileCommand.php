@@ -108,6 +108,12 @@ class ShadowReconcileCommand extends Command
      */
     private function reconcileShop(ChannelShop $shop, Carbon $from, Carbon $to, ?array $jubelioRows, float $tolerance): array
     {
+        // Cutoff adalah lantai keras: histori sebelum shadow dimulai memang tidak
+        // ditarik, jadi membandingkannya hanya akan memunculkan selisih palsu.
+        if ($shop->shadow_started_at && $from->lessThan($shop->shadow_started_at)) {
+            $from = $shop->shadow_started_at->copy();
+        }
+
         $ours = SalesOrder::query()
             ->onlyShadow()
             ->where('channel_shop_id', $shop->shop_id)
