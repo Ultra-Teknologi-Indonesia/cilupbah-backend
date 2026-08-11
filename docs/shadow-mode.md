@@ -19,6 +19,16 @@ Dua aturan yang tidak boleh dilanggar selama Shadow Mode:
 2. **Order shadow tidak menyentuh stok dan tidak masuk angka operasional atau
    keuangan.** Datanya nyata, tapi peristiwanya tidak terjadi di sini.
 
+Yang perlu diluruskan, karena keduanya sering tertukar: **order shadow ditulis
+penuh ke database internal** — header dan itemnya tersimpan di `sales_orders`
+lewat jalur yang sama dengan order biasa, hanya ditandai `is_shadow`. Yang tidak
+disentuh adalah **stoknya**, dan itu keputusan yang disengaja: selama fase ini
+stok internal dibiarkan apa adanya, tidak dimirror dari pergerakan order shadow.
+
+Konsekuensinya dibahas di bagian 6.2 S1 dan harus dibaca sebelum masuk fase
+stok: angka stok WMS selama fase shadow tidak bisa dipakai sebagai dasar
+apa pun, dan fase stok mulai dari saldo awal yang baru.
+
 Shadow order tanpa pembanding hanya menumpuk data. Yang membuatnya bernilai
 adalah rekonsiliasi dan kriteria kelulusan yang disepakati di depan.
 
@@ -321,15 +331,29 @@ lulus kriteria di bagian 3.4. Kebenaran stok bergantung pada order terpotong
 dengan benar; kalau ordernya belum dipercaya, selisih stok tidak bisa
 didiagnosis.
 
-**S1 — Saldo awal tanpa pembekuan.** Jangan mencoba menyamakan saldo pada satu
-detik yang sama — itu memang mustahil tanpa menutup toko. Yang dibandingkan:
+**S1 — Tetapkan saldo awal di titik ini, bukan sebelumnya.**
 
-- **pergerakan** per SKU per hari (masuk, keluar, penyesuaian) di kedua sistem, dan
-- **saldo akhir hari** pada jam paling sepi.
+Selama fase order shadow, **stok internal sengaja tidak disentuh** (bagian 1).
+Konsekuensinya harus disadari: order shadow yang dikirim lewat sistem lama
+mengurangi stok fisik di gudang, tapi tidak mengurangi angka di WMS. Jadi angka
+stok WMS selama fase shadow **tidak bisa dipakai sebagai dasar apa pun** —
+selisihnya bertambah setiap hari sebesar volume penjualan.
 
-Sisa selisih setelah pergerakannya cocok adalah ketimpangan saldo awal. Catat
-sebagai satu penyesuaian pembukaan dengan alasan khusus, lalu tutup. Jangan
-diperdebatkan berhari-hari — yang penting pergerakannya cocok sejak titik itu.
+Artinya fase stok tidak mewarisi saldo dari fase order. Saldo awal ditetapkan
+dari nol di titik ini, lewat stock opname atau impor saldo dari sistem lama, dan
+**itu yang jadi titik nol rekonsiliasi**.
+
+Dua hal yang mengikuti dari situ:
+
+- **Input inbound dobel selama fase order shadow tidak membangun saldo yang
+  terpakai** — apa pun yang diinput akan tertimpa saat saldo awal ditetapkan.
+  Kerja dobel baru punya nilai setelah S1 selesai. Ini keputusan biaya
+  operasional yang layak ditinjau ulang dengan tim admin.
+- Setelah S1, jangan lagi mengejar kesamaan saldo pada satu detik yang sama —
+  itu memang mustahil tanpa menutup toko. Yang dipantau: **pergerakan** per SKU
+  per hari di kedua sistem, dan **saldo akhir hari** pada jam paling sepi. Sisa
+  selisih setelah pergerakannya cocok dicatat sebagai satu penyesuaian pembukaan
+  dengan alasan khusus, lalu ditutup — jangan diperdebatkan berhari-hari.
 
 **S2 dan S3 — Shadow stock + dry-run push, dalam satu command.**
 
@@ -482,6 +506,7 @@ order, dan Jubelio tidak bisa dimatikan sebelum yang terakhir tuntas.
 | Gap analysis: fitur apa yang dipakai tim admin harian di Jubelio tapi belum ada di sini | wawancara, bukan kode |
 | Sepakati cutoff per toko dan siapa PIC-nya | keputusan |
 | Sepakati kriteria kelulusan order (bagian 3.4) dan stok (bagian 6.4) | keputusan |
+| Tinjau ulang kerja dobel input stok selama fase order — belum berguna sampai G4/S1 | keputusan |
 | Jalankan test dan uji semua command dengan `--dry-run` di satu toko | teknis |
 
 Gap analysis paling mahal kalau ditunda. Kalau baru ketahuan saat cutover,
