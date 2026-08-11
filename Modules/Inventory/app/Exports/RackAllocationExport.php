@@ -20,14 +20,11 @@ class RackAllocationExport implements FromCollection, WithHeadings, WithMapping,
 
     public function collection(): Collection
     {
-        $query = DB::table('inventories')
-            ->join('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
-            ->join('locations', 'locations.id', '=', 'inventories.location_id')
-            ->join('product_variants', 'product_variants.id', '=', 'inventories.item_id')
-            ->where('location_bins.is_inbound', false)
-            ->where('location_bins.bin_final_code', '!=', 'DEFAULT')
-            ->where('inventories.on_hand', '>', 0)
-            ->when($this->locationId, fn ($q) => $q->where('inventories.location_id', $this->locationId))
+        $query = DB::table('sku_rack_assignments')
+            ->join('location_bins', 'location_bins.id', '=', 'sku_rack_assignments.bin_id')
+            ->join('locations', 'locations.id', '=', 'sku_rack_assignments.location_id')
+            ->join('product_variants', 'product_variants.id', '=', 'sku_rack_assignments.item_id')
+            ->when($this->locationId, fn ($q) => $q->where('sku_rack_assignments.location_id', $this->locationId))
             ->when($this->search, function ($q) {
                 $s = '%' . $this->search . '%';
                 $q->where(function ($w) use ($s) {
