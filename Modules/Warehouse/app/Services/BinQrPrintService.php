@@ -13,7 +13,7 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class BinQrPrintService
 {
-    public const VALID_PAPERS = [
+    public const array VALID_PAPERS = [
         'thermal_50x40',
         'thermal_80x40',
         'a4_single',
@@ -139,6 +139,7 @@ class BinQrPrintService
         $disk = Storage::disk(self::STORAGE_DISK);
         $count = 0;
         foreach ($jobs as $job) {
+            /** @var \Modules\Warehouse\Models\QrPrintJob $job */
             if ($disk->exists($job->file_path)) {
                 $disk->delete($job->file_path);
             }
