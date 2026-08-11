@@ -27,6 +27,7 @@ class RackImportBatchRepository
     {
         return RackImportRow::where('batch_id', $batch->id)
             ->when(request('status'), fn ($q, $status) => $q->where('status', $status))
+            ->allowedSearch('raw_sku', 'raw_bin', 'raw_location')
             ->orderBy('row_no')
             ->paginate((int) request('per_page', 20))
             ->appends(request()->query());
