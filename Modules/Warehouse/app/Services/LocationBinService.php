@@ -315,6 +315,7 @@ class LocationBinService
             });
         }
 
+        /** @var \Illuminate\Pagination\LengthAwarePaginator $paginator */
         $paginator = $query->paginate($perPage, ['*'], 'page', $page);
         
         // Transform the results to match the PendingPutawaySku format
