@@ -66,6 +66,34 @@ Dokumen ini adalah panduan standar penulisan kode untuk proyek Laravel (`cilupba
     }
     ```
 
+### 5.1 Index Wajib untuk Setiap `allowedSearch` Baru
+
+Macro ini menghasilkan `to_tsvector(...) @@ websearch_to_tsquery(...) OR <kolom> ILIKE '%...%'`. Karena kedua sisi di-`OR`, PostgreSQL **hanya** bisa menghindari sequential scan kalau **dua-duanya** punya index. Tanpa index, setiap `?search=` membangun tsvector per baris — inilah penyebab utama endpoint listing terasa lambat.
+
+Jadi setiap kali menambah `allowedSearch(...)` pada tabel yang bisa tumbuh besar, tambahkan juga migrasi index:
+
+```php
+$vector = SearchExpression::vector(['judul', 'konten']);
+ConcurrentIndex::create(
+    'idx_mytable_search_fts',
+    'my_table',
+    ['judul', 'konten'],
+    "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_mytable_search_fts ON my_table USING gin ({$vector})"
+);
+// lalu satu index trigram per kolom untuk sisi ILIKE
+```
+
+Aturan mainnya:
+
+- SQL index **wajib** dibangun lewat `App\Support\SearchExpression`, bukan ditulis tangan. PostgreSQL hanya memakai expression index kalau ekspresi di query identik persis dengan yang diindeks — helper ini satu-satunya sumber kebenaran untuk keduanya.
+- Urutan argumen `allowedSearch` tidak berpengaruh: `SearchExpression` menormalkan (sort + dedupe) daftar kolom, jadi satu index melayani semua call site dengan himpunan kolom yang sama.
+- Migrasi index pakai `App\Support\ConcurrentIndex` + `public $withinTransaction = false`, supaya tabel tetap bisa ditulis saat index dibangun.
+- Relevansi (`ts_rank_cd`) hanya diterapkan kalau request tidak mengirim `?sort=`. Kalau frontend mengirim `sort` eksplisit, sort itu yang dipakai — ini juga yang membuat top-N bisa dijawab langsung dari index.
+
+### 5.2 Index Foreign Key untuk Eager Loading
+
+PostgreSQL **tidak** membuat index otomatis untuk `REFERENCES`. Setiap relasi yang di-`with(...)` dari daftar terpaginasi menghasilkan `WHERE <fk> IN (...)`; tanpa index pada kolom FK itu, satu halaman produk/pesanan memicu sequential scan penuh pada tabel anak. Saat menambah relasi baru ke sebuah listing, pastikan kolom FK-nya terindeks.
+
 ## 6. Pagination Standar (20 Per Page)
 
 - Semua daftar yang menggunakan _pagination_ **WAJIB** memiliki standar _default_ **20 item per halaman** (bukan bawaan 15).

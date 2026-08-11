@@ -4,21 +4,12 @@ namespace Modules\Product\Repositories;
 
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Modules\Product\Models\Product;
+use Modules\Product\Support\ProductFeedRelations;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
 
 class ReviewFeedRepository
 {
-    private const RELATIONS = [
-        'category',
-        'variationTypes.attribute',
-        'variants.options.attribute',
-        'variants.inventories',
-        'variants.channelMappings.channelMapping.channelShop.channel',
-        'media',
-        'channelMappings.channelShop.channel',
-    ];
-
     private const REVIEW_STATUSES = [
         Product::STATUS_DOWNLOAD,
     ];
@@ -27,7 +18,7 @@ class ReviewFeedRepository
     {
         return QueryBuilder::for(Product::class)
             ->whereIn('status', self::REVIEW_STATUSES)
-            ->with(self::RELATIONS)
+            ->with(ProductFeedRelations::withInventories())
             ->allowedSearch('name', 'sku')
             ->allowedFilters(
                 AllowedFilter::callback('status', function ($query, $value) {
