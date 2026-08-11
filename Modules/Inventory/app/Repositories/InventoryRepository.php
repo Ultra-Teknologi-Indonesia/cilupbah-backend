@@ -69,8 +69,7 @@ class InventoryRepository
 
     public function getByItem(string $itemId): Collection
     {
-
-        return Inventory::where('item_id', $itemId)
+        $inventories = Inventory::where('item_id', $itemId)
             ->placed()
             ->where('on_hand', '>', 0)
             ->with([
@@ -79,6 +78,34 @@ class InventoryRepository
                 'bin.zone:id,zone_code,zone_name',
             ])
             ->get();
+
+        $assignedBinIds = $inventories->pluck('bin_id')->filter()->unique()->all();
+
+        $assignments = \Modules\Inventory\Models\SkuRackAssignment::where('item_id', $itemId)
+            ->whereNotIn('bin_id', $assignedBinIds ?: ['-1'])
+            ->with([
+                'bin:id,location_id,bin_final_code,floor_code,row_code,column_code,zone_id',
+                'bin.location:id,location_name',
+                'bin.zone:id,zone_code,zone_name'
+            ])
+            ->get();
+
+        foreach ($assignments as $assignment) {
+            $fakeInv = new Inventory([
+                'item_id' => $itemId,
+                'bin_id' => $assignment->bin_id,
+                'location_id' => $assignment->location_id,
+                'on_hand' => 0,
+                'on_order' => 0,
+            ]);
+            if ($assignment->bin) {
+                $fakeInv->setRelation('bin', $assignment->bin);
+                $fakeInv->setRelation('location', $assignment->bin->location);
+            }
+            $inventories->push($fakeInv);
+        }
+
+        return $inventories;
     }
 
     public function findExact(string $itemId, string $locationId, ?string $binId, string $batchNo = '', string $serialNo = ''): ?Inventory
