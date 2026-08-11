@@ -8,6 +8,9 @@ use Modules\Product\Support\ChannelUrlBuilder;
 
 class MasterItemResource extends JsonResource
 {
+    /** @var array<string, string|null>|null */
+    protected ?array $shopNames = null;
+
     public function toArray(Request $request): array
     {
         return [
@@ -103,18 +106,47 @@ class MasterItemResource extends JsonResource
             return [];
         }
 
-        return $variant->channelMappings
-            ->map(function ($mapping) {
-                $shop = ($mapping->relationLoaded('channelMapping') && $mapping->channelMapping
-                    && $mapping->channelMapping->relationLoaded('channelShop'))
-                    ? $mapping->channelMapping->channelShop
-                    : null;
+        $shopNames = $this->shopNamesByMappingId();
 
-                return $shop ? ['store_name' => $shop->shop_name] : null;
-            })
+        return $variant->channelMappings
+            ->map(fn ($mapping) => array_key_exists($mapping->product_channel_mapping_id, $shopNames)
+                ? ['store_name' => $shopNames[$mapping->product_channel_mapping_id]]
+                : null)
             ->filter()
             ->values()
             ->all();
+    }
+
+    /**
+     * Shop name per product_channel_mappings row.
+     *
+     * The parent mapping rows are already eager loaded at product level, so the
+     * variant pivot only needs its foreign key — walking
+     * `channelMapping.channelShop.channel` from every variant mapping would
+     * re-hydrate the exact same rows once per variant.
+     *
+     * @return array<string, string|null>
+     */
+    protected function shopNamesByMappingId(): array
+    {
+        if ($this->shopNames !== null) {
+            return $this->shopNames;
+        }
+
+        if (! $this->resource->relationLoaded('channelMappings')) {
+            return $this->shopNames = [];
+        }
+
+        $map = [];
+        foreach ($this->channelMappings as $mapping) {
+            $shop = $mapping->relationLoaded('channelShop') ? $mapping->channelShop : null;
+
+            if ($shop) {
+                $map[$mapping->id] = $shop->shop_name;
+            }
+        }
+
+        return $this->shopNames = $map;
     }
 
     protected function onlineStatus(): array

@@ -4,26 +4,17 @@ namespace Modules\Product\Repositories;
 
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Modules\Product\Models\Product;
+use Modules\Product\Support\ProductFeedRelations;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
 
 class ArchiveFeedRepository
 {
-    private const RELATIONS = [
-        'category',
-        'archivedBy:id,email',
-        'variationTypes.attribute',
-        'variants.options.attribute',
-        'variants.channelMappings.channelMapping.channelShop.channel',
-        'media',
-        'channelMappings.channelShop.channel',
-    ];
-
     public function paginate(): LengthAwarePaginator
     {
         return QueryBuilder::for(Product::class)
             ->where('status', Product::STATUS_ARCHIVED)
-            ->with(self::RELATIONS)
+            ->with(ProductFeedRelations::withArchivedBy())
             ->allowedSearch('name', 'sku')
             ->allowedFilters(
                 AllowedFilter::exact('archived_by'),
@@ -41,7 +32,7 @@ class ArchiveFeedRepository
     {
         return Product::query()
             ->where('status', Product::STATUS_ARCHIVED)
-            ->with(self::RELATIONS)
+            ->with(ProductFeedRelations::withArchivedBy())
             ->findOrFail($id);
     }
 }
