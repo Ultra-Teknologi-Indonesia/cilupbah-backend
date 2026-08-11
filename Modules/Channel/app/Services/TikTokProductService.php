@@ -331,13 +331,15 @@ class TikTokProductService
                 $queries['page_token'] = $pageToken;
             }
 
-            $res = \Modules\Channel\Support\ChannelRetry::run('tiktok', function () use (&$accessToken, $shop, $queries) {
+            $body = ['status' => 'ACTIVATE'];
+
+            $res = \Modules\Channel\Support\ChannelRetry::run('tiktok', function () use (&$accessToken, $shop, $queries, $body) {
                 try {
-                    return $this->client->request('POST', '/product/202309/products/search', $queries, [], $accessToken);
+                    return $this->client->request('POST', '/product/202309/products/search', $queries, $body, $accessToken);
                 } catch (TokenExpiredException $e) {
                     $accessToken = $this->refreshShopToken($shop);
 
-                    return $this->client->request('POST', '/product/202309/products/search', $queries, [], $accessToken);
+                    return $this->client->request('POST', '/product/202309/products/search', $queries, $body, $accessToken);
                 }
             });
 
@@ -459,11 +461,12 @@ class TikTokProductService
                 $queries['page_token'] = $pageToken;
             }
 
+            $body = ['status' => 'ACTIVATE'];
             try {
-                $res = $this->client->request('POST', '/product/202309/products/search', $queries, [], $accessToken);
+                $res = $this->client->request('POST', '/product/202309/products/search', $queries, $body, $accessToken);
             } catch (TokenExpiredException $e) {
                 $accessToken = $this->refreshShopToken($shop);
-                $res = $this->client->request('POST', '/product/202309/products/search', $queries, [], $accessToken);
+                $res = $this->client->request('POST', '/product/202309/products/search', $queries, $body, $accessToken);
             }
 
             foreach ($res['data']['products'] ?? [] as $item) {

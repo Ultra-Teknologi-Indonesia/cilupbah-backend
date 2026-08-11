@@ -25,7 +25,7 @@ class WooCommerceProductService
         $total = 0;
         $count = 0;
 
-        $this->client->paginate($shop, 'products', [], 100, 100, function (array $chunk) use ($shop, $shopId, $productService, $onProgress, &$total, &$count) {
+        $this->client->paginate($shop, 'products', ['status' => 'publish'], 100, 100, function (array $chunk) use ($shop, $shopId, $productService, $onProgress, &$total, &$count) {
             $total += count($chunk);
 
             foreach ($chunk as $item) {
@@ -95,7 +95,7 @@ class WooCommerceProductService
     {
         $shop = $this->requireShop($shopId);
 
-        $products = $this->client->get($shop, 'products', ['search' => $query, 'per_page' => 50]);
+        $products = $this->client->get($shop, 'products', ['search' => $query, 'per_page' => 50, 'status' => 'publish']);
 
         $results = [];
         foreach ($products as $item) {

@@ -403,7 +403,8 @@ class LazadaProductService
         $pages   = 0;
 
         do {
-            $params = ['filter' => 'all', 'offset' => $offset, 'limit' => $limit];
+
+            $params = ['filter' => 'live', 'offset' => $offset, 'limit' => $limit];
             if ($needle !== '') {
                 $params['search'] = $query;
             }
@@ -468,7 +469,8 @@ class LazadaProductService
         $maxPages = (int) config('channel.download_max_pages', 10000);
 
         do {
-            $params = ['filter' => 'all', 'offset' => $offset, 'limit' => $limit];
+
+            $params = ['filter' => 'live', 'offset' => $offset, 'limit' => $limit];
 
             $res = \Modules\Channel\Support\ChannelRetry::run('lazada', function () use (&$shop, $shopId, $params) {
                 try {

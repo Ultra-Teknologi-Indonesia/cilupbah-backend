@@ -41,6 +41,7 @@ class MasterFeedRepository
         return ProductFeedQuery::configure(
             QueryBuilder::for(Product::class)
                 ->where('is_from_channel', true)
+                ->where('status', '<>', Product::STATUS_ARCHIVED)
                 ->when($updatedSince, fn ($query) => $query->where('updated_at', '>=', $updatedSince))
                 ->with(self::RELATIONS)
         )
