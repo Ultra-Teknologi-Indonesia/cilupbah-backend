@@ -141,7 +141,18 @@ Perilaku yang perlu diketahui:
 ### 3.3 Rekonsiliasi
 
 Sisi sistem lama dibaca dari CSV export (belum ada kredensial API ke Jubelio).
-Kolom yang dipakai: `channel_order_no` (wajib), `grand_total`, `channel_status`.
+
+| Kolom | Wajib | Fungsi |
+|---|---|---|
+| `channel_order_no` | ya | Kunci join ke order di sistem ini. **Harus nomor order marketplace**, bukan nomor internal sistem lama |
+| `grand_total` | tidak | Deteksi selisih nilai |
+| `channel_status` | tidak | Deteksi selisih status |
+| `shop_id` | tidak | Memisahkan baris per toko kalau satu file berisi banyak toko |
+
+Kalau file berisi banyak toko tapi tidak punya kolom `shop_id`, baris milik toko
+lain akan terhitung sebagai selisih. Pakai satu file per toko dengan `--shop`,
+atau minta kolom `shop_id` disertakan — command akan memperingatkan kalau
+kondisinya terdeteksi.
 
 ```bash
 # Ringkasan sisi kita saja (baseline harian)

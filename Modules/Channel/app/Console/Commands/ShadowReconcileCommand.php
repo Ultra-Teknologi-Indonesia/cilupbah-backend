@@ -70,6 +70,10 @@ class ShadowReconcileCommand extends Command
 
         $this->info("Rekonsiliasi {$from->format('d/m/Y H:i')} - {$to->format('d/m/Y H:i')} WIB");
 
+        if ($jubelioRows !== null && $shops->count() > 1 && ! $this->csvHasShopColumn($jubelioRows)) {
+            $this->warn('CSV tidak punya kolom shop_id, padahal ada lebih dari satu toko shadow. Seluruh baris CSV akan diadu ke setiap toko, sehingga order milik toko lain terhitung sebagai selisih. Pakai --shop, atau tambahkan kolom shop_id di export.');
+        }
+
         $results = [];
 
         foreach ($shops as $shop) {
@@ -134,6 +138,8 @@ class ShadowReconcileCommand extends Command
             return $result;
         }
 
+        $jubelioRows = $this->scopeRowsToShop($jubelioRows, $shop);
+
         $missingInOurs = [];
         $missingInJubelio = [];
         $valueMismatch = [];
@@ -188,6 +194,34 @@ class ShadowReconcileCommand extends Command
         ];
     }
 
+    /**
+     * Export sistem lama bisa berisi banyak toko sekaligus. Tanpa penyaringan,
+     * order milik toko lain akan terhitung sebagai "tidak ada di sistem ini"
+     * dan match rate-nya jadi menyesatkan.
+     */
+    private function scopeRowsToShop(array $rows, ChannelShop $shop): array
+    {
+        if (! $this->csvHasShopColumn($rows)) {
+            return $rows;
+        }
+
+        return array_filter(
+            $rows,
+            fn (array $row) => (string) ($row['shop_id'] ?? '') === (string) $shop->shop_id,
+        );
+    }
+
+    private function csvHasShopColumn(array $rows): bool
+    {
+        foreach ($rows as $row) {
+            if (($row['shop_id'] ?? null) !== null) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function renderShop(array $result, bool $compared): void
     {
         $this->newLine();
@@ -228,7 +262,7 @@ class ShadowReconcileCommand extends Command
     }
 
     /**
-     * @return array<string, array{grand_total: ?float, channel_status: ?string}>|null
+     * @return array<string, array{grand_total: ?float, channel_status: ?string, shop_id: ?string}>|null
      */
     private function readJubelioCsv(string $path): ?array
     {
@@ -260,10 +294,12 @@ class ShadowReconcileCommand extends Command
 
             $rawTotal = isset($columns['grand_total']) ? trim((string) ($row[$columns['grand_total']] ?? '')) : '';
             $rawStatus = isset($columns['channel_status']) ? trim((string) ($row[$columns['channel_status']] ?? '')) : '';
+            $rawShop = isset($columns['shop_id']) ? trim((string) ($row[$columns['shop_id']] ?? '')) : '';
 
             $rows[$orderNo] = [
                 'grand_total'    => $rawTotal === '' ? null : (float) str_replace(',', '', $rawTotal),
                 'channel_status' => $rawStatus === '' ? null : $rawStatus,
+                'shop_id'        => $rawShop === '' ? null : $rawShop,
             ];
         }
 
