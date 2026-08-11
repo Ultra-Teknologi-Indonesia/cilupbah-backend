@@ -139,7 +139,7 @@ class BinQrPrintService
         $disk = Storage::disk(self::STORAGE_DISK);
         $count = 0;
         foreach ($jobs as $job) {
-            /** @var \Modules\Warehouse\Models\QrPrintJob $job */
+            /** @var QrPrintJob $job */
             if ($disk->exists($job->file_path)) {
                 $disk->delete($job->file_path);
             }
