@@ -289,6 +289,23 @@ class SalesOrder extends Model implements HasMedia
         return $query->where('is_manual', true);
     }
 
+    /**
+     * Order shadow adalah hasil tarik paralel saat migrasi: datanya nyata, tapi
+     * tidak difulfill di sistem ini. Semua agregat operasional/keuangan wajib
+     * memakai scope ini supaya angkanya tidak bercampur.
+     */
+    public function scopeExcludeShadow($query)
+    {
+        return $query->where(function ($q) {
+            $q->where('is_shadow', false)->orWhereNull('is_shadow');
+        });
+    }
+
+    public function scopeOnlyShadow($query)
+    {
+        return $query->where('is_shadow', true);
+    }
+
     public function scopeWhereDateFrom($query, $date)
     {
         return $query->whereDate('transaction_date', '>=', $date);

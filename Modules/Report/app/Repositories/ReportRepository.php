@@ -880,6 +880,7 @@ class ReportRepository
         $locationIds = $filters['location_ids'] ?? [];
 
         return SalesOrder::query()
+            ->excludeShadow()
             ->when($from, fn ($q, $v) => $q->where('sales_orders.transaction_date', '>=', $v . ' 00:00:00'))
             ->when($to, fn ($q, $v) => $q->where('sales_orders.transaction_date', '<=', $v . ' 23:59:59'))
             ->when(! empty($locationIds), fn ($q) => $q->whereIn('sales_orders.location_id', $locationIds))
@@ -907,6 +908,7 @@ class ReportRepository
 
         return SalesOrderItem::query()
             ->join('sales_orders', 'sales_orders.id', '=', 'sales_order_items.order_id')
+            ->where(fn ($q) => $q->where('sales_orders.is_shadow', false)->orWhereNull('sales_orders.is_shadow'))
             ->when($from, fn ($q, $v) => $q->where('sales_orders.transaction_date', '>=', $v . ' 00:00:00'))
             ->when($to, fn ($q, $v) => $q->where('sales_orders.transaction_date', '<=', $v . ' 23:59:59'))
             ->when(! empty($locationIds), fn ($q) => $q->whereIn('sales_orders.location_id', $locationIds))

@@ -198,6 +198,7 @@ class SalesOrderResource extends JsonResource
             'contact_note'       => $this->contact_note,
 
             'is_manual'           => (bool) $this->is_manual,
+            'is_shadow'           => (bool) $this->is_shadow,
             'no_ref'              => $this->no_ref,
             'note'                => $this->note,
             'delivery_method'     => $this->delivery_method,

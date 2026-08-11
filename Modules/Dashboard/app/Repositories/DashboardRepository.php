@@ -13,6 +13,7 @@ class DashboardRepository
     public function orderAggregates(?string $dateFrom, ?string $dateTo): array
     {
         $ordersQuery = SalesOrder::query()
+            ->excludeShadow()
             ->when($dateFrom, fn ($q) => $q->whereDateFrom($dateFrom))
             ->when($dateTo, fn ($q) => $q->whereDateTo($dateTo));
 

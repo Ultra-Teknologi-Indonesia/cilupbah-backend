@@ -48,9 +48,14 @@ class SalesOrderRepository
                 AllowedFilter::callback('label_printed', fn ($q, $value) => $this->applyLabelPrintedFilter($q, $value)),
                 AllowedFilter::callback('contact_status', fn ($q, $value) => $this->applyContactStatusFilter($q, $value)),
                 AllowedFilter::callback('status', fn ($q, $value) => $this->applyStatusFilterScope($q, (array) $value)),
+                AllowedFilter::callback('shadow', fn ($q, $value) => $this->applyShadowFilter($q, $value)),
             )
             ->allowedSorts(...self::ORDER_SORTS)
             ->defaultSort('-created_at');
+
+        if (! filled(request()->input('filter.shadow'))) {
+            $query->excludeShadow();
+        }
 
         $tab = request('tab');
         $sub = request('sub');
@@ -355,6 +360,19 @@ class SalesOrderRepository
             'single_nqty' => $query->has('items', '=', 1)
                 ->whereHas('items', fn ($q) => $q->where('qty_in_base', '>', 1)),
             default       => $query,
+        };
+    }
+
+    /**
+     * Default list menyembunyikan order shadow. "only" untuk memeriksa hasil
+     * tarik paralel saat migrasi, "all" untuk melihat keduanya sekaligus.
+     */
+    protected function applyShadowFilter($query, $value)
+    {
+        return match (strtolower((string) $value)) {
+            'only'  => $query->onlyShadow(),
+            'all'   => $query,
+            default => $query->excludeShadow(),
         };
     }
 

@@ -122,6 +122,7 @@ class SettlementSyncService
 
         if ($isOrder) {
             $order = SalesOrder::where('source', 'tiktok')
+                ->excludeShadow()
                 ->where('channel_order_no', $tx['order_id'])
                 ->first();
 
@@ -138,7 +139,7 @@ class SettlementSyncService
         }
 
         $matchedOrder = $orderId
-            ? SalesOrder::where('source', 'tiktok')->where('channel_order_no', $orderId)->first()
+            ? SalesOrder::where('source', 'tiktok')->excludeShadow()->where('channel_order_no', $orderId)->first()
             : null;
 
         ChannelSettlementAdjustment::updateOrCreate(
@@ -213,6 +214,7 @@ class SettlementSyncService
     private function syncShopeeOrder(string $shopId, string $orderSn, ?Carbon $settledAt): void
     {
         $order = SalesOrder::where('source', 'shopee')
+            ->excludeShadow()
             ->where('channel_order_no', $orderSn)
             ->first();
 
@@ -274,6 +276,7 @@ class SettlementSyncService
         }
 
         SalesOrder::query()
+            ->excludeShadow()
             ->where('source', 'lazada')
             ->where('channel_shop_id', $shop->shop_id)
             ->whereIn('channel_status', ['COMPLETED', 'DELIVERED'])

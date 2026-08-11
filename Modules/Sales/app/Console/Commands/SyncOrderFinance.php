@@ -22,6 +22,7 @@ class SyncOrderFinance extends Command
         $force = (bool) $this->option('force');
 
         $query = SalesOrder::query()
+            ->excludeShadow()
             ->whereIn('channel_status', ['COMPLETED', 'DELIVERED'])
             ->whereIn('source', $source ? [$source] : ['shopee', 'tiktok', 'lazada'])
             ->whereNotNull('channel_shop_id')

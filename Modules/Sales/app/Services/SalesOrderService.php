@@ -26,6 +26,7 @@ use Modules\Sales\Jobs\SyncStockJob;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderItem;
 use Modules\Sales\Support\OrderTotals;
+use Modules\Sales\Support\ShadowOrderGuard;
 use Modules\Sales\Models\SalesOrderStatusHistory;
 use Modules\Sales\Repositories\SalesOrderRepository;
 use Modules\Outbound\Models\Picklist;
@@ -2065,7 +2066,7 @@ class SalesOrderService
 
     private function reserveStockForOrder(SalesOrder $order, bool $enforce = true): void
     {
-        if ($order->is_shadow) {
+        if (ShadowOrderGuard::blocks($order, 'reserve_stock')) {
             return;
         }
         foreach ($order->items as $item) {
@@ -2093,7 +2094,7 @@ class SalesOrderService
 
     private function pickStockForOrder(SalesOrder $order): void
     {
-        if ($order->is_shadow) {
+        if (ShadowOrderGuard::blocks($order, 'pick_stock')) {
             return;
         }
         foreach ($order->items as $item) {
@@ -2115,7 +2116,7 @@ class SalesOrderService
 
     private function releaseStockForOrder(SalesOrder $order): void
     {
-        if ($order->is_shadow) {
+        if (ShadowOrderGuard::blocks($order, 'release_stock')) {
             return;
         }
         $this->releaseStockForStatus($order, $order->status);
