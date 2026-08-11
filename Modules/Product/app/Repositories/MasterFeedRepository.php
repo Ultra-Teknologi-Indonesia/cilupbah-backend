@@ -3,9 +3,10 @@
 namespace Modules\Product\Repositories;
 
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
-use Modules\Product\Models\Category;
+use Illuminate\Support\Collection;
 use Modules\Product\Models\Product;
-use Spatie\QueryBuilder\AllowedFilter;
+use Modules\Product\Models\ProductMerge;
+use Modules\Product\Support\ProductFeedQuery;
 use Spatie\QueryBuilder\QueryBuilder;
 
 class MasterFeedRepository
@@ -19,103 +20,100 @@ class MasterFeedRepository
         'channelMappings.channelShop.channel',
     ];
 
-    public function paginate(string $status, ?string $updatedSince = null, array $excludeIds = []): LengthAwarePaginator
+    /**
+     * @param  array  $context  the merge grouping context from mergeContext()
+     */
+    public function paginate(string $status, ?string $updatedSince, array $context): LengthAwarePaginator
     {
-        return QueryBuilder::for(Product::class)
-            ->where('status', $status)
-            ->when($updatedSince, fn ($query) => $query->where('updated_at', '>=', $updatedSince))
-            ->when(! empty($excludeIds), fn ($query) => $query->whereNotIn('id', $excludeIds))
-            ->with(self::RELATIONS)
-            ->allowedSearch('name', 'sku')
-            ->allowedFilters(
-                AllowedFilter::callback('category_id', function ($query, $value) {
-                    $query->whereIn('category_id', $this->categoryWithDescendants($value));
-                }),
-
-                AllowedFilter::callback('type', function ($query, $value) {
-                    match ($value) {
-                        'bundle' => $query->where('is_bundle', true),
-                        'konsinyasi' => $query->where('is_consignment', true),
-                        'pre_order' => $query->where('order_type', 'PREORDER'),
-                        'satuan' => $query->where('is_bundle', false)
-                            ->where('is_consignment', false)
-                            ->where(fn ($q) => $q->where('order_type', '<>', 'PREORDER')->orWhereNull('order_type')),
-                        default => null,
-                    };
-                }),
-
-                AllowedFilter::callback('min_price', fn ($query, $value) => $query->whereHas('variants', fn ($q) => $q->where('sell_price', '>=', $value))),
-                AllowedFilter::callback('max_price', fn ($query, $value) => $query->whereHas('variants', fn ($q) => $q->where('sell_price', '<=', $value))),
-
-                AllowedFilter::callback('channel', fn ($query, $value) => $query->whereHas('channelMappings.channelShop.channel', fn ($q) => $q->where('code', $value))),
-            )
-            ->allowedSorts('name', 'created_at', 'updated_at')
-            ->defaultSort('-updated_at')
-            ->paginate(request('per_page', 20))
-            ->appends(request()->query());
-    }
-
-    private function categoryWithDescendants($values): array
-    {
-        $roots = array_filter(array_map('intval', (array) $values));
-        if (empty($roots)) {
-            return [0];
+        if (! ($context['active'] ?? false)) {
+            return $this->plainFeedQuery($status, $updatedSince);
         }
 
-        $childrenByParent = [];
-        foreach (Category::query()->get(['id', 'parent_id']) as $cat) {
-            $childrenByParent[(int) $cat->parent_id][] = (int) $cat->id;
-        }
+        $restrictRepIds = ProductFeedQuery::hasCriteria()
+            ? $this->matchingRepresentativeIds($status, $updatedSince, $context['memberToRep'])
+            : null;
 
-        $ids = [];
-        $stack = $roots;
-        while ($stack) {
-            $cur = array_pop($stack);
-            if (in_array($cur, $ids, true)) {
-                continue;
-            }
-            $ids[] = $cur;
-            foreach ($childrenByParent[$cur] ?? [] as $child) {
-                $stack[] = $child;
-            }
-        }
-
-        return $ids;
+        return $this->mergeAwareQuery($status, $updatedSince, $context['nonRepIds'], $restrictRepIds);
     }
 
     public function paginateDownloaded(?string $updatedSince = null): LengthAwarePaginator
     {
-        return QueryBuilder::for(Product::class)
-            ->where('is_from_channel', true)
-            ->when($updatedSince, fn ($query) => $query->where('updated_at', '>=', $updatedSince))
-            ->with(self::RELATIONS)
-            ->allowedSearch('name', 'sku')
-            ->allowedFilters(
-                AllowedFilter::callback('category_id', function ($query, $value) {
-                    $query->whereIn('category_id', $this->categoryWithDescendants($value));
-                }),
-
-                AllowedFilter::callback('type', function ($query, $value) {
-                    match ($value) {
-                        'bundle' => $query->where('is_bundle', true),
-                        'konsinyasi' => $query->where('is_consignment', true),
-                        'pre_order' => $query->where('order_type', 'PREORDER'),
-                        'satuan' => $query->where('is_bundle', false)
-                            ->where('is_consignment', false)
-                            ->where(fn ($q) => $q->where('order_type', '<>', 'PREORDER')->orWhereNull('order_type')),
-                        default => null,
-                    };
-                }),
-
-                AllowedFilter::callback('min_price', fn ($query, $value) => $query->whereHas('variants', fn ($q) => $q->where('sell_price', '>=', $value))),
-                AllowedFilter::callback('max_price', fn ($query, $value) => $query->whereHas('variants', fn ($q) => $q->where('sell_price', '<=', $value))),
-
-                AllowedFilter::callback('channel', fn ($query, $value) => $query->whereHas('channelMappings.channelShop.channel', fn ($q) => $q->where('code', $value))),
-            )
-            ->allowedSorts('name', 'created_at', 'updated_at')
-            ->defaultSort('-updated_at')
+        return ProductFeedQuery::configure(
+            QueryBuilder::for(Product::class)
+                ->where('is_from_channel', true)
+                ->when($updatedSince, fn ($query) => $query->where('updated_at', '>=', $updatedSince))
+                ->with(self::RELATIONS)
+        )
             ->paginate(request('per_page', 20))
             ->appends(request()->query());
+    }
+
+    /**
+     * Flat feed used when nothing is merged — byte-identical to the original
+     * (non-merge-aware) behaviour.
+     */
+    private function plainFeedQuery(string $status, ?string $updatedSince): LengthAwarePaginator
+    {
+        return ProductFeedQuery::configure(
+            QueryBuilder::for(Product::class)
+                ->where('status', $status)
+                ->when($updatedSince, fn ($query) => $query->where('updated_at', '>=', $updatedSince))
+                ->with(self::RELATIONS)
+        )
+            ->paginate(request('per_page', 20))
+            ->appends(request()->query());
+    }
+
+    /**
+     * Representative rows only, optionally restricted to the masters whose
+     * members matched the search/filter criteria. Search/filter are already
+     * resolved into $restrictRepIds so they are NOT re-applied here (that would
+     * re-filter on the representative alone).
+     *
+     * @param  string[]  $nonRepIds
+     * @param  string[]|null  $restrictRepIds  null = no criteria (show all masters)
+     */
+    private function mergeAwareQuery(
+        string $status,
+        ?string $updatedSince,
+        array $nonRepIds,
+        ?array $restrictRepIds,
+    ): LengthAwarePaginator {
+        $query = Product::query()
+            ->where('status', $status)
+            ->when($updatedSince, fn ($q) => $q->where('updated_at', '>=', $updatedSince))
+            ->when(! empty($nonRepIds), fn ($q) => $q->whereNotIn('id', $nonRepIds))
+            ->when($restrictRepIds !== null, fn ($q) => $q->whereIn('id', $restrictRepIds))
+            ->with(self::RELATIONS);
+
+        ProductFeedQuery::applySort($query);
+
+        return $query
+            ->paginate(request('per_page', 20))
+            ->appends(request()->query());
+    }
+
+    /**
+     * Scan EVERY product (representatives and hidden members alike) for the
+     * current search/filter criteria, then map each match back to its
+     * representative. A master surfaces when ANY of its members matches.
+     *
+     * @return string[] representative ids to keep
+     */
+    private function matchingRepresentativeIds(string $status, ?string $updatedSince, array $memberToRep): array
+    {
+        $matchedIds = ProductFeedQuery::applyCriteria(
+            QueryBuilder::for(Product::class)
+                ->where('status', $status)
+                ->when($updatedSince, fn ($q) => $q->where('updated_at', '>=', $updatedSince))
+        )->pluck('id')->all();
+
+        $repIds = [];
+        foreach ($matchedIds as $id) {
+            $repIds[$memberToRep[$id] ?? $id] = true;
+        }
+
+        return array_keys($repIds);
     }
 
     /**
@@ -125,13 +123,19 @@ class MasterFeedRepository
      * representative). When nothing is merged this returns an inert context so
      * the feed stays byte-identical to the non-merge-aware behaviour.
      *
-     * @return array{active: bool, repToMaster: array<string,string>, repToMembers: array<string,array<int,string>>, nonRepIds: array<int,string>}
+     * @return array{active: bool, repToMaster: array<string,string>, repToMembers: array<string,array<int,string>>, memberToRep: array<string,string>, nonRepIds: array<int,string>}
      */
     public function mergeContext(): array
     {
-        $merges = \Modules\Product\Models\ProductMerge::query()->get(['product_id', 'master_name']);
+        $merges = ProductMerge::query()->get(['product_id', 'master_name']);
         if ($merges->isEmpty()) {
-            return ['active' => false, 'repToMaster' => [], 'repToMembers' => [], 'nonRepIds' => []];
+            return [
+                'active' => false,
+                'repToMaster' => [],
+                'repToMembers' => [],
+                'memberToRep' => [],
+                'nonRepIds' => [],
+            ];
         }
 
         $byMaster = [];
@@ -146,6 +150,7 @@ class MasterFeedRepository
 
         $repToMaster = [];
         $repToMembers = [];
+        $memberToRep = [];
         $nonRepIds = [];
 
         foreach ($byMaster as $master => $idSet) {
@@ -164,6 +169,7 @@ class MasterFeedRepository
             $repToMaster[$rep] = $master;
             $repToMembers[$rep] = $ids;
             foreach ($ids as $id) {
+                $memberToRep[$id] = $rep;
                 if ($id !== $rep) {
                     $nonRepIds[] = $id;
                 }
@@ -174,15 +180,16 @@ class MasterFeedRepository
             'active' => true,
             'repToMaster' => $repToMaster,
             'repToMembers' => $repToMembers,
+            'memberToRep' => $memberToRep,
             'nonRepIds' => $nonRepIds,
         ];
     }
 
     /**
      * @param  string[]  $ids
-     * @return \Illuminate\Support\Collection<string, Product>
+     * @return Collection<string, Product>
      */
-    public function loadSiblings(array $ids): \Illuminate\Support\Collection
+    public function loadSiblings(array $ids): Collection
     {
         if (empty($ids)) {
             return collect();
@@ -210,7 +217,7 @@ class MasterFeedRepository
 
     public function paginateByMasterName(string $masterName): LengthAwarePaginator
     {
-        $productIds = \Modules\Product\Models\ProductMerge::where('master_name', $masterName)->pluck('product_id');
+        $productIds = ProductMerge::where('master_name', $masterName)->pluck('product_id');
 
         return QueryBuilder::for(Product::class)
             ->whereIn('id', $productIds)

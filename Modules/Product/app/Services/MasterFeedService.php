@@ -17,7 +17,7 @@ class MasterFeedService
         $paginator = $this->repository->paginate(
             $status ?? Product::STATUS_MASTER,
             $updatedSince,
-            $context['nonRepIds'],
+            $context,
         );
 
         if ($context['active']) {
