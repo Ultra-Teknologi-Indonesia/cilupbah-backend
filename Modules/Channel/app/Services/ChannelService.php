@@ -46,8 +46,9 @@ class ChannelService
         }
 
         $data = $this->mapStockSourceFields($data);
+        $data = $this->applyShadowCutoff($data, $shop);
 
-        $stockSourceChanged = (array_key_exists('stock_source_mode', $data) && $data['stock_source_mode'] !== $shop->stock_source_mode)
+        $stockSourceChanged =(array_key_exists('stock_source_mode', $data) && $data['stock_source_mode'] !== $shop->stock_source_mode)
             || (array_key_exists('stock_source_location_id', $data) && $data['stock_source_location_id'] !== $shop->stock_source_location_id);
 
         $this->channelShopRepository->updateShop($shop, $data);
@@ -57,6 +58,22 @@ class ChannelService
         }
 
         return $shop->fresh('channel');
+    }
+
+    private function applyShadowCutoff(array $data, ChannelShop $shop): array
+    {
+        if (! array_key_exists('is_shadow_mode', $data)) {
+            return $data;
+        }
+
+        $turningOn = (bool) $data['is_shadow_mode'] && ! $shop->is_shadow_mode;
+
+        if ($turningOn) {
+            $data['shadow_started_at'] = now();
+            $data['shadow_last_pulled_at'] = null;
+        }
+
+        return $data;
     }
 
     private function mapStockSourceFields(array $data): array

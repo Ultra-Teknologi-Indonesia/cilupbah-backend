@@ -61,7 +61,9 @@ class TikTokOrderService
         return array_values(array_filter($ids));
     }
 
-    public function pullOrders(string $shopId): int
+    public const MAX_PULL_PAGES = 200;
+
+    public function pullOrders(string $shopId, ?int $updatedAfter = null, ?int $updatedBefore = null): int
     {
         if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
             return 0;
@@ -75,8 +77,12 @@ class TikTokOrderService
         $accessToken = $shop->access_token;
         $shopCipher = $shop->shop_cipher ?? '';
 
+        $timeFrom = $updatedAfter ?: now()->subDays(7)->timestamp;
+        $timeTo   = $updatedBefore ?: now()->timestamp;
+
         $count = 0;
         $nextPageToken = '';
+        $page = 0;
 
         do {
             $queries = [
@@ -85,8 +91,10 @@ class TikTokOrderService
             ];
 
             $body = [
-                'sort_by'   => 'CREATE_TIME',
-                'sort_type' => 'DESC',
+                'sort_field'     => 'update_time',
+                'sort_order'     => 'ASC',
+                'update_time_ge' => $timeFrom,
+                'update_time_lt' => $timeTo,
             ];
 
             if ($nextPageToken !== '') {
@@ -112,6 +120,17 @@ class TikTokOrderService
             }
 
             $nextPageToken = $res['data']['next_page_token'] ?? '';
+            $page++;
+
+            if ($page >= self::MAX_PULL_PAGES && $nextPageToken !== '') {
+                Log::warning('TikTok: batas halaman tarik order tercapai, sisa halaman tidak ditarik.', [
+                    'shop_id'   => $shopId,
+                    'time_from' => $timeFrom,
+                    'time_to'   => $timeTo,
+                    'pages'     => $page,
+                ]);
+                break;
+            }
         } while ($nextPageToken !== '');
 
         return $count;

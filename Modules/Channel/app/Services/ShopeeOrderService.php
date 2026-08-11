@@ -10,7 +10,9 @@ use Modules\Sales\Services\SalesOrderService;
 class ShopeeOrderService
 {
 
-    private const DETAIL_FIELDS = 'recipient_address,item_list,total_amount,buyer_user_id,buyer_username,payment_method,estimated_shipping_fee,actual_shipping_fee,actual_shipping_fee_confirmed,shipping_carrier,note,pay_time,cancel_reason,buyer_cancel_reason,cancel_by,package_list,fulfillment_flag,pickup_done_time,invoice_data,order_chargeable_weight_gram,dropshipper,dropshipper_phone,split_up,return_request_due_date,ship_by_date,logistics_channel_id';
+    public const MAX_TIME_RANGE_DAYS = 14;
+
+    private const DETAIL_FIELDS ='recipient_address,item_list,total_amount,buyer_user_id,buyer_username,payment_method,estimated_shipping_fee,actual_shipping_fee,actual_shipping_fee_confirmed,shipping_carrier,note,pay_time,cancel_reason,buyer_cancel_reason,cancel_by,package_list,fulfillment_flag,pickup_done_time,invoice_data,order_chargeable_weight_gram,dropshipper,dropshipper_phone,split_up,return_request_due_date,ship_by_date,logistics_channel_id';
 
     public function __construct(
         protected ShopeeClient $client,
@@ -20,7 +22,7 @@ class ShopeeOrderService
         protected ShopeeAuthService $authService,
     ) {}
 
-    public function pullOrders(string $shopId, ?int $updatedAfter = null): int
+    public function pullOrders(string $shopId, ?int $updatedAfter = null, ?int $updatedBefore = null): int
     {
         if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
             return 0;
@@ -29,7 +31,7 @@ class ShopeeOrderService
         $shop = $this->requireShop($shopId);
 
         $timeFrom = $updatedAfter ?: now()->subDays(7)->timestamp;
-        $orderSns = $this->fetchOrderSns($shop, $timeFrom);
+        $orderSns = $this->fetchOrderSns($shop, $timeFrom, $updatedBefore);
 
         if (empty($orderSns)) {
             return 0;
@@ -112,34 +114,64 @@ class ShopeeOrderService
         return $returns;
     }
 
-    protected function fetchOrderSns(object $shop, int $timeFrom): array
+    protected function fetchOrderSns(object $shop, int $timeFrom, ?int $timeTo = null): array
     {
+        $timeTo = $timeTo ?: now()->timestamp;
         $orderSns = [];
-        $cursor = '';
 
-        do {
-            $params = [
-                'time_range_field' => 'update_time',
-                'time_from' => $timeFrom,
-                'time_to' => now()->timestamp,
-                'page_size' => 50,
-                'cursor' => $cursor,
-            ];
+        foreach ($this->splitTimeWindows($timeFrom, $timeTo) as [$windowFrom, $windowTo]) {
+            $cursor = '';
 
-            $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/api/v2/order/get_order_list', $params, $token, $shop->shop_id));
+            do {
+                $params = [
+                    'time_range_field' => 'update_time',
+                    'time_from' => $windowFrom,
+                    'time_to' => $windowTo,
+                    'page_size' => 50,
+                    'cursor' => $cursor,
+                ];
 
-            $response = $res['response'] ?? [];
-            foreach ($response['order_list'] ?? [] as $row) {
-                if (! empty($row['order_sn'])) {
-                    $orderSns[] = (string) $row['order_sn'];
+                $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/api/v2/order/get_order_list', $params, $token, $shop->shop_id));
+
+                $response = $res['response'] ?? [];
+                foreach ($response['order_list'] ?? [] as $row) {
+                    if (! empty($row['order_sn'])) {
+                        $orderSns[] = (string) $row['order_sn'];
+                    }
                 }
-            }
 
-            $cursor = (string) ($response['next_cursor'] ?? '');
-            $more = (bool) ($response['more'] ?? false);
-        } while ($more && $cursor !== '');
+                $cursor = (string) ($response['next_cursor'] ?? '');
+                $more = (bool) ($response['more'] ?? false);
+            } while ($more && $cursor !== '');
+        }
 
-        return $orderSns;
+        return array_values(array_unique($orderSns));
+    }
+
+    /**
+     * Shopee membatasi rentang time_from/time_to maksimum 15 hari per request,
+     * jadi rentang yang lebih panjang (mis. backfill) dipecah jadi beberapa window.
+     *
+     * @return array<int, array{0: int, 1: int}>
+     */
+    protected function splitTimeWindows(int $timeFrom, int $timeTo): array
+    {
+        $maxSpan = self::MAX_TIME_RANGE_DAYS * 86400;
+
+        if ($timeTo <= $timeFrom) {
+            return [[$timeFrom, $timeTo]];
+        }
+
+        $windows = [];
+        $cursor = $timeFrom;
+
+        while ($cursor < $timeTo) {
+            $end = min($cursor + $maxSpan, $timeTo);
+            $windows[] = [$cursor, $end];
+            $cursor = $end;
+        }
+
+        return $windows;
     }
 
     protected function fetchOrderDetails(object $shop, array $orderSns): array

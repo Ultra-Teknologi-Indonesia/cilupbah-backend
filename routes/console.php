@@ -46,8 +46,9 @@ Schedule::job(new \Modules\Outbound\Jobs\RefreshInstantTrackingJob())
 
 Schedule::command('channel:pull-shadow-orders')
     ->everyFifteenMinutes()
-    ->withoutOverlapping()
-    ->onOneServer();
+    ->withoutOverlapping(30)
+    ->onOneServer()
+    ->runInBackground();
 
 Schedule::call(function () {
     @touch(storage_path('framework/scheduler-heartbeat'));

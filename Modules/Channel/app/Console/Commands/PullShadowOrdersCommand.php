@@ -3,111 +3,183 @@
 namespace Modules\Channel\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Modules\Channel\Exceptions\UnsupportedShadowChannelException;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Services\ChannelSyncSettingService;
-use Modules\Sales\Services\SalesOrderService;
+use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\TikTokOrderService;
-use Modules\Channel\Services\LazadaOrderService;
-use Illuminate\Support\Str;
 
 class PullShadowOrdersCommand extends Command
 {
-    /**
-     * The name and signature of the console command.
-     *
-     * @var string
-     */
-    protected $signature = 'channel:pull-shadow-orders {--dry-run : Lakukan dry run tanpa menyimpan ke DB}';
+    protected $signature = 'channel:pull-shadow-orders
+        {--shop= : Batasi ke satu shop_id marketplace}
+        {--from= : Awal jendela tarik (waktu WIB, mis. "2026-08-01" atau "2026-08-01 07:00")}
+        {--to= : Akhir jendela tarik (waktu WIB). Kalau diisi, cursor tidak dimajukan}
+        {--full : Abaikan cursor, tarik ulang sejak cutoff shadow toko}
+        {--dry-run : Jalankan jalur kode sebenarnya lalu rollback, tanpa menyimpan}';
+
+    protected $description = 'Menarik order marketplace untuk toko Shadow Mode secara inkremental (walaupun sync global mati).';
 
     /**
-     * The console command description.
-     *
-     * @var string
+     * Jendela tarik mundur sedikit dari cursor supaya order yang update-nya
+     * berdekatan dengan batas run sebelumnya tidak terlewat (clock skew, webhook telat).
      */
-    protected $description = 'Menarik order dari marketplace untuk toko yang menggunakan Shadow Mode (walaupun sync_enabled global mati).';
+    public const OVERLAP_MINUTES = 30;
 
-    /**
-     * Execute the console command.
-     */
-    public function handle()
+    private const DEFAULT_LOOKBACK_DAYS = 7;
+
+    private const BACKFILL_LOOKBACK_DAYS = 30;
+
+    private const TIMEZONE = 'Asia/Jakarta';
+
+    public function handle(ChannelShopRepository $shopRepository): int
     {
-        $isDryRun = $this->option('dry-run');
+        $isDryRun = (bool) $this->option('dry-run');
+        $explicitFrom = $this->parseOption('from');
+        $explicitTo = $this->parseOption('to');
+        $isFull = (bool) $this->option('full');
 
-        $this->info("🚀 Memulai proses Pull Shadow Orders...");
-        
-        if ($isDryRun) {
-            $this->warn("⚠️ DRY RUN MODE AKTIF - Data tidak akan disimpan ke Database!");
+        if ($explicitFrom && $explicitTo && $explicitFrom->greaterThanOrEqualTo($explicitTo)) {
+            $this->error('Opsi --from harus lebih awal dari --to.');
+
+            return self::FAILURE;
         }
 
-        // 1. Bypass blokir sync_enabled global agar API tetap bisa dipanggil
-        app()->bind(ChannelSyncSettingService::class, function () {
-            return new class extends ChannelSyncSettingService {
-                public function isPaused(): bool { return false; }
-                public function isEnabled(): bool { return true; }
-            };
-        });
-
-        // 2. Jika Dry Run, mock SalesOrderService agar tidak menyentuh DB
-        if ($isDryRun) {
-            app()->instance(SalesOrderService::class, new class extends SalesOrderService {
-                public function __construct() {}
-                public function upsertFromChannel(array $orderData, string $defaultStatus = 'pending', ?string $mappedStatus = null): ?string {
-                    $no = $orderData['salesorder_no'] ?? $orderData['channel_order_no'] ?? 'UNKNOWN';
-                    echo "   ✅ [DRY RUN] Order ditarik & diparsing: {$no} (Status: {$defaultStatus})\n";
-                    return Str::uuid()->toString();
-                }
-            });
-        }
-
-        $startTimeWib = now('Asia/Jakarta')->startOfDay();
-        $unixTimeFrom = $startTimeWib->timestamp;
-        $isoTimeFrom  = $startTimeWib->setTimezone('UTC')->toIso8601String();
-
-        // Cari toko yang aktif dan shadow mode aktif
-        $shops = ChannelShop::with('channel')
-            ->where('is_active', true)
-            ->where('is_shadow_mode', true)
-            ->get();
+        $runStartedAt = now();
+        $shops = $this->resolveShops();
 
         if ($shops->isEmpty()) {
-            $this->info("ℹ️ Tidak ada toko aktif dengan mode Shadow Mode.");
-            return;
+            $this->info('Tidak ada toko aktif dengan Shadow Mode.');
+
+            return self::SUCCESS;
         }
 
-        foreach ($shops as $shop) {
-            $channelCode = $shop->channel->code ?? 'unknown';
-            $this->info("\n🛒 Memproses Toko: {$shop->shop_name} ({$channelCode})");
+        if ($isDryRun) {
+            $this->warn('DRY RUN: perubahan akan di-rollback di akhir setiap toko.');
+        }
 
-            try {
-                $count = 0;
-                switch ($channelCode) {
-                    case 'shopee':
-                        $svc = app(ShopeeOrderService::class);
-                        $count = $svc->pullOrders($shop->shop_id, $unixTimeFrom);
-                        break;
-                        
-                    case 'tiktok':
-                        $svc = app(TikTokOrderService::class);
-                        $count = $svc->pullOrders($shop->shop_id);
-                        break;
-                        
-                    case 'lazada':
-                        $svc = app(LazadaOrderService::class);
-                        $count = $svc->pullOrders($shop->shop_id, $isoTimeFrom);
-                        break;
-                        
-                    default:
-                        $this->warn("   ⚠️ Channel {$channelCode} tidak didukung.");
-                        continue 2;
+        $rows = [];
+        $failed = 0;
+
+        ChannelSyncSettingService::withInboundBypass(function () use ($shops, $shopRepository, $runStartedAt, $explicitFrom, $explicitTo, $isFull, $isDryRun, &$rows, &$failed) {
+            foreach ($shops as $shop) {
+                $channelCode = $shop->channel->code ?? 'unknown';
+                $windowEnd = $explicitTo ?: $runStartedAt->copy();
+                $windowStart = $explicitFrom ?: $this->resolveWindowStart($shop, $windowEnd, $isFull);
+
+                if ($windowStart->greaterThanOrEqualTo($windowEnd)) {
+                    $rows[] = [$shop->shop_name, $channelCode, '-', 'dilewati (jendela kosong)'];
+                    continue;
                 }
-                
-                $this->info("   📊 Selesai! Total order ditarik: {$count}");
-            } catch (\Throwable $e) {
-                $this->error("   ❌ ERROR pada toko {$shop->shop_name}: " . $e->getMessage());
+
+                $this->line("Menarik {$shop->shop_name} ({$channelCode}) {$this->formatWindow($windowStart, $windowEnd)}");
+
+                try {
+                    $count = $this->pullWithinWindow($shop, $channelCode, $windowStart, $windowEnd, $isDryRun);
+                } catch (UnsupportedShadowChannelException) {
+                    $rows[] = [$shop->shop_name, $channelCode, '-', 'channel tidak didukung'];
+                    continue;
+                } catch (\Throwable $e) {
+                    $failed++;
+                    $rows[] = [$shop->shop_name, $channelCode, '-', 'GAGAL: ' . $e->getMessage()];
+                    $shopRepository->markOrderSyncProblem($shop->id, $e->getMessage());
+                    report($e);
+                    continue;
+                }
+
+                // Cursor hanya maju kalau jendelanya berakhir di "sekarang". Backfill
+                // dengan --to tidak boleh memajukan cursor, nanti data setelahnya bolong.
+                $canAdvanceCursor = ! $isDryRun && ! $explicitTo;
+
+                if ($canAdvanceCursor) {
+                    $shopRepository->markShadowPulledUpTo($shop->id, $windowEnd);
+                    $shopRepository->markOrderSyncOk($shop->id);
+                }
+
+                $rows[] = [$shop->shop_name, $channelCode, $count, $isDryRun ? 'dry run (rollback)' : 'ok'];
             }
+        });
+
+        $this->table(['Toko', 'Channel', 'Order', 'Status'], $rows);
+
+        if ($failed > 0) {
+            $this->error("{$failed} toko gagal ditarik.");
+
+            return self::FAILURE;
         }
 
-        $this->info("\n✅ Proses Pull Shadow Orders selesai.");
+        return self::SUCCESS;
+    }
+
+    private function resolveShops()
+    {
+        return ChannelShop::with('channel')
+            ->where('is_active', true)
+            ->where('is_shadow_mode', true)
+            ->when($this->option('shop'), fn ($query, $shopId) => $query->where('shop_id', $shopId))
+            ->get();
+    }
+
+    private function resolveWindowStart(ChannelShop $shop, Carbon $windowEnd, bool $isFull): Carbon
+    {
+        if ($isFull) {
+            return $shop->shadow_started_at?->copy()
+                ?: $windowEnd->copy()->subDays(self::BACKFILL_LOOKBACK_DAYS);
+        }
+
+        if ($shop->shadow_last_pulled_at) {
+            return $shop->shadow_last_pulled_at->copy()->subMinutes(self::OVERLAP_MINUTES);
+        }
+
+        return $shop->shadow_started_at?->copy()
+            ?: $windowEnd->copy()->subDays(self::DEFAULT_LOOKBACK_DAYS);
+    }
+
+    private function pullWithinWindow(ChannelShop $shop, string $channelCode, Carbon $from, Carbon $to, bool $isDryRun): int
+    {
+        $pull = fn (): int => match ($channelCode) {
+            'shopee' => app(ShopeeOrderService::class)->pullOrders($shop->shop_id, $from->timestamp, $to->timestamp),
+            'tiktok' => app(TikTokOrderService::class)->pullOrders($shop->shop_id, $from->timestamp, $to->timestamp),
+            'lazada' => app(LazadaOrderService::class)->pullOrders($shop->shop_id, $from->toIso8601String(), $to->toIso8601String()),
+            default  => throw new UnsupportedShadowChannelException($channelCode),
+        };
+
+        if (! $isDryRun) {
+            return $pull();
+        }
+
+        DB::beginTransaction();
+
+        try {
+            return $pull();
+        } finally {
+            DB::rollBack();
+        }
+    }
+
+    private function parseOption(string $name): ?Carbon
+    {
+        $value = $this->option($name);
+
+        if (! $value) {
+            return null;
+        }
+
+        return Carbon::parse($value, self::TIMEZONE)->setTimezone(config('app.timezone'));
+    }
+
+    private function formatWindow(Carbon $from, Carbon $to): string
+    {
+        $format = 'd/m H:i';
+
+        return '['
+            . $from->copy()->setTimezone(self::TIMEZONE)->format($format)
+            . ' - '
+            . $to->copy()->setTimezone(self::TIMEZONE)->format($format)
+            . ' WIB]';
     }
 }

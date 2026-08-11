@@ -155,6 +155,13 @@ class ChannelShopRepository
         ]);
     }
 
+    public function markShadowPulledUpTo(string $id, \DateTimeInterface $pulledUpTo): void
+    {
+        ChannelShop::where('id', $id)->update([
+            'shadow_last_pulled_at' => $pulledUpTo,
+        ]);
+    }
+
     public function markOrderSyncOk(string $id): void
     {
         ChannelShop::where('id', $id)->update([

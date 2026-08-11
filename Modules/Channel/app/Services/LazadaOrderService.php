@@ -18,7 +18,7 @@ class LazadaOrderService
         protected LazadaAuthService $authService,
     ) {}
 
-    public function pullOrders(string $shopId, ?string $updatedAfter = null): int
+    public function pullOrders(string $shopId, ?string $updatedAfter = null, ?string $updatedBefore = null): int
     {
         if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
             return 0;
@@ -41,6 +41,10 @@ class LazadaOrderService
                 'limit' => $limit,
                 'update_after' => $updateAfter,
             ];
+
+            if ($updatedBefore) {
+                $params['update_before'] = $updatedBefore;
+            }
 
             $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/orders/get', $params, $token));
 
