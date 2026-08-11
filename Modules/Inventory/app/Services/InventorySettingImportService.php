@@ -403,7 +403,7 @@ class InventorySettingImportService
         $rows = [];
         $header = null;
 
-        while (($line = fgetcsv($handle)) !== false) {
+        while (($line = fgetcsv($handle, null, ',', '"', '')) !== false) {
             if ($header === null) {
                 $line[0] = preg_replace('/^\xEF\xBB\xBF/', '', (string) ($line[0] ?? ''));
                 $header = array_map(fn ($h) => $this->norm($h), $line);
