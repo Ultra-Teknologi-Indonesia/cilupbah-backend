@@ -144,8 +144,20 @@ class RackAllocationClassifier
         }
         $locationIds = array_keys($locationIds);
 
-        $bins = LocationBin::whereIn('location_id', $locationIds)
-            ->get(['id', 'location_id', 'bin_final_code', 'is_inbound', 'is_stock_acknowledged'])
+        $binCodes = [];
+        foreach ($rows as $r) {
+            if ($r['bin'] !== '') {
+                $binCodes[] = $r['bin'];
+            }
+        }
+        $binCodes = array_values(array_unique($binCodes));
+
+        $binsQuery = LocationBin::whereIn('location_id', $locationIds);
+        if (!empty($binCodes)) {
+            $binsQuery->whereIn('bin_final_code', $binCodes);
+        }
+
+        $bins = $binsQuery->get(['id', 'location_id', 'bin_final_code', 'is_inbound', 'is_stock_acknowledged'])
             ->keyBy(fn ($b) => $b->location_id . '|' . $b->bin_final_code);
 
         $homeBins = [];
