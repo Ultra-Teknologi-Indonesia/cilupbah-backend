@@ -6,6 +6,7 @@ use Modules\Outbound\Models\Shipment;
 use Modules\Outbound\Models\ShipmentOrder;
 use Modules\Outbound\Models\ShipmentTrackingEvent;
 use Modules\Outbound\Support\InstantOrderClassifier;
+use Modules\Sales\Models\SalesOrder;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
 
@@ -137,7 +138,7 @@ class ShipmentRepository
             ]);
 
         return QueryBuilder::for($query)
-            ->allowedSearch('sales_orders.salesorder_no', 'sales_orders.channel_order_no', 'sales_orders.tracking_number')
+            ->allowedSearch(...SalesOrder::qualifiedSearchColumns())
             ->paginate($limit)
             ->appends(request()->query());
     }

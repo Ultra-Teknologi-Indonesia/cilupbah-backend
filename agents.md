@@ -89,6 +89,9 @@ Aturan mainnya:
 - Urutan argumen `allowedSearch` tidak berpengaruh: `SearchExpression` menormalkan (sort + dedupe) daftar kolom, jadi satu index melayani semua call site dengan himpunan kolom yang sama.
 - Migrasi index pakai `App\Support\ConcurrentIndex` + `public $withinTransaction = false`, supaya tabel tetap bisa ditulis saat index dibangun.
 - Relevansi (`ts_rank_cd`) hanya diterapkan kalau request tidak mengirim `?sort=`. Kalau frontend mengirim `sort` eksplisit, sort itu yang dipakai — ini juga yang membuat top-N bisa dijawab langsung dari index.
+- **Jangan mencampur kolom dari dua tabel dalam satu `allowedSearch`.** `allowedSearch('pesanan.nomor', 'retur.nomor')` lewat nama tabel hasil `join` menghasilkan satu ekspresi tsvector lintas tabel, dan ekspresi semacam itu **tidak bisa diindeks sama sekali**. Pakai awalan **nama relasi** (`order.nomor`) — macro akan memecahnya jadi `orWhereHas`, sehingga tiap sisi jatuh pada satu tabel dan bisa memakai index-nya sendiri.
+- Satu tabel sebaiknya punya **satu himpunan kolom pencarian kanonis** yang dipakai semua layar (lihat `SalesOrder::SEARCH_COLUMNS`). Tiap variasi himpunan butuh index GIN sendiri; menyatukannya menghemat biaya tulis sekaligus membuat perilaku pencarian konsisten.
+- Tabel master dan referensi yang kecil (contacts, suppliers, salesmen, channels, taxes, roles, regions, brands, attributes) **tidak perlu** diindeks: seq scan di sana murah, index GIN hanya menambah biaya tulis.
 
 ### 5.2 Index Foreign Key untuk Eager Loading
 

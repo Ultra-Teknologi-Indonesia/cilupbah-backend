@@ -33,6 +33,32 @@ class SalesOrder extends Model implements HasMedia
 
     protected $table = 'sales_orders';
 
+    /**
+     * Kolom yang dipakai `?search=` di seluruh layar pesanan.
+     *
+     * Sengaja satu himpunan untuk semua call site: macro `allowedSearch`
+     * membangun satu ekspresi tsvector dari gabungan kolom, jadi setiap variasi
+     * daftar kolom butuh index GIN-nya sendiri. Satu himpunan kanonis = satu
+     * index, sekaligus perilaku pencarian yang konsisten antar layar.
+     */
+    public const SEARCH_COLUMNS = [
+        'salesorder_no',
+        'channel_order_no',
+        'customer_name',
+        'tracking_number',
+    ];
+
+    /**
+     * SEARCH_COLUMNS dengan awalan nama tabel, untuk query yang mem-`join`
+     * sales_orders dari model lain.
+     *
+     * @return array<int, string>
+     */
+    public static function qualifiedSearchColumns(): array
+    {
+        return array_map(fn (string $column) => 'sales_orders.'.$column, self::SEARCH_COLUMNS);
+    }
+
     protected $appends = ['is_instant'];
 
     protected $fillable = [

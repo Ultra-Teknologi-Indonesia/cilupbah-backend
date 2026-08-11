@@ -13,6 +13,30 @@ class SalesOrderRepository
 {
     private const ORDER_SORTS = ['created_at', 'transaction_date', 'grand_total', 'salesorder_no'];
 
+    /**
+     * Relasi untuk daftar pesanan.
+     *
+     * Hanya kolom yang benar-benar dibaca SalesOrderResource / SalesOrderItemResource
+     * yang di-select — satu halaman pesanan bercabang jadi ribuan baris item, media
+     * dan mapping channel, dan meng-hidrasi baris utuh untuk semuanya adalah bagian
+     * terbesar dari waktu respons.
+     *
+     * `items.channelMapping` ada di sini supaya accessor `image_url` tidak lagi
+     * menembak query sendiri per baris item yang belum terpetakan.
+     */
+    private const LIST_RELATIONS = [
+        'items',
+        'items.product:id,product_id',
+        'items.product.media:id,variant_id,url,is_primary',
+        'items.product.product:id',
+        'items.product.product.media:id,product_id,url,is_primary',
+        'items.channelMapping:id,product_id,external_product_id',
+        'items.channelMapping.product:id',
+        'items.channelMapping.product.media:id,product_id,url,is_primary',
+        'location:id,location_name',
+        'shop:shop_id,shop_name',
+    ];
+
     public function paginateStatusHistory(string $salesOrderId, int $perPage)
     {
         SalesOrder::findOrFail($salesOrderId);
@@ -33,7 +57,7 @@ class SalesOrderRepository
         }
 
         $query = QueryBuilder::for(SalesOrder::class)
-            ->with(['items.product.media', 'items.product.product.media', 'location:id,location_name', 'shop:shop_id,shop_name,channel_id', 'shop.channel:id,code,name'])
+            ->with(self::LIST_RELATIONS)
             ->allowedFilters(
                 AllowedFilter::callback('item_id', fn ($q, $value) => $q->whereHas('items', fn ($q2) => $q2->whereIn('item_id', (array) $value))),
                 AllowedFilter::exact('channel', 'source'),
@@ -84,7 +108,7 @@ class SalesOrderRepository
             if (request('search_by', 'order') === 'sku') {
                 $query->allowedSearch('items.sku', 'items.description');
             } else {
-                $query->allowedSearch('salesorder_no', 'customer_name');
+                $query->allowedSearch(...SalesOrder::SEARCH_COLUMNS);
             }
         }
 
@@ -410,7 +434,7 @@ class SalesOrderRepository
             ->allowedFilters(
                 AllowedFilter::exact('source')
             )
-            ->allowedSearch('customer_name', 'salesorder_no')
+            ->allowedSearch(...SalesOrder::SEARCH_COLUMNS)
             ->allowedSorts('created_at', 'transaction_date', 'grand_total')
             ->defaultSort('-created_at')
             ->paginate($limit);
@@ -423,7 +447,7 @@ class SalesOrderRepository
             ->allowedFilters(
                 AllowedFilter::exact('source')
             )
-            ->allowedSearch('customer_name', 'salesorder_no')
+            ->allowedSearch(...SalesOrder::SEARCH_COLUMNS)
             ->allowedSorts('created_at', 'transaction_date', 'grand_total')
             ->defaultSort('-created_at')
             ->paginate($limit);
@@ -437,7 +461,7 @@ class SalesOrderRepository
             ->allowedFilters(
                 AllowedFilter::exact('source')
             )
-            ->allowedSearch('customer_name', 'salesorder_no')
+            ->allowedSearch(...SalesOrder::SEARCH_COLUMNS)
             ->allowedSorts('created_at', 'transaction_date')
             ->defaultSort('-created_at')
             ->paginate($limit);
@@ -452,7 +476,7 @@ class SalesOrderRepository
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('source')
             )
-            ->allowedSearch('customer_name', 'salesorder_no')
+            ->allowedSearch(...SalesOrder::SEARCH_COLUMNS)
             ->allowedSorts('created_at', 'transaction_date')
             ->defaultSort('-created_at')
             ->paginate($limit);
@@ -469,7 +493,7 @@ class SalesOrderRepository
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('source')
             )
-            ->allowedSearch('customer_name', 'salesorder_no')
+            ->allowedSearch(...SalesOrder::SEARCH_COLUMNS)
             ->allowedSorts('created_at', 'transaction_date')
             ->defaultSort('-created_at')
             ->paginate($limit);

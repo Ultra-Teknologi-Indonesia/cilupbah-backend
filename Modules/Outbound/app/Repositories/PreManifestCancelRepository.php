@@ -32,7 +32,7 @@ class PreManifestCancelRepository
         if (! empty($filters['q'])) {
 
             request()->query->set('search', $filters['q']);
-            $query->allowedSearch('salesorder_no', 'channel_order_no', 'customer_name', 'tracking_number');
+            $query->allowedSearch(...Order::SEARCH_COLUMNS);
         }
 
         return $query->paginate($perPage)->appends(request()->query());

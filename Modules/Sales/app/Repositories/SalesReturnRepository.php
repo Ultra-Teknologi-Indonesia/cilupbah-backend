@@ -12,12 +12,19 @@ use Spatie\QueryBuilder\AllowedSort;
 class SalesReturnRepository
 {
 
+    /**
+     * Kolom pesanan sengaja memakai awalan relasi (`order.`), bukan nama tabel
+     * hasil join. Dengan awalan relasi, macro `allowedSearch` memecahnya menjadi
+     * `orWhereHas('order', ...)` sehingga tiap sisi pencarian jatuh pada satu
+     * tabel dan bisa memakai index GIN-nya masing-masing. Ekspresi tsvector yang
+     * menggabungkan kolom lintas tabel tidak bisa diindeks sama sekali.
+     */
     private const SEARCH_COLUMNS = [
         'sales_returns.return_number',
         'sales_returns.customer_name',
         'sales_returns.return_tracking_number',
-        'sales_orders.channel_order_no',
-        'sales_orders.salesorder_no',
+        'order.channel_order_no',
+        'order.salesorder_no',
     ];
 
     private function withOrderJoin(QueryBuilder $query): QueryBuilder

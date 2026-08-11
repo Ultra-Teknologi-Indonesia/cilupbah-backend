@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Support\InstantOrderClassifier;
+use Modules\Sales\Models\SalesOrder;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
 
@@ -140,7 +141,7 @@ class OutboundFulfillmentRepository
                     }
                 }),
             )
-            ->allowedSearch('salesorder_no', 'channel_order_no', 'tracking_number', 'shipping_provider', 'shipping_type', 'completedPicklists.picklist_no')
+            ->allowedSearch(...array_merge(SalesOrder::SEARCH_COLUMNS, ['completedPicklists.picklist_no']))
             ->allowedSorts('transaction_date', 'created_at', 'grand_total', 'salesorder_no', 'status')
             ->defaultSort('-created_at')
             ->paginate($limit)
