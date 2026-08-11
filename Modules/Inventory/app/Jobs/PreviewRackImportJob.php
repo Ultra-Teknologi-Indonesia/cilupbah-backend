@@ -48,8 +48,6 @@ class PreviewRackImportJob implements ShouldQueue
 
         $classifier = app(RackAllocationClassifier::class);
 
-        // Disk import bisa berupa storage bersama (S3/R2) yang tak punya path lokal,
-        // sedangkan reader butuh file lokal (fopen/PhpSpreadsheet). Salin ke temp dulu.
         $ext = pathinfo($batch->stored_path, PATHINFO_EXTENSION) ?: 'csv';
         $tmp = tempnam(sys_get_temp_dir(), 'rackimp_');
         $absolutePath = $tmp.'.'.$ext;
