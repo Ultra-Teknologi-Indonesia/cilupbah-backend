@@ -17,6 +17,13 @@ class AutoRaiseShopeeProducts extends Command
 
     public function handle(): int
     {
+
+        if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
+            $this->info('Sinkronisasi channel sedang dijeda — auto-raise dilewati.');
+
+            return self::SUCCESS;
+        }
+
         $stores = RaiseProduct::query()
             ->where('is_active', true)
             ->whereHas('channelShop.channel', fn ($q) => $q->where('code', 'shopee'))

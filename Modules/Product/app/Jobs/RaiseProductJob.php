@@ -23,6 +23,11 @@ class RaiseProductJob implements ShouldQueue
 
     public function handle(RaiseProductService $service): void
     {
+
+        if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
+            return;
+        }
+
         $service->executeRaise($this->raiseProductId, $this->detailIds);
     }
 
