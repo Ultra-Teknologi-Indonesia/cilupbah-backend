@@ -153,6 +153,10 @@ class AuditChannelSkuCoverage extends Command
             return;
         }
 
-        $this->warn('   Sisa dari download lama. Tarik ulang dengan --apply agar tautannya dilepas.');
+        $this->warn('   Sisa dari download lama. Linker baru tidak pernah menautkan model tanpa SKU,');
+        $this->warn('   tapi baris lama TIDAK hilang sendiri saat --apply — hanya ikut terhapus bila');
+        $this->warn('   pcm-nya dibuang saat konsolidasi. Sisanya perlu dibersihkan manual, dan cek');
+        $this->warn('   dulu sales_order_items.item_id serta inventories.item_id (on_hand & on_order)');
+        $this->warn('   harus nol sebelum menghapus.');
     }
 }
