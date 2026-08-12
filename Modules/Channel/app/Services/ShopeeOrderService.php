@@ -1006,19 +1006,6 @@ class ShopeeOrderService
         return $res['response'] ?? [];
     }
 
-    public function getPackageDetail(string $shopId, array $packageNumbers): array
-    {
-        $shop = $this->requireShop($shopId);
-
-        $packageNumbers = array_values(array_filter(array_map('strval', $packageNumbers), fn ($v) => $v !== ''));
-
-        $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/api/v2/order/get_package_detail', [
-            'package_number_list' => $packageNumbers,
-        ], $token, $shop->shop_id));
-
-        return $res['response'] ?? [];
-    }
-
     public function updateShippingOrder(string $shopId, string $orderSn, array $pickup): array
     {
         $shop = $this->requireShop($shopId);
