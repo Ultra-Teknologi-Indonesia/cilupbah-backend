@@ -18,10 +18,6 @@ use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
-/**
- * @property bool $is_shadow
- * @mixin \Illuminate\Database\Eloquent\Builder
- */
 class SalesOrder extends Model implements HasMedia
 {
     use HasUuid7, InteractsWithMedia, HasFactory;
@@ -33,14 +29,6 @@ class SalesOrder extends Model implements HasMedia
 
     protected $table = 'sales_orders';
 
-    /**
-     * Kolom yang dipakai `?search=` di seluruh layar pesanan.
-     *
-     * Sengaja satu himpunan untuk semua call site: macro `allowedSearch`
-     * membangun satu ekspresi tsvector dari gabungan kolom, jadi setiap variasi
-     * daftar kolom butuh index GIN-nya sendiri. Satu himpunan kanonis = satu
-     * index, sekaligus perilaku pencarian yang konsisten antar layar.
-     */
     public const SEARCH_COLUMNS = [
         'salesorder_no',
         'channel_order_no',
@@ -48,12 +36,6 @@ class SalesOrder extends Model implements HasMedia
         'tracking_number',
     ];
 
-    /**
-     * SEARCH_COLUMNS dengan awalan nama tabel, untuk query yang mem-`join`
-     * sales_orders dari model lain.
-     *
-     * @return array<int, string>
-     */
     public static function qualifiedSearchColumns(): array
     {
         return array_map(fn (string $column) => 'sales_orders.'.$column, self::SEARCH_COLUMNS);
@@ -315,11 +297,6 @@ class SalesOrder extends Model implements HasMedia
         return $query->where('is_manual', true);
     }
 
-    /**
-     * Order shadow adalah hasil tarik paralel saat migrasi: datanya nyata, tapi
-     * tidak difulfill di sistem ini. Semua agregat operasional/keuangan wajib
-     * memakai scope ini supaya angkanya tidak bercampur.
-     */
     public function scopeExcludeShadow($query)
     {
         return $query->where(function ($q) {

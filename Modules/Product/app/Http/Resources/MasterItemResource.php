@@ -8,7 +8,7 @@ use Modules\Product\Support\ChannelUrlBuilder;
 
 class MasterItemResource extends JsonResource
 {
-    /** @var array<string, string|null>|null */
+
     protected ?array $shopNames = null;
 
     public function toArray(Request $request): array
@@ -117,16 +117,6 @@ class MasterItemResource extends JsonResource
             ->all();
     }
 
-    /**
-     * Shop name per product_channel_mappings row.
-     *
-     * The parent mapping rows are already eager loaded at product level, so the
-     * variant pivot only needs its foreign key — walking
-     * `channelMapping.channelShop.channel` from every variant mapping would
-     * re-hydrate the exact same rows once per variant.
-     *
-     * @return array<string, string|null>
-     */
     protected function shopNamesByMappingId(): array
     {
         if ($this->shopNames !== null) {

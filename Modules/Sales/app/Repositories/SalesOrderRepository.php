@@ -13,17 +13,6 @@ class SalesOrderRepository
 {
     private const ORDER_SORTS = ['created_at', 'transaction_date', 'grand_total', 'salesorder_no'];
 
-    /**
-     * Relasi untuk daftar pesanan.
-     *
-     * Hanya kolom yang benar-benar dibaca SalesOrderResource / SalesOrderItemResource
-     * yang di-select — satu halaman pesanan bercabang jadi ribuan baris item, media
-     * dan mapping channel, dan meng-hidrasi baris utuh untuk semuanya adalah bagian
-     * terbesar dari waktu respons.
-     *
-     * `items.channelMapping` ada di sini supaya accessor `image_url` tidak lagi
-     * menembak query sendiri per baris item yang belum terpetakan.
-     */
     private const LIST_RELATIONS = [
         'items',
         'items.product:id,product_id',
@@ -387,10 +376,6 @@ class SalesOrderRepository
         };
     }
 
-    /**
-     * Default list menyembunyikan order shadow. "only" untuk memeriksa hasil
-     * tarik paralel saat migrasi, "all" untuk melihat keduanya sekaligus.
-     */
     protected function applyShadowFilter($query, $value)
     {
         return match (strtolower((string) $value)) {

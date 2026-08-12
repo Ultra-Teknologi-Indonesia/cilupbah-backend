@@ -2064,16 +2064,6 @@ class SalesOrderService
         };
     }
 
-    /**
-     * Mengubah order shadow jadi order sungguhan saat cutover migrasi.
-     *
-     * Hanya order yang belum diproses (pending/reserved) yang layak dipromosikan;
-     * order yang di sistem lama sudah dipick/dipack/dikirim tetap jadi arsip
-     * shadow, karena fulfillment-nya tidak pernah terjadi di sini.
-     *
-     * Stok direservasi tanpa enforce supaya kekurangan stok tercatat sebagai
-     * selisih yang bisa ditindaklanjuti, bukan menggagalkan seluruh cutover.
-     */
     public function promoteFromShadow(SalesOrder $order): bool
     {
         if (! $order->is_shadow || ! self::isPromotableFromShadow($order)) {

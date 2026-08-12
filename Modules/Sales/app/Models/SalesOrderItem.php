@@ -50,13 +50,6 @@ class SalesOrderItem extends Model
         return $this->hasMany(\Modules\Inventory\Models\Inventory::class, 'item_id', 'item_id');
     }
 
-    /**
-     * Channel mapping matched on the marketplace product id.
-     *
-     * Exists so the image_url fallback below can be eager loaded. Resolving it
-     * with an ad-hoc query per item turned a page of orders into one query per
-     * unmapped line, plus two more to reach its media.
-     */
     public function channelMapping(): BelongsTo
     {
         return $this->belongsTo(ProductChannelMapping::class, 'channel_product_id', 'external_product_id');

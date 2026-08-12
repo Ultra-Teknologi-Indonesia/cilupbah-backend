@@ -29,18 +29,6 @@ class ProductFeedQuery
             ->allowedFilters(...self::filters());
     }
 
-    /**
-     * Same criteria as applyCriteria(), but applied to a plain Eloquent builder
-     * so they can be nested inside an OR group. The merge-aware feed needs this:
-     * it has to express "this product matches, OR it represents a merged member
-     * that matches" without materialising the whole match set in PHP.
-     *
-     * Returns whether any constraint was actually added. hasCriteria() only sees
-     * that the request carries a search/filter key — a value the filters cannot
-     * act on (an unknown key, or filter[type]=garbage) still constrains nothing,
-     * and the caller must know that to avoid building a narrowing OR group out of
-     * an empty left-hand side.
-     */
     public static function applyCriteriaTo(Builder $query): bool
     {
         $before = count($query->getQuery()->wheres);
@@ -65,9 +53,6 @@ class ProductFeedQuery
         return count($query->getQuery()->wheres) > $before;
     }
 
-    /**
-     * Dry run of applyCriteriaTo() against a throwaway builder — no query is executed.
-     */
     public static function criteriaAreEffective(Builder $probe): bool
     {
         return self::applyCriteriaTo($probe);
@@ -137,15 +122,6 @@ class ProductFeedQuery
         $query->whereHas('channelMappings.channelShop.channel', fn ($q) => $q->where('code', $value));
     }
 
-    /**
-     * Resolves a category and all of its descendants with a single recursive CTE.
-     *
-     * The previous implementation pulled every row of `categories` into PHP and
-     * walked the tree there — with channel-imported taxonomies that table runs to
-     * tens of thousands of rows, paid on every filtered request.
-     *
-     * @return array<int, int>
-     */
     public static function categoryWithDescendants($values): array
     {
         $roots = array_values(array_unique(array_filter(array_map('intval', (array) $values))));

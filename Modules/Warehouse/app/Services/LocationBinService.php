@@ -270,10 +270,10 @@ class LocationBinService
     {
         $occupancyGuard = app(BinOccupancyGuard::class);
         $occupantId = $occupancyGuard->currentOccupantItemId($binId);
-        
+
         $bin = $this->binRepository->findById($binId);
         $location = $this->locationRepository->find($locationId);
-        
+
         $isGuarded = false;
         if ($bin && $location && $location->enforcesStrictBinSku()) {
             $isGuarded = ! $bin->is_inbound && $bin->is_stock_acknowledged && ! app(BinMultiSkuRuleService::class)->allowsMultiSku($bin);
@@ -315,17 +315,15 @@ class LocationBinService
             });
         }
 
-        /** @var \Illuminate\Pagination\LengthAwarePaginator $paginator */
         $paginator = $query->paginate($perPage, ['*'], 'page', $page);
-        
-        // Transform the results to match the PendingPutawaySku format
+
         $paginator->getCollection()->transform(function ($variant) {
             return [
                 'variant_id' => $variant->id,
                 'sku' => $variant->sku,
                 'name' => $variant->product?->name,
                 'thumbnail' => $variant->media->first()?->url ?? $variant->product?->media->first()?->url,
-                'pending_qty' => 0, // No longer strictly pending putaway qty
+                'pending_qty' => 0, 
             ];
         });
 

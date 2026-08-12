@@ -83,7 +83,7 @@ class LocationBinController extends Controller
     public function index(string $locationId): JsonResponse
     {
         try {
-            /** @var \Illuminate\Pagination\LengthAwarePaginator $paginator */
+
             $paginator = $this->binService->getByLocationPaginated($locationId);
 
             $paginator->setCollection(

@@ -2,22 +2,6 @@
 
 namespace Modules\Product\Support;
 
-/**
- * Eager-load set shared by every feed rendered through MasterItemResource
- * (master, review, archive, downloaded, catalog).
- *
- * Two deliberate choices here:
- *
- * - Every relation selects only the columns the resource actually reads. A page
- *   of 500 products fans out into thousands of variants, options, media rows and
- *   channel mappings; hydrating full rows for all of them is the bulk of the
- *   response time once the join keys are indexed.
- * - `variants.channelMappings` stops at the pivot. The resource only needs a
- *   shop name per variant mapping, and the parent product_channel_mappings rows
- *   (with their shop and channel) are already loaded at product level — walking
- *   `channelMapping.channelShop.channel` again would re-hydrate the same rows
- *   once per variant mapping.
- */
 class ProductFeedRelations
 {
     public static function base(): array

@@ -5,31 +5,12 @@ use App\Support\SearchExpression;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 
-/**
- * Cross-module listing indexes.
- *
- * PostgreSQL does not index a column just because it carries a REFERENCES
- * constraint, so most detail-line tables have no index on the parent key they
- * are eager loaded by. Every `with('items')` on a paginated parent list then
- * costs a sequential scan of the whole detail table — invisible on seed data,
- * dominant in production and worse the larger ?per_page gets.
- *
- * Also adds the full-text and trigram indexes backing ?search= on sales_orders,
- * built from the same SearchExpression helper the `allowedSearch` macro uses so
- * the expressions cannot drift apart.
- *
- * Statements are guarded by schema checks: a table or column that does not exist
- * on this deployment is skipped and logged rather than failing the migration.
- */
 return new class extends Migration
 {
     public $withinTransaction = false;
 
-    /**
-     * table => [[index name, columns...], ...]
-     */
     private const PARENT_KEYS = [
-        // Detail lines eager loaded from a paginated parent list.
+
         'inbound_items' => [['idx_inbound_items_inbound_id', 'inbound_id']],
         'sales_invoice_items' => [['idx_sii_sales_invoice_id', 'sales_invoice_id']],
         'sales_return_items' => [['idx_sri_sales_return_id', 'sales_return_id']],
@@ -49,7 +30,6 @@ return new class extends Migration
         'issue_tracker_attachments' => [['idx_ita_issue_id', 'issue_id']],
         'variant_unlimited_shops' => [['idx_vus_channel_shop_id', 'channel_shop_id']],
 
-        // Join keys used by list filters and lookups.
         'inventories' => [
             ['idx_inventories_location_id', 'location_id'],
             ['idx_inventories_bin_id', 'bin_id'],
@@ -63,9 +43,6 @@ return new class extends Migration
         'villages' => [['idx_villages_district_id', 'district_id']],
     ];
 
-    /**
-     * Column sets passed to allowedSearch() on the sales order feeds.
-     */
     private const SALES_ORDER_SEARCH_SETS = [
         ['salesorder_no', 'customer_name'],
         ['salesorder_no', 'channel_order_no', 'customer_name', 'tracking_number'],
@@ -123,9 +100,6 @@ return new class extends Migration
             );
         }
 
-        // The substring half of the search is OR-ed with the full-text half, so
-        // it needs its own index or PostgreSQL falls back to a sequential scan
-        // for the whole predicate.
         foreach (self::SALES_ORDER_TRIGRAM_COLUMNS as $column) {
             $name = "idx_so_{$column}_trgm";
             $expression = SearchExpression::text($column);
@@ -139,9 +113,6 @@ return new class extends Migration
         }
     }
 
-    /**
-     * @return array<int, string>
-     */
     private function allIndexNames(): array
     {
         $names = [];

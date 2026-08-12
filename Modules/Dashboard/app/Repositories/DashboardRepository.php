@@ -32,11 +32,6 @@ class DashboardRepository
         ];
     }
 
-    /**
-     * Histori sebelum sistem ini tidak dimigrasi, jadi angka penjualan punya
-     * titik awal. Tanpa penanda ini, rentang yang melewati titik itu terbaca
-     * seolah omzet anjlok, padahal datanya memang belum ada.
-     */
     private function orderDataStartsAt(): ?string
     {
         $earliest = SalesOrder::query()

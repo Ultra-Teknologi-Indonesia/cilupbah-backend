@@ -52,15 +52,6 @@ class MasterFeedRepository
             ->appends(request()->query());
     }
 
-    /**
-     * Feed restricted to merge representatives.
-     *
-     * A representative is listed when it matches the request criteria itself, or
-     * when any of its merged members does. The criteria are pushed into SQL
-     * rather than resolved by plucking every matching id into PHP: only merged
-     * members (a bounded set) still need a round trip, so the number of bound
-     * parameters no longer grows with the size of the catalogue.
-     */
     private function mergeAwareQuery(string $status, ?string $updatedSince, array $context): LengthAwarePaginator
     {
         $nonRepIds = $context['nonRepIds'];
@@ -90,11 +81,6 @@ class MasterFeedRepository
             ->appends(request()->query());
     }
 
-    /**
-     * Representatives whose merged members match the current criteria.
-     *
-     * @return array<int, string>
-     */
     private function representativesOfMatchingMembers(string $status, ?string $updatedSince, array $context): array
     {
         $nonRepIds = $context['nonRepIds'];

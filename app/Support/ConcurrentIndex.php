@@ -6,20 +6,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
-/**
- * Helper for `CREATE INDEX CONCURRENTLY` in migrations.
- *
- * CONCURRENTLY keeps the table writable while the index is built, at the cost of
- * two caveats this class handles:
- *
- * - A failed build leaves an INVALID index behind. `IF NOT EXISTS` would then
- *   skip it forever on the next run, so any invalid namesake is dropped first.
- * - It cannot run inside a transaction, so migrations using it must set
- *   `public $withinTransaction = false`.
- *
- * Statements are also guarded by schema checks so a table or column missing on a
- * given deployment skips that index instead of failing the whole migration.
- */
 class ConcurrentIndex
 {
     public static function create(string $name, string $table, array $columns, string $sql): void

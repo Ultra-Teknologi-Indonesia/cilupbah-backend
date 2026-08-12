@@ -10,11 +10,6 @@ use Modules\Sales\Services\SalesOrderService;
 use Modules\Sales\Support\ShadowOrderGuard;
 use Tests\TestCase;
 
-/**
- * Order shadow ditarik saat migrasi sebagai pembanding: datanya nyata, tapi
- * peristiwanya tidak terjadi di sistem ini. Test ini mengunci jaminan itu
- * supaya tidak bocor lagi di refactor berikutnya.
- */
 class ShadowOrderIsolationTest extends TestCase
 {
     use RefreshDatabase;

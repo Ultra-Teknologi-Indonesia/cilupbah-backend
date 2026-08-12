@@ -19,25 +19,20 @@ kubectl get pods -n cilupbah -l app=cilupbah-app
 kubectl get deploy -n cilupbah
 ```
 
-Simpan sebagai variabel supaya perintah berikutnya pendek:
-
-```bash
-export NS=cilupbah
-export APP=deploy/cilupbah-app
-```
+Semua perintah di dokumen ini menulis namespace dan deployment secara **literal** (`-n cilupbah deploy/cilupbah-app`), jadi bisa ditempel apa adanya tanpa menyiapkan variabel shell lebih dulu — termasuk kalau Anda menempelnya ke sesi baru, ke shell lain, atau ke runbook.
 
 ### 0.2 Masuk ke tinker
 
 **Mode interaktif** — dipakai untuk sebagian besar checklist di bawah. Tempel blok PHP-nya satu per satu; variabel dari Bagian 1.3 tetap hidup sepanjang sesi.
 
 ```bash
-kubectl exec -it -n $NS $APP -- php artisan tinker
+kubectl exec -it -n cilupbah deploy/cilupbah-app -- php artisan tinker
 ```
 
 **Mode heredoc** — cara paling andal kalau ingin sekali jalan atau menyimpan output. Tanda kutip di `<<'PHP'` **wajib**, supaya shell tidak menginterpolasi `$variabel` PHP Anda.
 
 ```bash
-kubectl exec -i -n $NS $APP -- php artisan tinker <<'PHP'
+kubectl exec -i -n cilupbah deploy/cilupbah-app -- php artisan tinker <<'PHP'
 $shopee = \Modules\Channel\Models\ChannelShop::whereHas('channel', fn ($q) => $q->where('code','shopee'))->where('is_active', true)->first();
 echo $shopee->shop_id.' / '.$shopee->shop_name."\n";
 PHP
@@ -48,7 +43,7 @@ PHP
 Mode sekali jalan untuk perintah pendek:
 
 ```bash
-kubectl exec -i -n $NS $APP -- php artisan tinker --execute="echo \Modules\Channel\Models\Channel::pluck('code')->implode(',');"
+kubectl exec -i -n cilupbah deploy/cilupbah-app -- php artisan tinker --execute="echo \Modules\Channel\Models\Channel::pluck('code')->implode(',');"
 ```
 
 > Kalau pod punya beberapa container, tambahkan `-c <container>`.
@@ -97,8 +92,8 @@ app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused();
 **Empat.** `deploy/cilupbah-app` menjalankan **image yang sedang ter-deploy**, bukan kode di branch Anda. Kalau perbaikan mapper baru di-merge tapi belum di-deploy, checklist ini akan memvalidasi kode lama dan memberi rasa aman palsu. Cek dulu revisi yang jalan:
 
 ```bash
-kubectl get deploy cilupbah-app -n $NS -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
-kubectl rollout status deploy/cilupbah-app -n $NS
+kubectl get deploy cilupbah-app -n cilupbah -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+kubectl rollout status deploy/cilupbah-app -n cilupbah
 ```
 
 Untuk membuktikan fix yang belum ter-deploy, replikasikan logikanya manual di skrip tinker — jangan panggil method aslinya.

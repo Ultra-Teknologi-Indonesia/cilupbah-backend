@@ -4,21 +4,6 @@ namespace App\Support;
 
 use Illuminate\Database\Eloquent\Builder;
 
-/**
- * Implementation behind the `allowedSearch` Eloquent macro.
- *
- * Two things matter for performance here:
- *
- * 1. The emitted SQL is built through SearchExpression so it matches the GIN
- *    expression indexes (full-text + pg_trgm) created in the migrations. Without
- *    that, every ?search= hit degrades into a sequential scan that also has to
- *    build a tsvector per row.
- * 2. Relevance ordering (ts_rank_cd) is only added when the caller did not ask
- *    for an explicit sort. ts_rank_cd forces the planner to materialise and sort
- *    the whole match set; skipping it lets an ordered index answer `LIMIT n`
- *    directly. It also means an explicit ?sort= is finally honoured instead of
- *    being silently overridden by the rank.
- */
 class AllowedSearch
 {
     public static function apply(Builder $builder, array $columns): Builder
@@ -67,11 +52,6 @@ class AllowedSearch
         return $builder;
     }
 
-    /**
-     * Splits `relation.column` arguments from plain columns on the base table.
-     *
-     * @return array{0: array<int, string>, 1: array<string, array<int, string>>}
-     */
     private static function partition(Builder $builder, array $columns): array
     {
         $model = $builder->getModel();

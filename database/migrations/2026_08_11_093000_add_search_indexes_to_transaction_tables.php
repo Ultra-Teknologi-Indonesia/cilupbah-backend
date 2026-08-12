@@ -5,26 +5,10 @@ use App\Support\SearchExpression;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 
-/**
- * Index pencarian untuk tabel transaksi yang memakai `allowedSearch`.
- *
- * Macro menghasilkan `to_tsvector(...) @@ tsquery OR <kolom> ILIKE '%...%'`.
- * Karena kedua sisi di-OR, PostgreSQL hanya bisa memakai BitmapOr kalau
- * dua-duanya terindeks — satu sisi tanpa index memaksa sequential scan untuk
- * seluruh predikat.
- *
- * Cakupannya sengaja dibatasi pada tabel yang tumbuh mengikuti volume transaksi.
- * Tabel master (contacts, suppliers, salesmen) dan tabel referensi kecil
- * (channels, taxes, roles, regions, brands, attributes) tidak diindeks: seq scan
- * di sana murah, sedangkan index GIN menambah biaya tulis tanpa manfaat nyata.
- */
 return new class extends Migration
 {
     public $withinTransaction = false;
 
-    /**
-     * tabel => ['fts' => [himpunan kolom, ...], 'trgm' => [kolom, ...]]
-     */
     private const TARGETS = [
         'inbounds' => [
             'fts' => [['transaction_number', 'reference_number']],
@@ -62,8 +46,7 @@ return new class extends Migration
             'fts' => [['sku']],
             'trgm' => ['sku'],
         ],
-        // notes bebas dan panjang: berguna untuk full-text, tapi index trigram
-        // di atasnya mahal dan jarang terpakai.
+
         'journals' => [
             'fts' => [['journal_no', 'source_doc_no', 'notes']],
             'trgm' => ['journal_no', 'source_doc_no'],
@@ -101,9 +84,6 @@ return new class extends Migration
             }
         }
 
-        // Seluruh layar pesanan kini memakai SalesOrder::SEARCH_COLUMNS, yang
-        // ekspresinya sudah dilayani idx_so_search_fts_2. Himpunan lama
-        // (salesorder_no + customer_name) tidak lagi pernah dihasilkan.
         ConcurrentIndex::drop('idx_so_search_fts_1');
     }
 
@@ -134,10 +114,6 @@ return new class extends Migration
         return 'idx_'.$this->abbrev($table).'_'.$column.'_trgm';
     }
 
-    /**
-     * Nama index PostgreSQL dibatasi 63 karakter, jadi nama tabel yang panjang
-     * dipendekkan menjadi inisial tiap kata.
-     */
     private function abbrev(string $table): string
     {
         return strlen($table) <= 16

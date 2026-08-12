@@ -87,11 +87,11 @@ class InventoryRepository
                 'bin.location:id,location_name',
                 'bin.zone:id,zone_code,zone_name'
             ]);
-            
+
         if (!empty($assignedBinIds)) {
             $assignmentQuery->whereNotIn('bin_id', $assignedBinIds);
         }
-        
+
         $assignments = $assignmentQuery->get();
 
         foreach ($assignments as $assignment) {
@@ -596,11 +596,11 @@ class InventoryRepository
         $assignmentQuery = \Modules\Inventory\Models\SkuRackAssignment::where('item_id', $itemId)
             ->when($locationId, fn($q) => $q->where('location_id', $locationId))
             ->with('bin:id,bin_final_code');
-            
+
         if (!empty($assignedBinIds)) {
             $assignmentQuery->whereNotIn('bin_id', $assignedBinIds);
         }
-        
+
         $assignments = $assignmentQuery->get();
 
         foreach ($assignments as $assignment) {
