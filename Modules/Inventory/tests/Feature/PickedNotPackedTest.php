@@ -144,6 +144,64 @@ class PickedNotPackedTest extends TestCase
     public function test_daftar_kosong_tidak_menjalankan_query(): void
     {
         $this->assertSame([], StockSummary::pickedNotPackedForItems([]));
+        $this->assertSame([], StockSummary::pickedNotPackedByBin([]));
+    }
+
+    // ── Pembagian per bin ──────────────────────────────────────────────────
+
+    public function test_per_bin_membagi_sesuai_rak_asal_pick(): void
+    {
+        $ctx = $this->seedPicklistItem(qtyOrdered: 7);
+        $this->allocate($ctx['picklist_item_id'], $this->binA, 4);
+        $this->allocate($ctx['picklist_item_id'], $this->binB, 3);
+
+        $byBin = StockSummary::pickedNotPackedByBin([$this->variantId])[$this->variantId];
+
+        $this->assertSame(4, $byBin[$this->binA]);
+        $this->assertSame(3, $byBin[$this->binB]);
+    }
+
+    public function test_per_bin_yang_dipick_lebih_dulu_dianggap_dikemas_lebih_dulu(): void
+    {
+        $ctx = $this->seedPicklistItem(qtyOrdered: 7);
+        $this->allocate($ctx['picklist_item_id'], $this->binA, 4, pickedAt: '2026-01-01 08:00:00');
+        $this->allocate($ctx['picklist_item_id'], $this->binB, 3, pickedAt: '2026-01-01 09:00:00');
+
+        // 5 dari 7 sudah dikemas: bin A (dipick lebih dulu) habis terpakai,
+        // sisa 1 lagi diambil dari bin B sehingga bin B menyisakan 2.
+        $this->pack($ctx['order_id'], $ctx['order_item_id'], qtyPacked: 5);
+
+        $byBin = StockSummary::pickedNotPackedByBin([$this->variantId])[$this->variantId];
+
+        $this->assertSame(0, $byBin[$this->binA]);
+        $this->assertSame(2, $byBin[$this->binB]);
+    }
+
+    public function test_per_bin_totalnya_selalu_sama_dengan_hitungan_per_item(): void
+    {
+        $ctx = $this->seedPicklistItem(qtyOrdered: 10);
+        $this->allocate($ctx['picklist_item_id'], $this->binA, 6, pickedAt: '2026-01-01 08:00:00');
+        $this->allocate($ctx['picklist_item_id'], $this->binB, 4, pickedAt: '2026-01-01 09:00:00');
+        $this->pack($ctx['order_id'], $ctx['order_item_id'], qtyPacked: 3);
+
+        $byBin = StockSummary::pickedNotPackedByBin([$this->variantId])[$this->variantId];
+
+        $this->assertSame(
+            $this->qtyFor($this->variantId),
+            array_sum($byBin),
+            'Jumlah per bin harus konsisten dengan angka per item.',
+        );
+    }
+
+    public function test_per_bin_tidak_minus_saat_dikemas_melebihi_dipick(): void
+    {
+        $ctx = $this->seedPicklistItem(qtyOrdered: 5);
+        $this->allocate($ctx['picklist_item_id'], $this->binA, 2);
+        $this->pack($ctx['order_id'], $ctx['order_item_id'], qtyPacked: 5);
+
+        $byBin = StockSummary::pickedNotPackedByBin([$this->variantId])[$this->variantId];
+
+        $this->assertSame(0, $byBin[$this->binA]);
     }
 
     // ── Seed helper ────────────────────────────────────────────────────────
@@ -273,14 +331,14 @@ class PickedNotPackedTest extends TestCase
         ];
     }
 
-    private function allocate(string $picklistItemId, string $binId, int $qty): void
+    private function allocate(string $picklistItemId, string $binId, int $qty, ?string $pickedAt = null): void
     {
         DB::table('picklist_item_allocations')->insert([
             'id' => Str::uuid()->toString(),
             'picklist_item_id' => $picklistItemId,
             'bin_id' => $binId,
             'qty' => $qty,
-            'picked_at' => now(),
+            'picked_at' => $pickedAt ?? now(),
             'picked_by' => $this->userId,
             'created_at' => now(), 'updated_at' => now(),
         ]);

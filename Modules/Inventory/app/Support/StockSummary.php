@@ -116,6 +116,63 @@ class StockSummary
         return $result;
     }
 
+    /**
+     * Sama seperti pickedNotPackedForItems(), tapi dipecah per bin.
+     *
+     * qty_packed hanya tercatat per baris pesanan, sedangkan alokasi picking
+     * tercatat per bin. Saat satu baris dipick dari beberapa rak lalu baru
+     * sebagian dikemas, sisanya harus dibebankan ke rak yang mana?
+     *
+     * Aturannya: yang diambil lebih dulu dianggap dikemas lebih dulu. Jumlah
+     * berjalan per baris pesanan diurutkan menurut waktu pick, lalu qty yang
+     * sudah dikemas "memakan" alokasi dari yang terlama. Deterministik, dan
+     * totalnya selalu sama dengan hitungan per item.
+     *
+     * @param  array<int, string>  $itemIds
+     * @return array<string, array<string, int>>  item_id => [bin_id => qty]
+     */
+    public static function pickedNotPackedByBin(array $itemIds): array
+    {
+        $itemIds = array_values(array_filter(array_unique($itemIds)));
+
+        if (empty($itemIds)) {
+            return [];
+        }
+
+        $allocations = DB::table('picklist_item_allocations as pia')
+            ->join('picklist_items as pi', 'pi.id', '=', 'pia.picklist_item_id')
+            ->whereIn('pi.item_id', $itemIds)
+            ->selectRaw('pi.item_id AS item_id')
+            ->selectRaw('pia.bin_id AS bin_id')
+            ->selectRaw('pia.qty AS qty')
+            ->selectRaw(
+                'SUM(pia.qty) OVER (PARTITION BY pi.order_item_id '.
+                'ORDER BY pia.picked_at, pia.id) AS running'
+            )
+            ->selectRaw(
+                '(SELECT COALESCE(SUM(pk.qty_packed), 0) FROM packlist_items pk '.
+                'WHERE pk.order_item_id = pi.order_item_id) AS packed'
+            );
+
+        $rows = DB::query()
+            ->fromSub($allocations, 'a')
+            ->groupBy('a.item_id', 'a.bin_id')
+            ->selectRaw('a.item_id AS item_id')
+            ->selectRaw('a.bin_id AS bin_id')
+            ->selectRaw(
+                'COALESCE(SUM(LEAST(a.qty, GREATEST(a.running - a.packed, 0))), 0) AS qty'
+            )
+            ->get();
+
+        $result = [];
+
+        foreach ($rows as $row) {
+            $result[$row->item_id][$row->bin_id] = (int) $row->qty;
+        }
+
+        return $result;
+    }
+
     protected static function transitByItem(array $itemIds): array
     {
         if (empty($itemIds)) {
