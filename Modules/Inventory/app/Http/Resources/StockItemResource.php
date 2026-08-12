@@ -8,18 +8,28 @@ use Modules\Inventory\Support\StockSummary;
 
 class StockItemResource extends JsonResource
 {
-    public function __construct($resource, protected ?int $transitQty = null)
-    {
+    public function __construct(
+        $resource,
+        protected ?int $transitQty = null,
+        protected ?int $pickedNotPackedQty = null,
+    ) {
         parent::__construct($resource);
     }
 
     public static function collectionWithTransit($resource): array
     {
         $items = collect($resource)->values();
-        $transit = StockSummary::transitForItems($items->pluck('id')->all());
+        $itemIds = $items->pluck('id')->all();
+
+        $transit = StockSummary::transitForItems($itemIds);
+        $pickedNotPacked = StockSummary::pickedNotPackedForItems($itemIds);
 
         return $items
-            ->map(fn ($item) => (new self($item, (int) ($transit[$item->id] ?? 0)))->resolve())
+            ->map(fn ($item) => (new self(
+                $item,
+                (int) ($transit[$item->id] ?? 0),
+                (int) ($pickedNotPacked[$item->id] ?? 0),
+            ))->resolve())
             ->all();
     }
 
@@ -50,6 +60,10 @@ class StockItemResource extends JsonResource
                     'on_order' => 0,
                     'transit' => 0,
                     'available' => $bundleDerived['available'],
+                    // Bundle tidak disimpan fisik, stoknya diturunkan dari
+                    // komponen — jadi tidak ada yang menunggu di meja packing.
+                    'picked_not_packed' => 0,
+                    'actual' => $bundleDerived['on_hand'],
                 ]
                 : $this->totalStocks($inventories),
             'thumbnail' => $this->resolveThumbnail(),
@@ -131,7 +145,27 @@ class StockItemResource extends JsonResource
             'on_order' => $onOrder,
             'transit' => $this->transitQty ?? (int) (StockSummary::forItem($this->id)['transit'] ?? 0),
             'available' => $onHand - $onOrder,
+            'picked_not_packed' => $this->pickedNotPacked(),
+
+            // Stok yang masih ada di rak.
+            //
+            // Hari ini on_hand SUDAH berkurang saat picking, jadi angkanya
+            // sama dengan on_hand. Setelah titik pengurangan digeser ke packing,
+            // rumusnya menjadi `on_hand - picked_not_packed` dan angka yang
+            // tampil di UI tetap sama seperti sekarang — karena itu perhitungan
+            // ini sengaja ditaruh di backend, supaya frontend tidak perlu ikut
+            // berubah saat pergeseran itu dilakukan.
+            'actual' => $onHand,
         ];
+    }
+
+    protected function pickedNotPacked(): int
+    {
+        if ($this->pickedNotPackedQty !== null) {
+            return $this->pickedNotPackedQty;
+        }
+
+        return (int) (StockSummary::pickedNotPackedForItems([$this->id])[$this->id] ?? 0);
     }
 
     protected function resolveThumbnail(): ?string

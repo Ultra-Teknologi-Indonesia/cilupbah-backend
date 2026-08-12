@@ -67,6 +67,55 @@ class StockSummary
         return self::transitByItem(array_values(array_filter(array_unique($itemIds))));
     }
 
+    /**
+     * Qty yang sudah diambil dari rak (picking) tapi belum dikemas (packing),
+     * per item. Inilah barang yang secara fisik sedang ada di meja packing:
+     * bukan lagi di rak, tapi juga belum keluar dari gudang.
+     *
+     * Dicocokkan lewat order_item_id, karena satu baris pesanan bisa dipick
+     * dari beberapa bin (banyak baris alokasi) tapi dikemas sebagai satu baris
+     * packlist. Selisih negatif dijaga ke 0 supaya koreksi pack yang melebihi
+     * qty pick tidak membuat angkanya menjadi minus.
+     *
+     * @param  array<int, string>  $itemIds
+     * @return array<string, int>  item_id => qty
+     */
+    public static function pickedNotPackedForItems(array $itemIds): array
+    {
+        $itemIds = array_values(array_filter(array_unique($itemIds)));
+
+        if (empty($itemIds)) {
+            return [];
+        }
+
+        $perOrderItem = DB::table('picklist_items as pi')
+            ->join('picklist_item_allocations as pia', 'pia.picklist_item_id', '=', 'pi.id')
+            ->whereIn('pi.item_id', $itemIds)
+            ->groupBy('pi.item_id', 'pi.order_item_id')
+            ->selectRaw('pi.item_id AS item_id')
+            ->selectRaw('pi.order_item_id AS order_item_id')
+            ->selectRaw('COALESCE(SUM(pia.qty), 0) AS picked')
+            ->selectRaw(
+                '(SELECT COALESCE(SUM(pk.qty_packed), 0) FROM packlist_items pk '.
+                'WHERE pk.order_item_id = pi.order_item_id) AS packed'
+            );
+
+        $rows = DB::query()
+            ->fromSub($perOrderItem, 't')
+            ->groupBy('t.item_id')
+            ->selectRaw('t.item_id AS item_id')
+            ->selectRaw('COALESCE(SUM(GREATEST(t.picked - t.packed, 0)), 0) AS qty')
+            ->get();
+
+        $result = array_fill_keys($itemIds, 0);
+
+        foreach ($rows as $row) {
+            $result[$row->item_id] = (int) $row->qty;
+        }
+
+        return $result;
+    }
+
     protected static function transitByItem(array $itemIds): array
     {
         if (empty($itemIds)) {
