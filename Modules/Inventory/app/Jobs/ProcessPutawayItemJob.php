@@ -20,6 +20,7 @@ use Modules\Warehouse\Services\BinOccupancyGuard;
 use Modules\Warehouse\Services\SkuHomeBinGuard;
 use App\Traits\StockLockable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class ProcessPutawayItemJob implements ShouldQueue
 {
@@ -235,6 +236,28 @@ class ProcessPutawayItemJob implements ShouldQueue
         });
 
         \Modules\Channel\Jobs\SyncStockToChannelsJob::dispatch($this->itemId)->afterCommit();
+
+        $this->releaseOrdersWaitingForStock();
+    }
+
+    private function releaseOrdersWaitingForStock(): void
+    {
+        $locationId = Putaway::where('id', $this->putawayId)->value('location_id');
+
+        if (! $locationId) {
+            return;
+        }
+
+        try {
+            app(\Modules\Sales\Services\BuyerConfirmationService::class)
+                ->releaseWaitingForItems([$this->itemId], (string) $locationId);
+        } catch (\Throwable $e) {
+            Log::warning('Gagal melepas pesanan yang menunggu stok setelah penempatan.', [
+                'putaway_id' => $this->putawayId,
+                'item_id' => $this->itemId,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     private function recomputeInboundStatus(string $inboundId): void

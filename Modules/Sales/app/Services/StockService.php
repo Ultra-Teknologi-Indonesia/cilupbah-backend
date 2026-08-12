@@ -169,6 +169,40 @@ class StockService
         });
     }
 
+    public function consumeFromBin(string $sku, string $itemId, string $locationId, string $binId, int $qty, string $transactionNumber, string $source, ?string $createdBy = null): void
+    {
+        if ($qty <= 0) {
+            return;
+        }
+
+        $this->withStockLock($itemId, $locationId, function () use ($sku, $itemId, $locationId, $binId, $qty, $transactionNumber, $source, $createdBy) {
+            DB::transaction(function () use ($sku, $itemId, $locationId, $binId, $qty, $transactionNumber, $source, $createdBy) {
+                $binRow = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, $binId);
+                $onHand = (int) $binRow->on_hand;
+
+                if ($onHand < $qty) {
+                    throw new InsufficientStockException($sku, max(0, $onHand), $qty);
+                }
+
+                $binRow->on_hand = $onHand - $qty;
+                $binRow->recalculateAvailable();
+                $this->inventoryRepository->updateStock($binRow);
+
+                $this->movementRepository->create([
+                    'item_id'            => $itemId,
+                    'location_id'        => $locationId,
+                    'bin_id'             => $binId,
+                    'transaction_number' => $transactionNumber,
+                    'source'             => $source,
+                    'qty'                => -$qty,
+                    'balance'            => $binRow->on_hand,
+                    'transaction_date'   => now(),
+                    'created_by'         => $createdBy ?: 'system',
+                ]);
+            });
+        });
+    }
+
     private function restoreSingle(string $sku, string $itemId, string $locationId, int $qty, string $transactionNumber): void
     {
         $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty, $transactionNumber) {

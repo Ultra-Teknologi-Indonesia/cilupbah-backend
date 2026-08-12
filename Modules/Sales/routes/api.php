@@ -2,7 +2,9 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Modules\Sales\Http\Controllers\BuyerConfirmationController;
 use Modules\Sales\Http\Controllers\InternalStoreController;
+use Modules\Sales\Http\Controllers\OrderDirectCompletionController;
 use Modules\Sales\Http\Controllers\SalesOrderManualController;
 use Modules\Sales\Http\Controllers\SalesReturnController;
 use Modules\Sales\Http\Controllers\SalesOrderActivityController;
@@ -210,6 +212,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('sales/orders/cancelled/export', [SalesOrderController::class, 'exportCancelled'])->name('sales.orders.cancelled.export');
     });
     Route::middleware('role_or_permission:owner|view-pesanan')->group(function () {
+        Route::get('sales/buyer-confirmations', [BuyerConfirmationController::class, 'index'])->name('sales.buyer-confirmations.index');
+        Route::get('sales/orders/{id}/buyer-confirmations', [BuyerConfirmationController::class, 'forOrder'])->whereUuid('id')->name('sales.orders.buyer-confirmations');
         Route::get('sales/orders/completed', [SalesOrderController::class, 'completed'])->name('sales.orders.completed');
         Route::get('sales/orders/failed', [SalesOrderController::class, 'failed'])->name('sales.orders.failed');
         Route::get('sales/orders/returned-list', [SalesOrderController::class, 'returnedList'])->name('sales.orders.returned-list');
@@ -220,6 +224,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::middleware('role_or_permission:owner|edit-pesanan')->group(function () {
         Route::post('sales/orders/move-to-ready', [SalesOrderController::class, 'moveToReadyToProcess'])->name('sales.orders.move-to-ready');
         Route::post('sales/orders/mark-as-complete', [SalesOrderController::class, 'markAsComplete'])->name('sales.orders.mark-as-complete');
+        Route::post('sales/orders/direct-completion/preview', [OrderDirectCompletionController::class, 'preview'])->name('sales.orders.direct-completion.preview');
+        Route::post('sales/orders/direct-completion', [OrderDirectCompletionController::class, 'complete'])->name('sales.orders.direct-completion');
+        Route::post('sales/buyer-confirmations/{id}/decide', [BuyerConfirmationController::class, 'decide'])->whereUuid('id')->name('sales.buyer-confirmations.decide');
         Route::post('sales/orders/save-airwaybill', [SalesOrderController::class, 'saveAirwaybill'])->name('sales.orders.save-airwaybill');
         Route::post('sales/orders/save-received-date', [SalesOrderController::class, 'saveReceivedDate'])->name('sales.orders.save-received-date');
         Route::post('sales/orders/set-as-paid', [SalesOrderController::class, 'setAsPaid'])->name('sales.orders.set-as-paid');

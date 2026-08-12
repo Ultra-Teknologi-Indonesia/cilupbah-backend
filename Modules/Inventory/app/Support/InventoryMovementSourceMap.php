@@ -16,6 +16,8 @@ class InventoryMovementSourceMap
         'SALES_RETURN'     => ['category' => 'SALES_RETURN', 'label' => 'Retur Penjualan'],
         'PICKING'          => ['category' => 'PICKING', 'label' => 'Barang di-pick'],
         'PICKING_REVERSAL' => ['category' => 'PICKING', 'label' => 'Koreksi Pick'],
+        'ORDER_COMPLETE_OUT'      => ['category' => 'SELESAI_LANGSUNG', 'label' => 'Pesanan Diselesaikan'],
+        'ORDER_COMPLETE_REVERSAL' => ['category' => 'SELESAI_LANGSUNG', 'label' => 'Koreksi Pesanan Diselesaikan'],
         'ORDER_RESERVE'       => ['category' => 'ORDER', 'label' => 'Alokasi Pesanan'],
         'ORDER_RELEASE'       => ['category' => 'ORDER', 'label' => 'Alokasi Dilepas'],
         'RESERVE'             => ['category' => 'ORDER', 'label' => 'Stok Ditahan'],
@@ -47,6 +49,7 @@ class InventoryMovementSourceMap
         'ADJUSTMENT'      => 'Penyesuaian',
         'SALES_RETURN'    => 'Retur Penjualan',
         'PICKING'         => 'Barang di-pick',
+        'SELESAI_LANGSUNG' => 'Selesaikan Langsung',
         'ORDER'           => 'Order',
         'PESANAN'         => 'Pesanan Batal',
         'INVOICE'         => 'Faktur',
@@ -59,6 +62,7 @@ class InventoryMovementSourceMap
         'ADJUSTMENT',
         'SALES_RETURN',
         'PICKING',
+        'SELESAI_LANGSUNG',
         'ORDER',
         'PESANAN',
         'INVOICE',
@@ -74,6 +78,7 @@ class InventoryMovementSourceMap
         'TRANSFER_REVERT',
         'PURCHASE_REVERSAL',
         'PICKING_REVERSAL',
+        'ORDER_COMPLETE_REVERSAL',
     ];
 
     public const UNRECORDED_REVERSAL_SOURCES = [

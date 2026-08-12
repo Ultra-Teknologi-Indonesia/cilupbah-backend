@@ -23,6 +23,7 @@ use Modules\Sales\Jobs\PrepareLazadaShippingLabelJob;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
 use Modules\Sales\Jobs\RequestChannelAwbJob;
 use Modules\Sales\Jobs\SyncStockJob;
+use Modules\Sales\Models\OrderBinAllocation;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderItem;
 use Modules\Sales\Support\OrderTotals;
@@ -642,6 +643,38 @@ class SalesOrderService
             }
 
             return $count;
+        });
+    }
+
+    public function cancelLocally(string $orderId, ?string $reason, ?string $actorId = null): SalesOrder
+    {
+        return DB::transaction(function () use ($orderId, $reason, $actorId) {
+            $order = SalesOrder::with('items')->whereKey($orderId)->lockForUpdate()->firstOrFail();
+
+            if ($order->is_canceled || $order->status === 'cancelled') {
+                return $order->fresh(['items']);
+            }
+
+            $this->applyStockTransition($order, 'cancelled');
+
+            $order->update([
+                'status' => 'cancelled',
+                'is_canceled' => true,
+                'cancel_reason' => $reason,
+                'cancel_accepted_at' => now(),
+                'cancel_accepted_by' => $actorId,
+            ]);
+
+            $this->logStatusHistory($order, 'CANCELLED', [
+                'from' => 'reserved',
+                'to' => 'cancelled',
+                'reason' => $reason,
+            ]);
+
+            app(\Modules\Outbound\Services\FulfillmentCleanupService::class)
+                ->detachCancelledOrder($order->id, $actorId ?: 'system:buyer-confirmation');
+
+            return $order->fresh(['items']);
         });
     }
 
@@ -2167,15 +2200,49 @@ class SalesOrderService
             ]);
         }
 
-        $restored = false;
+        $restored = $this->restoreDirectCompletionAllocations($order);
 
-        if (in_array($canonical, [SalesOrderStatus::PICKED, SalesOrderStatus::PACKED], true)) {
+        if (! $restored && in_array($canonical, [SalesOrderStatus::PICKED, SalesOrderStatus::PACKED], true)) {
             $restored = $this->restoreStockToOriginBins($order);
         }
 
         $released = $this->stockService->releaseReservationByTransaction($order->salesorder_no);
 
         return $restored || $released > 0;
+    }
+
+    private function restoreDirectCompletionAllocations(SalesOrder $order): bool
+    {
+        $allocations = OrderBinAllocation::where('order_id', $order->id)
+            ->outstanding()
+            ->lockForUpdate()
+            ->get();
+
+        if ($allocations->isEmpty()) {
+            return false;
+        }
+
+        $skuByItem = $order->items->pluck('sku', 'item_id');
+        $actorId = Auth::id() ?: null;
+
+        foreach ($allocations as $allocation) {
+            $this->stockService->restoreToBin(
+                $skuByItem[$allocation->item_id] ?? "item:{$allocation->item_id}",
+                (string) $allocation->item_id,
+                (string) $allocation->location_id,
+                (string) $allocation->bin_id,
+                (int) $allocation->qty,
+                $order->salesorder_no,
+                'ORDER_COMPLETE_REVERSAL',
+            );
+
+            $allocation->forceFill([
+                'reversed_at' => now(),
+                'reversed_by' => $actorId,
+            ])->save();
+        }
+
+        return true;
     }
 
     private function restoreStockToOriginBins(SalesOrder $order): bool
