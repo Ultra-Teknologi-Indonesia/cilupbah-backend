@@ -22,7 +22,7 @@ class MasterFeedController extends Controller
     {
         $request->validate([
             'search' => 'nullable|string',
-            'per_page' => 'nullable|integer|min:1|max:500',
+            'per_page' => 'nullable|integer|min:1|max:200',
             'page' => 'nullable|integer|min:1',
             'status' => ['nullable', Rule::in(Product::STATUSES)],
             'updated_since' => 'nullable|date',

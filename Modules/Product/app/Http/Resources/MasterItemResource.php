@@ -11,6 +11,8 @@ class MasterItemResource extends JsonResource
 
     protected ?array $shopNames = null;
 
+    protected ?array $thumbnailsByVariant = null;
+
     public function toArray(Request $request): array
     {
         return [
@@ -194,12 +196,7 @@ class MasterItemResource extends JsonResource
             return null;
         }
 
-        $productMedia = $this->media->whereNull('variant_id');
-        $primary = $productMedia->firstWhere('is_primary', true)
-            ?? $productMedia->first()
-            ?? $this->media->first();
-
-        return $primary->url ?? null;
+        return $this->thumbnailsByVariant()[''] ?? $this->media->first()->url ?? null;
     }
 
     protected function variantThumbnail($variant): ?string
@@ -208,9 +205,30 @@ class MasterItemResource extends JsonResource
             return null;
         }
 
-        $variantMedia = $this->media->where('variant_id', $variant->id);
-        $primary = $variantMedia->firstWhere('is_primary', true) ?? $variantMedia->first();
+        return $this->thumbnailsByVariant()[$variant->id] ?? null;
+    }
 
-        return $primary->url ?? null;
+    protected function thumbnailsByVariant(): array
+    {
+        if ($this->thumbnailsByVariant !== null) {
+            return $this->thumbnailsByVariant;
+        }
+
+        $thumbnails = [];
+        $primary = [];
+
+        foreach ($this->media as $item) {
+            $key = $item->variant_id ?? '';
+
+            if (! array_key_exists($key, $thumbnails)) {
+                $thumbnails[$key] = $item->url;
+            }
+
+            if ($item->is_primary && ! isset($primary[$key])) {
+                $primary[$key] = $item->url;
+            }
+        }
+
+        return $this->thumbnailsByVariant = $primary + $thumbnails;
     }
 }

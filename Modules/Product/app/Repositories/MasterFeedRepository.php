@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductMerge;
+use Modules\Product\Support\ProductFeedColumns;
 use Modules\Product\Support\ProductFeedQuery;
 use Modules\Product\Support\ProductFeedRelations;
 use Spatie\QueryBuilder\QueryBuilder;
@@ -36,7 +37,7 @@ class MasterFeedRepository
                 ->when($updatedSince, fn ($query) => $query->where('updated_at', '>=', $updatedSince))
                 ->with($this->relations())
         )
-            ->paginate(request('per_page', 20))
+            ->paginate(request('per_page', 20), ProductFeedColumns::list())
             ->appends(request()->query());
     }
 
@@ -48,7 +49,7 @@ class MasterFeedRepository
                 ->when($updatedSince, fn ($query) => $query->where('updated_at', '>=', $updatedSince))
                 ->with($this->relations())
         )
-            ->paginate(request('per_page', 20))
+            ->paginate(request('per_page', 20), ProductFeedColumns::list())
             ->appends(request()->query());
     }
 
@@ -77,7 +78,7 @@ class MasterFeedRepository
 
         return $query
             ->with($this->relations())
-            ->paginate(request('per_page', 20))
+            ->paginate(request('per_page', 20), ProductFeedColumns::list())
             ->appends(request()->query());
     }
 
@@ -177,7 +178,7 @@ class MasterFeedRepository
         return Product::query()
             ->whereIn('id', $ids)
             ->with($this->relations())
-            ->get()
+            ->get(ProductFeedColumns::list())
             ->keyBy('id');
     }
 
