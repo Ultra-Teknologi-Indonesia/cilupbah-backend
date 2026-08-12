@@ -9,15 +9,6 @@ use Modules\Inventory\Support\StockSummary;
 use Modules\Outbound\Models\Picklist;
 use Tests\TestCase;
 
-/**
- * Menguji perhitungan "sudah dipick, belum dikemas" — angka yang dipakai
- * halaman posisi stok untuk menampilkan Stok Aktual dan Di Meja Packing.
- *
- * Perhitungan ini diturunkan, bukan disimpan sebagai kolom, jadi kebenarannya
- * sepenuhnya bergantung pada query. Titik rawannya ada tiga: pencocokan
- * picking dan packing lewat order_item_id, penjumlahan alokasi dari beberapa
- * bin untuk satu baris pesanan, dan penjagaan agar hasilnya tidak minus.
- */
 class PickedNotPackedTest extends TestCase
 {
     use RefreshDatabase;
@@ -87,8 +78,6 @@ class PickedNotPackedTest extends TestCase
         $ctx = $this->seedPicklistItem(qtyOrdered: 5);
         $this->allocate($ctx['picklist_item_id'], $this->binA, 2);
 
-        // Koreksi packing yang melebihi qty pick tidak boleh membuat stok
-        // aktual jadi lebih besar daripada on_hand.
         $this->pack($ctx['order_id'], $ctx['order_item_id'], qtyPacked: 5);
 
         $this->assertSame(0, $this->qtyFor($this->variantId));
@@ -100,8 +89,6 @@ class PickedNotPackedTest extends TestCase
         $this->allocate($ctx['picklist_item_id'], $this->binA, 4);
         $this->allocate($ctx['picklist_item_id'], $this->binB, 3);
 
-        // Satu baris pesanan boleh dipick dari beberapa rak, tapi dikemas
-        // sebagai satu baris packlist — keduanya harus tetap berpasangan.
         $this->assertSame(7, $this->qtyFor($this->variantId));
 
         $this->pack($ctx['order_id'], $ctx['order_item_id'], qtyPacked: 5);
@@ -147,8 +134,6 @@ class PickedNotPackedTest extends TestCase
         $this->assertSame([], StockSummary::pickedNotPackedByBin([]));
     }
 
-    // ── Pembagian per bin ──────────────────────────────────────────────────
-
     public function test_per_bin_membagi_sesuai_rak_asal_pick(): void
     {
         $ctx = $this->seedPicklistItem(qtyOrdered: 7);
@@ -167,8 +152,6 @@ class PickedNotPackedTest extends TestCase
         $this->allocate($ctx['picklist_item_id'], $this->binA, 4, pickedAt: '2026-01-01 08:00:00');
         $this->allocate($ctx['picklist_item_id'], $this->binB, 3, pickedAt: '2026-01-01 09:00:00');
 
-        // 5 dari 7 sudah dikemas: bin A (dipick lebih dulu) habis terpakai,
-        // sisa 1 lagi diambil dari bin B sehingga bin B menyisakan 2.
         $this->pack($ctx['order_id'], $ctx['order_item_id'], qtyPacked: 5);
 
         $byBin = StockSummary::pickedNotPackedByBin([$this->variantId])[$this->variantId];
@@ -203,8 +186,6 @@ class PickedNotPackedTest extends TestCase
 
         $this->assertSame(0, $byBin[$this->binA]);
     }
-
-    // ── Seed helper ────────────────────────────────────────────────────────
 
     private function seedUser(): string
     {
@@ -272,9 +253,6 @@ class PickedNotPackedTest extends TestCase
         return $variantId;
     }
 
-    /**
-     * @return array{picklist_id: string, picklist_item_id: string, order_id: string, order_item_id: string}
-     */
     private function seedPicklistItem(int $qtyOrdered, ?string $itemId = null, string $sku = 'SKU-PNP-1'): array
     {
         $itemId ??= $this->variantId;

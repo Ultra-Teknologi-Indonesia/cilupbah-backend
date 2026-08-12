@@ -13,10 +13,6 @@ class InventoryStockResource extends JsonResource
         parent::__construct($resource);
     }
 
-    /**
-     * Hitung "sudah dipick, belum dikemas" untuk seluruh baris sekaligus,
-     * lalu bagikan per bin — supaya tidak ada query per baris.
-     */
     public static function collectionWithActual($resource): array
     {
         $rows = collect($resource)->values();
@@ -56,10 +52,6 @@ class InventoryStockResource extends JsonResource
             'available' => (int) $this->available,
             'picked_not_packed' => $pickedNotPacked,
 
-            // Lihat catatan di StockItemResource: hari ini on_hand sudah
-            // berkurang saat picking sehingga nilainya sama. Setelah titik
-            // pengurangan digeser ke packing, rumusnya menjadi
-            // `on_hand - picked_not_packed` tanpa perlu mengubah frontend.
             'actual' => $onHand,
             'avg_cost' => (float) $this->avg_cost,
         ];

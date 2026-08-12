@@ -67,19 +67,6 @@ class StockSummary
         return self::transitByItem(array_values(array_filter(array_unique($itemIds))));
     }
 
-    /**
-     * Qty yang sudah diambil dari rak (picking) tapi belum dikemas (packing),
-     * per item. Inilah barang yang secara fisik sedang ada di meja packing:
-     * bukan lagi di rak, tapi juga belum keluar dari gudang.
-     *
-     * Dicocokkan lewat order_item_id, karena satu baris pesanan bisa dipick
-     * dari beberapa bin (banyak baris alokasi) tapi dikemas sebagai satu baris
-     * packlist. Selisih negatif dijaga ke 0 supaya koreksi pack yang melebihi
-     * qty pick tidak membuat angkanya menjadi minus.
-     *
-     * @param  array<int, string>  $itemIds
-     * @return array<string, int>  item_id => qty
-     */
     public static function pickedNotPackedForItems(array $itemIds): array
     {
         $itemIds = array_values(array_filter(array_unique($itemIds)));
@@ -116,21 +103,6 @@ class StockSummary
         return $result;
     }
 
-    /**
-     * Sama seperti pickedNotPackedForItems(), tapi dipecah per bin.
-     *
-     * qty_packed hanya tercatat per baris pesanan, sedangkan alokasi picking
-     * tercatat per bin. Saat satu baris dipick dari beberapa rak lalu baru
-     * sebagian dikemas, sisanya harus dibebankan ke rak yang mana?
-     *
-     * Aturannya: yang diambil lebih dulu dianggap dikemas lebih dulu. Jumlah
-     * berjalan per baris pesanan diurutkan menurut waktu pick, lalu qty yang
-     * sudah dikemas "memakan" alokasi dari yang terlama. Deterministik, dan
-     * totalnya selalu sama dengan hitungan per item.
-     *
-     * @param  array<int, string>  $itemIds
-     * @return array<string, array<string, int>>  item_id => [bin_id => qty]
-     */
     public static function pickedNotPackedByBin(array $itemIds): array
     {
         $itemIds = array_values(array_filter(array_unique($itemIds)));

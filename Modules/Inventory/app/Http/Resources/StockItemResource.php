@@ -60,8 +60,7 @@ class StockItemResource extends JsonResource
                     'on_order' => 0,
                     'transit' => 0,
                     'available' => $bundleDerived['available'],
-                    // Bundle tidak disimpan fisik, stoknya diturunkan dari
-                    // komponen — jadi tidak ada yang menunggu di meja packing.
+
                     'picked_not_packed' => 0,
                     'actual' => $bundleDerived['on_hand'],
                 ]
@@ -147,14 +146,6 @@ class StockItemResource extends JsonResource
             'available' => $onHand - $onOrder,
             'picked_not_packed' => $this->pickedNotPacked(),
 
-            // Stok yang masih ada di rak.
-            //
-            // Hari ini on_hand SUDAH berkurang saat picking, jadi angkanya
-            // sama dengan on_hand. Setelah titik pengurangan digeser ke packing,
-            // rumusnya menjadi `on_hand - picked_not_packed` dan angka yang
-            // tampil di UI tetap sama seperti sekarang — karena itu perhitungan
-            // ini sengaja ditaruh di backend, supaya frontend tidak perlu ikut
-            // berubah saat pergeseran itu dilakukan.
             'actual' => $onHand,
         ];
     }
