@@ -3,7 +3,6 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\DB;
-use Modules\Channel\Support\ChannelParentSku;
 use Modules\Product\Models\Product;
 
 class LazadaToInternalProductMapper
@@ -70,7 +69,7 @@ class LazadaToInternalProductMapper
             ];
         }
 
-        $internal['sku'] = ChannelParentSku::fromSingleVariant($internal['variants']);
+        $internal['sku'] = null;
         $internal['length'] = $internal['variants'][0]['length'] ?? 0;
         $internal['width'] = $internal['variants'][0]['width'] ?? 0;
         $internal['height'] = $internal['variants'][0]['height'] ?? 0;

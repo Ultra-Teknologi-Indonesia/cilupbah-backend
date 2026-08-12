@@ -2,9 +2,11 @@
 
 namespace Modules\Channel\Support;
 
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Repositories\ChannelProductRepository;
 use Modules\Product\Models\ProductSyncLog;
+use Modules\Product\Services\MasterProductMerger;
 use Modules\Product\Services\ProductService;
 
 class ChannelModelLinker
@@ -12,6 +14,7 @@ class ChannelModelLinker
     public function __construct(
         protected ChannelProductRepository $repository,
         protected ProductService $productService,
+        protected MasterProductMerger $merger,
     ) {}
 
     public function link(
@@ -27,31 +30,17 @@ class ChannelModelLinker
             $models
         ));
 
-        $ownerByGroup = $this->resolveGroupOwners($models, $known);
-        $pcmByProduct = [$defaultProductId => $defaultPcmId];
+        $productId = $this->consolidate($shop, $externalProductId, $known, $defaultProductId);
+
+        $pcmId = $productId === $defaultProductId
+            ? $defaultPcmId
+            : $this->repository->upsertChannelMapping($productId, $shopId, $externalProductId, 'synced', null, false);
 
         foreach ($models as $model) {
             $sku = trim((string) ($model['sku'] ?? ''));
 
             if ($sku === '') {
-                $fallbackVariantId = $model['fallback_variant_id'] ?? null;
-
-                if ($fallbackVariantId) {
-
-                    $this->repository->upsertVariantChannelMapping(
-                        $defaultPcmId,
-                        (string) $fallbackVariantId,
-                        isset($model['external_sku_id']) ? (string) $model['external_sku_id'] : null,
-                        null,
-                        $model['price'] ?? null,
-                        $model['sales_attribute_id'] ?? null,
-                        $model['sales_attribute_name'] ?? null
-                    );
-
-                    continue;
-                }
-
-                $this->logSkipped($shop, $defaultProductId, $externalProductId, $model, 'Model tidak punya SKU di channel — isi SKU di Seller Center agar bisa dipetakan.');
+                $this->logSkipped($shop, $productId, $externalProductId, $model, 'Model tidak punya SKU di channel — isi SKU di Seller Center agar bisa dipetakan.');
 
                 continue;
             }
@@ -59,10 +48,8 @@ class ChannelModelLinker
             $variant = $known[$sku] ?? null;
 
             if ($variant) {
-                $productId = (string) $variant->product_id;
                 $variantId = (string) $variant->id;
             } else {
-                $productId = $ownerByGroup[$this->groupKey($model)] ?? $defaultProductId;
                 $variantId = $this->productService->addVariantFromChannel(
                     $productId,
                     ($model['variant'] ?? []) + ['sku' => $sku]
@@ -77,19 +64,8 @@ class ChannelModelLinker
                 $known[$sku] = (object) ['id' => $variantId, 'sku' => $sku, 'product_id' => $productId];
             }
 
-            if (! isset($pcmByProduct[$productId])) {
-                $pcmByProduct[$productId] = $this->repository->upsertChannelMapping(
-                    $productId,
-                    $shopId,
-                    $externalProductId,
-                    'synced',
-                    null,
-                    false
-                );
-            }
-
             $this->repository->upsertVariantChannelMapping(
-                $pcmByProduct[$productId],
+                $pcmId,
                 $variantId,
                 isset($model['external_sku_id']) ? (string) $model['external_sku_id'] : null,
                 $sku,
@@ -98,40 +74,87 @@ class ChannelModelLinker
                 $model['sales_attribute_name'] ?? null
             );
         }
+
+        $this->dropStaleListingMappings($shop, $externalProductId, $pcmId);
     }
 
-    protected function resolveGroupOwners(array $models, array $known): array
+    protected function consolidate(object $shop, string $externalProductId, array &$known, string $defaultProductId): string
     {
-        $tally = [];
+        $owners = [$defaultProductId];
 
-        foreach ($models as $model) {
-            $sku = trim((string) ($model['sku'] ?? ''));
-            $variant = $sku !== '' ? ($known[$sku] ?? null) : null;
+        foreach ($known as $variant) {
+            $owners[] = (string) $variant->product_id;
+        }
 
-            if (! $variant) {
-                continue;
+        $owners = array_values(array_unique($owners));
+
+        if (count($owners) < 2) {
+            return $defaultProductId;
+        }
+
+        $winner = $this->merger->resolveWinner($owners) ?? $defaultProductId;
+
+        $moving = [];
+
+        foreach ($known as $variant) {
+            if ((string) $variant->product_id !== $winner) {
+                $moving[] = (string) $variant->id;
             }
-
-            $key = $this->groupKey($model);
-            $productId = (string) $variant->product_id;
-            $tally[$key][$productId] = ($tally[$key][$productId] ?? 0) + 1;
         }
 
-        $owners = [];
-
-        foreach ($tally as $key => $counts) {
-            arsort($counts);
-            $owners[$key] = array_key_first($counts);
+        if (! $moving) {
+            return $winner;
         }
 
-        return $owners;
+        $moved = $this->merger->moveVariants($winner, $moving);
+
+        foreach ($known as $sku => $variant) {
+            $known[$sku]->product_id = $winner;
+        }
+
+        Log::info('Varian dikonsolidasikan ke satu master saat download', [
+            'external_product_id' => $externalProductId,
+            'master_tujuan' => $winner,
+            'varian_pindah' => $moved,
+            'master_terlibat' => $owners,
+        ]);
+
+        ProductSyncLog::record([
+            'product_id' => $winner,
+            'channel_shop_id' => $shop->id,
+            'action' => ProductSyncLog::ACTION_DOWNLOAD,
+            'status' => ProductSyncLog::STATUS_SUCCESS,
+            'payload' => [
+                'external_product_id' => $externalProductId,
+                'master_tujuan' => $winner,
+                'master_terlibat' => $owners,
+                'varian_pindah' => $moved,
+            ],
+        ]);
+
+        return $winner;
     }
 
-    protected function groupKey(array $model): string
+    protected function dropStaleListingMappings(object $shop, string $externalProductId, string $keepPcmId): void
     {
-        $group = $model['group'] ?? null;
+        $stale = DB::table('product_channel_mappings')
+            ->where('channel_shop_id', $shop->id)
+            ->where('external_product_id', $externalProductId)
+            ->where('id', '!=', $keepPcmId)
+            ->pluck('id')
+            ->all();
 
-        return $group === null || $group === '' ? '-' : (string) $group;
+        if (! $stale) {
+            return;
+        }
+
+        DB::table('product_variant_channel_mappings')->whereIn('product_channel_mapping_id', $stale)->delete();
+        DB::table('product_channel_mappings')->whereIn('id', $stale)->delete();
+
+        Log::info('Mapping listing ganda dibersihkan', [
+            'external_product_id' => $externalProductId,
+            'dihapus' => count($stale),
+        ]);
     }
 
     protected function logSkipped(object $shop, ?string $productId, string $externalProductId, array $model, string $reason): void

@@ -169,32 +169,50 @@ class ShopeeCombinedListingDownloadTest extends TestCase
             : 0;
     }
 
-    public function test_satu_listing_menautkan_dua_master_sekaligus(): void
+    private function satuSatunyaPcm(ChannelShop $shop): object
+    {
+        $rows = DB::table('product_channel_mappings')
+            ->where('channel_shop_id', $shop->id)
+            ->where('external_product_id', '8729043644')
+            ->get();
+
+        $this->assertCount(1, $rows, 'Satu listing hanya boleh mendarat di satu master');
+
+        return $rows->first();
+    }
+
+    public function test_satu_listing_dikonsolidasikan_ke_satu_master(): void
     {
         $shop = $this->makeShop();
         $this->fakeShopee();
 
         app(ShopeeProductService::class)->pullProducts('8434311');
 
-        $this->assertNotNull($this->pcmFor($this->transparant, $shop), 'Master transparant harus punya mapping ke listing ini');
-        $this->assertNotNull($this->pcmFor($this->strongMagnet, $shop), 'Master strong-magnet harus punya mapping ke listing yang sama');
+        $pcm = $this->satuSatunyaPcm($shop);
+
+        $this->assertContains(
+            $pcm->product_id,
+            [$this->transparant->id, $this->strongMagnet->id],
+            'Master pemenang harus salah satu dari dua master awal'
+        );
     }
 
-    public function test_sku_yatim_dibuat_di_master_sesuai_variasi_bukan_prefix(): void
+    public function test_semua_sku_listing_mendarat_di_master_yang_sama(): void
     {
-        $this->makeShop();
+        $shop = $this->makeShop();
         $this->fakeShopee();
 
         app(ShopeeProductService::class)->pullProducts('8434311');
 
+        $pemenang = $this->satuSatunyaPcm($shop)->product_id;
+
+        foreach (['MAGSAFE-CLEAR-IP-14', 'STRONG-MAGNET-IP-17', 'MAGSAFE-CLEAR-IP-11', 'STRONG-MAGNET-IP-13'] as $sku) {
+            $variant = DB::table('product_variants')->where('sku', $sku)->first();
+            $this->assertNotNull($variant, "SKU {$sku} harus ada di master");
+            $this->assertEquals($pemenang, $variant->product_id, "SKU {$sku} harus berada di master pemenang");
+        }
+
         $baru = DB::table('product_variants')->where('sku', 'MAGSAFE-CLEAR-IP-14')->first();
-        $this->assertNotNull($baru, 'SKU yatim harus dibuatkan varian, bukan dibuang');
-        $this->assertEquals($this->transparant->id, $baru->product_id, 'Varian Normal Magnet harus masuk master transparant');
-
-        $baruStrong = DB::table('product_variants')->where('sku', 'STRONG-MAGNET-IP-17')->first();
-        $this->assertNotNull($baruStrong);
-        $this->assertEquals($this->strongMagnet->id, $baruStrong->product_id, 'Varian Strong Magnet harus masuk master strong-magnet');
-
         $opsi = DB::table('variant_options')->where('variant_id', $baru->id)->pluck('value', 'attribute_id');
         $this->assertEquals('Normal Magnet', $opsi[$this->variasi->id] ?? null);
         $this->assertEquals('14', $opsi[$this->tipeHp->id] ?? null);
@@ -208,7 +226,7 @@ class ShopeeCombinedListingDownloadTest extends TestCase
         app(ShopeeProductService::class)->pullProducts('8434311');
 
         $variant = DB::table('product_variants')->where('sku', 'STRONG-MAGNET-IP-13')->first();
-        $pcm = $this->pcmFor($this->strongMagnet, $shop);
+        $pcm = $this->satuSatunyaPcm($shop);
 
         $links = DB::table('product_variant_channel_mappings')
             ->where('product_channel_mapping_id', $pcm->id)
@@ -311,10 +329,12 @@ class ShopeeCombinedListingDownloadTest extends TestCase
 
         app(ShopeeProductService::class)->pullProducts('8434311');
 
-        $total = $this->linkCount($this->transparant, $shop) + $this->linkCount($this->strongMagnet, $shop);
+        $pcm = $this->satuSatunyaPcm($shop);
 
-        $this->assertEquals(7, $total, '7 dari 8 model punya SKU dan semuanya harus tertaut');
-        $this->assertEquals(3, $this->linkCount($this->transparant, $shop));
-        $this->assertEquals(4, $this->linkCount($this->strongMagnet, $shop));
+        $total = DB::table('product_variant_channel_mappings')
+            ->where('product_channel_mapping_id', $pcm->id)
+            ->count();
+
+        $this->assertEquals(7, $total, '7 dari 8 model punya SKU dan semuanya harus tertaut di satu master');
     }
 }

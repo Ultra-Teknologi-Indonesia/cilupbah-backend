@@ -136,7 +136,7 @@ class ChannelDownloadEmptySkuTest extends TestCase
         $this->assertNull($internal['sku']);
     }
 
-    public function test_lazada_download_creates_variant_with_null_sku_and_channel_mapping(): void
+    public function test_lazada_download_mengabaikan_model_tanpa_sku(): void
     {
         $shop = $this->makeShop('lazada', 'LZ-EMPTY');
 
@@ -165,24 +165,24 @@ class ChannelDownloadEmptySkuTest extends TestCase
         $count = app(LazadaProductService::class)->pullProducts('LZ-EMPTY');
         $this->assertEquals(1, $count);
 
-        $variant = DB::table('product_variants')->whereNull('sku')->first();
-        $this->assertNotNull($variant, 'Variant dengan SKU null harus tetap tersimpan');
-
         $pcm = DB::table('product_channel_mappings')
             ->where('channel_shop_id', $shop->id)
             ->where('external_product_id', '555100')
             ->first();
         $this->assertNotNull($pcm);
 
-        $pvcm = DB::table('product_variant_channel_mappings')
+        $this->assertSame(0, DB::table('product_variant_channel_mappings')
             ->where('product_channel_mapping_id', $pcm->id)
-            ->where('variant_id', $variant->id)
-            ->first();
-        $this->assertNotNull($pvcm, 'Channel mapping harus tetap terbentuk walau SKU null (position-based matching)');
-        $this->assertEquals('777100', $pvcm->external_sku_id);
+            ->count(), 'Model tanpa SKU tidak boleh menghasilkan baris link');
+
+        $this->assertDatabaseHas('product_sync_logs', [
+            'channel_shop_id' => $shop->id,
+            'action' => 'download',
+            'status' => 'failed',
+        ]);
     }
 
-    public function test_shopee_download_creates_variant_with_null_sku_and_channel_mapping(): void
+    public function test_shopee_download_mengabaikan_model_tanpa_sku(): void
     {
         $shop = $this->makeShop('shopee', 'SHP-EMPTY');
 
@@ -223,24 +223,18 @@ class ChannelDownloadEmptySkuTest extends TestCase
         $count = app(ShopeeProductService::class)->pullProducts('SHP-EMPTY');
         $this->assertEquals(1, $count);
 
-        $variant = DB::table('product_variants')->whereNull('sku')->first();
-        $this->assertNotNull($variant, 'Variant dengan SKU null harus tetap tersimpan');
-
         $pcm = DB::table('product_channel_mappings')
             ->where('channel_shop_id', $shop->id)
             ->where('external_product_id', '555100')
             ->first();
         $this->assertNotNull($pcm);
 
-        $pvcm = DB::table('product_variant_channel_mappings')
+        $this->assertSame(0, DB::table('product_variant_channel_mappings')
             ->where('product_channel_mapping_id', $pcm->id)
-            ->where('variant_id', $variant->id)
-            ->first();
-        $this->assertNotNull($pvcm, 'Channel mapping harus tetap terbentuk walau SKU null (position-based matching)');
-        $this->assertEquals('777100', $pvcm->external_sku_id);
+            ->count(), 'Model tanpa SKU tidak boleh menghasilkan baris link');
     }
 
-    public function test_tiktok_download_creates_variant_with_null_sku_and_channel_mapping(): void
+    public function test_tiktok_download_mengabaikan_model_tanpa_sku(): void
     {
         $shop = $this->makeShop('tiktok', 'TT-EMPTY');
 
@@ -268,21 +262,15 @@ class ChannelDownloadEmptySkuTest extends TestCase
         $count = app(TikTokProductService::class)->pullProducts('TT-EMPTY');
         $this->assertEquals(1, $count);
 
-        $variant = DB::table('product_variants')->whereNull('sku')->first();
-        $this->assertNotNull($variant, 'Variant dengan SKU null harus tetap tersimpan');
-
         $pcm = DB::table('product_channel_mappings')
             ->where('channel_shop_id', $shop->id)
             ->where('external_product_id', 'TIKTOK-PROD-EMPTY')
             ->first();
         $this->assertNotNull($pcm);
 
-        $pvcm = DB::table('product_variant_channel_mappings')
+        $this->assertSame(0, DB::table('product_variant_channel_mappings')
             ->where('product_channel_mapping_id', $pcm->id)
-            ->where('variant_id', $variant->id)
-            ->first();
-        $this->assertNotNull($pvcm, 'Channel mapping harus tetap terbentuk walau SKU null (position-based matching)');
-        $this->assertEquals('SKU-EXT-1', $pvcm->external_sku_id);
+            ->count(), 'Model tanpa SKU tidak boleh menghasilkan baris link');
     }
 
     public function test_download_preserves_real_sku_when_mixed_with_empty(): void
@@ -325,11 +313,10 @@ class ChannelDownloadEmptySkuTest extends TestCase
         $withSku = DB::table('product_variants')->where('sku', 'SKU-REAL-1')->first();
         $this->assertNotNull($withSku, 'Variant dengan SKU asli harus tetap tersimpan apa adanya');
 
-        $withoutSku = DB::table('product_variants')
+        $this->assertSame(0, DB::table('product_variants')
             ->where('product_id', $withSku->product_id)
             ->whereNull('sku')
-            ->first();
-        $this->assertNotNull($withoutSku, 'Variant tanpa SKU harus disimpan sebagai null, bukan sintetis');
+            ->count(), 'Variant tanpa SKU harus diabaikan, tidak ikut dibuat');
     }
 
     public function test_multiple_null_sku_variants_allowed(): void
@@ -370,6 +357,8 @@ class ChannelDownloadEmptySkuTest extends TestCase
         $this->assertNotNull($product);
 
         $variants = DB::table('product_variants')->where('product_id', $product->id)->whereNull('sku')->get();
-        $this->assertCount(10, $variants, 'Semua 10 variant tanpa SKU harus tersimpan tanpa bentrok unique constraint');
+        $this->assertCount(1, $variants, 'Semua model tanpa SKU diabaikan; hanya satu varian penampung yang tersisa agar master tetap sah');
+
+        $this->assertSame(0, DB::table('product_variant_channel_mappings')->count(), 'Tidak ada model tanpa SKU yang boleh tertaut');
     }
 }

@@ -3,7 +3,6 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\DB;
-use Modules\Channel\Support\ChannelParentSku;
 use Modules\Product\Models\Product;
 
 class WooCommerceToInternalProductMapper
@@ -41,9 +40,7 @@ class WooCommerceToInternalProductMapper
             ];
         }
 
-        $internal['sku'] = ! empty($wcProduct['sku'])
-            ? $wcProduct['sku']
-            : ChannelParentSku::fromSingleVariant($internal['variants']);
+        $internal['sku'] = ! empty($wcProduct['sku']) ? $wcProduct['sku'] : null;
 
         $internal['channel_external_product_id'] = isset($wcProduct['id']) ? (string) $wcProduct['id'] : null;
         $internal['channel_shop_id_external'] = $shopId;

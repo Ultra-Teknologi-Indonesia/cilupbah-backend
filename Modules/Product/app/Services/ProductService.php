@@ -218,6 +218,7 @@ class ProductService
     public function upsertFromChannel(array $data, ?bool &$matchedExisting = null, ?array &$variantIds = null)
     {
         $data = ProductIngestSanitizer::sanitize($data);
+        $data['variants'] = $this->dropVariantsWithoutSku($data['variants'] ?? []);
         $variantIds = [];
         $productId = $this->resolveExistingProductFromChannel($data);
 
@@ -232,6 +233,20 @@ class ProductService
         $this->queueExternalMediaMirroring($productId);
 
         return $productId;
+    }
+
+    private function dropVariantsWithoutSku(array $variants): array
+    {
+        $withSku = array_values(array_filter(
+            $variants,
+            fn ($v) => trim((string) ($v['sku'] ?? '')) !== ''
+        ));
+
+        if ($withSku) {
+            return $withSku;
+        }
+
+        return array_slice(array_values($variants), 0, 1);
     }
 
     public function addVariantFromChannel(string $productId, array $variant): ?string

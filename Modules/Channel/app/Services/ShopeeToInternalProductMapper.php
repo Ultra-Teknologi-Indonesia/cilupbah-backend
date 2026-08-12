@@ -3,7 +3,6 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\DB;
-use Modules\Channel\Support\ChannelParentSku;
 use Modules\Product\Models\Product;
 
 class ShopeeToInternalProductMapper
@@ -65,9 +64,7 @@ class ShopeeToInternalProductMapper
             ];
         }
 
-        $internal['sku'] = ! empty($shopeeItem['item_sku'])
-            ? $shopeeItem['item_sku']
-            : ChannelParentSku::fromSingleVariant($internal['variants']);
+        $internal['sku'] = ! empty($shopeeItem['item_sku']) ? $shopeeItem['item_sku'] : null;
 
         $internal['channel_external_product_id'] = isset($shopeeItem['item_id']) ? (string) $shopeeItem['item_id'] : null;
         $internal['channel_shop_id_external'] = $shopId;
