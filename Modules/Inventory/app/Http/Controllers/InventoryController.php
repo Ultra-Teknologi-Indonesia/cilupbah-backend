@@ -65,7 +65,7 @@ class InventoryController extends Controller
             $data = $this->inventoryService->getStockItems();
 
             return $this->successResponse(
-                StockItemResource::collection($data->items()),
+                StockItemResource::collectionWithTransit($data->items()),
                 'Daftar stok inventory berhasil diambil.',
                 200,
                 [
@@ -201,6 +201,8 @@ class InventoryController extends Controller
         $limit = (int) $request->query('limit', 10);
         $movements = $this->inventoryService->getHistoryPaginated($limit);
 
+        \App\Support\ActorName::preload($movements->pluck('created_by'));
+
         return $this->successPaginatedResponse(
             \Modules\Inventory\Http\Resources\InventoryMovementResource::collection($movements),
             'Riwayat pergerakan stok berhasil diambil'
@@ -278,6 +280,8 @@ class InventoryController extends Controller
     {
         $limit = $request->query('limit', 10);
         $movements = $this->inventoryService->getHistoryPaginated($limit);
+
+        \App\Support\ActorName::preload($movements->pluck('created_by'));
 
         return $this->successPaginatedResponse(
             \Modules\Inventory\Http\Resources\InventoryMovementResource::collection($movements),

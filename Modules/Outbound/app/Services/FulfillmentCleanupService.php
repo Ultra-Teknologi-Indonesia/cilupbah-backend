@@ -43,10 +43,14 @@ class FulfillmentCleanupService
         if ($picklistIds->isNotEmpty()) {
             PicklistItem::where('order_id', $orderId)->delete();
 
-            foreach ($picklistIds as $picklistId) {
-                if (! PicklistItem::where('picklist_id', $picklistId)->exists()) {
-                    Picklist::where('id', $picklistId)->delete();
-                }
+            $stillUsed = PicklistItem::whereIn('picklist_id', $picklistIds)
+                ->distinct()
+                ->pluck('picklist_id');
+
+            $orphaned = $picklistIds->diff($stillUsed);
+
+            if ($orphaned->isNotEmpty()) {
+                Picklist::whereIn('id', $orphaned)->delete();
             }
 
             $stage = $stage ?? FulfillmentRemoval::STAGE_PICKING;

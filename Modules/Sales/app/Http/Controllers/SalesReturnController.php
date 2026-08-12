@@ -480,6 +480,8 @@ class SalesReturnController extends Controller
         $limit = (int) ($validated['per_page'] ?? 10);
         $rows = $this->returnService->getReportPaginated($validated, $limit);
 
+        \App\Support\ActorName::preload($rows->pluck('processed_by'));
+
         return $this->successPaginatedResponse(
             SalesReturnReportResource::collection($rows),
             'Laporan retur berhasil diambil.'

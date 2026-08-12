@@ -27,14 +27,22 @@ class PriceListRepository
 
     public function updatePrices(array $items): void
     {
-        DB::transaction(function () use ($items) {
-            foreach ($items as $item) {
-                $payload = ['sell_price' => $item['sell_price']];
-                if (array_key_exists('tax_rate', $item) && $item['tax_rate'] !== null) {
-                    $payload['tax_rate'] = $item['tax_rate'];
-                }
+        $groups = [];
 
-                ProductVariant::where('id', $item['variant_id'])->update($payload);
+        foreach ($items as $item) {
+            $payload = ['sell_price' => $item['sell_price']];
+            if (array_key_exists('tax_rate', $item) && $item['tax_rate'] !== null) {
+                $payload['tax_rate'] = $item['tax_rate'];
+            }
+
+            $key = json_encode($payload);
+            $groups[$key]['payload'] = $payload;
+            $groups[$key]['ids'][] = $item['variant_id'];
+        }
+
+        DB::transaction(function () use ($groups) {
+            foreach ($groups as $group) {
+                ProductVariant::whereIn('id', $group['ids'])->update($group['payload']);
             }
         });
     }

@@ -289,9 +289,12 @@ class InventorySettingImportService
         $column = $preview['column'];
         $updates = collect($preview['items'])->where('status', 'update');
 
-        DB::transaction(function () use ($updates, $column) {
-            foreach ($updates as $it) {
-                ProductVariant::whereKey($it['item_id'])->update([$column => (int) $it['new']]);
+        $byValue = $updates->groupBy(fn ($it) => (int) $it['new']);
+
+        DB::transaction(function () use ($byValue, $column) {
+            foreach ($byValue as $value => $rows) {
+                ProductVariant::whereKey($rows->pluck('item_id')->all())
+                    ->update([$column => (int) $value]);
             }
         });
 

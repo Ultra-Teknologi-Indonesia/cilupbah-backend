@@ -78,8 +78,10 @@ class OutboundFulfillmentService
     {
         $results = [];
 
+        $orders = $this->ordersByIds($orderIds);
+
         foreach ($orderIds as $orderId) {
-            $order = Order::find($orderId);
+            $order = $orders[$orderId] ?? null;
 
             if (!$order) {
                 $results[] = [
@@ -125,8 +127,10 @@ class OutboundFulfillmentService
     {
         $results = [];
 
+        $orders = $this->ordersByIds($orderIds);
+
         foreach ($orderIds as $orderId) {
-            $order = Order::find($orderId);
+            $order = $orders[$orderId] ?? null;
 
             if (! $order) {
                 $results[] = ['order_id' => $orderId, 'salesorder_no' => null, 'source' => null, 'status' => 'failed', 'message' => 'Order tidak ditemukan.'];
@@ -593,8 +597,10 @@ class OutboundFulfillmentService
     {
         $results = [];
 
+        $orders = $this->ordersByIds($orderIds);
+
         foreach ($orderIds as $orderId) {
-            $order = Order::find($orderId);
+            $order = $orders[$orderId] ?? null;
 
             if (! $order) {
                 $results[] = [
@@ -616,6 +622,15 @@ class OutboundFulfillmentService
         }
 
         return $results;
+    }
+
+    private function ordersByIds(array $orderIds): \Illuminate\Support\Collection
+    {
+        if (empty($orderIds)) {
+            return collect();
+        }
+
+        return Order::whereIn('id', $orderIds)->get()->keyBy('id');
     }
 
     private function logRemoval(string $orderId, string $stage, string $removedBy, ?string $reason, bool $reversedStock): void

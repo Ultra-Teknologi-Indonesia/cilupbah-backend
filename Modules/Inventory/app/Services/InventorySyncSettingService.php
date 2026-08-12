@@ -70,24 +70,48 @@ class InventorySyncSettingService
         $affected = 0;
         $resyncTargets = [];
 
-        DB::transaction(function () use ($items, &$affected, &$resyncTargets) {
-            foreach ($items as $item) {
-                $mapping = ProductVariantChannelMapping::query()
-                    ->where('variant_id', $item['variant_id'])
-                    ->whereHas('channelMapping', fn ($q) => $q->where('channel_shop_id', $item['channel_shop_id']))
-                    ->with('channelMapping:id,product_id,channel_shop_id')
-                    ->first();
+        $rows = collect($items);
 
-                if ($mapping === null || (bool) $mapping->sync_enabled === $item['sync_enabled']) {
-                    continue;
-                }
+        $mappings = ProductVariantChannelMapping::query()
+            ->whereIn('variant_id', $rows->pluck('variant_id')->filter()->unique()->all())
+            ->whereHas(
+                'channelMapping',
+                fn ($q) => $q->whereIn('channel_shop_id', $rows->pluck('channel_shop_id')->filter()->unique()->all())
+            )
+            ->with('channelMapping:id,product_id,channel_shop_id')
+            ->get()
+            ->keyBy(fn ($m) => $m->variant_id.'|'.$m->channelMapping?->channel_shop_id);
 
-                $mapping->update(['sync_enabled' => $item['sync_enabled']]);
-                $affected++;
+        $toEnable = [];
+        $toDisable = [];
 
-                if ($item['sync_enabled'] && $mapping->channelMapping) {
-                    $resyncTargets[$mapping->channelMapping->product_id][$item['channel_shop_id']] = true;
-                }
+        foreach ($items as $item) {
+            $mapping = $mappings[$item['variant_id'].'|'.$item['channel_shop_id']] ?? null;
+
+            if ($mapping === null || (bool) $mapping->sync_enabled === $item['sync_enabled']) {
+                continue;
+            }
+
+            if ($item['sync_enabled']) {
+                $toEnable[] = $mapping->id;
+            } else {
+                $toDisable[] = $mapping->id;
+            }
+
+            $affected++;
+
+            if ($item['sync_enabled'] && $mapping->channelMapping) {
+                $resyncTargets[$mapping->channelMapping->product_id][$item['channel_shop_id']] = true;
+            }
+        }
+
+        DB::transaction(function () use ($toEnable, $toDisable) {
+            if (! empty($toEnable)) {
+                ProductVariantChannelMapping::whereIn('id', $toEnable)->update(['sync_enabled' => true]);
+            }
+
+            if (! empty($toDisable)) {
+                ProductVariantChannelMapping::whereIn('id', $toDisable)->update(['sync_enabled' => false]);
             }
         });
 

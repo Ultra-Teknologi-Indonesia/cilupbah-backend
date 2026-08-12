@@ -350,8 +350,8 @@ class PutawayService
                 'items'       => $items,
             ]);
 
-            foreach ($reservationDeltas as $inboundItemId => $delta) {
-                InboundItem::where('id', $inboundItemId)->increment('reserved_qty', $delta);
+            foreach (collect($reservationDeltas)->groupBy(fn ($delta) => (string) $delta, true) as $delta => $group) {
+                InboundItem::whereIn('id', $group->keys())->increment('reserved_qty', $group->first());
             }
 
             if ($assignedTo) {
@@ -814,12 +814,8 @@ class PutawayService
             if ($wasCompleted) {
                 $this->createCorrectionAdjustment($putaway, $items, $userId);
 
-                foreach ($items as $entry) {
-                    $item = PutawayItem::find($entry['item_id']);
-                    if ($item) {
-                        $item->update(['qty' => $item->putaway_qty]);
-                    }
-                }
+                PutawayItem::whereIn('id', collect($items)->pluck('item_id')->filter()->all())
+                    ->update(['qty' => DB::raw('putaway_qty')]);
             } else {
                 if ($putaway->source_type === 'INBOUND') {
                     foreach ($this->sourceInbounds($putaway) as $inbound) {

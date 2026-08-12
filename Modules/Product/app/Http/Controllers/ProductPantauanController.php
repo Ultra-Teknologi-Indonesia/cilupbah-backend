@@ -7,7 +7,6 @@ use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Product\Http\Resources\ProductPantauanResource;
-use Modules\Product\Models\Product;
 use Modules\Product\Services\ProductPantauanService;
 
 class ProductPantauanController extends Controller
@@ -28,9 +27,10 @@ class ProductPantauanController extends Controller
         $paginator = $this->service->paginate($validated['lens'] ?? 'belum_upload');
 
         $paginator->setCollection(
-            $paginator->getCollection()->map(
-                fn (Product $product) => (new ProductPantauanResource($product))->resolve($request)
-            )
+            collect(ProductPantauanResource::collectionWithRequirements(
+                $paginator->getCollection(),
+                $request,
+            ))
         );
 
         return $this->successPaginatedResponse($paginator, 'Get pantauan produk success');

@@ -4,11 +4,25 @@ namespace Modules\Product\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Support\Facades\DB;
-use Modules\Channel\Models\Channel;
+use Modules\Product\Support\CategoryRequirementSummary;
 
 class ProductPantauanResource extends JsonResource
 {
+    public function __construct($resource, protected ?array $requirementSummaries = null)
+    {
+        parent::__construct($resource);
+    }
+
+    public static function collectionWithRequirements($resource, ?Request $request = null): array
+    {
+        $items = collect($resource)->values();
+        $summaries = CategoryRequirementSummary::forCategories($items->pluck('category_id')->all());
+
+        return $items
+            ->map(fn ($item) => (new self($item, $summaries))->resolve($request))
+            ->all();
+    }
+
     public function toArray(Request $request): array
     {
         return [
@@ -57,45 +71,10 @@ class ProductPantauanResource extends JsonResource
             return null;
         }
 
-        $tiktokChannelId = Channel::where('code', 'tiktok')->value('id');
-        if (! $tiktokChannelId) {
-            return null;
-        }
+        $summaries = $this->requirementSummaries
+            ?? CategoryRequirementSummary::forCategories([$this->category_id]);
 
-        $channelCategory = DB::table('category_channel_mappings as ccm')
-            ->join('channel_categories as cc', 'cc.id', '=', 'ccm.channel_category_id')
-            ->where('ccm.category_id', $this->category_id)
-            ->where('cc.channel_id', $tiktokChannelId)
-            ->whereNotNull('cc.rules')
-            ->select('cc.rules')
-            ->first();
-
-        if (! $channelCategory) {
-            return null;
-        }
-
-        $rules = json_decode($channelCategory->rules, true);
-        $parts = [];
-
-        $certs = $rules['product_certifications'] ?? [];
-        $requiredCerts = array_filter($certs, fn ($c) => $c['is_required'] ?? false);
-        if (count($requiredCerts) > 0) {
-            $parts[] = count($requiredCerts) . ' sertifikasi wajib';
-        }
-
-        if ($rules['size_chart']['is_required'] ?? false) {
-            $parts[] = 'Size Chart';
-        }
-
-        if ($rules['manufacturer']['is_required'] ?? false) {
-            $parts[] = 'Manufacturer';
-        }
-
-        if ($rules['package_dimension']['is_required'] ?? false) {
-            $parts[] = 'Dimensi Paket';
-        }
-
-        return empty($parts) ? null : implode(', ', $parts);
+        return $summaries[$this->category_id] ?? null;
     }
 
     protected function primaryImage(): ?string

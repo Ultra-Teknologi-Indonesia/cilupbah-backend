@@ -97,9 +97,9 @@ class ChannelDownloadController extends Controller
             );
         }
 
-        $collection = collect($transactions)->map(
-            fn ($trx) => (new DownloadTransactionResource($trx->load('channelShop.channel')))->resolve($request)
-        );
+        $collection = \Illuminate\Database\Eloquent\Collection::make($transactions)
+            ->load('channelShop.channel')
+            ->map(fn ($trx) => (new DownloadTransactionResource($trx))->resolve($request));
 
         return $this->successResponse($collection, 'Download massal diantrekan', 202);
     }

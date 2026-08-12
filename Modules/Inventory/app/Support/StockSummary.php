@@ -62,6 +62,11 @@ class StockSummary
         return $result;
     }
 
+    public static function transitForItems(array $itemIds): array
+    {
+        return self::transitByItem(array_values(array_filter(array_unique($itemIds))));
+    }
+
     protected static function transitByItem(array $itemIds): array
     {
         if (empty($itemIds)) {

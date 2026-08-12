@@ -8,6 +8,21 @@ use Modules\Inventory\Support\StockSummary;
 
 class StockItemResource extends JsonResource
 {
+    public function __construct($resource, protected ?int $transitQty = null)
+    {
+        parent::__construct($resource);
+    }
+
+    public static function collectionWithTransit($resource): array
+    {
+        $items = collect($resource)->values();
+        $transit = StockSummary::transitForItems($items->pluck('id')->all());
+
+        return $items
+            ->map(fn ($item) => (new self($item, (int) ($transit[$item->id] ?? 0)))->resolve())
+            ->all();
+    }
+
     public function toArray(Request $request): array
     {
         $inventories = $this->relationLoaded('inventories') ? $this->inventories : collect();
@@ -109,13 +124,12 @@ class StockItemResource extends JsonResource
         $onHand = (int) $inventories->filter(fn ($inv) => $this->isPlaced($inv))->sum('on_hand');
         $pending = (int) $inventories->reject(fn ($inv) => $this->isPlaced($inv))->sum('on_hand');
         $onOrder = (int) $inventories->sum('on_order');
-        $summary = StockSummary::forItem($this->id);
 
         return [
             'on_hand' => $onHand,
             'pending_placement' => $pending,
             'on_order' => $onOrder,
-            'transit' => (int) ($summary['transit'] ?? 0),
+            'transit' => $this->transitQty ?? (int) (StockSummary::forItem($this->id)['transit'] ?? 0),
             'available' => $onHand - $onOrder,
         ];
     }

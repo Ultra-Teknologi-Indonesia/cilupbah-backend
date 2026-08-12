@@ -109,5 +109,9 @@ class AppServiceProvider extends ServiceProvider
         \Illuminate\Database\Eloquent\Builder::macro('allowedSearch', function (...$columns) {
             return \App\Support\AllowedSearch::apply($this, $columns);
         });
+
+        \Illuminate\Database\Eloquent\Model::preventLazyLoading(
+            (bool) config('database.prevent_lazy_loading', false)
+        );
     }
 }

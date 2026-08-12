@@ -117,16 +117,16 @@ class ShipmentService
             );
         }
 
-        DB::transaction(function () use ($shipment, $orders) {
-            foreach ($orders as $order) {
-                $packlist = Packlist::where('order_id', $order->id)
-                    ->where('status', Packlist::STATUS_COMPLETED)
-                    ->first();
+        $packlistIdByOrder = Packlist::whereIn('order_id', $orders->pluck('id'))
+            ->where('status', Packlist::STATUS_COMPLETED)
+            ->pluck('id', 'order_id');
 
+        DB::transaction(function () use ($shipment, $orders, $packlistIdByOrder) {
+            foreach ($orders as $order) {
                 $this->shipmentRepository->createOrder([
                     'shipment_id' => $shipment->id,
                     'order_id' => $order->id,
-                    'packlist_id' => $packlist?->id,
+                    'packlist_id' => $packlistIdByOrder[$order->id] ?? null,
                 ]);
             }
         });
@@ -148,9 +148,7 @@ class ShipmentService
             throw new \Exception("Order hanya bisa dihapus dari shipment SCHEDULED (saat ini: {$shipment->status}).");
         }
 
-        foreach ($orderIds as $orderId) {
-            $this->shipmentRepository->removeOrder($shipmentId, $orderId);
-        }
+        $this->shipmentRepository->removeOrders($shipmentId, $orderIds);
 
         return $this->shipmentRepository->findById($shipmentId);
     }

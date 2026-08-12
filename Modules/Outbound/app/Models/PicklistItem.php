@@ -99,14 +99,14 @@ class PicklistItem extends Model
 
     public function getImageUrlAttribute(): ?string
     {
-        $variant = $this->product;
+        $variant = $this->relationLoaded('product') ? $this->product : null;
         if ($variant) {
             $url = $this->resolveMediaUrl($variant->relationLoaded('media') ? $variant->media : null);
             if ($url) {
                 return $url;
             }
 
-            $parentProduct = $variant->product;
+            $parentProduct = $variant->relationLoaded('product') ? $variant->product : null;
             if ($parentProduct) {
                 $url = $this->resolveMediaUrl(
                     $parentProduct->relationLoaded('media') ? $parentProduct->media : null

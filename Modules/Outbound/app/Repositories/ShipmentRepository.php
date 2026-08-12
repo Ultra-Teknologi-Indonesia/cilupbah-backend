@@ -177,9 +177,18 @@ class ShipmentRepository
 
     public function removeOrder(string $shipmentId, string $orderId): bool
     {
+        return $this->removeOrders($shipmentId, [$orderId]) > 0;
+    }
+
+    public function removeOrders(string $shipmentId, array $orderIds): int
+    {
+        if (empty($orderIds)) {
+            return 0;
+        }
+
         return ShipmentOrder::where('shipment_id', $shipmentId)
-            ->where('order_id', $orderId)
-            ->delete() > 0;
+            ->whereIn('order_id', $orderIds)
+            ->delete();
     }
 
     public function update(string $id, array $data): bool

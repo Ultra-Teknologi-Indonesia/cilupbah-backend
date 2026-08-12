@@ -7,6 +7,8 @@ return [
 
     'default' => env('DB_CONNECTION', 'sqlite'),
 
+    'prevent_lazy_loading' => env('DB_PREVENT_LAZY_LOADING', false),
+
     'connections' => [
 
         'sqlite' => [

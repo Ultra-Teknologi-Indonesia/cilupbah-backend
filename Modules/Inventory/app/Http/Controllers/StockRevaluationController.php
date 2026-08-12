@@ -36,6 +36,8 @@ class StockRevaluationController extends Controller
         $limit = $request->query('limit', 10);
         $revaluations = $this->revaluationService->getAllPaginated($limit);
 
+        \App\Support\ActorName::preload($revaluations->pluck('approved_by'));
+
         $revaluations->getCollection()->transform(
             fn ($m) => (new StockRevaluationResource($m))->resolve($request),
         );

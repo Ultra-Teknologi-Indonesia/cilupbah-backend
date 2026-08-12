@@ -18,15 +18,34 @@ class ActorName
         return $user->name ?? $user->email ?? $fallback;
     }
 
-    public static function resolve(?string $actor): ?string
+    public static function preload(iterable $actors): void
     {
-        if ($actor === null || $actor === '') {
-            return $actor;
+        $ids = [];
+
+        foreach ($actors as $actor) {
+            $id = self::toUserId($actor);
+
+            if ($id !== null && ! array_key_exists($id, self::$cache)) {
+                $ids[$id] = true;
+            }
         }
 
-        $id = preg_replace('/^user:/', '', $actor);
+        if (empty($ids)) {
+            return;
+        }
 
-        if (! self::isUuid($id)) {
+        $names = User::whereIn('id', array_keys($ids))->pluck('name', 'id');
+
+        foreach (array_keys($ids) as $id) {
+            self::$cache[$id] = $names[$id] ?? null;
+        }
+    }
+
+    public static function resolve(?string $actor): ?string
+    {
+        $id = self::toUserId($actor);
+
+        if ($id === null) {
             return $actor;
         }
 
@@ -35,6 +54,22 @@ class ActorName
         }
 
         return self::$cache[$id] ?? $actor;
+    }
+
+    public static function flush(): void
+    {
+        self::$cache = [];
+    }
+
+    private static function toUserId(?string $actor): ?string
+    {
+        if ($actor === null || $actor === '') {
+            return null;
+        }
+
+        $id = preg_replace('/^user:/', '', $actor);
+
+        return self::isUuid($id) ? $id : null;
     }
 
     private static function isUuid(string $value): bool

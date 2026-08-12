@@ -54,13 +54,14 @@ class StockOpnameService
             $now = now();
             $items = [];
 
-            foreach ($bins as $bin) {
-                $inventories = \Modules\Inventory\Models\Inventory::where('location_id', $data['location_id'])
-                    ->where('bin_id', $bin->id)
-                    ->where('on_hand', '>', 0)
-                    ->get();
+            $inventoriesByBin = \Modules\Inventory\Models\Inventory::where('location_id', $data['location_id'])
+                ->whereIn('bin_id', collect($bins)->pluck('id'))
+                ->where('on_hand', '>', 0)
+                ->get()
+                ->groupBy('bin_id');
 
-                foreach ($inventories as $inventory) {
+            foreach ($bins as $bin) {
+                foreach ($inventoriesByBin->get($bin->id, collect()) as $inventory) {
                     $items[] = [
                         'id' => Uuid::uuid7()->toString(),
                         'stock_opname_id' => $opname->id,

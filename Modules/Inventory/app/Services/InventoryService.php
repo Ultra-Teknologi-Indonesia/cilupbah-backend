@@ -827,6 +827,15 @@ class InventoryService
                 'notes'           => $data['notes'] ?? null,
             ]);
 
+            $lockedRows = BinTransferItem::where('bin_transfer_id', $header->id)
+                ->whereIn('id', collect($lines)
+                    ->map(fn ($line) => $line['bin_transfer_item_id'] ?? $line['item_id'] ?? null)
+                    ->filter()
+                    ->all())
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
             foreach ($lines as $line) {
                 $rowId = $line['bin_transfer_item_id'] ?? $line['item_id'] ?? null;
                 $destBinId = $line['destination_bin_id'] ?? null;
@@ -839,10 +848,7 @@ class InventoryService
                     throw new \Exception('Rak tujuan wajib diisi pada setiap baris penerimaan.');
                 }
 
-                $item = BinTransferItem::where('id', $rowId)
-                    ->where('bin_transfer_id', $header->id)
-                    ->lockForUpdate()
-                    ->first();
+                $item = $lockedRows[$rowId] ?? null;
 
                 if (! $item) {
                     throw new \Exception('Baris transfer tidak ditemukan.');
@@ -988,6 +994,12 @@ class InventoryService
                 throw new \Exception('Dokumen Pindah Bin tidak ditemukan.');
             }
 
+            $lockedRows = BinTransferItem::where('bin_transfer_id', $binTransferId)
+                ->whereIn('id', collect($items)->pluck('item_id')->filter()->all())
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
             foreach ($items as $entry) {
                 $rowId = $entry['item_id'] ?? null;
                 $qty = $entry['qty'] ?? null;
@@ -996,10 +1008,7 @@ class InventoryService
                     throw new \Exception('item_id (baris) wajib diisi.');
                 }
 
-                $row = BinTransferItem::where('id', $rowId)
-                    ->where('bin_transfer_id', $binTransferId)
-                    ->lockForUpdate()
-                    ->first();
+                $row = $lockedRows[$rowId] ?? null;
 
                 if (! $row) {
                     throw new \Exception('Baris Pindah Bin tidak ditemukan.');

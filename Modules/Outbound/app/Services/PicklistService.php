@@ -439,6 +439,12 @@ class PicklistService
                 throw new OutboundValidationException("Picklist tidak bisa dikoreksi (status saat ini: {$picklist->status}).");
             }
 
+            $lockedItems = PicklistItem::where('picklist_id', $picklistId)
+                ->whereIn('id', collect($items)->pluck('item_id')->filter()->all())
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
             foreach ($items as $entry) {
                 $itemId = $entry['item_id'] ?? null;
                 $qty = $entry['qty'] ?? null;
@@ -447,10 +453,7 @@ class PicklistService
                     throw new OutboundValidationException('item_id wajib diisi.');
                 }
 
-                $item = PicklistItem::where('picklist_id', $picklistId)
-                    ->where('id', $itemId)
-                    ->lockForUpdate()
-                    ->first();
+                $item = $lockedItems[$itemId] ?? null;
 
                 if (! $item) {
                     throw new OutboundValidationException('Item picklist tidak ditemukan.');
