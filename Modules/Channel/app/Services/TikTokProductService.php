@@ -867,56 +867,73 @@ class TikTokProductService
             throw new \Exception("Produk tidak ditemukan.");
         }
 
-        $externalProductId = $this->productRepository->getExternalProductId($productId, $shopId);
-        if (!$externalProductId) {
+        $listings = $this->productRepository->listingsForProductShop($productId, $shopId);
+        if (empty($listings)) {
             throw new \Exception("Product not synced to TikTok yet.");
         }
 
-        $variants = $this->productRepository->getVariantsByProductId($productId);
-
         $channelWarehouse = $this->productRepository->getChannelWarehouseByStore($shopId);
 
-        $skus = [];
-        $inventorySkus = [];
+        foreach ($listings as $listing) {
+            $externalProductId = (string) $listing->external_product_id;
 
-        foreach ($variants as $v) {
-            $skus[] = [
-                'seller_sku' => $v->sku,
-                'price' => [
-                    'amount' => (string)($v->sell_price ?? 0),
-                    'currency' => 'IDR'
-                ]
-            ];
+            $variants = $this->productRepository->variantsForListing((string) $listing->id);
 
-            $availableQty = 0;
-            if ($channelWarehouse) {
-                $availableQty = $this->productRepository->getAvailableQty($v->id, $channelWarehouse->location_id);
+            if ($variants->isEmpty()) {
+
+                $variants = $this->productRepository->getVariantsByProductId($productId);
             }
 
-            $inventorySkus[] = [
-                'seller_sku' => $v->sku,
-                'inventory' => [
-                    [
-                        'quantity' => max(0, $availableQty),
-                        'warehouse_id' => $channelWarehouse->channel_location_id ?? '',
+            $skus = [];
+            $inventorySkus = [];
+
+            foreach ($variants as $v) {
+                if (empty($v->sku)) {
+                    continue;
+                }
+
+                $skus[] = [
+                    'seller_sku' => $v->sku,
+                    'price' => [
+                        'amount' => (string)($v->sell_price ?? 0),
+                        'currency' => 'IDR'
                     ]
-                ]
-            ];
-        }
+                ];
 
-        $pricePayload = ['product_id' => $externalProductId, 'skus' => $skus];
-        $invPayload = ['product_id' => $externalProductId, 'skus' => $inventorySkus];
+                $availableQty = 0;
+                if ($channelWarehouse) {
+                    $availableQty = $this->productRepository->getAvailableQty($v->id, $channelWarehouse->location_id);
+                }
 
-        try {
-            $this->client->request('POST', "/product/202309/products/{$externalProductId}/prices/update", ['shop_cipher' => $shop->shop_cipher ?? ''], $pricePayload, $shop->access_token);
-        } catch (\Exception $e) {
-            Log::warning("TikTok price update failed: " . $e->getMessage());
-        }
+                $inventorySkus[] = [
+                    'seller_sku' => $v->sku,
+                    'inventory' => [
+                        [
+                            'quantity' => max(0, $availableQty),
+                            'warehouse_id' => $channelWarehouse->channel_location_id ?? '',
+                        ]
+                    ]
+                ];
+            }
 
-        try {
-            $this->client->request('POST', "/product/202309/products/{$externalProductId}/inventory/update", ['shop_cipher' => $shop->shop_cipher ?? ''], $invPayload, $shop->access_token);
-        } catch (\Exception $e) {
-            Log::warning("TikTok inventory update failed: " . $e->getMessage());
+            if (empty($skus)) {
+                continue;
+            }
+
+            $pricePayload = ['product_id' => $externalProductId, 'skus' => $skus];
+            $invPayload = ['product_id' => $externalProductId, 'skus' => $inventorySkus];
+
+            try {
+                $this->client->request('POST', "/product/202309/products/{$externalProductId}/prices/update", ['shop_cipher' => $shop->shop_cipher ?? ''], $pricePayload, $shop->access_token);
+            } catch (\Exception $e) {
+                Log::warning("TikTok price update failed untuk listing {$externalProductId}: " . $e->getMessage());
+            }
+
+            try {
+                $this->client->request('POST', "/product/202309/products/{$externalProductId}/inventory/update", ['shop_cipher' => $shop->shop_cipher ?? ''], $invPayload, $shop->access_token);
+            } catch (\Exception $e) {
+                Log::warning("TikTok inventory update failed untuk listing {$externalProductId}: " . $e->getMessage());
+            }
         }
 
         return true;

@@ -238,6 +238,72 @@ class ShopeeCombinedListingDownloadTest extends TestCase
         $this->assertStringContainsString('SKU', (string) $log->error_message);
     }
 
+    public function test_setelah_digabung_satu_master_memuat_semua_sku_listing(): void
+    {
+        $shop = $this->makeShop();
+        $this->fakeShopee();
+
+        app(ShopeeProductService::class)->pullProducts('8434311');
+
+        $this->artisan('products:merge-masters', [
+            'target' => $this->transparant->id,
+            'source' => [$this->strongMagnet->id],
+            '--apply' => true,
+        ])->assertSuccessful();
+
+        $this->assertDatabaseMissing('products', ['id' => $this->strongMagnet->id]);
+
+        $skus = DB::table('product_variants')
+            ->where('product_id', $this->transparant->id)
+            ->whereNull('deleted_at')
+            ->pluck('sku')
+            ->sort()
+            ->values()
+            ->all();
+
+        $this->assertEquals([
+            'MAGSAFE-CLEAR-IP-11',
+            'MAGSAFE-CLEAR-IP-13',
+            'MAGSAFE-CLEAR-IP-14',
+            'STRONG-MAGNET-IP-11',
+            'STRONG-MAGNET-IP-13',
+            'STRONG-MAGNET-IP-17',
+        ], $skus, 'Semua SKU listing harus berkumpul di satu master');
+
+        $pcms = DB::table('product_channel_mappings')
+            ->where('product_id', $this->transparant->id)
+            ->where('channel_shop_id', $shop->id)
+            ->where('external_product_id', self::EXTERNAL_ID)
+            ->pluck('id');
+
+        $this->assertCount(1, $pcms, 'Dua mapping ke listing yang sama harus dilebur jadi satu');
+
+        $links = DB::table('product_variant_channel_mappings')
+            ->where('product_channel_mapping_id', $pcms->first())
+            ->count();
+
+        $this->assertEquals(7, $links, 'Seluruh model ber-SKU tetap tertaut setelah penggabungan');
+    }
+
+    public function test_gabung_ditolak_kalau_ada_sku_bentrok(): void
+    {
+        DB::table('product_variants')
+            ->where('sku', 'STRONG-MAGNET-IP-11')
+            ->update(['sku' => 'MAGSAFE-CLEAR-IP-11-DUP']);
+
+        ProductVariant::create([
+            'product_id' => $this->transparant->id,
+            'sku' => 'MAGSAFE-CLEAR-IP-11-DUP2',
+            'sell_price' => 1000,
+            'is_active' => true,
+        ]);
+
+        $this->artisan('products:merge-masters', [
+            'target' => $this->transparant->id,
+            'source' => [$this->transparant->id],
+        ])->assertFailed();
+    }
+
     public function test_semua_model_ber_sku_tertaut(): void
     {
         $shop = $this->makeShop();

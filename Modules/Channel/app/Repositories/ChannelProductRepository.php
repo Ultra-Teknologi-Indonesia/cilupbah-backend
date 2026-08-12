@@ -118,6 +118,34 @@ class ChannelProductRepository
         return null;
     }
 
+    public function listingsForProductShop(string $productId, string $shopId): array
+    {
+        $channelShop = DB::table('channel_shops')->where('shop_id', $shopId)->first();
+
+        if (! $channelShop) {
+            return [];
+        }
+
+        return DB::table('product_channel_mappings')
+            ->where('product_id', $productId)
+            ->where('channel_shop_id', $channelShop->id)
+            ->whereNotNull('external_product_id')
+            ->orderBy('id')
+            ->get(['id', 'external_product_id'])
+            ->all();
+    }
+
+    public function variantsForListing(string $pcmId)
+    {
+        return DB::table('product_variant_channel_mappings as pvcm')
+            ->join('product_variants as v', 'v.id', '=', 'pvcm.variant_id')
+            ->where('pvcm.product_channel_mapping_id', $pcmId)
+            ->whereNull('v.deleted_at')
+            ->whereNotNull('v.sku')
+            ->distinct()
+            ->get(['v.id', 'v.sku', 'v.sell_price']);
+    }
+
     public function variantsBySkus(array $skus): array
     {
         $skus = array_values(array_filter(array_map(
