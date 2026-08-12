@@ -24,10 +24,6 @@ class PullShadowOrdersCommand extends Command
 
     protected $description = 'Menarik order marketplace untuk toko Shadow Mode secara inkremental (walaupun sync global mati).';
 
-    /**
-     * Jendela tarik mundur sedikit dari cursor supaya order yang update-nya
-     * berdekatan dengan batas run sebelumnya tidak terlewat (clock skew, webhook telat).
-     */
     public const OVERLAP_MINUTES = 30;
 
     private const DEFAULT_LOOKBACK_DAYS = 7;
@@ -71,8 +67,6 @@ class PullShadowOrdersCommand extends Command
                 $windowEnd = $explicitTo ?: $runStartedAt->copy();
                 $windowStart = $explicitFrom ?: $this->resolveWindowStart($shop, $windowEnd, $isFull);
 
-                // Data sebelum cutoff sengaja tidak diambil (keputusan klien: histori
-                // sistem lama tidak dimigrasi), jadi cutoff adalah lantai keras.
                 if ($shop->shadow_started_at && $windowStart->lessThan($shop->shadow_started_at)) {
                     $this->warn("   Jendela dipangkas ke cutoff toko ({$shop->shadow_started_at->setTimezone(self::TIMEZONE)->format('d/m/Y H:i')} WIB).");
                     $windowStart = $shop->shadow_started_at->copy();
@@ -98,8 +92,6 @@ class PullShadowOrdersCommand extends Command
                     continue;
                 }
 
-                // Cursor hanya maju kalau jendelanya berakhir di "sekarang". Backfill
-                // dengan --to tidak boleh memajukan cursor, nanti data setelahnya bolong.
                 $canAdvanceCursor = ! $isDryRun && ! $explicitTo;
 
                 if ($canAdvanceCursor) {

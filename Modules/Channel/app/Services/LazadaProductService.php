@@ -12,9 +12,11 @@ use Modules\Product\Models\ProductSyncLog;
 class LazadaProductService
 {
 
-    private const PULL_PAGE_LIMIT = 20;     
+    private const PULL_PAGE_LIMIT = 20;
 
-    private const SEARCH_PAGE_LIMIT = 10;   
+    private const SEARCH_PAGE_LIMIT = 10;
+
+    private const PULL_FILTERS = ['live', 'sold-out'];
 
     public function __construct(
         protected LazadaClient $client,
@@ -339,10 +341,6 @@ class LazadaProductService
         return $result;
     }
 
-    /**
-     * Detail listing apa adanya dari Lazada, dipakai rekonsiliasi stok untuk
-     * membaca kuantitas yang sedang tayang.
-     */
     public function fetchLiveProduct(string $shopId, string $itemId): ?array
     {
         $shop = $this->shopRepository->findByShopId($shopId);
@@ -432,60 +430,77 @@ class LazadaProductService
 
         $needle  = trim(mb_strtolower($query));
         $results = [];
-        $offset  = 0;
+        $seen    = [];
         $limit   = self::SEARCH_PAGE_LIMIT;
-        $pages   = 0;
 
-        do {
+        foreach (self::PULL_FILTERS as $filter) {
 
-            $params = ['filter' => 'live', 'offset' => $offset, 'limit' => $limit];
-            if ($needle !== '') {
-                $params['search'] = $query;
-            }
+            $offset = 0;
+            $pages  = 0;
 
-            try {
-                $res = $this->client->request('GET', '/products/get', $params, $shop->access_token);
-            } catch (TokenExpiredException $e) {
-                $this->authService->refreshStoreToken((string) $shop->id);
-                $shop = $this->shopRepository->findByShopId($shopId);
-                $res = $this->client->request('GET', '/products/get', $params, $shop->access_token);
-            }
+            do {
 
-            $products = $res['data']['products'] ?? [];
-
-            foreach ($products as $item) {
-                $status = strtolower((string) ($item['status'] ?? ''));
-                if ($status !== '' && $status !== 'active' && $status !== 'live') {
-                    continue;
+                $params = ['filter' => $filter, 'offset' => $offset, 'limit' => $limit];
+                if ($needle !== '') {
+                    $params['search'] = $query;
                 }
 
-                $name      = (string) ($item['attributes']['name'] ?? '');
-                $sellerSku = null;
-                foreach ($item['skus'] ?? [] as $sku) {
-                    if (! empty($sku['SellerSku'])) {
-                        $sellerSku = $sku['SellerSku'];
-                        break;
+                try {
+                    $res = $this->client->request('GET', '/products/get', $params, $shop->access_token);
+                } catch (TokenExpiredException $e) {
+                    $this->authService->refreshStoreToken((string) $shop->id);
+                    $shop = $this->shopRepository->findByShopId($shopId);
+                    $res = $this->client->request('GET', '/products/get', $params, $shop->access_token);
+                }
+
+                $products = $res['data']['products'] ?? [];
+
+                foreach ($products as $item) {
+                    $status = strtolower((string) ($item['status'] ?? ''));
+                    if ($status !== '' && $status !== 'active' && $status !== 'live') {
+                        continue;
                     }
+
+                    $extId = (string) ($item['item_id'] ?? '');
+                    if ($extId !== '') {
+                        if (isset($seen[$extId])) {
+                            continue;
+                        }
+                        $seen[$extId] = true;
+                    }
+
+                    $name      = (string) ($item['attributes']['name'] ?? '');
+                    $sellerSku = null;
+                    foreach ($item['skus'] ?? [] as $sku) {
+                        if (! empty($sku['SellerSku'])) {
+                            $sellerSku = $sku['SellerSku'];
+                            break;
+                        }
+                    }
+
+                    if ($needle !== '' && ! str_contains(mb_strtolower($name . ' ' . (string) $sellerSku), $needle)) {
+                        continue;
+                    }
+
+                    $results[] = [
+                        'external_product_id' => $extId,
+                        'name'                => $name,
+                        'seller_sku'          => $sellerSku,
+                        'image'               => $item['images'][0] ?? null,
+                        'shop_id'             => $shopId,
+                        'shop_name'           => $shop->shop_name ?? null,
+                        'channel_code'        => 'lazada',
+                    ];
                 }
 
-                if ($needle !== '' && ! str_contains(mb_strtolower($name . ' ' . (string) $sellerSku), $needle)) {
-                    continue;
-                }
+                $offset += $limit;
+                $pages++;
+            } while (count($products) === $limit && $pages < 5 && count($results) < 200);
 
-                $results[] = [
-                    'external_product_id' => (string) ($item['item_id'] ?? ''),
-                    'name'                => $name,
-                    'seller_sku'          => $sellerSku,
-                    'image'               => $item['images'][0] ?? null,
-                    'shop_id'             => $shopId,
-                    'shop_name'           => $shop->shop_name ?? null,
-                    'channel_code'        => 'lazada',
-                ];
+            if (count($results) >= 200) {
+                break;
             }
-
-            $offset += $limit;
-            $pages++;
-        } while (count($products) === $limit && $pages < 5 && count($results) < 200);
+        }
 
         return $results;
     }
@@ -502,110 +517,125 @@ class LazadaProductService
         $count = 0;
         $failed = 0;
         $total = 0;
-        $offset = 0;
         $limit = self::PULL_PAGE_LIMIT;
         $pages = 0;
         $maxPages = (int) config('channel.download_max_pages', 10000);
+        $seen = [];
 
-        do {
+        foreach (self::PULL_FILTERS as $filter) {
+            $offset = 0;
+            $filterCounted = false;
 
-            $params = ['filter' => 'live', 'offset' => $offset, 'limit' => $limit];
+            do {
 
-            $res = \Modules\Channel\Support\ChannelRetry::run('lazada', function () use (&$shop, $shopId, $params) {
-                try {
-                    return $this->client->request('GET', '/products/get', $params, $shop->access_token);
-                } catch (TokenExpiredException $e) {
-                    $this->authService->refreshStoreToken((string) $shop->id);
-                    $shop = $this->shopRepository->findByShopId($shopId);
+                $params = ['filter' => $filter, 'offset' => $offset, 'limit' => $limit];
 
-                    return $this->client->request('GET', '/products/get', $params, $shop->access_token);
-                }
-            });
+                $res = \Modules\Channel\Support\ChannelRetry::run('lazada', function () use (&$shop, $shopId, $params) {
+                    try {
+                        return $this->client->request('GET', '/products/get', $params, $shop->access_token);
+                    } catch (TokenExpiredException $e) {
+                        $this->authService->refreshStoreToken((string) $shop->id);
+                        $shop = $this->shopRepository->findByShopId($shopId);
 
-            if ($total === 0) {
-                $total = (int) ($res['data']['total_products'] ?? 0);
-            }
-
-            $products = $res['data']['products'] ?? [];
-
-            foreach ($products as $item) {
-                $status = strtolower((string) ($item['status'] ?? ''));
-                if ($status !== '' && $status !== 'active' && $status !== 'live') {
-                    continue;
-                }
-
-                try {
-                    $matchedExisting = false;
-                    $variantIds = [];
-                    $internalData = $this->inboundMapper->map($item, $shopId);
-                    $insertedId = $productService->upsertFromChannel($internalData, $matchedExisting, $variantIds);
-
-                    if ($insertedId) {
-                        $pcmId = $this->productRepository->upsertChannelMapping(
-                            (string) $insertedId,
-                            $shopId,
-                            (string) ($item['item_id'] ?? ''),
-                            'synced',
-                            (! empty($item['attributes']) && is_array($item['attributes'])) ? $item['attributes'] : null,
-                            false
-                        );
-
-                        foreach ($item['skus'] ?? [] as $idx => $skuData) {
-                            if (! $matchedExisting) {
-                                $variantId = $variantIds[$idx] ?? null;
-                            } else {
-                                $variant = $this->productRepository->getVariantByProductIdAndSku(
-                                    (string) $insertedId,
-                                    $skuData['SellerSku'] ?? null
-                                );
-                                $variantId = $variant->id ?? null;
-                            }
-
-                            if ($variantId) {
-                                $this->productRepository->upsertVariantChannelMapping(
-                                    $pcmId,
-                                    $variantId,
-                                    isset($skuData['SkuId']) ? (string) $skuData['SkuId'] : null,
-                                    $skuData['SellerSku'] ?? null,
-                                    $skuData['price'] ?? null
-                                );
-                            }
-                        }
-
-                        $count++;
-                        if ($onProgress) {
-                            $onProgress($count, max($total, $count + $failed), $failed);
-                        }
+                        return $this->client->request('GET', '/products/get', $params, $shop->access_token);
                     }
-                } catch (\Throwable $e) {
-                    $failed++;
-                    Log::error('Lazada: gagal pull produk ' . ($item['item_id'] ?? '?') . ': ' . $e->getMessage());
+                });
 
-                    ProductSyncLog::record([
-                        'channel_shop_id' => $shop->id,
-                        'action' => ProductSyncLog::ACTION_DOWNLOAD,
-                        'status' => ProductSyncLog::STATUS_FAILED,
-                        'payload' => [
-                            'external_product_id' => $item['item_id'] ?? null,
-                            'title' => $item['attributes']['name'] ?? null,
-                        ],
-                        'error_message' => $e->getMessage(),
-                    ]);
+                if (! $filterCounted) {
+                    $total += (int) ($res['data']['total_products'] ?? 0);
+                    $filterCounted = true;
                 }
-            }
 
-            $offset += $limit;
-            $pages++;
+                $products = $res['data']['products'] ?? [];
 
-            if ($pages >= $maxPages) {
-                Log::warning("Lazada pullProducts: batas {$maxPages} halaman tercapai untuk shop {$shopId}, paginasi dihentikan.", [
-                    'shop_id' => $shopId,
-                    'downloaded' => $count,
-                    'failed' => $failed,
-                ]);
-                break;
-            }
-        } while (count($products) === $limit);
+                foreach ($products as $item) {
+                    $status = strtolower((string) ($item['status'] ?? ''));
+                    if ($status !== '' && $status !== 'active' && $status !== 'live') {
+                        continue;
+                    }
+
+                    $extId = (string) ($item['item_id'] ?? '');
+                    if ($extId !== '') {
+                        if (isset($seen[$extId])) {
+                            continue;
+                        }
+                        $seen[$extId] = true;
+                    }
+
+                    try {
+                        $matchedExisting = false;
+                        $variantIds = [];
+                        $internalData = $this->inboundMapper->map($item, $shopId);
+                        $insertedId = $productService->upsertFromChannel($internalData, $matchedExisting, $variantIds);
+
+                        if ($insertedId) {
+                            $pcmId = $this->productRepository->upsertChannelMapping(
+                                (string) $insertedId,
+                                $shopId,
+                                (string) ($item['item_id'] ?? ''),
+                                'synced',
+                                (! empty($item['attributes']) && is_array($item['attributes'])) ? $item['attributes'] : null,
+                                false
+                            );
+
+                            foreach ($item['skus'] ?? [] as $idx => $skuData) {
+                                if (! $matchedExisting) {
+                                    $variantId = $variantIds[$idx] ?? null;
+                                } else {
+                                    $variant = $this->productRepository->getVariantByProductIdAndSku(
+                                        (string) $insertedId,
+                                        $skuData['SellerSku'] ?? null
+                                    );
+                                    $variantId = $variant->id ?? null;
+                                }
+
+                                if ($variantId) {
+                                    $this->productRepository->upsertVariantChannelMapping(
+                                        $pcmId,
+                                        $variantId,
+                                        isset($skuData['SkuId']) ? (string) $skuData['SkuId'] : null,
+                                        $skuData['SellerSku'] ?? null,
+                                        $skuData['price'] ?? null
+                                    );
+                                }
+                            }
+
+                            $count++;
+                            if ($onProgress) {
+                                $onProgress($count, max($total, $count + $failed), $failed);
+                            }
+                        }
+                    } catch (\Throwable $e) {
+                        $failed++;
+                        Log::error('Lazada: gagal pull produk ' . ($item['item_id'] ?? '?') . ': ' . $e->getMessage());
+
+                        ProductSyncLog::record([
+                            'channel_shop_id' => $shop->id,
+                            'action' => ProductSyncLog::ACTION_DOWNLOAD,
+                            'status' => ProductSyncLog::STATUS_FAILED,
+                            'payload' => [
+                                'external_product_id' => $item['item_id'] ?? null,
+                                'title' => $item['attributes']['name'] ?? null,
+                            ],
+                            'error_message' => $e->getMessage(),
+                        ]);
+                    }
+                }
+
+                $offset += $limit;
+                $pages++;
+
+                if ($pages >= $maxPages) {
+                    Log::warning("Lazada pullProducts: batas {$maxPages} halaman tercapai untuk shop {$shopId}, paginasi dihentikan.", [
+                        'shop_id' => $shopId,
+                        'filter' => $filter,
+                        'downloaded' => $count,
+                        'failed' => $failed,
+                    ]);
+                    break 2;
+                }
+            } while (count($products) === $limit);
+        }
 
         if ($onProgress) {
             $onProgress($count, max($total, $count + $failed), $failed);

@@ -8,16 +8,6 @@ use Illuminate\Support\Facades\Storage;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Sales\Models\SalesOrder;
 
-/**
- * Membandingkan order shadow di sistem ini dengan data sistem lama (Jubelio).
- *
- * Sisi Jubelio dibaca dari CSV export, karena sistem ini belum punya kredensial
- * API ke sana. Kolom CSV yang dipakai: channel_order_no (wajib), grand_total,
- * channel_status. Header lain diabaikan.
- *
- * Tanpa --jubelio, command tetap berguna: ia mencetak ringkasan sisi kita saja
- * sebagai baseline harian.
- */
 class ShadowReconcileCommand extends Command
 {
     protected $signature = 'channel:shadow-reconcile
@@ -88,9 +78,6 @@ class ShadowReconcileCommand extends Command
         return self::SUCCESS;
     }
 
-    /**
-     * @return array{0: Carbon, 1: Carbon}
-     */
     private function resolveRange(): array
     {
         $tz = self::TIMEZONE;
@@ -107,13 +94,9 @@ class ShadowReconcileCommand extends Command
         return [$date->copy()->startOfDay(), $date->copy()->endOfDay()];
     }
 
-    /**
-     * @param  array<string, array{grand_total: ?float, channel_status: ?string}>|null  $jubelioRows
-     */
     private function reconcileShop(ChannelShop $shop, Carbon $from, Carbon $to, ?array $jubelioRows, float $tolerance): array
     {
-        // Cutoff adalah lantai keras: histori sebelum shadow dimulai memang tidak
-        // ditarik, jadi membandingkannya hanya akan memunculkan selisih palsu.
+
         if ($shop->shadow_started_at && $from->lessThan($shop->shadow_started_at)) {
             $from = $shop->shadow_started_at->copy();
         }
@@ -144,6 +127,7 @@ class ShadowReconcileCommand extends Command
         $missingInJubelio = [];
         $valueMismatch = [];
         $statusMismatch = [];
+        $problemOrders = [];
         $matched = 0;
 
         foreach ($jubelioRows as $orderNo => $row) {
@@ -162,6 +146,7 @@ class ShadowReconcileCommand extends Command
                     'ours'             => (float) $our->grand_total,
                     'jubelio'          => $row['grand_total'],
                 ];
+                $problemOrders[$orderNo] = true;
             }
 
             if ($row['channel_status'] && $our->channel_status && strcasecmp((string) $our->channel_status, $row['channel_status']) !== 0) {
@@ -170,6 +155,7 @@ class ShadowReconcileCommand extends Command
                     'ours'             => (string) $our->channel_status,
                     'jubelio'          => $row['channel_status'],
                 ];
+                $problemOrders[$orderNo] = true;
             }
         }
 
@@ -180,7 +166,7 @@ class ShadowReconcileCommand extends Command
         }
 
         $jubelioCount = count($jubelioRows);
-        $cleanMatches = $matched - count($valueMismatch) - count($statusMismatch);
+        $cleanMatches = $matched - count($problemOrders);
         $denominator = max($jubelioCount, $ours->count());
 
         return $result + [
@@ -194,11 +180,6 @@ class ShadowReconcileCommand extends Command
         ];
     }
 
-    /**
-     * Export sistem lama bisa berisi banyak toko sekaligus. Tanpa penyaringan,
-     * order milik toko lain akan terhitung sebagai "tidak ada di sistem ini"
-     * dan match rate-nya jadi menyesatkan.
-     */
     private function scopeRowsToShop(array $rows, ChannelShop $shop): array
     {
         if (! $this->csvHasShopColumn($rows)) {
@@ -261,9 +242,6 @@ class ShadowReconcileCommand extends Command
         }
     }
 
-    /**
-     * @return array<string, array{grand_total: ?float, channel_status: ?string, shop_id: ?string}>|null
-     */
     private function readJubelioCsv(string $path): ?array
     {
         $handle = fopen($path, 'rb');
@@ -313,13 +291,13 @@ class ShadowReconcileCommand extends Command
         $path = $this->option('json')
             ?: 'shadow-reconcile/' . $from->format('Ymd') . '-' . $to->format('Ymd') . '.json';
 
-        Storage::put($path, json_encode([
+        Storage::disk('local')->put($path, json_encode([
             'from'         => $from->toIso8601String(),
             'to'           => $to->toIso8601String(),
             'generated_at' => now()->toIso8601String(),
             'shops'        => $results,
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
-        return Storage::path($path);
+        return Storage::disk('local')->path($path);
     }
 }

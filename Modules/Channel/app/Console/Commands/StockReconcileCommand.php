@@ -10,16 +10,6 @@ use Modules\Channel\Services\ChannelStockResolver;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
 
-/**
- * Rekonsiliasi stok tiga arah sebelum serah terima: WMS vs angka live di
- * listing marketplace vs sistem lama (CSV, opsional).
- *
- * Command ini sekaligus berfungsi sebagai dry-run push: angka WMS yang
- * ditampilkan dihitung lewat ChannelStockResolver — jalur yang sama persis
- * dipakai push sungguhan, termasuk mode sumber stok, perhitungan bundle, dan
- * buffer pengaman. Jadi kalau angkanya salah di sini, ia akan salah juga saat
- * dikirim; bedanya di sini tidak ada yang terkirim.
- */
 class StockReconcileCommand extends Command
 {
     protected $signature = 'channel:stock-reconcile
@@ -198,9 +188,6 @@ class StockReconcileCommand extends Command
         }
     }
 
-    /**
-     * @return array<string, int>|null
-     */
     private function readJubelioCsv(?string $path): ?array
     {
         if (! $path) {
@@ -251,12 +238,12 @@ class StockReconcileCommand extends Command
     {
         $path = $this->option('json') ?: 'stock-reconcile/' . now()->format('Ymd-His') . '.json';
 
-        Storage::put($path, json_encode([
+        Storage::disk('local')->put($path, json_encode([
             'generated_at' => now()->toIso8601String(),
             'tolerance'    => (int) $this->option('tolerance'),
             'shops'        => $results,
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
-        return Storage::path($path);
+        return Storage::disk('local')->path($path);
     }
 }

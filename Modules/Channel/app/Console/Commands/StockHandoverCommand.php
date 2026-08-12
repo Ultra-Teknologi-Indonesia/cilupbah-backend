@@ -6,13 +6,6 @@ use Illuminate\Console\Command;
 use Modules\Channel\Jobs\ResyncShopStockJob;
 use Modules\Channel\Models\ChannelShop;
 
-/**
- * Serah terima kepemilikan stok satu toko dari sistem lama ke sistem ini.
- *
- * Yang wajib dijamin bukan "tidak ada transaksi", tapi "hanya ada satu penulis
- * stok per toko". Karena itu urutannya: matikan sync stok sistem lama untuk
- * toko ini lebih dulu, baru jalankan command ini. Toko tidak perlu ditutup.
- */
 class StockHandoverCommand extends Command
 {
     protected $signature = 'channel:stock-handover

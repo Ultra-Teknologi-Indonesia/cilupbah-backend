@@ -7,24 +7,22 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-
     public function up(): void
     {
         Schema::table('channel_shops', function (Blueprint $table) {
-            $table->timestamp('shadow_started_at')->nullable()->after('is_shadow_mode');
-            $table->timestamp('shadow_last_pulled_at')->nullable()->after('shadow_started_at');
+            $table->boolean('catalog_pull_enabled')->default(true)->after('stock_push_buffer');
+            $table->boolean('catalog_push_enabled')->default(true)->after('catalog_pull_enabled');
         });
 
         DB::table('channel_shops')
-            ->where('is_shadow_mode', true)
-            ->whereNull('shadow_started_at')
-            ->update(['shadow_started_at' => now()]);
+            ->where('stock_push_enabled', false)
+            ->update(['catalog_push_enabled' => false]);
     }
 
     public function down(): void
     {
         Schema::table('channel_shops', function (Blueprint $table) {
-            $table->dropColumn(['shadow_started_at', 'shadow_last_pulled_at']);
+            $table->dropColumn(['catalog_pull_enabled', 'catalog_push_enabled']);
         });
     }
 };

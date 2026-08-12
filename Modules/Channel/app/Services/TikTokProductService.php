@@ -509,10 +509,6 @@ class TikTokProductService
         return $results;
     }
 
-    /**
-     * Detail listing apa adanya dari TikTok, dipakai rekonsiliasi stok untuk
-     * membaca kuantitas yang sedang tayang.
-     */
     public function fetchLiveProduct(string $shopId, string $externalProductId): ?array
     {
         $shop = $this->shopRepository->findByShopId($shopId);

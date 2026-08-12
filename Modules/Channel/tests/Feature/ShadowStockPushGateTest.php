@@ -15,11 +15,6 @@ use Modules\Product\Models\ProductVariant;
 use Modules\Product\Models\ProductVariantChannelMapping;
 use Tests\TestCase;
 
-/**
- * Jaminan paling penting selama migrasi: selama kepemilikan stok belum
- * diserahterimakan, sistem ini tidak boleh menulis apa pun ke marketplace.
- * Dua penulis stok jauh lebih merusak daripada angka yang basi.
- */
 class ShadowStockPushGateTest extends TestCase
 {
     use RefreshDatabase;

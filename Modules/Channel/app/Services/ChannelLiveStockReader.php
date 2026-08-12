@@ -4,15 +4,6 @@ namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\Log;
 
-/**
- * Membaca stok yang sedang tayang di listing marketplace.
- *
- * Angka inilah yang dilihat pembeli dan yang menentukan oversell — bukan angka
- * di WMS, bukan angka di sistem lama. Dipakai rekonsiliasi stok untuk
- * membandingkan tiga sisi sebelum serah terima.
- *
- * @return array<string, int> external_sku_id => qty
- */
 class ChannelLiveStockReader
 {
     public function read(string $channelCode, string $shopId, string $externalProductId): array

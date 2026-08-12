@@ -6,20 +6,6 @@ use Illuminate\Console\Command;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderService;
 
-/**
- * Mengeluarkan order tertentu dari mode shadow, untuk gladi resik fulfillment.
- *
- * Shadow order hanya membuktikan sisi baca. Jalur tulis — minta AWB, cetak
- * label, tandai dikirim — belum pernah dijalankan sungguhan. Command ini
- * memungkinkan beberapa order nyata difulfill penuh lewat sistem ini sementara
- * tokonya tetap shadow, sehingga push stok tetap mati dan risikonya terbatas
- * pada order yang dipilih.
- *
- * Konsekuensi yang harus disengaja: order yang dipromosikan akan terpotong
- * stoknya di dua sistem, dan sistem lama juga akan mencoba menerbitkan AWB-nya.
- * Order pilot harus ditandai selesai manual di sistem lama, dan selisih stoknya
- * disesuaikan.
- */
 class ShadowPromoteCommand extends Command
 {
     protected $signature = 'channel:shadow-promote

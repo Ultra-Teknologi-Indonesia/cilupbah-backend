@@ -10,12 +10,6 @@ class ChannelSyncSettingService
 {
     public const CACHE_KEY = 'channel_sync_enabled';
 
-    /**
-     * Saklar sync global dipakai untuk menghentikan sync dua arah. Tarik order
-     * shadow perlu tetap jalan walau saklar itu mati, karena sifatnya baca-saja.
-     * Bypass ini hanya berlaku di proses yang memanggilnya — job yang di-dispatch
-     * ke queue berjalan di worker lain dan tetap tunduk pada saklar global.
-     */
     protected static bool $inboundBypass = false;
 
     public static function withInboundBypass(callable $callback): mixed

@@ -45,6 +45,16 @@ class DownloadProductsJob implements ShouldQueue
             return;
         }
 
+        $catalogPullEnabled = \Illuminate\Support\Facades\DB::table('channel_shops')
+            ->where('shop_id', $this->shopId)
+            ->value('catalog_pull_enabled');
+
+        if ($catalogPullEnabled !== null && ! $catalogPullEnabled) {
+            $transaction->markFailed('Tarik katalog untuk toko ini dimatikan.');
+
+            return;
+        }
+
         if ($service->supportsBatch($this->channel)) {
             $service->dispatchBatched($transaction, $this->channel, $this->shopId);
 

@@ -8,7 +8,16 @@ use Modules\Channel\Console\Commands\BackfillDownloadHistory;
 use Modules\Channel\Console\Commands\BackfillShopeeShopNames;
 use Modules\Channel\Console\Commands\EvaluateOrderSyncHealth;
 use Modules\Channel\Console\Commands\MonitorDownloadHealth;
+use Modules\Channel\Console\Commands\MonitorShadowPullHealth;
+use Modules\Channel\Console\Commands\PullShadowOrdersCommand;
 use Modules\Channel\Console\Commands\ReapStaleDownloadTransactions;
+use Modules\Channel\Console\Commands\ShadowOffCommand;
+use Modules\Channel\Console\Commands\ShadowPromoteCommand;
+use Modules\Channel\Console\Commands\ShadowPurgeCommand;
+use Modules\Channel\Console\Commands\ShadowReconcileCommand;
+use Modules\Channel\Console\Commands\StockHandoverCommand;
+use Modules\Channel\Console\Commands\StockReconcileCommand;
+use Modules\Channel\Console\Commands\StockRollbackCommand;
 use Modules\Channel\Console\Commands\SyncTikTokAttributes;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Observers\ChannelShopObserver;
@@ -36,6 +45,17 @@ class ChannelServiceProvider extends ModuleServiceProvider
         MonitorDownloadHealth::class,
         ReapStaleDownloadTransactions::class,
         SyncTikTokAttributes::class,
+
+        MonitorShadowPullHealth::class,
+        PullShadowOrdersCommand::class,
+        ShadowOffCommand::class,
+        ShadowPromoteCommand::class,
+        ShadowPurgeCommand::class,
+        ShadowReconcileCommand::class,
+
+        StockHandoverCommand::class,
+        StockReconcileCommand::class,
+        StockRollbackCommand::class,
     ];
 
     public function boot(): void

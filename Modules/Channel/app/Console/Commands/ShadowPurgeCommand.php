@@ -7,14 +7,6 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Modules\Sales\Models\SalesOrder;
 
-/**
- * Menghapus arsip order shadow setelah migrasi benar-benar selesai.
- *
- * Perintah ini destruktif, jadi tanpa --force ia hanya menampilkan rencana.
- * Penghapusan dilakukan per order dalam transaksi masing-masing: kalau ada
- * order yang ternyata punya dokumen turunan (picklist/packlist/shipment), order
- * itu dilewati dan dilaporkan, bukan menggagalkan seluruh batch.
- */
 class ShadowPurgeCommand extends Command
 {
     protected $signature = 'channel:shadow-purge
@@ -34,7 +26,7 @@ class ShadowPurgeCommand extends Command
             ->when($this->option('before'), fn ($q, $before) => $q->where(
                 'transaction_date',
                 '<',
-                Carbon::parse($before, self::TIMEZONE)->startOfDay(),
+                Carbon::parse($before, self::TIMEZONE)->startOfDay()->utc(),
             ));
 
         $total = (clone $query)->count();

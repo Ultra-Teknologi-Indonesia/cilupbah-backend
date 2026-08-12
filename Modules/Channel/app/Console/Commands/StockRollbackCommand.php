@@ -5,13 +5,6 @@ namespace Modules\Channel\Console\Commands;
 use Illuminate\Console\Command;
 use Modules\Channel\Models\ChannelShop;
 
-/**
- * Kembalikan kepemilikan stok satu toko ke sistem lama.
- *
- * Ini command darurat, jadi sengaja tanpa konfirmasi: arahnya aman (berhenti
- * menulis), dan yang mahal justru menundanya. Sengaja dipisah dari
- * channel:stock-handover supaya di situasi tertekan namanya gampang diingat.
- */
 class StockRollbackCommand extends Command
 {
     protected $signature = 'channel:stock-rollback

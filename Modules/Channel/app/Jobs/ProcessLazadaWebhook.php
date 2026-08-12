@@ -100,6 +100,15 @@ class ProcessLazadaWebhook implements ShouldQueue
             default => $this->handleUnknown($orderService, $sellerId, $data, $messageType),
         };
 
+        if ($this->orderIntakeSkipped) {
+            ChannelWebhookInbox::markSkippedByKey(
+                self::idempotencyKey($this->payload),
+                \Modules\Channel\Support\ChannelOrderIntakeGate::reason(),
+            );
+
+            return;
+        }
+
         ChannelWebhookInbox::markProcessedByKey(self::idempotencyKey($this->payload));
     }
 
@@ -150,8 +159,16 @@ class ProcessLazadaWebhook implements ShouldQueue
         $this->recordLazadaTrackingEvent($orderId, $data);
     }
 
+    protected bool $orderIntakeSkipped = false;
+
     protected function handleOrderEvent(LazadaOrderService $orderService, string $sellerId, array $data): void
     {
+        if (\Modules\Channel\Support\ChannelOrderIntakeGate::blocksShop($sellerId, 'lazada')) {
+            $this->orderIntakeSkipped = true;
+
+            return;
+        }
+
         $orderId = (string) ($data['trade_order_id'] ?? $data['order_id'] ?? $data['reverse_order_id'] ?? '');
 
         if ($orderId === '') {

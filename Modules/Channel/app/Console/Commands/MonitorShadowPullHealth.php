@@ -6,11 +6,6 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Models\ChannelShop;
 
-/**
- * Tarik order shadow berjalan diam-diam di latar belakang. Kalau ia berhenti,
- * tidak ada yang tahu sampai seseorang membuka laporan rekonsiliasi — dan saat
- * itu datanya sudah bolong berjam-jam. Command ini yang membunyikan alarmnya.
- */
 class MonitorShadowPullHealth extends Command
 {
     protected $signature = 'channel:monitor-shadow-pull';

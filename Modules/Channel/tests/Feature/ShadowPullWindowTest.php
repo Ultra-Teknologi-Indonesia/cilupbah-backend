@@ -8,11 +8,6 @@ use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Tests\TestCase;
 
-/**
- * Histori sebelum sistem ini sengaja tidak dimigrasi (keputusan klien), jadi
- * cutoff shadow adalah lantai keras: tidak ada jalur — termasuk backfill manual
- * — yang boleh menarik order sebelum cutoff.
- */
 class ShadowPullWindowTest extends TestCase
 {
     use RefreshDatabase;

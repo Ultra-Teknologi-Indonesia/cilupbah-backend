@@ -90,13 +90,6 @@ class ChannelStockResolver
         return $this->applyPushBuffer($shop, $result);
     }
 
-    /**
-     * Buffer pengaman saat serah terima stok dari sistem lama: angka yang dikirim
-     * ke marketplace sengaja dibuat lebih konservatif selama beberapa hari
-     * pertama, untuk meredam oversell ketika kedua sistem belum sepenuhnya
-     * sinkron. Diterapkan di sini supaya semua jalur push memakai angka yang
-     * sama — termasuk pratinjau rekonsiliasi.
-     */
     private function applyPushBuffer(ChannelShop $shop, array $available): array
     {
         $buffer = (int) ($shop->stock_push_buffer ?? 0);

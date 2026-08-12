@@ -79,7 +79,7 @@ mematikannya menghentikan push seketika, tanpa deploy.
 
 | Command | Fungsi |
 |---|---|
-| `channel:pull-shadow-orders` | Tarik order toko shadow (terjadwal tiap 15 menit) |
+| `channel:pull-shadow-orders` | Tarik order toko shadow (**manual** — penjadwalan dimatikan, lihat 3.2) |
 | `channel:shadow-reconcile` | Bandingkan order shadow dengan export sistem lama |
 | `channel:shadow-promote` | Keluarkan order tertentu dari shadow, untuk gladi resik fulfillment |
 | `channel:shadow-off` | Matikan Shadow Mode saat cutover order |
@@ -99,6 +99,57 @@ default-nya hanya menampilkan rencana dan butuh `--force`.
 
 ---
 
+## 2.4 Empat sumbu sinkronisasi per toko
+
+Sejak 12 Agu 2026 tiap toko punya empat sakelar terpisah, di luar `is_active`
+(toko ikut dioperasikan atau tidak) dan master switch global:
+
+| Kolom | Menggerbangi | Catatan |
+|---|---|---|
+| `order_sync_enabled` | Pesanan masuk lewat webhook | Sebelumnya **kosmetik** — hanya mengubah teks badge sementara order tetap masuk. Sekarang benar-benar menolak: event ditandai `SKIPPED` di inbox, terminal, tidak di-replay |
+| `catalog_pull_enabled` | `DownloadProductsJob` | Tarik produk marketplace jadi data lokal |
+| `catalog_push_enabled` | Aksi `push`/`update`/`delete`/`activate`/`deactivate` | Baru; sebelumnya ikut menumpang `stock_push_enabled` |
+| `stock_push_enabled` | Aksi `sync_stock`/`sync_price_stock` | Sudah ada sejak fase stok |
+
+**Invariant yang tidak boleh dilanggar:** menyalakan Shadow Mode memaksa
+`stock_push_enabled` **dan** `catalog_push_enabled` jadi `false`. Sebelum
+pemisahan sumbu, satu flag menjaga keduanya secara kebetulan; sekarang keharusan
+itu eksplisit di `ChannelService::applyShadowCutoff` dan dikunci test
+`ChannelSyncAxesTest::test_shadow_mode_silences_both_write_axes`. Kalau invariant
+ini jebol, aturan pertama Shadow Mode — sistem ini tidak menulis apa pun ke
+marketplace — ikut jebol.
+
+Yang **tidak** digerbangi `order_sync_enabled`: retur, deauthorisasi, dan event
+produk. Retur untuk pesanan yang sudah terlanjur masuk tetap harus tercatat
+supaya angka keuangan tidak menggantung, dan deauthorisasi justru wajib diproses
+supaya toko yang kehilangan otorisasi tetap ketahuan.
+
+> **Peringatan operasional.** Mematikan "Pesanan masuk" berarti pesanan yang
+> datang selama toggle mati **tidak akan pernah** menjadi pesanan di sistem ini.
+> Marketplace tidak mengirim ulang selamanya. Jejaknya ada di
+> `channel_webhook_inbox` berstatus `SKIPPED` dan hanya bisa dipulihkan manual.
+
+---
+
+## 2.5 Checklist pra-deploy
+
+Urutannya penting. Kolom `stock_push_enabled`, `stock_push_buffer`,
+`shadow_started_at`, dan `shadow_last_pulled_at` sudah dibaca oleh
+`ChannelShopResource`, jadi **deploy sebelum migrate akan membuat endpoint
+pengaturan toko error** dan toggle Shadow Mode di UI mati.
+
+1. `php artisan migrate --force` — pastikan empat migrasi shadow sudah `Ran`:
+   `add_shadow_mode_to_channel_shops`, `add_shadow_to_sales_orders`,
+   `add_shadow_cutoff_to_channel_shops`, `add_stock_push_control_to_channel_shops`.
+2. `php artisan list | grep -E "shadow|stock-"` — harus muncul sembilan command.
+3. `php artisan schedule:list` — **tidak boleh** ada jadwal shadow. Penarikan
+   order shadow dimatikan sementara sejak 12 Agu 2026 dan dijalankan manual;
+   lihat 3.2.
+4. Deploy FE dan BE. Rollout ulang pod scheduler/horizon, bukan hanya pod app.
+5. Baru nyalakan Shadow Mode untuk toko pertama.
+
+---
+
 ## 3. Cara pakai
 
 ### 3.1 Menyalakan Shadow Mode
@@ -108,7 +159,19 @@ Lewat UI Integrasi Channel (toggle per toko), atau lewat API pengaturan toko.
 
 ### 3.2 Tarik order
 
-Terjadwal tiap 15 menit, inkremental berbasis cursor. Manual:
+**Manual sepenuhnya sejak 12 Agu 2026.** Penjadwalan tiap 15 menit dimatikan
+(dikomentari di `routes/console.php`) atas permintaan, dan `channel:monitor-shadow-pull`
+ikut dimatikan bersamanya. Keduanya harus dinyalakan **berbarengan**: monitor itu
+beralarm kalau `shadow_last_pulled_at` lebih tua dari `SHADOW_PULL_STALE_MINUTES`
+(default 60 menit), jadi kalau dinyalakan sendirian tanpa penjadwalan tarik, ia
+hanya mengirim alarm palsu tiap jam untuk setiap toko shadow.
+
+Konsekuensi selama manual: tidak ada yang memberi tahu kalau penarikan lupa
+dijalankan. Cursor tetap aman — penarikan berikutnya melanjutkan dari
+`shadow_last_pulled_at`, jadi jeda panjang tidak membuat order hilang, hanya
+membuat rekonsiliasi harian di 3.3 tertinggal.
+
+Penarikannya inkremental berbasis cursor:
 
 ```bash
 # Uji dulu tanpa menyimpan — jalur kode sebenarnya, lalu di-rollback
@@ -169,6 +232,11 @@ php artisan channel:shadow-reconcile --from=2026-08-01 --to=2026-08-10 \
 Keluarannya per toko: jumlah order kedua sisi, order yang hanya ada di satu
 sisi, selisih nilai, selisih status, dan match rate. Hasil ditulis ke
 `storage/app/shadow-reconcile/` supaya trennya bisa diikuti antar hari.
+
+File ini ditulis ke disk **lokal**, jadi ia mendarat di mesin tempat command
+dijalankan — bukan di R2. Kalau perbandingan antar hari mau dipakai sebagai
+bukti kelulusan bagian 3.4, jalankan rekonsiliasi harian dari host yang sama,
+atau salin hasilnya ke satu tempat terpusat.
 
 ### 3.4 Kriteria kelulusan (harus disepakati sebelum cutover)
 
@@ -261,6 +329,11 @@ seluruh batch.
 Lakukan **setelah** semua toko selesai diserahkan dan arsipnya dihapus. Jangan
 lebih awal — selama masih ada toko yang belum diserahkan, `is_shadow_mode` masih
 dipakai sebagai kill switch push stok.
+
+Backend — **hapus dulu pendaftarannya, baru filenya.** Entri di `$commands`
+`Modules/Channel/app/Providers/ChannelServiceProvider.php` yang menunjuk class
+terhapus membuat aplikasi gagal boot, bukan sekadar command hilang. Sisakan
+`StockHandoverCommand`, `StockReconcileCommand`, dan `StockRollbackCommand`.
 
 Backend — hapus file:
 
@@ -480,14 +553,33 @@ biaya menyimpannya nol, biaya kehilangannya sangat mahal.
 
 ---
 
-## 7. Yang belum ada
+## 7. Status verifikasi dan yang belum ada
 
-Supaya tidak ada yang mengira ini sudah lengkap:
+### 7.1 Sudah terverifikasi (12 Agu 2026)
 
-- **Belum ada satu pun command di dokumen ini yang pernah dijalankan terhadap
-  data sungguhan.** Test otomatis sudah ditulis tapi belum pernah dieksekusi —
-  butuh `composer install` dan database test. Jalankan test dulu, baru command
-  dengan `--dry-run` / `--limit` di satu toko.
+- **38 test hijau** (92 assertion) mencakup guard, scope, cursor/cutoff, gerbang
+  push stok, rekonsiliasi, cutover, purge, dan keempat sumbu sinkronisasi.
+- **Semua command terdaftar dan bisa dipanggil.** Sebelumnya tidak: sembilan
+  command punya file tapi tidak terdaftar di `ChannelServiceProvider`, sehingga
+  seluruh runbook ini tidak bisa dijalankan sama sekali dan jadwal
+  `channel:pull-shadow-orders` gagal tiap 15 menit tanpa terlihat. Dijaga
+  sekarang oleh `tests/Feature/ConsoleCommandRegistrationTest.php`.
+- **Semua command sudah dijalankan** dengan setiap opsi yang ada di dokumen ini,
+  minimal terhadap DB kosong, dan menangani kondisi kosong dengan pesan jelas.
+
+Tiga bug ditemukan saat verifikasi dan sudah diperbaiki:
+
+| Bug | Dampak kalau lolos |
+|---|---|
+| `match_rate` mengurangi dua kali order yang salah nilai **dan** statusnya | Match rate lebih rendah dari kenyataan — gerbang 99.5% di bagian 3.4 memblokir cutover yang sebenarnya sudah layak |
+| Hasil rekonsiliasi ditulis ke disk default (`s3`/R2), tapi yang dicetak path lokal | Operator tidak menemukan filenya, tren harian tidak pernah terbaca |
+| `channel:shadow-purge --before` memakai batas UTC, bukan WIB | Hapus permanen 7 jam order lebih banyak dari yang diminta |
+
+### 7.2 Yang belum ada
+
+- **Belum ada satu pun command yang dijalankan terhadap data marketplace
+  sungguhan.** Yang sudah terbukti adalah logikanya terhadap data uji; yang
+  belum adalah perilakunya terhadap respons asli Shopee/TikTok/Lazada.
 - **Integrasi API ke Jubelio belum ada** — rekonsiliasi masih lewat CSV export.
   Ini terhalang kredensial, bukan pekerjaan yang bisa diselesaikan dari sisi kode.
 - **Pembacaan stok live belum diuji terhadap respons asli** ketiga marketplace.
@@ -497,8 +589,12 @@ Supaya tidak ada yang mengira ini sudah lengkap:
   biasanya pemetaan field-nya, bukan datanya.
 - **Penanda diskontinuitas baru tersedia di API** (`data_starts_at` di ringkasan
   dashboard); tampilan di UI belum dibuat.
-- **Serah terima stok sengaja tidak punya UI** — command dengan konfirmasi lebih
-  aman daripada toggle yang bisa terpencet.
+- **Serah terima stok kini punya UI** (12 Agu 2026) — keputusan lama "sengaja
+  tanpa UI" dicabut atas permintaan pemilik produk. Toggle-nya ada di dialog
+  Sinkronisasi pada kartu toko, bukan di kartu itu sendiri, supaya tidak
+  terpencet sambil lalu. `channel:stock-handover` tetap ada dan tetap cara yang
+  dianjurkan saat cutover karena ia memverifikasi prasyarat sebelum menyalakan;
+  toggle UI tidak melakukan verifikasi itu.
 - **Gap analysis fitur Jubelio belum dikerjakan** (bagian 8, G0). Ini pekerjaan
   wawancara tim admin, bukan pekerjaan kode, dan hasilnya bisa mengubah jadwal.
 
@@ -518,11 +614,31 @@ order, dan Jubelio tidak bisa dimatikan sebelum yang terakhir tuntas.
 | Sepakati cutoff per toko dan siapa PIC-nya | keputusan |
 | Sepakati kriteria kelulusan order (bagian 3.4) dan stok (bagian 6.4) | keputusan |
 | Tinjau ulang kerja dobel input stok selama fase order — belum berguna sampai G4/S1 | keputusan |
-| Jalankan test dan uji semua command dengan `--dry-run` di satu toko | teknis |
+| ~~Jalankan test dan uji semua command dengan `--dry-run`~~ — **selesai, lihat 7.1** | teknis |
+| Uji `--dry-run`/`--limit` di satu toko sungguhan (belum, butuh toko shadow pertama) | teknis |
 
 Gap analysis paling mahal kalau ditunda. Kalau baru ketahuan saat cutover,
 pilihannya tinggal dua-duanya buruk: tunda cutover, atau paksa tim bekerja tanpa
 alat.
+
+**Kerangka gap analysis.** Wawancarai tiap admin yang memakai Jubelio harian,
+lalu isi satu baris per pekerjaan — bukan per fitur, karena tim menyebut
+pekerjaan, bukan nama menu:
+
+| Kolom | Isi |
+|---|---|
+| Pekerjaan | "Cetak label 200 pesanan pagi hari" |
+| Frekuensi | harian / mingguan / bulanan / insidental |
+| Volume | berapa order, SKU, atau menit per hari |
+| Di superapp | ada / ada tapi beda cara / belum ada |
+| Kalau belum ada | workaround yang bisa diterima, atau blocker cutover |
+| PIC | siapa yang memverifikasi kesetaraannya |
+
+Aturan keputusannya: apa pun yang **harian dan belum ada padanannya** adalah
+blocker cutover, bukan backlog. Yang insidental boleh jadi workaround asal
+tertulis siapa yang mengerjakannya dan sampai kapan. Tanpa pemisahan ini,
+"nanti menyusul" akan dipakai untuk semua hal dan cutover mundur tanpa sebab
+yang bisa ditunjuk.
 
 ### G1 — Shadow order (2–4 minggu)
 

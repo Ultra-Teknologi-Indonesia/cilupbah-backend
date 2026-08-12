@@ -21,6 +21,8 @@ class ChannelShopResource extends JsonResource
             'shadow_started_at' => $this->shadow_started_at,
             'shadow_last_pulled_at' => $this->shadow_last_pulled_at,
             'stock_push_enabled' => (bool) $this->stock_push_enabled,
+            'catalog_pull_enabled' => (bool) $this->catalog_pull_enabled,
+            'catalog_push_enabled' => (bool) $this->catalog_push_enabled,
             'stock_push_buffer' => (int) $this->stock_push_buffer,
             'stock_handover_at' => $this->stock_handover_at,
             'stock_source_mode' => $this->stock_source_mode ?? 'location',

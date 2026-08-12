@@ -73,13 +73,27 @@ class ProcessWooCommerceWebhook implements ShouldQueue
             ]),
         };
 
-        ChannelWebhookInbox::markProcessedByKey(
-            self::idempotencyKey($this->shopId, $this->topic, $this->payload),
-        );
+        $eventKey = self::idempotencyKey($this->shopId, $this->topic, $this->payload);
+
+        if ($this->orderIntakeSkipped) {
+            ChannelWebhookInbox::markSkippedByKey($eventKey, \Modules\Channel\Support\ChannelOrderIntakeGate::reason());
+
+            return;
+        }
+
+        ChannelWebhookInbox::markProcessedByKey($eventKey);
     }
+
+    protected bool $orderIntakeSkipped = false;
 
     protected function handleOrderEvent(WooCommerceOrderService $orderService): void
     {
+        if (\Modules\Channel\Support\ChannelOrderIntakeGate::blocksShop((string) $this->shopId, 'woocommerce')) {
+            $this->orderIntakeSkipped = true;
+
+            return;
+        }
+
         $orderService->pullOrderById($this->shopId, $this->resourceId);
 
         if ($this->topic === 'order.deleted') {

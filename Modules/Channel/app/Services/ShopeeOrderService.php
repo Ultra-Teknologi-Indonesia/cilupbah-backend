@@ -148,12 +148,6 @@ class ShopeeOrderService
         return array_values(array_unique($orderSns));
     }
 
-    /**
-     * Shopee membatasi rentang time_from/time_to maksimum 15 hari per request,
-     * jadi rentang yang lebih panjang (mis. backfill) dipecah jadi beberapa window.
-     *
-     * @return array<int, array{0: int, 1: int}>
-     */
     protected function splitTimeWindows(int $timeFrom, int $timeTo): array
     {
         $maxSpan = self::MAX_TIME_RANGE_DAYS * 86400;

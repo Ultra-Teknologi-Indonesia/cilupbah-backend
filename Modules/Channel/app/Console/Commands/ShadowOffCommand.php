@@ -8,14 +8,6 @@ use Modules\Channel\Models\ChannelShop;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderService;
 
-/**
- * Mematikan Shadow Mode saat cutover selesai.
- *
- * Order shadow yang sudah selesai/dibatalkan/terlanjur diproses di sistem lama
- * dibiarkan jadi arsip (tetap is_shadow, tetap tidak masuk angka operasional).
- * Order yang masih terbuka bisa dipromosikan jadi order sungguhan dengan
- * --promote, supaya fulfillment-nya dilanjutkan di sistem ini.
- */
 class ShadowOffCommand extends Command
 {
     protected $signature = 'channel:shadow-off

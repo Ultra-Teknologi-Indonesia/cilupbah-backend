@@ -121,8 +121,8 @@ class ProcessTikTokWebhook implements ShouldQueue
             $event = $this->resolveEvent($type, $data);
 
             match ($event) {
-                self::EVENT_ORDER => $this->handleOrderEvent($orderService, $shopId, $data),
-                self::EVENT_PACKAGE => $this->handlePackageEvent($orderService, $shopId, $data),
+                self::EVENT_ORDER => $this->skipsOrderIntake($shopId) ? null : $this->handleOrderEvent($orderService, $shopId, $data),
+                self::EVENT_PACKAGE => $this->skipsOrderIntake($shopId) ? null : $this->handlePackageEvent($orderService, $shopId, $data),
                 self::EVENT_CANCELLATION => $this->handleCancellationEvent($orderService, $shopId, $data),
                 self::EVENT_REVERSE => $this->handleReverseEvent($orderService, $shopId, $data),
                 self::EVENT_REFUND_SUCCESS => $this->handleRefundSuccessEvent($orderService, $shopId, $data),
@@ -143,7 +143,11 @@ class ProcessTikTokWebhook implements ShouldQueue
                 ]),
             };
 
-            ChannelWebhookInbox::markProcessedByKey($idempotencyKey);
+            if ($this->orderIntakeSkipped) {
+                ChannelWebhookInbox::markSkippedByKey($idempotencyKey, \Modules\Channel\Support\ChannelOrderIntakeGate::reason());
+            } else {
+                ChannelWebhookInbox::markProcessedByKey($idempotencyKey);
+            }
         } catch (\Throwable $e) {
             Cache::forget($idempotencyKey);
             throw $e;
@@ -187,6 +191,17 @@ class ProcessTikTokWebhook implements ShouldQueue
         }
 
         return self::EVENT_UNKNOWN;
+    }
+
+    protected bool $orderIntakeSkipped = false;
+
+    protected function skipsOrderIntake(string $shopId): bool
+    {
+        if (! \Modules\Channel\Support\ChannelOrderIntakeGate::blocksShop($shopId, 'tiktok')) {
+            return false;
+        }
+
+        return $this->orderIntakeSkipped = true;
     }
 
     protected function handleOrderEvent(TikTokOrderService $orderService, string $shopId, array $data): void

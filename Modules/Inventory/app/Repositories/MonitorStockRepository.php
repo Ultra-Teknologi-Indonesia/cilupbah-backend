@@ -19,7 +19,7 @@ class MonitorStockRepository
 
     private const OPEN_PO_STATUSES = ['OPEN', 'PARTIAL_RECEIVED'];
 
-    private const PENDING_ORDER_STATUSES = ['PENDING', 'CONFIRMED', 'PROCESSING', 'UNPAID'];
+    private const PENDING_ORDER_STATUSES = ['pending', 'reserved', 'UNPAID', 'AWAITING_BUYER_CONFIRMATION'];
 
     private function baseQuery(array $filters): Builder
     {
@@ -105,12 +105,27 @@ class MonitorStockRepository
 
     public function summary(array $filters): array
     {
+        $base = $this->baseQuery($filters)->toBase();
+
+        $row = DB::query()
+            ->fromSub($base, 'b')
+            ->leftJoinSub($this->pendingOrderItemIds()->distinct(), 'pending', 'pending.item_id', '=', 'b.id')
+            ->leftJoinSub($this->openPoItemIds()->distinct(), 'open_po', 'open_po.item_id', '=', 'b.id')
+            ->selectRaw(<<<'SQL'
+                COUNT(*) FILTER (WHERE b.total_available <= 0) AS habis,
+                COUNT(*) FILTER (WHERE b.total_on_hand < 0) AS minus,
+                COUNT(*) FILTER (WHERE b.total_available <= 0 AND pending.item_id IS NOT NULL) AS dipesan,
+                COUNT(*) FILTER (WHERE b.min_stock > 0 AND b.total_available < b.min_stock) AS menipis,
+                COUNT(*) FILTER (WHERE open_po.item_id IS NOT NULL) AS on_order
+            SQL)
+            ->first();
+
         return [
-            'habis'    => $this->countMode('habis', $filters),
-            'minus'    => $this->countMode('minus', $filters),
-            'dipesan'  => $this->countMode('dipesan', $filters),
-            'menipis'  => $this->countMode('menipis', $filters),
-            'on_order' => $this->countMode('on-order', $filters),
+            'habis'    => (int) ($row->habis ?? 0),
+            'minus'    => (int) ($row->minus ?? 0),
+            'dipesan'  => (int) ($row->dipesan ?? 0),
+            'menipis'  => (int) ($row->menipis ?? 0),
+            'on_order' => (int) ($row->on_order ?? 0),
         ];
     }
 
@@ -193,9 +208,9 @@ class MonitorStockRepository
                     ->select('product_channel_mappings.*')
             )
             ->allowedSearch('products.name', 'products.sku')
-            ->allowedFilters([
+            ->allowedFilters(
                 AllowedFilter::exact('channel_shop_id'),
-            ])
+            )
             ->defaultSort('-product_channel_mappings.updated_at')
             ->paginate(request('per_page', $perPage))
             ->appends(request()->query());

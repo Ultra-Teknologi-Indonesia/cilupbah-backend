@@ -60,6 +60,17 @@ class ChannelWebhookInbox extends Model
             ]);
     }
 
+    public static function markSkippedByKey(string $eventKey, string $reason): void
+    {
+        static::query()
+            ->where('event_key', $eventKey)
+            ->update([
+                'status' => WebhookInboxStatus::SKIPPED,
+                'processed_at' => now(),
+                'error' => mb_substr($reason, 0, 2000),
+            ]);
+    }
+
     public static function markFailedByKey(string $eventKey, string $message): void
     {
         static::query()

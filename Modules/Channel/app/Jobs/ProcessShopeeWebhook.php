@@ -63,6 +63,8 @@ class ProcessShopeeWebhook implements ShouldQueue
         ]));
     }
 
+    protected bool $orderIntakeSkipped = false;
+
     public function handle(ShopeeOrderService $orderService, ChannelDownloadService $downloadService): void
     {
         if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
@@ -95,14 +97,14 @@ class ProcessShopeeWebhook implements ShouldQueue
             self::PUSH_BOOKING_TRACKING_NO,
             self::PUSH_BOOKING_SHIPPING_DOC,
             self::PUSH_PACKAGE_FULFILLMENT,
-            self::PUSH_COURIER_DELIVERY_BINDING => $this->handleOrderEvent($orderService, $shopId, $data),
+            self::PUSH_COURIER_DELIVERY_BINDING => $this->handleOrderEventOrSkip($orderService, $shopId, $data),
             self::PUSH_RETURN_UPDATE => $this->handleReturnEvent($orderService, $shopId, $data),
             self::PUSH_RESERVED_STOCK_CHANGE,
             self::PUSH_ITEM_PRICE_UPDATE => $this->logItemEvent($downloadService, $shopId, $data),
             default => Log::info("Shopee webhook code {$code} belum ditangani — diabaikan.", ['shop_id' => $shopId]),
         };
 
-        if (in_array($code, [
+        if (! $this->orderIntakeSkipped && in_array($code, [
             self::PUSH_TRACKING_NO,
             self::PUSH_PACKAGE_FULFILLMENT,
             self::PUSH_COURIER_DELIVERY_BINDING,
@@ -111,7 +113,26 @@ class ProcessShopeeWebhook implements ShouldQueue
             $this->recordShopeeTrackingEvent($shopId, $code, $data);
         }
 
-        ChannelWebhookInbox::markProcessedByKey(self::idempotencyKey($this->payload));
+        $eventKey = self::idempotencyKey($this->payload);
+
+        if ($this->orderIntakeSkipped) {
+            ChannelWebhookInbox::markSkippedByKey($eventKey, \Modules\Channel\Support\ChannelOrderIntakeGate::reason());
+
+            return;
+        }
+
+        ChannelWebhookInbox::markProcessedByKey($eventKey);
+    }
+
+    protected function handleOrderEventOrSkip(ShopeeOrderService $orderService, string $shopId, array $data): void
+    {
+        if (\Modules\Channel\Support\ChannelOrderIntakeGate::blocksShop($shopId, 'shopee')) {
+            $this->orderIntakeSkipped = true;
+
+            return;
+        }
+
+        $this->handleOrderEvent($orderService, $shopId, $data);
     }
 
     protected function recordShopeeTrackingEvent(string $shopId, int $code, array $data): void

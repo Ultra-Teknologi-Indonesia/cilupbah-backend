@@ -39,6 +39,20 @@ class SyncProductToChannelJob implements ShouldQueue
     protected string $channelCodeResolved = '';
     protected bool $uploadResultRecorded = false;
 
+    private const STOCK_ACTIONS = ['sync_price_stock', 'sync_stock'];
+
+    public static function isStockAction(string $action): bool
+    {
+        return in_array($action, self::STOCK_ACTIONS, true);
+    }
+
+    private function shopAllowsAction(ChannelShop $shop): bool
+    {
+        return self::isStockAction($this->action)
+            ? (bool) $shop->stock_push_enabled
+            : (bool) $shop->catalog_push_enabled;
+    }
+
     public function __construct(string $productId, string $channelShopId, string $action, ?array $attributeMapping = null, ?string $draftId = null)
     {
         $this->productId = $productId;
@@ -80,10 +94,12 @@ class SyncProductToChannelJob implements ShouldQueue
             return;
         }
 
-        if (! $shop->stock_push_enabled) {
-            Log::info("SyncProductToChannelJob skipped: Push stok/harga toko ini belum diaktifkan (belum serah terima stok).", [
+        if (! $this->shopAllowsAction($shop)) {
+            Log::info("SyncProductToChannelJob skipped: sinkronisasi untuk toko ini dimatikan.", [
                 'product_id' => $this->productId,
                 'channel_shop_id' => $this->channelShopId,
+                'action' => $this->action,
+                'axis' => self::isStockAction($this->action) ? 'stok' : 'katalog',
                 'is_shadow_mode' => (bool) $shop->is_shadow_mode,
             ]);
             return;
