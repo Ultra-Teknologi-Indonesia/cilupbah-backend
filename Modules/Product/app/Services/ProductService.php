@@ -219,37 +219,7 @@ class ProductService
     {
         $data = ProductIngestSanitizer::sanitize($data);
         $variantIds = [];
-        $parentSku = $data['sku'] ?? null;
-        $productId = null;
-
-        if ($parentSku) {
-            $productId = $this->writeRepository->productIdBySku($parentSku)
-                ?? $this->writeRepository->productIdByVariantSku($parentSku);
-        }
-
-        if (! $productId && ! empty($data['variants'])) {
-            foreach ($data['variants'] as $variant) {
-                $vSku = $variant['sku'] ?? null;
-                if ($vSku) {
-                    $productId = $this->writeRepository->productIdBySku($vSku)
-                        ?? $this->writeRepository->productIdByVariantSku($vSku);
-                    if ($productId) {
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (! $productId) {
-            $externalProductId = $data['channel_external_product_id'] ?? null;
-            $externalShopId = $data['channel_shop_id_external'] ?? null;
-            if ($externalProductId && $externalShopId) {
-                $productId = $this->writeRepository->productIdByChannelExternalId(
-                    (string) $externalShopId,
-                    (string) $externalProductId
-                );
-            }
-        }
+        $productId = $this->resolveExistingProductFromChannel($data);
 
         if ($productId) {
             $matchedExisting = true;
@@ -262,6 +232,112 @@ class ProductService
         $this->queueExternalMediaMirroring($productId);
 
         return $productId;
+    }
+
+    public function addVariantFromChannel(string $productId, array $variant): ?string
+    {
+        $sku = trim((string) ($variant['sku'] ?? ''));
+
+        if ($sku === '') {
+            return null;
+        }
+
+        return DB::transaction(function () use ($productId, $variant, $sku) {
+            $existing = $this->writeRepository->variantIdByProductAndSku($productId, $sku);
+
+            if ($existing) {
+                return $existing;
+            }
+
+            $variantData = Arr::only($variant, [
+                'barcode', 'buy_price', 'sell_price', 'is_active',
+                'min_stock', 'safe_stock', 'weight', 'length', 'width', 'height',
+            ]);
+
+            $variantId = \Ramsey\Uuid\Uuid::uuid7()->toString();
+            $this->writeRepository->insertVariantRow(array_merge($variantData, [
+                'id' => $variantId,
+                'product_id' => $productId,
+                'sku' => $sku,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]));
+
+            $options = $this->channelOptionRows($productId, $variantId, $variant['options'] ?? []);
+
+            if ($options) {
+                $this->writeRepository->insertVariantOptions($options);
+            }
+
+            if (! empty($variant['media'])) {
+                $this->writeRepository->insertMedia(array_map(
+                    fn ($m) => $this->buildMediaRow($m, $productId, $variantId),
+                    $variant['media']
+                ));
+            }
+
+            return $variantId;
+        });
+    }
+
+    private function channelOptionRows(string $productId, string $variantId, array $options): array
+    {
+        if (empty($options)) {
+            return [];
+        }
+
+        $attributeIds = $this->writeRepository->variationTypeAttributeIds($productId);
+        $rows = [];
+
+        foreach (array_values($options) as $i => $opt) {
+            $attributeId = $opt['attribute_id'] ?? ($attributeIds[$i] ?? null);
+            $value = trim((string) ($opt['value'] ?? ''));
+
+            if (! $attributeId || $value === '') {
+                continue;
+            }
+
+            $rows[] = [
+                'variant_id' => $variantId,
+                'attribute_id' => $attributeId,
+                'value' => $value,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
+
+        return $rows;
+    }
+
+    private function resolveExistingProductFromChannel(array $data): ?string
+    {
+        $externalProductId = $data['channel_external_product_id'] ?? null;
+        $externalShopId = $data['channel_shop_id_external'] ?? null;
+
+        if ($externalProductId && $externalShopId) {
+            $productId = $this->writeRepository->productIdByChannelExternalId(
+                (string) $externalShopId,
+                (string) $externalProductId
+            );
+
+            if ($productId) {
+                return $productId;
+            }
+        }
+
+        $parentSku = $data['sku'] ?? null;
+
+        if ($parentSku) {
+            $productId = $this->writeRepository->productIdBySku($parentSku);
+
+            if ($productId) {
+                return $productId;
+            }
+        }
+
+        return $this->writeRepository->productIdWithMostMatchingVariantSkus(
+            array_column($data['variants'] ?? [], 'sku')
+        );
     }
 
     private function queueExternalMediaMirroring(string $productId): void

@@ -60,6 +60,22 @@ class ProductWriteRepository
             ->value('pcm.product_id');
     }
 
+    public function productIdWithMostMatchingVariantSkus(array $skus): ?string
+    {
+        $skus = array_values(array_filter(array_unique($skus)));
+
+        if (empty($skus)) {
+            return null;
+        }
+
+        return DB::table('product_variants')
+            ->whereIn('sku', $skus)
+            ->whereNull('deleted_at')
+            ->groupBy('product_id')
+            ->orderByRaw('COUNT(*) DESC, MIN(id::text) ASC')
+            ->value('product_id');
+    }
+
     public function productCategoryId(string $productId)
     {
         return DB::table('products')->where('id', $productId)->value('category_id');
@@ -157,7 +173,9 @@ class ProductWriteRepository
     public function variationTypeAttributeIds(string $productId): array
     {
         return DB::table('product_variation_types')
-            ->where('product_id', $productId)->pluck('attribute_id')
+            ->where('product_id', $productId)
+            ->orderBy('sort_order')
+            ->pluck('attribute_id')
             ->map(fn ($v) => (int) $v)->all();
     }
 
@@ -264,6 +282,7 @@ class ProductWriteRepository
         return DB::table('product_channel_mappings')
             ->where('product_id', $productId)
             ->where('sync_status', '!=', 'pending')
+            ->distinct()
             ->pluck('channel_shop_id');
     }
 
@@ -273,6 +292,7 @@ class ProductWriteRepository
             ->where('product_id', $productId)
             ->whereNotIn('sync_status', ['pending', 'deactivated'])
             ->whereNotNull('external_product_id')
+            ->distinct()
             ->pluck('channel_shop_id');
     }
 

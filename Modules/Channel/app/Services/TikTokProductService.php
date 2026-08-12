@@ -8,6 +8,7 @@ use Modules\Channel\Exceptions\TokenExpiredException;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Repositories\ChannelProductRepository;
 use Modules\Channel\Services\TikTokToInternalProductMapper;
+use Modules\Channel\Support\ChannelModelLinker;
 use Modules\Product\Models\ProductSyncLog;
 use Modules\Product\Services\ChannelAttributeService;
 
@@ -399,7 +400,16 @@ class TikTokProductService
                             false
                         );
 
-                        $this->mapSkusToVariants($pcmId, (string) $insertedId, $detail['skus'] ?? [], $matchedExisting, $variantIds);
+                        $this->mapSkusToVariants(
+                            $shop,
+                            $shopId,
+                            (string) $item['id'],
+                            $pcmId,
+                            (string) $insertedId,
+                            $detail['skus'] ?? [],
+                            $internalData,
+                            $variantIds
+                        );
 
                         $count++;
                         if ($onProgress) {
@@ -587,7 +597,16 @@ class TikTokProductService
             false
         );
 
-        $this->mapSkusToVariants($pcmId, (string) $insertedId, $detail['skus'] ?? [], $matchedExisting, $variantIds);
+        $this->mapSkusToVariants(
+            $shop,
+            $shopId,
+            (string) ($detail['id'] ?? $externalProductId),
+            $pcmId,
+            (string) $insertedId,
+            $detail['skus'] ?? [],
+            $internalData,
+            $variantIds
+        );
 
         ProductSyncLog::record([
             'channel_shop_id' => $channelShopId,
@@ -599,39 +618,42 @@ class TikTokProductService
         return true;
     }
 
-    protected function mapSkusToVariants(string $pcmId, string $insertedId, array $skus, bool $matchedExisting, array $variantIds): void
-    {
+    protected function mapSkusToVariants(
+        object $shop,
+        string $shopId,
+        string $externalProductId,
+        string $pcmId,
+        string $insertedId,
+        array $skus,
+        array $internalData,
+        array $variantIds
+    ): void {
+        $variantsByIndex = array_values($internalData['variants'] ?? []);
+        $normalized = [];
+
         foreach ($skus as $idx => $skuData) {
             $salesAttr = $skuData['sales_attributes'][0] ?? null;
 
-            if (! $matchedExisting) {
-                $variantId = $variantIds[$idx] ?? null;
-                if (! $variantId) {
-                    continue;
-                }
-            } else {
-                $sku = $skuData['seller_sku'] ?? null;
-                if (! $sku) {
-                    continue;
-                }
-
-                $variant = $this->productRepository->getVariantByProductIdAndSku($insertedId, $sku);
-                if (! $variant) {
-                    continue;
-                }
-                $variantId = $variant->id;
-            }
-
-            $this->productRepository->upsertVariantChannelMapping(
-                $pcmId,
-                $variantId,
-                $skuData['id'] ?? null,
-                $skuData['seller_sku'] ?? null,
-                $skuData['price']['tax_exclusive_price'] ?? null,
-                $salesAttr['id'] ?? null,
-                $salesAttr['name'] ?? null
-            );
+            $normalized[] = [
+                'sku' => $skuData['seller_sku'] ?? null,
+                'external_sku_id' => $skuData['id'] ?? null,
+                'price' => $skuData['price']['tax_exclusive_price'] ?? null,
+                'group' => $salesAttr['value_id'] ?? $salesAttr['value_name'] ?? null,
+                'variant' => $variantsByIndex[$idx] ?? [],
+                'fallback_variant_id' => $variantIds[$idx] ?? null,
+                'sales_attribute_id' => $salesAttr['id'] ?? null,
+                'sales_attribute_name' => $salesAttr['name'] ?? null,
+            ];
         }
+
+        app(ChannelModelLinker::class)->link(
+            $shop,
+            $shopId,
+            $externalProductId,
+            $normalized,
+            $insertedId,
+            $pcmId
+        );
     }
 
     public function reconcileChannelData(string $shopId): int

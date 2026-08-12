@@ -4,6 +4,7 @@ namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Channel\Support\ChannelParentSku;
 use Modules\Channel\Support\TikTokImageUrl;
 use Modules\Product\Models\Product;
 
@@ -147,7 +148,7 @@ class TikTokToInternalProductMapper
             ];
         }
 
-        $internal['sku'] = $internal['variants'][0]['sku'] ?? null;
+        $internal['sku'] = ChannelParentSku::fromSingleVariant($internal['variants']);
 
         $internal['channel_external_product_id'] = isset($tiktokProduct['id']) ? (string) $tiktokProduct['id'] : null;
         $internal['channel_shop_id_external'] = $shopId;

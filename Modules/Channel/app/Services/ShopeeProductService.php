@@ -8,6 +8,7 @@ use Modules\Channel\Contracts\ChunkedDownloadable;
 use Modules\Channel\Exceptions\TokenExpiredException;
 use Modules\Channel\Repositories\ChannelProductRepository;
 use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Channel\Support\ChannelModelLinker;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductSyncLog;
 use Modules\Product\Models\ProductVariantChannelMapping;
@@ -551,29 +552,44 @@ class ShopeeProductService implements ChunkedDownloadable
             return true;
         }
 
-        foreach ($models as $idx => $model) {
-            if (! $matchedExisting) {
-                $variantId = $variantIds[$idx] ?? null;
-            } else {
-                $sku = $model['model_sku'] ?? null;
-                $variant = $sku ? $this->productRepository->getVariantByProductIdAndSku((string) $insertedId, $sku) : null;
-                $variantId = $variant->id ?? null;
-            }
-
-            if (! $variantId) {
-                continue;
-            }
-
-            $this->productRepository->upsertVariantChannelMapping(
-                $pcmId,
-                $variantId,
-                isset($model['model_id']) ? (string) $model['model_id'] : null,
-                $model['model_sku'] ?? null,
-                $model['price_info'][0]['current_price'] ?? $model['original_price'] ?? null
-            );
-        }
+        $this->linkModels($shop, $shopId, $item, $models, $internalData, (string) $insertedId, $pcmId, $variantIds);
 
         return true;
+    }
+
+    protected function linkModels(
+        object $shop,
+        string $shopId,
+        array $item,
+        array $models,
+        array $internalData,
+        string $defaultProductId,
+        string $defaultPcmId,
+        array $variantIds = []
+    ): void {
+        $variantsByIndex = array_values($internalData['variants'] ?? []);
+
+        $normalized = [];
+
+        foreach ($models as $idx => $model) {
+            $normalized[] = [
+                'sku' => $model['model_sku'] ?? null,
+                'external_sku_id' => $model['model_id'] ?? null,
+                'price' => $model['price_info'][0]['current_price'] ?? $model['original_price'] ?? null,
+                'group' => $model['tier_index'][0] ?? null,
+                'variant' => $variantsByIndex[$idx] ?? [],
+                'fallback_variant_id' => $variantIds[$idx] ?? null,
+            ];
+        }
+
+        app(ChannelModelLinker::class)->link(
+            $shop,
+            $shopId,
+            (string) ($item['item_id'] ?? ''),
+            $normalized,
+            $defaultProductId,
+            $defaultPcmId
+        );
     }
 
     protected function extractItemIds(array $list): array

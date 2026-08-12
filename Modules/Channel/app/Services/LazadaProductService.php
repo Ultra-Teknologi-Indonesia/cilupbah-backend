@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Exceptions\TokenExpiredException;
 use Modules\Channel\Repositories\ChannelProductRepository;
 use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Channel\Support\ChannelModelLinker;
 use Modules\Product\Models\ProductSyncLog;
 
 class LazadaProductService
@@ -578,27 +579,28 @@ class LazadaProductService
                                 false
                             );
 
-                            foreach ($item['skus'] ?? [] as $idx => $skuData) {
-                                if (! $matchedExisting) {
-                                    $variantId = $variantIds[$idx] ?? null;
-                                } else {
-                                    $variant = $this->productRepository->getVariantByProductIdAndSku(
-                                        (string) $insertedId,
-                                        $skuData['SellerSku'] ?? null
-                                    );
-                                    $variantId = $variant->id ?? null;
-                                }
+                            $variantsByIndex = array_values($internalData['variants'] ?? []);
+                            $normalized = [];
 
-                                if ($variantId) {
-                                    $this->productRepository->upsertVariantChannelMapping(
-                                        $pcmId,
-                                        $variantId,
-                                        isset($skuData['SkuId']) ? (string) $skuData['SkuId'] : null,
-                                        $skuData['SellerSku'] ?? null,
-                                        $skuData['price'] ?? null
-                                    );
-                                }
+                            foreach ($item['skus'] ?? [] as $idx => $skuData) {
+                                $normalized[] = [
+                                    'sku' => $skuData['SellerSku'] ?? null,
+                                    'external_sku_id' => $skuData['SkuId'] ?? null,
+                                    'price' => $skuData['price'] ?? null,
+                                    'group' => $skuData['saleProp']['color_family'] ?? null,
+                                    'variant' => $variantsByIndex[$idx] ?? [],
+                                    'fallback_variant_id' => $variantIds[$idx] ?? null,
+                                ];
                             }
+
+                            app(ChannelModelLinker::class)->link(
+                                $shop,
+                                $shopId,
+                                (string) ($item['item_id'] ?? ''),
+                                $normalized,
+                                (string) $insertedId,
+                                $pcmId
+                            );
 
                             $count++;
                             if ($onProgress) {

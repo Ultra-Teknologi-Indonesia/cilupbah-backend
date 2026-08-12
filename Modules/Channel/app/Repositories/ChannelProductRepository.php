@@ -30,10 +30,20 @@ class ChannelProductRepository
 
     public function markProductInReview(Product $product, string $channelShopId, ?string $externalProductId): void
     {
-        $mapping = ProductChannelMapping::firstOrNew([
+        $query = fn () => ProductChannelMapping::where('product_id', $product->id)
+            ->where('channel_shop_id', $channelShopId);
+
+        $mapping = $externalProductId !== null
+            ? $query()->where('external_product_id', $externalProductId)->first()
+            : null;
+
+        $mapping ??= $query()->whereNull('external_product_id')->first();
+
+        $mapping ??= new ProductChannelMapping([
             'product_id' => $product->id,
             'channel_shop_id' => $channelShopId,
         ]);
+
         $mapping->external_product_id = $externalProductId;
         $mapping->save();
         $mapping->markInReview($externalProductId);
@@ -106,6 +116,25 @@ class ChannelProductRepository
         );
 
         return null;
+    }
+
+    public function variantsBySkus(array $skus): array
+    {
+        $skus = array_values(array_filter(array_map(
+            fn ($s) => trim((string) $s),
+            $skus
+        ), fn ($s) => $s !== ''));
+
+        if (! $skus) {
+            return [];
+        }
+
+        return DB::table('product_variants')
+            ->whereIn('sku', $skus)
+            ->whereNull('deleted_at')
+            ->get(['id', 'sku', 'product_id'])
+            ->keyBy('sku')
+            ->all();
     }
 
     public function findById(string $id)
@@ -245,6 +274,9 @@ class ChannelProductRepository
         $mapping = DB::table('product_channel_mappings')
             ->where('product_id', $productId)
             ->where('channel_shop_id', $channelShop->id)
+            ->whereNotNull('external_product_id')
+            ->orderByDesc('last_synced_at')
+            ->orderByDesc('id')
             ->first();
 
         return $mapping->external_product_id ?? null;
@@ -292,10 +324,7 @@ class ChannelProductRepository
             return $existingId;
         };
 
-        $existing = DB::table('product_channel_mappings')
-            ->where('product_id', $productId)
-            ->where('channel_shop_id', $channelShop->id)
-            ->first();
+        $existing = $this->findChannelMappingRow($productId, $channelShop->id, $externalProductId);
 
         if ($existing) {
             return $applyUpdate($existing->id);
@@ -320,10 +349,7 @@ class ChannelProductRepository
                 throw $e;
             }
 
-            $raced = DB::table('product_channel_mappings')
-                ->where('product_id', $productId)
-                ->where('channel_shop_id', $channelShop->id)
-                ->first();
+            $raced = $this->findChannelMappingRow($productId, $channelShop->id, $externalProductId);
 
             if ($raced) {
                 return $applyUpdate($raced->id);
@@ -388,10 +414,7 @@ class ChannelProductRepository
                 ->update($update);
         };
 
-        $existing = DB::table('product_variant_channel_mappings')
-            ->where('product_channel_mapping_id', $pcmId)
-            ->where('variant_id', $variantId)
-            ->first();
+        $existing = $this->findVariantChannelMappingRow($pcmId, $variantId, $externalSkuId);
 
         if ($existing) {
             $applyUpdate($existing->id);
@@ -417,10 +440,7 @@ class ChannelProductRepository
                 throw $e;
             }
 
-            $raced = DB::table('product_variant_channel_mappings')
-                ->where('product_channel_mapping_id', $pcmId)
-                ->where('variant_id', $variantId)
-                ->first();
+            $raced = $this->findVariantChannelMappingRow($pcmId, $variantId, $externalSkuId);
 
             if ($raced) {
                 $applyUpdate($raced->id);
@@ -429,6 +449,46 @@ class ChannelProductRepository
 
             throw $e;
         }
+    }
+
+    private function findVariantChannelMappingRow(string $pcmId, string $variantId, ?string $externalSkuId): ?object
+    {
+        $base = fn () => DB::table('product_variant_channel_mappings')
+            ->where('product_channel_mapping_id', $pcmId);
+
+        if ($externalSkuId === null) {
+            return $base()->where('variant_id', $variantId)->first();
+        }
+
+        $byModel = $base()->where('external_sku_id', $externalSkuId)->first();
+
+        if ($byModel) {
+            return $byModel;
+        }
+
+        return $base()
+            ->where('variant_id', $variantId)
+            ->whereNull('external_sku_id')
+            ->first();
+    }
+
+    private function findChannelMappingRow(string $productId, string $channelShopId, ?string $externalProductId): ?object
+    {
+        $base = fn () => DB::table('product_channel_mappings')
+            ->where('product_id', $productId)
+            ->where('channel_shop_id', $channelShopId);
+
+        if ($externalProductId === null) {
+            return $base()->first();
+        }
+
+        $byListing = $base()->where('external_product_id', $externalProductId)->first();
+
+        if ($byListing) {
+            return $byListing;
+        }
+
+        return $base()->whereNull('external_product_id')->first();
     }
 
     protected static function isUniqueViolation(QueryException $e): bool

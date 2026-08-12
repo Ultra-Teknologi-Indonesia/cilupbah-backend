@@ -5,6 +5,7 @@ namespace Modules\Channel\Services;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Repositories\ChannelProductRepository;
+use Modules\Channel\Support\ChannelModelLinker;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductSyncLog;
 use Modules\Product\Models\ProductVariantChannelMapping;
@@ -254,27 +255,28 @@ class WooCommerceProductService
             return true;
         }
 
+        $variantsByIndex = array_values($internalData['variants'] ?? []);
+        $normalized = [];
+
         foreach ($variations as $idx => $variation) {
-            if (! $matchedExisting) {
-                $variantId = $variantIds[$idx] ?? null;
-            } else {
-                $sku = $variation['sku'] ?? null;
-                $variant = $sku ? $this->productRepository->getVariantByProductIdAndSku((string) $insertedId, $sku) : null;
-                $variantId = $variant->id ?? null;
-            }
-
-            if (! $variantId) {
-                continue;
-            }
-
-            $this->productRepository->upsertVariantChannelMapping(
-                $pcmId,
-                $variantId,
-                isset($variation['id']) ? (string) $variation['id'] : null,
-                $variation['sku'] ?? null,
-                $variation['regular_price'] ?? $variation['price'] ?? null
-            );
+            $normalized[] = [
+                'sku' => $variation['sku'] ?? null,
+                'external_sku_id' => $variation['id'] ?? null,
+                'price' => $variation['regular_price'] ?? $variation['price'] ?? null,
+                'group' => $variation['attributes'][0]['option'] ?? null,
+                'variant' => $variantsByIndex[$idx] ?? [],
+                'fallback_variant_id' => $variantIds[$idx] ?? null,
+            ];
         }
+
+        app(ChannelModelLinker::class)->link(
+            $shop,
+            $shopId,
+            (string) ($item['id'] ?? ''),
+            $normalized,
+            (string) $insertedId,
+            $pcmId
+        );
 
         return true;
     }

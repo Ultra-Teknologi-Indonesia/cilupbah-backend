@@ -32,6 +32,8 @@ class ProductUploadListingService
             ? ProductChannelMapping::where('product_id', $productId)
                 ->whereIn('channel_shop_id', $paginator->getCollection()->pluck('id'))
                 ->with('variantMappings.variant.options')
+                ->orderBy('last_synced_at')
+                ->orderBy('id')
                 ->get()
                 ->keyBy('channel_shop_id')
             : collect();
@@ -55,6 +57,8 @@ class ProductUploadListingService
         $mappings = ProductChannelMapping::where('product_id', $productId)
             ->whereIn('channel_shop_id', $storeIds)
             ->with('variantMappings')
+            ->orderBy('last_synced_at')
+            ->orderBy('id')
             ->get()
             ->keyBy('channel_shop_id');
 

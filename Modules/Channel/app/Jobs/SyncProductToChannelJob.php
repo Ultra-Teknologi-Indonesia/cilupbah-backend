@@ -394,11 +394,11 @@ class SyncProductToChannelJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        $mapping = ProductChannelMapping::where('product_id', $this->productId)
+        $mappings = ProductChannelMapping::where('product_id', $this->productId)
             ->where('channel_shop_id', $this->channelShopId)
-            ->first();
+            ->get();
 
-        if ($mapping) {
+        foreach ($mappings as $mapping) {
             $mapping->markAsFailed($exception->getMessage());
         }
     }

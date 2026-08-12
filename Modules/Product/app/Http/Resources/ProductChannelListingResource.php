@@ -4,6 +4,7 @@ namespace Modules\Product\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Modules\Product\Support\ChannelUrlBuilder;
 
 class ProductChannelListingResource extends JsonResource
 {
@@ -27,6 +28,12 @@ class ProductChannelListingResource extends JsonResource
                     'channel_code' => $ch->code ?? null,
                     'external_product_id' => $cm->external_product_id,
                     'external_sku_id' => $m->external_sku_id,
+                    'channel_url' => $cm->channel_url ?: ChannelUrlBuilder::build(
+                        $ch->code ?? null,
+                        $cm->external_product_id,
+                        $shop->shop_id ?? null,
+                        $m->external_sku_id
+                    ),
                     'sync_status' => $cm->sync_status,
                     'last_synced_at' => $cm->last_synced_at,
                 ];
