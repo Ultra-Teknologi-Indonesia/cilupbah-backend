@@ -169,7 +169,7 @@ class InventoryController extends Controller
         $stocks = $this->inventoryService->getStockByItem($itemId);
 
         return $this->successResponse(
-            \Modules\Inventory\Http\Resources\InventoryStockResource::collection($stocks),
+            \Modules\Inventory\Http\Resources\InventoryStockResource::collectionWithActual($stocks),
             'Detail stok per item berhasil diambil'
         );
     }
