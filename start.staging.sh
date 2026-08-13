@@ -5,5 +5,5 @@ echo "==> Optimizing Laravel..."
 php artisan optimize
 php artisan view:cache
 
-echo "==> Starting Laravel..."
-exec php artisan serve --host=0.0.0.0 --port=8000
+echo "==> Starting Supervisord (Nginx + PHP-FPM)..."
+exec /usr/bin/supervisord -n -c /etc/supervisor/conf.d/supervisord.conf
