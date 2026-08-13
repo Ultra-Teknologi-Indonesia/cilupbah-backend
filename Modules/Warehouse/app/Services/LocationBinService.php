@@ -4,6 +4,7 @@ namespace Modules\Warehouse\Services;
 
 use App\Traits\StockLockable;
 use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Models\SkuRackAssignment;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Services\StockAdjustmentService;
 use Modules\Product\Models\ProductVariant;
@@ -605,6 +606,10 @@ class LocationBinService
             ->sum('on_hand');
 
         if ($onHand <= 0) {
+            SkuRackAssignment::where('bin_id', $binId)
+                ->where('item_id', $itemId)
+                ->delete();
+
             return [
                 'bin_id' => $binId,
                 'item_id' => $itemId,
@@ -625,6 +630,10 @@ class LocationBinService
                 'notes' => "Dikeluarkan dari rak {$bin->bin_final_code}",
             ]],
         ]);
+
+        SkuRackAssignment::where('bin_id', $binId)
+            ->where('item_id', $itemId)
+            ->delete();
 
         return [
             'bin_id' => $binId,
