@@ -159,6 +159,37 @@ class RepairChannelSkuTest extends TestCase
         );
     }
 
+    public function test_varian_sku_tanda_baca_tanpa_tautan_channel_ikut_dihapus(): void
+    {
+        $master = $this->master();
+        $asli = $this->varian($master, 'SKU-ASLI');
+        $yatim = $this->varian($master, '----');
+
+        $this->tautkan($master, $asli, '8357466458');
+
+        $this->artisan('products:repair-channel-sku --apply --only=varian')->assertSuccessful();
+
+        $this->assertNotNull(
+            $yatim->fresh()->deleted_at,
+            'SKU tanpa huruf/angka adalah sampah walau sudah lepas dari listing mana pun'
+        );
+        $this->assertNull($asli->fresh()->deleted_at);
+    }
+
+    public function test_varian_yatim_di_master_non_channel_tidak_disentuh(): void
+    {
+        $manual = $this->master(['is_from_channel' => false]);
+        $this->varian($manual, 'SKU-MANUAL');
+        $strip = $this->varian($manual, '--');
+
+        $this->artisan('products:repair-channel-sku --apply --only=varian')->assertSuccessful();
+
+        $this->assertNull(
+            $strip->fresh()->deleted_at,
+            'Produk buatan tangan tanpa tautan channel di luar cakupan perintah ini'
+        );
+    }
+
     public function test_sku_angka_yang_bukan_id_listingnya_tidak_disentuh(): void
     {
         $master = $this->master();

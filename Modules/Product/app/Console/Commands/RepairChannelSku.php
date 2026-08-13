@@ -114,11 +114,13 @@ class RepairChannelSku extends Command
     private function bagianVarianPlaceholder(): void
     {
         $kandidat = DB::table('product_variants as v')
-            ->join('product_variant_channel_mappings as pvcm', 'pvcm.variant_id', '=', 'v.id')
-            ->join('product_channel_mappings as pcm', 'pcm.id', '=', 'pvcm.product_channel_mapping_id')
+            ->join('products as p', 'p.id', '=', 'v.product_id')
+            ->leftJoin('product_variant_channel_mappings as pvcm', 'pvcm.variant_id', '=', 'v.id')
+            ->leftJoin('product_channel_mappings as pcm', 'pcm.id', '=', 'pvcm.product_channel_mapping_id')
             ->whereNull('v.deleted_at')
             ->whereNotNull('v.sku')
             ->when($this->option('product'), fn ($q) => $q->where('v.product_id', $this->option('product')))
+            ->where(fn ($q) => $q->whereNotNull('pcm.id')->orWhere('p.is_from_channel', true))
             ->where(function ($q) {
                 $q->whereRaw("v.sku !~ '[[:alnum:]]'")
                     ->orWhereRaw("v.sku ~ '^[0-9]+-[0-9-]+$'");
@@ -153,7 +155,8 @@ class RepairChannelSku extends Command
         foreach ($placeholder->take(self::CONTOH) as $row) {
             $tanda = isset($terpakai[$row->id]) ? ' [dipakai]'
                 : (isset($terakhir[$row->id]) ? ' [varian terakhir master]' : '');
-            $this->line('   ' . str_pad($row->sku, 34) . 'listing ' . $row->external_product_id . $tanda);
+            $asal = $row->external_product_id ? 'listing ' . $row->external_product_id : 'tanpa tautan channel';
+            $this->line('   ' . str_pad($row->sku, 34) . $asal . $tanda);
         }
 
         if ($placeholder->count() > self::CONTOH) {
