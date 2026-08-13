@@ -9,7 +9,7 @@ use Spatie\QueryBuilder\QueryBuilder;
 
 class ProductFeedQuery
 {
-    public const SEARCHABLE = ['name', 'sku'];
+    public const SEARCHABLE = ['name', 'sku', 'variants.sku'];
 
     public const SORTS = ['name', 'created_at', 'updated_at'];
 

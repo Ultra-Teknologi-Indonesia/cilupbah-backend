@@ -361,4 +361,84 @@ class ChannelDownloadEmptySkuTest extends TestCase
 
         $this->assertSame(0, DB::table('product_variant_channel_mappings')->count(), 'Tidak ada model tanpa SKU yang boleh tertaut');
     }
+
+    public function test_download_mengabaikan_sku_bikinan_marketplace(): void
+    {
+        $this->makeShop('lazada', 'LZ-AUTO');
+
+        Http::fake([
+            'api.lazada.co.id/rest/products/get*' => Http::response([
+                'code' => '0',
+                'data' => [
+                    'total_products' => 1,
+                    'products' => [[
+                        'item_id' => 8357466458,
+                        'primary_category' => 10001234,
+                        'status' => 'active',
+                        'attributes' => ['name' => 'Case SKU Otomatis'],
+                        'images' => ['https://img.lazcdn.com/a.jpg'],
+                        'skus' => [
+                            [
+                                'SkuId' => 1786526430066,
+                                'SellerSku' => '8357466458-1786526430066-56',
+                                'price' => 50000,
+                                'Status' => 'active',
+                            ],
+                            [
+                                'SkuId' => 1758611403878,
+                                'SellerSku' => 'MAGSAFE-CLEAR-IP-11',
+                                'price' => 18250,
+                                'Status' => 'active',
+                            ],
+                        ],
+                    ]],
+                ],
+            ], 200),
+        ]);
+
+        $this->assertEquals(1, app(LazadaProductService::class)->pullProducts('LZ-AUTO'));
+
+        $this->assertSame(0, DB::table('product_variants')
+            ->where('sku', '8357466458-1786526430066-56')
+            ->count(), 'SKU bikinan marketplace tidak boleh jadi varian');
+
+        $asli = DB::table('product_variants')->where('sku', 'MAGSAFE-CLEAR-IP-11')->first();
+        $this->assertNotNull($asli, 'SKU asli di listing yang sama harus tetap ditarik');
+
+        $this->assertSame(1, DB::table('product_variant_channel_mappings')->count());
+        $this->assertNull(DB::table('products')->where('id', $asli->product_id)->value('sku'),
+            'SKU induk tetap kosong, tidak diisi dari SKU varian');
+    }
+
+    public function test_download_mengabaikan_sku_yang_cuma_tanda_baca(): void
+    {
+        $this->makeShop('lazada', 'LZ-DASH');
+
+        Http::fake([
+            'api.lazada.co.id/rest/products/get*' => Http::response([
+                'code' => '0',
+                'data' => [
+                    'total_products' => 1,
+                    'products' => [[
+                        'item_id' => 555600,
+                        'primary_category' => 10001234,
+                        'status' => 'active',
+                        'attributes' => ['name' => 'Produk SKU Strip'],
+                        'images' => ['https://img.lazcdn.com/a.jpg'],
+                        'skus' => [[
+                            'SkuId' => 777600,
+                            'SellerSku' => '-',
+                            'price' => 35000,
+                            'Status' => 'active',
+                        ]],
+                    ]],
+                ],
+            ], 200),
+        ]);
+
+        $this->assertEquals(1, app(LazadaProductService::class)->pullProducts('LZ-DASH'));
+
+        $this->assertSame(0, DB::table('product_variants')->where('sku', '-')->count());
+        $this->assertSame(0, DB::table('product_variant_channel_mappings')->count());
+    }
 }

@@ -237,6 +237,37 @@ class MasterFeedTest extends TestCase
         $this->assertContains('Softcase Rhombic', $names);
     }
 
+    public function test_search_filters_by_variant_sku(): void
+    {
+        $response = $this->getJson('/api/v1/products/master?search=RHOMBIC-MERAH');
+
+        $response->assertStatus(200);
+        $ids = collect($response->json('data'))->pluck('item_group_id')->all();
+        $this->assertContains($this->master->id, $ids, 'Master harus ketemu lewat SKU variannya');
+    }
+
+    public function test_search_by_variant_sku_tidak_menarik_master_lain(): void
+    {
+        $lain = Product::create([
+            'name' => 'Softcase Polos',
+            'category_id' => 1,
+            'status' => Product::STATUS_MASTER,
+            'is_active' => true,
+        ]);
+
+        ProductVariant::create([
+            'product_id' => $lain->id,
+            'sku' => 'POLOS-PUTIH',
+            'sell_price' => 40000,
+            'is_active' => true,
+        ]);
+
+        $response = $this->getJson('/api/v1/products/master?search=RHOMBIC-MERAH');
+
+        $ids = collect($response->json('data'))->pluck('item_group_id')->all();
+        $this->assertNotContains($lain->id, $ids);
+    }
+
     public function test_show_returns_single_master_item(): void
     {
         $response = $this->getJson("/api/v1/products/master/{$this->master->id}");

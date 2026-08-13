@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Repositories\ChannelProductRepository;
 use Modules\Product\Models\ProductSyncLog;
+use Modules\Product\Support\ChannelSku;
 use Modules\Product\Services\MasterProductMerger;
 use Modules\Product\Services\ProductService;
 
@@ -25,10 +26,10 @@ class ChannelModelLinker
         string $defaultProductId,
         string $defaultPcmId
     ): void {
-        $known = $this->repository->variantsBySkus(array_map(
-            fn ($m) => (string) ($m['sku'] ?? ''),
+        $known = $this->repository->variantsBySkus(array_values(array_filter(array_map(
+            fn ($m) => ChannelSku::normalize($m['sku'] ?? null, $externalProductId),
             $models
-        ));
+        ))));
 
         $productId = $this->consolidate($shop, $externalProductId, $known, $defaultProductId);
 
@@ -37,10 +38,16 @@ class ChannelModelLinker
             : $this->repository->upsertChannelMapping($productId, $shopId, $externalProductId, 'synced', null, false);
 
         foreach ($models as $model) {
-            $sku = trim((string) ($model['sku'] ?? ''));
+            $sku = ChannelSku::normalize($model['sku'] ?? null, $externalProductId);
 
-            if ($sku === '') {
-                $this->logSkipped($shop, $productId, $externalProductId, $model, 'Model tidak punya SKU di channel — isi SKU di Seller Center agar bisa dipetakan.');
+            if ($sku === null) {
+                $this->logSkipped(
+                    $shop,
+                    $productId,
+                    $externalProductId,
+                    $model,
+                    ChannelSku::reason($model['sku'] ?? null, $externalProductId)
+                );
 
                 continue;
             }

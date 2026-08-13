@@ -8,6 +8,7 @@ use Modules\Product\Console\Commands\MergeMasterProducts;
 use Modules\Product\Console\Commands\PruneUploadHistories;
 use Modules\Product\Console\Commands\RecomputeChannelValidation;
 use Modules\Product\Console\Commands\RemirrorProductImages;
+use Modules\Product\Console\Commands\RepairChannelSku;
 use Modules\Product\Jobs\PruneUploadHistoriesJob;
 
 class ProductServiceProvider extends ModuleServiceProvider
@@ -22,6 +23,7 @@ class ProductServiceProvider extends ModuleServiceProvider
         RecomputeChannelValidation::class,
         RemirrorProductImages::class,
         MergeMasterProducts::class,
+        RepairChannelSku::class,
     ];
 
     protected array $providers = [

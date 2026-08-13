@@ -17,6 +17,7 @@ use Modules\Inventory\Support\StockSummary;
 use Modules\Product\Jobs\MirrorProductMediaJob;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
+use Modules\Product\Support\ChannelSku;
 use Modules\Product\Support\ProductIngestSanitizer;
 use Modules\Product\Models\ProductMedia;
 use Modules\Product\Models\Attribute;
@@ -218,7 +219,10 @@ class ProductService
     public function upsertFromChannel(array $data, ?bool &$matchedExisting = null, ?array &$variantIds = null)
     {
         $data = ProductIngestSanitizer::sanitize($data);
-        $data['variants'] = $this->dropVariantsWithoutSku($data['variants'] ?? []);
+        $data['variants'] = $this->dropVariantsWithoutSku(
+            $data['variants'] ?? [],
+            isset($data['channel_external_product_id']) ? (string) $data['channel_external_product_id'] : null,
+        );
         $variantIds = [];
         $productId = $this->resolveExistingProductFromChannel($data);
 
@@ -235,25 +239,31 @@ class ProductService
         return $productId;
     }
 
-    private function dropVariantsWithoutSku(array $variants): array
+    private function dropVariantsWithoutSku(array $variants, ?string $externalProductId = null): array
     {
         $withSku = array_values(array_filter(
             $variants,
-            fn ($v) => trim((string) ($v['sku'] ?? '')) !== ''
+            fn ($v) => ! ChannelSku::isPlaceholder($v['sku'] ?? null, $externalProductId)
         ));
 
         if ($withSku) {
             return $withSku;
         }
 
-        return array_slice(array_values($variants), 0, 1);
+        $placeholder = array_slice(array_values($variants), 0, 1);
+
+        if ($placeholder && is_array($placeholder[0])) {
+            $placeholder[0]['sku'] = null;
+        }
+
+        return $placeholder;
     }
 
     public function addVariantFromChannel(string $productId, array $variant): ?string
     {
-        $sku = trim((string) ($variant['sku'] ?? ''));
+        $sku = ChannelSku::normalize($variant['sku'] ?? null);
 
-        if ($sku === '') {
+        if ($sku === null) {
             return null;
         }
 
