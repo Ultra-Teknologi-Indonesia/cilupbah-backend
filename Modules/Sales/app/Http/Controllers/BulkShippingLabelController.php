@@ -57,7 +57,7 @@ class BulkShippingLabelController extends Controller
         abort_unless($batch->user_id === $req->user()->id, 403);
 
         $batch->load(['items' => function ($q) {
-            $q->with(['order:id,salesorder_no,channel_order_no,tracking_number,courier_name,transaction_date,ship_by_date,shipping_label_status']);
+            $q->with(['order:id,salesorder_no,channel_order_no,tracking_number,courier_name,shipping_provider,transaction_date,ship_by_date,shipping_label_status']);
         }]);
 
         $waitingShopee = $batch->items
@@ -91,7 +91,7 @@ class BulkShippingLabelController extends Controller
                     'channel' => $i->channel,
                     'channel_order_no' => $order?->channel_order_no,
                     'no_paket' => $order?->channel_order_no,
-                    'courier_name' => $order?->courier_name,
+                    'courier_name' => $order?->courier_name ?: $order?->shipping_provider,
                     'tracking_number' => $order?->tracking_number,
                     'tgl_pesanan' => $order?->transaction_date,
                     'tgl_pengiriman' => $order?->ship_by_date,

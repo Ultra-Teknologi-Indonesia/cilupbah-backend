@@ -846,15 +846,13 @@ class ShopeeOrderService
     {
         $shop = $this->requireShop($shopId);
 
-        $orderItem = array_filter([
+        $payload = array_filter([
             'order_sn'               => $orderSn,
             'package_number'         => $packageNumber,
             'shipping_document_type' => $docType,
         ], static fn ($v) => $v !== null && $v !== '');
 
-        return $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/api/v2/logistics/get_shipping_document_data_info', [
-            'order_list' => [$orderItem],
-        ], $token, $shop->shop_id));
+        return $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/api/v2/logistics/get_shipping_document_data_info', $payload, $token, $shop->shop_id));
     }
 
     public function checkAllowSelfDesignAwb(object $shop, string $orderSn, ?string $packageNumber = null): bool

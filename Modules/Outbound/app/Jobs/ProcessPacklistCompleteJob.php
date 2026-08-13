@@ -11,7 +11,6 @@ use Illuminate\Support\Facades\Log;
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Support\InstantOrderClassifier;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
-use Modules\Sales\Jobs\RequestChannelAwbJob;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderService as OrderService;
 
@@ -71,13 +70,16 @@ class ProcessPacklistCompleteJob implements ShouldQueue
             return;
         }
 
+        if (empty($order->tracking_number)) {
+            Log::info('ProcessPacklistCompleteJob: resi tidak ditarik otomatis, menunggu operator di Pengiriman > Siap Kirim', [
+                'order_id'      => $order->id,
+                'salesorder_no' => $order->salesorder_no,
+            ]);
+
+            return;
+        }
+
         try {
-            if (empty($order->tracking_number)) {
-                RequestChannelAwbJob::dispatch($order->id);
-
-                return;
-            }
-
             if (
                 $source === 'shopee'
                 && ! in_array($order->shipping_label_status, ['ready', 'self_design_required', 'preparing'], true)

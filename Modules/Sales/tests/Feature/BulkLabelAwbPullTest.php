@@ -128,6 +128,31 @@ class BulkLabelAwbPullTest extends TestCase
         );
     }
 
+    public function test_kolom_kurir_terisi_walau_courier_name_kosong(): void
+    {
+        Queue::fake();
+
+        $order = $this->orderWithoutAwb([
+            'courier_name' => null,
+            'shipping_provider' => 'SPX Hemat',
+        ]);
+        $batch = $this->createBatchFor($order);
+
+        $req = \Illuminate\Http\Request::create('/');
+        $req->setUserResolver(fn () => $this->user);
+
+        $payload = app(\Modules\Sales\Http\Controllers\BulkShippingLabelController::class)
+            ->show($req, $batch)
+            ->getData(true);
+
+        $this->assertSame(
+            'SPX Hemat',
+            $payload['data']['items'][0]['courier_name'] ?? null,
+            'Mapper channel tidak pernah mengisi courier_name, jadi kolom Kurir di layar '
+                .'cetak resi akan kosong kalau tidak mundur ke shipping_provider.',
+        );
+    }
+
     public function test_pesanan_manual_tanpa_resi_tetap_gagal_tanpa_memanggil_channel(): void
     {
         Queue::fake();
