@@ -9,9 +9,12 @@ use Modules\Channel\Repositories\ChannelRepository;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Repositories\ChannelWarehouseRepository;
 use Modules\Channel\Support\ChannelReauthCopy;
+use Modules\Channel\Support\LocksTokenRefresh;
 
 class TikTokAuthService
 {
+    use LocksTokenRefresh;
+
     protected TikTokClient $client;
     protected ChannelShopRepository $shopRepository;
     protected ChannelRepository $channelRepository;
@@ -131,6 +134,16 @@ class TikTokAuthService
     }
 
     public function refreshStoreToken(string $id): array
+    {
+        $shop = $this->shopRepository->findById($id);
+        if (!$shop) {
+            throw new \Exception('Toko tidak ditemukan');
+        }
+
+        return $this->lockedTokenRefresh($id, 'tiktok', $shop->access_token, fn () => $this->performTokenRefresh($id));
+    }
+
+    private function performTokenRefresh(string $id): array
     {
         $shop = $this->shopRepository->findById($id);
         if (!$shop) {

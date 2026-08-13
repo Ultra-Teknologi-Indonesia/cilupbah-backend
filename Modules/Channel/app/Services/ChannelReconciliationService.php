@@ -47,6 +47,7 @@ class ChannelReconciliationService
                         'channel_count' => count($channelIds),
                         'local_count' => count($localIds),
                         'missing_count' => count($missing),
+                        'missing' => $missing,
                         'missing_sample' => array_slice($missing, 0, 10),
                     ];
                 } catch (\Throwable $e) {
@@ -62,6 +63,42 @@ class ChannelReconciliationService
         }
 
         return $report;
+    }
+
+    public function pullMissingOrders(string $code, string $shopId, array $orderIds, int $limit = 50): array
+    {
+        $service = match ($code) {
+            'shopee' => $this->shopee,
+            'tiktok' => $this->tiktok,
+            'lazada' => $this->lazada,
+            default => null,
+        };
+
+        if ($service === null) {
+            return ['pulled' => 0, 'failed' => 0, 'failed_ids' => []];
+        }
+
+        $pulled = 0;
+        $failedIds = [];
+
+        foreach (array_slice(array_values($orderIds), 0, $limit) as $orderId) {
+            $orderId = (string) $orderId;
+
+            try {
+                if ((int) $service->pullOrderById($shopId, $orderId) > 0) {
+                    $pulled++;
+
+                    continue;
+                }
+
+                $failedIds[] = $orderId;
+            } catch (\Throwable $e) {
+                $failedIds[] = $orderId;
+                Log::warning("Backfill order {$code} {$shopId} {$orderId} gagal: " . $e->getMessage());
+            }
+        }
+
+        return ['pulled' => $pulled, 'failed' => count($failedIds), 'failed_ids' => $failedIds];
     }
 
     public function discoverShopeeReturns(int $maxPages = 10, int $pageSize = 50): array

@@ -9,9 +9,12 @@ use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Repositories\ChannelRepository;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Support\ChannelReauthCopy;
+use Modules\Channel\Support\LocksTokenRefresh;
 
 class LazadaAuthService
 {
+    use LocksTokenRefresh;
+
     public function __construct(
         protected LazadaClient $client,
         protected ChannelShopRepository $shopRepository,
@@ -123,6 +126,13 @@ class LazadaAuthService
     }
 
     public function refreshStoreToken(string $id): array
+    {
+        $shop = $this->requireLazadaShop($id);
+
+        return $this->lockedTokenRefresh($id, 'lazada', $shop->access_token, fn () => $this->performTokenRefresh($id));
+    }
+
+    private function performTokenRefresh(string $id): array
     {
         $shop = $this->requireLazadaShop($id);
 

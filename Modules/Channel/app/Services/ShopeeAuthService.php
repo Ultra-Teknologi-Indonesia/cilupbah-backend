@@ -9,9 +9,11 @@ use Modules\Channel\Repositories\ChannelRepository;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Repositories\ChannelWarehouseRepository;
 use Modules\Channel\Support\ChannelReauthCopy;
+use Modules\Channel\Support\LocksTokenRefresh;
 
 class ShopeeAuthService
 {
+    use LocksTokenRefresh;
 
     private const REFRESH_TOKEN_TTL_SECONDS = 2592000;
 
@@ -106,6 +108,13 @@ class ShopeeAuthService
     }
 
     public function refreshStoreToken(string $id): array
+    {
+        $shop = $this->requireShopeeShop($id);
+
+        return $this->lockedTokenRefresh($id, 'shopee', $shop->access_token, fn () => $this->performTokenRefresh($id));
+    }
+
+    private function performTokenRefresh(string $id): array
     {
         $shop = $this->requireShopeeShop($id);
 
