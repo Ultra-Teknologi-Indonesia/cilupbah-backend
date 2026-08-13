@@ -122,6 +122,12 @@ class OutboundFulfillmentRepository
                     }
                 }),
 
+                AllowedFilter::callback('awb', function ($query, $value) {
+                    $v = strtolower((string) $value);
+                    if ($v === 'yes') $query->whereNotNull('tracking_number')->where('tracking_number', '<>', '');
+                    elseif ($v === 'no') $query->where(fn ($q) => $q->whereNull('tracking_number')->orWhere('tracking_number', ''));
+                }),
+
                 AllowedFilter::callback('label_printed', function ($query, $value) {
                     $v = strtolower((string) $value);
                     if ($v === 'yes') $query->whereNotNull('shipping_label_prepared_at');
