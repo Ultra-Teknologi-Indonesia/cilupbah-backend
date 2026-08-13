@@ -64,6 +64,10 @@ class BulkShippingLabelController extends Controller
             ->where('status', \Modules\Sales\Models\BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP)
             ->count();
 
+        $waitingAwb = $batch->items
+            ->where('status', \Modules\Sales\Models\BulkShippingLabelItem::STATUS_WAITING_AWB)
+            ->count();
+
         $retryable = $batch->items->filter(fn ($i) => $i->isRecoverable())->count();
 
         return $this->successResponse([
@@ -74,6 +78,7 @@ class BulkShippingLabelController extends Controller
             'failed' => $batch->failed_count,
             'skipped' => $batch->skipped_count,
             'waiting_shopee' => $waitingShopee,
+            'waiting_awb' => $waitingAwb,
             'retryable_count' => $retryable,
             'started_at' => $batch->started_at,
             'finished_at' => $batch->finished_at,
@@ -110,7 +115,9 @@ class BulkShippingLabelController extends Controller
         return match ($status) {
             \Modules\Sales\Models\BulkShippingLabelItem::STATUS_PENDING => 'Menunggu',
             \Modules\Sales\Models\BulkShippingLabelItem::STATUS_DOWNLOADING => 'Mengambil',
+            \Modules\Sales\Models\BulkShippingLabelItem::STATUS_WAITING_AWB => 'Menarik No. Resi',
             \Modules\Sales\Models\BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP => 'Menunggu Shopee',
+            \Modules\Sales\Models\BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP => 'Menunggu Lazada',
             \Modules\Sales\Models\BulkShippingLabelItem::STATUS_DONE => 'Berhasil',
             \Modules\Sales\Models\BulkShippingLabelItem::STATUS_SKIPPED_INSTANT => 'Instant courier',
             \Modules\Sales\Models\BulkShippingLabelItem::STATUS_FAILED => 'Gagal',
@@ -124,7 +131,9 @@ class BulkShippingLabelController extends Controller
         return match (true) {
             $item->status === $item_class::STATUS_PENDING => 'Menunggu antrean',
             $item->status === $item_class::STATUS_DOWNLOADING => 'Sedang mengambil resi...',
+            $item->status === $item_class::STATUS_WAITING_AWB => 'Meminta No. Resi ke marketplace...',
             $item->status === $item_class::STATUS_WAITING_SHOPEE_PREP => 'Menunggu Shopee menyiapkan label...',
+            $item->status === $item_class::STATUS_WAITING_LAZADA_PREP => 'Menunggu Lazada menyiapkan label...',
             $item->status === $item_class::STATUS_DONE => 'Resi berhasil diambil',
             $item->status === $item_class::STATUS_SKIPPED_INSTANT => 'Pesanan dengan instant courier, panggil driver di tab Pengiriman',
             $item->status === $item_class::STATUS_FAILED => match ($item->reason) {
@@ -133,7 +142,12 @@ class BulkShippingLabelController extends Controller
                 $item_class::REASON_SHOPEE_DECODE_FAILED => 'File label dari Shopee rusak. Coba lagi.',
                 $item_class::REASON_SELF_DESIGN => 'Toko wajib desain label sendiri (self-design).',
                 $item_class::REASON_CHANNEL_UNSUPPORTED => 'Channel belum didukung untuk cetak massal.',
-                $item_class::REASON_NO_AWB => 'No. Resi belum tersedia dari marketplace.',
+                $item_class::REASON_NO_AWB => 'No. Resi belum tersedia dari marketplace. Coba lagi.',
+                $item_class::REASON_AWB_TIMEOUT => 'Marketplace belum menerbitkan No. Resi setelah beberapa kali dicoba. Coba lagi.',
+                $item_class::REASON_CHANNEL_SYNC_PAUSED => 'Sinkronisasi ke marketplace sedang dimatikan, No. Resi tidak bisa ditarik. Hubungi admin.',
+                $item_class::REASON_LAZADA_PREP_FAILED => 'Lazada gagal menyiapkan label. Coba lagi.',
+                $item_class::REASON_LAZADA_PREP_TIMEOUT => 'Timeout menunggu Lazada. Coba lagi.',
+                $item_class::REASON_LAZADA_DECODE_FAILED => 'File label dari Lazada rusak. Coba lagi.',
                 $item_class::REASON_BATCH_CRASHED => 'Proses batch berhenti tak terduga. Coba lagi.',
                 $item_class::REASON_STALE_BATCH_REAPED => 'Batch kadaluarsa & dibersihkan. Coba lagi.',
                 default => $item->reason ? "Gagal: {$item->reason}" : 'Gagal mengambil resi.',

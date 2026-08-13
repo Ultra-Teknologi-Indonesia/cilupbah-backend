@@ -9,9 +9,12 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Modules\Channel\Services\ChannelSyncSettingService;
+use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Sales\Exceptions\ShippingLabelPreparingException;
 use Modules\Sales\Jobs\PrepareLazadaShippingLabelJob;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
+use Modules\Sales\Jobs\RequestChannelAwbJob;
 use Modules\Sales\Models\BulkShippingLabelBatch;
 use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Models\SalesOrder;
@@ -73,7 +76,9 @@ class BulkShippingLabelService
 
     public function createBatch(User $user, array $orderIds, array $perChannelOpts): BulkShippingLabelBatch
     {
-        return DB::transaction(function () use ($user, $orderIds, $perChannelOpts) {
+        $awaitingAwb = [];
+
+        $batch = DB::transaction(function () use ($user, $orderIds, $perChannelOpts, &$awaitingAwb) {
             $batch = BulkShippingLabelBatch::create([
                 'user_id' => $user->id,
                 'status' => BulkShippingLabelBatch::STATUS_PROCESSING,
@@ -94,6 +99,10 @@ class BulkShippingLabelService
 
                 [$status, $reason] = $this->initialItemStatus($order, $channel);
 
+                if ($status === BulkShippingLabelItem::STATUS_WAITING_AWB) {
+                    $awaitingAwb[] = $orderId;
+                }
+
                 BulkShippingLabelItem::create([
                     'batch_id' => $batch->id,
                     'order_id' => $orderId,
@@ -107,6 +116,12 @@ class BulkShippingLabelService
 
             return $batch->fresh();
         });
+
+        foreach ($awaitingAwb as $orderId) {
+            RequestChannelAwbJob::dispatch($orderId);
+        }
+
+        return $batch;
     }
 
     private function initialItemStatus(?SalesOrder $order, string $channel): array
@@ -123,15 +138,39 @@ class BulkShippingLabelService
             return [BulkShippingLabelItem::STATUS_SKIPPED_INSTANT, BulkShippingLabelItem::REASON_INSTANT_COURIER];
         }
 
-        $hasAwb = ! empty($order->tracking_number)
-            || ! empty($order->awb_no)
-            || ! empty($order->channel_order_no);
+        $hasAwb = ! empty($order->tracking_number) || ! empty($order->awb_no);
 
         if (! $hasAwb) {
-            return [BulkShippingLabelItem::STATUS_FAILED, BulkShippingLabelItem::REASON_NO_AWB];
+            return $this->awaitAwbOrFail($order);
         }
 
         return [BulkShippingLabelItem::STATUS_PENDING, null];
+    }
+
+    private function awaitAwbOrFail(SalesOrder $order): array
+    {
+        if (empty($order->channel_shop_id)) {
+            return [BulkShippingLabelItem::STATUS_FAILED, BulkShippingLabelItem::REASON_NO_AWB];
+        }
+
+        if ($this->channelFulfillmentPaused($order)) {
+            return [BulkShippingLabelItem::STATUS_FAILED, BulkShippingLabelItem::REASON_CHANNEL_SYNC_PAUSED];
+        }
+
+        return [BulkShippingLabelItem::STATUS_WAITING_AWB, null];
+    }
+
+    public function channelFulfillmentPaused(SalesOrder $order): bool
+    {
+        if (app(ChannelSyncSettingService::class)->isPaused()) {
+            return true;
+        }
+
+        return ChannelFulfillmentGuard::blocks(
+            $order->channel_shop_id,
+            'ready_to_ship',
+            $order->salesorder_no,
+        );
     }
 
     public function isInstantCourier(?SalesOrder $order): bool
@@ -652,6 +691,47 @@ class BulkShippingLabelService
             'status' => BulkShippingLabelItem::STATUS_SKIPPED_INSTANT,
             'reason' => BulkShippingLabelItem::REASON_INSTANT_COURIER,
         ]);
+    }
+
+    public function onOrderAwbReady(string $orderId): void
+    {
+        $items = BulkShippingLabelItem::where('order_id', $orderId)
+            ->where('status', BulkShippingLabelItem::STATUS_WAITING_AWB)
+            ->get();
+
+        if ($items->isEmpty()) {
+            return;
+        }
+
+        $order = SalesOrder::find($orderId);
+
+        if (! $order || empty($order->tracking_number)) {
+            return;
+        }
+
+        foreach ($items as $item) {
+            $batch = BulkShippingLabelBatch::find($item->batch_id);
+            $this->processItem($item, $batch?->per_channel_opts);
+        }
+
+        $this->finalizeAffectedBatches($items);
+    }
+
+    public function onOrderAwbGaveUp(string $orderId, string $reason): void
+    {
+        $items = BulkShippingLabelItem::where('order_id', $orderId)
+            ->where('status', BulkShippingLabelItem::STATUS_WAITING_AWB)
+            ->get();
+
+        if ($items->isEmpty()) {
+            return;
+        }
+
+        foreach ($items as $item) {
+            $this->fail($item, $reason);
+        }
+
+        $this->finalizeAffectedBatches($items);
     }
 
     public function onOrderLabelReady(string $orderId): void

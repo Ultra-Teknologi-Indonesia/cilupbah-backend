@@ -14,9 +14,12 @@ use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Outbound\Services\OutboundFulfillmentService;
+use Modules\Outbound\Support\InstantOrderClassifier;
 use Modules\Sales\Jobs\PrepareLazadaShippingLabelJob;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
+use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Services\BulkShippingLabelService;
 
 class RequestChannelAwbJob implements ShouldQueue
 {
@@ -49,10 +52,31 @@ class RequestChannelAwbJob implements ShouldQueue
         }
 
         if (! empty($order->tracking_number)) {
+            app(BulkShippingLabelService::class)->onOrderAwbReady($order->id);
+
+            return;
+        }
+
+        if (InstantOrderClassifier::needsManualDriverDispatch(
+            $order->courier_name,
+            $order->shipping_provider,
+            $order->shipping_type,
+        )) {
+            Log::info('RequestChannelAwbJob: dilewati, kurir dipanggil manual lewat Pengiriman', [
+                'order_id'      => $order->id,
+                'salesorder_no' => $order->salesorder_no,
+                'courier_name'  => $order->courier_name,
+            ]);
+
             return;
         }
 
         if (ChannelFulfillmentGuard::blocks($order->channel_shop_id, 'ready_to_ship', $order->salesorder_no)) {
+            app(BulkShippingLabelService::class)->onOrderAwbGaveUp(
+                $order->id,
+                BulkShippingLabelItem::REASON_CHANNEL_SYNC_PAUSED,
+            );
+
             return;
         }
 
@@ -83,7 +107,9 @@ class RequestChannelAwbJob implements ShouldQueue
                 $gotTracking = $this->fetchLazadaTracking($order);
             }
 
-            if (! $gotTracking && isset(self::TRACKING_RETRY_DELAYS[$this->trackingAttempt])) {
+            if ($gotTracking) {
+                app(BulkShippingLabelService::class)->onOrderAwbReady($order->id);
+            } elseif (isset(self::TRACKING_RETRY_DELAYS[$this->trackingAttempt])) {
                 $delay = self::TRACKING_RETRY_DELAYS[$this->trackingAttempt];
                 Log::info('RequestChannelAwbJob: tracking belum tersedia, retry', [
                     'order_id'      => $order->id,
@@ -92,6 +118,16 @@ class RequestChannelAwbJob implements ShouldQueue
                     'delay_seconds' => $delay,
                 ]);
                 self::dispatch($order->id, $this->trackingAttempt + 1)->delay(now()->addSeconds($delay));
+            } else {
+                Log::warning('RequestChannelAwbJob: menyerah, tracking tidak kunjung terbit', [
+                    'order_id'      => $order->id,
+                    'salesorder_no' => $order->salesorder_no,
+                    'attempts'      => $this->trackingAttempt + 1,
+                ]);
+                app(BulkShippingLabelService::class)->onOrderAwbGaveUp(
+                    $order->id,
+                    BulkShippingLabelItem::REASON_AWB_TIMEOUT,
+                );
             }
         } catch (\Throwable $e) {
             Log::error('RequestChannelAwbJob: error saat request AWB', [
@@ -110,6 +146,11 @@ class RequestChannelAwbJob implements ShouldQueue
             'order_id'  => $this->orderId,
             'exception' => $exception->getMessage(),
         ]);
+
+        app(BulkShippingLabelService::class)->onOrderAwbGaveUp(
+            $this->orderId,
+            BulkShippingLabelItem::REASON_AWB_TIMEOUT,
+        );
     }
 
     private function fetchShopeeTracking(SalesOrder $order): bool

@@ -13,6 +13,7 @@ class BulkShippingLabelItem extends Model
 
     public const STATUS_PENDING = 'pending';
     public const STATUS_DOWNLOADING = 'downloading';
+    public const STATUS_WAITING_AWB = 'waiting_awb';
     public const STATUS_WAITING_SHOPEE_PREP = 'waiting_shopee_prep';
     public const STATUS_WAITING_LAZADA_PREP = 'waiting_lazada_prep';
     public const STATUS_DONE = 'done';
@@ -28,8 +29,20 @@ class BulkShippingLabelItem extends Model
     public const TRANSIENT_STATUSES = [
         self::STATUS_PENDING,
         self::STATUS_DOWNLOADING,
+        self::STATUS_WAITING_AWB,
         self::STATUS_WAITING_SHOPEE_PREP,
         self::STATUS_WAITING_LAZADA_PREP,
+    ];
+
+    public const ALL_STATUSES = [
+        self::STATUS_PENDING,
+        self::STATUS_DOWNLOADING,
+        self::STATUS_WAITING_AWB,
+        self::STATUS_WAITING_SHOPEE_PREP,
+        self::STATUS_WAITING_LAZADA_PREP,
+        self::STATUS_DONE,
+        self::STATUS_FAILED,
+        self::STATUS_SKIPPED_INSTANT,
     ];
 
     public const REASON_NO_AWB = 'no_awb';
@@ -44,6 +57,8 @@ class BulkShippingLabelItem extends Model
     public const REASON_LAZADA_PREP_TIMEOUT = 'lazada_prep_timeout';
     public const REASON_LAZADA_PREP_FAILED = 'lazada_prep_failed';
     public const REASON_LAZADA_DECODE_FAILED = 'lazada_decode_failed';
+    public const REASON_AWB_TIMEOUT = 'awb_timeout';
+    public const REASON_CHANNEL_SYNC_PAUSED = 'channel_sync_paused';
 
     public const RECOVERABLE_REASONS = [
         self::REASON_SHOPEE_PREP_TIMEOUT,
@@ -54,6 +69,8 @@ class BulkShippingLabelItem extends Model
         self::REASON_LAZADA_DECODE_FAILED,
         self::REASON_BATCH_CRASHED,
         self::REASON_STALE_BATCH_REAPED,
+        self::REASON_NO_AWB,
+        self::REASON_AWB_TIMEOUT,
     ];
 
     protected $fillable = [
