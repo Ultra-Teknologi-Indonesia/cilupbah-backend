@@ -61,12 +61,6 @@ class AuditChannelSkuCoverage extends Command
         return $query->get();
     }
 
-    /**
-     * Tiap toko ditarik di proses sendiri supaya memorinya dilepas setelah
-     * selesai. Menarik semuanya dalam satu proses pernah mati dengan exit 255
-     * tanpa pesan — fatal PHP kehabisan memori, yang tidak bisa ditangkap
-     * try/catch di sini.
-     */
     private function tarikUlang($shops): void
     {
         foreach ($shops as $shop) {

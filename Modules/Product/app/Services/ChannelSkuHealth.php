@@ -8,6 +8,9 @@ use Modules\Product\Support\ChannelSku;
 
 class ChannelSkuHealth
 {
+
+    private const HITUNG_MODEL = "count(DISTINCT COALESCE(psl.payload->>'external_sku_id', psl.id::text))";
+
     public function masterSkuTurunanVarian(?string $productId = null): Collection
     {
         return DB::table('products as p')
@@ -82,8 +85,8 @@ class ChannelSkuHealth
             ->whereRaw("psl.payload->>'external_product_id' IS NOT NULL")
             ->groupBy('c.code', 'cs.shop_name', 'cs.shop_id')
             ->groupByRaw("psl.payload->>'external_product_id'")
-            ->selectRaw("c.code AS channel, cs.shop_name, cs.shop_id, psl.payload->>'external_product_id' AS listing, count(*) AS jml, max(pcm.channel_url) AS url")
-            ->orderByDesc(DB::raw('count(*)'))
+            ->selectRaw("c.code AS channel, cs.shop_name, cs.shop_id, psl.payload->>'external_product_id' AS listing, " . self::HITUNG_MODEL . " AS jml, max(pcm.channel_url) AS url")
+            ->orderByDesc(DB::raw(self::HITUNG_MODEL))
             ->get();
     }
 }

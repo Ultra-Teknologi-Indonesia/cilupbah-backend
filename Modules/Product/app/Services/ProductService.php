@@ -305,16 +305,6 @@ class ProductService
         });
     }
 
-    /**
-     * Isi nilai variasi untuk varian yang sudah ada tapi belum punya opsi sama
-     * sekali — kasusnya varian Lazada lama, yang lahir sebelum saleProp
-     * dipetakan. Tidak pernah menimpa opsi yang sudah ada.
-     *
-     * Jenis variasi dicocokkan lewat NAMA, bukan posisi seperti jalur
-     * pembuatan varian baru. Master hasil konsolidasi sudah punya jenis variasi
-     * bawaan Shopee/TikTok, jadi pencocokan posisi akan menaruh warna Lazada di
-     * kolom "Spesifikasi" milik Shopee.
-     */
     public function backfillVariantOptionsFromChannel(string $productId, string $variantId, array $options): bool
     {
         $bersih = array_values(array_filter(

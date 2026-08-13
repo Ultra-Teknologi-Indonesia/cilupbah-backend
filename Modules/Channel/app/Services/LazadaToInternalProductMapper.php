@@ -91,14 +91,6 @@ class LazadaToInternalProductMapper
         return $internal;
     }
 
-    /**
-     * Lazada menaruh nilai variasi di saleProp, peta bebas seperti
-     * ['color_family' => 'Black', 'size' => 'XL']. Kuncinya dikumpulkan dari
-     * seluruh sku supaya urutan jenis variasi stabil untuk semua varian —
-     * ProductService memasangkan opsi ke jenis variasi berdasarkan POSISI.
-     *
-     * @return array<string,string> kunci Lazada => label yang dipakai di sistem
-     */
     protected function kumpulkanJenisVariasi(array $skus): array
     {
         $jenis = [];
@@ -115,11 +107,6 @@ class LazadaToInternalProductMapper
         return $jenis;
     }
 
-    /**
-     * Satu entri per jenis variasi, urutannya sama untuk setiap varian. Varian
-     * yang tidak punya nilai untuk satu jenis tetap dapat entri kosong supaya
-     * posisinya tidak bergeser dan nilainya tidak mendarat di jenis yang salah.
-     */
     protected function opsiVarian(array $skuData, array $jenisVariasi): array
     {
         if (! $jenisVariasi) {

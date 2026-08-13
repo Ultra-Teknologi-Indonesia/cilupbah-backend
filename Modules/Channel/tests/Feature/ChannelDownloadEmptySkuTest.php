@@ -41,11 +41,6 @@ class ChannelDownloadEmptySkuTest extends TestCase
         Category::create(['name' => 'Root', 'is_active' => true]);
     }
 
-    /**
-     * Http::fake() yang dipanggil dua kali TIDAK mengganti stub pertama — yang
-     * pertama cocok yang menang. Untuk skenario tarik dua kali dengan respons
-     * berbeda, stub-nya harus satu closure yang membaca $item lewat referensi.
-     */
     private function fakeLazadaProduk(array &$item): void
     {
         Http::fake([
