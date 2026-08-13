@@ -8,15 +8,29 @@ class InstantOrderClassifier
 
     public const MANUAL_DRIVER_REGEX = 'gojek|gosend|grab';
 
-    public static function needsManualDriverDispatch(?string ...$values): bool
-    {
-        foreach ($values as $val) {
-            if ($val && preg_match('/'.self::MANUAL_DRIVER_REGEX.'/i', $val)) {
+    public const MANUAL_DRIVER_UMBRELLA = ['instant', 'instant prioritas'];
+
+    public static function needsManualDriverDispatch(
+        ?string $courierName,
+        ?string $shippingProvider = null,
+        ?string $shippingType = null,
+    ): bool {
+        foreach ([$courierName, $shippingProvider] as $name) {
+            if ($name === null || $name === '') {
+                continue;
+            }
+
+            if (preg_match('/'.self::MANUAL_DRIVER_REGEX.'/i', $name)) {
+                return true;
+            }
+
+            if (in_array(strtolower(trim($name)), self::MANUAL_DRIVER_UMBRELLA, true)) {
                 return true;
             }
         }
 
-        return false;
+        return $shippingType !== null
+            && preg_match('/'.self::MANUAL_DRIVER_REGEX.'/i', $shippingType) === 1;
     }
 
     public static function isInstant(?string $shippingProvider, ?string $shippingType = null): bool
