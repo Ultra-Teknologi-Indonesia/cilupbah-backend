@@ -38,7 +38,7 @@ class BulkShippingLabelService
 
     public const SIZE_100X150 = 'thermal_100x150';
     public const SIZE_100X120 = 'thermal_100x120';
-    public const DEFAULT_SIZE = self::SIZE_100X150;
+    public const DEFAULT_SIZE = self::SIZE_100X120;
 
     private const SIZE_DIMENSIONS_MM = [
         self::SIZE_100X150 => [100.0, 150.0],
