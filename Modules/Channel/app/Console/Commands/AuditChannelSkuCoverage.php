@@ -5,18 +5,20 @@ namespace Modules\Channel\Console\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Modules\Channel\Models\ChannelShop;
-use Modules\Channel\Services\ChannelDownloadService;
+use Symfony\Component\Process\Exception\ProcessTimedOutException;
+use Symfony\Component\Process\Process;
 
 class AuditChannelSkuCoverage extends Command
 {
     protected $signature = 'channel:audit-sku-coverage
                             {--channel= : Batasi ke satu channel (shopee|tiktok|lazada|woocommerce)}
                             {--shop= : Batasi ke satu shop_id marketplace}
-                            {--apply : Tarik ulang produk dari channel (tanpa ini hanya laporan)}';
+                            {--apply : Tarik ulang produk dari channel (tanpa ini hanya laporan)}
+                            {--timeout=1800 : Batas waktu penarikan per toko, dalam detik}';
 
     protected $description = 'Audit apakah semua SKU varian aktif di channel sudah berada di satu master per listing';
 
-    public function handle(ChannelDownloadService $downloader): int
+    public function handle(): int
     {
         $shops = $this->resolveShops();
 
@@ -29,7 +31,7 @@ class AuditChannelSkuCoverage extends Command
         $this->line('Toko dalam cakupan: ' . $shops->count());
 
         if ($this->option('apply')) {
-            $this->tarikUlang($downloader, $shops);
+            $this->tarikUlang($shops);
         } else {
             $this->warn('PRATINJAU — tidak ada penarikan ulang. Tambahkan --apply untuk menarik dari channel.');
         }
@@ -59,7 +61,13 @@ class AuditChannelSkuCoverage extends Command
         return $query->get();
     }
 
-    private function tarikUlang(ChannelDownloadService $downloader, $shops): void
+    /**
+     * Tiap toko ditarik di proses sendiri supaya memorinya dilepas setelah
+     * selesai. Menarik semuanya dalam satu proses pernah mati dengan exit 255
+     * tanpa pesan — fatal PHP kehabisan memori, yang tidak bisa ditangkap
+     * try/catch di sini.
+     */
+    private function tarikUlang($shops): void
     {
         foreach ($shops as $shop) {
             $code = strtolower((string) ($shop->channel->code ?? ''));
@@ -70,10 +78,24 @@ class AuditChannelSkuCoverage extends Command
 
             $this->line("Menarik {$code} / {$shop->shop_name} ...");
 
+            $proses = new Process(
+                [PHP_BINARY, 'artisan', 'channel:pull-shop', $code, (string) $shop->shop_id],
+                base_path(),
+                null,
+                null,
+                (float) $this->option('timeout')
+            );
+
             try {
-                $downloader->pull($code, $shop->shop_id);
-            } catch (\Throwable $e) {
-                $this->error("  gagal: {$e->getMessage()}");
+                $proses->run(fn ($jenis, $keluaran) => $this->output->write($keluaran));
+            } catch (ProcessTimedOutException) {
+                $this->error('  gagal: melewati batas waktu ' . $this->option('timeout') . ' detik');
+
+                continue;
+            }
+
+            if (! $proses->isSuccessful()) {
+                $this->error('  gagal: keluar dengan kode ' . $proses->getExitCode());
             }
         }
     }

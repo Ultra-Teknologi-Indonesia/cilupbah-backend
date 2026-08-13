@@ -56,6 +56,12 @@ class ChannelModelLinker
 
             if ($variant) {
                 $variantId = (string) $variant->id;
+
+                $this->productService->backfillVariantOptionsFromChannel(
+                    $productId,
+                    $variantId,
+                    $model['variant']['options'] ?? []
+                );
             } else {
                 $variantId = $this->productService->addVariantFromChannel(
                     $productId,

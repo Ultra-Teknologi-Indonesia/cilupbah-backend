@@ -41,6 +41,23 @@ class ChannelDownloadEmptySkuTest extends TestCase
         Category::create(['name' => 'Root', 'is_active' => true]);
     }
 
+    /**
+     * Http::fake() yang dipanggil dua kali TIDAK mengganti stub pertama — yang
+     * pertama cocok yang menang. Untuk skenario tarik dua kali dengan respons
+     * berbeda, stub-nya harus satu closure yang membaca $item lewat referensi.
+     */
+    private function fakeLazadaProduk(array &$item): void
+    {
+        Http::fake([
+            'api.lazada.co.id/rest/products/get*' => function () use (&$item) {
+                return Http::response([
+                    'code' => '0',
+                    'data' => ['total_products' => 1, 'products' => [$item]],
+                ], 200);
+            },
+        ]);
+    }
+
     private function makeShop(string $code, string $shopId): ChannelShop
     {
         $channel = Channel::firstOrCreate(['code' => $code], ['name' => ucfirst($code), 'is_active' => true]);
@@ -408,6 +425,144 @@ class ChannelDownloadEmptySkuTest extends TestCase
         $this->assertSame(1, DB::table('product_variant_channel_mappings')->count());
         $this->assertNull(DB::table('products')->where('id', $asli->product_id)->value('sku'),
             'SKU induk tetap kosong, tidak diisi dari SKU varian');
+    }
+
+    public function test_lazada_saleprop_jadi_opsi_varian(): void
+    {
+        $internal = app(LazadaToInternalProductMapper::class)->map([
+            'item_id' => 555700,
+            'primary_category' => 10001234,
+            'status' => 'active',
+            'attributes' => ['name' => 'Case Bervariasi'],
+            'images' => ['https://img.lazcdn.com/a.jpg'],
+            'skus' => [
+                [
+                    'SkuId' => 777701,
+                    'SellerSku' => 'CASE-HITAM-L',
+                    'price' => 50000,
+                    'Status' => 'active',
+                    'saleProp' => ['color_family' => 'Hitam', 'size' => 'L'],
+                ],
+                [
+                    'SkuId' => 777702,
+                    'SellerSku' => 'CASE-PUTIH',
+                    'price' => 50000,
+                    'Status' => 'active',
+                    'saleProp' => ['color_family' => 'Putih'],
+                ],
+            ],
+        ], 'LZ-700');
+
+        $this->assertSame(
+            [['name' => 'Warna', 'sort_order' => 0], ['name' => 'Ukuran', 'sort_order' => 1]],
+            $internal['variation_types']
+        );
+
+        $this->assertSame(
+            [['name' => 'Warna', 'value' => 'Hitam'], ['name' => 'Ukuran', 'value' => 'L']],
+            $internal['variants'][0]['options']
+        );
+
+        $this->assertSame(
+            [['name' => 'Warna', 'value' => 'Putih'], ['name' => 'Ukuran', 'value' => '']],
+            $internal['variants'][1]['options'],
+            'Jenis yang tidak dipunyai varian tetap dapat entri kosong agar posisinya tidak bergeser'
+        );
+    }
+
+    public function test_lazada_tanpa_saleprop_tidak_bikin_jenis_variasi(): void
+    {
+        $internal = app(LazadaToInternalProductMapper::class)->map([
+            'item_id' => 555800,
+            'primary_category' => 10001234,
+            'status' => 'active',
+            'attributes' => ['name' => 'Case Polos'],
+            'images' => ['https://img.lazcdn.com/a.jpg'],
+            'skus' => [[
+                'SkuId' => 777800,
+                'SellerSku' => 'CASE-POLOS',
+                'price' => 50000,
+                'Status' => 'active',
+            ]],
+        ], 'LZ-800');
+
+        $this->assertSame([], $internal['variation_types']);
+        $this->assertArrayNotHasKey('options', $internal['variants'][0]);
+    }
+
+    public function test_download_ulang_mengisi_opsi_varian_lazada_yang_masih_kosong(): void
+    {
+        $this->makeShop('lazada', 'LZ-BACKFILL');
+
+        $item = [
+            'item_id' => 555900,
+            'primary_category' => 10001234,
+            'status' => 'active',
+            'attributes' => ['name' => 'Case Backfill'],
+            'images' => ['https://img.lazcdn.com/a.jpg'],
+            'skus' => [[
+                'SkuId' => 777900,
+                'SellerSku' => 'CASE-BACKFILL-1',
+                'price' => 50000,
+                'Status' => 'active',
+            ]],
+        ];
+
+        $this->fakeLazadaProduk($item);
+
+        app(LazadaProductService::class)->pullProducts('LZ-BACKFILL');
+
+        $variant = DB::table('product_variants')->where('sku', 'CASE-BACKFILL-1')->first();
+        $this->assertSame(0, DB::table('variant_options')->where('variant_id', $variant->id)->count());
+
+        $item['skus'][0]['saleProp'] = ['color_family' => 'Merah'];
+
+        app(LazadaProductService::class)->pullProducts('LZ-BACKFILL');
+
+        $opsi = DB::table('variant_options')
+            ->join('attributes', 'attributes.id', '=', 'variant_options.attribute_id')
+            ->where('variant_options.variant_id', $variant->id)
+            ->select('attributes.name', 'variant_options.value')
+            ->get();
+
+        $this->assertCount(1, $opsi);
+        $this->assertSame('Warna', $opsi[0]->name);
+        $this->assertSame('Merah', $opsi[0]->value);
+    }
+
+    public function test_backfill_tidak_menimpa_opsi_yang_sudah_ada(): void
+    {
+        $this->makeShop('lazada', 'LZ-NOCLOBBER');
+
+        $item = [
+            'item_id' => 556000,
+            'primary_category' => 10001234,
+            'status' => 'active',
+            'attributes' => ['name' => 'Case Sudah Berisi'],
+            'images' => ['https://img.lazcdn.com/a.jpg'],
+            'skus' => [[
+                'SkuId' => 778000,
+                'SellerSku' => 'CASE-ISI-1',
+                'price' => 50000,
+                'Status' => 'active',
+                'saleProp' => ['color_family' => 'Biru'],
+            ]],
+        ];
+
+        $this->fakeLazadaProduk($item);
+
+        app(LazadaProductService::class)->pullProducts('LZ-NOCLOBBER');
+
+        $variant = DB::table('product_variants')->where('sku', 'CASE-ISI-1')->first();
+        $this->assertSame(1, DB::table('variant_options')->where('variant_id', $variant->id)->count());
+
+        $item['skus'][0]['saleProp'] = ['color_family' => 'Kuning'];
+
+        app(LazadaProductService::class)->pullProducts('LZ-NOCLOBBER');
+
+        $nilai = DB::table('variant_options')->where('variant_id', $variant->id)->pluck('value');
+        $this->assertCount(1, $nilai);
+        $this->assertSame('Biru', $nilai[0], 'Opsi yang sudah ada tidak boleh ditimpa download berikutnya');
     }
 
     public function test_download_mengabaikan_sku_yang_cuma_tanda_baca(): void

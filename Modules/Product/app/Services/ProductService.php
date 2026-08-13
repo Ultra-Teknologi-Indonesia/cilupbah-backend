@@ -305,6 +305,77 @@ class ProductService
         });
     }
 
+    /**
+     * Isi nilai variasi untuk varian yang sudah ada tapi belum punya opsi sama
+     * sekali — kasusnya varian Lazada lama, yang lahir sebelum saleProp
+     * dipetakan. Tidak pernah menimpa opsi yang sudah ada.
+     *
+     * Jenis variasi dicocokkan lewat NAMA, bukan posisi seperti jalur
+     * pembuatan varian baru. Master hasil konsolidasi sudah punya jenis variasi
+     * bawaan Shopee/TikTok, jadi pencocokan posisi akan menaruh warna Lazada di
+     * kolom "Spesifikasi" milik Shopee.
+     */
+    public function backfillVariantOptionsFromChannel(string $productId, string $variantId, array $options): bool
+    {
+        $bersih = array_values(array_filter(
+            $options,
+            fn ($o) => is_array($o)
+                && trim((string) ($o['name'] ?? '')) !== ''
+                && trim((string) ($o['value'] ?? '')) !== ''
+        ));
+
+        if (! $bersih) {
+            return false;
+        }
+
+        if (DB::table('variant_options')->where('variant_id', $variantId)->exists()) {
+            return false;
+        }
+
+        return DB::transaction(function () use ($productId, $variantId, $bersih) {
+            $terpasang = DB::table('product_variation_types as pvt')
+                ->join('attributes as a', 'a.id', '=', 'pvt.attribute_id')
+                ->where('pvt.product_id', $productId)
+                ->pluck('pvt.attribute_id', 'a.name')
+                ->all();
+
+            $urutan = (int) DB::table('product_variation_types')
+                ->where('product_id', $productId)
+                ->max('sort_order');
+
+            $rows = [];
+
+            foreach ($bersih as $opt) {
+                $nama = trim((string) $opt['name']);
+                $attributeId = $terpasang[$nama] ?? null;
+
+                if (! $attributeId) {
+                    $attributeId = Attribute::firstOrCreate(['name' => $nama], ['type' => 'sales'])->id;
+                    $this->writeRepository->insertVariationType([
+                        'product_id' => $productId,
+                        'attribute_id' => $attributeId,
+                        'sort_order' => ++$urutan,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                    $terpasang[$nama] = $attributeId;
+                }
+
+                $rows[] = [
+                    'variant_id' => $variantId,
+                    'attribute_id' => $attributeId,
+                    'value' => trim((string) $opt['value']),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+            }
+
+            $this->writeRepository->insertVariantOptions($rows);
+
+            return true;
+        });
+    }
+
     private function channelOptionRows(string $productId, string $variantId, array $options): array
     {
         if (empty($options)) {

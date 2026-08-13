@@ -8,9 +8,12 @@ use Modules\Channel\Console\Commands\AuditChannelSkuCoverage;
 use Modules\Channel\Console\Commands\BackfillDownloadHistory;
 use Modules\Channel\Console\Commands\BackfillShopeeShopNames;
 use Modules\Channel\Console\Commands\EvaluateOrderSyncHealth;
+use Modules\Channel\Console\Commands\MonitorChannelSkuHealth;
 use Modules\Channel\Console\Commands\MonitorDownloadHealth;
 use Modules\Channel\Console\Commands\MonitorShadowPullHealth;
+use Modules\Channel\Console\Commands\PullChannelShop;
 use Modules\Channel\Console\Commands\PullShadowOrdersCommand;
+use Modules\Channel\Console\Commands\ReportMissingChannelSku;
 use Modules\Channel\Console\Commands\ReapStaleDownloadTransactions;
 use Modules\Channel\Console\Commands\ShadowOffCommand;
 use Modules\Channel\Console\Commands\ShadowPromoteCommand;
@@ -44,8 +47,11 @@ class ChannelServiceProvider extends ModuleServiceProvider
         BackfillDownloadHistory::class,
         BackfillShopeeShopNames::class,
         EvaluateOrderSyncHealth::class,
+        MonitorChannelSkuHealth::class,
         MonitorDownloadHealth::class,
+        PullChannelShop::class,
         ReapStaleDownloadTransactions::class,
+        ReportMissingChannelSku::class,
         SyncTikTokAttributes::class,
 
         MonitorShadowPullHealth::class,
@@ -64,5 +70,12 @@ class ChannelServiceProvider extends ModuleServiceProvider
     {
         parent::boot();
         ChannelShop::observe(ChannelShopObserver::class);
+    }
+
+    protected function configureSchedules(Schedule $schedule): void
+    {
+        $schedule->command('channel:monitor-sku-health')
+            ->dailyAt('06:30')
+            ->withoutOverlapping();
     }
 }

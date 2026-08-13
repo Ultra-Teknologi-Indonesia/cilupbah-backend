@@ -4,7 +4,7 @@ namespace Modules\Product\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
-use Modules\Product\Support\ChannelSku;
+use Modules\Product\Services\ChannelSkuHealth;
 
 class RepairChannelSku extends Command
 {
@@ -16,6 +16,11 @@ class RepairChannelSku extends Command
     protected $description = 'Bersihkan sisa SKU salah dari download channel: SKU master yang diturunkan dari SKU varian, dan varian ber-SKU placeholder';
 
     private const CONTOH = 20;
+
+    public function __construct(private ChannelSkuHealth $health)
+    {
+        parent::__construct();
+    }
 
     public function handle(): int
     {
@@ -46,17 +51,7 @@ class RepairChannelSku extends Command
 
     private function bagianMasterSku(): void
     {
-        $rows = DB::table('products as p')
-            ->join('product_variants as v', function ($join) {
-                $join->on('v.sku', '=', 'p.sku')->whereNull('v.deleted_at');
-            })
-            ->where('p.is_from_channel', true)
-            ->whereNotNull('p.sku')
-            ->when($this->option('product'), fn ($q) => $q->where('p.id', $this->option('product')))
-            ->select('p.id', 'p.name', 'p.sku')
-            ->selectRaw('v.product_id = p.id AS varian_sendiri')
-            ->distinct()
-            ->get();
+        $rows = $this->health->masterSkuTurunanVarian($this->option('product'));
 
         $this->line('== SKU master yang diturunkan dari SKU varian: ' . $rows->count());
         $this->laporkanMasterSkuTakDikenal($rows->pluck('id')->all());
@@ -96,12 +91,7 @@ class RepairChannelSku extends Command
 
     private function laporkanMasterSkuTakDikenal(array $sudahDitangani): void
     {
-        $jml = DB::table('products')
-            ->where('is_from_channel', true)
-            ->whereNotNull('sku')
-            ->when($sudahDitangani, fn ($q) => $q->whereNotIn('id', $sudahDitangani))
-            ->when($this->option('product'), fn ($q) => $q->where('id', $this->option('product')))
-            ->count();
+        $jml = $this->health->masterSkuTakDikenal($sudahDitangani, $this->option('product'));
 
         if ($jml === 0) {
             return;
@@ -113,25 +103,7 @@ class RepairChannelSku extends Command
 
     private function bagianVarianPlaceholder(): void
     {
-        $kandidat = DB::table('product_variants as v')
-            ->join('products as p', 'p.id', '=', 'v.product_id')
-            ->leftJoin('product_variant_channel_mappings as pvcm', 'pvcm.variant_id', '=', 'v.id')
-            ->leftJoin('product_channel_mappings as pcm', 'pcm.id', '=', 'pvcm.product_channel_mapping_id')
-            ->whereNull('v.deleted_at')
-            ->whereNotNull('v.sku')
-            ->when($this->option('product'), fn ($q) => $q->where('v.product_id', $this->option('product')))
-            ->where(fn ($q) => $q->whereNotNull('pcm.id')->orWhere('p.is_from_channel', true))
-            ->where(function ($q) {
-                $q->whereRaw("v.sku !~ '[[:alnum:]]'")
-                    ->orWhereRaw("v.sku ~ '^[0-9]+-[0-9-]+$'");
-            })
-            ->select('v.id', 'v.sku', 'v.product_id', 'pcm.external_product_id')
-            ->get();
-
-        $placeholder = $kandidat
-            ->filter(fn ($row) => ChannelSku::isPlaceholder($row->sku, $row->external_product_id))
-            ->unique('id')
-            ->values();
+        $placeholder = $this->health->varianPlaceholder($this->option('product'));
 
         $this->line('== Varian ber-SKU placeholder channel: ' . $placeholder->count());
 

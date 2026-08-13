@@ -36,6 +36,12 @@ class LazadaToInternalProductMapper
             ];
         }
 
+        $jenisVariasi = $this->kumpulkanJenisVariasi($lazadaProduct['skus'] ?? []);
+        $internal['variation_types'] = [];
+        foreach (array_values($jenisVariasi) as $i => $label) {
+            $internal['variation_types'][] = ['name' => $label, 'sort_order' => $i];
+        }
+
         $internal['variants'] = [];
         foreach ($lazadaProduct['skus'] ?? [] as $skuData) {
             $sku = ! empty($skuData['SellerSku']) ? $skuData['SellerSku'] : null;
@@ -52,6 +58,11 @@ class LazadaToInternalProductMapper
                 'height' => (float) ($skuData['package_height'] ?? 0),
                 'is_active' => strtolower((string) ($skuData['Status'] ?? 'active')) === 'active',
             ];
+
+            $opsi = $this->opsiVarian($skuData, $jenisVariasi);
+            if ($opsi) {
+                $variant['options'] = $opsi;
+            }
 
             $variant['media'] = $this->variantMedia($skuData['Images'] ?? []);
             if (empty($variant['media'])) {
@@ -78,6 +89,62 @@ class LazadaToInternalProductMapper
         $internal['channel_shop_id_external'] = $shopId;
 
         return $internal;
+    }
+
+    /**
+     * Lazada menaruh nilai variasi di saleProp, peta bebas seperti
+     * ['color_family' => 'Black', 'size' => 'XL']. Kuncinya dikumpulkan dari
+     * seluruh sku supaya urutan jenis variasi stabil untuk semua varian —
+     * ProductService memasangkan opsi ke jenis variasi berdasarkan POSISI.
+     *
+     * @return array<string,string> kunci Lazada => label yang dipakai di sistem
+     */
+    protected function kumpulkanJenisVariasi(array $skus): array
+    {
+        $jenis = [];
+
+        foreach ($skus as $skuData) {
+            foreach ($skuData['saleProp'] ?? [] as $kunci => $nilai) {
+                if (! is_string($kunci) || ! is_scalar($nilai) || trim((string) $nilai) === '') {
+                    continue;
+                }
+                $jenis[$kunci] ??= $this->labelJenis($kunci);
+            }
+        }
+
+        return $jenis;
+    }
+
+    /**
+     * Satu entri per jenis variasi, urutannya sama untuk setiap varian. Varian
+     * yang tidak punya nilai untuk satu jenis tetap dapat entri kosong supaya
+     * posisinya tidak bergeser dan nilainya tidak mendarat di jenis yang salah.
+     */
+    protected function opsiVarian(array $skuData, array $jenisVariasi): array
+    {
+        if (! $jenisVariasi) {
+            return [];
+        }
+
+        $opsi = [];
+        foreach ($jenisVariasi as $kunci => $label) {
+            $nilai = $skuData['saleProp'][$kunci] ?? null;
+            $opsi[] = [
+                'name' => $label,
+                'value' => is_scalar($nilai) ? trim((string) $nilai) : '',
+            ];
+        }
+
+        return $opsi;
+    }
+
+    protected function labelJenis(string $kunci): string
+    {
+        return match ($kunci) {
+            'color_family' => 'Warna',
+            'size' => 'Ukuran',
+            default => ucfirst(str_replace('_', ' ', $kunci)),
+        };
     }
 
     protected function variantMedia(array $images): array
