@@ -26,6 +26,7 @@ class ChannelShopResource extends JsonResource
             'stock_push_buffer' => (int) $this->stock_push_buffer,
             'stock_handover_at' => $this->stock_handover_at,
             'fulfillment_push_enabled' => (bool) $this->fulfillment_push_enabled,
+            'handover_method' => $this->handover_method ?? \Modules\Channel\Models\ChannelShop::HANDOVER_DROPOFF,
             'fulfillment_handover_at' => $this->fulfillment_handover_at,
             'stock_source_mode' => $this->stock_source_mode ?? 'location',
             'location_id' => $this->stock_source_mode === 'total' ? null : $this->stock_source_location_id,

@@ -569,23 +569,7 @@ class ShopeeOrderService
         $branchList = $info['dropoff']['branch_list'] ?? [];
         $slug = $info['slug'] ?? ($info['dropoff']['slug'] ?? null); 
 
-        $method = $opts['method'] ?? null;
-        if (! in_array($method, ['pickup', 'dropoff', 'non_integrated'], true)) {
-
-            $pickupOffered = array_key_exists('pickup', $infoNeeded) ? $infoNeeded['pickup'] !== null : ! empty($addressList);
-            $dropoffOffered = array_key_exists('dropoff', $infoNeeded) ? $infoNeeded['dropoff'] !== null : ! empty($branchList);
-            $nonIntegratedOffered = array_key_exists('non_integrated', $infoNeeded) && $infoNeeded['non_integrated'] !== null;
-
-            if ($pickupOffered) {
-                $method = 'pickup';
-            } elseif ($dropoffOffered) {
-                $method = 'dropoff';
-            } elseif ($nonIntegratedOffered) {
-                $method = 'non_integrated';
-            } else {
-                $method = ! empty($addressList) ? 'pickup' : 'dropoff';
-            }
-        }
+        $method = $this->resolveHandoverMethod($opts, $infoNeeded, $addressList, $branchList);
 
         $body = ['order_sn' => $orderSn];
 
@@ -684,6 +668,36 @@ class ShopeeOrderService
         ];
     }
 
+    protected function resolveHandoverMethod(array $opts, array $infoNeeded, array $addressList, array $branchList): string
+    {
+        $method = $opts['method'] ?? null;
+        if (in_array($method, ['pickup', 'dropoff', 'non_integrated'], true)) {
+            return $method;
+        }
+
+        $pickupOffered = array_key_exists('pickup', $infoNeeded) ? $infoNeeded['pickup'] !== null : ! empty($addressList);
+        $dropoffOffered = array_key_exists('dropoff', $infoNeeded) ? $infoNeeded['dropoff'] !== null : ! empty($branchList);
+        $nonIntegratedOffered = array_key_exists('non_integrated', $infoNeeded) && $infoNeeded['non_integrated'] !== null;
+
+        $offered = array_values(array_filter([
+            $pickupOffered ? 'pickup' : null,
+            $dropoffOffered ? 'dropoff' : null,
+            $nonIntegratedOffered ? 'non_integrated' : null,
+        ]));
+
+        $preferred = $opts['preferred_method'] ?? null;
+
+        if ($preferred !== null && in_array($preferred, $offered, true)) {
+            return $preferred;
+        }
+
+        if (! empty($offered)) {
+            return $offered[0];
+        }
+
+        return ! empty($addressList) ? 'pickup' : 'dropoff';
+    }
+
     public function massShipOrder(string $shopId, array $orderSns, array $opts = []): array
     {
         $shop = $this->requireShop($shopId);
@@ -702,22 +716,7 @@ class ShopeeOrderService
         $addressList = $info['pickup']['address_list'] ?? [];
         $branchList = $info['dropoff']['branch_list'] ?? [];
 
-        $method = $opts['method'] ?? null;
-        if (! in_array($method, ['pickup', 'dropoff', 'non_integrated'], true)) {
-            $pickupOffered = array_key_exists('pickup', $infoNeeded) ? $infoNeeded['pickup'] !== null : ! empty($addressList);
-            $dropoffOffered = array_key_exists('dropoff', $infoNeeded) ? $infoNeeded['dropoff'] !== null : ! empty($branchList);
-            $nonIntegratedOffered = array_key_exists('non_integrated', $infoNeeded) && $infoNeeded['non_integrated'] !== null;
-
-            if ($pickupOffered) {
-                $method = 'pickup';
-            } elseif ($dropoffOffered) {
-                $method = 'dropoff';
-            } elseif ($nonIntegratedOffered) {
-                $method = 'non_integrated';
-            } else {
-                $method = ! empty($addressList) ? 'pickup' : 'dropoff';
-            }
-        }
+        $method = $this->resolveHandoverMethod($opts, $infoNeeded, $addressList, $branchList);
 
         $body = [
             'order_list' => array_map(fn ($sn) => ['order_sn' => $sn], $orderSns),

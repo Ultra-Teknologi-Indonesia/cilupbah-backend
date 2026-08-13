@@ -13,6 +13,13 @@ use App\Traits\HasUuid7;
 class ChannelShop extends Model
 {
     use HasUuid7;
+
+    public const HANDOVER_DROPOFF = 'dropoff';
+
+    public const HANDOVER_PICKUP = 'pickup';
+
+    public const HANDOVER_METHODS = [self::HANDOVER_DROPOFF, self::HANDOVER_PICKUP];
+
     protected $fillable = [
         'channel_id',
         'shop_id',
@@ -36,6 +43,7 @@ class ChannelShop extends Model
         'stock_push_buffer',
         'stock_handover_at',
         'fulfillment_push_enabled',
+        'handover_method',
         'fulfillment_handover_at',
         'catalog_pull_enabled',
         'catalog_push_enabled',

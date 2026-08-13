@@ -2,6 +2,7 @@
 
 namespace Modules\Outbound\Services\Logistics;
 
+use Modules\Channel\Models\ChannelShop;
 use Modules\Outbound\Contracts\DriverCallResult;
 use Modules\Outbound\Models\Shipment;
 use Modules\Sales\Models\SalesOrder;
@@ -27,7 +28,7 @@ class ShopeeLogisticsService extends AbstractLogisticsService
         $service = app(\Modules\Channel\Services\ShopeeOrderService::class);
 
         $opts = array_filter([
-            'method' => 'pickup',
+            'preferred_method' => $this->preferredHandover($shopId),
             'address_id' => $order->channel_pickup_address_id ?? null,
             'pickup_time_id' => $order->channel_pickup_time_id ?? null,
         ], fn ($v) => $v !== null);
@@ -37,7 +38,7 @@ class ShopeeLogisticsService extends AbstractLogisticsService
         if (empty($result['shipped'])) {
             return [
                 'status' => DriverCallResult::STATUS_FAILED,
-                'message' => $result['error'] ?? 'Shopee menolak permintaan pickup.',
+                'message' => $result['error'] ?? 'Shopee menolak permintaan pengiriman.',
             ];
         }
 
@@ -77,6 +78,19 @@ class ShopeeLogisticsService extends AbstractLogisticsService
         return [
             'status' => DriverCallResult::STATUS_SUCCESS,
         ];
+    }
+
+    protected function preferredHandover(?string $shopId): string
+    {
+        if ($shopId === null || $shopId === '') {
+            return ChannelShop::HANDOVER_DROPOFF;
+        }
+
+        $stored = ChannelShop::where('shop_id', $shopId)->value('handover_method');
+
+        return in_array($stored, ChannelShop::HANDOVER_METHODS, true)
+            ? $stored
+            : ChannelShop::HANDOVER_DROPOFF;
     }
 
     protected function resolveShopId(SalesOrder $order): ?string
@@ -143,9 +157,14 @@ class ShopeeLogisticsService extends AbstractLogisticsService
                 return ['status' => 'failed', 'message' => 'Shopee: gagal retry pickup' . ($err ? " ({$err})" : '') . '.'];
             }
 
-            $result = $service->shipOrder((string) $shopId, $orderSn);
+            $result = $service->shipOrder((string) $shopId, $orderSn, [
+                'preferred_method' => $this->preferredHandover((string) $shopId),
+            ]);
             if (! empty($result['shipped'])) {
-                return ['status' => 'success', 'message' => 'Shopee: berhasil dikirim (RTS).'];
+                $method = $result['method'] ?? null;
+                $label = $method === ChannelShop::HANDOVER_DROPOFF ? 'antar ke counter' : 'pickup kurir';
+
+                return ['status' => 'success', 'message' => "Shopee: berhasil dikirim (RTS, {$label})."];
             }
             $err = is_array($result) ? ($result['error'] ?? null) : null;
 

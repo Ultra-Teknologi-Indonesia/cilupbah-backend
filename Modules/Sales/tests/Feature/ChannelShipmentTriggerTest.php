@@ -58,16 +58,36 @@ class ChannelShipmentTriggerTest extends TestCase
         ]);
     }
 
-    public function test_menyerahkan_ke_gudang_tidak_meminta_resi_ke_marketplace(): void
+    public function test_kurir_reguler_meminta_resi_saat_diserahkan_ke_gudang(): void
     {
-        $order = $this->seedOrder('shopee');
+        $order = $this->seedOrder('shopee', shippingProvider: 'SPX Hemat', shippingType: 'Standard');
+
+        app(SalesOrderService::class)->moveToReadyToProcess([$order]);
+
+        Queue::assertPushed(RequestChannelAwbJob::class);
+
+        $this->assertNotNull(DB::table('sales_orders')->where('id', $order)->value('handed_to_warehouse_at'));
+        $this->assertSame('reserved', DB::table('sales_orders')->where('id', $order)->value('status'));
+    }
+
+    public function test_kurir_instant_tidak_meminta_resi_saat_diserahkan_ke_gudang(): void
+    {
+        $order = $this->seedOrder('shopee', shippingProvider: 'SPX Sameday', shippingType: 'Sameday');
 
         app(SalesOrderService::class)->moveToReadyToProcess([$order]);
 
         Queue::assertNotPushed(RequestChannelAwbJob::class);
 
         $this->assertNotNull(DB::table('sales_orders')->where('id', $order)->value('handed_to_warehouse_at'));
-        $this->assertSame('reserved', DB::table('sales_orders')->where('id', $order)->value('status'));
+    }
+
+    public function test_pesanan_manual_tidak_meminta_resi_saat_diserahkan_ke_gudang(): void
+    {
+        $order = $this->seedOrder('manual');
+
+        app(SalesOrderService::class)->moveToReadyToProcess([$order]);
+
+        Queue::assertNotPushed(RequestChannelAwbJob::class);
     }
 
     public function test_selesai_packing_meminta_resi_ke_marketplace(): void
