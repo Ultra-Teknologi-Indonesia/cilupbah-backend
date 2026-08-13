@@ -89,6 +89,45 @@ class BulkLabelAwbPullTest extends TestCase
         );
     }
 
+    public function test_kurir_instan_dikenali_dari_shipping_provider_bukan_courier_name(): void
+    {
+        Queue::fake();
+
+        $order = $this->orderWithoutAwb([
+            'courier_name' => null,
+            'shipping_provider' => 'GrabExpress Instant',
+        ]);
+        $batch = $this->createBatchFor($order);
+
+        $this->assertSame(
+            BulkShippingLabelItem::STATUS_SKIPPED_INSTANT,
+            $this->itemOf($batch)->status,
+            'Mapper channel tidak pernah mengisi courier_name, hanya shipping_provider. '
+                .'Kalau deteksi kurir instan cuma membaca courier_name, di produksi tidak akan pernah cocok.',
+        );
+
+        Queue::assertNotPushed(RequestChannelAwbJob::class);
+    }
+
+    public function test_lex_id_lazada_bukan_kurir_instan(): void
+    {
+        Queue::fake();
+
+        $order = $this->orderWithoutAwb([
+            'source' => 'lazada',
+            'courier_name' => null,
+            'shipping_provider' => 'LEX ID',
+        ]);
+        $batch = $this->createBatchFor($order);
+
+        $this->assertSame(
+            BulkShippingLabelItem::STATUS_WAITING_AWB,
+            $this->itemOf($batch)->status,
+            'LEX ID itu Lazada Express, kurir reguler Lazada. Kalau ikut daftar kurir instan, '
+                .'label Lazada akan dilewati diam-diam dan tidak pernah tercetak.',
+        );
+    }
+
     public function test_pesanan_manual_tanpa_resi_tetap_gagal_tanpa_memanggil_channel(): void
     {
         Queue::fake();

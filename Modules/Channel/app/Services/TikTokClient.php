@@ -85,6 +85,16 @@ class TikTokClient
 
         $data = $response->json();
 
+        if (is_array($data) && isset($data['code']) && $data['code'] !== 0) {
+            $shopId = $queries['shop_cipher'] ?? 'unknown';
+            $this->raiseApiError($data['code'], $data['message'] ?? null, $shopId, [
+                'url'         => $fullUrl,
+                'body'        => $body,
+                'http_status' => $response->status(),
+                'response'    => $data,
+            ]);
+        }
+
         if ($response->failed()) {
             $message = is_array($data) ? ($data['message'] ?? $response->body()) : $response->body();
 
@@ -95,15 +105,6 @@ class TikTokClient
             ]);
 
             throw new \RuntimeException('TikTok API HTTP Error [' . $response->status() . ']: ' . $message);
-        }
-
-        if (isset($data['code']) && $data['code'] !== 0) {
-            $shopId = $queries['shop_cipher'] ?? 'unknown';
-            $this->raiseApiError($data['code'], $data['message'] ?? null, $shopId, [
-                'url'      => $fullUrl,
-                'body'     => $body,
-                'response' => $data,
-            ]);
         }
 
         return $data;

@@ -92,6 +92,12 @@ class ShopeeClient
 
         $data = $response->json() ?? [];
 
+        $error = (string) (is_array($data) ? ($data['error'] ?? '') : '');
+
+        if ($error !== '') {
+            $this->raiseApiError($apiPath, $error, $data, $shopId, $response->status());
+        }
+
         if ($response->failed()) {
             $message = is_array($data) ? ($data['message'] ?? $response->body()) : $response->body();
 
@@ -104,22 +110,17 @@ class ShopeeClient
             throw new \RuntimeException('Shopee API HTTP Error [' . $response->status() . ']: ' . $message);
         }
 
-        $error = (string) ($data['error'] ?? '');
-
-        if ($error !== '') {
-            $this->raiseApiError($apiPath, $error, $data, $shopId);
-        }
-
         return $data;
     }
 
-    protected function raiseApiError(string $apiPath, string $error, array $data, string $shopId): void
+    protected function raiseApiError(string $apiPath, string $error, array $data, string $shopId, ?int $httpStatus = null): void
     {
         $resolved = ShopeeErrorCatalog::resolve($error, $data['message'] ?? null, $this->extractErrorInfo($data));
 
         Log::error('Shopee API Error', [
             'path' => $apiPath,
             'error' => $error,
+            'http_status' => $httpStatus,
             'category' => $resolved['category'],
             'message' => $data['message'] ?? null,
             'result_list' => $data['response']['result_list'] ?? null,

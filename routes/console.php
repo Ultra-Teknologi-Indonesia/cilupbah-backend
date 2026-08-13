@@ -8,12 +8,11 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Schedule::command('lazada:refresh-tokens')->dailyAt('02:00')->withoutOverlapping()->onOneServer();
+Schedule::command('shopee:refresh-tokens --hours=3')->everyFifteenMinutes()->withoutOverlapping(10)->onOneServer();
+Schedule::command('tiktok:refresh-tokens --hours=24')->everyFifteenMinutes()->withoutOverlapping(10)->onOneServer();
+Schedule::command('lazada:refresh-tokens --hours=48')->everyFifteenMinutes()->withoutOverlapping(10)->onOneServer();
 
 Schedule::command('channel:alert-reauth')->dailyAt('08:00')->withoutOverlapping()->onOneServer();
-
-Schedule::command('shopee:refresh-tokens')->hourly()->withoutOverlapping()->onOneServer();
-Schedule::command('tiktok:refresh-tokens')->hourly()->withoutOverlapping()->onOneServer();
 
 Schedule::command('products:poll-review-status')->everyThirtyMinutes()->withoutOverlapping()->onOneServer();
 

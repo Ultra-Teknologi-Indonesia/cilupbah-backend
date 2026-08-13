@@ -68,6 +68,8 @@ class RequestChannelAwbJob implements ShouldQueue
                 'courier_name'  => $order->courier_name,
             ]);
 
+            app(BulkShippingLabelService::class)->onOrderAwbSkippedInstant($order->id);
+
             return;
         }
 

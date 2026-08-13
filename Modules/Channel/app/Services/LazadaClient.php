@@ -78,6 +78,18 @@ class LazadaClient
 
             $data = $response->json() ?? [];
 
+            if (in_array((string) ($data['code'] ?? ''), self::TOKEN_ERROR_CODES, true)) {
+                Log::error('Lazada API Error', [
+                    'path' => $apiPath,
+                    'code' => (string) $data['code'],
+                    'http_status' => $response->status(),
+                    'message' => $data['message'] ?? null,
+                    'request_id' => $data['request_id'] ?? null,
+                ]);
+
+                throw new TokenExpiredException('lazada', $data['message'] ?? 'Lazada access token expired');
+            }
+
             if ($response->failed()) {
                 $message = is_array($data) ? ($data['message'] ?? $response->body()) : $response->body();
 

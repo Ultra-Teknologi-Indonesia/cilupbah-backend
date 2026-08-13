@@ -15,12 +15,20 @@ class TikTokRefreshTokens extends Command
     {
         $summary = $authService->refreshExpiringTokens((int) $this->option('hours'));
 
-        $this->info(sprintf(
+        $pesan = sprintf(
             'TikTok token refresh: %d diperbarui, %d gagal, %d dilewati.',
             $summary['refreshed'],
             $summary['failed'],
             $summary['skipped'],
-        ));
+        );
+
+        if ($summary['failed'] > 0) {
+            $this->error($pesan);
+
+            return self::FAILURE;
+        }
+
+        $this->info($pesan);
 
         return self::SUCCESS;
     }

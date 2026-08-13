@@ -22,12 +22,16 @@ spec:
           envFrom:
             - secretRef:
                 name: cilupbah-env
+          # schedule:work menjalankan tiap task artisan sebagai sub-proses di cgroup yang sama,
+          # jadi satu command rakus memori meng-OOM seluruh container dan menelan semua task
+          # yang belum sempat jalan di menit itu. Pada 256Mi hal ini terjadi (exit 137,
+          # 13 Agu 2026) dan menyebabkan token channel kedaluwarsa tanpa sempat di-refresh.
           resources:
             requests:
-              memory: "128Mi"
+              memory: "256Mi"
               cpu: "50m"
             limits:
-              memory: "256Mi"
+              memory: "768Mi"
               cpu: "250m"
           # Deteksi scheduler yang hang (hidup tapi berhenti menjadwalkan):
           # task 'scheduler-heartbeat' (routes/console.php) menyentuh file ini

@@ -66,8 +66,6 @@ class BulkShippingLabelService
         'LALAMOVE',
         'BORZO',
         'DEALIVER',
-        'LEX ID',
-        'PICKUP',
     ];
 
     public function __construct(private SalesOrderService $salesOrderService)
@@ -178,7 +176,11 @@ class BulkShippingLabelService
         if (! $order) {
             return false;
         }
-        $haystack = strtoupper(trim((string) ($order->courier_name ?? '').' '.($order->courier_type_code ?? '')));
+        $haystack = strtoupper(trim(implode(' ', array_filter([
+            $order->courier_name,
+            $order->shipping_provider,
+            $order->shipping_type,
+        ]))));
         if ($haystack === '') {
             return false;
         }
@@ -712,6 +714,23 @@ class BulkShippingLabelService
         foreach ($items as $item) {
             $batch = BulkShippingLabelBatch::find($item->batch_id);
             $this->processItem($item, $batch?->per_channel_opts);
+        }
+
+        $this->finalizeAffectedBatches($items);
+    }
+
+    public function onOrderAwbSkippedInstant(string $orderId): void
+    {
+        $items = BulkShippingLabelItem::where('order_id', $orderId)
+            ->where('status', BulkShippingLabelItem::STATUS_WAITING_AWB)
+            ->get();
+
+        if ($items->isEmpty()) {
+            return;
+        }
+
+        foreach ($items as $item) {
+            $this->skipInstant($item);
         }
 
         $this->finalizeAffectedBatches($items);
