@@ -17,5 +17,5 @@ php artisan view:cache
 # every time. Keeping the entrypoint boot-only avoids restart loops on migration
 # failures and keeps schema changes visible/rollback-aware in the pipeline.
  
-echo "==> Starting Laravel..."
-exec php artisan serve --host=0.0.0.0 --port=8000
+echo "==> Starting Supervisord (Nginx + PHP-FPM)..."
+exec /usr/bin/supervisord -n -c /etc/supervisor/conf.d/supervisord.conf
