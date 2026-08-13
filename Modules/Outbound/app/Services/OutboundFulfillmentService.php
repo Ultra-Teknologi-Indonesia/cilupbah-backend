@@ -225,9 +225,9 @@ class OutboundFulfillmentService
         ];
     }
 
-    public function getOrdersByStage(string $stage, int $limit = 10)
+    private function stageQuery(string $stage)
     {
-        $query = match ($stage) {
+        return match ($stage) {
             'ready-to-process' => $this->readyToProcess(),
             'ready-to-pick' => $this->readyToPick(),
             'on-picking' => $this->onPicking(),
@@ -241,6 +241,26 @@ class OutboundFulfillmentService
             'request-cancel' => $this->pendingCancelRequests(),
             default => throw new \Exception("Stage '{$stage}' tidak dikenal."),
         };
+    }
+
+    public function getCourierOptionsByStage(string $stage): array
+    {
+        $query = $this->stageQuery($stage);
+
+        \App\Support\WarehouseAccess::apply($query, 'sales_orders.location_id');
+
+        return $query->reorder()
+            ->whereNotNull('shipping_provider')
+            ->where('shipping_provider', '<>', '')
+            ->distinct()
+            ->orderBy('shipping_provider')
+            ->pluck('shipping_provider')
+            ->all();
+    }
+
+    public function getOrdersByStage(string $stage, int $limit = 10)
+    {
+        $query = $this->stageQuery($stage);
 
         $extraSelects = match ($stage) {
             'finish-pick' => ['picker_name', 'picklist_ref'],

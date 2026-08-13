@@ -58,13 +58,18 @@ class ChannelShipmentTriggerTest extends TestCase
         ]);
     }
 
-    public function test_kurir_reguler_meminta_resi_saat_diserahkan_ke_gudang(): void
+    public function test_kurir_reguler_tidak_meminta_resi_saat_diserahkan_ke_gudang(): void
     {
         $order = $this->seedOrder('shopee', shippingProvider: 'SPX Hemat', shippingType: 'Standard');
 
         app(SalesOrderService::class)->moveToReadyToProcess([$order]);
 
-        Queue::assertPushed(RequestChannelAwbJob::class);
+        Queue::assertNotPushed(
+            RequestChannelAwbJob::class,
+            null,
+            'Tombol Proses tidak boleh menarik resi. Penarikan dilakukan operator di Picking tab Belum Mulai, '
+                .'supaya pesanan tidak jadi Ready To Ship di marketplace sebelum ada yang memegangnya.',
+        );
 
         $this->assertNotNull(DB::table('sales_orders')->where('id', $order)->value('handed_to_warehouse_at'));
         $this->assertSame('reserved', DB::table('sales_orders')->where('id', $order)->value('status'));
@@ -90,6 +95,40 @@ class ChannelShipmentTriggerTest extends TestCase
         Queue::assertNotPushed(RequestChannelAwbJob::class);
     }
 
+    public function test_gosend_dan_grab_tidak_tarik_resi_di_selesai_packing(): void
+    {
+        foreach (['GrabExpress Instant', 'GoSend Instant', 'Gojek Instant'] as $courier) {
+            $order = $this->seedOrder('shopee', status: 'picked', shippingProvider: $courier);
+            $packlist = $this->seedCompletedPacklist($order);
+
+            app(ProcessPacklistCompleteJob::class, ['packlistId' => $packlist])
+                ->handle(app(SalesOrderService::class));
+        }
+
+        Queue::assertNotPushed(
+            RequestChannelAwbJob::class,
+            null,
+            'Gosend/Grab tidak punya resi dari marketplace. Kurirnya dipanggil manual lewat '
+                .'Pengiriman > Panggil Driver, jadi tarik resi otomatis di sini justru salah.',
+        );
+    }
+
+    public function test_lazada_lex_tetap_tarik_resi_di_selesai_packing(): void
+    {
+        $order = $this->seedOrder('lazada', status: 'picked', shippingProvider: 'LEX ID');
+        $packlist = $this->seedCompletedPacklist($order);
+
+        app(ProcessPacklistCompleteJob::class, ['packlistId' => $packlist])
+            ->handle(app(SalesOrderService::class));
+
+        Queue::assertPushed(
+            RequestChannelAwbJob::class,
+            null,
+            'LEX ID itu Lazada Express, kurir reguler Lazada. Jangan ikut diblokir oleh aturan '
+                .'kurir panggil-driver manual.',
+        );
+    }
+
     public function test_selesai_packing_meminta_resi_ke_marketplace(): void
     {
         $order = $this->seedOrder('shopee', status: 'picked');
@@ -104,7 +143,7 @@ class ChannelShipmentTriggerTest extends TestCase
 
     public function test_pesanan_kurir_instan_juga_meminta_resi_di_selesai_packing(): void
     {
-        $order = $this->seedOrder('shopee', status: 'picked', shippingProvider: 'GrabExpress', shippingType: 'Instant');
+        $order = $this->seedOrder('shopee', status: 'picked', shippingProvider: 'SPX Instant', shippingType: 'Instant');
         $packlist = $this->seedCompletedPacklist($order);
 
         app(ProcessPacklistCompleteJob::class, ['packlistId' => $packlist])
@@ -117,7 +156,7 @@ class ChannelShipmentTriggerTest extends TestCase
 
     public function test_pesanan_same_day_juga_meminta_resi_di_selesai_packing(): void
     {
-        $order = $this->seedOrder('tiktok', status: 'picked', shippingProvider: 'GoSend', shippingType: 'Same Day');
+        $order = $this->seedOrder('tiktok', status: 'picked', shippingProvider: 'TikTok Sameday', shippingType: 'Same Day');
         $packlist = $this->seedCompletedPacklist($order);
 
         app(ProcessPacklistCompleteJob::class, ['packlistId' => $packlist])

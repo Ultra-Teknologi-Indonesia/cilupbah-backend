@@ -9,6 +9,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Outbound\Models\Packlist;
+use Modules\Outbound\Support\InstantOrderClassifier;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
 use Modules\Sales\Jobs\RequestChannelAwbJob;
 use Modules\Sales\Models\SalesOrder;
@@ -53,6 +54,20 @@ class ProcessPacklistCompleteJob implements ShouldQueue
         $source = strtolower((string) $order->source);
 
         if (! in_array($source, ['shopee', 'tiktok', 'lazada'], true)) {
+            return;
+        }
+
+        if (InstantOrderClassifier::needsManualDriverDispatch(
+            $order->courier_name,
+            $order->shipping_provider,
+            $order->shipping_type,
+        )) {
+            Log::info('ProcessPacklistCompleteJob: resi tidak ditarik, kurir dipanggil manual lewat Pengiriman', [
+                'order_id'      => $order->id,
+                'salesorder_no' => $order->salesorder_no,
+                'courier_name'  => $order->courier_name,
+            ]);
+
             return;
         }
 

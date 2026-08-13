@@ -21,7 +21,6 @@ use Modules\Channel\Exceptions\ChannelLabelUnsupportedException;
 use Modules\Sales\Jobs\CancelChannelOrderJob;
 use Modules\Sales\Jobs\PrepareLazadaShippingLabelJob;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
-use Modules\Sales\Jobs\RequestChannelAwbJob;
 use Modules\Sales\Jobs\SyncStockJob;
 use Modules\Sales\Models\OrderBinAllocation;
 use Modules\Sales\Models\SalesOrder;
@@ -220,9 +219,7 @@ class SalesOrderService
             ];
         }
 
-        $movedIds = [];
-
-        $count = DB::transaction(function () use ($eligibleIds, $actor, &$movedIds) {
+        $count = DB::transaction(function () use ($eligibleIds, $actor) {
             $orders = SalesOrder::whereIn('id', $eligibleIds)
                 ->where('status', 'reserved')
                 ->get();
@@ -251,43 +248,17 @@ class SalesOrderService
                     ], $actor);
                 }
 
-                $movedIds[] = (string) $order->id;
                 $count++;
             }
 
             return $count;
         });
 
-        $this->requestAwbForRegularCouriers($movedIds);
-
         return [
             'moved'   => $count,
             'skipped' => $skipped,
             'message' => $this->buildMoveToReadyMessage($count, $skipped),
         ];
-    }
-
-    private function requestAwbForRegularCouriers(array $orderIds): void
-    {
-        if (empty($orderIds)) {
-            return;
-        }
-
-        $orders = SalesOrder::whereIn('id', $orderIds)
-            ->whereNull('tracking_number')
-            ->get();
-
-        foreach ($orders as $order) {
-            if (! in_array(strtolower((string) $order->source), ['shopee', 'tiktok', 'lazada'], true)) {
-                continue;
-            }
-
-            if ($order->is_instant) {
-                continue;
-            }
-
-            RequestChannelAwbJob::dispatch($order->id);
-        }
     }
 
     private function buildMoveToReadyMessage(int $moved, array $skipped): string

@@ -54,6 +54,22 @@ class OutboundFulfillmentController extends Controller
         return $this->successResponse($data);
     }
 
+    public function courierOptionsByStage(string $stage): JsonResponse
+    {
+        try {
+            $data = $this->fulfillmentService->getCourierOptionsByStage($stage);
+        } catch (\Exception $e) {
+            return $this->errorResponse(
+                'Gagal memuat daftar kurir.',
+                400,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
+        }
+
+        return $this->successResponse($data);
+    }
+
     #[OA\Get(
         path: '/api/v1/outbound/orders/monitoring',
         summary: 'Monitoring ringkas Proses Pesanan (tab Pantauan)',
