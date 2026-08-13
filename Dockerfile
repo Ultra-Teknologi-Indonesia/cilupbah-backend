@@ -55,6 +55,15 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Konfigurasi PHP disalin ke conf.d — direktori yang SELALU dipindai PHP.
+#
+# Sebelumnya berkas ini hanya terbaca lewat PHP_INI_SCAN_DIR yang disetel di
+# docker-compose staging. Manifest Kubernetes production tidak menyetelnya,
+# sehingga production diam-diam memakai nilai bawaan PHP: upload_max_filesize
+# 2M (bukan 60M seperti yang diniatkan) dan opcache tidak aktif. Menyalinnya
+# ke sini membuat kedua environment memakai konfigurasi yang sama.
+COPY docker/php/*.ini /usr/local/etc/php/conf.d/
+
 # Install Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
