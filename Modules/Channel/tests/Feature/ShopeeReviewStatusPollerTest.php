@@ -51,12 +51,16 @@ class ShopeeReviewStatusPollerTest extends TestCase
         $unlist = $this->mapping($shop, 'S-D', ProductChannelMapping::STATUS_SYNCED);
 
         $this->mock(ShopeeProductService::class, function ($m) {
-            $m->shouldReceive('fetchProductStatuses')->once()->andReturn([
-                'S-A' => ['status' => 'normal', 'reason' => null],
-                'S-B' => ['status' => 'banned', 'reason' => null],
-                'S-C' => ['status' => 'deleted', 'reason' => null],
-                'S-D' => ['status' => 'unlist', 'reason' => null],
-            ]);
+            $m->shouldReceive('eachProductStatusPage')
+                ->once()
+                ->andReturnUsing(function (string $shopId, callable $onPage) {
+                    $onPage([
+                        'S-A' => ['status' => 'normal', 'reason' => null],
+                        'S-B' => ['status' => 'banned', 'reason' => null],
+                        'S-C' => ['status' => 'deleted', 'reason' => null],
+                        'S-D' => ['status' => 'unlist', 'reason' => null],
+                    ]);
+                });
         });
 
         $summary = app(ReviewStatusPoller::class)->pollShop($shop);
@@ -89,13 +93,50 @@ class ShopeeReviewStatusPollerTest extends TestCase
         $this->mapping($shop, 'S-X', ProductChannelMapping::STATUS_SYNCED);
 
         $this->mock(ShopeeProductService::class, function ($m) {
-            $m->shouldReceive('fetchProductStatuses')->once()->andReturn([
-                'S-X' => ['status' => 'normal', 'reason' => null],
-            ]);
+            $m->shouldReceive('eachProductStatusPage')
+                ->once()
+                ->andReturnUsing(function (string $shopId, callable $onPage) {
+                    $onPage(['S-X' => ['status' => 'normal', 'reason' => null]]);
+                });
         });
 
         $summary = app(ReviewStatusPoller::class)->pollAll();
 
         $this->assertSame(1, $summary['shops']);
+    }
+
+    public function test_katalog_multi_halaman_diproses_per_halaman(): void
+    {
+        DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Cat']);
+        $channel = Channel::create(['code' => 'shopee', 'name' => 'Shopee']);
+        $shop = ChannelShop::create([
+            'channel_id' => $channel->id,
+            'shop_id' => 'SHOP-S3',
+            'shop_name' => 'Toko Shopee 3',
+            'access_token' => 'tok',
+            'is_active' => true,
+        ]);
+
+        $halaman1 = $this->mapping($shop, 'S-P1', ProductChannelMapping::STATUS_IN_REVIEW);
+        $halaman2 = $this->mapping($shop, 'S-P2', ProductChannelMapping::STATUS_IN_REVIEW);
+        $takDisebut = $this->mapping($shop, 'S-P3', ProductChannelMapping::STATUS_IN_REVIEW);
+
+        $this->mock(ShopeeProductService::class, function ($m) {
+            $m->shouldReceive('eachProductStatusPage')
+                ->once()
+                ->andReturnUsing(function (string $shopId, callable $onPage) {
+                    $onPage(['S-P1' => ['status' => 'normal', 'reason' => null]]);
+                    $onPage(['S-P2' => ['status' => 'banned', 'reason' => null]]);
+                });
+        });
+
+        $summary = app(ReviewStatusPoller::class)->pollShop($shop);
+
+        $this->assertSame(2, $summary['checked']);
+        $this->assertSame(2, $summary['updated']);
+
+        $this->assertSame('synced', $halaman1->fresh()->sync_status);
+        $this->assertSame('rejected', $halaman2->fresh()->sync_status);
+        $this->assertSame('in_review', $takDisebut->fresh()->sync_status);
     }
 }

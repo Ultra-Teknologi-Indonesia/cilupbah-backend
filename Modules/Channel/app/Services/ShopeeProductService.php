@@ -643,8 +643,18 @@ class ShopeeProductService implements ChunkedDownloadable
 
     public function fetchProductStatuses(string $shopId): array
     {
-        $shop = $this->requireShop($shopId);
         $statuses = [];
+
+        $this->eachProductStatusPage($shopId, function (array $page) use (&$statuses) {
+            $statuses = array_replace($statuses, $page);
+        });
+
+        return $statuses;
+    }
+
+    public function eachProductStatusPage(string $shopId, callable $onPage): void
+    {
+        $shop = $this->requireShop($shopId);
 
         foreach (['NORMAL', 'BANNED', 'DELETED', 'UNLIST'] as $itemStatus) {
             $offset = 0;
@@ -652,25 +662,27 @@ class ShopeeProductService implements ChunkedDownloadable
 
             do {
                 $list = $this->fetchItemListByStatus($shop, $offset, $pageSize, $itemStatus);
-                $items = $list['item'] ?? [];
+                $page = [];
 
-                foreach ($items as $item) {
+                foreach ($list['item'] ?? [] as $item) {
                     $extId = (string) ($item['item_id'] ?? '');
                     if ($extId === '') {
                         continue;
                     }
-                    $statuses[$extId] = [
+                    $page[$extId] = [
                         'status' => strtolower($itemStatus),
                         'reason' => null,
                     ];
+                }
+
+                if ($page !== []) {
+                    $onPage($page);
                 }
 
                 $hasNext = (bool) ($list['has_next_page'] ?? false);
                 $offset = (int) ($list['next_offset'] ?? ($offset + $pageSize));
             } while ($hasNext);
         }
-
-        return $statuses;
     }
 
     protected function fetchItemListByStatus(object $shop, int $offset, int $pageSize, string $itemStatus): array

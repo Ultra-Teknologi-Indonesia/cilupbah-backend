@@ -36,24 +36,46 @@ class ReviewStatusPoller
         $shop->loadMissing('channel');
         $code = $shop->channel?->code;
 
+        $service = match ($code) {
+            'tiktok' => $this->tiktok,
+            'lazada' => $this->lazada,
+            'shopee' => $this->shopee,
+            default => null,
+        };
+
+        if ($service === null) {
+            return ['checked' => 0, 'updated' => 0];
+        }
+
+        $checked = 0;
+        $updated = 0;
+
         try {
-            $statuses = match ($code) {
-                'tiktok' => $this->tiktok->fetchProductStatuses($shop->shop_id),
-                'lazada' => $this->lazada->fetchProductStatuses($shop->shop_id),
-                'shopee' => $this->shopee->fetchProductStatuses($shop->shop_id),
-                default => [],
-            };
+            $service->eachProductStatusPage(
+                $shop->shop_id,
+                function (array $statuses) use ($shop, $code, &$checked, &$updated) {
+                    [$c, $u] = $this->applyPage($shop, $code, $statuses);
+                    $checked += $c;
+                    $updated += $u;
+                },
+            );
         } catch (\Throwable $e) {
             Log::warning('Polling status review gagal', ['shop_id' => $shop->shop_id, 'error' => $e->getMessage()]);
-            return ['checked' => 0, 'updated' => 0];
         }
 
-        if (empty($statuses)) {
-            return ['checked' => 0, 'updated' => 0];
-        }
+        return ['checked' => $checked, 'updated' => $updated];
+    }
 
+    /**
+     * Katalog ditelusuri per halaman, dan mapping diambil hanya untuk id di halaman itu.
+     * Versi lama menahan seluruh katalog toko plus seluruh mapping-nya di memori sekaligus;
+     * itu meng-OOM pod scheduler dan ikut menelan task terjadwal lain di menit yang sama,
+     * termasuk perpanjangan token channel.
+     */
+    private function applyPage(ChannelShop $shop, ?string $code, array $statuses): array
+    {
         $mappings = ProductChannelMapping::where('channel_shop_id', $shop->id)
-            ->whereNotNull('external_product_id')
+            ->whereIn('external_product_id', array_keys($statuses))
             ->whereIn('sync_status', [
                 ProductChannelMapping::STATUS_PENDING,
                 ProductChannelMapping::STATUS_SYNCING,
@@ -81,7 +103,7 @@ class ReviewStatusPoller
             $updated++;
         }
 
-        return ['checked' => $checked, 'updated' => $updated];
+        return [$checked, $updated];
     }
 
     protected function mapStatus(?string $code, string $raw): ?string

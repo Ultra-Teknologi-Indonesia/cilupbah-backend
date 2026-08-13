@@ -75,12 +75,22 @@ class LazadaProductService
 
     public function fetchProductStatuses(string $shopId): array
     {
+        $statuses = [];
+
+        $this->eachProductStatusPage($shopId, function (array $page) use (&$statuses) {
+            $statuses = array_replace($statuses, $page);
+        });
+
+        return $statuses;
+    }
+
+    public function eachProductStatusPage(string $shopId, callable $onPage): void
+    {
         $shop = $this->shopRepository->findByShopId($shopId);
         if (! $shop || ! $shop->access_token) {
-            return [];
+            return;
         }
 
-        $statuses = [];
         $offset = 0;
         $limit = self::PULL_PAGE_LIMIT;
 
@@ -96,6 +106,7 @@ class LazadaProductService
             }
 
             $products = $res['data']['products'] ?? [];
+            $page = [];
 
             foreach ($products as $item) {
                 $extId = (string) ($item['item_id'] ?? '');
@@ -103,16 +114,18 @@ class LazadaProductService
                     continue;
                 }
                 $reason = $item['reasons'] ?? $item['reason'] ?? null;
-                $statuses[$extId] = [
+                $page[$extId] = [
                     'status' => strtolower((string) ($item['qc_status'] ?? $item['status'] ?? '')),
                     'reason' => is_array($reason) ? json_encode($reason) : $reason,
                 ];
             }
 
+            if ($page !== []) {
+                $onPage($page);
+            }
+
             $offset += $limit;
         } while (count($products) === $limit);
-
-        return $statuses;
     }
 
     public function syncCategoryTree(string $shopId): int

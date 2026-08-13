@@ -743,14 +743,24 @@ class TikTokProductService
 
     public function fetchProductStatuses(string $shopId): array
     {
+        $statuses = [];
+
+        $this->eachProductStatusPage($shopId, function (array $page) use (&$statuses) {
+            $statuses = array_replace($statuses, $page);
+        });
+
+        return $statuses;
+    }
+
+    public function eachProductStatusPage(string $shopId, callable $onPage): void
+    {
         $shop = $this->shopRepository->findByShopId($shopId);
         if (! $shop || ! $shop->access_token) {
-            return [];
+            return;
         }
 
         $accessToken = $shop->access_token;
         $shopCipher  = $shop->shop_cipher ?? '';
-        $statuses    = [];
         $pageToken   = null;
 
         do {
@@ -766,22 +776,26 @@ class TikTokProductService
                 $res = $this->client->request('POST', '/product/202309/products/search', $queries, [], $accessToken);
             }
 
+            $page = [];
+
             foreach ($res['data']['products'] ?? [] as $item) {
                 $extId = (string) ($item['id'] ?? '');
                 if ($extId === '') {
                     continue;
                 }
                 $reason = $item['audit_failed_reasons'] ?? null;
-                $statuses[$extId] = [
+                $page[$extId] = [
                     'status' => (string) ($item['status'] ?? ''),
                     'reason' => is_array($reason) ? json_encode($reason) : $reason,
                 ];
             }
 
+            if ($page !== []) {
+                $onPage($page);
+            }
+
             $pageToken = $res['data']['next_page_token'] ?? null;
         } while ($pageToken);
-
-        return $statuses;
     }
 
     protected function assertValidTikTokTitle(string $name): void

@@ -50,12 +50,15 @@ class ReviewStatusPollerTest extends TestCase
         $missing  = $this->mapping($shop, 'T-D', ProductChannelMapping::STATUS_IN_REVIEW);
 
         $this->mock(TikTokProductService::class, function ($m) {
-            $m->shouldReceive('fetchProductStatuses')->once()->andReturn([
-                'T-A' => ['status' => '4', 'reason' => null],
-                'T-B' => ['status' => '3', 'reason' => 'Gambar buram'],
-                'T-C' => ['status' => '2', 'reason' => null],
-
-            ]);
+            $m->shouldReceive('eachProductStatusPage')
+                ->once()
+                ->andReturnUsing(function (string $shopId, callable $onPage) {
+                    $onPage([
+                        'T-A' => ['status' => '4', 'reason' => null],
+                        'T-B' => ['status' => '3', 'reason' => 'Gambar buram'],
+                        'T-C' => ['status' => '2', 'reason' => null],
+                    ]);
+                });
         });
 
         $summary = app(ReviewStatusPoller::class)->pollShop($shop);
