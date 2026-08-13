@@ -21,7 +21,6 @@ use Modules\Channel\Exceptions\ChannelLabelUnsupportedException;
 use Modules\Sales\Jobs\CancelChannelOrderJob;
 use Modules\Sales\Jobs\PrepareLazadaShippingLabelJob;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
-use Modules\Sales\Jobs\RequestChannelAwbJob;
 use Modules\Sales\Jobs\SyncStockJob;
 use Modules\Sales\Models\OrderBinAllocation;
 use Modules\Sales\Models\SalesOrder;
@@ -220,14 +219,12 @@ class SalesOrderService
             ];
         }
 
-        [$count, $awbOrderIds, $shopeeLabelOrderIds] = DB::transaction(function () use ($eligibleIds, $actor) {
+        $count = DB::transaction(function () use ($eligibleIds, $actor) {
             $orders = SalesOrder::whereIn('id', $eligibleIds)
                 ->where('status', 'reserved')
                 ->get();
 
             $count = 0;
-            $awbOrderIds = [];
-            $shopeeLabelOrderIds = [];
 
             foreach ($orders as $order) {
                 PicklistItem::where('order_id', $order->id)
@@ -251,48 +248,11 @@ class SalesOrderService
                     ], $actor);
                 }
 
-                $source = strtolower((string) $order->source);
-                if (
-                    in_array($source, ['shopee', 'tiktok', 'lazada'], true)
-                    && empty($order->tracking_number)
-                ) {
-                    $awbOrderIds[] = $order->id;
-                } elseif (
-                    $source === 'shopee'
-                    && ! empty($order->tracking_number)
-                    && ! in_array($order->shipping_label_status, ['ready', 'self_design_required', 'preparing'], true)
-                ) {
-                    $shopeeLabelOrderIds[] = $order->id;
-                }
-
                 $count++;
             }
 
-            return [$count, $awbOrderIds, $shopeeLabelOrderIds];
+            return $count;
         });
-
-        foreach ($awbOrderIds as $orderId) {
-            try {
-                RequestChannelAwbJob::dispatch($orderId);
-            } catch (\Throwable $e) {
-                Log::error('moveToReadyToProcess: gagal dispatch RequestChannelAwbJob', [
-                    'order_id'  => $orderId,
-                    'exception' => $e->getMessage(),
-                ]);
-            }
-        }
-
-        foreach ($shopeeLabelOrderIds as $orderId) {
-            try {
-                PrepareShopeeShippingLabelJob::dispatch($orderId)
-                    ->onQueue(config('queue.names.channel_sync'));
-            } catch (\Throwable $e) {
-                Log::error('moveToReadyToProcess: gagal dispatch PrepareShopeeShippingLabelJob', [
-                    'order_id'  => $orderId,
-                    'exception' => $e->getMessage(),
-                ]);
-            }
-        }
 
         return [
             'moved'   => $count,

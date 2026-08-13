@@ -46,6 +46,8 @@ adalah rekonsiliasi dan kriteria kelulusan yang disepakati di depan.
 | `channel_shops` | `stock_push_enabled` | Sistem ini boleh menulis stok/harga ke toko ini |
 | `channel_shops` | `stock_push_buffer` | Buffer pengaman (unit) yang dikurangkan saat push |
 | `channel_shops` | `stock_handover_at` | Kapan kepemilikan stok toko ini diserahterimakan |
+| `channel_shops` | `fulfillment_push_enabled` | Sistem ini boleh mengubah status pesanan di toko ini (siap kirim, resi, driver, batal) |
+| `channel_shops` | `fulfillment_handover_at` | Kapan kepemilikan fulfillment toko ini diserahterimakan |
 | `sales_orders` | `is_shadow` | Order hasil tarik paralel, tidak difulfill di sini |
 
 `shadow_started_at` diisi otomatis saat Shadow Mode dinyalakan lewat API. Untuk
@@ -58,6 +60,7 @@ tanggal tertentu), setel manual**, karena kolom inilah batas scope rekonsiliasi.
 | Tempat | Perilaku |
 |---|---|
 | `SyncProductToChannelJob` | Dilewati kalau `stock_push_enabled` mati — **tidak ada push stok/harga ke marketplace** |
+| `ChannelFulfillmentGuard` | Dilewati kalau `fulfillment_push_enabled` mati — **tidak ada perubahan status pesanan di marketplace** (lihat 2.4) |
 | `ShadowOrderGuard` | Order shadow tidak reserve/pick/release stok, dan setiap percobaan dicatat di log |
 | `SalesOrder::excludeShadow()` | Dipakai di sync keuangan, settlement, dashboard, laporan, dan list order |
 | List order | Order shadow disembunyikan secara default |
@@ -99,10 +102,11 @@ default-nya hanya menampilkan rencana dan butuh `--force`.
 
 ---
 
-## 2.4 Empat sumbu sinkronisasi per toko
+## 2.4 Lima sumbu sinkronisasi per toko
 
-Sejak 12 Agu 2026 tiap toko punya empat sakelar terpisah, di luar `is_active`
-(toko ikut dioperasikan atau tidak) dan master switch global:
+Sejak 12 Agu 2026 tiap toko punya sakelar terpisah, di luar `is_active`
+(toko ikut dioperasikan atau tidak) dan master switch global. Sumbu kelima
+ditambahkan 13 Agu 2026:
 
 | Kolom | Menggerbangi | Catatan |
 |---|---|---|
@@ -110,14 +114,36 @@ Sejak 12 Agu 2026 tiap toko punya empat sakelar terpisah, di luar `is_active`
 | `catalog_pull_enabled` | `DownloadProductsJob` | Tarik produk marketplace jadi data lokal |
 | `catalog_push_enabled` | Aksi `push`/`update`/`delete`/`activate`/`deactivate` | Baru; sebelumnya ikut menumpang `stock_push_enabled` |
 | `stock_push_enabled` | Aksi `sync_stock`/`sync_price_stock` | Sudah ada sejak fase stok |
+| `fulfillment_push_enabled` | `readyToShip` + tarik resi, label pengiriman, panggil driver instan, pack→rts Lazada, batal pesanan ke marketplace | **Baru 13 Agu 2026.** Sebelumnya tidak ada sumbu yang menjaga ini sama sekali |
+
+**Kenapa sumbu kelima ada.** Audit 13 Agu 2026 menemukan bahwa
+`SalesOrderService::moveToReadyToProcess` — tombol "Proses" — men-dispatch
+`RequestChannelAwbJob` yang memanggil `readyToShip` ke Shopee/TikTok/Lazada dan
+menarik resi. Itu **mengubah status pesanan di marketplace**, dan tidak dijaga
+oleh satu pun dari empat sumbu lama: `stock_push_enabled` hanya menggerbangi
+`syncPriceAndStock` lewat `SyncProductToChannelJob`, tidak menyentuh jalur
+fulfillment. Enam jalur tulis lain juga terbuka: label Shopee/TikTok/Lazada,
+panggil driver instan tiga channel, pack→rts Lazada, dan pembatalan pesanan.
+
+Guard-nya `Modules\Channel\Support\ChannelFulfillmentGuard`, dipasang di
+`handle()` **setiap job**, bukan di titik dispatch — supaya jalur mana pun yang
+sampai ke job tetap tertahan. Toko yang tidak terdaftar tidak diblokir,
+mengikuti pola `ChannelOrderIntakeGate`.
 
 **Invariant yang tidak boleh dilanggar:** menyalakan Shadow Mode memaksa
-`stock_push_enabled` **dan** `catalog_push_enabled` jadi `false`. Sebelum
-pemisahan sumbu, satu flag menjaga keduanya secara kebetulan; sekarang keharusan
-itu eksplisit di `ChannelService::applyShadowCutoff` dan dikunci test
+`stock_push_enabled`, `catalog_push_enabled`, **dan** `fulfillment_push_enabled`
+jadi `false`. Sebelum pemisahan sumbu, satu flag menjaga keduanya secara
+kebetulan; sekarang keharusan itu eksplisit di
+`ChannelService::applyShadowCutoff` dan dikunci test
 `ChannelSyncAxesTest::test_shadow_mode_silences_both_write_axes`. Kalau invariant
 ini jebol, aturan pertama Shadow Mode — sistem ini tidak menulis apa pun ke
 marketplace — ikut jebol.
+
+**Kombinasi "Produksi Hening"** (order nyata, fulfillment dikerjakan di sistem
+ini, tapi marketplace tidak disentuh sama sekali): `is_shadow_mode = false` +
+`stock_push_enabled = false` + `catalog_push_enabled = false` +
+`fulfillment_push_enabled = false`. Dipakai selama fase paralel dengan sistem
+lama; lihat `PLANNING-BASELINE-STOK-DAN-PRODUKSI-HENING.md` di root superapp.
 
 Yang **tidak** digerbangi `order_sync_enabled`: retur, deauthorisasi, dan event
 produk. Retur untuk pesanan yang sudah terlanjur masuk tetap harus tercatat

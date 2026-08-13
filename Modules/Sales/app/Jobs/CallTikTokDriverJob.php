@@ -10,6 +10,7 @@ use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\TikTokOrderService;
+use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Outbound\Support\InstantOrderClassifier;
 use Modules\Sales\Models\SalesOrder;
 
@@ -40,6 +41,10 @@ class CallTikTokDriverJob implements ShouldQueue
         }
 
         if (strtolower((string) $order->source) !== 'tiktok') {
+            return;
+        }
+
+        if (ChannelFulfillmentGuard::blocks($order->channel_shop_id, 'call_driver', $order->salesorder_no)) {
             return;
         }
 

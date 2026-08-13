@@ -9,6 +9,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\ShopeeOrderService;
+use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Outbound\Support\InstantOrderClassifier;
 use Modules\Sales\Models\SalesOrder;
 
@@ -28,6 +29,10 @@ class CallShopeeDriverJob implements ShouldQueue
     {
         $order = SalesOrder::find($this->orderId);
         if (! $order) {
+            return;
+        }
+
+        if (ChannelFulfillmentGuard::blocks($order->channel_shop_id, 'call_driver', $order->salesorder_no)) {
             return;
         }
 

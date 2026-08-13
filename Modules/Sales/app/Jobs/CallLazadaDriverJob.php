@@ -10,6 +10,7 @@ use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Jobs\ProcessLazadaFulfillmentJob;
+use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Outbound\Support\InstantOrderClassifier;
 use Modules\Sales\Models\SalesOrder;
 
@@ -40,6 +41,10 @@ class CallLazadaDriverJob implements ShouldQueue
         }
 
         if (strtolower((string) $order->source) !== 'lazada') {
+            return;
+        }
+
+        if (ChannelFulfillmentGuard::blocks($order->channel_shop_id, 'call_driver', $order->salesorder_no)) {
             return;
         }
 

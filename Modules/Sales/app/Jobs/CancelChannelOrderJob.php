@@ -8,6 +8,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Sales\Models\SalesOrder;
 
 class CancelChannelOrderJob implements ShouldQueue
@@ -29,6 +30,10 @@ class CancelChannelOrderJob implements ShouldQueue
         $order = SalesOrder::find($this->orderId);
 
         if (! $order || ! $order->source || ! $order->channel_shop_id) {
+            return;
+        }
+
+        if (ChannelFulfillmentGuard::blocks($order->channel_shop_id, 'cancel_order', $order->salesorder_no)) {
             return;
         }
 

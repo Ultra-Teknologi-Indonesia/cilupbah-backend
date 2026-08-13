@@ -97,6 +97,41 @@ class OrderDirectCompletionTest extends TestCase
         $this->assertSame(2, OrderBinAllocation::where('order_id', $order['order_id'])->count());
     }
 
+    public function test_tanpa_alokasi_sistem_memilih_rak_sendiri_dan_tetap_mencatatnya(): void
+    {
+        $order = $this->seedOrder(qty: 5);
+        $this->seedStock($this->binA, 2);
+        $this->seedStock($this->binB, 8);
+
+        $result = $this->service()->complete([$order['order_id']], []);
+
+        $this->assertSame(1, $result['completed_count']);
+        $this->assertSame([], $result['blocked']);
+        $this->assertSame(5, $this->onHand($this->binA) + $this->onHand($this->binB));
+
+        $allocations = OrderBinAllocation::where('order_id', $order['order_id'])->get();
+
+        $this->assertSame(5, (int) $allocations->sum('qty'));
+        $this->assertTrue(
+            $allocations->every(fn ($row) => in_array($row->bin_id, [$this->binA, $this->binB], true)),
+            'Rak asal wajib tercatat walau operator tidak memilihnya, supaya pembatalan tahu ke mana barang dikembalikan.',
+        );
+    }
+
+    public function test_tanpa_alokasi_pembatalan_mengembalikan_ke_rak_yang_dipilih_sistem(): void
+    {
+        $order = $this->seedOrder(qty: 4);
+        $this->seedStock($this->binB, 9);
+
+        $this->service()->complete([$order['order_id']], []);
+        $this->assertSame(5, $this->onHand($this->binB));
+
+        app(SalesOrderService::class)->cancelLocally($order['order_id'], 'uji', $this->userId);
+
+        $this->assertSame(9, $this->onHand($this->binB));
+        $this->assertNotNull(OrderBinAllocation::where('order_id', $order['order_id'])->sole()->reversed_at);
+    }
+
     public function test_menolak_saat_stok_gudang_kecil_kosong_dan_membuka_konfirmasi_pembeli(): void
     {
         $order = $this->seedOrder(qty: 2);

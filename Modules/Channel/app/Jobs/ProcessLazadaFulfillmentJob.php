@@ -10,6 +10,7 @@ use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\LazadaOrderService;
+use Modules\Channel\Support\ChannelFulfillmentGuard;
 
 class ProcessLazadaFulfillmentJob implements ShouldQueue
 {
@@ -36,6 +37,10 @@ class ProcessLazadaFulfillmentJob implements ShouldQueue
 
     public function handle(LazadaOrderService $orderService): void
     {
+        if (ChannelFulfillmentGuard::blocks($this->shopId, 'lazada_fulfillment', $this->orderId)) {
+            return;
+        }
+
         $statuses = $orderService->itemStatuses($this->shopId, $this->orderId);
 
         if (array_intersect($statuses, ['pending', 'repacked'])) {

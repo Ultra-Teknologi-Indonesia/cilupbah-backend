@@ -22,6 +22,7 @@ class UpdateChannelShopRequest extends FormRequest
             'catalog_pull_enabled' => 'sometimes|boolean',
             'catalog_push_enabled' => 'sometimes|boolean',
             'stock_push_enabled' => 'sometimes|boolean',
+            'fulfillment_push_enabled' => 'sometimes|boolean',
             'stock_source_mode' => 'sometimes|in:location,total',
             'location_id' => [
                 'nullable',
@@ -37,7 +38,7 @@ class UpdateChannelShopRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $v) {
-            $fields = ['is_active', 'order_sync_enabled', 'is_shadow_mode', 'catalog_pull_enabled', 'catalog_push_enabled', 'stock_push_enabled', 'stock_source_mode', 'location_id'];
+            $fields = ['is_active', 'order_sync_enabled', 'is_shadow_mode', 'catalog_pull_enabled', 'catalog_push_enabled', 'stock_push_enabled', 'fulfillment_push_enabled', 'stock_source_mode', 'location_id'];
             if (collect($fields)->every(fn ($f) => ! $this->has($f))) {
                 $v->errors()->add('is_active', 'Minimal satu pengaturan wajib diisi.');
             }

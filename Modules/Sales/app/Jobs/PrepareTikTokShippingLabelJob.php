@@ -9,6 +9,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\TikTokOrderService;
+use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Sales\Models\SalesOrder;
 
 class PrepareTikTokShippingLabelJob implements ShouldQueue
@@ -35,6 +36,10 @@ class PrepareTikTokShippingLabelJob implements ShouldQueue
         }
 
         if (strtolower((string) $order->source) !== 'tiktok') {
+            return;
+        }
+
+        if (ChannelFulfillmentGuard::blocks($order->channel_shop_id, 'shipping_label', $order->salesorder_no)) {
             return;
         }
 

@@ -9,6 +9,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\ShopeeOrderService;
+use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\BulkShippingLabelService;
 
@@ -38,6 +39,10 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
         }
 
         if (strtolower((string) $order->source) !== 'shopee') {
+            return;
+        }
+
+        if (ChannelFulfillmentGuard::blocks($order->channel_shop_id, 'shipping_label', $order->salesorder_no)) {
             return;
         }
 

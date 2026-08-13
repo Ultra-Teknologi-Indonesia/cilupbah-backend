@@ -9,6 +9,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\TikTokOrderService;
@@ -48,6 +49,10 @@ class RequestChannelAwbJob implements ShouldQueue
         }
 
         if (! empty($order->tracking_number)) {
+            return;
+        }
+
+        if (ChannelFulfillmentGuard::blocks($order->channel_shop_id, 'ready_to_ship', $order->salesorder_no)) {
             return;
         }
 

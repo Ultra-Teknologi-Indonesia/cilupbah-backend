@@ -11,6 +11,7 @@ use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Services\ChannelService;
+use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Channel\Support\ChannelOrderIntakeGate;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
@@ -126,6 +127,35 @@ class ChannelSyncAxesTest extends TestCase
         $this->assertFalse(
             (bool) $shop->catalog_push_enabled,
             'Aturan pertama Shadow Mode: sistem ini tidak menulis APA PUN ke marketplace — termasuk katalog.',
+        );
+        $this->assertFalse(
+            (bool) $shop->fulfillment_push_enabled,
+            'Shadow Mode juga harus membungkam fulfillment: readyToShip, label, panggil driver, dan batal.',
+        );
+    }
+
+    public function test_fulfillment_push_off_blocks_ready_to_ship(): void
+    {
+        $this->shop->forceFill(['fulfillment_push_enabled' => false])->save();
+
+        $this->assertTrue(
+            ChannelFulfillmentGuard::blocks(self::SHOP_ID, 'ready_to_ship'),
+            'Toko dengan push fulfillment dimatikan tidak boleh mengubah status pesanan di marketplace.',
+        );
+    }
+
+    public function test_fulfillment_push_on_allows_ready_to_ship(): void
+    {
+        $this->shop->forceFill(['fulfillment_push_enabled' => true])->save();
+
+        $this->assertFalse(ChannelFulfillmentGuard::blocks(self::SHOP_ID, 'ready_to_ship'));
+    }
+
+    public function test_unknown_shop_never_blocks_fulfillment(): void
+    {
+        $this->assertFalse(
+            ChannelFulfillmentGuard::blocks('tidak-dikenal', 'ready_to_ship'),
+            'Toko yang belum terdaftar tidak boleh diblokir diam-diam — itu menyembunyikan masalah konfigurasi.',
         );
     }
 

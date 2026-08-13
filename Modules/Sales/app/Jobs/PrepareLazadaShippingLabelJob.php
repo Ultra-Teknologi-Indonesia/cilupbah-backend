@@ -10,6 +10,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Exceptions\ChannelLabelUnsupportedException;
 use Modules\Channel\Services\LazadaOrderService;
+use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\BulkShippingLabelService;
 
@@ -37,6 +38,10 @@ class PrepareLazadaShippingLabelJob implements ShouldQueue
         }
 
         if (strtolower((string) $order->source) !== 'lazada') {
+            return;
+        }
+
+        if (ChannelFulfillmentGuard::blocks($order->channel_shop_id, 'shipping_label', $order->salesorder_no)) {
             return;
         }
 

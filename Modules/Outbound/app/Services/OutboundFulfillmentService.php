@@ -12,11 +12,14 @@ use Modules\Outbound\Repositories\OutboundFulfillmentRepository;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\ShopeeOrderService;
+use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Outbound\Contracts\DriverCallResult;
 use Modules\Outbound\Services\Logistics\LogisticsGateway;
 
 class OutboundFulfillmentService
 {
+    private const FULFILLMENT_PUSH_OFF = 'Pengiriman ke marketplace dimatikan untuk toko ini.';
+
     public function __construct(
         protected \Modules\Sales\Services\SalesOrderService $orderService,
         protected ShopeeOrderService $shopeeOrderService,
@@ -41,11 +44,21 @@ class OutboundFulfillmentService
     {
         $orders = Order::query()
             ->whereIn('id', $orderIds)
-            ->get(['id', 'source', 'driver_call_status']);
+            ->get(['id', 'source', 'driver_call_status', 'channel_shop_id', 'salesorder_no']);
 
+        $blocked = [];
         $groupedFresh = [];
         $groupedRetry = [];
         foreach ($orders as $order) {
+            if (ChannelFulfillmentGuard::blocks($order->channel_shop_id, 'call_driver', $order->salesorder_no)) {
+                $blocked[] = [
+                    'order_id' => (string) $order->id,
+                    'status' => DriverCallResult::STATUS_SKIPPED,
+                    'message' => self::FULFILLMENT_PUSH_OFF,
+                ];
+                continue;
+            }
+
             $key = strtolower((string) ($order->source ?? 'manual')) ?: 'manual';
             if ($order->driver_call_status === 'failed') {
                 $groupedRetry[$key][] = (string) $order->id;
@@ -57,11 +70,11 @@ class OutboundFulfillmentService
         $foundIds = array_map('strval', $orders->pluck('id')->all());
         $missing = array_values(array_diff($orderIds, $foundIds));
 
-        $aggregate = new DriverCallResult(array_map(fn ($id) => [
+        $aggregate = new DriverCallResult(array_merge($blocked, array_map(fn ($id) => [
             'order_id' => $id,
             'status' => DriverCallResult::STATUS_FAILED,
             'message' => 'Pesanan tidak ditemukan.',
-        ], $missing));
+        ], $missing)));
 
         foreach ($groupedFresh as $source => $ids) {
             $aggregate = $aggregate->merge($this->logisticsGateway->for($source)->callDriver($ids, $shipperId));
@@ -96,6 +109,11 @@ class OutboundFulfillmentService
 
             if ($skip = $this->alreadyHandledMessage((string) $order->channel_status)) {
                 $results[] = $this->result($order, 'skipped', $skip);
+                continue;
+            }
+
+            if (ChannelFulfillmentGuard::blocks($order->channel_shop_id, 'ready_to_ship', $order->salesorder_no)) {
+                $results[] = $this->result($order, 'skipped', self::FULFILLMENT_PUSH_OFF);
                 continue;
             }
 
@@ -139,6 +157,11 @@ class OutboundFulfillmentService
 
             if ($order->channel_status !== 'RETRY_SHIP') {
                 $results[] = $this->result($order, 'skipped', 'Order tidak dalam status RETRY_SHIP.');
+                continue;
+            }
+
+            if (ChannelFulfillmentGuard::blocks($order->channel_shop_id, 'retry_pickup', $order->salesorder_no)) {
+                $results[] = $this->result($order, 'skipped', self::FULFILLMENT_PUSH_OFF);
                 continue;
             }
 
@@ -186,6 +209,7 @@ class OutboundFulfillmentService
             in_array($cs, ['CANCELLED', 'IN_CANCEL'], true) => 'Pesanan dibatalkan — pengiriman tidak dipanggil ulang.',
             in_array($cs, ['RETURN_REQUESTED', 'RETURNED'], true) => 'Pesanan dalam proses retur — pengiriman tidak dipanggil ulang.',
             in_array($cs, ['SHIPPED', 'IN_TRANSIT', 'TO_CONFIRM_RECEIVE', 'DELIVERED', 'COMPLETED'], true) => 'Pesanan sudah dikirim/diproses — pengiriman tidak dipanggil ulang.',
+            in_array($cs, ['PROCESSED', 'AWAITING_COLLECTION'], true) => 'Pengiriman sudah diatur saat packing selesai — manifest hanya mendata paket.',
             default => null,
         };
     }
