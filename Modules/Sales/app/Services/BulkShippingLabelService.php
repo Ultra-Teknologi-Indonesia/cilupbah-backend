@@ -421,18 +421,16 @@ class BulkShippingLabelService
                     continue;
                 }
                 $result = $this->salesOrderService->getShippingLabel($order, $options);
-                $type = $result['type'] ?? null;
 
-                if ($type === 'url' && ! empty($result['doc_url'])) {
-                    $urlMap[$item->id] = $result['doc_url'];
+                $url = $result['url'] ?? ($result['doc_url'] ?? null);
+                if (! empty($url) && is_string($url)) {
+
+                    $urlMap[$item->id] = $url;
                     continue;
                 }
-                if ($type === 'blob' || ! empty($result['data'])) {
-                    $bytes = $this->decodeLabelPayload($result);
-                    if ($bytes === null) {
-                        $this->fail($item, 'tiktok_decode_failed');
-                        continue;
-                    }
+
+                $bytes = $this->resolveLabelBytes($result);
+                if ($bytes !== null) {
                     $this->succeed($item, $bytes);
                     continue;
                 }
@@ -510,64 +508,48 @@ class BulkShippingLabelService
 
     private function processShopee(BulkShippingLabelItem $item, SalesOrder $order, array $options): void
     {
-        $result = $this->salesOrderService->getShippingLabel($order, $options);
-        $status = $result['status'] ?? null;
+        try {
+            $result = $this->salesOrderService->getShippingLabel($order, $options);
+        } catch (ShippingLabelPreparingException $e) {
 
-        if ($status === 'ready' && ! empty($result['data'])) {
-            $bytes = $this->decodeLabelPayload($result);
-            if ($bytes === null) {
-                $this->fail($item, BulkShippingLabelItem::REASON_SHOPEE_DECODE_FAILED);
-                return;
-            }
-            $this->succeed($item, $bytes);
-            return;
-        }
-
-        if (in_array($status, ['preparing', null], true)) {
-            PrepareShopeeShippingLabelJob::dispatch($order->id);
             $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP]);
+
+            return;
+        } catch (\RuntimeException $e) {
+
+            $this->fail($item, $order->fresh()?->shipping_label_status === 'self_design_required'
+                ? BulkShippingLabelItem::REASON_SELF_DESIGN
+                : BulkShippingLabelItem::REASON_SHOPEE_PREP_FAILED);
+
             return;
         }
 
-        if ($status === 'failed') {
-            $this->fail($item, BulkShippingLabelItem::REASON_SHOPEE_PREP_FAILED);
+        $bytes = $this->resolveLabelBytes($result);
+        if ($bytes !== null) {
+            $this->succeed($item, $bytes);
+
             return;
         }
 
-        if ($status === 'self_design_required') {
-            $this->fail($item, BulkShippingLabelItem::REASON_SELF_DESIGN);
-            return;
-        }
-
-        $this->fail($item, "shopee_unknown:{$status}");
+        PrepareShopeeShippingLabelJob::dispatch($order->id)
+            ->onQueue(config('queue.names.channel_sync'));
+        $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP]);
     }
 
     private function processTikTok(BulkShippingLabelItem $item, SalesOrder $order, array $options): void
     {
         $result = $this->salesOrderService->getShippingLabel($order, $options);
-        $type = $result['type'] ?? null;
 
-        if ($type === 'url' && ! empty($result['doc_url'])) {
-            $bytes = $this->downloadUrl($result['doc_url']);
-            if ($bytes === null) {
-                $this->fail($item, 'tiktok_download_failed');
-                return;
-            }
+        $bytes = $this->resolveLabelBytes($result);
+        if ($bytes !== null) {
             $this->succeed($item, $bytes);
+
             return;
         }
 
-        if ($type === 'blob' || ! empty($result['data'])) {
-            $bytes = $this->decodeLabelPayload($result);
-            if ($bytes === null) {
-                $this->fail($item, 'tiktok_decode_failed');
-                return;
-            }
-            $this->succeed($item, $bytes);
-            return;
-        }
-
-        $this->fail($item, 'tiktok_no_label');
+        $this->fail($item, ($result['url'] ?? $result['doc_url'] ?? null)
+            ? 'tiktok_download_failed'
+            : 'tiktok_no_label');
     }
 
     private function processLazada(BulkShippingLabelItem $item, SalesOrder $order, array $options): void
@@ -586,35 +568,20 @@ class BulkShippingLabelService
             return;
         }
 
-        $type = $result['type'] ?? null;
-
-        if ($type === 'url' && ! empty($result['url'])) {
-            $bytes = $this->downloadUrl($result['url']);
-            if ($bytes === null) {
-                $this->fail($item, BulkShippingLabelItem::REASON_LAZADA_DECODE_FAILED);
-                return;
-            }
+        $bytes = $this->resolveLabelBytes($result);
+        if ($bytes !== null) {
             $this->succeed($item, $bytes);
+
             return;
         }
 
-        if ($type === 'base64' && ! empty($result['document_base64'])) {
-            $bytes = base64_decode($result['document_base64'], true);
-            if ($bytes === false) {
-                $this->fail($item, BulkShippingLabelItem::REASON_LAZADA_DECODE_FAILED);
-                return;
-            }
-            $this->succeed($item, $bytes);
-            return;
-        }
+        $hadPayload = ! empty($result['url']) || ! empty($result['doc_url'])
+            || ! empty($result['document_base64']) || ! empty($result['data']);
 
-        if (! empty($result['data'])) {
-            $bytes = $this->decodeLabelPayload($result);
-            if ($bytes === null) {
-                $this->fail($item, BulkShippingLabelItem::REASON_LAZADA_DECODE_FAILED);
-                return;
-            }
-            $this->succeed($item, $bytes);
+        if ($hadPayload) {
+
+            $this->fail($item, BulkShippingLabelItem::REASON_LAZADA_DECODE_FAILED);
+
             return;
         }
 
@@ -623,15 +590,30 @@ class BulkShippingLabelService
         $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP]);
     }
 
-    private function decodeLabelPayload(array $result): ?string
+    private function resolveLabelBytes(array $result): ?string
     {
-        if (isset($result['bytes'])) {
-            return $result['bytes'];
-        }
-        if (isset($result['data'])) {
-            $decoded = base64_decode($result['data'], true);
+        if (! empty($result['document_base64']) && is_string($result['document_base64'])) {
+            $decoded = base64_decode($result['document_base64'], true);
+
             return $decoded === false ? null : $decoded;
         }
+
+        if (! empty($result['bytes']) && is_string($result['bytes'])) {
+            return $result['bytes'];
+        }
+
+        if (! empty($result['data']) && is_string($result['data'])) {
+            $decoded = base64_decode($result['data'], true);
+            if ($decoded !== false && $decoded !== '') {
+                return $decoded;
+            }
+        }
+
+        $url = $result['url'] ?? ($result['doc_url'] ?? null);
+        if (! empty($url) && is_string($url)) {
+            return $this->downloadUrl($url);
+        }
+
         return null;
     }
 

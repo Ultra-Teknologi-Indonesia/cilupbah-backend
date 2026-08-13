@@ -3,6 +3,7 @@
 namespace Modules\Sales\Models;
 
 use App\Traits\HasUuid7;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -70,6 +71,21 @@ class BulkShippingLabelItem extends Model
     ];
 
     protected $hidden = ['pdf_bytes'];
+
+    protected function pdfBytes(): Attribute
+    {
+        return Attribute::make(
+            get: function ($value) {
+                if (! is_resource($value)) {
+                    return $value;
+                }
+
+                rewind($value);
+
+                return stream_get_contents($value);
+            },
+        )->shouldCache();
+    }
 
     public function batch(): BelongsTo
     {
