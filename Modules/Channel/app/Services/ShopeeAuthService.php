@@ -165,8 +165,7 @@ class ShopeeAuthService
 
             $needsRefresh = $shop->is_active
                 && $refreshTokenValid
-                && $shop->token_expires_at
-                && $shop->token_expires_at->lte(now()->addHours($hours));
+                && (! $shop->token_expires_at || $shop->token_expires_at->lte(now()->addHours($hours)));
 
             if (! $needsRefresh) {
                 $summary['skipped']++;

@@ -13,11 +13,14 @@ class AlertChannelReauth extends Command
 {
     protected $signature = 'channel:alert-reauth
         {--days=3 : Ambang peringatan dini (hari) sebelum refresh token kedaluwarsa}
-        {--dedupe-days=7 : Jangan kirim ulang alert untuk toko yang sama dalam N hari}';
+        {--dedupe-days=7 : Jangan kirim ulang alert re-auth untuk toko yang sama dalam N hari}
+        {--failure-dedupe-hours=6 : Jangan kirim ulang alert kegagalan perpanjangan untuk toko yang sama dalam N jam}';
 
-    protected $description = 'Kirim peringatan dini saat koneksi channel mendekati/kedaluwarsa & perlu otorisasi ulang';
+    protected $description = 'Kirim peringatan saat koneksi channel perlu otorisasi ulang atau perpanjangan token otomatisnya gagal';
 
     private const NOTIF_TYPE = 'channel_reauth_required';
+
+    private const NOTIF_TYPE_REFRESH_FAILED = 'channel_refresh_failed';
 
     private const NOTIF_PERMISSION = 'view-integrasi-channel';
 
@@ -25,6 +28,7 @@ class AlertChannelReauth extends Command
     {
         $days = max(0, (int) $this->option('days'));
         $dedupeDays = max(1, (int) $this->option('dedupe-days'));
+        $failureDedupeHours = max(1, (int) $this->option('failure-dedupe-hours'));
         $threshold = now()->addDays($days);
 
         $shops = ChannelShop::query()
@@ -37,38 +41,87 @@ class AlertChannelReauth extends Command
         $skipped = 0;
 
         foreach ($shops as $shop) {
-            if (! $this->needsAlert($shop, $threshold) || $this->alreadyAlerted($shop, $dedupeDays)) {
+            $reason = $this->alertReason($shop, $threshold);
+
+            if ($reason === null) {
                 $skipped++;
                 continue;
             }
 
-            $this->dispatchAlert($dispatcher, $shop);
+            $isReauth = $reason === 'reauth';
+            $type = $isReauth ? self::NOTIF_TYPE : self::NOTIF_TYPE_REFRESH_FAILED;
+            $since = $isReauth ? now()->subDays($dedupeDays) : now()->subHours($failureDedupeHours);
+
+            if ($this->alreadyAlerted($shop, $type, $since)) {
+                $skipped++;
+                continue;
+            }
+
+            $isReauth
+                ? $this->dispatchAlert($dispatcher, $shop)
+                : $this->dispatchRefreshFailedAlert($dispatcher, $shop);
+
             $sent++;
         }
 
-        $this->info("Alert re-auth channel: {$sent} terkirim, {$skipped} dilewati.");
+        $this->info("Alert koneksi channel: {$sent} terkirim, {$skipped} dilewati.");
 
         return self::SUCCESS;
     }
 
-    private function needsAlert(ChannelShop $shop, \Illuminate\Support\Carbon $threshold): bool
+    private function alertReason(ChannelShop $shop, \Illuminate\Support\Carbon $threshold): ?string
     {
-
         if (empty($shop->access_token)) {
-            return true;
+            return 'reauth';
         }
 
-        return $shop->refresh_token_expires_at !== null
-            && $shop->refresh_token_expires_at->lte($threshold);
+        if ($shop->refresh_token_expires_at !== null && $shop->refresh_token_expires_at->lte($threshold)) {
+            return 'reauth';
+        }
+
+        if ($shop->integration_status === 'error') {
+            return 'refresh_failed';
+        }
+
+        return null;
     }
 
-    private function alreadyAlerted(ChannelShop $shop, int $dedupeDays): bool
+    private function alreadyAlerted(ChannelShop $shop, string $type, \Illuminate\Support\Carbon $since): bool
     {
         return Notification::query()
-            ->where('type', self::NOTIF_TYPE)
+            ->where('type', $type)
             ->where('data->shop_id', $shop->id)
-            ->where('created_at', '>=', now()->subDays($dedupeDays))
+            ->where('created_at', '>=', $since)
             ->exists();
+    }
+
+    private function dispatchRefreshFailedAlert(NotificationDispatcher $dispatcher, ChannelShop $shop): void
+    {
+        $code = $shop->channel?->code;
+        $name = ChannelReauthCopy::channelName($code);
+        $sebab = $shop->last_error ?: 'Integrasi bermasalah.';
+
+        $message = "Perpanjangan otomatis koneksi {$name} toko \"{$shop->shop_name}\" gagal. {$sebab} "
+            . 'Sinkronisasi pesanan & stok bisa terhenti bila dibiarkan.';
+
+        $dispatcher->toPermission(self::NOTIF_PERMISSION, [
+            'type' => self::NOTIF_TYPE_REFRESH_FAILED,
+            'title' => "Perpanjangan koneksi {$name} gagal",
+            'message' => $message,
+            'data' => [
+                'shop_id' => $shop->id,
+                'channel_shop_id' => $shop->shop_id,
+                'channel_code' => $code,
+                'shop_name' => $shop->shop_name,
+                'last_error' => $shop->last_error,
+            ],
+        ]);
+
+        Log::warning('Alert kegagalan perpanjangan token channel terkirim', [
+            'shop_id' => $shop->shop_id,
+            'channel' => $code,
+            'last_error' => $shop->last_error,
+        ]);
     }
 
     private function dispatchAlert(NotificationDispatcher $dispatcher, ChannelShop $shop): void

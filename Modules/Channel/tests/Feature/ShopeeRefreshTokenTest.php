@@ -91,4 +91,38 @@ class ShopeeRefreshTokenTest extends TestCase
         $this->assertEquals('old-access-token', $shop->access_token);
         Http::assertNothingSent();
     }
+
+    public function test_shop_without_expiry_is_refreshed_not_skipped_forever(): void
+    {
+        $this->fakeRefreshResponse();
+        $shop = $this->makeShop(['token_expires_at' => null]);
+
+        $this->artisan('shopee:refresh-tokens')->assertSuccessful();
+
+        $shop->refresh();
+        $this->assertEquals('new-access-token', $shop->access_token);
+        $this->assertNotNull($shop->token_expires_at);
+    }
+
+    public function test_refresh_failure_is_visible_on_integration_page(): void
+    {
+        Http::fake([
+            'partner.shopeemobile.com/api/v2/auth/access_token/get*' => Http::response([
+                'error' => 'invalid_refresh_token',
+                'message' => 'refresh token has been revoked',
+            ], 403),
+        ]);
+
+        $shop = $this->makeShop();
+
+        $this->artisan('shopee:refresh-tokens')->assertFailed();
+
+        $shop->refresh();
+        $this->assertEquals('error', $shop->integration_status);
+        $this->assertNotEmpty($shop->last_error);
+
+        $integration = \Modules\Channel\Support\ChannelTokenStatus::integration($shop);
+        $this->assertEquals('error', $integration['status']);
+        $this->assertNotEmpty($integration['note']);
+    }
 }

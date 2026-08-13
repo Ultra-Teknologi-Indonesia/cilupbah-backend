@@ -188,8 +188,7 @@ class TikTokAuthService
         foreach ($this->shopRepository->getShopsByChannelCode('tiktok') as $shop) {
             $needsRefresh = $shop->is_active
                 && $shop->refresh_token
-                && $shop->token_expires_at
-                && $shop->token_expires_at->lte(now()->addHours($hours));
+                && (! $shop->token_expires_at || $shop->token_expires_at->lte(now()->addHours($hours)));
 
             if (! $needsRefresh) {
                 $summary['skipped']++;

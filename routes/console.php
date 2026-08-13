@@ -12,7 +12,7 @@ Schedule::command('shopee:refresh-tokens --hours=3')->everyFifteenMinutes()->wit
 Schedule::command('tiktok:refresh-tokens --hours=24')->everyFifteenMinutes()->withoutOverlapping(10)->onOneServer();
 Schedule::command('lazada:refresh-tokens --hours=48')->everyFifteenMinutes()->withoutOverlapping(10)->onOneServer();
 
-Schedule::command('channel:alert-reauth')->dailyAt('08:00')->withoutOverlapping()->onOneServer();
+Schedule::command('channel:alert-reauth')->hourly()->withoutOverlapping(10)->onOneServer();
 
 Schedule::command('products:poll-review-status')->everyThirtyMinutes()->withoutOverlapping()->onOneServer();
 
