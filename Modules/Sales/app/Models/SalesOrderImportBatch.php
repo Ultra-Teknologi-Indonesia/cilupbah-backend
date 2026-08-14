@@ -6,6 +6,22 @@ use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * @property string $id
+ * @property string $batch_no
+ * @property string|null $executed_by
+ * @property string $original_filename
+ * @property string $stored_path
+ * @property string $state
+ * @property int $total_rows
+ * @property int $processed_rows
+ * @property int $success_rows
+ * @property int $failed_rows
+ * @property int $progress_percent
+ * @property string|null $error_message
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ */
 class SalesOrderImportBatch extends Model
 {
     use HasUuid7;
