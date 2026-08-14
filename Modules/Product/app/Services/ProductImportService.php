@@ -4,6 +4,7 @@ namespace Modules\Product\Services;
 
 use Illuminate\Support\Facades\DB;
 use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductVariant;
 use Modules\Product\Repositories\ProductImportRepository;
 
 class ProductImportService
@@ -72,10 +73,32 @@ class ProductImportService
             $bundleVariant = $this->repository->findVariantBySku($bundleSku);
             $componentVariant = $this->repository->findVariantBySku($componentSku);
 
-            if (!$bundleVariant) {
-                throw new \Exception("SKU bundle {$bundleSku} tidak ditemukan.");
+            if (! $bundleVariant) {
+                $bundleName = $row['bundle_name'] ?? $row['item_group_name'] ?? $row['name'] ?? null;
+                if (! $bundleName) {
+                    throw new \Exception("SKU bundle {$bundleSku} belum ada di master produk. Isi kolom 'bundle_name' untuk membuat produk bundle baru secara otomatis.");
+                }
+
+                $categoryId = $this->resolveCategory($row['item_category_id'] ?? null, $row['category'] ?? '');
+                $productId = $this->repository->upsertProductByName($bundleName, [
+                    'category_id' => $categoryId,
+                    'name' => $bundleName,
+                    'description' => $row['description'] ?? '',
+                    'is_bundle' => true,
+                    'status' => Product::STATUS_MASTER,
+                    'is_active' => true,
+                ]);
+
+                $bundleVariant = $this->repository->upsertVariantBySku($bundleSku, [
+                    'product_id' => $productId,
+                    'sku' => $bundleSku,
+                    'barcode' => $row['barcode'] ?? null,
+                    'sell_price' => $row['sell_price'] ?? 0,
+                    'is_active' => true,
+                ]);
             }
-            if (!$componentVariant) {
+
+            if (! $componentVariant) {
                 throw new \Exception("SKU komponen {$componentSku} tidak ditemukan.");
             }
 
@@ -87,9 +110,13 @@ class ProductImportService
                 throw new \Exception("Varian komponen {$componentSku} tidak aktif.");
             }
 
-            Product::where('id', $bundleVariant->product_id)->update(['is_bundle' => true]);
+            $bundleProductId = $bundleVariant instanceof ProductVariant
+                ? $bundleVariant->product_id
+                : ($productId ?? ProductVariant::where('sku', $bundleSku)->value('product_id'));
 
-            $this->repository->upsertBundleItem($bundleVariant->product_id, $componentVariant->id, $qty);
+            Product::where('id', $bundleProductId)->update(['is_bundle' => true]);
+
+            $this->repository->upsertBundleItem($bundleProductId, $componentVariant->id, $qty);
         });
     }
 

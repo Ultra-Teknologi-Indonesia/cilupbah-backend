@@ -30,8 +30,8 @@ class ProductTemplateExport implements WithMultipleSheets
             ['item_code', 'Ya', 'SKU varian (unik). Jadi kunci upsert varian.'],
             ['sell_price', 'Ya', 'Harga jual, angka >= 0.'],
             ['barcode', 'Tidak', 'Barcode varian.'],
-            ['item_category_id', 'Tidak', 'ID kategori internal bila sudah tahu. Jika kosong, pakai kolom category.'],
-            ['category', 'Tidak', 'Nama kategori; dibuat otomatis bila belum ada (default Uncategorized).'],
+            ['item_category_id', 'Tidak', 'ID kategori internal. Lihat sheet Master Data untuk pilihan ID yang tersedia.'],
+            ['category', 'Tidak', 'Nama kategori. Lihat sheet Master Data untuk pilihan nama kategori yang tersedia. Dibuat otomatis jika nama kategori baru.'],
             ['description', 'Tidak', 'Deskripsi produk.'],
             ['package_weight', 'Tidak', 'Berat paket (angka).'],
             ['package_length', 'Tidak', 'Panjang paket (angka).'],
@@ -44,6 +44,7 @@ class ProductTemplateExport implements WithMultipleSheets
         return [
             new TemplateDataSheet('Pengisian Import Produk', self::COLUMNS, $example),
             new TemplateInstructionSheet('Petunjuk', $instructions),
+            new ProductMasterDataSheet(),
         ];
     }
 }

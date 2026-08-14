@@ -93,10 +93,11 @@ class ProductImportTest extends TestCase
     {
         DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Cat']);
 
-        $bundle = Product::create(['name' => 'Paket Hemat', 'category_id' => 1, 'status' => Product::STATUS_MASTER, 'is_active' => true]);
+        $cat = \Modules\Product\Models\Category::firstOrCreate(['name' => 'General']);
+        $bundle = Product::create(['name' => 'Paket Hemat', 'category_id' => $cat->id, 'status' => Product::STATUS_MASTER, 'is_active' => true]);
         $bundleVariant = ProductVariant::create(['product_id' => $bundle->id, 'sku' => 'BUNDLE-A', 'sell_price' => 100000, 'is_active' => true]);
 
-        $comp = Product::create(['name' => 'Komponen', 'category_id' => 1, 'status' => Product::STATUS_MASTER, 'is_active' => true]);
+        $comp = Product::create(['name' => 'Komponen', 'category_id' => $cat->id, 'status' => Product::STATUS_MASTER, 'is_active' => true]);
         $compVariant = ProductVariant::create(['product_id' => $comp->id, 'sku' => 'COMP-1', 'sell_price' => 40000, 'is_active' => true]);
 
         $file = $this->makeUpload(
@@ -119,6 +120,35 @@ class ProductImportTest extends TestCase
             'bundle_product_id' => $bundle->id,
             'component_variant_id' => $compVariant->id,
             'qty' => 2,
+        ]);
+    }
+
+    public function test_import_bundle_creates_new_bundle_product_if_bundle_name_supplied(): void
+    {
+        $cat = \Modules\Product\Models\Category::firstOrCreate(['name' => 'General']);
+        $comp = Product::create(['name' => 'Comp Item', 'category_id' => $cat->id, 'is_bundle' => false, 'status' => Product::STATUS_MASTER]);
+        $compVariant = ProductVariant::create(['product_id' => $comp->id, 'sku' => 'COMP-NEW-1', 'sell_price' => 20000, 'is_active' => true]);
+
+        $file = $this->makeUpload(
+            ['item_code', 'bundle_name', 'category', 'sell_price', 'description', 'sku_composition', 'qty'],
+            [
+                ['NEW-BUNDLE-SKU', 'Bundle Super Hemat', 'Fashion Pria', 50000, 'Deskripsi Paket', 'COMP-NEW-1', 2],
+            ]
+        );
+
+        $response = $this->postJson('/api/v1/products/import/bundle', ['file' => $file]);
+        $response->assertStatus(202);
+
+        $batch = ProductImportBatch::find($response->json('data.id'));
+        $this->assertSame(ProductImportBatch::STATE_DONE, $batch->state);
+
+        $this->assertDatabaseHas('products', [
+            'name' => 'Bundle Super Hemat',
+            'is_bundle' => true,
+        ]);
+        $this->assertDatabaseHas('product_variants', [
+            'sku' => 'NEW-BUNDLE-SKU',
+            'sell_price' => 50000,
         ]);
     }
 
