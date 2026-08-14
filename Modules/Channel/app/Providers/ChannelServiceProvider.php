@@ -12,6 +12,7 @@ use Modules\Channel\Console\Commands\MonitorChannelSkuHealth;
 use Modules\Channel\Console\Commands\MonitorDownloadHealth;
 use Modules\Channel\Console\Commands\MonitorShadowPullHealth;
 use Modules\Channel\Console\Commands\PullChannelShop;
+use Modules\Channel\Console\Commands\PullLiveOrdersCommand;
 use Modules\Channel\Console\Commands\PullShadowOrdersCommand;
 use Modules\Channel\Console\Commands\ReportMissingChannelSku;
 use Modules\Channel\Console\Commands\ReapStaleDownloadTransactions;
@@ -56,6 +57,7 @@ class ChannelServiceProvider extends ModuleServiceProvider
 
         MonitorShadowPullHealth::class,
         PullShadowOrdersCommand::class,
+        PullLiveOrdersCommand::class,
         ShadowOffCommand::class,
         ShadowPromoteCommand::class,
         ShadowPurgeCommand::class,

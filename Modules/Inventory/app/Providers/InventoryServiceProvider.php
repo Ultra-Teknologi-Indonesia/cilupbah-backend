@@ -13,6 +13,7 @@ use Modules\Inventory\Console\Commands\RebuildAverageCost;
 use Modules\Inventory\Console\Commands\ReconcileOnOrder;
 use Modules\Inventory\Console\Commands\PurgeReversalMovements;
 use Modules\Inventory\Console\Commands\ValidateBaselineImport;
+use Modules\Inventory\Console\Commands\ImportBaselineStock;
 
 class InventoryServiceProvider extends ModuleServiceProvider
 {
@@ -31,6 +32,7 @@ class InventoryServiceProvider extends ModuleServiceProvider
         CleanupDraftTransitStock::class,
         PurgeReversalMovements::class,
         ValidateBaselineImport::class,
+        ImportBaselineStock::class,
     ];
 
     protected array $providers = [
