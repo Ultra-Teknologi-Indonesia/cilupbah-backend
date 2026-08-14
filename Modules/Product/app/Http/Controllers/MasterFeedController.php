@@ -20,6 +20,8 @@ class MasterFeedController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        @ini_set('memory_limit', '512M');
+
         $request->validate([
             'search' => 'nullable|string',
             'per_page' => 'nullable|integer|min:1|max:200',
@@ -42,6 +44,8 @@ class MasterFeedController extends Controller
 
     public function downloaded(Request $request): JsonResponse
     {
+        @ini_set('memory_limit', '512M');
+
         $paginator = $this->service->paginateDownloaded(
             $request->query('updated_since'),
         );

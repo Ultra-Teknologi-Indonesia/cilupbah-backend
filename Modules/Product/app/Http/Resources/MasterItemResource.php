@@ -8,7 +8,6 @@ use Modules\Product\Support\ChannelUrlBuilder;
 
 class MasterItemResource extends JsonResource
 {
-
     protected ?array $shopNames = null;
 
     protected ?array $thumbnailsByVariant = null;
@@ -59,7 +58,7 @@ class MasterItemResource extends JsonResource
         return $this->variationTypes
             ->sortBy('sort_order')
             ->map(fn ($type) => [
-                'label' => $type->attribute->name ?? null,
+                'label' => $type->relationLoaded('attribute') ? ($type->attribute->name ?? null) : null,
                 'values' => array_keys($valuesByAttribute[$type->attribute_id] ?? []),
             ])
             ->values()
@@ -97,7 +96,7 @@ class MasterItemResource extends JsonResource
         }
 
         return $variant->options->map(fn ($option) => [
-            'label' => $option->attribute->name ?? null,
+            'label' => $option->relationLoaded('attribute') ? ($option->attribute->name ?? null) : null,
             'value' => $option->value,
         ])->values()->all();
     }
