@@ -47,17 +47,29 @@ class RefreshInstantTrackingJob implements ShouldQueue
                     $adapter = $gateway->for($order->source);
                     $events = $adapter->getTrackingStatus((string) $order->id);
                     foreach ($events as $event) {
-                        ShipmentTrackingEvent::create([
-                            'shipment_id' => $shipment->id,
-                            'source' => strtolower((string) $order->source),
-                            'event_type' => $event['event_type'] ?? 'polled_update',
-                            'driver_name' => $event['driver_name'] ?? null,
-                            'driver_phone' => $event['driver_phone'] ?? null,
-                            'driver_vehicle_plate' => $event['driver_vehicle_plate'] ?? null,
-                            'raw_payload' => $event['raw'] ?? $event,
-                            'occurred_at' => now(),
-                            'received_at' => now(),
-                        ]);
+                        $eventType = $event['event_type'] ?? 'polled_update';
+                        $source = strtolower((string) $order->source);
+
+                        $exists = ShipmentTrackingEvent::query()
+                            ->where('shipment_id', $shipment->id)
+                            ->where('source', $source)
+                            ->where('event_type', $eventType)
+                            ->when(! empty($event['driver_name']), fn ($q) => $q->where('driver_name', $event['driver_name']))
+                            ->exists();
+
+                        if (! $exists) {
+                            ShipmentTrackingEvent::create([
+                                'shipment_id' => $shipment->id,
+                                'source' => $source,
+                                'event_type' => $eventType,
+                                'driver_name' => $event['driver_name'] ?? null,
+                                'driver_phone' => $event['driver_phone'] ?? null,
+                                'driver_vehicle_plate' => $event['driver_vehicle_plate'] ?? null,
+                                'raw_payload' => $event['raw'] ?? $event,
+                                'occurred_at' => $event['occurred_at'] ?? now(),
+                                'received_at' => now(),
+                            ]);
+                        }
 
                         $updates = array_filter([
                             'driver_name' => $event['driver_name'] ?? null,

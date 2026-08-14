@@ -865,12 +865,11 @@ class BulkShippingLabelService
 
     public function mergeAndPersist(BulkShippingLabelBatch $batch): void
     {
-        $items = $batch->items()
+        $hasItems = $batch->items()
             ->where('status', BulkShippingLabelItem::STATUS_DONE)
-            ->orderBy('created_at')
-            ->get();
+            ->exists();
 
-        if ($items->isEmpty()) {
+        if (! $hasItems) {
             $batch->update([
                 'status' => BulkShippingLabelBatch::STATUS_FAILED,
                 'finished_at' => now(),
@@ -882,7 +881,15 @@ class BulkShippingLabelService
         [$targetW, $targetH] = $this->resolveTargetSize($batch);
 
         $pdf = new Fpdi('P', 'mm', [$targetW, $targetH]);
-        foreach ($items as $item) {
+        $itemsQuery = $batch->items()
+            ->where('status', BulkShippingLabelItem::STATUS_DONE)
+            ->orderBy('created_at');
+
+        foreach ($itemsQuery->cursor() as $item) {
+            if (empty($item->pdf_bytes)) {
+                continue;
+            }
+
             try {
                 $preparedBytes = $this->preprocessPdfForFpdi($item->pdf_bytes);
                 $pageCount = $pdf->setSourceFile(StreamReader::createByString($preparedBytes));

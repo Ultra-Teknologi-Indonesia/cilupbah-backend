@@ -16,8 +16,8 @@ class ProcessShipmentPickupJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 2;
-    public array $backoff = [5, 15];
+    public int $tries = 5;
+    public array $backoff = [5, 30, 120, 300, 600];
 
     public function __construct(
         protected string $shipmentId,

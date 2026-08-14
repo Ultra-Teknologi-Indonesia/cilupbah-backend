@@ -339,9 +339,66 @@ class OutboundFulfillmentController extends Controller
             'order_ids.*' => 'required|string|exists:sales_orders,id',
         ]);
 
+        if ($request->boolean('async')) {
+            return $this->bulkReadyToShip($request);
+        }
+
         $results = $this->fulfillmentService->readyToShip($validated['order_ids']);
 
         return $this->successResponse($results, 'Proses Siap Dikirim selesai.');
+    }
+
+    public function bulkReadyToShip(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'order_ids' => 'required|array|min:1',
+            'order_ids.*' => 'required|string|exists:sales_orders,id',
+        ]);
+
+        $batch = $this->fulfillmentService->createBulkRtsBatch($request->user(), $validated['order_ids']);
+
+        return $this->successResponse([
+            'batch_id'      => $batch->id,
+            'status'        => $batch->status,
+            'total_count'   => $batch->total_count,
+            'success_count' => $batch->success_count,
+            'failed_count'  => $batch->failed_count,
+            'skipped_count' => $batch->skipped_count,
+        ], 'Batch Siap Dikirim berhasil dibuat dan sedang diproses di background.');
+    }
+
+    public function getRtsBatch(string $batchId): JsonResponse
+    {
+        $batch = \Modules\Outbound\Models\BulkRtsBatch::with(['items'])->find($batchId);
+
+        if (! $batch) {
+            return $this->errorResponse('Batch Siap Dikirim tidak ditemukan.', 404);
+        }
+
+        $processed = $batch->success_count + $batch->failed_count + $batch->skipped_count;
+        $progressPct = $batch->total_count > 0 ? round(($processed / $batch->total_count) * 100, 1) : 100;
+
+        return $this->successResponse([
+            'batch_id'      => $batch->id,
+            'status'        => $batch->status,
+            'progress_pct'  => $progressPct,
+            'total_count'   => $batch->total_count,
+            'success_count' => $batch->success_count,
+            'failed_count'  => $batch->failed_count,
+            'skipped_count' => $batch->skipped_count,
+            'pending_count' => max(0, $batch->total_count - $processed),
+            'started_at'    => $batch->started_at,
+            'finished_at'   => $batch->finished_at,
+            'items'         => $batch->items->map(fn ($item) => [
+                'id'            => $item->id,
+                'order_id'      => $item->order_id,
+                'salesorder_no' => $item->salesorder_no,
+                'source'        => $item->source,
+                'status'        => $item->status,
+                'message'       => $item->message,
+                'processed_at'  => $item->processed_at,
+            ]),
+        ], 'Data status batch Siap Dikirim berhasil diambil.');
     }
 
     #[OA\Post(

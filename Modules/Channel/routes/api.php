@@ -45,7 +45,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
 Route::prefix('v1/tiktok')->group(function () {
 
-    Route::post('webhook', [\Modules\Channel\Http\Controllers\TikTokWebhookController::class, 'handle'])->name('tiktok.webhook')->middleware('throttle:1200,1');
+    Route::post('webhook', [\Modules\Channel\Http\Controllers\TikTokWebhookController::class, 'handle'])
+        ->name('tiktok.webhook')
+        ->middleware(['throttle:1200,1', \Modules\Channel\Http\Middleware\LimitWebhookPayloadSize::class]);
     Route::get('auth', [\Modules\Channel\Http\Controllers\TikTokAuthController::class, 'redirect'])->name('tiktok.auth');
     Route::get('callback', [\Modules\Channel\Http\Controllers\TikTokAuthController::class, 'callback'])->name('tiktok.callback');
 
@@ -81,7 +83,9 @@ Route::prefix('v1/lazada')->group(function () {
     Route::get('callback', [\Modules\Channel\Http\Controllers\LazadaAuthController::class, 'callback'])->name('lazada.callback');
 
     Route::get('webhook', [\Modules\Channel\Http\Controllers\LazadaWebhookController::class, 'verify'])->name('lazada.webhook.verify')->middleware('throttle:120,1');
-    Route::post('webhook', [\Modules\Channel\Http\Controllers\LazadaWebhookController::class, 'handle'])->name('lazada.webhook')->middleware('throttle:1200,1');
+    Route::post('webhook', [\Modules\Channel\Http\Controllers\LazadaWebhookController::class, 'handle'])
+        ->name('lazada.webhook')
+        ->middleware(['throttle:1200,1', \Modules\Channel\Http\Middleware\LimitWebhookPayloadSize::class]);
 
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('stores', [\Modules\Channel\Http\Controllers\LazadaStoreController::class, 'index'])->name('lazada.stores.index')->middleware('role_or_permission:owner|view-integrasi-channel');
@@ -111,10 +115,14 @@ Route::prefix('v1/shopee')->group(function () {
     Route::get('auth', [\Modules\Channel\Http\Controllers\ShopeeAuthController::class, 'redirect'])->name('shopee.auth');
     Route::get('callback', [\Modules\Channel\Http\Controllers\ShopeeAuthController::class, 'callback'])->name('shopee.callback');
 
-    Route::post('callback', [\Modules\Channel\Http\Controllers\ShopeeWebhookController::class, 'handle'])->name('shopee.callback.push')->middleware('throttle:1200,1');
+    Route::post('callback', [\Modules\Channel\Http\Controllers\ShopeeWebhookController::class, 'handle'])
+        ->name('shopee.callback.push')
+        ->middleware(['throttle:1200,1', \Modules\Channel\Http\Middleware\LimitWebhookPayloadSize::class]);
 
     Route::get('webhook', [\Modules\Channel\Http\Controllers\ShopeeWebhookController::class, 'verify'])->name('shopee.webhook.verify')->middleware('throttle:120,1');
-    Route::post('webhook', [\Modules\Channel\Http\Controllers\ShopeeWebhookController::class, 'handle'])->name('shopee.webhook')->middleware('throttle:1200,1');
+    Route::post('webhook', [\Modules\Channel\Http\Controllers\ShopeeWebhookController::class, 'handle'])
+        ->name('shopee.webhook')
+        ->middleware(['throttle:1200,1', \Modules\Channel\Http\Middleware\LimitWebhookPayloadSize::class]);
 
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('stores', [\Modules\Channel\Http\Controllers\ShopeeStoreController::class, 'index'])->name('shopee.stores.index')->middleware('role_or_permission:owner|view-integrasi-channel');
@@ -148,7 +156,9 @@ Route::prefix('v1/woocommerce')->group(function () {
 
     Route::post('callback', [\Modules\Channel\Http\Controllers\WooCommerceAuthController::class, 'callback'])->name('woocommerce.callback');
     Route::get('webhook', [\Modules\Channel\Http\Controllers\WooCommerceWebhookController::class, 'verify'])->name('woocommerce.webhook.verify')->middleware('throttle:120,1');
-    Route::post('webhook', [\Modules\Channel\Http\Controllers\WooCommerceWebhookController::class, 'handle'])->name('woocommerce.webhook')->middleware('throttle:1200,1');
+    Route::post('webhook', [\Modules\Channel\Http\Controllers\WooCommerceWebhookController::class, 'handle'])
+        ->name('woocommerce.webhook')
+        ->middleware(['throttle:1200,1', \Modules\Channel\Http\Middleware\LimitWebhookPayloadSize::class]);
 
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('auth', [\Modules\Channel\Http\Controllers\WooCommerceAuthController::class, 'redirect'])->name('woocommerce.auth')->middleware('role_or_permission:owner|view-integrasi-channel');

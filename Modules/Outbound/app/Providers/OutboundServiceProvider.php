@@ -18,4 +18,7 @@ class OutboundServiceProvider extends ModuleServiceProvider
         LogisticsGatewayServiceProvider::class,
     ];
 
+    protected array $commands = [
+        \Modules\Outbound\Console\Commands\SweepInstantTrackingCommand::class,
+    ];
 }

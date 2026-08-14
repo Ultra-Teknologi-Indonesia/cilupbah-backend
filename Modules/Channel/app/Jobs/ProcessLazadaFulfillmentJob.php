@@ -69,5 +69,23 @@ class ProcessLazadaFulfillmentJob implements ShouldQueue
     public function failed(\Throwable $exception): void
     {
         Log::error("Lazada fulfillment GAGAL PERMANEN — perlu RTS manual untuk order {$this->orderId} (toko {$this->shopId}): " . $exception->getMessage());
+
+        try {
+            $order = \Modules\Sales\Models\SalesOrder::query()
+                ->where('source', 'lazada')
+                ->where('channel_order_no', $this->orderId)
+                ->first();
+
+            if ($order) {
+                \Modules\Outbound\Models\ShipmentOrder::query()
+                    ->where('order_id', $order->id)
+                    ->update([
+                        'pickup_status' => 'failed',
+                        'pickup_message' => 'Lazada fulfillment gagal: ' . mb_substr($exception->getMessage(), 0, 250),
+                    ]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ProcessLazadaFulfillmentJob: gagal update status order on failure: ' . $e->getMessage());
+        }
     }
 }

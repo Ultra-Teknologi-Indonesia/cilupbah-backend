@@ -62,13 +62,17 @@ class TikTokWebhookController extends Controller
 
         $payload = $request->all();
 
-        $this->inbox->recordFirstDelivery(
+        $recorded = $this->inbox->recordFirstDelivery(
             'tiktok',
             isset($payload['shop_id']) ? (string) $payload['shop_id'] : null,
             \Modules\Channel\Jobs\ProcessTikTokWebhook::idempotencyKey($payload),
             isset($payload['type']) ? (string) $payload['type'] : null,
             $payload,
         );
+
+        if ($recorded === null) {
+            return $this->successResponse(['code' => 0, 'duplicate' => true], 'Duplicate webhook delivery ignored');
+        }
 
         \Modules\Channel\Jobs\ProcessTikTokWebhook::dispatch($payload)
             ->onQueue(config('queue.names.tiktok_webhooks'));

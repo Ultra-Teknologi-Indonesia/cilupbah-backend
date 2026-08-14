@@ -117,6 +117,12 @@ class OutboundFulfillmentService
                 continue;
             }
 
+            $lock = \Illuminate\Support\Facades\Cache::lock("rts:{$order->id}", 30);
+            if (! $lock->get()) {
+                $results[] = $this->result($order, 'skipped', 'Order sedang diproses RTS.');
+                continue;
+            }
+
             try {
                 $adapter = $this->logisticsGateway->for($order->source);
                 $outcome = $adapter->readyToShip($order);
@@ -135,10 +141,47 @@ class OutboundFulfillmentService
                     'error'            => $e->getMessage(),
                 ]);
                 $results[] = $this->result($order, 'failed', \Modules\Channel\Support\UploadErrorPresenter::fromMessage((string) $order->source, $e->getMessage())['reason']);
+            } finally {
+                optional($lock)->release();
             }
         }
 
         return $results;
+    }
+
+    public function createBulkRtsBatch(?\App\Models\User $user, array $orderIds): \Modules\Outbound\Models\BulkRtsBatch
+    {
+        $orderIds = array_values(array_unique(array_filter($orderIds)));
+        $orders = $this->ordersByIds($orderIds);
+
+        $batch = DB::transaction(function () use ($user, $orderIds, $orders) {
+            $batch = \Modules\Outbound\Models\BulkRtsBatch::create([
+                'user_id'       => $user?->id,
+                'status'        => \Modules\Outbound\Models\BulkRtsBatch::STATUS_PROCESSING,
+                'total_count'   => count($orderIds),
+                'success_count' => 0,
+                'failed_count'  => 0,
+                'skipped_count' => 0,
+                'started_at'    => now(),
+            ]);
+
+            foreach ($orderIds as $orderId) {
+                $order = $orders[$orderId] ?? null;
+                \Modules\Outbound\Models\BulkRtsItem::create([
+                    'batch_id'      => $batch->id,
+                    'order_id'      => $orderId,
+                    'salesorder_no' => $order?->salesorder_no,
+                    'source'        => $order?->source,
+                    'status'        => \Modules\Outbound\Models\BulkRtsItem::STATUS_PENDING,
+                ]);
+            }
+
+            return $batch;
+        });
+
+        \Modules\Outbound\Jobs\ProcessBulkReadyToShipJob::dispatch($batch->id);
+
+        return $batch;
     }
 
     public function retryPickup(array $orderIds): array

@@ -19,6 +19,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::post('orders/change-location', [OutboundFulfillmentController::class, 'changeLocation'])->name('outbound.orders.change-location')->middleware('role_or_permission:owner|edit-pesanan');
     Route::post('orders/request-cancel', [OutboundFulfillmentController::class, 'requestCancelOrder'])->name('outbound.orders.request-cancel')->middleware('role_or_permission:owner|edit-pesanan');
     Route::post('orders/ready-to-ship', [OutboundFulfillmentController::class, 'readyToShip'])->name('outbound.orders.ready-to-ship')->middleware('role_or_permission:owner|edit-pesanan');
+    Route::post('orders/bulk-ready-to-ship', [OutboundFulfillmentController::class, 'bulkReadyToShip'])->name('outbound.orders.bulk-ready-to-ship')->middleware('role_or_permission:owner|edit-pesanan');
+    Route::get('rts-batch/{batchId}', [OutboundFulfillmentController::class, 'getRtsBatch'])->name('outbound.rts-batch.show')->middleware('role_or_permission:owner|view-pesanan');
     Route::post('orders/retry-pickup', [OutboundFulfillmentController::class, 'retryPickup'])->name('outbound.orders.retry-pickup')->middleware('role_or_permission:owner|edit-pesanan');
     Route::post('orders/bulk-delete', [OutboundFulfillmentController::class, 'bulkDestroyOrders'])->name('outbound.orders.bulk-destroy')->middleware('role_or_permission:owner|delete-pesanan');
     Route::post('orders/instant-driver-call', [OutboundFulfillmentController::class, 'bulkInstantDriverCall'])->name('outbound.orders.instant-driver-call')->middleware('role_or_permission:owner|edit-pesanan');

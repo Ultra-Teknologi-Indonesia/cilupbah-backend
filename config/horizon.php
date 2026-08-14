@@ -227,6 +227,7 @@ return [
             'supervisor-webhooks' => [
                 'minProcesses' => 2,
                 'maxProcesses' => 8,
+                'memory' => 512,
             ],
         ],
 
