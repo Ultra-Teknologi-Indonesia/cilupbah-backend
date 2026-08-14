@@ -112,28 +112,34 @@ class ProductImportController extends Controller
             return $this->errorResponse('Batch tidak ditemukan', 404);
         }
 
-        return response()->streamDownload(function () use ($model) {
-            echo Excel::raw(new ImportErrorReportExport($model), \Maatwebsite\Excel\Excel::XLSX);
-        }, "import-errors-{$model->batch_no}.xlsx", [
+        $content = Excel::raw(new ImportErrorReportExport($model), \Maatwebsite\Excel\Excel::XLSX);
+
+        return response($content, 200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => "attachment; filename=\"import-errors-{$model->batch_no}.xlsx\"",
+            'Content-Length' => strlen($content),
         ]);
     }
 
     public function downloadSingleTemplate()
     {
-        return response()->streamDownload(function () {
-            echo Excel::raw(new ProductTemplateExport(), \Maatwebsite\Excel\Excel::XLSX);
-        }, 'Template_Import_Product.xlsx', [
+        $content = Excel::raw(new ProductTemplateExport(), \Maatwebsite\Excel\Excel::XLSX);
+
+        return response($content, 200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="Template_Import_Product.xlsx"',
+            'Content-Length' => strlen($content),
         ]);
     }
 
     public function downloadBundleTemplate()
     {
-        return response()->streamDownload(function () {
-            echo Excel::raw(new BundleTemplateExport(), \Maatwebsite\Excel\Excel::XLSX);
-        }, 'Template_Import_Bundle.xlsx', [
+        $content = Excel::raw(new BundleTemplateExport(), \Maatwebsite\Excel\Excel::XLSX);
+
+        return response($content, 200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="Template_Import_Bundle.xlsx"',
+            'Content-Length' => strlen($content),
         ]);
     }
 

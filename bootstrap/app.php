@@ -162,6 +162,12 @@ return Application::configure(basePath: dirname(__DIR__))
                     );
                 }
 
+                \Illuminate\Support\Facades\Log::error($e->getMessage(), [
+                    'exception' => $e,
+                    'path' => $request->path(),
+                    'method' => $request->method(),
+                ]);
+
                 $exposeDetail = ! app()->environment('production');
 
                 return $responder->errorResponse(

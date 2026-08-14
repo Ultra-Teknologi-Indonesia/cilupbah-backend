@@ -120,19 +120,23 @@ class SalesOrderImportController extends Controller
             return $this->errorResponse('Batch tidak ditemukan', 404);
         }
 
-        return response()->streamDownload(function () use ($model) {
-            echo Excel::raw(new SalesOrderImportErrorReportExport($model), \Maatwebsite\Excel\Excel::XLSX);
-        }, "import-errors-{$model->batch_no}.xlsx", [
+        $content = Excel::raw(new SalesOrderImportErrorReportExport($model), \Maatwebsite\Excel\Excel::XLSX);
+
+        return response($content, 200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => "attachment; filename=\"import-errors-{$model->batch_no}.xlsx\"",
+            'Content-Length' => strlen($content),
         ]);
     }
 
     public function downloadTemplate()
     {
-        return response()->streamDownload(function () {
-            echo Excel::raw(new SalesOrderImportTemplateExport(), \Maatwebsite\Excel\Excel::XLSX);
-        }, 'Template_Import_Pesanan.xlsx', [
+        $content = Excel::raw(new SalesOrderImportTemplateExport(), \Maatwebsite\Excel\Excel::XLSX);
+
+        return response($content, 200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="Template_Import_Pesanan.xlsx"',
+            'Content-Length' => strlen($content),
         ]);
     }
 }
