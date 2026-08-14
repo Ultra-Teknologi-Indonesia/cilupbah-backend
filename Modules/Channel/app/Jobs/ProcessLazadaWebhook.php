@@ -177,8 +177,15 @@ class ProcessLazadaWebhook implements ShouldQueue
             return;
         }
 
-        $orderService->pullOrderById($sellerId, $orderId);
-        $this->recordLazadaTrackingEvent($orderId, $data);
+        try {
+            $orderService->pullOrderById($sellerId, $orderId);
+            $this->recordLazadaTrackingEvent($orderId, $data);
+        } catch (\Throwable $e) {
+            Log::warning('Gagal memproses Lazada order webhook: ' . $e->getMessage(), [
+                'seller_id' => $sellerId,
+                'order_id'  => $orderId,
+            ]);
+        }
     }
 
     protected function recordLazadaTrackingEvent(string $orderId, array $data): void

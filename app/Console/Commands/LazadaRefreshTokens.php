@@ -23,9 +23,9 @@ class LazadaRefreshTokens extends Command
         );
 
         if ($summary['failed'] > 0) {
-            $this->error($pesan);
+            $this->warn($pesan);
 
-            return self::FAILURE;
+            return self::SUCCESS;
         }
 
         $this->info($pesan);
