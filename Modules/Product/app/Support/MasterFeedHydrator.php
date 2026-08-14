@@ -2,17 +2,20 @@
 
 namespace Modules\Product\Support;
 
-use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator as LengthAwarePaginatorContract;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 
 class MasterFeedHydrator
 {
-    public static function hydrate(LengthAwarePaginator $paginator): LengthAwarePaginator
+    public static function hydrate(LengthAwarePaginatorContract|LengthAwarePaginator $paginator): LengthAwarePaginatorContract|LengthAwarePaginator
     {
-        $collection = $paginator->getCollection();
-        if ($collection->isEmpty()) {
+        $items = $paginator->items();
+        if (empty($items)) {
             return $paginator;
         }
+
+        $collection = collect($items);
 
         $allProductIds = [];
         $categoryIds = [];
@@ -283,6 +286,10 @@ class MasterFeedHydrator
             ];
         }
 
-        return $paginator->setCollection(collect($transformed));
+        if (method_exists($paginator, 'setCollection')) {
+            $paginator->setCollection(collect($transformed));
+        }
+
+        return $paginator;
     }
 }
