@@ -58,6 +58,8 @@ class ProductImportService
                 throw new \Exception("SKU komponen {$componentSku} tidak ditemukan.");
             }
 
+            Product::where('id', $bundleVariant->product_id)->update(['is_bundle' => true]);
+
             $this->repository->upsertBundleItem($bundleVariant->product_id, $componentVariant->id, $qty);
         });
     }
