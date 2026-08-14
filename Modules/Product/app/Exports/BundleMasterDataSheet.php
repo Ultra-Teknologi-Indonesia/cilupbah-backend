@@ -3,11 +3,14 @@
 namespace Modules\Product\Exports;
 
 use Maatwebsite\Excel\Concerns\FromArray;
+use Maatwebsite\Excel\Concerns\ShouldAutoSize;
+use Maatwebsite\Excel\Concerns\WithStyles;
 use Maatwebsite\Excel\Concerns\WithTitle;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\ProductVariant;
 
-class BundleMasterDataSheet implements FromArray, WithTitle
+class BundleMasterDataSheet implements FromArray, WithTitle, ShouldAutoSize, WithStyles
 {
     public function array(): array
     {
@@ -52,5 +55,18 @@ class BundleMasterDataSheet implements FromArray, WithTitle
     public function title(): string
     {
         return 'Master Data';
+    }
+
+    public function styles(Worksheet $sheet): array
+    {
+        return [
+            1 => [
+                'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+                'fill' => [
+                    'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                    'startColor' => ['rgb' => '1E3A8A'],
+                ],
+            ],
+        ];
     }
 }
