@@ -125,7 +125,7 @@ class SalesOrderImportController extends Controller
         return response($content, 200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition' => "attachment; filename=\"import-errors-{$model->batch_no}.xlsx\"",
-            'Content-Length' => strlen($content),
+            'Content-Length' => \strlen($content),
         ]);
     }
 
@@ -136,7 +136,7 @@ class SalesOrderImportController extends Controller
         return response($content, 200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition' => 'attachment; filename="Template_Import_Pesanan.xlsx"',
-            'Content-Length' => strlen($content),
+            'Content-Length' => \strlen($content),
         ]);
     }
 }

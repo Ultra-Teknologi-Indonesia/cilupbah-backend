@@ -50,9 +50,7 @@ class RackImportController extends Controller
     public function batches()
     {
         $paginator = $this->repository->paginateBatches();
-        $paginator->setCollection(
-            $paginator->getCollection()->map(fn (RackImportBatch $b) => new RackImportBatchResource($b))
-        );
+        $paginator->through(fn (RackImportBatch $b) => new RackImportBatchResource($b));
 
         return $this->successPaginatedResponse($paginator, 'Daftar batch import alokasi rak');
     }
@@ -75,9 +73,7 @@ class RackImportController extends Controller
         }
 
         $paginator = $this->repository->paginateRows($model);
-        $paginator->setCollection(
-            $paginator->getCollection()->map(fn ($row) => new RackImportRowResource($row))
-        );
+        $paginator->through(fn ($row) => new RackImportRowResource($row));
 
         return $this->successPaginatedResponse($paginator, 'Daftar baris import');
     }
@@ -91,7 +87,7 @@ class RackImportController extends Controller
 
         if ($model->state !== RackImportBatch::STATE_PREVIEWED) {
             return $this->errorResponse(
-                'Batch belum siap dikonfirmasi.',
+                'Batch belum siap diterapkan.',
                 422,
                 ['detail' => "Status saat ini: {$model->state}."],
                 'Aksi tidak dapat diproses',
@@ -132,7 +128,7 @@ class RackImportController extends Controller
         return response($content, 200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition' => "attachment; filename=\"rack-import-errors-{$model->batch_no}.xlsx\"",
-            'Content-Length' => strlen($content),
+            'Content-Length' => \strlen($content),
         ]);
     }
 }

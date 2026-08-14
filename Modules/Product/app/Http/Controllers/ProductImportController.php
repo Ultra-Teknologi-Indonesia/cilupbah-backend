@@ -71,10 +71,7 @@ class ProductImportController extends Controller
     public function batches(Request $request)
     {
         $paginator = $this->batchRepository->paginateBatches();
-
-        $paginator->setCollection(
-            $paginator->getCollection()->map(fn (ProductImportBatch $batch) => new ProductImportBatchResource($batch))
-        );
+        $paginator->through(fn (ProductImportBatch $batch) => new ProductImportBatchResource($batch));
 
         return $this->successPaginatedResponse($paginator, 'Daftar batch import');
     }
@@ -97,10 +94,7 @@ class ProductImportController extends Controller
         }
 
         $paginator = $this->batchRepository->paginateErrors($model);
-
-        $paginator->setCollection(
-            $paginator->getCollection()->map(fn ($error) => new ProductImportErrorResource($error))
-        );
+        $paginator->through(fn ($error) => new ProductImportErrorResource($error));
 
         return $this->successPaginatedResponse($paginator, 'Daftar error batch import');
     }
@@ -117,7 +111,7 @@ class ProductImportController extends Controller
         return response($content, 200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition' => "attachment; filename=\"import-errors-{$model->batch_no}.xlsx\"",
-            'Content-Length' => strlen($content),
+            'Content-Length' => \strlen($content),
         ]);
     }
 
@@ -128,7 +122,7 @@ class ProductImportController extends Controller
         return response($content, 200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition' => 'attachment; filename="Template_Import_Product.xlsx"',
-            'Content-Length' => strlen($content),
+            'Content-Length' => \strlen($content),
         ]);
     }
 
@@ -139,7 +133,7 @@ class ProductImportController extends Controller
         return response($content, 200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition' => 'attachment; filename="Template_Import_Bundle.xlsx"',
-            'Content-Length' => strlen($content),
+            'Content-Length' => \strlen($content),
         ]);
     }
 
