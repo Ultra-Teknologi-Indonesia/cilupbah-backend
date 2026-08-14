@@ -127,9 +127,10 @@ class RackImportController extends Controller
             return $this->errorResponse('Batch tidak ditemukan', 404);
         }
 
-        return Excel::download(
-            new RackImportErrorExport($model),
-            "rack-import-errors-{$model->batch_no}.xlsx",
-        );
+        return response()->streamDownload(function () use ($model) {
+            echo Excel::raw(new RackImportErrorExport($model), \Maatwebsite\Excel\Excel::XLSX);
+        }, "rack-import-errors-{$model->batch_no}.xlsx", [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
     }
 }

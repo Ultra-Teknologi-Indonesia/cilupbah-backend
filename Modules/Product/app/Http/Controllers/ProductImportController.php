@@ -112,20 +112,29 @@ class ProductImportController extends Controller
             return $this->errorResponse('Batch tidak ditemukan', 404);
         }
 
-        return Excel::download(
-            new ImportErrorReportExport($model),
-            "import-errors-{$model->batch_no}.xlsx"
-        );
+        return response()->streamDownload(function () use ($model) {
+            echo Excel::raw(new ImportErrorReportExport($model), \Maatwebsite\Excel\Excel::XLSX);
+        }, "import-errors-{$model->batch_no}.xlsx", [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
     }
 
     public function downloadSingleTemplate()
     {
-        return Excel::download(new ProductTemplateExport(), 'Template_Import_Product.xlsx');
+        return response()->streamDownload(function () {
+            echo Excel::raw(new ProductTemplateExport(), \Maatwebsite\Excel\Excel::XLSX);
+        }, 'Template_Import_Product.xlsx', [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
     }
 
     public function downloadBundleTemplate()
     {
-        return Excel::download(new BundleTemplateExport(), 'Template_Import_Bundle.xlsx');
+        return response()->streamDownload(function () {
+            echo Excel::raw(new BundleTemplateExport(), \Maatwebsite\Excel\Excel::XLSX);
+        }, 'Template_Import_Bundle.xlsx', [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
     }
 
     private function batchPayload(ProductImportBatch $batch): array
