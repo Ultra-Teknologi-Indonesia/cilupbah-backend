@@ -463,6 +463,12 @@ class ProductService
                 $productData['sku'] = null;
             }
 
+            foreach (['weight', 'length', 'width', 'height'] as $dim) {
+                if (array_key_exists($dim, $productData) && $productData[$dim] === null) {
+                    unset($productData[$dim]);
+                }
+            }
+
             foreach ([
                 'sales_account_id', 'sales_return_account_id',
                 'inventory_account_id', 'cogs_account_id',
@@ -497,10 +503,12 @@ class ProductService
                     $variantData = Arr::only($variant, [
                         'sell_price', 'buy_price', 'barcode', 'is_active',
                         'sales_tax_id', 'purchase_tax_id', 'min_stock', 'safe_stock',
-                        'weight',
+                        'weight', 'length', 'width', 'height',
                     ]);
-                    if (array_key_exists('weight', $variantData) && $variantData['weight'] === null) {
-                        unset($variantData['weight']);
+                    foreach (['weight', 'length', 'width', 'height'] as $dim) {
+                        if (array_key_exists($dim, $variantData) && $variantData[$dim] === null) {
+                            unset($variantData[$dim]);
+                        }
                     }
                     if (!empty($variant['sales_tax_id'])) {
                         $variantData['tax_rate'] = $this->taxRate($variant['sales_tax_id']);
@@ -742,8 +750,10 @@ class ProductService
             'sales_tax_id', 'purchase_tax_id', 'min_stock', 'safe_stock',
             'weight', 'length', 'width', 'height',
         ]);
-        if (array_key_exists('weight', $f) && $f['weight'] === null) {
-            unset($f['weight']);
+        foreach (['weight', 'length', 'width', 'height'] as $dim) {
+            if (array_key_exists($dim, $f) && $f[$dim] === null) {
+                unset($f[$dim]);
+            }
         }
         if (array_key_exists('sell_price', $v) && $v['sell_price'] !== null) {
             $f['sell_price'] = $v['sell_price'];
@@ -969,6 +979,12 @@ class ProductService
                 $productData['sku'] = null;
             }
 
+            foreach (['weight', 'length', 'width', 'height'] as $dim) {
+                if (array_key_exists($dim, $productData) && $productData[$dim] === null) {
+                    unset($productData[$dim]);
+                }
+            }
+
             $productData['status'] = $data['status'] ?? Product::STATUS_MASTER;
             $productData['verified_at'] = $data['verified_at'] ?? null;
 
@@ -1026,6 +1042,12 @@ class ProductService
                         'sales_tax_id', 'purchase_tax_id', 'min_stock', 'safe_stock',
                         'weight', 'length', 'width', 'height',
                     ]);
+
+                    foreach (['weight', 'length', 'width', 'height'] as $dim) {
+                        if (array_key_exists($dim, $variantData) && $variantData[$dim] === null) {
+                            unset($variantData[$dim]);
+                        }
+                    }
 
                     if (!empty($variant['sales_tax_id'])) {
                         $variantData['tax_rate'] = $this->taxRate($variant['sales_tax_id']);
