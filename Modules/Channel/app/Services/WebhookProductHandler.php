@@ -32,11 +32,11 @@ class WebhookProductHandler
         $status = strtoupper((string) ($data['status'] ?? ($data['audit']['status'] ?? '')));
 
         match (true) {
-            in_array($status, ['APPROVED', 'PRODUCT_FIRST_PASS_REVIEW'], true) => $mapping->markApproved(),
-            in_array($status, ['FAILED', 'PRODUCT_AUDIT_FAILURE'], true)
+            in_array($status, ['APPROVED', 'PRODUCT_FIRST_PASS_REVIEW', '4', 'LIVE', 'ACTIVATE'], true) => $mapping->markApproved(),
+            in_array($status, ['FAILED', 'PRODUCT_AUDIT_FAILURE', '3', 'SUSPENDED', '6', '7'], true)
                 => $mapping->markRejected($this->rejectionReason($data)),
-            in_array($status, ['AUDITING', 'PRE_APPROVED'], true) => $mapping->markInReview(),
-            $status === 'NONE' => $mapping->update(['sync_status' => ProductChannelMapping::STATUS_DEACTIVATED]),
+            in_array($status, ['AUDITING', 'PRE_APPROVED', '2', 'PENDING'], true) => $mapping->markInReview(),
+            in_array($status, ['NONE', 'DEACTIVATED', '5', '8', 'DELETED'], true) => $mapping->update(['sync_status' => ProductChannelMapping::STATUS_DEACTIVATED]),
             default => null, 
         };
 
