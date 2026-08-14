@@ -133,24 +133,94 @@ class ProductMergeRepository
             ->all();
     }
 
+    public function recalculateRepresentatives(array $masterNames = []): void
+    {
+        $query = ProductMerge::query();
+        if (! empty($masterNames)) {
+            $query->whereIn('master_name', $masterNames);
+        }
+        $merges = $query->get(['product_id', 'master_name']);
+        if ($merges->isEmpty()) {
+            return;
+        }
+
+        $productIds = $merges->pluck('product_id')->all();
+        $names = Product::query()->whereIn('id', $productIds)->pluck('name', 'id')->all();
+
+        $byMaster = [];
+        foreach ($merges as $m) {
+            $byMaster[$m->master_name][] = $m->product_id;
+        }
+
+        $repIds = [];
+        $nonRepIds = [];
+        foreach ($byMaster as $masterName => $pids) {
+            sort($pids);
+            $rep = null;
+            foreach ($pids as $pid) {
+                if (($names[$pid] ?? null) === $masterName) {
+                    $rep = $pid;
+                    break;
+                }
+            }
+            $rep ??= $pids[0];
+
+            foreach ($pids as $pid) {
+                if ($pid === $rep) {
+                    $repIds[] = $pid;
+                } else {
+                    $nonRepIds[] = $pid;
+                }
+            }
+        }
+
+        if (! empty($repIds)) {
+            foreach (array_chunk($repIds, 500) as $chunk) {
+                ProductMerge::query()->whereIn('product_id', $chunk)->update(['is_representative' => true]);
+            }
+        }
+        if (! empty($nonRepIds)) {
+            foreach (array_chunk($nonRepIds, 500) as $chunk) {
+                ProductMerge::query()->whereIn('product_id', $chunk)->update(['is_representative' => false]);
+            }
+        }
+    }
+
     public function insertMergesIgnore(array $rows): int
     {
-        return ProductMerge::query()->insertOrIgnore($rows);
+        $res = ProductMerge::query()->insertOrIgnore($rows);
+        $masters = array_unique(array_column($rows, 'master_name'));
+        if (! empty($masters)) {
+            $this->recalculateRepresentatives($masters);
+        }
+        return $res;
     }
 
     public function insertMerges(array $rows): void
     {
         ProductMerge::query()->insert($rows);
+        $masters = array_unique(array_column($rows, 'master_name'));
+        if (! empty($masters)) {
+            $this->recalculateRepresentatives($masters);
+        }
     }
 
     public function deleteMergesForProducts(array $productIds): void
     {
+        $masters = ProductMerge::query()->whereIn('product_id', $productIds)->pluck('master_name')->unique()->all();
         ProductMerge::query()->whereIn('product_id', $productIds)->delete();
+        if (! empty($masters)) {
+            $this->recalculateRepresentatives($masters);
+        }
     }
 
     public function deleteMergeByProduct(string $productId): void
     {
+        $master = ProductMerge::query()->where('product_id', $productId)->value('master_name');
         ProductMerge::query()->where('product_id', $productId)->delete();
+        if ($master) {
+            $this->recalculateRepresentatives([$master]);
+        }
     }
 
     public function deleteMergesByMaster(string $masterName): int

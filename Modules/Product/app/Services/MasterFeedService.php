@@ -4,6 +4,7 @@ namespace Modules\Product\Services;
 
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductMerge;
 use Modules\Product\Repositories\MasterFeedRepository;
 
 class MasterFeedService
@@ -12,21 +13,12 @@ class MasterFeedService
 
     public function paginate(?string $status = null, ?string $updatedSince = null): LengthAwarePaginator
     {
-        $context = $this->repository->mergeContext();
-
         $paginator = $this->repository->paginate(
             $status ?? Product::STATUS_MASTER,
             $updatedSince,
-            $context,
         );
 
-        if ($context['active']) {
-            $this->applyMergeGrouping($paginator, $context);
-        } else {
-            foreach ($paginator->getCollection() as $product) {
-                $this->markSolo($product);
-            }
-        }
+        $this->applyPageMergeGrouping($paginator);
 
         return $paginator;
     }
@@ -38,29 +30,97 @@ class MasterFeedService
 
     public function find(string $id): Product
     {
-        return $this->repository->find($id, Product::STATUS_MASTER);
+        $product = $this->repository->find($id, Product::STATUS_MASTER);
+
+        $merge = ProductMerge::query()
+            ->where('product_id', $product->id)
+            ->where('is_representative', true)
+            ->first(['product_id', 'master_name']);
+
+        if (! $merge) {
+            $this->markSolo($product);
+
+            return $product;
+        }
+
+        $allMembers = ProductMerge::query()
+            ->where('master_name', $merge->master_name)
+            ->pluck('product_id')
+            ->all();
+
+        $siblingIds = array_values(array_filter($allMembers, fn ($pid) => $pid !== $product->id));
+        $siblings = $this->repository->loadSiblings($siblingIds);
+
+        $sibs = collect($siblingIds)
+            ->map(fn ($sid) => $siblings->get($sid))
+            ->filter();
+
+        $product->setRelation('variants', $product->variants->concat($sibs->flatMap->variants)->values());
+        $product->setRelation('media', $product->media->concat($sibs->flatMap->media)->values());
+        $product->setRelation('channelMappings', $product->channelMappings->concat($sibs->flatMap->channelMappings)->values());
+        $product->setRelation(
+            'variationTypes',
+            $product->variationTypes->concat($sibs->flatMap->variationTypes)->unique('id')->values(),
+        );
+
+        $product->name = $merge->master_name;
+        $product->setAttribute('is_merged', true);
+        $product->setAttribute('merge_master_name', $merge->master_name);
+        $product->setAttribute('merge_member_ids', array_values($allMembers));
+
+        return $product;
     }
 
-    private function applyMergeGrouping(LengthAwarePaginator $paginator, array $context): void
+    private function applyPageMergeGrouping(LengthAwarePaginator $paginator): void
     {
-        $repToMaster = $context['repToMaster'];
-        $repToMembers = $context['repToMembers'];
+        $collection = $paginator->getCollection();
+        if ($collection->isEmpty()) {
+            return;
+        }
 
-        $siblingIds = [];
-        foreach ($paginator->getCollection() as $product) {
-            if (! isset($repToMaster[$product->id])) {
-                continue;
+        $productIds = $collection->pluck('id')->all();
+
+        $repMerges = ProductMerge::query()
+            ->whereIn('product_id', $productIds)
+            ->where('is_representative', true)
+            ->get(['product_id', 'master_name']);
+
+        if ($repMerges->isEmpty()) {
+            foreach ($collection as $product) {
+                $this->markSolo($product);
             }
-            foreach ($repToMembers[$product->id] as $memberId) {
-                if ($memberId !== $product->id) {
-                    $siblingIds[] = $memberId;
+
+            return;
+        }
+
+        $masterNames = $repMerges->pluck('master_name')->unique()->all();
+        $allMembers = ProductMerge::query()
+            ->whereIn('master_name', $masterNames)
+            ->get(['product_id', 'master_name']);
+
+        $membersByMaster = [];
+        foreach ($allMembers as $m) {
+            $membersByMaster[$m->master_name][] = $m->product_id;
+        }
+
+        $repToMaster = [];
+        $repToMembers = [];
+        $siblingIds = [];
+
+        foreach ($repMerges as $rm) {
+            $repToMaster[$rm->product_id] = $rm->master_name;
+            $memberList = $membersByMaster[$rm->master_name] ?? [$rm->product_id];
+            $repToMembers[$rm->product_id] = $memberList;
+            foreach ($memberList as $mid) {
+                if ($mid !== $rm->product_id) {
+                    $siblingIds[] = $mid;
                 }
             }
         }
 
         $siblings = $this->repository->loadSiblings(array_values(array_unique($siblingIds)));
 
-        foreach ($paginator->getCollection() as $product) {
+        foreach ($collection as $product) {
             if (! isset($repToMaster[$product->id])) {
                 $this->markSolo($product);
 

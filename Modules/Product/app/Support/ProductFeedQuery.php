@@ -15,25 +15,48 @@ class ProductFeedQuery
 
     public const DEFAULT_SORT = '-updated_at';
 
-    public static function configure(QueryBuilder $query): QueryBuilder
+    public static function configure(QueryBuilder|Builder $query): QueryBuilder|Builder
     {
-        return self::applyCriteria($query)
-            ->allowedSorts(...self::SORTS)
-            ->defaultSort(self::DEFAULT_SORT);
+        if ($query instanceof QueryBuilder) {
+            return self::applyCriteria($query)
+                ->allowedSorts(...self::SORTS)
+                ->defaultSort(self::DEFAULT_SORT);
+        }
+
+        self::applyCriteriaTo($query);
+        self::applySort($query);
+
+        return $query;
     }
 
-    public static function applyCriteria(QueryBuilder $query): QueryBuilder
+    public static function applyCriteria(QueryBuilder|Builder $query): QueryBuilder|Builder
     {
-        return $query
-            ->allowedSearch(...self::SEARCHABLE)
-            ->allowedFilters(...self::filters());
+        if ($query instanceof QueryBuilder) {
+            return $query
+                ->allowedSearch(...self::SEARCHABLE)
+                ->allowedFilters(...self::filters());
+        }
+
+        self::applyCriteriaTo($query);
+
+        return $query;
     }
 
-    public static function applyCriteriaTo(Builder $query): bool
+    public static function applyCriteriaTo(Builder|\Illuminate\Database\Query\Builder|QueryBuilder $query): bool
     {
-        $before = count($query->getQuery()->wheres);
+        $rawQuery = method_exists($query, 'getQuery') ? $query->getQuery() : $query;
+        $before = count($rawQuery->wheres ?? []);
 
-        $query->allowedSearch(...self::SEARCHABLE);
+        if (method_exists($query, 'allowedSearch')) {
+            $query->allowedSearch(...self::SEARCHABLE);
+        } elseif (filled(request()->query('search'))) {
+            $search = (string) request()->query('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'ilike', "%{$search}%")
+                    ->orWhere('sku', 'ilike', "%{$search}%")
+                    ->orWhereHas('variants', fn ($vq) => $vq->where('sku', 'ilike', "%{$search}%"));
+            });
+        }
 
         foreach ((array) request()->query('filter', []) as $name => $value) {
             if (blank($value)) {
@@ -50,15 +73,17 @@ class ProductFeedQuery
             };
         }
 
-        return count($query->getQuery()->wheres) > $before;
+        $after = count($rawQuery->wheres ?? []);
+
+        return $after > $before;
     }
 
-    public static function criteriaAreEffective(Builder $probe): bool
+    public static function criteriaAreEffective(Builder|\Illuminate\Database\Query\Builder|QueryBuilder $probe): bool
     {
         return self::applyCriteriaTo($probe);
     }
 
-    public static function applySort(Builder $query): Builder
+    public static function applySort(Builder|\Illuminate\Database\Query\Builder|QueryBuilder $query)
     {
         $sort = (string) request()->query('sort', self::DEFAULT_SORT);
         $direction = str_starts_with($sort, '-') ? 'desc' : 'asc';

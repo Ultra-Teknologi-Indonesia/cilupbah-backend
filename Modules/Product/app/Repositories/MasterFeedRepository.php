@@ -5,6 +5,7 @@ namespace Modules\Product\Repositories;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductMerge;
 use Modules\Product\Support\ProductFeedColumns;
@@ -19,51 +20,22 @@ class MasterFeedRepository
         return ProductFeedRelations::base();
     }
 
-    public function paginate(string $status, ?string $updatedSince, array $context): LengthAwarePaginator
+    public function paginate(?string $status = null, ?string $updatedSince = null): LengthAwarePaginator
     {
-        if (! ($context['active'] ?? false)) {
-            return $this->plainFeedQuery($status, $updatedSince);
-        }
-
-        return $this->mergeAwareQuery($status, $updatedSince, $context);
-    }
-
-    public function paginateDownloaded(?string $updatedSince = null): LengthAwarePaginator
-    {
-        return ProductFeedQuery::configure(
-            QueryBuilder::for(Product::class)
-                ->where('is_from_channel', true)
-                ->where('status', '<>', Product::STATUS_ARCHIVED)
-                ->when($updatedSince, fn ($query) => $query->where('updated_at', '>=', $updatedSince))
-                ->with($this->relations())
-        )
-            ->paginate(request('per_page', 20), ProductFeedColumns::list())
-            ->appends(request()->query());
-    }
-
-    private function plainFeedQuery(string $status, ?string $updatedSince): LengthAwarePaginator
-    {
-        return ProductFeedQuery::configure(
-            QueryBuilder::for(Product::class)
-                ->where('status', $status)
-                ->when($updatedSince, fn ($query) => $query->where('updated_at', '>=', $updatedSince))
-                ->with($this->relations())
-        )
-            ->paginate(request('per_page', 20), ProductFeedColumns::list())
-            ->appends(request()->query());
-    }
-
-    private function mergeAwareQuery(string $status, ?string $updatedSince, array $context): LengthAwarePaginator
-    {
-        $nonRepIds = $context['nonRepIds'];
+        $status = $status ?? Product::STATUS_MASTER;
 
         $query = Product::query()
             ->where('status', $status)
             ->when($updatedSince, fn ($q) => $q->where('updated_at', '>=', $updatedSince))
-            ->when(! empty($nonRepIds), fn ($q) => $q->whereNotIn('id', $nonRepIds));
+            ->whereNotExists(function ($sub) {
+                $sub->select(DB::raw(1))
+                    ->from('product_merges')
+                    ->whereColumn('product_merges.product_id', 'products.id')
+                    ->where('product_merges.is_representative', false);
+            });
 
         if (ProductFeedQuery::hasCriteria() && ProductFeedQuery::criteriaAreEffective(Product::query())) {
-            $memberRepIds = $this->representativesOfMatchingMembers($status, $updatedSince, $context);
+            $memberRepIds = $this->representativesOfMatchingMembers($status, $updatedSince);
 
             $query->where(function (Builder $outer) use ($memberRepIds) {
                 $outer->where(fn (Builder $inner) => ProductFeedQuery::applyCriteriaTo($inner));
@@ -78,39 +50,63 @@ class MasterFeedRepository
 
         return $query
             ->with($this->relations())
-            ->paginate(request('per_page', 20), ProductFeedColumns::list())
+            ->paginate(request('per_page', 10), ProductFeedColumns::list())
             ->appends(request()->query());
     }
 
-    private function representativesOfMatchingMembers(string $status, ?string $updatedSince, array $context): array
+    public function paginateDownloaded(?string $updatedSince = null): LengthAwarePaginator
     {
-        $nonRepIds = $context['nonRepIds'];
+        return ProductFeedQuery::configure(
+            QueryBuilder::for(Product::class)
+                ->where('is_from_channel', true)
+                ->where('status', '<>', Product::STATUS_ARCHIVED)
+                ->when($updatedSince, fn ($query) => $query->where('updated_at', '>=', $updatedSince))
+                ->with($this->relations())
+        )
+            ->paginate(request('per_page', 10), ProductFeedColumns::list())
+            ->appends(request()->query());
+    }
 
-        if (empty($nonRepIds)) {
+    private function representativesOfMatchingMembers(string $status, ?string $updatedSince): array
+    {
+        $matchingNonRepProductIds = Product::query()
+            ->where('status', $status)
+            ->when($updatedSince, fn ($q) => $q->where('updated_at', '>=', $updatedSince))
+            ->whereExists(function ($sub) {
+                $sub->select(DB::raw(1))
+                    ->from('product_merges')
+                    ->whereColumn('product_merges.product_id', 'products.id')
+                    ->where('product_merges.is_representative', false);
+            })
+            ->where(fn (Builder $q) => ProductFeedQuery::applyCriteriaTo($q))
+            ->pluck('id')
+            ->all();
+
+        if (empty($matchingNonRepProductIds)) {
             return [];
         }
 
-        $memberToRep = $context['memberToRep'];
+        $masterNames = ProductMerge::query()
+            ->whereIn('product_id', $matchingNonRepProductIds)
+            ->pluck('master_name')
+            ->unique()
+            ->all();
 
-        $matched = Product::query()
-            ->where('status', $status)
-            ->when($updatedSince, fn ($q) => $q->where('updated_at', '>=', $updatedSince))
-            ->whereIn('id', $nonRepIds)
-            ->where(fn (Builder $q) => ProductFeedQuery::applyCriteriaTo($q))
-            ->pluck('id');
-
-        $reps = [];
-        foreach ($matched as $id) {
-            $reps[$memberToRep[$id] ?? $id] = true;
+        if (empty($masterNames)) {
+            return [];
         }
 
-        return array_keys($reps);
+        return ProductMerge::query()
+            ->whereIn('master_name', $masterNames)
+            ->where('is_representative', true)
+            ->pluck('product_id')
+            ->all();
     }
 
     public function mergeContext(): array
     {
         return \Illuminate\Support\Facades\Cache::remember('product_merges_context', 300, function () {
-            $merges = ProductMerge::query()->get(['product_id', 'master_name']);
+            $merges = ProductMerge::query()->get(['product_id', 'master_name', 'is_representative']);
             if ($merges->isEmpty()) {
                 return [
                     'active' => false,
@@ -121,30 +117,23 @@ class MasterFeedRepository
                 ];
             }
 
-            $byMaster = [];
-            foreach ($merges as $m) {
-                $byMaster[$m->master_name][$m->product_id] = true;
-            }
-
-            $names = Product::query()
-                ->whereIn('id', $merges->pluck('product_id')->all())
-                ->pluck('name', 'id')
-                ->all();
-
             $repToMaster = [];
             $repToMembers = [];
             $memberToRep = [];
             $nonRepIds = [];
 
-            foreach ($byMaster as $master => $idSet) {
-                $ids = array_keys($idSet);
-                sort($ids);
+            $byMaster = [];
+            foreach ($merges as $m) {
+                $byMaster[$m->master_name][] = $m;
+            }
 
+            foreach ($byMaster as $master => $items) {
                 $rep = null;
-                foreach ($ids as $id) {
-                    if (($names[$id] ?? null) === $master) {
-                        $rep = $id;
-                        break;
+                $ids = [];
+                foreach ($items as $item) {
+                    $ids[] = $item->product_id;
+                    if ($item->is_representative) {
+                        $rep = $item->product_id;
                     }
                 }
                 $rep ??= $ids[0];
@@ -203,7 +192,7 @@ class MasterFeedRepository
             ->allowedSearch('name', 'sku')
             ->allowedSorts('name', 'created_at', 'updated_at')
             ->defaultSort('-updated_at')
-            ->paginate(request('per_page', 20))
+            ->paginate(request('per_page', 10))
             ->appends(request()->query());
     }
 }
