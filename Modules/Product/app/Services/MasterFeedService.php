@@ -31,11 +31,13 @@ class MasterFeedService
     public function find(string $id): Product
     {
         $product = $this->repository->find($id, Product::STATUS_MASTER);
+        $hasRepCol = MasterFeedRepository::hasRepresentativeColumn();
 
-        $merge = ProductMerge::query()
-            ->where('product_id', $product->id)
-            ->where('is_representative', true)
-            ->first(['product_id', 'master_name']);
+        $mergeQuery = ProductMerge::query()->where('product_id', $product->id);
+        if ($hasRepCol) {
+            $mergeQuery->where('is_representative', true);
+        }
+        $merge = $mergeQuery->first(['product_id', 'master_name']);
 
         if (! $merge) {
             $this->markSolo($product);
@@ -79,11 +81,13 @@ class MasterFeedService
         }
 
         $productIds = $collection->pluck('id')->all();
+        $hasRepCol = MasterFeedRepository::hasRepresentativeColumn();
 
-        $repMerges = ProductMerge::query()
-            ->whereIn('product_id', $productIds)
-            ->where('is_representative', true)
-            ->get(['product_id', 'master_name']);
+        $repMergesQuery = ProductMerge::query()->whereIn('product_id', $productIds);
+        if ($hasRepCol) {
+            $repMergesQuery->where('is_representative', true);
+        }
+        $repMerges = $repMergesQuery->get(['product_id', 'master_name']);
 
         if ($repMerges->isEmpty()) {
             foreach ($collection as $product) {

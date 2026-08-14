@@ -5,6 +5,8 @@ namespace Modules\Product\Models;
 use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class ProductMerge extends Model
 {
@@ -30,16 +32,20 @@ class ProductMerge extends Model
     protected static function booted(): void
     {
         static::saving(function (ProductMerge $merge) {
+            if (! Schema::hasColumn('product_merges', 'is_representative')) {
+                return;
+            }
+
             if (! isset($merge->attributes['is_representative'])) {
-                $productName = \Illuminate\Support\Facades\DB::table('products')->where('id', $merge->product_id)->value('name');
+                $productName = DB::table('products')->where('id', $merge->product_id)->value('name');
                 if ($productName === $merge->master_name) {
                     $merge->is_representative = true;
-                    \Illuminate\Support\Facades\DB::table('product_merges')
+                    DB::table('product_merges')
                         ->where('master_name', $merge->master_name)
                         ->where('product_id', '!=', $merge->product_id)
                         ->update(['is_representative' => false]);
                 } else {
-                    $hasRep = \Illuminate\Support\Facades\DB::table('product_merges')
+                    $hasRep = DB::table('product_merges')
                         ->where('master_name', $merge->master_name)
                         ->where('is_representative', true)
                         ->where('product_id', '!=', $merge->product_id)
@@ -52,14 +58,18 @@ class ProductMerge extends Model
         static::deleted(function (ProductMerge $merge) {
             \Illuminate\Support\Facades\Cache::forget('product_merges_context');
 
+            if (! Schema::hasColumn('product_merges', 'is_representative')) {
+                return;
+            }
+
             if ($merge->is_representative) {
-                $remaining = \Illuminate\Support\Facades\DB::table('product_merges')
+                $remaining = DB::table('product_merges')
                     ->where('master_name', $merge->master_name)
                     ->pluck('product_id')
                     ->all();
                 if (! empty($remaining)) {
                     sort($remaining);
-                    $names = \Illuminate\Support\Facades\DB::table('products')
+                    $names = DB::table('products')
                         ->whereIn('id', $remaining)
                         ->pluck('name', 'id')
                         ->all();
@@ -71,7 +81,7 @@ class ProductMerge extends Model
                         }
                     }
                     $newRep ??= $remaining[0];
-                    \Illuminate\Support\Facades\DB::table('product_merges')
+                    DB::table('product_merges')
                         ->where('product_id', $newRep)
                         ->update(['is_representative' => true]);
                 }

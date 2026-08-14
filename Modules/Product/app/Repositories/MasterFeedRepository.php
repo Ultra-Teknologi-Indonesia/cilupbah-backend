@@ -5,7 +5,9 @@ namespace Modules\Product\Repositories;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductMerge;
 use Modules\Product\Support\ProductFeedColumns;
@@ -20,22 +22,41 @@ class MasterFeedRepository
         return ProductFeedRelations::base();
     }
 
+    public static function hasRepresentativeColumn(): bool
+    {
+        return Cache::remember('product_merges_has_is_representative', 300, function () {
+            return Schema::hasColumn('product_merges', 'is_representative');
+        });
+    }
+
     public function paginate(?string $status = null, ?string $updatedSince = null): LengthAwarePaginator
     {
         $status = $status ?? Product::STATUS_MASTER;
+        $hasRepCol = self::hasRepresentativeColumn();
 
         $query = Product::query()
             ->where('status', $status)
-            ->when($updatedSince, fn ($q) => $q->where('updated_at', '>=', $updatedSince))
-            ->whereNotExists(function ($sub) {
+            ->when($updatedSince, fn ($q) => $q->where('updated_at', '>=', $updatedSince));
+
+        if ($hasRepCol) {
+            $query->whereNotExists(function ($sub) {
                 $sub->select(DB::raw(1))
                     ->from('product_merges')
                     ->whereColumn('product_merges.product_id', 'products.id')
                     ->where('product_merges.is_representative', false);
             });
+        } else {
+            $query->whereNotExists(function ($sub) {
+                $sub->select(DB::raw(1))
+                    ->from('product_merges as pm1')
+                    ->join('product_merges as pm2', 'pm1.master_name', '=', 'pm2.master_name')
+                    ->whereColumn('pm1.product_id', 'products.id')
+                    ->whereRaw('pm2.product_id < pm1.product_id');
+            });
+        }
 
         if (ProductFeedQuery::hasCriteria() && ProductFeedQuery::criteriaAreEffective(Product::query())) {
-            $memberRepIds = $this->representativesOfMatchingMembers($status, $updatedSince);
+            $memberRepIds = $this->representativesOfMatchingMembers($status, $updatedSince, $hasRepCol);
 
             $query->where(function (Builder $outer) use ($memberRepIds) {
                 $outer->where(fn (Builder $inner) => ProductFeedQuery::applyCriteriaTo($inner));
@@ -67,46 +88,50 @@ class MasterFeedRepository
             ->appends(request()->query());
     }
 
-    private function representativesOfMatchingMembers(string $status, ?string $updatedSince): array
+    private function representativesOfMatchingMembers(string $status, ?string $updatedSince, bool $hasRepCol): array
     {
-        $matchingNonRepProductIds = Product::query()
-            ->where('status', $status)
-            ->when($updatedSince, fn ($q) => $q->where('updated_at', '>=', $updatedSince))
-            ->whereExists(function ($sub) {
-                $sub->select(DB::raw(1))
-                    ->from('product_merges')
-                    ->whereColumn('product_merges.product_id', 'products.id')
-                    ->where('product_merges.is_representative', false);
-            })
-            ->where(fn (Builder $q) => ProductFeedQuery::applyCriteriaTo($q))
-            ->pluck('id')
-            ->all();
+        if ($hasRepCol) {
+            $matchingNonRepProductIds = Product::query()
+                ->where('status', $status)
+                ->when($updatedSince, fn ($q) => $q->where('updated_at', '>=', $updatedSince))
+                ->whereExists(function ($sub) {
+                    $sub->select(DB::raw(1))
+                        ->from('product_merges')
+                        ->whereColumn('product_merges.product_id', 'products.id')
+                        ->where('product_merges.is_representative', false);
+                })
+                ->where(fn (Builder $q) => ProductFeedQuery::applyCriteriaTo($q))
+                ->pluck('id')
+                ->all();
 
-        if (empty($matchingNonRepProductIds)) {
-            return [];
+            if (empty($matchingNonRepProductIds)) {
+                return [];
+            }
+
+            $masterNames = ProductMerge::query()
+                ->whereIn('product_id', $matchingNonRepProductIds)
+                ->pluck('master_name')
+                ->unique()
+                ->all();
+
+            if (empty($masterNames)) {
+                return [];
+            }
+
+            return ProductMerge::query()
+                ->whereIn('master_name', $masterNames)
+                ->where('is_representative', true)
+                ->pluck('product_id')
+                ->all();
         }
 
-        $masterNames = ProductMerge::query()
-            ->whereIn('product_id', $matchingNonRepProductIds)
-            ->pluck('master_name')
-            ->unique()
-            ->all();
-
-        if (empty($masterNames)) {
-            return [];
-        }
-
-        return ProductMerge::query()
-            ->whereIn('master_name', $masterNames)
-            ->where('is_representative', true)
-            ->pluck('product_id')
-            ->all();
+        return [];
     }
 
     public function mergeContext(): array
     {
-        return \Illuminate\Support\Facades\Cache::remember('product_merges_context', 300, function () {
-            $merges = ProductMerge::query()->get(['product_id', 'master_name', 'is_representative']);
+        return Cache::remember('product_merges_context', 300, function () {
+            $merges = ProductMerge::query()->get(['product_id', 'master_name']);
             if ($merges->isEmpty()) {
                 return [
                     'active' => false,
@@ -117,6 +142,7 @@ class MasterFeedRepository
                 ];
             }
 
+            $hasRepCol = self::hasRepresentativeColumn();
             $repToMaster = [];
             $repToMembers = [];
             $memberToRep = [];
@@ -132,7 +158,7 @@ class MasterFeedRepository
                 $ids = [];
                 foreach ($items as $item) {
                     $ids[] = $item->product_id;
-                    if ($item->is_representative) {
+                    if ($hasRepCol && ($item->is_representative ?? false)) {
                         $rep = $item->product_id;
                     }
                 }
