@@ -10,8 +10,8 @@ use Modules\Inventory\Models\StockAdjustmentItem;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Repositories\InventoryRepository;
 use PhpOffice\PhpSpreadsheet\IOFactory;
-use PhpOffice\PhpSpreadsheet\Reader\BaseReader;
 use PhpOffice\PhpSpreadsheet\Reader\IReadFilter;
+use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
 
 class ImportBaselineStock extends Command
 {
@@ -169,10 +169,12 @@ class ImportBaselineStock extends Command
     {
         @ini_set('memory_limit', '1024M');
 
-        $reader = IOFactory::createReader('Xlsx');
+        /** @var XlsxReader $reader */
+        $reader = new XlsxReader();
         $reader->setReadDataOnly(true);
 
-        $isTemplate = in_array(self::TEMPLATE_SHEET, $reader->listWorksheetNames($path), true);
+        $sheetNames = method_exists($reader, 'listWorksheetNames') ? $reader->listWorksheetNames($path) : [];
+        $isTemplate = in_array(self::TEMPLATE_SHEET, $sheetNames, true);
 
         if ($isTemplate) {
             $reader->setLoadSheetsOnly(self::TEMPLATE_SHEET);
@@ -256,11 +258,15 @@ class ImportBaselineStock extends Command
         return $rows;
     }
 
-    private function countRows(BaseReader $reader, string $path, bool $isTemplate): int
+    private function countRows(XlsxReader $reader, string $path, bool $isTemplate): int
     {
+        if (! method_exists($reader, 'listWorksheetInfo')) {
+            return 0;
+        }
+
         foreach ($reader->listWorksheetInfo($path) as $info) {
             if (! $isTemplate || $info['worksheetName'] === self::TEMPLATE_SHEET) {
-                return (int) $info['totalRows'];
+                return (int) ($info['totalRows'] ?? 0);
             }
         }
 
