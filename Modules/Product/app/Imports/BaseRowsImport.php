@@ -24,11 +24,19 @@ abstract class BaseRowsImport implements OnEachRow, WithHeadingRow, WithChunkRea
 
     public function onRow(Row $row): void
     {
-        $data = $row->toArray();
+        $raw = $row->toArray();
 
-        if ($this->isEmptyRow($data)) {
+        if ($this->isEmptyRow($raw)) {
             return;
         }
+
+        $data = array_map(function ($value) {
+            if (is_string($value)) {
+                $trimmed = trim($value);
+                return $trimmed === '' ? null : $trimmed;
+            }
+            return $value;
+        }, $raw);
 
         $this->total++;
         $index = $row->getIndex();

@@ -8,7 +8,7 @@ class BundleRowsImport extends BaseRowsImport
     {
         return [
             'item_code' => ['required', 'string', 'max:255'],
-            'sku_composition' => ['required', 'string', 'max:255'],
+            'sku_composition' => ['required', 'string', 'max:255', 'different:item_code'],
             'qty' => ['required', 'integer', 'min:1'],
         ];
     }

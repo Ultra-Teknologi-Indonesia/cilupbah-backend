@@ -18,11 +18,19 @@ class ProductImportService
 
             $productName = $row['item_group_name'] ?? 'Unnamed Product';
 
+            $weight = $row['package_weight'] ?? 0;
+            $length = $row['package_length'] ?? 0;
+            $width = $row['package_width'] ?? 0;
+            $height = $row['package_height'] ?? 0;
+
             $productId = $this->repository->upsertProductByName($productName, [
                 'category_id' => $categoryId,
                 'name' => $productName,
                 'description' => $row['description'] ?? '',
-                'weight' => $row['package_weight'] ?? 0,
+                'weight' => $weight,
+                'length' => $length,
+                'width' => $width,
+                'height' => $height,
 
                 'status' => Product::STATUS_MASTER,
                 'is_active' => true,
@@ -35,6 +43,11 @@ class ProductImportService
                 'sku' => $sku,
                 'barcode' => $row['barcode'] ?? null,
                 'sell_price' => $row['sell_price'] ?? 0,
+                'weight' => $weight,
+                'length' => $length,
+                'width' => $width,
+                'height' => $height,
+                'is_active' => true,
             ]);
 
             $this->processMedia($productId, $row);
@@ -46,7 +59,15 @@ class ProductImportService
         DB::transaction(function () use ($row) {
             $bundleSku = $row['item_code'];
             $componentSku = $row['sku_composition'];
-            $qty = $row['qty'] ?? 1;
+            $qty = (int) ($row['qty'] ?? 1);
+
+            if ($bundleSku === $componentSku) {
+                throw new \Exception("SKU komponen ({$componentSku}) tidak boleh sama dengan SKU bundle.");
+            }
+
+            if ($qty < 1) {
+                throw new \Exception("Jumlah komponen minimal 1.");
+            }
 
             $bundleVariant = $this->repository->findVariantBySku($bundleSku);
             $componentVariant = $this->repository->findVariantBySku($componentSku);
@@ -56,6 +77,14 @@ class ProductImportService
             }
             if (!$componentVariant) {
                 throw new \Exception("SKU komponen {$componentSku} tidak ditemukan.");
+            }
+
+            if ($componentVariant->product?->is_bundle) {
+                throw new \Exception("Komponen bundle tidak boleh berupa produk bundle (bundle-in-bundle tidak diizinkan).");
+            }
+
+            if (!$componentVariant->is_active) {
+                throw new \Exception("Varian komponen {$componentSku} tidak aktif.");
             }
 
             Product::where('id', $bundleVariant->product_id)->update(['is_bundle' => true]);

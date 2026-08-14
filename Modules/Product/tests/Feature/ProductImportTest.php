@@ -122,6 +122,69 @@ class ProductImportTest extends TestCase
         ]);
     }
 
+    public function test_import_single_saves_dimensions_and_handles_blank_cells(): void
+    {
+        $headings = [
+            'item_group_name', 'item_code', 'sell_price', 'barcode',
+            'package_weight', 'package_length', 'package_width', 'package_height',
+            'image_url1',
+        ];
+        $rows = [
+            ['Box Premium', 'BOX-01', 150000, '8991234567890', 1.5, 30, 20, 10, ''],
+        ];
+
+        $file = $this->makeUpload($headings, $rows);
+        $response = $this->postJson('/api/v1/products/import/single', ['file' => $file]);
+        $response->assertStatus(202);
+
+        $batch = ProductImportBatch::find($response->json('data.id'));
+        $this->assertSame(ProductImportBatch::STATE_DONE, $batch->state);
+        $this->assertSame(1, $batch->success_rows);
+
+        $this->assertDatabaseHas('products', [
+            'name' => 'Box Premium',
+            'weight' => 1.5,
+            'length' => 30,
+            'width' => 20,
+            'height' => 10,
+        ]);
+
+        $this->assertDatabaseHas('product_variants', [
+            'sku' => 'BOX-01',
+            'weight' => 1.5,
+            'length' => 30,
+            'width' => 20,
+            'height' => 10,
+        ]);
+    }
+
+    public function test_import_bundle_rejects_bundle_in_bundle_and_same_sku(): void
+    {
+        DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Cat']);
+
+        $bundleParent = Product::create(['name' => 'Bundle Utama', 'category_id' => 1, 'status' => Product::STATUS_MASTER, 'is_active' => true]);
+        ProductVariant::create(['product_id' => $bundleParent->id, 'sku' => 'BUNDLE-PARENT', 'sell_price' => 200000, 'is_active' => true]);
+
+        $bundleChild = Product::create(['name' => 'Bundle Anak', 'category_id' => 1, 'status' => Product::STATUS_MASTER, 'is_active' => true, 'is_bundle' => true]);
+        ProductVariant::create(['product_id' => $bundleChild->id, 'sku' => 'BUNDLE-CHILD', 'sell_price' => 100000, 'is_active' => true]);
+
+        $file = $this->makeUpload(
+            ['item_code', 'sku_composition', 'qty'],
+            [
+                ['BUNDLE-PARENT', 'BUNDLE-CHILD', 1],
+                ['BUNDLE-PARENT', 'BUNDLE-PARENT', 1],
+            ]
+        );
+
+        $response = $this->postJson('/api/v1/products/import/bundle', ['file' => $file]);
+        $response->assertStatus(202);
+
+        $batch = ProductImportBatch::find($response->json('data.id'));
+        $this->assertSame(ProductImportBatch::STATE_FAILED, $batch->state);
+        $this->assertSame(0, $batch->success_rows);
+        $this->assertSame(2, $batch->failed_rows);
+    }
+
     public function test_invalid_file_type_rejected(): void
     {
         $file = UploadedFile::fake()->create('data.txt', 10, 'text/plain');
