@@ -6,13 +6,11 @@ use Illuminate\Support\Facades\DB;
 
 class MasterFeedContext
 {
-    /** @var array<int|string, string>|null */
+
     private static ?array $attributes = null;
 
-    /** @var array<string, object>|null */
     private static ?array $shops = null;
 
-    /** @var array<string, object>|null */
     private static ?array $channels = null;
 
     public static function warmup(): void

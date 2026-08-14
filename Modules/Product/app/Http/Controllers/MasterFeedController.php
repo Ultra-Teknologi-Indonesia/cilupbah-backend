@@ -20,8 +20,6 @@ class MasterFeedController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        @ini_set('memory_limit', '512M');
-
         $request->validate([
             'search' => 'nullable|string',
             'per_page' => 'nullable|integer|min:1|max:200',
@@ -35,17 +33,11 @@ class MasterFeedController extends Controller
             $request->query('updated_since'),
         );
 
-        $paginator->through(
-            fn (Product $product) => (new MasterItemResource($product))->resolve($request)
-        );
-
         return $this->successPaginatedResponse($paginator, 'Get master items success');
     }
 
     public function downloaded(Request $request): JsonResponse
     {
-        @ini_set('memory_limit', '512M');
-
         $paginator = $this->service->paginateDownloaded(
             $request->query('updated_since'),
         );

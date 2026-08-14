@@ -66,12 +66,6 @@ class ReviewStatusPoller
         return ['checked' => $checked, 'updated' => $updated];
     }
 
-    /**
-     * Katalog ditelusuri per halaman, dan mapping diambil hanya untuk id di halaman itu.
-     * Versi lama menahan seluruh katalog toko plus seluruh mapping-nya di memori sekaligus;
-     * itu meng-OOM pod scheduler dan ikut menelan task terjadwal lain di menit yang sama,
-     * termasuk perpanjangan token channel.
-     */
     private function applyPage(ChannelShop $shop, ?string $code, array $statuses): array
     {
         $mappings = ProductChannelMapping::where('channel_shop_id', $shop->id)

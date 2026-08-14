@@ -8,7 +8,7 @@ use Symfony\Component\HttpFoundation\Response;
 
 class LimitWebhookPayloadSize
 {
-    private const MAX_BYTES = 1048576; // 1 MB
+    private const MAX_BYTES = 1048576; 
 
     public function handle(Request $request, Closure $next): Response
     {

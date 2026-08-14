@@ -42,7 +42,6 @@ class ProcessBulkReadyToShipJob implements ShouldQueue
             return;
         }
 
-        // Process in small chunks to allow progressive updates and fault isolation
         foreach ($items->chunk(10) as $chunk) {
             foreach ($chunk as $item) {
                 $item->update(['status' => BulkRtsItem::STATUS_PROCESSING]);

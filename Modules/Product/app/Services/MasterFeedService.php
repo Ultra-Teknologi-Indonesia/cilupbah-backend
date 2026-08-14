@@ -20,7 +20,7 @@ class MasterFeedService
 
         $this->applyPageMergeGrouping($paginator);
 
-        return $paginator;
+        return \Modules\Product\Support\MasterFeedHydrator::hydrate($paginator);
     }
 
     public function paginateDownloaded(?string $updatedSince = null): LengthAwarePaginator

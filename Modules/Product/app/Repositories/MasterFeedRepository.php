@@ -70,7 +70,6 @@ class MasterFeedRepository
         ProductFeedQuery::applySort($query);
 
         return $query
-            ->with($this->relations())
             ->paginate(request('per_page', 10), ProductFeedColumns::list())
             ->appends(request()->query());
     }

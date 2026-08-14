@@ -169,7 +169,6 @@ class ImportBaselineStock extends Command
     {
         @ini_set('memory_limit', '1024M');
 
-        /** @var XlsxReader $reader */
         $reader = new XlsxReader();
         $reader->setReadDataOnly(true);
 
