@@ -103,12 +103,16 @@ RUN chmod +x \
 
 # Laravel writable directories
 RUN mkdir -p \
-    storage/framework/cache \
+    storage/app/private/imports/products \
+    storage/app/private/imports/sales-orders \
+    storage/app/private/imports/rack-allocation \
+    storage/app/private/exports \
+    storage/framework/cache/laravel-excel \
     storage/framework/sessions \
     storage/framework/views \
     storage/logs \
     bootstrap/cache \
-    && chmod -R 775 storage bootstrap/cache
+    && chmod -R 777 storage bootstrap/cache /tmp
 
 ENTRYPOINT ["/usr/local/bin/start.sh"]
 
