@@ -15,6 +15,13 @@ class RackImportBatchService
 
     public function createFromUpload(UploadedFile $file, ?string $userId): RackImportBatch
     {
+        if (self::DISK === 'local') {
+            $targetDir = \Illuminate\Support\Facades\Storage::disk(self::DISK)->path(self::DIR);
+            if (! is_dir($targetDir)) {
+                @mkdir($targetDir, 0777, true);
+            }
+        }
+
         $path = $file->store(self::DIR, self::DISK);
 
         return RackImportBatch::create([

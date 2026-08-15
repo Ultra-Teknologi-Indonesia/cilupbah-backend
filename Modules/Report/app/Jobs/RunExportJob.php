@@ -42,6 +42,10 @@ class RunExportJob implements ShouldQueue
         $params = $job->params ?? [];
         $export = $manager->build($job->type, $params);
         $fileName = $manager->filename($job->type, $params);
+        $targetDir = storage_path('app/private/exports');
+        if (! is_dir($targetDir)) {
+            @mkdir($targetDir, 0777, true);
+        }
         $path = "exports/{$job->id}.xlsx";
 
         Excel::store($export, $path, 'local');
