@@ -76,9 +76,10 @@ class BackfillSettlement extends Command
                 ->whereNotNull('channel_order_no')
                 ->where(fn ($x) => $x->where('is_settled', true)->orWhereNotNull('settlement_amount'))
                 ->select('id')
-                ->chunkById(200, function ($orders) use (&$dispatched) {
+                ->chunkById(100, function ($orders) use (&$dispatched) {
                     foreach ($orders as $order) {
-                        SyncOrderFinanceJob::dispatch($order->id, true);
+                        $delaySeconds = (int) ($dispatched * 1.5);
+                        SyncOrderFinanceJob::dispatch($order->id, true)->delay(now()->addSeconds($delaySeconds));
                         $dispatched++;
                     }
                 });

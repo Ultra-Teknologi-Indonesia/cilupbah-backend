@@ -305,7 +305,6 @@ class ProcessShopeeWebhook implements ShouldQueue
             return;
         }
 
-        /** @var ProductChannelMapping|null $mapping */
         $mapping = ProductChannelMapping::where('channel_shop_id', $shopUuid)
             ->where('external_product_id', $itemId)
             ->first();

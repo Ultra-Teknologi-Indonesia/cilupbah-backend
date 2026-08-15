@@ -15,8 +15,9 @@ class SyncOrderFinanceJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 3;
-    public array $backoff = [30, 120, 300];
+    public int $tries = 5;
+    public int $maxExceptions = 3;
+    public array $backoff = [15, 45, 120, 300];
 
     public function __construct(
         public readonly string $orderId,
@@ -41,12 +42,55 @@ class SyncOrderFinanceJob implements ShouldQueue
             return;
         }
 
-        $finance = match ($order->source) {
-            'shopee' => $this->fetchShopee($order),
-            'tiktok' => $this->fetchTikTok($order),
-            'lazada' => $this->fetchLazada($order),
-            default  => null,
-        };
+        $rateLimitKey = "finance_sync:{$order->source}:{$order->channel_shop_id}";
+        $executed = \Illuminate\Support\Facades\RateLimiter::attempt(
+            $rateLimitKey,
+            1,
+            function () use ($order, $orderService) {
+                $this->executeSync($order, $orderService);
+            },
+            2
+        );
+
+        if (! $executed) {
+            $this->release(rand(2, 5));
+        }
+    }
+
+    protected function executeSync(SalesOrder $order, SalesOrderService $orderService): void
+    {
+        try {
+            $finance = match ($order->source) {
+                'shopee' => $this->fetchShopee($order),
+                'tiktok' => $this->fetchTikTok($order),
+                'lazada' => $this->fetchLazada($order),
+                default  => null,
+            };
+        } catch (\Modules\Channel\Exceptions\TikTokApiException $e) {
+            if ($e->isRetryable() || in_array((string) $e->code, ['36009002', '12052109', '36009003'], true)) {
+                $delay = min(300, (int) pow(2, $this->attempts()) * 10 + rand(3, 10));
+                Log::warning("SyncOrderFinanceJob: TikTok rate limit / downstream busy for order {$order->id}, releasing with delay {$delay}s: " . $e->getMessage(), [
+                    'order_id' => $order->id,
+                    'shop_id'  => $order->channel_shop_id,
+                    'attempt'  => $this->attempts(),
+                ]);
+                $this->release($delay);
+
+                return;
+            }
+
+            throw $e;
+        } catch (\Throwable $e) {
+            if (str_contains(strtolower($e->getMessage()), 'too many requests') || str_contains($e->getMessage(), '429')) {
+                $delay = min(300, (int) pow(2, $this->attempts()) * 10 + rand(3, 10));
+                Log::warning("SyncOrderFinanceJob: Rate limit encountered for order {$order->id}, releasing with delay {$delay}s: " . $e->getMessage());
+                $this->release($delay);
+
+                return;
+            }
+
+            throw $e;
+        }
 
         if ($finance === null) {
             return;

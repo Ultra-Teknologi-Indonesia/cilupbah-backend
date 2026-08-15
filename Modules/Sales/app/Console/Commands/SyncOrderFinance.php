@@ -34,9 +34,10 @@ class SyncOrderFinance extends Command
         }
 
         $count = 0;
-        $query->select('id')->chunkById(200, function ($orders) use (&$count, $force) {
+        $query->select('id')->chunkById(100, function ($orders) use (&$count, $force) {
             foreach ($orders as $order) {
-                SyncOrderFinanceJob::dispatch($order->id, $force);
+                $delaySeconds = (int) ($count * 1.5);
+                SyncOrderFinanceJob::dispatch($order->id, $force)->delay(now()->addSeconds($delaySeconds));
                 $count++;
             }
         });

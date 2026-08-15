@@ -8,26 +8,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-/**
- * @property string $id
- * @property string $batch_no
- * @property string|null $executed_by
- * @property string $original_filename
- * @property string $stored_path
- * @property string $state
- * @property int $total_rows
- * @property int $place_rows
- * @property int $manual_move_rows
- * @property int $already_rows
- * @property int $error_rows
- * @property int $processed_rows
- * @property int $success_rows
- * @property int $failed_rows
- * @property int $progress_percent
- * @property string|null $error_message
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- */
 class RackImportBatch extends Model
 {
     use HasUuid7;

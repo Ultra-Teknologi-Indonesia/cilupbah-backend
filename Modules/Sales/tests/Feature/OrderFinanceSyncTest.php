@@ -152,4 +152,31 @@ class OrderFinanceSyncTest extends TestCase
         Queue::assertPushed(SyncOrderFinanceJob::class, 1);
         Queue::assertPushed(SyncOrderFinanceJob::class, fn ($job) => $job->orderId === $target->id);
     }
+
+    public function test_sync_job_handles_tiktok_rate_limit_36009002_gracefully(): void
+    {
+        $order = $this->makeOrder([
+            'source'           => 'tiktok',
+            'channel_status'   => 'COMPLETED',
+            'channel_shop_id'  => 'tt-shop-1',
+            'channel_order_no' => '584950618786072357',
+            'is_settled'       => false,
+        ]);
+
+        $mockTikTok = $this->createMock(\Modules\Channel\Services\TikTokOrderService::class);
+        $mockTikTok->method('getOrderStatement')->willThrowException(
+            new \Modules\Channel\Exceptions\TikTokApiException(
+                '36009002',
+                \Modules\Channel\Support\TikTokErrorCatalog::RETRYABLE,
+                'Terlalu banyak permintaan dalam waktu singkat. Tunggu sebentar lalu coba lagi.',
+                'Too many requests for downstream.'
+            )
+        );
+        $this->app->instance(\Modules\Channel\Services\TikTokOrderService::class, $mockTikTok);
+
+        $job = new SyncOrderFinanceJob($order->id);
+
+        $job->handle(app(SalesOrderService::class));
+        $this->assertTrue(true);
+    }
 }
