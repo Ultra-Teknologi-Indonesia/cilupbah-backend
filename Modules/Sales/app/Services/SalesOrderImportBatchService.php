@@ -10,17 +10,25 @@ use Modules\Sales\Models\SalesOrderImportError;
 
 class SalesOrderImportBatchService
 {
-    public const DISK = 'local';
+    public const DISK = 's3';
     public const DIR = 'imports/sales-orders';
+
+    public static function disk(): string
+    {
+        return (string) env('IMPORT_FILESYSTEM_DISK', config('filesystems.default', self::DISK));
+    }
 
     public function createFromUpload(UploadedFile $file, ?string $userId): SalesOrderImportBatch
     {
-        $targetDir = Storage::disk(self::DISK)->path(self::DIR);
-        if (! is_dir($targetDir)) {
-            @mkdir($targetDir, 0777, true);
+        $disk = self::disk();
+        if ($disk === 'local') {
+            $targetDir = Storage::disk($disk)->path(self::DIR);
+            if (! is_dir($targetDir)) {
+                @mkdir($targetDir, 0777, true);
+            }
         }
 
-        $path = $file->store(self::DIR, self::DISK);
+        $path = $file->store(self::DIR, $disk);
 
         return SalesOrderImportBatch::create([
             'batch_no' => $this->generateBatchNo(),

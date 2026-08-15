@@ -50,7 +50,8 @@ class ProcessSalesOrderImportJob implements ShouldQueue
 
         $batches->markProcessing($batch);
 
-        $disk = Storage::disk(SalesOrderImportBatchService::DISK);
+        $diskName = SalesOrderImportBatchService::disk();
+        $disk = Storage::disk($diskName);
         if (! $disk->exists($batch->stored_path)) {
             $batches->markFailed($batch, 'File import tidak ditemukan.');
             if ($activity) {
@@ -63,7 +64,7 @@ class ProcessSalesOrderImportJob implements ShouldQueue
         $importer = new SalesOrderRowsImport($service);
 
         try {
-            Excel::import($importer, $batch->stored_path, SalesOrderImportBatchService::DISK);
+            Excel::import($importer, $batch->stored_path, $diskName);
         } catch (\Throwable $e) {
             Log::error("ProcessSalesOrderImportJob failed for batch {$batch->id}: " . $e->getMessage());
             $batches->markFailed($batch, $e->getMessage());

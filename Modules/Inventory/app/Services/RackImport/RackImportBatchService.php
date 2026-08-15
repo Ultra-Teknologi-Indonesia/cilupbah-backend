@@ -13,16 +13,22 @@ class RackImportBatchService
     public const DISK = 's3';
     public const DIR = 'imports/rack-allocation';
 
+    public static function disk(): string
+    {
+        return (string) env('IMPORT_FILESYSTEM_DISK', config('filesystems.default', self::DISK));
+    }
+
     public function createFromUpload(UploadedFile $file, ?string $userId): RackImportBatch
     {
-        if (self::DISK === 'local') {
-            $targetDir = \Illuminate\Support\Facades\Storage::disk(self::DISK)->path(self::DIR);
+        $disk = self::disk();
+        if ($disk === 'local') {
+            $targetDir = \Illuminate\Support\Facades\Storage::disk($disk)->path(self::DIR);
             if (! is_dir($targetDir)) {
                 @mkdir($targetDir, 0777, true);
             }
         }
 
-        $path = $file->store(self::DIR, self::DISK);
+        $path = $file->store(self::DIR, $disk);
 
         return RackImportBatch::create([
             'batch_no' => $this->generateBatchNo(),

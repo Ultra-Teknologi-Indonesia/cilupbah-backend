@@ -39,7 +39,8 @@ class PreviewRackImportJob implements ShouldQueue
 
         $batches->markPreviewing($batch);
 
-        $disk = Storage::disk(RackImportBatchService::DISK);
+        $diskName = RackImportBatchService::disk();
+        $disk = Storage::disk($diskName);
         if (! $disk->exists($batch->stored_path)) {
             $batches->markPreviewFailed($batch, 'File import tidak ditemukan.');
 
