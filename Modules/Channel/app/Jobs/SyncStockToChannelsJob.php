@@ -8,6 +8,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductBundleItem;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductVariant;
 use Modules\Product\Repositories\ProductRepository;
@@ -47,6 +48,22 @@ class SyncStockToChannelsJob implements ShouldQueue
             ->whereIn('id', $bundleIds)
             ->get()
             ->each(fn (Product $bundle) => $this->dispatchForProduct($bundle));
+
+        $siblingVariantIds = ProductBundleItem::whereIn('bundle_product_id', $bundleIds)
+            ->where('component_variant_id', '!=', $this->variantId)
+            ->pluck('component_variant_id')
+            ->unique()
+            ->all();
+
+        if (! empty($siblingVariantIds)) {
+            ProductVariant::with('product.channelMappings')
+                ->whereIn('id', $siblingVariantIds)
+                ->get()
+                ->pluck('product')
+                ->filter()
+                ->unique('id')
+                ->each(fn (Product $prod) => $this->dispatchForProduct($prod));
+        }
     }
 
     private function dispatchForProduct(Product $product): void

@@ -4,6 +4,7 @@ namespace Modules\Product\Repositories;
 
 use Modules\Inventory\Support\StockSummary;
 use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductBundleItem;
 use Modules\Product\Models\ProductVariant;
 use Modules\Product\Models\ProductWholesalePrice;
 use Illuminate\Database\Eloquent\Collection;
@@ -23,7 +24,7 @@ class ProductRepository
             return $product;
         }
 
-        $variant = \Modules\Product\Models\ProductVariant::where('sku', $sku)->first();
+        $variant = ProductVariant::where('sku', $sku)->first();
 
         return $variant ? Product::with($with)->find($variant->product_id) : null;
     }
@@ -129,11 +130,31 @@ class ProductRepository
     {
         $productId = ProductVariant::where('id', $variantId)->value('product_id');
 
-        if ($productId === null || ! Product::where('id', $productId)->value('is_bundle')) {
+        if ($productId !== null && Product::where('id', $productId)->value('is_bundle')) {
+            return ProductBundleItem::where('bundle_product_id', $productId)
+                ->with('component:id,sku')
+                ->orderBy('component_variant_id')
+                ->get()
+                ->map(fn ($item) => [
+                    'variant_id' => $item->component_variant_id,
+                    'qty' => (int) $item->qty,
+                    'sku' => $item->component?->sku,
+                ])
+                ->all();
+        }
+
+        $bundleIds = ProductBundleItem::where('component_variant_id', $variantId)
+            ->join('products', 'products.id', '=', 'product_bundle_items.bundle_product_id')
+            ->where('products.is_bundle', true)
+            ->where('products.is_active', true)
+            ->pluck('product_bundle_items.bundle_product_id')
+            ->all();
+
+        if (empty($bundleIds)) {
             return null;
         }
 
-        return \Modules\Product\Models\ProductBundleItem::where('bundle_product_id', $productId)
+        return ProductBundleItem::where('bundle_product_id', $bundleIds[0])
             ->with('component:id,sku')
             ->orderBy('component_variant_id')
             ->get()
@@ -147,7 +168,7 @@ class ProductRepository
 
     public function bundleProductIdsUsingComponent(string $variantId): array
     {
-        return \Modules\Product\Models\ProductBundleItem::where('component_variant_id', $variantId)
+        return ProductBundleItem::where('component_variant_id', $variantId)
             ->distinct()
             ->pluck('bundle_product_id')
             ->all();
@@ -209,8 +230,19 @@ class ProductRepository
         $channel = request('filter.channel');
         $includeUnlisted = request()->boolean('include_unlisted');
 
-        return QueryBuilder::for(ProductVariant::class)
-            ->where('product_id', $productId)
+        $isBundle = Product::where('id', $productId)->value('is_bundle');
+
+        $query = QueryBuilder::for(ProductVariant::class);
+
+        if ($isBundle) {
+            $componentVariantIds = ProductBundleItem::where('bundle_product_id', $productId)
+                ->pluck('component_variant_id');
+            $query->whereIn('id', $componentVariantIds);
+        } else {
+            $query->where('product_id', $productId);
+        }
+
+        return $query
             ->with(['options', 'channelMappings.channelMapping.channelShop.channel'])
             ->allowedFilters(
                 AllowedFilter::callback('channel', fn ($q, $v) => $q->whereHas(

@@ -31,12 +31,29 @@ class ChannelStockResolver
             ->pluck('product_variants.product_id', 'product_variants.id')
             ->all();
 
+        $bundlesByComponentVariant = [];
+        $bundleItemsForVariants = DB::table('product_bundle_items')
+            ->join('products', 'products.id', '=', 'product_bundle_items.bundle_product_id')
+            ->whereIn('product_bundle_items.component_variant_id', $variantIds)
+            ->where('products.is_bundle', true)
+            ->where('products.is_active', true)
+            ->get(['product_bundle_items.bundle_product_id', 'product_bundle_items.component_variant_id']);
+
+        foreach ($bundleItemsForVariants as $bItem) {
+            $bundlesByComponentVariant[$bItem->component_variant_id][] = $bItem->bundle_product_id;
+        }
+
+        $allBundleProductIds = array_values(array_unique(array_merge(
+            array_values($bundleProductIdByVariant),
+            ...array_values($bundlesByComponentVariant)
+        )));
+
         $componentsByBundle = [];
         $componentVariantIds = [];
 
-        if (! empty($bundleProductIdByVariant)) {
+        if (! empty($allBundleProductIds)) {
             $rows = DB::table('product_bundle_items')
-                ->whereIn('bundle_product_id', array_values(array_unique($bundleProductIdByVariant)))
+                ->whereIn('bundle_product_id', $allBundleProductIds)
                 ->get(['bundle_product_id', 'component_variant_id', 'qty']);
 
             foreach ($rows as $row) {
@@ -66,25 +83,50 @@ class ChannelStockResolver
         }
 
         foreach ($variantIds as $variantId) {
-            if (! isset($bundleProductIdByVariant[$variantId])) {
-                $result[$variantId] = $availByItem[$variantId] ?? 0;
+            if (isset($bundleProductIdByVariant[$variantId])) {
+                $components = $componentsByBundle[$bundleProductIdByVariant[$variantId]] ?? [];
+
+                if (empty($components)) {
+                    $result[$variantId] = 0;
+                    continue;
+                }
+
+                $bundleAvailable = null;
+                foreach ($components as $component) {
+                    $perBundle = intdiv($availByItem[$component['variant_id']] ?? 0, $component['qty']);
+                    $bundleAvailable = $bundleAvailable === null ? $perBundle : min($bundleAvailable, $perBundle);
+                }
+
+                $result[$variantId] = max(0, (int) $bundleAvailable);
                 continue;
             }
 
-            $components = $componentsByBundle[$bundleProductIdByVariant[$variantId]] ?? [];
+            $ownAvailable = $availByItem[$variantId] ?? 0;
 
-            if (empty($components)) {
-                $result[$variantId] = 0;
-                continue;
+            if (isset($bundlesByComponentVariant[$variantId])) {
+                $minSupported = $ownAvailable;
+                foreach ($bundlesByComponentVariant[$variantId] as $bundleId) {
+                    $components = $componentsByBundle[$bundleId] ?? [];
+                    if (empty($components)) {
+                        continue;
+                    }
+
+                    $thisComp = collect($components)->firstWhere('variant_id', $variantId);
+                    $thisQty = max(1, (int) ($thisComp['qty'] ?? 1));
+
+                    $maxBundlesPossible = null;
+                    foreach ($components as $component) {
+                        $perBundle = intdiv($availByItem[$component['variant_id']] ?? 0, $component['qty']);
+                        $maxBundlesPossible = $maxBundlesPossible === null ? $perBundle : min($maxBundlesPossible, $perBundle);
+                    }
+
+                    $supportedQty = ($maxBundlesPossible ?? 0) * $thisQty;
+                    $minSupported = min($minSupported, $supportedQty);
+                }
+                $result[$variantId] = max(0, (int) $minSupported);
+            } else {
+                $result[$variantId] = max(0, (int) $ownAvailable);
             }
-
-            $bundleAvailable = null;
-            foreach ($components as $component) {
-                $perBundle = intdiv($availByItem[$component['variant_id']] ?? 0, $component['qty']);
-                $bundleAvailable = $bundleAvailable === null ? $perBundle : min($bundleAvailable, $perBundle);
-            }
-
-            $result[$variantId] = max(0, (int) $bundleAvailable);
         }
 
         return $this->applyPushBuffer($shop, $result);

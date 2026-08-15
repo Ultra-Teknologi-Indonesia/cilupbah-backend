@@ -4,7 +4,12 @@ namespace Modules\Product\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Modules\Product\Models\Product;
 
+/**
+ * @mixin Product
+ * @property Product $resource
+ */
 class ProductResource extends JsonResource
 {
 
@@ -37,7 +42,24 @@ class ProductResource extends JsonResource
             'price_range' => $this->priceRange(),
             'channels_count' => $this->when(
                 $this->resource->relationLoaded('channelMappings'),
-                fn () => $this->channelMappings->count()
+                function () {
+                    if ($this->resource->channelMappings->isNotEmpty()) {
+                        return $this->resource->channelMappings->count();
+                    }
+
+                    if ($this->resource->is_bundle && $this->resource->relationLoaded('bundleItems')) {
+                        return $this->resource->bundleItems
+                            ->filter(fn ($item) => $item->relationLoaded('component') && $item->component)
+                            ->flatMap(fn ($item) => $item->component->relationLoaded('channelMappings')
+                                ? $item->component->channelMappings->pluck('product_channel_mapping_id')
+                                : collect())
+                            ->filter()
+                            ->unique()
+                            ->count();
+                    }
+
+                    return 0;
+                }
             ),
             'category' => $this->whenLoaded('category', fn () => $this->category ? [
                 'id' => $this->category->id,
