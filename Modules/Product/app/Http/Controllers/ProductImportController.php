@@ -13,8 +13,11 @@ use Modules\Product\Exports\ImportErrorReportExport;
 use Modules\Product\Exports\ProductTemplateExport;
 use Modules\Product\Http\Resources\ProductImportBatchResource;
 use Modules\Product\Http\Resources\ProductImportErrorResource;
-use Modules\Product\Jobs\ProcessProductImportJob;
+use Modules\Product\Http\Resources\ProductImportRowResource;
+use Modules\Product\Jobs\ConfirmProductImportJob;
+use Modules\Product\Jobs\PreviewProductImportJob;
 use Modules\Product\Models\ProductImportBatch;
+use Modules\Product\Models\ProductImportRow;
 use Modules\Product\Repositories\ProductImportBatchRepository;
 use Modules\Product\Services\ImportBatchService;
 
@@ -50,20 +53,11 @@ class ProductImportController extends Controller
             $request->user()?->id
         );
 
-        $this->activityService->record(
-            ImpexActivity::DIRECTION_IMPORT,
-            $type === ProductImportBatch::TYPE_BUNDLE ? 'Import Produk Bundle' : 'Import Produk',
-            $request->user()?->id,
-            null,
-            'product_import_batch',
-            $batch->id,
-        );
-
-        ProcessProductImportJob::dispatch($batch->id);
+        PreviewProductImportJob::dispatch($batch->id);
 
         return $this->successResponse(
-            $this->batchPayload($batch),
-            'File diterima. Import sedang diproses di latar belakang.',
+            new ProductImportBatchResource($batch),
+            'File diterima. Pratinjau sedang diproses di latar belakang.',
             202
         );
     }
@@ -84,6 +78,57 @@ class ProductImportController extends Controller
         }
 
         return $this->successResponse(new ProductImportBatchResource($model), 'Detail batch import');
+    }
+
+    public function rows(Request $request, string $batch)
+    {
+        $model = $this->batchRepository->find($batch);
+        if (! $model) {
+            return $this->errorResponse('Batch tidak ditemukan', 404);
+        }
+
+        $paginator = $this->batchRepository->paginateRows($model);
+        $paginator->through(fn (ProductImportRow $row) => new ProductImportRowResource($row));
+
+        return $this->successPaginatedResponse($paginator, 'Daftar baris import');
+    }
+
+    public function confirm(Request $request, string $batch)
+    {
+        $model = $this->batchRepository->find($batch);
+        if (! $model) {
+            return $this->errorResponse('Batch tidak ditemukan', 404);
+        }
+
+        if ($model->state !== ProductImportBatch::STATE_PREVIEWED) {
+            return $this->errorResponse(
+                'Batch belum siap diterapkan.',
+                422,
+                ['detail' => "Status saat ini: {$model->state}."],
+                'Aksi tidak dapat diproses',
+            );
+        }
+
+        if (! $this->batchService->startConfirm($model)) {
+            return $this->errorResponse('Batch sedang atau sudah diproses.', 422, null, 'Aksi tidak dapat diproses');
+        }
+
+        $this->activityService->record(
+            ImpexActivity::DIRECTION_IMPORT,
+            $model->type === ProductImportBatch::TYPE_BUNDLE ? 'Import Produk Bundle' : 'Import Produk',
+            $request->user()?->id,
+            null,
+            'product_import_batch',
+            $model->id,
+        );
+
+        ConfirmProductImportJob::dispatch($model->id);
+
+        return $this->successResponse(
+            new ProductImportBatchResource($model->fresh()),
+            'Penerapan sedang diproses di latar belakang.',
+            202,
+        );
     }
 
     public function errors(Request $request, string $batch)

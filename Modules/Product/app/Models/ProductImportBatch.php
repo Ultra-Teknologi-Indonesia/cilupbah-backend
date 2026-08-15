@@ -14,6 +14,9 @@ class ProductImportBatch extends Model
     public const TYPE_BUNDLE = 'bundle';
 
     public const STATE_QUEUED = 'queued';
+    public const STATE_PREVIEWING = 'previewing';
+    public const STATE_PREVIEWED = 'previewed';
+    public const STATE_CONFIRMING = 'confirming';
     public const STATE_PROCESSING = 'processing';
     public const STATE_DONE = 'done';
     public const STATE_DONE_WITH_ERRORS = 'done_with_errors';
@@ -45,5 +48,10 @@ class ProductImportBatch extends Model
     public function errors(): HasMany
     {
         return $this->hasMany(ProductImportError::class, 'import_batch_id');
+    }
+
+    public function rows(): HasMany
+    {
+        return $this->hasMany(ProductImportRow::class, 'import_batch_id');
     }
 }

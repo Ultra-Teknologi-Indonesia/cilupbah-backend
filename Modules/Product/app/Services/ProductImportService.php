@@ -120,6 +120,58 @@ class ProductImportService
         });
     }
 
+    public function validateSingleProductRow(array $row): void
+    {
+        if (! empty($row['item_category_id']) && ! $this->repository->categoryExists($row['item_category_id'])) {
+            throw new \Exception("ID Kategori {$row['item_category_id']} tidak ditemukan.");
+        }
+    }
+
+    public function validateBundleRow(array $row): void
+    {
+        $bundleSku = $row['item_code'] ?? null;
+        $componentSku = $row['sku_composition'] ?? null;
+        $qty = (int) ($row['qty'] ?? 1);
+
+        if (! $bundleSku) {
+            throw new \Exception("Kolom 'item_code' (SKU Bundle) wajib diisi.");
+        }
+
+        if (! $componentSku) {
+            throw new \Exception("Kolom 'sku_composition' (SKU Komponen) wajib diisi.");
+        }
+
+        if ($bundleSku === $componentSku) {
+            throw new \Exception("SKU komponen ({$componentSku}) tidak boleh sama dengan SKU bundle.");
+        }
+
+        if ($qty < 1) {
+            throw new \Exception("Jumlah komponen minimal 1.");
+        }
+
+        $bundleVariant = $this->repository->findVariantBySku($bundleSku);
+        $componentVariant = $this->repository->findVariantBySku($componentSku);
+
+        if (! $bundleVariant) {
+            $bundleName = $row['bundle_name'] ?? $row['item_group_name'] ?? $row['name'] ?? null;
+            if (! $bundleName) {
+                throw new \Exception("SKU bundle {$bundleSku} belum ada di master produk. Isi kolom 'bundle_name' untuk membuat produk bundle baru secara otomatis.");
+            }
+        }
+
+        if (! $componentVariant) {
+            throw new \Exception("SKU komponen {$componentSku} tidak ditemukan.");
+        }
+
+        if ($componentVariant->product?->is_bundle) {
+            throw new \Exception("Komponen bundle tidak boleh berupa produk bundle (bundle-in-bundle tidak diizinkan).");
+        }
+
+        if (! $componentVariant->is_active) {
+            throw new \Exception("Varian komponen {$componentSku} tidak aktif.");
+        }
+    }
+
     protected function resolveCategory($categoryId, $categoryName)
     {
         if ($categoryId && $this->repository->categoryExists($categoryId)) {

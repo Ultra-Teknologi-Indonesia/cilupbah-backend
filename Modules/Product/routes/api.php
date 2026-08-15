@@ -319,6 +319,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('products/import/bundle', [\Modules\Product\Http\Controllers\ProductImportController::class, 'importBundle']);
         Route::get('products/import/batches', [\Modules\Product\Http\Controllers\ProductImportController::class, 'batches']);
         Route::get('products/import/batches/{batch}', [\Modules\Product\Http\Controllers\ProductImportController::class, 'show'])->whereUuid('batch');
+        Route::get('products/import/batches/{batch}/rows', [\Modules\Product\Http\Controllers\ProductImportController::class, 'rows'])->whereUuid('batch');
+        Route::post('products/import/batches/{batch}/confirm', [\Modules\Product\Http\Controllers\ProductImportController::class, 'confirm'])->whereUuid('batch');
         Route::get('products/import/batches/{batch}/errors', [\Modules\Product\Http\Controllers\ProductImportController::class, 'errors'])->whereUuid('batch');
         Route::get('products/import/batches/{batch}/errors/download', [\Modules\Product\Http\Controllers\ProductImportController::class, 'downloadErrors'])->whereUuid('batch');
     });

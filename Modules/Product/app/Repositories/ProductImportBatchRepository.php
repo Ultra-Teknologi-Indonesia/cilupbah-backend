@@ -30,4 +30,26 @@ class ProductImportBatchRepository
             ->paginate((int) request('per_page', 20))
             ->appends(request()->query());
     }
+
+    public function paginateRows(ProductImportBatch $batch): LengthAwarePaginator
+    {
+        return $batch->rows()
+            ->when(request('status'), function ($query, $status) {
+                if ($status === 'valid') {
+                    $query->where('status', 'valid');
+                } elseif ($status === 'invalid' || $status === 'failed') {
+                    $query->whereIn('status', ['invalid', 'failed']);
+                }
+            })
+            ->when(request('search'), function ($query, $search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('sku', 'ilike', "%{$search}%")
+                        ->orWhere('name', 'ilike', "%{$search}%")
+                        ->orWhere('message', 'ilike', "%{$search}%");
+                });
+            })
+            ->orderBy('row_number')
+            ->paginate((int) request('per_page', 20))
+            ->appends(request()->query());
+    }
 }

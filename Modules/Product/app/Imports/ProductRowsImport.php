@@ -34,4 +34,29 @@ class ProductRowsImport extends BaseRowsImport
     {
         $this->service->processSingleProductRow($data);
     }
+
+    protected function validate(array $data): void
+    {
+        $this->service->validateSingleProductRow($data);
+    }
+
+    protected function extractSku(array $data): ?string
+    {
+        return $data['item_code'] ?? null;
+    }
+
+    protected function extractName(array $data): ?string
+    {
+        return $data['item_group_name'] ?? null;
+    }
+
+    protected function extractCategory(array $data): ?string
+    {
+        return $data['category'] ?? (! empty($data['item_category_id']) ? "Cat #{$data['item_category_id']}" : null);
+    }
+
+    protected function extractPrice(array $data): ?float
+    {
+        return isset($data['sell_price']) ? (float) $data['sell_price'] : null;
+    }
 }

@@ -26,4 +26,29 @@ class BundleRowsImport extends BaseRowsImport
     {
         $this->service->processBundleRow($data);
     }
+
+    protected function validate(array $data): void
+    {
+        $this->service->validateBundleRow($data);
+    }
+
+    protected function extractSku(array $data): ?string
+    {
+        return $data['item_code'] ?? null;
+    }
+
+    protected function extractName(array $data): ?string
+    {
+        return $data['bundle_name'] ?? ($data['item_code'] ?? null);
+    }
+
+    protected function extractCategory(array $data): ?string
+    {
+        return $data['category'] ?? null;
+    }
+
+    protected function extractPrice(array $data): ?float
+    {
+        return isset($data['sell_price']) ? (float) $data['sell_price'] : null;
+    }
 }
