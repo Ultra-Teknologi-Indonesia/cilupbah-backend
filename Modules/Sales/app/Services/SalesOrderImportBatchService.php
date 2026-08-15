@@ -15,6 +15,11 @@ class SalesOrderImportBatchService
 
     public function createFromUpload(UploadedFile $file, ?string $userId): SalesOrderImportBatch
     {
+        $targetDir = Storage::disk(self::DISK)->path(self::DIR);
+        if (! is_dir($targetDir)) {
+            @mkdir($targetDir, 0777, true);
+        }
+
         $path = $file->store(self::DIR, self::DISK);
 
         return SalesOrderImportBatch::create([

@@ -113,5 +113,26 @@ class AppServiceProvider extends ServiceProvider
         \Illuminate\Database\Eloquent\Model::preventLazyLoading(
             (bool) config('database.prevent_lazy_loading', false)
         );
+
+        $storageDirs = [
+            storage_path('app'),
+            storage_path('app/private'),
+            storage_path('app/private/imports'),
+            storage_path('app/private/imports/products'),
+            storage_path('app/private/imports/sales-orders'),
+            storage_path('app/private/imports/rack-allocation'),
+            storage_path('app/public'),
+            storage_path('framework'),
+            storage_path('framework/cache'),
+            storage_path('framework/cache/laravel-excel'),
+            storage_path('framework/sessions'),
+            storage_path('framework/views'),
+            storage_path('logs'),
+        ];
+        foreach ($storageDirs as $dir) {
+            if (! is_dir($dir)) {
+                @mkdir($dir, 0777, true);
+            }
+        }
     }
 }
