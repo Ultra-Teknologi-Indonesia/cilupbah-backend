@@ -28,6 +28,7 @@ class SyncOrderFinanceJob implements ShouldQueue
 
     public function handle(SalesOrderService $orderService): void
     {
+        /** @var SalesOrder|null $order */
         $order = SalesOrder::find($this->orderId);
 
         if (! $order || ! $order->source || ! $order->channel_shop_id || ! $order->channel_order_no) {
@@ -67,7 +68,7 @@ class SyncOrderFinanceJob implements ShouldQueue
                 default  => null,
             };
         } catch (\Modules\Channel\Exceptions\TikTokApiException $e) {
-            if ($e->isRetryable() || in_array((string) $e->code, ['36009002', '12052109', '36009003'], true)) {
+            if ($e->isRetryable() || \in_array((string) $e->errorCode, ['36009002', '12052109', '36009003'], true)) {
                 $delay = min(300, (int) pow(2, $this->attempts()) * 10 + rand(3, 10));
                 Log::warning("SyncOrderFinanceJob: TikTok rate limit / downstream busy for order {$order->id}, releasing with delay {$delay}s: " . $e->getMessage(), [
                     'order_id' => $order->id,
