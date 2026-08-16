@@ -73,6 +73,13 @@ class TikTokToInternalOrderMapper
             ? ($tiktokOrder['cancellation_initiator'] ?? null)
             : null;
 
+        $netProductTotal = array_sum(array_column($items, 'amount'));
+        $subTotal = isset($payment['original_total_product_price']) ? (float) $payment['original_total_product_price'] : 0;
+        $totalDisc = isset($payment['seller_discount']) ? (float) $payment['seller_discount'] : 0;
+        if ($netProductTotal <= 0 && $subTotal > 0) {
+            $netProductTotal = max($subTotal - $totalDisc, 0);
+        }
+
         return [
             'channel_order_no'   => (string) ($tiktokOrder['id'] ?? ''),
             'channel_shop_id'    => $shopId,
@@ -80,8 +87,8 @@ class TikTokToInternalOrderMapper
             'customer_name'      => $this->resolveCustomerName($address['name'] ?? null, $tiktokOrder['buyer_nickname'] ?? null, $tiktokOrder['buyer_email'] ?? null),
             'transaction_date'   => isset($tiktokOrder['create_time']) ? date('Y-m-d H:i:s', $tiktokOrder['create_time']) : now(),
 
-            'sub_total'          => isset($payment['original_total_product_price']) ? (float) $payment['original_total_product_price'] : 0,
-            'total_disc'         => isset($payment['seller_discount']) ? (float) $payment['seller_discount'] : 0,
+            'sub_total'          => $subTotal,
+            'total_disc'         => $totalDisc,
 
             'seller_voucher'     => isset($payment['seller_discount']) ? (float) $payment['seller_discount'] : null,
             'platform_voucher'   => isset($payment['platform_discount']) ? (float) $payment['platform_discount'] : null,
@@ -94,7 +101,7 @@ class TikTokToInternalOrderMapper
             'shipping_cost'      => isset($payment['original_shipping_fee']) ? (float) $payment['original_shipping_fee'] : 0,
             'actual_shipping_fee' => isset($payment['shipping_fee']) ? (float) $payment['shipping_fee'] : null,
             'insurance_cost'     => isset($payment['shipping_insurance_fee']) ? (float) $payment['shipping_insurance_fee'] : 0,
-            'grand_total'        => isset($payment['total_amount']) ? (float) $payment['total_amount'] : 0,
+            'grand_total'        => $netProductTotal > 0 ? $netProductTotal : (isset($payment['total_amount']) ? (float) $payment['total_amount'] : 0),
             'order_weight_gram'  => null,
 
             'shipping_full_name' => $address['name'] ?? null,

@@ -53,7 +53,7 @@ class ShopeeToInternalOrderMapper
         $subTotal = $netProductTotal + $totalDisc;                      
         $shippingFee = (float) ($shopeeOrder['estimated_shipping_fee'] ?? 0);
 
-        $grandTotal = isset($shopeeOrder['total_amount']) ? (float) $shopeeOrder['total_amount'] : ($netProductTotal + $shippingFee);
+        $grandTotal = $netProductTotal > 0 ? $netProductTotal : (isset($shopeeOrder['total_amount']) ? (float) $shopeeOrder['total_amount'] : ($netProductTotal + $shippingFee));
 
         $isPaid = $shopeeStatus !== 'unpaid';
 
