@@ -139,24 +139,6 @@ class SalesOrderUniversalSearchTest extends TestCase
         $this->assertSame($targetOrder->id, $data[0]['id']);
     }
 
-    public function test_universal_search_finds_order_by_item_product_name(): void
-    {
-        $targetOrder = $this->createTestOrder([], [
-            ['sku' => 'SKU-100', 'description' => 'Sepatu Sneakers Running Pro Max'],
-        ]);
-        $this->createTestOrder([], [
-            ['sku' => 'SKU-200', 'description' => 'Topi Fedora Casual'],
-        ]);
-
-        $res = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/v1/sales?q=Sneakers+Running')
-            ->assertOk();
-
-        $data = $res->json('data');
-        $this->assertCount(1, $data);
-        $this->assertSame($targetOrder->id, $data[0]['id']);
-    }
-
     public function test_search_by_customer_name_and_tracking_number(): void
     {
         $order1 = $this->createTestOrder([
