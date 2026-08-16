@@ -59,6 +59,8 @@ class ShopeeToInternalOrderMapper
 
         $isCod = ! empty($shopeeOrder['cod']);
 
+        $shippingProvider = $this->extractShippingCarrier($shopeeOrder);
+
         return [
             'channel_order_no' => (string) ($shopeeOrder['order_sn'] ?? ''),
             'channel_shop_id' => $shopId,
@@ -94,7 +96,7 @@ class ShopeeToInternalOrderMapper
             'is_paid' => $isPaid,
             'is_canceled' => $channelStatus === 'CANCELLED',
             'is_cod' => $isCod,
-            'priority_fulfillment' => \Modules\Outbound\Support\InstantOrderClassifier::isPriority($shopeeOrder['shipping_carrier'] ?? null),
+            'priority_fulfillment' => \Modules\Outbound\Support\InstantOrderClassifier::isPriority($shippingProvider),
             'is_split_order' => ! empty($shopeeOrder['split_up']),
 
             'cancel_reason' => $channelStatus === 'CANCELLED'
@@ -111,7 +113,7 @@ class ShopeeToInternalOrderMapper
             'payment_method' => $shopeeOrder['payment_method'] ?? null,
             'payment_method_name' => $shopeeOrder['payment_method'] ?? null,
             'tracking_number' => $shopeeOrder['tracking_number'] ?? null,
-            'shipping_provider' => $shopeeOrder['shipping_carrier'] ?? null,
+            'shipping_provider' => $shippingProvider,
             'shipping_type' => $shippingType,
             'channel_instant' => $channelInstant,
             'buyer_message' => $shopeeOrder['note'] ?? $shopeeOrder['message_to_seller'] ?? null,
@@ -125,6 +127,23 @@ class ShopeeToInternalOrderMapper
             'source' => 'shopee',
             'items' => $items,
         ];
+    }
+
+    protected function extractShippingCarrier(array $shopeeOrder): ?string
+    {
+        $candidates = [
+            $shopeeOrder['shipping_carrier'] ?? null,
+            $shopeeOrder['checkout_shipping_carrier'] ?? null,
+            $shopeeOrder['package_list'][0]['shipping_carrier'] ?? null,
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (is_string($candidate) && trim($candidate) !== '') {
+                return trim($candidate);
+            }
+        }
+
+        return null;
     }
 
     protected function extractPickupCode(array $shopeeOrder): ?string
