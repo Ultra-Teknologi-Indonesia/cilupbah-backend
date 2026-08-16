@@ -50,7 +50,6 @@ trait LocksTokenRefresh
         $isDifferentToken = ! empty($shop->access_token) && (string) $shop->access_token !== $tokenSebelum;
         $isValidFuture = $shop->token_expires_at && $shop->token_expires_at->gt(now()->addMinutes(5));
 
-        // Token hanya dianggap sudah di-refresh oleh proses lain jika token di DB BENAR-BENAR BERUBAH dan masih aktif di masa depan.
         if (! $isDifferentToken || ! $isValidFuture) {
             return null;
         }

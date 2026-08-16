@@ -217,6 +217,9 @@ class ProcessShopeeWebhook implements ShouldQueue
         if ($orderSn === '') {
             Log::warning('Shopee webhook order tanpa ordersn — diabaikan.', ['data' => $data]);
 
+            return;
+        }
+
         $recentKey = "shopee_pulled_recent:{$shopId}:{$orderSn}";
         if (Cache::has($recentKey)) {
             Log::info("Shopee webhook {$orderSn} di-debounce (sudah di-pull dalam 15 detik terakhir).");

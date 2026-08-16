@@ -20,7 +20,7 @@ class MonitorLiveQueueCommand extends Command
 
         do {
             $currentTime = microtime(true);
-            
+
             try {
                 $redis = Redis::connection('default');
                 $qTiktok  = (int) $redis->llen('queues:tiktok-webhooks');

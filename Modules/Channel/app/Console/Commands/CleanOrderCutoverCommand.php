@@ -45,7 +45,6 @@ class CleanOrderCutoverCommand extends Command
         $this->info('  Cutoff Time (UTC): ' . $cutoff);
         $this->info('====================================================================================================');
 
-        // 1. SAFETY GATE: DISABLE STOCK PUSH
         if ($disableStockPush || $commit) {
             $activePushes = DB::table('channel_shops')->where('stock_push_enabled', true)->count();
             if ($activePushes > 0) {
@@ -60,7 +59,6 @@ class CleanOrderCutoverCommand extends Command
             }
         }
 
-        // 2. BACA WHITELIST DARI CSV JUBELIO
         $handle = fopen($filePath, 'r');
         $header = fgetcsv($handle, 0, ',', '"', '\\');
 
@@ -97,7 +95,6 @@ class CleanOrderCutoverCommand extends Command
 
         $this->info(sprintf('📂 Membaca %d pesanan dari file CSV whitelist (%s).', $csvCount, $filePath));
 
-        // 3. SCANNING & FILTERING WEBHOOK INBOX
         $this->line('🔍 Memindai tabel channel_webhook_inbox...');
 
         $keepWebhookIds = [];
@@ -157,7 +154,6 @@ class CleanOrderCutoverCommand extends Command
         $this->line("   - Pesanan CSV cocok di inbox : " . count($matchedOrders) . " pesanan");
         $this->line("   - Pesanan Baru Post-Cutoff   : " . count($postCutoffOrders) . " pesanan");
 
-        // 4. PURGE HISTORICAL WEBHOOKS JIKA DIMINTA
         if ($purgeHistoricalInbox && count($purgeWebhookIds) > 0) {
             if ($commit) {
                 $this->warn('🧹 Membersihkan ' . count($purgeWebhookIds) . ' webhook historis lama dari database...');
@@ -170,7 +166,6 @@ class CleanOrderCutoverCommand extends Command
             }
         }
 
-        // 5. INGESTION ORDER KE SALES_ORDERS
         $allOrdersToProcess = array_merge($matchedOrders, $postCutoffOrders);
         $this->info("🚀 Mempersiapkan proses intake untuk " . count($allOrdersToProcess) . " pesanan...");
 
@@ -186,7 +181,6 @@ class CleanOrderCutoverCommand extends Command
                     $channel = $orderInfo['channel'];
                     $payload = $orderInfo['payload'];
 
-                    // Eksekusi intake pesanan melalui controller / service resmi
                     if ($channel === 'shopee') {
                         $shopId = (string) ($payload['shop_id'] ?? '');
                         $data = $payload['data'] ?? [];
@@ -212,7 +206,6 @@ class CleanOrderCutoverCommand extends Command
             $bar->finish();
             $this->newLine();
 
-            // PULL 10 ORDER LAZADA LIVE
             $this->info('📦 Menarik pesanan aktif Lazada via OpenAPI...');
             $lazadaOrders = [
                 '2140417937409228', '2140409930409228', '2140321288409228', '2139626490409228',
@@ -230,7 +223,7 @@ class CleanOrderCutoverCommand extends Command
                     try {
                         $lazadaOrderService->pullOrderById($shop->shop_id, $lzOrderNo);
                     } catch (\Throwable $e) {
-                        // ignore if not from this shop
+
                     }
                 }
             }
@@ -239,7 +232,6 @@ class CleanOrderCutoverCommand extends Command
             $this->info('ℹ️ [DRY-RUN] Melewati eksekusi API pull & DB insert.');
         }
 
-        // 6. RINGKASAN DATA
         $this->newLine();
         $this->info('====================================================================================================');
         $this->info('  STATUS SALES ORDERS DI DATABASE');

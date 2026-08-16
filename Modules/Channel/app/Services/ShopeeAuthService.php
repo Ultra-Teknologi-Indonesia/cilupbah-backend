@@ -127,7 +127,6 @@ class ShopeeAuthService
             );
         }
 
-        // Retry hingga 3x dengan jeda 1 detik untuk mengantisipasi transient network glitches dari Shopee API
         $response = retry(3, function () use ($shop) {
             return $this->client->refreshAccessToken($shop->refresh_token, $shop->shop_id);
         }, 1000);
@@ -192,8 +191,6 @@ class ShopeeAuthService
                 $isPermanent = ($e instanceof ChannelTokenException && $e->permanent);
                 $refreshTokenExpired = $shop->refresh_token_expires_at && $shop->refresh_token_expires_at->isPast();
 
-                // Hanya tandai integrasi error jika kegagalan bersifat permanen (misal invalid_grant / reauth diperlukan)
-                // atau jika refresh token 30 hari sudah benar-benar kedaluwarsa. Gangguan jaringan sementara tidak merusak status UI.
                 if ($isPermanent || $refreshTokenExpired) {
                     $this->shopRepository->markIntegrationError($shop->id, $e->getMessage());
                 }

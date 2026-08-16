@@ -83,7 +83,7 @@ class ShopeeOrderService
                     $this->orderService->updateOrderFinance($orderId, $finance);
                 }
             } catch (\Throwable $e) {
-                // Background SyncOrderFinanceJob will fallback and retry
+
             }
         }
 
@@ -140,29 +140,31 @@ class ShopeeOrderService
         $orderSns = [];
 
         foreach ($this->splitTimeWindows($timeFrom, $timeTo) as [$windowFrom, $windowTo]) {
-            $cursor = '';
+            foreach (['create_time', 'update_time'] as $timeRangeField) {
+                $cursor = '';
 
-            do {
-                $params = [
-                    'time_range_field' => 'update_time',
-                    'time_from' => $windowFrom,
-                    'time_to' => $windowTo,
-                    'page_size' => 50,
-                    'cursor' => $cursor,
-                ];
+                do {
+                    $params = [
+                        'time_range_field' => $timeRangeField,
+                        'time_from' => $windowFrom,
+                        'time_to' => $windowTo,
+                        'page_size' => 50,
+                        'cursor' => $cursor,
+                    ];
 
-                $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/api/v2/order/get_order_list', $params, $token, $shop->shop_id));
+                    $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/api/v2/order/get_order_list', $params, $token, $shop->shop_id));
 
-                $response = $res['response'] ?? [];
-                foreach ($response['order_list'] ?? [] as $row) {
-                    if (! empty($row['order_sn'])) {
-                        $orderSns[] = (string) $row['order_sn'];
+                    $response = $res['response'] ?? [];
+                    foreach ($response['order_list'] ?? [] as $row) {
+                        if (! empty($row['order_sn'])) {
+                            $orderSns[] = (string) $row['order_sn'];
+                        }
                     }
-                }
 
-                $cursor = (string) ($response['next_cursor'] ?? '');
-                $more = (bool) ($response['more'] ?? false);
-            } while ($more && $cursor !== '');
+                    $cursor = (string) ($response['next_cursor'] ?? '');
+                    $more = (bool) ($response['more'] ?? false);
+                } while ($more && $cursor !== '');
+            }
         }
 
         return array_values(array_unique($orderSns));

@@ -172,7 +172,7 @@ class TikTokOrderService
                             $this->orderService->updateOrderFinance($orderId, $finance);
                         }
                     } catch (\Throwable $e) {
-                        // Background SyncOrderFinanceJob will fallback and retry
+
                     }
                 }
                 $count++;
