@@ -308,14 +308,17 @@ class ReconcileOnOrder extends Command
         return $actual;
     }
 
-    private function resolveLocationId(SalesOrder $order, ?string $kecilId): ?string
+    private function resolveLocationId(object $order, ?string $kecilId): ?string
     {
-        $isManual = in_array($order->source, [null, '', 'manual'], true);
+        $source = $order->source ?? null;
+        $locationId = $order->location_id ?? null;
 
-        if ($isManual && $order->location_id) {
-            return $order->location_id;
+        $isManual = in_array($source, [null, '', 'manual'], true);
+
+        if ($isManual && $locationId) {
+            return $locationId;
         }
 
-        return $kecilId ?: $order->location_id;
+        return $kecilId ?: $locationId;
     }
 }
