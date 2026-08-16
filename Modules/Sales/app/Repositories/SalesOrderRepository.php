@@ -64,7 +64,7 @@ class SalesOrderRepository
                 AllowedFilter::callback('shadow', fn ($q, $value) => $this->applyShadowFilter($q, $value)),
             )
             ->allowedSorts(...self::ORDER_SORTS)
-            ->defaultSort('-created_at');
+            ->defaultSort('-transaction_date', '-created_at');
 
         if (! filled(request()->input('filter.shadow'))) {
             $query->excludeShadow();

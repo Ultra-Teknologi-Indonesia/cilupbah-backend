@@ -22,7 +22,7 @@ class BuyerConfirmationRepository
             )
             ->allowedFilters(['order_id', 'item_id', 'outcome'])
             ->allowedSorts('raised_at', 'confirmed_at', 'qty_short')
-            ->defaultSort('raised_at')
+            ->defaultSort('-raised_at')
             ->paginate(request('per_page', 20))
             ->appends(request()->query());
     }
