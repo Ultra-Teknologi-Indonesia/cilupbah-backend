@@ -138,10 +138,6 @@ class SalesOrderRepository
                     ->whereDoesntHave('items', $this->unmappedItemsConstraint())
                     ->whereDoesntHave('items', $emptyStockItemConstraint)
             )->count(),
-            'in-transit'       => $this->visibleOrders()->where('status', 'shipped')
-                ->whereNull('received_date')->count(),
-            'completed'        => $this->visibleOrders()->where('status', 'shipped')
-                ->whereNotNull('received_date')->count(),
             'empty-stock'      => $this->visibleOrders()->where('status', 'reserved')
                 ->whereNull('pick_failed_at')
                 ->whereHas('items', $emptyStockItemConstraint)
