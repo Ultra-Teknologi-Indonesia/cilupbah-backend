@@ -22,7 +22,7 @@ Schedule::command('bulk-shipping-labels:reap-stale')->everyFiveMinutes()->withou
 
 Schedule::command('channel:monitor-download-health')->everyFifteenMinutes()->withoutOverlapping()->onOneServer();
 
-Schedule::command('channel:webhooks-replay')->everyFifteenMinutes()->withoutOverlapping()->onOneServer();
+Schedule::command('channel:webhooks-replay --minutes=5 --limit=500')->everyFiveMinutes()->withoutOverlapping(10)->onOneServer();
 
 Schedule::command('channel:evaluate-order-sync')->everyFifteenMinutes()->withoutOverlapping()->onOneServer();
 
