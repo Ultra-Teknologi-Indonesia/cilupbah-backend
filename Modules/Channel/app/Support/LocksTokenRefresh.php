@@ -43,7 +43,14 @@ trait LocksTokenRefresh
     {
         $shop = ChannelShop::find($id);
 
-        if (! $shop || (string) $shop->access_token === $tokenSebelum) {
+        if (! $shop) {
+            return null;
+        }
+
+        $isDifferentToken = (string) $shop->access_token !== $tokenSebelum;
+        $isValidFuture = $shop->token_expires_at && $shop->token_expires_at->gt(now()->addMinutes(5));
+
+        if (! $isDifferentToken && ! $isValidFuture) {
             return null;
         }
 
