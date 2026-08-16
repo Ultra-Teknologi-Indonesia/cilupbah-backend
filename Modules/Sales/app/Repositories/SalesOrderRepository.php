@@ -521,7 +521,12 @@ class SalesOrderRepository
 
     public function upsertOrderBySalesOrderNo(string $salesOrderNo, array $orderData): ?SalesOrder
     {
-        $existing = DB::table('sales_orders')->where('salesorder_no', $salesOrderNo)->lockForUpdate()->first();
+        $channelOrderNo = $orderData['channel_order_no'] ?? null;
+        $existing = DB::table('sales_orders')
+            ->where('salesorder_no', $salesOrderNo)
+            ->when($channelOrderNo, fn ($q) => $q->orWhere('channel_order_no', $channelOrderNo))
+            ->lockForUpdate()
+            ->first();
 
         $shippingProvider = $orderData['shipping_provider'] ?? ($existing->shipping_provider ?? null);
         $courierMapper = app(\Modules\Outbound\Services\CourierMappingService::class);

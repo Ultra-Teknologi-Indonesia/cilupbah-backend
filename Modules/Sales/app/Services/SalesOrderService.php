@@ -1667,8 +1667,10 @@ class SalesOrderService
         try {
             DB::beginTransaction();
 
+            $channelOrderNo = $orderData['channel_order_no'] ?? null;
             $existing = DB::table('sales_orders')
                 ->where('salesorder_no', $orderData['salesorder_no'])
+                ->when($channelOrderNo, fn ($q) => $q->orWhere('channel_order_no', $channelOrderNo))
                 ->lockForUpdate()
                 ->first();
 
