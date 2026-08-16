@@ -37,7 +37,6 @@ class ReconcileOnOrder extends Command
         $keys = array_unique(array_merge(array_keys($expected), array_keys($actual)));
         sort($keys);
 
-        // Preload variant SKUs and Location Codes
         $itemIds = array_unique(array_map(fn ($k) => explode('|', $k)[0], $keys));
         $locationIds = array_unique(array_map(fn ($k) => explode('|', $k)[1], $keys));
 

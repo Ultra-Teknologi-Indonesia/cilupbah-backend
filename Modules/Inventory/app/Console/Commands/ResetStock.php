@@ -55,7 +55,6 @@ class ResetStock extends Command
         $this->line("Purge History  : " . ($purgeHistory ? '<fg=red>YA (Hapus mutasi & dokumen penyesuaian)</>' : '<fg=green>TIDAK (Hanya nolkan saldo on_hand)</>'));
         $this->newLine();
 
-        // Count impacted records
         $inventoryCount = Inventory::whereIn('location_id', $locationIds)->count();
         $movementCount = InventoryMovement::whereIn('location_id', $locationIds)->count();
         $adjCount = StockAdjustment::whereIn('location_id', $locationIds)->count();
@@ -83,9 +82,9 @@ class ResetStock extends Command
         $this->info('Memulai proses reset di database...');
 
         DB::transaction(function () use ($locationIds, $purgeHistory) {
-            // 1. Reset / Zero-out inventory table
+
             if ($purgeHistory) {
-                // Delete inventory records or zero out
+
                 DB::table('inventories')->whereIn('location_id', $locationIds)->delete();
             } else {
                 DB::table('inventories')->whereIn('location_id', $locationIds)->update([
@@ -97,23 +96,20 @@ class ResetStock extends Command
                 ]);
             }
 
-            // 2. If purge history is requested, wipe ledgers and audit records
             if ($purgeHistory) {
-                // Delete stock adjustment items and adjustments
+
                 $adjIds = StockAdjustment::whereIn('location_id', $locationIds)->pluck('id')->all();
                 if (! empty($adjIds)) {
                     StockAdjustmentItem::whereIn('adjustment_id', $adjIds)->delete();
                     StockAdjustment::whereIn('id', $adjIds)->delete();
                 }
 
-                // Delete reserved stocks and items
                 $reservedIds = DB::table('reserved_stocks')->whereIn('location_id', $locationIds)->pluck('id')->all();
                 if (! empty($reservedIds)) {
                     DB::table('reserved_stock_items')->whereIn('reserved_stock_id', $reservedIds)->delete();
                     DB::table('reserved_stocks')->whereIn('id', $reservedIds)->delete();
                 }
 
-                // Delete inventory movements for these locations
                 InventoryMovement::whereIn('location_id', $locationIds)->delete();
             }
         });
