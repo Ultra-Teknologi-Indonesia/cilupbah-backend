@@ -77,7 +77,9 @@ class TikTokToInternalOrderMapper
             'channel_order_no'   => (string) ($tiktokOrder['id'] ?? ''),
             'channel_shop_id'    => $shopId,
             'channel_buyer_id'   => isset($tiktokOrder['user_id']) ? (string) $tiktokOrder['user_id'] : null,
-            'customer_name'      => $tiktokOrder['buyer_email'] ?? ($tiktokOrder['buyer_nickname'] ?? 'TikTok Buyer'),
+            'customer_name'      => ! empty($address['name'])
+                ? $address['name']
+                : ($tiktokOrder['buyer_nickname'] ?? ($tiktokOrder['buyer_email'] ?? 'TikTok Buyer')),
             'transaction_date'   => isset($tiktokOrder['create_time']) ? date('Y-m-d H:i:s', $tiktokOrder['create_time']) : now(),
 
             'sub_total'          => isset($payment['original_total_product_price']) ? (float) $payment['original_total_product_price'] : 0,
