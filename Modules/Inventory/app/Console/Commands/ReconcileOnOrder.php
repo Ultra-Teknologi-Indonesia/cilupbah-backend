@@ -16,7 +16,9 @@ class ReconcileOnOrder extends Command
     use StockLockable;
 
     protected $signature = 'inventory:reconcile-on-order
-        {--fix : Terapkan koreksi. Tanpa flag ini command hanya melapor.}';
+        {--show-all : Tampilkan semua baris on_order meskipun tidak ada selisih}
+        {--sku= : Filter berdasarkan SKU tertentu}
+        {--fix : Terapkan koreksi. Tanpa flag ini command hanya melapor (DRY-RUN).}';
 
     protected $description = 'Bandingkan on_order terhadap reservasi sah (pesanan reserved + transfer draft) dan laporkan/koreksi selisihnya.';
 
@@ -26,6 +28,8 @@ class ReconcileOnOrder extends Command
         ProductRepository $productRepository,
     ): int {
         $fix = (bool) $this->option('fix');
+        $showAll = (bool) $this->option('show-all');
+        $skuFilter = $this->option('sku') ? strtoupper(trim((string) $this->option('sku'))) : null;
 
         $expected = $this->buildExpected($productRepository);
         $actual = $this->buildActual();
@@ -33,33 +37,106 @@ class ReconcileOnOrder extends Command
         $keys = array_unique(array_merge(array_keys($expected), array_keys($actual)));
         sort($keys);
 
+        // Preload variant SKUs and Location Codes
+        $itemIds = array_unique(array_map(fn ($k) => explode('|', $k)[0], $keys));
+        $locationIds = array_unique(array_map(fn ($k) => explode('|', $k)[1], $keys));
+
+        $variantMap = DB::table('product_variants as pv')
+            ->leftJoin('products as p', 'p.id', '=', 'pv.product_id')
+            ->whereIn('pv.id', $itemIds)
+            ->select('pv.id', 'pv.sku', 'p.name as product_name')
+            ->get()
+            ->keyBy('id');
+
+        $locationMap = DB::table('locations')
+            ->whereIn('id', $locationIds)
+            ->select('id', 'location_code', 'location_name')
+            ->get()
+            ->keyBy('id');
+
         $drifts = [];
+        $allRows = [];
+        $totalDrift = 0;
+
         foreach ($keys as $key) {
+            [$itemId, $locationId] = explode('|', $key);
+            $variant = $variantMap[$itemId] ?? null;
+            $location = $locationMap[$locationId] ?? null;
+
+            $sku = $variant->sku ?? $itemId;
+            $name = $variant->product_name ?? '—';
+            $locCode = $location->location_code ?? $locationId;
+
+            if ($skuFilter && ! str_contains(strtoupper($sku), $skuFilter)) {
+                continue;
+            }
+
             $exp = $expected[$key] ?? 0;
             $act = $actual[$key] ?? 0;
+            $drift = $act - $exp;
+
+            $statusStr = $drift === 0 ? '<fg=green>MATCH (0)</>' : ($drift > 0 ? "<fg=yellow;options=bold>OVER (+{$drift})</>" : "<fg=red;options=bold>UNDER ({$drift})</>");
+
+            $row = [
+                'SKU' => $sku,
+                'Nama Produk' => mb_strimwidth($name, 0, 35, '...'),
+                'Lokasi' => $locCode,
+                'Expected (Order Sah)' => $exp,
+                'Aktual (on_order DB)' => $act,
+                'Status / Drift' => $statusStr,
+            ];
+
+            $allRows[] = $row;
+
             if ($exp !== $act) {
-                $drifts[$key] = ['expected' => $exp, 'actual' => $act, 'drift' => $act - $exp];
+                $drifts[$key] = ['expected' => $exp, 'actual' => $act, 'drift' => $drift];
+                $totalDrift += $drift;
             }
         }
 
+        $this->line('===============================================================');
+        $this->line('  DRY-RUN / INSPEKSI ANGKA ON_ORDER PER SKU');
+        $this->line('===============================================================');
+        $this->line('Mode : ' . ($fix ? '<fg=red;options=bold>FIX (KOREKSI DATABASE)</>' : '<fg=yellow;options=bold>DRY-RUN / INSPECTION ONLY (AMAN)</>'));
+        if ($skuFilter) {
+            $this->line("Filter SKU : {$skuFilter}");
+        }
+        $this->newLine();
+
+        if ($showAll && ! empty($allRows)) {
+            $this->table(['SKU', 'Nama Produk', 'Lokasi', 'Expected (Order Sah)', 'Aktual (on_order DB)', 'Status / Drift'], $allRows);
+            $this->newLine();
+        }
+
         if (empty($drifts)) {
-            $this->info('on_order sudah konsisten dengan reservasi sah. Tidak ada selisih.');
+            $this->info('✅ on_order sudah konsisten dengan reservasi sah. Tidak ada selisih (Drift = 0).');
+            if (! $showAll) {
+                $this->line('💡 Tip: Gunakan flag <fg=cyan>--show-all</> untuk melihat rincian seluruh SKU yang sedang memiliki on_order.');
+            }
             return self::SUCCESS;
         }
 
-        $rows = [];
-        $total = 0;
-        foreach ($drifts as $key => $d) {
-            [$itemId, $locationId] = explode('|', $key);
-            $rows[] = [$itemId, $locationId, $d['expected'], $d['actual'], $d['drift']];
-            $total += $d['drift'];
+        if (! $showAll) {
+            $driftRows = [];
+            foreach ($drifts as $key => $d) {
+                [$itemId, $locationId] = explode('|', $key);
+                $variant = $variantMap[$itemId] ?? null;
+                $location = $locationMap[$locationId] ?? null;
+                $driftRows[] = [
+                    'SKU' => $variant->sku ?? $itemId,
+                    'Lokasi' => $location->location_code ?? $locationId,
+                    'Expected' => $d['expected'],
+                    'Aktual' => $d['actual'],
+                    'Drift' => sprintf('%+d', $d['drift']),
+                ];
+            }
+            $this->table(['SKU', 'Lokasi', 'Expected', 'Aktual', 'Drift'], $driftRows);
         }
 
-        $this->table(['Item', 'Lokasi', 'Expected', 'Aktual', 'Drift'], $rows);
-        $this->warn(sprintf('%d baris selisih, total drift %+d unit.', count($drifts), $total));
+        $this->warn(sprintf('⚠️ Ditemukan %d SKU selisih, total drift %+d unit.', count($drifts), $totalDrift));
 
         if (! $fix) {
-            $this->line('Jalankan ulang dengan --fix untuk menerapkan koreksi.');
+            $this->line('Jalankan ulang dengan flag <fg=cyan>--fix</> untuk menerapkan koreksi ke database.');
             return self::SUCCESS;
         }
 
