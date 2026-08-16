@@ -8,7 +8,7 @@ class AllowedSearch
 {
     public static function apply(Builder $builder, array $columns): Builder
     {
-        $term = trim((string) request()->query('search', ''));
+        $term = trim((string) (request()->query('search') ?? request()->query('q', '')));
 
         if ($term === '' || empty($columns)) {
             return $builder;

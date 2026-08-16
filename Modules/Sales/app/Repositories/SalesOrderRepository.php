@@ -92,13 +92,16 @@ class SalesOrderRepository
             $query = $this->scopeExcludeHandedToWarehouse($query);
         }
 
-        if ($q = request('q')) {
-            request()->query->set('search', $q);
-            if (request('search_by', 'order') === 'sku') {
-                $query->allowedSearch('items.sku', 'items.description');
-            } else {
-                $query->allowedSearch(...SalesOrder::SEARCH_COLUMNS);
-            }
+        $searchBy = request('search_by');
+        if ($searchBy === 'sku') {
+            $query->allowedSearch('items.sku', 'items.description');
+        } elseif ($searchBy === 'order') {
+            $query->allowedSearch(...SalesOrder::SEARCH_COLUMNS);
+        } else {
+            $query->allowedSearch(...array_merge(SalesOrder::SEARCH_COLUMNS, [
+                'items.sku',
+                'items.description',
+            ]));
         }
 
         return $query
