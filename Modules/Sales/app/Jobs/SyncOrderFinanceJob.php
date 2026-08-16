@@ -15,9 +15,14 @@ class SyncOrderFinanceJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 5;
+    public int $tries = 0;
     public int $maxExceptions = 3;
     public array $backoff = [15, 45, 120, 300];
+
+    public function retryUntil(): \DateTime
+    {
+        return now()->addHours(6);
+    }
 
     public function __construct(
         public readonly string $orderId,
