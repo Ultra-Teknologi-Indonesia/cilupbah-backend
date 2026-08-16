@@ -97,37 +97,51 @@ class ShopeeWebhookController extends Controller
 
     protected function isValidSignature(Request $request, string $rawBody): bool
     {
-        $pushPartnerKey = (string) config('services.shopee.push_partner_key');
-        $partnerKey = $pushPartnerKey !== '' ? $pushPartnerKey : (string) config('services.shopee.partner_key');
+        $keys = array_values(array_filter(array_unique([
+            (string) config('services.shopee.push_partner_key'),
+            (string) config('services.shopee.partner_key'),
+        ])));
         $provided = (string) $request->header('Authorization', '');
 
-        if ($provided === '' || $partnerKey === '') {
+        if ($provided === '' || empty($keys)) {
             Log::warning('Shopee push auth/key kosong', [
                 'has_auth' => $provided !== '',
-                'has_key' => $partnerKey !== '',
+                'has_key' => !empty($keys),
             ]);
 
             return false;
         }
 
-        $pushUrl = $this->resolvePushUrl($request);
-        $expected = ShopeeSignature::pushSign($pushUrl, $rawBody, $partnerKey);
+        $provided = strtolower($provided);
 
-        if (! hash_equals($expected, strtolower($provided))) {
-            Log::warning('Shopee push signature mismatch', [
-                'push_url_used' => $pushUrl,
-                'request_url' => $request->url(),
+        $candidateUrls = array_values(array_filter(array_unique([
+            $this->resolvePushUrl($request),
+            $request->fullUrl(),
+            $request->url(),
+            preg_replace('/^http:/i', 'https:', $request->fullUrl()),
+            preg_replace('/^http:/i', 'https:', $request->url()),
+            preg_replace('/^https:/i', 'http:', $request->fullUrl()),
+            preg_replace('/^https:/i', 'http:', $request->url()),
+        ])));
 
-                'expected_prefix' => substr($expected, 0, 8),
-                'provided_prefix' => substr(strtolower($provided), 0, 8),
-                'key_source' => $pushPartnerKey !== '' ? 'push_partner_key' : 'partner_key',
-                'body_len' => strlen($rawBody),
-            ]);
-
-            return false;
+        foreach ($keys as $key) {
+            foreach ($candidateUrls as $url) {
+                $expected = ShopeeSignature::pushSign($url, $rawBody, $key);
+                if (hash_equals($expected, $provided)) {
+                    return true;
+                }
+            }
         }
 
-        return true;
+        Log::warning('Shopee push signature mismatch', [
+            'push_url_used' => $this->resolvePushUrl($request),
+            'request_url' => $request->url(),
+            'provided_prefix' => substr($provided, 0, 8),
+            'candidate_urls' => $candidateUrls,
+            'body_len' => strlen($rawBody),
+        ]);
+
+        return false;
     }
 
     protected function hasPushSecret(): bool
