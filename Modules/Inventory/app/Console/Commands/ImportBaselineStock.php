@@ -169,6 +169,11 @@ class ImportBaselineStock extends Command
     {
         @ini_set('memory_limit', '1024M');
 
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        if ($ext === 'csv' || $ext === 'txt') {
+            return $this->readCsvRows($path);
+        }
+
         $reader = new XlsxReader();
         $reader->setReadDataOnly(true);
 
@@ -184,7 +189,7 @@ class ImportBaselineStock extends Command
         $totalRows = $this->countRows($reader, $path, $isTemplate);
 
         $rows = [];
-        $chunkSize = 20000;
+        $chunkSize = 2500;
         $hardCap = 2000000;
         $start = 2;
 
@@ -252,6 +257,63 @@ class ImportBaselineStock extends Command
             $start = $end + 1;
         }
 
+        $this->newLine();
+
+        return $rows;
+    }
+
+    private function readCsvRows(string $path): array
+    {
+        $handle = fopen($path, 'r');
+        if ($handle === false) {
+            return [];
+        }
+
+        $header = fgetcsv($handle);
+        if ($header === false) {
+            fclose($handle);
+            return [];
+        }
+
+        $headerMap = [];
+        foreach ($header as $idx => $colName) {
+            $headerMap[strtolower(trim((string) $colName))] = $idx;
+        }
+
+        $isTemplate = isset($headerMap['sku']) && isset($headerMap['kode rak']) && isset($headerMap['qty']);
+        $rows = [];
+        $rowNo = 1;
+
+        while (($raw = fgetcsv($handle)) !== false) {
+            $rowNo++;
+            if ($isTemplate) {
+                $sku = trim((string) ($raw[$headerMap['sku'] ?? 0] ?? ''));
+                $bin = trim((string) ($raw[$headerMap['kode rak'] ?? 1] ?? ''));
+                $qty = (int) ($raw[$headerMap['qty'] ?? 3] ?? 0);
+                $fileLocation = null;
+            } else {
+                $sku = trim((string) ($raw[$headerMap['sku'] ?? 0] ?? ''));
+                $fileLocation = trim((string) ($raw[$headerMap['lokasi'] ?? 3] ?? '')) ?: null;
+                $bin = trim((string) ($raw[$headerMap['no rak'] ?? 7] ?? ''));
+                $qty = (int) ($raw[$headerMap['qty on hand'] ?? 8] ?? 0);
+            }
+
+            if ($sku === '' || $qty <= 0) {
+                continue;
+            }
+
+            $rows[] = [
+                'row' => $rowNo,
+                'sku' => $sku,
+                'bin' => $bin,
+                'qty' => $qty,
+                'file_location' => $fileLocation,
+            ];
+        }
+
+        fclose($handle);
+
+        $this->line(sprintf('  dibaca %s baris ber-stok dari CSV', number_format(count($rows))));
         $this->newLine();
 
         return $rows;
