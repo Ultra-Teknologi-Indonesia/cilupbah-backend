@@ -18,6 +18,7 @@ class ProductImportService
             $categoryId = $this->resolveCategory($row['item_category_id'] ?? null, $row['category'] ?? '');
 
             $productName = $row['item_group_name'] ?? 'Unnamed Product';
+            $sku = $row['item_code'];
 
             $weight = $row['package_weight'] ?? 0;
             $length = $row['package_length'] ?? 0;
@@ -26,6 +27,7 @@ class ProductImportService
 
             $productId = $this->repository->upsertProductByName($productName, [
                 'category_id' => $categoryId,
+                'sku' => $sku,
                 'name' => $productName,
                 'description' => $row['description'] ?? '',
                 'weight' => $weight,
@@ -36,8 +38,6 @@ class ProductImportService
                 'status' => Product::STATUS_MASTER,
                 'is_active' => true,
             ]);
-
-            $sku = $row['item_code'];
 
             $this->repository->upsertVariantBySku($sku, [
                 'product_id' => $productId,
@@ -82,6 +82,7 @@ class ProductImportService
                 $categoryId = $this->resolveCategory($row['item_category_id'] ?? null, $row['category'] ?? '');
                 $productId = $this->repository->upsertProductByName($bundleName, [
                     'category_id' => $categoryId,
+                    'sku' => $bundleSku,
                     'name' => $bundleName,
                     'description' => $row['description'] ?? '',
                     'is_bundle' => true,
@@ -114,7 +115,10 @@ class ProductImportService
                 ? $bundleVariant->product_id
                 : ($productId ?? ProductVariant::where('sku', $bundleSku)->value('product_id'));
 
-            Product::where('id', $bundleProductId)->update(['is_bundle' => true]);
+            Product::where('id', $bundleProductId)->update([
+                'is_bundle' => true,
+                'sku' => $bundleSku,
+            ]);
 
             $this->repository->upsertBundleItem($bundleProductId, $componentVariant->id, $qty);
         });

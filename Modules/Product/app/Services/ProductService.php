@@ -463,6 +463,10 @@ class ProductService
                 $productData['sku'] = null;
             }
 
+            if (empty($productData['sku']) && !empty($data['variants']) && count($data['variants']) === 1 && !empty($data['variants'][0]['sku'])) {
+                $productData['sku'] = trim((string) $data['variants'][0]['sku']);
+            }
+
             foreach (['weight', 'length', 'width', 'height'] as $dim) {
                 if (array_key_exists($dim, $productData) && $productData[$dim] === null) {
                     unset($productData[$dim]);
@@ -977,6 +981,10 @@ class ProductService
 
             if (isset($productData['sku']) && trim((string) $productData['sku']) === '') {
                 $productData['sku'] = null;
+            }
+
+            if (empty($productData['sku']) && !empty($data['variants']) && count($data['variants']) === 1 && !empty($data['variants'][0]['sku'])) {
+                $productData['sku'] = trim((string) $data['variants'][0]['sku']);
             }
 
             foreach (['weight', 'length', 'width', 'height'] as $dim) {

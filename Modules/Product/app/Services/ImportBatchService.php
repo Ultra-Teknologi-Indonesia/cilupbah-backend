@@ -109,7 +109,7 @@ class ImportBatchService
     public function incrementConfirm(ProductImportBatch $batch, int $success, int $failed): void
     {
         \Illuminate\Support\Facades\DB::transaction(function () use ($batch, $success, $failed) {
-            /** @var ProductImportBatch|null $fresh */
+
             $fresh = ProductImportBatch::query()->whereKey($batch->id)->lockForUpdate()->first();
             if (! $fresh) {
                 return;
@@ -128,7 +128,7 @@ class ImportBatchService
 
     public function finalizeConfirm(ProductImportBatch $batch, int $totalApplied, int $totalFailed): ProductImportBatch
     {
-        /** @var ProductImportBatch $fresh */
+
         $fresh = $batch->fresh() ?? $batch;
 
         $state = $totalFailed === 0

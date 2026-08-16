@@ -14,12 +14,15 @@ class MasterItemResource extends JsonResource
 
     public function toArray(Request $request): array
     {
+        $isBundle = (bool) $this->is_bundle;
+        $totalComponents = $isBundle && $this->resource->relationLoaded('bundleItems') ? $this->bundleItems->count() : 0;
+
         return [
             'item_group_id' => $this->id,
             'status' => $this->status,
             'is_po' => $this->order_type === 'PREORDER',
-            'is_bundle' => (bool) $this->is_bundle,
-            'sku' => $this->sku,
+            'is_bundle' => $isBundle,
+            'sku' => $this->sku ?? ($this->resource->relationLoaded('variants') && $this->variants->count() === 1 ? $this->variants->first()?->sku : null),
             'item_name' => $this->name,
             'last_modified' => $this->updated_at,
             'variations' => $this->variations(),
@@ -28,7 +31,8 @@ class MasterItemResource extends JsonResource
             'category_name' => $this->whenLoaded('category', fn () => $this->category?->name),
             'is_consignment' => (bool) $this->is_consignment,
             'variants' => $this->variantList(),
-            'total_variants' => $this->resource->relationLoaded('variants') ? $this->variants->count() : 0,
+            'total_components' => $totalComponents,
+            'total_variants' => $isBundle ? $totalComponents : ($this->resource->relationLoaded('variants') ? $this->variants->count() : 0),
             'online_status' => $this->onlineStatus(),
             'thumbnail' => $this->productThumbnail(),
             'is_merged' => (bool) ($this->is_merged ?? false),
@@ -67,6 +71,30 @@ class MasterItemResource extends JsonResource
 
     protected function variantList(): array
     {
+        if ($this->is_bundle && $this->resource->relationLoaded('bundleItems')) {
+            return $this->bundleItems->map(function ($item) {
+                $variant = $item->relationLoaded('component') ? $item->component : null;
+
+                return [
+                    'item_group_id' => $this->id,
+                    'item_id' => $item->component_variant_id,
+                    'item_code' => $variant?->sku,
+                    'item_name' => $this->name,
+                    'is_bundle' => true,
+                    'is_consignment' => (bool) $this->is_consignment,
+                    'variation_values' => $variant ? $this->variationValues($variant) : [],
+                    'is_internal' => $variant?->is_internal ?? false,
+                    'barcode' => $variant?->barcode,
+                    'tax_rate' => $variant?->tax_rate !== null ? (float) $variant->tax_rate : null,
+                    'thumbnail' => $variant ? $this->variantThumbnail($variant) : null,
+                    'store_names' => $variant ? $this->storeNames($variant) : [],
+                    'sell_price' => $variant?->sell_price !== null ? (float) $variant->sell_price : null,
+                    'sequence_item' => $variant?->sequence_item,
+                    'qty' => (int) $item->qty,
+                ];
+            })->values()->all();
+        }
+
         if (! $this->resource->relationLoaded('variants')) {
             return [];
         }
@@ -76,7 +104,7 @@ class MasterItemResource extends JsonResource
             'item_id' => $variant->id,
             'item_code' => $variant->sku,
             'item_name' => $this->name,
-            'is_bundle' => (bool) $this->is_bundle,
+            'is_bundle' => false,
             'is_consignment' => (bool) $this->is_consignment,
             'variation_values' => $this->variationValues($variant),
             'is_internal' => $variant->is_internal,

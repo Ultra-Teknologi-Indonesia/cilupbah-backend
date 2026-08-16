@@ -51,7 +51,6 @@ class ProductImportTest extends TestCase
 
         $file = $this->makeUpload($headings, $rows);
 
-        // 1. Upload creates batch and triggers preview job (sync)
         $response = $this->postJson('/api/v1/products/import/single', ['file' => $file]);
         $response->assertStatus(202);
         $batchId = $response->json('data.id');
@@ -63,20 +62,16 @@ class ProductImportTest extends TestCase
         $this->assertSame(2, $batch->success_rows);
         $this->assertSame(2, $batch->failed_rows);
 
-        // 2. Check staged rows endpoint
         $rowsResponse = $this->getJson("/api/v1/products/import/batches/{$batchId}/rows");
         $rowsResponse->assertStatus(200);
         $rowsResponse->assertJsonPath('meta.total', 4);
 
-        // Filter valid rows
         $validRowsResponse = $this->getJson("/api/v1/products/import/batches/{$batchId}/rows?status=valid");
         $validRowsResponse->assertStatus(200);
         $validRowsResponse->assertJsonPath('meta.total', 2);
 
-        // Database should NOT have products yet before confirmation
         $this->assertDatabaseMissing('products', ['name' => 'Kaos Polos']);
 
-        // 3. Confirm import batch
         $confirmResponse = $this->postJson("/api/v1/products/import/batches/{$batchId}/confirm");
         $confirmResponse->assertStatus(202);
 
@@ -84,7 +79,6 @@ class ProductImportTest extends TestCase
         $this->assertSame(ProductImportBatch::STATE_DONE, $batch->state);
         $this->assertSame(2, $batch->processed_rows);
 
-        // Products should now exist in master database
         $this->assertDatabaseHas('products', ['name' => 'Kaos Polos', 'status' => Product::STATUS_MASTER]);
         $this->assertDatabaseHas('product_variants', ['sku' => 'KP-HITAM-M']);
         $this->assertDatabaseHas('product_variants', ['sku' => 'KP-PUTIH-L']);
@@ -110,13 +104,12 @@ class ProductImportTest extends TestCase
         $this->assertSame(1, $batch->success_rows);
         $this->assertSame(0, $batch->failed_rows);
 
-        // Confirm
         $confirmResponse = $this->postJson("/api/v1/products/import/batches/{$batchId}/confirm");
         $confirmResponse->assertStatus(202);
 
         $batch->refresh();
         $this->assertSame(ProductImportBatch::STATE_DONE, $batch->state);
-        $this->assertDatabaseHas('products', ['name' => 'Mug']);
+        $this->assertDatabaseHas('products', ['name' => 'Mug', 'sku' => 'MUG-1']);
     }
 
     public function test_import_bundle_preview_and_confirm_workflow(): void
@@ -147,7 +140,6 @@ class ProductImportTest extends TestCase
         $this->assertSame(1, $batch->success_rows);
         $this->assertSame(1, $batch->failed_rows);
 
-        // Confirm
         $confirmResponse = $this->postJson("/api/v1/products/import/batches/{$batchId}/confirm");
         $confirmResponse->assertStatus(202);
 
@@ -188,6 +180,7 @@ class ProductImportTest extends TestCase
 
         $this->assertDatabaseHas('products', [
             'name' => 'Bundle Super Hemat',
+            'sku' => 'NEW-BUNDLE-SKU',
             'is_bundle' => true,
         ]);
         $this->assertDatabaseHas('product_variants', [

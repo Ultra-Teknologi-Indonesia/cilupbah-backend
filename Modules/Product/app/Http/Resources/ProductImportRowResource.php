@@ -6,15 +6,11 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Modules\Product\Models\ProductImportRow;
 
-/**
- * @mixin ProductImportRow
- * @property ProductImportRow $resource
- */
 class ProductImportRowResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        /** @var ProductImportRow $row */
+
         $row = $this->resource;
 
         return [

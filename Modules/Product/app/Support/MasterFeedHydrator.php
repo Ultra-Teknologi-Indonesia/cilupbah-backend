@@ -76,10 +76,37 @@ class MasterFeedHydrator
             $variantsByProduct[$v->product_id][] = $v;
         }
 
+        $rawBundleItems = DB::table('product_bundle_items')
+            ->join('product_variants', 'product_variants.id', '=', 'product_bundle_items.component_variant_id')
+            ->whereIn('product_bundle_items.bundle_product_id', $allProductIds)
+            ->whereNull('product_variants.deleted_at')
+            ->get([
+                'product_bundle_items.bundle_product_id',
+                'product_bundle_items.component_variant_id',
+                'product_bundle_items.qty',
+                'product_variants.id',
+                'product_variants.product_id as component_product_id',
+                'product_variants.sku',
+                'product_variants.barcode',
+                'product_variants.sell_price',
+                'product_variants.tax_rate',
+                'product_variants.is_internal',
+                'product_variants.sequence_item',
+            ]);
+
+        $bundleItemsByProduct = [];
+        $bundleComponentVariantIds = [];
+        foreach ($rawBundleItems as $bi) {
+            $bundleItemsByProduct[$bi->bundle_product_id][] = $bi;
+            $bundleComponentVariantIds[] = $bi->component_variant_id;
+        }
+
+        $allLookupVariantIds = array_values(array_unique(array_merge($variantIds, $bundleComponentVariantIds)));
+
         $optionsByVariant = [];
-        if (! empty($variantIds)) {
+        if (! empty($allLookupVariantIds)) {
             $rawOptions = DB::table('variant_options')
-                ->whereIn('variant_id', $variantIds)
+                ->whereIn('variant_id', $allLookupVariantIds)
                 ->get(['id', 'variant_id', 'attribute_id', 'value']);
 
             foreach ($rawOptions as $opt) {
@@ -132,9 +159,9 @@ class MasterFeedHydrator
         }
 
         $variantStoreNames = [];
-        if (! empty($variantIds)) {
+        if (! empty($allLookupVariantIds)) {
             $rawVariantChannelMappings = DB::table('product_variant_channel_mappings')
-                ->whereIn('variant_id', $variantIds)
+                ->whereIn('variant_id', $allLookupVariantIds)
                 ->get(['id', 'variant_id', 'product_channel_mapping_id']);
 
             foreach ($rawVariantChannelMappings as $vcm) {
@@ -150,6 +177,7 @@ class MasterFeedHydrator
             $memberIds = $product->merge_member_ids ?? [$product->id];
             $isMerged = (bool) ($product->is_merged ?? false);
             $masterName = $isMerged ? ($product->merge_master_name ?? $product->name) : $product->name;
+            $isBundle = (bool) $product->is_bundle;
 
             $allVariants = [];
             $allVariationTypes = [];
@@ -177,42 +205,85 @@ class MasterFeedHydrator
             $minSellPrice = null;
             $valuesByAttribute = [];
 
-            foreach ($allVariants as $v) {
-                $opts = $optionsByVariant[$v->id] ?? [];
-                $varVariationValues = [];
+            $bItems = $isBundle ? ($bundleItemsByProduct[$product->id] ?? []) : [];
+            $componentsCount = count($bItems);
 
-                foreach ($opts as $opt) {
-                    $attrName = $attributes[$opt->attribute_id] ?? null;
-                    $varVariationValues[] = [
-                        'label' => $attrName,
-                        'value' => $opt->value,
+            if ($isBundle && ! empty($bItems)) {
+                foreach ($bItems as $bi) {
+                    $opts = $optionsByVariant[$bi->component_variant_id] ?? [];
+                    $varVariationValues = [];
+
+                    foreach ($opts as $opt) {
+                        $attrName = $attributes[$opt->attribute_id] ?? null;
+                        $varVariationValues[] = [
+                            'label' => $attrName,
+                            'value' => $opt->value,
+                        ];
+                    }
+
+                    if ($bi->sell_price !== null) {
+                        $priceVal = (float) $bi->sell_price;
+                        $minSellPrice = $minSellPrice === null ? $priceVal : min($minSellPrice, $priceVal);
+                    }
+
+                    $variantThumbnail = $variantThumbnails[$bi->component_variant_id] ?? null;
+
+                    $variantItems[] = [
+                        'item_group_id' => $product->id,
+                        'item_id' => $bi->component_variant_id,
+                        'item_code' => $bi->sku,
+                        'item_name' => $masterName,
+                        'is_bundle' => true,
+                        'is_consignment' => (bool) $product->is_consignment,
+                        'variation_values' => $varVariationValues,
+                        'is_internal' => (bool) $bi->is_internal,
+                        'barcode' => $bi->barcode,
+                        'tax_rate' => $bi->tax_rate !== null ? (float) $bi->tax_rate : null,
+                        'thumbnail' => $variantThumbnail,
+                        'store_names' => $variantStoreNames[$bi->component_variant_id] ?? [],
+                        'sell_price' => $bi->sell_price !== null ? (float) $bi->sell_price : null,
+                        'sequence_item' => $bi->sequence_item !== null ? (int) $bi->sequence_item : null,
+                        'qty' => (int) $bi->qty,
                     ];
-                    $valuesByAttribute[$opt->attribute_id][$opt->value] = true;
                 }
+            } else {
+                foreach ($allVariants as $v) {
+                    $opts = $optionsByVariant[$v->id] ?? [];
+                    $varVariationValues = [];
 
-                if ($v->sell_price !== null) {
-                    $priceVal = (float) $v->sell_price;
-                    $minSellPrice = $minSellPrice === null ? $priceVal : min($minSellPrice, $priceVal);
+                    foreach ($opts as $opt) {
+                        $attrName = $attributes[$opt->attribute_id] ?? null;
+                        $varVariationValues[] = [
+                            'label' => $attrName,
+                            'value' => $opt->value,
+                        ];
+                        $valuesByAttribute[$opt->attribute_id][$opt->value] = true;
+                    }
+
+                    if ($v->sell_price !== null) {
+                        $priceVal = (float) $v->sell_price;
+                        $minSellPrice = $minSellPrice === null ? $priceVal : min($minSellPrice, $priceVal);
+                    }
+
+                    $variantThumbnail = $variantThumbnails[$v->id] ?? null;
+
+                    $variantItems[] = [
+                        'item_group_id' => $product->id,
+                        'item_id' => $v->id,
+                        'item_code' => $v->sku,
+                        'item_name' => $masterName,
+                        'is_bundle' => false,
+                        'is_consignment' => (bool) $product->is_consignment,
+                        'variation_values' => $varVariationValues,
+                        'is_internal' => (bool) $v->is_internal,
+                        'barcode' => $v->barcode,
+                        'tax_rate' => $v->tax_rate !== null ? (float) $v->tax_rate : null,
+                        'thumbnail' => $variantThumbnail,
+                        'store_names' => $variantStoreNames[$v->id] ?? [],
+                        'sell_price' => $v->sell_price !== null ? (float) $v->sell_price : null,
+                        'sequence_item' => $v->sequence_item !== null ? (int) $v->sequence_item : null,
+                    ];
                 }
-
-                $variantThumbnail = $variantThumbnails[$v->id] ?? null;
-
-                $variantItems[] = [
-                    'item_group_id' => $product->id,
-                    'item_id' => $v->id,
-                    'item_code' => $v->sku,
-                    'item_name' => $masterName,
-                    'is_bundle' => (bool) $product->is_bundle,
-                    'is_consignment' => (bool) $product->is_consignment,
-                    'variation_values' => $varVariationValues,
-                    'is_internal' => (bool) $v->is_internal,
-                    'barcode' => $v->barcode,
-                    'tax_rate' => $v->tax_rate !== null ? (float) $v->tax_rate : null,
-                    'thumbnail' => $variantThumbnail,
-                    'store_names' => $variantStoreNames[$v->id] ?? [],
-                    'sell_price' => $v->sell_price !== null ? (float) $v->sell_price : null,
-                    'sequence_item' => $v->sequence_item !== null ? (int) $v->sequence_item : null,
-                ];
             }
 
             $masterVariations = [];
@@ -267,8 +338,8 @@ class MasterFeedHydrator
                 'item_group_id' => $product->id,
                 'status' => $product->status,
                 'is_po' => $product->order_type === 'PREORDER',
-                'is_bundle' => (bool) $product->is_bundle,
-                'sku' => $product->sku,
+                'is_bundle' => $isBundle,
+                'sku' => $product->sku ?? (!empty($variantItems) && count($variantItems) === 1 ? ($variantItems[0]['item_code'] ?? null) : null),
                 'item_name' => $masterName,
                 'last_modified' => $product->updated_at,
                 'variations' => $masterVariations,
@@ -277,7 +348,8 @@ class MasterFeedHydrator
                 'category_name' => $categoryNames[$product->category_id] ?? null,
                 'is_consignment' => (bool) $product->is_consignment,
                 'variants' => $variantItems,
-                'total_variants' => count($variantItems),
+                'total_components' => $componentsCount,
+                'total_variants' => $isBundle ? $componentsCount : count($variantItems),
                 'online_status' => $onlineStatusList,
                 'thumbnail' => $thumbnail,
                 'is_merged' => $isMerged,

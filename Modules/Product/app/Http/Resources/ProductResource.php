@@ -6,10 +6,6 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Modules\Product\Models\Product;
 
-/**
- * @mixin Product
- * @property Product $resource
- */
 class ProductResource extends JsonResource
 {
 
@@ -18,7 +14,7 @@ class ProductResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
-            'sku' => $this->sku,
+            'sku' => $this->sku ?? ($this->resource->relationLoaded('variants') && $this->variants->count() === 1 ? $this->variants->first()?->sku : null),
             'description' => $this->description,
             'status' => $this->status,
             'is_active' => $this->is_active,

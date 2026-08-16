@@ -4,6 +4,7 @@ namespace Modules\Product\Providers;
 
 use Nwidart\Modules\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
+use Modules\Product\Console\Commands\BackfillProductSkus;
 use Modules\Product\Console\Commands\MergeMasterProducts;
 use Modules\Product\Console\Commands\PruneUploadHistories;
 use Modules\Product\Console\Commands\RecomputeChannelValidation;
@@ -24,6 +25,7 @@ class ProductServiceProvider extends ModuleServiceProvider
         RemirrorProductImages::class,
         MergeMasterProducts::class,
         RepairChannelSku::class,
+        BackfillProductSkus::class,
     ];
 
     protected array $providers = [
