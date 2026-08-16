@@ -189,18 +189,18 @@ class ShopeeAuthService
                 $summary['refreshed']++;
             } catch (\Throwable $e) {
                 $summary['failed']++;
-                $isStillValid = $shop->token_expires_at && $shop->token_expires_at->gt(now()->addMinutes(15));
                 $isPermanent = ($e instanceof ChannelTokenException && $e->permanent);
+                $refreshTokenExpired = $shop->refresh_token_expires_at && $shop->refresh_token_expires_at->isPast();
 
-                // Hanya tandai integrasi error jika token benar-benar sudah kedaluwarsa atau error permanen
-                if (! $isStillValid || $isPermanent) {
+                // Hanya tandai integrasi error jika kegagalan bersifat permanen (misal invalid_grant / reauth diperlukan)
+                // atau jika refresh token 30 hari sudah benar-benar kedaluwarsa. Gangguan jaringan sementara tidak merusak status UI.
+                if ($isPermanent || $refreshTokenExpired) {
                     $this->shopRepository->markIntegrationError($shop->id, $e->getMessage());
                 }
 
-                Log::warning('Shopee refresh token gagal', [
+                Log::warning('Shopee refresh token gagal (akan dicoba lagi pada siklus 15 menit berikutnya)', [
                     'shop_id' => $shop->shop_id,
                     'error' => $e->getMessage(),
-                    'is_still_valid' => $isStillValid,
                     'is_permanent' => $isPermanent,
                 ]);
             }
