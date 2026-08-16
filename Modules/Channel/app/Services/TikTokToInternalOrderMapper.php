@@ -77,9 +77,7 @@ class TikTokToInternalOrderMapper
             'channel_order_no'   => (string) ($tiktokOrder['id'] ?? ''),
             'channel_shop_id'    => $shopId,
             'channel_buyer_id'   => isset($tiktokOrder['user_id']) ? (string) $tiktokOrder['user_id'] : null,
-            'customer_name'      => ! empty($address['name'])
-                ? $address['name']
-                : ($tiktokOrder['buyer_nickname'] ?? ($tiktokOrder['buyer_email'] ?? 'TikTok Buyer')),
+            'customer_name'      => $this->resolveCustomerName($address['name'] ?? null, $tiktokOrder['buyer_nickname'] ?? null, $tiktokOrder['buyer_email'] ?? null),
             'transaction_date'   => isset($tiktokOrder['create_time']) ? date('Y-m-d H:i:s', $tiktokOrder['create_time']) : now(),
 
             'sub_total'          => isset($payment['original_total_product_price']) ? (float) $payment['original_total_product_price'] : 0,
@@ -268,5 +266,23 @@ class TikTokToInternalOrderMapper
         }
 
         return array_values($grouped);
+    }
+
+    protected function resolveCustomerName(?string $addressName, ?string $nickname, ?string $email): string
+    {
+        if (! empty(trim((string) $addressName))) {
+            return trim((string) $addressName);
+        }
+
+        if (! empty(trim((string) $nickname))) {
+            return trim((string) $nickname);
+        }
+
+        $email = trim((string) $email);
+        if ($email !== '' && ! str_contains($email, '@scs') && ! str_contains($email, '.tiktok.com')) {
+            return $email;
+        }
+
+        return 'Pembeli TikTok';
     }
 }
