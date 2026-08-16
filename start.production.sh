@@ -7,7 +7,8 @@ set -e
 # dan bertentangan dengan prinsip "build sekali, deploy berkali-kali".
  
 # Auto-ensure writable directories on boot
-mkdir -p storage/app/private/imports/products \
+mkdir -p storage/app/public/baseline-reports \
+         storage/app/private/imports/products \
          storage/app/private/imports/sales-orders \
          storage/app/private/imports/rack-allocation \
          storage/app/private/exports \
@@ -17,6 +18,9 @@ mkdir -p storage/app/private/imports/products \
          storage/logs \
          bootstrap/cache 2>/dev/null || true
 chmod -R 777 storage bootstrap/cache /tmp 2>/dev/null || true
+
+echo "==> Linking public storage..."
+php artisan storage:link --force 2>/dev/null || true
 
 echo "==> Caching Laravel config..."
 php artisan config:cache
