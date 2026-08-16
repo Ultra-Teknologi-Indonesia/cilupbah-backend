@@ -382,6 +382,21 @@ class ImportBaselineStock extends Command
             $lowerIndex[mb_strtolower($sku)][] = $sku;
         }
 
+        $variantIds = array_filter(array_column(array_values($variants), 'id'));
+        $currentStockMap = [];
+        if (! empty($variantIds)) {
+            foreach (array_chunk($variantIds, 2000) as $chunk) {
+                $invRows = DB::table('inventories')
+                    ->where('location_id', $locationId)
+                    ->whereIn('item_id', $chunk)
+                    ->get(['item_id', 'bin_id', 'on_hand']);
+                foreach ($invRows as $inv) {
+                    $key = $inv->item_id . ':' . ($inv->bin_id ?? 'null');
+                    $currentStockMap[$key] = (float) $inv->on_hand;
+                }
+            }
+        }
+
         $validRows = [];
         $allEvaluatedRows = [];
         $okRows = 0;
@@ -443,11 +458,20 @@ class ImportBaselineStock extends Command
                 $resolvedBinId = $binsHere[$bin]->id;
             }
 
+            $variantId = isset($variants[$sku]) ? $variants[$sku]->id : null;
+            $pairKey = $variantId . ':' . ($resolvedBinId ?? 'null');
+            $curOnHand = (float) ($currentStockMap[$pairKey] ?? 0.0);
+            $targetOnHand = (float) $row['qty'];
+            $delta = $targetOnHand - $curOnHand;
+
             $evaluatedRow = $row + [
                 'status' => $status,
                 'catatan' => $notes,
-                'variant_id' => isset($variants[$sku]) ? $variants[$sku]->id : null,
+                'variant_id' => $variantId,
                 'bin_id' => $resolvedBinId,
+                'current_on_hand' => $curOnHand,
+                'target_on_hand' => $targetOnHand,
+                'delta' => $delta,
             ];
 
             $allEvaluatedRows[] = $evaluatedRow;
@@ -555,6 +579,29 @@ class ImportBaselineStock extends Command
             ['Baris Bermasalah / Ditolak', number_format($report['blocking'])],
             ['Qty yang Ditolak', number_format($report['lost_qty']) . ' pcs'],
         ]);
+
+        if (! empty($report['valid_rows'])) {
+            $previewCount = min($limit, count($report['valid_rows']));
+            $this->newLine();
+            $this->line(sprintf('PREVIEW ITEM LOLOS / VALID (Menampilkan %d dari %s baris siap masuk):', $previewCount, number_format($report['ok_rows'])));
+
+            $this->table(
+                ['Baris', 'SKU', 'Rak', 'Stok Saat Ini (on_hand)', 'Stok Baru (Aktual)', 'Perubahan (Delta)', 'Status'],
+                collect($report['valid_rows'])->take($limit)->map(fn ($i) => [
+                    $i['row'],
+                    $i['sku'],
+                    $i['bin'] ?: '(Rak Default/Inbound)',
+                    number_format($i['current_on_hand']) . ' pcs',
+                    number_format($i['target_on_hand']) . ' pcs',
+                    ($i['delta'] > 0 ? '+' : '') . number_format($i['delta']) . ' pcs',
+                    '<fg=green;options=bold>VALID (SIAP)</>',
+                ])->all(),
+            );
+
+            if (count($report['valid_rows']) > $limit) {
+                $this->line(sprintf('  … %s baris valid lainnya tidak ditampilkan di layar CLI. Semua baris lengkap ada di file CSV laporan.', number_format(count($report['valid_rows']) - $limit)));
+            }
+        }
 
         $labels = [
             'sku_hilang' => 'SKU tidak terdaftar (baris DITOLAK)',
@@ -753,7 +800,9 @@ class ImportBaselineStock extends Command
             'no_baris',
             'sku',
             'kode_rak',
-            'qty_file',
+            'stok_saat_ini_on_hand',
+            'stok_baru_aktual',
+            'selisih_delta',
             'status',
             'keterangan_alasan',
         ]);
@@ -763,7 +812,9 @@ class ImportBaselineStock extends Command
                 $row['row'],
                 $row['sku'],
                 $row['bin'] ?: '(inbound/default)',
-                $row['qty'],
+                $row['current_on_hand'] ?? 0,
+                $row['target_on_hand'] ?? $row['qty'],
+                $row['delta'] ?? $row['qty'],
                 $row['status'],
                 $row['catatan'],
             ]);
