@@ -164,12 +164,20 @@ class ChannelShopRepository
 
     public function markOrderSyncOk(string $id): void
     {
-        ChannelShop::where('id', $id)->update([
+        $shop = ChannelShop::find($id);
+        $updates = [
             'order_sync_status' => ChannelShop::ORDER_SYNC_NORMAL,
             'last_order_synced_at' => now(),
             'last_order_error' => null,
             'last_order_error_at' => null,
-        ]);
+        ];
+
+        if ($shop && (! $shop->token_expires_at || $shop->token_expires_at->isFuture())) {
+            $updates['integration_status'] = 'normal';
+            $updates['last_error'] = null;
+        }
+
+        ChannelShop::where('id', $id)->update($updates);
     }
 
     public function markOrderSyncProblem(string $id, ?string $message): void
