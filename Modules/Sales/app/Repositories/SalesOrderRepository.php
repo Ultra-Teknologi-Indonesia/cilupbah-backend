@@ -148,15 +148,30 @@ class SalesOrderRepository
                 ->whereNotNull('pick_failed_at')
                 ->count(),
             'cancellation'     => $this->visibleOrders()
-                ->whereNotNull('cancel_requested_at')
+                ->where(function ($q) {
+                    $q->whereIn('channel_status', ['IN_CANCEL', 'Request Cancel', 'Order Request Cancel'])
+                      ->orWhereIn('channel_status_raw', ['IN_CANCEL', 'REQUEST_CANCEL', 'AWAITING_CANCEL'])
+                      ->orWhere(function ($subQ) {
+                          $subQ->whereNotNull('cancel_requested_at')
+                               ->whereNull('cancel_accepted_at')
+                               ->whereNull('cancel_rejected_at')
+                               ->whereNotIn('status', ['cancelled', 'shipped', 'completed']);
+                      });
+                })
                 ->where('status', '!=', 'cancelled')
                 ->count(),
             'cancellation_post_pack' => $this->visibleOrders()
                 ->whereNotNull('handed_to_warehouse_at')
-                ->where(fn ($q) => $q
-                    ->where('is_canceled', true)
-                    ->orWhereNotNull('cancel_requested_at')
-                )->count(),
+                ->where(function ($q) {
+                    $q->whereIn('channel_status', ['IN_CANCEL', 'Request Cancel', 'Order Request Cancel'])
+                      ->orWhereIn('channel_status_raw', ['IN_CANCEL', 'REQUEST_CANCEL', 'AWAITING_CANCEL'])
+                      ->orWhere(function ($subQ) {
+                          $subQ->whereNotNull('cancel_requested_at')
+                               ->whereNotIn('status', ['cancelled', 'shipped', 'completed']);
+                      });
+                })
+                ->where('status', '!=', 'cancelled')
+                ->count(),
             'channel-cancel'   => $this->visibleOrders()
                 ->whereIn('channel_cancel_status', ['pending', 'failed'])->count(),
             'returned'         => $this->visibleOrders()->whereHas('returns')->count(),
@@ -258,19 +273,27 @@ class SalesOrderRepository
 
     protected function applyCancellationSubScope($query, ?string $sub)
     {
+        $activeRequestCancelFilter = function ($q) {
+            $q->where(function ($inner) {
+                $inner->whereIn('channel_status', ['IN_CANCEL', 'Request Cancel', 'Order Request Cancel'])
+                      ->orWhereIn('channel_status_raw', ['IN_CANCEL', 'REQUEST_CANCEL', 'AWAITING_CANCEL'])
+                      ->orWhere(function ($subQ) {
+                          $subQ->whereNotNull('cancel_requested_at')
+                               ->whereNull('cancel_accepted_at')
+                               ->whereNull('cancel_rejected_at')
+                               ->whereNotIn('status', ['cancelled', 'shipped', 'completed']);
+                      });
+            })->where('status', '!=', 'cancelled');
+        };
+
         return match ($sub) {
-
-            'pending'   => $query->whereNotNull('cancel_requested_at')->where('status', '!=', 'cancelled'),
-
+            'pending', null => $query->where($activeRequestCancelFilter),
             'accepted'  => $query->whereNotNull('cancel_accepted_at'),
             'rejected'  => $query->whereNotNull('cancel_rejected_at'),
             'cancelled' => $query->where('status', 'cancelled'),
             'post_pack' => $query->whereNotNull('handed_to_warehouse_at')
-                ->where(fn ($q) => $q
-                    ->where('is_canceled', true)
-                    ->orWhereNotNull('cancel_requested_at')
-                ),
-            default     => $query->whereNotNull('cancel_requested_at')->where('status', '!=', 'cancelled'),
+                ->where($activeRequestCancelFilter),
+            default     => $query->where($activeRequestCancelFilter),
         };
     }
 
