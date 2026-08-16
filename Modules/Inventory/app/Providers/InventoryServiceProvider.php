@@ -14,6 +14,7 @@ use Modules\Inventory\Console\Commands\ReconcileOnOrder;
 use Modules\Inventory\Console\Commands\PurgeReversalMovements;
 use Modules\Inventory\Console\Commands\ValidateBaselineImport;
 use Modules\Inventory\Console\Commands\ImportBaselineStock;
+use Modules\Inventory\Console\Commands\ResetStock;
 
 class InventoryServiceProvider extends ModuleServiceProvider
 {
@@ -33,6 +34,7 @@ class InventoryServiceProvider extends ModuleServiceProvider
         PurgeReversalMovements::class,
         ValidateBaselineImport::class,
         ImportBaselineStock::class,
+        ResetStock::class,
     ];
 
     protected array $providers = [
