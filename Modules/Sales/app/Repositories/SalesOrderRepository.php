@@ -145,10 +145,10 @@ class SalesOrderRepository
             'failed-pick'      => $this->visibleOrders()->where('status', 'reserved')
                 ->whereNotNull('pick_failed_at')
                 ->count(),
-            'cancellation'     => $this->visibleOrders()->where(fn ($q) => $q
-                ->where('status', 'cancelled')
-                ->orWhere(fn ($q2) => $q2->whereNotNull('cancel_requested_at')->where('status', '!=', 'cancelled'))
-            )->count(),
+            'cancellation'     => $this->visibleOrders()
+                ->whereNotNull('cancel_requested_at')
+                ->where('status', '!=', 'cancelled')
+                ->count(),
             'cancellation_post_pack' => $this->visibleOrders()
                 ->whereNotNull('handed_to_warehouse_at')
                 ->where(fn ($q) => $q
@@ -268,10 +268,7 @@ class SalesOrderRepository
                     ->where('is_canceled', true)
                     ->orWhereNotNull('cancel_requested_at')
                 ),
-            default     => $query->where(fn ($q) => $q
-                ->where('status', 'cancelled')
-                ->orWhere(fn ($q2) => $q2->whereNotNull('cancel_requested_at')->where('status', '!=', 'cancelled'))
-            ),
+            default     => $query->whereNotNull('cancel_requested_at')->where('status', '!=', 'cancelled'),
         };
     }
 

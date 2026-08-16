@@ -57,7 +57,7 @@ class TikTokToInternalOrderMapper
         $deliveryOptionId = $tiktokOrder['delivery_option_id'] ?? null;
         $shippingType = $tiktokOrder['shipping_type'] ?? null;
 
-        $isCancelRequested = $channelStatus === 'CANCELLED'
+        $isCancelRequested = $channelStatus !== 'CANCELLED'
             && ! empty($tiktokOrder['cancellation_initiator'])
             && strtoupper($tiktokOrder['cancellation_initiator']) === 'BUYER';
 
