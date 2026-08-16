@@ -179,7 +179,7 @@ return [
             'nice' => 0,
         ],
         'supervisor-webhooks' => [
-            'connection' => 'redis-long',
+            'connection' => 'redis',
             'queue' => [env('QUEUE_NAME_WEBHOOK_DOWNLOADS', 'webhook-downloads'), env('QUEUE_NAME_TIKTOK_WEBHOOKS', 'tiktok-webhooks')],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',
