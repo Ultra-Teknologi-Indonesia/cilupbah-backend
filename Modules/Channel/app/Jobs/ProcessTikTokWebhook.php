@@ -213,6 +213,14 @@ class ProcessTikTokWebhook implements ShouldQueue
             return;
         }
 
+        $recentKey = "tiktok_pulled_recent:{$shopId}:{$orderId}";
+        if (Cache::has($recentKey)) {
+            Log::info("TikTok webhook {$orderId} di-debounce (sudah di-pull dalam 15 detik terakhir).");
+            $this->recordTikTokTrackingEvent($orderId, $data);
+            return;
+        }
+
+        Cache::put($recentKey, true, 15);
         $orderService->pullOrderById($shopId, $orderId);
         $this->recordTikTokTrackingEvent($orderId, $data);
     }
