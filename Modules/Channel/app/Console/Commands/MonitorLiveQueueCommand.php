@@ -45,20 +45,20 @@ class MonitorLiveQueueCommand extends Command
 
             $successRate = $totalAll > 0 ? (($processed + $skipped) / $totalAll) * 100 : 100;
 
-            $speedPerSec = 0;
+            $last1Min = DB::table('channel_webhook_inbox')
+                ->where('processed_at', '>=', now()->subMinute())
+                ->count();
+
+            $speedPerSec = round($last1Min / 60, 1);
             if ($prevProcessed !== null && $prevTime !== null) {
                 $deltaJobs = $processed - $prevProcessed;
                 $deltaTime = $currentTime - $prevTime;
                 if ($deltaTime > 0) {
-                    $speedPerSec = max(0, $deltaJobs / $deltaTime);
+                    $speedPerSec = round(max(0, $deltaJobs / $deltaTime), 1);
                 }
             }
             $prevProcessed = $processed;
             $prevTime = $currentTime;
-
-            $last1Min = DB::table('channel_webhook_inbox')
-                ->where('processed_at', '>=', now()->subMinute())
-                ->count();
 
             $latestOrders = DB::table('sales_orders')
                 ->select('salesorder_no', 'source', 'customer_name', 'created_at')
