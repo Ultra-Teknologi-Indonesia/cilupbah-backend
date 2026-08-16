@@ -60,7 +60,7 @@ return [
 
     'fast_termination' => false,
 
-    'memory_limit' => 64,
+    'memory_limit' => 256,
 
     'defaults' => [
         'supervisor-default' => [
