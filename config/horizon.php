@@ -197,46 +197,46 @@ return [
     'environments' => [
         'production' => [
             'supervisor-default' => [
-                'maxProcesses' => 10,
+                'maxProcesses' => 2,
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
             'supervisor-orders' => [
                 'minProcesses' => 2,
-                'maxProcesses' => 10,
+                'maxProcesses' => 4,
             ],
             'supervisor-fulfillment' => [
-                'minProcesses' => 2,
-                'maxProcesses' => 10,
+                'minProcesses' => 1,
+                'maxProcesses' => 2,
             ],
             'supervisor-stock-sync' => [
-                'minProcesses' => 2,
-                'maxProcesses' => 10,
+                'minProcesses' => 1,
+                'maxProcesses' => 2,
             ],
             'supervisor-channel-sync' => [
                 'minProcesses' => 1,
-                'maxProcesses' => 5,
+                'maxProcesses' => 2,
             ],
             'supervisor-failed-jobs' => [
                 'minProcesses' => 1,
-                'maxProcesses' => 3,
+                'maxProcesses' => 1,
             ],
             'supervisor-stock' => [
-                'minProcesses' => 2,
-                'maxProcesses' => 5,
+                'minProcesses' => 1,
+                'maxProcesses' => 2,
             ],
             'supervisor-downloads' => [
                 'minProcesses' => 1,
-                'maxProcesses' => 5,
+                'maxProcesses' => 1,
             ],
             'supervisor-labels' => [
                 'minProcesses' => 1,
-                'maxProcesses' => 3,
+                'maxProcesses' => 1,
             ],
             'supervisor-webhooks' => [
-                'minProcesses' => 8,
-                'maxProcesses' => 32,
-                'balanceMaxShift' => 4,
+                'minProcesses' => 6,
+                'maxProcesses' => 14,
+                'balanceMaxShift' => 2,
                 'balanceCooldown' => 1,
                 'memory' => 256,
             ],
