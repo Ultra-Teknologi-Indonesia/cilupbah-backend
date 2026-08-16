@@ -163,7 +163,18 @@ class TikTokOrderService
                 $this->dumpInstantPayloadForResearch($item, $shopId);
                 $internalData = $this->mapper->map($item, $shopId);
                 $internalData = $this->enrichTrackingFromPackages($internalData, $item, $shopCipher, $accessToken);
-                $this->orderService->upsertFromChannel($internalData);
+                $orderId = $this->orderService->upsertFromChannel($internalData);
+                if ($orderId) {
+                    try {
+                        $statement = $this->getOrderStatement($shopId, (string) $item['id']);
+                        if (! empty($statement)) {
+                            $finance = app(\Modules\Channel\Services\TikTokStatementMapper::class)->map($statement);
+                            $this->orderService->updateOrderFinance($orderId, $finance);
+                        }
+                    } catch (\Throwable $e) {
+                        // Background SyncOrderFinanceJob will fallback and retry
+                    }
+                }
                 $count++;
             } catch (\Exception $e) {
                 Log::error("Failed to pull specific order {$item['id']}: " . $e->getMessage());

@@ -68,7 +68,19 @@ class ShopeeOrderService
         }
 
         $internal = $this->mapper->map($order, $shopId, $this->instantChannelIds($shopId));
-        $this->orderService->upsertFromChannel($internal);
+        $orderId = $this->orderService->upsertFromChannel($internal);
+
+        if ($orderId) {
+            try {
+                $escrowRaw = $this->getEscrowDetail($shopId, $orderSn);
+                if (! empty($escrowRaw)) {
+                    $finance = app(\Modules\Channel\Services\ShopeeEscrowMapper::class)->map($escrowRaw);
+                    $this->orderService->updateOrderFinance($orderId, $finance);
+                }
+            } catch (\Throwable $e) {
+                // Background SyncOrderFinanceJob will fallback and retry
+            }
+        }
 
         return 1;
     }
