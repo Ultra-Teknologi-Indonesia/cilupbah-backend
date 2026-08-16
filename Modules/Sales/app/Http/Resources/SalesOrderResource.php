@@ -203,6 +203,8 @@ class SalesOrderResource extends JsonResource
             'note'                => $this->note,
             'delivery_method'     => $this->delivery_method,
             'is_cod'              => (bool) $this->is_cod,
+            'priority_fulfillment'=> (bool) $this->priority_fulfillment,
+            'is_instant'          => \Modules\Outbound\Support\InstantOrderClassifier::isInstant($this->shipping_provider, $this->shipping_type),
             'other_discount'      => (float) ($this->other_discount ?? 0),
             'shipping_discount'   => (float) ($this->shipping_discount ?? 0),
             'price_includes_tax'  => (bool) $this->price_includes_tax,
