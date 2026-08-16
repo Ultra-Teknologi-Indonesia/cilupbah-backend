@@ -224,7 +224,9 @@ class ImportBaselineStock extends Command
                     $sku = trim((string) ($raw[0] ?? ''));
                     $fileLocation = trim((string) ($raw[3] ?? '')) ?: null;
                     $bin = trim((string) ($raw[7] ?? ''));
-                    $qty = (int) ($raw[8] ?? 0);
+                    $qty = isset($raw[9]) && $raw[9] !== '' && $raw[9] !== null
+                        ? (int) $raw[9]
+                        : (int) ($raw[8] ?? 0);
                 }
 
                 if ($sku === '' || $qty <= 0) {
@@ -295,7 +297,11 @@ class ImportBaselineStock extends Command
                 $sku = trim((string) ($raw[$headerMap['sku'] ?? 0] ?? ''));
                 $fileLocation = trim((string) ($raw[$headerMap['lokasi'] ?? 3] ?? '')) ?: null;
                 $bin = trim((string) ($raw[$headerMap['no rak'] ?? 7] ?? ''));
-                $qty = (int) ($raw[$headerMap['qty on hand'] ?? 8] ?? 0);
+                $actualIdx = $headerMap['qty aktual'] ?? $headerMap['qty actual'] ?? null;
+                $onHandIdx = $headerMap['qty on hand'] ?? 8;
+                $qty = $actualIdx !== null && isset($raw[$actualIdx]) && $raw[$actualIdx] !== ''
+                    ? (int) $raw[$actualIdx]
+                    : (int) ($raw[$onHandIdx] ?? 0);
             }
 
             if ($sku === '' || $qty <= 0) {
