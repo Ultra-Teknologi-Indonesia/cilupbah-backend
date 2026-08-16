@@ -67,6 +67,7 @@ class ChannelServiceProvider extends ModuleServiceProvider
         StockReconcileCommand::class,
         StockRollbackCommand::class,
         \Modules\Channel\Console\Commands\ReplayFailedWebhooksCommand::class,
+        \Modules\Channel\Console\Commands\CleanOrderCutoverCommand::class,
     ];
 
     public function boot(): void
