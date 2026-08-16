@@ -239,7 +239,10 @@ class ReconcileOnOrder extends Command
             ->where('location_code', Location::SYSTEM_KECIL_CODE)
             ->value('id');
 
-        $orders = SalesOrder::with('items')->where('status', 'reserved')->get();
+        $orders = SalesOrder::with('items')
+            ->whereIn('status', ['pending', 'reserved', 'picked', 'packed'])
+            ->where('is_canceled', false)
+            ->get();
 
         foreach ($orders as $order) {
             $locationId = $this->resolveLocationId($order, $kecilId);

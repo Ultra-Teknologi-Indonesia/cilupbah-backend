@@ -45,6 +45,46 @@ class ChannelStockReconcileTest extends TestCase
             'updated_at' => now(),
         ]);
 
+        $channelId = Str::uuid()->toString();
+        DB::table('channels')->insert([
+            'id' => $channelId,
+            'name' => 'Lazada',
+            'code' => 'lazada',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $shopUuid = Str::uuid()->toString();
+        DB::table('channel_shops')->insert([
+            'id' => $shopUuid,
+            'channel_id' => $channelId,
+            'shop_id' => 'SHOP-1',
+            'shop_name' => 'Lazada Shop 1',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $pcmId = Str::uuid()->toString();
+        DB::table('product_channel_mappings')->insert([
+            'id' => $pcmId,
+            'channel_shop_id' => $shopUuid,
+            'product_id' => $productId,
+            'external_product_id' => 'EXT-P-1',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('product_variant_channel_mappings')->insert([
+            'id' => Str::uuid()->toString(),
+            'product_channel_mapping_id' => $pcmId,
+            'variant_id' => $this->variantId,
+            'external_sku_id' => 'SKU-RECON',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
         $kecilCode = \Modules\Warehouse\Models\Location::SYSTEM_KECIL_CODE;
         $existing = DB::table('locations')->where('location_code', $kecilCode)->value('id');
 
