@@ -127,7 +127,10 @@ class ShopeeAuthService
             );
         }
 
-        $response = $this->client->refreshAccessToken($shop->refresh_token, $shop->shop_id);
+        // Retry hingga 3x dengan jeda 1 detik untuk mengantisipasi transient network glitches dari Shopee API
+        $response = retry(3, function () use ($shop) {
+            return $this->client->refreshAccessToken($shop->refresh_token, $shop->shop_id);
+        }, 1000);
 
         $accessToken = $response['access_token'] ?? null;
         if (! $accessToken) {
@@ -186,8 +189,20 @@ class ShopeeAuthService
                 $summary['refreshed']++;
             } catch (\Throwable $e) {
                 $summary['failed']++;
-                $this->shopRepository->markIntegrationError($shop->id, $e->getMessage());
-                Log::warning('Shopee refresh token gagal', ['shop_id' => $shop->shop_id, 'error' => $e->getMessage()]);
+                $isStillValid = $shop->token_expires_at && $shop->token_expires_at->gt(now()->addMinutes(15));
+                $isPermanent = ($e instanceof ChannelTokenException && $e->permanent);
+
+                // Hanya tandai integrasi error jika token benar-benar sudah kedaluwarsa atau error permanen
+                if (! $isStillValid || $isPermanent) {
+                    $this->shopRepository->markIntegrationError($shop->id, $e->getMessage());
+                }
+
+                Log::warning('Shopee refresh token gagal', [
+                    'shop_id' => $shop->shop_id,
+                    'error' => $e->getMessage(),
+                    'is_still_valid' => $isStillValid,
+                    'is_permanent' => $isPermanent,
+                ]);
             }
         }
 

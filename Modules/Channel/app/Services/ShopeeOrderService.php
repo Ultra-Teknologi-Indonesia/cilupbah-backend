@@ -53,6 +53,11 @@ class ShopeeOrderService
             }
         }
 
+        if ($count > 0 || ! empty($orderSns)) {
+            $this->shopRepository->markIntegrationHealthy($shop->id);
+            $this->shopRepository->markOrderSyncOk($shop->id);
+        }
+
         return $count;
     }
 
@@ -81,6 +86,9 @@ class ShopeeOrderService
                 // Background SyncOrderFinanceJob will fallback and retry
             }
         }
+
+        $this->shopRepository->markIntegrationHealthy($shop->id);
+        $this->shopRepository->markOrderSyncOk($shop->id);
 
         return 1;
     }
