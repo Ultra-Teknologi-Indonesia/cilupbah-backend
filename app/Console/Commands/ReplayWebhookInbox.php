@@ -52,10 +52,15 @@ class ReplayWebhookInbox extends Command
             $known = true;
 
             match ($row->channel) {
-                'shopee' => ProcessShopeeWebhook::dispatch($payload),
+                'shopee' => (function () use ($payload) {
+                    \Illuminate\Support\Facades\Cache::forget(ProcessShopeeWebhook::idempotencyKey($payload));
+                    ProcessShopeeWebhook::dispatch($payload);
+                })(),
                 'lazada' => ProcessLazadaWebhook::dispatch($payload),
-                'tiktok' => ProcessTikTokWebhook::dispatch($payload)
-                    ->onQueue(config('queue.names.tiktok_webhooks')),
+                'tiktok' => (function () use ($payload) {
+                    \Illuminate\Support\Facades\Cache::forget(ProcessTikTokWebhook::idempotencyKey($payload));
+                    ProcessTikTokWebhook::dispatch($payload)->onQueue(config('queue.names.tiktok_webhooks'));
+                })(),
                 'woocommerce' => ProcessWooCommerceWebhook::dispatch(
                     (string) $row->shop_id,
                     (string) $row->event_type,
