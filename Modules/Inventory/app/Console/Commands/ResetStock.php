@@ -100,7 +100,7 @@ class ResetStock extends Command
 
                 $adjIds = StockAdjustment::whereIn('location_id', $locationIds)->pluck('id')->all();
                 if (! empty($adjIds)) {
-                    StockAdjustmentItem::whereIn('adjustment_id', $adjIds)->delete();
+                    StockAdjustmentItem::whereIn('stock_adjustment_id', $adjIds)->delete();
                     StockAdjustment::whereIn('id', $adjIds)->delete();
                 }
 
