@@ -153,7 +153,11 @@ class ProcessLazadaWebhook implements ShouldQueue
         $status = strtoupper((string) ($data['status'] ?? ''));
 
         if (in_array($status, ['READY_TO_SHIP', 'SHIPPED', 'DELIVERED', 'CANCELLED'], true)) {
-            $orderService->pullOrderById($sellerId, $orderId);
+            $recentKey = "lazada_pulled_recent:{$sellerId}:{$orderId}";
+            if (! Cache::has($recentKey)) {
+                Cache::put($recentKey, true, 15);
+                $orderService->pullOrderById($sellerId, $orderId);
+            }
         }
 
         $this->recordLazadaTrackingEvent($orderId, $data);
@@ -176,6 +180,15 @@ class ProcessLazadaWebhook implements ShouldQueue
 
             return;
         }
+
+        $recentKey = "lazada_pulled_recent:{$sellerId}:{$orderId}";
+        if (Cache::has($recentKey)) {
+            Log::info("Lazada webhook {$orderId} di-debounce (sudah di-pull dalam 15 detik terakhir).");
+            $this->recordLazadaTrackingEvent($orderId, $data);
+            return;
+        }
+
+        Cache::put($recentKey, true, 15);
 
         try {
             $orderService->pullOrderById($sellerId, $orderId);

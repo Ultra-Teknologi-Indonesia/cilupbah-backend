@@ -27,6 +27,7 @@ class AppServiceProvider extends ServiceProvider
 
         if (config('app.env') === 'production' || config('app.env') === 'staging') {
             \Illuminate\Support\Facades\URL::forceScheme('https');
+            \Illuminate\Support\Facades\DB::disableQueryLog();
         }
 
         \Illuminate\Support\Facades\RateLimiter::for('tiktok_api', function (object $job) {
