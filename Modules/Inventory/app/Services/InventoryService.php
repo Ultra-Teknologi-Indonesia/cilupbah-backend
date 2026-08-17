@@ -1712,6 +1712,11 @@ class InventoryService
                 throw new \Exception('Transfer tidak ditemukan.');
             }
 
+            // IDEMPOTENCY GUARD: Jika sudah berstatus RECEIVED (misal akibat double submit/retry), kembalikan sukses tanpa mutasi ulang
+            if ($transfer->status === InventoryTransfer::STATUS_RECEIVED) {
+                return $transfer;
+            }
+
             if (! in_array($transfer->status, [InventoryTransfer::STATUS_IN_TRANSIT, InventoryTransfer::STATUS_CHECKING])) {
                 throw new \Exception("Transfer berstatus {$transfer->status}, tidak bisa di-receive.");
             }
