@@ -46,37 +46,30 @@ class PurchaseOrderImportService
     {
         $spreadsheet = new Spreadsheet();
 
-        // 1. Sheet: Instruksi
         $instr = $spreadsheet->getActiveSheet();
         $instr->setTitle('Instruksi');
         $this->buildInstructionSheet($instr);
 
-        // 2. Sheet: Tata Cara Pengisian
         $tata = $spreadsheet->createSheet();
         $tata->setTitle('Tata Cara Pengisian');
         $this->buildTataCaraSheet($tata);
 
-        // 3. Sheet: Pengisian Data Pembelian
         $dataSheet = $spreadsheet->createSheet();
         $dataSheet->setTitle(self::DATA_SHEET_NAME);
         $this->buildDataSheet($dataSheet);
 
-        // 4. Sheet: Master Pemasok
         $pemasokSheet = $spreadsheet->createSheet();
         $pemasokSheet->setTitle('Master Pemasok');
         $this->buildMasterPemasokSheet($pemasokSheet);
 
-        // 5. Sheet: Master Lokasi
         $lokasiSheet = $spreadsheet->createSheet();
         $lokasiSheet->setTitle('Master Lokasi');
         $this->buildMasterLokasiSheet($lokasiSheet);
 
-        // 6. Sheet: Master Produk SKU
         $skuSheet = $spreadsheet->createSheet();
         $skuSheet->setTitle('Master Produk SKU');
         $this->buildMasterSkuSheet($skuSheet);
 
-        // 7. Sheet: Master Pajak
         $taxSheet = $spreadsheet->createSheet();
         $taxSheet->setTitle('Master Pajak');
         $this->buildMasterTaxSheet($taxSheet);
@@ -88,13 +81,20 @@ class PurchaseOrderImportService
 
     public function preview(UploadedFile $file, ?string $userId = null): array
     {
-        // 1. Store uploaded file to Object Storage
+
         $disk = self::disk();
         $storedFilename = sprintf('%s_%s.%s', date('Ymd_His'), Str::random(8), $file->getClientOriginalExtension());
         $storedPath = $file->storeAs(self::STORAGE_DIR . '/' . date('Y-m'), $storedFilename, $disk);
-        $fileUrl = Storage::disk($disk)->url($storedPath);
 
-        // 2. Record ImpexActivity
+        /** @var \Illuminate\Filesystem\FilesystemAdapter $storage */
+        $storage = Storage::disk($disk);
+        $fileUrl = null;
+        try {
+            $fileUrl = method_exists($storage, 'url') ? $storage->url($storedPath) : null;
+        } catch (\Throwable) {
+            $fileUrl = null;
+        }
+
         $activity = $this->impexActivityService->record(
             ImpexActivity::DIRECTION_IMPORT,
             'Import Pesanan Pembelian',
@@ -117,12 +117,10 @@ class PurchaseOrderImportService
         $errors = [];
         $warnings = [];
 
-        // Load master data maps via repository for O(1) in-memory lookup
         $suppliers = $this->importRepo->getActiveSuppliers()->keyBy(fn ($c) => strtolower(trim($c->name)));
         $locations = $this->importRepo->getActiveWarehouses()->keyBy(fn ($l) => strtolower(trim($l->location_name)));
         $taxes = $this->importRepo->getActiveTaxes()->keyBy(fn ($t) => strtolower(trim($t->name)));
 
-        // Load referenced SKU variants
         $skusInFile = [];
         foreach ($rows as $row) {
             $sku = trim((string) ($row['sku'] ?? $row['kode_sku'] ?? ''));
@@ -138,7 +136,6 @@ class PurchaseOrderImportService
         $payloads = [];
         $seenPoNumbers = [];
 
-        // Check existing PO numbers in bulk
         $poNumbersInFile = array_filter(array_column($groups, 'po_number'));
         $existingPoNumbersInDb = ! empty($poNumbersInFile)
             ? array_map('strtolower', $this->importRepo->getExistingPoNumbers($poNumbersInFile))
@@ -148,7 +145,6 @@ class PurchaseOrderImportService
             $headerRowNo = $group['header_row_no'];
             $groupErrors = [];
 
-            // 1. PO Number
             $rawPoNum = trim((string) ($group['po_number'] ?? ''));
             $isAutoPo = $rawPoNum === '' || strtolower($rawPoNum) === '[auto]';
             $poNumber = $isAutoPo ? null : $rawPoNum;
@@ -163,7 +159,6 @@ class PurchaseOrderImportService
                 $seenPoNumbers[$poLower] = true;
             }
 
-            // 2. Supplier
             $rawSupplier = trim((string) ($group['supplier_name'] ?? ''));
             $contact = $rawSupplier !== '' ? ($suppliers->get(strtolower($rawSupplier))) : null;
 
@@ -173,7 +168,6 @@ class PurchaseOrderImportService
                 $groupErrors[] = "Baris {$headerRowNo}: Pemasok \"{$rawSupplier}\" tidak ditemukan di sistem. Pastikan nama sesuai Master Pemasok.";
             }
 
-            // 3. Location
             $rawLocation = trim((string) ($group['location_name'] ?? ''));
             $location = $rawLocation !== '' ? ($locations->get(strtolower($rawLocation))) : null;
 
@@ -183,7 +177,6 @@ class PurchaseOrderImportService
                 $groupErrors[] = "Baris {$headerRowNo}: Lokasi \"{$rawLocation}\" tidak ditemukan di sistem. Pastikan nama sesuai Master Lokasi.";
             }
 
-            // 4. Order Date
             $rawDate = trim((string) ($group['order_date'] ?? ''));
             $orderDate = $this->parseDate($rawDate);
             if ($rawDate === '') {
@@ -192,15 +185,12 @@ class PurchaseOrderImportService
                 $groupErrors[] = "Baris {$headerRowNo}: Format tanggal \"{$rawDate}\" tidak valid (Gunakan format YYYY-MM-DD atau DD-MM-YYYY).";
             }
 
-            // 5. Tax Included
             $rawTaxInc = strtolower(trim((string) ($group['is_tax_included'] ?? '')));
             $isTaxIncluded = in_array($rawTaxInc, ['true', '1', 'ya', 'yes'], true);
 
-            // 6. Notes & Ref No
             $notes = trim((string) ($group['notes'] ?? '')) ?: null;
             $refNo = trim((string) ($group['ref_no'] ?? '')) ?: null;
 
-            // 7. Validate Items
             $validItems = [];
             $docSubTotal = 0;
             $docTotalDisc = 0;
@@ -235,7 +225,6 @@ class PurchaseOrderImportService
                 }
                 $unitPrice = (float) $rawPrice;
 
-                // Discount
                 $rawDisc = $itemLine['disc'] ?? 0;
                 $discAmount = is_numeric($rawDisc) && (float) $rawDisc >= 0 ? (float) $rawDisc : 0;
                 $lineTotal = $unitPrice * $qty;
@@ -246,7 +235,6 @@ class PurchaseOrderImportService
                     $discAmount = $lineTotal;
                 }
 
-                // Tax calculation
                 $rawTax = trim((string) ($itemLine['tax'] ?? ''));
                 $taxId = null;
                 $taxAmount = 0;

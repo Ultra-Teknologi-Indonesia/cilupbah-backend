@@ -31,7 +31,6 @@ class PurchaseOrderExportService
         return response()->stream(function () use ($query) {
             $handle = fopen('php://output', 'w');
 
-            // UTF-8 BOM
             fputs($handle, "\xEF\xBB\xBF");
 
             fputcsv($handle, [
@@ -55,10 +54,11 @@ class PurchaseOrderExportService
                         : '-';
 
                     $statusLabel = match ($order->status) {
-                        PurchaseOrder::STATUS_OPEN     => 'Aktif',
-                        PurchaseOrder::STATUS_CLOSED   => 'Selesai',
-                        PurchaseOrder::STATUS_CANCELLED=> 'Dibatalkan',
-                        default                        => ucfirst((string) $order->status),
+                        PurchaseOrder::STATUS_DRAFT            => 'Draft',
+                        PurchaseOrder::STATUS_OPEN             => 'Aktif',
+                        PurchaseOrder::STATUS_PARTIAL_RECEIVED => 'Diterima Sebagian',
+                        PurchaseOrder::STATUS_FULLY_RECEIVED   => 'Selesai',
+                        default                                => ucfirst((string) $order->status),
                     };
 
                     $billNumbers = $order->bills->pluck('bill_number')->filter()->implode(', ');
@@ -105,7 +105,6 @@ class PurchaseOrderExportService
         return response()->stream(function () use ($query) {
             $handle = fopen('php://output', 'w');
 
-            // UTF-8 BOM
             fputs($handle, "\xEF\xBB\xBF");
 
             fputcsv($handle, [

@@ -334,12 +334,11 @@ class PurchaseOrderImportExportTest extends TestCase
 
     public function test_preview_validates_form_request_rules(): void
     {
-        // 1. Missing file
+
         $res = $this->postJson('/api/v1/purchase/orders/import/preview', []);
         $res->assertStatus(422);
         $res->assertJsonStructure(['status', 'message', 'errors']);
 
-        // 2. Invalid file type (e.g. php or pdf)
         $invalidFile = UploadedFile::fake()->create('bad_file.pdf', 100, 'application/pdf');
         $res2 = $this->postJson('/api/v1/purchase/orders/import/preview', ['file' => $invalidFile]);
         $res2->assertStatus(422);

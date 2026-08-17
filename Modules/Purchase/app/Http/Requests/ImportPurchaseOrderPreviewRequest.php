@@ -23,7 +23,7 @@ class ImportPurchaseOrderPreviewRequest extends FormRequest
                 'required',
                 'file',
                 'mimes:xlsx,xls,csv,txt',
-                'max:10240', // 10MB
+                'max:10240', 
             ],
         ];
     }
