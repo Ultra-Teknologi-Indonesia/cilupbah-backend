@@ -42,18 +42,11 @@ jobs:
           php-version: "8.4"
           extensions: pdo,pdo_pgsql,pgsql,zip,gd,bcmath,exif,intl
           coverage: none
-          tools: composer:v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get Composer Cache Directory
-        id: composer-cache
-        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
-
-      - name: Cache Composer
+      - name: Cache Composer vendor
         uses: actions/cache@v4
         with:
-          path: ${{ steps.composer-cache.outputs.dir }}
+          path: vendor
           key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock') }}
           restore-keys: |
             ${{ runner.os }}-composer-
@@ -61,6 +54,9 @@ jobs:
       - name: Validate Composer
         run: composer validate --strict
 
+      # OAuth token mencegah GitHub API rate-limit (429) saat Composer
+      # mengunduh package dari codeload.github.com. Token ini otomatis
+      # tersedia di semua workflow dan tidak perlu disimpan sebagai secret.
       - name: Configure GitHub OAuth for Composer
         run: composer config -g github-oauth.github.com "${{ secrets.GITHUB_TOKEN }}"
 
@@ -135,22 +131,17 @@ jobs:
           php-version: "8.4"
           extensions: pdo,pdo_pgsql,pgsql,zip,gd,bcmath,exif,intl
           coverage: none
-          tools: composer:v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get Composer Cache Directory
-        id: composer-cache-build
-        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
-
-      - name: Cache Composer
+      - name: Cache Composer vendor
         uses: actions/cache@v4
         with:
-          path: ${{ steps.composer-cache-build.outputs.dir }}
+          path: vendor
           key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock') }}
           restore-keys: |
             ${{ runner.os }}-composer-
 
+      # OAuth token mencegah GitHub API rate-limit (429) saat Composer
+      # mengunduh package dari codeload.github.com.
       - name: Configure GitHub OAuth for Composer
         run: composer config -g github-oauth.github.com "${{ secrets.GITHUB_TOKEN }}"
 
