@@ -4,10 +4,14 @@ namespace Modules\Purchase\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
+use Modules\Purchase\Http\Requests\ExportPurchaseOrderRequest;
+use Modules\Purchase\Http\Requests\ImportPurchaseOrderConfirmRequest;
+use Modules\Purchase\Http\Requests\ImportPurchaseOrderPreviewRequest;
+use Modules\Purchase\Http\Resources\PurchaseOrderImportConfirmResource;
+use Modules\Purchase\Http\Resources\PurchaseOrderImportPreviewResource;
 use Modules\Purchase\Services\PurchaseOrderExportService;
 use Modules\Purchase\Services\PurchaseOrderImportService;
-use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx as XlsxWriter;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PurchaseOrderImportExportController extends Controller
@@ -23,7 +27,7 @@ class PurchaseOrderImportExportController extends Controller
         $filename = 'template-import-pesanan-pembelian.xlsx';
 
         return response()->streamDownload(function () use ($spreadsheet) {
-            $writer = new Xlsx($spreadsheet);
+            $writer = new XlsxWriter($spreadsheet);
             $writer->save('php://output');
         }, $filename, [
             'Content-Type'        => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -32,28 +36,32 @@ class PurchaseOrderImportExportController extends Controller
         ]);
     }
 
-    public function preview(Request $request): JsonResponse
+    public function preview(ImportPurchaseOrderPreviewRequest $request): JsonResponse
     {
-        $request->validate([
-            'file' => 'required|file|max:10240', // max 10MB
-        ]);
-
         try {
-            $result = $this->importService->preview($request->file('file'));
-            return $this->successResponse($result, 'Preview import pesanan pembelian berhasil dibuat.');
+            $result = $this->importService->preview(
+                $request->file('file'),
+                $request->user()?->id
+            );
+
+            return $this->successResponse(
+                new PurchaseOrderImportPreviewResource($result),
+                'Pratinjau import pesanan pembelian berhasil diproses.'
+            );
         } catch (\Throwable $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                $e->getMessage(),
+                422,
+                ['detail' => $e->getMessage()],
+                'Gagal Memproses Pratinjau Import'
+            );
         }
     }
 
-    public function confirm(Request $request): JsonResponse
+    public function confirm(ImportPurchaseOrderConfirmRequest $request): JsonResponse
     {
-        $request->validate([
-            'preview_token' => 'required|string',
-        ]);
-
         try {
-            $createdBy = auth()->user()?->name ?? 'system';
+            $createdBy = $request->user()?->name ?? 'system';
             $result = $this->importService->confirm($request->input('preview_token'), $createdBy);
 
             $msg = sprintf(
@@ -62,37 +70,33 @@ class PurchaseOrderImportExportController extends Controller
                 $result['failed'] > 0 ? ", {$result['failed']} gagal" : ''
             );
 
-            return $this->successResponse($result, $msg);
+            return $this->successResponse(
+                new PurchaseOrderImportConfirmResource($result),
+                $msg
+            );
         } catch (\Throwable $e) {
-            return $this->errorResponse($e->getMessage(), 422);
+            return $this->errorResponse(
+                $e->getMessage(),
+                422,
+                ['detail' => $e->getMessage()],
+                'Gagal Mengonfirmasi Import Pesanan'
+            );
         }
     }
 
-    public function exportList(Request $request): StreamedResponse
+    public function exportList(ExportPurchaseOrderRequest $request): StreamedResponse
     {
-        $filters = [
-            'location_id' => $request->query('location_id') ?: $request->query('filter.location_id'),
-            'contact_id'  => $request->query('contact_id') ?: $request->query('filter.contact_id'),
-            'status'      => $request->query('status') ?: $request->query('filter.status'),
-            'date_from'   => $request->query('date_from') ?: $request->query('filter.date_from'),
-            'date_to'     => $request->query('date_to') ?: $request->query('filter.date_to'),
-            'search'      => $request->query('search'),
-        ];
-
-        return $this->exportService->streamList($filters);
+        return $this->exportService->streamList(
+            $request->validated(),
+            $request->user()?->id
+        );
     }
 
-    public function exportDetail(Request $request): StreamedResponse
+    public function exportDetail(ExportPurchaseOrderRequest $request): StreamedResponse
     {
-        $filters = [
-            'location_id' => $request->query('location_id') ?: $request->query('filter.location_id'),
-            'contact_id'  => $request->query('contact_id') ?: $request->query('filter.contact_id'),
-            'status'      => $request->query('status') ?: $request->query('filter.status'),
-            'date_from'   => $request->query('date_from') ?: $request->query('filter.date_from'),
-            'date_to'     => $request->query('date_to') ?: $request->query('filter.date_to'),
-            'search'      => $request->query('search'),
-        ];
-
-        return $this->exportService->streamDetail($filters);
+        return $this->exportService->streamDetail(
+            $request->validated(),
+            $request->user()?->id
+        );
     }
 }

@@ -6,13 +6,11 @@ use Carbon\Carbon;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Modules\Product\Models\ProductVariant;
-use Modules\Purchase\Models\PurchaseOrder;
-use Modules\Purchase\Repositories\PurchaseOrderRepository;
-use Modules\Supplier\Models\Contact;
-use Modules\Tax\Models\Tax;
-use Modules\Warehouse\Models\Location;
+use Modules\Inventory\Models\ImpexActivity;
+use Modules\Inventory\Services\ImpexActivityService;
+use Modules\Purchase\Repositories\PurchaseOrderImportRepository;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -27,6 +25,7 @@ class PurchaseOrderImportService
     public const CACHE_TTL_MINUTES = 30;
     public const MAX_ROWS = 2000;
     public const DATA_SHEET_NAME = 'Pengisian Data Pembelian';
+    public const STORAGE_DIR = 'imports/purchase-orders';
 
     private const COLOR_REQUIRED = 'F4B183';
     private const COLOR_OPTIONAL = 'FFE699';
@@ -34,8 +33,14 @@ class PurchaseOrderImportService
 
     public function __construct(
         protected PurchaseOrderService $poService,
-        protected PurchaseOrderRepository $poRepository,
+        protected PurchaseOrderImportRepository $importRepo,
+        protected ImpexActivityService $impexActivityService,
     ) {}
+
+    public static function disk(): string
+    {
+        return (string) env('IMPORT_FILESYSTEM_DISK', config('filesystems.default', 'local'));
+    }
 
     public function generateTemplate(): Spreadsheet
     {
@@ -76,40 +81,48 @@ class PurchaseOrderImportService
         $taxSheet->setTitle('Master Pajak');
         $this->buildMasterTaxSheet($taxSheet);
 
-        $spreadsheet->setActiveSheetIndex(2); // Focus on data sheet
+        $spreadsheet->setActiveSheetIndex(2);
 
         return $spreadsheet;
     }
 
-    public function preview(UploadedFile $file): array
+    public function preview(UploadedFile $file, ?string $userId = null): array
     {
+        // 1. Store uploaded file to Object Storage
+        $disk = self::disk();
+        $storedFilename = sprintf('%s_%s.%s', date('Ymd_His'), Str::random(8), $file->getClientOriginalExtension());
+        $storedPath = $file->storeAs(self::STORAGE_DIR . '/' . date('Y-m'), $storedFilename, $disk);
+        $fileUrl = Storage::disk($disk)->url($storedPath);
+
+        // 2. Record ImpexActivity
+        $activity = $this->impexActivityService->record(
+            ImpexActivity::DIRECTION_IMPORT,
+            'Import Pesanan Pembelian',
+            $userId,
+        );
+
         $rows = $this->readDataRows($file);
 
         if (empty($rows)) {
+            $this->impexActivityService->markFailed($activity, 'File tidak memiliki baris data pada sheet ' . self::DATA_SHEET_NAME);
             throw new \Exception('Sheet "' . self::DATA_SHEET_NAME . '" kosong atau tidak ditemukan data.');
         }
 
         if (count($rows) > self::MAX_ROWS) {
-            throw new \Exception('Maksimal ' . self::MAX_ROWS . ' baris data per file. File berisi ' . count($rows) . ' baris.');
+            $msg = 'Maksimal ' . self::MAX_ROWS . ' baris data per file. File berisi ' . count($rows) . ' baris.';
+            $this->impexActivityService->markFailed($activity, $msg);
+            throw new \Exception($msg);
         }
 
         $errors = [];
         $warnings = [];
 
-        // Load master data maps for O(1) in-memory lookup
-        $suppliers = Contact::whereIn('type', [Contact::TYPE_SUPPLIER, Contact::TYPE_BOTH])
-            ->get(['id', 'name', 'phone', 'email'])
-            ->keyBy(fn ($c) => strtolower(trim($c->name)));
+        // Load master data maps via repository for O(1) in-memory lookup
+        $suppliers = $this->importRepo->getActiveSuppliers()->keyBy(fn ($c) => strtolower(trim($c->name)));
+        $locations = $this->importRepo->getActiveWarehouses()->keyBy(fn ($l) => strtolower(trim($l->location_name)));
+        $taxes = $this->importRepo->getActiveTaxes()->keyBy(fn ($t) => strtolower(trim($t->name)));
 
-        $locations = Location::where('is_warehouse', true)
-            ->get(['id', 'location_name', 'location_code'])
-            ->keyBy(fn ($l) => strtolower(trim($l->location_name)));
-
-        $taxes = Tax::where('is_active', true)
-            ->get(['id', 'name', 'rate'])
-            ->keyBy(fn ($t) => strtolower(trim($t->name)));
-
-        // Load all SKU variants referenced in rows
+        // Load referenced SKU variants
         $skusInFile = [];
         foreach ($rows as $row) {
             $sku = trim((string) ($row['sku'] ?? $row['kode_sku'] ?? ''));
@@ -117,16 +130,19 @@ class PurchaseOrderImportService
                 $skusInFile[] = $sku;
             }
         }
-        $variants = ProductVariant::with('product:id,name')
-            ->whereIn('sku', array_unique($skusInFile))
-            ->get()
-            ->keyBy(fn ($v) => strtolower(trim($v->sku)));
+        $variants = $this->importRepo->getVariantsBySkus($skusInFile)->keyBy(fn ($v) => strtolower(trim($v->sku)));
 
         $groups = $this->groupRows($rows);
 
         $documents = [];
         $payloads = [];
         $seenPoNumbers = [];
+
+        // Check existing PO numbers in bulk
+        $poNumbersInFile = array_filter(array_column($groups, 'po_number'));
+        $existingPoNumbersInDb = ! empty($poNumbersInFile)
+            ? array_map('strtolower', $this->importRepo->getExistingPoNumbers($poNumbersInFile))
+            : [];
 
         foreach ($groups as $group) {
             $headerRowNo = $group['header_row_no'];
@@ -141,7 +157,7 @@ class PurchaseOrderImportService
                 $poLower = strtolower($poNumber);
                 if (isset($seenPoNumbers[$poLower])) {
                     $groupErrors[] = "Baris {$headerRowNo}: No. Pesanan \"{$poNumber}\" duplikat di dalam file.";
-                } elseif (PurchaseOrder::where('po_number', $poNumber)->exists()) {
+                } elseif (in_array($poLower, $existingPoNumbersInDb, true)) {
                     $groupErrors[] = "Baris {$headerRowNo}: No. Pesanan \"{$poNumber}\" sudah terdaftar di sistem.";
                 }
                 $seenPoNumbers[$poLower] = true;
@@ -219,12 +235,11 @@ class PurchaseOrderImportService
                 }
                 $unitPrice = (float) $rawPrice;
 
-                // Discount (amount in rupiah or percentage)
+                // Discount
                 $rawDisc = $itemLine['disc'] ?? 0;
                 $discAmount = is_numeric($rawDisc) && (float) $rawDisc >= 0 ? (float) $rawDisc : 0;
                 $lineTotal = $unitPrice * $qty;
 
-                // Calculate discount percentage if discAmount is given as nominal
                 $discPercent = $lineTotal > 0 ? round(($discAmount / $lineTotal) * 100, 4) : 0;
                 if ($discPercent > 100) {
                     $discPercent = 100;
@@ -239,7 +254,6 @@ class PurchaseOrderImportService
                 if ($rawTax !== '' && strtolower($rawTax) !== 'no tax' && strtolower($rawTax) !== 'tanpa pajak') {
                     $taxModel = $taxes->get(strtolower($rawTax));
                     if (! $taxModel) {
-                        // Attempt fallback lookup matching partial rate or name (e.g. "PPN 11%", "PPN 12%", "PPN")
                         $matched = $taxes->first(fn ($t) => str_contains(strtolower($t->name), strtolower($rawTax)) || str_contains(strtolower($rawTax), strtolower($t->name)));
                         if ($matched) {
                             $taxModel = $matched;
@@ -347,17 +361,19 @@ class PurchaseOrderImportService
         $token = 'imp_po_' . Str::uuid()->toString();
 
         $summary = [
-            'total_rows'  => count($rows),
-            'total_docs'  => count($documents),
-            'valid_docs'  => count($payloads),
+            'total_rows'   => count($rows),
+            'total_docs'   => count($documents),
+            'valid_docs'   => count($payloads),
             'invalid_docs' => count($documents) - count($payloads),
-            'errors'      => count($errors),
-            'warnings'    => count($warnings),
+            'errors'       => count($errors),
+            'warnings'     => count($warnings),
         ];
 
         Cache::put(self::CACHE_PREFIX . $token, [
-            'payloads' => $payloads,
-            'summary'  => $summary,
+            'payloads'         => $payloads,
+            'summary'          => $summary,
+            'impex_activity_id'=> $activity->id,
+            'file_url'         => $fileUrl,
         ], now()->addMinutes(self::CACHE_TTL_MINUTES));
 
         return [
@@ -387,9 +403,20 @@ class PurchaseOrderImportService
             throw new \Exception('Preview token kadaluarsa atau tidak ditemukan. Silakan upload ulang file Excel.');
         }
 
+        $activityId = $preview['impex_activity_id'] ?? null;
+        $fileUrl = $preview['file_url'] ?? null;
+        $activity = $activityId ? ImpexActivity::find($activityId) : null;
+
         $payloads = $preview['payloads'] ?? [];
         if (empty($payloads)) {
+            if ($activity) {
+                $this->impexActivityService->markFailed($activity, 'Tidak ada data pesanan pembelian valid untuk di-import.');
+            }
             throw new \Exception('Tidak ada data pesanan pembelian valid untuk di-import.');
+        }
+
+        if ($activity) {
+            $this->impexActivityService->markProcessing($activity, 20);
         }
 
         $created = 0;
@@ -413,6 +440,14 @@ class PurchaseOrderImportService
             }
         }
 
+        if ($activity) {
+            if ($failed > 0 && $created === 0) {
+                $this->impexActivityService->markFailed($activity, implode('; ', $errors));
+            } else {
+                $this->impexActivityService->markSuccess($activity, $fileUrl);
+            }
+        }
+
         $this->forgetPreview($token);
 
         return [
@@ -429,14 +464,13 @@ class PurchaseOrderImportService
         $current = null;
 
         foreach ($rows as $idx => $row) {
-            $rowNo = $idx + 2; // 1-based, skipping header row 1
+            $rowNo = $idx + 2;
 
             $poRaw = trim((string) ($row['no_pesanan'] ?? $row['no._pesanan'] ?? $row['po_number'] ?? ''));
             $supRaw = trim((string) ($row['nama_pemasok'] ?? $row['pemasok'] ?? $row['supplier_name'] ?? ''));
             $locRaw = trim((string) ($row['lokasi'] ?? $row['location_name'] ?? ''));
             $dateRaw = trim((string) ($row['tanggal'] ?? $row['order_date'] ?? ''));
 
-            // A new group starts if PO Number is present OR if Supplier/Location/Date is present
             $isNewHeader = ($poRaw !== '') || ($supRaw !== '' && $locRaw !== '');
 
             if ($isNewHeader || $current === null) {
@@ -460,7 +494,6 @@ class PurchaseOrderImportService
                 ];
             }
 
-            // Add item line
             $current['items'][] = [
                 'row_no' => $rowNo,
                 'sku'    => $row['sku'] ?? $row['kode_sku'] ?? '',
@@ -482,7 +515,7 @@ class PurchaseOrderImportService
     {
         $ext = strtolower($file->getClientOriginalExtension());
 
-        if ($ext === 'csv') {
+        if ($ext === 'csv' || $ext === 'txt') {
             return $this->readCsvRows($file);
         }
 
@@ -540,7 +573,6 @@ class PurchaseOrderImportService
             return [];
         }
 
-        // Remove BOM if present
         if (isset($rawHeader[0])) {
             $rawHeader[0] = preg_replace('/^\xEF\xBB\xBF/', '', $rawHeader[0]);
         }
@@ -707,15 +739,13 @@ class PurchaseOrderImportService
             $sheet->getStyle("{$col}1")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
         }
 
-        // Set text format for phone, SKU, and date columns
         foreach (['A', 'B', 'C', 'G', 'K'] as $col) {
             $sheet->getStyle("{$col}2:{$col}1000")->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_TEXT);
         }
 
-        // Sample Data: PO 1 with 2 items, PO 2 with 1 item
-        $supplierExample = Contact::where('type', Contact::TYPE_SUPPLIER)->value('name') ?? 'Pemasok Contoh';
-        $locationExample = Location::where('is_warehouse', true)->value('location_name') ?? 'Pusat';
-        $variantsExample = ProductVariant::take(3)->pluck('sku')->toArray();
+        $supplierExample = $this->importRepo->getActiveSuppliers()->first()?->name ?? 'Pemasok Contoh';
+        $locationExample = $this->importRepo->getActiveWarehouses()->first()?->location_name ?? 'Pusat';
+        $variantsExample = $this->importRepo->getMasterSkuList(3)->pluck('sku')->toArray();
         $sku1 = $variantsExample[0] ?? 'SKU-CONTOH-01';
         $sku2 = $variantsExample[1] ?? 'SKU-CONTOH-02';
         $sku3 = $variantsExample[2] ?? 'SKU-CONTOH-03';
@@ -757,9 +787,7 @@ class PurchaseOrderImportService
             $sheet->getStyle("{$col}2")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB(self::COLOR_HEADER);
         }
 
-        $contacts = Contact::whereIn('type', [Contact::TYPE_SUPPLIER, Contact::TYPE_BOTH])
-            ->orderBy('name')
-            ->get(['name', 'phone', 'email', 'code']);
+        $contacts = $this->importRepo->getActiveSuppliers();
 
         $r = 3;
         foreach ($contacts as $c) {
@@ -788,9 +816,7 @@ class PurchaseOrderImportService
             $sheet->getStyle("{$col}2")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB(self::COLOR_HEADER);
         }
 
-        $locations = Location::where('is_warehouse', true)
-            ->orderBy('location_name')
-            ->get(['location_name', 'location_code', 'location_type']);
+        $locations = $this->importRepo->getActiveWarehouses();
 
         $r = 3;
         foreach ($locations as $loc) {
@@ -818,10 +844,7 @@ class PurchaseOrderImportService
             $sheet->getStyle("{$col}2")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB(self::COLOR_HEADER);
         }
 
-        $variants = ProductVariant::with('product:id,name')
-            ->orderBy('sku')
-            ->take(3000)
-            ->get(['sku', 'product_id', 'barcode', 'buy_price']);
+        $variants = $this->importRepo->getMasterSkuList(3000);
 
         $r = 3;
         foreach ($variants as $v) {
@@ -850,7 +873,7 @@ class PurchaseOrderImportService
             $sheet->getStyle("{$col}2")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB(self::COLOR_HEADER);
         }
 
-        $taxes = Tax::where('is_active', true)->orderBy('rate')->get();
+        $taxes = $this->importRepo->getActiveTaxes();
 
         $r = 3;
         $sheet->setCellValue("A{$r}", 'No Tax');

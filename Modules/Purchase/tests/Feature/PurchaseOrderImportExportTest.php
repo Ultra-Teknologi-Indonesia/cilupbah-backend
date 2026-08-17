@@ -199,7 +199,7 @@ class PurchaseOrderImportExportTest extends TestCase
                 'catatan' => '',
                 'sku' => 'SKU-GAIB-999',
                 'harga' => 25000,
-                'qty' => 0, // invalid qty
+                'qty' => 0, 
                 'diskon' => 0,
                 'pajak' => 'No Tax',
             ],
@@ -330,6 +330,47 @@ class PurchaseOrderImportExportTest extends TestCase
         $this->assertStringContainsString('PT Sumber Berkah', $csvContent);
         $this->assertStringContainsString('25000', $csvContent);
         $this->assertStringContainsString('10', $csvContent);
+    }
+
+    public function test_preview_validates_form_request_rules(): void
+    {
+        // 1. Missing file
+        $res = $this->postJson('/api/v1/purchase/orders/import/preview', []);
+        $res->assertStatus(422);
+        $res->assertJsonStructure(['status', 'message', 'errors']);
+
+        // 2. Invalid file type (e.g. php or pdf)
+        $invalidFile = UploadedFile::fake()->create('bad_file.pdf', 100, 'application/pdf');
+        $res2 = $this->postJson('/api/v1/purchase/orders/import/preview', ['file' => $invalidFile]);
+        $res2->assertStatus(422);
+    }
+
+    public function test_preview_stores_file_and_records_activity(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('local');
+
+        $file = $this->createExcelImportFile([
+            [
+                'no_pesanan'   => 'PO-IMP-REC-01',
+                'nama_pemasok' => 'PT Sumber Berkah',
+                'lokasi'       => 'Pusat',
+                'tanggal'      => '2026-08-17',
+                'tax_inc'      => 'FALSE',
+                'sku'          => 'CASE-SIL-BLK',
+                'harga'        => 25000,
+                'qty'          => 10,
+                'diskon'       => 0,
+                'pajak'        => 'No Tax',
+            ],
+        ]);
+
+        $response = $this->post('/api/v1/purchase/orders/import/preview', ['file' => $file]);
+        $response->assertStatus(200);
+
+        $this->assertDatabaseHas('impex_activities', [
+            'direction'     => 'import',
+            'activity_type' => 'Import Pesanan Pembelian',
+        ]);
     }
 
     private function createExcelImportFile(array $dataRows): UploadedFile
