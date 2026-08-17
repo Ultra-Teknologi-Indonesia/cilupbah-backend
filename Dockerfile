@@ -80,8 +80,11 @@ WORKDIR /var/www/html
 # Copy entire Laravel application
 COPY . .
 
+ARG GITHUB_TOKEN=""
+
 # Install PHP dependencies
-RUN composer install \
+RUN if [ -n "$GITHUB_TOKEN" ]; then composer config -g github-oauth.github.com "$GITHUB_TOKEN"; fi \
+    && composer install \
     --no-dev \
     --prefer-dist \
     --optimize-autoloader \
