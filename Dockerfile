@@ -80,18 +80,17 @@ WORKDIR /var/www/html
 # Copy entire Laravel application
 COPY . .
 
-ARG GITHUB_TOKEN=""
-
-# Install PHP dependencies
-RUN if [ -n "$GITHUB_TOKEN" ]; then composer config -g github-oauth.github.com "$GITHUB_TOKEN"; fi \
-    && composer install \
-    --no-dev \
-    --prefer-dist \
-    --optimize-autoloader \
-    --classmap-authoritative \
-    --no-interaction \
-    --no-progress \
-    && composer clear-cache
+# Install PHP dependencies if not already present
+RUN if [ ! -d "vendor" ] || [ ! -f "vendor/autoload.php" ]; then \
+        composer install \
+        --no-dev \
+        --prefer-dist \
+        --optimize-autoloader \
+        --classmap-authoritative \
+        --no-interaction \
+        --no-progress \
+        && composer clear-cache; \
+    fi
 
 # Copy frontend build (overwrite local build if any)
 COPY --from=frontend /app/public/build ./public/build

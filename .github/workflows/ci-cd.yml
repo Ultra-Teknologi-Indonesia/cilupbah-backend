@@ -119,6 +119,24 @@ jobs:
           git tag ${{ steps.version.outputs.new_tag }}
           git push origin ${{ steps.version.outputs.new_tag }}
 
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          extensions: pdo,pdo_pgsql,pgsql,zip,gd,bcmath,exif,intl
+          coverage: none
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-composer-prod-${{ hashFiles('composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-prod-
+
+      - name: Install Production Composer Dependencies
+        run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --classmap-authoritative --no-progress
+
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -134,8 +152,6 @@ jobs:
         with:
           context: .
           push: true
-          build-args: |
-            GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           tags: |
