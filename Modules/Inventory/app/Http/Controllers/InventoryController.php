@@ -151,65 +151,27 @@ class InventoryController extends Controller
             new OA\Parameter(name: 'itemId', in: 'path', required: true, description: 'ID of the item', schema: new OA\Schema(type: 'string'))
         ],
         responses: [
-            new OA\Response(response: 200, description: 'Detail stok per bin berhasil diambil.'),
-            new OA\Response(response: 404, description: 'Item tidak ditemukan.'),
+            new OA\Response(
+                response: 200,
+                description: 'Successful operation',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'data', type: 'array', items: new OA\Items(ref: '#/components/schemas/InventoryStock')),
+                        new OA\Property(property: 'message', type: 'string', example: 'Detail stok per item berhasil diambil')
+                    ]
+                )
+            ),
+            new OA\Response(response: 401, description: 'Unauthenticated')
         ]
     )]
     public function show(string $itemId): JsonResponse
     {
         $stocks = $this->inventoryService->getStockByItem($itemId);
 
-        return $this->successResponse($stocks, 'Detail stok per bin berhasil diambil.');
-    }
-
-    #[OA\Get(
-        path: '/api/v1/inventory/stock-overview',
-        summary: 'Get aggregated stock positions for item IDs across all locations',
-        security: [['bearerAuth' => []]],
-        tags: ['Inventory'],
-        parameters: [
-            new OA\Parameter(
-                name: 'item_ids',
-                in: 'query',
-                required: true,
-                description: 'Comma-separated item IDs',
-                schema: new OA\Schema(type: 'string', example: 'uuid-1,uuid-2')
-            ),
-        ],
-        responses: [
-            new OA\Response(
-                response: 200,
-                description: 'Overview stok berhasil diambil',
-                content: new OA\JsonContent(
-                    properties: [
-                        new OA\Property(property: 'status', type: 'string', example: 'success'),
-                        new OA\Property(property: 'data', type: 'object', example: [
-                            'item-id-1' => [
-                                'total_on_hand' => 100,
-                                'total_allocated' => 20,
-                                'total_available' => 80,
-                                'locations' => [
-                                    ['location_id' => 'loc-1', 'location_name' => 'Gudang Utama', 'on_hand' => 100, 'allocated' => 20, 'available' => 80],
-                                ],
-                            ],
-                        ]),
-                    ]
-                )
-            ),
-            new OA\Response(response: 422, description: 'Parameter item_ids wajib diisi'),
-        ]
-    )]
-    public function stockOverview(Request $request): JsonResponse
-    {
-        $rawItemIds = $request->query('item_ids');
-        if (empty($rawItemIds)) {
-            return $this->errorResponse('Parameter item_ids wajib diisi', 422);
-        }
-
-        $itemIds = is_array($rawItemIds) ? $rawItemIds : array_filter(explode(',', (string) $rawItemIds));
-        $overview = $this->inventoryService->getStockOverview($itemIds);
-
-        return $this->successResponse($overview, 'Overview stok berhasil diambil');
+        return $this->successResponse(
+            \Modules\Inventory\Http\Resources\InventoryStockResource::collectionWithActual($stocks),
+            'Detail stok per item berhasil diambil'
+        );
     }
 
     #[OA\Get(
