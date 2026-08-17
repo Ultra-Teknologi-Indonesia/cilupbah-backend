@@ -86,7 +86,6 @@ class PurchaseOrderImportService
         $storedFilename = sprintf('%s_%s.%s', date('Ymd_His'), Str::random(8), $file->getClientOriginalExtension());
         $storedPath = $file->storeAs(self::STORAGE_DIR . '/' . date('Y-m'), $storedFilename, $disk);
 
-        /** @var \Illuminate\Filesystem\FilesystemAdapter $storage */
         $storage = Storage::disk($disk);
         $fileUrl = null;
         try {
@@ -385,65 +384,75 @@ class PurchaseOrderImportService
 
     public function confirm(string $token, string $createdBy): array
     {
-        $preview = $this->getPreview($token);
+        $lock = Cache::lock("confirm_po_import:{$token}", 60);
 
-        if (! $preview) {
-            throw new \Exception('Preview token kadaluarsa atau tidak ditemukan. Silakan upload ulang file Excel.');
+        if (! $lock->get()) {
+            throw new \Exception('Proses import untuk data ini sedang berjalan. Harap tunggu hingga selesai.');
         }
 
-        $activityId = $preview['impex_activity_id'] ?? null;
-        $fileUrl = $preview['file_url'] ?? null;
-        $activity = $activityId ? ImpexActivity::find($activityId) : null;
+        try {
+            $preview = $this->getPreview($token);
 
-        $payloads = $preview['payloads'] ?? [];
-        if (empty($payloads)) {
+            if (! $preview) {
+                throw new \Exception('Preview token kadaluarsa atau sudah diproses. Silakan upload ulang file Excel.');
+            }
+
+            $this->forgetPreview($token);
+
+            $activityId = $preview['impex_activity_id'] ?? null;
+            $fileUrl = $preview['file_url'] ?? null;
+            $activity = $activityId ? ImpexActivity::find($activityId) : null;
+
+            $payloads = $preview['payloads'] ?? [];
+            if (empty($payloads)) {
+                if ($activity) {
+                    $this->impexActivityService->markFailed($activity, 'Tidak ada data pesanan pembelian valid untuk di-import.');
+                }
+                throw new \Exception('Tidak ada data pesanan pembelian valid untuk di-import.');
+            }
+
             if ($activity) {
-                $this->impexActivityService->markFailed($activity, 'Tidak ada data pesanan pembelian valid untuk di-import.');
+                $this->impexActivityService->markProcessing($activity, 20);
             }
-            throw new \Exception('Tidak ada data pesanan pembelian valid untuk di-import.');
-        }
 
-        if ($activity) {
-            $this->impexActivityService->markProcessing($activity, 20);
-        }
+            $created = 0;
+            $failed = 0;
+            $poNumbers = [];
+            $errors = [];
 
-        $created = 0;
-        $failed = 0;
-        $poNumbers = [];
-        $errors = [];
+            foreach ($payloads as $idx => $payload) {
+                $label = $payload['po_number'] ?? '(Otomatis #' . ($idx + 1) . ')';
+                try {
+                    DB::transaction(function () use ($payload, $createdBy, &$poNumbers) {
+                        $payload['created_by'] = $createdBy;
+                        $po = $this->poService->create($payload);
+                        $poNumbers[] = $po->po_number;
+                    });
 
-        foreach ($payloads as $idx => $payload) {
-            $label = $payload['po_number'] ?? '(Otomatis #' . ($idx + 1) . ')';
-            try {
-                DB::transaction(function () use ($payload, $createdBy, &$poNumbers) {
-                    $payload['created_by'] = $createdBy;
-                    $po = $this->poService->create($payload);
-                    $poNumbers[] = $po->po_number;
-                });
-
-                $created++;
-            } catch (\Throwable $e) {
-                $failed++;
-                $errors[] = "Pesanan {$label}: " . $e->getMessage();
+                    $created++;
+                } catch (\Throwable $e) {
+                    $failed++;
+                    $errors[] = "Pesanan {$label}: " . $e->getMessage();
+                }
             }
-        }
 
-        if ($activity) {
-            if ($failed > 0 && $created === 0) {
-                $this->impexActivityService->markFailed($activity, implode('; ', $errors));
-            } else {
-                $this->impexActivityService->markSuccess($activity, $fileUrl);
+            if ($activity) {
+                if ($failed > 0 && $created === 0) {
+                    $this->impexActivityService->markFailed($activity, implode('; ', $errors));
+                } else {
+                    $this->impexActivityService->markSuccess($activity, $fileUrl);
+                }
             }
+
+            return [
+                'created'    => $created,
+                'failed'     => $failed,
+                'po_numbers' => $poNumbers,
+                'errors'     => $errors,
+            ];
+        } finally {
+            $lock->release();
         }
-
-        $this->forgetPreview($token);
-
-        return [
-            'created'    => $created,
-            'failed'     => $failed,
-            'po_numbers' => $poNumbers,
-            'errors'     => $errors,
-        ];
     }
 
     protected function groupRows(array $rows): array
