@@ -38,7 +38,7 @@ class StockAdjustmentController extends Controller
     )]
     public function index(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
         $adjustments = $this->adjustmentService->getAllPaginated($limit);
 
         return $this->successPaginatedResponse($adjustments, 'Daftar dokumen adjustment berhasil diambil.');
@@ -88,7 +88,7 @@ class StockAdjustmentController extends Controller
     )]
     public function items(Request $request, string $id): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
         $items = $this->adjustmentService->getItemsPaginated($id, $limit);
 
         return $this->successPaginatedResponse($items, 'Daftar item berhasil diambil.');

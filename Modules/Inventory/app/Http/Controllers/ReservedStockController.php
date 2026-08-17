@@ -35,7 +35,7 @@ class ReservedStockController extends Controller
     )]
     public function index(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
         $reservedStocks = $this->reservedStockService->getAllPaginated($limit);
 
         $reservedStocks->getCollection()->transform(

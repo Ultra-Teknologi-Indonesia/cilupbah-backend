@@ -274,7 +274,7 @@ class InventoryTransactionController extends Controller
     )]
     public function transitList(\Illuminate\Http\Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
         $transfers = $this->inventoryService->getTransfersPaginated(['status' => 'IN_TRANSIT'], $limit);
 
         return $this->successPaginatedResponse($transfers, 'Daftar barang dalam perjalanan (Transit).');
@@ -365,7 +365,7 @@ class InventoryTransactionController extends Controller
     )]
     public function transfersList(\Illuminate\Http\Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
         $transfers = $this->inventoryService->getTransfersPaginated([], $limit);
 
         return $this->successPaginatedResponse($transfers, 'Daftar semua dokumen transfer.');
@@ -478,7 +478,7 @@ class InventoryTransactionController extends Controller
     )]
     public function finishedList(\Illuminate\Http\Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
         $transfers = $this->inventoryService->getTransfersPaginated(['status' => 'RECEIVED'], $limit);
 
         return $this->successPaginatedResponse($transfers, 'Daftar transfer yang sudah selesai diterima.');
@@ -486,7 +486,7 @@ class InventoryTransactionController extends Controller
 
     public function draftList(\Illuminate\Http\Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
 
         $transfers = $this->inventoryService->getTransfersPaginated(['statuses' => ['DRAFT', 'APPROVED']], $limit);
 
@@ -495,7 +495,7 @@ class InventoryTransactionController extends Controller
 
     public function approvedList(\Illuminate\Http\Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
         $transfers = $this->inventoryService->getTransfersPaginated(['status' => 'APPROVED'], $limit);
 
         return $this->successPaginatedResponse($transfers, 'Daftar transfer approved (siap dikirim).');
@@ -506,7 +506,7 @@ class InventoryTransactionController extends Controller
         $transfers = $this->inventoryService->getIncomingTransfersPaginated(
             $request->input('filter.status'),
             $request->query('location_id'),
-            (int) $request->query('limit', 10),
+            (int) ($request->query('per_page') ?? $request->query('limit') ?? 20),
         );
 
         return $this->successPaginatedResponse($transfers, 'Daftar transfer masuk.');
@@ -516,7 +516,7 @@ class InventoryTransactionController extends Controller
     {
         $transfers = $this->inventoryService->getOutgoingTransfersPaginated(
             $request->query('location_id'),
-            (int) $request->query('limit', 10),
+            (int) ($request->query('per_page') ?? $request->query('limit') ?? 20),
         );
 
         return $this->successPaginatedResponse($transfers, 'Daftar transfer keluar (dalam perjalanan).');

@@ -98,7 +98,7 @@ class PutawayController extends Controller
 
         $this->forceMobileScopeToAuth($request, 'assigned_to');
 
-        $limit = $request->query('limit', 10);
+        $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
         $putaways = $this->putawayService->getAllPaginated($limit);
 
         return $this->successPaginatedResponse($putaways, 'Daftar putaway berhasil diambil.');
@@ -198,7 +198,7 @@ class PutawayController extends Controller
     private function listByStatus(Request $request, string $status, string $message): JsonResponse
     {
         $this->forceMobileScopeToAuth($request, 'assigned_to');
-        $limit = $request->query('limit', 10);
+        $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
         $putaways = $this->putawayService->getByStatus($status, $limit);
 
         return $this->successPaginatedResponse($putaways, $message);
@@ -249,7 +249,7 @@ class PutawayController extends Controller
     public function items(Request $request, string $id): JsonResponse
     {
         try {
-            $limit = $request->query('limit', 10);
+            $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
             $items = $this->putawayService->getItems($id, $limit);
 
             return $this->successPaginatedResponse($items, 'Daftar item putaway berhasil diambil.');

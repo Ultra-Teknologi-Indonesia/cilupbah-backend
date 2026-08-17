@@ -173,7 +173,7 @@ class SalesInvoiceController extends Controller
     )]
     public function forReturnWms(string $contactId, Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
         $invoices = $this->invoiceService->getForReturnWms($contactId, $limit);
 
         return $this->successPaginatedResponse($invoices, 'Daftar invoice untuk return');

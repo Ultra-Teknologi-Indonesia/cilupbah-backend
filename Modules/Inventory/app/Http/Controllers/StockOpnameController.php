@@ -91,7 +91,7 @@ class StockOpnameController extends Controller
     )]
     public function index(Request $request): JsonResponse
     {
-        $limit = $request->query('limit', 10);
+        $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
         $opnames = $this->opnameService->getAllPaginated($limit);
 
         return $this->successPaginatedResponse($opnames, 'Daftar stock opname berhasil diambil.');
@@ -225,7 +225,7 @@ class StockOpnameController extends Controller
             return $this->errorResponse('Dokumen stock opname tidak ditemukan.', 404);
         }
 
-        $limit = $request->query('limit', 10);
+        $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
         $items = $this->opnameService->getItemsPaginated($id, $limit);
 
         return $this->successPaginatedResponse($items, 'Daftar item opname berhasil diambil.');
@@ -419,7 +419,7 @@ class StockOpnameController extends Controller
             return $this->errorResponse('Dokumen stock opname tidak ditemukan.', 404);
         }
 
-        $limit = $request->query('limit', 10);
+        $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
         $rackFilters = $request->only(['floor_code', 'row_code', 'column_code', 'bin_id']);
         $items = $this->opnameService->getItemsFilteredByRack($id, $rackFilters, $limit);
 
