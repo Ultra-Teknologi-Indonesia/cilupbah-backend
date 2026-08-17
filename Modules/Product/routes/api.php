@@ -19,11 +19,13 @@ use Modules\Product\Http\Controllers\ProductPantauanController;
 use Modules\Product\Http\Controllers\ProductUploadListingController;
 use Modules\Product\Http\Controllers\RaiseProductController;
 use Modules\Product\Http\Controllers\VariantController;
-use Modules\Product\Http\Controllers\PriceListController;
 use Modules\Product\Http\Controllers\CatalogController;
 use Modules\Product\Http\Controllers\ProductMasterDataController;
+use Modules\Product\Http\Controllers\ProductPickerFeedController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
+
+    Route::get('products/picker', [ProductPickerFeedController::class, 'index']);
 
     Route::get('products/master-data/sales-taxes', [ProductMasterDataController::class, 'salesTaxes'])->middleware('role_or_permission:owner|view-produk');
     Route::get('products/master-data/purchase-taxes', [ProductMasterDataController::class, 'purchaseTaxes'])->middleware('role_or_permission:owner|view-produk');
