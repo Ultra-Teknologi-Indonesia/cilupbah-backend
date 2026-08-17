@@ -202,20 +202,20 @@ return [
                 'balanceCooldown' => 3,
             ],
             'supervisor-orders' => [
-                'minProcesses' => 2,
-                'maxProcesses' => 4,
+                'minProcesses' => 1,
+                'maxProcesses' => 2,
             ],
             'supervisor-fulfillment' => [
                 'minProcesses' => 1,
-                'maxProcesses' => 2,
+                'maxProcesses' => 1,
             ],
             'supervisor-stock-sync' => [
                 'minProcesses' => 1,
-                'maxProcesses' => 2,
+                'maxProcesses' => 1,
             ],
             'supervisor-channel-sync' => [
                 'minProcesses' => 1,
-                'maxProcesses' => 2,
+                'maxProcesses' => 1,
             ],
             'supervisor-failed-jobs' => [
                 'minProcesses' => 1,
@@ -223,7 +223,7 @@ return [
             ],
             'supervisor-stock' => [
                 'minProcesses' => 1,
-                'maxProcesses' => 2,
+                'maxProcesses' => 1,
             ],
             'supervisor-downloads' => [
                 'minProcesses' => 1,
@@ -234,9 +234,9 @@ return [
                 'maxProcesses' => 1,
             ],
             'supervisor-webhooks' => [
-                'minProcesses' => 6,
-                'maxProcesses' => 14,
-                'balanceMaxShift' => 2,
+                'minProcesses' => 2,
+                'maxProcesses' => 4,
+                'balanceMaxShift' => 1,
                 'balanceCooldown' => 1,
                 'memory' => 256,
             ],

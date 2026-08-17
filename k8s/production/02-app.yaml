@@ -5,6 +5,14 @@ metadata:
   namespace: cilupbah
 spec:
   replicas: 2
+  # ── Zero-downtime deploy ──
+  # maxUnavailable: 0 → pod lama WAJIB tetap Running sampai pod baru Ready.
+  # maxSurge: 1     → hanya 1 pod ekstra (hemat RAM) selama transisi.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: cilupbah-app
@@ -32,18 +40,26 @@ spec:
             limits:
               memory: "2Gi"
               cpu: "500m"
+          # ── Readiness: kapan pod menerima traffic ──
           readinessProbe:
             httpGet:
               path: /
               port: 8000
-            initialDelaySeconds: 10
+            initialDelaySeconds: 15
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # ── Liveness: kapan pod di-restart ──
+          # Threshold 5 × period 30s = pod harus gagal 2.5 menit berturut-turut
+          # sebelum di-restart. Mencegah restart agresif saat lonjakan beban.
           livenessProbe:
             httpGet:
               path: /
               port: 8000
-            initialDelaySeconds: 20
-            periodSeconds: 20
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
 ---
 apiVersion: v1
 kind: Service

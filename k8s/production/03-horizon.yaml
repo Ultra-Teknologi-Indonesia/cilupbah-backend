@@ -21,11 +21,11 @@ spec:
           command: ["php", "artisan", "horizon"]
           resources:
             requests:
-              memory: "1536Mi"
-              cpu: "500m"
+              memory: "512Mi"
+              cpu: "200m"
             limits:
-              memory: "4Gi"
-              cpu: "3"
+              memory: "1536Mi"
+              cpu: "1"
           envFrom:
             - secretRef:
                 name: cilupbah-env

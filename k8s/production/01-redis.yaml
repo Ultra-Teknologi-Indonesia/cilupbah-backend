@@ -30,6 +30,20 @@ spec:
       containers:
         - name: redis
           image: redis:7-alpine
+          # Hard-cap memory agar Redis TIDAK PERNAH melebihi 768 MB.
+          # allkeys-lru = evict key terlama saat mendekati batas, bukan crash.
+          # Container limit 1Gi memberi 256 MB headroom untuk fragmentation.
+          command:
+            - redis-server
+            - --maxmemory
+            - "768mb"
+            - --maxmemory-policy
+            - allkeys-lru
+            - --save
+            - "60"
+            - "1000"
+            - --dir
+            - /data
           ports:
             - containerPort: 6379
           volumeMounts:

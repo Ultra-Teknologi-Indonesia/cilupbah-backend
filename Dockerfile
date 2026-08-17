@@ -65,6 +65,8 @@ RUN apt-get update && apt-get install -y \
 # 2M (bukan 60M seperti yang diniatkan) dan opcache tidak aktif. Menyalinnya
 # ke sini membuat kedua environment memakai konfigurasi yang sama.
 COPY docker/php/*.ini /usr/local/etc/php/conf.d/
+# Override default pool (pm.max_children=5) dengan konfigurasi production
+COPY docker/php/www.conf /usr/local/etc/php-fpm.d/www.conf
 
 # Copy Nginx and Supervisor configurations
 COPY docker/nginx/nginx.conf /etc/nginx/conf.d/default.conf
