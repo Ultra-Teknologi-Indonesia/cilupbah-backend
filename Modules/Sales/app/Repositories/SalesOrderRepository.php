@@ -14,6 +14,7 @@ class SalesOrderRepository
     private const ORDER_SORTS = ['created_at', 'transaction_date', 'grand_total', 'salesorder_no'];
 
     private const LIST_RELATIONS = [
+        'media',
         'items',
         'items.product:id,product_id',
         'items.product.media:id,variant_id,url,is_primary',
