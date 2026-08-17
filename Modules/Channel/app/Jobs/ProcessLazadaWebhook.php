@@ -40,7 +40,7 @@ class ProcessLazadaWebhook implements ShouldQueue
     public function __construct(
         public array $payload,
     ) {
-        $this->onQueue(config('queue.names.webhook_downloads'));
+        $this->onQueue(config('queue.names.lazada_webhooks', 'lazada-webhooks'));
     }
 
     public function middleware(): array

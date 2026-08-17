@@ -8,9 +8,7 @@ use Illuminate\Support\Facades\DB;
 
 class ProductPickerHydrator
 {
-    /**
-     * Hydrate products and strictly filter variants to only matching variants.
-     */
+
     public static function hydrate(
         LengthAwarePaginatorContract|LengthAwarePaginator $paginator,
         ?array $matchingVariantIds = null,

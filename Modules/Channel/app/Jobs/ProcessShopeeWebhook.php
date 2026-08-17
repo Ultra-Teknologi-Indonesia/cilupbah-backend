@@ -42,7 +42,7 @@ class ProcessShopeeWebhook implements ShouldQueue
     public function __construct(
         public array $payload,
     ) {
-        $this->onQueue(config('queue.names.webhook_downloads'));
+        $this->onQueue(config('queue.names.shopee_webhooks', 'shopee-webhooks'));
     }
 
     public function middleware(): array

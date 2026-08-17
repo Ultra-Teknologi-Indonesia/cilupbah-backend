@@ -29,7 +29,6 @@ class ProductPickerFeedService
             return ProductPickerHydrator::hydrate($paginator);
         }
 
-        // 1. Search matching variant IDs
         $matchingVariantQuery = ProductVariant::query()
             ->join('products', 'products.id', '=', 'product_variants.product_id')
             ->where('products.status', $status)
@@ -50,7 +49,6 @@ class ProductPickerFeedService
         $matchingVariantIds = $matchingVariants->pluck('id')->all();
         $matchedProductIds = $matchingVariants->pluck('product_id')->unique()->all();
 
-        // Check bundle items as well
         $bundleMatchedProductIds = DB::table('product_bundle_items')
             ->join('product_variants', 'product_variants.id', '=', 'product_bundle_items.component_variant_id')
             ->join('products', 'products.id', '=', 'product_bundle_items.bundle_product_id')
@@ -75,7 +73,6 @@ class ProductPickerFeedService
             );
         }
 
-        // Find representative product IDs for merged products
         $repMergesQuery = ProductMerge::query()->whereIn('product_id', $allMatchedProductIds);
         if ($hasRepCol) {
             $repMergesQuery->where('is_representative', true);

@@ -118,7 +118,6 @@ class ProductPickerFeedTest extends TestCase
         $productItem = collect($data)->firstWhere('item_group_id', $this->product->id);
         $this->assertNotNull($productItem);
 
-        // Crucial requirement: only the matching variant is returned, NOT the brown variant!
         $this->assertCount(1, $productItem['variants']);
         $this->assertSame('LSM-H-PINK-IP-11-PRO', $productItem['variants'][0]['item_code']);
     }
@@ -133,7 +132,7 @@ class ProductPickerFeedTest extends TestCase
 
         $productItem = collect($data)->firstWhere('item_group_id', $this->product->id);
         $this->assertNotNull($productItem);
-        // Master catalog endpoint returns all variants for catalog management
+
         $this->assertCount(2, $productItem['variants']);
     }
 }
