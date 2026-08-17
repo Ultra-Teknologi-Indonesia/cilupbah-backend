@@ -61,9 +61,10 @@ jobs:
       - name: Validate Composer
         run: composer validate --strict
 
+      - name: Configure GitHub OAuth for Composer
+        run: composer config -g github-oauth.github.com "${{ secrets.GITHUB_TOKEN }}"
+
       - name: Install Composer Dependencies
-        env:
-          COMPOSER_AUTH: '{"github-oauth": {"github.com": "${{ secrets.GITHUB_TOKEN }}"}}'
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
 
       - name: Setup Node
@@ -150,9 +151,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-composer-
 
+      - name: Configure GitHub OAuth for Composer
+        run: composer config -g github-oauth.github.com "${{ secrets.GITHUB_TOKEN }}"
+
       - name: Install Production Composer Dependencies
-        env:
-          COMPOSER_AUTH: '{"github-oauth": {"github.com": "${{ secrets.GITHUB_TOKEN }}"}}'
         run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --classmap-authoritative --no-progress
 
       - name: Setup Docker Buildx
