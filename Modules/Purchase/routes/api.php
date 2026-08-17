@@ -7,6 +7,8 @@ use Modules\Purchase\Http\Controllers\PurchaseBillController;
 use Modules\Purchase\Http\Controllers\PurchasePaymentController;
 use Modules\Purchase\Http\Controllers\PurchaseSerialNumberController;
 
+use Modules\Purchase\Http\Controllers\PurchaseOrderImportExportController;
+
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::get('purchase/serial-number/wms/{bill_detail_id}', [PurchaseSerialNumberController::class, 'wmsByBillDetail'])->name('purchase.serial-number.wms')->middleware('role_or_permission:owner|view-transaksi-pembelian');
@@ -33,6 +35,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::middleware('role_or_permission:owner|view-transaksi-pembelian')->group(function () {
         Route::get('purchase/orders/receivable', [PurchaseOrderController::class, 'receivable'])->name('purchase.orders.receivable');
         Route::get('purchase/orders/progress', [PurchaseOrderController::class, 'receivable'])->name('purchase.orders.progress');
+        Route::get('purchase/orders/export/list', [PurchaseOrderImportExportController::class, 'exportList'])->name('purchase.orders.export.list');
+        Route::get('purchase/orders/export/detail', [PurchaseOrderImportExportController::class, 'exportDetail'])->name('purchase.orders.export.detail');
         Route::get('purchase/orders', [PurchaseOrderController::class, 'index'])->name('purchase.orders.index');
         Route::get('purchase/orders/{id}', [PurchaseOrderController::class, 'show'])->name('purchase.orders.show');
         Route::get('purchase/orders/{id}/items', [PurchaseOrderController::class, 'items'])->name('purchase.orders.items');
@@ -40,6 +44,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('purchase/orders/{id}/activities', [PurchaseOrderActivityController::class, 'index'])->name('purchase.orders.activities');
     });
     Route::middleware('role_or_permission:owner|create-transaksi-pembelian')->group(function () {
+        Route::get('purchase/orders/import/template', [PurchaseOrderImportExportController::class, 'downloadTemplate'])->name('purchase.orders.import.template');
+        Route::post('purchase/orders/import/preview', [PurchaseOrderImportExportController::class, 'preview'])->name('purchase.orders.import.preview');
+        Route::post('purchase/orders/import/confirm', [PurchaseOrderImportExportController::class, 'confirm'])->name('purchase.orders.import.confirm');
         Route::post('purchase/orders', [PurchaseOrderController::class, 'store'])->name('purchase.orders.store');
     });
     Route::middleware('role_or_permission:owner|edit-transaksi-pembelian')->group(function () {
