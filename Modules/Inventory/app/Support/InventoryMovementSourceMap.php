@@ -4,73 +4,79 @@ namespace Modules\Inventory\Support;
 
 class InventoryMovementSourceMap
 {
-
     public const SOURCES = [
-        'PURCHASE'         => ['category' => 'PURCHASE', 'label' => 'Pembelian'],
-        'PURCHASE_REVERSAL' => ['category' => 'PURCHASE', 'label' => 'Koreksi Pembelian'],
-        'BILL'             => ['category' => 'PURCHASE', 'label' => 'Pembelian'], 
+        'PURCHASE'          => ['category' => 'TAGIHAN', 'label' => 'Tagihan'],
+        'PURCHASE_REVERSAL' => ['category' => 'TAGIHAN', 'label' => 'Koreksi Tagihan'],
+        'BILL'              => ['category' => 'TAGIHAN', 'label' => 'Tagihan'],
+        'CONSIGNMENT'       => ['category' => 'TAGIHAN', 'label' => 'Konsinyasi'],
 
-        'CONSIGNMENT'      => ['category' => 'PURCHASE', 'label' => 'Konsinyasi'],
-        'ADJUSTMENT'       => ['category' => 'ADJUSTMENT', 'label' => 'Penyesuaian'],
-        'STOCK_OPNAME'     => ['category' => 'ADJUSTMENT', 'label' => 'Penyesuaian'],
-        'SALES_RETURN'     => ['category' => 'SALES_RETURN', 'label' => 'Retur Penjualan'],
-        'PICKING'          => ['category' => 'PICKING', 'label' => 'Barang di-pick'],
-        'PICKING_REVERSAL' => ['category' => 'PICKING', 'label' => 'Koreksi Pick'],
-        'ORDER_COMPLETE_OUT'      => ['category' => 'SELESAI_LANGSUNG', 'label' => 'Pesanan Diselesaikan'],
-        'ORDER_COMPLETE_REVERSAL' => ['category' => 'SELESAI_LANGSUNG', 'label' => 'Koreksi Pesanan Diselesaikan'],
-        'ORDER_RESERVE'       => ['category' => 'ORDER', 'label' => 'Alokasi Pesanan'],
-        'ORDER_RELEASE'       => ['category' => 'ORDER', 'label' => 'Alokasi Dilepas'],
-        'RESERVE'             => ['category' => 'ORDER', 'label' => 'Stok Ditahan'],
-        'RESERVE_CANCEL'      => ['category' => 'ORDER', 'label' => 'Tahanan Dibatalkan'],
-        'RESERVE_EXPIRED'     => ['category' => 'ORDER', 'label' => 'Tahanan Kedaluwarsa'],
-        'ORDER_SHIP'          => ['category' => 'PESANAN', 'label' => 'Pesanan Dikirim'], 
-        'ORDER_RESTORE'       => ['category' => 'PESANAN', 'label' => 'Pesanan Dibatalkan'],
-        'ORDER_RESTORE_CANCEL' => ['category' => 'PESANAN', 'label' => 'Pesanan Dibatalkan'],
-        'INVOICE'          => ['category' => 'INVOICE', 'label' => 'Faktur'],      
-        'ORDER_PICK'       => ['category' => 'INVOICE', 'label' => 'Faktur'],      
-        'TRANSFER_IN'      => ['category' => 'TRANSFER', 'label' => 'Transfer'],
-        'TRANSFER_OUT'     => ['category' => 'TRANSFER', 'label' => 'Transfer'],
-        'TRANSFER_REVERT'  => ['category' => 'TRANSFER', 'label' => 'Koreksi Transfer'],
-        'TRANSIT_IN'       => ['category' => 'TRANSFER', 'label' => 'Masuk Transit'],
-        'TRANSIT_OUT'      => ['category' => 'TRANSFER', 'label' => 'Keluar Transit'],
-        'BIN_TRANSFER_IN'  => ['category' => 'TRANSFER', 'label' => 'Transfer'],
-        'BIN_TRANSFER_OUT' => ['category' => 'TRANSFER', 'label' => 'Transfer'],
+        'ADJUSTMENT'        => ['category' => 'PENYESUAIAN', 'label' => 'Penyesuaian'],
+        'STOCK_OPNAME'      => ['category' => 'PENYESUAIAN', 'label' => 'Penyesuaian'],
+        'REVALUATION'       => ['category' => 'PENYESUAIAN', 'label' => 'Ubah Nilai Stok'],
+
+        'PURCHASE_RETURN'   => ['category' => 'RETUR_PEMBELIAN', 'label' => 'Retur Pembelian'],
+        'SALES_RETURN'      => ['category' => 'RETUR_PENJUALAN', 'label' => 'Retur Penjualan'],
+
+        'INVOICE'           => ['category' => 'FAKTUR', 'label' => 'Faktur'],
+        'ORDER_SHIP'        => ['category' => 'FAKTUR', 'label' => 'Faktur'],
+        'ORDER_PICK'        => ['category' => 'FAKTUR', 'label' => 'Faktur'],
+        'ORDER_COMPLETE_OUT'      => ['category' => 'FAKTUR', 'label' => 'Faktur'],
+        'ORDER_COMPLETE_REVERSAL' => ['category' => 'FAKTUR', 'label' => 'Koreksi Faktur'],
+        'PICKING'           => ['category' => 'FAKTUR', 'label' => 'Barang di-pick'],
+        'PICKING_REVERSAL'  => ['category' => 'FAKTUR', 'label' => 'Koreksi Pick'],
+
+        'ORDER'             => ['category' => 'PESANAN', 'label' => 'Pesanan'],
+        'ORDER_RESERVE'     => ['category' => 'PESANAN', 'label' => 'Pesanan'],
+
+        'TRANSFER_IN'       => ['category' => 'TRANSFER', 'label' => 'Transfer'],
+        'TRANSFER_OUT'      => ['category' => 'TRANSFER', 'label' => 'Transfer'],
+        'TRANSFER_REVERT'   => ['category' => 'TRANSFER', 'label' => 'Koreksi Transfer'],
+        'TRANSIT_IN'        => ['category' => 'TRANSFER', 'label' => 'Masuk Transit'],
+        'TRANSIT_OUT'       => ['category' => 'TRANSFER', 'label' => 'Keluar Transit'],
+        'BIN_TRANSFER_IN'   => ['category' => 'TRANSFER', 'label' => 'Transfer'],
+        'BIN_TRANSFER_OUT'  => ['category' => 'TRANSFER', 'label' => 'Transfer'],
         'BIN_TRANSFER_REVERSAL' => ['category' => 'TRANSFER', 'label' => 'Koreksi Pindah Bin'],
-        'PUTAWAY_IN'       => ['category' => 'TRANSFER', 'label' => 'Transfer'],
-        'PUTAWAY_OUT'      => ['category' => 'TRANSFER', 'label' => 'Transfer'],
-        'PUTAWAY_REVERSAL' => ['category' => 'TRANSFER', 'label' => 'Koreksi Penempatan'],
-        'SPLIT_IN'         => ['category' => 'TRANSFER', 'label' => 'Pecah Stok'],
-        'SPLIT_OUT'        => ['category' => 'TRANSFER', 'label' => 'Pecah Stok'],
-        'REVALUATION'      => ['category' => 'REVALUATION', 'label' => 'Ubah Nilai Stok'],
+        'PUTAWAY_IN'        => ['category' => 'TRANSFER', 'label' => 'Transfer'],
+        'PUTAWAY_OUT'       => ['category' => 'TRANSFER', 'label' => 'Transfer'],
+        'PUTAWAY_REVERSAL'  => ['category' => 'TRANSFER', 'label' => 'Koreksi Penempatan'],
+        'SPLIT_IN'          => ['category' => 'TRANSFER', 'label' => 'Pecah Stok'],
+        'SPLIT_OUT'         => ['category' => 'TRANSFER', 'label' => 'Pecah Stok'],
+
+        'ORDER_RELEASE'     => ['category' => 'PESANAN_BATAL', 'label' => 'Pesanan Batal'],
+        'ORDER_RESTORE'     => ['category' => 'PESANAN_BATAL', 'label' => 'Pesanan Batal'],
+        'ORDER_RESTORE_CANCEL' => ['category' => 'PESANAN_BATAL', 'label' => 'Pesanan Batal'],
+        'ORDER_CANCELLED'   => ['category' => 'PESANAN_BATAL', 'label' => 'Pesanan Batal'],
+
+        'RESERVE'           => ['category' => 'CADANGAN', 'label' => 'Cadangan'],
+        'RESERVE_CANCEL'    => ['category' => 'CADANGAN', 'label' => 'Tahanan Dibatalkan'],
+        'RESERVE_EXPIRED'   => ['category' => 'CADANGAN', 'label' => 'Tahanan Kedaluwarsa'],
     ];
 
     private const CATEGORY_LABELS = [
-        'PURCHASE'        => 'Pembelian',
-        'ADJUSTMENT'      => 'Penyesuaian',
-        'SALES_RETURN'    => 'Retur Penjualan',
-        'PICKING'         => 'Barang di-pick',
-        'SELESAI_LANGSUNG' => 'Selesaikan Langsung',
-        'ORDER'           => 'Order',
-        'PESANAN'         => 'Pesanan Batal',
-        'INVOICE'         => 'Faktur',
-        'TRANSFER'        => 'Transfer & Penempatan',
-        'REVALUATION'     => 'Ubah Nilai Stok',
+        'TAGIHAN'         => 'Tagihan',
+        'PENYESUAIAN'     => 'Penyesuaian',
+        'RETUR_PEMBELIAN' => 'Retur Pembelian',
+        'RETUR_PENJUALAN' => 'Retur Penjualan',
+        'FAKTUR'          => 'Faktur',
+        'PESANAN'         => 'Pesanan',
+        'TRANSFER'        => 'Transfer',
+        'PESANAN_BATAL'   => 'Pesanan Batal',
+        'CADANGAN'        => 'Cadangan',
     ];
 
     private const CATEGORY_ORDER = [
-        'PURCHASE',
-        'ADJUSTMENT',
-        'SALES_RETURN',
-        'PICKING',
-        'SELESAI_LANGSUNG',
-        'ORDER',
+        'TAGIHAN',
+        'PENYESUAIAN',
+        'RETUR_PEMBELIAN',
+        'RETUR_PENJUALAN',
+        'FAKTUR',
         'PESANAN',
-        'INVOICE',
         'TRANSFER',
-        'REVALUATION',
+        'PESANAN_BATAL',
+        'CADANGAN',
     ];
 
-    public const INVOICE_SOURCES = ['INVOICE', 'ORDER_PICK'];
+    public const INVOICE_SOURCES = ['INVOICE', 'ORDER_PICK', 'ORDER_SHIP', 'ORDER_COMPLETE_OUT'];
 
     public const REVERSAL_SOURCES = [
         'PUTAWAY_REVERSAL',
@@ -90,16 +96,35 @@ class InventoryMovementSourceMap
     public const ALLOCATION_PARTITION_SOURCES = [
         'ORDER_RESERVE',
         'ORDER_RELEASE',
+        'ORDER',
+        'ORDER_CANCELLED',
         'RESERVE',
         'RESERVE_CANCEL',
         'RESERVE_EXPIRED',
     ];
 
-    public const ORDER_LEDGER_SOURCES = ['ORDER_RESERVE', 'ORDER_RELEASE'];
+    public const ORDER_DEDUCT_SOURCES = [
+        'ORDER_RESERVE',
+        'ORDER',
+        'RESERVE',
+    ];
+
+    public const ORDER_RESTORE_SOURCES = [
+        'ORDER_RELEASE',
+        'ORDER_RESTORE',
+        'ORDER_RESTORE_CANCEL',
+        'ORDER_CANCELLED',
+        'RESERVE_CANCEL',
+        'RESERVE_EXPIRED',
+    ];
+
+    public const ORDER_LEDGER_SOURCES = ['ORDER_RESERVE', 'ORDER_RELEASE', 'ORDER', 'ORDER_CANCELLED'];
 
     public const NON_PHYSICAL_SOURCES = [
         'ORDER_RESERVE',
         'ORDER_RELEASE',
+        'ORDER',
+        'ORDER_CANCELLED',
         'RESERVE',
         'RESERVE_CANCEL',
         'RESERVE_EXPIRED',

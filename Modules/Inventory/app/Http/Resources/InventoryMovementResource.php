@@ -12,7 +12,18 @@ class InventoryMovementResource extends JsonResource
     public function toArray(Request $request): array
     {
         $meta = InventoryMovementSourceMap::meta($this->source);
-        $qty = (int) $this->qty;
+        $rawQty = (int) $this->qty;
+
+        if (in_array($this->source, InventoryMovementSourceMap::ORDER_DEDUCT_SOURCES, true)) {
+            $qty = -abs($rawQty);
+            $direction = 'out';
+        } elseif (in_array($this->source, InventoryMovementSourceMap::ORDER_RESTORE_SOURCES, true)) {
+            $qty = abs($rawQty);
+            $direction = 'in';
+        } else {
+            $qty = $rawQty;
+            $direction = $qty > 0 ? 'in' : ($qty < 0 ? 'out' : 'none');
+        }
 
         return [
             'id' => $this->id,
@@ -32,7 +43,7 @@ class InventoryMovementResource extends JsonResource
             'source_category' => $meta['category'],
             'source_label' => $meta['label'],
             'is_variance' => InventoryMovementSourceMap::isVariance($this->source),
-            'direction' => $qty > 0 ? 'in' : ($qty < 0 ? 'out' : 'none'),
+            'direction' => $direction,
             'qty' => $qty,
             'balance' => (int) ($this->total_balance ?? $this->balance),
             'transaction_date' => $this->transaction_date,

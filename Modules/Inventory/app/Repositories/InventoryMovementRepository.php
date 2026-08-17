@@ -152,7 +152,9 @@ class InventoryMovementRepository
                 ->leftJoin('products', 'products.id', '=', 'product_variants.product_id');
         }
 
-        $reservedList = "'" . implode("','", InventoryMovementSourceMap::ALLOCATION_PARTITION_SOURCES) . "'";
+        $deductList = "'" . implode("','", InventoryMovementSourceMap::ORDER_DEDUCT_SOURCES) . "'";
+        $restoreList = "'" . implode("','", InventoryMovementSourceMap::ORDER_RESTORE_SOURCES) . "'";
+        $effectiveQtySql = "CASE WHEN source IN ($deductList) THEN -ABS(qty) WHEN source IN ($restoreList) THEN ABS(qty) ELSE qty END";
 
         $pickOrderScope = "FROM picklist_items pi"
             . " JOIN picklists p ON p.id = pi.picklist_id"
@@ -165,7 +167,7 @@ class InventoryMovementRepository
 
         $qb = \Spatie\QueryBuilder\QueryBuilder::for($baseQuery)
             ->select('inventory_movements.*')
-            ->selectRaw("SUM(qty) OVER (PARTITION BY item_id, location_id, (CASE WHEN source IN ($reservedList) THEN 1 ELSE 0 END) ORDER BY transaction_date, inventory_movements.id) AS total_balance")
+            ->selectRaw("SUM({$effectiveQtySql}) OVER (PARTITION BY item_id, location_id ORDER BY transaction_date, inventory_movements.id) AS total_balance")
             ->selectRaw($pickOrder('so.salesorder_no') . ' AS pick_order_no')
             ->selectRaw("(CASE WHEN {$isPick} THEN (SELECT COUNT(DISTINCT pi.order_id) {$pickOrderScope}) END) AS pick_order_count")
             ->selectRaw('COALESCE((SELECT COALESCE(so.channel_order_no, so.no_ref) FROM sales_orders so WHERE so.salesorder_no = inventory_movements.transaction_number LIMIT 1), ' . $pickOrder('COALESCE(so.channel_order_no, so.no_ref)') . ') AS ref_no')
@@ -207,12 +209,12 @@ class InventoryMovementRepository
                         $query->whereIn('source', $sources);
                     }
                 }),
-                \Spatie\QueryBuilder\AllowedFilter::callback('direction', function ($query, $value) {
+                \Spatie\QueryBuilder\AllowedFilter::callback('direction', function ($query, $value) use ($effectiveQtySql) {
                     $dir = strtolower((string) $value);
                     if ($dir === 'in' || $dir === 'masuk') {
-                        $query->where('qty', '>', 0);
+                        $query->whereRaw("({$effectiveQtySql}) > 0");
                     } elseif ($dir === 'out' || $dir === 'keluar') {
-                        $query->where('qty', '<', 0);
+                        $query->whereRaw("({$effectiveQtySql}) < 0");
                     }
                 }),
 
