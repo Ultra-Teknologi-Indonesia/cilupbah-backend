@@ -588,7 +588,7 @@ class InventoryRepository
 
     public function findBinByFinalCode(string $binCode)
     {
-        return \Modules\Location\Models\Bin::where('bin_final_code', $binCode)->first();
+        return \Modules\Warehouse\Models\LocationBin::where('bin_final_code', $binCode)->first();
     }
 
     public function getStockByBin(string $binId): Collection

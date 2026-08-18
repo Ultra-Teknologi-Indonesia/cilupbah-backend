@@ -88,4 +88,32 @@ class InventoryStockDetailTest extends TestCase
         $response->assertJsonPath('data.0.bin_id', $this->binWithStock->id);
         $response->assertJsonPath('data.0.on_hand', 25);
     }
+
+    public function test_it_returns_stock_items_by_bin_code(): void
+    {
+        Inventory::create([
+            'item_id' => $this->variant->id,
+            'location_id' => $this->location->id,
+            'bin_id' => $this->binWithStock->id,
+            'on_hand' => 15,
+            'available' => 15,
+        ]);
+
+        $response = $this->getJson('/api/v1/inventory/stock/by-bin-code/A-01-01');
+
+        $response->assertOk();
+        $response->assertJsonPath('status', 'success');
+        $response->assertJsonPath('data.0.item_id', $this->variant->id);
+        $response->assertJsonPath('data.0.bin_code', 'A-01-01');
+        $response->assertJsonPath('data.0.on_hand', 15);
+    }
+
+    public function test_it_returns_404_when_bin_not_found(): void
+    {
+        $response = $this->getJson('/api/v1/inventory/stock/by-bin-code/NON-EXISTENT-BIN');
+
+        $response->assertStatus(404);
+        $response->assertJsonPath('status', 'error');
+        $response->assertJsonPath('message', 'Rak tidak ditemukan.');
+    }
 }
