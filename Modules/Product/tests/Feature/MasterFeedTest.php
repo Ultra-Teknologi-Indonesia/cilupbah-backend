@@ -353,4 +353,29 @@ class MasterFeedTest extends TestCase
         $this->assertContains('Softcase Rhombic', $this->masterNames('filter[channel]=tiktok'));
         $this->assertCount(0, $this->getJson('/api/v1/products/master?filter[channel]=lazada')->json('data'));
     }
+
+    public function test_product_level_thumbnail_takes_precedence_over_variant_thumbnails(): void
+    {
+        $variant = $this->master->variants->first();
+
+        // Seed variant-level media that is primary and sort_order 0
+        ProductMedia::create([
+            'product_id' => $this->master->id,
+            'variant_id' => $variant->id,
+            'media_type' => 'image',
+            'url' => 'https://cdn.example.com/variant-merah.jpg',
+            'is_primary' => true,
+            'sort_order' => 0,
+        ]);
+
+        $response = $this->getJson('/api/v1/products/master');
+        $item = $response->json('data.0');
+
+        // Product cover thumbnail must remain the product-level media URL, not variant URL
+        $this->assertSame('https://cdn.example.com/product.jpg', $item['thumbnail']);
+
+        // Variant thumbnail must be the variant media URL
+        $variantItem = collect($item['variants'])->firstWhere('item_id', $variant->id);
+        $this->assertSame('https://cdn.example.com/variant-merah.jpg', $variantItem['thumbnail']);
+    }
 }

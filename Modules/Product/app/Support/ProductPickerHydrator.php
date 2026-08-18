@@ -125,11 +125,14 @@ class ProductPickerHydrator
         $productThumbnails = [];
         $variantThumbnails = [];
         foreach ($rawMedia as $m) {
-            if ($m->variant_id && ! isset($variantThumbnails[$m->variant_id])) {
-                $variantThumbnails[$m->variant_id] = $m->url;
-            }
-            if ($m->product_id && ! isset($productThumbnails[$m->product_id])) {
-                $productThumbnails[$m->product_id] = $m->url;
+            if ($m->variant_id) {
+                if (! isset($variantThumbnails[$m->variant_id])) {
+                    $variantThumbnails[$m->variant_id] = $m->url;
+                }
+            } else {
+                if ($m->product_id && ! isset($productThumbnails[$m->product_id])) {
+                    $productThumbnails[$m->product_id] = $m->url;
+                }
             }
         }
 
@@ -279,6 +282,14 @@ class ProductPickerHydrator
             }
 
             $productThumbnail = $productThumbnails[$product->id] ?? null;
+            if (! $productThumbnail && $isMerged) {
+                foreach ($memberIds as $mid) {
+                    if (! empty($productThumbnails[$mid])) {
+                        $productThumbnail = $productThumbnails[$mid];
+                        break;
+                    }
+                }
+            }
             if (! $productThumbnail && ! empty($variantItems)) {
                 foreach ($variantItems as $vi) {
                     if (! empty($vi['thumbnail'])) {

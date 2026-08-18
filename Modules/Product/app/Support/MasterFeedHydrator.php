@@ -114,29 +114,31 @@ class MasterFeedHydrator
             }
         }
 
-        $mediaByProduct = [];
+        $productLevelMedia = [];
         $primaryThumbnailByProduct = [];
         $variantThumbnails = [];
 
         $rawMedia = DB::table('product_media')
             ->whereIn('product_id', $allProductIds)
             ->orderBy('sort_order')
+            ->orderBy('id')
             ->get(['id', 'product_id', 'variant_id', 'url', 'is_primary', 'sort_order']);
 
         foreach ($rawMedia as $m) {
-            $mediaByProduct[$m->product_id][] = $m;
-            if ($m->is_primary && ! isset($primaryThumbnailByProduct[$m->product_id])) {
-                $primaryThumbnailByProduct[$m->product_id] = $m->url;
-            }
             if ($m->variant_id) {
                 if ($m->is_primary || ! isset($variantThumbnails[$m->variant_id])) {
                     $variantThumbnails[$m->variant_id] = $m->url;
                 }
+            } else {
+                $productLevelMedia[$m->product_id][] = $m;
+                if ($m->is_primary && ! isset($primaryThumbnailByProduct[$m->product_id])) {
+                    $primaryThumbnailByProduct[$m->product_id] = $m->url;
+                }
             }
         }
         foreach ($allProductIds as $pid) {
-            if (! isset($primaryThumbnailByProduct[$pid]) && ! empty($mediaByProduct[$pid])) {
-                $primaryThumbnailByProduct[$pid] = $mediaByProduct[$pid][0]->url;
+            if (! isset($primaryThumbnailByProduct[$pid]) && ! empty($productLevelMedia[$pid])) {
+                $primaryThumbnailByProduct[$pid] = $productLevelMedia[$pid][0]->url;
             }
         }
 
@@ -329,6 +331,14 @@ class MasterFeedHydrator
                 foreach ($memberIds as $mid) {
                     if (isset($primaryThumbnailByProduct[$mid])) {
                         $thumbnail = $primaryThumbnailByProduct[$mid];
+                        break;
+                    }
+                }
+            }
+            if (! $thumbnail && ! empty($variantItems)) {
+                foreach ($variantItems as $vi) {
+                    if (! empty($vi['thumbnail'])) {
+                        $thumbnail = $vi['thumbnail'];
                         break;
                     }
                 }
