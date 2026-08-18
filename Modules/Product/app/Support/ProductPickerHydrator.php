@@ -119,8 +119,9 @@ class ProductPickerHydrator
                     $q->orWhereIn('variant_id', $variantIds);
                 }
             })
+            ->orderByDesc('is_primary')
             ->orderBy('sort_order')
-            ->get(['id', 'product_id', 'variant_id', 'url', 'sort_order']);
+            ->get(['id', 'product_id', 'variant_id', 'url', 'sort_order', 'is_primary']);
 
         $productThumbnails = [];
         $variantThumbnails = [];

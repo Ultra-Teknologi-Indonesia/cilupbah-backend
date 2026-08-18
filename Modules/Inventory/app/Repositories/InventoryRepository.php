@@ -636,7 +636,7 @@ class InventoryRepository
                 'product:id,name',
                 'options.attribute:id,name',
                 'media' => fn ($q) => $q->orderByDesc('is_primary')->orderBy('sort_order'),
-                'product.media' => fn ($q) => $q->orderByDesc('is_primary')->orderBy('sort_order'),
+                'product.media' => fn ($q) => $q->whereNull('variant_id')->orderByDesc('is_primary')->orderBy('sort_order'),
             ]);
 
         $query->allowedSearch('product_variants.sku', 'product.name');
