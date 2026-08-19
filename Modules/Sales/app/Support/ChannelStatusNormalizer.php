@@ -10,6 +10,8 @@ final class ChannelStatusNormalizer
     private const SHOPEE = [
         'UNPAID'              => ChannelStatus::UNPAID,
         'READY_TO_SHIP'       => ChannelStatus::READY_TO_SHIP,
+        'AWAITING_SHIPMENT'   => ChannelStatus::READY_TO_SHIP,
+        'AWAITING_COLLECTION' => ChannelStatus::PROCESSED,
         'PROCESSED'           => ChannelStatus::PROCESSED,
         'RETRY_SHIP'          => ChannelStatus::PROCESSED,
         'SHIPPED'             => ChannelStatus::SHIPPED,
