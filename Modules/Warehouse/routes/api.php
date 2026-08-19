@@ -63,8 +63,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::delete('locations/{locationId}/multi-sku-rules/{ruleId}', [BinMultiSkuRuleController::class, 'destroy'])->whereUuid(['locationId', 'ruleId'])->name('warehouse.multi-sku-rules.destroy');
     });
 
+    Route::get('locations/{locationId}/bins', [LocationBinController::class, 'index'])->whereUuid('locationId')->name('warehouse.bins.index')->middleware('role_or_permission:owner|view-manajemen-rak|view-posisi-stok|view-penyesuaian-stok|create-penyesuaian-stok|view-pindah-bin|create-pindah-bin|view-transfer-keluar|create-transfer-keluar|view-pesanan');
     Route::middleware('role_or_permission:owner|view-manajemen-rak')->group(function () {
-        Route::get('locations/{locationId}/bins', [LocationBinController::class, 'index'])->whereUuid('locationId')->name('warehouse.bins.index');
         Route::get('locations/{locationId}/bins/import/template', [LocationBinController::class, 'importTemplate'])->whereUuid('locationId')->name('warehouse.bins.import.template');
         Route::get('locations/{locationId}/bins/print-qr', [LocationBinController::class, 'printQr'])->whereUuid('locationId')->name('warehouse.bins.print-qr');
         Route::get('locations/{locationId}/pending-putaway-skus', [LocationBinController::class, 'pendingPutawaySkus'])->whereUuid('locationId')->name('warehouse.bins.pending-putaway-skus');
@@ -91,7 +91,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('locations/{locationId}/bins/{binId}/remove-sku', [LocationBinController::class, 'removeSku'])->whereUuid(['locationId', 'binId'])->name('warehouse.bins.remove-sku');
     });
 
-    Route::get('locations/{locationId}/default-bin', [LocationBinController::class, 'defaultBin'])->whereUuid('locationId')->name('warehouse.bins.default')->middleware('role_or_permission:owner|view-manajemen-rak');
+    Route::get('locations/{locationId}/default-bin', [LocationBinController::class, 'defaultBin'])->whereUuid('locationId')->name('warehouse.bins.default')->middleware('role_or_permission:owner|view-manajemen-rak|view-posisi-stok|view-penyesuaian-stok|create-penyesuaian-stok|view-pindah-bin|create-pindah-bin|view-transfer-keluar|create-transfer-keluar|view-pesanan');
 
     Route::middleware('role_or_permission:owner|create-manajemen-rak')->group(function () {
         Route::post('bins', [LocationBinController::class, 'store'])->name('warehouse.bins.store');

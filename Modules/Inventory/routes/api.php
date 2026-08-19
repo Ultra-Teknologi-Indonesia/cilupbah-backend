@@ -52,10 +52,10 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('inventory/purchase-order/items', [InventoryController::class, 'purchaseOrderItems'])->name('inventory.purchaseOrder.items')->middleware('role_or_permission:owner|view-transaksi-pembelian');
 
     Route::get('inventory/items/by-sku/{sku}', [InventoryController::class, 'bySku'])->name('inventory.items.bySku');
-    Route::get('inventory/stock/by-sku/{sku}', [InventoryController::class, 'bySku'])->name('inventory.stock.bySku')->middleware('role_or_permission:owner|view-posisi-stok');
-    Route::get('inventory/stock/by-bin-code/{binCode}', [InventoryController::class, 'byBinCode'])->name('inventory.stock.byBinCode')->middleware('role_or_permission:owner|view-posisi-stok');
-    Route::get('inventory/stock/items', [InventoryController::class, 'stockedItems'])->name('inventory.stock.items')->middleware('role_or_permission:owner|view-posisi-stok');
-    Route::post('inventory/items/all-stocks', [InventoryController::class, 'allStocksByIds'])->name('inventory.items.allStocks')->middleware('role_or_permission:owner|view-posisi-stok');
+    Route::get('inventory/stock/by-sku/{sku}', [InventoryController::class, 'bySku'])->name('inventory.stock.bySku')->middleware('role_or_permission:owner|view-posisi-stok|view-penyesuaian-stok|create-penyesuaian-stok|view-pindah-bin|create-pindah-bin|view-transfer-keluar|create-transfer-keluar|view-pesanan|create-pesanan|view-manajemen-rak');
+    Route::get('inventory/stock/by-bin-code/{binCode}', [InventoryController::class, 'byBinCode'])->name('inventory.stock.byBinCode')->middleware('role_or_permission:owner|view-posisi-stok|view-penyesuaian-stok|create-penyesuaian-stok|view-pindah-bin|create-pindah-bin|view-transfer-keluar|create-transfer-keluar|view-pesanan|create-pesanan|view-manajemen-rak');
+    Route::get('inventory/stock/items', [InventoryController::class, 'stockedItems'])->name('inventory.stock.items')->middleware('role_or_permission:owner|view-posisi-stok|view-penyesuaian-stok|create-penyesuaian-stok|view-pindah-bin|create-pindah-bin|view-transfer-keluar|create-transfer-keluar|view-pesanan|create-pesanan|view-manajemen-rak');
+    Route::post('inventory/items/all-stocks', [InventoryController::class, 'allStocksByIds'])->name('inventory.items.allStocks')->middleware('role_or_permission:owner|view-posisi-stok|view-penyesuaian-stok|create-penyesuaian-stok|view-pindah-bin|create-pindah-bin|view-transfer-keluar|create-transfer-keluar|view-pesanan|create-pesanan|view-manajemen-rak');
     Route::delete('inventory/items/item-variant', [InventoryController::class, 'deleteVariant'])->name('inventory.items.deleteVariant');
 
     Route::middleware('role_or_permission:owner|create-bundle')->group(function () {
