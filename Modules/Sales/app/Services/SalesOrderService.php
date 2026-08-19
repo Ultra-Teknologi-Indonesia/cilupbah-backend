@@ -1035,6 +1035,17 @@ class SalesOrderService
             );
         }
 
+        $statusUpper = strtoupper((string) ($order->channel_status ?? $order->status));
+        if ($order->is_canceled
+            || in_array($order->status, ['shipped', 'completed', 'cancelled', 'returned'], true)
+            || in_array($statusUpper, ['SHIPPED', 'COMPLETED', 'CANCELLED', 'DELIVERED', 'TO_CONFIRM_RECEIVE'], true)) {
+            throw new UserFacingException(
+                'Aksi tidak dapat diproses',
+                "Label resi pengiriman tidak dapat dicetak untuk pesanan yang sudah diserahkan ke kurir, selesai, atau dibatalkan (Status: {$statusUpper}).",
+                422,
+            );
+        }
+
         $source = strtolower((string) ($order->source ?? ''));
         $bulkService = app(BulkShippingLabelService::class);
 
