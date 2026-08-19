@@ -18,7 +18,7 @@ class UserRepository
             ->appends(request()->query());
     }
 
-    public function lookup(?string $q, int $page, int $perPage): array
+    public function lookup(?string $q, int $page, int $perPage, ?string $role = null): array
     {
         $query = User::query()->with('roles');
 
@@ -29,9 +29,14 @@ class UserRepository
             });
         }
 
+        if (! empty($role)) {
+            $roles = is_array($role) ? $role : explode(',', $role);
+            $query->whereHas('roles', fn (Builder $r) => $r->whereIn('name', $roles));
+        }
+
         $total = (clone $query)->count();
 
-        $users = $query->orderBy('email')
+        $users = $query->orderBy('name')
             ->forPage($page, $perPage)
             ->get();
 

@@ -22,13 +22,12 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::get('locations/store', [ChannelWarehouseController::class, 'index'])->name('warehouse.location.store-mapping')->middleware('role_or_permission:owner|view-manajemen-rak');
 
-    Route::get('locations/pos', [LocationController::class, 'pos'])->name('warehouse.location.pos')->middleware('role_or_permission:owner|view-manajemen-rak');
+    Route::get('locations/pos', [LocationController::class, 'pos'])->name('warehouse.location.pos');
+    Route::get('locations', [LocationController::class, 'index'])->name('warehouse.location.index');
+    Route::get('locations/{location}', [LocationController::class, 'show'])->name('warehouse.location.show')->whereUuid('location');
 
-    Route::middleware('role_or_permission:owner|view-manajemen-rak')->group(function () {
-        Route::apiResource('locations', LocationController::class)->only(['index', 'show'])->names('warehouse.location')->whereUuid('location');
-    });
     Route::middleware('role_or_permission:owner|create-manajemen-rak')->group(function () {
-        Route::apiResource('locations', LocationController::class)->only(['store'])->names('warehouse.location')->whereUuid('location');
+        Route::post('locations', [LocationController::class, 'store'])->name('warehouse.location.store');
     });
     Route::middleware('role_or_permission:owner|edit-manajemen-rak')->group(function () {
         Route::apiResource('locations', LocationController::class)->only(['update'])->names('warehouse.location')->whereUuid('location');

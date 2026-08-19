@@ -12,6 +12,7 @@ use Modules\Auth\Http\Requests\StoreUserRequest;
 use Modules\Auth\Http\Requests\SyncUserPermissionsRequest;
 use Modules\Auth\Http\Requests\UpdateUserRequest;
 use Modules\Auth\Http\Resources\ProfileResource;
+use Modules\Auth\Http\Resources\UserLookupResource;
 use Modules\Auth\Services\UserService;
 use OpenApi\Attributes as OA;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -50,15 +51,41 @@ class UserController extends Controller
         );
     }
 
+    #[OA\Get(
+        path: '/api/v1/users/lookup',
+        summary: 'Get lightweight user lookup for pickers and operational assignment',
+        security: [['bearerAuth' => []]],
+        tags: ['Users'],
+        parameters: [
+            new OA\Parameter(name: 'q', in: 'query', description: 'Search name or email', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'role', in: 'query', description: 'Filter by role (e.g. putaway, picker, courier)', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'page', in: 'query', description: 'Page number', required: false, schema: new OA\Schema(type: 'integer', default: 1)),
+            new OA\Parameter(name: 'per_page', in: 'query', description: 'Items per page', required: false, schema: new OA\Schema(type: 'integer', default: 50))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'User lookup retrieved successfully'),
+            new OA\Response(response: 401, description: 'Unauthenticated')
+        ]
+    )]
     public function lookup(Request $request): JsonResponse
     {
+        $q = $request->query('q') ?? $request->query('search');
+        $role = $request->query('role') ?? data_get($request->query('filter'), 'role');
+
         $result = $this->userService->getUserLookup(
-            $request->query('q'),
+            $q,
             max(1, (int) $request->query('page', 1)),
             max(1, (int) $request->query('per_page', 50)),
+            $role
         );
 
-        return $this->successResponse($result);
+        return response()->json([
+            'status' => 'success',
+            'message' => 'User lookup retrieved successfully',
+            'data' => UserLookupResource::collection($result['data']),
+            'totalCount' => $result['totalCount'] ?? count($result['data']),
+            'meta' => $result['meta'],
+        ]);
     }
 
     #[OA\Get(

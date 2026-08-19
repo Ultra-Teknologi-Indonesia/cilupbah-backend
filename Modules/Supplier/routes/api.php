@@ -8,7 +8,7 @@ use Modules\Supplier\Http\Controllers\SalesmanController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
-    Route::get('salesmen/all', [SalesmanController::class, 'all'])->name('salesmen.all')->middleware('role_or_permission:owner|view-salesman');
+    Route::get('salesmen/all', [SalesmanController::class, 'all'])->name('salesmen.all');
 
     Route::middleware('role_or_permission:owner|view-salesman')->group(function () {
         Route::get('salesmen', [SalesmanController::class, 'index'])->name('salesmen.index');
@@ -32,13 +32,12 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('contacts/import/save', [ContactImportController::class, 'save'])->name('contacts.import.save');
     });
 
-    Route::get('contacts/customers', [ContactController::class, 'customers'])->name('contacts.customers')->middleware('role_or_permission:owner|view-kontak-pelanggan');
-    Route::get('contacts/suppliers', [ContactController::class, 'suppliers'])->name('contacts.suppliers')->middleware('role_or_permission:owner|view-kontak-pemasok');
-    Route::get('contacts/customers-suppliers', [ContactController::class, 'customersSuppliers'])->name('contacts.customers-suppliers')->middleware('role_or_permission:owner|view-kontak-pelanggan');
+    Route::get('contacts/customers', [ContactController::class, 'customers'])->name('contacts.customers');
+    Route::get('contacts/suppliers', [ContactController::class, 'suppliers'])->name('contacts.suppliers');
+    Route::get('contacts/customers-suppliers', [ContactController::class, 'customersSuppliers'])->name('contacts.customers-suppliers');
+    Route::get('contacts', [ContactController::class, 'index'])->name('contacts.index');
+    Route::get('contacts/{id}', [ContactController::class, 'show'])->name('contacts.show');
 
-    Route::middleware('role_or_permission:owner|view-kontak-pelanggan')->group(function () {
-        Route::get('contacts', [ContactController::class, 'index'])->name('contacts.index');
-    });
     Route::middleware('role_or_permission:owner|create-kontak-pelanggan')->group(function () {
         Route::post('contacts', [ContactController::class, 'store'])->name('contacts.store');
     });
