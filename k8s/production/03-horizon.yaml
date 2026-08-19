@@ -24,8 +24,8 @@ spec:
               memory: "512Mi"
               cpu: "200m"
             limits:
-              memory: "1536Mi"
-              cpu: "1"
+              memory: "2560Mi"
+              cpu: "1500m"
           envFrom:
             - secretRef:
                 name: cilupbah-env
