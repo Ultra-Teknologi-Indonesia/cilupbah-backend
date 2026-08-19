@@ -1813,7 +1813,10 @@ class SalesOrderService
                 }
             }
 
-            if (! $order->is_settled && $order->source && $order->channel_shop_id) {
+            $isSettlementEligible = $order->is_canceled
+                || in_array(strtoupper((string) $order->channel_status), ['COMPLETED', 'DELIVERED', 'FINISHED', 'SELESAI', 'CLOSED', 'CANCELLED', 'RETURNED', 'TO_CONFIRM_RECEIVE'], true);
+
+            if (! $order->is_settled && $order->source && $order->channel_shop_id && $isSettlementEligible) {
                 try {
                     \Modules\Sales\Jobs\SyncOrderFinanceJob::dispatch($order->id)
                         ->onQueue(config('queue.names.channel_sync'));

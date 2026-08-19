@@ -39,6 +39,14 @@ class SyncOrderFinanceJob implements ShouldQueue
             return;
         }
 
+        $isEligible = $this->force
+            || $order->is_canceled
+            || in_array(strtoupper((string) $order->channel_status), ['COMPLETED', 'DELIVERED', 'FINISHED', 'SELESAI', 'CLOSED', 'CANCELLED', 'RETURNED', 'TO_CONFIRM_RECEIVE'], true);
+
+        if (! $isEligible) {
+            return;
+        }
+
         if (! $order->itemsFullyDownloaded()) {
             return;
         }
