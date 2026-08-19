@@ -170,13 +170,41 @@ class InventoryMovementRepository
             ->selectRaw("SUM({$effectiveQtySql}) OVER (PARTITION BY item_id, location_id ORDER BY transaction_date, inventory_movements.id) AS total_balance")
             ->selectRaw($pickOrder('so.salesorder_no') . ' AS pick_order_no')
             ->selectRaw("(CASE WHEN {$isPick} THEN (SELECT COUNT(DISTINCT pi.order_id) {$pickOrderScope}) END) AS pick_order_count")
-            ->selectRaw('COALESCE((SELECT COALESCE(so.channel_order_no, so.no_ref) FROM sales_orders so WHERE so.salesorder_no = inventory_movements.transaction_number LIMIT 1), ' . $pickOrder('COALESCE(so.channel_order_no, so.no_ref)') . ') AS ref_no')
             ->selectRaw(
                 'COALESCE('
-                . '(SELECT so.customer_name FROM sales_orders so WHERE so.salesorder_no = inventory_movements.transaction_number LIMIT 1), '
-                . '(SELECT COALESCE(sai.notes, sa.notes) FROM stock_adjustments sa'
+                . '(SELECT COALESCE(so.channel_order_no, so.no_ref) FROM sales_orders so WHERE so.salesorder_no = inventory_movements.transaction_number LIMIT 1), '
+                . '(SELECT it.transfer_number FROM inventory_transfers it WHERE it.receive_number = inventory_movements.transaction_number LIMIT 1), '
+                . '(SELECT pb.reference_number FROM purchase_bills pb WHERE pb.bill_number = inventory_movements.transaction_number LIMIT 1), '
+                . '(SELECT po.reference_number FROM purchase_orders po WHERE po.po_number = inventory_movements.transaction_number LIMIT 1), '
+                . $pickOrder('COALESCE(so.channel_order_no, so.no_ref)')
+                . ') AS ref_no'
+            )
+            ->selectRaw(
+                'COALESCE('
+                . '(SELECT NULLIF(TRIM(so.customer_name), \'\') FROM sales_orders so WHERE so.salesorder_no = inventory_movements.transaction_number LIMIT 1), '
+                . '(SELECT NULLIF(TRIM(COALESCE(sai.notes, sa.notes)), \'\') FROM stock_adjustments sa'
                 . '  LEFT JOIN stock_adjustment_items sai ON sai.stock_adjustment_id = sa.id AND sai.item_id = inventory_movements.item_id'
-                . '  WHERE sa.adjustment_no = inventory_movements.transaction_number AND sa.deleted_at IS NULL LIMIT 1), '
+                . '  WHERE sa.adjustment_no = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') AND sa.deleted_at IS NULL LIMIT 1), '
+                . '(SELECT NULLIF(TRIM(it.notes), \'\') FROM inventory_transfers it'
+                . '  WHERE (it.transfer_number = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\')'
+                . '     OR it.receive_number = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\')) LIMIT 1), '
+                . '(SELECT CONCAT(\'Transfer: \', sl.location_name, \' → \', dl.location_name) FROM inventory_transfers it'
+                . '  LEFT JOIN locations sl ON sl.id = it.source_location_id'
+                . '  LEFT JOIN locations dl ON dl.id = it.destination_location_id'
+                . '  WHERE (it.transfer_number = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\')'
+                . '     OR it.receive_number = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\')) LIMIT 1), '
+                . '(SELECT NULLIF(TRIM(COALESCE(bti.notes, bt.notes)), \'\') FROM bin_transfers bt'
+                . '  LEFT JOIN bin_transfer_items bti ON bti.bin_transfer_id = bt.id AND bti.item_id = inventory_movements.item_id'
+                . '  WHERE bt.transfer_number = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') AND bt.deleted_at IS NULL LIMIT 1), '
+                . '(SELECT CONCAT(\'Pindah Rak: \', sb.bin_final_code, \' → \', db.bin_final_code) FROM bin_transfers bt'
+                . '  LEFT JOIN location_bins sb ON sb.id = bt.source_bin_id'
+                . '  LEFT JOIN location_bins db ON db.id = bt.destination_bin_id'
+                . '  WHERE bt.transfer_number = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') AND bt.deleted_at IS NULL LIMIT 1), '
+                . '(SELECT NULLIF(TRIM(so_op.notes), \'\') FROM stock_opnames so_op'
+                . '  WHERE so_op.opname_no = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') AND so_op.deleted_at IS NULL LIMIT 1), '
+                . '(SELECT NULLIF(TRIM(pb.notes), \'\') FROM purchase_bills pb WHERE pb.bill_number = inventory_movements.transaction_number LIMIT 1), '
+                . '(SELECT NULLIF(TRIM(po.notes), \'\') FROM purchase_orders po WHERE po.po_number = inventory_movements.transaction_number LIMIT 1), '
+                . '(SELECT NULLIF(TRIM(COALESCE(sr.notes, sr.reason)), \'\') FROM sales_returns sr WHERE sr.return_number = inventory_movements.transaction_number LIMIT 1), '
                 . $pickOrder('so.customer_name')
                 . ') AS ref_note'
             )
