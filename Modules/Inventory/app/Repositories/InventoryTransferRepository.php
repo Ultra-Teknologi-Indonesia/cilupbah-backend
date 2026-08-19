@@ -33,7 +33,7 @@ class InventoryTransferRepository
                 AllowedFilter::callback('date_from', fn($query, $value) => $query->where('created_at', '>=', $value)),
                 AllowedFilter::callback('date_to', fn($query, $value) => $query->where('created_at', '<=', $value)),
             )
-            ->allowedSorts('transfer_number', 'created_at', 'shipped_at')
+            ->allowedSorts('transfer_number', 'created_at', 'updated_at', 'shipped_at', 'received_at', 'approved_at', 'status', 'id')
             ->defaultSort('-created_at');
 
         if (isset($filters['status'])) {

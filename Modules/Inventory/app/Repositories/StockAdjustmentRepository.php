@@ -21,7 +21,7 @@ class StockAdjustmentRepository
                 AllowedFilter::callback('date_from', fn ($query, $value) => $query->whereDate('transaction_date', '>=', $value)),
                 AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('transaction_date', '<=', $value)),
             )
-            ->allowedSorts('transaction_date', 'created_at', 'adjustment_no')
+            ->allowedSorts('transaction_date', 'created_at', 'adjustment_no', 'created_by', 'id')
             ->defaultSort('-transaction_date')
             ->paginate(request('per_page', $limit))
             ->appends(request()->query());

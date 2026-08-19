@@ -13,7 +13,9 @@ class BinTransferRepository
         $query = QueryBuilder::for(BinTransfer::class)
             ->with(['location:id,location_name'])
             ->withCount('items')
-            ->allowedSearch('transfer_number');
+            ->allowedSearch('transfer_number')
+            ->allowedSorts('transfer_number', 'transfer_date', 'created_at', 'status', 'id')
+            ->defaultSort('-transfer_date', '-created_at');
 
         if (! empty($filters['location_id'])) {
             $query->where('location_id', $filters['location_id']);
@@ -33,9 +35,7 @@ class BinTransferRepository
             $query->whereDate('transfer_date', '<=', $filters['date_to']);
         }
 
-        return $query->orderByDesc('transfer_date')
-            ->orderByDesc('created_at')
-            ->paginate($perPage)
+        return $query->paginate($perPage)
             ->appends(request()->query());
     }
 
