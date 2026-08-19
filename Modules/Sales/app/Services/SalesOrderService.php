@@ -1892,6 +1892,14 @@ class SalesOrderService
             unset($update['settled_at']);
         }
 
+        if (array_key_exists('total_tax', $update) && $update['total_tax'] === null) {
+            $update['total_tax'] = 0;
+        }
+
+        if (array_key_exists('insurance_cost', $update) && $update['insurance_cost'] === null) {
+            $update['insurance_cost'] = 0;
+        }
+
         if (array_key_exists('raw', $finance)) {
             $update['finance_raw'] = $finance['raw'];
         }

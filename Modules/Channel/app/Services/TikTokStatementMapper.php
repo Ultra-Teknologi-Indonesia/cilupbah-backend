@@ -113,7 +113,7 @@ class TikTokStatementMapper
             'settlement_amount'        => $orderSettlement,
             'refund_total'             => $refund ?: null,
             'gross_amount'             => $gross ?: null,
-            'total_tax'                => $totalTax ?: null,
+            'total_tax'                => $totalTax !== null ? (float) $totalTax : 0.0,
             'fee_currency'             => $data['currency'] ?? 'IDR',
             'settled_at'               => null, 
             'is_settled'               => $isSettled,

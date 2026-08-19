@@ -122,7 +122,7 @@ class LazadaTransactionMapper
             'settlement_amount'        => $settlement,
             'refund_total'             => $refundTotal ?: null,
             'gross_amount'             => $grossAmount ?: null,
-            'total_tax'                => $totalTax ?: null,
+            'total_tax'                => $totalTax !== null ? (float) $totalTax : 0.0,
             'fee_currency'             => 'IDR',
             'settled_at'               => $settledAt,
             'is_settled'               => true,
