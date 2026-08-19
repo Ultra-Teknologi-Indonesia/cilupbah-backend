@@ -29,7 +29,7 @@ class StockAdjustmentRepository
 
     public function getQueryForExport(Request $request): \Illuminate\Database\Eloquent\Builder
     {
-        return \Modules\Inventory\Models\StockAdjustmentItem::query()
+        return StockAdjustmentItem::query()
             ->join('stock_adjustments', 'stock_adjustment_items.stock_adjustment_id', '=', 'stock_adjustments.id')
             ->join('product_variants', 'stock_adjustment_items.item_id', '=', 'product_variants.id')
             ->join('products', 'product_variants.product_id', '=', 'products.id')
