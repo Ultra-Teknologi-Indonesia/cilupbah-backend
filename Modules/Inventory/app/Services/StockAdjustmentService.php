@@ -27,7 +27,7 @@ class StockAdjustmentService
         return $this->adjustmentRepository->getAllForExport($request);
     }
 
-    public function getQueryForExport(\Illuminate\Http\Request $request): \Illuminate\Database\Eloquent\Builder
+    public function getQueryForExport(\Illuminate\Http\Request $request): \Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Query\Builder
     {
         return $this->adjustmentRepository->getQueryForExport($request);
     }

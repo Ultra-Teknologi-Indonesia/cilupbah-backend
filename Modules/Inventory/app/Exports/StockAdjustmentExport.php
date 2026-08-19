@@ -2,7 +2,8 @@
 
 namespace Modules\Inventory\Exports;
 
-use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Carbon;
 use Maatwebsite\Excel\Concerns\FromQuery;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
@@ -15,10 +16,10 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 class StockAdjustmentExport implements FromQuery, WithHeadings, WithMapping, WithStyles, ShouldAutoSize, WithTitle
 {
     public function __construct(
-        private readonly Builder $query,
+        private readonly EloquentBuilder|QueryBuilder $query,
     ) {}
 
-    public function query(): Builder
+    public function query()
     {
         return $this->query;
     }
