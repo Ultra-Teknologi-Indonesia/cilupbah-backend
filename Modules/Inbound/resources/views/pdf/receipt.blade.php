@@ -2,7 +2,10 @@
     /** @var \Modules\Inbound\Models\Inbound $inbound */
     $companyName = config('app.company_name', 'PT ULTRA TEKNOLOGI INDONESIA');
     $printedAt = now()->format('d M Y H:i');
-    $items = collect($inbound->items ?? []);
+    // Hanya cetak item yang sudah diterima (received_qty > 0). Item yang belum diterima (0) otomatis disembunyikan.
+    $items = collect($inbound->items ?? [])->filter(function ($item) {
+        return (int) ($item->received_qty ?? 0) > 0;
+    })->values();
     $typeLabel = [
         'PURCHASE_ORDER' => 'Pesanan Pembelian',
         'TRANSIT_IN'     => 'Transfer Masuk',
