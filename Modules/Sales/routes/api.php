@@ -245,6 +245,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::middleware('role_or_permission:owner|view-pesanan')->group(function () {
         Route::get('sales/unfullfilled', [SalesOrderController::class, 'unfulfilled'])->name('sales.unfulfilled');
         Route::get('sales/counts', [SalesOrderController::class, 'counts'])->name('sales.counts');
+        Route::get('sales/shipping-providers', [SalesOrderController::class, 'shippingProviders'])->name('sales.shipping-providers');
+        Route::get('orders/shipping-providers', [SalesOrderController::class, 'shippingProviders'])->name('sales.orders.shipping-providers');
     });
 
     Route::middleware('role_or_permission:owner|view-pesanan')->group(function () {

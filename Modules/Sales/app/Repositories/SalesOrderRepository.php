@@ -53,7 +53,9 @@ class SalesOrderRepository
                 AllowedFilter::exact('channel', 'source'),
                 AllowedFilter::exact('store_id', 'channel_shop_id'),
                 AllowedFilter::exact('location_id'),
-                AllowedFilter::exact('shipping_provider'),
+                AllowedFilter::callback('shipping_provider', fn ($q, $value) => $this->applyShippingProviderFilter($q, $value)),
+                AllowedFilter::callback('courier', fn ($q, $value) => $this->applyShippingProviderFilter($q, $value)),
+                AllowedFilter::callback('couriers', fn ($q, $value) => $this->applyShippingProviderFilter($q, $value)),
                 AllowedFilter::exact('decision', 'customer_decision'),
                 AllowedFilter::scope('date_from', 'whereDateFrom'),
                 AllowedFilter::scope('date_to', 'whereDateTo'),
@@ -102,6 +104,12 @@ class SalesOrderRepository
             $query->allowedSearch(...array_merge(SalesOrder::SEARCH_COLUMNS, [
                 'items.sku',
             ]));
+        }
+
+        if ($couriers = request()->input('couriers')) {
+            if (! request()->has('filter.shipping_provider') && ! request()->has('filter.courier') && ! request()->has('filter.couriers')) {
+                $query->where(fn ($q) => $this->applyShippingProviderFilter($q, $couriers));
+            }
         }
 
         return $query
@@ -871,5 +879,84 @@ class SalesOrderRepository
                 DB::table('sales_order_fee_lines')->insert($rows);
             }
         });
+    }
+
+    public function applyShippingProviderFilter($query, mixed $value)
+    {
+        $providers = is_array($value) ? $value : explode(',', (string) $value);
+        $providers = array_values(array_filter(array_map('trim', $providers), fn ($v) => $v !== ''));
+
+        if (empty($providers)) {
+            return $query;
+        }
+
+        return $query->where(function ($q) use ($providers) {
+            foreach ($providers as $provider) {
+                $q->orWhere(function ($sub) use ($provider) {
+                    $sub->where('shipping_provider', 'ILIKE', "%{$provider}%")
+                        ->orWhere('shipping_type', 'ILIKE', "%{$provider}%")
+                        ->orWhere('resolved_shipment_type', 'ILIKE', "%{$provider}%")
+                        ->orWhere('courier_name', 'ILIKE', "%{$provider}%");
+                });
+            }
+        });
+    }
+
+    public function getShippingProviders(array $params = []): array
+    {
+        $query = SalesOrder::query()->excludeShadow();
+
+        $tab = $params['tab'] ?? request('tab');
+        $sub = $params['sub'] ?? request('sub');
+        if ($tab && $tab !== 'all') {
+            $query = $this->applyTabScope($query, $tab, $sub);
+            if ($tab !== 'failed') {
+                $query = $this->scopeExcludeFailedDownload($query);
+            }
+            $query = $this->scopeExcludeHandedToWarehouse($query);
+        } else {
+            if (! filled($params['status'] ?? request()->input('filter.status'))) {
+                $query = $this->applyTabScope($query, 'all');
+            }
+            $query = $this->scopeExcludeFailedDownload($query);
+        }
+
+        $channel = $params['channel'] ?? request()->input('filter.channel');
+        if (! empty($channel)) {
+            $query->where('source', $channel);
+        }
+
+        $storeId = $params['store_id'] ?? request()->input('filter.store_id');
+        if (! empty($storeId)) {
+            $query->where('channel_shop_id', $storeId);
+        }
+
+        $locationId = $params['location_id'] ?? request()->input('filter.location_id');
+        if (! empty($locationId)) {
+            $query->where('location_id', $locationId);
+        }
+
+        $dateFrom = $params['date_from'] ?? request()->input('filter.date_from');
+        if (! empty($dateFrom)) {
+            $query->whereDateFrom($dateFrom);
+        }
+
+        $dateTo = $params['date_to'] ?? request()->input('filter.date_to');
+        if (! empty($dateTo)) {
+            $query->whereDateTo($dateTo);
+        }
+
+        $results = $query
+            ->whereNotNull('shipping_provider')
+            ->where('shipping_provider', '!=', '')
+            ->select('shipping_provider', DB::raw('count(*) as count'))
+            ->groupBy('shipping_provider')
+            ->orderByDesc('count')
+            ->get();
+
+        return $results->map(fn ($r) => [
+            'name'  => $r->shipping_provider,
+            'count' => (int) $r->count,
+        ])->values()->all();
     }
 }

@@ -139,6 +139,13 @@ class SalesOrderController extends Controller
         return $this->successResponse($this->orderService->getTabCounts());
     }
 
+    public function shippingProviders(Request $request)
+    {
+        $providers = $this->orderService->getShippingProviders($request->all());
+
+        return $this->successResponse($providers);
+    }
+
     #[OA\Post(
         path: '/api/v1/sales',
         summary: 'Create a new sales order',

@@ -115,6 +115,11 @@ class SalesOrderService
         return $this->orderRepository->getPaginatedOrders();
     }
 
+    public function getShippingProviders(array $params = []): array
+    {
+        return $this->orderRepository->getShippingProviders($params);
+    }
+
     public function getTabCounts(): array
     {
 
