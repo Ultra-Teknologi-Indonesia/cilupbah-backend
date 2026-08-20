@@ -631,6 +631,16 @@ class LocationBinService
             ]],
         ]);
 
+        // Eksekusi penyesuaian stok secara sinkron agar stok langsung 0 di UI
+        try {
+            (new \Modules\Inventory\Jobs\ProcessStockAdjustmentJob($adjustment->id, $createdBy))->handle(
+                app(\Modules\Inventory\Repositories\InventoryRepository::class),
+                app(\Modules\Inventory\Repositories\InventoryMovementRepository::class)
+            );
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("Gagal eksekusi sinkron ProcessStockAdjustmentJob: " . $e->getMessage());
+        }
+
         SkuRackAssignment::where('bin_id', $binId)
             ->where('item_id', $itemId)
             ->delete();
