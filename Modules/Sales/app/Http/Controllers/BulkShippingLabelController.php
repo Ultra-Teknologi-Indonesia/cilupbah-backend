@@ -104,10 +104,22 @@ class BulkShippingLabelController extends Controller
                     'is_terminal' => $i->isTerminal(),
                 ];
             }),
-            'pdf_url' => $batch->status === BulkShippingLabelBatch::STATUS_READY && $batch->merged_pdf_path
-                ? url("/api/sales/shipping-labels/bulk/{$batch->id}/pdf")
-                : null,
+            'pdf_url' => $this->resolvePdfUrl($batch),
         ]);
+    }
+
+    private function resolvePdfUrl(BulkShippingLabelBatch $batch): ?string
+    {
+        if ($batch->status !== BulkShippingLabelBatch::STATUS_READY || empty($batch->merged_pdf_path)) {
+            return null;
+        }
+
+        $disk = Storage::disk('documents');
+        try {
+            return $disk->temporaryUrl($batch->merged_pdf_path, now()->addHours(2));
+        } catch (\Throwable) {
+            return url("/api/sales/shipping-labels/bulk/{$batch->id}/pdf");
+        }
     }
 
     private function statusLabel(string $status): string
