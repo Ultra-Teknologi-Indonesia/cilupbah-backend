@@ -883,7 +883,13 @@ class SalesOrderService
             }
 
             $shopeeDocType = $order->shipping_label_doc_type ?? $requestedDocType ?? 'NORMAL_AIR_WAYBILL';
-            $result = $shopeeService->getAirwayBill($shopId, $channelOrderNo, $shopeeDocType);
+            $result = $shopeeService->getAirwayBill(
+                $shopId,
+                $channelOrderNo,
+                $shopeeDocType,
+                $order->tracking_number,
+                $order->package_number ?? null
+            );
 
             if (! empty($result['ready']) && ! empty($result['document_base64'])) {
 

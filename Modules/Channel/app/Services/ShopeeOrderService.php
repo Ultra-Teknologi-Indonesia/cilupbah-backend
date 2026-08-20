@@ -891,45 +891,74 @@ class ShopeeOrderService
         }
     }
 
-    public function createShippingDocument(string $shopId, string $orderSn, string $docType = 'NORMAL_AIR_WAYBILL'): array
+    public function createShippingDocument(string $shopId, string $orderSn, string $docType = 'NORMAL_AIR_WAYBILL', ?string $trackingNumber = null, ?string $packageNumber = null): array
     {
         $shop = $this->requireShop($shopId);
+
+        $orderPayload = [
+            'order_sn' => $orderSn,
+            'shipping_document_type' => $docType,
+        ];
+        if (! empty($trackingNumber)) {
+            $orderPayload['tracking_number'] = $trackingNumber;
+        }
+        if (! empty($packageNumber)) {
+            $orderPayload['package_number'] = $packageNumber;
+        }
 
         return $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/api/v2/logistics/create_shipping_document', [
-            'order_list' => [[
-                'order_sn' => $orderSn,
-                'shipping_document_type' => $docType,
-            ]],
+            'order_list' => [$orderPayload],
         ], $token, $shop->shop_id));
     }
 
-    public function getShippingDocumentResult(string $shopId, string $orderSn, string $docType = 'NORMAL_AIR_WAYBILL'): array
+    public function getShippingDocumentResult(string $shopId, string $orderSn, string $docType = 'NORMAL_AIR_WAYBILL', ?string $trackingNumber = null, ?string $packageNumber = null): array
     {
         $shop = $this->requireShop($shopId);
+
+        $orderPayload = [
+            'order_sn' => $orderSn,
+            'shipping_document_type' => $docType,
+        ];
+        if (! empty($trackingNumber)) {
+            $orderPayload['tracking_number'] = $trackingNumber;
+        }
+        if (! empty($packageNumber)) {
+            $orderPayload['package_number'] = $packageNumber;
+        }
 
         return $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/api/v2/logistics/get_shipping_document_result', [
-            'order_list' => [[
-                'order_sn' => $orderSn,
-                'shipping_document_type' => $docType,
-            ]],
+            'order_list' => [$orderPayload],
         ], $token, $shop->shop_id));
     }
 
-    public function downloadShippingDocument(string $shopId, string $orderSn, string $docType = 'NORMAL_AIR_WAYBILL'): array
+    public function downloadShippingDocument(string $shopId, string $orderSn, string $docType = 'NORMAL_AIR_WAYBILL', ?string $trackingNumber = null, ?string $packageNumber = null): array
     {
         $shop = $this->requireShop($shopId);
+
+        $orderPayload = ['order_sn' => $orderSn];
+        if (! empty($trackingNumber)) {
+            $orderPayload['tracking_number'] = $trackingNumber;
+        }
+        if (! empty($packageNumber)) {
+            $orderPayload['package_number'] = $packageNumber;
+        }
 
         return $this->callWithRefresh($shop, fn (string $token) => $this->client->requestBinary('/api/v2/logistics/download_shipping_document', [
             'shipping_document_type' => $docType,
-            'order_list' => [['order_sn' => $orderSn]],
+            'order_list' => [$orderPayload],
         ], $token, $shop->shop_id));
     }
 
-    public function getAirwayBill(string $shopId, string $orderSn, string $docType = 'NORMAL_AIR_WAYBILL'): array
+    public function getAirwayBill(string $shopId, string $orderSn, string $docType = 'NORMAL_AIR_WAYBILL', ?string $trackingNumber = null, ?string $packageNumber = null): array
     {
         $resolvedType = $this->resolveSupportedDocType($shopId, $orderSn, $docType);
 
-        $create = $this->createShippingDocument($shopId, $orderSn, $resolvedType);
+        if (empty($trackingNumber)) {
+            $shop = $this->requireShop($shopId);
+            $trackingNumber = $this->resolveTrackingNumber($shop, $orderSn, 'READY_TO_SHIP');
+        }
+
+        $create = $this->createShippingDocument($shopId, $orderSn, $resolvedType, $trackingNumber, $packageNumber);
         if (! empty($create['error'])) {
             $failDetail = $create['response']['result_list'][0]['fail_message']
                 ?? $create['response']['result_list'][0]['fail_error']
@@ -949,7 +978,7 @@ class ShopeeOrderService
         $maxRetries = 6;
         $status = null;
         for ($i = 0; $i < $maxRetries; $i++) {
-            $result = $this->getShippingDocumentResult($shopId, $orderSn, $docType);
+            $result = $this->getShippingDocumentResult($shopId, $orderSn, $docType, $trackingNumber, $packageNumber);
             $row = $result['response']['result_list'][0] ?? [];
             $status = strtoupper((string) ($row['status'] ?? ''));
 
@@ -978,7 +1007,7 @@ class ShopeeOrderService
             ];
         }
 
-        $download = $this->downloadShippingDocument($shopId, $orderSn, $docType);
+        $download = $this->downloadShippingDocument($shopId, $orderSn, $docType, $trackingNumber, $packageNumber);
 
         if (! empty($download['binary'])) {
             return [
