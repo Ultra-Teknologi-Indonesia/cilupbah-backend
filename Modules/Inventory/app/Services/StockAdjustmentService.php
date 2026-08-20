@@ -100,7 +100,10 @@ class StockAdjustmentService
             return $this->adjustmentRepository->findById($adjustment->id);
         });
 
-        ProcessStockAdjustmentJob::dispatch($adjustment->id, $data['created_by'])->afterCommit();
+        (new ProcessStockAdjustmentJob($adjustment->id, $data['created_by']))->handle(
+            $this->inventoryRepository,
+            $this->movementRepository,
+        );
 
         return $adjustment;
     }
