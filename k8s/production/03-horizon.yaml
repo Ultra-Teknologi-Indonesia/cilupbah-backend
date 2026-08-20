@@ -21,10 +21,10 @@ spec:
           command: ["php", "artisan", "horizon"]
           resources:
             requests:
-              memory: "512Mi"
-              cpu: "200m"
+              memory: "1536Mi"
+              cpu: "300m"
             limits:
-              memory: "2560Mi"
+              memory: "4096Mi"
               cpu: "2000m"
           envFrom:
             - secretRef:
