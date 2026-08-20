@@ -41,6 +41,16 @@ services:
     container_name: cilupbah-staging-redis
     image: redis:7-alpine
     restart: unless-stopped
+    command:
+      - redis-server
+      - --maxmemory
+      - "512mb"
+      - --maxmemory-policy
+      - allkeys-lru
+      - --save
+      - ""
+      - --appendonly
+      - "no"
     volumes:
       - staging_redisdata:/data
 
