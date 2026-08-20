@@ -32,6 +32,7 @@ class ConfirmProductImportJob implements ShouldQueue
         ProductImportService $productService,
         ImpexActivityService $activities,
     ): void {
+        /** @var ProductImportBatch|null $batch */
         $batch = ProductImportBatch::find($this->batchId);
         if (! $batch || in_array($batch->state, [
             ProductImportBatch::STATE_DONE,
@@ -56,6 +57,7 @@ class ConfirmProductImportJob implements ShouldQueue
             return;
         }
 
+        /** @var \Illuminate\Support\LazyCollection<int, ProductImportRow> $validRows */
         $validRows = $query->cursor();
 
         $totalApplied = 0;
@@ -65,6 +67,7 @@ class ConfirmProductImportJob implements ShouldQueue
             $chunkSuccess = 0;
             $chunkFailed = 0;
 
+            /** @var ProductImportRow $row */
             foreach ($chunk as $row) {
                 $payload = $row->payload;
                 if (! is_array($payload)) {

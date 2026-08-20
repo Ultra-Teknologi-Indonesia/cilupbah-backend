@@ -17,10 +17,12 @@ class CleanupBulkLabelBatchesCommand extends Command
         $hours = (int) $this->option('hours');
         $threshold = now()->subHours($hours);
 
-        $batches = BulkShippingLabelBatch::where('created_at', '<', $threshold)->cursor();
+        /** @var \Illuminate\Support\LazyCollection<int, BulkShippingLabelBatch> $batches */
+        $batches = BulkShippingLabelBatch::query()->where('created_at', '<', $threshold)->cursor();
         $disk = Storage::disk('documents');
         $count = 0;
 
+        /** @var BulkShippingLabelBatch $batch */
         foreach ($batches as $batch) {
             if ($batch->merged_pdf_path && $disk->exists($batch->merged_pdf_path)) {
                 $disk->delete($batch->merged_pdf_path);
