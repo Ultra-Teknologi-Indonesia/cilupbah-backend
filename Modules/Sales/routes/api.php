@@ -254,9 +254,10 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('sales/{id}/invoice', [SalesOrderController::class, 'invoice'])->whereUuid('id')->name('sales.orders.invoice');
         Route::post('sales/invoices/bulk-pdf', [\Modules\Sales\Http\Controllers\BulkInvoiceController::class, 'bulkPdf'])->name('sales.invoices.bulk-pdf');
         Route::get('sales/{id}/breakdown', [SalesOrderController::class, 'breakdown'])->whereUuid('id')->name('sales.orders.breakdown');
-        Route::get('sales/{id}/shipping-label', [SalesOrderController::class, 'getShippingLabel'])->whereUuid('id')->name('sales.orders.shipping-label');
     });
-    Route::middleware('role_or_permission:owner|edit-pesanan')->group(function () {
+
+    Route::middleware('role_or_permission:owner|view-pesanan|edit-pesanan|view-packing|edit-packing|view-picking|edit-picking')->group(function () {
+        Route::get('sales/{id}/shipping-label', [SalesOrderController::class, 'getShippingLabel'])->whereUuid('id')->name('sales.orders.shipping-label');
         Route::post('sales/{id}/shipping-label/retry', [SalesOrderController::class, 'retryShippingLabel'])->whereUuid('id')->name('sales.orders.shipping-label.retry');
 
         Route::post('sales/shipping-labels/bulk', [\Modules\Sales\Http\Controllers\BulkShippingLabelController::class, 'store'])
@@ -272,6 +273,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
             ->name('sales.shipping-labels.bulk.retry-failed');
         Route::post('sales/{id}/print-with-driver-call', [SalesOrderController::class, 'printWithDriverCall'])->whereUuid('id')->name('sales.orders.print-with-driver-call');
         Route::post('sales/{id}/driver-call/retry', [SalesOrderController::class, 'retryDriverCall'])->whereUuid('id')->name('sales.orders.driver-call.retry');
+    });
+
+    Route::middleware('role_or_permission:owner|edit-pesanan')->group(function () {
         Route::put('sales/{id}/relocate', [SalesOrderController::class, 'relocate'])->whereUuid('id')->name('sales.orders.relocate');
 
         Route::match(['put', 'patch'], 'sales/{id}/courier-pickup', [SalesOrderController::class, 'saveCourierPickup'])->whereUuid('id')->name('sales.orders.courier-pickup.save');
