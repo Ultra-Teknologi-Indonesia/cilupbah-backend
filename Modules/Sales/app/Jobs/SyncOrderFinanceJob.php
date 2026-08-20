@@ -3,6 +3,7 @@
 namespace Modules\Sales\Jobs;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -11,9 +12,16 @@ use Illuminate\Support\Facades\Log;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderService;
 
-class SyncOrderFinanceJob implements ShouldQueue
+class SyncOrderFinanceJob implements ShouldQueue, ShouldBeUnique
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    public int $uniqueFor = 1800;
+
+    public function uniqueId(): string
+    {
+        return $this->orderId;
+    }
 
     public int $tries = 3;
     public int $maxExceptions = 3;
@@ -29,7 +37,6 @@ class SyncOrderFinanceJob implements ShouldQueue
     public function handle(SalesOrderService $orderService): void
     {
 
-        /** @var SalesOrder|null $order */
         $order = SalesOrder::find($this->orderId);
 
         if (! $order || ! $order->source || ! $order->channel_shop_id || ! $order->channel_order_no) {
