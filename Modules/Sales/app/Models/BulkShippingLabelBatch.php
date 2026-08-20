@@ -28,6 +28,7 @@ class BulkShippingLabelBatch extends Model
         'merged_pdf_bytes',
         'started_at',
         'finished_at',
+        'created_at',
     ];
 
     protected $casts = [
