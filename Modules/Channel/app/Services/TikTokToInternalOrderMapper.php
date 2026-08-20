@@ -49,7 +49,9 @@ class TikTokToInternalOrderMapper
 
         $trackingNumber = $this->extractTracking($packages);
         $shippingProvider = $this->extractShippingProvider($packages)
-            ?? $tiktokOrder['delivery_option_name'] ?? $tiktokOrder['shipping_provider'] ?? null;
+            ?? (isset($tiktokOrder['shipping_provider']) && trim((string) $tiktokOrder['shipping_provider']) !== '' ? (string) $tiktokOrder['shipping_provider'] : null)
+            ?? $this->extractShippingProviderFromLineItems($tiktokOrder['line_items'] ?? [])
+            ?? ($tiktokOrder['delivery_option_name'] ?? null);
 
         $fulfillmentStatus = $packages[0]['status'] ?? null;
 
@@ -209,6 +211,17 @@ class TikTokToInternalOrderMapper
     {
         foreach ($packages as $pkg) {
             $sp = $pkg['shipping_provider_name'] ?? $pkg['shipping_provider'] ?? null;
+            if ($sp !== null && $sp !== '') {
+                return (string) $sp;
+            }
+        }
+        return null;
+    }
+
+    protected function extractShippingProviderFromLineItems(array $lineItems): ?string
+    {
+        foreach ($lineItems as $item) {
+            $sp = $item['shipping_provider_name'] ?? $item['shipping_provider'] ?? null;
             if ($sp !== null && $sp !== '') {
                 return (string) $sp;
             }
