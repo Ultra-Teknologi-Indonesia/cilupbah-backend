@@ -24,14 +24,32 @@ class CleanupBulkLabelBatchesCommand extends Command
 
         /** @var BulkShippingLabelBatch $batch */
         foreach ($batches as $batch) {
-            if ($batch->merged_pdf_path && $disk->exists($batch->merged_pdf_path)) {
-                $disk->delete($batch->merged_pdf_path);
+            if ($batch->merged_pdf_path) {
+                try {
+                    if ($disk->exists($batch->merged_pdf_path)) {
+                        $disk->delete($batch->merged_pdf_path);
+                    }
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning("Failed to delete bulk label from S3 [{$batch->merged_pdf_path}]: " . $e->getMessage());
+                }
             }
             $batch->delete();
             $count++;
         }
 
-        $this->info("Removed {$count} bulk label batches older than {$hours}h.");
+        // Cleanup orphan PDF files in bulk-labels directory older than threshold
+        try {
+            $files = $disk->files('bulk-labels');
+            foreach ($files as $file) {
+                if ($disk->lastModified($file) < $threshold->timestamp) {
+                    $disk->delete($file);
+                }
+            }
+        } catch (\Throwable $e) {
+            // Driver may not support listing or permission error
+        }
+
+        $this->info("Removed {$count} bulk label batches and cleaned old S3 files older than {$hours}h.");
         return self::SUCCESS;
     }
 }
