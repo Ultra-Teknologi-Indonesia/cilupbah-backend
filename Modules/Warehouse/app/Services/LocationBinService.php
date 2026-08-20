@@ -440,65 +440,23 @@ class LocationBinService
         app(SkuHomeBinGuard::class)->assertSkuFitsBin($locationId, $itemId, $binId);
         app(BinOccupancyGuard::class)->assertBinFitsSku($binId, $itemId);
 
-        $inventoryService = app(InventoryService::class);
+        return DB::transaction(function () use ($locationId, $binId, $itemId, $userId) {
+            SkuRackAssignment::updateOrCreate(
+                [
+                    'location_id' => $locationId,
+                    'item_id'     => $itemId,
+                ],
+                [
+                    'bin_id'      => $binId,
+                    'assigned_by' => $userId,
+                ]
+            );
 
-        return $this->withStockLock($itemId, $locationId, function () use ($locationId, $binId, $itemId, $userId, $inventoryService) {
-            return DB::transaction(function () use ($locationId, $binId, $itemId, $userId, $inventoryService) {
-                $rows = Inventory::query()
-                    ->pendingPlacement()
-                    ->where('inventories.location_id', $locationId)
-                    ->where('inventories.item_id', $itemId)
-                    ->where('inventories.on_hand', '>', 0)
-                    ->lockForUpdate()
-                    ->get();
-
-                if ($rows->isEmpty()) {
-
-                    $alreadyPlaced = Inventory::where('bin_id', $binId)
-                        ->where('item_id', $itemId)
-                        ->where(function ($w) {
-                            $w->where('on_hand', '>', 0)->orWhere('on_order', '>', 0);
-                        })
-                        ->exists();
-
-                    if ($alreadyPlaced) {
-                        return [
-                            'bin_id' => $binId,
-                            'item_id' => $itemId,
-                            'placed_qty' => 0,
-                        ];
-                    }
-
-                    throw new \DomainException('Tidak ada stok pending untuk SKU ini di gudang kecil.');
-                }
-
-                $placed = 0;
-                foreach ($rows as $row) {
-                    $qty = (int) $row->on_hand;
-                    if ($qty <= 0) {
-                        continue;
-                    }
-
-                    $inventoryService->putaway([
-                        'item_id' => $itemId,
-                        'location_id' => $locationId,
-                        'source_bin_id' => $row->bin_id,
-                        'destination_bin_id' => $binId,
-                        'qty' => $qty,
-                        'batch_no' => $row->batch_no ?? '',
-                        'serial_no' => $row->serial_no ?? '',
-                        'created_by' => "user:{$userId}",
-                    ]);
-
-                    $placed += $qty;
-                }
-
-                return [
-                    'bin_id' => $binId,
-                    'item_id' => $itemId,
-                    'placed_qty' => $placed,
-                ];
-            });
+            return [
+                'bin_id'     => $binId,
+                'item_id'    => $itemId,
+                'placed_qty' => 0,
+            ];
         });
     }
 
