@@ -61,7 +61,7 @@ class PutawayRepository
                 AllowedFilter::exact('source_type'),
             )
             ->allowedSearch('putaway_no', 'sources.reference_number', 'sources.transaction_number')
-            ->allowedSorts('created_at', 'started_at', 'completed_at')
+            ->allowedSorts('created_at', 'started_at', 'completed_at', 'putaway_no', 'status')
             ->defaultSort('-created_at');
 
         \App\Support\WarehouseAccess::apply($query);
@@ -80,7 +80,7 @@ class PutawayRepository
                 AllowedFilter::exact('assigned_to'),
             )
             ->allowedSearch('putaway_no', 'sources.reference_number', 'sources.transaction_number')
-            ->allowedSorts('created_at', 'started_at', 'completed_at')
+            ->allowedSorts('created_at', 'started_at', 'completed_at', 'putaway_no', 'status')
             ->defaultSort('-created_at');
 
         \App\Support\WarehouseAccess::apply($query);

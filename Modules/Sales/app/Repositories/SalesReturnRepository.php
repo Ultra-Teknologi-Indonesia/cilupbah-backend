@@ -41,6 +41,9 @@ class SalesReturnRepository
             ->allowedSorts(
                 AllowedSort::field('return_number', 'sales_returns.return_number'),
                 AllowedSort::field('created_at', 'sales_returns.created_at'),
+                AllowedSort::field('return_date', 'sales_returns.return_date'),
+                AllowedSort::field('received_at', 'sales_returns.received_at'),
+                AllowedSort::field('status', 'sales_returns.status'),
             )
             ->defaultSort('-created_at')
             ->paginate($limit)

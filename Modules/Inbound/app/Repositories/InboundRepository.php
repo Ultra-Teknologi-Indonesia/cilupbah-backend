@@ -33,7 +33,7 @@ class InboundRepository
                 AllowedFilter::callback('date_to', fn ($query, $value) => $query->where('created_at', '<=', $value . ' 23:59:59')),
             )
             ->allowedSearch('transaction_number', 'reference_number')
-            ->allowedSorts('expected_date', 'created_at')
+            ->allowedSorts('expected_date', 'created_at', 'transaction_number', 'reference_number', 'status', 'type')
             ->defaultSort('-expected_date')
             ->paginate($limit)
             ->appends(request()->query());

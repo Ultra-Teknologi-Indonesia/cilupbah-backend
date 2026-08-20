@@ -20,7 +20,7 @@ class ReservedStockRepository
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::exact('is_active'),
             )
-            ->allowedSorts('start_date', 'end_date', 'created_at')
+            ->allowedSorts('start_date', 'end_date', 'created_at', 'reserved_stock_no', 'status')
             ->defaultSort('-created_at')
             ->paginate(request('per_page', $limit))
             ->appends(request()->query());
