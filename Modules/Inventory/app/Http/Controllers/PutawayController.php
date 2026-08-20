@@ -372,20 +372,26 @@ class PutawayController extends Controller
         } catch (\App\Exceptions\UserFacingException $e) {
             throw $e;
         } catch (\DomainException $e) {
-
             return $this->errorResponse(
                 $e->getMessage(),
                 422,
                 null,
                 'Penempatan ditolak',
             );
+        } catch (\RuntimeException $e) {
+            return $this->errorResponse(
+                $e->getMessage(),
+                422,
+                null,
+                'Penempatan tidak dapat diproses',
+            );
         } catch (\Exception $e) {
             report($e);
 
             return $this->errorResponse(
-                'Gagal memproses aksi.',
+                $e->getMessage() ?: 'Gagal memproses aksi.',
                 422,
-                app()->environment('production') ? null : ['detail' => $e->getMessage()],
+                null,
                 'Aksi tidak dapat diproses',
             );
         }
