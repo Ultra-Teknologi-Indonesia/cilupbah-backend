@@ -113,7 +113,13 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
         }
 
         if ($this->attempt === 0) {
-            $create = $shopee->createShippingDocument($shopId, $orderSn, $docType);
+            $create = $shopee->createShippingDocument(
+                $shopId,
+                $orderSn,
+                $docType,
+                $order->tracking_number,
+                $order->package_number ?? null
+            );
             if (! empty($create['error'])) {
                 $failDetail = $create['response']['result_list'][0]['fail_message']
                     ?? $create['response']['result_list'][0]['fail_error']
@@ -144,7 +150,13 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
         }
 
         try {
-            $result = $shopee->getShippingDocumentResult($shopId, $orderSn, $docType);
+            $result = $shopee->getShippingDocumentResult(
+                $shopId,
+                $orderSn,
+                $docType,
+                $order->tracking_number,
+                $order->package_number ?? null
+            );
             $row = $result['response']['result_list'][0] ?? [];
             $status = strtoupper((string) ($row['status'] ?? ''));
 
