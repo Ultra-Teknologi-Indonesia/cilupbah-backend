@@ -114,6 +114,7 @@ class BulkShippingLabelController extends Controller
             return null;
         }
 
+        /** @var \Illuminate\Filesystem\FilesystemAdapter $disk */
         $disk = Storage::disk('documents');
         try {
             return $disk->temporaryUrl($batch->merged_pdf_path, now()->addHours(2));
@@ -176,6 +177,7 @@ class BulkShippingLabelController extends Controller
             404,
         );
 
+        /** @var \Illuminate\Filesystem\FilesystemAdapter $disk */
         $disk = Storage::disk('documents');
         abort_unless($disk->exists($batch->merged_pdf_path), 404);
 
