@@ -588,7 +588,26 @@ class BulkShippingLabelService
             return;
         }
 
-        $this->fail($item, ($result['url'] ?? $result['doc_url'] ?? null)
+        $url = $result['url'] ?? ($result['doc_url'] ?? null);
+        if (! empty($url) && is_string($url)) {
+            try {
+                $response = Http::timeout(self::TIKTOK_DOWNLOAD_TIMEOUT)
+                    ->retry(self::TIKTOK_DOWNLOAD_RETRIES, 500)
+                    ->get($url);
+                if ($response->successful()) {
+                    $this->succeed($item, $response->body());
+
+                    return;
+                }
+            } catch (Throwable $e) {
+                Log::warning('TikTok single label download failed', [
+                    'item_id' => $item->id,
+                    'error'   => $e->getMessage(),
+                ]);
+            }
+        }
+
+        $this->fail($item, ! empty($url)
             ? 'tiktok_download_failed'
             : 'tiktok_no_label');
     }
