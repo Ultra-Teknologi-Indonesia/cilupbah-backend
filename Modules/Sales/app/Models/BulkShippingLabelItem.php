@@ -93,13 +93,32 @@ class BulkShippingLabelItem extends Model
     {
         return Attribute::make(
             get: function ($value) {
-                if (! is_resource($value)) {
+                if (is_resource($value)) {
+                    rewind($value);
+                    $value = stream_get_contents($value);
+                }
+
+                if (is_string($value) && str_starts_with($value, '\\x')) {
+                    return hex2bin(substr($value, 2));
+                }
+
+                return $value;
+            },
+            set: function ($value) {
+                if (is_null($value)) {
+                    return null;
+                }
+
+                if (is_resource($value)) {
+                    rewind($value);
+                    $value = stream_get_contents($value);
+                }
+
+                if (is_string($value) && str_starts_with($value, '\\x')) {
                     return $value;
                 }
 
-                rewind($value);
-
-                return stream_get_contents($value);
+                return '\\x' . bin2hex($value);
             },
         )->shouldCache();
     }
