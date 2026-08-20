@@ -73,6 +73,7 @@ class PurchaseOrderRepository
 
         if ($po) {
             $this->attachQcSummary($po);
+            $this->attachInboundsSummary($po);
         }
 
         return $po;
@@ -117,6 +118,25 @@ class PurchaseOrderRepository
             'total_accepted' => (int) ($row->total_accepted ?? 0),
             'total_rejected' => (int) ($row->total_rejected ?? 0),
         ]);
+    }
+
+    private function attachInboundsSummary(PurchaseOrder $po): void
+    {
+        $inbounds = Inbound::where('source_type', 'purchase_order')
+            ->where('source_id', $po->id)
+            ->select('id', 'transaction_number', 'status', 'created_at', 'updated_at')
+            ->get();
+
+        $activeInbound = $inbounds->firstWhere('status', '!=', Inbound::STATUS_CANCELLED);
+        $hasCancelledOnly = $inbounds->isNotEmpty() && ! $activeInbound;
+
+        $po->setAttribute('active_inbound', $activeInbound ? [
+            'id'                 => $activeInbound->id,
+            'transaction_number' => $activeInbound->transaction_number,
+            'status'             => $activeInbound->status,
+        ] : null);
+        $po->setAttribute('has_cancelled_inbound_only', $hasCancelledOnly);
+        $po->setAttribute('inbounds_count', $inbounds->count());
     }
 
     private function attachQcPerItem($items, string $poId): void

@@ -57,7 +57,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('inbounds/{id}/participants/{userId}/withdraw', [InboundController::class, 'withdrawParticipant'])->name('inbounds.participants.withdraw');
     });
 
-    Route::middleware('role_or_permission:owner|create-barang-masuk')->group(function () {
+    Route::middleware('role_or_permission:owner|create-barang-masuk|create-transaksi-pembelian|edit-transaksi-pembelian|receive-transaksi-pembelian')->group(function () {
         Route::post('purchase-orders/{poId}/receive-additional', [InboundController::class, 'receiveAdditional'])->name('inbounds.receiveAdditional');
     });
     Route::middleware('role_or_permission:owner|delete-barang-masuk')->group(function () {

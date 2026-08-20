@@ -54,7 +54,7 @@ class PurchaseOrderObserver
             }
 
             $freshPo = PurchaseOrder::with('items')->find($poId);
-            if (! $freshPo || $freshPo->status !== PurchaseOrder::STATUS_OPEN) {
+            if (! $freshPo || $freshPo->status !== PurchaseOrder::STATUS_OPEN || $freshPo->items->isEmpty()) {
                 return;
             }
 

@@ -55,7 +55,7 @@ class AutoCreateInboundFromPOTest extends TestCase
             'po_number' => 'PO-' . fake()->unique()->numerify('######'),
             'location_id' => $this->location->id,
             'contact_id' => $contact->id,
-            'status' => $status,
+            'status' => PurchaseOrder::STATUS_DRAFT,
             'order_date' => now(),
             'created_by' => 'admin',
         ]);
@@ -67,6 +67,10 @@ class AutoCreateInboundFromPOTest extends TestCase
             'received_qty' => 0,
             'landed_cost_per_unit' => 10000,
         ]);
+
+        if ($status !== PurchaseOrder::STATUS_DRAFT) {
+            $po->update(['status' => $status]);
+        }
 
         return $po->fresh('items');
     }
