@@ -40,6 +40,10 @@ spec:
             limits:
               memory: "2Gi"
               cpu: "500m"
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sleep", "5"]
           # ── Readiness: kapan pod menerima traffic ──
           readinessProbe:
             httpGet:
