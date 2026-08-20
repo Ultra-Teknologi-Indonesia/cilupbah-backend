@@ -12,7 +12,15 @@ use Spatie\QueryBuilder\AllowedFilter;
 
 class SalesOrderRepository
 {
-    private const ORDER_SORTS = ['created_at', 'transaction_date', 'grand_total', 'salesorder_no'];
+    private const ORDER_SORTS = [
+        'created_at',
+        'transaction_date',
+        'grand_total',
+        'salesorder_no',
+        'channel_order_no',
+        'delivery_deadline',
+        'customer_name',
+    ];
 
     private const LIST_RELATIONS = [
         'media',
