@@ -877,10 +877,11 @@ class ShopeeOrderService
         return $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/api/v2/logistics/get_shipping_document_data_info', $payload, $token, $shop->shop_id));
     }
 
-    public function checkAllowSelfDesignAwb(object $shop, string $orderSn, ?string $packageNumber = null): bool
+    public function checkAllowSelfDesignAwb(object|string $shop, string $orderSn, ?string $packageNumber = null): bool
     {
         try {
-            $res = $this->getPackageDetailByOrderSn((string) $shop->shop_id, $orderSn, $packageNumber);
+            $shopId = is_string($shop) ? $shop : (string) ($shop->shop_id ?? '');
+            $res = $this->getPackageDetailByOrderSn($shopId, $orderSn, $packageNumber);
             $pkg = $res['response']['package_list'][0] ?? [];
 
             return (bool) ($pkg['allow_self_design_awb'] ?? false);
