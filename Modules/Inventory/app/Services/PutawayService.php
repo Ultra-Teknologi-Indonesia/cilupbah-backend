@@ -584,7 +584,7 @@ class PutawayService
             $putaway = Putaway::lockForUpdate()->findOrFail($putawayId);
             $previousAssignee = $putaway->assigned_to;
 
-            $this->resetAllPlacements($putawayId, $actorId);
+            $this->resetAllPlacements($putaway, $actorId);
 
             $putaway->refresh()->forceFill([
                 'assigned_to' => $newAssigneeId,
@@ -743,6 +743,7 @@ class PutawayService
             throw new \Exception('Putaway tidak ditemukan.');
         }
 
+        /** @var PutawayItem|null $item */
         $item = PutawayItem::where('putaway_id', $putawayId)
             ->where('id', $itemId)
             ->first();
@@ -1097,6 +1098,7 @@ class PutawayService
             throw new \Exception('Item putaway tidak punya rak asal, tidak bisa dikoreksi.');
         }
 
+        /** @var PutawayPlacement|null $placement */
         $placement = PutawayPlacement::where('id', $placementId)
             ->where('putaway_item_id', $item->id)
             ->lockForUpdate()
@@ -1150,6 +1152,7 @@ class PutawayService
 
             if ($sources->isNotEmpty()) {
                 $remaining = $qtyRev;
+                /** @var PutawayItemSource $src */
                 foreach ($sources as $src) {
                     if ($remaining <= 0) {
                         break;
@@ -1222,6 +1225,7 @@ class PutawayService
 
         if ($sources->isNotEmpty()) {
             $remaining = $unplaced;
+            /** @var PutawayItemSource $src */
             foreach ($sources as $src) {
                 if ($remaining <= 0) {
                     break;
