@@ -174,8 +174,8 @@ class InventoryMovementRepository
                 'COALESCE('
                 . '(SELECT COALESCE(so.channel_order_no, so.no_ref) FROM sales_orders so WHERE so.salesorder_no = inventory_movements.transaction_number LIMIT 1), '
                 . '(SELECT it.transfer_number FROM inventory_transfers it WHERE it.receive_number = inventory_movements.transaction_number LIMIT 1), '
-                . '(SELECT pb.reference_number FROM purchase_bills pb WHERE pb.bill_number = inventory_movements.transaction_number LIMIT 1), '
-                . '(SELECT po.reference_number FROM purchase_orders po WHERE po.po_number = inventory_movements.transaction_number LIMIT 1), '
+                . '(SELECT pb.ref_no FROM purchase_bills pb WHERE pb.bill_number = inventory_movements.transaction_number LIMIT 1), '
+                . '(SELECT po.ref_no FROM purchase_orders po WHERE po.po_number = inventory_movements.transaction_number LIMIT 1), '
                 . $pickOrder('COALESCE(so.channel_order_no, so.no_ref)')
                 . ') AS ref_no'
             )
@@ -197,8 +197,9 @@ class InventoryMovementRepository
                 . '  LEFT JOIN bin_transfer_items bti ON bti.bin_transfer_id = bt.id AND bti.item_id = inventory_movements.item_id'
                 . '  WHERE bt.transfer_number = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') AND bt.deleted_at IS NULL LIMIT 1), '
                 . '(SELECT CONCAT(\'Pindah Rak: \', sb.bin_final_code, \' → \', db.bin_final_code) FROM bin_transfers bt'
-                . '  LEFT JOIN location_bins sb ON sb.id = bt.source_bin_id'
-                . '  LEFT JOIN location_bins db ON db.id = bt.destination_bin_id'
+                . '  LEFT JOIN bin_transfer_items bti ON bti.bin_transfer_id = bt.id AND bti.item_id = inventory_movements.item_id'
+                . '  LEFT JOIN location_bins sb ON sb.id = bti.source_bin_id'
+                . '  LEFT JOIN location_bins db ON db.id = bti.destination_bin_id'
                 . '  WHERE bt.transfer_number = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') AND bt.deleted_at IS NULL LIMIT 1), '
                 . '(SELECT NULLIF(TRIM(so_op.notes), \'\') FROM stock_opnames so_op'
                 . '  WHERE so_op.opname_no = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') AND so_op.deleted_at IS NULL LIMIT 1), '
