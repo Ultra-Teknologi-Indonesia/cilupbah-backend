@@ -17,7 +17,7 @@ class CleanupBulkLabelBatchesCommand extends Command
         $hours = (int) $this->option('hours');
         $threshold = now()->subHours($hours);
 
-        $batches = BulkShippingLabelBatch::where('created_at', '<', $threshold)->get();
+        $batches = BulkShippingLabelBatch::where('created_at', '<', $threshold)->cursor();
         $disk = Storage::disk('documents');
         $count = 0;
 

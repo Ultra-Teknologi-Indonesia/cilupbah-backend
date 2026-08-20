@@ -33,14 +33,15 @@ class ProcessBulkReadyToShipJob implements ShouldQueue
             return;
         }
 
-        $items = $batch->items()
-            ->whereIn('status', [BulkRtsItem::STATUS_PENDING, BulkRtsItem::STATUS_PROCESSING])
-            ->get();
+        $query = $batch->items()
+            ->whereIn('status', [BulkRtsItem::STATUS_PENDING, BulkRtsItem::STATUS_PROCESSING]);
 
-        if ($items->isEmpty()) {
+        if (! $query->exists()) {
             $batch->recomputeCounts();
             return;
         }
+
+        $items = $query->cursor();
 
         foreach ($items->chunk(10) as $chunk) {
             foreach ($chunk as $item) {

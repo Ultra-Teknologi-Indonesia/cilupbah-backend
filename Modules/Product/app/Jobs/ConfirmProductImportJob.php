@@ -43,12 +43,11 @@ class ConfirmProductImportJob implements ShouldQueue
 
         $activity = $activities->findBySource('product_import_batch', $batch->id);
 
-        $validRows = ProductImportRow::where('import_batch_id', $batch->id)
+        $query = ProductImportRow::where('import_batch_id', $batch->id)
             ->where('status', ProductImportRow::STATUS_VALID)
-            ->orderBy('row_number')
-            ->get();
+            ->orderBy('row_number');
 
-        if ($validRows->isEmpty()) {
+        if (! $query->exists()) {
             $batchService->finalizeConfirm($batch, 0, 0);
             if ($activity) {
                 $activities->markSuccess($activity);
@@ -56,6 +55,8 @@ class ConfirmProductImportJob implements ShouldQueue
 
             return;
         }
+
+        $validRows = $query->cursor();
 
         $totalApplied = 0;
         $totalFailed = 0;
