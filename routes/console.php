@@ -42,6 +42,7 @@ Schedule::command('channel:reconcile-orders')->hourlyAt(30)->withoutOverlapping(
 Schedule::command('raise-products:auto-raise')->everyThirtyMinutes()->withoutOverlapping()->onOneServer();
 
 Schedule::command('horizon:snapshot')->everyFiveMinutes();
+Schedule::command('horizon:purge')->daily()->withoutOverlapping()->onOneServer();
 
 Schedule::job(new \Modules\Outbound\Jobs\RefreshInstantTrackingJob())
     ->everyThreeMinutes()
