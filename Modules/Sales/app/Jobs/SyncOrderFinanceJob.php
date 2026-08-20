@@ -29,6 +29,7 @@ class SyncOrderFinanceJob implements ShouldQueue
     public function handle(SalesOrderService $orderService): void
     {
 
+        /** @var SalesOrder|null $order */
         $order = SalesOrder::find($this->orderId);
 
         if (! $order || ! $order->source || ! $order->channel_shop_id || ! $order->channel_order_no) {
