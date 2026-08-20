@@ -20,6 +20,7 @@ class PutawayItem extends Model
         'putaway_qty',
         'batch_no',
         'serial_no',
+        'notes',
     ];
 
     public function putaway(): BelongsTo

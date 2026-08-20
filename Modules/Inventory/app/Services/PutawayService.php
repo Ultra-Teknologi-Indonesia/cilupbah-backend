@@ -735,6 +735,28 @@ class PutawayService
         ProcessPutawayItemJob::dispatchSync($putawayId, $itemId, $data);
     }
 
+    public function updateItemNotes(string $putawayId, string $itemId, ?string $notes): PutawayItem
+    {
+        $putaway = $this->putawayRepository->findById($putawayId);
+
+        if (!$putaway) {
+            throw new \Exception('Putaway tidak ditemukan.');
+        }
+
+        $item = PutawayItem::where('putaway_id', $putawayId)
+            ->where('id', $itemId)
+            ->first();
+
+        if (!$item) {
+            throw new \Exception('Item putaway tidak ditemukan.');
+        }
+
+        $item->notes = $notes;
+        $item->save();
+
+        return $item;
+    }
+
     public function complete(string $id): Putaway
     {
         $putaway = DB::transaction(function () use ($id) {

@@ -397,6 +397,50 @@ class PutawayController extends Controller
         }
     }
 
+    #[OA\Patch(
+        path: '/api/v1/putaway/{id}/items/{itemId}/notes',
+        summary: 'Update catatan/keterangan pada item putaway',
+        security: [['bearerAuth' => []]],
+        tags: ['Putaway'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'itemId', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                properties: [
+                    new OA\Property(property: 'notes', type: 'string', nullable: true, description: 'Catatan atau keterangan item'),
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Catatan item berhasil diperbarui.'),
+            new OA\Response(response: 422, description: 'Validation Error'),
+        ]
+    )]
+    public function updateItemNotes(Request $request, string $id, string $itemId): JsonResponse
+    {
+        $validated = $request->validate([
+            'notes' => 'nullable|string|max:1000',
+        ]);
+
+        try {
+            $item = $this->putawayService->updateItemNotes($id, $itemId, $validated['notes'] ?? null);
+
+            return $this->successResponse($item, 'Catatan item berhasil diperbarui.');
+        } catch (\App\Exceptions\UserFacingException $e) {
+            throw $e;
+        } catch (\Exception $e) {
+            report($e);
+
+            return $this->errorResponse(
+                $e->getMessage() ?: 'Gagal memperbarui catatan item.',
+                422,
+            );
+        }
+    }
+
     #[OA\Delete(
         path: '/api/v1/putaway/{id}/items/{itemId}/placements/{placementId}',
         summary: 'Hapus/koreksi satu penempatan (salah scan rak/qty) dan kembalikan stok ke rak asal',

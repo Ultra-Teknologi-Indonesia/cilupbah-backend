@@ -257,4 +257,26 @@ class PutawayRackAssignmentTest extends TestCase
         $this->assertStringNotContainsString('Rak belum diassign', (string) $okRes->json('message'));
         $this->assertStringNotContainsString('dialokasikan ke rak tertentu', (string) $okRes->json('message'));
     }
+
+    public function test_can_update_putaway_item_notes(): void
+    {
+        $loc = $this->pusatLocation();
+        $inbound = $this->makeBin($loc, 'INB-P', true);
+        $variant = $this->makeVariant();
+
+        $putaway = $this->makePutaway($loc);
+        $item = $this->addItem($putaway, $inbound, $variant);
+
+        $res = $this->patchJson("/api/v1/putaway/{$putaway->id}/items/{$item->id}/notes", [
+            'notes' => 'Catatan reject 2 pcs & koreksi SKU',
+        ]);
+
+        $res->assertOk();
+        $this->assertSame('Catatan reject 2 pcs & koreksi SKU', $item->fresh()->notes);
+
+        $itemsRes = $this->getJson("/api/v1/putaway/{$putaway->id}/items");
+        $itemsRes->assertOk();
+        $row = collect($itemsRes->json('data'))->firstWhere('id', $item->id);
+        $this->assertSame('Catatan reject 2 pcs & koreksi SKU', $row['notes']);
+    }
 }
