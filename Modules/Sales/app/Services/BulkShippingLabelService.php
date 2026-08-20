@@ -392,6 +392,17 @@ class BulkShippingLabelService
             $effH = $srcH;
         }
 
+        // Untuk TikTok dan Lazada (A6 / standard thermal), scale ke full width agar barcode & teks tajam memenuhi kertas
+        if ($channel === self::CHANNEL_TIKTOK || $channel === self::CHANNEL_LAZADA) {
+            $scale = $targetW / $effW;
+            $renderW = $effW * $scale;
+            $renderH = $effH * $scale;
+            $x = ($targetW - $renderW) / 2;
+            $y = 0.0;
+
+            return [$x, $y, $srcW * $scale, $srcH * $scale];
+        }
+
         $aspect = $effH / $effW;
         $scale = $aspect > 1.6
             ? $targetW / $effW
