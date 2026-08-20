@@ -18,6 +18,7 @@ use Modules\Channel\Models\ChannelShop;
 use Modules\Inbound\Services\InboundService;
 use Modules\Channel\Jobs\SyncStockToChannelsJob;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Inventory\Models\InventoryTransferItem;
@@ -1143,32 +1144,36 @@ class InventoryService
 
     public function getActiveChannels(): array
     {
-        return ChannelShop::with('channel:id,code,name')
-            ->where('is_active', true)
-            ->get()
-            ->map(fn ($shop) => [
-                'channel_id' => $shop->channel_id,
-                'channel_code' => $shop->channel?->code,
-                'channel_name' => $shop->channel?->name,
-                'store_name' => $shop->shop_name,
-                'store_id' => $shop->shop_id,
-            ])
-            ->values()
-            ->toArray();
+        return Cache::remember('inventory_active_channels_list', 60, function () {
+            return ChannelShop::with('channel:id,code,name')
+                ->where('is_active', true)
+                ->get()
+                ->map(fn ($shop) => [
+                    'channel_id' => $shop->channel_id,
+                    'channel_code' => $shop->channel?->code,
+                    'channel_name' => $shop->channel?->name,
+                    'store_name' => $shop->shop_name,
+                    'store_id' => $shop->shop_id,
+                ])
+                ->values()
+                ->toArray();
+        });
     }
 
     public function getActiveLocations(): array
     {
-        return Location::where('is_active', true)
-            ->where('location_code', '!=', Location::SYSTEM_TRANSIT_CODE)
-            ->select('id', 'location_name')
-            ->get()
-            ->map(fn ($loc) => [
-                'location_id' => $loc->id,
-                'location_name' => $loc->location_name,
-            ])
-            ->values()
-            ->toArray();
+        return Cache::remember('inventory_active_locations_list', 60, function () {
+            return Location::where('is_active', true)
+                ->where('location_code', '!=', Location::SYSTEM_TRANSIT_CODE)
+                ->select('id', 'location_name')
+                ->get()
+                ->map(fn ($loc) => [
+                    'location_id' => $loc->id,
+                    'location_name' => $loc->location_name,
+                ])
+                ->values()
+                ->toArray();
+        });
     }
 
     public function getAllPaginated(int $limit = 10)

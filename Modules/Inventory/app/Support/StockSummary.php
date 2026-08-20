@@ -75,17 +75,19 @@ class StockSummary
             return [];
         }
 
+        $packedSub = DB::table('packlist_items')
+            ->groupBy('order_item_id')
+            ->select('order_item_id', DB::raw('COALESCE(SUM(qty_packed), 0) as packed'));
+
         $perOrderItem = DB::table('picklist_items as pi')
             ->join('picklist_item_allocations as pia', 'pia.picklist_item_id', '=', 'pi.id')
+            ->leftJoinSub($packedSub, 'pk', 'pk.order_item_id', '=', 'pi.order_item_id')
             ->whereIn('pi.item_id', $itemIds)
-            ->groupBy('pi.item_id', 'pi.order_item_id')
+            ->groupBy('pi.item_id', 'pi.order_item_id', 'pk.packed')
             ->selectRaw('pi.item_id AS item_id')
             ->selectRaw('pi.order_item_id AS order_item_id')
             ->selectRaw('COALESCE(SUM(pia.qty), 0) AS picked')
-            ->selectRaw(
-                '(SELECT COALESCE(SUM(pk.qty_packed), 0) FROM packlist_items pk '.
-                'WHERE pk.order_item_id = pi.order_item_id) AS packed'
-            );
+            ->selectRaw('COALESCE(pk.packed, 0) AS packed');
 
         $rows = DB::query()
             ->fromSub($perOrderItem, 't')
