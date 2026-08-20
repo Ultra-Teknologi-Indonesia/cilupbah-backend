@@ -28,7 +28,7 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
         public readonly string $orderId,
         public readonly int $attempt = 0,
     ) {
-        $this->onQueue(config('queue.names.channel_sync'));
+        $this->onQueue(config('queue.names.labels', 'labels'));
     }
 
     public function handle(ShopeeOrderService $shopee): void
@@ -195,7 +195,7 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
                 'delay_sec'    => $delaySeconds,
             ]);
             self::dispatch($order->id, $nextAttempt)
-                ->onQueue(config('queue.names.channel_sync'))
+                ->onQueue(config('queue.names.labels', 'labels'))
                 ->delay(now()->addSeconds($delaySeconds));
         } else {
             $order->update(['shipping_label_status' => 'failed']);

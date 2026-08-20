@@ -94,6 +94,7 @@ return [
         'stock_critical'   => env('QUEUE_NAME_STOCK_CRITICAL', 'stock-critical'),
         'stock_default'    => env('QUEUE_NAME_STOCK_DEFAULT', 'stock-default'),
         'channel_sync'     => env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync'),
+        'labels'           => env('QUEUE_NAME_LABELS', 'labels'),
 
         // Shopee Tiered Webhook Queues
         'shopee_orders'     => env('QUEUE_NAME_SHOPEE_ORDERS', 'shopee-orders'),

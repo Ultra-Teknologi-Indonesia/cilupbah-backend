@@ -27,7 +27,7 @@ class PrepareLazadaShippingLabelJob implements ShouldQueue
         public readonly string $orderId,
         public readonly int $attempt = 0,
     ) {
-        $this->onQueue(config('queue.names.channel_sync'));
+        $this->onQueue(config('queue.names.labels', 'labels'));
     }
 
     public function handle(LazadaOrderService $lazada): void
@@ -117,7 +117,7 @@ class PrepareLazadaShippingLabelJob implements ShouldQueue
                 'next_attempt' => $nextAttempt,
             ]);
             self::dispatch($order->id, $nextAttempt)
-                ->onQueue(config('queue.names.channel_sync'))
+                ->onQueue(config('queue.names.labels', 'labels'))
                 ->delay(now()->addMinutes(5));
 
             return;

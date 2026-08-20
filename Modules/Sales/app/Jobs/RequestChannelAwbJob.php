@@ -34,7 +34,7 @@ class RequestChannelAwbJob implements ShouldQueue
         public readonly string $orderId,
         public readonly int $trackingAttempt = 0,
     ) {
-        $this->onQueue(config('queue.names.channel_sync'));
+        $this->onQueue(config('queue.names.labels', 'labels'));
     }
 
     public function handle(OutboundFulfillmentService $fulfillment): void
@@ -178,7 +178,7 @@ class RequestChannelAwbJob implements ShouldQueue
                 ]);
 
                 PrepareShopeeShippingLabelJob::dispatch($order->id)
-                    ->onQueue(config('queue.names.channel_sync'));
+                    ->onQueue(config('queue.names.labels', 'labels'));
 
                 return true;
             }
@@ -250,7 +250,7 @@ class RequestChannelAwbJob implements ShouldQueue
                 ]);
 
                 PrepareLazadaShippingLabelJob::dispatch($order->id)
-                    ->onQueue(config('queue.names.channel_sync'));
+                    ->onQueue(config('queue.names.labels', 'labels'));
 
                 return true;
             }

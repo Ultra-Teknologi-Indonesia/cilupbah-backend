@@ -573,7 +573,7 @@ class BulkShippingLabelService
         }
 
         PrepareShopeeShippingLabelJob::dispatch($order->id)
-            ->onQueue(config('queue.names.channel_sync'));
+            ->onQueue(config('queue.names.labels', 'labels'));
         $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP]);
     }
 
@@ -600,7 +600,7 @@ class BulkShippingLabelService
         } catch (ShippingLabelPreparingException $e) {
 
             PrepareLazadaShippingLabelJob::dispatch($order->id)
-                ->onQueue(config('queue.names.channel_sync'));
+                ->onQueue(config('queue.names.labels', 'labels'));
             $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP]);
             return;
         } catch (\RuntimeException $e) {
@@ -627,7 +627,7 @@ class BulkShippingLabelService
         }
 
         PrepareLazadaShippingLabelJob::dispatch($order->id)
-            ->onQueue(config('queue.names.channel_sync'));
+            ->onQueue(config('queue.names.labels', 'labels'));
         $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP]);
     }
 
