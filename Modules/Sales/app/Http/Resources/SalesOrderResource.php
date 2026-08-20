@@ -166,8 +166,12 @@ class SalesOrderResource extends JsonResource
                 'courier_name'  => $this->courier_name,
                 'courier_phone' => $this->courier_phone,
                 'pickup_code'   => $this->pickup_code,
-                'id_photo_url'   => $this->getFirstMediaUrl('courier_id') ?: null,
-                'id_photo_thumb' => $this->getFirstMediaUrl('courier_id', 'thumb') ?: null,
+                'id_photo_url'   => $this->relationLoaded('media') && $this->media->contains('collection_name', 'courier_id')
+                    ? ($this->getFirstMediaUrl('courier_id') ?: null)
+                    : null,
+                'id_photo_thumb' => $this->relationLoaded('media') && $this->media->contains('collection_name', 'courier_id')
+                    ? ($this->getFirstMediaUrl('courier_id', 'thumb') ?: null)
+                    : null,
                 'recorded_at'   => $this->courier_pickup_recorded_at,
                 'recorded_by'   => $this->courier_pickup_recorded_by,
             ],
@@ -214,8 +218,12 @@ class SalesOrderResource extends JsonResource
                 'id'         => $this->internalStore->id,
                 'code'       => $this->internalStore->code,
                 'name'       => $this->internalStore->name,
-                'logo_url'   => $this->internalStore->getFirstMediaUrl('logo') ?: null,
-                'logo_thumb' => $this->internalStore->getFirstMediaUrl('logo', 'thumb') ?: null,
+                'logo_url'   => $this->internalStore->relationLoaded('media') && $this->internalStore->media->contains('collection_name', 'logo')
+                    ? ($this->internalStore->getFirstMediaUrl('logo') ?: null)
+                    : null,
+                'logo_thumb' => $this->internalStore->relationLoaded('media') && $this->internalStore->media->contains('collection_name', 'logo')
+                    ? ($this->internalStore->getFirstMediaUrl('logo', 'thumb') ?: null)
+                    : null,
             ] : null),
 
             'salesman' => $this->whenLoaded('salesman', fn () => $this->salesman ? [

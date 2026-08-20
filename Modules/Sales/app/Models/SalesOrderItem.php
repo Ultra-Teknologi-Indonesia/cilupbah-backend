@@ -57,15 +57,17 @@ class SalesOrderItem extends Model
 
     public function getImageUrlAttribute(): ?string
     {
-        $variant = $this->product;
+        $variant = $this->relationLoaded('product') ? $this->product : null;
         if ($variant) {
-            $url = $this->resolveMediaUrl($variant->media);
-            if ($url) {
-                return $url;
+            if ($variant->relationLoaded('media')) {
+                $url = $this->resolveMediaUrl($variant->media);
+                if ($url) {
+                    return $url;
+                }
             }
 
-            $parentProduct = $variant->product;
-            if ($parentProduct) {
+            $parentProduct = $variant->relationLoaded('product') ? $variant->product : null;
+            if ($parentProduct && $parentProduct->relationLoaded('media')) {
                 $url = $this->resolveMediaUrl($parentProduct->media);
                 if ($url) {
                     return $url;
@@ -73,9 +75,9 @@ class SalesOrderItem extends Model
             }
         }
 
-        if ($this->channel_product_id) {
+        if ($this->channel_product_id && $this->relationLoaded('channelMapping')) {
             $mapping = $this->channelMapping;
-            if ($mapping && $mapping->product) {
+            if ($mapping && $mapping->relationLoaded('product') && $mapping->product && $mapping->product->relationLoaded('media')) {
                 return $this->resolveMediaUrl($mapping->product->media);
             }
         }

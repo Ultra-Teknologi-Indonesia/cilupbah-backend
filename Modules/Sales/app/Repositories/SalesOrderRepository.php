@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Repositories;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Sales\Models\SalesOrder;
@@ -130,61 +131,62 @@ class SalesOrderRepository
 
     public function getTabCounts(): array
     {
-        $emptyStockItemConstraint = fn ($q) => $q->whereRaw(SalesOrder::shortfallItemWhereRaw());
+        return Cache::remember('sales_order_tab_counts_global', 15, function () {
+            $emptyStockItemConstraint = fn ($q) => $q->whereRaw(SalesOrder::shortfallItemWhereRaw());
 
-        return [
-
-            'all'              => $this->scopeExcludeFailedDownload(SalesOrder::query())
-                ->whereNull('pick_failed_at')
-                ->where(fn ($q) => $q
-                    ->where('status', '!=', 'reserved')
-                    ->orWhereDoesntHave('items', $emptyStockItemConstraint))
-                ->count(),
-            'unpaid'           => $this->visibleOrders()->where('status', 'pending')->where('is_paid', false)->count(),
-            'failed'           => $this->scopeFailedDownload(SalesOrder::query())->count(),
-            'ready-to-process' => $this->excludeChannelCancelPending(
-                $this->visibleOrders()->where('status', 'reserved')
+            return [
+                'all'              => $this->scopeExcludeFailedDownload(SalesOrder::query())
                     ->whereNull('pick_failed_at')
-                    ->whereDoesntHave('picklistItems')
-                    ->whereDoesntHave('items', $this->unmappedItemsConstraint())
-                    ->whereDoesntHave('items', $emptyStockItemConstraint)
-            )->count(),
-            'empty-stock'      => $this->visibleOrders()->where('status', 'reserved')
-                ->whereNull('pick_failed_at')
-                ->whereHas('items', $emptyStockItemConstraint)
-                ->count(),
-            'failed-pick'      => $this->visibleOrders()->where('status', 'reserved')
-                ->whereNotNull('pick_failed_at')
-                ->count(),
-            'cancellation'     => $this->visibleOrders()
-                ->where(function ($q) {
-                    $q->whereIn('channel_status', ['IN_CANCEL', 'Request Cancel', 'Order Request Cancel'])
-                      ->orWhereIn('channel_status_raw', ['IN_CANCEL', 'REQUEST_CANCEL', 'AWAITING_CANCEL'])
-                      ->orWhere(function ($subQ) {
-                          $subQ->whereNotNull('cancel_requested_at')
-                               ->whereNull('cancel_accepted_at')
-                               ->whereNull('cancel_rejected_at')
-                               ->whereNotIn('status', ['cancelled', 'shipped', 'completed']);
-                      });
-                })
-                ->where('status', '!=', 'cancelled')
-                ->count(),
-            'cancellation_post_pack' => $this->visibleOrders()
-                ->whereNotNull('handed_to_warehouse_at')
-                ->where(function ($q) {
-                    $q->whereIn('channel_status', ['IN_CANCEL', 'Request Cancel', 'Order Request Cancel'])
-                      ->orWhereIn('channel_status_raw', ['IN_CANCEL', 'REQUEST_CANCEL', 'AWAITING_CANCEL'])
-                      ->orWhere(function ($subQ) {
-                          $subQ->whereNotNull('cancel_requested_at')
-                               ->whereNotIn('status', ['cancelled', 'shipped', 'completed']);
-                      });
-                })
-                ->where('status', '!=', 'cancelled')
-                ->count(),
-            'channel-cancel'   => $this->visibleOrders()
-                ->whereIn('channel_cancel_status', ['pending', 'failed'])->count(),
-            'returned'         => $this->visibleOrders()->whereHas('returns')->count(),
-        ];
+                    ->where(fn ($q) => $q
+                        ->where('status', '!=', 'reserved')
+                        ->orWhereDoesntHave('items', $emptyStockItemConstraint))
+                    ->count(),
+                'unpaid'           => $this->visibleOrders()->where('status', 'pending')->where('is_paid', false)->count(),
+                'failed'           => $this->scopeFailedDownload(SalesOrder::query())->count(),
+                'ready-to-process' => $this->excludeChannelCancelPending(
+                    $this->visibleOrders()->where('status', 'reserved')
+                        ->whereNull('pick_failed_at')
+                        ->whereDoesntHave('picklistItems')
+                        ->whereDoesntHave('items', $this->unmappedItemsConstraint())
+                        ->whereDoesntHave('items', $emptyStockItemConstraint)
+                )->count(),
+                'empty-stock'      => $this->visibleOrders()->where('status', 'reserved')
+                    ->whereNull('pick_failed_at')
+                    ->whereHas('items', $emptyStockItemConstraint)
+                    ->count(),
+                'failed-pick'      => $this->visibleOrders()->where('status', 'reserved')
+                    ->whereNotNull('pick_failed_at')
+                    ->count(),
+                'cancellation'     => $this->visibleOrders()
+                    ->where(function ($q) {
+                        $q->whereIn('channel_status', ['IN_CANCEL', 'Request Cancel', 'Order Request Cancel'])
+                          ->orWhereIn('channel_status_raw', ['IN_CANCEL', 'REQUEST_CANCEL', 'AWAITING_CANCEL'])
+                          ->orWhere(function ($subQ) {
+                              $subQ->whereNotNull('cancel_requested_at')
+                                   ->whereNull('cancel_accepted_at')
+                                   ->whereNull('cancel_rejected_at')
+                                   ->whereNotIn('status', ['cancelled', 'shipped', 'completed']);
+                          });
+                    })
+                    ->where('status', '!=', 'cancelled')
+                    ->count(),
+                'cancellation_post_pack' => $this->visibleOrders()
+                    ->whereNotNull('handed_to_warehouse_at')
+                    ->where(function ($q) {
+                        $q->whereIn('channel_status', ['IN_CANCEL', 'Request Cancel', 'Order Request Cancel'])
+                          ->orWhereIn('channel_status_raw', ['IN_CANCEL', 'REQUEST_CANCEL', 'AWAITING_CANCEL'])
+                          ->orWhere(function ($subQ) {
+                              $subQ->whereNotNull('cancel_requested_at')
+                                   ->whereNotIn('status', ['cancelled', 'shipped', 'completed']);
+                          });
+                    })
+                    ->where('status', '!=', 'cancelled')
+                    ->count(),
+                'channel-cancel'   => $this->visibleOrders()
+                    ->whereIn('channel_cancel_status', ['pending', 'failed'])->count(),
+                'returned'         => $this->visibleOrders()->whereHas('returns')->count(),
+            ];
+        });
     }
 
     protected function visibleOrders()
