@@ -41,7 +41,17 @@ class StockAdjustmentController extends Controller
         $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
         $adjustments = $this->adjustmentService->getAllPaginated($limit);
 
-        return $this->successPaginatedResponse($adjustments, 'Daftar dokumen adjustment berhasil diambil.');
+        return $this->successResponse(
+            StockAdjustmentResource::collection($adjustments->items()),
+            'Daftar dokumen adjustment berhasil diambil.',
+            200,
+            [
+                'current_page' => $adjustments->currentPage(),
+                'last_page' => $adjustments->lastPage(),
+                'per_page' => $adjustments->perPage(),
+                'total' => $adjustments->total(),
+            ]
+        );
     }
 
     #[OA\Get(
