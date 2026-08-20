@@ -68,6 +68,20 @@ class ProcessTikTokWebhook implements ShouldQueue
     public function __construct(array $payload)
     {
         $this->payload = $payload;
+        $this->onQueue(self::resolveQueueName($payload));
+    }
+
+    public static function resolveQueueName(array $payload): string
+    {
+        $type = (int) ($payload['type'] ?? -1);
+
+        return match ($type) {
+            1, 3, 11 => config('queue.names.tiktok_orders', 'tiktok-orders'),
+            4 => config('queue.names.tiktok_packages', 'tiktok-packages'),
+            2, 12, 64, 67 => config('queue.names.tiktok_aftersales', 'tiktok-aftersales'),
+            5, 15, 37, 50 => config('queue.names.tiktok_catalog', 'tiktok-catalog'),
+            default => config('queue.names.tiktok_webhooks', 'tiktok-webhooks'),
+        };
     }
 
     public function middleware(): array

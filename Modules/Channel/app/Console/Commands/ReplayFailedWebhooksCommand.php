@@ -15,6 +15,7 @@ class ReplayFailedWebhooksCommand extends Command
 {
     protected $signature = 'webhook:replay-failed 
                             {--channel= : Filter by channel (shopee, tiktok, lazada, woocommerce)}
+                            {--event-type= : Filter by event type or code (e.g. 4, 3, 1)}
                             {--limit=50 : Maximum number of failed webhooks to replay}
                             {--force : Run without confirmation in production}';
 
@@ -23,11 +24,13 @@ class ReplayFailedWebhooksCommand extends Command
     public function handle(): int
     {
         $channel = $this->option('channel');
+        $eventType = $this->option('event-type');
         $limit = (int) $this->option('limit');
 
         $query = ChannelWebhookInbox::query()
             ->where('status', WebhookInboxStatus::FAILED)
             ->when($channel, fn ($q) => $q->where('channel', strtolower($channel)))
+            ->when($eventType, fn ($q) => $q->where('event_type', (string) $eventType))
             ->orderBy('created_at', 'asc')
             ->limit($limit);
 
@@ -57,7 +60,7 @@ class ReplayFailedWebhooksCommand extends Command
 
             match (strtolower((string) $record->channel)) {
                 'shopee' => ProcessShopeeWebhook::dispatch($payload),
-                'tiktok' => ProcessTikTokWebhook::dispatch($payload)->onQueue(config('queue.names.tiktok_webhooks')),
+                'tiktok' => ProcessTikTokWebhook::dispatch($payload),
                 'lazada' => ProcessLazadaWebhook::dispatch($payload),
                 'woocommerce' => ProcessWooCommerceWebhook::dispatch($payload),
                 default => null,

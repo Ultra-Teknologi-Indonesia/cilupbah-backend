@@ -42,7 +42,28 @@ class ProcessShopeeWebhook implements ShouldQueue
     public function __construct(
         public array $payload,
     ) {
-        $this->onQueue(config('queue.names.shopee_webhooks', 'shopee-webhooks'));
+        $this->onQueue(self::resolveQueueName($payload));
+    }
+
+    public static function resolveQueueName(array $payload): string
+    {
+        $code = (int) ($payload['code'] ?? -1);
+
+        return match ($code) {
+            self::PUSH_ORDER_STATUS => config('queue.names.shopee_orders', 'shopee-orders'),
+            self::PUSH_TRACKING_NO,
+            self::PUSH_SHIPPING_DOC,
+            self::PUSH_BOOKING_STATUS,
+            self::PUSH_BOOKING_TRACKING_NO,
+            self::PUSH_BOOKING_SHIPPING_DOC,
+            self::PUSH_PACKAGE_FULFILLMENT,
+            self::PUSH_COURIER_DELIVERY_BINDING => config('queue.names.shopee_tracking', 'shopee-tracking'),
+            self::PUSH_RETURN_UPDATE => config('queue.names.shopee_aftersales', 'shopee-aftersales'),
+            self::PUSH_RESERVED_STOCK_CHANGE,
+            self::PUSH_ITEM_PRICE_UPDATE,
+            self::PUSH_SHOPEE_UPDATES => config('queue.names.shopee_catalog', 'shopee-catalog'),
+            default => config('queue.names.shopee_webhooks', 'shopee-webhooks'),
+        };
     }
 
     public function middleware(): array

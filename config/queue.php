@@ -94,13 +94,32 @@ return [
         'stock_critical'   => env('QUEUE_NAME_STOCK_CRITICAL', 'stock-critical'),
         'stock_default'    => env('QUEUE_NAME_STOCK_DEFAULT', 'stock-default'),
         'channel_sync'     => env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync'),
-        'tiktok_webhooks'  => env('QUEUE_NAME_TIKTOK_WEBHOOKS', 'tiktok-webhooks'),
-        'shopee_webhooks'  => env('QUEUE_NAME_SHOPEE_WEBHOOKS', 'shopee-webhooks'),
-        'lazada_webhooks'  => env('QUEUE_NAME_LAZADA_WEBHOOKS', 'lazada-webhooks'),
+
+        // Shopee Tiered Webhook Queues
+        'shopee_orders'     => env('QUEUE_NAME_SHOPEE_ORDERS', 'shopee-orders'),
+        'shopee_tracking'   => env('QUEUE_NAME_SHOPEE_TRACKING', 'shopee-tracking'),
+        'shopee_catalog'    => env('QUEUE_NAME_SHOPEE_CATALOG', 'shopee-catalog'),
+        'shopee_aftersales' => env('QUEUE_NAME_SHOPEE_AFTERSALES', 'shopee-aftersales'),
+        'shopee_webhooks'   => env('QUEUE_NAME_SHOPEE_WEBHOOKS', 'shopee-webhooks'),
+
+        // TikTok Tiered Webhook Queues
+        'tiktok_orders'     => env('QUEUE_NAME_TIKTOK_ORDERS', 'tiktok-orders'),
+        'tiktok_packages'   => env('QUEUE_NAME_TIKTOK_PACKAGES', 'tiktok-packages'),
+        'tiktok_catalog'    => env('QUEUE_NAME_TIKTOK_CATALOG', 'tiktok-catalog'),
+        'tiktok_aftersales' => env('QUEUE_NAME_TIKTOK_AFTERSALES', 'tiktok-aftersales'),
+        'tiktok_webhooks'   => env('QUEUE_NAME_TIKTOK_WEBHOOKS', 'tiktok-webhooks'),
+
+        // Lazada Tiered Webhook Queues
+        'lazada_orders'      => env('QUEUE_NAME_LAZADA_ORDERS', 'lazada-orders'),
+        'lazada_fulfillment' => env('QUEUE_NAME_LAZADA_FULFILLMENT', 'lazada-fulfillment'),
+        'lazada_catalog'     => env('QUEUE_NAME_LAZADA_CATALOG', 'lazada-catalog'),
+        'lazada_aftersales'  => env('QUEUE_NAME_LAZADA_AFTERSALES', 'lazada-aftersales'),
+        'lazada_webhooks'    => env('QUEUE_NAME_LAZADA_WEBHOOKS', 'lazada-webhooks'),
+
         'webhook_downloads' => env('QUEUE_NAME_WEBHOOK_DOWNLOADS', 'webhook-downloads'),
-        'failed_jobs'      => env('QUEUE_NAME_FAILED_JOBS', 'failed-jobs'),
-        'product'          => env('QUEUE_NAME_PRODUCT', 'product'),
-        'downloads'        => env('QUEUE_NAME_DOWNLOADS', 'downloads'),
+        'failed_jobs'       => env('QUEUE_NAME_FAILED_JOBS', 'failed-jobs'),
+        'product'           => env('QUEUE_NAME_PRODUCT', 'product'),
+        'downloads'         => env('QUEUE_NAME_DOWNLOADS', 'downloads'),
     ],
 
 ];

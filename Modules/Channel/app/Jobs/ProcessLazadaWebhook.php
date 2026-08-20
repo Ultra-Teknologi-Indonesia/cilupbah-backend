@@ -40,7 +40,24 @@ class ProcessLazadaWebhook implements ShouldQueue
     public function __construct(
         public array $payload,
     ) {
-        $this->onQueue(config('queue.names.lazada_webhooks', 'lazada-webhooks'));
+        $this->onQueue(self::resolveQueueName($payload));
+    }
+
+    public static function resolveQueueName(array $payload): string
+    {
+        $messageType = (int) ($payload['message_type'] ?? -1);
+
+        return match ($messageType) {
+            self::MSG_ORDER => config('queue.names.lazada_orders', 'lazada-orders'),
+            self::MSG_FULFILLMENT => config('queue.names.lazada_fulfillment', 'lazada-fulfillment'),
+            self::MSG_REVERSE => config('queue.names.lazada_aftersales', 'lazada-aftersales'),
+            self::MSG_PRODUCT,
+            self::MSG_PRODUCT_ALT,
+            self::MSG_PRODUCT_CREATE,
+            self::MSG_PRODUCT_EDIT,
+            self::MSG_PRODUCT_DELETE => config('queue.names.lazada_catalog', 'lazada-catalog'),
+            default => config('queue.names.lazada_webhooks', 'lazada-webhooks'),
+        };
     }
 
     public function middleware(): array
