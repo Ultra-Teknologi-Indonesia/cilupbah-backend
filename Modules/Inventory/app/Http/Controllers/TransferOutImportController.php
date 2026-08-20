@@ -71,8 +71,25 @@ class TransferOutImportController extends Controller
                 $request->input('created_by'),
             );
 
-            if ($result['failed'] > 0 && $result['created'] === 0) {
-                $this->activityService->markFailed($activity, implode('; ', $result['errors']));
+            if ($result['failed'] > 0) {
+                foreach ($result['errors'] as $err) {
+                    $ref = trim(\Illuminate\Support\Str::before($err, ':'));
+                    $desc = trim(\Illuminate\Support\Str::after($err, ':')) ?: $err;
+                    \Modules\Inventory\Models\ImpexActivityDetail::create([
+                        'impex_activity_id' => $activity->id,
+                        'reference_id'      => $ref ?: 'Error',
+                        'description'       => $desc,
+                    ]);
+                }
+
+                if ($result['created'] === 0) {
+                    $this->activityService->markFailed($activity, implode('; ', $result['errors']));
+                } else {
+                    $this->activityService->markSuccess($activity);
+                    $activity->update([
+                        'error_message' => "{$result['created']} transfer dibuat, {$result['failed']} gagal.",
+                    ]);
+                }
             } else {
                 $this->activityService->markSuccess($activity);
             }
