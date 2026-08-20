@@ -8,6 +8,15 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use App\Traits\HasUuid7;
 
+/**
+ * @property string $id
+ * @property string $adjustment_no
+ * @property \Illuminate\Support\Carbon|null $transaction_date
+ * @property string $location_id
+ * @property bool $is_beginning_balance
+ * @property string|null $notes
+ * @property string $created_by
+ */
 class StockAdjustment extends Model
 {
     use HasUuid7, SoftDeletes;

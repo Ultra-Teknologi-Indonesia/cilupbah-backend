@@ -618,6 +618,7 @@ class LocationBinService
             ];
         }
 
+        /** @var \Modules\Inventory\Models\StockAdjustment $adjustment */
         $adjustment = app(StockAdjustmentService::class)->create([
             'transaction_date' => now()->toDateTimeString(),
             'location_id' => $locationId,
@@ -631,7 +632,6 @@ class LocationBinService
             ]],
         ]);
 
-        // Eksekusi penyesuaian stok secara sinkron agar stok langsung 0 di UI
         try {
             (new \Modules\Inventory\Jobs\ProcessStockAdjustmentJob($adjustment->id, $createdBy))->handle(
                 app(\Modules\Inventory\Repositories\InventoryRepository::class),
