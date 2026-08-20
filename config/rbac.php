@@ -178,23 +178,23 @@ return [
 
         'picker' => [
             'group:gudang:*',
-            'pesanan:view', 'posisi-stok:view', 'dashboard:view',
+            'pesanan:view', 'pesanan:edit', 'posisi-stok:view', 'dashboard:view',
         ],
         'checker' => [
             'group:gudang:*',
-            'pesanan:view', 'posisi-stok:view', 'dashboard:view',
+            'pesanan:view', 'pesanan:edit', 'posisi-stok:view', 'dashboard:view',
         ],
         'packer' => [
             'group:gudang:*',
-            'pesanan:view', 'posisi-stok:view', 'dashboard:view',
+            'pesanan:view', 'pesanan:edit', 'posisi-stok:view', 'dashboard:view',
         ],
         'handover' => [
             'group:gudang:*',
-            'pesanan:view', 'dashboard:view',
+            'pesanan:view', 'pesanan:edit', 'dashboard:view',
         ],
         'shipper' => [
             'group:gudang:*',
-            'pesanan:view', 'dashboard:view',
+            'pesanan:view', 'pesanan:edit', 'dashboard:view',
         ],
         'putaway' => [
             'group:gudang:*',
@@ -209,7 +209,7 @@ return [
 
         'warehouse' => [
             'group:gudang:*', 'group:persediaan:*',
-            'produk:view', 'dashboard:view',
+            'pesanan:view', 'pesanan:edit', 'produk:view', 'dashboard:view',
         ],
 
         'cs marketplace' => [
