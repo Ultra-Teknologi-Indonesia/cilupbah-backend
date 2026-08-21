@@ -144,7 +144,7 @@ class StockAdjustmentController extends Controller
             return $this->successResponse(new StockAdjustmentResource($adjustment), 'Dokumen adjustment berhasil dibuat.', 201);
         } catch (\Exception $e) {
             return $this->errorResponse(
-                'Gagal menyimpan.',
+                $e->getMessage() ?: 'Gagal menyimpan.',
                 422,
                 ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
