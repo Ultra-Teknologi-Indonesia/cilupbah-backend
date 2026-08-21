@@ -90,6 +90,15 @@ class PutawayController extends Controller
             return $this->errorResponse($e->getMessage(), 422);
         } catch (\RuntimeException $e) {
             return $this->errorResponse($e->getMessage(), 400);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return $this->errorResponse(
+                $e->getMessage() ?: 'Gagal membuat penempatan barang.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
         }
     }
 
