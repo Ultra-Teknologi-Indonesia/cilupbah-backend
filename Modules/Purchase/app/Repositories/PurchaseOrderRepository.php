@@ -273,8 +273,7 @@ class PurchaseOrderRepository
     {
         $prefix = 'PO-';
 
-        $last = PurchaseOrder::withTrashed()
-            ->whereRaw("po_number ~ '^PO-[0-9]+$'")
+        $last = PurchaseOrder::whereRaw("po_number ~ '^PO-[0-9]+$'")
             ->orderByRaw("CAST(SUBSTRING(po_number FROM 4) AS BIGINT) DESC")
             ->value('po_number');
 
