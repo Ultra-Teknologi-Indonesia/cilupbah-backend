@@ -464,7 +464,7 @@ class OutboundFulfillmentController extends Controller
             );
         } catch (\Exception $e) {
             return $this->errorResponse(
-                'Gagal memproses fulfillment.',
+                $e->getMessage() ?: 'Gagal memproses fulfillment.',
                 400,
                 ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
