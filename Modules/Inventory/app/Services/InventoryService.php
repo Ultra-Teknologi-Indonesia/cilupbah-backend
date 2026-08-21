@@ -296,7 +296,7 @@ class InventoryService
             ->assertNotBundle([$data['item_id'] ?? null], 'penempatan (putaway)');
 
         return DB::transaction(function () use ($data) {
-            $transactionNumber = $data['transaction_number'] ?? app(\Modules\Inventory\Interfaces\PutawayRepositoryInterface::class)->generatePutawayNo();
+            $transactionNumber = $data['transaction_number'] ?? app(\Modules\Inventory\Repositories\PutawayRepository::class)->generatePutawayNo();
 
             app(\Modules\Warehouse\Services\BinOccupancyGuard::class)
                 ->assertBinFitsSku($data['destination_bin_id'], $data['item_id']);
