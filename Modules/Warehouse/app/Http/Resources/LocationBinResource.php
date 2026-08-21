@@ -32,51 +32,51 @@ class LocationBinResource extends JsonResource
 
     protected function buildSkuSummary(): array
     {
-        $skus = collect();
+        $map = [];
 
         if ($this->relationLoaded('activeInventories') && $this->activeInventories) {
-            $this->activeInventories->each(function ($inv) use ($skus) {
-                if (! $inv->product || empty($inv->product->sku)) {
-                    return;
+            foreach ($this->activeInventories as $inv) {
+                $product = $inv->product;
+                if (! $product || empty($product->sku)) {
+                    continue;
                 }
 
-                $skus->push([
-                    'item_id' => $inv->item_id,
-                    'sku' => $inv->product->sku,
-                    'name' => $inv->product->product?->name,
-                    'on_hand' => (int) $inv->on_hand,
-                    'on_order' => (int) $inv->on_order,
-                ]);
-            });
+                $itemId = (string) $inv->item_id;
+                if (! isset($map[$itemId])) {
+                    $map[$itemId] = [
+                        'variant_id' => $itemId,
+                        'sku'        => $product->sku,
+                        'name'       => $product->product?->name,
+                        'on_hand'    => 0,
+                        'on_order'   => 0,
+                    ];
+                }
+
+                $map[$itemId]['on_hand'] += (int) $inv->on_hand;
+                $map[$itemId]['on_order'] += (int) $inv->on_order;
+            }
         }
 
         if ($this->relationLoaded('skuRackAssignments') && $this->skuRackAssignments) {
-            $this->skuRackAssignments->each(function ($assignment) use ($skus) {
-                if (! $assignment->item || empty($assignment->item->sku)) {
-                    return;
+            foreach ($this->skuRackAssignments as $assignment) {
+                $item = $assignment->item;
+                if (! $item || empty($item->sku)) {
+                    continue;
                 }
 
-                if (! $skus->contains('item_id', $assignment->item_id)) {
-                    $skus->push([
-                        'item_id' => $assignment->item_id,
-                        'sku' => $assignment->item->sku,
-                        'name' => $assignment->item->product?->name,
-                        'on_hand' => 0,
-                        'on_order' => 0,
-                    ]);
+                $itemId = (string) $assignment->item_id;
+                if (! isset($map[$itemId])) {
+                    $map[$itemId] = [
+                        'variant_id' => $itemId,
+                        'sku'        => $item->sku,
+                        'name'       => $item->product?->name,
+                        'on_hand'    => 0,
+                        'on_order'   => 0,
+                    ];
                 }
-            });
+            }
         }
 
-        return $skus->groupBy('item_id')->map(function ($group) {
-            $first = $group->first();
-            return [
-                'variant_id' => $first['item_id'],
-                'sku' => $first['sku'],
-                'name' => $first['name'],
-                'on_hand' => $group->sum('on_hand'),
-                'on_order' => $group->sum('on_order'),
-            ];
-        })->values()->all();
+        return array_values($map);
     }
 }
