@@ -59,6 +59,7 @@ class BulkShippingLabelItem extends Model
     public const REASON_LAZADA_DECODE_FAILED = 'lazada_decode_failed';
     public const REASON_AWB_TIMEOUT = 'awb_timeout';
     public const REASON_CHANNEL_SYNC_PAUSED = 'channel_sync_paused';
+    public const REASON_PARCEL_ALREADY_SHIPPED = 'parcel_already_shipped';
 
     public const RECOVERABLE_REASONS = [
         self::REASON_SHOPEE_PREP_TIMEOUT,

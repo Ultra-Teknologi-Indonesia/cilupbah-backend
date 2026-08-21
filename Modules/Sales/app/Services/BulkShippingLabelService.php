@@ -537,10 +537,14 @@ class BulkShippingLabelService
 
             return;
         } catch (\RuntimeException $e) {
+            $msg = strtolower($e->getMessage());
+            $reason = match (true) {
+                $order->fresh()?->shipping_label_status === 'self_design_required' => BulkShippingLabelItem::REASON_SELF_DESIGN,
+                Str::contains($msg, ['parcel has been shipped', 'already shipped', 'can not print now', 'sudah dikirim']) => BulkShippingLabelItem::REASON_PARCEL_ALREADY_SHIPPED,
+                default => BulkShippingLabelItem::REASON_SHOPEE_PREP_FAILED,
+            };
 
-            $this->fail($item, $order->fresh()?->shipping_label_status === 'self_design_required'
-                ? BulkShippingLabelItem::REASON_SELF_DESIGN
-                : BulkShippingLabelItem::REASON_SHOPEE_PREP_FAILED);
+            $this->fail($item, $reason);
 
             return;
         }

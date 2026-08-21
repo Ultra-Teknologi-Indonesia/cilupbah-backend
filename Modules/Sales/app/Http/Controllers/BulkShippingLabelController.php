@@ -114,7 +114,6 @@ class BulkShippingLabelController extends Controller
             return null;
         }
 
-        /** @var \Illuminate\Filesystem\FilesystemAdapter $disk */
         $disk = Storage::disk('documents');
         try {
             return $disk->temporaryUrl($batch->merged_pdf_path, now()->addHours(2));
@@ -149,20 +148,25 @@ class BulkShippingLabelController extends Controller
             $item->status === $item_class::STATUS_WAITING_LAZADA_PREP => 'Menunggu Lazada menyiapkan label...',
             $item->status === $item_class::STATUS_DONE => 'Resi berhasil diambil',
             $item->status === $item_class::STATUS_SKIPPED_INSTANT => 'Pesanan dengan instant courier, panggil driver di tab Pengiriman',
-            $item->status === $item_class::STATUS_FAILED => match ($item->reason) {
-                $item_class::REASON_SHOPEE_PREP_FAILED => 'Shopee gagal menyiapkan label. Coba lagi.',
-                $item_class::REASON_SHOPEE_PREP_TIMEOUT => 'Timeout menunggu Shopee. Coba lagi.',
-                $item_class::REASON_SHOPEE_DECODE_FAILED => 'File label dari Shopee rusak. Coba lagi.',
-                $item_class::REASON_SELF_DESIGN => 'Toko wajib desain label sendiri (self-design).',
-                $item_class::REASON_CHANNEL_UNSUPPORTED => 'Channel belum didukung untuk cetak massal.',
-                $item_class::REASON_NO_AWB => 'No. Resi belum tersedia dari marketplace. Coba lagi.',
-                $item_class::REASON_AWB_TIMEOUT => 'Marketplace belum menerbitkan No. Resi setelah beberapa kali dicoba. Coba lagi.',
-                $item_class::REASON_CHANNEL_SYNC_PAUSED => 'Sinkronisasi ke marketplace sedang dimatikan, No. Resi tidak bisa ditarik. Hubungi admin.',
-                $item_class::REASON_LAZADA_PREP_FAILED => 'Lazada gagal menyiapkan label. Coba lagi.',
-                $item_class::REASON_LAZADA_PREP_TIMEOUT => 'Timeout menunggu Lazada. Coba lagi.',
-                $item_class::REASON_LAZADA_DECODE_FAILED => 'File label dari Lazada rusak. Coba lagi.',
-                $item_class::REASON_BATCH_CRASHED => 'Proses batch berhenti tak terduga. Coba lagi.',
-                $item_class::REASON_STALE_BATCH_REAPED => 'Batch kadaluarsa & dibersihkan. Coba lagi.',
+            $item->status === $item_class::STATUS_FAILED => match (true) {
+                $item->reason === $item_class::REASON_PARCEL_ALREADY_SHIPPED
+                    || str_contains((string) $item->reason, 'parcel has been shipped')
+                    || str_contains((string) $item->reason, 'already shipped')
+                    || str_contains((string) $item->reason, 'can not print now')
+                    => 'Paket sudah berstatus dikirim (SHIPPED) di marketplace, label resi tidak dapat diunduh lagi.',
+                $item->reason === $item_class::REASON_SHOPEE_PREP_FAILED => 'Shopee gagal menyiapkan label. Coba lagi.',
+                $item->reason === $item_class::REASON_SHOPEE_PREP_TIMEOUT => 'Timeout menunggu Shopee. Coba lagi.',
+                $item->reason === $item_class::REASON_SHOPEE_DECODE_FAILED => 'File label dari Shopee rusak. Coba lagi.',
+                $item->reason === $item_class::REASON_SELF_DESIGN => 'Toko wajib desain label sendiri (self-design).',
+                $item->reason === $item_class::REASON_CHANNEL_UNSUPPORTED => 'Channel belum didukung untuk cetak massal.',
+                $item->reason === $item_class::REASON_NO_AWB => 'No. Resi belum tersedia dari marketplace. Coba lagi.',
+                $item->reason === $item_class::REASON_AWB_TIMEOUT => 'Marketplace belum menerbitkan No. Resi setelah beberapa kali dicoba. Coba lagi.',
+                $item->reason === $item_class::REASON_CHANNEL_SYNC_PAUSED => 'Sinkronisasi ke marketplace sedang dimatikan, No. Resi tidak bisa ditarik. Hubungi admin.',
+                $item->reason === $item_class::REASON_LAZADA_PREP_FAILED => 'Lazada gagal menyiapkan label. Coba lagi.',
+                $item->reason === $item_class::REASON_LAZADA_PREP_TIMEOUT => 'Timeout menunggu Lazada. Coba lagi.',
+                $item->reason === $item_class::REASON_LAZADA_DECODE_FAILED => 'File label dari Lazada rusak. Coba lagi.',
+                $item->reason === $item_class::REASON_BATCH_CRASHED => 'Proses batch berhenti tak terduga. Coba lagi.',
+                $item->reason === $item_class::REASON_STALE_BATCH_REAPED => 'Batch kadaluarsa & dibersihkan. Coba lagi.',
                 default => $item->reason ? "Gagal: {$item->reason}" : 'Gagal mengambil resi.',
             },
             default => '',
@@ -177,7 +181,6 @@ class BulkShippingLabelController extends Controller
             404,
         );
 
-        /** @var \Illuminate\Filesystem\FilesystemAdapter $disk */
         $disk = Storage::disk('documents');
         abort_unless($disk->exists($batch->merged_pdf_path), 404);
 
