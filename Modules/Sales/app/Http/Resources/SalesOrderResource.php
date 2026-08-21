@@ -89,6 +89,8 @@ class SalesOrderResource extends JsonResource
             'transaction_date'=> $this->transaction_date,
 
             'status'              => $this->status,
+            'status_label'        => $this->status_label,
+            'wms_status'          => $this->wms_status ?? $this->resolved_wms_status,
             'channel_status'      => $this->channel_status,
             'channel_status_raw'  => $this->channel_status_raw,
             'is_paid'             => (bool) $this->is_paid,

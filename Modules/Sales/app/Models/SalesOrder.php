@@ -41,7 +41,11 @@ class SalesOrder extends Model implements HasMedia
         return array_map(fn (string $column) => 'sales_orders.'.$column, self::SEARCH_COLUMNS);
     }
 
-    protected $appends = ['is_instant'];
+    protected $appends = [
+        'is_instant',
+        'status_label',
+        'resolved_wms_status',
+    ];
 
     protected $fillable = [
         'salesorder_no',
@@ -466,5 +470,68 @@ class SalesOrder extends Model implements HasMedia
     public function statusHistory(): HasMany
     {
         return $this->hasMany(SalesOrderStatusHistory::class, 'salesorder_id')->orderBy('created_at');
+    }
+
+    public function resolveWmsStatus(): string
+    {
+        if ($this->status === 'cancelled') {
+            return \Modules\Sales\Enums\WmsStatus::CANCELLED->value;
+        }
+        if ($this->status === 'pending') {
+            return $this->is_paid ? \Modules\Sales\Enums\WmsStatus::PAID->value : \Modules\Sales\Enums\WmsStatus::CREATED->value;
+        }
+        if ($this->status === 'shipped') {
+            return $this->received_date ? \Modules\Sales\Enums\WmsStatus::COMPLETED->value : \Modules\Sales\Enums\WmsStatus::SHIPPED->value;
+        }
+        if ($this->status === 'packed') {
+            return \Modules\Sales\Enums\WmsStatus::FINISH_PACK->value;
+        }
+        if ($this->status === 'picked') {
+            if ($this->relationLoaded('packlist') && $this->packlist?->status === 'IN_PROGRESS') {
+                return \Modules\Sales\Enums\WmsStatus::PACK->value;
+            }
+            return \Modules\Sales\Enums\WmsStatus::FINISH_PICK->value;
+        }
+        if ($this->status === 'reserved') {
+            if ($this->pick_failed_at) {
+                return \Modules\Sales\Enums\WmsStatus::FAILED->value;
+            }
+            if ($this->relationLoaded('picklistItems')) {
+                $activePicklist = $this->picklistItems->first()?->picklist;
+                if ($activePicklist && in_array($activePicklist->status, ['DRAFT', 'IN_PROGRESS'])) {
+                    return \Modules\Sales\Enums\WmsStatus::PICK->value;
+                }
+            }
+            return \Modules\Sales\Enums\WmsStatus::PROCESS->value;
+        }
+        return $this->status ?? \Modules\Sales\Enums\WmsStatus::OTHER->value;
+    }
+
+    public function resolveStatusLabel(): string
+    {
+        $wms = \Modules\Sales\Enums\WmsStatus::tryFrom($this->wms_status ?? '') ?? \Modules\Sales\Enums\WmsStatus::tryFrom($this->resolveWmsStatus());
+        if ($wms) {
+            return $wms->label();
+        }
+
+        return match ($this->status) {
+            'pending'   => 'Menunggu Pembayaran',
+            'reserved'  => 'Pengambilan - Belum Dimulai',
+            'picked'    => 'Pengambilan - Selesai',
+            'packed'    => 'Pengepakan - Selesai',
+            'shipped'   => $this->received_date ? 'Selesai' : 'Pengiriman - Sedang Dikirim',
+            'cancelled' => 'Dibatalkan',
+            default     => ucfirst((string) $this->status),
+        };
+    }
+
+    public function getStatusLabelAttribute(): string
+    {
+        return $this->resolveStatusLabel();
+    }
+
+    public function getResolvedWmsStatusAttribute(): string
+    {
+        return $this->resolveWmsStatus();
     }
 }
