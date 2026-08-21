@@ -26,7 +26,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::post('orders/instant-driver-call', [OutboundFulfillmentController::class, 'bulkInstantDriverCall'])->name('outbound.orders.instant-driver-call')->middleware('role_or_permission:owner|edit-pesanan');
     Route::post('orders/ad-hoc-pick', [AdHocPickController::class, 'complete'])->name('outbound.orders.ad-hoc-pick')->middleware('role_or_permission:owner|edit-picking');
     Route::post('orders/ad-hoc-pick/scan', [AdHocPickController::class, 'scan'])->name('outbound.orders.ad-hoc-pick.scan')->middleware('role_or_permission:owner|edit-picking');
-    Route::get('pickers', [OutboundFulfillmentController::class, 'pickers'])->name('outbound.pickers.index')->middleware('role_or_permission:owner|view-picking');
+    Route::get('pickers', [OutboundFulfillmentController::class, 'pickers'])->name('outbound.pickers.index')->middleware('role_or_permission:owner|view-picking|view-packing|packer|checker|picker');
 
     Route::get('orders/monitoring', [OutboundFulfillmentController::class, 'monitoring'])->name('outbound.orders.monitoring')->middleware('role_or_permission:owner|view-pesanan');
     Route::get('orders/{stage}/courier-options', [OutboundFulfillmentController::class, 'courierOptionsByStage'])->name('outbound.orders.courier-options')->middleware('role_or_permission:owner|view-pesanan');
