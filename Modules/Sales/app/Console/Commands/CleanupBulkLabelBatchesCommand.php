@@ -17,12 +17,10 @@ class CleanupBulkLabelBatchesCommand extends Command
         $hours = (int) $this->option('hours');
         $threshold = now()->subHours($hours);
 
-        /** @var \Illuminate\Support\LazyCollection<int, BulkShippingLabelBatch> $batches */
         $batches = BulkShippingLabelBatch::query()->where('created_at', '<', $threshold)->cursor();
         $disk = Storage::disk('documents');
         $count = 0;
 
-        /** @var BulkShippingLabelBatch $batch */
         foreach ($batches as $batch) {
             if ($batch->merged_pdf_path) {
                 try {
@@ -37,7 +35,6 @@ class CleanupBulkLabelBatchesCommand extends Command
             $count++;
         }
 
-        // Cleanup orphan PDF files in bulk-labels directory older than threshold
         try {
             $files = $disk->files('bulk-labels');
             foreach ($files as $file) {
@@ -46,7 +43,7 @@ class CleanupBulkLabelBatchesCommand extends Command
                 }
             }
         } catch (\Throwable $e) {
-            // Driver may not support listing or permission error
+
         }
 
         $this->info("Removed {$count} bulk label batches and cleaned old S3 files older than {$hours}h.");

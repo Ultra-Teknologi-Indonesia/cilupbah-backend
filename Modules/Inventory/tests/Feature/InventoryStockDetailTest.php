@@ -65,7 +65,7 @@ class InventoryStockDetailTest extends TestCase
 
     public function test_it_only_returns_bins_with_positive_on_hand_stock(): void
     {
-        // 1. Bin with positive stock
+
         Inventory::create([
             'item_id' => $this->variant->id,
             'location_id' => $this->location->id,
@@ -74,7 +74,6 @@ class InventoryStockDetailTest extends TestCase
             'available' => 25,
         ]);
 
-        // 2. Assigned empty bin (0 stock)
         SkuRackAssignment::create([
             'item_id' => $this->variant->id,
             'location_id' => $this->location->id,

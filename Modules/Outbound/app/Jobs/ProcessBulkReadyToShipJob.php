@@ -28,7 +28,7 @@ class ProcessBulkReadyToShipJob implements ShouldQueue
 
     public function handle(OutboundFulfillmentService $fulfillmentService): void
     {
-        /** @var BulkRtsBatch|null $batch */
+
         $batch = BulkRtsBatch::find($this->batchId);
         if (! $batch) {
             return;
@@ -42,11 +42,10 @@ class ProcessBulkReadyToShipJob implements ShouldQueue
             return;
         }
 
-        /** @var \Illuminate\Support\LazyCollection<int, BulkRtsItem> $items */
         $items = $query->cursor();
 
         foreach ($items->chunk(10) as $chunk) {
-            /** @var BulkRtsItem $item */
+
             foreach ($chunk as $item) {
                 $item->update(['status' => BulkRtsItem::STATUS_PROCESSING]);
 

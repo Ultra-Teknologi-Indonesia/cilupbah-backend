@@ -255,6 +255,18 @@ class CourierMappingServiceTest extends TestCase
         $this->assertSame('gtl', $this->service->resolveCode('GTL'));
         $this->assertSame('gtl', $this->service->resolveCode('GoTo Logistics'));
         $this->assertSame('gtl', $this->service->resolveCode('GoTo Logistics GTL'));
+        $this->assertSame('gtl', $this->service->resolveCode('GoTo Logistics GTL Next-day delivery'));
         $this->assertSame('gtl', $this->service->resolveCode('Tokopedia Kurir Rekomendasi'));
+    }
+
+    public function test_additional_courier_aliases(): void
+    {
+        $this->assertSame('lex', $this->service->resolveCode('LEX'));
+        $this->assertSame('lex', $this->service->resolveCode('LEX ID'));
+        $this->assertSame('blitz', $this->service->resolveCode('Blitz'));
+        $this->assertSame('blitz', $this->service->resolveCode('Blitz-ID Instant'));
+        $this->assertSame('blitz', $this->service->resolveCode('PT BLITZ ELECTRIC MOBILITY'));
+        $this->assertSame('sentral_cargo', $this->service->resolveCode('Sentral Cargo'));
+        $this->assertSame('indah_logistik', $this->service->resolveCode('Indah Logistik'));
     }
 }

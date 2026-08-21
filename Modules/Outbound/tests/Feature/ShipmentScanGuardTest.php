@@ -100,6 +100,22 @@ class ShipmentScanGuardTest extends TestCase
         ]);
     }
 
+    public function test_allows_scan_for_gtl_and_goto_logistics(): void
+    {
+        Bus::fake();
+        $loc = $this->seedLocation();
+
+        $shipmentId = $this->seedShipment($loc, 'GTL', 'REGULAR');
+        [$orderId, $no] = $this->seedPackedOrder($loc, 'GoTo Logistics GTL');
+
+        app(ShipmentService::class)->scanAndAddOrder($shipmentId, $no);
+
+        $this->assertDatabaseHas('shipment_orders', [
+            'shipment_id' => $shipmentId,
+            'order_id' => $orderId,
+        ]);
+    }
+
     public function test_rejects_instant_order_into_regular_manifest(): void
     {
         $loc = $this->seedLocation();

@@ -58,6 +58,11 @@ class CourierMappingService
         'tiktok shipping' => 'tiktok_shipping',
         'lazada logistics' => 'lazada_logistics',
         'lex id' => 'lex',
+        'lex' => 'lex',
+        'blitz' => 'blitz',
+        'pt blitz electric mobility' => 'blitz',
+        'sentral cargo' => 'sentral_cargo',
+        'indah logistik' => 'indah_logistik',
 
         'alfatrex' => 'alfatrex',
         'bluebird' => 'bluebird',

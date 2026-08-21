@@ -576,7 +576,6 @@ class LocationBinService
             ];
         }
 
-        /** @var \Modules\Inventory\Models\StockAdjustment $adjustment */
         $adjustment = app(StockAdjustmentService::class)->create([
             'transaction_date' => now()->toDateTimeString(),
             'location_id' => $locationId,

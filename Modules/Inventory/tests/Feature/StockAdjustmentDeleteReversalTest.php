@@ -67,7 +67,6 @@ class StockAdjustmentDeleteReversalTest extends TestCase
 
         $service = app(StockAdjustmentService::class);
 
-        // 1. Create Stock Adjustment with actual_qty = 6 (difference = -4)
         $adjustment = $service->create([
             'adjustment_no' => 'ADJ-TEST-001',
             'transaction_date' => now()->format('Y-m-d H:i:s'),
@@ -86,26 +85,20 @@ class StockAdjustmentDeleteReversalTest extends TestCase
             ],
         ]);
 
-        // Verify on_hand became 6
         $inventory->refresh();
         $this->assertEquals(6, $inventory->on_hand);
 
-        // Verify movement exists
         $movementCount = InventoryMovement::where('transaction_number', 'ADJ-TEST-001')->count();
         $this->assertEquals(1, $movementCount);
 
-        // 2. Delete Stock Adjustment
         $service->delete($adjustment->id);
 
-        // Verify on_hand is reverted back to 10
         $inventory->refresh();
         $this->assertEquals(10, $inventory->on_hand);
 
-        // Verify movement is removed
         $movementCountAfter = InventoryMovement::where('transaction_number', 'ADJ-TEST-001')->count();
         $this->assertEquals(0, $movementCountAfter);
 
-        // Verify adjustment is soft deleted
         $this->assertSoftDeleted('stock_adjustments', ['id' => $adjustment->id]);
     }
 }

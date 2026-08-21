@@ -358,7 +358,6 @@ class MasterFeedTest extends TestCase
     {
         $variant = $this->master->variants->first();
 
-        // Seed variant-level media that is primary and sort_order 0
         ProductMedia::create([
             'product_id' => $this->master->id,
             'variant_id' => $variant->id,
@@ -371,10 +370,8 @@ class MasterFeedTest extends TestCase
         $response = $this->getJson('/api/v1/products/master');
         $item = $response->json('data.0');
 
-        // Product cover thumbnail must remain the product-level media URL, not variant URL
         $this->assertSame('https://cdn.example.com/product.jpg', $item['thumbnail']);
 
-        // Variant thumbnail must be the variant media URL
         $variantItem = collect($item['variants'])->firstWhere('item_id', $variant->id);
         $this->assertSame('https://cdn.example.com/variant-merah.jpg', $variantItem['thumbnail']);
     }
