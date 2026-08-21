@@ -132,6 +132,12 @@ class PutawayGuardMessageTest extends TestCase
         $this->placeStock($loc, $taken, $occupant, 3);
 
         $newcomer = $this->makeVariant();
+        \Modules\Inventory\Models\SkuRackAssignment::create([
+            'location_id' => $loc->id,
+            'item_id'     => $newcomer->id,
+            'bin_id'      => $taken->id,
+            'is_locked'   => true,
+        ]);
         $item = $this->makePutawayItem($loc, $inbound, $newcomer);
 
         $res = $this->postJson(

@@ -118,10 +118,11 @@ class PutawayNegativeStockTest extends TestCase
         $this->assertSame(Putaway::STATUS_COMPLETED, $ctx['putaway']->fresh()->status);
     }
 
-    public function test_putaway_from_empty_source_bin_throws_when_negative_disallowed(): void
+    public function test_putaway_from_empty_storage_bin_throws_when_negative_disallowed(): void
     {
         config(['inventory.allow_negative_stock' => false]);
         $ctx = $this->seedFixture();
+        $ctx['sourceBin']->update(['is_inbound' => false]);
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('Stok di source bin tidak mencukupi');
@@ -135,5 +136,24 @@ class PutawayNegativeStockTest extends TestCase
             app(\Modules\Inventory\Repositories\InventoryRepository::class),
             app(\Modules\Inventory\Repositories\InventoryMovementRepository::class),
         );
+    }
+
+    public function test_putaway_from_inbound_staging_bin_succeeds_even_when_negative_disallowed(): void
+    {
+        config(['inventory.allow_negative_stock' => false]);
+        $ctx = $this->seedFixture();
+
+        (new ProcessPutawayItemJob(
+            $ctx['putaway']->id,
+            $ctx['putawayItem']->id,
+            ['destination_bin_id' => $ctx['destBin']->id, 'qty' => 50],
+        ))->handle(
+            app(\Modules\Inventory\Repositories\PutawayRepository::class),
+            app(\Modules\Inventory\Repositories\InventoryRepository::class),
+            app(\Modules\Inventory\Repositories\InventoryMovementRepository::class),
+        );
+
+        $this->assertSame(50, (int) $ctx['putawayItem']->fresh()->putaway_qty);
+        $this->assertSame(Putaway::STATUS_COMPLETED, $ctx['putaway']->fresh()->status);
     }
 }

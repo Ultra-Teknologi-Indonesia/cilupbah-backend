@@ -92,7 +92,11 @@ class ProcessPutawayItemJob implements ShouldQueue
                     );
                 }
 
-                if (!config('inventory.allow_negative_stock', true) && $sourceInventory->on_hand < $qty) {
+                $sourceIsTransit = (bool) ($putawayItem->sourceBin?->is_inbound)
+                    || in_array(strtoupper((string) $putaway->source_type), ['INBOUND', 'TRANSFER', 'TRANSFER_IN', 'PURCHASE', 'RECEIPT'], true)
+                    || $putawayItem->sources()->exists();
+
+                if (!config('inventory.allow_negative_stock', true) && !$sourceIsTransit && $sourceInventory->on_hand < $qty) {
                     throw new \RuntimeException("Stok di source bin tidak mencukupi (tersedia: {$sourceInventory->on_hand}, diminta: {$qty}).");
                 }
 
