@@ -667,12 +667,32 @@ class OutboundFulfillmentService
             return;
         }
 
+        if ($order->status === 'packed') {
+            $order->update(['status' => 'picked']);
+            $this->logRemoval($order->id, FulfillmentRemoval::STAGE_PACKING, $removedBy, $reason, false);
+
+            return;
+        }
+
         $picklistId = PicklistItem::where('order_id', $order->id)->value('picklist_id');
 
         if ($picklistId) {
             $reversed = app(\Modules\Outbound\Services\PicklistService::class)
                 ->failPickOrder($picklistId, $order->id, $removedBy, (string) $reason);
             $this->logRemoval($order->id, FulfillmentRemoval::STAGE_PICKING, $removedBy, $reason, $reversed);
+
+            return;
+        }
+
+        if (in_array($order->status, ['picked', 'reserved'], true)) {
+            $order->update([
+                'status'                 => 'reserved',
+                'pick_failed_at'         => now(),
+                'pick_failed_by'         => $removedBy,
+                'pick_fail_reason'       => $reason,
+                'handed_to_warehouse_at' => null,
+            ]);
+            $this->logRemoval($order->id, FulfillmentRemoval::STAGE_PICKING, $removedBy, $reason, false);
 
             return;
         }
