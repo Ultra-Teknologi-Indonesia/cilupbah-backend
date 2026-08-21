@@ -57,22 +57,6 @@ class RequestChannelAwbJob implements ShouldQueue
             return;
         }
 
-        if (InstantOrderClassifier::needsManualDriverDispatch(
-            $order->courier_name,
-            $order->shipping_provider,
-            $order->shipping_type,
-        )) {
-            Log::info('RequestChannelAwbJob: dilewati, kurir dipanggil manual lewat Pengiriman', [
-                'order_id'      => $order->id,
-                'salesorder_no' => $order->salesorder_no,
-                'courier_name'  => $order->courier_name,
-            ]);
-
-            app(BulkShippingLabelService::class)->onOrderAwbSkippedInstant($order->id);
-
-            return;
-        }
-
         if (ChannelFulfillmentGuard::blocks($order->channel_shop_id, 'ready_to_ship', $order->salesorder_no)) {
             app(BulkShippingLabelService::class)->onOrderAwbGaveUp(
                 $order->id,
