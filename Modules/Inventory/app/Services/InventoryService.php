@@ -2388,6 +2388,9 @@ class InventoryService
         }
 
         $updateData = [];
+        if (!empty($data['transfer_number'])) {
+            $updateData['transfer_number'] = $data['transfer_number'];
+        }
         if (array_key_exists('source_location_id', $data)) {
             $updateData['source_location_id'] = $data['source_location_id'];
         }

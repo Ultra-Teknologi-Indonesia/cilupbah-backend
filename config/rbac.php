@@ -67,7 +67,7 @@ return [
             'label' => 'Persediaan',
             'resources' => [
                 ['key' => 'posisi-stok', 'label' => 'Posisi Stok', 'actions' => ['view', 'edit', 'export']],
-                ['key' => 'penyesuaian-stok', 'label' => 'Penyesuaian Stok', 'actions' => ['view', 'create', 'delete', 'export', 'import']],
+                ['key' => 'penyesuaian-stok', 'label' => 'Penyesuaian Stok', 'actions' => ['view', 'create', 'edit', 'delete', 'export', 'import']],
                 ['key' => 'pindah-bin', 'label' => 'Pindah Bin (Transaksi Stok)', 'actions' => ['view', 'create', 'edit', 'delete', 'export']],
                 ['key' => 'stok-opname', 'label' => 'Stok Opname', 'actions' => ['view', 'create', 'edit']],
                 [
