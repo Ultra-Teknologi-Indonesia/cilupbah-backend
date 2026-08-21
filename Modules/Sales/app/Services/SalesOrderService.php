@@ -1820,6 +1820,21 @@ class SalesOrderService
 
             DB::commit();
 
+            $isShippedChannel = in_array(strtoupper((string) ($channelStatus ?? $order->channel_status)), ['SHIPPED', 'COMPLETED', 'DELIVERED', 'TO_CONFIRM_RECEIVE'], true)
+                || in_array($finalStatus, ['shipped', 'completed', 'delivered'], true);
+
+            if ($isShippedChannel && ! $order->is_shadow && ! $order->is_canceled) {
+                try {
+                    app(\Modules\Sales\Services\BackfillShippedOrdersStockService::class)->backfillOrder($order);
+                } catch (\Throwable $e) {
+                    Log::warning('Auto-deduct physical stock on shipped webhook gagal', [
+                        'order_id' => $order->id,
+                        'salesorder_no' => $order->salesorder_no,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
             if ($wasNewOrder && ! $this->hasUnmappedItems($order)) {
                 $this->notifyChannelOrderReady($order);
             }

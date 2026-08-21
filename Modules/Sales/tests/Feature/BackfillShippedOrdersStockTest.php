@@ -16,6 +16,7 @@ class BackfillShippedOrdersStockTest extends TestCase
 
     private string $kecilLocationId;
     private string $binId;
+    private string $productId;
     private string $itemId;
     private string $sku = 'TEST-CASE-SKU';
 
@@ -51,9 +52,9 @@ class BackfillShippedOrdersStockTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $productId = Str::uuid()->toString();
+        $this->productId = Str::uuid()->toString();
         DB::table('products')->insert([
-            'id' => $productId,
+            'id' => $this->productId,
             'name' => 'Test Product',
             'category_id' => 1,
             'created_at' => now(),
@@ -63,7 +64,7 @@ class BackfillShippedOrdersStockTest extends TestCase
         $this->itemId = Str::uuid()->toString();
         DB::table('product_variants')->insert([
             'id' => $this->itemId,
-            'product_id' => $productId,
+            'product_id' => $this->productId,
             'sku' => $this->sku,
             'created_at' => now(),
             'updated_at' => now(),
@@ -223,5 +224,107 @@ class BackfillShippedOrdersStockTest extends TestCase
         $this->assertNotNull($movement);
         $this->assertEquals(-5, (int) $movement->qty);
         $this->assertEquals(-5, (int) $movement->balance);
+    }
+
+    public function test_upsert_from_channel_with_shipped_status_automatically_deducts_stock_synchronously(): void
+    {
+        $channelId = DB::table('channels')->where('code', 'tiktok')->value('id')
+            ?? DB::table('channels')->insertGetId([
+                'id' => Str::uuid()->toString(),
+                'code' => 'tiktok',
+                'name' => 'TikTok Shop',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+        $shopId = Str::uuid()->toString();
+        DB::table('channel_shops')->insert([
+            'id' => $shopId,
+            'channel_id' => $channelId,
+            'shop_id' => 'shop_123',
+            'shop_name' => 'Test Shop',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $pcmId = Str::uuid()->toString();
+        DB::table('product_channel_mappings')->insert([
+            'id' => $pcmId,
+            'product_id' => $this->productId,
+            'channel_shop_id' => $shopId,
+            'external_product_id' => 'EXT-123',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('product_variant_channel_mappings')->insert([
+            'id' => Str::uuid()->toString(),
+            'product_channel_mapping_id' => $pcmId,
+            'variant_id' => $this->itemId,
+            'external_sku_id' => 'EXT-SKU-123',
+            'channel_seller_sku' => $this->sku,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('inventories')->insert([
+            'id' => Str::uuid()->toString(),
+            'item_id' => $this->itemId,
+            'location_id' => $this->kecilLocationId,
+            'bin_id' => $this->binId,
+            'on_hand' => 20,
+            'available' => 20,
+            'on_order' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $orderPayload = [
+            'salesorder_no' => 'SO-AUTO-001',
+            'channel_order_no' => 'CH-AUTO-001',
+            'source' => 'tiktok',
+            'channel_shop_id' => 'shop_123',
+            'customer_name' => 'John Doe',
+            'transaction_date' => now(),
+            'sub_total' => 60000,
+            'total_disc' => 0,
+            'total_tax' => 0,
+            'shipping_cost' => 0,
+            'insurance_cost' => 0,
+            'grand_total' => 60000,
+            'channel_status' => 'SHIPPED',
+            'channel_status_raw' => 'SHIPPED',
+            'is_paid' => true,
+            'is_canceled' => false,
+            'payment_method' => 'ONLINE',
+            'location_id' => $this->kecilLocationId,
+            'is_shadow' => false,
+            'items' => [
+                [
+                    'item_id' => $this->itemId,
+                    'sku' => $this->sku,
+                    'qty_in_base' => 4,
+                    'qty' => 4,
+                    'unit_price' => 15000,
+                ],
+            ],
+        ];
+
+        $orderId = app(\Modules\Sales\Services\SalesOrderService::class)->upsertFromChannel($orderPayload);
+        $this->assertNotNull($orderId);
+
+        $this->assertEquals(16, (int) DB::table('inventories')->where('item_id', $this->itemId)->where('bin_id', $this->binId)->value('on_hand'));
+
+        $movement = DB::table('inventory_movements')
+            ->where('transaction_number', 'SO-AUTO-001')
+            ->where('source', 'ORDER_COMPLETE_OUT')
+            ->first();
+        $this->assertNotNull($movement);
+        $this->assertEquals(-4, (int) $movement->qty);
+        $this->assertEquals(16, (int) $movement->balance);
+        $this->assertEquals('ORDER_COMPLETE_OUT', $movement->source);
+        $this->assertEquals('system:backfill', $movement->created_by);
+
+        $this->assertTrue(DB::table('order_bin_allocations')->where('order_id', $orderId)->exists());
     }
 }
