@@ -10,7 +10,7 @@ class BackfillShippedOrdersStockCommand extends Command
     protected $signature = 'orders:backfill-shipped-stock
         {--dry-run : Hanya simulasikan pemotongan stok tanpa menulis ke database}
         {--order= : Nomor pesanan / channel_order_no spesifik}
-        {--since=2026-08-16 : Batas tanggal awal pesanan (default 2026-08-16)}
+        {--since= : Batas tanggal awal pesanan (opsional, contoh: 2026-08-16)}
         {--chunk=100 : Ukuran chunk per batch}
         {--limit= : Batasi jumlah total pesanan yang diproses}';
 
