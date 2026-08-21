@@ -856,17 +856,18 @@ class InventoryTransactionController extends Controller
         }
     }
 
-    public function binTransferIndex(\Illuminate\Http\Request $request): JsonResponse
+    public function binTransferIndex(Request $request): JsonResponse
     {
         $perPage = (int) $request->query('per_page', 20);
         $filters = [
-            'location_id' => $request->query('filter.location_id') ?? $request->query('location_id'),
-            'status' => $request->query('filter.status') ?? $request->query('status'),
-            'date_from' => $request->query('filter.date_from') ?? $request->query('date_from'),
-            'date_to' => $request->query('filter.date_to') ?? $request->query('date_to'),
+            'location_id' => $request->input('filter.location_id') ?? $request->query('filter_location_id') ?? $request->query('location_id'),
+            'status' => $request->input('filter.status') ?? $request->query('filter_status') ?? $request->query('status'),
+            'date_from' => $request->input('filter.date_from') ?? $request->query('filter_date_from') ?? $request->query('date_from'),
+            'date_to' => $request->input('filter.date_to') ?? $request->query('filter_date_to') ?? $request->query('date_to'),
+            'search' => $request->input('filter.q') ?? $request->query('filter_q') ?? $request->query('search') ?? $request->query('q'),
         ];
 
-        $paginated = $this->inventoryService->getBinTransfers(array_filter($filters), $perPage);
+        $paginated = $this->inventoryService->getBinTransfers(array_filter($filters, fn ($v) => $v !== null && $v !== ''), $perPage);
 
         return $this->successPaginatedResponse($paginated, 'Daftar pindah bin berhasil diambil.');
     }

@@ -171,6 +171,7 @@ class BinTransferTest extends TestCase
             'on_hand' => 2, 'on_order' => 0, 'available' => 2, 'avg_cost' => 100,
         ]);
 
+        config(['inventory.allow_negative_stock' => false]);
         $this->expectException(\Exception::class);
 
         app(InventoryService::class)->createBinTransferDraft([
@@ -358,5 +359,56 @@ class BinTransferTest extends TestCase
         $secondNo = (int) substr($second->transfer_number, 5);
         $this->assertSame($firstNo + 1, $secondNo);
         $this->assertMatchesRegularExpression('/^TRFO-\d{9}$/', $first->transfer_number);
+    }
+
+    public function test_bin_transfer_index_filters_by_status(): void
+    {
+        Queue::fake();
+
+        $location = Location::create([
+            'location_code' => 'WH-ST', 'location_name' => 'Gudang Status',
+            'location_type' => 'warehouse', 'is_warehouse' => true, 'is_active' => true,
+        ]);
+        $binA = LocationBin::create(['location_id' => $location->id, 'bin_code' => 'A', 'bin_final_code' => 'WH-ST-A']);
+
+        $categoryId = DB::table('categories')->insertGetId(['name' => 'Cat ST', 'created_at' => now(), 'updated_at' => now()]);
+        $product = Product::create(['category_id' => $categoryId, 'name' => 'P-ST', 'sku' => 'P-ST', 'is_active' => true]);
+        $variant = ProductVariant::create(['product_id' => $product->id, 'sku' => 'V-ST']);
+
+        Inventory::create([
+            'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $binA->id,
+            'on_hand' => 100, 'on_order' => 0, 'available' => 100, 'avg_cost' => 500,
+        ]);
+
+        $svc = app(InventoryService::class);
+
+        $draft = $svc->createBinTransferDraft([
+            'location_id' => $location->id, 'created_by' => 'tester',
+            'items' => [['item_id' => $variant->id, 'source_bin_id' => $binA->id, 'qty' => 1]],
+        ]);
+
+        $completed = $svc->createBinTransferDraft([
+            'location_id' => $location->id, 'created_by' => 'tester',
+            'items' => [['item_id' => $variant->id, 'source_bin_id' => $binA->id, 'qty' => 1]],
+        ]);
+        $completed->update(['status' => BinTransfer::STATUS_SELESAI]);
+
+        $role = \App\Models\Role::firstOrCreate(['name' => 'owner', 'guard_name' => 'web']);
+        $user = \App\Models\User::factory()->create();
+        $user->assignRole($role);
+
+        // Query with filter_status=BARU_DIBUAT
+        $res = $this->actingAs($user)->getJson('/api/v1/inventory/bin-transfers?filter_status=BARU_DIBUAT');
+        $res->assertOk();
+        $items = $res->json('data');
+        $this->assertCount(1, $items);
+        $this->assertSame($draft->id, $items[0]['id']);
+
+        // Query with status=SELESAI
+        $res2 = $this->actingAs($user)->getJson('/api/v1/inventory/bin-transfers?status=SELESAI');
+        $res2->assertOk();
+        $items2 = $res2->json('data');
+        $this->assertCount(1, $items2);
+        $this->assertSame($completed->id, $items2[0]['id']);
     }
 }

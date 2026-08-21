@@ -35,6 +35,14 @@ class BinTransferRepository
             $query->whereDate('transfer_date', '<=', $filters['date_to']);
         }
 
+        if (! empty($filters['search'])) {
+            $search = $filters['search'];
+            $query->where(function ($q) use ($search) {
+                $q->where('transfer_number', 'like', "%{$search}%")
+                  ->orWhere('notes', 'like', "%{$search}%");
+            });
+        }
+
         return $query->paginate($perPage)
             ->appends(request()->query());
     }
