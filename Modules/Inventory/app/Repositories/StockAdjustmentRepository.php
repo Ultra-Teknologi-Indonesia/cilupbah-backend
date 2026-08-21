@@ -139,7 +139,8 @@ class StockAdjustmentRepository
     {
         $prefix = 'ADJ-';
 
-        $last = StockAdjustment::whereRaw("adjustment_no ~ '^ADJ-[0-9]+$'")
+        $last = StockAdjustment::withTrashed()
+            ->whereRaw("adjustment_no ~ '^ADJ-[0-9]+$'")
             ->orderByRaw("CAST(SUBSTRING(adjustment_no FROM 5) AS INTEGER) DESC")
             ->value('adjustment_no');
 

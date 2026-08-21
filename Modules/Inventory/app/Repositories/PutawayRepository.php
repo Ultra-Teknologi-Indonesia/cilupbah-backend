@@ -183,7 +183,8 @@ class PutawayRepository
     {
         $prefix = "PUT-";
 
-        $last = Putaway::whereRaw("putaway_no ~ '^PUT-[0-9]+$'")
+        $last = Putaway::withTrashed()
+            ->whereRaw("putaway_no ~ '^PUT-[0-9]+$'")
             ->orderByRaw("CAST(SUBSTRING(putaway_no FROM 5) AS INTEGER) DESC")
             ->value('putaway_no');
 

@@ -108,7 +108,8 @@ class PurchaseBillRepository
     {
         $prefix = 'BILL-';
 
-        $last = PurchaseBill::whereRaw("bill_number ~ '^BILL-[0-9]+$'")
+        $last = PurchaseBill::withTrashed()
+            ->whereRaw("bill_number ~ '^BILL-[0-9]+$'")
             ->orderByRaw("CAST(SUBSTRING(bill_number FROM 6) AS BIGINT) DESC")
             ->value('bill_number');
 
