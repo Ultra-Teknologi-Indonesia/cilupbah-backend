@@ -249,4 +249,12 @@ class CourierMappingServiceTest extends TestCase
         $this->assertArrayHasKey('spx|INSTANT', $groups);
         $this->assertCount(1, $groups['spx|INSTANT']['orders']);
     }
+
+    public function test_goto_logistics_resolves_to_gtl_code(): void
+    {
+        $this->assertSame('gtl', $this->service->resolveCode('GTL'));
+        $this->assertSame('gtl', $this->service->resolveCode('GoTo Logistics'));
+        $this->assertSame('gtl', $this->service->resolveCode('GoTo Logistics GTL'));
+        $this->assertSame('gtl', $this->service->resolveCode('Tokopedia Kurir Rekomendasi'));
+    }
 }

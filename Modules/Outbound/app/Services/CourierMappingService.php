@@ -64,6 +64,12 @@ class CourierMappingService
         'indopaket' => 'indopaket',
         'royal express' => 'rex',
         'rara' => 'rara',
+        'goto logistics gtl' => 'gtl',
+        'goto logistics' => 'gtl',
+        'goto' => 'gtl',
+        'gtl' => 'gtl',
+        'kurir rekomendasi' => 'gtl',
+        'tokopedia kurir rekomendasi' => 'gtl',
     ];
 
     public function resolveCode(string $name): string
