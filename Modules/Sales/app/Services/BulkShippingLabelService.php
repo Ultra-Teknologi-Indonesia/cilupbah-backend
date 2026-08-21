@@ -132,10 +132,6 @@ class BulkShippingLabelService
             return [BulkShippingLabelItem::STATUS_FAILED, BulkShippingLabelItem::REASON_CHANNEL_UNSUPPORTED];
         }
 
-        if ($this->isInstantCourier($order)) {
-            return [BulkShippingLabelItem::STATUS_SKIPPED_INSTANT, BulkShippingLabelItem::REASON_INSTANT_COURIER];
-        }
-
         $hasAwb = ! empty($order->tracking_number) || ! empty($order->awb_no);
 
         if (! $hasAwb) {
@@ -173,27 +169,6 @@ class BulkShippingLabelService
 
     public function isInstantCourier(?SalesOrder $order): bool
     {
-        if (! $order) {
-            return false;
-        }
-        $haystack = strtoupper(trim(implode(' ', array_filter([
-            $order->courier_name,
-            $order->shipping_provider,
-            $order->shipping_type,
-        ]))));
-        if ($haystack === '') {
-            return false;
-        }
-        foreach (self::INSTANT_COURIER_KEYWORDS as $needle) {
-            if (Str::contains($haystack, $needle)) {
-
-                if ($needle === 'INSTANT' && strtolower((string) $order->source) === self::CHANNEL_SHOPEE
-                    && Str::startsWith($haystack, 'SPX')) {
-                    continue;
-                }
-                return true;
-            }
-        }
         return false;
     }
 
@@ -392,7 +367,6 @@ class BulkShippingLabelService
             $effH = $srcH;
         }
 
-        // Untuk TikTok dan Lazada (A6 / standard thermal), scale ke full width agar barcode & teks tajam memenuhi kertas
         if ($channel === self::CHANNEL_TIKTOK || $channel === self::CHANNEL_LAZADA) {
             $scale = $targetW / $effW;
             $renderW = $effW * $scale;
@@ -533,11 +507,6 @@ class BulkShippingLabelService
             $order = SalesOrder::find($item->order_id);
             if (! $order) {
                 $this->fail($item, BulkShippingLabelItem::REASON_NO_AWB);
-                return;
-            }
-
-            if ($this->isInstantCourier($order)) {
-                $this->skipInstant($item);
                 return;
             }
 

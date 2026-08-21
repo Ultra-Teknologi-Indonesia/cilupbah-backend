@@ -89,7 +89,7 @@ class BulkLabelAwbPullTest extends TestCase
         );
     }
 
-    public function test_kurir_instan_dikenali_dari_shipping_provider_bukan_courier_name(): void
+    public function test_grabexpress_instant_tanpa_awb_masuk_ke_waiting_awb(): void
     {
         Queue::fake();
 
@@ -100,13 +100,12 @@ class BulkLabelAwbPullTest extends TestCase
         $batch = $this->createBatchFor($order);
 
         $this->assertSame(
-            BulkShippingLabelItem::STATUS_SKIPPED_INSTANT,
+            BulkShippingLabelItem::STATUS_WAITING_AWB,
             $this->itemOf($batch)->status,
-            'Mapper channel tidak pernah mengisi courier_name, hanya shipping_provider. '
-                .'Kalau deteksi kurir instan cuma membaca courier_name, di produksi tidak akan pernah cocok.',
+            'Order kurir instan tanpa AWB tetap masuk ke status waiting_awb untuk ditarik resinya.',
         );
 
-        Queue::assertNotPushed(RequestChannelAwbJob::class);
+        Queue::assertPushed(RequestChannelAwbJob::class);
     }
 
     public function test_lex_id_lazada_bukan_kurir_instan(): void

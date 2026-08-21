@@ -142,16 +142,16 @@ class BulkShippingLabelContractTest extends TestCase
         );
     }
 
-    public function test_kurir_pihak_ketiga_dilewati_karena_tidak_punya_label(): void
+    public function test_kurir_instan_tetap_diproses_labelnya(): void
     {
         [$batch] = $this->seedBatch('shopee', 'GrabExpress Instant');
 
         $item = BulkShippingLabelItem::where('batch_id', $batch->id)->firstOrFail();
 
         $this->assertSame(
-            BulkShippingLabelItem::STATUS_SKIPPED_INSTANT,
+            BulkShippingLabelItem::STATUS_PENDING,
             $item->status,
-            'Kurir pihak ketiga tidak punya label marketplace — harus dilewati, bukan gagal.',
+            'Kurir instan seperti GrabExpress Instant tetap diproses pencetakan labelnya.',
         );
     }
 
