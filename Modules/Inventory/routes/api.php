@@ -161,8 +161,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
             Route::get('/{id}', [StockAdjustmentController::class, 'show'])->name('inventory.adjustments.documents.show');
             Route::get('/{id}/items', [StockAdjustmentController::class, 'items'])->name('inventory.adjustments.documents.items');
         });
-        Route::middleware('role_or_permission:owner|create-penyesuaian-stok')->group(function () {
+        Route::middleware('role_or_permission:owner|create-penyesuaian-stok|edit-penyesuaian-stok')->group(function () {
             Route::post('/', [StockAdjustmentController::class, 'store'])->name('inventory.adjustments.documents.store');
+            Route::put('/{id}', [StockAdjustmentController::class, 'update'])->name('inventory.adjustments.documents.update');
         });
         Route::middleware('role_or_permission:owner|export-penyesuaian-stok')->group(function () {
             Route::post('/bulk/pdf', [StockAdjustmentController::class, 'bulkPdf'])->name('inventory.adjustments.documents.bulkPdf');

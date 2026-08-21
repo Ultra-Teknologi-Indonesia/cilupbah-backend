@@ -22,6 +22,7 @@ use Modules\Product\Http\Controllers\VariantController;
 use Modules\Product\Http\Controllers\CatalogController;
 use Modules\Product\Http\Controllers\ProductMasterDataController;
 use Modules\Product\Http\Controllers\ProductPickerFeedController;
+use Modules\Product\Http\Controllers\PriceListController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
