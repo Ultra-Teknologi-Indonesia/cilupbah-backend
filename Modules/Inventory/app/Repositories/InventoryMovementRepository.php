@@ -155,6 +155,7 @@ class InventoryMovementRepository
         $deductList = "'" . implode("','", InventoryMovementSourceMap::ORDER_DEDUCT_SOURCES) . "'";
         $restoreList = "'" . implode("','", InventoryMovementSourceMap::ORDER_RESTORE_SOURCES) . "'";
         $effectiveQtySql = "CASE WHEN source IN ($deductList) THEN -ABS(qty) WHEN source IN ($restoreList) THEN ABS(qty) ELSE qty END";
+        $reservedList = "'" . implode("','", InventoryMovementSourceMap::ALLOCATION_PARTITION_SOURCES) . "'";
 
         $pickOrderScope = "FROM picklist_items pi"
             . " JOIN picklists p ON p.id = pi.picklist_id"
@@ -167,7 +168,7 @@ class InventoryMovementRepository
 
         $qb = \Spatie\QueryBuilder\QueryBuilder::for($baseQuery)
             ->select('inventory_movements.*')
-            ->selectRaw("SUM({$effectiveQtySql}) OVER (PARTITION BY item_id, location_id ORDER BY transaction_date, inventory_movements.id) AS total_balance")
+            ->selectRaw("SUM(qty) OVER (PARTITION BY item_id, location_id, (CASE WHEN source IN ($reservedList) THEN 1 ELSE 0 END) ORDER BY transaction_date, inventory_movements.id) AS total_balance")
             ->selectRaw($pickOrder('so.salesorder_no') . ' AS pick_order_no')
             ->selectRaw("(CASE WHEN {$isPick} THEN (SELECT COUNT(DISTINCT pi.order_id) {$pickOrderScope}) END) AS pick_order_count")
             ->selectRaw(

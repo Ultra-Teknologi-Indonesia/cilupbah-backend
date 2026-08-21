@@ -27,6 +27,7 @@ class InventoryMovementSourceMap
 
         'ORDER'             => ['category' => 'PESANAN', 'label' => 'Pesanan'],
         'ORDER_RESERVE'     => ['category' => 'PESANAN', 'label' => 'Pesanan'],
+        'ORDER_RELEASE'     => ['category' => 'PESANAN', 'label' => 'Pesanan Diproses'],
 
         'TRANSFER_IN'       => ['category' => 'TRANSFER', 'label' => 'Transfer'],
         'TRANSFER_OUT'      => ['category' => 'TRANSFER', 'label' => 'Transfer'],
@@ -41,8 +42,8 @@ class InventoryMovementSourceMap
         'PUTAWAY_REVERSAL'  => ['category' => 'TRANSFER', 'label' => 'Koreksi Penempatan'],
         'SPLIT_IN'          => ['category' => 'TRANSFER', 'label' => 'Pecah Stok'],
         'SPLIT_OUT'         => ['category' => 'TRANSFER', 'label' => 'Pecah Stok'],
+        'TRANSFER_REJECT_RETURN' => ['category' => 'TRANSFER', 'label' => 'Retur Tolak Transfer'],
 
-        'ORDER_RELEASE'     => ['category' => 'PESANAN_BATAL', 'label' => 'Pesanan Batal'],
         'ORDER_RESTORE'     => ['category' => 'PESANAN_BATAL', 'label' => 'Pesanan Batal'],
         'ORDER_RESTORE_CANCEL' => ['category' => 'PESANAN_BATAL', 'label' => 'Pesanan Batal'],
         'ORDER_CANCELLED'   => ['category' => 'PESANAN_BATAL', 'label' => 'Pesanan Batal'],
@@ -118,7 +119,7 @@ class InventoryMovementSourceMap
         'RESERVE_EXPIRED',
     ];
 
-    public const ORDER_LEDGER_SOURCES = ['ORDER_RESERVE', 'ORDER_RELEASE', 'ORDER', 'ORDER_CANCELLED'];
+    public const ORDER_LEDGER_SOURCES = ['ORDER_RESERVE', 'ORDER_RELEASE'];
 
     public const NON_PHYSICAL_SOURCES = [
         'ORDER_RESERVE',
@@ -153,15 +154,21 @@ class InventoryMovementSourceMap
                 continue;
             }
 
-            if (array_key_exists($token, self::SOURCES)) {
-                $sources[] = $token;
+            if ($token === 'ORDER') {
+                $sources = array_merge($sources, ['ORDER_RESERVE', 'RESERVE']);
                 continue;
             }
 
+            $matchedCategory = false;
             foreach (self::SOURCES as $source => $meta) {
                 if ($meta['category'] === $token) {
                     $sources[] = $source;
+                    $matchedCategory = true;
                 }
+            }
+
+            if (! $matchedCategory && array_key_exists($token, self::SOURCES)) {
+                $sources[] = $token;
             }
         }
 
