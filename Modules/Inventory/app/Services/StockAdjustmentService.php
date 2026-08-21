@@ -6,7 +6,9 @@ use Modules\Inventory\Repositories\StockAdjustmentRepository;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Models\StockAdjustment;
+use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Jobs\ProcessStockAdjustmentJob;
+use Modules\Channel\Jobs\SyncStockToChannelsJob;
 use Illuminate\Support\Facades\DB;
 
 class StockAdjustmentService
@@ -110,14 +112,40 @@ class StockAdjustmentService
 
     public function delete(string $id): bool
     {
-        $adjustment = $this->adjustmentRepository->findById($id);
+        return DB::transaction(function () use ($id) {
+            $adjustment = $this->adjustmentRepository->findById($id);
 
-        if (!$adjustment) {
-            throw new \Exception('Dokumen adjustment tidak ditemukan.');
-        }
+            if (!$adjustment) {
+                throw new \Exception('Dokumen adjustment tidak ditemukan.');
+            }
 
-        $this->adjustmentRepository->delete($id);
+            $movements = InventoryMovement::where('transaction_number', $adjustment->adjustment_no)
+                ->where('source', 'ADJUSTMENT')
+                ->get();
 
-        return true;
+            $adjustedItemIds = [];
+
+            foreach ($movements as $movement) {
+                $inventory = $this->inventoryRepository->findOrCreateForUpdate(
+                    $movement->item_id,
+                    $movement->location_id,
+                    $movement->bin_id,
+                );
+
+                $inventory->on_hand -= (float) $movement->qty;
+                $this->inventoryRepository->updateStock($inventory);
+
+                $adjustedItemIds[] = $movement->item_id;
+                $movement->delete();
+            }
+
+            $this->adjustmentRepository->delete($id);
+
+            foreach (array_values(array_unique($adjustedItemIds)) as $itemId) {
+                SyncStockToChannelsJob::dispatch($itemId);
+            }
+
+            return true;
+        });
     }
 }
