@@ -143,27 +143,7 @@ class ProductRepository
                 ->all();
         }
 
-        $bundleIds = ProductBundleItem::where('component_variant_id', $variantId)
-            ->join('products', 'products.id', '=', 'product_bundle_items.bundle_product_id')
-            ->where('products.is_bundle', true)
-            ->where('products.is_active', true)
-            ->pluck('product_bundle_items.bundle_product_id')
-            ->all();
-
-        if (empty($bundleIds)) {
-            return null;
-        }
-
-        return ProductBundleItem::where('bundle_product_id', $bundleIds[0])
-            ->with('component:id,sku')
-            ->orderBy('component_variant_id')
-            ->get()
-            ->map(fn ($item) => [
-                'variant_id' => $item->component_variant_id,
-                'qty' => (int) $item->qty,
-                'sku' => $item->component?->sku,
-            ])
-            ->all();
+        return null;
     }
 
     public function bundleProductIdsUsingComponent(string $variantId): array
