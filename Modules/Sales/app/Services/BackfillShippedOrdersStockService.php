@@ -14,7 +14,7 @@ class BackfillShippedOrdersStockService
         protected StockService $stockService,
     ) {}
 
-    public function getEligibleOrders(?string $orderNo = null, ?int $limit = null): Collection
+    public function getEligibleOrdersQuery(?string $orderNo = null, ?string $since = null, ?int $limit = null)
     {
         $query = SalesOrder::query()
             ->with(['items.product'])
@@ -42,6 +42,10 @@ class BackfillShippedOrdersStockService
                     ->whereIn('source', ['ORDER_COMPLETE_OUT', 'PICKING']);
             });
 
+        if ($since) {
+            $query->where('created_at', '>=', $since);
+        }
+
         if ($orderNo) {
             $query->where(function ($q) use ($orderNo) {
                 $q->where('salesorder_no', $orderNo)
@@ -50,13 +54,18 @@ class BackfillShippedOrdersStockService
             });
         }
 
-        $query->orderBy('created_at', 'asc');
+        $query->orderBy('id', 'asc');
 
         if ($limit && $limit > 0) {
             $query->limit($limit);
         }
 
-        return $query->get();
+        return $query;
+    }
+
+    public function getEligibleOrders(?string $orderNo = null, ?int $limit = null, ?string $since = null): Collection
+    {
+        return $this->getEligibleOrdersQuery($orderNo, $since, $limit)->get();
     }
 
     public function backfillOrder(SalesOrder $order, bool $dryRun = false): array
