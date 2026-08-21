@@ -27,19 +27,7 @@ class OutboundFulfillmentRepository
             });
         }
 
-        $roles = match ($role) {
-            'packer', 'checker' => ['checker', 'packer'],
-            'picker' => ['picker'],
-            default => [$role],
-        };
-
-        $existingRoles = \Spatie\Permission\Models\Role::whereIn('name', $roles)->pluck('name')->all();
-
-        if (empty($existingRoles)) {
-            return collect();
-        }
-
-        return $query->role($existingRoles)
+        return $query->role($role)
             ->orderBy('name')
             ->get(['id', 'name', 'email']);
     }
