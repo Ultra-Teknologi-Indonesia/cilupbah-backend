@@ -6,9 +6,7 @@ use Modules\Inventory\Repositories\StockAdjustmentRepository;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Models\StockAdjustment;
-use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Jobs\ProcessStockAdjustmentJob;
-use Modules\Channel\Jobs\SyncStockToChannelsJob;
 use Illuminate\Support\Facades\DB;
 
 class StockAdjustmentService
@@ -112,40 +110,48 @@ class StockAdjustmentService
 
     public function delete(string $id): bool
     {
-        return DB::transaction(function () use ($id) {
-            $adjustment = $this->adjustmentRepository->findById($id);
+        $adjustment = StockAdjustment::withTrashed()->with('items')->find($id);
 
-            if (!$adjustment) {
-                throw new \Exception('Dokumen adjustment tidak ditemukan.');
-            }
+        if (!$adjustment) {
+            throw new \Exception('Dokumen adjustment tidak ditemukan.');
+        }
 
-            $movements = InventoryMovement::where('transaction_number', $adjustment->adjustment_no)
-                ->where('source', 'ADJUSTMENT')
-                ->get();
-
+        DB::transaction(function () use ($adjustment, $id) {
             $adjustedItemIds = [];
 
-            foreach ($movements as $movement) {
+            foreach ($adjustment->items as $item) {
+                $delta = (float) $item->difference_qty;
+                if ($delta === 0.0) {
+                    continue;
+                }
+
+                // Revert inventory stock (if delta was -4, revertDelta is +4)
+                $revertDelta = -1 * $delta;
                 $inventory = $this->inventoryRepository->findOrCreateForUpdate(
-                    $movement->item_id,
-                    $movement->location_id,
-                    $movement->bin_id,
+                    $item->item_id,
+                    $adjustment->location_id,
+                    $item->bin_id,
                 );
 
-                $inventory->on_hand -= (float) $movement->qty;
+                $inventory->on_hand += $revertDelta;
                 $this->inventoryRepository->updateStock($inventory);
 
-                $adjustedItemIds[] = $movement->item_id;
-                $movement->delete();
+                // Hapus mutasi kartu stok dari adjustment ini
+                \Modules\Inventory\Models\InventoryMovement::where('transaction_number', $adjustment->adjustment_no)
+                    ->where('item_id', $item->item_id)
+                    ->where('location_id', $adjustment->location_id)
+                    ->delete();
+
+                $adjustedItemIds[] = $item->item_id;
             }
 
             $this->adjustmentRepository->delete($id);
 
             foreach (array_values(array_unique($adjustedItemIds)) as $itemId) {
-                SyncStockToChannelsJob::dispatch($itemId);
+                \Modules\Channel\Jobs\SyncStockToChannelsJob::dispatch($itemId);
             }
-
-            return true;
         });
+
+        return true;
     }
 }
