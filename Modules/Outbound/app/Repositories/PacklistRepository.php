@@ -37,7 +37,16 @@ class PacklistRepository
                     elseif ($v === 'no') $query->whereHas('order', fn ($q) => $q->whereNull('shipping_label_prepared_at'));
                 }),
             )
-            ->allowedSearch('packlist_no')
+            ->allowedSearch(
+                'packlist_no',
+                'order.tracking_number',
+                'order.courier_name',
+                'order.shipping_provider',
+                'order.shipping_type',
+                'order.salesorder_no',
+                'order.channel_order_no',
+                'order.customer_name'
+            )
             ->allowedSorts('created_at', 'packlist_no', 'started_at', 'completed_at', 'location_id', 'packer_id', 'status')
             ->defaultSort('-created_at')
             ->paginate($limit)

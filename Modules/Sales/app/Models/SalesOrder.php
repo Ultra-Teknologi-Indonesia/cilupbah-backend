@@ -34,6 +34,10 @@ class SalesOrder extends Model implements HasMedia
         'channel_order_no',
         'customer_name',
         'tracking_number',
+        'courier_name',
+        'shipping_provider',
+        'shipping_type',
+        'pickup_code',
     ];
 
     public static function qualifiedSearchColumns(): array

@@ -47,7 +47,7 @@ class ShipmentRepository
                     if ($value) $query->whereDate('shipment_date', '<=', $value);
                 }),
             )
-            ->allowedSearch('shipment_no')
+            ->allowedSearch('shipment_no', 'courier_name', 'courier_code')
             ->allowedSorts('created_at', 'shipment_no', 'shipment_date', 'location_id', 'courier_name', 'shipment_type', 'status')
             ->defaultSort('-shipment_date')
             ->paginate($limit)
@@ -65,7 +65,7 @@ class ShipmentRepository
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('shipment_type'),
             )
-            ->allowedSearch('shipment_no')
+            ->allowedSearch('shipment_no', 'courier_name', 'courier_code')
             ->allowedSorts('created_at', 'shipment_no', 'shipment_date', 'location_id', 'courier_name', 'shipment_type', 'status')
             ->defaultSort('-shipment_date')
             ->paginate($limit)
@@ -102,7 +102,18 @@ class ShipmentRepository
             ]);
 
         return QueryBuilder::for($query)
-            ->allowedSearch('tracking_number')
+            ->allowedSearch(
+                'tracking_number',
+                'order.salesorder_no',
+                'order.channel_order_no',
+                'order.customer_name',
+                'order.courier_name',
+                'order.shipping_provider',
+                'order.shipping_type',
+                'shipment.shipment_no',
+                'shipment.courier_name',
+                'shipment.courier_code'
+            )
             ->allowedSorts('created_at')
             ->defaultSort('-created_at')
             ->paginate($limit)
@@ -120,7 +131,7 @@ class ShipmentRepository
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('courier_code'),
             )
-            ->allowedSearch('shipment_no')
+            ->allowedSearch('shipment_no', 'courier_name', 'courier_code')
             ->allowedSorts('created_at', 'shipment_no', 'shipment_date', 'location_id', 'courier_name', 'shipment_type', 'status')
             ->defaultSort('-shipment_date')
             ->paginate($limit)
