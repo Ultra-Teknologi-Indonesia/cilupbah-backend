@@ -70,6 +70,23 @@ class BackfillShippedOrdersStockService
 
     public function backfillOrder(SalesOrder $order, bool $dryRun = false): array
     {
+        $hasAllocations = DB::table('order_bin_allocations')->where('order_id', $order->id)->exists();
+        $hasPickedItems = DB::table('picklist_items')->where('order_id', $order->id)->where('qty_picked', '>', 0)->exists();
+        $hasMovements = DB::table('inventory_movements')
+            ->where('transaction_number', $order->salesorder_no)
+            ->whereIn('source', ['ORDER_COMPLETE_OUT', 'PICKING'])
+            ->exists();
+
+        if ($hasAllocations || $hasPickedItems || $hasMovements) {
+            return [
+                'success' => true,
+                'order_id' => $order->id,
+                'salesorder_no' => $order->salesorder_no,
+                'message' => 'Pesanan sudah pernah diproses potong stok fisik sebelumnya (di-skip).',
+                'deductions' => [],
+            ];
+        }
+
         $locationId = $this->resolveLocationId($order);
         if (! $locationId) {
             return [

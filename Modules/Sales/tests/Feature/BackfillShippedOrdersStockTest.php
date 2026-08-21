@@ -327,4 +327,104 @@ class BackfillShippedOrdersStockTest extends TestCase
 
         $this->assertTrue(DB::table('order_bin_allocations')->where('order_id', $orderId)->exists());
     }
+
+    public function test_transition_from_shipped_to_completed_does_not_double_deduct(): void
+    {
+        $shopId = Str::uuid()->toString();
+        $channelId = DB::table('channels')->where('code', 'tiktok')->value('id');
+
+        DB::table('channel_shops')->insert([
+            'id' => $shopId,
+            'channel_id' => $channelId,
+            'shop_id' => 'shop_tiktok_01',
+            'shop_name' => 'TikTok Shop Test',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $pcmId = Str::uuid()->toString();
+        DB::table('product_channel_mappings')->insert([
+            'id' => $pcmId,
+            'product_id' => $this->productId,
+            'channel_shop_id' => $shopId,
+            'external_product_id' => 'EXT-TIKTOK-01',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('product_variant_channel_mappings')->insert([
+            'id' => Str::uuid()->toString(),
+            'product_channel_mapping_id' => $pcmId,
+            'variant_id' => $this->itemId,
+            'external_sku_id' => 'EXT-SKU-TIKTOK-01',
+            'channel_seller_sku' => $this->sku,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('inventories')->insert([
+            'id' => Str::uuid()->toString(),
+            'item_id' => $this->itemId,
+            'location_id' => $this->kecilLocationId,
+            'bin_id' => $this->binId,
+            'on_hand' => 50,
+            'available' => 50,
+            'on_order' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $service = app(\Modules\Sales\Services\SalesOrderService::class);
+
+        // 1. Webhook SHIPPED masuk
+        $shippedPayload = [
+            'salesorder_no' => 'SO-TIKTOK-DOUBLE-CHECK',
+            'channel_order_no' => 'CH-TIKTOK-DOUBLE-CHECK',
+            'source' => 'tiktok',
+            'channel_shop_id' => 'shop_tiktok_01',
+            'customer_name' => 'Jane Doe',
+            'transaction_date' => now(),
+            'sub_total' => 30000,
+            'total_disc' => 0,
+            'total_tax' => 0,
+            'shipping_cost' => 0,
+            'insurance_cost' => 0,
+            'grand_total' => 30000,
+            'channel_status' => 'SHIPPED',
+            'channel_status_raw' => 'SHIPPED',
+            'is_paid' => true,
+            'is_canceled' => false,
+            'payment_method' => 'ONLINE',
+            'location_id' => $this->kecilLocationId,
+            'is_shadow' => false,
+            'items' => [
+                [
+                    'item_id' => $this->itemId,
+                    'sku' => $this->sku,
+                    'qty_in_base' => 2,
+                    'qty' => 2,
+                    'unit_price' => 15000,
+                ],
+            ],
+        ];
+
+        $orderId = $service->upsertFromChannel($shippedPayload);
+        $this->assertNotNull($orderId);
+
+        // Stok awal 50 dipotong 2 saat SHIPPED -> jadi 48
+        $this->assertEquals(48, (int) DB::table('inventories')->where('item_id', $this->itemId)->where('bin_id', $this->binId)->value('on_hand'));
+        $this->assertEquals(1, DB::table('inventory_movements')->where('transaction_number', 'SO-TIKTOK-DOUBLE-CHECK')->where('source', 'ORDER_COMPLETE_OUT')->count());
+
+        // 2. Webhook COMPLETED masuk belakangan untuk pesanan yang sama
+        $completedPayload = $shippedPayload;
+        $completedPayload['channel_status'] = 'COMPLETED';
+        $completedPayload['channel_status_raw'] = 'COMPLETED';
+
+        $service->upsertFromChannel($completedPayload);
+
+        // Stok HARUS TETAP 48 (TIDAK terpotong lagi!)
+        $this->assertEquals(48, (int) DB::table('inventories')->where('item_id', $this->itemId)->where('bin_id', $this->binId)->value('on_hand'));
+        // Mutasi ORDER_COMPLETE_OUT tetap hanya ada 1
+        $this->assertEquals(1, DB::table('inventory_movements')->where('transaction_number', 'SO-TIKTOK-DOUBLE-CHECK')->where('source', 'ORDER_COMPLETE_OUT')->count());
+    }
 }
