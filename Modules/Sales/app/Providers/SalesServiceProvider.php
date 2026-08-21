@@ -4,6 +4,7 @@ namespace Modules\Sales\Providers;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Modules\Sales\Console\Commands\BackfillSettlement;
+use Modules\Sales\Console\Commands\BackfillShippedOrdersStockCommand;
 use Modules\Sales\Console\Commands\BackfillStatusHistory;
 use Modules\Sales\Console\Commands\CleanupBulkLabelBatchesCommand;
 use Modules\Sales\Console\Commands\PrepareShopeeLabelsBackfill;
@@ -32,6 +33,7 @@ class SalesServiceProvider extends ModuleServiceProvider
         SyncOrderFinance::class,
         SyncSettlements::class,
         BackfillSettlement::class,
+        BackfillShippedOrdersStockCommand::class,
         BackfillStatusHistory::class,
         PrepareShopeeLabelsBackfill::class,
         RestoreTrackingNumbers::class,

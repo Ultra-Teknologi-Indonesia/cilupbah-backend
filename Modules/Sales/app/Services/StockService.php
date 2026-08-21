@@ -169,18 +169,28 @@ class StockService
         });
     }
 
-    public function consumeFromBin(string $sku, string $itemId, string $locationId, string $binId, int $qty, string $transactionNumber, string $source, ?string $createdBy = null): void
-    {
+    public function consumeFromBin(
+        string $sku,
+        string $itemId,
+        string $locationId,
+        string $binId,
+        int $qty,
+        string $transactionNumber,
+        string $source,
+        ?string $createdBy = null,
+        bool $allowNegative = false,
+        ?\DateTimeInterface $transactionDate = null,
+    ): void {
         if ($qty <= 0) {
             return;
         }
 
-        $this->withStockLock($itemId, $locationId, function () use ($sku, $itemId, $locationId, $binId, $qty, $transactionNumber, $source, $createdBy) {
-            DB::transaction(function () use ($sku, $itemId, $locationId, $binId, $qty, $transactionNumber, $source, $createdBy) {
+        $this->withStockLock($itemId, $locationId, function () use ($sku, $itemId, $locationId, $binId, $qty, $transactionNumber, $source, $createdBy, $allowNegative, $transactionDate) {
+            DB::transaction(function () use ($sku, $itemId, $locationId, $binId, $qty, $transactionNumber, $source, $createdBy, $allowNegative, $transactionDate) {
                 $binRow = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, $binId);
                 $onHand = (int) $binRow->on_hand;
 
-                if ($onHand < $qty) {
+                if (! $allowNegative && $onHand < $qty) {
                     throw new InsufficientStockException($sku, max(0, $onHand), $qty);
                 }
 
@@ -196,7 +206,7 @@ class StockService
                     'source'             => $source,
                     'qty'                => -$qty,
                     'balance'            => $binRow->on_hand,
-                    'transaction_date'   => now(),
+                    'transaction_date'   => $transactionDate ?: now(),
                     'created_by'         => $createdBy ?: 'system',
                 ]);
             });
