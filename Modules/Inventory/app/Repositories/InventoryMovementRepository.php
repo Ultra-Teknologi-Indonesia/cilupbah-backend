@@ -141,6 +141,13 @@ class InventoryMovementRepository
         $view = strtolower((string) request('view', 'all'));
         $baseQuery = InventoryMovement::query()->where('qty', '!=', 0);
 
+        $baseQuery->whereNotExists(function ($q) {
+            $q->selectRaw('1')
+                ->from('location_bins')
+                ->whereColumn('location_bins.id', 'inventory_movements.bin_id')
+                ->where('location_bins.is_inbound', true);
+        });
+
         if ($view === 'clean') {
             $baseQuery->whereNotIn('source', InventoryMovementSourceMap::CLEAN_HIDDEN_SOURCES);
         } elseif ($view === 'attention') {
@@ -177,6 +184,7 @@ class InventoryMovementRepository
                 . '(SELECT it.transfer_number FROM inventory_transfers it WHERE it.receive_number = inventory_movements.transaction_number LIMIT 1), '
                 . '(SELECT pb.ref_no FROM purchase_bills pb WHERE pb.bill_number = inventory_movements.transaction_number LIMIT 1), '
                 . '(SELECT po.ref_no FROM purchase_orders po WHERE po.po_number = inventory_movements.transaction_number LIMIT 1), '
+                . '(SELECT COALESCE(inb.transaction_number, inb.reference_number) FROM putaways put JOIN inbounds inb ON inb.id = put.source_id WHERE put.putaway_no = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') LIMIT 1), '
                 . $pickOrder('COALESCE(so.channel_order_no, so.no_ref)')
                 . ') AS ref_no'
             )
@@ -206,6 +214,7 @@ class InventoryMovementRepository
                 . '  WHERE so_op.opname_no = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') AND so_op.deleted_at IS NULL LIMIT 1), '
                 . '(SELECT NULLIF(TRIM(pb.notes), \'\') FROM purchase_bills pb WHERE pb.bill_number = inventory_movements.transaction_number LIMIT 1), '
                 . '(SELECT NULLIF(TRIM(po.notes), \'\') FROM purchase_orders po WHERE po.po_number = inventory_movements.transaction_number LIMIT 1), '
+                . '(SELECT NULLIF(TRIM(inb.notes), \'\') FROM putaways put JOIN inbounds inb ON inb.id = put.source_id WHERE put.putaway_no = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') LIMIT 1), '
                 . '(SELECT NULLIF(TRIM(COALESCE(sr.notes, sr.reason)), \'\') FROM sales_returns sr WHERE sr.return_number = inventory_movements.transaction_number LIMIT 1), '
                 . $pickOrder('so.customer_name')
                 . ') AS ref_note'

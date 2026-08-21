@@ -397,14 +397,12 @@ class BinTransferTest extends TestCase
         $user = \App\Models\User::factory()->create();
         $user->assignRole($role);
 
-        // Query with filter_status=BARU_DIBUAT
         $res = $this->actingAs($user)->getJson('/api/v1/inventory/bin-transfers?filter_status=BARU_DIBUAT');
         $res->assertOk();
         $items = $res->json('data');
         $this->assertCount(1, $items);
         $this->assertSame($draft->id, $items[0]['id']);
 
-        // Query with status=SELESAI
         $res2 = $this->actingAs($user)->getJson('/api/v1/inventory/bin-transfers?status=SELESAI');
         $res2->assertOk();
         $items2 = $res2->json('data');
