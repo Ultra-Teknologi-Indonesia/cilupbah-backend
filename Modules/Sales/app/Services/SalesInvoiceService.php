@@ -84,8 +84,17 @@ class SalesInvoiceService
         return DB::transaction(function () use ($data) {
             $order = SalesOrder::with('items')->findOrFail($data['order_id']);
 
+            $existing = SalesInvoice::where('order_id', $order->id)
+                ->where('status', '!=', SalesInvoice::STATUS_CANCELLED)
+                ->with('items')
+                ->first();
+
+            if ($existing) {
+                return $existing;
+            }
+
             $invoiceData = [
-                'invoice_number' => $this->invoiceRepository->generateInvoiceNo(),
+                'invoice_number' => $data['invoice_number'] ?? $this->invoiceRepository->generateInvoiceNo(),
                 'order_id'       => $order->id,
                 'customer_name'  => $order->customer_name,
                 'location_id'    => $data['location_id'] ?? $order->location_id,

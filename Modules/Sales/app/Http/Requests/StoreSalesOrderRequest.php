@@ -17,6 +17,7 @@ class StoreSalesOrderRequest extends FormRequest
             'salesorder_no'       => 'nullable|string',
             'channel_order_no'    => 'nullable|string',
             'channel_shop_id'     => 'nullable|string',
+            'location_id'         => 'nullable|string',
             'customer_name'       => 'required|string|max:255',
             'transaction_date'    => 'nullable|date',
             'sub_total'           => 'nullable|numeric|min:0',

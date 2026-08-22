@@ -47,21 +47,28 @@ class SalesPhase2GuardTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $this->locationId = Str::uuid()->toString();
-        DB::table('locations')->insert([
-            'id' => $this->locationId,
+        $loc = \Modules\Warehouse\Models\Location::create([
             'location_code' => 'LOC-P2',
             'location_name' => 'Gudang P2',
-            'location_type' => 'WAREHOUSE',
-            'created_at' => now(),
-            'updated_at' => now(),
+            'location_type' => 'warehouse',
+            'is_warehouse'  => true,
+            'is_active'     => true,
         ]);
+        $this->locationId = $loc->id;
+
+        $bin = \Modules\Warehouse\Models\LocationBin::create([
+            'location_id' => $loc->id,
+            'bin_code' => 'BIN-P2',
+            'bin_final_code' => 'LOC-P2-BIN-P2',
+        ]);
+
+        $loc->update(['default_bin_id' => $bin->id]);
 
         DB::table('inventories')->insert([
             'id' => Str::uuid()->toString(),
             'item_id' => $this->variantId,
             'location_id' => $this->locationId,
-            'bin_id' => null,
+            'bin_id' => $bin->id,
             'on_hand' => 100,
             'on_order' => 0,
             'available' => 100,
@@ -75,6 +82,7 @@ class SalesPhase2GuardTest extends TestCase
         return [
             'salesorder_no' => $orderNo,
             'customer_name' => 'Buyer P2',
+            'location_id'   => $this->locationId,
             'items' => [[
                 'sku' => 'SKU-P2',
                 'qty_in_base' => 1,

@@ -552,7 +552,7 @@ class SalesOrderRepository
 
     public function findForInvoice(string $id): ?SalesOrder
     {
-        return SalesOrder::with('items')->find($id);
+        return SalesOrder::with(['items.product.product', 'invoices', 'channelShop'])->find($id);
     }
 
     public function findForBreakdown(string $id): ?SalesOrder

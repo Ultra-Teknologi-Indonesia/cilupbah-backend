@@ -306,9 +306,9 @@ class OutboundFulfillmentService
         $query = $this->stageQuery($stage);
 
         $extraSelects = match ($stage) {
-            'finish-pick' => ['picker_name', 'picklist_ref'],
-            'finish-pack' => ['packer_name'],
-            default       => [],
+            'finish-pick' => ['picker_name', 'picklist_ref', 'invoice_ref'],
+            'finish-pack' => ['packer_name', 'picklist_ref', 'invoice_ref'],
+            default       => ['invoice_ref'],
         };
 
         \App\Support\WarehouseAccess::apply($query, 'sales_orders.location_id');

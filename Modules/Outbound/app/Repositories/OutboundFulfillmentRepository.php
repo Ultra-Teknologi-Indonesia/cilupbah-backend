@@ -90,6 +90,23 @@ class OutboundFulfillmentRepository
             ]);
         }
 
+        if (in_array('invoice_ref', $extraSelects, true)) {
+            $query->addSelect([
+                'invoice_id' => DB::table('sales_invoices')
+                    ->whereColumn('sales_invoices.order_id', 'sales_orders.id')
+                    ->where('sales_invoices.status', '!=', \Modules\Sales\Models\SalesInvoice::STATUS_CANCELLED)
+                    ->orderByDesc('sales_invoices.created_at')
+                    ->limit(1)
+                    ->select('sales_invoices.id'),
+                'invoice_no' => DB::table('sales_invoices')
+                    ->whereColumn('sales_invoices.order_id', 'sales_orders.id')
+                    ->where('sales_invoices.status', '!=', \Modules\Sales\Models\SalesInvoice::STATUS_CANCELLED)
+                    ->orderByDesc('sales_invoices.created_at')
+                    ->limit(1)
+                    ->select('sales_invoices.invoice_number'),
+            ]);
+        }
+
         $rx = InstantOrderClassifier::REGEX;
         $query->orderByRaw('CASE WHEN (shipping_provider ~* ? OR shipping_type ~* ?) THEN 0 ELSE 1 END ASC', [$rx, $rx])
             ->orderByRaw('ship_by_date ASC NULLS LAST');

@@ -23,7 +23,7 @@ class BulkInvoiceController extends Controller
             'order_ids.*' => 'string|uuid',
         ]);
 
-        $orders = SalesOrder::with('items')
+        $orders = SalesOrder::with(['items.product.product', 'invoices', 'channelShop'])
             ->whereIn('id', $data['order_ids'])
             ->orderBy('created_at')
             ->get();

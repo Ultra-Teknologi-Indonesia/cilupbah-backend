@@ -437,6 +437,11 @@ class SalesOrder extends Model implements HasMedia
         return $this->belongsTo(\Modules\Channel\Models\ChannelShop::class, 'channel_shop_id', 'shop_id');
     }
 
+    public function channelShop(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Channel\Models\ChannelShop::class, 'channel_shop_id', 'shop_id');
+    }
+
     public function returns(): HasMany
     {
         return $this->hasMany(SalesReturn::class, 'order_id');
