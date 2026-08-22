@@ -124,6 +124,121 @@ class ChannelDownloadService
         ];
     }
 
+    public function searchUnifiedProducts(string $query, array $shopIds = [], int $limitPerShop = 20): array
+    {
+        $query = trim($query);
+
+        $shopQuery = \Modules\Channel\Models\ChannelShop::with('channel')
+            ->whereNull('disconnected_at')
+            ->where('is_active', true)
+            ->whereHas('channel', fn ($q) => $q->whereIn('code', ['tiktok', 'shopee', 'lazada', 'woocommerce']));
+
+        if (! empty($shopIds)) {
+            $shopQuery->whereIn('shop_id', $shopIds);
+        }
+
+        $shops = $shopQuery->get();
+
+        $allItems = [];
+        $failedStores = [];
+
+        foreach ($shops as $shop) {
+            $channelCode = strtolower($shop->channel->code ?? '');
+            try {
+                if ($channelCode === 'shopee') {
+                    $paged = app(ShopeeProductService::class)->searchProductsPaged($shop->shop_id, $query, 0, $limitPerShop);
+                    $shopItems = $paged['items'] ?? [];
+                } elseif ($channelCode === 'tiktok') {
+                    $shopItems = app(TikTokProductService::class)->searchProducts($shop->shop_id, $query);
+                } elseif ($channelCode === 'lazada') {
+                    $shopItems = app(LazadaProductService::class)->searchProducts($shop->shop_id, $query);
+                } elseif ($channelCode === 'woocommerce') {
+                    $shopItems = app(WooCommerceProductService::class)->searchProducts($shop->shop_id, $query);
+                } else {
+                    $shopItems = [];
+                }
+
+                foreach ($shopItems as $item) {
+                    $item['shop_id'] = $shop->shop_id;
+                    $item['shop_name'] = $shop->shop_name;
+                    $item['channel_code'] = $channelCode;
+                    $item['channel_name'] = $shop->channel->name ?? ucfirst($channelCode);
+                    $allItems[] = $item;
+                }
+            } catch (\Throwable $e) {
+                Log::warning("Unified channel search error for shop {$shop->shop_id} ({$channelCode}): " . $e->getMessage());
+                $failedStores[] = [
+                    'shop_id' => $shop->shop_id,
+                    'shop_name' => $shop->shop_name,
+                    'channel' => $channelCode,
+                    'error' => $e->getMessage(),
+                ];
+            }
+        }
+
+        if (empty($allItems)) {
+            return [
+                'items' => [],
+                'meta' => [
+                    'total_found' => 0,
+                    'total_stores' => $shops->count(),
+                    'failed_stores' => $failedStores,
+                ],
+            ];
+        }
+
+        // Batch query product mappings in ONE SQL query
+        $allExtIds = collect($allItems)->pluck('external_product_id')->filter()->unique()->values()->all();
+        $shopIdMap = $shops->pluck('id', 'shop_id')->all();
+
+        $existingMappings = ProductChannelMapping::with(['product:id,name,sku'])
+            ->whereIn('channel_shop_id', $shops->pluck('id'))
+            ->whereIn('external_product_id', $allExtIds)
+            ->whereHas('product')
+            ->get()
+            ->keyBy(fn ($m) => $m->channel_shop_id . ':' . $m->external_product_id);
+
+        foreach ($allItems as &$it) {
+            $dbShopId = $shopIdMap[$it['shop_id']] ?? null;
+            $mappingKey = $dbShopId ? ($dbShopId . ':' . ($it['external_product_id'] ?? '')) : null;
+            $mapping = $mappingKey ? $existingMappings->get($mappingKey) : null;
+
+            $it['already_downloaded'] = (bool) $mapping;
+            $it['master_product_id'] = $mapping?->product_id;
+            $it['master_product_name'] = $mapping?->product?->name;
+            $it['master_product_sku'] = $mapping?->product?->sku;
+        }
+        unset($it);
+
+        // Sort: not downloaded first, exact SKU matches higher
+        usort($allItems, function ($a, $b) use ($query) {
+            $aDown = ($a['already_downloaded'] ?? false) ? 1 : 0;
+            $bDown = ($b['already_downloaded'] ?? false) ? 1 : 0;
+            if ($aDown !== $bDown) {
+                return $aDown <=> $bDown;
+            }
+
+            if (! empty($query)) {
+                $aExact = (strcasecmp($a['seller_sku'] ?? '', $query) === 0) ? 0 : 1;
+                $bExact = (strcasecmp($b['seller_sku'] ?? '', $query) === 0) ? 0 : 1;
+                if ($aExact !== $bExact) {
+                    return $aExact <=> $bExact;
+                }
+            }
+
+            return strcasecmp($a['name'] ?? '', $b['name'] ?? '');
+        });
+
+        return [
+            'items' => $allItems,
+            'meta' => [
+                'total_found' => count($allItems),
+                'total_stores' => $shops->count(),
+                'failed_stores' => $failedStores,
+            ],
+        ];
+    }
+
     protected function flagDownloaded(string $shopId, array $results): array
     {
         if (empty($results)) {

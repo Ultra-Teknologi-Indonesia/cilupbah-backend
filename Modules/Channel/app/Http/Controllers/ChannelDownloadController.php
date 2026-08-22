@@ -185,4 +185,36 @@ class ChannelDownloadController extends Controller
 
         return $this->successResponse(null, 'Produk berhasil diunduh dari channel');
     }
+
+    #[OA\Post(
+        path: "/api/v1/channel/download/search",
+        summary: "Cari produk terpadu lintas channel/toko (Download Satuan)",
+        tags: ["Channel Download"]
+    )]
+    public function searchUnified(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'q' => 'nullable|string',
+            'shop_ids' => 'nullable|array',
+            'shop_ids.*' => 'string',
+            'limit_per_shop' => 'nullable|integer|min:1|max:50',
+        ]);
+
+        $query = (string) ($data['q'] ?? $request->query('q', ''));
+        $shopIds = (array) ($data['shop_ids'] ?? ($request->query('shop_ids') ? explode(',', (string) $request->query('shop_ids')) : []));
+        $limitPerShop = (int) ($data['limit_per_shop'] ?? $request->query('limit_per_shop', 20));
+
+        try {
+            $result = $this->downloadService->searchUnifiedProducts($query, $shopIds, $limitPerShop);
+
+            return $this->successResponse($result['items'], 'Pencarian produk lintas channel berhasil', 200, $result['meta']);
+        } catch (\Throwable $e) {
+            return $this->errorResponse(
+                'Gagal mencari produk lintas channel.',
+                500,
+                ['detail' => $e->getMessage()],
+                'Terjadi kesalahan',
+            );
+        }
+    }
 }

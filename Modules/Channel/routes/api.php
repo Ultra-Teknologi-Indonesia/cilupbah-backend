@@ -176,6 +176,12 @@ Route::prefix('v1/woocommerce')->group(function () {
     });
 });
 
+Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
+    Route::match(['GET', 'POST'], 'channel/download/search', [\Modules\Channel\Http\Controllers\ChannelDownloadController::class, 'searchUnified'])
+        ->name('channel.download.search.unified')
+        ->middleware('role_or_permission:owner|view-pesanan');
+});
+
 Route::middleware(['auth:sanctum'])->prefix('v1/{channel}')->group(function () {
     Route::post('download', [\Modules\Channel\Http\Controllers\ChannelDownloadController::class, 'download'])->middleware('role_or_permission:owner|edit-pesanan');
     Route::post('download/bulk', [\Modules\Channel\Http\Controllers\ChannelDownloadController::class, 'downloadBulk'])->middleware('role_or_permission:owner|edit-pesanan');
