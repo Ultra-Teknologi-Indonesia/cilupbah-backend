@@ -89,10 +89,6 @@ class TransferOutImportService
                 $groupErrors[] = "Baris {$headerRowNo}: Lokasi tujuan \"{$destName}\" tidak terdaftar.";
             }
 
-            if ($sourceId && $destId && $sourceId === $destId) {
-                $groupErrors[] = "Baris {$headerRowNo}: Lokasi asal dan tujuan tidak boleh sama.";
-            }
-
             $txDate = trim((string) ($group['transaction_date'] ?? ''));
             if ($txDate !== '' && ! $this->isValidDate($txDate)) {
                 $warnings[] = ['row' => $headerRowNo, 'field' => 'transaction_date', 'warning' => "Format tanggal \"{$txDate}\" tidak dikenali, nilai diabaikan."];

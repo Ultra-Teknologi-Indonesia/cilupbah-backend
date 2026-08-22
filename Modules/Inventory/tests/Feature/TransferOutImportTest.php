@@ -104,4 +104,55 @@ class TransferOutImportTest extends TestCase
         $errors = collect($response->json('data.errors'))->pluck('error')->implode(' ');
         $this->assertStringContainsString('No Transfer', $errors);
     }
+
+    public function test_preview_allows_same_source_and_destination_location(): void
+    {
+        $loc = \Modules\Warehouse\Models\Location::create([
+            'location_code' => 'WH-PUSAT',
+            'location_name' => 'Pusat',
+            'is_active' => true,
+        ]);
+
+        $bin = \Modules\Warehouse\Models\LocationBin::create([
+            'location_id' => $loc->id,
+            'bin_code' => 'IN-G1-K1-P1',
+            'bin_final_code' => 'IN-G1-K1-P1',
+            'is_active' => true,
+        ]);
+
+        \Illuminate\Support\Facades\DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Casing']);
+        $product = \Modules\Product\Models\Product::create([
+            'name' => 'Item Test',
+            'category_id' => 1,
+            'is_active' => true,
+        ]);
+
+        $variant = \Modules\Product\Models\ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => 'SKU-SAME-LOC',
+            'is_active' => true,
+        ]);
+
+        \Modules\Inventory\Models\Inventory::create([
+            'item_id' => $variant->id,
+            'location_id' => $loc->id,
+            'bin_id' => $bin->id,
+            'on_hand' => 50,
+            'available' => 50,
+        ]);
+
+        $upload = $this->makeUpload([
+            ['[auto]', '22/08/2026', '', 'Pusat', 'Pusat', 'SKU-SAME-LOC', '', '', 10, 'IN-G1-K1-P1'],
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/inventory/transfers/import/preview', ['file' => $upload]);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('data.summary.total_docs', 1)
+            ->assertJsonPath('data.summary.valid_docs', 1)
+            ->assertJsonPath('data.transfers.0.source_location', 'Pusat')
+            ->assertJsonPath('data.transfers.0.destination_location', 'Pusat')
+            ->assertJsonPath('data.transfers.0.status', 'ready');
+    }
 }
