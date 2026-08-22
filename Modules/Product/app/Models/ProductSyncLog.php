@@ -13,6 +13,7 @@ class ProductSyncLog extends Model
 
     public const ACTION_UPLOAD = 'upload';
     public const ACTION_DOWNLOAD = 'download';
+    public const ACTION_SYNC = 'sync';
     public const ACTION_SYNC_PRICE = 'sync_price';
     public const ACTION_SYNC_STOCK = 'sync_stock';
     public const ACTION_UNLINK = 'unlink';

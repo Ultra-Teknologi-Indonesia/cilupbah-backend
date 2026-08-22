@@ -263,8 +263,12 @@ class InventoryService
             );
 
             $newOnHand = $inventory->on_hand + $data['qty'];
-            if (! config('inventory.allow_negative_stock', true) && $newOnHand < 0) {
-                throw new \Exception("Stok tidak mencukupi. Adjustment akan menyebabkan stok minus (on_hand: {$inventory->on_hand}, adjustment: {$data['qty']}).");
+            if (! config('inventory.allow_negative_stock', true) && (int) $data['qty'] < 0 && $newOnHand < 0) {
+                throw new \App\Exceptions\UserFacingException(
+                    title: 'Stok Tidak Mencukupi',
+                    message: "Stok tidak mencukupi. Adjustment akan menyebabkan stok minus (on_hand: {$inventory->on_hand}, adjustment: {$data['qty']}).",
+                    status: 422
+                );
             }
 
             $inventory->on_hand = $newOnHand;

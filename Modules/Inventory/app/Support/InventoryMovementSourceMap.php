@@ -37,9 +37,9 @@ class InventoryMovementSourceMap
         'BIN_TRANSFER_IN'   => ['category' => 'TRANSFER', 'label' => 'Transfer'],
         'BIN_TRANSFER_OUT'  => ['category' => 'TRANSFER', 'label' => 'Transfer'],
         'BIN_TRANSFER_REVERSAL' => ['category' => 'TRANSFER', 'label' => 'Koreksi Pindah Bin'],
-        'PUTAWAY_IN'        => ['category' => 'TRANSFER', 'label' => 'Transfer'],
-        'PUTAWAY_OUT'       => ['category' => 'TRANSFER', 'label' => 'Transfer'],
-        'PUTAWAY_REVERSAL'  => ['category' => 'TRANSFER', 'label' => 'Koreksi Penempatan'],
+        'PUTAWAY_IN'        => ['category' => 'TAGIHAN', 'label' => 'Tagihan'],
+        'PUTAWAY_OUT'       => ['category' => 'TAGIHAN', 'label' => 'Tagihan'],
+        'PUTAWAY_REVERSAL'  => ['category' => 'TAGIHAN', 'label' => 'Koreksi Tagihan'],
         'SPLIT_IN'          => ['category' => 'TRANSFER', 'label' => 'Pecah Stok'],
         'SPLIT_OUT'         => ['category' => 'TRANSFER', 'label' => 'Pecah Stok'],
         'TRANSFER_REJECT_RETURN' => ['category' => 'TRANSFER', 'label' => 'Retur Tolak Transfer'],
@@ -133,7 +133,9 @@ class InventoryMovementSourceMap
     ];
 
     public const CLEAN_HIDDEN_SOURCES = [
-        ...self::INVOICE_SOURCES,
+        'INVOICE',
+        'ORDER_PICK',
+        'ORDER_SHIP',
         ...self::NON_PHYSICAL_SOURCES,
     ];
 

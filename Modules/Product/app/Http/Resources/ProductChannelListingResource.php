@@ -22,7 +22,10 @@ class ProductChannelListingResource extends JsonResource
                 $ch = ($shop && $shop->relationLoaded('channel')) ? $shop->channel : null;
 
                 return [
+                    'product_channel_mapping_id' => $cm->id,
+                    'variant_channel_mapping_id' => $m->id,
                     'channel_shop_id' => $cm->channel_shop_id,
+                    'marketplace_shop_id' => $shop->shop_id ?? null,
                     'shop_name' => $shop->shop_name ?? null,
                     'channel_name' => $ch->name ?? null,
                     'channel_code' => $ch->code ?? null,
@@ -35,6 +38,7 @@ class ProductChannelListingResource extends JsonResource
                         $m->external_sku_id
                     ),
                     'sync_status' => $cm->sync_status,
+                    'error_message' => $cm->error_message,
                     'last_synced_at' => $cm->last_synced_at,
                 ];
             })

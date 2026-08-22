@@ -86,4 +86,28 @@ class AdjustmentNegativeStockTest extends TestCase
             'created_by' => 'tester',
         ]);
     }
+
+    public function test_adjust_positive_qty_when_already_negative_succeeds_even_if_negative_disallowed(): void
+    {
+        config(['inventory.allow_negative_stock' => false]);
+        $ctx = $this->seedFixture(-158);
+
+        $result = app(InventoryService::class)->adjust([
+            'item_id' => $ctx['variant']->id,
+            'location_id' => $ctx['location']->id,
+            'bin_id' => $ctx['bin']->id,
+            'qty' => 1,
+            'created_by' => 'tester',
+            'source' => 'PURCHASE',
+        ]);
+
+        $this->assertSame(-157, (int) $result->on_hand);
+        $this->assertDatabaseHas('inventory_movements', [
+            'bin_id' => $ctx['bin']->id,
+            'item_id' => $ctx['variant']->id,
+            'qty' => 1,
+            'balance' => -157,
+        ]);
+    }
 }
+

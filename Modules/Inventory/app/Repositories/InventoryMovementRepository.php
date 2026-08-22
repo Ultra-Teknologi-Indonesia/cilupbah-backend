@@ -190,7 +190,7 @@ class InventoryMovementRepository
             )
             ->selectRaw(
                 'COALESCE('
-                . '(SELECT NULLIF(TRIM(so.customer_name), \'\') FROM sales_orders so WHERE so.salesorder_no = inventory_movements.transaction_number LIMIT 1), '
+                . '(SELECT NULLIF(TRIM(CONCAT_WS(\' | \', NULLIF(TRIM(so.buyer_message), \'\'), NULLIF(TRIM(COALESCE(so.seller_note, so.note)), \'\'))), \'\') FROM sales_orders so WHERE so.salesorder_no = inventory_movements.transaction_number LIMIT 1), '
                 . '(SELECT NULLIF(TRIM(COALESCE(sai.notes, sa.notes)), \'\') FROM stock_adjustments sa'
                 . '  LEFT JOIN stock_adjustment_items sai ON sai.stock_adjustment_id = sa.id AND sai.item_id = inventory_movements.item_id'
                 . '  WHERE sa.adjustment_no = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') AND sa.deleted_at IS NULL LIMIT 1), '
@@ -216,7 +216,7 @@ class InventoryMovementRepository
                 . '(SELECT NULLIF(TRIM(po.notes), \'\') FROM purchase_orders po WHERE po.po_number = inventory_movements.transaction_number LIMIT 1), '
                 . '(SELECT NULLIF(TRIM(inb.notes), \'\') FROM putaways put JOIN inbounds inb ON inb.id = put.source_id WHERE put.putaway_no = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') LIMIT 1), '
                 . '(SELECT NULLIF(TRIM(COALESCE(sr.notes, sr.reason)), \'\') FROM sales_returns sr WHERE sr.return_number = inventory_movements.transaction_number LIMIT 1), '
-                . $pickOrder('so.customer_name')
+                . $pickOrder('NULLIF(TRIM(CONCAT_WS(\' | \', NULLIF(TRIM(so.buyer_message), \'\'), NULLIF(TRIM(COALESCE(so.seller_note, so.note)), \'\'))), \'\')')
                 . ') AS ref_note'
             )
 

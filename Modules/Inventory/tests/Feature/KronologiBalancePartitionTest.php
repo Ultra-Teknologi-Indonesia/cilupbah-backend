@@ -210,4 +210,29 @@ class KronologiBalancePartitionTest extends TestCase
             'stok harus tetap 69 -- sama dengan fisik di rak -- sampai barang benar-benar di-scan'
         );
     }
+
+    public function test_order_complete_out_muncul_di_kronologi_bersih_dan_mengubah_saldo(): void
+    {
+        $this->movement('ADJUSTMENT', 88, 88, 1);
+        $this->movement('ORDER_COMPLETE_OUT', -1, 87, 2);
+
+        request()->merge([
+            'filter' => ['item_id' => $this->itemId],
+            'view' => 'clean',
+            'per_page' => 50,
+        ]);
+
+        $rows = collect(app(InventoryMovementRepository::class)->getHistoryPaginated(50)->items());
+
+        $this->assertCount(
+            2,
+            $rows,
+            'ORDER_COMPLETE_OUT adalah mutasi fisik pesanan keluar, sehingga wajib muncul di kronologi bersih'
+        );
+
+        $sources = $rows->pluck('source')->all();
+        $this->assertContains('ORDER_COMPLETE_OUT', $sources);
+        $this->assertContains('ADJUSTMENT', $sources);
+    }
 }
+

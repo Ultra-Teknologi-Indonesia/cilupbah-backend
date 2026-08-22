@@ -544,6 +544,135 @@ class ProductController extends Controller
         );
     }
 
+    #[OA\Delete(
+        path: '/api/v1/products/{id}/channel-mappings/{mappingId}',
+        summary: 'Putus tautan produk dari channel shop (Unlink)',
+        tags: ['Products'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'mappingId', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Tautan channel berhasil dihapus'),
+            new OA\Response(response: 404, description: 'Tautan channel tidak ditemukan'),
+            new OA\Response(response: 409, description: 'Sedang dalam proses sinkronisasi'),
+        ]
+    )]
+    public function unlinkChannelMapping(Request $request, string $id, string $mappingId): JsonResponse
+    {
+        $product = $this->findProduct($id);
+        if (! $product) {
+            return $this->errorResponse('Produk tidak ditemukan', 404);
+        }
+
+        $mapping = \Modules\Product\Models\ProductChannelMapping::where('id', $mappingId)
+            ->where('product_id', $product->id)
+            ->first();
+
+        if (! $mapping) {
+            return $this->errorResponse('Tautan channel tidak ditemukan.', 404);
+        }
+
+        if ($mapping->sync_status === 'syncing') {
+            return $this->errorResponse('Tidak dapat menghapus tautan saat proses sinkronisasi sedang berjalan.', 409);
+        }
+
+        $shopId = $mapping->channel_shop_id;
+        $mapping->delete();
+
+        \Modules\Product\Models\ProductSyncLog::record([
+            'product_id' => $product->id,
+            'channel_shop_id' => $shopId,
+            'action' => \Modules\Product\Models\ProductSyncLog::ACTION_UNLINK,
+            'status' => \Modules\Product\Models\ProductSyncLog::STATUS_SUCCESS,
+        ]);
+
+        return $this->successResponse(['success' => true], 'Tautan channel berhasil dihapus.');
+    }
+
+    #[OA\Delete(
+        path: '/api/v1/products/{id}/variant-channel-mappings/{variantMappingId}',
+        summary: 'Putus tautan satu varian dari channel shop (Unlink Variant)',
+        tags: ['Products'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'variantMappingId', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Tautan varian channel berhasil dihapus'),
+            new OA\Response(response: 404, description: 'Tautan varian tidak ditemukan'),
+        ]
+    )]
+    public function unlinkVariantChannelMapping(Request $request, string $id, string $variantMappingId): JsonResponse
+    {
+        $product = $this->findProduct($id);
+        if (! $product) {
+            return $this->errorResponse('Produk tidak ditemukan', 404);
+        }
+
+        $variantMapping = \Modules\Product\Models\ProductVariantChannelMapping::where('id', $variantMappingId)
+            ->whereHas('variant', function ($q) use ($product) {
+                $q->where('product_id', $product->id);
+            })
+            ->first();
+
+        if (! $variantMapping) {
+            return $this->errorResponse('Tautan varian channel tidak ditemukan.', 404);
+        }
+
+        $parentMappingId = $variantMapping->product_channel_mapping_id;
+        $variantMapping->delete();
+
+        // Check if parent product channel mapping has any remaining variant mappings
+        $remaining = \Modules\Product\Models\ProductVariantChannelMapping::where('product_channel_mapping_id', $parentMappingId)->count();
+        if ($remaining === 0) {
+            \Modules\Product\Models\ProductChannelMapping::where('id', $parentMappingId)->delete();
+        }
+
+        return $this->successResponse(['success' => true], 'Tautan varian channel berhasil dihapus.');
+    }
+
+    #[OA\Post(
+        path: '/api/v1/products/{id}/channel-mappings/{mappingId}/re-sync',
+        summary: 'Jadwalkan sinkronisasi ulang produk ke channel shop',
+        tags: ['Products'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'mappingId', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Sinkronisasi berhasil dijadwalkan'),
+            new OA\Response(response: 404, description: 'Tautan channel tidak ditemukan'),
+        ]
+    )]
+    public function resyncChannelMapping(Request $request, string $id, string $mappingId): JsonResponse
+    {
+        $product = $this->findProduct($id);
+        if (! $product) {
+            return $this->errorResponse('Produk tidak ditemukan', 404);
+        }
+
+        $mapping = \Modules\Product\Models\ProductChannelMapping::where('id', $mappingId)
+            ->where('product_id', $product->id)
+            ->first();
+
+        if (! $mapping) {
+            return $this->errorResponse('Tautan channel tidak ditemukan.', 404);
+        }
+
+        $mapping->markAsSyncing();
+        \Modules\Channel\Jobs\SyncProductToChannelJob::dispatch($product->id, $mapping->channel_shop_id, 'sync_price_stock');
+
+        \Modules\Product\Models\ProductSyncLog::record([
+            'product_id' => $product->id,
+            'channel_shop_id' => $mapping->channel_shop_id,
+            'action' => \Modules\Product\Models\ProductSyncLog::ACTION_SYNC_STOCK,
+            'status' => \Modules\Product\Models\ProductSyncLog::STATUS_PENDING,
+        ]);
+
+        return $this->successResponse(['success' => true], 'Sinkronisasi channel berhasil dijadwalkan.');
+    }
+
     private function findProduct($id, array $with = []): ?Product
     {
         $normalizedId = str_replace('-', '', (string) $id);
