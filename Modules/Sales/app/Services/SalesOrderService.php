@@ -2331,7 +2331,9 @@ class SalesOrderService
         }
 
         $kecilId = DB::table('locations')
-            ->where('location_code', Location::SYSTEM_KECIL_CODE)
+            ->where('is_small_warehouse', true)
+            ->where('is_warehouse', true)
+            ->where('is_active', true)
             ->value('id');
 
         if ($kecilId) {

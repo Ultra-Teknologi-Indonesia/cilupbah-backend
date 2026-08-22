@@ -24,6 +24,7 @@ class StoreLocationRequest extends FormRequest
             'email' => 'required|email|max:255',
             'coordinate' => 'nullable|string|max:100',
             'is_warehouse' => 'nullable|boolean',
+            'is_small_warehouse' => 'nullable|boolean',
             'is_multi_origin' => 'nullable|boolean',
             'default_warehouse_user' => 'nullable|string|max:255|email',
             'is_active' => 'nullable|boolean',

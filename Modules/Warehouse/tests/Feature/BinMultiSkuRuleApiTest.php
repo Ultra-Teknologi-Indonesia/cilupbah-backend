@@ -26,7 +26,10 @@ class BinMultiSkuRuleApiTest extends TestCase
     private function kecil(): Location
     {
         return Location::where('location_code', Location::SYSTEM_KECIL_CODE)->first()
-            ?? Location::factory()->create(['location_code' => Location::SYSTEM_KECIL_CODE]);
+            ?? Location::factory()->create([
+                'location_code' => Location::SYSTEM_KECIL_CODE,
+                'is_small_warehouse' => true,
+            ]);
     }
 
     private function makeBin(Location $loc, string $code): LocationBin

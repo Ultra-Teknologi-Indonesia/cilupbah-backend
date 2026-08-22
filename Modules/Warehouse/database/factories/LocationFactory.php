@@ -23,4 +23,11 @@ class LocationFactory extends Factory
             'is_active' => true,
         ];
     }
+
+    public function smallWarehouse(): static
+    {
+        return $this->state(fn () => [
+            'is_small_warehouse' => true,
+        ]);
+    }
 }

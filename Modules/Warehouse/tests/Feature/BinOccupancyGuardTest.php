@@ -50,7 +50,10 @@ class BinOccupancyGuardTest extends TestCase
         if ($existing) {
             return $existing;
         }
-        return Location::factory()->create(['location_code' => $code]);
+        return Location::factory()->create([
+            'location_code' => $code,
+            'is_small_warehouse' => ($code === Location::SYSTEM_KECIL_CODE),
+        ]);
     }
 
     private function placeStock(Location $loc, LocationBin $bin, ProductVariant $variant, int $onHand, int $reserved = 0): void

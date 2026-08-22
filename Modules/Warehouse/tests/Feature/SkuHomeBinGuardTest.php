@@ -46,12 +46,14 @@ class SkuHomeBinGuardTest extends TestCase
 
     private function makeLocation(string $code): Location
     {
-
         $existing = Location::where('location_code', $code)->first();
         if ($existing) {
             return $existing;
         }
-        return Location::factory()->create(['location_code' => $code]);
+        return Location::factory()->create([
+            'location_code' => $code,
+            'is_small_warehouse' => ($code === Location::SYSTEM_KECIL_CODE),
+        ]);
     }
 
     private function makeBin(Location $loc, string $binCode = 'RAK', bool $inbound = false, bool $acknowledged = true): LocationBin

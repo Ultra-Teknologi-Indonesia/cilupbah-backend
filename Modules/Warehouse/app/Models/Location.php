@@ -31,6 +31,7 @@ class Location extends Model
         'email',
         'coordinate',
         'is_warehouse',
+        'is_small_warehouse',
         'is_multi_origin',
         'default_warehouse_user',
         'is_active',
@@ -44,6 +45,7 @@ class Location extends Model
 
     protected $casts = [
         'is_warehouse' => 'boolean',
+        'is_small_warehouse' => 'boolean',
         'is_multi_origin' => 'boolean',
         'is_active' => 'boolean',
         'is_system' => 'boolean',
@@ -85,8 +87,6 @@ class Location extends Model
 
     public function enforcesStrictBinSku(): bool
     {
-        return $this->location_code === self::SYSTEM_KECIL_CODE
-            || in_array(strtoupper(trim((string) $this->location_code)), ['WH-KECIL', 'O', 'GK', 'WH_KECIL'], true)
-            || str_contains(strtolower((string) $this->location_name), 'kecil');
+        return (bool) $this->is_small_warehouse;
     }
 }

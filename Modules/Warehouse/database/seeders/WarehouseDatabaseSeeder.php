@@ -27,6 +27,7 @@ class WarehouseDatabaseSeeder extends Seeder
                 'location_name' => 'Gudang Kecil',
                 'location_type' => 'Gudang',
                 'is_warehouse' => true,
+                'is_small_warehouse' => true,
                 'is_system' => true,
                 'is_locked' => false,
             ]);
