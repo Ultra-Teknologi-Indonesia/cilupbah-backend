@@ -27,4 +27,24 @@ class DocumentNumberAdvisoryLockTest extends TestCase
             $this->assertSame("RS-{$ymd}-0001", $settlementNo);
         });
     }
+
+    public function test_invoice_generator_handles_overflow_beyond_9999(): void
+    {
+        $ymd = now()->format('Ymd');
+        $location = \Modules\Warehouse\Models\Location::factory()->create();
+
+        \Modules\Sales\Models\SalesInvoice::create([
+            'invoice_number' => "INV-{$ymd}-9999",
+            'customer_name'  => 'Test Customer',
+            'location_id'    => $location->id,
+            'status'         => 'OPEN',
+            'invoice_date'   => now()->toDateString(),
+            'total_amount'   => 1000,
+            'paid_amount'    => 0,
+            'created_by'     => 'test',
+        ]);
+
+        $nextInvoiceNo = app(SalesInvoiceRepository::class)->generateInvoiceNo();
+        $this->assertSame("INV-{$ymd}-10000", $nextInvoiceNo);
+    }
 }

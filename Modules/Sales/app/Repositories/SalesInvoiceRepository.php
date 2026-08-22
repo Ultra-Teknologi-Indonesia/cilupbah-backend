@@ -108,12 +108,14 @@ class SalesInvoiceRepository
 
         DB::select('SELECT pg_advisory_xact_lock(hashtext(?))', ['docnum:' . $prefix]);
         $lastInvoice = SalesInvoice::where('invoice_number', 'like', $prefix . '%')
-            ->orderByDesc('invoice_number')
+            ->orderByRaw('LENGTH(invoice_number) DESC, invoice_number DESC')
             ->first();
 
         if ($lastInvoice) {
-            $lastSeq = (int) substr($lastInvoice->invoice_number, -4);
-            return $prefix . str_pad($lastSeq + 1, 4, '0', STR_PAD_LEFT);
+            $suffix = substr($lastInvoice->invoice_number, strlen($prefix));
+            $lastSeq = is_numeric($suffix) ? (int) $suffix : 0;
+            $nextSeq = $lastSeq + 1;
+            return $prefix . str_pad((string) $nextSeq, max(4, strlen((string) $nextSeq)), '0', STR_PAD_LEFT);
         }
 
         return $prefix . '0001';
