@@ -63,9 +63,8 @@ class InventoryStockDetailTest extends TestCase
         ]);
     }
 
-    public function test_it_only_returns_bins_with_positive_on_hand_stock(): void
+    public function test_it_returns_all_allocated_bins_including_zero_on_hand_stock(): void
     {
-
         Inventory::create([
             'item_id' => $this->variant->id,
             'location_id' => $this->location->id,
@@ -83,9 +82,11 @@ class InventoryStockDetailTest extends TestCase
         $response = $this->getJson("/api/v1/inventory/stocks/{$this->variant->id}");
 
         $response->assertOk();
-        $response->assertJsonCount(1, 'data');
+        $response->assertJsonCount(2, 'data');
         $response->assertJsonPath('data.0.bin_id', $this->binWithStock->id);
         $response->assertJsonPath('data.0.on_hand', 25);
+        $response->assertJsonPath('data.1.bin_id', $this->emptyBin->id);
+        $response->assertJsonPath('data.1.on_hand', 0);
     }
 
     public function test_it_returns_stock_items_by_bin_code(): void

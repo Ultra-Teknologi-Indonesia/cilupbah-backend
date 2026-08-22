@@ -152,6 +152,49 @@ class InventoryMovementRepository
             $baseQuery->whereNotIn('source', InventoryMovementSourceMap::CLEAN_HIDDEN_SOURCES);
         } elseif ($view === 'attention') {
             $baseQuery->whereIn('source', InventoryMovementSourceMap::INVOICE_SOURCES);
+        } else {
+
+            $drill = strtolower((string) request('filter.drill', request('drill', '')));
+            if ($drill !== 'allocation') {
+                $baseQuery->where('source', '!=', 'ORDER_RELEASE');
+
+                $baseQuery->whereNotExists(function ($q) {
+                    $q->selectRaw('1')
+                        ->from('sales_orders as so_invoiced')
+                        ->join('sales_invoices as si', 'si.order_id', '=', 'so_invoiced.id')
+                        ->whereRaw("inventory_movements.source = 'ORDER_RESERVE'")
+                        ->whereColumn('so_invoiced.salesorder_no', 'inventory_movements.transaction_number')
+                        ->where('si.status', '!=', 'CANCELLED');
+                });
+
+                $baseQuery->whereNotExists(function ($q) {
+                    $q->selectRaw('1')
+                        ->from('inventory_movements as im_done')
+                        ->whereRaw("inventory_movements.source = 'ORDER_RESERVE'")
+                        ->whereColumn('im_done.item_id', 'inventory_movements.item_id')
+                        ->whereIn('im_done.source', ['INVOICE', 'ORDER_COMPLETE_OUT', 'ORDER_SHIP'])
+                        ->where(function ($sub) {
+                            $sub->whereColumn('im_done.transaction_number', 'inventory_movements.transaction_number')
+                                ->orWhereExists(function ($soQ) {
+                                    $soQ->selectRaw('1')
+                                        ->from('sales_orders as so')
+                                        ->whereColumn('so.salesorder_no', 'inventory_movements.transaction_number')
+                                        ->where(function ($invQ) {
+                                            $invQ->whereColumn('im_done.transaction_number', 'so.salesorder_no')
+                                                ->orWhereRaw("im_done.transaction_number = CONCAT('INV-', so.salesorder_no)");
+                                        });
+                                });
+                        });
+                });
+
+                $baseQuery->whereNotExists(function ($q) {
+                    $q->selectRaw('1')
+                        ->from('sales_orders as so_shipped')
+                        ->whereRaw("inventory_movements.source = 'ORDER_RESERVE'")
+                        ->whereColumn('so_shipped.salesorder_no', 'inventory_movements.transaction_number')
+                        ->whereIn('so_shipped.status', ['shipped', 'delivered', 'completed']);
+                });
+            }
         }
 
         if (trim((string) request('search', '')) !== '') {

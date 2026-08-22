@@ -195,7 +195,6 @@ class PutawayService
 
         $events = [];
 
-        // 1. Created Event
         if ($putaway->created_at) {
             $events[] = [
                 'type' => 'CREATED',
@@ -206,7 +205,6 @@ class PutawayService
             ];
         }
 
-        // 2. Assigned Event
         if ($putaway->assigned_to || $putaway->assigned_by) {
             $events[] = [
                 'type' => 'ASSIGNED',
@@ -218,7 +216,6 @@ class PutawayService
             ];
         }
 
-        // 3. Started Event
         if ($putaway->started_at) {
             $events[] = [
                 'type' => 'STARTED',
@@ -229,7 +226,6 @@ class PutawayService
             ];
         }
 
-        // 4. Completed Event
         if ($putaway->completed_at) {
             $events[] = [
                 'type' => 'COMPLETED',
@@ -240,7 +236,6 @@ class PutawayService
             ];
         }
 
-        // 5. Physical Movements (inventory_movements)
         $movements = DB::table('inventory_movements as im')
             ->leftJoin('location_bins as b', 'b.id', '=', 'im.bin_id')
             ->leftJoin('product_variants as pv', 'pv.id', '=', 'im.item_id')
@@ -271,7 +266,6 @@ class PutawayService
                 ];
             });
 
-        // 6. Inbound Participants (if linked to inbound)
         $participants = [];
         if ($putaway->source_id) {
             $participants = DB::table('inbound_participants as ip')

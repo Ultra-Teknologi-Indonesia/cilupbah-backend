@@ -69,15 +69,47 @@ class InventoryRepository
 
     public function getByItem(string $itemId): Collection
     {
-        return Inventory::where('item_id', $itemId)
+        $inventories = Inventory::where('item_id', $itemId)
             ->placed()
-            ->where('on_hand', '>', 0)
             ->with([
                 'location:id,location_name',
-                'bin:id,bin_final_code,floor_code,row_code,column_code,zone_id',
+                'bin:id,bin_final_code,floor_code,row_code,column_code,zone_id,location_id',
                 'bin.zone:id,zone_code,zone_name',
             ])
             ->get();
+
+        $existingBinIds = $inventories->pluck('bin_id')->filter()->unique()->all();
+
+        $assignmentQuery = \Modules\Inventory\Models\SkuRackAssignment::where('item_id', $itemId)
+            ->with([
+                'location:id,location_name',
+                'bin:id,bin_final_code,floor_code,row_code,column_code,zone_id,location_id',
+                'bin.zone:id,zone_code,zone_name',
+            ]);
+
+        if (!empty($existingBinIds)) {
+            $assignmentQuery->whereNotIn('bin_id', $existingBinIds);
+        }
+
+        $assignments = $assignmentQuery->get();
+
+        foreach ($assignments as $assignment) {
+            $fakeInv = new Inventory([
+                'id' => (string) \Illuminate\Support\Str::uuid(),
+                'item_id' => $itemId,
+                'bin_id' => $assignment->bin_id,
+                'location_id' => $assignment->location_id,
+                'on_hand' => 0,
+                'on_order' => 0,
+                'available' => 0,
+                'avg_cost' => 0,
+            ]);
+            $fakeInv->setRelation('location', $assignment->location);
+            $fakeInv->setRelation('bin', $assignment->bin);
+            $inventories->push($fakeInv);
+        }
+
+        return $inventories;
     }
 
     public function findExact(string $itemId, string $locationId, ?string $binId, string $batchNo = '', string $serialNo = ''): ?Inventory

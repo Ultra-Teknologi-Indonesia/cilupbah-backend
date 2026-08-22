@@ -87,7 +87,6 @@ class ProductChannelUnlinkTest extends TestCase
         $this->assertDatabaseMissing('product_channel_mappings', ['id' => $this->pcmId]);
         $this->assertDatabaseMissing('product_variant_channel_mappings', ['id' => $this->pvcmId]);
 
-        // Verify master product and variant remain intact
         $this->assertDatabaseHas('products', ['id' => $this->product->id]);
         $this->assertDatabaseHas('product_variants', ['id' => $this->variant->id]);
     }
@@ -100,7 +99,7 @@ class ProductChannelUnlinkTest extends TestCase
             ->assertJsonPath('status', 'success');
 
         $this->assertDatabaseMissing('product_variant_channel_mappings', ['id' => $this->pvcmId]);
-        // Parent mapping deleted if empty
+
         $this->assertDatabaseMissing('product_channel_mappings', ['id' => $this->pcmId]);
     }
 

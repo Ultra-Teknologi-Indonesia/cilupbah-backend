@@ -376,7 +376,6 @@ class BackfillShippedOrdersStockTest extends TestCase
 
         $service = app(\Modules\Sales\Services\SalesOrderService::class);
 
-        // 1. Webhook SHIPPED masuk
         $shippedPayload = [
             'salesorder_no' => 'SO-TIKTOK-DOUBLE-CHECK',
             'channel_order_no' => 'CH-TIKTOK-DOUBLE-CHECK',
@@ -411,20 +410,17 @@ class BackfillShippedOrdersStockTest extends TestCase
         $orderId = $service->upsertFromChannel($shippedPayload);
         $this->assertNotNull($orderId);
 
-        // Stok awal 50 dipotong 2 saat SHIPPED -> jadi 48
         $this->assertEquals(48, (int) DB::table('inventories')->where('item_id', $this->itemId)->where('bin_id', $this->binId)->value('on_hand'));
         $this->assertEquals(1, DB::table('inventory_movements')->where('transaction_number', 'SO-TIKTOK-DOUBLE-CHECK')->where('source', 'ORDER_COMPLETE_OUT')->count());
 
-        // 2. Webhook COMPLETED masuk belakangan untuk pesanan yang sama
         $completedPayload = $shippedPayload;
         $completedPayload['channel_status'] = 'COMPLETED';
         $completedPayload['channel_status_raw'] = 'COMPLETED';
 
         $service->upsertFromChannel($completedPayload);
 
-        // Stok HARUS TETAP 48 (TIDAK terpotong lagi!)
         $this->assertEquals(48, (int) DB::table('inventories')->where('item_id', $this->itemId)->where('bin_id', $this->binId)->value('on_hand'));
-        // Mutasi ORDER_COMPLETE_OUT tetap hanya ada 1
+
         $this->assertEquals(1, DB::table('inventory_movements')->where('transaction_number', 'SO-TIKTOK-DOUBLE-CHECK')->where('source', 'ORDER_COMPLETE_OUT')->count());
     }
 }

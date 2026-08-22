@@ -46,7 +46,6 @@ class RedownloadDeletedProductTest extends TestCase
         $downloadService = app(ChannelDownloadService::class);
         $writeRepo = app(ProductWriteRepository::class);
 
-        // 1. Create / ingest product from channel
         $data = [
             'name' => 'Charger Fast 20W',
             'sku' => 'CHARGER-20W',
@@ -65,7 +64,6 @@ class RedownloadDeletedProductTest extends TestCase
         $productId = $productService->upsertFromChannel($data, $matched, $variantIds);
         $this->assertNotNull($productId);
 
-        // Map it to channel
         $pcm = ProductChannelMapping::create([
             'product_id' => $productId,
             'channel_shop_id' => $this->shop->id,
@@ -82,38 +80,31 @@ class RedownloadDeletedProductTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        // Verify already_downloaded is true while active
         $downloadedCheck = ProductChannelMapping::where('channel_shop_id', $this->shop->id)
             ->where('external_product_id', 'EXT-PROD-999')
             ->whereHas('product')
             ->exists();
         $this->assertTrue($downloadedCheck);
 
-        // 2. Delete the product from Master Produk
         $product = Product::find($productId);
         $this->assertNotNull($product);
         $productService->deleteProduct($product);
 
-        // Verify product is soft-deleted
         $this->assertSoftDeleted('products', ['id' => $productId]);
 
-        // Verify channel mappings were cleanly detached/deleted
         $this->assertDatabaseMissing('product_channel_mappings', ['product_id' => $productId]);
         $this->assertDatabaseMissing('product_variant_channel_mappings', ['product_channel_mapping_id' => $pcm->id]);
 
-        // Verify whereHas('product') returns false
         $downloadedAfterDelete = ProductChannelMapping::where('channel_shop_id', $this->shop->id)
             ->where('external_product_id', 'EXT-PROD-999')
             ->whereHas('product')
             ->exists();
         $this->assertFalse($downloadedAfterDelete);
 
-        // Verify repository lookup methods ignore soft-deleted products
         $this->assertNull($writeRepo->productIdBySku('CHARGER-20W'));
         $this->assertNull($writeRepo->productIdByVariantSku('CHARGER-20W-BLK'));
         $this->assertNull($writeRepo->productIdByChannelExternalId('SHOP-TEST-1', 'EXT-PROD-999'));
 
-        // 3. Re-download / upsert product again as fresh active product
         $newProductId = $productService->upsertFromChannel($data, $newMatched, $newVariantIds);
         $this->assertNotNull($newProductId);
         $this->assertNotEquals($productId, $newProductId);

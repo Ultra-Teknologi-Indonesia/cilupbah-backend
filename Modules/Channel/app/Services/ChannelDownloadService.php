@@ -187,7 +187,6 @@ class ChannelDownloadService
             ];
         }
 
-        // Batch query product mappings in ONE SQL query
         $allExtIds = collect($allItems)->pluck('external_product_id')->filter()->unique()->values()->all();
         $shopIdMap = $shops->pluck('id', 'shop_id')->all();
 
@@ -210,7 +209,6 @@ class ChannelDownloadService
         }
         unset($it);
 
-        // Sort: not downloaded first, exact SKU matches higher
         usort($allItems, function ($a, $b) use ($query) {
             $aDown = ($a['already_downloaded'] ?? false) ? 1 : 0;
             $bDown = ($b['already_downloaded'] ?? false) ? 1 : 0;

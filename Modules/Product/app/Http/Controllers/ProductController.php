@@ -623,7 +623,6 @@ class ProductController extends Controller
         $parentMappingId = $variantMapping->product_channel_mapping_id;
         $variantMapping->delete();
 
-        // Check if parent product channel mapping has any remaining variant mappings
         $remaining = \Modules\Product\Models\ProductVariantChannelMapping::where('product_channel_mapping_id', $parentMappingId)->count();
         if ($remaining === 0) {
             \Modules\Product\Models\ProductChannelMapping::where('id', $parentMappingId)->delete();

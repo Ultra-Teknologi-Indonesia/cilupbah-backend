@@ -54,7 +54,7 @@ class UnifiedChannelSearchTest extends TestCase
 
     public function test_unified_search_aggregates_multiple_stores_in_single_call(): void
     {
-        // Mock Shopee API
+
         Http::fake([
             '*/api/v2/product/get_item_list*' => Http::response([
                 'error' => '',
@@ -108,7 +108,6 @@ class UnifiedChannelSearchTest extends TestCase
             'is_active' => true,
         ]);
 
-        // Create Master Product mapped to the Shopee one
         $masterProduct = Product::create([
             'category_id' => $category->id,
             'name' => 'Master Case Pro',
@@ -134,14 +133,12 @@ class UnifiedChannelSearchTest extends TestCase
         $items = $response->json('data');
         $this->assertCount(2, $items);
 
-        // Verify Shopee item is marked already_downloaded = true
         $shopeeItem = collect($items)->firstWhere('channel_code', 'shopee');
         $this->assertNotNull($shopeeItem);
         $this->assertSame('101', (string) $shopeeItem['external_product_id']);
         $this->assertTrue($shopeeItem['already_downloaded']);
         $this->assertSame($masterProduct->id, $shopeeItem['master_product_id']);
 
-        // Verify TikTok item is marked already_downloaded = false
         $tiktokItem = collect($items)->firstWhere('channel_code', 'tiktok');
         $this->assertNotNull($tiktokItem);
         $this->assertSame('tt-prod-202', (string) $tiktokItem['external_product_id']);

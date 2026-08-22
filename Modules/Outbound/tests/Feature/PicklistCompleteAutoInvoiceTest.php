@@ -108,7 +108,6 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
     {
         $this->actingAs($this->user);
 
-        // Before complete, no sales invoice exists for order
         $this->assertDatabaseMissing('sales_invoices', [
             'order_id' => $this->order->id,
         ]);
@@ -117,23 +116,19 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
 
         $res->assertOk();
 
-        // Check order status changed to picked
         $this->order->refresh();
         $this->assertSame('picked', $this->order->status);
 
-        // Check sales_invoices record is automatically created
         $invoice = SalesInvoice::where('order_id', $this->order->id)->first();
         $this->assertNotNull($invoice);
         $this->assertStringStartsWith('INV-', $invoice->invoice_number);
         $this->assertSame('n***ng a***ni', $invoice->customer_name);
         $this->assertEquals(65000, $invoice->total_amount);
 
-        // Check invoice endpoint stream works
         $pdfRes = $this->get("/api/v1/sales/{$this->order->id}/invoice");
         $pdfRes->assertOk()
             ->assertHeader('Content-Type', 'application/pdf');
 
-        // Check stage finish-pick returns invoice_no
         $stageRes = $this->getJson('/api/v1/outbound/orders/finish-pick');
         $stageRes->assertOk()
             ->assertJsonPath('data.data.0.id', $this->order->id)

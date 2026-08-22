@@ -20,6 +20,11 @@ class SkuRackAssignment extends Model
         'assigned_by',
     ];
 
+    public function location(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Warehouse\Models\Location::class, 'location_id');
+    }
+
     public function bin(): BelongsTo
     {
         return $this->belongsTo(LocationBin::class, 'bin_id');
