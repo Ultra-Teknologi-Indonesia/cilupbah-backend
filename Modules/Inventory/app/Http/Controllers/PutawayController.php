@@ -242,6 +242,34 @@ class PutawayController extends Controller
     }
 
     #[OA\Get(
+        path: '/api/v1/putaway/{id}/history',
+        summary: 'Get putaway activity history & audit log',
+        security: [['bearerAuth' => []]],
+        tags: ['Putaway'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Riwayat aktivitas penempatan berhasil diambil.'),
+            new OA\Response(response: 404, description: 'Putaway tidak ditemukan.'),
+        ]
+    )]
+    public function history(string $id): JsonResponse
+    {
+        try {
+            $history = $this->putawayService->getHistory($id);
+
+            return $this->successResponse($history, 'Riwayat aktivitas penempatan berhasil diambil.');
+        } catch (\App\Exceptions\UserFacingException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return $this->errorResponse('Gagal mengambil riwayat penempatan.', 500);
+        }
+    }
+
+    #[OA\Get(
         path: '/api/v1/putaway/{id}/items',
         summary: 'Get putaway items',
         security: [['bearerAuth' => []]],

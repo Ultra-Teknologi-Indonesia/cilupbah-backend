@@ -308,6 +308,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('/bulk/pdf', [PutawayController::class, 'bulkPdf'])->middleware('role_or_permission:owner|export-penempatan')->name('putaway.bulkPdf');
         Route::delete('/bulk', [PutawayController::class, 'bulkDestroy'])->middleware('role_or_permission:owner|delete-penempatan')->name('putaway.bulkDestroy');
         Route::get('/{id}/pdf', [PutawayController::class, 'pdf'])->middleware('role_or_permission:owner|export-penempatan')->name('putaway.pdf');
+        Route::get('/{id}/history', [PutawayController::class, 'history'])->middleware('role_or_permission:owner|view-penempatan')->name('putaway.history');
         Route::get('/{id}', [PutawayController::class, 'show'])->middleware('role_or_permission:owner|view-penempatan')->name('putaway.show');
         Route::get('/{id}/items', [PutawayController::class, 'items'])->middleware('role_or_permission:owner|view-penempatan')->name('putaway.items');
         Route::post('/assign-staff', [PutawayController::class, 'assignStaff'])->middleware('role_or_permission:owner|edit-penempatan')->name('putaway.assignStaff');

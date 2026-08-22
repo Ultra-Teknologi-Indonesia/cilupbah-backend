@@ -154,6 +154,160 @@ class PutawayService
         return $this->putawayRepository->findById($id);
     }
 
+    public function getHistory(string $id): array
+    {
+        $putaway = $this->putawayRepository->findById($id);
+
+        if (! $putaway) {
+            throw new \App\Exceptions\UserFacingException('Dokumen penempatan tidak ditemukan.', 404);
+        }
+
+        $resolveUser = function ($identifier) {
+            if (empty($identifier)) return null;
+            if ($identifier instanceof \App\Models\User) {
+                return [
+                    'id' => $identifier->id,
+                    'name' => $identifier->name,
+                    'email' => $identifier->email,
+                ];
+            }
+            $u = \App\Models\User::whereRaw("id::text = ?", [(string) $identifier])
+                ->orWhere('name', (string) $identifier)
+                ->orWhere('email', (string) $identifier)
+                ->first();
+            if ($u) {
+                return [
+                    'id' => $u->id,
+                    'name' => $u->name,
+                    'email' => $u->email,
+                ];
+            }
+            return [
+                'id' => null,
+                'name' => (string) $identifier,
+                'email' => null,
+            ];
+        };
+
+        $creator = $putaway->creator ? $resolveUser($putaway->creator) : $resolveUser($putaway->created_by);
+        $assignedBy = $putaway->assignedByUser ? $resolveUser($putaway->assignedByUser) : $resolveUser($putaway->assigned_by);
+        $assignee = $putaway->assignee ? $resolveUser($putaway->assignee) : $resolveUser($putaway->assigned_to);
+
+        $events = [];
+
+        // 1. Created Event
+        if ($putaway->created_at) {
+            $events[] = [
+                'type' => 'CREATED',
+                'title' => 'Dokumen Penempatan Dibuat',
+                'description' => $putaway->notes ? "Penempatan dibuat dengan catatan: {$putaway->notes}" : 'Dokumen penempatan berhasil dibuat di sistem.',
+                'actor' => $creator,
+                'timestamp' => $putaway->created_at->toIso8601String(),
+            ];
+        }
+
+        // 2. Assigned Event
+        if ($putaway->assigned_to || $putaway->assigned_by) {
+            $events[] = [
+                'type' => 'ASSIGNED',
+                'title' => 'Penugasan Staff',
+                'description' => $assignee ? "Ditugaskan kepada {$assignee['name']} untuk dilakukan penempatan ke rak." : 'Penugasan staf penempatan.',
+                'actor' => $assignedBy ?: $creator,
+                'target_user' => $assignee,
+                'timestamp' => ($putaway->assigned_at ?? $putaway->created_at)?->toIso8601String(),
+            ];
+        }
+
+        // 3. Started Event
+        if ($putaway->started_at) {
+            $events[] = [
+                'type' => 'STARTED',
+                'title' => 'Mulai Dikerjakan',
+                'description' => 'Proses scan barcode barang dan rak penempatan telah dimulai.',
+                'actor' => $assignee,
+                'timestamp' => $putaway->started_at->toIso8601String(),
+            ];
+        }
+
+        // 4. Completed Event
+        if ($putaway->completed_at) {
+            $events[] = [
+                'type' => 'COMPLETED',
+                'title' => 'Selesai Ditempatkan',
+                'description' => 'Seluruh barang telah selesai ditempatkan ke rak dan persediaan fisik telah diperbarui.',
+                'actor' => $assignee,
+                'timestamp' => $putaway->completed_at->toIso8601String(),
+            ];
+        }
+
+        // 5. Physical Movements (inventory_movements)
+        $movements = DB::table('inventory_movements as im')
+            ->leftJoin('location_bins as b', 'b.id', '=', 'im.bin_id')
+            ->leftJoin('product_variants as pv', 'pv.id', '=', 'im.item_id')
+            ->leftJoin('products as pr', 'pr.id', '=', 'pv.product_id')
+            ->where('im.transaction_number', $putaway->putaway_no)
+            ->where('im.qty', '>', 0)
+            ->select(
+                'im.id',
+                'im.transaction_date',
+                'im.source',
+                'im.qty',
+                'b.bin_final_code',
+                'pv.sku',
+                'pr.name as product_name',
+                'im.created_by'
+            )
+            ->orderBy('im.transaction_date', 'asc')
+            ->get()
+            ->map(function ($m) use ($resolveUser) {
+                return [
+                    'id' => $m->id,
+                    'sku' => $m->sku,
+                    'product_name' => $m->product_name,
+                    'bin_code' => $m->bin_final_code ?? '—',
+                    'qty' => (int) $m->qty,
+                    'timestamp' => $m->transaction_date,
+                    'actor' => $resolveUser($m->created_by),
+                ];
+            });
+
+        // 6. Inbound Participants (if linked to inbound)
+        $participants = [];
+        if ($putaway->source_id) {
+            $participants = DB::table('inbound_participants as ip')
+                ->join('users as u', 'u.id', '=', 'ip.user_id')
+                ->whereRaw('ip.inbound_id::text = ?', [(string) $putaway->source_id])
+                ->select('u.id', 'u.name', 'u.email', 'ip.status', 'ip.joined_at', 'ip.withdrawn_at')
+                ->get()
+                ->map(fn ($p) => [
+                    'id' => $p->id,
+                    'name' => $p->name,
+                    'email' => $p->email,
+                    'status' => $p->status,
+                    'joined_at' => $p->joined_at,
+                    'withdrawn_at' => $p->withdrawn_at,
+                ]);
+        }
+
+        return [
+            'putaway_id' => $putaway->id,
+            'putaway_no' => $putaway->putaway_no,
+            'status' => $putaway->status,
+            'summary' => [
+                'creator' => $creator,
+                'assigned_by' => $assignedBy,
+                'assigned_to' => $assignee,
+                'created_at' => $putaway->created_at?->toIso8601String(),
+                'started_at' => $putaway->started_at?->toIso8601String(),
+                'completed_at' => $putaway->completed_at?->toIso8601String(),
+                'notes' => $putaway->notes,
+            ],
+            'events' => $events,
+            'placements' => $movements,
+            'participants' => $participants,
+        ];
+    }
+
     public function getItems(string $putawayId, int $limit = 10)
     {
         $putaway = $this->putawayRepository->findById($putawayId);

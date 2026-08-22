@@ -105,6 +105,8 @@ class ProcessPutawayItemJob implements ShouldQueue
                 $sourceInventory->on_hand -= $qty;
                 $inventoryRepository->updateStock($sourceInventory);
 
+                $actorId = $this->data['created_by'] ?? auth()->id() ?? $putaway->assigned_to ?? 'system';
+
                 $movementRepository->create([
                     'item_id' => $putawayItem->item_id,
                     'location_id' => $putaway->location_id,
@@ -116,7 +118,7 @@ class ProcessPutawayItemJob implements ShouldQueue
                     'cost_per_unit' => $unitCost > 0 ? $unitCost : null,
                     'total_cost' => $unitCost > 0 ? round($unitCost * (float) $qty, 2) : null,
                     'transaction_date' => now(),
-                    'created_by' => 'system',
+                    'created_by' => $actorId,
                 ]);
 
                 $destInventory = $inventoryRepository->findOrCreateForUpdate(
@@ -152,7 +154,7 @@ class ProcessPutawayItemJob implements ShouldQueue
                     'cost_per_unit' => $unitCost > 0 ? $unitCost : null,
                     'total_cost' => $unitCost > 0 ? round($unitCost * (float) $qty, 2) : null,
                     'transaction_date' => now(),
-                    'created_by' => 'system',
+                    'created_by' => $actorId,
                 ]);
 
                 $putawayItem->update([
