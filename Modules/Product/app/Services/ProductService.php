@@ -187,6 +187,13 @@ class ProductService
                 ->where('product_id', $product->id)
                 ->orWhereIn('variant_id', $variantIds->all())
                 ->delete();
+
+            $mappingIds = DB::table('product_channel_mappings')->where('product_id', $product->id)->pluck('id');
+            if ($mappingIds->isNotEmpty()) {
+                DB::table('product_variant_channel_mappings')->whereIn('product_channel_mapping_id', $mappingIds)->delete();
+                DB::table('product_channel_mappings')->where('product_id', $product->id)->delete();
+            }
+
             $product->variants()->delete();
             $product->delete();
         });

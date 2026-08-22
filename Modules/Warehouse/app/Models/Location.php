@@ -85,6 +85,8 @@ class Location extends Model
 
     public function enforcesStrictBinSku(): bool
     {
-        return $this->location_code === self::SYSTEM_KECIL_CODE;
+        return $this->location_code === self::SYSTEM_KECIL_CODE
+            || in_array(strtoupper(trim((string) $this->location_code)), ['WH-KECIL', 'O', 'GK', 'WH_KECIL'], true)
+            || str_contains(strtolower((string) $this->location_name), 'kecil');
     }
 }

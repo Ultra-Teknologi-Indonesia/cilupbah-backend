@@ -30,6 +30,8 @@ class LocationResource extends JsonResource
             'is_tcb' => $this->is_tcb,
             'is_fbs' => $this->is_fbs,
             'is_pos' => $this->is_pos,
+            'is_small_warehouse' => $this->enforcesStrictBinSku(),
+            'enforces_strict_bin_sku' => $this->enforcesStrictBinSku(),
             'village' => $this->whenLoaded('village', function () {
                 $village = $this->village;
                 if (! $village) {

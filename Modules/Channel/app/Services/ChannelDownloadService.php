@@ -143,6 +143,7 @@ class ChannelDownloadService
                 $downloaded = array_flip(
                     ProductChannelMapping::where('channel_shop_id', $channelShopId)
                         ->whereIn('external_product_id', $ids)
+                        ->whereHas('product')
                         ->pluck('external_product_id')
                         ->map(fn ($v) => (string) $v)
                         ->all()
