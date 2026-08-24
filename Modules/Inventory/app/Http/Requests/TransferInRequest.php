@@ -14,7 +14,7 @@ class TransferInRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'received_by'           => ['required', 'string', 'max:100'],
+            'received_by'           => ['nullable', 'string', 'max:100'],
             'assigned_to'           => ['nullable', 'string', 'max:100'],
             'items'                 => ['nullable', 'array'],
             'items.*.item_id'       => ['required_with:items', 'string'],

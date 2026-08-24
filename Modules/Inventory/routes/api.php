@@ -136,6 +136,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('inventory/bin-transfers/{id}/print', [InventoryTransactionController::class, 'binTransferPrint'])->name('inventory.binTransfers.print');
         Route::post('inventory/bin-transfers/{id}/revert-print', [InventoryTransactionController::class, 'binTransferRevertPrint'])->name('inventory.binTransfers.revertPrint');
         Route::post('inventory/bin-transfers/{id}/receipts', [InventoryTransactionController::class, 'binTransferReceive'])->name('inventory.binTransfers.receive');
+        Route::delete('inventory/bin-transfer-receipts/{id}', [InventoryTransactionController::class, 'binTransferReceiptDestroy'])->name('inventory.binTransferReceipts.destroy');
+        Route::delete('inventory/bin-transfers/{id}/items/{itemId}', [InventoryTransactionController::class, 'binTransferItemDestroy'])->name('inventory.binTransfers.items.destroy');
+        Route::post('inventory/bin-transfers/{id}/items/reverse', [InventoryTransactionController::class, 'binTransferItemsDestroy'])->name('inventory.binTransfers.items.reverse');
     });
     Route::middleware('role_or_permission:owner|delete-pindah-bin')->group(function () {
         Route::delete('inventory/bin-transfers/{id}', [InventoryTransactionController::class, 'binTransferDestroy'])->name('inventory.binTransfers.destroy');

@@ -247,7 +247,12 @@ class InventoryTransactionController extends Controller
     public function transferIn(\Modules\Inventory\Http\Requests\TransferInRequest $request, string $id): JsonResponse
     {
         try {
-            $result = $this->inventoryService->transferIn($id, $request->validated());
+            $validated = $request->validated();
+            if (empty($validated['received_by'])) {
+                $validated['received_by'] = \App\Utils\ActorName::fromUser($request->user());
+            }
+
+            $result = $this->inventoryService->transferIn($id, $validated);
             return $this->successResponse(new InventoryTransferResource($result), 'Transfer In berhasil, stok telah masuk ke gudang tujuan.');
         } catch (\Exception $e) {
             return $this->errorResponse(
@@ -811,6 +816,17 @@ class InventoryTransactionController extends Controller
         }
 
         return $this->successResponse(new BinTransferReceiptResource($receipt), 'Detail penerimaan transfer internal berhasil diambil.');
+    }
+
+    public function binTransferReceiptDestroy(\Illuminate\Http\Request $request, string $id): JsonResponse
+    {
+        try {
+            $actor = ActorName::fromUser($request->user());
+            $this->inventoryService->destroyBinTransferReceipt($id, $actor);
+            return $this->successResponse(null, 'Penerimaan transfer berhasil dibatalkan dan stok dikembalikan.');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), 400);
+        }
     }
 
     public function binTransferItemDestroy(ReverseBinTransferItemRequest $request, string $id, string $itemId): JsonResponse
