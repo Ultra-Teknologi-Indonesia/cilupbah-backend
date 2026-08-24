@@ -50,9 +50,9 @@ class StockReplenishmentService
     {
         $request = DB::transaction(function () use ($payload) {
             $fromId = $payload['from_location_id']
-                ?? $this->repository->resolveLocationId(Location::SYSTEM_PUSAT_CODE);
+                ?? \Modules\Warehouse\Models\Location::getMainWarehouseId();
             $toId = $payload['to_location_id']
-                ?? $this->repository->resolveLocationId(Location::SYSTEM_KECIL_CODE);
+                ?? \Modules\Warehouse\Models\Location::getSmallWarehouseId();
 
             if (! $fromId || ! $toId) {
                 throw new \RuntimeException('Gudang Pusat / Gudang Kecil belum di-seed.');
@@ -302,8 +302,8 @@ class StockReplenishmentService
 
     public function autoDetect(bool $dryRun = false): array
     {
-        $kecilId = $this->repository->resolveLocationId(Location::SYSTEM_KECIL_CODE);
-        $pusatId = $this->repository->resolveLocationId(Location::SYSTEM_PUSAT_CODE);
+        $kecilId = \Modules\Warehouse\Models\Location::getSmallWarehouseId();
+        $pusatId = \Modules\Warehouse\Models\Location::getMainWarehouseId();
 
         if (! $kecilId || ! $pusatId) {
             return ['shortages' => [], 'request' => null, 'skipped' => true, 'reason' => 'Gudang Kecil / Gudang Pusat belum di-seed'];

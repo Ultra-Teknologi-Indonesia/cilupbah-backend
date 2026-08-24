@@ -25,6 +25,32 @@ class InventoryMovementResource extends JsonResource
             $direction = $qty > 0 ? 'in' : ($qty < 0 ? 'out' : 'none');
         }
 
+        $sourceCategory = $meta['category'];
+        $sourceLabel = $meta['label'];
+
+        if (in_array($this->source, ['PUTAWAY_IN', 'PUTAWAY_OUT', 'PUTAWAY_REVERSAL'], true)) {
+            $putawayType = strtolower((string) ($this->putaway_source_type ?? ''));
+            $refNo = strtoupper((string) ($this->ref_no ?? ''));
+            if (
+                $putawayType === 'transfer' ||
+                $putawayType === 'transit_in' ||
+                str_starts_with($refNo, 'TRFI') ||
+                str_starts_with($refNo, 'TRF') ||
+                str_contains($putawayType, 'transfer')
+            ) {
+                $sourceCategory = 'TRANSFER';
+                $sourceLabel = 'Transfer';
+            } elseif (
+                $putawayType === 'sales_return' ||
+                $putawayType === 'return' ||
+                str_starts_with($refNo, 'RET') ||
+                str_contains($putawayType, 'return')
+            ) {
+                $sourceCategory = 'RETUR_PENJUALAN';
+                $sourceLabel = 'Retur Penjualan';
+            }
+        }
+
         return [
             'id' => $this->id,
             'item_id' => $this->item_id,
@@ -40,8 +66,8 @@ class InventoryMovementResource extends JsonResource
             'reference_number' => $this->ref_no,
             'note' => $this->ref_note,
             'source' => $this->source,
-            'source_category' => $meta['category'],
-            'source_label' => $meta['label'],
+            'source_category' => $sourceCategory,
+            'source_label' => $sourceLabel,
             'is_variance' => InventoryMovementSourceMap::isVariance($this->source),
             'direction' => $direction,
             'qty' => $qty,

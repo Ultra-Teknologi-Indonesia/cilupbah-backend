@@ -39,9 +39,19 @@ class InboundRepository
             ->appends(request()->query());
 
         $userIds = [];
+        $poIds = [];
+        $poNumbers = [];
         foreach ($paginator->items() as $item) {
-            if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $item->created_by)) {
+            if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', (string) $item->created_by)) {
                 $userIds[] = $item->created_by;
+            }
+            if ($item->source_type === 'purchase_order' || $item->type === Inbound::TYPE_PURCHASE_ORDER) {
+                if ($item->source_id) {
+                    $poIds[] = (string) $item->source_id;
+                }
+                if ($item->reference_number) {
+                    $poNumbers[] = (string) $item->reference_number;
+                }
             }
         }
 
@@ -50,6 +60,41 @@ class InboundRepository
             foreach ($paginator->items() as $item) {
                 if (isset($users[$item->created_by])) {
                     $item->created_by = $users[$item->created_by];
+                }
+            }
+        }
+
+        if (!empty($poIds) || !empty($poNumbers)) {
+            $poQuery = \Modules\Purchase\Models\PurchaseOrder::query();
+            if (!empty($poIds) && !empty($poNumbers)) {
+                $poQuery->where(function ($q) use ($poIds, $poNumbers) {
+                    $q->whereIn('id', array_unique($poIds))
+                        ->orWhereIn('po_number', array_unique($poNumbers));
+                });
+            } elseif (!empty($poIds)) {
+                $poQuery->whereIn('id', array_unique($poIds));
+            } else {
+                $poQuery->whereIn('po_number', array_unique($poNumbers));
+            }
+
+            $pos = $poQuery->get(['id', 'po_number', 'notes']);
+            $poNotes = [];
+            foreach ($pos as $po) {
+                if ($po->notes !== null && trim((string) $po->notes) !== '') {
+                    $poNotes[(string) $po->id] = trim((string) $po->notes);
+                    $poNotes[(string) $po->po_number] = trim((string) $po->notes);
+                }
+            }
+
+            foreach ($paginator->items() as $item) {
+                if ($item->source_type === 'purchase_order' || $item->type === Inbound::TYPE_PURCHASE_ORDER) {
+                    if (isset($poNotes[(string) $item->source_id])) {
+                        $item->notes = $poNotes[(string) $item->source_id];
+                    } elseif (isset($poNotes[(string) $item->reference_number])) {
+                        $item->notes = $poNotes[(string) $item->reference_number];
+                    } elseif ($item->notes && str_starts_with((string) $item->notes, 'Auto-generated dari PO')) {
+                        $item->notes = null;
+                    }
                 }
             }
         }
@@ -74,9 +119,20 @@ class InboundRepository
         if ($inbound) {
             $inbound->received_total = (int) $inbound->items->sum('received_total');
             $inbound->received_by_me = (int) $inbound->items->sum('received_by_me');
+
+            if ($inbound->source_type === 'purchase_order' || $inbound->type === Inbound::TYPE_PURCHASE_ORDER) {
+                $poNote = \Modules\Purchase\Models\PurchaseOrder::where('id', $inbound->source_id)
+                    ->orWhere('po_number', $inbound->reference_number)
+                    ->value('notes');
+                if ($poNote !== null && trim((string) $poNote) !== '') {
+                    $inbound->notes = trim((string) $poNote);
+                } elseif ($inbound->notes && str_starts_with((string) $inbound->notes, 'Auto-generated dari PO')) {
+                    $inbound->notes = null;
+                }
+            }
         }
 
-        if ($inbound && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $inbound->created_by)) {
+        if ($inbound && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', (string) $inbound->created_by)) {
             $user = \App\Models\User::find($inbound->created_by);
             if ($user) {
                 $inbound->created_by = $user->name;

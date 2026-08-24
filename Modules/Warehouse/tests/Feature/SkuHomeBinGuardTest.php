@@ -44,15 +44,12 @@ class SkuHomeBinGuardTest extends TestCase
         ]);
     }
 
-    private function makeLocation(string $code): Location
+    private function makeLocation(bool $isSmall = false): Location
     {
-        $existing = Location::where('location_code', $code)->first();
-        if ($existing) {
-            return $existing;
-        }
         return Location::factory()->create([
-            'location_code' => $code,
-            'is_small_warehouse' => ($code === Location::SYSTEM_KECIL_CODE),
+            'location_code' => 'WH-TEST-' . Str::random(4),
+            'is_warehouse' => true,
+            'is_small_warehouse' => $isSmall,
         ]);
     }
 
@@ -81,7 +78,7 @@ class SkuHomeBinGuardTest extends TestCase
 
     public function test_kecil_blocks_placing_same_sku_in_a_different_bin(): void
     {
-        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+        $loc = $this->makeLocation(true);
         $home = $this->makeBin($loc, 'HOME');
         $target = $this->makeBin($loc, 'TARGET');
 
@@ -96,7 +93,7 @@ class SkuHomeBinGuardTest extends TestCase
 
     public function test_kecil_allows_same_sku_going_back_to_its_home_bin(): void
     {
-        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+        $loc = $this->makeLocation(true);
         $home = $this->makeBin($loc, 'HOME');
 
         $variant = $this->makeVariant();
@@ -108,7 +105,7 @@ class SkuHomeBinGuardTest extends TestCase
 
     public function test_kecil_allows_placing_into_inbound_target_bin_despite_home_bin(): void
     {
-        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+        $loc = $this->makeLocation(true);
         $home = $this->makeBin($loc, 'HOME');
         $inboundBin = $this->makeBin($loc, 'INBOUND', inbound: true);
 
@@ -124,7 +121,7 @@ class SkuHomeBinGuardTest extends TestCase
 
     public function test_kecil_allows_placing_into_unacknowledged_target_bin(): void
     {
-        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+        $loc = $this->makeLocation(true);
         $home = $this->makeBin($loc, 'HOME');
         $staging = $this->makeBin($loc, 'STAGING', acknowledged: false);
 
@@ -137,7 +134,7 @@ class SkuHomeBinGuardTest extends TestCase
 
     public function test_kecil_still_blocks_normal_target_bin_after_inbound_exemption(): void
     {
-        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+        $loc = $this->makeLocation(true);
         $home = $this->makeBin($loc, 'HOME');
         $target = $this->makeBin($loc, 'TARGET');
 
@@ -151,7 +148,7 @@ class SkuHomeBinGuardTest extends TestCase
 
     public function test_kecil_allows_new_sku_without_existing_home_bin(): void
     {
-        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+        $loc = $this->makeLocation(true);
         $target = $this->makeBin($loc, 'TARGET');
 
         $variant = $this->makeVariant();
@@ -162,7 +159,7 @@ class SkuHomeBinGuardTest extends TestCase
 
     public function test_pusat_allows_same_sku_across_multiple_bins(): void
     {
-        $loc = $this->makeLocation(Location::SYSTEM_PUSAT_CODE);
+        $loc = $this->makeLocation(false);
         $bin1 = $this->makeBin($loc, 'B1');
         $bin2 = $this->makeBin($loc, 'B2');
 
@@ -175,7 +172,7 @@ class SkuHomeBinGuardTest extends TestCase
 
     public function test_kecil_ignores_bin_with_zero_stock(): void
     {
-        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+        $loc = $this->makeLocation(true);
         $home = $this->makeBin($loc, 'HOME');
         $target = $this->makeBin($loc, 'TARGET');
 
@@ -189,7 +186,7 @@ class SkuHomeBinGuardTest extends TestCase
 
     public function test_kecil_treats_reserved_only_as_occupied(): void
     {
-        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+        $loc = $this->makeLocation(true);
         $home = $this->makeBin($loc, 'HOME');
         $target = $this->makeBin($loc, 'TARGET');
 
@@ -202,7 +199,7 @@ class SkuHomeBinGuardTest extends TestCase
 
     public function test_kecil_ignores_inbound_staging_bin(): void
     {
-        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+        $loc = $this->makeLocation(true);
         $staging = $this->makeBin($loc, 'STAGE', inbound: true);
         $target = $this->makeBin($loc, 'TARGET');
 
@@ -215,7 +212,7 @@ class SkuHomeBinGuardTest extends TestCase
 
     public function test_kecil_ignores_unacknowledged_bin(): void
     {
-        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+        $loc = $this->makeLocation(true);
         $ghost = $this->makeBin($loc, 'GHOST', acknowledged: false);
         $target = $this->makeBin($loc, 'TARGET');
 
@@ -228,7 +225,7 @@ class SkuHomeBinGuardTest extends TestCase
 
     public function test_current_home_bin_id_returns_placed_bin(): void
     {
-        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+        $loc = $this->makeLocation(true);
         $home = $this->makeBin($loc, 'HOME');
 
         $variant = $this->makeVariant();
@@ -239,7 +236,7 @@ class SkuHomeBinGuardTest extends TestCase
 
     public function test_current_home_bin_id_null_when_no_placement(): void
     {
-        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+        $loc = $this->makeLocation(true);
         $variant = $this->makeVariant();
 
         $this->assertNull(app(SkuHomeBinGuard::class)->currentHomeBinId($loc->id, $variant->id));
@@ -247,7 +244,7 @@ class SkuHomeBinGuardTest extends TestCase
 
     public function test_sku_with_home_bin_is_still_blocked_from_a_multi_sku_bin(): void
     {
-        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+        $loc = $this->makeLocation(true);
 
         BinMultiSkuRule::create([
             'location_id' => $loc->id,

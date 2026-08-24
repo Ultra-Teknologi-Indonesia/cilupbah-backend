@@ -10,9 +10,10 @@ class WhPusatBinLayoutSeeder extends Seeder
 {
     public function run(): void
     {
-        $location = Location::where('location_code', Location::SYSTEM_PUSAT_CODE)->first();
+        $id = Location::getMainWarehouseId();
+        $location = $id ? Location::find($id) : null;
         if (! $location) {
-            $this->command?->warn('WhPusatBinLayoutSeeder: lokasi WH-PUSAT belum ada, dilewati (jalankan WarehouseDatabaseSeeder dulu).');
+            $this->command?->warn('WhPusatBinLayoutSeeder: Gudang pusat belum ada, dilewati (jalankan WarehouseDatabaseSeeder dulu).');
             return;
         }
 

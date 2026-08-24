@@ -140,7 +140,7 @@ class RevertStageTest extends TestCase
             'picklist_no' => 'PICK-' . substr($id, 0, 6),
             'location_id' => $locationId,
             'status' => $status,
-            'created_by' => 'system:test',
+            'created_by' => $userId,
             'created_at' => now(), 'updated_at' => now(),
         ]);
 
@@ -183,7 +183,7 @@ class RevertStageTest extends TestCase
             'location_id' => $locationId,
             'order_id' => $orderId,
             'status' => $status,
-            'created_by' => 'system:test',
+            'created_by' => $userId,
             'created_at' => now(), 'updated_at' => now(),
         ]);
 
@@ -200,7 +200,7 @@ class RevertStageTest extends TestCase
             'shipment_type' => 'REGULAR',
             'shipment_date' => now()->toDateString(),
             'status' => $status,
-            'created_by' => 'system:test',
+            'created_by' => $userId,
             'created_at' => now(), 'updated_at' => now(),
         ]);
 

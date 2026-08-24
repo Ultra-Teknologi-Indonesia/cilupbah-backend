@@ -21,9 +21,7 @@ class InventoryRepository
     private function kecilLocationId(): ?string
     {
         if ($this->kecilLocationId === false) {
-            $this->kecilLocationId = \Modules\Warehouse\Models\Location::query()
-                ->where('location_code', \Modules\Warehouse\Models\Location::SYSTEM_KECIL_CODE)
-                ->value('id');
+            $this->kecilLocationId = \Modules\Warehouse\Models\Location::getSmallWarehouseId();
         }
 
         return $this->kecilLocationId;

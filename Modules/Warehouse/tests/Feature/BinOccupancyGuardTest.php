@@ -44,15 +44,12 @@ class BinOccupancyGuardTest extends TestCase
         ]);
     }
 
-    private function makeLocation(string $code): Location
+    private function makeLocation(bool $isSmall = false): Location
     {
-        $existing = Location::where('location_code', $code)->first();
-        if ($existing) {
-            return $existing;
-        }
         return Location::factory()->create([
-            'location_code' => $code,
-            'is_small_warehouse' => ($code === Location::SYSTEM_KECIL_CODE),
+            'location_code' => 'WH-TEST-' . Str::random(4),
+            'is_warehouse' => true,
+            'is_small_warehouse' => $isSmall,
         ]);
     }
 
@@ -71,7 +68,7 @@ class BinOccupancyGuardTest extends TestCase
 
     public function test_kecil_placed_bin_with_other_active_sku_is_rejected(): void
     {
-        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+        $loc = $this->makeLocation(true);
         $bin = LocationBin::factory()->create([
             'location_id' => $loc->id,
             'is_inbound' => false,
@@ -92,7 +89,7 @@ class BinOccupancyGuardTest extends TestCase
 
     public function test_kecil_placed_bin_with_same_sku_is_allowed(): void
     {
-        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+        $loc = $this->makeLocation(true);
         $bin = LocationBin::factory()->create([
             'location_id' => $loc->id,
             'is_inbound' => false,
@@ -108,7 +105,7 @@ class BinOccupancyGuardTest extends TestCase
 
     public function test_kecil_placed_bin_with_zero_stock_is_allowed(): void
     {
-        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+        $loc = $this->makeLocation(true);
         $bin = LocationBin::factory()->create([
             'location_id' => $loc->id,
             'is_inbound' => false,
@@ -126,7 +123,7 @@ class BinOccupancyGuardTest extends TestCase
 
     public function test_kecil_inbound_bin_is_exempt(): void
     {
-        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+        $loc = $this->makeLocation(true);
         $bin = LocationBin::factory()->create([
             'location_id' => $loc->id,
             'is_inbound' => true,
@@ -144,7 +141,7 @@ class BinOccupancyGuardTest extends TestCase
 
     public function test_kecil_not_acknowledged_bin_is_exempt(): void
     {
-        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+        $loc = $this->makeLocation(true);
         $bin = LocationBin::factory()->create([
             'location_id' => $loc->id,
             'is_inbound' => false,
@@ -162,7 +159,7 @@ class BinOccupancyGuardTest extends TestCase
 
     public function test_kecil_reserved_only_counts_as_occupied(): void
     {
-        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+        $loc = $this->makeLocation(true);
         $bin = LocationBin::factory()->create([
             'location_id' => $loc->id,
             'is_inbound' => false,
@@ -181,7 +178,7 @@ class BinOccupancyGuardTest extends TestCase
     public function test_pusat_allows_multi_sku_per_bin(): void
     {
 
-        $loc = $this->makeLocation(Location::SYSTEM_PUSAT_CODE);
+        $loc = $this->makeLocation(false);
         $bin = LocationBin::factory()->create([
             'location_id' => $loc->id,
             'is_inbound' => false,
@@ -201,7 +198,7 @@ class BinOccupancyGuardTest extends TestCase
     public function test_pusat_reserved_only_bin_still_allows_other_sku(): void
     {
 
-        $loc = $this->makeLocation(Location::SYSTEM_PUSAT_CODE);
+        $loc = $this->makeLocation(false);
         $bin = LocationBin::factory()->create([
             'location_id' => $loc->id,
             'is_inbound' => false,
@@ -241,7 +238,7 @@ class BinOccupancyGuardTest extends TestCase
     public function test_pusat_allows_same_sku_in_bin(): void
     {
 
-        $loc = $this->makeLocation(Location::SYSTEM_PUSAT_CODE);
+        $loc = $this->makeLocation(false);
         $bin = LocationBin::factory()->create([
             'location_id' => $loc->id,
             'is_inbound' => false,
@@ -266,7 +263,7 @@ class BinOccupancyGuardTest extends TestCase
 
     public function test_kecil_bin_matching_rule_accepts_a_second_sku(): void
     {
-        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+        $loc = $this->makeLocation(true);
         $this->addMultiSkuRule($loc, 'GK-*');
 
         $bin = LocationBin::factory()->create([
@@ -286,7 +283,7 @@ class BinOccupancyGuardTest extends TestCase
 
     public function test_kecil_bin_not_matching_rule_still_rejects_second_sku(): void
     {
-        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+        $loc = $this->makeLocation(true);
         $this->addMultiSkuRule($loc, 'GK-*');
 
         $bin = LocationBin::factory()->create([
@@ -308,7 +305,7 @@ class BinOccupancyGuardTest extends TestCase
 
     public function test_pusat_stays_open_even_without_any_rule(): void
     {
-        $loc = $this->makeLocation(Location::SYSTEM_PUSAT_CODE);
+        $loc = $this->makeLocation(false);
         $bin = LocationBin::factory()->create([
             'location_id' => $loc->id,
             'is_inbound' => false,
@@ -326,7 +323,7 @@ class BinOccupancyGuardTest extends TestCase
 
     public function test_inbound_bin_matching_rule_stays_exempt(): void
     {
-        $loc = $this->makeLocation(Location::SYSTEM_KECIL_CODE);
+        $loc = $this->makeLocation(true);
         $this->addMultiSkuRule($loc, 'GK-*');
 
         $bin = LocationBin::factory()->create([

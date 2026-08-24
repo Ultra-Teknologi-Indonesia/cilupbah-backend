@@ -2264,6 +2264,10 @@ class SalesOrderService
             ->get(['item_id', 'sku', 'bin_id', 'qty_picked', 'qty_ordered'])
             ->groupBy('item_id');
 
+        if ($binAllocations->isEmpty()) {
+            return false;
+        }
+
         $remainingByItem = [];
         foreach ($order->items as $item) {
             if (! $item->item_id) {
@@ -2304,8 +2308,16 @@ class SalesOrderService
             }
         }
 
+        // Hanya restore sisa jika item tersebut memang ada di binAllocations
+        // (artinya ada picking fisik, tapi qtynya tidak terpenuhi sepenuhnya dari bin)
         foreach ($remainingByItem as $itemId => $data) {
             if ($data['qty'] <= 0) {
+                continue;
+            }
+
+            // Jika item ini sama sekali tidak ada di binAllocations → lewati
+            // Tidak ada picking fisik yang terjadi untuk item ini
+            if (! $binAllocations->has($itemId)) {
                 continue;
             }
 

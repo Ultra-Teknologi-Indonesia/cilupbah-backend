@@ -21,10 +21,13 @@ class BinMultiSkuRuleServiceTest extends TestCase
         BinMultiSkuRuleService::flushPatternCache();
     }
 
-    private function makeLocation(string $code = Location::SYSTEM_KECIL_CODE): Location
+    private function makeLocation(bool $isSmall = true): Location
     {
-        return Location::where('location_code', $code)->first()
-            ?? Location::factory()->create(['location_code' => $code]);
+        return Location::factory()->create([
+            'location_code' => 'WH-TEST-' . Str::random(4),
+            'is_warehouse' => true,
+            'is_small_warehouse' => $isSmall,
+        ]);
     }
 
     private function makeBin(Location $loc, string $code): LocationBin
@@ -138,7 +141,7 @@ class BinMultiSkuRuleServiceTest extends TestCase
     public function test_rule_is_scoped_to_its_location(): void
     {
         $kecil = $this->makeLocation();
-        $pusat = $this->makeLocation(Location::SYSTEM_PUSAT_CODE);
+        $pusat = $this->makeLocation(false);
 
         $this->addRule($kecil, 'GK-*');
 

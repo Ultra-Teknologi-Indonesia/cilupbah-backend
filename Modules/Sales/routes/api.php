@@ -233,6 +233,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('sales/orders/{id}/accept-cancel', [SalesOrderController::class, 'acceptCancelRequest'])->whereUuid('id')->name('sales.orders.accept-cancel');
         Route::post('sales/orders/{id}/reject-cancel', [SalesOrderController::class, 'rejectCancelRequest'])->whereUuid('id')->name('sales.orders.reject-cancel');
         Route::post('sales/orders/{id}/request-cancel', [SalesOrderController::class, 'requestChannelCancel'])->whereUuid('id')->name('sales.orders.request-cancel');
+        Route::post('sales/orders/{id}/cancel-manual', [SalesOrderController::class, 'cancelManual'])->whereUuid('id')->name('sales.orders.cancel-manual');
+        Route::post('sales/orders/bulk-cancel-manual', [SalesOrderController::class, 'bulkCancelManual'])->name('sales.orders.bulk-cancel-manual');
         Route::get('sales/orders/{id}/cancel-reasons', [SalesOrderController::class, 'cancelReasons'])->whereUuid('id')->name('sales.orders.cancel-reasons');
         Route::post('sales/orders/{id}/release-cancel', [SalesOrderController::class, 'releaseChannelCancel'])->whereUuid('id')->name('sales.orders.release-cancel');
         Route::post('sales/orders/bulk-mark-contacted', [SalesOrderController::class, 'bulkMarkContacted'])->name('sales.orders.bulk-mark-contacted');

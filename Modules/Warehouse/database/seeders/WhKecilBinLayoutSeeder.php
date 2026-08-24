@@ -10,9 +10,10 @@ class WhKecilBinLayoutSeeder extends Seeder
 {
     public function run(): void
     {
-        $location = Location::where('location_code', Location::SYSTEM_KECIL_CODE)->first();
+        $id = Location::getSmallWarehouseId();
+        $location = $id ? Location::find($id) : null;
         if (! $location) {
-            $this->command?->warn('WhKecilBinLayoutSeeder: lokasi WH-KECIL belum ada, dilewati (jalankan WarehouseDatabaseSeeder dulu).');
+            $this->command?->warn('WhKecilBinLayoutSeeder: Gudang kecil belum ada, dilewati (jalankan WarehouseDatabaseSeeder dulu).');
             return;
         }
 

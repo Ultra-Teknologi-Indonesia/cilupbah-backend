@@ -27,7 +27,7 @@ class InventoryMovementSourceMap
 
         'ORDER'             => ['category' => 'PESANAN', 'label' => 'Pesanan'],
         'ORDER_RESERVE'     => ['category' => 'PESANAN', 'label' => 'Pesanan'],
-        'ORDER_RELEASE'     => ['category' => 'PESANAN', 'label' => 'Pesanan Diproses'],
+        'ORDER_RELEASE'     => ['category' => 'PESANAN_BATAL', 'label' => 'Pesanan Batal'],
 
         'TRANSFER_IN'       => ['category' => 'TRANSFER', 'label' => 'Transfer'],
         'TRANSFER_OUT'      => ['category' => 'TRANSFER', 'label' => 'Transfer'],
@@ -156,21 +156,27 @@ class InventoryMovementSourceMap
                 continue;
             }
 
-            if ($token === 'ORDER') {
+            $upper = strtoupper($token);
+
+            if ($upper === 'ORDER') {
                 $sources = array_merge($sources, ['ORDER_RESERVE', 'RESERVE']);
                 continue;
             }
 
             $matchedCategory = false;
             foreach (self::SOURCES as $source => $meta) {
-                if ($meta['category'] === $token) {
+                if ($meta['category'] === $upper) {
                     $sources[] = $source;
                     $matchedCategory = true;
                 }
             }
 
-            if (! $matchedCategory && array_key_exists($token, self::SOURCES)) {
-                $sources[] = $token;
+            if (! $matchedCategory) {
+                if (array_key_exists($upper, self::SOURCES)) {
+                    $sources[] = $upper;
+                } else {
+                    $sources[] = $token;
+                }
             }
         }
 

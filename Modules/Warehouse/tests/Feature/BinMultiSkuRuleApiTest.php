@@ -25,11 +25,11 @@ class BinMultiSkuRuleApiTest extends TestCase
 
     private function kecil(): Location
     {
-        return Location::where('location_code', Location::SYSTEM_KECIL_CODE)->first()
-            ?? Location::factory()->create([
-                'location_code' => Location::SYSTEM_KECIL_CODE,
-                'is_small_warehouse' => true,
-            ]);
+        return Location::factory()->create([
+            'location_code' => 'WH-TEST-' . \Illuminate\Support\Str::random(4),
+            'is_warehouse' => true,
+            'is_small_warehouse' => true,
+        ]);
     }
 
     private function makeBin(Location $loc, string $code): LocationBin
@@ -186,7 +186,9 @@ class BinMultiSkuRuleApiTest extends TestCase
     public function test_rules_are_rejected_on_non_strict_location(): void
     {
         $pusat = Location::factory()->create([
-            'location_code' => Location::SYSTEM_PUSAT_CODE,
+            'location_code' => 'WH-TEST-' . \Illuminate\Support\Str::random(4),
+            'is_warehouse' => true,
+            'is_small_warehouse' => false,
         ]);
 
         $this->actingAs($this->user, 'sanctum')

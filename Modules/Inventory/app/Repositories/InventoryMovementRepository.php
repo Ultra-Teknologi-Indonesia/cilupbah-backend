@@ -153,10 +153,20 @@ class InventoryMovementRepository
         } elseif ($view === 'attention') {
             $baseQuery->whereIn('source', InventoryMovementSourceMap::INVOICE_SOURCES);
         } else {
-
             $drill = strtolower((string) request('filter.drill', request('drill', '')));
             if ($drill !== 'allocation') {
-                $baseQuery->where('source', '!=', 'ORDER_RELEASE');
+                $baseQuery->where(function ($q) {
+                    $q->where('source', '!=', 'ORDER_RELEASE')
+                        ->orWhereExists(function ($soQ) {
+                            $soQ->selectRaw('1')
+                                ->from('sales_orders as so_cancel')
+                                ->whereColumn('so_cancel.salesorder_no', 'inventory_movements.transaction_number')
+                                ->where(function ($st) {
+                                    $st->where('so_cancel.status', 'cancelled')
+                                        ->orWhere('so_cancel.is_canceled', true);
+                                });
+                        });
+                });
 
                 $baseQuery->whereNotExists(function ($q) {
                     $q->selectRaw('1')
@@ -194,6 +204,17 @@ class InventoryMovementRepository
                         ->whereColumn('so_shipped.salesorder_no', 'inventory_movements.transaction_number')
                         ->whereIn('so_shipped.status', ['shipped', 'delivered', 'completed']);
                 });
+
+                $baseQuery->whereNotExists(function ($q) {
+                    $q->selectRaw('1')
+                        ->from('sales_orders as so_cancel_rsv')
+                        ->whereRaw("inventory_movements.source = 'ORDER_RESERVE'")
+                        ->whereColumn('so_cancel_rsv.salesorder_no', 'inventory_movements.transaction_number')
+                        ->where(function ($st) {
+                            $st->where('so_cancel_rsv.status', 'cancelled')
+                                ->orWhere('so_cancel_rsv.is_canceled', true);
+                        });
+                });
             }
         }
 
@@ -216,9 +237,22 @@ class InventoryMovementRepository
         $pickOrder = fn (string $column) =>
             "(CASE WHEN {$isPick} THEN (SELECT {$column} {$pickOrderScope} ORDER BY so.salesorder_no LIMIT 1) END)";
 
+        $hasLocationFilter = ! empty(request('filter.location_id', request('location_id')));
+        $balancePartition = $hasLocationFilter
+            ? 'item_id, location_id'
+            : 'item_id';
+
         $qb = \Spatie\QueryBuilder\QueryBuilder::for($baseQuery)
             ->select('inventory_movements.*')
-            ->selectRaw("SUM(qty) OVER (PARTITION BY item_id, location_id, (CASE WHEN source IN ($reservedList) THEN 1 ELSE 0 END) ORDER BY transaction_date, inventory_movements.id) AS total_balance")
+            ->selectRaw("SUM({$effectiveQtySql}) OVER (PARTITION BY {$balancePartition} ORDER BY transaction_date, inventory_movements.id) AS total_balance")
+            ->selectRaw(
+                '(SELECT COALESCE(CASE '
+                . " WHEN inb.transaction_number LIKE 'TRFI%' OR inb.type = 'TRANSIT_IN' OR inb.source_type IN ('transfer', 'inventory_transfer') THEN 'transfer'"
+                . " WHEN inb.type = 'SALES_RETURN' OR inb.source_type IN ('sales_return', 'return') THEN 'sales_return'"
+                . " WHEN inb.type = 'PURCHASE_ORDER' OR inb.source_type IN ('purchase_order', 'purchase') THEN 'purchase_order'"
+                . ' ELSE NULL END, NULLIF(inb.source_type, \'\'), NULLIF(inb.type, \'\'), NULLIF(put.source_type, \'\'))'
+                . ' FROM putaways put LEFT JOIN inbounds inb ON inb.id = put.source_id WHERE put.putaway_no = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') LIMIT 1) AS putaway_source_type'
+            )
             ->selectRaw($pickOrder('so.salesorder_no') . ' AS pick_order_no')
             ->selectRaw("(CASE WHEN {$isPick} THEN (SELECT COUNT(DISTINCT pi.order_id) {$pickOrderScope}) END) AS pick_order_count")
             ->selectRaw(
@@ -257,22 +291,22 @@ class InventoryMovementRepository
                 . '  WHERE so_op.opname_no = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') AND so_op.deleted_at IS NULL LIMIT 1), '
                 . '(SELECT NULLIF(TRIM(pb.notes), \'\') FROM purchase_bills pb WHERE pb.bill_number = inventory_movements.transaction_number LIMIT 1), '
                 . '(SELECT NULLIF(TRIM(po.notes), \'\') FROM purchase_orders po WHERE po.po_number = inventory_movements.transaction_number LIMIT 1), '
-                . '(SELECT NULLIF(TRIM(inb.notes), \'\') FROM putaways put JOIN inbounds inb ON inb.id = put.source_id WHERE put.putaway_no = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') LIMIT 1), '
+                . '(SELECT NULLIF(TRIM(po_inb.notes), \'\') FROM putaways put JOIN inbounds inb ON inb.id = put.source_id LEFT JOIN purchase_orders po_inb ON (po_inb.id = inb.source_id OR po_inb.po_number = inb.reference_number) WHERE put.putaway_no = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') LIMIT 1), '
+                . '(SELECT NULLIF(TRIM(CASE WHEN inb.notes LIKE \'Auto-generated dari PO%\' THEN \'\' ELSE inb.notes END), \'\') FROM putaways put JOIN inbounds inb ON inb.id = put.source_id WHERE put.putaway_no = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') LIMIT 1), '
                 . '(SELECT NULLIF(TRIM(COALESCE(sr.notes, sr.reason)), \'\') FROM sales_returns sr WHERE sr.return_number = inventory_movements.transaction_number LIMIT 1), '
                 . $pickOrder('NULLIF(TRIM(CONCAT_WS(\' | \', NULLIF(TRIM(so.buyer_message), \'\'), NULLIF(TRIM(COALESCE(so.seller_note, so.note)), \'\'))), \'\')')
                 . ') AS ref_note'
             )
-
             ->selectRaw(
                 'COALESCE('
                 . '(SELECT cs.shop_name FROM sales_orders so'
-                . '  JOIN channel_shops cs ON cs.shop_id = so.channel_shop_id'
+                . '  LEFT JOIN channel_shops cs ON cs.shop_id = so.channel_shop_id'
                 . '  WHERE so.salesorder_no = inventory_movements.transaction_number LIMIT 1), '
                 . "(CASE WHEN {$isPick} THEN (SELECT cs2.shop_name"
                 . '  FROM picklist_items pi'
                 . '  JOIN picklists p ON p.id = pi.picklist_id'
                 . '  JOIN sales_orders so ON so.id = pi.order_id'
-                . '  JOIN channel_shops cs2 ON cs2.shop_id = so.channel_shop_id'
+                . '  LEFT JOIN channel_shops cs2 ON cs2.shop_id = so.channel_shop_id'
                 . "  WHERE p.picklist_no = regexp_replace(inventory_movements.transaction_number, '-(KOREKSI|HAPUS)$', '')"
                 . '  AND pi.item_id = inventory_movements.item_id'
                 . '  ORDER BY so.salesorder_no LIMIT 1) END)'
@@ -288,7 +322,26 @@ class InventoryMovementRepository
 
                     $sources = InventoryMovementSourceMap::expandFilterTokens($tokens);
                     if (count($sources) > 0) {
-                        $query->whereIn('source', $sources);
+                        $query->where(function ($q) use ($sources, $tokens) {
+                            $q->whereIn('source', $sources);
+                            if (in_array('TRANSFER', $tokens, true)) {
+                                $q->orWhere(function ($sub) {
+                                    $sub->whereIn('source', ['PUTAWAY_IN', 'PUTAWAY_OUT', 'PUTAWAY_REVERSAL'])
+                                        ->whereExists(function ($putQ) {
+                                            $putQ->selectRaw('1')
+                                                ->from('putaways as p')
+                                                ->leftJoin('inbounds as inb', 'inb.id', '=', 'p.source_id')
+                                                ->whereRaw("p.putaway_no = regexp_replace(inventory_movements.transaction_number, '-(BATAL|KOREKSI|HAPUS)$', '')")
+                                                ->where(function ($w) {
+                                                    $w->where('inb.source_type', 'transfer')
+                                                        ->orWhere('inb.type', 'TRANSIT_IN')
+                                                        ->orWhere('inb.transaction_number', 'LIKE', 'TRFI%')
+                                                        ->orWhere('p.source_type', 'TRANSFER');
+                                                });
+                                        });
+                                });
+                            }
+                        });
                     }
                 }),
                 \Spatie\QueryBuilder\AllowedFilter::callback('direction', function ($query, $value) use ($effectiveQtySql) {

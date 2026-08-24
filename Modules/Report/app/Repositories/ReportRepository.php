@@ -744,7 +744,7 @@ class ReportRepository
 
     public function barcodeKecilHomeBins($variantIds): array
     {
-        $locationId = Location::where('location_code', Location::SYSTEM_KECIL_CODE)->value('id');
+        $locationId = Location::getSmallWarehouseId();
 
         if (! $locationId) {
             return [];

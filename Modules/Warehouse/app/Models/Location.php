@@ -89,4 +89,17 @@ class Location extends Model
     {
         return (bool) $this->is_small_warehouse;
     }
+
+    public static function getSmallWarehouseId(): ?string
+    {
+        return self::query()->where('is_small_warehouse', true)->value('id');
+    }
+
+    public static function getMainWarehouseId(): ?string
+    {
+        return self::query()
+            ->where('is_warehouse', true)
+            ->where('is_small_warehouse', false)
+            ->value('id');
+    }
 }

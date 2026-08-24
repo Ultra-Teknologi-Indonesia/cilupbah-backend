@@ -481,7 +481,6 @@ class InventoryService
             );
 
             $inventory->on_hand += $qty;
-            $inventory->on_order += $qty;
             $inventory->recalculateAvailable();
             $this->inventoryRepository->updateStock($inventory);
 

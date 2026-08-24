@@ -13,6 +13,8 @@ use Modules\Inventory\Models\ImpexActivity;
 use Modules\Inventory\Services\ImpexActivityService;
 use Modules\Sales\Exports\CancelledOrdersExport;
 use Modules\Sales\Exports\SalesOrdersExport;
+use Modules\Sales\Http\Requests\CancelManualOrderRequest;
+use Modules\Sales\Http\Requests\BulkCancelManualOrderRequest;
 use Modules\Sales\Http\Requests\AcceptOrderCancelRequest;
 use Modules\Sales\Http\Requests\BulkMarkContactedRequest;
 use Modules\Sales\Http\Requests\DeleteCanceledOrdersRequest;
@@ -737,6 +739,80 @@ class SalesOrderController extends Controller
         $order = $this->orderService->requestChannelCancel($id, $request->validated()['reason']);
 
         return $this->successResponse(new SalesOrderResource($order), 'Permintaan pembatalan dikirim ke marketplace');
+    }
+
+    #[OA\Post(
+        path: '/api/v1/sales/orders/{id}/cancel-manual',
+        summary: 'Membatalkan pesanan manual secara langsung tanpa lewat channel/marketplace',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        requestBody: new OA\RequestBody(
+            required: false,
+            content: new OA\JsonContent(
+                properties: [
+                    new OA\Property(property: 'reason', type: 'string', description: 'Alasan pembatalan (opsional)'),
+                ],
+            ),
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Pesanan berhasil dibatalkan'),
+            new OA\Response(response: 404, description: 'Order not found'),
+            new OA\Response(response: 422, description: 'Order bukan manual atau status tidak valid'),
+        ]
+    )]
+    public function cancelManual(string $id, CancelManualOrderRequest $request)
+    {
+        $order = \Modules\Sales\Models\SalesOrder::findOrFail($id);
+        
+        if ($order->source && !in_array(strtolower($order->source), ['manual', 'offline'])) {
+            return $this->errorResponse('Hanya pesanan manual yang dapat dibatalkan melalui rute ini', 422);
+        }
+
+        $canceledOrder = $this->orderService->cancelLocally($id, $request->validated('reason'), \Illuminate\Support\Facades\Auth::id());
+
+        return $this->successResponse(new SalesOrderResource($canceledOrder), 'Pesanan berhasil dibatalkan secara langsung');
+    }
+
+    #[OA\Post(
+        path: '/api/v1/sales/orders/bulk-cancel-manual',
+        summary: 'Membatalkan beberapa pesanan manual secara langsung',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Orders'],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['order_ids'],
+                properties: [
+                    new OA\Property(property: 'order_ids', type: 'array', items: new OA\Items(type: 'string')),
+                    new OA\Property(property: 'reason', type: 'string', description: 'Alasan pembatalan (opsional)'),
+                ],
+            ),
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Pesanan berhasil dibatalkan'),
+            new OA\Response(response: 422, description: 'Terdapat pesanan non-manual'),
+        ]
+    )]
+    public function bulkCancelManual(BulkCancelManualOrderRequest $request)
+    {
+        $data = $request->validated();
+        $orders = \Modules\Sales\Models\SalesOrder::whereIn('id', $data['order_ids'])->get();
+
+        foreach ($orders as $order) {
+            if ($order->source && !in_array(strtolower($order->source), ['manual', 'offline'])) {
+                return $this->errorResponse("Pesanan {$order->salesorder_no} bukan pesanan manual dan tidak dapat dibatalkan di sini", 422);
+            }
+        }
+
+        $actorId = \Illuminate\Support\Facades\Auth::id();
+        foreach ($orders as $order) {
+            $this->orderService->cancelLocally($order->id, $data['reason'] ?? 'Dibatalkan massal', $actorId);
+        }
+
+        return $this->successResponse(null, count($orders) . ' pesanan berhasil dibatalkan');
     }
 
     #[OA\Get(

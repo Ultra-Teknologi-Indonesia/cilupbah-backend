@@ -381,6 +381,11 @@ class InboundService
             } while (Inbound::where('transaction_number', $candidate)->exists());
 
             $poNumber = $po->po_number ?? $po->purchase_order_number ?? '';
+            $inboundNotes = $po->notes ? trim($po->notes) : null;
+            if ($isAdditional && ! $inboundNotes) {
+                $inboundNotes = "Penerimaan susulan PO {$poNumber}";
+            }
+
             $inbound = $this->inboundRepository->create([
                 'location_id'        => $po->location_id,
                 'transaction_number' => $candidate,
@@ -391,9 +396,7 @@ class InboundService
                 'status'             => Inbound::STATUS_DRAFT,
                 'expected_date'      => now(),
                 'created_by'         => $createdBy,
-                'notes'              => $isAdditional
-                    ? "Penerimaan susulan PO {$poNumber}"
-                    : "Auto-generated dari PO {$poNumber}",
+                'notes'              => $inboundNotes,
             ]);
 
             foreach ($po->items as $poItem) {
