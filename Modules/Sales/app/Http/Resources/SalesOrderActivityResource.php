@@ -15,6 +15,14 @@ class SalesOrderActivityResource extends JsonResource
         $action = $this->action instanceof OrderActivityAction ? $this->action : null;
         $entity = $this->entity_type instanceof OrderActivityEntity ? $this->entity_type : null;
 
+        $prevValues = $metadata['prev_values'] ?? (isset($metadata['from']) ? ['status' => $metadata['from']] : null);
+        $newValues  = $metadata['new_values'] ?? (isset($metadata['to']) ? ['status' => $metadata['to']] : null);
+
+        if (isset($metadata['from'], $metadata['to']) && $metadata['from'] === $metadata['to'] && empty($metadata['prev_values'])) {
+            $prevValues = null;
+            $newValues  = null;
+        }
+
         return [
             'id'           => $this->id,
             'action_date'  => optional($this->created_at)->toIso8601String(),
@@ -27,8 +35,8 @@ class SalesOrderActivityResource extends JsonResource
             'action_id'    => $this->action_id,
             'action_label' => $action?->value ?? (string) $this->action,
             'note'         => $metadata['note'] ?? null,
-            'prev_values'  => $metadata['prev_values'] ?? null,
-            'new_values'   => $metadata['new_values'] ?? null,
+            'prev_values'  => $prevValues,
+            'new_values'   => $newValues,
         ];
     }
 

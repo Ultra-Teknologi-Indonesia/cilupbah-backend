@@ -107,7 +107,7 @@ class SalesOrderActivityEndpointTest extends TestCase
     public function test_channel_status_unknown_channel_falls_back_to_unknown(): void
     {
         $order = SalesOrder::factory()->create([
-            'source'         => 'bukalapak',
+            'source'         => 'manual',
             'channel_status' => 'WEIRD_CODE_XYZ',
         ]);
 
