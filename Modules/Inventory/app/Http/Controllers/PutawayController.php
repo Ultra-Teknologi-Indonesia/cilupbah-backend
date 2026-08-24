@@ -83,6 +83,7 @@ class PutawayController extends Controller
                 $request->input('inbound_ids'),
                 $request->input('assigned_to'),
                 $userId,
+                $request->input('notes')
             );
 
             return $this->successResponse($result, 'Penempatan barang berhasil dibuat.', 201);

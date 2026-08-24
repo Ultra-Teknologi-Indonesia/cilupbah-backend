@@ -419,7 +419,7 @@ class PutawayService
         }
     }
 
-    public function createFromInbounds(array $inboundIds, ?string $assignedTo, string $userId): Putaway
+    public function createFromInbounds(array $inboundIds, ?string $assignedTo, string $userId, ?string $notes = null): Putaway
     {
         $inbounds = Inbound::with(['items'])
             ->whereIn('id', $inboundIds)
@@ -484,7 +484,7 @@ class PutawayService
                 throw new \RuntimeException('Tidak ada item pending untuk di-putaway (semua qty sudah masuk penempatan aktif atau sudah selesai).');
             }
 
-            $notes = $inbounds->count() === 1
+            $defaultNotes = $inbounds->count() === 1
                 ? "Manual Putaway from Inbound {$inbounds->first()->transaction_number}"
                 : 'Manual Putaway gabungan dari ' . $inbounds->count() . ' penerimaan: ' . $inbounds->pluck('transaction_number')->implode(', ');
 
@@ -493,7 +493,7 @@ class PutawayService
                 'source_type' => 'INBOUND',
                 'source_id'   => $inbounds->count() === 1 ? $inbounds->first()->id : null,
                 'sources'     => $inbounds->pluck('id')->all(),
-                'notes'       => $notes,
+                'notes'       => $notes ?? $defaultNotes,
                 'created_by'  => $userId,
                 'items'       => $items,
             ]);

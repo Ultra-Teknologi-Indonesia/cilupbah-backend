@@ -24,6 +24,7 @@ class StorePutawayRequest extends FormRequest
             'inbound_ids' => 'required|array|min:1',
             'inbound_ids.*' => 'required|string|distinct|exists:inbounds,id',
             'assigned_to' => 'nullable|string|exists:users,id',
+            'notes' => 'nullable|string|max:500',
         ];
     }
 }
