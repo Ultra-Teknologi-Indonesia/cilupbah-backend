@@ -25,19 +25,77 @@ class SalesOrderAuditObserver
     {
         $service = app(SalesOrderService::class);
 
-        if ($order->wasChanged('status')) {
+        if ($order->wasChanged('pick_failed_at') && $order->pick_failed_at !== null) {
             $prevStatus = $order->getOriginal('status');
             $newStatus  = $order->status;
-            $action     = self::STATUS_ACTION_MAP[$newStatus] ?? null;
+            $prev = ['status' => $prevStatus];
+            $new  = ['status' => $newStatus];
+            if ($order->pick_fail_reason) {
+                $new['pick_fail_reason'] = $order->pick_fail_reason;
+            }
+            $note = $order->pick_fail_reason ? "Gagal Picking: {$order->pick_fail_reason}" : "Gagal proses picking";
 
-            if ($action && ! $this->recentlyLogged($order, $action)) {
+            $service->logFieldChange(
+                $order,
+                'PICK_FAILED',
+                $prev,
+                $new,
+                $order->salesorder_no,
+                $note,
+            );
+        } elseif ($order->wasChanged('pick_failed_at') && $order->pick_failed_at === null && $order->getOriginal('pick_failed_at') !== null) {
+            $service->logFieldChange(
+                $order,
+                'FIELD_CHANGED',
+                ['pick_failed_at' => $order->getOriginal('pick_failed_at')],
+                ['pick_failed_at' => null],
+                $order->salesorder_no,
+                'Dipindahkan dari Gagal Picking ke Siap Proses',
+            );
+        } elseif ($order->wasChanged('status')) {
+            $prevStatus = $order->getOriginal('status');
+            $newStatus  = $order->status;
+
+            $statusRank = [
+                'pending'   => 1,
+                'reserved'  => 2,
+                'picked'    => 3,
+                'packed'    => 4,
+                'shipped'   => 5,
+                'completed' => 6,
+            ];
+
+            $prevRank = $statusRank[$prevStatus] ?? 0;
+            $newRank  = $statusRank[$newStatus] ?? 0;
+
+            if ($newRank < $prevRank && $prevRank > 0 && $newRank > 0) {
+                $note = match (true) {
+                    $prevStatus === 'packed' && $newStatus === 'picked'   => 'Batal Packing (Kembali ke Picking)',
+                    $prevStatus === 'picked' && $newStatus === 'reserved' => 'Batal Picking (Kembali ke Siap Proses)',
+                    $prevStatus === 'shipped'                             => 'Batal Pengiriman',
+                    default => "Status dikembalikan dari {$prevStatus} ke {$newStatus}",
+                };
+
                 $service->logFieldChange(
                     $order,
-                    $action,
+                    'FIELD_CHANGED',
                     ['status' => $prevStatus],
                     ['status' => $newStatus],
                     $order->salesorder_no,
+                    $note,
                 );
+            } else {
+                $action = self::STATUS_ACTION_MAP[$newStatus] ?? null;
+
+                if ($action && ! $this->recentlyLogged($order, $action)) {
+                    $service->logFieldChange(
+                        $order,
+                        $action,
+                        ['status' => $prevStatus],
+                        ['status' => $newStatus],
+                        $order->salesorder_no,
+                    );
+                }
             }
         }
 
