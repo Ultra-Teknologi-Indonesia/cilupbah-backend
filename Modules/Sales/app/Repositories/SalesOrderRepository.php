@@ -530,7 +530,18 @@ class SalesOrderRepository
 
         return QueryBuilder::for(SalesOrder::class)
             ->allowedIncludes('items')
-            ->with(['statusHistory', 'returns.settlement'])
+            ->with([
+                'statusHistory',
+                'returns.settlement',
+                'items',
+                'items.product:id,product_id',
+                'items.product.media:id,variant_id,url,is_primary',
+                'items.product.product:id',
+                'items.product.product.media:id,product_id,url,is_primary',
+                'items.channelMapping:id,product_id,external_product_id',
+                'items.channelMapping.product:id',
+                'items.channelMapping.product.media:id,product_id,url,is_primary',
+            ])
             ->find($id);
     }
 
