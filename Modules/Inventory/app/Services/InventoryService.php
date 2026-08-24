@@ -984,11 +984,13 @@ class InventoryService
         $variantIds = [];
 
         DB::transaction(function () use ($id, $actor, &$variantIds) {
+            /** @var BinTransferReceipt $receipt */
             $receipt = BinTransferReceipt::where('id', $id)->lockForUpdate()->first();
             if (! $receipt) {
                 throw new \Exception('Penerimaan transfer tidak ditemukan.');
             }
 
+            /** @var BinTransfer $header */
             $header = BinTransfer::where('id', $receipt->bin_transfer_id)->lockForUpdate()->first();
             if (! $header) {
                 throw new \Exception('Transfer internal asal tidak ditemukan.');
@@ -999,6 +1001,8 @@ class InventoryService
             $receiptItems = $receipt->items()->get();
 
             foreach ($receiptItems as $receiptItem) {
+                /** @var BinTransferReceiptItem $receiptItem */
+                /** @var BinTransferItem|null $transferItem */
                 $transferItem = BinTransferItem::where('id', $receiptItem->bin_transfer_item_id)->lockForUpdate()->first();
                 if (! $transferItem) {
                     continue;
@@ -1063,10 +1067,6 @@ class InventoryService
                 $variantIds[] = $transferItem->item_id;
             }
 
-            // NOTE: Original inventory_movements are intentionally preserved as
-            // immutable audit trail. The reversal movements created above
-            // (BIN_TRANSFER_REVERT_OUT / TRANSIT_REVERT_IN) serve as the
-            // compensating transaction — enterprise standard for stock systems.
             $receipt->items()->delete();
             $receipt->delete();
 
