@@ -215,6 +215,22 @@ class InventoryMovementRepository
                                 ->orWhere('so_cancel_rsv.is_canceled', true);
                         });
                 });
+
+                $baseQuery->whereNotExists(function ($q) {
+                    $q->selectRaw('1')
+                        ->from('inventory_movements as im_done')
+                        ->whereRaw("inventory_movements.source = 'ORDER_RESERVE'")
+                        ->whereColumn('im_done.item_id', 'inventory_movements.item_id')
+                        ->where('im_done.source', 'PICKING')
+                        ->whereExists(function ($pickQ) {
+                            $pickQ->selectRaw('1')
+                                ->from('picklist_items as pi')
+                                ->join('picklists as p', 'p.id', '=', 'pi.picklist_id')
+                                ->join('sales_orders as so', 'so.id', '=', 'pi.order_id')
+                                ->whereColumn('so.salesorder_no', 'inventory_movements.transaction_number')
+                                ->whereRaw("p.picklist_no = regexp_replace(im_done.transaction_number, '-(KOREKSI|HAPUS)$', '')");
+                        });
+                });
             }
         }
 
@@ -245,6 +261,14 @@ class InventoryMovementRepository
         $qb = \Spatie\QueryBuilder\QueryBuilder::for($baseQuery)
             ->select('inventory_movements.*')
             ->selectRaw("SUM({$effectiveQtySql}) OVER (PARTITION BY {$balancePartition} ORDER BY transaction_date, inventory_movements.id) AS total_balance")
+            ->selectRaw(
+                '(SELECT EXISTS(SELECT 1 FROM sales_invoices si '
+                . 'JOIN picklist_items pi ON pi.order_id = si.order_id '
+                . 'JOIN picklists p ON p.id = pi.picklist_id '
+                . "WHERE p.picklist_no = regexp_replace(inventory_movements.transaction_number, '-(KOREKSI|HAPUS)$', '') "
+                . "AND pi.item_id = inventory_movements.item_id AND si.status != 'CANCELLED'"
+                . ')) AS has_invoice'
+            )
             ->selectRaw(
                 '(SELECT COALESCE(CASE '
                 . " WHEN inb.transaction_number LIKE 'TRFI%' OR inb.type = 'TRANSIT_IN' OR inb.source_type IN ('transfer', 'inventory_transfer') THEN 'transfer'"

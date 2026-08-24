@@ -49,6 +49,11 @@ class InventoryMovementResource extends JsonResource
                 $sourceCategory = 'RETUR_PENJUALAN';
                 $sourceLabel = 'Retur Penjualan';
             }
+        } elseif ($this->source === 'PICKING') {
+            if (!empty($this->has_invoice)) {
+                $sourceCategory = 'FAKTUR';
+                $sourceLabel = 'Faktur';
+            }
         }
 
         return [
