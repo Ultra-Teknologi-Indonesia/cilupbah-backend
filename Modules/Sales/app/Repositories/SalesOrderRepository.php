@@ -143,12 +143,7 @@ class SalesOrderRepository
             $emptyStockItemConstraint = fn ($q) => $q->whereRaw(SalesOrder::shortfallItemWhereRaw());
 
             return [
-                'all'              => $this->scopeExcludeFailedDownload(SalesOrder::query())
-                    ->whereNull('pick_failed_at')
-                    ->where(fn ($q) => $q
-                        ->where('status', '!=', 'reserved')
-                        ->orWhereDoesntHave('items', $emptyStockItemConstraint))
-                    ->count(),
+                'all'              => $this->scopeExcludeFailedDownload(SalesOrder::query())->count(),
                 'unpaid'           => $this->visibleOrders()->where('status', 'pending')->where('is_paid', false)->count(),
                 'failed'           => $this->scopeFailedDownload(SalesOrder::query())->count(),
                 'ready-to-process' => $this->excludeChannelCancelPending(
@@ -252,10 +247,7 @@ class SalesOrderRepository
             'cancellation'     => $this->applyCancellationSubScope($query, $sub),
             'channel-cancel'   => $this->applyChannelCancelSubScope($query, $sub),
             'returned'         => $this->applyReturnSubScope($query, $sub),
-            'all'              => $query->whereNull('pick_failed_at')->where(fn ($q) => $q
-                ->where('status', '!=', 'reserved')
-                ->orWhereDoesntHave('items', fn ($qi) => $qi->whereRaw(SalesOrder::shortfallItemWhereRaw()))
-            ),
+            'all'              => $query,
             default            => $query,
         };
     }
@@ -329,6 +321,7 @@ class SalesOrderRepository
     private const STATUS_FILTER_KEYS = [
         'cancelled', 'unpaid', 'cancel-requested', 'completed', 'in-transit',
         'ready-to-process', 'empty-stock', 'failed-pick',
+        'returned',
         'picking-belum', 'picking-diproses', 'picking-selesai',
         'packing-diproses', 'ready-to-ship', 'waiting-shipment',
         'open',
@@ -372,6 +365,7 @@ class SalesOrderRepository
                 ->whereNull('handed_to_warehouse_at')
                 ->whereHas('items', $emptyStockConstraint),
             'failed-pick'      => $query->where('status', 'reserved')->whereNotNull('pick_failed_at'),
+            'returned'         => $query->whereHas('returns'),
 
             'picking-belum'    => $query->where('status', 'reserved')
                 ->whereNotNull('handed_to_warehouse_at')

@@ -267,30 +267,59 @@ class PesananSemuaVisibilityAndStatusFilterTest extends TestCase
         $this->assertEqualsCanonicalizing(['SO-MENUNGGU-KIRIM'], array_column($resMenungguKirim->json('data'), 'salesorder_no'));
     }
 
-    public function test_empty_stock_order_is_hidden_from_all_tab_but_visible_in_empty_stock_tab(): void
+    public function test_all_tab_and_search_includes_empty_stock_failed_pick_and_returned_orders(): void
     {
         $user = $this->createPrivilegedUser();
 
         $emptyStock = $this->seedOrder('SO-STOK-KOSONG', ['status' => 'reserved']);
+        $failedPick = $this->seedOrder('SO-GAGAL-PICK', ['status' => 'reserved', 'pick_failed_at' => now()]);
+        $returned = $this->seedOrder('SO-RETUR', ['status' => 'shipped', 'received_date' => now()]);
+
+        DB::table('sales_returns')->insert([
+            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'order_id' => $returned,
+            'location_id' => $this->locationId,
+            'return_number' => 'RET-001',
+            'status' => 'COMPLETED',
+            'created_by' => 'tester',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         DB::table('inventories')->where('item_id', $this->variantId)
             ->update(['on_hand' => 0, 'available' => 0]);
 
-        $this->assertSame(0, $this->repository->getTabCounts()['all']);
+        $this->assertSame(3, $this->repository->getTabCounts()['all']);
 
         $resAll = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales');
         $resAll->assertStatus(200);
-        $this->assertNotContains(
+        $this->assertContains(
             'SO-STOK-KOSONG',
             array_column($resAll->json('data'), 'salesorder_no'),
-            'pesanan stok kosong tidak boleh muncul di daftar Semua',
+        );
+        $this->assertContains(
+            'SO-GAGAL-PICK',
+            array_column($resAll->json('data'), 'salesorder_no'),
+        );
+        $this->assertContains(
+            'SO-RETUR',
+            array_column($resAll->json('data'), 'salesorder_no'),
         );
 
-        $resTab = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales?tab=empty-stock');
-        $this->assertContains('SO-STOK-KOSONG', array_column($resTab->json('data'), 'salesorder_no'));
+        // Test search in tab all
+        $resSearchGagal = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales?q=SO-GAGAL-PICK');
+        $this->assertEqualsCanonicalizing(['SO-GAGAL-PICK'], array_column($resSearchGagal->json('data'), 'salesorder_no'));
 
-        $resFilter = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales?filter[status][]=empty-stock');
-        $this->assertContains('SO-STOK-KOSONG', array_column($resFilter->json('data'), 'salesorder_no'));
+        $resSearchRetur = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales?q=SO-RETUR');
+        $this->assertEqualsCanonicalizing(['SO-RETUR'], array_column($resSearchRetur->json('data'), 'salesorder_no'));
+
+        // Test filter status returned
+        $resFilterRetur = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales?filter[status][]=returned');
+        $this->assertContains('SO-RETUR', array_column($resFilterRetur->json('data'), 'salesorder_no'));
+
+        // Test filter status failed-pick
+        $resFilterGagal = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales?filter[status][]=failed-pick');
+        $this->assertContains('SO-GAGAL-PICK', array_column($resFilterGagal->json('data'), 'salesorder_no'));
     }
 
     public function test_status_filter_multi_select_is_or_between_buckets(): void
