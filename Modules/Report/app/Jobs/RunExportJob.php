@@ -42,17 +42,14 @@ class RunExportJob implements ShouldQueue
         $params = $job->params ?? [];
         $export = $manager->build($job->type, $params);
         $fileName = $manager->filename($job->type, $params);
-        $targetDir = storage_path('app/private/exports');
-        if (! is_dir($targetDir)) {
-            @mkdir($targetDir, 0777, true);
-        }
+        $diskName = config('filesystems.disks.documents') ? 'documents' : config('filesystems.default', 'local');
         $path = "exports/{$job->id}.xlsx";
 
-        Excel::store($export, $path, 'local');
+        Excel::store($export, $path, $diskName);
 
         $job->update([
             'status' => ExportJob::STATUS_READY,
-            'file_disk' => 'local',
+            'file_disk' => $diskName,
             'file_path' => $path,
             'file_name' => $fileName,
             'finished_at' => now(),

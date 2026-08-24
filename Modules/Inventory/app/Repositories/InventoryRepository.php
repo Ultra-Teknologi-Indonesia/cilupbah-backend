@@ -193,6 +193,33 @@ class InventoryRepository
             ->sum('on_order');
     }
 
+    public function findTargetBinForItemLocation(string $itemId, string $locationId): ?string
+    {
+        $assignedBinId = \Modules\Inventory\Models\SkuRackAssignment::where('item_id', $itemId)
+            ->where('location_id', $locationId)
+            ->value('bin_id');
+
+        if ($assignedBinId) {
+            return $assignedBinId;
+        }
+
+        $placedWithStock = Inventory::where('item_id', $itemId)
+            ->where('location_id', $locationId)
+            ->placed()
+            ->where('on_hand', '>', 0)
+            ->orderByDesc('on_hand')
+            ->value('bin_id');
+
+        if ($placedWithStock) {
+            return $placedWithStock;
+        }
+
+        return Inventory::where('item_id', $itemId)
+            ->where('location_id', $locationId)
+            ->placed()
+            ->value('bin_id');
+    }
+
     public function stockRowsForUpdate(string $itemId, string $locationId): Collection
     {
         return Inventory::where('item_id', $itemId)

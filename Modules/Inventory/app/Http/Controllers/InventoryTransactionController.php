@@ -249,7 +249,7 @@ class InventoryTransactionController extends Controller
         try {
             $validated = $request->validated();
             if (empty($validated['received_by'])) {
-                $validated['received_by'] = \App\Utils\ActorName::fromUser($request->user());
+                $validated['received_by'] = ActorName::fromUser($request->user());
             }
 
             $result = $this->inventoryService->transferIn($id, $validated);
@@ -277,7 +277,7 @@ class InventoryTransactionController extends Controller
             new OA\Response(response: 401, description: 'Unauthenticated')
         ]
     )]
-    public function transitList(\Illuminate\Http\Request $request): JsonResponse
+    public function transitList(Request $request): JsonResponse
     {
         $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
         $transfers = $this->inventoryService->getTransfersPaginated(['status' => 'IN_TRANSIT'], $limit);
@@ -368,7 +368,7 @@ class InventoryTransactionController extends Controller
             new OA\Response(response: 401, description: 'Unauthenticated')
         ]
     )]
-    public function transfersList(\Illuminate\Http\Request $request): JsonResponse
+    public function transfersList(Request $request): JsonResponse
     {
         $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
         $transfers = $this->inventoryService->getTransfersPaginated([], $limit);
@@ -481,7 +481,7 @@ class InventoryTransactionController extends Controller
             new OA\Response(response: 200, description: 'Daftar transfer yang sudah selesai diterima.'),
         ]
     )]
-    public function finishedList(\Illuminate\Http\Request $request): JsonResponse
+    public function finishedList(Request $request): JsonResponse
     {
         $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
         $transfers = $this->inventoryService->getTransfersPaginated(['status' => 'RECEIVED'], $limit);
@@ -489,7 +489,7 @@ class InventoryTransactionController extends Controller
         return $this->successPaginatedResponse($transfers, 'Daftar transfer yang sudah selesai diterima.');
     }
 
-    public function draftList(\Illuminate\Http\Request $request): JsonResponse
+    public function draftList(Request $request): JsonResponse
     {
         $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
 
@@ -498,7 +498,7 @@ class InventoryTransactionController extends Controller
         return $this->successPaginatedResponse($transfers, 'Daftar transfer baru dibuat (belum dikirim).');
     }
 
-    public function approvedList(\Illuminate\Http\Request $request): JsonResponse
+    public function approvedList(Request $request): JsonResponse
     {
         $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
         $transfers = $this->inventoryService->getTransfersPaginated(['status' => 'APPROVED'], $limit);
@@ -701,7 +701,7 @@ class InventoryTransactionController extends Controller
         }
     }
 
-    public function binTransferPrint(\Illuminate\Http\Request $request, string $id): JsonResponse
+    public function binTransferPrint(Request $request, string $id): JsonResponse
     {
         try {
             $transfer = $this->inventoryService->printBinTransfer($id, ActorName::fromUser($request->user()));
@@ -742,7 +742,7 @@ class InventoryTransactionController extends Controller
         }
     }
 
-    public function binTransferRevertPrint(\Illuminate\Http\Request $request, string $id): JsonResponse
+    public function binTransferRevertPrint(Request $request, string $id): JsonResponse
     {
         try {
             $transfer = $this->inventoryService->revertBinTransferPrint($id, ActorName::fromUser($request->user()));
@@ -794,7 +794,7 @@ class InventoryTransactionController extends Controller
         }
     }
 
-    public function binTransferReceiptsIndex(\Illuminate\Http\Request $request): JsonResponse
+    public function binTransferReceiptsIndex(Request $request): JsonResponse
     {
         $perPage = (int) $request->query('per_page', 20);
         $filters = array_filter([
@@ -818,7 +818,7 @@ class InventoryTransactionController extends Controller
         return $this->successResponse(new BinTransferReceiptResource($receipt), 'Detail penerimaan transfer internal berhasil diambil.');
     }
 
-    public function binTransferReceiptDestroy(\Illuminate\Http\Request $request, string $id): JsonResponse
+    public function binTransferReceiptDestroy(Request $request, string $id): JsonResponse
     {
         try {
             $actor = ActorName::fromUser($request->user());
@@ -962,7 +962,7 @@ class InventoryTransactionController extends Controller
             new OA\Response(response: 404, description: 'Transfer tidak ditemukan.'),
         ]
     )]
-    public function transferDelivery(\Illuminate\Http\Request $request): JsonResponse
+    public function transferDelivery(Request $request): JsonResponse
     {
         $transferId = $request->query('transfer_id');
 

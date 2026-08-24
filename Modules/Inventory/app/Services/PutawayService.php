@@ -447,6 +447,23 @@ class PutawayService
             $merged = [];
             $reservationDeltas = [];
             foreach ($inbounds as $inbound) {
+                $isReturn = $inbound->type === Inbound::TYPE_SALES_RETURN;
+                if ($isReturn && ($inbound->status === Inbound::STATUS_DRAFT || $inbound->items->sum('received_qty') == 0)) {
+                    foreach ($inbound->items as $it) {
+                        if ((int) $it->received_qty === 0 && (int) $it->expected_qty > 0) {
+                            $it->update(['received_qty' => (int) $it->expected_qty]);
+                            $locked = $lockedItems->get($it->id);
+                            if ($locked) {
+                                $locked->received_qty = (int) $it->expected_qty;
+                            }
+                        }
+                    }
+                    $inbound->update([
+                        'status' => Inbound::STATUS_RECEIVED,
+                        'once_received_at' => $inbound->once_received_at ?? now(),
+                    ]);
+                }
+
                 foreach ($inbound->items as $item) {
                     $locked = $lockedItems->get($item->id);
                     if (! $locked) {
@@ -631,7 +648,17 @@ class PutawayService
                     if (! $item) {
                         throw new \Exception("Item inbound {$inboundItemId} tidak ditemukan.");
                     }
-                    $pending = (int) $item->received_qty - (int) $item->putaway_qty;
+                    $isReturn = $item->inbound?->type === Inbound::TYPE_SALES_RETURN;
+                    $effectiveReceived = ($isReturn && (int) $item->received_qty === 0)
+                        ? (int) $item->expected_qty
+                        : (int) $item->received_qty;
+
+                    if ($isReturn && (int) $item->received_qty === 0) {
+                        $item->update(['received_qty' => $effectiveReceived]);
+                        $item->inbound?->update(['status' => Inbound::STATUS_RECEIVED, 'once_received_at' => now()]);
+                    }
+
+                    $pending = $effectiveReceived - (int) $item->putaway_qty;
                     if ((int) $requested > $pending) {
                         throw new \Exception(
                             "Qty penempatan ({$requested}) melebihi sisa yang bisa diputaway ({$pending}) untuk item {$item->item_id}. "

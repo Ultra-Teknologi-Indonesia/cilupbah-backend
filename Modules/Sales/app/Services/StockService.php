@@ -83,11 +83,14 @@ class StockService
                     ]);
                 }
 
-                $aggregate = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, null);
-                $aggregate->on_order = ((int) $aggregate->on_order) + $qty;
-                $this->inventoryRepository->updateStock($aggregate);
+                $targetBinId = $this->inventoryRepository->findTargetBinForItemLocation($itemId, $locationId);
+                $targetInv   = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, $targetBinId);
+                $targetInv->on_order = ((int) $targetInv->on_order) + $qty;
+                $targetInv->recalculateAvailable();
+                $this->inventoryRepository->updateStock($targetInv);
 
-                $this->recordAllocation($itemId, $locationId, $qty, $transactionNumber, 'ORDER_RESERVE', (int) $aggregate->on_order);
+                $totalOnOrder = $this->inventoryRepository->sumOnOrderAtLocation($itemId, $locationId);
+                $this->recordAllocation($itemId, $locationId, $qty, $transactionNumber, 'ORDER_RESERVE', $totalOnOrder);
             });
         });
     }
@@ -108,14 +111,10 @@ class StockService
 
         $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty, $transactionNumber) {
             DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber) {
-                $aggregate = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, null);
-                $before = (int) $aggregate->on_order;
-                $aggregate->on_order = max(0, $before - $qty);
-                $this->inventoryRepository->updateStock($aggregate);
-
-                $released = $before - (int) $aggregate->on_order;
+                $released = $this->decrementOnOrderAtLocation($itemId, $locationId, $qty);
                 if ($released > 0) {
-                    $this->recordAllocation($itemId, $locationId, -$released, $transactionNumber, 'ORDER_RELEASE', (int) $aggregate->on_order);
+                    $totalOnOrder = $this->inventoryRepository->sumOnOrderAtLocation($itemId, $locationId);
+                    $this->recordAllocation($itemId, $locationId, -$released, $transactionNumber, 'ORDER_RELEASE', $totalOnOrder);
                 }
             });
         });
@@ -248,19 +247,51 @@ class StockService
         $this->cancelSingle($sku, $itemId, $locationId, $qty, $transactionNumber);
     }
 
+    private function decrementOnOrderAtLocation(string $itemId, string $locationId, int $qty): int
+    {
+        if ($qty <= 0) {
+            return 0;
+        }
+
+        $remaining = $qty;
+        $rows = \Modules\Inventory\Models\Inventory::where('item_id', $itemId)
+            ->where('location_id', $locationId)
+            ->where('on_order', '>', 0)
+            ->orderByRaw('bin_id IS NULL, on_order DESC')
+            ->lockForUpdate()
+            ->get();
+
+        $totalReleased = 0;
+
+        foreach ($rows as $row) {
+            if ($remaining <= 0) {
+                break;
+            }
+
+            $take = min($remaining, (int) $row->on_order);
+            if ($take <= 0) {
+                continue;
+            }
+
+            $row->on_order = (int) $row->on_order - $take;
+            $row->recalculateAvailable();
+            $this->inventoryRepository->updateStock($row);
+
+            $remaining -= $take;
+            $totalReleased += $take;
+        }
+
+        return $totalReleased;
+    }
+
     private function cancelSingle(string $sku, string $itemId, string $locationId, int $qty, string $transactionNumber): void
     {
         $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty, $transactionNumber) {
             DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber) {
-
-                $aggregate = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, null);
-                $before = (int) $aggregate->on_order;
-                $aggregate->on_order = max(0, $before - $qty);
-                $this->inventoryRepository->updateStock($aggregate);
-
-                $released = $before - (int) $aggregate->on_order;
+                $released = $this->decrementOnOrderAtLocation($itemId, $locationId, $qty);
                 if ($released > 0) {
-                    $this->recordAllocation($itemId, $locationId, -$released, $transactionNumber, 'ORDER_RELEASE', (int) $aggregate->on_order);
+                    $totalOnOrder = $this->inventoryRepository->sumOnOrderAtLocation($itemId, $locationId);
+                    $this->recordAllocation($itemId, $locationId, -$released, $transactionNumber, 'ORDER_RELEASE', $totalOnOrder);
                 }
             });
         });
@@ -283,20 +314,20 @@ class StockService
 
             $this->withStockLock($row->item_id, $row->location_id, function () use ($row, $qty, $transactionNumber, &$released) {
                 DB::transaction(function () use ($row, $qty, $transactionNumber, &$released) {
-                    $aggregate = $this->inventoryRepository->findOrCreateForUpdate($row->item_id, $row->location_id, null);
-                    $aggregate->on_order = max(0, ((int) $aggregate->on_order) - $qty);
-                    $this->inventoryRepository->updateStock($aggregate);
+                    $actuallyReleased = $this->decrementOnOrderAtLocation($row->item_id, $row->location_id, $qty);
+                    if ($actuallyReleased > 0) {
+                        $totalOnOrder = $this->inventoryRepository->sumOnOrderAtLocation($row->item_id, $row->location_id);
+                        $this->recordAllocation(
+                            $row->item_id,
+                            $row->location_id,
+                            -$actuallyReleased,
+                            $transactionNumber,
+                            'ORDER_RELEASE',
+                            $totalOnOrder,
+                        );
 
-                    $this->recordAllocation(
-                        $row->item_id,
-                        $row->location_id,
-                        -$qty,
-                        $transactionNumber,
-                        'ORDER_RELEASE',
-                        (int) $aggregate->on_order,
-                    );
-
-                    $released += $qty;
+                        $released += $actuallyReleased;
+                    }
                 });
             });
         }

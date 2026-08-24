@@ -879,6 +879,8 @@ class SalesOrderController extends Controller
 
         $result = $this->orderService->prepareShippingLabelDocument($order, $request->query('document_size'));
 
+        $this->orderService->logLabelPrinted($order, $request->user(), $result->docType ?? null);
+
         return $this->successResponse(new ShippingLabelResource($result), 'Shipping label berhasil diambil');
     }
 
@@ -896,6 +898,8 @@ class SalesOrderController extends Controller
         $order = $driverCall->findOrder($id);
 
         $result = $driverCall->dispatchPrintWithDriverCall($order, $request->query());
+
+        $this->orderService->logLabelPrinted($order, $request->user());
 
         return $this->successResponse($result['data'], $result['message'], $result['code']);
     }

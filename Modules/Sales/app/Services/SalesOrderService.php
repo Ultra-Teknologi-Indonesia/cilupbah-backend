@@ -1298,6 +1298,31 @@ class SalesOrderService
             $id    = $authUser?->id;
         }
 
+        if (! $email || $email === 'system') {
+            if ($actionEnum === \Modules\Sales\Enums\OrderActivityAction::FINISH_PACK) {
+                $packer = \Modules\Outbound\Models\Packlist::where('order_id', $order->id)
+                    ->whereNotNull('packer_id')
+                    ->with('packer')
+                    ->latest('completed_at')
+                    ->first()
+                    ?->packer;
+                if ($packer) {
+                    $email = $packer->email;
+                    $name  = $packer->name;
+                    $id    = $packer->id;
+                }
+            } elseif ($actionEnum === \Modules\Sales\Enums\OrderActivityAction::FINISH_PICK) {
+                $picklist = \Modules\Outbound\Models\Picklist::whereHas('items', function ($q) use ($order) {
+                    $q->whereHas('orderItem', fn ($oi) => $oi->where('order_id', $order->id));
+                })->whereNotNull('picker_id')->with('picker')->latest('completed_at')->first();
+                if ($picklist?->picker) {
+                    $email = $picklist->picker->email;
+                    $name  = $picklist->picker->name;
+                    $id    = $picklist->picker->id;
+                }
+            }
+        }
+
         if ($email && (! $name || ! $id)) {
             $resolved = \App\Models\User::where('email', $email)->first();
             if ($resolved) {
@@ -1318,6 +1343,30 @@ class SalesOrderService
             'metadata'      => $metadata,
             'created_at'    => now(),
         ]);
+
+        \Illuminate\Support\Facades\Cache::put('so_audit:'.$order->id.':'.$actionEnum->value, true, 10);
+    }
+
+    public function logLabelPrinted(SalesOrder $order, $actor = null, ?string $documentType = null): void
+    {
+        $actorId = $actor instanceof \App\Models\User ? $actor->id : (is_array($actor) ? ($actor['id'] ?? 'user') : (auth()->id() ?? 'system'));
+        $cacheKey = "label_printed:{$order->id}:{$actorId}";
+
+        if (\Illuminate\Support\Facades\Cache::has($cacheKey)) {
+            return;
+        }
+        \Illuminate\Support\Facades\Cache::put($cacheKey, true, 5);
+
+        $this->logStatusHistory(
+            $order,
+            \Modules\Sales\Enums\OrderActivityAction::LABEL_PRINTED,
+            [
+                'document_type'   => $documentType ?? $order->shipping_label_doc_type ?? 'THERMAL_AIR_WAYBILL',
+                'tracking_number' => $order->tracking_number,
+                'entity_no'       => $order->salesorder_no,
+            ],
+            $actor,
+        );
     }
 
     public function logFieldChange(
@@ -1402,6 +1451,11 @@ class SalesOrderService
                 ? ($validated['cancel_reason'] ?? null)
                 : null;
 
+            $action = self::STATUS_HISTORY_ACTIONS[$newStatus] ?? null;
+            if ($action) {
+                \Illuminate\Support\Facades\Cache::put('so_audit:'.$order->id.':'.$action, true, 10);
+            }
+
             DB::transaction(function () use ($order, $newStatus, $cancelReason) {
                 $this->applyStockTransition($order, $newStatus);
                 $order->status = $newStatus;
@@ -1414,10 +1468,10 @@ class SalesOrderService
                 $order->save();
             });
 
-            if (isset(self::STATUS_HISTORY_ACTIONS[$newStatus])) {
+            if ($action) {
                 $this->logStatusHistory(
                     $order,
-                    self::STATUS_HISTORY_ACTIONS[$newStatus],
+                    $action,
                     ['from' => $previousStatus, 'to' => $newStatus],
                     $actor,
                 );

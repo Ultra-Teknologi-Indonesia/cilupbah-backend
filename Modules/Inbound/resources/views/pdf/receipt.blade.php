@@ -2,9 +2,8 @@
     /** @var \Modules\Inbound\Models\Inbound $inbound */
     $companyName = config('app.company_name', 'PT ULTRA TEKNOLOGI INDONESIA');
     $printedAt = now()->format('d M Y H:i');
-    // Hanya cetak item yang sudah diterima (received_qty > 0). Item yang belum diterima (0) otomatis disembunyikan.
     $items = collect($inbound->items ?? [])->filter(function ($item) {
-        return (int) ($item->received_qty ?? 0) > 0;
+        return (int) $item->expected_qty > (int) ($item->received_qty ?? 0);
     })->values();
     $typeLabel = [
         'PURCHASE_ORDER' => 'Pesanan Pembelian',
@@ -12,12 +11,9 @@
         'SALES_RETURN'   => 'Retur',
         'CONSIGNMENT'    => 'Konsinyasi',
     ][$inbound->type] ?? $inbound->type;
-    // Tgl. Penerimaan = saat sesi penerimaan ditutup; fallback ke tanggal rencana.
     $receivedDate = $inbound->once_received_at
         ? $inbound->once_received_at->format('d M Y')
         : ($inbound->expected_date ? $inbound->expected_date->format('d M Y') : '-');
-    // reference_number diisi dari po_number saat inbound dibuat dari PO; untuk
-    // sumber non-PO (transfer/retur) tetap tampil sebagai "No. Referensi".
     $refLabel = $inbound->type === 'PURCHASE_ORDER' ? 'No. PO' : 'No. Referensi';
 @endphp
 <!DOCTYPE html>
@@ -132,11 +128,15 @@
                     $variant = $item->variant ?? null;
                     $sku = optional($variant)->sku ?? '-';
                     $name = optional(optional($variant)->product)->name ?? '-';
-                    $expected = (int) $item->expected_qty;
-                    $received = (int) ($item->received_qty ?? 0);
-                    // Qty Sisa = Qty Diharapkan − Qty Diterima (cek barang kurang/belum
-                    // terkirim). Negatif berarti diterima melebihi yang diharapkan.
-                    $remaining = $expected - $received;
+                    
+                    // Hitung qty yang BELUM diterima (sisa target yang mau diproses)
+                    $targetQty = (int) $item->expected_qty - (int) ($item->received_qty ?? 0);
+                    
+                    // Sesuaikan tampilan agar fokus ke barang yang "mau diproses" saja (tidak menarik histori).
+                    // Qty Diharapkan diset menjadi target sisa. Qty Diterima & Sisa dikosongkan agar bisa diisi manual.
+                    $expected = $targetQty;
+                    $received = '';
+                    $remaining = '';
                 @endphp
                 <tr>
                     <td class="center mono">{{ $i + 1 }}</td>

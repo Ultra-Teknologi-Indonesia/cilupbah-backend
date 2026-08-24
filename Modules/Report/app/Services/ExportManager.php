@@ -38,7 +38,7 @@ class ExportManager
         return $job;
     }
 
-    public function findOwnedOrFail(string $exportId, int $userId): ExportJob
+    public function findOwnedOrFail(string $exportId, string $userId): ExportJob
     {
         $job = ExportJob::findOrFail($exportId);
         abort_unless($job->user_id === $userId, 403);
@@ -48,6 +48,15 @@ class ExportManager
 
     public function statusPayload(ExportJob $job): array
     {
+        $downloadUrl = null;
+        if ($job->isReady()) {
+            $downloadUrl = \Illuminate\Support\Facades\Route::has('api.reports.exports.download')
+                ? route('api.reports.exports.download', $job->id)
+                : (\Illuminate\Support\Facades\Route::has('reports.exports.download')
+                    ? route('reports.exports.download', $job->id)
+                    : url("/api/v1/reports/exports/{$job->id}/download"));
+        }
+
         return [
             'id' => $job->id,
             'type' => $job->type,
@@ -56,9 +65,7 @@ class ExportManager
             'error' => $job->isFailed()
                 ? 'Gagal membuat berkas export. Coba lagi atau persempit rentang data.'
                 : null,
-            'download_url' => $job->isReady()
-                ? route('reports.exports.download', $job->id)
-                : null,
+            'download_url' => $downloadUrl,
         ];
     }
 

@@ -23,6 +23,12 @@ class SalesOrderActivityResource extends JsonResource
             $newValues  = null;
         }
 
+        if ($action === OrderActivityAction::LABEL_PRINTED && empty($newValues) && ! empty($metadata['tracking_number'])) {
+            $newValues = ['tracking_number' => $metadata['tracking_number']];
+        }
+
+        $note = $metadata['note'] ?? ($action === OrderActivityAction::LABEL_PRINTED ? 'Label pengiriman berhasil diunduh / dicetak' : null);
+
         return [
             'id'           => $this->id,
             'action_date'  => optional($this->created_at)->toIso8601String(),
@@ -34,7 +40,7 @@ class SalesOrderActivityResource extends JsonResource
             'action'       => $this->resolveAction($action, $metadata),
             'action_id'    => $this->action_id,
             'action_label' => $action?->value ?? (string) $this->action,
-            'note'         => $metadata['note'] ?? null,
+            'note'         => $note,
             'prev_values'  => $prevValues,
             'new_values'   => $newValues,
         ];

@@ -357,21 +357,36 @@ class SalesReturnService
                     'items'            => $inboundItems,
                 ]);
 
-                $receiverId = auth()->id()
-                    ?? (Str::isUuid((string) ($data['processed_by'] ?? '')) ? $data['processed_by'] : null);
-
-                if ($this->settings->autoReceive() && $receiverId) {
-                    $receiveItems = $inbound->items->map(fn ($item) => [
-                        'inbound_item_id' => $item->id,
-                        'qty'             => $item->expected_qty,
-                        'condition'       => $conditionByItem[$item->item_id] ?? 'GOOD',
-                    ])->toArray();
-
-                    $this->inboundService->receive($inbound->id, [
-                        'received_by' => $receiverId,
-                        'items'       => $receiveItems,
-                    ]);
+                $receiverId = auth()->id();
+                if (! $receiverId) {
+                    $candidate = (string) ($data['processed_by'] ?? '');
+                    if (Str::isUuid($candidate) && \App\Models\User::where('id', $candidate)->exists()) {
+                        $receiverId = $candidate;
+                    }
                 }
+                if (! $receiverId) {
+                    $receiverId = \App\Models\User::value('id');
+                }
+                if (! $receiverId) {
+                    $systemUser = \App\Models\User::create([
+                        'id' => (string) Str::uuid(),
+                        'name' => 'System Auto-Receive',
+                        'email' => 'system-return@cilupbah.internal',
+                        'password' => bcrypt(Str::random(16)),
+                    ]);
+                    $receiverId = $systemUser->id;
+                }
+
+                $receiveItems = $inbound->items->map(fn ($item) => [
+                    'inbound_item_id' => $item->id,
+                    'qty'             => $item->expected_qty,
+                    'condition'       => $conditionByItem[$item->item_id] ?? 'GOOD',
+                ])->toArray();
+
+                $this->inboundService->receive($inbound->id, [
+                    'received_by' => $receiverId,
+                    'items'       => $receiveItems,
+                ]);
             }
 
             return $this->getById($id);

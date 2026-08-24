@@ -184,6 +184,17 @@ class BulkShippingLabelController extends Controller
         $disk = Storage::disk('documents');
         abort_unless($disk->exists($batch->merged_pdf_path), 404);
 
+        $orderService = app(\Modules\Sales\Services\SalesOrderService::class);
+        $batch->items()
+            ->where('status', \Modules\Sales\Models\BulkShippingLabelItem::STATUS_DONE)
+            ->with('order')
+            ->get()
+            ->each(function ($item) use ($orderService, $req) {
+                if ($item->order) {
+                    $orderService->logLabelPrinted($item->order, $req->user(), $item->order->shipping_label_doc_type);
+                }
+            });
+
         return $disk->response(
             $batch->merged_pdf_path,
             "labels-{$batch->id}.pdf",

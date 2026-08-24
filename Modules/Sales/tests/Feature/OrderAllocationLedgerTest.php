@@ -185,6 +185,7 @@ class OrderAllocationLedgerTest extends TestCase
 
         $this->assertSame(90, (int) $picking->total_balance);
 
-        $this->assertSame(7, (int) $reserve->total_balance);
+        $this->assertSame(83, (int) $reserve->total_balance);
+        $this->assertSame(7, (int) $reserve->balance);
     }
 }
