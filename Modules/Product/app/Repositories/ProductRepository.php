@@ -208,11 +208,16 @@ class ProductRepository
     public function paginateListedVariants(string $productId): LengthAwarePaginator
     {
         $channel = request('filter.channel');
+        $shopId = request('filter.shop_id');
         $includeUnlisted = request()->boolean('include_unlisted');
+        $search = request('search');
 
         $isBundle = Product::where('id', $productId)->value('is_bundle');
 
-        $query = QueryBuilder::for(ProductVariant::class);
+        $baseQuery = ProductVariant::query();
+        \App\Support\AllowedSearch::apply($baseQuery, ['sku', 'options.value']);
+        
+        $query = QueryBuilder::for($baseQuery);
 
         if ($isBundle) {
             $componentVariantIds = ProductBundleItem::where('bundle_product_id', $productId)
@@ -228,9 +233,13 @@ class ProductRepository
                 AllowedFilter::callback('channel', fn ($q, $v) => $q->whereHas(
                     'channelMappings.channelMapping.channelShop.channel',
                     fn ($c) => $c->where('code', $v)
+                )),
+                AllowedFilter::callback('shop_id', fn ($q, $v) => $q->whereHas(
+                    'channelMappings.channelMapping',
+                    fn ($m) => $m->where('channel_shop_id', $v)
                 ))
             )
-            ->when(! $includeUnlisted && ! $channel, fn ($q) => $q->whereHas('channelMappings.channelMapping'))
+            ->when(! $includeUnlisted && ! $channel && ! $shopId, fn ($q) => $q->whereHas('channelMappings.channelMapping'))
             ->allowedSorts('sku', 'sell_price')
             ->defaultSort('sku')
             ->paginate(request('per_page', 20))

@@ -632,6 +632,67 @@ class ProductController extends Controller
     }
 
     #[OA\Post(
+        path: '/api/v1/products/{id}/channel-mappings/bulk-unlink',
+        summary: 'Putus tautan beberapa varian secara masal',
+        tags: ['Products'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\MediaType(
+                mediaType: 'application/json',
+                schema: new OA\Schema(
+                    required: ['variant_mapping_ids'],
+                    properties: [
+                        new OA\Property(property: 'variant_mapping_ids', type: 'array', items: new OA\Items(type: 'string')),
+                    ]
+                )
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Tautan berhasil dihapus secara masal'),
+        ]
+    )]
+    public function bulkUnlinkChannelMapping(Request $request, string $id): JsonResponse
+    {
+        $product = $this->findProduct($id);
+        if (! $product) {
+            return $this->errorResponse('Produk tidak ditemukan', 404);
+        }
+
+        $request->validate([
+            'variant_mapping_ids' => 'required|array',
+            'variant_mapping_ids.*' => 'string|exists:product_variant_channel_mappings,id'
+        ]);
+
+        $variantMappingIds = $request->input('variant_mapping_ids');
+
+        $variantMappings = \Modules\Product\Models\ProductVariantChannelMapping::whereIn('id', $variantMappingIds)
+            ->whereHas('variant', function ($q) use ($product) {
+                $q->where('product_id', $product->id);
+            })
+            ->get();
+
+        $parentMappingIds = collect();
+
+        foreach ($variantMappings as $variantMapping) {
+            $parentMappingIds->push($variantMapping->product_channel_mapping_id);
+            $variantMapping->delete();
+        }
+
+        // Clean up parent mappings if they no longer have variants
+        foreach ($parentMappingIds->unique() as $parentMappingId) {
+            $remaining = \Modules\Product\Models\ProductVariantChannelMapping::where('product_channel_mapping_id', $parentMappingId)->count();
+            if ($remaining === 0) {
+                \Modules\Product\Models\ProductChannelMapping::where('id', $parentMappingId)->delete();
+            }
+        }
+
+        return $this->successResponse(['success' => true, 'deleted' => $variantMappings->count()], 'Tautan masal berhasil dihapus.');
+    }
+
+    #[OA\Post(
         path: '/api/v1/products/{id}/channel-mappings/{mappingId}/re-sync',
         summary: 'Jadwalkan sinkronisasi ulang produk ke channel shop',
         tags: ['Products'],

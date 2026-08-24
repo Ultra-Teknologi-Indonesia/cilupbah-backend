@@ -160,6 +160,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     });
 
     Route::middleware('role_or_permission:owner|edit-produk')->group(function () {
+        Route::delete('products/{id}/channel-mappings/bulk-unlink', [ProductController::class, 'bulkUnlinkChannelMapping'])->whereUuid('id');
         Route::delete('products/{id}/channel-mappings/{mappingId}', [ProductController::class, 'unlinkChannelMapping'])->whereUuid('id')->whereUuid('mappingId');
         Route::delete('products/{id}/variant-channel-mappings/{variantMappingId}', [ProductController::class, 'unlinkVariantChannelMapping'])->whereUuid('id')->whereUuid('variantMappingId');
         Route::post('products/{id}/channel-mappings/{mappingId}/re-sync', [ProductController::class, 'resyncChannelMapping'])->whereUuid('id')->whereUuid('mappingId');
