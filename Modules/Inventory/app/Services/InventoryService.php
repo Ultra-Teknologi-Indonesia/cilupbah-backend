@@ -1063,8 +1063,10 @@ class InventoryService
                 $variantIds[] = $transferItem->item_id;
             }
 
-            InventoryMovement::where('transaction_number', $receipt->receipt_number)->delete();
-
+            // NOTE: Original inventory_movements are intentionally preserved as
+            // immutable audit trail. The reversal movements created above
+            // (BIN_TRANSFER_REVERT_OUT / TRANSIT_REVERT_IN) serve as the
+            // compensating transaction — enterprise standard for stock systems.
             $receipt->items()->delete();
             $receipt->delete();
 
