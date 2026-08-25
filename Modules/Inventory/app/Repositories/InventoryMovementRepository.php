@@ -144,8 +144,10 @@ class InventoryMovementRepository
         $baseQuery->whereNotExists(function ($q) {
             $q->selectRaw('1')
                 ->from('location_bins')
+                ->join('locations', 'locations.id', '=', 'location_bins.location_id')
                 ->whereColumn('location_bins.id', 'inventory_movements.bin_id')
-                ->where('location_bins.is_inbound', true);
+                ->where('location_bins.is_inbound', true)
+                ->where('locations.is_small_warehouse', false);
         });
 
         if ($view === 'clean') {
