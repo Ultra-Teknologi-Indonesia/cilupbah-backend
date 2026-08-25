@@ -438,7 +438,7 @@ class PutawayService
         $locationId = $inbounds->first()->location_id;
         $defaultBin = app(LocationBinService::class)->getDefaultBin($locationId);
 
-        return DB::transaction(function () use ($inbounds, $defaultBin, $locationId, $userId, $assignedTo) {
+        return DB::transaction(function () use ($inbounds, $defaultBin, $locationId, $userId, $assignedTo, $notes) {
             $lockedItems = InboundItem::whereIn('inbound_id', $inbounds->pluck('id'))
                 ->lockForUpdate()
                 ->get()
