@@ -20,13 +20,11 @@ return new class extends Migration
                     continue;
                 }
 
-                // 1. Find assigned rack from sku_rack_assignments
                 $targetBinId = DB::table('sku_rack_assignments')
                     ->where('item_id', $agg->item_id)
                     ->where('location_id', $agg->location_id)
                     ->value('bin_id');
 
-                // 2. If not found, find placed bin with on_hand > 0
                 if (! $targetBinId) {
                     $targetBinId = DB::table('inventories as i')
                         ->join('location_bins as b', 'b.id', '=', 'i.bin_id')
@@ -38,7 +36,6 @@ return new class extends Migration
                         ->value('i.bin_id');
                 }
 
-                // 3. If still not found, find any placed bin
                 if (! $targetBinId) {
                     $targetBinId = DB::table('inventories as i')
                         ->join('location_bins as b', 'b.id', '=', 'i.bin_id')

@@ -216,7 +216,7 @@ class ProductRepository
 
         $baseQuery = ProductVariant::query();
         \App\Support\AllowedSearch::apply($baseQuery, ['sku', 'options.value']);
-        
+
         $query = QueryBuilder::for($baseQuery);
 
         if ($isBundle) {

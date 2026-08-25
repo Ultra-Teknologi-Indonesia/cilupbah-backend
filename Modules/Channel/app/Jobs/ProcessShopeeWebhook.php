@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Services\ChannelDownloadService;
+use Modules\Channel\Services\ChannelWebhookAuditService;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Product\Models\ProductChannelMapping;
 
@@ -86,7 +87,11 @@ class ProcessShopeeWebhook implements ShouldQueue
 
     protected bool $orderIntakeSkipped = false;
 
-    public function handle(ShopeeOrderService $orderService, ChannelDownloadService $downloadService): void
+    public function handle(
+        ShopeeOrderService $orderService,
+        ChannelDownloadService $downloadService,
+        ?ChannelWebhookAuditService $webhookAudit = null,
+    ): void
     {
         if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
             return;
@@ -135,6 +140,10 @@ class ProcessShopeeWebhook implements ShouldQueue
         }
 
         $eventKey = self::idempotencyKey($this->payload);
+
+        if (! $this->orderIntakeSkipped && $webhookAudit) {
+            $webhookAudit->recordFromInbox('shopee', $eventKey, $this->payload);
+        }
 
         if ($this->orderIntakeSkipped) {
             ChannelWebhookInbox::markSkippedByKey($eventKey, \Modules\Channel\Support\ChannelOrderIntakeGate::reason());

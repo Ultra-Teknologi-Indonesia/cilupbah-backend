@@ -310,18 +310,15 @@ class PesananSemuaVisibilityAndStatusFilterTest extends TestCase
             array_column($resAll->json('data'), 'salesorder_no'),
         );
 
-        // Test search in tab all
         $resSearchGagal = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales?q=SO-GAGAL-PICK');
         $this->assertEqualsCanonicalizing(['SO-GAGAL-PICK'], array_column($resSearchGagal->json('data'), 'salesorder_no'));
 
         $resSearchRetur = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales?q=SO-RETUR');
         $this->assertEqualsCanonicalizing(['SO-RETUR'], array_column($resSearchRetur->json('data'), 'salesorder_no'));
 
-        // Test filter status returned
         $resFilterRetur = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales?filter[status][]=returned');
         $this->assertContains('SO-RETUR', array_column($resFilterRetur->json('data'), 'salesorder_no'));
 
-        // Test filter status failed-pick
         $resFilterGagal = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales?filter[status][]=failed-pick');
         $this->assertContains('SO-GAGAL-PICK', array_column($resFilterGagal->json('data'), 'salesorder_no'));
     }

@@ -5,6 +5,7 @@ namespace Modules\Sales\Repositories;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Sales\Enums\ChannelStatus;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderStatusHistory;
 use Spatie\QueryBuilder\QueryBuilder;
@@ -583,6 +584,19 @@ class SalesOrderRepository
         $resolvedShipmentType = $shippingProvider
             ? ($courierMapper->resolveShipmentType((string) $shippingProvider, $channelInstant) ?: ($existing->resolved_shipment_type ?? null))
             : ($existing->resolved_shipment_type ?? null);
+        $normalizedChannelStatus = \Modules\Sales\Support\ChannelStatusNormalizer::normalize(
+            $orderData['source'] ?? null,
+            $orderData['channel_status'] ?? null,
+        );
+        $canonicalChannelStatus = $normalizedChannelStatus?->value;
+
+        if ($canonicalChannelStatus === ChannelStatus::UNKNOWN->value
+            && $existing
+            && $existing->channel_status
+            && $existing->channel_status !== ChannelStatus::UNKNOWN->value
+        ) {
+            $canonicalChannelStatus = $existing->channel_status;
+        }
 
         $orderRow = [
             'salesorder_no'       => $orderData['salesorder_no'],
@@ -628,10 +642,7 @@ class SalesOrderRepository
             'shipping_country'    => $orderData['shipping_country'] ?? null,
             'dropshipper_name'    => $orderData['dropshipper_name'] ?? null,
             'dropshipper_phone'   => $orderData['dropshipper_phone'] ?? null,
-            'channel_status'      => \Modules\Sales\Support\ChannelStatusNormalizer::normalize(
-                $orderData['source'] ?? null,
-                $orderData['channel_status'] ?? null,
-            )?->value,
+            'channel_status'      => $canonicalChannelStatus,
             'channel_status_raw'  => $orderData['channel_status_raw'] ?? ($existing->channel_status_raw ?? null),
             'channel_cancel_status' => array_key_exists('channel_cancel_status', $orderData)
                 ? $orderData['channel_cancel_status']
@@ -662,7 +673,10 @@ class SalesOrderRepository
             'shipping_provider'   => $shippingProvider,
             'courier_id'          => $resolvedCourierId,
             'buyer_message'       => $orderData['buyer_message'] ?? null,
-            'seller_note'         => $orderData['seller_note'] ?? null,
+            'seller_note'         => $this->mergeWebhookAuditNotes(
+                $orderData['seller_note'] ?? null,
+                $existing->seller_note ?? null,
+            ),
             'paid_time'           => $orderData['paid_time'] ?? null,
             'ship_by_date'        => $orderData['ship_by_date'] ?? null,
             'pickup_done_time'    => $orderData['pickup_done_time'] ?? null,
@@ -686,6 +700,34 @@ class SalesOrderRepository
         }
 
         return SalesOrder::find($orderId);
+    }
+
+    /**
+     * Keep system-generated webhook audit lines immutable across later
+     * channel pulls while allowing the channel's business note to refresh.
+     */
+    private function mergeWebhookAuditNotes(?string $incoming, ?string $existing): ?string
+    {
+        $existingLines = preg_split('/\R/u', trim((string) $existing), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $auditLines = array_values(array_filter(
+            $existingLines,
+            static fn (string $line): bool => str_contains($line, 'Webhook event_key='),
+        ));
+
+        $baseNote = trim((string) $incoming);
+        if ($baseNote === '') {
+            $baseNote = implode(PHP_EOL, array_values(array_filter(
+                $existingLines,
+                static fn (string $line): bool => ! str_contains($line, 'Webhook event_key='),
+            )));
+        }
+
+        $parts = array_values(array_unique(array_filter([
+            trim($baseNote),
+            ...$auditLines,
+        ], static fn (string $part): bool => $part !== '')));
+
+        return $parts === [] ? null : implode(PHP_EOL, $parts);
     }
 
     public function syncOrderItems(string $orderId, array $items): void

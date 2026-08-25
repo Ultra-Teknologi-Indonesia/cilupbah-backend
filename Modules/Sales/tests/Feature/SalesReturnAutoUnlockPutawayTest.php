@@ -80,7 +80,6 @@ class SalesReturnAutoUnlockPutawayTest extends TestCase
             'condition' => 'GOOD',
         ]);
 
-        // 1. Terima/Setujui Retur
         $returnService = app(SalesReturnService::class);
         $returnService->accept($salesReturn->id, [
             'processed_by' => 'warehouse_staff',
@@ -89,7 +88,6 @@ class SalesReturnAutoUnlockPutawayTest extends TestCase
         $salesReturn->refresh();
         $this->assertSame(SalesReturn::STATUS_ACCEPTED, $salesReturn->status);
 
-        // 2. Cek Inbound yang dibuat: harus sudah RECEIVED dengan received_qty = 2
         $inbound = Inbound::where('source_type', 'sales_return')
             ->where('source_id', $salesReturn->id)
             ->with('items')
@@ -99,7 +97,6 @@ class SalesReturnAutoUnlockPutawayTest extends TestCase
         $this->assertContains($inbound->status, [Inbound::STATUS_RECEIVED, Inbound::STATUS_COMPLETED], 'Inbound retur harus langsung berstatus RECEIVED / COMPLETED');
         $this->assertSame(2, (int) $inbound->items->first()->received_qty, 'Received qty harus terisi 2');
 
-        // 3. Langsung Tugaskan Penempatan (Putaway) tanpa terima manual ulang
         $putawayService = app(PutawayService::class);
         $putaway = $putawayService->createFromInbounds([$inbound->id], null, $this->userId);
 
@@ -123,7 +120,6 @@ class SalesReturnAutoUnlockPutawayTest extends TestCase
             'is_active' => true,
         ]);
 
-        // Buat Inbound Retur yang masih DRAFT dan received_qty = 0 (seperti data lama)
         $inbound = Inbound::create([
             'transaction_number' => 'INB-RET-DRAFT-001',
             'type' => Inbound::TYPE_SALES_RETURN,
@@ -141,7 +137,6 @@ class SalesReturnAutoUnlockPutawayTest extends TestCase
             'putaway_qty' => 0,
         ]);
 
-        // Buat Putaway langsung dari Inbound DRAFT
         $putawayService = app(PutawayService::class);
         $putaway = $putawayService->createFromInbounds([$inbound->id], null, $this->userId);
 

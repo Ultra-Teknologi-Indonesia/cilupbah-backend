@@ -49,7 +49,7 @@ class MovementSourceFilterTest extends TestCase
 
     public function test_tagihan_filter_excludes_transfer_and_return_putaways(): void
     {
-        // 1. Create Inbound PO
+
         $poInb = Inbound::create([
             'id' => (string) Str::uuid(),
             'transaction_number' => 'INB-PO-TEST-01',
@@ -81,7 +81,6 @@ class MovementSourceFilterTest extends TestCase
             'source' => 'PUTAWAY_IN',
         ]);
 
-        // 2. Create Inbound Transfer
         $trfInb = Inbound::create([
             'id' => (string) Str::uuid(),
             'transaction_number' => 'TRFI-000000362',
@@ -113,7 +112,6 @@ class MovementSourceFilterTest extends TestCase
             'source' => 'PUTAWAY_IN',
         ]);
 
-        // Test Filter TAGIHAN -> Only PO Putaway should be returned
         $resTagihan = $this->actingAs($this->user, 'sanctum')
             ->getJson("/api/v1/inventory/movements?filter[item_id]={$this->variant->id}&filter[source]=TAGIHAN");
 
@@ -122,7 +120,6 @@ class MovementSourceFilterTest extends TestCase
         $this->assertContains('PUT-PO-001', $tagihanTrxNos);
         $this->assertNotContains('PUT-TRF-001', $tagihanTrxNos, 'Filter Tagihan tidak boleh memuat mutasi Transfer Putaway (TRFI)');
 
-        // Test Filter TRANSFER -> Transfer Putaway should be returned
         $resTransfer = $this->actingAs($this->user, 'sanctum')
             ->getJson("/api/v1/inventory/movements?filter[item_id]={$this->variant->id}&filter[source]=TRANSFER");
 

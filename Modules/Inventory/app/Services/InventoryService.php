@@ -984,13 +984,12 @@ class InventoryService
         $variantIds = [];
 
         DB::transaction(function () use ($id, $actor, &$variantIds) {
-            /** @var BinTransferReceipt $receipt */
+
             $receipt = BinTransferReceipt::where('id', $id)->lockForUpdate()->first();
             if (! $receipt) {
                 throw new \Exception('Penerimaan transfer tidak ditemukan.');
             }
 
-            /** @var BinTransfer $header */
             $header = BinTransfer::where('id', $receipt->bin_transfer_id)->lockForUpdate()->first();
             if (! $header) {
                 throw new \Exception('Transfer internal asal tidak ditemukan.');
@@ -1001,8 +1000,7 @@ class InventoryService
             $receiptItems = $receipt->items()->get();
 
             foreach ($receiptItems as $receiptItem) {
-                /** @var BinTransferReceiptItem $receiptItem */
-                /** @var BinTransferItem|null $transferItem */
+
                 $transferItem = BinTransferItem::where('id', $receiptItem->bin_transfer_item_id)->lockForUpdate()->first();
                 if (! $transferItem) {
                     continue;

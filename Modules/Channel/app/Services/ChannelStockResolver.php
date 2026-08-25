@@ -160,7 +160,7 @@ class ChannelStockResolver
 
         $id = $shop->stock_source_location_id
             ?: DB::table('channel_warehouses')->where('store_id', $shop->shop_id)->value('location_id')
-            ?: DB::table('locations')->where('location_code', Location::SYSTEM_KECIL_CODE)->value('id');
+            ?: Location::getOfficialSmallWarehouseId();
 
         return $id ? [$id] : [];
     }

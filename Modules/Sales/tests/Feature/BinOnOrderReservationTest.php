@@ -58,7 +58,6 @@ class BinOnOrderReservationTest extends TestCase
             'is_active' => true,
         ]);
 
-        // Rak di Gudang Kecil
         $binKecil = LocationBin::create([
             'location_id' => $this->kecilId,
             'bin_code' => 'O-LX-KX-KANTOR',
@@ -69,14 +68,12 @@ class BinOnOrderReservationTest extends TestCase
             'is_inbound' => false,
         ]);
 
-        // Sku Rack Assignment
         SkuRackAssignment::create([
             'item_id' => $variant->id,
             'location_id' => $this->kecilId,
             'bin_id' => $binKecil->id,
         ]);
 
-        // Inventory di Rak Gudang Kecil (24 pcs)
         Inventory::create([
             'item_id' => $variant->id,
             'location_id' => $this->kecilId,
@@ -86,7 +83,6 @@ class BinOnOrderReservationTest extends TestCase
             'available' => 24,
         ]);
 
-        // Rak di Gudang Pusat (600 pcs)
         $binPusat = LocationBin::create([
             'location_id' => $this->pusatId,
             'bin_code' => 'IN-G1-K1-P1',
@@ -106,11 +102,9 @@ class BinOnOrderReservationTest extends TestCase
             'available' => 600,
         ]);
 
-        // 1. Pesanan masuk 1 pcs di Gudang Kecil
         $stockService = app(StockService::class);
         $stockService->reserve('ME570FAW', $variant->id, $this->kecilId, 1, 'SO-TEST-001');
 
-        // 2. Verifikasi di tabel inventories: on_order masuk ke baris rak Gudang Kecil
         $invKecil = Inventory::where('item_id', $variant->id)
             ->where('location_id', $this->kecilId)
             ->where('bin_id', $binKecil->id)
@@ -121,14 +115,12 @@ class BinOnOrderReservationTest extends TestCase
         $this->assertSame(1, (int) $invKecil->on_order, 'On order harus tercatat pada baris rak fisik');
         $this->assertSame(23, (int) $invKecil->available, 'Available rak fisik harus berkurang jadi 23');
 
-        // Pastikan baris agregat (bin_id = null) tidak menduplikasi on_order
         $aggRow = Inventory::where('item_id', $variant->id)
             ->where('location_id', $this->kecilId)
             ->whereNull('bin_id')
             ->first();
         $this->assertTrue($aggRow === null || (int) $aggRow->on_order === 0);
 
-        // 3. Verifikasi API Detail Stok per Rak (Persediaan di Rak)
         $stocks = app(InventoryRepository::class)->getByItem($variant->id);
         $resourceStocks = InventoryStockResource::collectionWithActual($stocks);
 
@@ -138,20 +130,18 @@ class BinOnOrderReservationTest extends TestCase
         $this->assertSame(1, $rowKecil['on_order'], 'Resource rak harus mengembalikan On Order 1');
         $this->assertSame(23, $rowKecil['available'], 'Resource rak harus mengembalikan Available 23');
 
-        // 4. Verifikasi API Detail Stok Produk (Summary Cards di Atas)
         $variantDetail = app(InventoryRepository::class)->findVariantWithStockDetail($variant->id);
         $summaryResource = (new StockItemResource($variantDetail))->resolve();
 
-        $this->assertSame(624, $summaryResource['total_stocks']['on_hand']); // 24 + 600
+        $this->assertSame(624, $summaryResource['total_stocks']['on_hand']); 
         $this->assertSame(1, $summaryResource['total_stocks']['on_order']);
-        $this->assertSame(623, $summaryResource['total_stocks']['available']); // 624 - 1
+        $this->assertSame(623, $summaryResource['total_stocks']['available']); 
 
         $locKecil = collect($summaryResource['location_stocks'])->firstWhere('location_id', $this->kecilId);
         $this->assertSame(24, $locKecil['on_hand']);
         $this->assertSame(1, $locKecil['on_order']);
         $this->assertSame(23, $locKecil['available']);
 
-        // 5. Verifikasi saat pesanan di-pick: on_order di rak berkurang
         $stockService->pick('ME570FAW', $variant->id, $this->kecilId, 1, 'SO-TEST-001');
 
         $invKecil->refresh();

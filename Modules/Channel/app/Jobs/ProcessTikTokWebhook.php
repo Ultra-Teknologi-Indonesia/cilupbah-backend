@@ -14,6 +14,7 @@ use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Services\TikTokAuthService;
 use Modules\Channel\Services\TikTokOrderService;
+use Modules\Channel\Services\ChannelWebhookAuditService;
 use Modules\Channel\Services\WebhookProductHandler;
 
 class ProcessTikTokWebhook implements ShouldQueue
@@ -105,6 +106,7 @@ class ProcessTikTokWebhook implements ShouldQueue
         WebhookProductHandler $productHandler,
         ChannelShopRepository $shops,
         TikTokAuthService $authService,
+        ?ChannelWebhookAuditService $webhookAudit = null,
     ): void {
         if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
             return;
@@ -156,6 +158,10 @@ class ProcessTikTokWebhook implements ShouldQueue
                     'data_keys' => array_keys($data),
                 ]),
             };
+
+        if (! $this->orderIntakeSkipped && $webhookAudit) {
+            $webhookAudit->recordFromInbox('tiktok', $idempotencyKey, $this->payload);
+        }
 
             if ($this->orderIntakeSkipped) {
                 ChannelWebhookInbox::markSkippedByKey($idempotencyKey, \Modules\Channel\Support\ChannelOrderIntakeGate::reason());

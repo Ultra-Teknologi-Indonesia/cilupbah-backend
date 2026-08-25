@@ -1862,6 +1862,12 @@ class SalesOrderService
                     'source'         => $order->source,
                     'channel_status' => $channelStatus,
                 ]);
+            } else {
+                $this->logChannelStatusHistoryIfChanged(
+                    $order,
+                    $existing->channel_status ?? null,
+                    $existing->channel_status_raw ?? null,
+                );
             }
 
             $stockMutated = $this->reconcileStockTransition($order, $previousStatus, $finalStatus);
@@ -1877,7 +1883,11 @@ class SalesOrderService
             $isShippedChannel = in_array(strtoupper((string) ($channelStatus ?? $order->channel_status)), ['SHIPPED', 'COMPLETED', 'DELIVERED', 'TO_CONFIRM_RECEIVE'], true)
                 || in_array($finalStatus, ['shipped', 'completed', 'delivered'], true);
 
-            if ($isShippedChannel && ! $order->is_shadow && ! $order->is_canceled) {
+            if ($isShippedChannel
+                && config('inventory.channel_auto_physical_backfill', false)
+                && ! $order->is_shadow
+                && ! $order->is_canceled
+            ) {
                 try {
                     app(\Modules\Sales\Services\BackfillShippedOrdersStockService::class)->backfillOrder($order);
                 } catch (\Throwable $e) {
@@ -1948,6 +1958,54 @@ class SalesOrderService
                 'error'    => $e->getMessage(),
             ]);
         }
+    }
+
+    private function logChannelStatusHistoryIfChanged(
+        SalesOrder $order,
+        ?string $previousChannelStatus,
+        ?string $previousChannelStatusRaw,
+    ): void {
+        $currentChannelStatus = (string) ($order->channel_status ?? '');
+        $currentChannelStatusRaw = (string) ($order->channel_status_raw ?? '');
+        $previousChannelStatus = (string) ($previousChannelStatus ?? '');
+        $previousChannelStatusRaw = (string) ($previousChannelStatusRaw ?? '');
+
+        if ($previousChannelStatus === $currentChannelStatus
+            && $previousChannelStatusRaw === $currentChannelStatusRaw
+        ) {
+            return;
+        }
+
+        $last = SalesOrderStatusHistory::query()
+            ->where('salesorder_id', $order->id)
+            ->where('action', 'CHANNEL_STATUS')
+            ->latest('created_at')
+            ->first();
+
+        $lastMetadata = is_array($last?->metadata) ? $last->metadata : [];
+        $lastNewValues = is_array($lastMetadata['new_values'] ?? null)
+            ? $lastMetadata['new_values']
+            : [];
+
+        if (($lastNewValues['channel_status'] ?? null) === $currentChannelStatus
+            && ($lastNewValues['channel_status_raw'] ?? null) === $currentChannelStatusRaw
+        ) {
+            return;
+        }
+
+        $this->logStatusHistory($order, 'CHANNEL_STATUS', [
+            'prev_values' => [
+                'channel_status' => $previousChannelStatus ?: null,
+                'channel_status_raw' => $previousChannelStatusRaw ?: null,
+            ],
+            'new_values' => [
+                'channel_status' => $currentChannelStatus ?: null,
+                'channel_status_raw' => $currentChannelStatusRaw ?: null,
+            ],
+            'entity_no' => $order->salesorder_no,
+            'origin' => 'channel_sync',
+            'wms_status' => $order->status,
+        ]);
     }
 
     public function updateOrderFinance(string $orderId, array $finance): ?SalesOrder
@@ -2026,8 +2084,8 @@ class SalesOrderService
             'AWAITING_SHIPMENT', 'READY_TO_SHIP'      => 'reserved',
             'RETRY_SHIP'                              => 'reserved',
 
-            'AWAITING_COLLECTION', 'PROCESSED'        => 'packed',
-            'PARTIALLY_SHIPPING'                      => 'packed',
+            'AWAITING_COLLECTION', 'PROCESSED'        => 'reserved',
+            'PARTIALLY_SHIPPING'                      => 'reserved',
 
             'IN_TRANSIT'                              => 'shipped',
             'SHIPPED', 'TO_CONFIRM_RECEIVE'           => 'shipped',
@@ -2362,15 +2420,11 @@ class SalesOrderService
             }
         }
 
-        // Hanya restore sisa jika item tersebut memang ada di binAllocations
-        // (artinya ada picking fisik, tapi qtynya tidak terpenuhi sepenuhnya dari bin)
         foreach ($remainingByItem as $itemId => $data) {
             if ($data['qty'] <= 0) {
                 continue;
             }
 
-            // Jika item ini sama sekali tidak ada di binAllocations → lewati
-            // Tidak ada picking fisik yang terjadi untuk item ini
             if (! $binAllocations->has($itemId)) {
                 continue;
             }
@@ -2396,11 +2450,7 @@ class SalesOrderService
             return $order->location_id;
         }
 
-        $kecilId = DB::table('locations')
-            ->where('is_small_warehouse', true)
-            ->where('is_warehouse', true)
-            ->where('is_active', true)
-            ->value('id');
+        $kecilId = Location::getOfficialSmallWarehouseId();
 
         if ($kecilId) {
             return $kecilId;

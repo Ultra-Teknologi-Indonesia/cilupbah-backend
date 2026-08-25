@@ -128,10 +128,10 @@
                     $variant = $item->variant ?? null;
                     $sku = optional($variant)->sku ?? '-';
                     $name = optional(optional($variant)->product)->name ?? '-';
-                    
+
                     // Hitung qty yang BELUM diterima (sisa target yang mau diproses)
                     $targetQty = (int) $item->expected_qty - (int) ($item->received_qty ?? 0);
-                    
+
                     // Sesuaikan tampilan agar fokus ke barang yang "mau diproses" saja (tidak menarik histori).
                     // Qty Diharapkan diset menjadi target sisa. Qty Diterima & Sisa dikosongkan agar bisa diisi manual.
                     $expected = $targetQty;

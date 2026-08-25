@@ -56,14 +56,12 @@ class StatusHistoryDeduplicationTest extends TestCase
             'created_by'   => 'system',
         ]);
 
-        // Dispatch background job
         $job = new ProcessPacklistCompleteJob($packlist->id);
         $job->handle(app(SalesOrderService::class));
 
         $order->refresh();
         $this->assertSame('packed', $order->status);
 
-        // Assert only EXACTLY 1 FINISH_PACK entry exists
         $histories = SalesOrderStatusHistory::where('salesorder_id', $order->id)
             ->where('action', OrderActivityAction::FINISH_PACK)
             ->get();
@@ -122,7 +120,6 @@ class StatusHistoryDeduplicationTest extends TestCase
             'created_by'   => 'system',
         ]);
 
-        // Buat duplikat historis: 1 system dan 1 human
         $sysHist = SalesOrderStatusHistory::create([
             'salesorder_id' => $order->id,
             'action'        => OrderActivityAction::FINISH_PACK,
@@ -145,11 +142,9 @@ class StatusHistoryDeduplicationTest extends TestCase
             'created_at'    => now(),
         ]);
 
-        // Jalankan migration up
         $migration = require base_path('Modules/Sales/database/migrations/2026_08_25_004000_deduplicate_status_histories_and_backfill_packers.php');
         $migration->up();
 
-        // Verifikasi entri system duplikat terhapus dan tersisa hanya entri human
         $this->assertDatabaseMissing('sales_order_status_histories', ['id' => $sysHist->id]);
         $this->assertDatabaseHas('sales_order_status_histories', ['id' => $humanHist->id, 'actor_id' => $this->packer->id]);
     }

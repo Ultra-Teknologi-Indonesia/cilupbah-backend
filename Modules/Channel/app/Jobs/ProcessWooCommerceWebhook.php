@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Services\ChannelDownloadService;
+use Modules\Channel\Services\ChannelWebhookAuditService;
 use Modules\Channel\Services\WooCommerceOrderService;
 
 class ProcessWooCommerceWebhook implements ShouldQueue
@@ -46,7 +47,11 @@ class ProcessWooCommerceWebhook implements ShouldQueue
         ]));
     }
 
-    public function handle(WooCommerceOrderService $orderService, ChannelDownloadService $downloadService): void
+    public function handle(
+        WooCommerceOrderService $orderService,
+        ChannelDownloadService $downloadService,
+        ?ChannelWebhookAuditService $webhookAudit = null,
+    ): void
     {
         if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
             return;
@@ -74,6 +79,12 @@ class ProcessWooCommerceWebhook implements ShouldQueue
         };
 
         $eventKey = self::idempotencyKey($this->shopId, $this->topic, $this->payload);
+
+        if (! $this->orderIntakeSkipped && $webhookAudit) {
+            $webhookAudit->recordFromInbox('woocommerce', $eventKey, $this->payload + [
+                '_webhook_topic' => $this->topic,
+            ]);
+        }
 
         if ($this->orderIntakeSkipped) {
             ChannelWebhookInbox::markSkippedByKey($eventKey, \Modules\Channel\Support\ChannelOrderIntakeGate::reason());

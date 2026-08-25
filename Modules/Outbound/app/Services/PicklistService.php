@@ -26,6 +26,7 @@ use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Product\Repositories\ProductRepository;
 use Modules\Warehouse\Models\LocationBin;
+use Modules\Warehouse\Models\Location;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -206,6 +207,8 @@ class PicklistService
                 throw new \Exception('Tidak ada order dengan status reserved yang ditemukan.');
             }
 
+            $this->assertChannelLocation($orders, (string) $data['location_id']);
+
             foreach ($orders as $order) {
                 foreach ($order->items as $orderItem) {
                     $components = $this->productRepository->bundleComponentsForVariant($orderItem->item_id);
@@ -326,12 +329,23 @@ class PicklistService
                 throw new OutboundValidationException('Item picklist tidak ditemukan.');
             }
 
-            $pickOrder = Order::find($item->order_id);
+            $pickOrder = $item->order_id
+                ? Order::query()->whereKey($item->order_id)->lockForUpdate()->first()
+                : null;
+
+            if ($pickOrder && in_array($pickOrder->status, ['shipped', 'completed', 'delivered'], true)) {
+                throw new OutboundValidationException(
+                    "Pesanan {$pickOrder->salesorder_no} sudah berstatus dikirim dan tidak boleh dipotong ulang dari rak."
+                );
+            }
+
             if ($pickOrder && $pickOrder->is_canceled) {
                 throw new OutboundValidationException(
                     "Pesanan {$pickOrder->salesorder_no} sudah DIBATALKAN — jangan dipick, pisahkan barangnya."
                 );
             }
+
+            $this->assertChannelLocation(collect([$pickOrder])->filter(), (string) $picklist->location_id);
 
             $current = (int) $item->qty_picked;
             $ordered = (int) $item->qty_ordered;
@@ -413,6 +427,33 @@ class PicklistService
                 'qty_ordered' => $ordered,
             ],
         );
+    }
+
+    /**
+     * Channel orders have one physical fulfilment origin during the
+     * Jubelio-to-Super Apps transition: the official Gudang Kecil.
+     *
+     * Existing installations/tests without the system location keep their
+     * legacy behaviour; production installations are protected as soon as
+     * WH-KECIL (or the active small-warehouse flag) exists.
+     */
+    private function assertChannelLocation(iterable $orders, string $locationId): void
+    {
+        $hasChannelOrder = collect($orders)->contains(function ($order): bool {
+            return ! in_array(strtolower((string) ($order?->source ?? '')), ['', 'manual'], true);
+        });
+
+        if (! $hasChannelOrder) {
+            return;
+        }
+
+        $officialLocationId = Location::getOfficialSmallWarehouseId();
+
+        if ($officialLocationId !== null && $officialLocationId !== $locationId) {
+            throw new OutboundValidationException(
+                'Pesanan channel wajib diproses dan dipotong dari Gudang Kecil (WH-KECIL).'
+            );
+        }
     }
 
     public function unpickItem(string $picklistId, string $itemId, ?int $qty, string $userId): Picklist

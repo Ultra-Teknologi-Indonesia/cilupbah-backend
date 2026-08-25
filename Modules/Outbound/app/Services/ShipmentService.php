@@ -595,13 +595,7 @@ class ShipmentService
 
     private function resolveDefaultLocationId(): string
     {
-        $id = Location::getSmallWarehouseId();
-
-        if (! $id) {
-            $id = Location::query()
-                ->where('location_code', Location::SYSTEM_KECIL_CODE)
-                ->value('id');
-        }
+        $id = Location::getOfficialSmallWarehouseId();
 
         if (! $id) {
             throw new \Exception('Lokasi gudang kecil tidak ditemukan. Pastikan ada gudang dengan tipe gudang kecil (is_small_warehouse = true).');

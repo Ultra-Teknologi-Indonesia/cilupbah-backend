@@ -28,7 +28,6 @@ class ExportJobEndToEndTest extends TestCase
     {
         $exportManager = app(ExportManager::class);
 
-        // 1. Create a job for this user
         $job = $exportManager->queue($this->user, 'transfer', [
             'jenis' => 'masuk',
             'from' => '2026-08-01',
@@ -44,7 +43,6 @@ class ExportJobEndToEndTest extends TestCase
         $this->assertSame(ExportJob::STATUS_READY, $job->status);
         $this->assertNotNull($job->file_path);
 
-        // 3. Check status via API (UUID user)
         $response = $this->actingAs($this->user, 'sanctum')
             ->getJson("/api/v1/reports/exports/{$job->id}");
 
@@ -52,13 +50,11 @@ class ExportJobEndToEndTest extends TestCase
         $response->assertJsonPath('data.status', 'ready');
         $this->assertNotNull($response->json('data.download_url'));
 
-        // 4. Download file via API
         $downloadResponse = $this->actingAs($this->user, 'sanctum')
             ->get("/api/v1/reports/exports/{$job->id}/download");
 
         $downloadResponse->assertOk();
 
-        // 5. Ensure another user cannot access this export (Tenant / User Isolation)
         $otherUser = $this->createPrivilegedUser();
         $forbiddenResponse = $this->actingAs($otherUser, 'sanctum')
             ->getJson("/api/v1/reports/exports/{$job->id}");

@@ -766,7 +766,7 @@ class SalesOrderController extends Controller
     public function cancelManual(string $id, CancelManualOrderRequest $request)
     {
         $order = \Modules\Sales\Models\SalesOrder::findOrFail($id);
-        
+
         if ($order->source && !in_array(strtolower($order->source), ['manual', 'offline'])) {
             return $this->errorResponse('Hanya pesanan manual yang dapat dibatalkan melalui rute ini', 422);
         }

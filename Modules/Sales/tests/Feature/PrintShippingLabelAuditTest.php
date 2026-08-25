@@ -62,7 +62,7 @@ class PrintShippingLabelAuditTest extends TestCase
         ]);
 
         $service = app(SalesOrderService::class);
-        // Call twice immediately
+
         $service->logLabelPrinted($order, $this->user);
         $service->logLabelPrinted($order, $this->user);
 
@@ -117,7 +117,6 @@ class PrintShippingLabelAuditTest extends TestCase
 
         $response->assertStatus(200);
 
-        // Assert both orders have LABEL_PRINTED history
         $this->assertDatabaseHas('sales_order_status_histories', [
             'salesorder_id' => $order1->id,
             'action' => 'LABEL_PRINTED',

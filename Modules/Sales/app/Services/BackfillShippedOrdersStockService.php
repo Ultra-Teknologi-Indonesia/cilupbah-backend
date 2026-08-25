@@ -20,6 +20,8 @@ class BackfillShippedOrdersStockService
             ->with(['items.product'])
             ->where('is_shadow', false)
             ->where('is_canceled', false)
+
+            ->whereNull('handed_to_warehouse_at')
             ->where(function ($q) {
                 $q->whereIn('status', ['shipped', 'completed', 'delivered'])
                     ->orWhereIn('channel_status', ['SHIPPED', 'COMPLETED', 'DELIVERED', 'TO_CONFIRM_RECEIVE']);
@@ -70,6 +72,19 @@ class BackfillShippedOrdersStockService
 
     public function backfillOrder(SalesOrder $order, bool $dryRun = false): array
     {
+        return DB::transaction(function () use ($order, $dryRun) {
+            $lockedOrder = SalesOrder::query()
+                ->with(['items.product'])
+                ->whereKey($order->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            return $this->backfillLockedOrder($lockedOrder, $dryRun);
+        });
+    }
+
+    private function backfillLockedOrder(SalesOrder $order, bool $dryRun): array
+    {
         $hasAllocations = DB::table('order_bin_allocations')->where('order_id', $order->id)->exists();
         $hasPickedItems = DB::table('picklist_items')->where('order_id', $order->id)->where('qty_picked', '>', 0)->exists();
         $hasMovements = DB::table('inventory_movements')
@@ -87,7 +102,17 @@ class BackfillShippedOrdersStockService
             ];
         }
 
-        $locationId = $this->resolveLocationId($order);
+        if ($order->handed_to_warehouse_at !== null) {
+            return [
+                'success' => true,
+                'order_id' => $order->id,
+                'salesorder_no' => $order->salesorder_no,
+                'message' => 'Pesanan sudah diserahkan ke warehouse lokal; backfill channel di-skip untuk mencegah potong stok ganda.',
+                'deductions' => [],
+            ];
+        }
+
+        $locationId = $this->resolveLocationId();
         if (! $locationId) {
             return [
                 'success' => false,
@@ -166,15 +191,12 @@ class BackfillShippedOrdersStockService
         ];
     }
 
-    private function resolveLocationId(SalesOrder $order): ?string
+    private function resolveLocationId(): ?string
     {
-        if ($order->location_id) {
-            return $order->location_id;
-        }
-
-        return DB::table('locations')
-            ->where('location_code', Location::SYSTEM_KECIL_CODE)
-            ->value('id') ?: DB::table('locations')->orderBy('id')->value('id');
+        // Channel fulfillment is single-origin during the cutover. Never
+        // trust a stale/order-supplied location here: physical stock must be
+        // consumed from the official Gudang Kecil only.
+        return Location::getOfficialSmallWarehouseId();
     }
 
     private function resolveComponents(string $itemId, int $parentQty): array

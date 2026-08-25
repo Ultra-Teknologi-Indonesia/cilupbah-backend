@@ -177,6 +177,25 @@ class PickingConcurrencyTest extends TestCase
         return (int) DB::table('picklist_item_allocations')->where('picklist_item_id', $itemId)->sum('qty');
     }
 
+    public function test_picking_is_rejected_when_order_was_already_shipped(): void
+    {
+        $s = $this->scenario(onHand: 10, ordered: 2);
+        DB::table('sales_orders')->where('id', $s['order_id'])->update(['status' => 'shipped']);
+
+        try {
+            app(PicklistService::class)->pickItem($s['picklist_id'], $s['item_id'], [
+                'qty_delta' => 1,
+                'bin_code' => 'L1-B1-K1-R1',
+            ]);
+            $this->fail('Picking order shipped seharusnya ditolak.');
+        } catch (\Modules\Outbound\Exceptions\OutboundValidationException $e) {
+            $this->assertStringContainsString('tidak boleh dipotong ulang', $e->getMessage());
+        }
+
+        $this->assertSame(10, $this->onHand($s['item_variant_id']));
+        $this->assertSame(0, $this->qtyPicked($s['item_id']));
+    }
+
     public function test_concurrent_delta_picks_accumulate_and_do_not_lose_updates(): void
     {
         $s = $this->scenario(onHand: 10, ordered: 10);

@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Services\ChannelDownloadService;
+use Modules\Channel\Services\ChannelWebhookAuditService;
 use Modules\Channel\Services\LazadaAuthService;
 use Modules\Channel\Services\LazadaOrderService;
 use Modules\Product\Models\ProductChannelMapping;
@@ -80,6 +81,7 @@ class ProcessLazadaWebhook implements ShouldQueue
         LazadaOrderService $orderService,
         ChannelDownloadService $downloadService,
         LazadaAuthService $authService,
+        ?ChannelWebhookAuditService $webhookAudit = null,
     ): void {
         if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
             return;
@@ -116,6 +118,10 @@ class ProcessLazadaWebhook implements ShouldQueue
             self::MSG_SELLER_STATUS => $this->handleSellerStatus($sellerId, $data),
             default => $this->handleUnknown($orderService, $sellerId, $data, $messageType),
         };
+
+        if (! $this->orderIntakeSkipped && $webhookAudit) {
+            $webhookAudit->recordFromInbox('lazada', self::idempotencyKey($this->payload), $this->payload);
+        }
 
         if ($this->orderIntakeSkipped) {
             ChannelWebhookInbox::markSkippedByKey(

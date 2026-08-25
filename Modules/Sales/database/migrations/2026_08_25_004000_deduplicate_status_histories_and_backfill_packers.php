@@ -7,7 +7,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // 1. Hapus duplikasi record System ketika sudah ada record Human Actor pada pesanan & aksi yang sama
+
         DB::statement("
             DELETE FROM sales_order_status_histories s1
             WHERE s1.action IN ('FINISH_PACK', 'FINISH_PICK')
@@ -24,7 +24,6 @@ return new class extends Migration
               )
         ");
 
-        // 2. Backfill nama packer pada entri FINISH_PACK yang masih 'system' dari tabel packlists
         DB::statement("
             UPDATE sales_order_status_histories h
             SET actor_id = u.id,
@@ -38,7 +37,6 @@ return new class extends Migration
               AND p.packer_id IS NOT NULL
         ");
 
-        // 3. Backfill nama picker pada entri FINISH_PICK yang masih 'system' dari tabel picklists
         DB::statement("
             UPDATE sales_order_status_histories h
             SET actor_id = u.id,
@@ -57,6 +55,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        // Operasi data cleansing bersifat irreversible secara aman
+
     }
 };

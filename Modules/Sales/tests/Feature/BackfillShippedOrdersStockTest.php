@@ -179,6 +179,132 @@ class BackfillShippedOrdersStockTest extends TestCase
         $this->assertEquals(1, DB::table('inventory_movements')->count());
     }
 
+    public function test_order_already_handed_to_local_warehouse_is_not_backfilled(): void
+    {
+        DB::table('inventories')->insert([
+            'id' => Str::uuid()->toString(),
+            'item_id' => $this->itemId,
+            'location_id' => $this->kecilLocationId,
+            'bin_id' => $this->binId,
+            'on_hand' => 10,
+            'available' => 10,
+            'on_order' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $order = SalesOrder::create([
+            'salesorder_no' => 'SO-LOCAL-WMS-001',
+            'channel_order_no' => 'CH-LOCAL-WMS-001',
+            'source' => 'tiktok',
+            'status' => 'shipped',
+            'channel_status' => 'SHIPPED',
+            'location_id' => $this->kecilLocationId,
+            'handed_to_warehouse_at' => now(),
+            'is_shadow' => false,
+            'is_canceled' => false,
+            'created_at' => now()->subDay(),
+        ]);
+
+        SalesOrderItem::create([
+            'order_id' => $order->id,
+            'item_id' => $this->itemId,
+            'sku' => $this->sku,
+            'qty_in_base' => 2,
+            'qty' => 2,
+            'unit_price' => 10000,
+        ]);
+
+        $this->artisan('orders:backfill-shipped-stock --dry-run')
+            ->expectsOutputToContain('Tidak ada pesanan yang perlu di-backfill')
+            ->assertSuccessful();
+
+        $this->assertEquals(10, DB::table('inventories')->where('item_id', $this->itemId)->value('on_hand'));
+        $this->assertEquals(0, DB::table('inventory_movements')->count());
+        $this->assertEquals(0, DB::table('order_bin_allocations')->count());
+    }
+
+    public function test_channel_backfill_always_consumes_from_gudang_kecil_not_order_location(): void
+    {
+        $otherLocationId = Str::uuid()->toString();
+        $otherBinId = Str::uuid()->toString();
+
+        DB::table('locations')->insert([
+            'id' => $otherLocationId,
+            'location_code' => 'WH-OTHER',
+            'location_name' => 'Gudang Lain',
+            'location_type' => 'WAREHOUSE',
+            'is_warehouse' => true,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('location_bins')->insert([
+            'id' => $otherBinId,
+            'location_id' => $otherLocationId,
+            'bin_code' => 'OTHER-A1',
+            'bin_final_code' => 'OTHER-A1',
+            'is_inbound' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('inventories')->insert([
+            'id' => Str::uuid()->toString(),
+            'item_id' => $this->itemId,
+            'location_id' => $this->kecilLocationId,
+            'bin_id' => $this->binId,
+            'on_hand' => 10,
+            'available' => 10,
+            'on_order' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('inventories')->insert([
+            'id' => Str::uuid()->toString(),
+            'item_id' => $this->itemId,
+            'location_id' => $otherLocationId,
+            'bin_id' => $otherBinId,
+            'on_hand' => 100,
+            'available' => 100,
+            'on_order' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $order = SalesOrder::create([
+            'salesorder_no' => 'SO-TEST-KCL-001',
+            'channel_order_no' => 'CH-TEST-KCL-001',
+            'source' => 'tiktok',
+            'status' => 'shipped',
+            'channel_status' => 'SHIPPED',
+            'location_id' => $otherLocationId,
+            'is_shadow' => false,
+            'is_canceled' => false,
+            'created_at' => now()->subDay(),
+        ]);
+
+        SalesOrderItem::create([
+            'order_id' => $order->id,
+            'item_id' => $this->itemId,
+            'sku' => $this->sku,
+            'qty_in_base' => 2,
+            'qty' => 2,
+            'unit_price' => 10000,
+        ]);
+
+        $this->artisan('orders:backfill-shipped-stock')->assertSuccessful();
+
+        $this->assertSame(8, (int) DB::table('inventories')
+            ->where('location_id', $this->kecilLocationId)
+            ->value('on_hand'));
+        $this->assertSame(100, (int) DB::table('inventories')
+            ->where('location_id', $otherLocationId)
+            ->value('on_hand'));
+        $this->assertSame($this->kecilLocationId, DB::table('inventory_movements')
+            ->where('transaction_number', 'SO-TEST-KCL-001')
+            ->value('location_id'));
+    }
+
     public function test_allows_negative_stock_when_on_hand_is_zero(): void
     {
 
@@ -228,6 +354,8 @@ class BackfillShippedOrdersStockTest extends TestCase
 
     public function test_upsert_from_channel_with_shipped_status_automatically_deducts_stock_synchronously(): void
     {
+        config()->set('inventory.channel_auto_physical_backfill', true);
+
         $channelId = DB::table('channels')->where('code', 'tiktok')->value('id')
             ?? DB::table('channels')->insertGetId([
                 'id' => Str::uuid()->toString(),
@@ -330,6 +458,8 @@ class BackfillShippedOrdersStockTest extends TestCase
 
     public function test_transition_from_shipped_to_completed_does_not_double_deduct(): void
     {
+        config()->set('inventory.channel_auto_physical_backfill', true);
+
         $shopId = Str::uuid()->toString();
         $channelId = DB::table('channels')->where('code', 'tiktok')->value('id');
 

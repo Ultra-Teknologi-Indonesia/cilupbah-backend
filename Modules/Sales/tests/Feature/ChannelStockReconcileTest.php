@@ -172,7 +172,7 @@ class ChannelStockReconcileTest extends TestCase
             ->count();
     }
 
-    public function test_reserved_then_packed_then_shipped_decrements_once(): void
+    public function test_channel_collection_status_does_not_fake_local_packing_or_release_reservation(): void
     {
         $this->service->upsertFromChannel($this->orderData('LZ-RC-1', 'AWAITING_SHIPMENT'));
         $this->assertSame(2, $this->inventory()->on_order);
@@ -181,7 +181,7 @@ class ChannelStockReconcileTest extends TestCase
         $this->service->upsertFromChannel($this->orderData('LZ-RC-1', 'AWAITING_COLLECTION'));
 
         $inv = $this->inventory();
-        $this->assertSame(0, $inv->on_order, 'alokasi harus dilepas saat melewati packed');
+        $this->assertSame(2, $inv->on_order, 'status marketplace tidak boleh melepas reservasi WMS');
         $this->assertSame(
             10,
             $inv->on_hand,
@@ -201,7 +201,7 @@ class ChannelStockReconcileTest extends TestCase
         $this->assertSame(0, $this->movements('ORDER_SHIP'), 'ORDER_SHIP sudah tidak ditulis: pengiriman bukan gerakan stok');
     }
 
-    public function test_pending_then_packed_reserves_and_releases_once(): void
+    public function test_pending_then_channel_collection_keeps_reservation_until_local_fulfillment(): void
     {
         $this->service->upsertFromChannel($this->orderData('LZ-RC-2', 'UNPAID'));
         $this->assertSame(10, $this->inventory()->on_hand);
@@ -215,9 +215,61 @@ class ChannelStockReconcileTest extends TestCase
 
         $inv = $this->inventory();
         $this->assertSame(10, $inv->on_hand, 'fisik baru berkurang saat picking');
-        $this->assertSame(0, $inv->on_order);
+        $this->assertSame(2, $inv->on_order);
         $this->assertSame(1, $this->movements('ORDER_RESERVE'));
-        $this->assertSame(1, $this->movements('ORDER_RELEASE'));
+        $this->assertSame(0, $this->movements('ORDER_RELEASE'));
+    }
+
+    public function test_channel_collection_does_not_downgrade_real_local_wms_status(): void
+    {
+        $this->service->upsertFromChannel($this->orderData('LZ-RC-4', 'AWAITING_SHIPMENT'));
+
+        DB::table('sales_orders')
+            ->where('salesorder_no', 'LZ-RC-4')
+            ->update([
+                'status' => 'packed',
+                'handed_to_warehouse_at' => now(),
+            ]);
+
+        $this->service->upsertFromChannel($this->orderData('LZ-RC-4', 'AWAITING_COLLECTION'));
+
+        $this->assertDatabaseHas('sales_orders', [
+            'salesorder_no' => 'LZ-RC-4',
+            'status' => 'packed',
+        ]);
+        $this->assertSame(1, $this->movements('ORDER_RESERVE'));
+        $this->assertSame(0, $this->movements('ORDER_RELEASE'));
+    }
+
+    public function test_channel_status_history_is_logged_once_per_distinct_channel_state(): void
+    {
+        $this->service->upsertFromChannel($this->orderData('LZ-RC-5', 'READY_TO_SHIP'));
+        $this->service->upsertFromChannel($this->orderData('LZ-RC-5', 'PROCESSED'));
+        $this->service->upsertFromChannel($this->orderData('LZ-RC-5', 'PROCESSED'));
+
+        $history = DB::table('sales_order_status_histories')
+            ->where('salesorder_id', DB::table('sales_orders')->where('salesorder_no', 'LZ-RC-5')->value('id'))
+            ->where('action', 'CHANNEL_STATUS')
+            ->get();
+
+        $this->assertCount(1, $history);
+        $metadata = json_decode((string) $history->first()->metadata, true);
+        $this->assertSame('READY_TO_SHIP', $metadata['prev_values']['channel_status']);
+        $this->assertSame('PROCESSED', $metadata['new_values']['channel_status']);
+        $this->assertSame('READY_TO_SHIP', $metadata['prev_values']['channel_status_raw']);
+        $this->assertSame('PROCESSED', $metadata['new_values']['channel_status_raw']);
+    }
+
+    public function test_unknown_channel_code_preserves_last_known_canonical_status(): void
+    {
+        $this->service->upsertFromChannel($this->orderData('LZ-RC-6', 'PROCESSED'));
+        $this->service->upsertFromChannel($this->orderData('LZ-RC-6', 'FUTURE_CHANNEL_STATUS'));
+
+        $order = DB::table('sales_orders')->where('salesorder_no', 'LZ-RC-6')->first();
+
+        $this->assertSame('PROCESSED', $order->channel_status);
+        $this->assertSame('FUTURE_CHANNEL_STATUS', $order->channel_status_raw);
+        $this->assertSame('reserved', $order->status);
     }
 
     public function test_channel_reservation_allows_oversell(): void

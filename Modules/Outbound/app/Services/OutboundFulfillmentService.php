@@ -15,6 +15,8 @@ use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Outbound\Contracts\DriverCallResult;
 use Modules\Outbound\Services\Logistics\LogisticsGateway;
+use Modules\Warehouse\Models\Location;
+use Modules\Outbound\Exceptions\OutboundValidationException;
 
 class OutboundFulfillmentService
 {
@@ -462,6 +464,14 @@ class OutboundFulfillmentService
 
         if ($order->status !== 'reserved') {
             throw new \Exception("Order harus berstatus 'reserved' untuk dipindah ke ready-to-pick (saat ini: {$order->status}).");
+        }
+
+        $source = strtolower((string) ($order->source ?? ''));
+        $officialLocationId = Location::getOfficialSmallWarehouseId();
+        if ($source !== '' && $source !== 'manual' && $officialLocationId !== null && $locationId !== $officialLocationId) {
+            throw new OutboundValidationException(
+                'Pesanan channel wajib diproses dan dipotong dari Gudang Kecil (WH-KECIL).'
+            );
         }
 
         $existing = PicklistItem::where('order_id', $orderId)
