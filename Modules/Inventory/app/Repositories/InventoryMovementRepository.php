@@ -347,22 +347,71 @@ class InventoryMovementRepository
                     $sources = InventoryMovementSourceMap::expandFilterTokens($tokens);
                     if (count($sources) > 0) {
                         $query->where(function ($q) use ($sources, $tokens) {
-                            $q->whereIn('source', $sources);
-                            if (in_array('TRANSFER', $tokens, true)) {
-                                $q->orWhere(function ($sub) {
-                                    $sub->whereIn('source', ['PUTAWAY_IN', 'PUTAWAY_OUT', 'PUTAWAY_REVERSAL'])
-                                        ->whereExists(function ($putQ) {
-                                            $putQ->selectRaw('1')
-                                                ->from('putaways as p')
-                                                ->leftJoin('inbounds as inb', 'inb.id', '=', 'p.source_id')
-                                                ->whereRaw("p.putaway_no = regexp_replace(inventory_movements.transaction_number, '-(BATAL|KOREKSI|HAPUS)$', '')")
-                                                ->where(function ($w) {
-                                                    $w->where('inb.source_type', 'transfer')
-                                                        ->orWhere('inb.type', 'TRANSIT_IN')
-                                                        ->orWhere('inb.transaction_number', 'LIKE', 'TRFI%')
-                                                        ->orWhere('p.source_type', 'TRANSFER');
-                                                });
+                            $isTransfer = in_array('TRANSFER', $tokens, true)
+                                || in_array('TRANSFER_IN', $tokens, true)
+                                || in_array('TRANSFER_OUT', $tokens, true);
+                            $isTagihan = in_array('TAGIHAN', $tokens, true)
+                                || in_array('PURCHASE', $tokens, true)
+                                || in_array('BILL', $tokens, true)
+                                || in_array('PUTAWAY_IN', $tokens, true);
+                            $isReturn = in_array('RETUR_PENJUALAN', $tokens, true)
+                                || in_array('SALES_RETURN', $tokens, true);
+
+                            $transferPutawayScope = function ($putQ) {
+                                $putQ->selectRaw('1')
+                                    ->from('putaways as p')
+                                    ->leftJoin('inbounds as inb', 'inb.id', '=', 'p.source_id')
+                                    ->whereRaw("p.putaway_no = regexp_replace(inventory_movements.transaction_number, '-(BATAL|KOREKSI|HAPUS)$', '')")
+                                    ->where(function ($w) {
+                                        $w->where('inb.source_type', 'transfer')
+                                            ->orWhere('inb.source_type', 'inventory_transfer')
+                                            ->orWhere('inb.type', 'TRANSIT_IN')
+                                            ->orWhere('inb.transaction_number', 'LIKE', 'TRFI%')
+                                            ->orWhere('inb.reference_number', 'LIKE', 'TRFI%')
+                                            ->orWhere('p.source_type', 'TRANSFER');
+                                    });
+                            };
+
+                            $returnPutawayScope = function ($putQ) {
+                                $putQ->selectRaw('1')
+                                    ->from('putaways as p')
+                                    ->leftJoin('inbounds as inb', 'inb.id', '=', 'p.source_id')
+                                    ->whereRaw("p.putaway_no = regexp_replace(inventory_movements.transaction_number, '-(BATAL|KOREKSI|HAPUS)$', '')")
+                                    ->where(function ($w) {
+                                        $w->where('inb.source_type', 'sales_return')
+                                            ->orWhere('inb.source_type', 'return')
+                                            ->orWhere('inb.type', 'SALES_RETURN')
+                                            ->orWhere('inb.transaction_number', 'LIKE', 'RET%')
+                                            ->orWhere('inb.reference_number', 'LIKE', 'RET%')
+                                            ->orWhere('p.source_type', 'SALES_RETURN')
+                                            ->orWhere('p.source_type', 'RETURN');
+                                    });
+                            };
+
+                            if ($isTagihan && ! $isTransfer && ! $isReturn) {
+                                $q->where(function ($sub) use ($sources, $transferPutawayScope, $returnPutawayScope) {
+                                    $sub->whereIn('source', array_diff($sources, ['PUTAWAY_IN', 'PUTAWAY_OUT', 'PUTAWAY_REVERSAL']))
+                                        ->orWhere(function ($putSub) use ($transferPutawayScope, $returnPutawayScope) {
+                                            $putSub->whereIn('source', ['PUTAWAY_IN', 'PUTAWAY_OUT', 'PUTAWAY_REVERSAL'])
+                                                ->whereNotExists($transferPutawayScope)
+                                                ->whereNotExists($returnPutawayScope);
                                         });
+                                });
+                            } else {
+                                $q->whereIn('source', $sources);
+                            }
+
+                            if ($isTransfer) {
+                                $q->orWhere(function ($sub) use ($transferPutawayScope) {
+                                    $sub->whereIn('source', ['PUTAWAY_IN', 'PUTAWAY_OUT', 'PUTAWAY_REVERSAL'])
+                                        ->whereExists($transferPutawayScope);
+                                });
+                            }
+
+                            if ($isReturn) {
+                                $q->orWhere(function ($sub) use ($returnPutawayScope) {
+                                    $sub->whereIn('source', ['PUTAWAY_IN', 'PUTAWAY_OUT', 'PUTAWAY_REVERSAL'])
+                                        ->whereExists($returnPutawayScope);
                                 });
                             }
                         });

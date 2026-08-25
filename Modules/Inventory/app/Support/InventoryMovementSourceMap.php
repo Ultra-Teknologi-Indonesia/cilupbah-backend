@@ -37,6 +37,8 @@ class InventoryMovementSourceMap
         'BIN_TRANSFER_IN'   => ['category' => 'TRANSFER', 'label' => 'Transfer'],
         'BIN_TRANSFER_OUT'  => ['category' => 'TRANSFER', 'label' => 'Transfer'],
         'BIN_TRANSFER_REVERSAL' => ['category' => 'TRANSFER', 'label' => 'Koreksi Pindah Bin'],
+        'BIN_TRANSFER_REVERT_OUT' => ['category' => 'TRANSFER', 'label' => 'Koreksi Pindah Bin'],
+        'TRANSIT_REVERT_IN'       => ['category' => 'TRANSFER', 'label' => 'Koreksi Transit'],
         'PUTAWAY_IN'        => ['category' => 'TAGIHAN', 'label' => 'Tagihan'],
         'PUTAWAY_OUT'       => ['category' => 'TAGIHAN', 'label' => 'Tagihan'],
         'PUTAWAY_REVERSAL'  => ['category' => 'TAGIHAN', 'label' => 'Koreksi Tagihan'],
