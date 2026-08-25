@@ -210,6 +210,96 @@ class KronologiBalancePartitionTest extends TestCase
         );
     }
 
+    public function test_clean_view_hides_default_bin_but_all_view_keeps_it(): void
+    {
+        $defaultBinId = Str::uuid()->toString();
+        DB::table('location_bins')->insert([
+            'id' => $defaultBinId,
+            'location_id' => $this->locationId,
+            'bin_code' => 'DEFAULT',
+            'bin_final_code' => 'DEFAULT',
+            'is_inbound' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $rackBinId = Str::uuid()->toString();
+        DB::table('location_bins')->insert([
+            'id' => $rackBinId,
+            'location_id' => $this->locationId,
+            'bin_code' => 'O-A5-K4-X30',
+            'bin_final_code' => 'O-A5-K4-X30',
+            'is_inbound' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('inventory_movements')->insert([
+            [
+                'id' => Str::uuid()->toString(),
+                'item_id' => $this->itemId,
+                'location_id' => $this->locationId,
+                'bin_id' => $defaultBinId,
+                'transaction_number' => 'PUT-DEFAULT-001',
+                'source' => 'PUTAWAY_OUT',
+                'qty' => -10,
+                'balance' => 0,
+                'transaction_date' => now()->addMinute(),
+                'created_by' => 'system',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'id' => Str::uuid()->toString(),
+                'item_id' => $this->itemId,
+                'location_id' => $this->locationId,
+                'bin_id' => $rackBinId,
+                'transaction_number' => 'PUT-DEFAULT-001',
+                'source' => 'PUTAWAY_IN',
+                'qty' => 10,
+                'balance' => 10,
+                'transaction_date' => now()->addMinute(),
+                'created_by' => 'system',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        request()->merge([
+            'filter' => ['item_id' => $this->itemId],
+            'view' => 'clean',
+            'per_page' => 50,
+        ]);
+
+        $cleanRows = collect(app(InventoryMovementRepository::class)->getHistoryPaginated(50)->items());
+
+        $cleanBinCodes = $cleanRows
+            ->map(fn ($row) => $row->bin?->bin_final_code)
+            ->filter()
+            ->all();
+
+        $this->assertNotContains('DEFAULT', $cleanBinCodes);
+        $this->assertSame(
+            ['PUTAWAY_IN'],
+            $cleanRows->where('transaction_number', 'PUT-DEFAULT-001')->pluck('source')->values()->all(),
+        );
+
+        request()->merge(['view' => 'all']);
+
+        $allRows = collect(app(InventoryMovementRepository::class)->getHistoryPaginated(50)->items());
+
+        $allBinCodes = $allRows
+            ->map(fn ($row) => $row->bin?->bin_final_code)
+            ->filter()
+            ->all();
+
+        $this->assertContains('DEFAULT', $allBinCodes);
+        $this->assertCount(
+            2,
+            $allRows->where('transaction_number', 'PUT-DEFAULT-001'),
+        );
+    }
+
     public function test_hidden_cancelled_reservation_still_contributes_to_running_balance(): void
     {
         $orderId = Str::uuid()->toString();

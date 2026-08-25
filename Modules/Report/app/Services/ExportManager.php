@@ -3,6 +3,8 @@
 namespace Modules\Report\Services;
 
 use App\Models\User;
+use Illuminate\Support\Facades\Route;
+use Modules\Report\Exports\InventoryStockReportExport;
 use Modules\Report\Exports\NegativeStockReportExport;
 use Modules\Report\Exports\PicklistDetailPhotoExport;
 use Modules\Report\Exports\SectionedReportExport;
@@ -20,6 +22,8 @@ class ExportManager
         'putaway-list',
         'shipment-by-courier',
         'picklist-detail-photo',
+        'inventory-stock',
+        'inventory-rack',
     ];
 
     public function queue(User $user, string $type, array $params): ExportJob
@@ -50,9 +54,9 @@ class ExportManager
     {
         $downloadUrl = null;
         if ($job->isReady()) {
-            $downloadUrl = \Illuminate\Support\Facades\Route::has('api.reports.exports.download')
+            $downloadUrl = Route::has('api.reports.exports.download')
                 ? route('api.reports.exports.download', $job->id)
-                : (\Illuminate\Support\Facades\Route::has('reports.exports.download')
+                : (Route::has('reports.exports.download')
                     ? route('reports.exports.download', $job->id)
                     : url("/api/v1/reports/exports/{$job->id}/download"));
         }
@@ -109,6 +113,16 @@ class ExportManager
             ),
 
             'picklist-detail-photo' => $this->buildPicklistPhoto($params),
+
+            'inventory-stock' => new InventoryStockReportExport(
+                app(InventoryStockReportService::class),
+                $params,
+            ),
+
+            'inventory-rack' => new InventoryStockReportExport(
+                app(InventoryStockReportService::class),
+                $params,
+            ),
         };
     }
 
@@ -158,6 +172,18 @@ class ExportManager
             'picklist-detail-photo' => sprintf(
                 'Detail-Picklist_%s.xlsx',
                 substr((string) ($params['picklist_id'] ?? 'export'), 0, 8),
+            ),
+
+            'inventory-stock' => sprintf(
+                'persediaan-barang-%s.xlsx',
+                ($params['report_type'] ?? 'per-lokasi') === 'as_of_date'
+                    ? 'per-tanggal-'.($params['as_of_date'] ?? now()->toDateString())
+                    : 'per-lokasi',
+            ),
+
+            'inventory-rack' => sprintf(
+                'persediaan-per-rak-%s.xlsx',
+                now()->format('Y-m-d'),
             ),
 
             default => 'export.xlsx',

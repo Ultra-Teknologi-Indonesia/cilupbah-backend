@@ -8,13 +8,13 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Maatwebsite\Excel\Facades\Excel;
-use Modules\Report\Exports\NegativeStockReportExport;
-use Modules\Report\Exports\PickListReportExport;
-use Modules\Report\Exports\PicklistDetailPhotoExport;
-use Modules\Report\Exports\SalesListPesananExport;
 use Modules\Report\Exports\CustomerListExport;
+use Modules\Report\Exports\NegativeStockReportExport;
+use Modules\Report\Exports\PicklistDetailPhotoExport;
+use Modules\Report\Exports\PickListReportExport;
 use Modules\Report\Exports\RincianPendapatanExport;
 use Modules\Report\Exports\RincianPendapatanPerBarangExport;
+use Modules\Report\Exports\SalesListPesananExport;
 use Modules\Report\Exports\SalesProductExport;
 use Modules\Report\Exports\SalesReturnExport;
 use Modules\Report\Exports\SectionedReportExport;
@@ -23,6 +23,7 @@ use Modules\Report\Exports\TransferReportExport;
 use Modules\Report\Http\Requests\BarcodeReportRequest;
 use Modules\Report\Http\Requests\CustomerListExportRequest;
 use Modules\Report\Http\Requests\HppReportRequest;
+use Modules\Report\Http\Requests\InventoryStockExportRequest;
 use Modules\Report\Http\Requests\LazadaGetDocumentRequest;
 use Modules\Report\Http\Requests\NegativeStockExportRequest;
 use Modules\Report\Http\Requests\NegativeStockRequest;
@@ -48,6 +49,7 @@ use Modules\Report\Http\Requests\ShipmentByCourierPdfRequest;
 use Modules\Report\Http\Requests\ShipmentListExportRequest;
 use Modules\Report\Http\Requests\TransferExportRequest;
 use Modules\Report\Services\CustomerListReportService;
+use Modules\Report\Services\ExportManager;
 use Modules\Report\Services\LazadaDocumentService;
 use Modules\Report\Services\OrderPerformanceReportService;
 use Modules\Report\Services\PutawayListReportService;
@@ -57,7 +59,6 @@ use Modules\Report\Services\RincianPendapatanReportService;
 use Modules\Report\Services\SalesListReportService;
 use Modules\Report\Services\SalesProductReportService;
 use Modules\Report\Services\SalesReturnReportService;
-use Modules\Report\Services\ExportManager;
 use Modules\Report\Services\ShipmentByCourierReportService;
 use OpenApi\Attributes as OA;
 
@@ -111,6 +112,14 @@ class ReportController extends Controller
         return $this->queueExport($exports, 'picklist-detail-photo', $request->validated());
     }
 
+    public function inventoryStockExportAsync(InventoryStockExportRequest $request, ExportManager $exports): JsonResponse
+    {
+        $filters = $request->normalized();
+        $type = $filters['report_type'] === 'by_rack' ? 'inventory-rack' : 'inventory-stock';
+
+        return $this->queueExport($exports, $type, $filters);
+    }
+
     #[OA\Get(
         path: '/api/v1/reports/putaway',
         summary: 'Putaway report',
@@ -131,6 +140,7 @@ class ReportController extends Controller
     public function putaway(Request $request): JsonResponse
     {
         $data = $this->reportService->putawayReport($request->all());
+
         return $this->successResponse($data, 'Putaway report berhasil diambil.');
     }
 
@@ -154,6 +164,7 @@ class ReportController extends Controller
     public function receive(Request $request): JsonResponse
     {
         $data = $this->reportService->receiveBillReport($request->all());
+
         return $this->successResponse($data, 'Receive bill report berhasil diambil.');
     }
 
@@ -177,6 +188,7 @@ class ReportController extends Controller
     public function adjustment(Request $request): JsonResponse
     {
         $data = $this->reportService->adjustmentReport($request->all());
+
         return $this->successResponse($data, 'Stock adjustment report berhasil diambil.');
     }
 
@@ -200,6 +212,7 @@ class ReportController extends Controller
     public function stockOpname(Request $request): JsonResponse
     {
         $data = $this->reportService->stockOpnameReport($request->all());
+
         return $this->successResponse($data, 'Stock opname report berhasil diambil.');
     }
 
@@ -224,6 +237,7 @@ class ReportController extends Controller
     public function purchaseOrder(Request $request): JsonResponse
     {
         $data = $this->reportService->purchaseOrderReport($request->all());
+
         return $this->successResponse($data, 'Purchase order report berhasil diambil.');
     }
 
@@ -246,6 +260,7 @@ class ReportController extends Controller
     public function invoice(Request $request): JsonResponse
     {
         $data = $this->reportService->invoiceReport($request->all());
+
         return $this->successResponse($data, 'Invoice report berhasil diambil.');
     }
 
@@ -269,6 +284,7 @@ class ReportController extends Controller
     public function consign(Request $request): JsonResponse
     {
         $data = $this->reportService->consignReport($request->all());
+
         return $this->successResponse($data, 'Consignment bill report berhasil diambil.');
     }
 
@@ -290,6 +306,7 @@ class ReportController extends Controller
     public function itemReceiveNotPlace(Request $request): JsonResponse
     {
         $data = $this->reportService->itemReceiveNotPlaceReport($request->all());
+
         return $this->successResponse($data, 'Item receive not placed report berhasil diambil.');
     }
 
@@ -313,6 +330,7 @@ class ReportController extends Controller
     public function pickList(Request $request): JsonResponse
     {
         $data = $this->reportService->pickListReport($request->all());
+
         return $this->successResponse($data, 'Picklist report berhasil diambil.');
     }
 
@@ -337,6 +355,7 @@ class ReportController extends Controller
     public function shippingManifest(Request $request): JsonResponse
     {
         $data = $this->reportService->shippingManifestReport($request->all());
+
         return $this->successResponse($data, 'Shipping manifest report berhasil diambil.');
     }
 

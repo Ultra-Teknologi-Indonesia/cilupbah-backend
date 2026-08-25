@@ -64,6 +64,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::middleware('role_or_permission:owner|export-laporan-persediaan')->group(function () {
         Route::post('reports/barcode/pdf', [ReportController::class, 'barcodePdf'])->name('reports.barcode.pdf');
         Route::post('reports/penyesuaian-stok/pdf', [ReportController::class, 'penyesuaianStokPdf'])->name('reports.penyesuaian-stok.pdf');
+        Route::post('reports/inventory/stock/export/async', [ReportController::class, 'inventoryStockExportAsync'])->name('reports.inventory.stock.export.async');
     });
 
     Route::middleware('role_or_permission:owner|view-laporan-stok-minus')->group(function () {

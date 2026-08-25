@@ -4,6 +4,8 @@ namespace Modules\Inventory\Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
+use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Models\Putaway;
 use Modules\Inventory\Models\PutawayItem;
 use Modules\Product\Models\Product;
@@ -119,5 +121,32 @@ class PutawayHistoryTest extends TestCase
         $this->assertContains('ASSIGNED', $types);
         $this->assertContains('STARTED', $types);
         $this->assertContains('COMPLETED', $types);
+    }
+
+    public function test_placement_timestamps_use_iso8601_contract_like_stock_chronology(): void
+    {
+        $movementTimestamp = Carbon::create(2026, 8, 25, 7, 48, 0, config('app.timezone'));
+        $item = $this->putaway->items()->firstOrFail();
+
+        InventoryMovement::create([
+            'item_id' => $item->item_id,
+            'location_id' => $this->putaway->location_id,
+            'bin_id' => $item->destination_bin_id,
+            'transaction_number' => $this->putaway->putaway_no,
+            'source' => 'PUTAWAY_IN',
+            'qty' => 1,
+            'balance' => 1,
+            'transaction_date' => $movementTimestamp,
+            'created_by' => (string) $this->worker->id,
+        ]);
+
+        $res = $this->actingAs($this->user)
+            ->getJson("/api/v1/putaway/{$this->putaway->id}/history")
+            ->assertOk();
+
+        $this->assertSame(
+            $movementTimestamp->toIso8601String(),
+            $res->json('data.placements.0.timestamp'),
+        );
     }
 }

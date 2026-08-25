@@ -96,7 +96,7 @@ class HideInboundStagingMovementsTest extends TestCase
         ]);
     }
 
-    public function test_staging_inbound_movements_are_hidden_and_only_putaway_to_rack_is_shown(): void
+    public function test_clean_hides_staging_but_all_keeps_default_movements(): void
     {
 
         DB::table('inventory_movements')->insert([
@@ -176,6 +176,7 @@ class HideInboundStagingMovementsTest extends TestCase
 
         request()->merge([
             'filter' => ['item_id' => $this->itemId],
+            'view' => 'clean',
             'per_page' => 50,
         ]);
 
@@ -195,5 +196,17 @@ class HideInboundStagingMovementsTest extends TestCase
         $this->assertNotNull($pickingRow);
         $this->assertSame(-1, (int) $pickingRow->qty);
         $this->assertSame(99, (int) $pickingRow->total_balance, 'Saldo berjalan setelah pick harus 99');
+
+        request()->merge(['view' => 'all']);
+
+        $allRows = collect(
+            app(InventoryMovementRepository::class)->getHistoryPaginated(50)->items()
+        );
+
+        $this->assertContains(
+            'DEFAULT',
+            $allRows->map(fn ($row) => $row->bin?->bin_final_code)->filter()->all(),
+            'Mode Semua harus tetap menampilkan mutasi pada bin DEFAULT',
+        );
     }
 }

@@ -2,9 +2,7 @@
     /** @var \Modules\Inbound\Models\Inbound $inbound */
     $companyName = config('app.company_name', 'PT ULTRA TEKNOLOGI INDONESIA');
     $printedAt = now()->format('d M Y H:i');
-    $items = collect($inbound->items ?? [])->filter(function ($item) {
-        return (int) $item->expected_qty > (int) ($item->received_qty ?? 0);
-    })->values();
+    $items = collect($inbound->items ?? [])->values();
     $typeLabel = [
         'PURCHASE_ORDER' => 'Pesanan Pembelian',
         'TRANSIT_IN'     => 'Transfer Masuk',
@@ -129,14 +127,9 @@
                     $sku = optional($variant)->sku ?? '-';
                     $name = optional(optional($variant)->product)->name ?? '-';
 
-                    // Hitung qty yang BELUM diterima (sisa target yang mau diproses)
-                    $targetQty = (int) $item->expected_qty - (int) ($item->received_qty ?? 0);
-
-                    // Sesuaikan tampilan agar fokus ke barang yang "mau diproses" saja (tidak menarik histori).
-                    // Qty Diharapkan diset menjadi target sisa. Qty Diterima & Sisa dikosongkan agar bisa diisi manual.
-                    $expected = $targetQty;
-                    $received = '';
-                    $remaining = '';
+                    $expected = (int) $item->expected_qty;
+                    $received = (int) ($item->received_qty ?? 0);
+                    $remaining = $item->remainingToReceiveQty();
                 @endphp
                 <tr>
                     <td class="center mono">{{ $i + 1 }}</td>

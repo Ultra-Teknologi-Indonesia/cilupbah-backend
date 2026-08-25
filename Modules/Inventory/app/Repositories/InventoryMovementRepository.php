@@ -141,17 +141,40 @@ class InventoryMovementRepository
         $view = strtolower((string) request('view', 'all'));
         $baseQuery = InventoryMovement::query()->where('qty', '!=', 0);
 
-        $baseQuery->whereNotExists(function ($q) {
-            $q->selectRaw('1')
-                ->from('location_bins')
-                ->join('locations', 'locations.id', '=', 'location_bins.location_id')
-                ->whereColumn('location_bins.id', 'inventory_movements.bin_id')
-                ->where('location_bins.is_inbound', true)
-                ->where('locations.is_small_warehouse', false);
+        $baseQuery->where(function ($q) {
+            $q->whereNotExists(function ($inboundBinQuery) {
+                $inboundBinQuery
+                    ->selectRaw('1')
+                    ->from('location_bins')
+                    ->join('locations', 'locations.id', '=', 'location_bins.location_id')
+                    ->whereColumn('location_bins.id', 'inventory_movements.bin_id')
+                    ->where('location_bins.is_inbound', true)
+                    ->where('locations.is_small_warehouse', false);
+            })->orWhereExists(function ($defaultBinQuery) {
+                $defaultBinQuery
+                    ->selectRaw('1')
+                    ->from('location_bins as default_bins')
+                    ->whereColumn('default_bins.id', 'inventory_movements.bin_id')
+                    ->whereRaw(
+                        "UPPER(TRIM(COALESCE(default_bins.bin_final_code, default_bins.bin_code, ''))) = 'DEFAULT'"
+                    );
+            });
         });
 
         if ($view === 'clean') {
             $baseQuery->whereNotIn('source', InventoryMovementSourceMap::CLEAN_HIDDEN_SOURCES);
+            $baseQuery->where(function ($q) {
+                $q->whereNull('inventory_movements.bin_id')
+                    ->orWhereNotExists(function ($defaultBinQuery) {
+                        $defaultBinQuery
+                            ->selectRaw('1')
+                            ->from('location_bins as default_bins')
+                            ->whereColumn('default_bins.id', 'inventory_movements.bin_id')
+                            ->whereRaw(
+                                "UPPER(TRIM(COALESCE(default_bins.bin_final_code, default_bins.bin_code, ''))) = 'DEFAULT'"
+                            );
+                    });
+            });
         } elseif ($view === 'attention') {
             $baseQuery->whereIn('source', InventoryMovementSourceMap::INVOICE_SOURCES);
         } else {
@@ -248,15 +271,39 @@ class InventoryMovementRepository
         $hasLocationFilter = ! empty(request('filter.location_id', request('location_id')));
 
         $balanceQuery = InventoryMovement::query()
-            ->where('qty', '!=', 0)
-            ->whereNotExists(function ($q) {
-                $q->selectRaw('1')
+            ->where('qty', '!=', 0);
+
+        if ($view === 'clean') {
+            $balanceQuery->whereNotExists(function ($inboundBinQuery) {
+                $inboundBinQuery
+                    ->selectRaw('1')
                     ->from('location_bins')
                     ->join('locations', 'locations.id', '=', 'location_bins.location_id')
                     ->whereColumn('location_bins.id', 'inventory_movements.bin_id')
                     ->where('location_bins.is_inbound', true)
                     ->where('locations.is_small_warehouse', false);
             });
+        } else {
+            $balanceQuery->where(function ($q) {
+                $q->whereNotExists(function ($inboundBinQuery) {
+                    $inboundBinQuery
+                        ->selectRaw('1')
+                        ->from('location_bins')
+                        ->join('locations', 'locations.id', '=', 'location_bins.location_id')
+                        ->whereColumn('location_bins.id', 'inventory_movements.bin_id')
+                        ->where('location_bins.is_inbound', true)
+                        ->where('locations.is_small_warehouse', false);
+                })->orWhereExists(function ($defaultBinQuery) {
+                    $defaultBinQuery
+                        ->selectRaw('1')
+                        ->from('location_bins as default_bins')
+                        ->whereColumn('default_bins.id', 'inventory_movements.bin_id')
+                        ->whereRaw(
+                            "UPPER(TRIM(COALESCE(default_bins.bin_final_code, default_bins.bin_code, ''))) = 'DEFAULT'"
+                        );
+                });
+            });
+        }
 
         $balanceItemId = request('filter.item_id', request('item_id'));
         if (is_string($balanceItemId) && trim($balanceItemId) !== '') {

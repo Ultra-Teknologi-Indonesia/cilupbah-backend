@@ -9,6 +9,7 @@ use Modules\Inventory\Models\StockAdjustment;
 use Modules\Inventory\Jobs\ProcessStockAdjustmentJob;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Support\StockAdjustmentRule;
+use Modules\Warehouse\Models\LocationBin;
 
 class StockAdjustmentService
 {
@@ -56,6 +57,8 @@ class StockAdjustmentService
 
     public function create(array $data): StockAdjustment
     {
+        $this->assertBinsBelongToLocation($data['items'] ?? [], $data['location_id']);
+
         app(\Modules\Product\Services\BundleGuardService::class)->assertNotBundle(
             array_column($data['items'] ?? [], 'item_id'),
             'penyesuaian stok',
@@ -124,6 +127,8 @@ class StockAdjustmentService
         if (!$adjustment) {
             throw new \Exception('Dokumen adjustment tidak ditemukan.');
         }
+
+        $this->assertBinsBelongToLocation($data['items'] ?? [], $adjustment->location_id);
 
         app(\Modules\Product\Services\BundleGuardService::class)->assertNotBundle(
             array_column($data['items'] ?? [], 'item_id'),
@@ -253,5 +258,35 @@ class StockAdjustmentService
         });
 
         return true;
+    }
+
+    /**
+     * A stock adjustment may contain many SKUs and each SKU may use a
+     * different bin, but every bin must belong to the selected location.
+     */
+    private function assertBinsBelongToLocation(array $items, string $locationId): void
+    {
+        $binIds = collect($items)
+            ->pluck('bin_id')
+            ->filter()
+            ->map(static fn ($id): string => (string) $id)
+            ->unique()
+            ->values();
+
+        if ($binIds->isEmpty()) {
+            return;
+        }
+
+        $validBinIds = LocationBin::query()
+            ->where('location_id', $locationId)
+            ->whereIn('id', $binIds->all())
+            ->pluck('id')
+            ->map(static fn ($id): string => (string) $id);
+
+        if ($binIds->diff($validBinIds)->isNotEmpty()) {
+            throw new \InvalidArgumentException(
+                'Rak penyesuaian harus berada di gudang yang dipilih.',
+            );
+        }
     }
 }

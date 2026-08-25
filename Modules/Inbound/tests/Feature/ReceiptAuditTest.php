@@ -187,4 +187,25 @@ class ReceiptAuditTest extends TestCase
         $this->assertSame(40, (int) $res->json('data.received_total'));
         $this->assertSame(15, (int) $res->json('data.received_by_me'));
     }
+
+    public function test_receipt_pdf_prints_expected_received_and_remaining_quantities(): void
+    {
+        $inbound = $this->makeInbound(10);
+        $item = $inbound->items->first();
+        $item->update([
+            'received_qty' => 6,
+            'rejected_qty' => 2,
+        ]);
+
+        $html = view('inbound::pdf.receipt', [
+            'inbound' => $inbound->fresh([
+                'location',
+                'items.variant.product',
+            ]),
+        ])->render();
+
+        $this->assertStringContainsString('>10</td>', $html);
+        $this->assertStringContainsString('>6</td>', $html);
+        $this->assertStringContainsString('>2</td>', $html);
+    }
 }

@@ -59,6 +59,19 @@ class InboundItem extends Model
         return max(0, $this->received_qty - $this->putaway_qty - ($this->reserved_qty ?? 0));
     }
 
+    /**
+     * Jumlah yang masih belum diterima, setelah memperhitungkan barang rusak.
+     */
+    public function remainingToReceiveQty(): int
+    {
+        return max(
+            0,
+            (int) $this->expected_qty
+                - (int) ($this->received_qty ?? 0)
+                - (int) ($this->rejected_qty ?? 0),
+        );
+    }
+
     public function scopeWithReceiptStats(Builder $q, ?string $userId = null): Builder
     {
         $userId ??= auth()->id();

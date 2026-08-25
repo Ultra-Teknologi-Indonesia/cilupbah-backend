@@ -26,6 +26,7 @@ use Modules\Inventory\Jobs\ProcessPutawayItemJob;
 use Modules\Notification\Events\TaskAssigned;
 use Modules\Notification\Services\NotificationDispatcher;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Carbon;
 
 class PutawayService
 {
@@ -162,6 +163,16 @@ class PutawayService
             throw new \App\Exceptions\UserFacingException('Dokumen penempatan tidak ditemukan.', 404);
         }
 
+        // Raw query results do not receive Eloquent's datetime serialization.
+        // Normalize them to the same ISO-8601 UTC contract used by resources.
+        $formatTimestamp = static function ($value): ?string {
+            if ($value === null || $value === '') {
+                return null;
+            }
+
+            return Carbon::parse((string) $value, config('app.timezone'))->toIso8601String();
+        };
+
         $resolveUser = function ($identifier) {
             if (empty($identifier)) return null;
             if ($identifier instanceof \App\Models\User) {
@@ -254,14 +265,14 @@ class PutawayService
             )
             ->orderBy('im.transaction_date', 'asc')
             ->get()
-            ->map(function ($m) use ($resolveUser) {
+            ->map(function ($m) use ($resolveUser, $formatTimestamp) {
                 return [
                     'id' => $m->id,
                     'sku' => $m->sku,
                     'product_name' => $m->product_name,
                     'bin_code' => $m->bin_final_code ?? '—',
                     'qty' => (int) $m->qty,
-                    'timestamp' => $m->transaction_date,
+                    'timestamp' => $formatTimestamp($m->transaction_date),
                     'actor' => $resolveUser($m->created_by),
                 ];
             });
@@ -278,8 +289,8 @@ class PutawayService
                     'name' => $p->name,
                     'email' => $p->email,
                     'status' => $p->status,
-                    'joined_at' => $p->joined_at,
-                    'withdrawn_at' => $p->withdrawn_at,
+                    'joined_at' => $formatTimestamp($p->joined_at),
+                    'withdrawn_at' => $formatTimestamp($p->withdrawn_at),
                 ]);
         }
 

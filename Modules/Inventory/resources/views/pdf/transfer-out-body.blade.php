@@ -27,16 +27,26 @@
 </table>
 
 <table class="items">
+    <colgroup>
+        <col class="col-no">
+        <col class="col-rak">
+        <col class="col-location">
+        <col class="col-sku">
+        <col class="col-name">
+        <col class="col-qty">
+        <col class="col-unit">
+        <col class="col-notes">
+    </colgroup>
     <thead>
         <tr>
-            <th style="width:18px">No</th>
-            <th style="width:52px">Rak</th>
-            <th style="width:40px">Lokasi</th>
-            <th style="width:110px">SKU</th>
+            <th>No</th>
+            <th>Rak</th>
+            <th>Lokasi</th>
+            <th>SKU</th>
             <th>Nama Barang</th>
-            <th style="width:24px">Qty</th>
-            <th style="width:28px">Unit</th>
-            <th style="width:46px">Keterangan</th>
+            <th>Qty</th>
+            <th>Unit</th>
+            <th>Keterangan</th>
         </tr>
     </thead>
     <tbody>
@@ -66,11 +76,11 @@
     </tbody>
 </table>
 
-<table style="width:100%; border-collapse:collapse;">
+<table class="totals">
     <tr class="total-row">
         <td class="num">Total Qty</td>
-        <td class="num mono" style="width:24px">{{ $totalQty }}</td>
-        <td style="width:46px"></td>
+        <td class="num mono">{{ $totalQty }}</td>
+        <td></td>
     </tr>
 </table>
 

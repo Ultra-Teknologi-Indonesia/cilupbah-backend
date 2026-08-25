@@ -11,11 +11,31 @@ class BulkPdfTransferRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        $rawIds = $this->input('ids', []);
+        $rawIds = is_array($rawIds) ? $rawIds : [$rawIds];
+
+        $ids = collect($rawIds)
+            ->flatMap(static function ($value): array {
+                $decoded = rawurldecode(trim((string) $value));
+
+                return explode(',', $decoded);
+            })
+            ->map(static fn ($id): string => trim((string) $id))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $this->merge(['ids' => $ids]);
+    }
+
     public function rules(): array
     {
         return [
             'ids' => 'required|array|min:1|max:50',
-            'ids.*' => 'required|string',
+            'ids.*' => ['required', 'uuid'],
         ];
     }
 }

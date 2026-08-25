@@ -149,4 +149,89 @@ class StockAdjustmentUpdateTest extends TestCase
 
         $this->assertEquals(0, InventoryMovement::where('transaction_number', $adj->adjustment_no)->where('item_id', $variantA->id)->count());
     }
+
+    public function test_create_supports_multiple_skus_on_different_bins(): void
+    {
+        Queue::fake();
+
+        $location = Location::create([
+            'location_code' => 'WH-MULTI',
+            'location_name' => 'Gudang Multi',
+            'location_type' => 'warehouse',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+
+        $binA = LocationBin::create([
+            'location_id' => $location->id,
+            'bin_code' => 'A1',
+            'bin_final_code' => 'WH-MULTI-A1',
+        ]);
+        $binB = LocationBin::create([
+            'location_id' => $location->id,
+            'bin_code' => 'B1',
+            'bin_final_code' => 'WH-MULTI-B1',
+        ]);
+
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'Cat Multi',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $product = Product::create([
+            'category_id' => $categoryId,
+            'name' => 'Product Multi',
+            'sku' => 'MULTI-BASE',
+            'is_active' => true,
+        ]);
+        $variantA = ProductVariant::create(['product_id' => $product->id, 'sku' => 'MULTI-A']);
+        $variantB = ProductVariant::create(['product_id' => $product->id, 'sku' => 'MULTI-B']);
+
+        Inventory::create([
+            'item_id' => $variantA->id,
+            'location_id' => $location->id,
+            'bin_id' => $binA->id,
+            'on_hand' => 10,
+        ]);
+        Inventory::create([
+            'item_id' => $variantB->id,
+            'location_id' => $location->id,
+            'bin_id' => $binB->id,
+            'on_hand' => 20,
+        ]);
+
+        $adjustment = app(StockAdjustmentService::class)->create([
+            'transaction_date' => now()->toDateString(),
+            'location_id' => $location->id,
+            'created_by' => 'tester',
+            'items' => [
+                [
+                    'item_id' => $variantA->id,
+                    'bin_id' => $binA->id,
+                    'actual_qty' => 12,
+                ],
+                [
+                    'item_id' => $variantB->id,
+                    'bin_id' => $binB->id,
+                    'actual_qty' => 17,
+                ],
+            ],
+        ]);
+
+        $this->assertCount(2, $adjustment->items);
+        $this->assertEquals(12, Inventory::where('item_id', $variantA->id)->value('on_hand'));
+        $this->assertEquals(17, Inventory::where('item_id', $variantB->id)->value('on_hand'));
+        $this->assertDatabaseHas('inventory_movements', [
+            'transaction_number' => $adjustment->adjustment_no,
+            'item_id' => $variantA->id,
+            'bin_id' => $binA->id,
+            'qty' => 2,
+        ]);
+        $this->assertDatabaseHas('inventory_movements', [
+            'transaction_number' => $adjustment->adjustment_no,
+            'item_id' => $variantB->id,
+            'bin_id' => $binB->id,
+            'qty' => -3,
+        ]);
+    }
 }
