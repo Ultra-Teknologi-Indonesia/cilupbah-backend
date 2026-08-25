@@ -41,9 +41,12 @@ class SalesReturnController extends Controller
             new OA\Parameter(name: 'search', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'sort', in: 'query', required: false, schema: new OA\Schema(type: 'string', example: '-created_at')),
             new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20, maximum: 200)),
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', maximum: 200, description: 'Alias kompatibilitas untuk per_page')),
             new OA\Parameter(name: 'filter[status]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'filter[source]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'filter[location_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'filter[channel_shop_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'filter[reason]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'filter[reason_category]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
@@ -52,7 +55,7 @@ class SalesReturnController extends Controller
     )]
     public function index(Request $request): JsonResponse
     {
-        $limit = min(max($request->integer('per_page', 20), 1), 200);
+        $limit = min(max($request->integer('per_page', $request->integer('limit', 20)), 1), 200);
         $returns = $this->returnService->getAllPaginated($limit);
 
         return $this->successPaginatedResponse($returns, 'Daftar sales return berhasil diambil');
@@ -67,7 +70,10 @@ class SalesReturnController extends Controller
             new OA\Parameter(name: 'search', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'sort', in: 'query', required: false, schema: new OA\Schema(type: 'string', example: '-created_at')),
             new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20, maximum: 200)),
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', maximum: 200, description: 'Alias kompatibilitas untuk per_page')),
             new OA\Parameter(name: 'filter[location_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'filter[channel_shop_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'filter[reason]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'filter[reason_category]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
@@ -76,10 +82,68 @@ class SalesReturnController extends Controller
     )]
     public function unprocessed(Request $request): JsonResponse
     {
-        $limit = min(max($request->integer('per_page', 20), 1), 200);
+        $limit = min(max($request->integer('per_page', $request->integer('limit', 20)), 1), 200);
         $returns = $this->returnService->getUnprocessedMarketplace($limit);
 
         return $this->successPaginatedResponse($returns, 'Daftar marketplace return yang belum diproses');
+    }
+
+    #[OA\Get(
+        path: '/api/v1/sales/returns/filter-options',
+        summary: 'Get dynamic sales return filter options',
+        security: [['bearerAuth' => []]],
+        tags: ['Sales Returns'],
+        responses: [
+            new OA\Response(response: 200, description: 'Reasons and marketplace shops available for filtering'),
+        ]
+    )]
+    public function filterOptions(): JsonResponse
+    {
+        $reasons = \Illuminate\Support\Facades\DB::table('sales_returns')
+            ->where('source', 'marketplace')
+            ->where(function ($query): void {
+                $query->whereNotNull('channel_reason_code')
+                    ->orWhereNotNull('channel_reason_text')
+                    ->orWhereNotNull('reason');
+            })
+            ->get(['channel_reason_code', 'channel_reason_text', 'reason'])
+            ->map(function ($row): ?array {
+                $value = trim((string) ($row->channel_reason_code ?: $row->channel_reason_text ?: $row->reason ?: ''));
+                $label = trim((string) ($row->channel_reason_text ?: $row->reason ?: $row->channel_reason_code ?: ''));
+
+                if ($value === '' || $label === '') {
+                    return null;
+                }
+
+                return ['value' => $value, 'label' => $label];
+            })
+            ->filter()
+            ->unique('value')
+            ->sortBy('label', SORT_NATURAL | SORT_FLAG_CASE)
+            ->values();
+
+        $shops = \Illuminate\Support\Facades\DB::table('channel_shops as shops')
+            ->join('channels', 'channels.id', '=', 'shops.channel_id')
+            ->whereExists(function ($query): void {
+                $query->selectRaw('1')
+                    ->from('sales_returns')
+                    ->where('sales_returns.source', 'marketplace')
+                    ->whereColumn('sales_returns.channel_shop_id', 'shops.shop_id');
+            })
+            ->get([
+                'shops.shop_id as value',
+                'shops.shop_name as label',
+                'channels.code as channel',
+                'channels.name as channel_name',
+            ])
+            ->unique(fn ($shop): string => $shop->channel . '|' . $shop->value)
+            ->sortBy(fn ($shop): string => strtolower($shop->channel_name . ' ' . $shop->label))
+            ->values();
+
+        return $this->successResponse([
+            'reasons' => $reasons,
+            'shops' => $shops,
+        ], 'Opsi filter sales return berhasil diambil');
     }
 
     #[OA\Get(

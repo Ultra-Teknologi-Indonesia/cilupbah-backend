@@ -17,8 +17,11 @@ class SalesReturnRepository
         'sales_returns.return_number',
         'sales_returns.customer_name',
         'sales_returns.return_tracking_number',
+        'sales_returns.return_carrier',
         'sales_returns.channel_return_id',
         'sales_returns.channel_reason_text',
+        'sales_returns.channel_reason_code',
+        'sales_returns.reason',
         'order.channel_order_no',
         'order.salesorder_no',
     ];
@@ -53,19 +56,50 @@ class SalesReturnRepository
             );
     }
 
+    private function allowedFilters(bool $includeStatus): array
+    {
+        $filters = [
+            AllowedFilter::exact('source', 'sales_returns.source'),
+            AllowedFilter::exact('order_id', 'sales_returns.order_id'),
+            AllowedFilter::exact('location_id', 'sales_returns.location_id'),
+            AllowedFilter::exact('channel_shop_id', 'sales_returns.channel_shop_id'),
+            AllowedFilter::callback('reason', function ($query, $value): void {
+                $values = is_array($value) ? $value : [$value];
+                $values = array_values(array_filter(array_map(
+                    static fn ($reason): string => trim((string) $reason),
+                    $values,
+                )));
+
+                if ($values === []) {
+                    return;
+                }
+
+                $query->where(function ($reasonQuery) use ($values): void {
+                    foreach ($values as $reason) {
+                        $reasonQuery
+                            ->orWhere('sales_returns.channel_reason_code', $reason)
+                            ->orWhere('sales_returns.channel_reason_text', $reason)
+                            ->orWhere('sales_returns.reason', $reason);
+                    }
+                });
+            }),
+            AllowedFilter::exact('reason_category', 'sales_returns.reason_category'),
+            AllowedFilter::callback('date_from', fn ($query, $value) => $query->whereDate('sales_returns.created_at', '>=', $value)),
+            AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('sales_returns.created_at', '<=', $value)),
+        ];
+
+        if ($includeStatus) {
+            array_unshift($filters, AllowedFilter::exact('status', 'sales_returns.status'));
+        }
+
+        return $filters;
+    }
+
     public function getAllPaginated(int $limit = 10)
     {
         return $this->withOrderJoin(QueryBuilder::for(SalesReturn::class))
             ->with(['order:id,salesorder_no,source', 'location:id,location_name', 'items.product:id,sku,product_id', 'items.product.product:id,name'])
-            ->allowedFilters(
-                AllowedFilter::exact('status', 'sales_returns.status'),
-                AllowedFilter::exact('source', 'sales_returns.source'),
-                AllowedFilter::exact('order_id', 'sales_returns.order_id'),
-                AllowedFilter::exact('location_id', 'sales_returns.location_id'),
-                AllowedFilter::exact('reason_category', 'sales_returns.reason_category'),
-                AllowedFilter::callback('date_from', fn ($query, $value) => $query->whereDate('sales_returns.created_at', '>=', $value)),
-                AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('sales_returns.created_at', '<=', $value)),
-            )
+            ->allowedFilters(...$this->allowedFilters(includeStatus: true))
             ->allowedSearch(...self::SEARCH_COLUMNS)
             ->allowedSorts(
                 AllowedSort::field('return_number', 'sales_returns.return_number'),
@@ -79,7 +113,7 @@ class SalesReturnRepository
                 AllowedSort::field('status', 'sales_returns.status'),
             )
             ->defaultSort('-created_at')
-            ->paginate(min(max((int) request('per_page', $limit), 1), 200))
+            ->paginate(min(max((int) request('per_page', request('limit', $limit)), 1), 200))
             ->appends(request()->query());
     }
 
@@ -115,12 +149,7 @@ class SalesReturnRepository
             ->unprocessed()
             ->marketplace()
             ->with(['order:id,salesorder_no,source', 'location:id,location_name', 'items.product:id,sku,product_id', 'items.product.product:id,name'])
-            ->allowedFilters(
-                AllowedFilter::exact('location_id', 'sales_returns.location_id'),
-                AllowedFilter::exact('reason_category', 'sales_returns.reason_category'),
-                AllowedFilter::callback('date_from', fn ($query, $value) => $query->whereDate('sales_returns.created_at', '>=', $value)),
-                AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('sales_returns.created_at', '<=', $value)),
-            )
+            ->allowedFilters(...$this->allowedFilters(includeStatus: false))
             ->allowedSearch(...self::SEARCH_COLUMNS)
             ->allowedSorts(
                 AllowedSort::field('return_number', 'sales_returns.return_number'),
@@ -134,7 +163,7 @@ class SalesReturnRepository
                 AllowedSort::field('status', 'sales_returns.status'),
             )
             ->defaultSort('-created_at')
-            ->paginate(min(max((int) request('per_page', $limit), 1), 200))
+            ->paginate(min(max((int) request('per_page', request('limit', $limit)), 1), 200))
             ->appends(request()->query());
     }
 

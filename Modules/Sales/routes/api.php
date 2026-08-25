@@ -60,6 +60,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     });
 
     Route::middleware('role_or_permission:owner|view-retur-penjualan')->group(function () {
+        Route::get('sales/returns/filter-options', [SalesReturnController::class, 'filterOptions'])->name('sales.returns.filter-options');
         Route::get('sales/returns/items/rejected', [SalesReturnController::class, 'rejectedItems'])->name('sales.returns.items.rejected');
         Route::get('sales/returns/items/resolved', [SalesReturnController::class, 'resolvedItems'])->name('sales.returns.items.resolved');
         Route::get('sales/returns/items', [SalesReturnController::class, 'allItems'])->name('sales.returns.items.index');
