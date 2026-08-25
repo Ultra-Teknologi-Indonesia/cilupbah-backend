@@ -9,6 +9,7 @@ use Modules\Outbound\Support\InstantOrderClassifier;
 use Modules\Sales\Models\SalesOrder;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
+use Spatie\QueryBuilder\AllowedSort;
 
 class ShipmentRepository
 {
@@ -48,7 +49,18 @@ class ShipmentRepository
                 }),
             )
             ->allowedSearch('shipment_no', 'courier_name', 'courier_code')
-            ->allowedSorts('created_at', 'shipment_no', 'shipment_date', 'location_id', 'courier_name', 'shipment_type', 'status')
+            ->allowedSorts(
+                'created_at',
+                'shipment_no',
+                'shipment_date',
+                'location_id',
+                'courier_code',
+                'courier_name',
+                'shipment_type',
+                'status',
+                'orders_count',
+                'total_weight_gram',
+            )
             ->defaultSort('-shipment_date')
             ->paginate($limit)
             ->appends(request()->query());
@@ -66,7 +78,7 @@ class ShipmentRepository
                 AllowedFilter::exact('shipment_type'),
             )
             ->allowedSearch('shipment_no', 'courier_name', 'courier_code')
-            ->allowedSorts('created_at', 'shipment_no', 'shipment_date', 'location_id', 'courier_name', 'shipment_type', 'status')
+            ->allowedSorts('created_at', 'shipment_no', 'shipment_date', 'location_id', 'courier_code', 'courier_name', 'shipment_type', 'status')
             ->defaultSort('-shipment_date')
             ->paginate($limit)
             ->appends(request()->query());
@@ -114,7 +126,33 @@ class ShipmentRepository
                 'shipment.courier_name',
                 'shipment.courier_code'
             )
-            ->allowedSorts('created_at')
+            ->allowedSorts(
+                'created_at',
+                AllowedSort::callback('salesorder_no', fn ($query, bool $descending) => $query->orderBy(
+                    SalesOrder::query()
+                        ->select('salesorder_no')
+                        ->whereColumn('sales_orders.id', 'shipment_orders.order_id'),
+                    $descending ? 'desc' : 'asc',
+                )),
+                AllowedSort::callback('shipment_no', fn ($query, bool $descending) => $query->orderBy(
+                    Shipment::query()
+                        ->select('shipment_no')
+                        ->whereColumn('shipments.id', 'shipment_orders.shipment_id'),
+                    $descending ? 'desc' : 'asc',
+                )),
+                AllowedSort::callback('shipment_status', fn ($query, bool $descending) => $query->orderBy(
+                    Shipment::query()
+                        ->select('status')
+                        ->whereColumn('shipments.id', 'shipment_orders.shipment_id'),
+                    $descending ? 'desc' : 'asc',
+                )),
+                AllowedSort::callback('handed_over_at', fn ($query, bool $descending) => $query->orderBy(
+                    Shipment::query()
+                        ->select('handed_over_at')
+                        ->whereColumn('shipments.id', 'shipment_orders.shipment_id'),
+                    $descending ? 'desc' : 'asc',
+                )),
+            )
             ->defaultSort('-created_at')
             ->paginate($limit)
             ->appends(request()->query());
@@ -132,7 +170,7 @@ class ShipmentRepository
                 AllowedFilter::exact('courier_code'),
             )
             ->allowedSearch('shipment_no', 'courier_name', 'courier_code')
-            ->allowedSorts('created_at', 'shipment_no', 'shipment_date', 'location_id', 'courier_name', 'shipment_type', 'status')
+            ->allowedSorts('created_at', 'shipment_no', 'shipment_date', 'location_id', 'courier_code', 'courier_name', 'shipment_type', 'status')
             ->defaultSort('-shipment_date')
             ->paginate($limit)
             ->appends(request()->query());

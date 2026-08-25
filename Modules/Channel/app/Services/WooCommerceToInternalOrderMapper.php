@@ -56,7 +56,8 @@ class WooCommerceToInternalOrderMapper
             'channel_order_no' => (string) ($order['id'] ?? ''),
             'channel_shop_id' => $shopId,
             'channel_buyer_id' => ! empty($order['customer_id']) ? (string) $order['customer_id'] : null,
-            'customer_name' => $customerName !== '' ? $customerName : 'WooCommerce Buyer',
+
+            'customer_name' => $customerName !== '' ? $customerName : null,
             'transaction_date' => $this->parseDate($order['date_created'] ?? null),
 
             'sub_total' => $subTotal,

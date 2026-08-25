@@ -429,14 +429,6 @@ class PicklistService
         );
     }
 
-    /**
-     * Channel orders have one physical fulfilment origin during the
-     * Jubelio-to-Super Apps transition: the official Gudang Kecil.
-     *
-     * Existing installations/tests without the system location keep their
-     * legacy behaviour; production installations are protected as soon as
-     * WH-KECIL (or the active small-warehouse flag) exists.
-     */
     private function assertChannelLocation(iterable $orders, string $locationId): void
     {
         $hasChannelOrder = collect($orders)->contains(function ($order): bool {

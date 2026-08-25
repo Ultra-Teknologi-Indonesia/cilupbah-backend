@@ -73,6 +73,7 @@ class SalesReturnFromChannelTest extends TestCase
             'channel_order_id' => 'SP-123',
             'channel_return_id' => 'RSN-1',
             'channel_shop_id' => 'shop-9',
+            'channel_status' => 'ACCEPTED',
             'created_by' => 'system:shopee-webhook',
         ]);
 
@@ -81,6 +82,9 @@ class SalesReturnFromChannelTest extends TestCase
         $this->assertSame(SalesReturn::STATUS_PENDING, $return->status);
         $this->assertSame($orderId, $return->order_id);
         $this->assertSame($locationId, $return->location_id);
+        $this->assertSame('ACCEPTED', $return->marketplace_raw_status);
+        $this->assertSame(SalesReturn::MP_DECISION_APPROVED, $return->marketplace_decision);
+        $this->assertNotNull($return->marketplace_decision_at);
 
         $this->assertDatabaseHas('sales_return_items', [
             'sales_return_id' => $return->id,
@@ -97,16 +101,24 @@ class SalesReturnFromChannelTest extends TestCase
 
         $first = $svc->createFromChannel([
             'source' => 'tiktok', 'channel_order_id' => 'TT-9',
-            'channel_return_id' => 'RID-77', 'created_by' => 'system:tiktok-webhook',
+            'channel_return_id' => 'RID-77', 'channel_status' => 'RETURN_OR_REFUND_REQUEST_PENDING',
+            'created_by' => 'system:tiktok-webhook',
         ]);
         $second = $svc->createFromChannel([
             'source' => 'tiktok', 'channel_order_id' => 'TT-9',
-            'channel_return_id' => 'RID-77', 'created_by' => 'system:tiktok-webhook',
+            'channel_return_id' => 'RID-77', 'channel_status' => 'RETURN_OR_REFUND_REQUEST_COMPLETE',
+            'created_by' => 'system:tiktok-webhook',
         ]);
 
         $this->assertNotNull($first);
-        $this->assertNull($second);
+        $this->assertNotNull($second);
+        $this->assertSame($first->id, $second->id);
         $this->assertSame(1, SalesReturn::where('source', SalesReturn::SOURCE_MARKETPLACE)->count());
+        $this->assertDatabaseHas('sales_returns', [
+            'id' => $first->id,
+            'marketplace_raw_status' => 'RETURN_OR_REFUND_REQUEST_COMPLETE',
+            'marketplace_decision' => SalesReturn::MP_DECISION_REFUNDED,
+        ]);
     }
 
     public function test_skips_when_order_not_found(): void

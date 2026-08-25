@@ -146,6 +146,7 @@ class ProcessWooCommerceWebhook implements ShouldQueue
                 'channel_return_id' => $refundId,
                 'channel_shop_id'   => $this->shopId,
                 'reason'            => $reason !== '' ? $reason : 'Refund WooCommerce',
+                'channel_status'    => $status !== '' ? strtoupper($status) : 'REFUNDED',
                 'created_by'        => 'system:woocommerce-webhook',
             ]);
         }

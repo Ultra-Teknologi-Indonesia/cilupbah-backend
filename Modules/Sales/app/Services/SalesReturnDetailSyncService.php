@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Services;
 
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Services\ShopeeOrderService;
@@ -39,6 +40,16 @@ class SalesReturnDetailSyncService
 
         $detail = $this->fetchDetail($channel, $shopId, $rawReturnId, $channelOrderNo);
 
+        if ($detail['channel_status'] === null && $rawReturnId && $channelOrderNo !== '') {
+            $orderDetail = $this->fetchDetail($channel, $shopId, null, $channelOrderNo);
+            $detail = $this->preferPopulatedDetail($detail, $orderDetail);
+        }
+
+        if ($detail['channel_status'] === null && $rawReturnId) {
+            $webhookDetail = $this->findLatestWebhookDetail($channel, $shopId, $rawReturnId);
+            $detail = $this->preferPopulatedDetail($detail, $webhookDetail);
+        }
+
         if ($detail['channel_status'] !== null) {
             $decision = SalesReturn::normalizeMarketplaceDecision($channel, $detail['channel_status']);
 
@@ -55,12 +66,24 @@ class SalesReturnDetailSyncService
                 $decision = SalesReturn::MP_DECISION_NOT_RETURN;
             }
 
-            if ($decision !== $return->marketplace_decision) {
-                $update['marketplace_decision'] = $decision;
-                $update['marketplace_decision_at'] = now();
-            }
+            if (SalesReturn::shouldApplyMarketplaceDecision($return->marketplace_decision, $decision)) {
+                $update['marketplace_raw_status'] = $detail['channel_status'];
 
-            $update['marketplace_raw_status'] = $detail['channel_status'];
+                if ($decision !== $return->marketplace_decision || $return->marketplace_decision_at === null) {
+                    $update['marketplace_decision'] = $decision;
+                    $update['marketplace_decision_at'] = now();
+                }
+            } elseif ($decision === $return->marketplace_decision) {
+                $update['marketplace_raw_status'] = $detail['channel_status'];
+            }
+        }
+
+        if ($detail['channel_status'] !== null && ! isset($update['marketplace_raw_status'])) {
+            Log::info('Status retur marketplace diabaikan karena lebih lama dari keputusan tersimpan.', [
+                'sales_return_id' => $return->id,
+                'current_decision' => $return->marketplace_decision,
+                'incoming_status' => $detail['channel_status'],
+            ]);
         }
 
         if ($detail['reason_code'] !== null) {
@@ -95,6 +118,129 @@ class SalesReturnDetailSyncService
         }
 
         return count($update) > 1;
+    }
+
+    private function preferPopulatedDetail(array $current, array $candidate): array
+    {
+        if (($current['channel_status'] ?? null) !== null) {
+            return $current;
+        }
+
+        return array_merge($current, array_filter(
+            $candidate,
+            static fn ($value) => $value !== null && $value !== '',
+        ));
+    }
+
+    private function findLatestWebhookDetail(string $channel, string $shopId, string $rawReturnId): array
+    {
+        $empty = [
+            'channel_status' => null,
+            'reason_code' => null,
+            'reason_text' => null,
+            'refund_amount' => null,
+            'refund_currency' => null,
+            'shipping_fee_original' => null,
+            'shipping_fee_return' => null,
+            'tracking_number' => null,
+            'carrier' => null,
+            'shipped_at' => null,
+            'raw' => [],
+        ];
+
+        try {
+            $escapedId = addcslashes($rawReturnId, '%_\\');
+            $inboxes = DB::table('channel_webhook_inbox')
+                ->where('channel', $channel)
+                ->where('shop_id', $shopId)
+                ->whereRaw('payload::text ILIKE ?', ["%{$escapedId}%"])
+                ->orderByDesc('received_at')
+                ->limit(25)
+                ->get(['payload', 'received_at']);
+
+            foreach ($inboxes as $inbox) {
+                $payload = is_array($inbox->payload)
+                    ? $inbox->payload
+                    : json_decode((string) $inbox->payload, true);
+                if (! is_array($payload)) {
+                    continue;
+                }
+
+                $status = $this->findWebhookStatus($payload);
+                if ($status === null) {
+                    continue;
+                }
+
+                return array_merge($empty, [
+                    'channel_status' => $status,
+                    'raw' => [
+                        'source' => 'channel_webhook_inbox',
+                        'received_at' => $inbox->received_at,
+                        'payload' => $payload,
+                    ],
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::debug('Fallback status retur dari webhook gagal.', [
+                'channel' => $channel,
+                'return_id' => $rawReturnId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $empty;
+    }
+
+    private function findWebhookStatus(array $payload): ?string
+    {
+        $preferredKeys = [
+            'return_status',
+            'reverse_status',
+            'return_order_status',
+            'refund_status',
+            'aftersales_request_status',
+        ];
+
+        $nodes = [$payload];
+        while ($nodes !== []) {
+            $node = array_pop($nodes);
+            if (! is_array($node)) {
+                continue;
+            }
+
+            foreach ($preferredKeys as $key) {
+                $value = $node[$key] ?? null;
+                if (is_string($value) && trim($value) !== '') {
+                    return trim($value);
+                }
+            }
+
+            foreach ($node as $key => $value) {
+                if ($key === 'status' && is_string($value) && $this->isKnownChannelStatus($value)) {
+                    return trim($value);
+                }
+                if (is_array($value)) {
+                    $nodes[] = $value;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function isKnownChannelStatus(string $status): bool
+    {
+        return in_array(strtoupper(trim($status)), [
+            'REQUESTED', 'ACCEPTED', 'PROCESSING', 'SELLER_DISPUTE', 'JUDGING',
+            'CANCELLED', 'CLOSED', 'EXPIRED', 'REFUNDED', 'REJECTED',
+            'RETURN_OR_REFUND_REQUEST_PENDING', 'AWAITING_BUYER_SHIP',
+            'BUYER_SHIPPED_ITEM', 'REQUEST_SUCCESS', 'REQUEST_REJECTED',
+            'RETURN_OR_REFUND_REQUEST_REJECT', 'REFUND_OR_RETURN_REQUEST_REJECT',
+            'RECEIVE_REJECTED', 'REJECT_RECEIVE_PACKAGE',
+            'RETURN_OR_REFUND_REQUEST_COMPLETE', 'RETURN_OR_REFUND_CANCEL',
+            'RETURN_OR_REFUND_REQUEST_CANCEL', 'REPLACEMENT_REQUEST_CANCEL',
+            'REPLACEMENT_REQUEST_REJECT', 'REFUND_SUCCESS',
+        ], true);
     }
 
     protected function fetchDetail(string $channel, string $shopId, ?string $rawReturnId, string $channelOrderNo): array

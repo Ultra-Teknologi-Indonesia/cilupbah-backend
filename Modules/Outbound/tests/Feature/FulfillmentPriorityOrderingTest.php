@@ -44,4 +44,17 @@ class FulfillmentPriorityOrderingTest extends TestCase
 
         $this->assertSame(['INS-SOON', 'INS-FAR', 'REG-SOON', 'REG-FAR'], $order);
     }
+
+    public function test_explicit_sort_from_table_header_overrides_default_priority(): void
+    {
+        $this->seedReadyOrder('SORT-Z', 'Grab Instant', now()->addMinutes(10)->toDateTimeString());
+        $this->seedReadyOrder('SORT-A', 'GoSend Instant', now()->addDays(2)->toDateTimeString());
+
+        request()->replace(['sort' => 'salesorder_no']);
+
+        $page = app(OutboundFulfillmentService::class)->getOrdersByStage('ready-to-process', 20);
+        $order = collect($page->items())->pluck('salesorder_no')->all();
+
+        $this->assertSame(['SORT-A', 'SORT-Z'], $order);
+    }
 }

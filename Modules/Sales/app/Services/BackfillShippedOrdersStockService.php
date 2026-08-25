@@ -193,9 +193,7 @@ class BackfillShippedOrdersStockService
 
     private function resolveLocationId(): ?string
     {
-        // Channel fulfillment is single-origin during the cutover. Never
-        // trust a stale/order-supplied location here: physical stock must be
-        // consumed from the official Gudang Kecil only.
+
         return Location::getOfficialSmallWarehouseId();
     }
 

@@ -59,6 +59,15 @@ class SalesReturn extends Model
         'shipping_fee_return' => 'decimal:2',
     ];
 
+    protected $appends = [
+        'channel',
+        'channel_name',
+        'channel_shop_name',
+        'reason_display',
+        'marketplace_decision_label',
+        'marketplace_raw_status_label',
+    ];
+
     protected function marketplaceDecision(): Attribute
     {
         return Attribute::make(
@@ -66,17 +75,177 @@ class SalesReturn extends Model
                 if ($value === null || $value === '') {
                     return null;
                 }
+
+                $value = strtoupper(trim((string) $value));
+
+                if (in_array($value, self::MP_DECISIONS, true)) {
+                    return $value;
+                }
+
+                $legacyMap = [
+                    'PENDING' => self::MP_DECISION_PENDING,
+                    'SELLER_WIN' => self::MP_DECISION_REJECTED,
+                    'BUYER_WIN' => self::MP_DECISION_APPROVED,
+                    'NO_RETURN_NEEDED' => self::MP_DECISION_NOT_RETURN,
+                    'SELLER_REFUSE_RETURN' => self::MP_DECISION_REJECTED,
+                    'REFUNDED' => self::MP_DECISION_REFUNDED,
+                    'CANCELLED' => self::MP_DECISION_CLOSED,
+                ];
+
+                if (isset($legacyMap[$value])) {
+                    return $legacyMap[$value];
+                }
+
                 $canonical = \Modules\Sales\Enums\DisputeOutcome::tryFrom((string) $value);
                 if ($canonical !== null) {
-                    return $canonical->value;
+                    return $legacyMap[$canonical->value] ?? self::MP_DECISION_PENDING;
                 }
                 $channel = $this->relationLoaded('order')
                     ? $this->order?->source
                     : ($this->attributes['source'] ?? null);
                 $normalized = DisputeOutcomeNormalizer::normalize($channel, (string) $value);
-                return $normalized?->value;
+                return $normalized
+                    ? ($legacyMap[$normalized->value] ?? self::MP_DECISION_PENDING)
+                    : self::MP_DECISION_PENDING;
             },
         );
+    }
+
+    protected function channel(): Attribute
+    {
+        return Attribute::make(
+            get: function ($value) {
+                if ($value) {
+                    return strtolower((string) $value);
+                }
+
+                $channelReturnId = (string) ($this->attributes['channel_return_id'] ?? '');
+                if (str_contains($channelReturnId, ':')) {
+                    return strtolower((string) str($channelReturnId)->before(':'));
+                }
+
+                $order = $this->relationLoaded('order') ? $this->order : null;
+                return $order?->source ? strtolower((string) $order->source) : null;
+            },
+        );
+    }
+
+    protected function channelName(): Attribute
+    {
+        return Attribute::make(
+            get: function ($value) {
+                if ($value) {
+                    return (string) $value;
+                }
+
+                return [
+                    'tiktok' => 'TikTok Shop',
+                    'shopee' => 'Shopee',
+                    'lazada' => 'Lazada',
+                    'woocommerce' => 'WooCommerce',
+                    'tokopedia' => 'Tokopedia',
+                    'blibli' => 'Blibli',
+                ][$this->channel ?? ''] ?? ucfirst((string) ($this->channel ?? 'Manual'));
+            },
+        );
+    }
+
+    protected function channelShopName(): Attribute
+    {
+        return Attribute::make(get: fn ($value) => $value ?: null);
+    }
+
+    protected function reasonDisplay(): Attribute
+    {
+        return Attribute::make(
+            get: function () {
+                $text = trim((string) ($this->attributes['channel_reason_text'] ?? ''));
+                $code = strtoupper(trim((string) ($this->attributes['channel_reason_code'] ?? '')));
+                $reason = trim((string) ($this->attributes['reason'] ?? ''));
+                $labels = [
+                    'wrong product sent' => 'Produk yang dikirim tidak sesuai',
+                    'change of mind' => 'Pembeli berubah pikiran',
+                    'product doesn\'t match description' => 'Produk tidak sesuai deskripsi',
+                    'product does not match description' => 'Produk tidak sesuai deskripsi',
+                    'WRONG_PRODUCT' => 'Produk yang dikirim tidak sesuai',
+                    'NO_NEED' => 'Pembeli berubah pikiran',
+                    'NO_NEED_NON_MALL' => 'Pembeli berubah pikiran',
+                    'NOT_MATCH_DESCRIPTION' => 'Produk tidak sesuai deskripsi',
+                    'RETURN_OR_REFUND_REQUEST_SUCCESS' => 'Permintaan retur/refund berhasil',
+                ];
+
+                foreach ([$text, $code, $reason] as $candidate) {
+                    if ($candidate === '') {
+                        continue;
+                    }
+                    if (isset($labels[$candidate])) {
+                        return $labels[$candidate];
+                    }
+                    if (isset($labels[strtolower($candidate)])) {
+                        return $labels[strtolower($candidate)];
+                    }
+                }
+
+                $fallback = $text !== '' ? $text : ($reason !== '' ? $reason : $code);
+                return $fallback === '' ? null : self::humanizeCode($fallback);
+            },
+        );
+    }
+
+    protected function marketplaceDecisionLabel(): Attribute
+    {
+        return Attribute::make(
+            get: function () {
+                $decision = strtoupper(trim((string) ($this->attributes['marketplace_decision'] ?? '')));
+                return self::MP_DECISION_LABELS[$decision] ?? [
+                    'PENDING' => 'Menunggu Keputusan',
+                    'REFUNDED' => 'Dana Dikembalikan',
+                    'BUYER_WIN' => 'Disetujui Marketplace',
+                    'SELLER_WIN' => 'Ditolak Marketplace',
+                ][$decision] ?? ($decision !== '' ? self::humanizeCode($decision) : null);
+            },
+        );
+    }
+
+    protected function marketplaceRawStatusLabel(): Attribute
+    {
+        return Attribute::make(
+            get: function () {
+                $status = strtoupper(trim((string) ($this->attributes['marketplace_raw_status'] ?? '')));
+                if ($status === '') {
+                    return null;
+                }
+
+                return [
+                    'RETURN_OR_REFUND_REQUEST_PENDING' => 'Menunggu peninjauan channel',
+                    'AWAITING_BUYER_SHIP' => 'Menunggu barang dikirim pembeli',
+                    'BUYER_SHIPPED_ITEM' => 'Barang dikirim pembeli',
+                    'REQUEST_SUCCESS' => 'Permintaan disetujui channel',
+                    'REQUEST_REJECTED' => 'Permintaan ditolak channel',
+                    'RETURN_OR_REFUND_REQUEST_REJECT' => 'Permintaan retur/refund ditolak channel',
+                    'REFUND_OR_RETURN_REQUEST_REJECT' => 'Permintaan refund/retur ditolak channel',
+                    'RECEIVE_REJECTED' => 'Penerimaan ditolak channel',
+                    'REJECT_RECEIVE_PACKAGE' => 'Penerimaan paket ditolak channel',
+                    'RETURN_OR_REFUND_REQUEST_COMPLETE' => 'Retur/refund selesai di channel',
+                    'RETURN_OR_REFUND_CANCEL' => 'Retur/refund dibatalkan di channel',
+                    'RETURN_OR_REFUND_REQUEST_CANCEL' => 'Permintaan retur/refund dibatalkan di channel',
+                    'REPLACEMENT_REQUEST_CANCEL' => 'Permintaan penggantian dibatalkan di channel',
+                    'REPLACEMENT_REQUEST_REJECT' => 'Permintaan penggantian ditolak channel',
+                    'REQUESTED' => 'Menunggu keputusan channel',
+                    'ACCEPTED' => 'Disetujui channel',
+                    'PROCESSING' => 'Sedang diproses channel',
+                    'CLOSED' => 'Ditutup channel',
+                    'CANCELLED' => 'Dibatalkan channel',
+                    'REFUNDED' => 'Dana dikembalikan channel',
+                    'COMPLETED' => 'Selesai di channel',
+                ][$status] ?? self::humanizeCode($status);
+            },
+        );
+    }
+
+    private static function humanizeCode(string $value): string
+    {
+        return ucfirst(strtolower(trim(str_replace(['_', '-'], ' ', $value))));
     }
 
     const SOURCE_MANUAL      = 'manual';
@@ -152,6 +321,7 @@ class SalesReturn extends Model
     const MP_DECISION_MAP = [
 
         'shopee' => [
+            'PENDING'         => self::MP_DECISION_PENDING,
             'REQUESTED'      => self::MP_DECISION_PENDING,
             'ACCEPTED'       => self::MP_DECISION_APPROVED,
             'PROCESSING'     => self::MP_DECISION_PENDING,
@@ -159,17 +329,27 @@ class SalesReturn extends Model
             'JUDGING'        => self::MP_DECISION_JUDGING,
             'CANCELLED'      => self::MP_DECISION_CLOSED,
             'CLOSED'         => self::MP_DECISION_CLOSED,
+            'EXPIRED'        => self::MP_DECISION_CLOSED,
+            'REFUNDED'       => self::MP_DECISION_REFUNDED,
+            'REJECTED'       => self::MP_DECISION_REJECTED,
         ],
 
         'tiktok' => [
+            'PENDING'                             => self::MP_DECISION_PENDING,
             'RETURN_OR_REFUND_REQUEST_PENDING'  => self::MP_DECISION_PENDING,
             'AWAITING_BUYER_SHIP'               => self::MP_DECISION_APPROVED,
             'BUYER_SHIPPED_ITEM'                => self::MP_DECISION_APPROVED,
             'REQUEST_SUCCESS'                   => self::MP_DECISION_APPROVED,
             'REQUEST_REJECTED'                  => self::MP_DECISION_REJECTED,
+            'RETURN_OR_REFUND_REQUEST_REJECT'   => self::MP_DECISION_REJECTED,
+            'REFUND_OR_RETURN_REQUEST_REJECT'   => self::MP_DECISION_REJECTED,
             'RECEIVE_REJECTED'                  => self::MP_DECISION_REJECTED,
+            'REJECT_RECEIVE_PACKAGE'            => self::MP_DECISION_REJECTED,
             'RETURN_OR_REFUND_REQUEST_COMPLETE' => self::MP_DECISION_REFUNDED,
             'RETURN_OR_REFUND_CANCEL'           => self::MP_DECISION_CLOSED,
+            'RETURN_OR_REFUND_REQUEST_CANCEL'   => self::MP_DECISION_CLOSED,
+            'REPLACEMENT_REQUEST_CANCEL'        => self::MP_DECISION_CLOSED,
+            'REPLACEMENT_REQUEST_REJECT'        => self::MP_DECISION_REJECTED,
 
             'PENDING_REQUEST_REVIEW'            => self::MP_DECISION_PENDING,
             'REQUEST_REVIEW_COMPLETED'          => self::MP_DECISION_APPROVED,
@@ -213,8 +393,8 @@ class SalesReturn extends Model
 
     public static function normalizeMarketplaceDecision(string $channel, string $rawStatus): string
     {
-        $map = self::MP_DECISION_MAP[$channel] ?? [];
-        $upperStatus = strtoupper($rawStatus);
+        $map = self::MP_DECISION_MAP[strtolower(trim($channel))] ?? [];
+        $upperStatus = strtoupper(trim($rawStatus));
 
         if (! isset($map[$upperStatus])) {
             \Illuminate\Support\Facades\Log::warning('Unmapped marketplace return status', [
@@ -226,6 +406,46 @@ class SalesReturn extends Model
         }
 
         return $map[$upperStatus];
+    }
+
+    public static function shouldApplyMarketplaceDecision(?string $current, ?string $candidate): bool
+    {
+        if ($candidate === null || $candidate === '') {
+            return false;
+        }
+
+        $current = strtoupper(trim((string) $current));
+        $candidate = strtoupper(trim($candidate));
+
+        $legacyMap = [
+            'PENDING' => self::MP_DECISION_PENDING,
+            'BUYER_WIN' => self::MP_DECISION_APPROVED,
+            'SELLER_WIN' => self::MP_DECISION_REJECTED,
+            'SELLER_REFUSE_RETURN' => self::MP_DECISION_REJECTED,
+            'REFUNDED' => self::MP_DECISION_REFUNDED,
+            'CANCELLED' => self::MP_DECISION_CLOSED,
+            'NO_RETURN_NEEDED' => self::MP_DECISION_NOT_RETURN,
+        ];
+
+        $current = $legacyMap[$current] ?? $current;
+        $candidate = $legacyMap[$candidate] ?? $candidate;
+
+        if ($current === '' || $current === $candidate) {
+            return true;
+        }
+
+        $priority = [
+            self::MP_DECISION_PENDING => 10,
+            self::MP_DECISION_APPROVED => 20,
+            self::MP_DECISION_DISPUTE => 30,
+            self::MP_DECISION_JUDGING => 30,
+            self::MP_DECISION_REJECTED => 40,
+            self::MP_DECISION_CLOSED => 40,
+            self::MP_DECISION_REFUNDED => 50,
+            self::MP_DECISION_NOT_RETURN => 50,
+        ];
+
+        return ($priority[$candidate] ?? 0) > ($priority[$current] ?? 0);
     }
 
     public function order(): BelongsTo

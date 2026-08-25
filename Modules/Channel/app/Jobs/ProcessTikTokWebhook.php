@@ -317,6 +317,7 @@ class ProcessTikTokWebhook implements ShouldQueue
             $orderId,
             $data['return_id'] ?? $data['reverse_order_id'] ?? null,
             $data['return_reason'] ?? $data['reverse_status'] ?? $data['return_status'] ?? $data['reason'] ?? 'Retur TikTok',
+            $data['return_status'] ?? $data['reverse_status'] ?? null,
         );
     }
 
@@ -347,6 +348,7 @@ class ProcessTikTokWebhook implements ShouldQueue
             $orderId,
             null,
             'Refund TikTok berhasil (RMA ' . ($data['rma_id'] ?? '-') . ')',
+            'REFUND_SUCCESS',
         );
     }
 
@@ -360,7 +362,7 @@ class ProcessTikTokWebhook implements ShouldQueue
         ]);
     }
 
-    protected function createChannelReturn(string $shopId, string $orderId, ?string $channelReturnId, string $reason): void
+    protected function createChannelReturn(string $shopId, string $orderId, ?string $channelReturnId, string $reason, ?string $channelStatus = null): void
     {
 
         \Modules\Sales\Jobs\ProcessChannelReturnJob::dispatch([
@@ -369,6 +371,7 @@ class ProcessTikTokWebhook implements ShouldQueue
             'channel_return_id' => $channelReturnId,
             'channel_shop_id'   => $shopId,
             'reason'            => $reason,
+            'channel_status'    => $channelStatus,
             'created_by'        => 'system:tiktok-webhook',
         ]);
     }

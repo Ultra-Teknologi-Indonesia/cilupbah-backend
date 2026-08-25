@@ -114,12 +114,7 @@ class BulkShippingLabelController extends Controller
             return null;
         }
 
-        $disk = Storage::disk('documents');
-        try {
-            return $disk->temporaryUrl($batch->merged_pdf_path, now()->addHours(2));
-        } catch (\Throwable) {
-            return url("/api/sales/shipping-labels/bulk/{$batch->id}/pdf");
-        }
+        return route('api.sales.shipping-labels.bulk.pdf', ['batch' => $batch->id]);
     }
 
     private function statusLabel(string $status): string

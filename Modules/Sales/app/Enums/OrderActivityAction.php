@@ -4,52 +4,58 @@ namespace Modules\Sales\Enums;
 
 enum OrderActivityAction: string
 {
-    case CREATED           = 'CREATED';
-    case PAID              = 'PAID';
-    case PROCESS           = 'PROCESS';
-    case PICK_STARTED      = 'PICK_STARTED';
-    case PICK_FAILED       = 'PICK_FAILED';
-    case FINISH_PICK       = 'FINISH_PICK';
-    case PACK_STARTED      = 'PACK_STARTED';
-    case LABEL_PRINTED     = 'LABEL_PRINTED';
-    case FINISH_PACK       = 'FINISH_PACK';
-    case READY_TO_SHIP     = 'READY_TO_SHIP';
-    case DRIVER_CALLED     = 'DRIVER_CALLED';
-    case TRACKING_UPDATED  = 'TRACKING_UPDATED';
-    case CHANNEL_STATUS    = 'CHANNEL_STATUS';
+    case CREATED = 'CREATED';
+    case PAID = 'PAID';
+    case PROCESS = 'PROCESS';
+    case PICK_STARTED = 'PICK_STARTED';
+    case PICK_FAILED = 'PICK_FAILED';
+    case FINISH_PICK = 'FINISH_PICK';
+    case PACK_STARTED = 'PACK_STARTED';
+    case LABEL_PRINTED = 'LABEL_PRINTED';
+    case FINISH_PACK = 'FINISH_PACK';
+    case READY_TO_SHIP = 'READY_TO_SHIP';
+    case DRIVER_CALLED = 'DRIVER_CALLED';
+    case TRACKING_UPDATED = 'TRACKING_UPDATED';
+    case CHANNEL_STATUS = 'CHANNEL_STATUS';
     case RECEIVED_BY_BUYER = 'RECEIVED_BY_BUYER';
-    case RETURN_DECISION   = 'RETURN_DECISION';
-    case FIELD_CHANGED     = 'FIELD_CHANGED';
-    case SHIPPED           = 'SHIPPED';
-    case COMPLETED         = 'COMPLETED';
-    case CANCELLED         = 'CANCELLED';
-    case ZONE_ASSIGNED     = 'ZONE_ASSIGNED';
-    case ITEM_CREATED      = 'ITEM_CREATED';
+    case RETURN_DECISION = 'RETURN_DECISION';
+    case FIELD_CHANGED = 'FIELD_CHANGED';
+    case SHIPPED = 'SHIPPED';
+    case COMPLETED = 'COMPLETED';
+    case CANCELLED = 'CANCELLED';
+    case ZONE_ASSIGNED = 'ZONE_ASSIGNED';
+    case ITEM_CREATED = 'ITEM_CREATED';
+    case ADDED_TO_SHIPMENT = 'ADDED_TO_SHIPMENT';
+    case REMOVED_FROM_SHIPMENT = 'REMOVED_FROM_SHIPMENT';
+    case SHIPMENT_HANDED_OVER = 'SHIPMENT_HANDED_OVER';
 
     public function code(): string
     {
         return match ($this) {
-            self::CREATED           => '100',
-            self::PAID              => '120',
-            self::PROCESS           => '200',
-            self::PICK_STARTED      => '500',
-            self::PICK_FAILED       => '510',
-            self::FINISH_PICK       => '600',
-            self::PACK_STARTED      => '700',
-            self::LABEL_PRINTED     => '750',
-            self::FINISH_PACK       => '800',
-            self::READY_TO_SHIP     => '850',
-            self::DRIVER_CALLED     => '870',
-            self::TRACKING_UPDATED  => '900',
-            self::CHANNEL_STATUS    => '910',
+            self::CREATED => '100',
+            self::PAID => '120',
+            self::PROCESS => '200',
+            self::PICK_STARTED => '500',
+            self::PICK_FAILED => '510',
+            self::FINISH_PICK => '600',
+            self::PACK_STARTED => '700',
+            self::LABEL_PRINTED => '750',
+            self::FINISH_PACK => '800',
+            self::READY_TO_SHIP => '850',
+            self::DRIVER_CALLED => '870',
+            self::TRACKING_UPDATED => '900',
+            self::CHANNEL_STATUS => '910',
             self::RECEIVED_BY_BUYER => '913',
-            self::RETURN_DECISION   => '920',
-            self::FIELD_CHANGED     => '990',
-            self::SHIPPED           => '999',
-            self::COMPLETED         => '912',
-            self::CANCELLED         => '000',
-            self::ZONE_ASSIGNED     => '860',
-            self::ITEM_CREATED      => '101',
+            self::RETURN_DECISION => '920',
+            self::FIELD_CHANGED => '990',
+            self::SHIPPED => '999',
+            self::COMPLETED => '912',
+            self::CANCELLED => '000',
+            self::ZONE_ASSIGNED => '860',
+            self::ITEM_CREATED => '101',
+            self::ADDED_TO_SHIPMENT => '880',
+            self::REMOVED_FROM_SHIPMENT => '881',
+            self::SHIPMENT_HANDED_OVER => '882',
         };
     }
 
@@ -60,6 +66,7 @@ enum OrderActivityAction: string
                 return $case;
             }
         }
+
         return null;
     }
 }

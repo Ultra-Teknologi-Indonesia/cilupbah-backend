@@ -9,6 +9,8 @@ use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Product\Models\ProductVariant;
 use Modules\Warehouse\Models\LocationBin;
+use Modules\Inventory\Exceptions\NegativeStockAdjustmentException;
+use Modules\Inventory\Support\StockAdjustmentRule;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -25,9 +27,10 @@ class StockAdjustmentImportService
 
     public function __construct(
         protected InventoryRepository $inventoryRepository,
+        protected StockAdjustmentRule $stockAdjustmentRule,
     ) {}
 
-    public function preview(UploadedFile $file, string $locationId): array
+    public function preview(UploadedFile $file, string $locationId, ?string $actorId = null): array
     {
         $rows = $this->readDataRows($file);
 
@@ -90,11 +93,20 @@ class StockAdjustmentImportService
                 continue;
             }
 
-            $mode = $hasDelta ? 'DELTA' : 'FINAL';
-            $inputValue = $mode === 'DELTA' ? (int) $deltaRaw : (int) $finalRaw;
+            $mode = $hasDelta ? StockAdjustmentRule::MODE_DELTA : StockAdjustmentRule::MODE_FINAL;
+            $inputRaw = $mode === StockAdjustmentRule::MODE_DELTA ? $deltaRaw : $finalRaw;
 
-            if ($mode === 'FINAL' && $inputValue < 0) {
-                $errors[] = ['row' => $rowNo, 'field' => 'final_qty', 'error' => "[SKU: {$sku}] Nilai akhir (final_qty) tidak boleh kurang dari 0."];
+            try {
+                $inputValue = $this->stockAdjustmentRule->parseInteger(
+                    $inputRaw,
+                    $mode === StockAdjustmentRule::MODE_DELTA ? 'delta_qty' : 'final_qty',
+                );
+            } catch (\InvalidArgumentException $e) {
+                $errors[] = [
+                    'row' => $rowNo,
+                    'field' => $mode === StockAdjustmentRule::MODE_DELTA ? 'delta_qty' : 'final_qty',
+                    'error' => "[SKU: {$sku}] {$e->getMessage()}",
+                ];
                 continue;
             }
 
@@ -145,10 +157,18 @@ class StockAdjustmentImportService
 
             $systemQty = $inventory ? (int) $inventory->on_hand : 0;
 
-            $actualQty = $mode === 'DELTA' ? $systemQty + $inputValue : $inputValue;
-
-            if ($actualQty < 0) {
-                $errors[] = ['row' => $rowNo, 'field' => 'delta_qty', 'error' => "[SKU: {$sku}] Pengurangan stok melebihi batas (sisa {$systemQty}, dikurangi " . abs($inputValue) . ")."];
+            try {
+                $calculation = $this->stockAdjustmentRule->calculate(
+                    systemQty: $systemQty,
+                    inputValue: $inputValue,
+                    mode: $mode,
+                );
+            } catch (NegativeStockAdjustmentException|\InvalidArgumentException $e) {
+                $errors[] = [
+                    'row' => $rowNo,
+                    'field' => $mode === StockAdjustmentRule::MODE_DELTA ? 'delta_qty' : 'final_qty',
+                    'error' => "[SKU: {$sku}] {$e->getMessage()}",
+                ];
                 continue;
             }
 
@@ -160,6 +180,14 @@ class StockAdjustmentImportService
                     $errors[] = ['row' => $rowNo, 'field' => 'hpp', 'error' => "[SKU: {$sku}] Harga Pokok (HPP) tidak boleh kurang dari 0."];
                     continue;
                 }
+            }
+
+            if ($calculation->resultsInNegativeStock()) {
+                $warnings[] = [
+                    'row' => $rowNo,
+                    'field' => $mode === StockAdjustmentRule::MODE_DELTA ? 'delta_qty' : 'final_qty',
+                    'warning' => "[SKU: {$sku}] Penyesuaian diizinkan oleh policy, tetapi hasil stok menjadi minus ({$calculation->actualQty}).",
+                ];
             }
 
             $noteText = trim((string) ($row['notes'] ?? ''));
@@ -178,8 +206,8 @@ class StockAdjustmentImportService
                 'mode'          => $mode,
                 'input_value'   => $inputValue,
                 'system_qty'    => $systemQty,
-                'actual_qty'    => $actualQty,
-                'difference'    => $actualQty - $systemQty,
+                'actual_qty'    => $calculation->actualQty,
+                'difference'    => $calculation->differenceQty,
                 'unit_cost'     => $unitCost,
                 'notes'         => $noteText !== '' ? $noteText : null,
             ];
@@ -195,6 +223,7 @@ class StockAdjustmentImportService
 
         Cache::put(self::CACHE_PREFIX . $token, [
             'location_id' => $locationId,
+            'actor_id'    => $actorId,
             'items'       => $items,
             'summary'     => $summary,
         ], now()->addMinutes(self::CACHE_TTL_MINUTES));
@@ -208,9 +237,19 @@ class StockAdjustmentImportService
         ];
     }
 
-    public function getPreview(string $token): ?array
+    public function getPreview(string $token, ?string $actorId = null): ?array
     {
-        return Cache::get(self::CACHE_PREFIX . $token);
+        $preview = Cache::get(self::CACHE_PREFIX . $token);
+
+        if (! is_array($preview)) {
+            return null;
+        }
+
+        if (array_key_exists('actor_id', $preview) && $preview['actor_id'] !== $actorId) {
+            return null;
+        }
+
+        return $preview;
     }
 
     public function forgetPreview(string $token): void
@@ -267,7 +306,8 @@ class StockAdjustmentImportService
             '2. Setiap baris mewakili 1 item + 1 rak.',
             '3. WAJIB isi salah satu: delta_qty ATAU final_qty (tidak boleh keduanya).',
             '4. Kolom bin_final_code boleh dikosongkan — sistem otomatis pakai rak utama.',
-            '5. Baca sheet "Tata Cara Pengisian" untuk detail tiap kolom.',
+            '5. Aturan delta/final sama dengan penyesuaian manual; hasil minus mengikuti policy stok.',
+            '6. Baca sheet "Tata Cara Pengisian" untuk detail tiap kolom.',
             '',
             'Legenda:',
             '  Kolom wajib = latar orange',
@@ -286,7 +326,7 @@ class StockAdjustmentImportService
             ['Nama Kolom', 'Wajib', 'Tipe', 'Contoh', 'Keterangan'],
             ['item_code', 'Ya', 'Text', 'SKU-12345', 'SKU varian yang mau disesuaikan'],
             ['bin_final_code', 'Opsional', 'Text', 'L1-B1-K1-R2', 'Kosongkan → sistem pakai rak utama otomatis'],
-            ['delta_qty', 'Salah satu', 'Integer (+/-)', '10 atau -5', 'Selisih tambah/kurang dari on_hand sekarang'],
+            ['delta_qty', 'Salah satu', 'Integer (+/-)', '10 atau -5', 'Selisih tambah/kurang dari on_hand sekarang; mengikuti policy stok minus yang sama dengan manual'],
             ['final_qty', 'Salah satu', 'Integer ≥0', '100', 'Stok akhir absolut (menimpa on_hand)'],
             ['hpp', 'Opsional', 'Decimal', '2000', 'Harga pokok baru. Delta positif → weighted-avg recalc'],
             ['notes', 'Opsional', 'Text', 'Opname 2026-01', 'Alasan per baris'],

@@ -74,6 +74,38 @@ class SalesOrderActivityEndpointTest extends TestCase
         $this->assertSame(['PAID', 'CREATED'], $labels);
     }
 
+    public function test_endpoint_returns_label_printed_actor_and_server_timestamp(): void
+    {
+        $user = User::factory()->create([
+            'name' => 'Operator Cetak',
+        ]);
+        $user->assignRole('owner');
+        Sanctum::actingAs($user);
+
+        $order = SalesOrder::factory()->create([
+            'tracking_number' => 'AWB-ACTIVITY-001',
+        ]);
+
+        app(SalesOrderService::class)->logLabelPrinted(
+            $order,
+            $user,
+            'THERMAL_AIR_WAYBILL',
+        );
+
+        $response = $this->getJson("/api/v1/sales/{$order->id}/activities?per_page=50")
+            ->assertOk()
+            ->assertJsonPath('data.0.action_label', 'LABEL_PRINTED')
+            ->assertJsonPath('data.0.email', $user->email)
+            ->assertJsonPath('data.0.actor_name', 'Operator Cetak')
+            ->assertJsonPath('data.0.note', 'Label pengiriman berhasil diunduh / dicetak');
+
+        $this->assertNotEmpty($response->json('data.0.action_date'));
+        $this->assertSame(
+            'AWB-ACTIVITY-001',
+            $response->json('data.0.new_values.tracking_number'),
+        );
+    }
+
     public function test_endpoint_returns_404_for_missing_order(): void
     {
         $user = User::factory()->create();

@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Storage;
+use Modules\Sales\Enums\OrderActivityAction;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelJob;
 use Modules\Sales\Models\BulkShippingLabelBatch;
 use Modules\Sales\Models\BulkShippingLabelItem;
@@ -97,6 +98,25 @@ class BulkShippingLabelControllerTest extends TestCase
             ->assertJsonPath('data.pdf_url', null);
     }
 
+    public function test_show_returns_authenticated_audited_pdf_url_when_ready(): void
+    {
+        $batch = BulkShippingLabelBatch::create([
+            'user_id' => $this->user->id,
+            'status' => BulkShippingLabelBatch::STATUS_READY,
+            'total_count' => 1,
+            'done_count' => 1,
+            'failed_count' => 0,
+            'merged_pdf_path' => 'bulk-labels/ready.pdf',
+        ]);
+
+        $this->getJson("/api/v1/sales/shipping-labels/bulk/{$batch->id}")
+            ->assertOk()
+            ->assertJsonPath(
+                'data.pdf_url',
+                route('api.sales.shipping-labels.bulk.pdf', ['batch' => $batch->id]),
+            );
+    }
+
     public function test_download_pdf_404_when_not_ready(): void
     {
         $batch = BulkShippingLabelBatch::create([
@@ -115,6 +135,11 @@ class BulkShippingLabelControllerTest extends TestCase
     {
         Storage::fake('documents');
 
+        $order = SalesOrder::factory()->create([
+            'status' => 'picked',
+            'tracking_number' => 'AWB-BULK-AUDIT-001',
+        ]);
+
         $batch = BulkShippingLabelBatch::create([
             'user_id' => $this->user->id,
             'status' => BulkShippingLabelBatch::STATUS_READY,
@@ -124,11 +149,23 @@ class BulkShippingLabelControllerTest extends TestCase
             'merged_pdf_path' => 'bulk-labels/test.pdf',
             'merged_pdf_bytes' => 5,
         ]);
+        BulkShippingLabelItem::create([
+            'batch_id' => $batch->id,
+            'order_id' => $order->id,
+            'channel' => 'shopee',
+            'status' => BulkShippingLabelItem::STATUS_DONE,
+        ]);
         Storage::disk('documents')->put('bulk-labels/test.pdf', '%PDF-');
 
         $this->get("/api/v1/sales/shipping-labels/bulk/{$batch->id}/pdf")
             ->assertOk()
             ->assertHeader('Content-Type', 'application/pdf');
+
+        $this->assertDatabaseHas('sales_order_status_histories', [
+            'salesorder_id' => $order->id,
+            'action' => OrderActivityAction::LABEL_PRINTED->value,
+            'actor_id' => $this->user->id,
+        ]);
     }
 
     public function test_retry_failed_returns_422_when_no_recoverable(): void

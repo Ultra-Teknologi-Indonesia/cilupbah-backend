@@ -46,6 +46,7 @@ class StockAdjustmentImportController extends Controller
             $result = $this->importService->preview(
                 $request->file('file'),
                 $request->input('location_id'),
+                (string) $request->user()->getAuthIdentifier(),
             );
 
             return $this->successResponse($result, 'Preview import berhasil di-generate.');
@@ -69,7 +70,10 @@ class StockAdjustmentImportController extends Controller
             'adjustment_no'    => 'nullable|string|max:100',
         ]);
 
-        $preview = $this->importService->getPreview($request->input('preview_token'));
+        $preview = $this->importService->getPreview(
+            $request->input('preview_token'),
+            (string) $request->user()->getAuthIdentifier(),
+        );
 
         if (! $preview) {
             return $this->errorResponse('Preview token expired atau tidak ditemukan. Silakan upload ulang.', 422);
@@ -95,6 +99,8 @@ class StockAdjustmentImportController extends Controller
                 'items' => array_map(fn ($it) => [
                     'item_id'   => $it['item_id'],
                     'bin_id'    => $it['bin_id'],
+                    'mode'      => $it['mode'],
+                    'input_value' => $it['input_value'],
                     'actual_qty' => $it['actual_qty'],
                     'unit_cost' => $it['unit_cost'],
                     'notes'     => $it['notes'],

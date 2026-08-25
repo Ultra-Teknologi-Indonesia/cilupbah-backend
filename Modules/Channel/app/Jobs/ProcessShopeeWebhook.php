@@ -327,6 +327,7 @@ class ProcessShopeeWebhook implements ShouldQueue
             'channel_return_id' => $data['return_sn'] ?? $data['refund_id'] ?? null,
             'channel_shop_id'   => $shopId,
             'reason'            => $data['reason'] ?? 'Retur Shopee',
+            'channel_status'    => $data['status'] ?? $data['return_status'] ?? $data['refund_status'] ?? null,
             'created_by'        => 'system:shopee-webhook',
         ]);
     }

@@ -15,7 +15,7 @@ class RemoveShipmentOrdersRequest extends FormRequest
     {
         return [
             'order_ids' => 'required|array|min:1',
-            'order_ids.*' => 'string',
+            'order_ids.*' => 'string|distinct',
         ];
     }
 }

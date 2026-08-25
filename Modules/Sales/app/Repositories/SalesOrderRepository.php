@@ -702,10 +702,6 @@ class SalesOrderRepository
         return SalesOrder::find($orderId);
     }
 
-    /**
-     * Keep system-generated webhook audit lines immutable across later
-     * channel pulls while allowing the channel's business note to refresh.
-     */
     private function mergeWebhookAuditNotes(?string $incoming, ?string $existing): ?string
     {
         $existingLines = preg_split('/\R/u', trim((string) $existing), -1, PREG_SPLIT_NO_EMPTY) ?: [];

@@ -10,14 +10,7 @@ use Modules\Sales\Models\SalesOrder;
 
 final class ChannelWebhookAuditService
 {
-    /**
-     * Append one immutable, human-readable webhook note per event key.
-     *
-     * The note is stored on the order because inventory history already
-     * resolves order seller_note/note into its `note` field. This keeps the
-     * audit visible in both order detail and stock chronology without adding
-     * a second, unsynchronised notes table.
-     */
+
     public function recordFromInbox(string $channel, string $eventKey, array $payload): int
     {
         $references = $this->extractOrderReferences($channel, $payload);

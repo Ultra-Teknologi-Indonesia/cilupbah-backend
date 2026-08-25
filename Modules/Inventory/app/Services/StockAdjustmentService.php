@@ -8,6 +8,7 @@ use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Models\StockAdjustment;
 use Modules\Inventory\Jobs\ProcessStockAdjustmentJob;
 use Illuminate\Support\Facades\DB;
+use Modules\Inventory\Support\StockAdjustmentRule;
 
 class StockAdjustmentService
 {
@@ -15,6 +16,7 @@ class StockAdjustmentService
         protected StockAdjustmentRepository $adjustmentRepository,
         protected InventoryRepository $inventoryRepository,
         protected InventoryMovementRepository $movementRepository,
+        protected StockAdjustmentRule $stockAdjustmentRule,
     ) {}
 
     public function getAllPaginated(int $limit = 10)
@@ -74,22 +76,29 @@ class StockAdjustmentService
             ]);
 
             foreach ($data['items'] as $itemData) {
-                $inventory = $this->inventoryRepository->findExact(
+                $inventory = $this->inventoryRepository->findOrCreateForUpdate(
                     $itemData['item_id'],
                     $data['location_id'],
                     $itemData['bin_id'] ?? null,
                 );
 
-                $systemQty = $inventory ? $inventory->on_hand : 0;
-                $actualQty = $itemData['actual_qty'];
+                $mode = $itemData['mode'] ?? StockAdjustmentRule::MODE_FINAL;
+                $inputValue = array_key_exists('input_value', $itemData)
+                    ? $itemData['input_value']
+                    : $itemData['actual_qty'];
+                $calculation = $this->stockAdjustmentRule->calculate(
+                    systemQty: $inventory->on_hand,
+                    inputValue: $inputValue,
+                    mode: $mode,
+                );
 
                 $this->adjustmentRepository->createItem([
                     'stock_adjustment_id' => $adjustment->id,
                     'item_id' => $itemData['item_id'],
                     'bin_id' => $itemData['bin_id'] ?? null,
-                    'system_qty' => $systemQty,
-                    'actual_qty' => $actualQty,
-                    'difference_qty' => $actualQty - $systemQty,
+                    'system_qty' => $calculation->systemQty,
+                    'actual_qty' => $calculation->actualQty,
+                    'difference_qty' => $calculation->differenceQty,
                     'unit_cost' => isset($itemData['unit_cost']) && $itemData['unit_cost'] !== ''
                         ? (float) $itemData['unit_cost']
                         : null,
@@ -157,22 +166,29 @@ class StockAdjustmentService
 
             foreach ($data['items'] as $itemData) {
                 $affectedItemIds[] = $itemData['item_id'];
-                $inventory = $this->inventoryRepository->findExact(
+                $inventory = $this->inventoryRepository->findOrCreateForUpdate(
                     $itemData['item_id'],
                     $adjustment->location_id,
                     $itemData['bin_id'] ?? null,
                 );
 
-                $systemQty = $inventory ? (int) $inventory->on_hand : 0;
-                $actualQty = (int) $itemData['actual_qty'];
+                $mode = $itemData['mode'] ?? StockAdjustmentRule::MODE_FINAL;
+                $inputValue = array_key_exists('input_value', $itemData)
+                    ? $itemData['input_value']
+                    : $itemData['actual_qty'];
+                $calculation = $this->stockAdjustmentRule->calculate(
+                    systemQty: $inventory->on_hand,
+                    inputValue: $inputValue,
+                    mode: $mode,
+                );
 
                 $this->adjustmentRepository->createItem([
                     'stock_adjustment_id' => $adjustment->id,
                     'item_id' => $itemData['item_id'],
                     'bin_id' => $itemData['bin_id'] ?? null,
-                    'system_qty' => $systemQty,
-                    'actual_qty' => $actualQty,
-                    'difference_qty' => $actualQty - $systemQty,
+                    'system_qty' => $calculation->systemQty,
+                    'actual_qty' => $calculation->actualQty,
+                    'difference_qty' => $calculation->differenceQty,
                     'unit_cost' => isset($itemData['unit_cost']) && $itemData['unit_cost'] !== ''
                         ? (float) $itemData['unit_cost']
                         : null,

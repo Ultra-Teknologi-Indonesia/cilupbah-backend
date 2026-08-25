@@ -16,12 +16,16 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Outbound\Support\InstantOrderClassifier;
 use Modules\Warehouse\Models\Location;
+use Modules\Sales\Enums\OrderActivityAction;
+use Modules\Sales\Enums\OrderActivityEntity;
+use Modules\Sales\Services\SalesOrderService;
 
 class ShipmentService
 {
     public function __construct(
         protected ShipmentRepository $shipmentRepository,
         protected CourierMappingService $courierMapper,
+        protected SalesOrderService $orderService,
     ) {}
 
     public function getAllPaginated(int $limit = 10)
@@ -121,17 +125,63 @@ class ShipmentService
             ->where('status', Packlist::STATUS_COMPLETED)
             ->pluck('id', 'order_id');
 
-        DB::transaction(function () use ($shipment, $orders, $packlistIdByOrder) {
+        $addedOrderIds = DB::transaction(function () use ($shipment, $orders, $packlistIdByOrder): array {
+            $addedOrderIds = [];
+            $existingRelations = ShipmentOrder::query()
+                ->whereIn('order_id', $orders->pluck('id')->all())
+                ->lockForUpdate()
+                ->get(['shipment_id', 'order_id']);
+
+            $foreignOrderIds = $existingRelations
+                ->where('shipment_id', '!=', $shipment->id)
+                ->pluck('order_id')
+                ->map(fn ($orderId) => (string) $orderId)
+                ->values();
+
+            if ($foreignOrderIds->isNotEmpty()) {
+                $foreignOrders = $orders
+                    ->whereIn('id', $foreignOrderIds)
+                    ->pluck('salesorder_no')
+                    ->implode(', ');
+
+                throw new \Exception(
+                    "Order berikut sudah berada di pengiriman lain dan tidak bisa dimanifestkan ulang: {$foreignOrders}"
+                );
+            }
+
+            $existingOrderIds = $existingRelations
+                ->where('shipment_id', $shipment->id)
+                ->pluck('order_id')
+                ->map(fn ($orderId) => (string) $orderId)
+                ->flip();
+
             foreach ($orders as $order) {
+                if ($existingOrderIds->has((string) $order->id)) {
+                    continue;
+                }
+
                 $this->shipmentRepository->createOrder([
                     'shipment_id' => $shipment->id,
                     'order_id' => $order->id,
                     'packlist_id' => $packlistIdByOrder[$order->id] ?? null,
                 ]);
+
+                $this->logShipmentActivity(
+                    $order,
+                    $shipment,
+                    OrderActivityAction::ADDED_TO_SHIPMENT,
+                    "Pesanan dimasukkan ke pengiriman {$shipment->shipment_no}",
+                    ['shipment_no' => $shipment->shipment_no],
+                );
+                $addedOrderIds[] = $order->id;
             }
+
+            return $addedOrderIds;
         });
 
-        ProcessShipmentPickupJob::dispatch($shipmentId, $orders->pluck('id')->toArray());
+        if ($addedOrderIds !== []) {
+            ProcessShipmentPickupJob::dispatch($shipmentId, $addedOrderIds);
+        }
 
         return $this->shipmentRepository->findById($shipmentId);
     }
@@ -148,7 +198,26 @@ class ShipmentService
             throw new \Exception("Order hanya bisa dihapus dari shipment SCHEDULED (saat ini: {$shipment->status}).");
         }
 
-        $this->shipmentRepository->removeOrders($shipmentId, $orderIds);
+        DB::transaction(function () use ($shipment, $shipmentId, $orderIds): void {
+            $shipmentOrders = ShipmentOrder::with('order')
+                ->where('shipment_id', $shipmentId)
+                ->whereIn('order_id', $orderIds)
+                ->get();
+
+            $this->shipmentRepository->removeOrders($shipmentId, $orderIds);
+
+            foreach ($shipmentOrders as $shipmentOrder) {
+                if ($shipmentOrder->order) {
+                    $this->logShipmentActivity(
+                        $shipmentOrder->order,
+                        $shipment,
+                        OrderActivityAction::REMOVED_FROM_SHIPMENT,
+                        "Pesanan dikeluarkan dari pengiriman {$shipment->shipment_no}",
+                        ['shipment_no' => $shipment->shipment_no],
+                    );
+                }
+            }
+        });
 
         return $this->shipmentRepository->findById($shipmentId);
     }
@@ -169,10 +238,47 @@ class ShipmentService
             throw new \Exception('Shipment tidak memiliki order. Tambahkan order terlebih dahulu.');
         }
 
-        $this->shipmentRepository->update($id, [
-            'status' => Shipment::STATUS_HANDED_OVER,
-            'handed_over_at' => now(),
-        ]);
+        $shipment = DB::transaction(function () use ($id): Shipment {
+            $shipment = Shipment::with('orders.order')
+                ->whereKey($id)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $shipment) {
+                throw new \Exception('Shipment tidak ditemukan.');
+            }
+
+            if ($shipment->status !== Shipment::STATUS_SCHEDULED) {
+                throw new \Exception("Hanya shipment SCHEDULED yang bisa di-handover (saat ini: {$shipment->status}).");
+            }
+
+            if ($shipment->orders->isEmpty()) {
+                throw new \Exception('Shipment tidak memiliki order. Tambahkan order terlebih dahulu.');
+            }
+
+            $handedOverAt = now();
+            $this->shipmentRepository->update($id, [
+                'status' => Shipment::STATUS_HANDED_OVER,
+                'handed_over_at' => $handedOverAt,
+            ]);
+
+            foreach ($shipment->orders as $shipmentOrder) {
+                if ($shipmentOrder->order) {
+                    $this->logShipmentActivity(
+                        $shipmentOrder->order,
+                        $shipment,
+                        OrderActivityAction::SHIPMENT_HANDED_OVER,
+                        "Pengiriman {$shipment->shipment_no} diserahkan ke kurir",
+                        [
+                            'shipment_no' => $shipment->shipment_no,
+                            'handed_over_at' => $handedOverAt->toIso8601String(),
+                        ],
+                    );
+                }
+            }
+
+            return $shipment;
+        });
 
         ProcessShipmentHandOverJob::dispatch($id);
 
@@ -360,21 +466,63 @@ class ShipmentService
             ->where('status', Packlist::STATUS_COMPLETED)
             ->first();
 
-        $this->shipmentRepository->createOrder([
-            'shipment_id'     => $shipment->id,
-            'order_id'        => $order->id,
-            'packlist_id'     => $packlist?->id,
-            'tracking_number' => $order->tracking_number,
-        ]);
+        DB::transaction(function () use ($shipment, $order, $packlist): void {
+            $this->shipmentRepository->createOrder([
+                'shipment_id'     => $shipment->id,
+                'order_id'        => $order->id,
+                'packlist_id'     => $packlist?->id,
+                'tracking_number' => $order->tracking_number,
+            ]);
 
-        if ($shipment->shipper_id === null && Auth::id() !== null) {
-            $shipment->shipper_id = Auth::id();
-            $shipment->save();
-        }
+            if ($shipment->shipper_id === null && Auth::id() !== null) {
+                $shipment->shipper_id = Auth::id();
+                $shipment->save();
+            }
+
+            $this->logShipmentActivity(
+                $order,
+                $shipment,
+                OrderActivityAction::ADDED_TO_SHIPMENT,
+                "Pesanan dimasukkan ke pengiriman {$shipment->shipment_no}",
+                ['shipment_no' => $shipment->shipment_no],
+            );
+        });
 
         ProcessShipmentPickupJob::dispatch($shipmentId, [$order->id]);
 
         return $this->shipmentRepository->findById($shipmentId);
+    }
+
+    private function logShipmentActivity(
+        Order $order,
+        Shipment $shipment,
+        OrderActivityAction $action,
+        string $note,
+        array $newValues = [],
+        array $prevValues = [],
+    ): void {
+        $metadata = [
+            'entity_no' => $shipment->shipment_no,
+            'shipment_id' => $shipment->id,
+            'shipment_no' => $shipment->shipment_no,
+            'note' => $note,
+        ];
+
+        if ($newValues !== []) {
+            $metadata['new_values'] = $newValues;
+        }
+        if ($prevValues !== []) {
+            $metadata['prev_values'] = $prevValues;
+        }
+
+        $this->orderService->logStatusHistory(
+            $order,
+            $action,
+            $metadata,
+            auth()->user(),
+            OrderActivityEntity::ORDER,
+            $shipment->id,
+        );
     }
 
     private const CHANNEL_TO_SHIPMENT_STATUS = [

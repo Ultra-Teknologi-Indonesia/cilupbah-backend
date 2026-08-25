@@ -4,8 +4,10 @@ namespace Modules\Outbound\Repositories;
 
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\PacklistItem;
+use Modules\Sales\Models\SalesOrder;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
+use Spatie\QueryBuilder\AllowedSort;
 
 class PacklistRepository
 {
@@ -47,7 +49,27 @@ class PacklistRepository
                 'order.channel_order_no',
                 'order.customer_name'
             )
-            ->allowedSorts('created_at', 'packlist_no', 'started_at', 'completed_at', 'location_id', 'packer_id', 'status')
+            ->allowedSorts(
+                'created_at',
+                'packlist_no',
+                'started_at',
+                'completed_at',
+                'location_id',
+                'packer_id',
+                'status',
+                AllowedSort::callback('order_no', fn ($query, bool $descending) => $query->orderBy(
+                    SalesOrder::query()
+                        ->select('salesorder_no')
+                        ->whereColumn('sales_orders.id', 'packlists.order_id'),
+                    $descending ? 'desc' : 'asc',
+                )),
+                AllowedSort::callback('customer_name', fn ($query, bool $descending) => $query->orderBy(
+                    SalesOrder::query()
+                        ->select('customer_name')
+                        ->whereColumn('sales_orders.id', 'packlists.order_id'),
+                    $descending ? 'desc' : 'asc',
+                )),
+            )
             ->defaultSort('-created_at')
             ->paginate($limit)
             ->appends(request()->query());

@@ -95,13 +95,6 @@ class Location extends Model
         return self::query()->where('is_small_warehouse', true)->value('id');
     }
 
-    /**
-     * Resolve the single physical source used by channel fulfilment.
-     *
-     * The code is the stable business identity; the flag remains a
-     * backwards-compatible fallback for installations created before the
-     * system location code was standardised.
-     */
     public static function getOfficialSmallWarehouseId(): ?string
     {
         return self::query()

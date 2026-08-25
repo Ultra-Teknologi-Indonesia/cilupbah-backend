@@ -17,6 +17,7 @@ use Modules\Warehouse\Services\SkuHomeBinGuard;
 use App\Traits\StockLockable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Inventory\Support\StockAdjustmentRule;
 
 class ProcessStockAdjustmentJob implements ShouldQueue
 {
@@ -32,8 +33,13 @@ class ProcessStockAdjustmentJob implements ShouldQueue
         $this->onQueue(config('queue.names.stock_critical'));
     }
 
-    public function handle(InventoryRepository $inventoryRepository, InventoryMovementRepository $movementRepository): void
+    public function handle(
+        InventoryRepository $inventoryRepository,
+        InventoryMovementRepository $movementRepository,
+        ?StockAdjustmentRule $stockAdjustmentRule = null,
+    ): void
     {
+        $stockAdjustmentRule ??= app(StockAdjustmentRule::class);
         $adjustment = StockAdjustment::with('items')->find($this->adjustmentId);
 
         if (!$adjustment) {
@@ -48,8 +54,8 @@ class ProcessStockAdjustmentJob implements ShouldQueue
                 continue;
             }
 
-            $this->withStockLock($item->item_id, $adjustment->location_id, function () use ($item, $adjustment, $inventoryRepository, $movementRepository, &$totalSignedValue) {
-                DB::transaction(function () use ($item, $adjustment, $inventoryRepository, $movementRepository, &$totalSignedValue) {
+            $this->withStockLock($item->item_id, $adjustment->location_id, function () use ($item, $adjustment, $inventoryRepository, $movementRepository, $stockAdjustmentRule, &$totalSignedValue) {
+                DB::transaction(function () use ($item, $adjustment, $inventoryRepository, $movementRepository, $stockAdjustmentRule, &$totalSignedValue) {
 
                     $existing = $movementRepository->findMovement(
                         $adjustment->adjustment_no,
@@ -79,6 +85,12 @@ class ProcessStockAdjustmentJob implements ShouldQueue
                     $preAvgCost = (float) ($inventory->avg_cost ?? 0);
                     $delta = (float) $item->difference_qty;
                     $itemUnitCost = (float) ($item->unit_cost ?? 0);
+
+                    $stockAdjustmentRule->assertAllowed(
+                        systemQty: (int) $preOnHand,
+                        differenceQty: (int) $delta,
+                        actualQty: (int) ($preOnHand + $delta),
+                    );
 
                     if ($delta > 0 && $itemUnitCost > 0) {
                         $newOnHand = $preOnHand + $delta;

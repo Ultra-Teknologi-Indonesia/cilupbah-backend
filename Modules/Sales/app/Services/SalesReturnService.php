@@ -228,7 +228,11 @@ class SalesReturnService
             : null;
 
         if ($channelReturnId && $this->returnRepository->existsByChannelReturn(SalesReturn::SOURCE_MARKETPLACE, $channelReturnId)) {
-            return null;
+            $existing = SalesReturn::where('source', SalesReturn::SOURCE_MARKETPLACE)
+                ->where('channel_return_id', $channelReturnId)
+                ->first();
+
+            return $existing ? $this->applyChannelStatus($existing, $payload) : null;
         }
 
         $order = SalesOrder::with('items')
@@ -250,7 +254,12 @@ class SalesReturnService
         }
 
         if (! $channelReturnId && $this->returnRepository->existsMarketplaceForOrder($order->id)) {
-            return null;
+            $existing = SalesReturn::where('order_id', $order->id)
+                ->where('source', SalesReturn::SOURCE_MARKETPLACE)
+                ->latest('created_at')
+                ->first();
+
+            return $existing ? $this->applyChannelStatus($existing, $payload) : null;
         }
 
         $locationId = $order->location_id ?? $this->settings->restockLocationId();
@@ -280,6 +289,9 @@ class SalesReturnService
             return null;
         }
 
+        $marketplaceRawStatus = $this->channelStatusFromPayload($payload);
+        $marketplaceDecision = $this->channelDecisionFromPayload($source, $payload);
+
         return $this->create([
             'order_id'          => $order->id,
             'location_id'       => $locationId,
@@ -288,11 +300,76 @@ class SalesReturnService
             'channel_shop_id'   => $payload['channel_shop_id'] ?? null,
             'customer_name'     => $order->customer_name ?? null,
             'reason'            => $payload['reason'] ?? 'Retur dari marketplace',
+            'channel_reason_text' => $payload['channel_reason_text'] ?? null,
+            'marketplace_raw_status' => $marketplaceRawStatus,
+            'marketplace_decision' => $marketplaceDecision,
+            'marketplace_decision_at' => $marketplaceDecision !== null ? now() : null,
 
             'reason_category'   => SalesReturn::REASON_CATEGORY_COMPLAINT,
             'created_by'        => $payload['created_by'] ?? 'system:' . $source . '-webhook',
             'items'             => $items,
         ]);
+    }
+
+    private function applyChannelStatus(SalesReturn $return, array $payload): SalesReturn
+    {
+        $rawStatus = $this->channelStatusFromPayload($payload);
+        if ($rawStatus === null) {
+            return $return;
+        }
+
+        $source = (string) ($payload['source'] ?? $return->channel ?? $return->order?->source ?? '');
+        $decision = $this->channelDecisionFromPayload($source, $payload);
+        $update = [
+            'detail_synced_at' => now(),
+        ];
+
+        if ($decision !== null && SalesReturn::shouldApplyMarketplaceDecision($return->marketplace_decision, $decision)) {
+            $update['marketplace_raw_status'] = $rawStatus;
+
+            if ($decision !== $return->marketplace_decision || $return->marketplace_decision_at === null) {
+                $update['marketplace_decision'] = $decision;
+                $update['marketplace_decision_at'] = now();
+            }
+        } elseif ($decision !== null && $decision === $return->marketplace_decision) {
+            $update['marketplace_raw_status'] = $rawStatus;
+        }
+
+        if (! empty($payload['channel_reason_text'])) {
+            $update['channel_reason_text'] = $payload['channel_reason_text'];
+        }
+
+        $return->update($update);
+
+        return $return->refresh();
+    }
+
+    private function channelStatusFromPayload(array $payload): ?string
+    {
+        foreach ([
+            'channel_status',
+            'return_status',
+            'reverse_status',
+            'refund_status',
+            'status',
+        ] as $key) {
+            $value = trim((string) ($payload[$key] ?? ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return null;
+    }
+
+    private function channelDecisionFromPayload(string $source, array $payload): ?string
+    {
+        $rawStatus = $this->channelStatusFromPayload($payload);
+        if ($rawStatus === null || $source === '') {
+            return null;
+        }
+
+        return SalesReturn::normalizeMarketplaceDecision($source, $rawStatus);
     }
 
     public function accept(string $id, array $data): SalesReturn

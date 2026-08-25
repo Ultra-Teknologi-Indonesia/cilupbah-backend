@@ -295,7 +295,7 @@ class TikTokToInternalOrderMapper
         return array_values($grouped);
     }
 
-    protected function resolveCustomerName(?string $addressName, ?string $nickname, ?string $email): string
+    protected function resolveCustomerName(?string $addressName, ?string $nickname, ?string $email): ?string
     {
         if (! empty(trim((string) $addressName))) {
             return trim((string) $addressName);
@@ -310,6 +310,6 @@ class TikTokToInternalOrderMapper
             return $email;
         }
 
-        return 'Pembeli TikTok';
+        return null;
     }
 }

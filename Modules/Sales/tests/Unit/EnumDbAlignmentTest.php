@@ -66,6 +66,7 @@ class EnumDbAlignmentTest extends TestCase
             'RECEIVED_BY_BUYER', 'RETURN_DECISION',
             'FIELD_CHANGED', 'SHIPPED', 'COMPLETED', 'CANCELLED',
             'ZONE_ASSIGNED', 'ITEM_CREATED',
+            'ADDED_TO_SHIPMENT', 'REMOVED_FROM_SHIPMENT', 'SHIPMENT_HANDED_OVER',
         ];
         $actual = array_map(fn ($c) => $c->value, OrderActivityAction::cases());
         $this->assertEqualsCanonicalizing($expected, $actual);

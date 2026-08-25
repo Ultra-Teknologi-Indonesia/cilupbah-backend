@@ -4,6 +4,8 @@ namespace Modules\Outbound\Repositories;
 
 use Illuminate\Database\Eloquent\Builder;
 use Modules\Sales\Models\SalesOrder as Order;
+use Spatie\QueryBuilder\AllowedFilter;
+use Spatie\QueryBuilder\QueryBuilder;
 
 class PreManifestCancelRepository
 {
@@ -20,8 +22,7 @@ class PreManifestCancelRepository
     public function paginateList(array $filters = [], int $perPage = 10)
     {
         $query = $this->baseQuery()
-            ->with(['location:id,location_name,location_code'])
-            ->latest('cancel_accepted_at');
+            ->with(['location:id,location_name,location_code']);
 
         if (! empty($filters['source'])) {
             $query->where('source', $filters['source']);
@@ -30,12 +31,23 @@ class PreManifestCancelRepository
             $query->where('location_id', $filters['location_id']);
         }
         if (! empty($filters['q'])) {
-
             request()->query->set('search', $filters['q']);
-            $query->allowedSearch(...Order::SEARCH_COLUMNS);
         }
 
-        return $query->paginate($perPage)->appends(request()->query());
+        return QueryBuilder::for($query)
+            ->allowedSearch(...Order::SEARCH_COLUMNS)
+            ->allowedSorts(
+                'salesorder_no',
+                'source',
+                'customer_name',
+                'tracking_number',
+                'cancel_reason',
+                'cancel_accepted_at',
+                'location_id',
+            )
+            ->defaultSort('-cancel_accepted_at')
+            ->paginate($perPage)
+            ->appends(request()->query());
     }
 
     public function count(): int

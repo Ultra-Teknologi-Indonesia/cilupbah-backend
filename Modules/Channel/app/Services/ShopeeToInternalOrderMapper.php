@@ -65,7 +65,8 @@ class ShopeeToInternalOrderMapper
             'channel_order_no' => (string) ($shopeeOrder['order_sn'] ?? ''),
             'channel_shop_id' => $shopId,
             'channel_buyer_id' => isset($shopeeOrder['buyer_user_id']) ? (string) $shopeeOrder['buyer_user_id'] : null,
-            'customer_name' => $shopeeOrder['buyer_username'] ?? ($address['name'] ?? 'Shopee Buyer'),
+
+            'customer_name' => $shopeeOrder['buyer_username'] ?? ($address['name'] ?? null),
             'transaction_date' => $this->parseTimestamp($shopeeOrder['create_time'] ?? null),
 
             'sub_total' => $subTotal,

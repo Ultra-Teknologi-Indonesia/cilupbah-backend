@@ -24,6 +24,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Inventory\Models\InventoryTransferItem;
 use Modules\Inventory\Jobs\SyncTransferDraftItemJob;
+use Modules\Inventory\Support\StockAdjustmentRule;
+use Modules\Inventory\Exceptions\NegativeStockAdjustmentException;
 
 class InventoryService
 {
@@ -32,6 +34,7 @@ class InventoryService
         protected InventoryMovementRepository $movementRepository,
         protected InventoryTransferRepository $transferRepository,
         protected BinTransferRepository $binTransferRepository,
+        protected StockAdjustmentRule $stockAdjustmentRule,
     ) {}
 
     private function notifyChannelStock(array $variantIds): void
@@ -263,16 +266,21 @@ class InventoryService
                 ['expired_date' => $data['expired_date'] ?? null],
             );
 
-            $newOnHand = $inventory->on_hand + $data['qty'];
-            if (! config('inventory.allow_negative_stock', true) && (int) $data['qty'] < 0 && $newOnHand < 0) {
+            try {
+                $calculation = $this->stockAdjustmentRule->calculate(
+                    systemQty: $inventory->on_hand,
+                    inputValue: $data['qty'],
+                    mode: StockAdjustmentRule::MODE_DELTA,
+                );
+            } catch (NegativeStockAdjustmentException $e) {
                 throw new \App\Exceptions\UserFacingException(
                     title: 'Stok Tidak Mencukupi',
-                    message: "Stok tidak mencukupi. Adjustment akan menyebabkan stok minus (on_hand: {$inventory->on_hand}, adjustment: {$data['qty']}).",
-                    status: 422
+                    message: $e->getMessage(),
+                    status: 422,
                 );
             }
 
-            $inventory->on_hand = $newOnHand;
+            $inventory->on_hand = $calculation->actualQty;
             $this->inventoryRepository->updateStock($inventory);
 
             $this->movementRepository->create([

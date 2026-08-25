@@ -38,9 +38,13 @@ class SalesReturnController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Returns'],
         parameters: [
-            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'search', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'sort', in: 'query', required: false, schema: new OA\Schema(type: 'string', example: '-created_at')),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20, maximum: 200)),
             new OA\Parameter(name: 'filter[status]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'filter[source]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'filter[location_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'filter[reason_category]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(response: 200, description: 'Successful operation'),
@@ -48,7 +52,7 @@ class SalesReturnController extends Controller
     )]
     public function index(Request $request): JsonResponse
     {
-        $limit = $request->query('per_page', 20);
+        $limit = min(max($request->integer('per_page', 20), 1), 200);
         $returns = $this->returnService->getAllPaginated($limit);
 
         return $this->successPaginatedResponse($returns, 'Daftar sales return berhasil diambil');
@@ -60,7 +64,11 @@ class SalesReturnController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Returns'],
         parameters: [
-            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'search', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'sort', in: 'query', required: false, schema: new OA\Schema(type: 'string', example: '-created_at')),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20, maximum: 200)),
+            new OA\Parameter(name: 'filter[location_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'filter[reason_category]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(response: 200, description: 'Successful operation'),
@@ -68,7 +76,7 @@ class SalesReturnController extends Controller
     )]
     public function unprocessed(Request $request): JsonResponse
     {
-        $limit = $request->query('per_page', 20);
+        $limit = min(max($request->integer('per_page', 20), 1), 200);
         $returns = $this->returnService->getUnprocessedMarketplace($limit);
 
         return $this->successPaginatedResponse($returns, 'Daftar marketplace return yang belum diproses');

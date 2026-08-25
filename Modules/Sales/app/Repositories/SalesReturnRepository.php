@@ -3,6 +3,7 @@
 namespace Modules\Sales\Repositories;
 
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Modules\Sales\Models\SalesReturn;
 use Modules\Sales\Models\SalesReturnItem;
 use Spatie\QueryBuilder\QueryBuilder;
@@ -16,6 +17,8 @@ class SalesReturnRepository
         'sales_returns.return_number',
         'sales_returns.customer_name',
         'sales_returns.return_tracking_number',
+        'sales_returns.channel_return_id',
+        'sales_returns.channel_reason_text',
         'order.channel_order_no',
         'order.salesorder_no',
     ];
@@ -24,29 +27,59 @@ class SalesReturnRepository
     {
         return $query
             ->leftJoin('sales_orders', 'sales_orders.id', '=', 'sales_returns.order_id')
-            ->select('sales_returns.*');
+            ->select('sales_returns.*')
+            ->selectSub(
+                DB::table('channel_shops')
+                    ->whereColumn('channel_shops.shop_id', 'sales_returns.channel_shop_id')
+                    ->select('channel_shops.shop_name')
+                    ->limit(1),
+                'channel_shop_name',
+            )
+            ->selectSub(
+                DB::table('channel_shops')
+                    ->join('channels', 'channels.id', '=', 'channel_shops.channel_id')
+                    ->whereColumn('channel_shops.shop_id', 'sales_returns.channel_shop_id')
+                    ->select('channels.code')
+                    ->limit(1),
+                'channel',
+            )
+            ->selectSub(
+                DB::table('channel_shops')
+                    ->join('channels', 'channels.id', '=', 'channel_shops.channel_id')
+                    ->whereColumn('channel_shops.shop_id', 'sales_returns.channel_shop_id')
+                    ->select('channels.name')
+                    ->limit(1),
+                'channel_name',
+            );
     }
 
     public function getAllPaginated(int $limit = 10)
     {
         return $this->withOrderJoin(QueryBuilder::for(SalesReturn::class))
-            ->with(['order:id,salesorder_no', 'location:id,location_name', 'items.product:id,sku,product_id', 'items.product.product:id,name'])
+            ->with(['order:id,salesorder_no,source', 'location:id,location_name', 'items.product:id,sku,product_id', 'items.product.product:id,name'])
             ->allowedFilters(
                 AllowedFilter::exact('status', 'sales_returns.status'),
                 AllowedFilter::exact('source', 'sales_returns.source'),
                 AllowedFilter::exact('order_id', 'sales_returns.order_id'),
+                AllowedFilter::exact('location_id', 'sales_returns.location_id'),
                 AllowedFilter::exact('reason_category', 'sales_returns.reason_category'),
+                AllowedFilter::callback('date_from', fn ($query, $value) => $query->whereDate('sales_returns.created_at', '>=', $value)),
+                AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('sales_returns.created_at', '<=', $value)),
             )
             ->allowedSearch(...self::SEARCH_COLUMNS)
             ->allowedSorts(
                 AllowedSort::field('return_number', 'sales_returns.return_number'),
                 AllowedSort::field('created_at', 'sales_returns.created_at'),
-                AllowedSort::field('return_date', 'sales_returns.return_date'),
-                AllowedSort::field('received_at', 'sales_returns.received_at'),
+                AllowedSort::field('return_tracking_number', 'sales_returns.return_tracking_number'),
+                AllowedSort::field('marketplace_decision', 'sales_returns.marketplace_decision'),
+                AllowedSort::field('refund_amount', 'sales_returns.refund_amount'),
+                AllowedSort::field('customer_name', 'sales_returns.customer_name'),
+                AllowedSort::field('reason', 'sales_returns.reason'),
+                AllowedSort::field('location_id', 'sales_returns.location_id'),
                 AllowedSort::field('status', 'sales_returns.status'),
             )
             ->defaultSort('-created_at')
-            ->paginate($limit)
+            ->paginate(min(max((int) request('per_page', $limit), 1), 200))
             ->appends(request()->query());
     }
 
@@ -81,17 +114,27 @@ class SalesReturnRepository
         return $this->withOrderJoin(QueryBuilder::for(SalesReturn::class))
             ->unprocessed()
             ->marketplace()
-            ->with(['order:id,salesorder_no', 'location:id,location_name', 'items.product:id,sku,product_id', 'items.product.product:id,name'])
+            ->with(['order:id,salesorder_no,source', 'location:id,location_name', 'items.product:id,sku,product_id', 'items.product.product:id,name'])
             ->allowedFilters(
                 AllowedFilter::exact('location_id', 'sales_returns.location_id'),
                 AllowedFilter::exact('reason_category', 'sales_returns.reason_category'),
+                AllowedFilter::callback('date_from', fn ($query, $value) => $query->whereDate('sales_returns.created_at', '>=', $value)),
+                AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('sales_returns.created_at', '<=', $value)),
             )
             ->allowedSearch(...self::SEARCH_COLUMNS)
             ->allowedSorts(
+                AllowedSort::field('return_number', 'sales_returns.return_number'),
                 AllowedSort::field('created_at', 'sales_returns.created_at'),
+                AllowedSort::field('return_tracking_number', 'sales_returns.return_tracking_number'),
+                AllowedSort::field('marketplace_decision', 'sales_returns.marketplace_decision'),
+                AllowedSort::field('refund_amount', 'sales_returns.refund_amount'),
+                AllowedSort::field('customer_name', 'sales_returns.customer_name'),
+                AllowedSort::field('reason', 'sales_returns.reason'),
+                AllowedSort::field('location_id', 'sales_returns.location_id'),
+                AllowedSort::field('status', 'sales_returns.status'),
             )
             ->defaultSort('-created_at')
-            ->paginate($limit)
+            ->paginate(min(max((int) request('per_page', $limit), 1), 200))
             ->appends(request()->query());
     }
 

@@ -162,6 +162,7 @@ class ProcessLazadaWebhook implements ShouldQueue
             'channel_return_id' => $data['reverse_order_id'] ?? null,
             'channel_shop_id'   => $sellerId,
             'reason'            => $data['reverse_status'] ?? $data['order_status'] ?? 'Retur Lazada',
+            'channel_status'    => $data['reverse_status'] ?? $data['order_status'] ?? $data['status'] ?? null,
             'created_by'        => 'system:lazada-webhook',
         ]);
     }

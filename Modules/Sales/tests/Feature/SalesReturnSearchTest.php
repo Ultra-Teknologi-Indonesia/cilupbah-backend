@@ -53,6 +53,9 @@ class SalesReturnSearchTest extends TestCase
             'status' => SalesReturn::STATUS_PENDING,
             'return_tracking_number' => $trackingNumber,
             'return_carrier' => 'J&T',
+            'channel_reason_text' => 'Change of mind',
+            'marketplace_decision' => SalesReturn::MP_DECISION_PENDING,
+            'marketplace_raw_status' => 'RETURN_OR_REFUND_REQUEST_PENDING',
             'created_by' => 'system:shopee-webhook',
         ]);
 
@@ -82,6 +85,8 @@ class SalesReturnSearchTest extends TestCase
             ->assertOk();
 
         $this->assertSame($id, $res->json('data.0.id'));
+        $this->assertSame('Pembeli berubah pikiran', $res->json('data.0.reason_display'));
+        $this->assertSame('Menunggu peninjauan channel', $res->json('data.0.marketplace_raw_status_label'));
     }
 
     public function test_unprocessed_endpoint_is_searchable_by_tracking(): void
@@ -93,5 +98,105 @@ class SalesReturnSearchTest extends TestCase
             ->assertOk();
 
         $this->assertSame($id, $res->json('data.0.id'));
+    }
+
+    public function test_list_uses_per_page_and_server_side_sorting(): void
+    {
+        $firstId = $this->seedReturn('SP-001', 'JX001');
+        $secondId = $this->seedReturn('SP-002', 'JX002');
+
+        DB::table('sales_returns')->where('id', $firstId)->update([
+            'return_number' => 'RET-0001',
+        ]);
+        DB::table('sales_returns')->where('id', $secondId)->update([
+            'return_number' => 'RET-0002',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/sales/returns?per_page=1&sort=return_number&filter[status]=PENDING')
+            ->assertOk();
+
+        $response->assertJsonPath('meta.per_page', 1)
+            ->assertJsonPath('meta.total', 2)
+            ->assertJsonPath('data.0.id', $firstId);
+    }
+
+    public function test_unprocessed_uses_per_page_and_server_side_sorting(): void
+    {
+        $firstId = $this->seedReturn('SP-101', 'JX101');
+        $secondId = $this->seedReturn('SP-102', 'JX102');
+
+        DB::table('sales_returns')->where('id', $firstId)->update([
+            'return_number' => 'RET-0101',
+        ]);
+        DB::table('sales_returns')->where('id', $secondId)->update([
+            'return_number' => 'RET-0102',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/sales/returns/unprocessed?per_page=1&sort=-return_number')
+            ->assertOk();
+
+        $response->assertJsonPath('meta.per_page', 1)
+            ->assertJsonPath('meta.total', 2)
+            ->assertJsonPath('data.0.id', $secondId);
+    }
+
+    public function test_marketplace_decision_keeps_canonical_mp_value(): void
+    {
+        $return = new SalesReturn;
+        $return->marketplace_decision = SalesReturn::MP_DECISION_REFUNDED;
+
+        $this->assertSame(
+            SalesReturn::MP_DECISION_REFUNDED,
+            $return->getAttributes()['marketplace_decision'],
+        );
+
+        $return->marketplace_decision = 'REFUNDED';
+
+        $this->assertSame(
+            SalesReturn::MP_DECISION_REFUNDED,
+            $return->getAttributes()['marketplace_decision'],
+        );
+    }
+
+    public function test_channel_statuses_map_to_marketplace_decisions(): void
+    {
+        $cases = [
+            ['tiktok', 'RETURN_OR_REFUND_REQUEST_COMPLETE', SalesReturn::MP_DECISION_REFUNDED],
+            ['tiktok', 'BUYER_SHIPPED_ITEM', SalesReturn::MP_DECISION_APPROVED],
+            ['tiktok', 'RETURN_OR_REFUND_REQUEST_CANCEL', SalesReturn::MP_DECISION_CLOSED],
+            ['tiktok', 'REPLACEMENT_REQUEST_REJECT', SalesReturn::MP_DECISION_REJECTED],
+            ['shopee', 'ACCEPTED', SalesReturn::MP_DECISION_APPROVED],
+            ['shopee', 'SELLER_DISPUTE', SalesReturn::MP_DECISION_DISPUTE],
+            ['shopee', 'JUDGING', SalesReturn::MP_DECISION_JUDGING],
+            ['shopee', 'CANCELLED', SalesReturn::MP_DECISION_CLOSED],
+        ];
+
+        foreach ($cases as [$channel, $rawStatus, $expected]) {
+            $this->assertSame(
+                $expected,
+                SalesReturn::normalizeMarketplaceDecision($channel, $rawStatus),
+                "Mapping gagal untuk {$channel}:{$rawStatus}",
+            );
+        }
+    }
+
+    public function test_older_marketplace_decision_cannot_regress_a_newer_decision(): void
+    {
+        $this->assertFalse(SalesReturn::shouldApplyMarketplaceDecision(
+            SalesReturn::MP_DECISION_REFUNDED,
+            SalesReturn::MP_DECISION_PENDING,
+        ));
+
+        $this->assertTrue(SalesReturn::shouldApplyMarketplaceDecision(
+            SalesReturn::MP_DECISION_CLOSED,
+            SalesReturn::MP_DECISION_REFUNDED,
+        ));
+
+        $this->assertTrue(SalesReturn::shouldApplyMarketplaceDecision(
+            null,
+            SalesReturn::MP_DECISION_PENDING,
+        ));
     }
 }

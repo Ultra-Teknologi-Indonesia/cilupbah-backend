@@ -15,7 +15,7 @@ class AddShipmentOrdersRequest extends FormRequest
     {
         return [
             'order_ids' => 'required|array|min:1',
-            'order_ids.*' => 'string|exists:sales_orders,id',
+            'order_ids.*' => 'string|distinct|exists:sales_orders,id',
         ];
     }
 }
