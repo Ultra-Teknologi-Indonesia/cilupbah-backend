@@ -164,7 +164,8 @@ class RaiseProductService
                 $this->repository->markRaiseResult(
                     $detail,
                     $result['success'],
-                    $result['success'] ? 'Produk berhasil dinaikkan di Shopee' : ($result['reason'] ?? 'Gagal tanpa alasan')
+                    $result['success'] ? 'Produk berhasil dinaikkan di Shopee' : ($result['reason'] ?? 'Gagal tanpa alasan'),
+                    $result['success'] ? now()->addHours(4) : now()
                 );
             }
         }

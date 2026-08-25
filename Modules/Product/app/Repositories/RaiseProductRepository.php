@@ -137,12 +137,12 @@ class RaiseProductRepository
             ->get();
     }
 
-    public function markRaiseResult(RaiseProductDetail $detail, bool $success, ?string $reason): void
+    public function markRaiseResult(RaiseProductDetail $detail, bool $success, ?string $reason, ?\Carbon\Carbon $endTime = null): void
     {
         $detail->update([
             'is_success' => $success,
             'reason' => $reason,
-            'end_time' => now(),
+            'end_time' => $endTime ?? now(),
         ]);
     }
 
