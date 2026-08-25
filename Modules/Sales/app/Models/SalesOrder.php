@@ -518,6 +518,12 @@ class SalesOrder extends Model implements HasMedia
 
     public function resolveStatusLabel(): string
     {
+        if ($this->status === 'reserved'
+            && $this->handed_to_warehouse_at === null
+            && $this->pick_failed_at === null) {
+            return 'Siap Proses';
+        }
+
         $wms = \Modules\Sales\Enums\WmsStatus::tryFrom($this->wms_status ?? '') ?? \Modules\Sales\Enums\WmsStatus::tryFrom($this->resolveWmsStatus());
         if ($wms) {
             return $wms->label();

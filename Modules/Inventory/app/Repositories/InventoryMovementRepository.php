@@ -245,6 +245,38 @@ class InventoryMovementRepository
         $restoreList = "'" . implode("','", InventoryMovementSourceMap::ORDER_RESTORE_SOURCES) . "'";
         $effectiveQtySql = "CASE WHEN source IN ($deductList) THEN -ABS(qty) WHEN source IN ($restoreList) THEN ABS(qty) ELSE qty END";
         $reservedList = "'" . implode("','", InventoryMovementSourceMap::ALLOCATION_PARTITION_SOURCES) . "'";
+        $hasLocationFilter = ! empty(request('filter.location_id', request('location_id')));
+
+        $balanceQuery = InventoryMovement::query()
+            ->where('qty', '!=', 0)
+            ->whereNotExists(function ($q) {
+                $q->selectRaw('1')
+                    ->from('location_bins')
+                    ->join('locations', 'locations.id', '=', 'location_bins.location_id')
+                    ->whereColumn('location_bins.id', 'inventory_movements.bin_id')
+                    ->where('location_bins.is_inbound', true)
+                    ->where('locations.is_small_warehouse', false);
+            });
+
+        $balanceItemId = request('filter.item_id', request('item_id'));
+        if (is_string($balanceItemId) && trim($balanceItemId) !== '') {
+            $balanceQuery->where('item_id', trim($balanceItemId));
+        }
+
+        $balanceLocationId = request('filter.location_id', request('location_id'));
+        if (is_string($balanceLocationId) && trim($balanceLocationId) !== '') {
+            $balanceQuery->where('location_id', trim($balanceLocationId));
+        }
+
+        $balancePartition = $hasLocationFilter
+            ? 'inventory_movements.item_id, inventory_movements.location_id'
+            : 'inventory_movements.item_id';
+
+        $balanceQuery
+            ->select('inventory_movements.id')
+            ->selectRaw(
+                "SUM($effectiveQtySql) OVER (PARTITION BY $balancePartition ORDER BY inventory_movements.transaction_date, inventory_movements.id) AS total_balance"
+            );
 
         $pickOrderScope = "FROM picklist_items pi"
             . " JOIN picklists p ON p.id = pi.picklist_id"
@@ -255,14 +287,12 @@ class InventoryMovementRepository
         $pickOrder = fn (string $column) =>
             "(CASE WHEN {$isPick} THEN (SELECT {$column} {$pickOrderScope} ORDER BY so.salesorder_no LIMIT 1) END)";
 
-        $hasLocationFilter = ! empty(request('filter.location_id', request('location_id')));
-        $balancePartition = $hasLocationFilter
-            ? 'item_id, location_id'
-            : 'item_id';
-
         $qb = \Spatie\QueryBuilder\QueryBuilder::for($baseQuery)
+            ->joinSub($balanceQuery, 'movement_balances', function ($join) {
+                $join->on('movement_balances.id', '=', 'inventory_movements.id');
+            })
             ->select('inventory_movements.*')
-            ->selectRaw("SUM({$effectiveQtySql}) OVER (PARTITION BY {$balancePartition} ORDER BY transaction_date, inventory_movements.id) AS total_balance")
+            ->selectRaw('movement_balances.total_balance')
             ->selectRaw(
                 '(SELECT EXISTS(SELECT 1 FROM sales_invoices si '
                 . 'JOIN picklist_items pi ON pi.order_id = si.order_id '

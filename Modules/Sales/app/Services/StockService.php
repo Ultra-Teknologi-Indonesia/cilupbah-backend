@@ -111,7 +111,12 @@ class StockService
 
         $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty, $transactionNumber) {
             DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber) {
-                $released = $this->decrementOnOrderAtLocation($itemId, $locationId, $qty);
+                $released = $this->releaseOutstandingReservation(
+                    $itemId,
+                    $locationId,
+                    $qty,
+                    $transactionNumber,
+                );
                 if ($released > 0) {
                     $totalOnOrder = $this->inventoryRepository->sumOnOrderAtLocation($itemId, $locationId);
                     $this->recordAllocation($itemId, $locationId, -$released, $transactionNumber, 'ORDER_RELEASE', $totalOnOrder);
@@ -247,6 +252,46 @@ class StockService
         $this->cancelSingle($sku, $itemId, $locationId, $qty, $transactionNumber);
     }
 
+    private function releaseOutstandingReservation(
+        string $itemId,
+        string $locationId,
+        int $requestedQty,
+        string $transactionNumber,
+    ): int {
+        if ($requestedQty <= 0) {
+            return 0;
+        }
+
+        $outstanding = $this->outstandingReservationQty(
+            $itemId,
+            $locationId,
+            $transactionNumber,
+        );
+
+        if ($outstanding <= 0) {
+            return 0;
+        }
+
+        return $this->decrementOnOrderAtLocation(
+            $itemId,
+            $locationId,
+            min($requestedQty, $outstanding),
+        );
+    }
+
+    private function outstandingReservationQty(
+        string $itemId,
+        string $locationId,
+        string $transactionNumber,
+    ): int {
+        return max(0, (int) DB::table('inventory_movements')
+            ->where('item_id', $itemId)
+            ->where('location_id', $locationId)
+            ->where('transaction_number', $transactionNumber)
+            ->whereIn('source', InventoryMovementSourceMap::ORDER_LEDGER_SOURCES)
+            ->sum('qty'));
+    }
+
     private function decrementOnOrderAtLocation(string $itemId, string $locationId, int $qty): int
     {
         if ($qty <= 0) {
@@ -288,7 +333,12 @@ class StockService
     {
         $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty, $transactionNumber) {
             DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber) {
-                $released = $this->decrementOnOrderAtLocation($itemId, $locationId, $qty);
+                $released = $this->releaseOutstandingReservation(
+                    $itemId,
+                    $locationId,
+                    $qty,
+                    $transactionNumber,
+                );
                 if ($released > 0) {
                     $totalOnOrder = $this->inventoryRepository->sumOnOrderAtLocation($itemId, $locationId);
                     $this->recordAllocation($itemId, $locationId, -$released, $transactionNumber, 'ORDER_RELEASE', $totalOnOrder);
@@ -299,22 +349,33 @@ class StockService
 
     public function releaseReservationByTransaction(string $transactionNumber): int
     {
-        $outstanding = DB::table('inventory_movements')
+        $targets = DB::table('inventory_movements')
             ->where('transaction_number', $transactionNumber)
             ->whereIn('source', InventoryMovementSourceMap::ORDER_LEDGER_SOURCES)
-            ->select('item_id', 'location_id', DB::raw('SUM(qty) as sisa'))
+            ->select('item_id', 'location_id')
             ->groupBy('item_id', 'location_id')
-            ->havingRaw('SUM(qty) > 0')
             ->get();
 
         $released = 0;
 
-        foreach ($outstanding as $row) {
-            $qty = (int) $row->sisa;
+        foreach ($targets as $row) {
+            $this->withStockLock($row->item_id, $row->location_id, function () use ($row, $transactionNumber, &$released) {
+                DB::transaction(function () use ($row, $transactionNumber, &$released) {
+                    $outstanding = $this->outstandingReservationQty(
+                        $row->item_id,
+                        $row->location_id,
+                        $transactionNumber,
+                    );
 
-            $this->withStockLock($row->item_id, $row->location_id, function () use ($row, $qty, $transactionNumber, &$released) {
-                DB::transaction(function () use ($row, $qty, $transactionNumber, &$released) {
-                    $actuallyReleased = $this->decrementOnOrderAtLocation($row->item_id, $row->location_id, $qty);
+                    if ($outstanding <= 0) {
+                        return;
+                    }
+
+                    $actuallyReleased = $this->decrementOnOrderAtLocation(
+                        $row->item_id,
+                        $row->location_id,
+                        $outstanding,
+                    );
                     if ($actuallyReleased > 0) {
                         $totalOnOrder = $this->inventoryRepository->sumOnOrderAtLocation($row->item_id, $row->location_id);
                         $this->recordAllocation(

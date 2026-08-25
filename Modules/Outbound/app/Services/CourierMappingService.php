@@ -115,9 +115,10 @@ class CourierMappingService
         }
 
         $lower = strtolower($clean);
+        $normalized = preg_replace('/[\\s_-]+/', ' ', $lower) ?: $lower;
 
         return match (true) {
-            str_contains($lower, 'next day') || str_contains($lower, 'nextday') => 'EXPRESS',
+            str_contains($normalized, 'next day') || str_contains($normalized, 'nextday') => 'EXPRESS',
             str_contains($lower, 'cargo') || str_contains($lower, 'trucking') || str_contains($lower, 'kargo') || str_contains($lower, 'jtr') => 'CARGO',
             default => 'REGULAR',
         };

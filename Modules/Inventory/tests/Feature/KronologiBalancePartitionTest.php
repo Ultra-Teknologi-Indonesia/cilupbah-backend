@@ -210,6 +210,46 @@ class KronologiBalancePartitionTest extends TestCase
         );
     }
 
+    public function test_hidden_cancelled_reservation_still_contributes_to_running_balance(): void
+    {
+        $orderId = Str::uuid()->toString();
+        DB::table('sales_orders')->insert([
+            'id' => $orderId,
+            'salesorder_no' => 'TT-TEST-CANCEL-BALANCE',
+            'status' => 'cancelled',
+            'is_canceled' => true,
+            'location_id' => $this->locationId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->movement('ADJUSTMENT', 42, 42, 1);
+        DB::table('inventory_movements')->insert([
+            ['id' => Str::uuid()->toString(), 'item_id' => $this->itemId, 'location_id' => $this->locationId,
+             'bin_id' => null, 'transaction_number' => 'TT-TEST-CANCEL-BALANCE', 'source' => 'ORDER_RESERVE',
+             'qty' => 1, 'balance' => 1, 'transaction_date' => now()->addMinutes(2),
+             'created_by' => 'system', 'created_at' => now(), 'updated_at' => now()],
+            ['id' => Str::uuid()->toString(), 'item_id' => $this->itemId, 'location_id' => $this->locationId,
+             'bin_id' => null, 'transaction_number' => 'TT-TEST-CANCEL-BALANCE', 'source' => 'ORDER_RELEASE',
+             'qty' => -1, 'balance' => 0, 'transaction_date' => now()->addMinutes(3),
+             'created_by' => 'system', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        request()->merge([
+            'filter' => ['item_id' => $this->itemId],
+            'per_page' => 50,
+        ]);
+
+        $rows = collect(app(InventoryMovementRepository::class)->getHistoryPaginated(50)->items())
+            ->keyBy('transaction_number');
+
+        $this->assertSame(
+            42,
+            (int) $rows['TT-TEST-CANCEL-BALANCE']->total_balance,
+            'baris reserve yang disembunyikan tidak boleh mengurangi saldo berjalan',
+        );
+    }
+
     public function test_order_complete_out_muncul_di_kronologi_bersih_dan_mengubah_saldo(): void
     {
         $this->movement('ADJUSTMENT', 88, 88, 1);
@@ -525,4 +565,3 @@ class KronologiBalancePartitionTest extends TestCase
         $this->assertSame('in', $row['direction']);
     }
 }
-

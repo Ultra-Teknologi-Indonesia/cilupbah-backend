@@ -208,11 +208,15 @@ class PesananSemuaVisibilityAndStatusFilterTest extends TestCase
         $nosReady = array_column($resReady->json('data'), 'salesorder_no');
         $this->assertContains('SO-SIAP-PROSES', $nosReady);
         $this->assertNotContains('SO-PENGAMBILAN-BELUM', $nosReady);
+        $readyOrder = collect($resReady->json('data'))->firstWhere('salesorder_no', 'SO-SIAP-PROSES');
+        $this->assertSame('Siap Proses', $readyOrder['status_label']);
 
         $resBelum = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales?filter[status][]=picking-belum');
         $nosBelum = array_column($resBelum->json('data'), 'salesorder_no');
         $this->assertContains('SO-PENGAMBILAN-BELUM', $nosBelum);
         $this->assertNotContains('SO-SIAP-PROSES', $nosBelum);
+        $pickingNotStartedOrder = collect($resBelum->json('data'))->firstWhere('salesorder_no', 'SO-PENGAMBILAN-BELUM');
+        $this->assertSame('Pengambilan - Belum Dimulai', $pickingNotStartedOrder['status_label']);
     }
 
     public function test_status_filter_picking_diproses_and_selesai_and_packing_diproses(): void

@@ -41,6 +41,13 @@ class CourierMappingServiceTest extends TestCase
         $this->assertSame('CARGO', $this->service->resolveShipmentType('JNE Cargo'));
     }
 
+    public function test_next_day_variants_are_classified_as_express(): void
+    {
+        $this->assertSame('EXPRESS', $this->service->resolveShipmentType('J&T Express Next-day delivery'));
+        $this->assertSame('EXPRESS', $this->service->resolveShipmentType('GoTo Logistics GTL Next-day delivery'));
+        $this->assertSame('EXPRESS', $this->service->resolveShipmentType('Next_day'));
+    }
+
     public function test_jtr_abbreviation_is_cargo_across_channels(): void
     {
 

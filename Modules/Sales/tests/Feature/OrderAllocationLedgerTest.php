@@ -163,6 +163,40 @@ class OrderAllocationLedgerTest extends TestCase
         ]);
     }
 
+    public function test_release_does_not_consume_another_orders_reservation(): void
+    {
+        $v = $this->variant('ALLOC-4B');
+        $this->setInventory($v->id, 50);
+
+        $this->stock()->reserve('ALLOC-4B', $v->id, $this->locationId, 1, 'SO-ALLOC-A');
+        $this->stock()->pick('ALLOC-4B', $v->id, $this->locationId, 1, 'SO-ALLOC-A');
+
+        $this->stock()->reserve('ALLOC-4B', $v->id, $this->locationId, 1, 'SO-ALLOC-B');
+        $this->stock()->pick('ALLOC-4B', $v->id, $this->locationId, 1, 'SO-ALLOC-A');
+
+        $this->assertSame(
+            1,
+            DB::table('inventory_movements')
+                ->where('transaction_number', 'SO-ALLOC-A')
+                ->where('source', 'ORDER_RELEASE')
+                ->count(),
+        );
+        $this->assertSame(
+            1,
+            DB::table('inventory_movements')
+                ->where('transaction_number', 'SO-ALLOC-B')
+                ->where('source', 'ORDER_RESERVE')
+                ->count(),
+        );
+        $this->assertSame(
+            1,
+            (int) DB::table('inventories')
+                ->where('item_id', $v->id)
+                ->where('location_id', $this->locationId)
+                ->sum('on_order'),
+        );
+    }
+
     public function test_allocation_rows_do_not_corrupt_on_hand_running_balance(): void
     {
         $v = $this->variant('ALLOC-5');
