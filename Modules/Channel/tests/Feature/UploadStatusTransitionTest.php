@@ -11,6 +11,7 @@ use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductSyncLog;
 use Modules\Product\Models\ProductVariant;
 use Tests\TestCase;
@@ -94,5 +95,31 @@ class UploadStatusTransitionTest extends TestCase
         $log->refresh();
         $this->assertSame(ProductSyncLog::STATUS_FAILED, $log->status);
         $this->assertSame('E500 boom', $log->error_message);
+    }
+
+    public function test_terminal_queue_failure_does_not_overwrite_actionable_mapping_error(): void
+    {
+        $this->shop->forceFill(['catalog_push_enabled' => true])->save();
+        $this->fakeAdapter(['success' => false, 'message' => 'Kategori channel belum dipetakan.']);
+
+        $job = new SyncProductToChannelJob($this->product->id, $this->shop->id, 'push');
+        try {
+            $job->handle($this->app->make(AdapterFactory::class));
+        } catch (\Throwable $exception) {
+            // The worker retries this exception before calling failed().
+        }
+
+        $mapping = ProductChannelMapping::query()
+            ->where('product_id', $this->product->id)
+            ->where('channel_shop_id', $this->shop->id)
+            ->firstOrFail();
+
+        $job->failed(new \RuntimeException('MaxAttemptsExceededException'));
+
+        $this->assertSame(
+            'Kategori channel belum dipetakan.',
+            $mapping->fresh()->error_message,
+            'Callback terminal queue tidak boleh mengganti alasan yang bisa ditindaklanjuti dengan error retry generik.',
+        );
     }
 }

@@ -307,7 +307,6 @@ class ChannelDownloadService
         return $flagged;
     }
 
-    /** @return callable(): array<string, mixed> */
     protected function buildRemoteSearchTask(string $channel, string $shopId, string $query, int $limit): callable
     {
         $serviceClass = static::class;
@@ -333,7 +332,6 @@ class ChannelDownloadService
         };
     }
 
-    /** @param array<string, callable(): array<string, mixed>> $tasks */
     protected function runRemoteSearchTasks(array $tasks): array
     {
         if ($tasks === []) {
@@ -343,9 +341,6 @@ class ChannelDownloadService
         $results = [];
         $maxParallel = max(1, (int) config('channel.search_max_parallel_stores', 8));
 
-        // Bound process creation for accounts with many connected stores. A
-        // typical three-channel search remains one parallel batch, while a
-        // large account cannot exhaust PHP worker memory.
         foreach (array_chunk($tasks, $maxParallel, true) as $batch) {
             if (count($batch) === 1 || app()->runningUnitTests()) {
                 foreach ($batch as $key => $task) {
@@ -358,9 +353,7 @@ class ChannelDownloadService
             try {
                 $results += Concurrency::driver((string) config('channel.search_concurrency_driver', 'process'))->run($batch);
             } catch (\Throwable $e) {
-                // A concurrency driver is an optimization, never a
-                // correctness dependency. Fall back to isolated sequential
-                // tasks if process spawning is unavailable in a runtime.
+
                 Log::warning('Unified channel search concurrency unavailable; using isolated fallback', [
                     'task_count' => count($batch),
                     'exception' => get_class($e),

@@ -59,9 +59,6 @@ class InboundItem extends Model
         return max(0, $this->received_qty - $this->putaway_qty - ($this->reserved_qty ?? 0));
     }
 
-    /**
-     * Jumlah yang masih belum diterima, setelah memperhitungkan barang rusak.
-     */
     public function remainingToReceiveQty(): int
     {
         return max(

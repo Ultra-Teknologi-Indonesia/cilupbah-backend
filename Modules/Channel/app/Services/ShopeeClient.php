@@ -116,14 +116,6 @@ class ShopeeClient
         return $data;
     }
 
-    /**
-     * Execute a bounded batch of signed GET requests concurrently. This is
-     * used by interactive variant search; callers still control the batch
-     * size so marketplace rate limits are respected.
-     *
-     * @param array<string, array<string, mixed>> $requests
-     * @return array<string, array<string, mixed>>
-     */
     public function requestPool(
         string $apiPath,
         array $requests,

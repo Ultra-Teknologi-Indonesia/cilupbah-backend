@@ -48,6 +48,13 @@ class ProductVariant extends Model
         'height' => 'decimal:2',
     ];
 
+    public function setSkuAttribute($value): void
+    {
+        $this->attributes['sku'] = is_string($value) && trim($value) === ''
+            ? null
+            : $value;
+    }
+
     public function salesTax(): BelongsTo
     {
         return $this->belongsTo(\Modules\Tax\Models\Tax::class, 'sales_tax_id');

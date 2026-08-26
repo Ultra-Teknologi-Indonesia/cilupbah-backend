@@ -7,6 +7,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Modules\Product\Models\Attribute;
 use Modules\Product\Models\Category;
+use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductVariant;
 use Tests\TestCase;
 
 class ProductVariationConstraintTest extends TestCase
@@ -152,5 +154,26 @@ class ProductVariationConstraintTest extends TestCase
         $this->assertEquals(2, DB::table('product_variation_types')->where('product_id', $productId)->count());
         $this->assertDatabaseHas('product_variants', ['sku' => 'KAOS-MERAH-L']);
         $this->assertDatabaseHas('product_variants', ['sku' => 'KAOS-BIRU-M']);
+    }
+
+    public function test_blank_sku_is_persisted_as_null_at_both_product_levels(): void
+    {
+        $product = Product::create([
+            'name' => 'Produk Tanpa SKU',
+            'category_id' => $this->category->id,
+            'sku' => '   ',
+            'status' => Product::STATUS_MASTER,
+            'is_active' => true,
+        ]);
+
+        $variant = ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => "\t",
+            'sell_price' => 50000,
+            'is_active' => true,
+        ]);
+
+        $this->assertNull($product->fresh()->sku);
+        $this->assertNull($variant->fresh()->sku);
     }
 }

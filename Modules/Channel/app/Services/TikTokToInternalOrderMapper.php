@@ -62,6 +62,8 @@ class TikTokToInternalOrderMapper
 
         $fulfillmentStatus = $packages[0]['status'] ?? null;
 
+        $commercePlatform = $this->resolveCommercePlatform($tiktokOrder);
+
         $fulfillmentType = $tiktokOrder['fulfillment_type'] ?? null;
         $deliveryOptionId = $tiktokOrder['delivery_option_id'] ?? null;
         $shippingType = $tiktokOrder['shipping_type'] ?? null;
@@ -147,7 +149,10 @@ class TikTokToInternalOrderMapper
             'pickup_done_time'     => ! empty($tiktokOrder['collection_time']) ? date('Y-m-d H:i:s', $tiktokOrder['collection_time']) : null,
             'pickup_code'          => $this->extractPickupCode($tiktokOrder),
             'channel_updated_at'   => ! empty($tiktokOrder['update_time']) ? date('Y-m-d H:i:s', $tiktokOrder['update_time']) : null,
+            // TikTok Shop is the API/provider. The commerce platform can be
+            // Tokopedia for migrated shops, so keep both dimensions explicit.
             'source'               => 'tiktok',
+            'commerce_platform'    => $commercePlatform,
 
             'fulfillment_type'     => $fulfillmentType,
             'delivery_option_id'   => $deliveryOptionId,
@@ -155,6 +160,13 @@ class TikTokToInternalOrderMapper
 
             'items'                => $items,
         ];
+    }
+
+    private function resolveCommercePlatform(array $tiktokOrder): string
+    {
+        return strtoupper((string) ($tiktokOrder['commerce_platform'] ?? '')) === 'TOKOPEDIA'
+            ? 'TOKOPEDIA'
+            : 'TIKTOK_SHOP';
     }
 
     protected function extractPickupCode(array $tiktokOrder): ?string

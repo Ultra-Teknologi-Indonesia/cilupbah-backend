@@ -260,10 +260,6 @@ class StockAdjustmentService
         return true;
     }
 
-    /**
-     * A stock adjustment may contain many SKUs and each SKU may use a
-     * different bin, but every bin must belong to the selected location.
-     */
     private function assertBinsBelongToLocation(array $items, string $locationId): void
     {
         $binIds = collect($items)

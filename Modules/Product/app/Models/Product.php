@@ -84,6 +84,13 @@ class Product extends Model
         'purchase_lead_time' => 'integer',
     ];
 
+    public function setSkuAttribute($value): void
+    {
+        $this->attributes['sku'] = is_string($value) && trim($value) === ''
+            ? null
+            : $value;
+    }
+
     public function variants(): HasMany
     {
         return $this->hasMany(ProductVariant::class);

@@ -163,8 +163,6 @@ class PutawayService
             throw new \App\Exceptions\UserFacingException('Dokumen penempatan tidak ditemukan.', 404);
         }
 
-        // Raw query results do not receive Eloquent's datetime serialization.
-        // Normalize them to the same ISO-8601 UTC contract used by resources.
         $formatTimestamp = static function ($value): ?string {
             if ($value === null || $value === '') {
                 return null;

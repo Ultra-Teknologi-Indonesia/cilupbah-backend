@@ -240,7 +240,8 @@ class ProductService
         }
 
         $matchedExisting = false;
-        $productId = $this->createProduct($data, $variantIds);
+
+        $productId = $this->createProduct($data, $variantIds, false);
         $this->queueExternalMediaMirroring($productId);
 
         return $productId;
@@ -969,14 +970,18 @@ class ProductService
         }
     }
 
-    public function createProduct(array $data, ?array &$variantIds = null)
+    public function createProduct(
+        array $data,
+        ?array &$variantIds = null,
+        bool $deriveParentSkuFromSingleVariant = true,
+    )
     {
         $this->resolveCustomAttributes($data);
         $this->assertVariationConstraints($data);
         $this->assertCategoryAttributes($data['category_id'] ?? null, $data, true);
         $variantIds = [];
 
-        return DB::transaction(function () use ($data, &$variantIds) {
+        return DB::transaction(function () use ($data, &$variantIds, $deriveParentSkuFromSingleVariant) {
             $productData = Arr::only($data, [
                 'category_id', 'name', 'sku', 'description',
                 'order_type', 'indent_days',
@@ -990,7 +995,11 @@ class ProductService
                 $productData['sku'] = null;
             }
 
-            if (empty($productData['sku']) && !empty($data['variants']) && count($data['variants']) === 1 && !empty($data['variants'][0]['sku'])) {
+            if ($deriveParentSkuFromSingleVariant
+                && empty($productData['sku'])
+                && !empty($data['variants'])
+                && count($data['variants']) === 1
+                && !empty($data['variants'][0]['sku'])) {
                 $productData['sku'] = trim((string) $data['variants'][0]['sku']);
             }
 

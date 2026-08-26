@@ -463,14 +463,6 @@ class ShopeeProductService implements ChunkedDownloadable
         return $res['response']['item_list'] ?? [];
     }
 
-    /**
-     * Fetch model SKUs in small concurrent batches. Shopee does not expose a
-     * variant-SKU filter in get_item_list, so this is required for accurate
-     * remote variant search while avoiding one long serial request per item.
-     *
-     * @param array<int, array<string, mixed>> $items
-     * @return array<string, array<string, mixed>>
-     */
     protected function fetchSearchModelLists(object $shop, array $items, string $needle, ?int $timeoutSeconds = null): array
     {
         $requests = [];
@@ -500,9 +492,7 @@ class ShopeeProductService implements ChunkedDownloadable
                     $timeoutSeconds,
                 ));
             } catch (\Throwable $e) {
-                // Base product search is still useful when model hydration
-                // is temporarily unavailable. A variant-only query simply
-                // yields no false positive from this batch.
+
                 Log::warning('Shopee variant search hydration skipped', [
                     'shop_id' => $shop->shop_id,
                     'batch_size' => count($batch),
@@ -523,11 +513,6 @@ class ShopeeProductService implements ChunkedDownloadable
         return $modelLists;
     }
 
-    /**
-     * @param array<int, array<string, mixed>> $items
-     * @param array<string, array<string, mixed>> $modelLists
-     * @return array<int, array<string, mixed>>
-     */
     protected function mapSearchItems(object $shop, string $shopId, array $items, string $needle, array $modelLists): array
     {
         $results = [];
@@ -563,7 +548,6 @@ class ShopeeProductService implements ChunkedDownloadable
         return $results;
     }
 
-    /** @param array<int, string> $sellerSkus */
     protected function matchingSearchSku(array $sellerSkus, string $needle): ?string
     {
         if ($needle === '') {

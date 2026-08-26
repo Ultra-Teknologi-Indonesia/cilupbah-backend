@@ -78,4 +78,29 @@ class TikTokToInternalOrderMapperTest extends TestCase
         $this->assertNull($result['seller_voucher']);
         $this->assertNull($result['platform_voucher']);
     }
+
+    public function test_maps_tokopedia_commerce_platform_without_changing_tiktok_api_source(): void
+    {
+        $mapper = new TikTokToInternalOrderMapper();
+        $order = $this->order([
+            ['product_id' => '173', 'sku_id' => '999', 'seller_sku' => 'AG-17-BLU', 'quantity' => 1],
+        ]);
+        $order['commerce_platform'] = 'TOKOPEDIA';
+
+        $result = $mapper->map($order, 'shop-1');
+
+        $this->assertSame('tiktok', $result['source']);
+        $this->assertSame('TOKOPEDIA', $result['commerce_platform']);
+    }
+
+    public function test_defaults_missing_commerce_platform_to_tiktok_shop(): void
+    {
+        $mapper = new TikTokToInternalOrderMapper();
+
+        $result = $mapper->map($this->order([
+            ['product_id' => '173', 'sku_id' => '999', 'seller_sku' => 'AG-17-BLU', 'quantity' => 1],
+        ]), 'shop-1');
+
+        $this->assertSame('TIKTOK_SHOP', $result['commerce_platform']);
+    }
 }

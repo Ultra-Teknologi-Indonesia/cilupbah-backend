@@ -1157,10 +1157,11 @@ class SalesOrderService
         return "order:done:{$marketplace}:{$salesOrderNo}";
     }
 
-    public function generateSalesOrderNo(?string $source, ?string $channelOrderNo = null): array
+    public function generateSalesOrderNo(?string $source, ?string $channelOrderNo = null, ?string $commercePlatform = null): array
     {
-        if ($source && isset(self::CHANNEL_PREFIX[$source]) && $channelOrderNo) {
-            $prefix = self::CHANNEL_PREFIX[$source];
+        $prefix = $this->resolveChannelPrefix($source, $commercePlatform);
+
+        if ($prefix && $channelOrderNo) {
 
             return [
                 'salesorder_no'  => "{$prefix}-{$channelOrderNo}",
@@ -1177,6 +1178,17 @@ class SalesOrderService
             'channel_order_no' => null,
             'so_sequence'    => $sequence,
         ];
+    }
+
+    private function resolveChannelPrefix(?string $source, ?string $commercePlatform = null): ?string
+    {
+        if (strtoupper((string) $commercePlatform) === 'TOKOPEDIA') {
+            return self::CHANNEL_PREFIX['tokopedia'];
+        }
+
+        return $source && isset(self::CHANNEL_PREFIX[$source])
+            ? self::CHANNEL_PREFIX[$source]
+            : null;
     }
 
     public function createOrder(array $validated): SalesOrder
@@ -1735,7 +1747,8 @@ class SalesOrderService
         if (! empty($orderData['channel_order_no']) && empty($orderData['salesorder_no'])) {
             $numbering = $this->generateSalesOrderNo(
                 $source,
-                $orderData['channel_order_no']
+                $orderData['channel_order_no'],
+                $orderData['commerce_platform'] ?? null,
             );
             $orderData['salesorder_no'] = $numbering['salesorder_no'];
         }

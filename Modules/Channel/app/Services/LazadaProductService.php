@@ -547,7 +547,6 @@ class LazadaProductService
         return $results;
     }
 
-    /** @return list<string> */
     protected function sellerSkus(array $item): array
     {
         return collect($item['skus'] ?? [])
@@ -579,7 +578,6 @@ class LazadaProductService
         return null;
     }
 
-    /** @return list<array<string, mixed>> */
     protected function normalizedModels(array $item, array $internalData, array $variantIds = []): array
     {
         $variantsByIndex = array_values($internalData['variants'] ?? []);

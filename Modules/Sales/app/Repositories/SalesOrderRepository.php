@@ -5,6 +5,7 @@ namespace Modules\Sales\Repositories;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Collection;
 use Modules\Sales\Enums\ChannelStatus;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderStatusHistory;
@@ -61,6 +62,7 @@ class SalesOrderRepository
             ->allowedFilters(
                 AllowedFilter::callback('item_id', fn ($q, $value) => $q->whereHas('items', fn ($q2) => $q2->whereIn('item_id', (array) $value))),
                 AllowedFilter::exact('channel', 'source'),
+                AllowedFilter::exact('commerce_platform'),
                 AllowedFilter::exact('store_id', 'channel_shop_id'),
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::callback('shipping_provider', fn ($q, $value) => $this->applyShippingProviderFilter($q, $value)),
@@ -566,6 +568,66 @@ class SalesOrderRepository
         return SalesOrder::with(['items', 'returns.settlement', 'invoices'])->find($id);
     }
 
+    public function getOrdersForTikTokPlatformBackfill(?string $orderReference, ?string $shopId, int $limit): Collection
+    {
+        return SalesOrder::query()
+            ->where('source', 'tiktok')
+            ->whereNotNull('channel_order_no')
+            ->when(! $orderReference, function ($query): void {
+                $query->where(function ($nested): void {
+                    $nested
+                        ->whereNull('commerce_platform')
+                        ->orWhere(function ($platformQuery): void {
+                            $platformQuery
+                                ->where('commerce_platform', 'TOKOPEDIA')
+                                ->where('salesorder_no', 'not like', 'TP-%');
+                        })
+                        ->orWhere(function ($platformQuery): void {
+                            $platformQuery
+                                ->where('commerce_platform', 'TIKTOK_SHOP')
+                                ->where('salesorder_no', 'not like', 'TT-%');
+                        });
+                });
+            })
+            ->when($orderReference, function ($query) use ($orderReference): void {
+                $query->where(function ($nested) use ($orderReference): void {
+                    $nested
+                        ->where('channel_order_no', $orderReference)
+                        ->orWhere('salesorder_no', $orderReference);
+                });
+            })
+            ->when($shopId, fn ($query) => $query->where('channel_shop_id', $shopId))
+            ->orderBy('created_at')
+            ->limit(max(1, $limit))
+            ->get([
+                'id',
+                'salesorder_no',
+                'channel_order_no',
+                'channel_shop_id',
+                'source',
+                'commerce_platform',
+            ]);
+    }
+
+    public function salesOrderNoBelongsToAnotherOrder(string $salesOrderNo, string $orderId): bool
+    {
+        return SalesOrder::query()
+            ->where('salesorder_no', $salesOrderNo)
+            ->whereKeyNot($orderId)
+            ->exists();
+    }
+
+    public function updateCommercePlatformAndSalesOrderNo(
+        SalesOrder $order,
+        string $commercePlatform,
+        string $salesOrderNo,
+    ): void {
+        $order->forceFill([
+            'commerce_platform' => $commercePlatform,
+            'salesorder_no' => $salesOrderNo,
+        ])->saveQuietly();
+    }
+
     public function upsertOrderBySalesOrderNo(string $salesOrderNo, array $orderData): ?SalesOrder
     {
         $channelOrderNo = $orderData['channel_order_no'] ?? null;
@@ -602,6 +664,7 @@ class SalesOrderRepository
             'salesorder_no'       => $orderData['salesorder_no'],
             'channel_order_no'    => $orderData['channel_order_no'] ?? null,
             'channel_shop_id'     => $orderData['channel_shop_id'],
+            'commerce_platform'  => $orderData['commerce_platform'] ?? ($existing->commerce_platform ?? null),
             'channel_buyer_id'    => $orderData['channel_buyer_id'] ?? null,
             'customer_name'       => $orderData['customer_name'],
             'transaction_date'    => $orderData['transaction_date'],

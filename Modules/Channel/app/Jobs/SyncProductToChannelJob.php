@@ -38,6 +38,7 @@ class SyncProductToChannelJob implements ShouldQueue
 
     protected string $channelCodeResolved = '';
     protected bool $uploadResultRecorded = false;
+    protected ?string $lastActionableFailure = null;
 
     private const STOCK_ACTIONS = ['sync_price_stock', 'sync_stock'];
 
@@ -113,6 +114,7 @@ class SyncProductToChannelJob implements ShouldQueue
         if (in_array($this->action, ['push', 'update'], true)
             && app(ChannelListingValidator::class)->lacksVariationAttributes($product)) {
             $message = "Produk multi-varian tanpa atribut variasi — wajib diisi sebelum upload ke {$channelCode}.";
+            $this->lastActionableFailure = $message;
             $mapping = ProductChannelMapping::firstOrCreate([
                 'product_id' => $this->productId,
                 'channel_shop_id' => $this->channelShopId,
@@ -234,6 +236,7 @@ class SyncProductToChannelJob implements ShouldQueue
                 $this->refreshChannelValidation();
             } else {
                 $message = $result['message'] ?? 'Gagal mengeksekusi aksi';
+                $this->lastActionableFailure = $message;
 
                 if (empty($externalId) && ! empty($result['external_product_id'])) {
                     $mapping->update(['external_product_id' => (string) $result['external_product_id']]);
@@ -247,6 +250,7 @@ class SyncProductToChannelJob implements ShouldQueue
             }
 
         } catch (\Exception $e) {
+            $this->lastActionableFailure = $e->getMessage();
             $mapping->markAsFailed($e->getMessage());
             if (! $this->uploadResultRecorded) {
                 $this->recordUploadResult(false, $e->getMessage());
@@ -399,7 +403,16 @@ class SyncProductToChannelJob implements ShouldQueue
             ->get();
 
         foreach ($mappings as $mapping) {
-            $mapping->markAsFailed($exception->getMessage());
+
+            if ($this->lastActionableFailure !== null
+                && $mapping->sync_status === ProductChannelMapping::STATUS_FAILED
+                && filled($mapping->error_message)) {
+                continue;
+            }
+
+            $mapping->markAsFailed(
+                'Sinkronisasi ke channel gagal setelah beberapa percobaan. Silakan coba lagi.'
+            );
         }
     }
 }

@@ -168,6 +168,7 @@ class SalesOrder extends Model implements HasMedia
         'channel_updated_at',
         'return_due_date',
         'source',
+        'commerce_platform',
         'location_id',
         'received_date',
         'handed_to_warehouse_at',

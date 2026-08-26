@@ -7,6 +7,7 @@ use Modules\Channel\Console\Commands\AuditChannelProductActivity;
 use Modules\Channel\Console\Commands\AuditChannelSkuCoverage;
 use Modules\Channel\Console\Commands\BackfillDownloadHistory;
 use Modules\Channel\Console\Commands\BackfillShopeeShopNames;
+use Modules\Channel\Console\Commands\BackfillTikTokCommercePlatform;
 use Modules\Channel\Console\Commands\EvaluateOrderSyncHealth;
 use Modules\Channel\Console\Commands\MonitorChannelSkuHealth;
 use Modules\Channel\Console\Commands\MonitorDownloadHealth;
@@ -16,6 +17,7 @@ use Modules\Channel\Console\Commands\PullLiveOrdersCommand;
 use Modules\Channel\Console\Commands\PullShadowOrdersCommand;
 use Modules\Channel\Console\Commands\ReportMissingChannelSku;
 use Modules\Channel\Console\Commands\ReapStaleDownloadTransactions;
+use Modules\Channel\Console\Commands\RepairStaleSyncErrors;
 use Modules\Channel\Console\Commands\ShadowOffCommand;
 use Modules\Channel\Console\Commands\ShadowPromoteCommand;
 use Modules\Channel\Console\Commands\ShadowPurgeCommand;
@@ -47,12 +49,14 @@ class ChannelServiceProvider extends ModuleServiceProvider
         AuditChannelSkuCoverage::class,
         BackfillDownloadHistory::class,
         BackfillShopeeShopNames::class,
+        BackfillTikTokCommercePlatform::class,
         EvaluateOrderSyncHealth::class,
         MonitorChannelSkuHealth::class,
         MonitorDownloadHealth::class,
         PullChannelShop::class,
         ReapStaleDownloadTransactions::class,
         ReportMissingChannelSku::class,
+        RepairStaleSyncErrors::class,
         SyncTikTokAttributes::class,
 
         MonitorShadowPullHealth::class,
