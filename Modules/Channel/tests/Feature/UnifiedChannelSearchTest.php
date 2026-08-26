@@ -3,10 +3,12 @@
 namespace Modules\Channel\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Product\Models\Product;
+use Modules\Product\Models\Category;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductVariant;
 use App\Models\User;
@@ -178,5 +180,195 @@ class UnifiedChannelSearchTest extends TestCase
         $this->assertCount(1, $items);
         $this->assertSame('tiktok', $items[0]['channel_code']);
         $this->assertSame('TT-SHOP-1', $items[0]['shop_id']);
+    }
+
+    public function test_unified_search_uses_marketplace_as_source_and_enriches_existing_mapping(): void
+    {
+        Http::fake([
+            '*/api/v2/product/get_item_list*' => Http::response([
+                'error' => '',
+                'response' => [
+                    'item' => [['item_id' => 311, 'item_status' => 'NORMAL']],
+                    'has_next_page' => false,
+                    'next_offset' => 0,
+                ],
+            ], 200),
+            '*/api/v2/product/get_item_base_info*' => Http::response([
+                'error' => '',
+                'response' => [
+                    'item_list' => [[
+                        'item_id' => 311,
+                        'item_name' => 'Marketplace Case',
+                        'item_sku' => 'LOCAL-SKU-11',
+                        'image' => ['image_url_list' => ['https://img.shopee/local.jpg']],
+                    ]],
+                ],
+            ], 200),
+        ]);
+
+        $category = Category::create(['name' => 'General', 'is_active' => true]);
+
+        $product = Product::create([
+            'category_id' => $category->id,
+            'name' => 'Master Case',
+            'sku' => 'LOCAL-SKU-11',
+            'status' => 'master',
+            'is_active' => true,
+        ]);
+
+        ProductChannelMapping::create([
+            'product_id' => $product->id,
+            'channel_shop_id' => $this->shopeeShop->id,
+            'external_product_id' => '311',
+            'sync_status' => 'synced',
+        ]);
+
+        $response = $this->actingAs($this->user)
+            ->postJson('/api/v1/channel/download/search', [
+                'q' => 'LOCAL-SKU-11',
+                'shop_ids' => ['SP-SHOP-1'],
+            ]);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('data.0.external_product_id', '311')
+            ->assertJsonPath('data.0.already_downloaded', true)
+            ->assertJsonPath('data.0.master_product_id', $product->id);
+
+        Http::assertSentCount(2);
+    }
+
+    public function test_unified_search_does_not_return_local_only_variant_mapping(): void
+    {
+        Http::fake([
+            '*/api/v2/product/get_item_list*' => Http::response([
+                'error' => '',
+                'response' => [
+                    'item' => [['item_id' => 312, 'item_status' => 'NORMAL']],
+                    'has_next_page' => false,
+                    'next_offset' => 0,
+                ],
+            ], 200),
+            '*/api/v2/product/get_item_base_info*' => Http::response([
+                'error' => '',
+                'response' => [
+                    'item_list' => [[
+                        'item_id' => 312,
+                        'item_name' => 'Marketplace Variant Case',
+                        'item_sku' => 'SHP-BLACK-11',
+                        'has_model' => true,
+                    ]],
+                ],
+            ], 200),
+            '*/api/v2/product/get_model_list*' => Http::response([
+                'error' => '',
+                'response' => [
+                    'model' => [['model_sku' => 'SHP-BLACK-11']],
+                    'tier_variation' => [],
+                ],
+            ], 200),
+        ]);
+
+        $category = Category::create(['name' => 'Variant Category', 'is_active' => true]);
+        $product = Product::create([
+            'category_id' => $category->id,
+            'name' => 'Master Variant Case',
+            'sku' => 'MASTER-CASE',
+            'status' => 'master',
+            'is_active' => true,
+        ]);
+        $variant = ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => 'VARIANT-BLUE-11',
+            'sell_price' => 1000,
+            'is_active' => true,
+        ]);
+        $mapping = ProductChannelMapping::create([
+            'product_id' => $product->id,
+            'channel_shop_id' => $this->shopeeShop->id,
+            'external_product_id' => 'shopee-listing-variant',
+            'sync_status' => 'synced',
+        ]);
+        DB::table('product_variant_channel_mappings')->insert([
+            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'product_channel_mapping_id' => $mapping->id,
+            'variant_id' => $variant->id,
+            'channel_seller_sku' => 'SHP-BLUE-11',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->actingAs($this->user)
+            ->postJson('/api/v1/channel/download/search', [
+                'q' => 'VARIANT-BLUE-11',
+                'shop_ids' => ['SP-SHOP-1'],
+            ]);
+
+        $response->assertOk()->assertJsonPath('data', []);
+
+        Http::assertSentCount(3);
+    }
+
+    public function test_unified_search_isolates_remote_store_failure(): void
+    {
+        Http::fake([
+            '*product/202309/products/search*' => Http::response([
+                'code' => 500,
+                'message' => 'temporary upstream failure',
+            ], 500),
+        ]);
+
+        $response = $this->actingAs($this->user)
+            ->postJson('/api/v1/channel/download/search', [
+                'q' => 'NOT-IN-CATALOG',
+                'shop_ids' => ['TT-SHOP-1'],
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('meta.total_stores', 1)
+            ->assertJsonPath('meta.failed_stores.0.shop_id', 'TT-SHOP-1');
+    }
+
+    public function test_shopee_remote_search_matches_a_non_first_variant_sku(): void
+    {
+        Http::fake([
+            '*/api/v2/product/get_item_list*' => Http::response([
+                'error' => '',
+                'response' => [
+                    'item' => [['item_id' => 201, 'item_status' => 'NORMAL']],
+                    'has_next_page' => false,
+                    'next_offset' => 0,
+                ],
+            ], 200),
+            '*/api/v2/product/get_item_base_info*' => Http::response([
+                'error' => '',
+                'response' => [
+                    'item_list' => [[
+                        'item_id' => 201,
+                        'item_name' => 'Shopee Variant Case',
+                        'item_sku' => 'SHP-BLACK-11',
+                        'has_model' => true,
+                        'image' => ['image_url_list' => ['https://img.shopee/variant.jpg']],
+                    ]],
+                ],
+            ], 200),
+            '*/api/v2/product/get_model_list*' => Http::response([
+                'error' => '',
+                'response' => [
+                    'model' => [
+                        ['model_id' => 1, 'model_sku' => 'SHP-BLACK-11'],
+                        ['model_id' => 2, 'model_sku' => 'SHP-WHITE-11'],
+                    ],
+                    'tier_variation' => [],
+                ],
+            ], 200),
+        ]);
+
+        $results = app(\Modules\Channel\Services\ShopeeProductService::class)
+            ->searchProducts('SP-SHOP-1', 'SHP-WHITE-11', 3);
+
+        $this->assertCount(1, $results);
+        $this->assertSame('201', $results[0]['external_product_id']);
+        $this->assertSame('SHP-WHITE-11', $results[0]['seller_sku']);
+        $this->assertSame(['SHP-BLACK-11', 'SHP-WHITE-11'], $results[0]['seller_skus']);
     }
 }

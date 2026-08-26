@@ -318,6 +318,8 @@ class TikTokProductService
 
         $productService = app(\Modules\Product\Services\ProductService::class);
         $mapper         = app(TikTokToInternalProductMapper::class);
+        $matchedExisting = false;
+        $variantIds = [];
 
         $count     = 0;
         $failed    = 0;
@@ -454,7 +456,7 @@ class TikTokProductService
         return $count;
     }
 
-    public function searchProducts(string $shopId, string $query): array
+    public function searchProducts(string $shopId, string $query, ?int $timeoutSeconds = null): array
     {
         $shop = $this->shopRepository->findByShopId($shopId);
         if (!$shop || !$shop->access_token) {
@@ -464,6 +466,7 @@ class TikTokProductService
         $accessToken = $shop->access_token;
         $shopCipher  = $shop->shop_cipher ?? '';
         $needle      = trim(mb_strtolower($query));
+        $timeoutSeconds ??= max(1, (int) config('channel.search_remote_timeout_seconds', 8));
 
         $results   = [];
         $pageToken = null;
@@ -477,10 +480,10 @@ class TikTokProductService
 
             $body = ['status' => 'ACTIVATE'];
             try {
-                $res = $this->client->request('POST', '/product/202309/products/search', $queries, $body, $accessToken);
+                $res = $this->client->request('POST', '/product/202309/products/search', $queries, $body, $accessToken, [], $timeoutSeconds);
             } catch (TokenExpiredException $e) {
                 $accessToken = $this->refreshShopToken($shop);
-                $res = $this->client->request('POST', '/product/202309/products/search', $queries, $body, $accessToken);
+                $res = $this->client->request('POST', '/product/202309/products/search', $queries, $body, $accessToken, [], $timeoutSeconds);
             }
 
             foreach ($res['data']['products'] ?? [] as $item) {
@@ -489,22 +492,25 @@ class TikTokProductService
                 }
 
                 $title     = (string) ($item['title'] ?? '');
-                $sellerSku = null;
-                foreach ($item['skus'] ?? [] as $sku) {
-                    if (!empty($sku['seller_sku'])) {
-                        $sellerSku = $sku['seller_sku'];
-                        break;
-                    }
-                }
+                $sellerSkus = collect($item['skus'] ?? [])
+                    ->map(fn ($sku): ?string => ! empty($sku['seller_sku']) ? trim((string) $sku['seller_sku']) : null)
+                    ->filter(fn (?string $sku): bool => $sku !== null && $sku !== '')
+                    ->unique(fn (string $sku): string => mb_strtolower($sku))
+                    ->values()
+                    ->all();
+                $matchingSku = collect($sellerSkus)->first(
+                    fn (string $sku): bool => str_contains(mb_strtolower($sku), $needle)
+                );
 
-                if ($needle !== '' && !str_contains(mb_strtolower($title . ' ' . (string) $sellerSku), $needle)) {
+                if ($needle !== '' && $matchingSku === null && !str_contains(mb_strtolower($title), $needle)) {
                     continue;
                 }
 
                 $results[] = [
                     'external_product_id' => (string) ($item['id'] ?? ''),
                     'name'                => $title,
-                    'seller_sku'          => $sellerSku,
+                    'seller_sku'          => $matchingSku ?: ($sellerSkus[0] ?? null),
+                    'seller_skus'         => $sellerSkus,
                     'image'               => $this->normalizeTikTokImageUrl($item['main_images'][0]['thumb_urls'][0] ?? ($item['main_images'][0]['uri'] ?? null)),
                     'shop_id'             => $shopId,
                     'shop_name'           => $shop->shop_name ?? null,
@@ -559,6 +565,8 @@ class TikTokProductService
 
         $productService = app(\Modules\Product\Services\ProductService::class);
         $mapper         = app(TikTokToInternalProductMapper::class);
+        $matchedExisting = false;
+        $variantIds = [];
 
         $detail = $this->fetchProductDetail($shop, $externalProductId, $accessToken);
         if (! $detail) {
@@ -568,13 +576,6 @@ class TikTokProductService
         if (isset($detail['status']) && strtoupper((string) $detail['status']) !== 'ACTIVATE') {
             Log::info("TikTok download dilewati: produk {$externalProductId} tidak aktif (status {$detail['status']})");
 
-            return false;
-        }
-
-        $internalData = $mapper->map($detail, $shopId);
-        $insertedId   = $productService->upsertFromChannel($internalData, $matchedExisting, $variantIds);
-
-        if (!$insertedId) {
             return false;
         }
 
@@ -588,25 +589,40 @@ class TikTokProductService
             $attrs[$attr['name']] = implode(', ', $vals);
         }
 
-        $pcmId = $this->productRepository->upsertChannelMapping(
-            (string) $insertedId,
-            $shopId,
-            (string) ($detail['id'] ?? $externalProductId),
-            'synced',
-            $attrs ?: null,
-            false
-        );
+        $insertedId = DB::transaction(function () use ($detail, $externalProductId, $shop, $shopId, $productService, $mapper, $attrs, &$matchedExisting, &$variantIds): ?string {
+            $internalData = $mapper->map($detail, $shopId);
+            $productId = $productService->upsertFromChannel($internalData, $matchedExisting, $variantIds);
+            if (! $productId) {
+                return null;
+            }
 
-        $this->mapSkusToVariants(
-            $shop,
-            $shopId,
-            (string) ($detail['id'] ?? $externalProductId),
-            $pcmId,
-            (string) $insertedId,
-            $detail['skus'] ?? [],
-            $internalData,
-            $variantIds
-        );
+            $externalId = (string) ($detail['id'] ?? $externalProductId);
+            $pcmId = $this->productRepository->upsertChannelMapping(
+                (string) $productId,
+                $shopId,
+                $externalId,
+                'synced',
+                $attrs ?: null,
+                false
+            );
+
+            $this->mapSkusToVariants(
+                $shop,
+                $shopId,
+                $externalId,
+                $pcmId,
+                (string) $productId,
+                $detail['skus'] ?? [],
+                $internalData,
+                $variantIds
+            );
+
+            return (string) $productId;
+        });
+
+        if (! $insertedId) {
+            return false;
+        }
 
         ProductSyncLog::record([
             'channel_shop_id' => $channelShopId,

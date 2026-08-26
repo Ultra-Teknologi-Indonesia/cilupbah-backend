@@ -62,4 +62,22 @@ class LazadaClientRetryTest extends TestCase
             Http::assertSentCount(1);
         }
     }
+
+    public function test_interactive_request_can_use_a_single_bounded_attempt(): void
+    {
+        Http::fake([
+            'api.lazada.co.id/rest/*' => Http::response([
+                'code' => 'SystemError',
+                'message' => 'The request has failed due to RPC timeout',
+            ], 200),
+        ]);
+
+        $this->expectException(\Exception::class);
+
+        try {
+            (new LazadaClient())->request('GET', '/products/get', [], 'tok', 2, 1);
+        } finally {
+            Http::assertSentCount(1);
+        }
+    }
 }

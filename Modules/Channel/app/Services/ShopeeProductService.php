@@ -376,7 +376,9 @@ class ShopeeProductService implements ChunkedDownloadable
 
         $item = $this->hydrateModels($shop, $item);
 
-        if (! $this->persistItem($shop, $shopId, $item, $mapper, $productService)) {
+        $persisted = DB::transaction(fn (): bool => $this->persistItem($shop, $shopId, $item, $mapper, $productService));
+
+        if (! $persisted) {
             return false;
         }
 
@@ -390,7 +392,7 @@ class ShopeeProductService implements ChunkedDownloadable
         return true;
     }
 
-    public function searchProducts(string $shopId, string $query): array
+    public function searchProducts(string $shopId, string $query, ?int $timeoutSeconds = null): array
     {
         $shop = $this->requireShop($shopId);
         $needle = trim(mb_strtolower($query));
@@ -399,29 +401,17 @@ class ShopeeProductService implements ChunkedDownloadable
         $offset = 0;
         $pageSize = 50;
         $pages = 0;
+        $timeoutSeconds ??= max(1, (int) config('channel.search_remote_timeout_seconds', 8));
 
         do {
-            $list = $this->fetchItemList($shop, $offset, $pageSize);
+            $list = $this->fetchItemList($shop, $offset, $pageSize, $timeoutSeconds);
             $itemIds = $this->extractItemIds($list);
+            $baseItems = $this->fetchBaseInfo($shop, $itemIds, $timeoutSeconds);
+            $modelLists = $needle !== ''
+                ? $this->fetchSearchModelLists($shop, $baseItems, $needle, $timeoutSeconds)
+                : [];
 
-            foreach ($this->fetchBaseInfo($shop, $itemIds) as $item) {
-                $name = (string) ($item['item_name'] ?? '');
-                $sellerSku = $item['item_sku'] ?? null;
-
-                if ($needle !== '' && ! str_contains(mb_strtolower($name . ' ' . (string) $sellerSku), $needle)) {
-                    continue;
-                }
-
-                $results[] = [
-                    'external_product_id' => (string) ($item['item_id'] ?? ''),
-                    'name' => $name,
-                    'seller_sku' => $sellerSku,
-                    'image' => $item['image']['image_url_list'][0] ?? null,
-                    'shop_id' => $shopId,
-                    'shop_name' => $shop->shop_name ?? null,
-                    'channel_code' => 'shopee',
-                ];
-            }
+            $results = array_merge($results, $this->mapSearchItems($shop, $shopId, $baseItems, $needle, $modelLists));
 
             $hasNext = (bool) ($list['has_next_page'] ?? false);
             $offset = (int) ($list['next_offset'] ?? ($offset + $pageSize));
@@ -431,34 +421,21 @@ class ShopeeProductService implements ChunkedDownloadable
         return $results;
     }
 
-    public function searchProductsPaged(string $shopId, string $query, int $offset, int $limit): array
+    public function searchProductsPaged(string $shopId, string $query, int $offset, int $limit, ?int $timeoutSeconds = null): array
     {
         $shop = $this->requireShop($shopId);
         $needle = trim(mb_strtolower($query));
         $pageSize = $needle === '' ? min(max($limit, 1), 100) : 50;
+        $timeoutSeconds ??= max(1, (int) config('channel.search_remote_timeout_seconds', 8));
 
-        $list = $this->fetchItemList($shop, $offset, $pageSize);
+        $list = $this->fetchItemList($shop, $offset, $pageSize, $timeoutSeconds);
         $itemIds = $this->extractItemIds($list);
+        $baseItems = $this->fetchBaseInfo($shop, $itemIds, $timeoutSeconds);
+        $modelLists = $needle !== ''
+            ? $this->fetchSearchModelLists($shop, $baseItems, $needle, $timeoutSeconds)
+            : [];
 
-        $items = [];
-        foreach ($this->fetchBaseInfo($shop, $itemIds) as $item) {
-            $name = (string) ($item['item_name'] ?? '');
-            $sellerSku = $item['item_sku'] ?? null;
-
-            if ($needle !== '' && ! str_contains(mb_strtolower($name . ' ' . (string) $sellerSku), $needle)) {
-                continue;
-            }
-
-            $items[] = [
-                'external_product_id' => (string) ($item['item_id'] ?? ''),
-                'name' => $name,
-                'seller_sku' => $sellerSku,
-                'image' => $item['image']['image_url_list'][0] ?? null,
-                'shop_id' => $shopId,
-                'shop_name' => $shop->shop_name ?? null,
-                'channel_code' => 'shopee',
-            ];
-        }
+        $items = $this->mapSearchItems($shop, $shopId, $baseItems, $needle, $modelLists);
 
         $hasMore = (bool) ($list['has_next_page'] ?? false);
         $nextOffset = $hasMore ? (int) ($list['next_offset'] ?? ($offset + $pageSize)) : null;
@@ -466,12 +443,12 @@ class ShopeeProductService implements ChunkedDownloadable
         return ['items' => $items, 'next_offset' => $nextOffset, 'has_more' => $hasMore];
     }
 
-    protected function fetchItemList(object $shop, int $offset, int $pageSize): array
+    protected function fetchItemList(object $shop, int $offset, int $pageSize, ?int $timeoutSeconds = null): array
     {
-        return $this->fetchItemListByStatus($shop, $offset, $pageSize, 'NORMAL');
+        return $this->fetchItemListByStatus($shop, $offset, $pageSize, 'NORMAL', $timeoutSeconds);
     }
 
-    protected function fetchBaseInfo(object $shop, array $itemIds): array
+    protected function fetchBaseInfo(object $shop, array $itemIds, ?int $timeoutSeconds = null): array
     {
         if (empty($itemIds)) {
             return [];
@@ -481,9 +458,131 @@ class ShopeeProductService implements ChunkedDownloadable
             'item_id_list' => implode(',', $itemIds),
             'need_complete_description' => true,
             'need_complement' => true,
-        ], $token, $shop->shop_id));
+        ], $token, $shop->shop_id, $timeoutSeconds));
 
         return $res['response']['item_list'] ?? [];
+    }
+
+    /**
+     * Fetch model SKUs in small concurrent batches. Shopee does not expose a
+     * variant-SKU filter in get_item_list, so this is required for accurate
+     * remote variant search while avoiding one long serial request per item.
+     *
+     * @param array<int, array<string, mixed>> $items
+     * @return array<string, array<string, mixed>>
+     */
+    protected function fetchSearchModelLists(object $shop, array $items, string $needle, ?int $timeoutSeconds = null): array
+    {
+        $requests = [];
+        foreach ($items as $item) {
+            $baseSearchText = mb_strtolower((string) ($item['item_name'] ?? '') . ' ' . (string) ($item['item_sku'] ?? ''));
+            if (empty($item['has_model'])
+                || empty($item['item_id'])
+                || str_contains($baseSearchText, $needle)) {
+                continue;
+            }
+
+            $requests[(string) $item['item_id']] = ['item_id' => (int) $item['item_id']];
+        }
+
+        if ($requests === []) {
+            return [];
+        }
+
+        $modelLists = [];
+        foreach (array_chunk($requests, 8, true) as $batch) {
+            try {
+                $responses = $this->callWithRefresh($shop, fn (string $token): array => $this->client->requestPool(
+                    '/api/v2/product/get_model_list',
+                    $batch,
+                    $token,
+                    $shop->shop_id,
+                    $timeoutSeconds,
+                ));
+            } catch (\Throwable $e) {
+                // Base product search is still useful when model hydration
+                // is temporarily unavailable. A variant-only query simply
+                // yields no false positive from this batch.
+                Log::warning('Shopee variant search hydration skipped', [
+                    'shop_id' => $shop->shop_id,
+                    'batch_size' => count($batch),
+                    'exception' => get_class($e),
+                    'error' => $e->getMessage(),
+                ]);
+                continue;
+            }
+
+            foreach ($responses as $itemId => $response) {
+                $modelLists[(string) $itemId] = [
+                    'models' => $response['response']['model'] ?? [],
+                    'tier_variation' => $response['response']['tier_variation'] ?? [],
+                ];
+            }
+        }
+
+        return $modelLists;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $items
+     * @param array<string, array<string, mixed>> $modelLists
+     * @return array<int, array<string, mixed>>
+     */
+    protected function mapSearchItems(object $shop, string $shopId, array $items, string $needle, array $modelLists): array
+    {
+        $results = [];
+        foreach ($items as $item) {
+            $name = (string) ($item['item_name'] ?? '');
+            $itemId = (string) ($item['item_id'] ?? '');
+            $models = $modelLists[$itemId]['models'] ?? [];
+            $sellerSkus = collect([$item['item_sku'] ?? null])
+                ->merge(collect($models)->pluck('model_sku'))
+                ->filter(fn ($sku) => is_string($sku) && trim($sku) !== '')
+                ->map(fn ($sku) => trim((string) $sku))
+                ->unique(fn ($sku) => mb_strtolower($sku))
+                ->values()
+                ->all();
+            $matchingSku = $this->matchingSearchSku($sellerSkus, $needle);
+
+            if ($needle !== '' && $matchingSku === null && ! str_contains(mb_strtolower($name), $needle)) {
+                continue;
+            }
+
+            $results[] = [
+                'external_product_id' => $itemId,
+                'name' => $name,
+                'seller_sku' => $matchingSku ?: ($sellerSkus[0] ?? null),
+                'seller_skus' => $sellerSkus,
+                'image' => $item['image']['image_url_list'][0] ?? null,
+                'shop_id' => $shopId,
+                'shop_name' => $shop->shop_name ?? null,
+                'channel_code' => 'shopee',
+            ];
+        }
+
+        return $results;
+    }
+
+    /** @param array<int, string> $sellerSkus */
+    protected function matchingSearchSku(array $sellerSkus, string $needle): ?string
+    {
+        if ($needle === '') {
+            return null;
+        }
+
+        foreach ($sellerSkus as $sellerSku) {
+            if (mb_strtolower($sellerSku) === $needle) {
+                return $sellerSku;
+            }
+        }
+
+        foreach ($sellerSkus as $sellerSku) {
+            if (str_contains(mb_strtolower($sellerSku), $needle)) {
+                return $sellerSku;
+            }
+        }
+
+        return null;
     }
 
     protected function hydrateModels(object $shop, array $item): array
@@ -685,13 +784,13 @@ class ShopeeProductService implements ChunkedDownloadable
         }
     }
 
-    protected function fetchItemListByStatus(object $shop, int $offset, int $pageSize, string $itemStatus): array
+    protected function fetchItemListByStatus(object $shop, int $offset, int $pageSize, string $itemStatus, ?int $timeoutSeconds = null): array
     {
         $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/api/v2/product/get_item_list', [
             'offset' => $offset,
             'page_size' => $pageSize,
             'item_status' => $itemStatus,
-        ], $token, $shop->shop_id));
+        ], $token, $shop->shop_id, $timeoutSeconds));
 
         return $res['response'] ?? [];
     }

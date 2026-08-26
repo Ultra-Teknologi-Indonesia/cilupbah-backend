@@ -5,11 +5,13 @@ namespace Modules\Channel\Services;
 use Illuminate\Bus\Batch;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Concurrency;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Contracts\ChunkedDownloadable;
 use Modules\Channel\Jobs\DownloadProductsJob;
 use Modules\Channel\Jobs\ProcessDownloadChunkJob;
 use Modules\Channel\Models\DownloadTransaction;
+use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductSyncLog;
@@ -97,7 +99,13 @@ class ChannelDownloadService
         $ch = strtolower($channel);
 
         if ($ch === 'shopee') {
-            $paged = app(ShopeeProductService::class)->searchProductsPaged($shopId, $query, $offset, $limit);
+            $paged = app(ShopeeProductService::class)->searchProductsPaged(
+                $shopId,
+                $query,
+                $offset,
+                $limit,
+                (int) config('channel.search_remote_timeout_seconds', 8),
+            );
 
             return [
                 'items' => $this->flagDownloaded($shopId, $paged['items']),
@@ -111,9 +119,9 @@ class ChannelDownloadService
         }
 
         $results = match ($ch) {
-            'tiktok' => app(TikTokProductService::class)->searchProducts($shopId, $query),
-            'lazada' => app(LazadaProductService::class)->searchProducts($shopId, $query),
-            'woocommerce' => app(WooCommerceProductService::class)->searchProducts($shopId, $query),
+            'tiktok' => app(TikTokProductService::class)->searchProducts($shopId, $query, (int) config('channel.search_remote_timeout_seconds', 8)),
+            'lazada' => app(LazadaProductService::class)->searchProducts($shopId, $query, (int) config('channel.search_remote_timeout_seconds', 8)),
+            'woocommerce' => app(WooCommerceProductService::class)->searchProducts($shopId, $query, (int) config('channel.search_remote_timeout_seconds', 8)),
             default => [],
         };
 
@@ -128,7 +136,7 @@ class ChannelDownloadService
     {
         $query = trim($query);
 
-        $shopQuery = \Modules\Channel\Models\ChannelShop::with('channel')
+        $shopQuery = ChannelShop::with('channel')
             ->whereNull('disconnected_at')
             ->where('is_active', true)
             ->whereHas('channel', fn ($q) => $q->whereIn('code', ['tiktok', 'shopee', 'lazada', 'woocommerce']));
@@ -141,38 +149,50 @@ class ChannelDownloadService
 
         $allItems = [];
         $failedStores = [];
+        $remoteTasks = [];
 
         foreach ($shops as $shop) {
             $channelCode = strtolower($shop->channel->code ?? '');
-            try {
-                if ($channelCode === 'shopee') {
-                    $paged = app(ShopeeProductService::class)->searchProductsPaged($shop->shop_id, $query, 0, $limitPerShop);
-                    $shopItems = $paged['items'] ?? [];
-                } elseif ($channelCode === 'tiktok') {
-                    $shopItems = app(TikTokProductService::class)->searchProducts($shop->shop_id, $query);
-                } elseif ($channelCode === 'lazada') {
-                    $shopItems = app(LazadaProductService::class)->searchProducts($shop->shop_id, $query);
-                } elseif ($channelCode === 'woocommerce') {
-                    $shopItems = app(WooCommerceProductService::class)->searchProducts($shop->shop_id, $query);
-                } else {
-                    $shopItems = [];
-                }
+            $remoteTasks[(string) $shop->id] = $this->buildRemoteSearchTask(
+                $channelCode,
+                (string) $shop->shop_id,
+                $query,
+                $limitPerShop,
+            );
+        }
 
-                foreach ($shopItems as $item) {
-                    $item['shop_id'] = $shop->shop_id;
-                    $item['shop_name'] = $shop->shop_name;
-                    $item['channel_code'] = $channelCode;
-                    $item['channel_name'] = $shop->channel->name ?? ucfirst($channelCode);
-                    $allItems[] = $item;
-                }
-            } catch (\Throwable $e) {
-                Log::warning("Unified channel search error for shop {$shop->shop_id} ({$channelCode}): " . $e->getMessage());
+        foreach ($this->runRemoteSearchTasks($remoteTasks) as $shopKey => $remoteResult) {
+            $shop = $shops->firstWhere('id', $shopKey);
+            if (! $shop) {
+                continue;
+            }
+
+            if (! ($remoteResult['ok'] ?? false)) {
+                $channelCode = strtolower($shop->channel->code ?? '');
+                Log::warning("Unified channel search error for shop {$shop->shop_id} ({$channelCode}): " . ($remoteResult['error'] ?? 'Unknown error'), [
+                    'shop_id' => $shop->shop_id,
+                    'channel' => $channelCode,
+                    'exception' => $remoteResult['exception'] ?? null,
+                ]);
+
                 $failedStores[] = [
                     'shop_id' => $shop->shop_id,
                     'shop_name' => $shop->shop_name,
                     'channel' => $channelCode,
-                    'error' => $e->getMessage(),
+                    'error' => $remoteResult['error'] ?? 'Pencarian toko gagal',
                 ];
+                continue;
+            }
+
+            $channelCode = strtolower($shop->channel->code ?? '');
+            $shopItems = array_slice($remoteResult['items'] ?? [], 0, max(1, $limitPerShop));
+
+            foreach ($shopItems as $item) {
+                $item['shop_id'] = $shop->shop_id;
+                $item['shop_name'] = $shop->shop_name;
+                $item['channel_code'] = $channelCode;
+                $item['channel_name'] = $shop->channel->name ?? ucfirst($channelCode);
+                $allItems[] = $item;
             }
         }
 
@@ -202,7 +222,12 @@ class ChannelDownloadService
             $mappingKey = $dbShopId ? ($dbShopId . ':' . ($it['external_product_id'] ?? '')) : null;
             $mapping = $mappingKey ? $existingMappings->get($mappingKey) : null;
 
-            $it['already_downloaded'] = (bool) $mapping;
+            $it['already_downloaded'] = (bool) $mapping
+                && ! in_array($mapping->sync_status, [
+                    ProductChannelMapping::STATUS_FAILED,
+                    ProductChannelMapping::STATUS_DEACTIVATED,
+                ], true);
+            $it['mapping_status'] = $mapping?->sync_status;
             $it['master_product_id'] = $mapping?->product_id;
             $it['master_product_name'] = $mapping?->product?->name;
             $it['master_product_sku'] = $mapping?->product?->sku;
@@ -217,8 +242,8 @@ class ChannelDownloadService
             }
 
             if (! empty($query)) {
-                $aExact = (strcasecmp($a['seller_sku'] ?? '', $query) === 0) ? 0 : 1;
-                $bExact = (strcasecmp($b['seller_sku'] ?? '', $query) === 0) ? 0 : 1;
+                $aExact = $this->isExactSkuMatch($a, $query) ? 0 : 1;
+                $bExact = $this->isExactSkuMatch($b, $query) ? 0 : 1;
                 if ($aExact !== $bExact) {
                     return $aExact <=> $bExact;
                 }
@@ -257,6 +282,10 @@ class ChannelDownloadService
                     ProductChannelMapping::where('channel_shop_id', $channelShopId)
                         ->whereIn('external_product_id', $ids)
                         ->whereHas('product')
+                        ->whereNotIn('sync_status', [
+                            ProductChannelMapping::STATUS_FAILED,
+                            ProductChannelMapping::STATUS_DEACTIVATED,
+                        ])
                         ->pluck('external_product_id')
                         ->map(fn ($v) => (string) $v)
                         ->all()
@@ -276,6 +305,107 @@ class ChannelDownloadService
         );
 
         return $flagged;
+    }
+
+    /** @return callable(): array<string, mixed> */
+    protected function buildRemoteSearchTask(string $channel, string $shopId, string $query, int $limit): callable
+    {
+        $serviceClass = static::class;
+        $cacheKey = $this->searchCacheKey($channel, $shopId, $query);
+
+        return static function () use ($serviceClass, $channel, $shopId, $query, $limit, $cacheKey): array {
+            try {
+                $items = Cache::remember(
+                    $cacheKey,
+                    now()->addSeconds(max(1, (int) config('channel.search_cache_ttl_seconds', 30))),
+                    fn (): array => app($serviceClass)->searchRemoteShop($channel, $shopId, $query, $limit),
+                );
+
+                return ['ok' => true, 'items' => is_array($items) ? $items : []];
+            } catch (\Throwable $e) {
+                return [
+                    'ok' => false,
+                    'items' => [],
+                    'exception' => get_class($e),
+                    'error' => $e->getMessage(),
+                ];
+            }
+        };
+    }
+
+    /** @param array<string, callable(): array<string, mixed>> $tasks */
+    protected function runRemoteSearchTasks(array $tasks): array
+    {
+        if ($tasks === []) {
+            return [];
+        }
+
+        $results = [];
+        $maxParallel = max(1, (int) config('channel.search_max_parallel_stores', 8));
+
+        // Bound process creation for accounts with many connected stores. A
+        // typical three-channel search remains one parallel batch, while a
+        // large account cannot exhaust PHP worker memory.
+        foreach (array_chunk($tasks, $maxParallel, true) as $batch) {
+            if (count($batch) === 1 || app()->runningUnitTests()) {
+                foreach ($batch as $key => $task) {
+                    $results[$key] = $task();
+                }
+
+                continue;
+            }
+
+            try {
+                $results += Concurrency::driver((string) config('channel.search_concurrency_driver', 'process'))->run($batch);
+            } catch (\Throwable $e) {
+                // A concurrency driver is an optimization, never a
+                // correctness dependency. Fall back to isolated sequential
+                // tasks if process spawning is unavailable in a runtime.
+                Log::warning('Unified channel search concurrency unavailable; using isolated fallback', [
+                    'task_count' => count($batch),
+                    'exception' => get_class($e),
+                    'error' => $e->getMessage(),
+                ]);
+
+                foreach ($batch as $key => $task) {
+                    $results[$key] = $task();
+                }
+            }
+        }
+
+        return $results;
+    }
+
+    protected function isExactSkuMatch(array $item, string $query): bool
+    {
+        $needle = mb_strtolower(trim($query));
+        if ($needle === '') {
+            return false;
+        }
+
+        $skus = collect($item['seller_skus'] ?? [])
+            ->merge([$item['seller_sku'] ?? null, $item['master_product_sku'] ?? null])
+            ->filter(fn ($sku) => is_string($sku) && trim($sku) !== '');
+
+        return $skus->contains(fn (string $sku): bool => mb_strtolower(trim($sku)) === $needle);
+    }
+
+    protected function searchCacheKey(string $channel, string $shopId, string $query): string
+    {
+        return 'channel_catalog_search:v2:' . strtolower($channel) . ':' . $shopId . ':' . sha1(mb_strtolower(trim($query)));
+    }
+
+    protected function searchRemoteShop(string $channel, string $shopId, string $query, int $limit): array
+    {
+        return match ($channel) {
+            'shopee' => trim($query) !== ''
+                ? app(ShopeeProductService::class)->searchProducts($shopId, $query, (int) config('channel.search_remote_timeout_seconds', 8))
+                : (app(ShopeeProductService::class)->searchProductsPaged($shopId, $query, 0, $limit, (int) config('channel.search_remote_timeout_seconds', 8))['items'] ?? []),
+            'tiktok' => app(TikTokProductService::class)->searchProducts($shopId, $query, (int) config('channel.search_remote_timeout_seconds', 8)),
+            'lazada' => app(LazadaProductService::class)->searchProducts($shopId, $query, (int) config('channel.search_remote_timeout_seconds', 8)),
+            'woocommerce' => app(WooCommerceProductService::class)->searchProducts($shopId, $query, (int) config('channel.search_remote_timeout_seconds', 8)),
+            default => [],
+        };
     }
 
     public function downloadProductManual(string $channel, string $shopId, string $externalProductId, ?string $executedBy = null): DownloadTransaction

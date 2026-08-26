@@ -67,7 +67,7 @@ class ShopeeClient
         ]);
     }
 
-    public function request(string $method, string $apiPath, array $params, string $accessToken, string $shopId): array
+    public function request(string $method, string $apiPath, array $params, string $accessToken, string $shopId, ?int $timeoutSeconds = null): array
     {
         $timestamp = time();
         $sign = ShopeeSignature::shopSign($this->partnerId, $apiPath, $timestamp, $accessToken, $shopId, $this->partnerKey);
@@ -82,12 +82,15 @@ class ShopeeClient
 
         $this->throttle();
 
+        $timeout = max(1, $timeoutSeconds ?? 30);
+        $connectTimeout = min(15, $timeout);
+
         if (strtoupper($method) === 'GET') {
             $url = $this->host . $apiPath . '?' . http_build_query(array_merge($common, $params));
-            $response = Http::timeout(30)->connectTimeout(15)->get($url);
+            $response = Http::timeout($timeout)->connectTimeout($connectTimeout)->get($url);
         } else {
             $url = $this->host . $apiPath . '?' . http_build_query($common);
-            $response = Http::asJson()->timeout(30)->connectTimeout(15)->post($url, $params);
+            $response = Http::asJson()->timeout($timeout)->connectTimeout($connectTimeout)->post($url, $params);
         }
 
         $data = $response->json() ?? [];
@@ -111,6 +114,103 @@ class ShopeeClient
         }
 
         return $data;
+    }
+
+    /**
+     * Execute a bounded batch of signed GET requests concurrently. This is
+     * used by interactive variant search; callers still control the batch
+     * size so marketplace rate limits are respected.
+     *
+     * @param array<string, array<string, mixed>> $requests
+     * @return array<string, array<string, mixed>>
+     */
+    public function requestPool(
+        string $apiPath,
+        array $requests,
+        string $accessToken,
+        string $shopId,
+        ?int $timeoutSeconds = null,
+    ): array {
+        if ($requests === []) {
+            return [];
+        }
+
+        $timeout = max(1, $timeoutSeconds ?? 30);
+        $responses = Http::pool(function ($pool) use ($apiPath, $requests, $accessToken, $shopId, $timeout) {
+            $handles = [];
+
+            foreach ($requests as $key => $params) {
+                $timestamp = time();
+                $sign = ShopeeSignature::shopSign(
+                    $this->partnerId,
+                    $apiPath,
+                    $timestamp,
+                    $accessToken,
+                    $shopId,
+                    $this->partnerKey,
+                );
+                $common = [
+                    'partner_id' => $this->partnerId,
+                    'timestamp' => $timestamp,
+                    'access_token' => $accessToken,
+                    'shop_id' => (int) $shopId,
+                    'sign' => $sign,
+                ];
+
+                $this->throttle();
+                $url = $this->host . $apiPath . '?' . http_build_query(array_merge($common, $params));
+                $handles[(string) $key] = $pool
+                    ->as((string) $key)
+                    ->timeout($timeout)
+                    ->connectTimeout(min(15, $timeout))
+                    ->get($url);
+            }
+
+            return $handles;
+        });
+
+        $result = [];
+        foreach ($requests as $key => $_params) {
+            $response = $responses[(string) $key] ?? null;
+            if (! $response) {
+                $result[(string) $key] = [];
+                continue;
+            }
+
+            $data = $response->json() ?? [];
+            $error = (string) (is_array($data) ? ($data['error'] ?? '') : '');
+
+            if ($error !== '') {
+                try {
+                    $this->raiseApiError($apiPath, $error, $data, $shopId, $response->status());
+                } catch (TokenExpiredException $e) {
+                    throw $e;
+                } catch (\Throwable $e) {
+                    Log::warning('Shopee pooled API request failed', [
+                        'path' => $apiPath,
+                        'request_key' => (string) $key,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+
+                $result[(string) $key] = [];
+                continue;
+            }
+
+            if ($response->failed()) {
+                Log::warning('Shopee pooled API HTTP request failed', [
+                    'path' => $apiPath,
+                    'request_key' => (string) $key,
+                    'status' => $response->status(),
+                ]);
+                $result[(string) $key] = [];
+                continue;
+            }
+
+            $result[(string) $key] = is_array($data) ? $data : [];
+        }
+
+        return $result;
     }
 
     protected function raiseApiError(string $apiPath, string $error, array $data, string $shopId, ?int $httpStatus = null): void

@@ -10,9 +10,9 @@ use Modules\Channel\Models\ChannelShop;
 
 class WooCommerceClient
 {
-    public function get(ChannelShop $shop, string $path, array $query = []): array
+    public function get(ChannelShop $shop, string $path, array $query = [], ?int $timeoutSeconds = null): array
     {
-        return $this->decode($this->send($shop, 'GET', $path, $query), $shop, $path);
+        return $this->decode($this->send($shop, 'GET', $path, $query, [], $timeoutSeconds), $shop, $path);
     }
 
     public function post(ChannelShop $shop, string $path, array $body = []): array
@@ -63,17 +63,18 @@ class WooCommerceClient
         return $items;
     }
 
-    public function send(ChannelShop $shop, string $method, string $path, array $query = [], array $body = []): Response
+    public function send(ChannelShop $shop, string $method, string $path, array $query = [], array $body = [], ?int $timeoutSeconds = null): Response
     {
         $this->assertConfigured($shop);
         $this->throttle();
 
         $url = $this->baseUrl($shop) . '/' . ltrim($path, '/');
 
+        $timeout = max(1, $timeoutSeconds ?? 30);
         $request = Http::withBasicAuth((string) $shop->consumer_key, (string) $shop->consumer_secret)
             ->acceptJson()
-            ->timeout(30)
-            ->connectTimeout(15);
+            ->timeout($timeout)
+            ->connectTimeout(min(15, $timeout));
 
         if (! empty($query)) {
             $request = $request->withQueryParameters($query);

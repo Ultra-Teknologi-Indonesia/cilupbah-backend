@@ -94,6 +94,24 @@ class ChannelSearchDownloadTest extends TestCase
         $this->assertSame('Toko TikTok', $results[0]['shop_name']);
     }
 
+    public function test_search_returns_tiktok_product_when_query_matches_a_non_first_variant_sku(): void
+    {
+        $item = $this->tiktokItem();
+        $item['skus'][] = ['id' => 'SKU-EXT-2', 'seller_sku' => 'LSH-WHITE-IP11'];
+
+        Http::fake([
+            '*products/search*' => Http::response([
+                'code' => 0, 'data' => ['products' => [$item]],
+            ], 200),
+        ]);
+
+        $results = app(TikTokProductService::class)->searchProducts('SHOP-TT', 'LSH-WHITE');
+
+        $this->assertCount(1, $results);
+        $this->assertSame('LSH-WHITE-IP11', $results[0]['seller_sku']);
+        $this->assertSame(['LSH-BLACK-IP11', 'LSH-WHITE-IP11'], $results[0]['seller_skus']);
+    }
+
     public function test_search_returns_lazada_products_by_sku(): void
     {
         Http::fake([
@@ -108,6 +126,31 @@ class ChannelSearchDownloadTest extends TestCase
         $this->assertSame('555100', $results[0]['external_product_id']);
         $this->assertSame('SKU-RUN-42', $results[0]['seller_sku']);
         $this->assertSame('lazada', $results[0]['channel_code']);
+    }
+
+    public function test_search_returns_lazada_product_when_query_matches_a_non_first_variant_sku(): void
+    {
+        $item = $this->lazadaItem();
+        $item['skus'][] = [
+            'SkuId' => 777101,
+            'SellerSku' => 'SKU-RUN-44',
+            'ShopSku' => '555100_ID-777101',
+            'quantity' => 4,
+            'price' => 250000,
+            'Status' => 'active',
+        ];
+
+        Http::fake([
+            'api.lazada.co.id/rest/products/get*' => Http::response([
+                'code' => '0', 'data' => ['products' => [$item]],
+            ], 200),
+        ]);
+
+        $results = app(LazadaProductService::class)->searchProducts('LZ-100', 'SKU-RUN-44');
+
+        $this->assertCount(1, $results);
+        $this->assertSame('SKU-RUN-44', $results[0]['seller_sku']);
+        $this->assertSame(['SKU-RUN-42', 'SKU-RUN-44'], $results[0]['seller_skus']);
     }
 
     public function test_search_excludes_non_active_tiktok_products(): void
@@ -199,6 +242,85 @@ class ChannelSearchDownloadTest extends TestCase
             'product_id' => $product->id,
             'channel_shop_id' => $this->lazadaShop->id,
             'external_product_id' => '555100',
+        ]);
+    }
+
+    public function test_single_download_links_every_lazada_variant_to_the_listing(): void
+    {
+        Category::create(['name' => 'Root', 'is_active' => true]);
+
+        $item = $this->lazadaItem();
+        $item['skus'][] = [
+            'SkuId' => 777101,
+            'SellerSku' => 'SKU-RUN-44',
+            'ShopSku' => '555100_ID-777101',
+            'quantity' => 4,
+            'price' => 250000,
+            'Status' => 'active',
+        ];
+
+        Http::fake([
+            'api.lazada.co.id/rest/product/item/get*' => Http::response([
+                'code' => '0', 'data' => $item,
+            ], 200),
+        ]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/lazada/download-product', [
+                'shop_id' => 'LZ-100',
+                'external_product_id' => '555100',
+            ])
+            ->assertStatus(200);
+
+        $pcm = DB::table('product_channel_mappings')
+            ->where('channel_shop_id', $this->lazadaShop->id)
+            ->where('external_product_id', '555100')
+            ->first();
+
+        $this->assertNotNull($pcm);
+        $this->assertSame(2, DB::table('product_variant_channel_mappings')
+            ->where('product_channel_mapping_id', $pcm->id)
+            ->count());
+        $this->assertDatabaseHas('product_variant_channel_mappings', [
+            'product_channel_mapping_id' => $pcm->id,
+            'external_sku_id' => '777101',
+            'channel_seller_sku' => 'SKU-RUN-44',
+        ]);
+    }
+
+    public function test_single_download_links_every_tiktok_variant_to_the_listing(): void
+    {
+        Category::create(['name' => 'Root', 'is_active' => true]);
+
+        $item = $this->tiktokItem();
+        $item['skus'][] = [
+            'id' => 'SKU-EXT-2',
+            'seller_sku' => 'LSH-WHITE-IP11',
+            'price' => ['tax_exclusive_price' => 99000],
+        ];
+
+        Http::fake([
+            'open-api.tiktokglobalshop.com/product/202309/products/TIKTOK-PROD-1*' => Http::response([
+                'code' => 0,
+                'data' => $item,
+            ], 200),
+        ]);
+
+        $this->assertTrue(app(TikTokProductService::class)->pullProductById('SHOP-TT', 'TIKTOK-PROD-1'));
+
+        $pcm = DB::table('product_channel_mappings')
+            ->where('channel_shop_id', $this->tiktokShop->id)
+            ->where('external_product_id', 'TIKTOK-PROD-1')
+            ->first();
+
+        $this->assertNotNull($pcm);
+        $this->assertSame(2, DB::table('product_variant_channel_mappings')
+            ->where('product_channel_mapping_id', $pcm->id)
+            ->count());
+        $this->assertDatabaseHas('product_variant_channel_mappings', [
+            'product_channel_mapping_id' => $pcm->id,
+            'external_sku_id' => 'SKU-EXT-2',
+            'channel_seller_sku' => 'LSH-WHITE-IP11',
         ]);
     }
 

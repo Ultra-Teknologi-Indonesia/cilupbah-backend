@@ -39,9 +39,18 @@ class LazadaClient
         }
     }
 
-    public function request(string $method, string $apiPath, array $params = [], ?string $accessToken = null): array
+    public function request(
+        string $method,
+        string $apiPath,
+        array $params = [],
+        ?string $accessToken = null,
+        ?int $timeoutSeconds = null,
+        ?int $maxAttempts = null,
+    ): array
     {
         $baseParams = $params;
+        $timeout = max(1, $timeoutSeconds ?? 30);
+        $attemptLimit = max(1, $maxAttempts ?? self::MAX_ATTEMPTS);
 
         for ($attempt = 1; ; $attempt++) {
 
@@ -63,10 +72,10 @@ class LazadaClient
 
             try {
                 $response = strtoupper($method) === 'GET'
-                    ? Http::timeout(30)->connectTimeout(15)->get($url, $signed)
-                    : Http::asForm()->timeout(30)->connectTimeout(15)->post($url, $signed);
+                    ? Http::timeout($timeout)->connectTimeout(min(15, $timeout))->get($url, $signed)
+                    : Http::asForm()->timeout($timeout)->connectTimeout(min(15, $timeout))->post($url, $signed);
             } catch (\Illuminate\Http\Client\ConnectionException $e) {
-                if ($attempt < self::MAX_ATTEMPTS) {
+                if ($attempt < $attemptLimit) {
                     Log::warning('Lazada API koneksi/timeout, retry', ['path' => $apiPath, 'attempt' => $attempt]);
                     $this->backoff($attempt);
 
@@ -93,7 +102,7 @@ class LazadaClient
             if ($response->failed()) {
                 $message = is_array($data) ? ($data['message'] ?? $response->body()) : $response->body();
 
-                if ($attempt < self::MAX_ATTEMPTS && $this->isTransient((string) ($data['code'] ?? ''), (string) $message)) {
+                if ($attempt < $attemptLimit && $this->isTransient((string) ($data['code'] ?? ''), (string) $message)) {
                     Log::warning('Lazada API HTTP transien, retry', ['path' => $apiPath, 'attempt' => $attempt, 'status' => $response->status()]);
                     $this->backoff($attempt);
 
@@ -125,7 +134,7 @@ class LazadaClient
                     throw new TokenExpiredException('lazada', $data['message'] ?? 'Lazada access token expired');
                 }
 
-                if ($attempt < self::MAX_ATTEMPTS && $this->isTransient($code, trim(((string) ($data['message'] ?? '')) . ' ' . $detail))) {
+                if ($attempt < $attemptLimit && $this->isTransient($code, trim(((string) ($data['message'] ?? '')) . ' ' . $detail))) {
                     Log::warning('Lazada API transien, retry', [
                         'path' => $apiPath,
                         'attempt' => $attempt,

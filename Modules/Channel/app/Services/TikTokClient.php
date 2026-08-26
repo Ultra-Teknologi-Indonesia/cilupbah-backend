@@ -37,7 +37,7 @@ class TikTokClient
         return \Modules\Channel\Helpers\TikTokSignature::generate($path, $queries, $body, $this->appSecret, $contentType);
     }
 
-    public function request(string $method, string $path, array $queries = [], array $body = [], ?string $accessToken = null, array $files = [])
+    public function request(string $method, string $path, array $queries = [], array $body = [], ?string $accessToken = null, array $files = [], ?int $timeoutSeconds = null)
     {
         $queries['app_key'] = $this->appKey;
         $queries['timestamp'] = time();
@@ -63,7 +63,8 @@ class TikTokClient
             $headers['x-tts-access-token'] = $accessToken;
         }
 
-        $http = Http::withHeaders($headers)->timeout(30)->connectTimeout(15);
+        $timeout = max(1, $timeoutSeconds ?? 30);
+        $http = Http::withHeaders($headers)->timeout($timeout)->connectTimeout(min(15, $timeout));
 
         if ($isMultipart) {
             foreach ($files as $name => $fileData) {

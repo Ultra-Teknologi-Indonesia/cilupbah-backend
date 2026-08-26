@@ -407,12 +407,38 @@ class LazadaProductService
             return false;
         }
 
-        $productService = app(\Modules\Product\Services\ProductService::class);
-
         try {
-            $matchedExisting = false;
             $internalData = $this->inboundMapper->map($item, $shopId);
-            $insertedId = $productService->upsertFromChannel($internalData, $matchedExisting);
+            $insertedId = DB::transaction(function () use ($shop, $shopId, $itemId, $item, $internalData) {
+                $matchedExisting = false;
+                $variantIds = [];
+                $productService = app(\Modules\Product\Services\ProductService::class);
+                $productId = $productService->upsertFromChannel($internalData, $matchedExisting, $variantIds);
+
+                if (! $productId) {
+                    return null;
+                }
+
+                $pcmId = $this->productRepository->upsertChannelMapping(
+                    (string) $productId,
+                    $shopId,
+                    (string) ($item['item_id'] ?? $itemId),
+                    'synced',
+                    (! empty($item['attributes']) && is_array($item['attributes'])) ? $item['attributes'] : null,
+                    false
+                );
+
+                app(ChannelModelLinker::class)->link(
+                    $shop,
+                    $shopId,
+                    (string) ($item['item_id'] ?? $itemId),
+                    $this->normalizedModels($item, $internalData, $variantIds),
+                    (string) $productId,
+                    $pcmId
+                );
+
+                return $productId;
+            });
         } catch (\Throwable $e) {
             Log::error('Lazada: gagal re-sync produk ' . $itemId . ': ' . $e->getMessage());
 
@@ -423,19 +449,10 @@ class LazadaProductService
             return false;
         }
 
-        $this->productRepository->upsertChannelMapping(
-            (string) $insertedId,
-            $shopId,
-            (string) ($item['item_id'] ?? $itemId),
-            'synced',
-            null,
-            false
-        );
-
         return true;
     }
 
-    public function searchProducts(string $shopId, string $query): array
+    public function searchProducts(string $shopId, string $query, ?int $timeoutSeconds = null): array
     {
         $shop = $this->shopRepository->findByShopId($shopId);
         if (! $shop || ! $shop->access_token) {
@@ -446,6 +463,7 @@ class LazadaProductService
         $results = [];
         $seen    = [];
         $limit   = self::SEARCH_PAGE_LIMIT;
+        $searchTimeout = max(1, $timeoutSeconds ?? (int) config('channel.search_remote_timeout_seconds', 8));
 
         foreach (self::PULL_FILTERS as $filter) {
 
@@ -460,11 +478,25 @@ class LazadaProductService
                 }
 
                 try {
-                    $res = $this->client->request('GET', '/products/get', $params, $shop->access_token);
+                    $res = $this->client->request(
+                        'GET',
+                        '/products/get',
+                        $params,
+                        $shop->access_token,
+                        $searchTimeout,
+                        1,
+                    );
                 } catch (TokenExpiredException $e) {
                     $this->authService->refreshStoreToken((string) $shop->id);
                     $shop = $this->shopRepository->findByShopId($shopId);
-                    $res = $this->client->request('GET', '/products/get', $params, $shop->access_token);
+                    $res = $this->client->request(
+                        'GET',
+                        '/products/get',
+                        $params,
+                        $shop->access_token,
+                        $searchTimeout,
+                        1,
+                    );
                 }
 
                 $products = $res['data']['products'] ?? [];
@@ -483,23 +515,19 @@ class LazadaProductService
                         $seen[$extId] = true;
                     }
 
-                    $name      = (string) ($item['attributes']['name'] ?? '');
-                    $sellerSku = null;
-                    foreach ($item['skus'] ?? [] as $sku) {
-                        if (! empty($sku['SellerSku'])) {
-                            $sellerSku = $sku['SellerSku'];
-                            break;
-                        }
-                    }
+                    $name = (string) ($item['attributes']['name'] ?? '');
+                    $sellerSkus = $this->sellerSkus($item);
+                    $matchingSku = $this->matchingSellerSku($sellerSkus, $needle);
 
-                    if ($needle !== '' && ! str_contains(mb_strtolower($name . ' ' . (string) $sellerSku), $needle)) {
+                    if ($needle !== '' && $matchingSku === null && ! str_contains(mb_strtolower($name), $needle)) {
                         continue;
                     }
 
                     $results[] = [
                         'external_product_id' => $extId,
                         'name'                => $name,
-                        'seller_sku'          => $sellerSku,
+                        'seller_sku'          => $matchingSku ?: ($sellerSkus[0] ?? null),
+                        'seller_skus'         => $sellerSkus,
                         'image'               => $item['images'][0] ?? null,
                         'shop_id'             => $shopId,
                         'shop_name'           => $shop->shop_name ?? null,
@@ -517,6 +545,58 @@ class LazadaProductService
         }
 
         return $results;
+    }
+
+    /** @return list<string> */
+    protected function sellerSkus(array $item): array
+    {
+        return collect($item['skus'] ?? [])
+            ->map(fn ($sku): ?string => ! empty($sku['SellerSku']) ? trim((string) $sku['SellerSku']) : null)
+            ->filter(fn (?string $sku): bool => $sku !== null && $sku !== '')
+            ->unique(fn (string $sku): string => mb_strtolower($sku))
+            ->values()
+            ->all();
+    }
+
+    protected function matchingSellerSku(array $sellerSkus, string $needle): ?string
+    {
+        if ($needle === '') {
+            return null;
+        }
+
+        foreach ($sellerSkus as $sellerSku) {
+            if (mb_strtolower($sellerSku) === $needle) {
+                return $sellerSku;
+            }
+        }
+
+        foreach ($sellerSkus as $sellerSku) {
+            if (str_contains(mb_strtolower($sellerSku), $needle)) {
+                return $sellerSku;
+            }
+        }
+
+        return null;
+    }
+
+    /** @return list<array<string, mixed>> */
+    protected function normalizedModels(array $item, array $internalData, array $variantIds = []): array
+    {
+        $variantsByIndex = array_values($internalData['variants'] ?? []);
+        $models = [];
+
+        foreach (array_values($item['skus'] ?? []) as $idx => $skuData) {
+            $models[] = [
+                'sku' => $skuData['SellerSku'] ?? null,
+                'external_sku_id' => $skuData['SkuId'] ?? null,
+                'price' => $skuData['price'] ?? null,
+                'group' => $skuData['saleProp']['color_family'] ?? null,
+                'variant' => $variantsByIndex[$idx] ?? [],
+                'fallback_variant_id' => $variantIds[$idx] ?? null,
+            ];
+        }
+
+        return $models;
     }
 
     public function pullProducts(string $shopId, ?\Closure $onProgress = null): int
@@ -592,25 +672,11 @@ class LazadaProductService
                                 false
                             );
 
-                            $variantsByIndex = array_values($internalData['variants'] ?? []);
-                            $normalized = [];
-
-                            foreach ($item['skus'] ?? [] as $idx => $skuData) {
-                                $normalized[] = [
-                                    'sku' => $skuData['SellerSku'] ?? null,
-                                    'external_sku_id' => $skuData['SkuId'] ?? null,
-                                    'price' => $skuData['price'] ?? null,
-                                    'group' => $skuData['saleProp']['color_family'] ?? null,
-                                    'variant' => $variantsByIndex[$idx] ?? [],
-                                    'fallback_variant_id' => $variantIds[$idx] ?? null,
-                                ];
-                            }
-
                             app(ChannelModelLinker::class)->link(
                                 $shop,
                                 $shopId,
                                 (string) ($item['item_id'] ?? ''),
-                                $normalized,
+                                $this->normalizedModels($item, $internalData, $variantIds),
                                 (string) $insertedId,
                                 $pcmId
                             );

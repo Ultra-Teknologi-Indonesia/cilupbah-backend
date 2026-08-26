@@ -3,6 +3,7 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Repositories\ChannelProductRepository;
 use Modules\Channel\Support\ChannelModelLinker;
@@ -82,7 +83,9 @@ class WooCommerceProductService
 
         $item = $this->hydrateVariations($shop, $item);
 
-        if (! $this->persistItem($shop, $shopId, $item, $productService)) {
+        $persisted = DB::transaction(fn (): bool => $this->persistItem($shop, $shopId, $item, $productService));
+
+        if (! $persisted) {
             return false;
         }
 
@@ -96,11 +99,12 @@ class WooCommerceProductService
         return true;
     }
 
-    public function searchProducts(string $shopId, string $query): array
+    public function searchProducts(string $shopId, string $query, ?int $timeoutSeconds = null): array
     {
         $shop = $this->requireShop($shopId);
 
-        $products = $this->client->get($shop, 'products', ['search' => $query, 'per_page' => 50, 'status' => 'publish']);
+        $timeoutSeconds ??= max(1, (int) config('channel.search_remote_timeout_seconds', 8));
+        $products = $this->client->get($shop, 'products', ['search' => $query, 'per_page' => 50, 'status' => 'publish'], $timeoutSeconds);
 
         $results = [];
         foreach ($products as $item) {
