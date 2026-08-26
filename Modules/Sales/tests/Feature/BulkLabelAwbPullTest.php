@@ -3,11 +3,15 @@
 namespace Modules\Sales\Tests\Feature;
 
 use App\Models\User;
+use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Mockery;
 use Modules\Channel\Services\ChannelSyncSettingService;
+use Modules\Sales\Http\Controllers\BulkShippingLabelController;
+use Modules\Sales\Jobs\ProcessBulkShippingLabelItemJob;
 use Modules\Sales\Jobs\RequestChannelAwbJob;
 use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Models\SalesOrder;
@@ -24,7 +28,7 @@ class BulkLabelAwbPullTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->seed(\Database\Seeders\RoleSeeder::class);
+        $this->seed(RoleSeeder::class);
         Storage::fake('documents');
         $this->user = User::factory()->create();
     }
@@ -137,10 +141,10 @@ class BulkLabelAwbPullTest extends TestCase
         ]);
         $batch = $this->createBatchFor($order);
 
-        $req = \Illuminate\Http\Request::create('/');
+        $req = Request::create('/');
         $req->setUserResolver(fn () => $this->user);
 
-        $payload = app(\Modules\Sales\Http\Controllers\BulkShippingLabelController::class)
+        $payload = app(BulkShippingLabelController::class)
             ->show($req, $batch)
             ->getData(true);
 
@@ -193,7 +197,7 @@ class BulkLabelAwbPullTest extends TestCase
         Queue::assertNotPushed(RequestChannelAwbJob::class);
     }
 
-    public function test_resi_yang_datang_memindahkan_item_dari_menunggu_ke_berhasil(): void
+    public function test_resi_yang_datang_mengantrikan_item_untuk_diproses_idempotent(): void
     {
         Queue::fake();
 
@@ -207,21 +211,12 @@ class BulkLabelAwbPullTest extends TestCase
 
         $order->update(['tracking_number' => 'JP1234567890']);
 
-        $labelService = Mockery::mock(SalesOrderService::class);
-        $labelService->shouldReceive('getShippingLabel')->andReturn([
-            'type' => 'base64',
-            'content_type' => 'application/pdf',
-            'document_base64' => base64_encode('%PDF-1.4 LABEL SETELAH RESI TERBIT'),
-            'source' => 'shopee',
-        ]);
+        (new BulkShippingLabelService(Mockery::mock(SalesOrderService::class)))->onOrderAwbReady($order->id);
 
-        (new BulkShippingLabelService($labelService))->onOrderAwbReady($order->id);
-
-        $this->assertSame(
-            BulkShippingLabelItem::STATUS_DONE,
-            $this->itemOf($batch)->status,
-            'Begitu resi terbit, item harus lanjut sendiri tanpa operator menekan apa pun.',
-        );
+        $this->assertSame(BulkShippingLabelItem::STATUS_PENDING, $this->itemOf($batch)->status);
+        Queue::assertPushed(ProcessBulkShippingLabelItemJob::class, function ($job) use ($batch): bool {
+            return $job->batchId === $batch->id;
+        });
     }
 
     public function test_marketplace_tak_kunjung_menerbitkan_resi_bisa_dicoba_ulang(): void

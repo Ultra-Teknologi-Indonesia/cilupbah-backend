@@ -3,10 +3,10 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\Log;
+use Modules\Outbound\Support\InstantOrderClassifier;
 
 class LazadaToInternalOrderMapper
 {
-
     protected const STATUS_MAP = [
         'unpaid' => 'UNPAID',
         'pending' => 'READY_TO_SHIP',
@@ -43,18 +43,18 @@ class LazadaToInternalOrderMapper
         $lazadaStatus = strtolower((string) ($lazadaOrder['statuses'][0] ?? $lazadaOrder['status'] ?? 'unpaid'));
         $channelStatus = self::STATUS_MAP[$lazadaStatus] ?? null;
         if ($channelStatus === null) {
-            Log::warning("Lazada: order status tidak dikenal '{$lazadaStatus}' untuk order " . ($lazadaOrder['order_id'] ?? $lazadaOrder['order_number'] ?? ''));
+            Log::warning("Lazada: order status tidak dikenal '{$lazadaStatus}' untuk order ".($lazadaOrder['order_id'] ?? $lazadaOrder['order_number'] ?? ''));
             $channelStatus = strtoupper($lazadaStatus) ?: 'UNPAID';
         }
 
         $address = $lazadaOrder['address_shipping'] ?? [];
         $customerName = trim(
-            ($lazadaOrder['customer_first_name'] ?? '') . ' ' . ($lazadaOrder['customer_last_name'] ?? '')
+            ($lazadaOrder['customer_first_name'] ?? '').' '.($lazadaOrder['customer_last_name'] ?? '')
         ) ?: 'Lazada Buyer';
 
-        $netProductTotal = array_sum(array_column($items, 'amount'));   
-        $totalDisc = array_sum(array_column($items, 'disc_amount'));    
-        $subTotal = $netProductTotal + $totalDisc;                      
+        $netProductTotal = array_sum(array_column($items, 'amount'));
+        $totalDisc = array_sum(array_column($items, 'disc_amount'));
+        $subTotal = $netProductTotal + $totalDisc;
 
         $grossShippingFee = (float) ($lazadaOrder['shipping_fee'] ?? 0);
         $voucher = (float) ($lazadaOrder['voucher'] ?? 0);
@@ -69,6 +69,7 @@ class LazadaToInternalOrderMapper
 
         return [
             'channel_order_no' => (string) ($lazadaOrder['order_id'] ?? $lazadaOrder['order_number'] ?? ''),
+            'channel_package_ids' => $this->extractPackageIds($orderItems),
             'channel_shop_id' => $shopId,
             'customer_name' => $customerName,
             'transaction_date' => $this->parseDate($lazadaOrder['created_at'] ?? null),
@@ -84,9 +85,9 @@ class LazadaToInternalOrderMapper
             'insurance_cost' => 0,
             'grand_total' => $grandTotal,
 
-            'shipping_full_name' => trim(($address['first_name'] ?? '') . ' ' . ($address['last_name'] ?? '')) ?: null,
+            'shipping_full_name' => trim(($address['first_name'] ?? '').' '.($address['last_name'] ?? '')) ?: null,
             'shipping_phone' => $address['phone'] ?? null,
-            'shipping_address' => trim(($address['address1'] ?? '') . ' ' . ($address['address2'] ?? '')) ?: null,
+            'shipping_address' => trim(($address['address1'] ?? '').' '.($address['address2'] ?? '')) ?: null,
             'shipping_city' => $address['city'] ?? null,
             'shipping_province' => $address['address3'] ?? null,
             'shipping_post_code' => $address['post_code'] ?? null,
@@ -116,7 +117,7 @@ class LazadaToInternalOrderMapper
             'channel_updated_at' => $this->parseDateNullable($lazadaOrder['updated_at'] ?? null),
             'source' => 'lazada',
             'is_cod' => strtoupper($lazadaOrder['payment_method'] ?? '') === 'COD',
-            'priority_fulfillment' => \Modules\Outbound\Support\InstantOrderClassifier::isPriority($orderItems[0]['shipment_provider'] ?? null),
+            'priority_fulfillment' => InstantOrderClassifier::isPriority($orderItems[0]['shipment_provider'] ?? null),
             'items' => $items,
         ];
     }
@@ -136,16 +137,16 @@ class LazadaToInternalOrderMapper
             $itemPrice = (float) ($row['item_price'] ?? $row['paid_price'] ?? 0);
             $paidPrice = (float) ($row['paid_price'] ?? $row['item_price'] ?? 0);
             $prodDisc = max(0.0, $itemPrice - $paidPrice);
-            $key = $sku . '|' . $itemPrice;
+            $key = $sku.'|'.$itemPrice;
 
             if (! isset($grouped[$key])) {
                 $grouped[$key] = [
                     'channel_product_id' => isset($row['product_id']) ? (string) $row['product_id'] : null,
                     'sku' => $sku,
-                    'description' => trim(($row['name'] ?? '') . (! empty($row['variation']) ? ' - ' . $row['variation'] : '')),
+                    'description' => trim(($row['name'] ?? '').(! empty($row['variation']) ? ' - '.$row['variation'] : '')),
                     'qty_in_base' => 0,
-                    'price' => $itemPrice,   
-                    'disc' => $prodDisc,     
+                    'price' => $itemPrice,
+                    'disc' => $prodDisc,
                     'disc_amount' => 0,
                     'tax_amount' => 0,
                     'amount' => 0,
@@ -155,10 +156,18 @@ class LazadaToInternalOrderMapper
             $grouped[$key]['qty_in_base']++;
             $grouped[$key]['disc_amount'] += $prodDisc;
             $grouped[$key]['tax_amount'] += (float) ($row['tax_amount'] ?? 0);
-            $grouped[$key]['amount'] += $paidPrice;   
+            $grouped[$key]['amount'] += $paidPrice;
         }
 
         return array_values($grouped);
+    }
+
+    protected function extractPackageIds(array $orderItems): array
+    {
+        return array_values(array_unique(array_filter(array_map(
+            static fn (array $item): string => (string) ($item['package_id'] ?? ''),
+            $orderItems,
+        ))));
     }
 
     protected function parseDate(?string $value): string

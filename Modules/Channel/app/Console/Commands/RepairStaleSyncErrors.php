@@ -119,9 +119,6 @@ class RepairStaleSyncErrors extends Command
         return self::SUCCESS;
     }
 
-    /**
-     * @return array<string, string>
-     */
     private function latestActionableLogs(Collection $mappings): array
     {
         $productIds = $mappings->pluck('product_id')->filter()->unique()->values();

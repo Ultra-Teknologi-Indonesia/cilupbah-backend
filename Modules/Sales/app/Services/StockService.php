@@ -272,11 +272,15 @@ class StockService
             return 0;
         }
 
-        return $this->decrementOnOrderAtLocation(
+        $releaseQty = min($requestedQty, $outstanding);
+
+        $this->decrementOnOrderAtLocation(
             $itemId,
             $locationId,
-            min($requestedQty, $outstanding),
+            $releaseQty,
         );
+
+        return $releaseQty;
     }
 
     private function outstandingReservationQty(
@@ -376,24 +380,139 @@ class StockService
                         $row->location_id,
                         $outstanding,
                     );
-                    if ($actuallyReleased > 0) {
-                        $totalOnOrder = $this->inventoryRepository->sumOnOrderAtLocation($row->item_id, $row->location_id);
-                        $this->recordAllocation(
-                            $row->item_id,
-                            $row->location_id,
-                            -$actuallyReleased,
-                            $transactionNumber,
-                            'ORDER_RELEASE',
-                            $totalOnOrder,
-                        );
+                    $totalOnOrder = $this->inventoryRepository->sumOnOrderAtLocation($row->item_id, $row->location_id);
+                    $this->recordAllocation(
+                        $row->item_id,
+                        $row->location_id,
+                        -$outstanding,
+                        $transactionNumber,
+                        'ORDER_RELEASE',
+                        $totalOnOrder,
+                    );
 
-                        $released += $actuallyReleased;
+                    if ($actuallyReleased < $outstanding) {
+                        Log::warning('Reservation ledger dilepas melebihi on_order aktual; drift ditutup tanpa saldo negatif', [
+                            'item_id'            => $row->item_id,
+                            'location_id'        => $row->location_id,
+                            'transaction_number' => $transactionNumber,
+                            'ledger_release'     => $outstanding,
+                            'inventory_release'  => $actuallyReleased,
+                        ]);
                     }
+
+                    $released += $outstanding;
                 });
             });
         }
 
         return $released;
+    }
+
+    public function reconcileTerminalReservationByTransaction(string $transactionNumber): int
+    {
+        $targets = DB::table('inventory_movements')
+            ->where('transaction_number', $transactionNumber)
+            ->whereIn('source', InventoryMovementSourceMap::ORDER_LEDGER_SOURCES)
+            ->select('item_id', 'location_id')
+            ->groupBy('item_id', 'location_id')
+            ->get();
+
+        $released = 0;
+
+        foreach ($targets as $row) {
+            $this->withStockLock($row->item_id, $row->location_id, function () use ($row, $transactionNumber, &$released) {
+                DB::transaction(function () use ($row, $transactionNumber, &$released) {
+                    $outstanding = $this->outstandingReservationQty(
+                        $row->item_id,
+                        $row->location_id,
+                        $transactionNumber,
+                    );
+
+                    if ($outstanding <= 0) {
+                        return;
+                    }
+
+                    $expectedActive = $this->activeReservationQtyAtLocation(
+                        $row->item_id,
+                        $row->location_id,
+                    );
+                    $currentOnOrder = $this->inventoryRepository->sumOnOrderAtLocation(
+                        $row->item_id,
+                        $row->location_id,
+                    );
+
+                    if ($currentOnOrder > $expectedActive) {
+                        $this->decrementOnOrderAtLocation(
+                            $row->item_id,
+                            $row->location_id,
+                            $currentOnOrder - $expectedActive,
+                        );
+                    } elseif ($currentOnOrder < $expectedActive) {
+                        $this->incrementOnOrderAtLocation(
+                            $row->item_id,
+                            $row->location_id,
+                            $expectedActive - $currentOnOrder,
+                        );
+                    }
+
+                    $totalOnOrder = $this->inventoryRepository->sumOnOrderAtLocation(
+                        $row->item_id,
+                        $row->location_id,
+                    );
+                    $this->recordAllocation(
+                        $row->item_id,
+                        $row->location_id,
+                        -$outstanding,
+                        $transactionNumber,
+                        'ORDER_RELEASE',
+                        $totalOnOrder,
+                    );
+
+                    $released += $outstanding;
+                });
+            });
+        }
+
+        return $released;
+    }
+
+    private function activeReservationQtyAtLocation(string $itemId, string $locationId): int
+    {
+        $rows = DB::table('inventory_movements as im')
+            ->leftJoin('sales_orders as so', 'so.salesorder_no', '=', 'im.transaction_number')
+            ->where('im.item_id', $itemId)
+            ->where('im.location_id', $locationId)
+            ->whereIn('im.source', InventoryMovementSourceMap::ORDER_LEDGER_SOURCES)
+            ->select('im.transaction_number', 'so.status', 'so.is_canceled')
+            ->selectRaw('SUM(im.qty) as outstanding_qty')
+            ->groupBy('im.transaction_number', 'so.status', 'so.is_canceled')
+            ->havingRaw('SUM(im.qty) > 0')
+            ->get();
+
+        return (int) $rows
+            ->reject(fn (object $row): bool => $this->isTerminalOrder($row))
+            ->sum(fn (object $row): int => (int) $row->outstanding_qty);
+    }
+
+    private function isTerminalOrder(object $row): bool
+    {
+        return (bool) $row->is_canceled
+            || in_array(strtolower((string) $row->status), [
+                'cancelled', 'picked', 'packed', 'shipped', 'completed', 'delivered',
+            ], true);
+    }
+
+    private function incrementOnOrderAtLocation(string $itemId, string $locationId, int $qty): void
+    {
+        if ($qty <= 0) {
+            return;
+        }
+
+        $targetBinId = $this->inventoryRepository->findTargetBinForItemLocation($itemId, $locationId);
+        $target = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, $targetBinId);
+        $target->on_order = (int) $target->on_order + $qty;
+        $target->recalculateAvailable();
+        $this->inventoryRepository->updateStock($target);
     }
 
     public function recordExistingReservation(string $sku, string $itemId, string $locationId, int $qty, string $transactionNumber): int

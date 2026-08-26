@@ -108,6 +108,35 @@ class PutawayRackAssignmentTest extends TestCase
         ]);
     }
 
+    public function test_putaway_list_search_matches_creator_and_assignee_names(): void
+    {
+        $location = $this->regularLocation();
+        $creator = User::factory()->create(['name' => 'Pembuat Penempatan Khusus']);
+        $assignee = User::factory()->create(['name' => 'Pelaksana Penempatan Khusus']);
+
+        $putaway = Putaway::create([
+            'putaway_no' => 'PUT-SEARCH-ACTOR',
+            'location_id' => $location->id,
+            'source_type' => 'MANUAL',
+            'status' => Putaway::STATUS_NOT_STARTED,
+            'created_by' => $creator->id,
+            'assigned_by' => $this->user->id,
+            'assigned_to' => $assignee->id,
+            'assigned_at' => now(),
+        ]);
+
+        foreach (['Pembuat Penempatan Khusus', 'Pelaksana Penempatan Khusus'] as $name) {
+            $response = $this->getJson('/api/v1/putaway?search='.urlencode($name).'&per_page=20');
+
+            $response->assertOk();
+            $this->assertSame(
+                [$putaway->putaway_no],
+                collect($response->json('data'))->pluck('putaway_no')->all(),
+                "Search putaway berdasarkan nama '{$name}' tidak menemukan dokumen yang sesuai.",
+            );
+        }
+    }
+
     public function test_unassigned_sku_is_rejected_with_hubungi_admin_message(): void
     {
         $loc = $this->regularLocation();

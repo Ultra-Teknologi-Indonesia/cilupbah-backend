@@ -11,6 +11,7 @@ use Modules\Inventory\Console\Commands\BackfillOrderAllocations;
 use Modules\Inventory\Console\Commands\BackfillTransitInbounds;
 use Modules\Inventory\Console\Commands\RebuildAverageCost;
 use Modules\Inventory\Console\Commands\ReconcileOnOrder;
+use Modules\Inventory\Console\Commands\ReconcileOrderAllocationLedger;
 use Modules\Inventory\Console\Commands\PurgeReversalMovements;
 use Modules\Inventory\Console\Commands\ValidateBaselineImport;
 use Modules\Inventory\Console\Commands\ImportBaselineStock;
@@ -29,6 +30,7 @@ class InventoryServiceProvider extends ModuleServiceProvider
         BackfillTransitInbounds::class,
         BackfillOrderAllocations::class,
         ReconcileOnOrder::class,
+        ReconcileOrderAllocationLedger::class,
         BackfillInboundMovementSource::class,
         CleanupDraftTransitStock::class,
         PurgeReversalMovements::class,

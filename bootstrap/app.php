@@ -55,11 +55,6 @@ return Application::configure(basePath: dirname(__DIR__))
             ],
         );
 
-        // API clients (including PDF/blob requests whose Accept header is not
-        // JSON) must never be redirected to the web login route. Returning a
-        // null redirect lets the AuthenticationException renderer below
-        // produce the standard JSON 401 response instead of a misleading 500
-        // when the `login` named route is unavailable.
         $middleware->redirectGuestsTo(
             fn (\Illuminate\Http\Request $request): ?string => $request->is('api/*')
                 ? null

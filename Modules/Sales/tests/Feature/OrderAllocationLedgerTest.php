@@ -163,6 +163,178 @@ class OrderAllocationLedgerTest extends TestCase
         ]);
     }
 
+    public function test_cancel_closes_ledger_when_on_order_is_already_zero(): void
+    {
+        $v = $this->variant('ALLOC-DRIFT-CANCEL');
+        $this->setInventory($v->id, 50);
+
+        $this->stock()->reserve('ALLOC-DRIFT-CANCEL', $v->id, $this->locationId, 5, 'SO-DRIFT-CANCEL');
+
+        DB::table('inventories')
+            ->where('item_id', $v->id)
+            ->where('location_id', $this->locationId)
+            ->update(['on_order' => 0, 'available' => 50]);
+
+        $this->stock()->cancel('ALLOC-DRIFT-CANCEL', $v->id, $this->locationId, 5, 'SO-DRIFT-CANCEL');
+
+        $this->assertDatabaseHas('inventory_movements', [
+            'item_id' => $v->id,
+            'transaction_number' => 'SO-DRIFT-CANCEL',
+            'source' => 'ORDER_RELEASE',
+            'qty' => -5,
+            'balance' => 0,
+        ]);
+        $this->assertSame(
+            0,
+            DB::table('inventory_movements')
+                ->where('item_id', $v->id)
+                ->where('transaction_number', 'SO-DRIFT-CANCEL')
+                ->sum('qty'),
+            );
+    }
+
+    public function test_pick_closes_ledger_when_on_order_is_already_zero(): void
+    {
+        $v = $this->variant('ALLOC-DRIFT-PICK');
+        $this->setInventory($v->id, 50);
+
+        $this->stock()->reserve('ALLOC-DRIFT-PICK', $v->id, $this->locationId, 4, 'SO-DRIFT-PICK');
+
+        DB::table('inventories')
+            ->where('item_id', $v->id)
+            ->where('location_id', $this->locationId)
+            ->update(['on_order' => 0, 'available' => 50]);
+
+        $this->stock()->pick('ALLOC-DRIFT-PICK', $v->id, $this->locationId, 4, 'SO-DRIFT-PICK');
+
+        $this->assertDatabaseHas('inventory_movements', [
+            'item_id' => $v->id,
+            'transaction_number' => 'SO-DRIFT-PICK',
+            'source' => 'ORDER_RELEASE',
+            'qty' => -4,
+            'balance' => 0,
+        ]);
+    }
+
+    public function test_release_by_transaction_is_idempotent_and_closes_stale_ledger(): void
+    {
+        $v = $this->variant('ALLOC-DRIFT-TRANSACTION');
+        $this->setInventory($v->id, 50);
+
+        $this->stock()->reserve('ALLOC-DRIFT-TRANSACTION', $v->id, $this->locationId, 3, 'SO-DRIFT-TRANSACTION');
+
+        DB::table('inventories')
+            ->where('item_id', $v->id)
+            ->where('location_id', $this->locationId)
+            ->update(['on_order' => 0, 'available' => 50]);
+
+        $this->assertSame(3, $this->stock()->releaseReservationByTransaction('SO-DRIFT-TRANSACTION'));
+        $this->assertSame(0, $this->stock()->releaseReservationByTransaction('SO-DRIFT-TRANSACTION'));
+        $this->assertSame(
+            1,
+            DB::table('inventory_movements')
+                ->where('item_id', $v->id)
+                ->where('transaction_number', 'SO-DRIFT-TRANSACTION')
+                ->where('source', 'ORDER_RELEASE')
+                ->count(),
+        );
+    }
+
+    public function test_reconcile_command_closes_terminal_order_ledger(): void
+    {
+        $v = $this->variant('ALLOC-DRIFT-COMMAND');
+        $this->setInventory($v->id, 50);
+
+        DB::table('sales_orders')->insert([
+            'id' => Str::uuid()->toString(),
+            'salesorder_no' => 'SO-DRIFT-COMMAND',
+            'status' => 'cancelled',
+            'is_canceled' => true,
+            'location_id' => $this->locationId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->stock()->reserve('ALLOC-DRIFT-COMMAND', $v->id, $this->locationId, 2, 'SO-DRIFT-COMMAND');
+        DB::table('inventories')
+            ->where('item_id', $v->id)
+            ->where('location_id', $this->locationId)
+            ->update(['on_order' => 0, 'available' => 50]);
+
+        $this->artisan('inventory:reconcile-order-ledger')
+            ->expectsOutputToContain('DRY-RUN')
+            ->assertSuccessful();
+        $this->assertDatabaseMissing('inventory_movements', [
+            'transaction_number' => 'SO-DRIFT-COMMAND',
+            'source' => 'ORDER_RELEASE',
+        ]);
+
+        $this->artisan('inventory:reconcile-order-ledger', ['--fix' => true])
+            ->assertSuccessful();
+
+        $this->assertDatabaseHas('inventory_movements', [
+            'item_id' => $v->id,
+            'transaction_number' => 'SO-DRIFT-COMMAND',
+            'source' => 'ORDER_RELEASE',
+            'qty' => -2,
+        ]);
+    }
+
+    public function test_reconcile_command_does_not_consume_active_on_order_when_terminal_ledger_is_stale(): void
+    {
+        $v = $this->variant('ALLOC-STALE-WITH-ACTIVE');
+        $this->setInventory($v->id, 50);
+
+        DB::table('sales_orders')->insert([
+            [
+                'id' => Str::uuid()->toString(),
+                'salesorder_no' => 'SO-STALE-ORDER',
+                'status' => 'cancelled',
+                'is_canceled' => true,
+                'location_id' => $this->locationId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'id' => Str::uuid()->toString(),
+                'salesorder_no' => 'SO-ACTIVE-ORDER',
+                'status' => 'reserved',
+                'is_canceled' => false,
+                'location_id' => $this->locationId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $this->stock()->reserve('ALLOC-STALE-WITH-ACTIVE', $v->id, $this->locationId, 2, 'SO-STALE-ORDER');
+        $this->stock()->reserve('ALLOC-STALE-WITH-ACTIVE', $v->id, $this->locationId, 3, 'SO-ACTIVE-ORDER');
+
+        DB::table('inventories')
+            ->where('item_id', $v->id)
+            ->where('location_id', $this->locationId)
+            ->update(['on_order' => 3, 'available' => 47]);
+
+        $this->artisan('inventory:reconcile-order-ledger', ['--fix' => true])
+            ->assertSuccessful();
+
+        $this->assertSame(
+            3,
+            (int) DB::table('inventories')
+                ->where('item_id', $v->id)
+                ->where('location_id', $this->locationId)
+                ->sum('on_order'),
+        );
+        $this->assertSame(
+            3,
+            (int) DB::table('inventory_movements')
+                ->where('item_id', $v->id)
+                ->where('location_id', $this->locationId)
+                ->whereIn('source', ['ORDER_RESERVE', 'ORDER_RELEASE'])
+                ->where('transaction_number', 'SO-ACTIVE-ORDER')
+                ->sum('qty'),
+        );
+    }
+
     public function test_release_does_not_consume_another_orders_reservation(): void
     {
         $v = $this->variant('ALLOC-4B');

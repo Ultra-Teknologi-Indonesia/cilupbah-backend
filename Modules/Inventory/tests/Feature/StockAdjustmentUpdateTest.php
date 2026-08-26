@@ -234,4 +234,167 @@ class StockAdjustmentUpdateTest extends TestCase
             'qty' => -3,
         ]);
     }
+
+    public function test_create_supports_same_sku_on_different_bins_in_one_location(): void
+    {
+        Queue::fake();
+
+        $location = Location::create([
+            'location_code' => 'WH-SAME-SKU',
+            'location_name' => 'Gudang Same SKU',
+            'location_type' => 'warehouse',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+        $binA = LocationBin::create([
+            'location_id' => $location->id,
+            'bin_code' => 'A1',
+            'bin_final_code' => 'WH-SAME-SKU-A1',
+        ]);
+        $binB = LocationBin::create([
+            'location_id' => $location->id,
+            'bin_code' => 'B1',
+            'bin_final_code' => 'WH-SAME-SKU-B1',
+        ]);
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'Cat Same SKU',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $product = Product::create([
+            'category_id' => $categoryId,
+            'name' => 'Product Same SKU',
+            'sku' => 'SAME-SKU-BASE',
+            'is_active' => true,
+        ]);
+        $variant = ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => 'SAME-SKU',
+        ]);
+
+        Inventory::create([
+            'item_id' => $variant->id,
+            'location_id' => $location->id,
+            'bin_id' => $binA->id,
+            'on_hand' => 10,
+        ]);
+        Inventory::create([
+            'item_id' => $variant->id,
+            'location_id' => $location->id,
+            'bin_id' => $binB->id,
+            'on_hand' => 20,
+        ]);
+
+        $adjustment = app(StockAdjustmentService::class)->create([
+            'transaction_date' => now()->toDateString(),
+            'location_id' => $location->id,
+            'created_by' => 'tester',
+            'items' => [
+                ['item_id' => $variant->id, 'bin_id' => $binA->id, 'actual_qty' => 12],
+                ['item_id' => $variant->id, 'bin_id' => $binB->id, 'actual_qty' => 17],
+            ],
+        ]);
+
+        $this->assertCount(2, $adjustment->items);
+        $this->assertEquals(12, Inventory::where('item_id', $variant->id)->where('bin_id', $binA->id)->value('on_hand'));
+        $this->assertEquals(17, Inventory::where('item_id', $variant->id)->where('bin_id', $binB->id)->value('on_hand'));
+    }
+
+    public function test_create_rejects_duplicate_same_sku_and_bin(): void
+    {
+        Queue::fake();
+
+        $location = Location::create([
+            'location_code' => 'WH-DUPLICATE',
+            'location_name' => 'Gudang Duplicate',
+            'location_type' => 'warehouse',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+        $bin = LocationBin::create([
+            'location_id' => $location->id,
+            'bin_code' => 'A1',
+            'bin_final_code' => 'WH-DUPLICATE-A1',
+        ]);
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'Cat Duplicate',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $product = Product::create([
+            'category_id' => $categoryId,
+            'name' => 'Product Duplicate',
+            'sku' => 'DUPLICATE-BASE',
+            'is_active' => true,
+        ]);
+        $variant = ProductVariant::create(['product_id' => $product->id, 'sku' => 'DUPLICATE-SKU']);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('SKU yang sama tidak boleh dicantumkan dua kali pada rak yang sama.');
+
+        app(StockAdjustmentService::class)->create([
+            'transaction_date' => now()->toDateString(),
+            'location_id' => $location->id,
+            'created_by' => 'tester',
+            'items' => [
+                ['item_id' => $variant->id, 'bin_id' => $bin->id, 'actual_qty' => 1],
+                ['item_id' => $variant->id, 'bin_id' => $bin->id, 'actual_qty' => 2],
+            ],
+        ]);
+    }
+
+    public function test_create_rejects_bins_from_different_locations(): void
+    {
+        Queue::fake();
+
+        $locationA = Location::create([
+            'location_code' => 'WH-LOCATION-A',
+            'location_name' => 'Gudang A',
+            'location_type' => 'warehouse',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+        $locationB = Location::create([
+            'location_code' => 'WH-LOCATION-B',
+            'location_name' => 'Gudang B',
+            'location_type' => 'warehouse',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+        $binA = LocationBin::create([
+            'location_id' => $locationA->id,
+            'bin_code' => 'A1',
+            'bin_final_code' => 'WH-LOCATION-A-A1',
+        ]);
+        $binB = LocationBin::create([
+            'location_id' => $locationB->id,
+            'bin_code' => 'B1',
+            'bin_final_code' => 'WH-LOCATION-B-B1',
+        ]);
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'Cat Cross Location',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $product = Product::create([
+            'category_id' => $categoryId,
+            'name' => 'Product Cross Location',
+            'sku' => 'CROSS-LOCATION-BASE',
+            'is_active' => true,
+        ]);
+        $variant = ProductVariant::create(['product_id' => $product->id, 'sku' => 'CROSS-LOCATION-SKU']);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Rak penyesuaian harus berada di gudang yang dipilih.');
+
+        app(StockAdjustmentService::class)->create([
+            'transaction_date' => now()->toDateString(),
+            'location_id' => $locationA->id,
+            'created_by' => 'tester',
+            'items' => [
+                ['item_id' => $variant->id, 'bin_id' => $binA->id, 'actual_qty' => 1],
+                ['item_id' => $variant->id, 'bin_id' => $binB->id, 'actual_qty' => 1],
+            ],
+        ]);
+    }
 }

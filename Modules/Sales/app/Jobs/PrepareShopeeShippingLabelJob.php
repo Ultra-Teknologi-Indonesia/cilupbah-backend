@@ -18,6 +18,7 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
+
     public array $backoff = [10, 30, 60];
 
     private const MAX_GLOBAL_ATTEMPTS = 6;
@@ -28,7 +29,8 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
         public readonly string $orderId,
         public readonly int $attempt = 0,
     ) {
-        $this->onQueue(config('queue.names.labels', 'labels'));
+        $this->onConnection(config('queue.routing.labels.connection', 'redis-long'));
+        $this->onQueue(config('queue.routing.labels.queue', 'labels'));
     }
 
     public function handle(ShopeeOrderService $shopee): void
@@ -48,7 +50,7 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
 
         if (empty($order->tracking_number)) {
             Log::info('PrepareShopeeShippingLabelJob: tracking_number kosong, skip', [
-                'order_id'      => $order->id,
+                'order_id' => $order->id,
                 'salesorder_no' => $order->salesorder_no,
             ]);
 
@@ -79,16 +81,16 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
             } catch (\Throwable $e) {
                 $selfDesign = false;
                 Log::warning('PrepareShopeeShippingLabelJob: checkAllowSelfDesignAwb gagal, fallback ke flow normal', [
-                    'order_id'  => $order->id,
-                    'order_sn'  => $orderSn,
+                    'order_id' => $order->id,
+                    'order_sn' => $orderSn,
                     'exception' => $e->getMessage(),
                 ]);
             }
 
             if ($selfDesign) {
                 $order->update([
-                    'shipping_label_status'      => 'self_design_required',
-                    'shipping_label_doc_type'    => null,
+                    'shipping_label_status' => 'self_design_required',
+                    'shipping_label_doc_type' => null,
                     'shipping_label_prepared_at' => now(),
                 ]);
 
@@ -98,6 +100,7 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
                 ]);
 
                 $this->notifyBulkListeners();
+
                 return;
             }
         }
@@ -107,7 +110,7 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
         } catch (\Throwable $e) {
             $docType = 'THERMAL_AIR_WAYBILL';
             Log::warning('PrepareShopeeShippingLabelJob: resolveSupportedDocType gagal, pakai default', [
-                'order_id'  => $order->id,
+                'order_id' => $order->id,
                 'exception' => $e->getMessage(),
             ]);
         }
@@ -131,11 +134,11 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
                 if (! $recoverable) {
                     $order->update(['shipping_label_status' => 'failed']);
                     Log::error('PrepareShopeeShippingLabelJob: createShippingDocument gagal', [
-                        'order_id'  => $order->id,
-                        'order_sn'  => $orderSn,
-                        'doc_type'  => $docType,
-                        'error'     => $errCode,
-                        'message'   => $failDetail,
+                        'order_id' => $order->id,
+                        'order_sn' => $orderSn,
+                        'doc_type' => $docType,
+                        'error' => $errCode,
+                        'message' => $failDetail,
                     ]);
                     $this->notifyBulkListeners();
                     throw new \RuntimeException("Shopee createShippingDocument gagal: {$errCode} {$failDetail}");
@@ -144,7 +147,7 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
                 Log::info('PrepareShopeeShippingLabelJob: createShippingDocument recoverable, lanjut check status', [
                     'order_id' => $order->id,
                     'order_sn' => $orderSn,
-                    'error'    => $errCode,
+                    'error' => $errCode,
                 ]);
             }
         }
@@ -162,8 +165,8 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
 
             if ($status === 'READY') {
                 $order->update([
-                    'shipping_label_status'      => 'ready',
-                    'shipping_label_doc_type'    => $docType,
+                    'shipping_label_status' => 'ready',
+                    'shipping_label_doc_type' => $docType,
                     'shipping_label_prepared_at' => now(),
                 ]);
                 Log::info('PrepareShopeeShippingLabelJob: shipping document READY', [
@@ -173,27 +176,28 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
                 ]);
 
                 $this->notifyBulkListeners();
+
                 return;
             }
 
             if ($status === 'FAILED') {
                 $order->update(['shipping_label_status' => 'failed']);
                 Log::error('PrepareShopeeShippingLabelJob: shipping document FAILED', [
-                    'order_id'   => $order->id,
-                    'order_sn'   => $orderSn,
+                    'order_id' => $order->id,
+                    'order_sn' => $orderSn,
                     'fail_error' => $row['fail_error'] ?? null,
-                    'fail_msg'   => $row['fail_message'] ?? null,
+                    'fail_msg' => $row['fail_message'] ?? null,
                 ]);
                 $this->notifyBulkListeners();
-                throw new \RuntimeException('Shopee shipping document FAILED: ' . ($row['fail_message'] ?? $row['fail_error'] ?? 'unknown'));
+                throw new \RuntimeException('Shopee shipping document FAILED: '.($row['fail_message'] ?? $row['fail_error'] ?? 'unknown'));
             }
         } catch (\Throwable $e) {
             if ($e instanceof \RuntimeException && str_contains($e->getMessage(), 'FAILED')) {
                 throw $e;
             }
-            Log::info('PrepareShopeeShippingLabelJob: dokumen belum siap atau get result gagal, jadwalkan retry: ' . $e->getMessage(), [
+            Log::info('PrepareShopeeShippingLabelJob: dokumen belum siap atau get result gagal, jadwalkan retry: '.$e->getMessage(), [
                 'order_id' => $order->id,
-                'attempt'  => $this->attempt,
+                'attempt' => $this->attempt,
             ]);
         }
 
@@ -201,13 +205,14 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
         if ($nextAttempt < self::MAX_GLOBAL_ATTEMPTS) {
             $delaySeconds = self::RETRY_DELAYS[$this->attempt] ?? 30;
             Log::info('PrepareShopeeShippingLabelJob: label belum READY, dispatch delayed retry non-blocking', [
-                'order_id'     => $order->id,
-                'order_sn'     => $orderSn,
+                'order_id' => $order->id,
+                'order_sn' => $orderSn,
                 'next_attempt' => $nextAttempt,
-                'delay_sec'    => $delaySeconds,
+                'delay_sec' => $delaySeconds,
             ]);
             self::dispatch($order->id, $nextAttempt)
-                ->onQueue(config('queue.names.labels', 'labels'))
+                ->onConnection(config('queue.routing.labels.connection', 'redis-long'))
+                ->onQueue(config('queue.routing.labels.queue', 'labels'))
                 ->delay(now()->addSeconds($delaySeconds));
         } else {
             $order->update(['shipping_label_status' => 'failed']);
@@ -222,8 +227,8 @@ class PrepareShopeeShippingLabelJob implements ShouldQueue
     public function failed(\Throwable $exception): void
     {
         Log::error('PrepareShopeeShippingLabelJob failed permanently', [
-            'order_id'  => $this->orderId,
-            'attempt'   => $this->attempt,
+            'order_id' => $this->orderId,
+            'attempt' => $this->attempt,
             'exception' => $exception->getMessage(),
         ]);
 

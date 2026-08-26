@@ -17,6 +17,7 @@ class PrepareTikTokShippingLabelJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
+
     public array $backoff = [10, 30, 60];
 
     private const MAX_GLOBAL_ATTEMPTS = 3;
@@ -25,7 +26,8 @@ class PrepareTikTokShippingLabelJob implements ShouldQueue
         public readonly string $orderId,
         public readonly int $attempt = 0,
     ) {
-        $this->onQueue(config('queue.names.labels', 'labels'));
+        $this->onConnection(config('queue.routing.labels.connection', 'redis-long'));
+        $this->onQueue(config('queue.routing.labels.queue', 'labels'));
     }
 
     public function handle(TikTokOrderService $tiktok): void
@@ -49,7 +51,7 @@ class PrepareTikTokShippingLabelJob implements ShouldQueue
 
         if (empty($order->tracking_number)) {
             Log::info('PrepareTikTokShippingLabelJob: tracking_number kosong, skip', [
-                'order_id'      => $order->id,
+                'order_id' => $order->id,
                 'salesorder_no' => $order->salesorder_no,
             ]);
 
@@ -69,15 +71,24 @@ class PrepareTikTokShippingLabelJob implements ShouldQueue
 
         $order->update(['shipping_label_status' => 'preparing']);
 
-        try {
-            $packageIds = $tiktok->packageIdsForOrder($shopId, $orderSn);
-        } catch (\Throwable $e) {
-            $packageIds = [];
-            Log::warning('PrepareTikTokShippingLabelJob: resolve package id gagal', [
-                'order_id'  => $order->id,
-                'order_sn'  => $orderSn,
-                'exception' => $e->getMessage(),
-            ]);
+        $packageIds = is_array($order->channel_package_ids) ? $order->channel_package_ids : [];
+        if ($packageIds === []) {
+            try {
+                $packageIds = $tiktok->packageIdsForOrder($shopId, $orderSn);
+            } catch (\Throwable $e) {
+                $packageIds = [];
+                Log::warning('PrepareTikTokShippingLabelJob: resolve package id gagal', [
+                    'order_id' => $order->id,
+                    'order_sn' => $orderSn,
+                    'exception' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        if ($packageIds !== []) {
+            $order->forceFill([
+                'channel_package_ids' => array_values(array_unique(array_map('strval', $packageIds))),
+            ])->saveQuietly();
         }
 
         $documents = [];
@@ -92,25 +103,25 @@ class PrepareTikTokShippingLabelJob implements ShouldQueue
             } catch (\Throwable $e) {
 
                 Log::info('PrepareTikTokShippingLabelJob: dokumen package belum siap', [
-                    'order_id'   => $order->id,
+                    'order_id' => $order->id,
                     'package_id' => $packageId,
-                    'exception'  => $e->getMessage(),
+                    'exception' => $e->getMessage(),
                 ]);
             }
         }
 
         if (! empty($documents)) {
             $order->update([
-                'shipping_label_status'      => 'ready',
-                'shipping_label_doc_type'    => 'PDF',
+                'shipping_label_status' => 'ready',
+                'shipping_label_doc_type' => 'PDF',
                 'shipping_label_prepared_at' => now(),
-                'shipping_label_raw_data'    => ['channel' => 'tiktok', 'documents' => $documents],
+                'shipping_label_raw_data' => ['channel' => 'tiktok', 'documents' => $documents],
             ]);
 
             Log::info('PrepareTikTokShippingLabelJob: shipping document READY', [
-                'order_id'  => $order->id,
-                'order_sn'  => $orderSn,
-                'packages'  => count($documents),
+                'order_id' => $order->id,
+                'order_sn' => $orderSn,
+                'packages' => count($documents),
             ]);
 
             return;
@@ -126,12 +137,13 @@ class PrepareTikTokShippingLabelJob implements ShouldQueue
         $nextAttempt = $this->attempt + 1;
         if ($nextAttempt < self::MAX_GLOBAL_ATTEMPTS) {
             Log::warning('PrepareTikTokShippingLabelJob: label belum siap, retry', [
-                'order_id'     => $order->id,
-                'order_sn'     => $orderSn,
+                'order_id' => $order->id,
+                'order_sn' => $orderSn,
                 'next_attempt' => $nextAttempt,
             ]);
             self::dispatch($order->id, $nextAttempt)
-                ->onQueue(config('queue.names.labels', 'labels'))
+                ->onConnection(config('queue.routing.labels.connection', 'redis-long'))
+                ->onQueue(config('queue.routing.labels.queue', 'labels'))
                 ->delay(now()->addMinutes(5));
 
             return;
@@ -147,8 +159,8 @@ class PrepareTikTokShippingLabelJob implements ShouldQueue
     public function failed(\Throwable $exception): void
     {
         Log::error('PrepareTikTokShippingLabelJob failed permanently', [
-            'order_id'  => $this->orderId,
-            'attempt'   => $this->attempt,
+            'order_id' => $this->orderId,
+            'attempt' => $this->attempt,
             'exception' => $exception->getMessage(),
         ]);
 

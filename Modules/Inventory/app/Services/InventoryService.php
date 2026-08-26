@@ -337,8 +337,8 @@ class InventoryService
                 );
             }
 
-            if (! config('inventory.allow_negative_stock', true) && $inboundInventory->on_hand < $data['qty']) {
-                throw new \Exception("Stok di bin inbound tidak mencukupi (tersedia: {$inboundInventory->on_hand}, diminta: {$data['qty']}).");
+            if ($inboundInventory->on_hand < (int) $data['qty']) {
+                throw new \Exception("Stok di source bin tidak mencukupi (tersedia: {$inboundInventory->on_hand}, diminta: {$data['qty']}).");
             }
 
             $inboundInventory->on_hand -= $data['qty'];

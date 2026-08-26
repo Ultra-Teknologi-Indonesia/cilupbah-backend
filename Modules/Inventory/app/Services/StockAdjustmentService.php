@@ -262,6 +262,19 @@ class StockAdjustmentService
 
     private function assertBinsBelongToLocation(array $items, string $locationId): void
     {
+        $itemBinKeys = collect($items)
+            ->map(static fn (array $item): string => sprintf(
+                '%s|%s',
+                (string) ($item['item_id'] ?? ''),
+                (string) ($item['bin_id'] ?? ''),
+            ));
+
+        if ($itemBinKeys->duplicates()->isNotEmpty()) {
+            throw new \InvalidArgumentException(
+                'SKU yang sama tidak boleh dicantumkan dua kali pada rak yang sama.',
+            );
+        }
+
         $binIds = collect($items)
             ->pluck('bin_id')
             ->filter()

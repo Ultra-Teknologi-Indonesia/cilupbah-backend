@@ -3,48 +3,65 @@
 namespace Modules\Sales\Services;
 
 use App\Exceptions\UserFacingException;
+use App\Models\User;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Modules\Channel\Exceptions\ChannelLabelUnsupportedException;
+use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Channel\Services\ChannelDownloadService;
+use Modules\Channel\Services\LazadaOrderService;
+use Modules\Channel\Services\MarketplaceCancelReasonService;
+use Modules\Channel\Services\ShopeeOrderService;
+use Modules\Channel\Services\TikTokClient;
+use Modules\Channel\Services\TikTokOrderService;
+use Modules\Inventory\Jobs\AutoDetectStockReplenishmentJob;
+use Modules\Notification\Services\NotificationDispatcher;
+use Modules\Outbound\Models\Packlist;
+use Modules\Outbound\Models\Picklist;
+use Modules\Outbound\Models\PicklistItem;
+use Modules\Outbound\Models\Shipment;
+use Modules\Outbound\Models\ShipmentOrder;
+use Modules\Outbound\Services\FulfillmentCleanupService;
+use Modules\Outbound\Services\OutboundFulfillmentService;
+use Modules\Sales\Enums\OrderActivityAction;
+use Modules\Sales\Enums\OrderActivityEntity;
 use Modules\Sales\Enums\SalesOrderStatus;
 use Modules\Sales\Exceptions\CannotDeleteActiveOrderException;
 use Modules\Sales\Exceptions\DuplicateOrderException;
-use Modules\Sales\Exceptions\InsufficientStockException;
 use Modules\Sales\Exceptions\InvalidStatusTransitionException;
 use Modules\Sales\Exceptions\LocationNotConfiguredException;
 use Modules\Sales\Exceptions\ProductNotMappableException;
 use Modules\Sales\Exceptions\ShippingLabelPreparingException;
-use Modules\Channel\Exceptions\ChannelLabelUnsupportedException;
 use Modules\Sales\Jobs\CancelChannelOrderJob;
 use Modules\Sales\Jobs\PrepareLazadaShippingLabelJob;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
+use Modules\Sales\Jobs\RespondBuyerCancellationJob;
+use Modules\Sales\Jobs\SyncOrderFinanceJob;
 use Modules\Sales\Jobs\SyncStockJob;
 use Modules\Sales\Models\OrderBinAllocation;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderItem;
-use Modules\Sales\Support\OrderTotals;
-use Modules\Sales\Support\ShadowOrderGuard;
 use Modules\Sales\Models\SalesOrderStatusHistory;
 use Modules\Sales\Repositories\SalesOrderRepository;
-use Modules\Outbound\Models\Picklist;
-use Modules\Outbound\Models\PicklistItem;
-use Modules\Outbound\Models\Shipment;
-use Modules\Inventory\Jobs\AutoDetectStockReplenishmentJob;
-use Modules\Notification\Services\NotificationDispatcher;
-use Modules\Outbound\Models\ShipmentOrder;
+use Modules\Sales\Support\OrderTotals;
+use Modules\Sales\Support\ShadowOrderGuard;
 use Modules\Warehouse\Models\Location;
 
 class SalesOrderService
 {
     private const ALLOWED_TRANSITIONS = [
-        'pending'   => ['reserved', 'cancelled'],
-        'reserved'  => ['picked', 'cancelled'],
-        'picked'    => ['packed', 'cancelled'],
-        'packed'    => ['shipped', 'cancelled'],
-        'shipped'   => [],
+        'pending' => ['reserved', 'cancelled'],
+        'reserved' => ['picked', 'cancelled'],
+        'picked' => ['packed', 'cancelled'],
+        'packed' => ['shipped', 'cancelled'],
+        'shipped' => [],
         'cancelled' => [],
     ];
 
@@ -55,10 +72,10 @@ class SalesOrderService
     ];
 
     private const STATUS_HISTORY_ACTIONS = [
-        'reserved'  => 'PROCESS',
-        'picked'    => 'FINISH_PICK',
-        'packed'    => 'FINISH_PACK',
-        'shipped'   => 'SHIPPED',
+        'reserved' => 'PROCESS',
+        'picked' => 'FINISH_PICK',
+        'packed' => 'FINISH_PACK',
+        'shipped' => 'SHIPPED',
         'cancelled' => 'CANCELLED',
     ];
 
@@ -90,11 +107,11 @@ class SalesOrderService
     private const IDEMPOTENCY_TTL = 172800;
 
     private const CHANNEL_PREFIX = [
-        'tiktok'     => 'TT',
-        'shopee'     => 'SP',
-        'lazada'     => 'LZ',
-        'tokopedia'  => 'TP',
-        'blibli'     => 'BL',
+        'tiktok' => 'TT',
+        'shopee' => 'SP',
+        'lazada' => 'LZ',
+        'tokopedia' => 'TP',
+        'blibli' => 'BL',
     ];
 
     public const NOTIF_ORDER_PERMISSION = 'view-pesanan';
@@ -123,7 +140,7 @@ class SalesOrderService
     public function getTabCounts(): array
     {
 
-        $cacheKey = 'sales:tab-counts:u:' . (auth()->id() ?? 'guest');
+        $cacheKey = 'sales:tab-counts:u:'.(auth()->id() ?? 'guest');
 
         return Cache::remember($cacheKey, now()->addSeconds(30), fn () => $this->orderRepository->getTabCounts());
     }
@@ -188,7 +205,7 @@ class SalesOrderService
 
         if (! empty($skipped)) {
             $actorId = null;
-            if ($actor instanceof \App\Models\User) {
+            if ($actor instanceof User) {
                 $actorId = $actor->id;
             } elseif (is_array($actor)) {
                 $actorId = $actor['id'] ?? null;
@@ -218,7 +235,7 @@ class SalesOrderService
 
         if (empty($eligibleIds)) {
             return [
-                'moved'   => 0,
+                'moved' => 0,
                 'skipped' => $skipped,
                 'message' => $this->buildMoveToReadyMessage(0, $skipped),
             ];
@@ -241,15 +258,15 @@ class SalesOrderService
 
                 $order->update([
                     'handed_to_warehouse_at' => now(),
-                    'pick_failed_at'         => null,
-                    'pick_failed_by'         => null,
-                    'pick_fail_reason'       => null,
+                    'pick_failed_at' => null,
+                    'pick_failed_by' => null,
+                    'pick_fail_reason' => null,
                 ]);
 
                 if (! $order->statusHistory()->where('action', 'PROCESS')->exists()) {
                     $this->logStatusHistory($order, 'PROCESS', [
                         'from' => 'reserved',
-                        'to'   => 'reserved',
+                        'to' => 'reserved',
                     ], $actor);
                 }
 
@@ -260,7 +277,7 @@ class SalesOrderService
         });
 
         return [
-            'moved'   => $count,
+            'moved' => $count,
             'skipped' => $skipped,
             'message' => $this->buildMoveToReadyMessage($count, $skipped),
         ];
@@ -305,8 +322,8 @@ class SalesOrderService
                 $order->update([
                     'cancel_accepted_at' => now(),
                     'cancel_accepted_by' => $actorId,
-                    'cancel_channel'     => $channel,
-                    'cancel_reason'      => $finalReason,
+                    'cancel_channel' => $channel,
+                    'cancel_reason' => $finalReason,
                 ]);
 
                 Cache::forget($this->idempotencyKey($order->source, $order->salesorder_no));
@@ -323,15 +340,15 @@ class SalesOrderService
             $this->applyStockTransition($order, 'cancelled');
 
             $order->update([
-                'status'             => 'cancelled',
-                'is_canceled'        => true,
-                'cancel_reason'      => $finalReason,
+                'status' => 'cancelled',
+                'is_canceled' => true,
+                'cancel_reason' => $finalReason,
                 'cancel_accepted_at' => now(),
                 'cancel_accepted_by' => $actorId,
-                'cancel_channel'     => $channel,
+                'cancel_channel' => $channel,
             ]);
 
-            app(\Modules\Outbound\Services\FulfillmentCleanupService::class)
+            app(FulfillmentCleanupService::class)
                 ->detachCancelledOrder($order->id, $actorId ?: 'system:cancel-accept');
 
             Cache::forget($this->idempotencyKey($order->source, $order->salesorder_no));
@@ -339,9 +356,9 @@ class SalesOrderService
             if ($order->source) {
                 if (in_array(strtolower((string) $order->source), ['shopee', 'tiktok'], true)) {
 
-                    \Modules\Sales\Jobs\RespondBuyerCancellationJob::dispatch(
+                    RespondBuyerCancellationJob::dispatch(
                         $order->id,
-                        \Modules\Sales\Jobs\RespondBuyerCancellationJob::ACCEPT,
+                        RespondBuyerCancellationJob::ACCEPT,
                     )->onQueue(config('queue.names.channel_sync'));
                 } else {
                     CancelChannelOrderJob::dispatch($order->id, $finalReason)->onQueue(config('queue.names.channel_sync'));
@@ -388,19 +405,19 @@ class SalesOrderService
         $actorId = $auto ? null : (Auth::id() ?: null);
 
         $order->update([
-            'cancel_requested_at'   => null,
+            'cancel_requested_at' => null,
             'cancel_request_reason' => null,
-            'cancel_requested_by'   => null,
-            'cancel_rejected_at'    => now(),
-            'cancel_rejected_by'    => $actorId,
-            'cancel_reject_reason'  => $reason,
+            'cancel_requested_by' => null,
+            'cancel_rejected_at' => now(),
+            'cancel_rejected_by' => $actorId,
+            'cancel_reject_reason' => $reason,
         ]);
 
         if (in_array(strtolower((string) $order->source), ['shopee', 'tiktok'], true)) {
 
-            \Modules\Sales\Jobs\RespondBuyerCancellationJob::dispatch(
+            RespondBuyerCancellationJob::dispatch(
                 $order->id,
-                \Modules\Sales\Jobs\RespondBuyerCancellationJob::REJECT,
+                RespondBuyerCancellationJob::REJECT,
             )->onQueue(config('queue.names.channel_sync'));
         }
 
@@ -466,9 +483,9 @@ class SalesOrderService
         $order->forceFill([
             'channel_cancel_requested_at' => now(),
             'channel_cancel_requested_by' => Auth::id() ?: null,
-            'channel_cancel_status'       => 'pending',
-            'channel_cancel_error'        => null,
-            'cancel_reason'               => $reason,
+            'channel_cancel_status' => 'pending',
+            'channel_cancel_error' => null,
+            'cancel_reason' => $reason,
         ])->save();
 
         CancelChannelOrderJob::dispatch($order->id, $reason)
@@ -487,8 +504,8 @@ class SalesOrderService
 
         if ($order->channel_cancel_status !== null) {
             $order->forceFill([
-                'channel_cancel_status'       => null,
-                'channel_cancel_error'        => null,
+                'channel_cancel_status' => null,
+                'channel_cancel_error' => null,
                 'channel_cancel_requested_at' => null,
             ])->save();
         }
@@ -509,7 +526,7 @@ class SalesOrderService
         if ($order->channel_cancel_status === 'pending') {
             $order->forceFill([
                 'channel_cancel_status' => 'failed',
-                'channel_cancel_error'  => \Illuminate\Support\Str::limit($reason ?: 'Ditolak marketplace', 240),
+                'channel_cancel_error' => Str::limit($reason ?: 'Ditolak marketplace', 240),
             ])->saveQuietly();
         }
     }
@@ -530,7 +547,7 @@ class SalesOrderService
         throw new UserFacingException(
             'Status tidak dapat dibatalkan',
             "Pesanan {$source} berstatus {$channelStatus} tidak dapat dibatalkan seller. "
-            . 'Diizinkan: ' . implode(', ', $eligible) . '.'
+            .'Diizinkan: '.implode(', ', $eligible).'.'
         );
     }
 
@@ -550,7 +567,7 @@ class SalesOrderService
     public function cancelReasonsForOrder(SalesOrder $order): array
     {
         $source = strtolower((string) $order->source);
-        $reasonService = app(\Modules\Channel\Services\MarketplaceCancelReasonService::class);
+        $reasonService = app(MarketplaceCancelReasonService::class);
 
         if (! in_array($source, ['tiktok', 'shopee', 'lazada'], true)) {
             return [];
@@ -558,7 +575,7 @@ class SalesOrderService
 
         if ($source === 'lazada') {
             return $reasonService->normalize(
-                app(\Modules\Channel\Services\LazadaOrderService::class)->getCancelReasons($order->channel_shop_id)
+                app(LazadaOrderService::class)->getCancelReasons($order->channel_shop_id)
             );
         }
 
@@ -578,11 +595,11 @@ class SalesOrderService
     {
         try {
             if (strtolower((string) $order->source) === 'tiktok') {
-                app(\Modules\Channel\Services\TikTokOrderService::class)
+                app(TikTokOrderService::class)
                     ->pullOrderById($order->channel_shop_id, $order->salesorder_no);
             }
         } catch (\Throwable $e) {
-            Log::warning('requestChannelCancel: gagal refresh status mentah TikTok: ' . $e->getMessage());
+            Log::warning('requestChannelCancel: gagal refresh status mentah TikTok: '.$e->getMessage());
         }
     }
 
@@ -636,7 +653,7 @@ class SalesOrderService
                 'reason' => $reason,
             ]);
 
-            app(\Modules\Outbound\Services\FulfillmentCleanupService::class)
+            app(FulfillmentCleanupService::class)
                 ->detachCancelledOrder($order->id, $actorId ?: 'system:buyer-confirmation');
 
             return $order->fresh(['items']);
@@ -647,7 +664,7 @@ class SalesOrderService
     {
         $order = SalesOrder::findOrFail($data['order_id']);
         $order->update([
-            'tracking_number'   => $data['tracking_number'],
+            'tracking_number' => $data['tracking_number'],
             'shipping_provider' => $data['shipping_provider'] ?? $order->shipping_provider,
         ]);
 
@@ -666,9 +683,9 @@ class SalesOrderService
     {
         $order = SalesOrder::findOrFail($id);
         $order->update([
-            'courier_name'               => $data['courier_name'] ?? null,
-            'courier_phone'              => $data['courier_phone'] ?? null,
-            'pickup_code'                => $data['pickup_code'] ?? null,
+            'courier_name' => $data['courier_name'] ?? null,
+            'courier_phone' => $data['courier_phone'] ?? null,
+            'pickup_code' => $data['pickup_code'] ?? null,
             'courier_pickup_recorded_at' => now(),
             'courier_pickup_recorded_by' => Auth::id() ?: null,
         ]);
@@ -701,8 +718,8 @@ class SalesOrderService
     {
         $order = SalesOrder::findOrFail($data['order_id']);
         $order->update([
-            'is_paid'        => true,
-            'paid_time'      => $data['paid_time'] ?? now(),
+            'is_paid' => true,
+            'paid_time' => $data['paid_time'] ?? now(),
             'payment_method' => $data['payment_method'] ?? $order->payment_method,
         ]);
         $this->logStatusHistory($order, 'PAID');
@@ -712,7 +729,7 @@ class SalesOrderService
 
     public function requestAwb(array $data): array
     {
-        $fulfillmentService = app(\Modules\Outbound\Services\OutboundFulfillmentService::class);
+        $fulfillmentService = app(OutboundFulfillmentService::class);
         $results = $fulfillmentService->readyToShip([$data['order_id']]);
 
         if (empty($results)) {
@@ -738,9 +755,14 @@ class SalesOrderService
             throw new \InvalidArgumentException('Pesanan ini bukan dari marketplace atau data channel tidak lengkap.');
         }
 
+        $cachedLabel = $this->readCachedShippingLabel($order);
+        if ($cachedLabel !== null) {
+            return $cachedLabel;
+        }
+
         if ($source === 'tiktok') {
-            $tikTokService = app(\Modules\Channel\Services\TikTokOrderService::class);
-            $shopRepo = app(\Modules\Channel\Repositories\ChannelShopRepository::class);
+            $tikTokService = app(TikTokOrderService::class);
+            $shopRepo = app(ChannelShopRepository::class);
             $shop = $shopRepo->findByShopId($shopId);
 
             if (! $shop || ! $shop->access_token) {
@@ -749,18 +771,22 @@ class SalesOrderService
 
             $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
             $detailQueries = array_merge($queries, ['ids' => $channelOrderNo]);
-            $tikTokClient = app(\Modules\Channel\Services\TikTokClient::class);
-            $res = $tikTokClient->request('GET', '/order/202309/orders', $detailQueries, [], $shop->access_token);
-
-            $packageId = null;
-            foreach (($res['data']['orders'] ?? []) as $o) {
-                foreach ($o['packages'] ?? [] as $pkg) {
-                    if (! empty($pkg['id'])) {
-                        $packageId = (string) $pkg['id'];
-                        break 2;
+            $tikTokClient = app(TikTokClient::class);
+            $packageIds = $this->channelPackageIds($order);
+            if ($packageIds === []) {
+                $res = $tikTokClient->request('GET', '/order/202309/orders', $detailQueries, [], $shop->access_token);
+                foreach (($res['data']['orders'] ?? []) as $o) {
+                    foreach ($o['packages'] ?? [] as $pkg) {
+                        if (! empty($pkg['id'])) {
+                            $packageIds[] = (string) $pkg['id'];
+                        }
                     }
                 }
+                $packageIds = array_values(array_unique($packageIds));
+                $this->persistChannelPackageIds($order, $packageIds);
             }
+
+            $packageId = $packageIds[0] ?? null;
 
             if (! $packageId) {
                 throw new \RuntimeException('Package ID tidak ditemukan untuk pesanan TikTok ini.');
@@ -787,7 +813,7 @@ class SalesOrderService
         }
 
         if ($source === 'shopee') {
-            $shopeeService = app(\Modules\Channel\Services\ShopeeOrderService::class);
+            $shopeeService = app(ShopeeOrderService::class);
 
             $requestedDocType = $options['document_type'] ?? null;
 
@@ -802,11 +828,14 @@ class SalesOrderService
                 );
 
                 if (! empty($download['binary']) || ! empty($download['content'])) {
+                    $content = (string) ($download['content'] ?? '');
+                    $this->cacheShippingLabelBytes($order, $content, $order->shipping_label_doc_type);
+
                     return [
-                        'type'            => 'base64',
-                        'content_type'    => $download['content_type'] ?? 'application/pdf',
-                        'document_base64' => base64_encode((string) ($download['content'] ?? '')),
-                        'source'          => 'shopee',
+                        'type' => 'base64',
+                        'content_type' => $download['content_type'] ?? 'application/pdf',
+                        'document_base64' => base64_encode($content),
+                        'source' => 'shopee',
                     ];
                 }
 
@@ -815,7 +844,7 @@ class SalesOrderService
             if ($order->shipping_label_status === 'self_design_required') {
                 throw new \RuntimeException(
                     'Shopee mengharuskan label resi ini didesain manual (self-design AWB) di Seller Center. '
-                    . 'Sistem tidak menyediakan cetak resi untuk kasus ini — resi hanya diambil dari channel.'
+                    .'Sistem tidak menyediakan cetak resi untuk kasus ini — resi hanya diambil dari channel.'
                 );
             }
 
@@ -836,16 +865,19 @@ class SalesOrderService
                 if ($liveStatus === 'READY') {
                     $download = $shopeeService->downloadShippingDocument($shopId, $channelOrderNo, $liveDocType);
                     if (! empty($download['binary']) || ! empty($download['content'])) {
+                        $content = (string) ($download['content'] ?? '');
+                        $this->cacheShippingLabelBytes($order, $content, $liveDocType);
                         $order->update([
-                            'shipping_label_status'      => 'ready',
-                            'shipping_label_doc_type'    => $liveDocType,
+                            'shipping_label_status' => 'ready',
+                            'shipping_label_doc_type' => $liveDocType,
                             'shipping_label_prepared_at' => now(),
                         ]);
+
                         return [
-                            'type'            => 'base64',
-                            'content_type'    => $download['content_type'] ?? 'application/pdf',
-                            'document_base64' => base64_encode((string) ($download['content'] ?? '')),
-                            'source'          => 'shopee',
+                            'type' => 'base64',
+                            'content_type' => $download['content_type'] ?? 'application/pdf',
+                            'document_base64' => base64_encode($content),
+                            'source' => 'shopee',
                         ];
                     }
                 }
@@ -862,7 +894,8 @@ class SalesOrderService
 
                 if ($isStale) {
                     PrepareShopeeShippingLabelJob::dispatch($order->id)
-                        ->onQueue(config('queue.names.channel_sync'));
+                        ->onConnection(config('queue.routing.labels.connection', 'redis-long'))
+                        ->onQueue(config('queue.routing.labels.queue', 'labels'));
                     throw new ShippingLabelPreparingException(
                         'Label belum siap. Kemungkinan status pesanan di Shopee belum siap dikirim (RETRY_SHIP) — cek Seller Center. Sistem mencoba ulang, tunggu 1-2 menit.'
                     );
@@ -875,7 +908,8 @@ class SalesOrderService
 
             if ($order->shipping_label_status === 'failed') {
                 PrepareShopeeShippingLabelJob::dispatch($order->id)
-                    ->onQueue(config('queue.names.channel_sync'));
+                    ->onConnection(config('queue.routing.labels.connection', 'redis-long'))
+                    ->onQueue(config('queue.routing.labels.queue', 'labels'));
 
                 throw new ShippingLabelPreparingException(
                     'Label sebelumnya gagal. Sedang dicoba ulang, tunggu 1-2 menit.'
@@ -892,10 +926,14 @@ class SalesOrderService
             );
 
             if (! empty($result['ready']) && ! empty($result['document_base64'])) {
+                $labelBytes = base64_decode((string) $result['document_base64'], true);
+                if ($labelBytes !== false && $labelBytes !== '') {
+                    $this->cacheShippingLabelBytes($order, $labelBytes, $result['doc_type'] ?? $shopeeDocType);
+                }
 
                 $order->update([
-                    'shipping_label_status'      => 'ready',
-                    'shipping_label_doc_type'    => $result['doc_type'] ?? $shopeeDocType,
+                    'shipping_label_status' => 'ready',
+                    'shipping_label_doc_type' => $result['doc_type'] ?? $shopeeDocType,
                     'shipping_label_prepared_at' => now(),
                 ]);
 
@@ -919,7 +957,7 @@ class SalesOrderService
         }
 
         if ($source === 'lazada') {
-            $lazadaService = app(\Modules\Channel\Services\LazadaOrderService::class);
+            $lazadaService = app(LazadaOrderService::class);
 
             if ($order->shipping_label_status === 'ready' && is_array($order->shipping_label_raw_data)) {
                 $cached = $order->shipping_label_raw_data['document'] ?? [];
@@ -927,11 +965,16 @@ class SalesOrderService
                     return ['type' => 'url', 'url' => $cached['pdf_url'], 'source' => 'lazada'];
                 }
                 if (! empty($cached['file'])) {
+                    $bytes = base64_decode((string) $cached['file'], true);
+                    if ($bytes !== false && $bytes !== '') {
+                        $this->cacheShippingLabelBytes($order, $bytes, $cached['doc_type'] ?? 'PDF');
+                    }
+
                     return [
-                        'type'            => 'base64',
-                        'content_type'    => ($cached['doc_type'] ?? 'PDF') === 'HTML' ? 'text/html' : 'application/pdf',
+                        'type' => 'base64',
+                        'content_type' => ($cached['doc_type'] ?? 'PDF') === 'HTML' ? 'text/html' : 'application/pdf',
                         'document_base64' => $cached['file'],
-                        'source'          => 'lazada',
+                        'source' => 'lazada',
                     ];
                 }
             }
@@ -939,7 +982,7 @@ class SalesOrderService
             if ($order->shipping_label_status === 'self_design_required') {
                 throw new \RuntimeException(
                     'Order Lazada ini bertipe SOF/DBS — label tidak tersedia via API. '
-                    . 'Ambil resi langsung dari Lazada Seller Center.'
+                    .'Ambil resi langsung dari Lazada Seller Center.'
                 );
             }
 
@@ -950,7 +993,11 @@ class SalesOrderService
             }
 
             try {
-                $packageIds = $lazadaService->resolvePackageIds($shopId, $channelOrderNo);
+                $packageIds = $this->channelPackageIds($order);
+                if ($packageIds === []) {
+                    $packageIds = $lazadaService->resolvePackageIds($shopId, $channelOrderNo);
+                    $this->persistChannelPackageIds($order, $packageIds);
+                }
                 $document = $lazadaService->getPackageDocument($shopId, $packageIds, 'PDF');
             } catch (ChannelLabelUnsupportedException $e) {
                 $order->update(['shipping_label_status' => 'self_design_required']);
@@ -960,11 +1007,21 @@ class SalesOrderService
             $isHtml = ($document['doc_type'] ?? 'PDF') === 'HTML';
 
             if (! empty($document['pdf_url']) || ! empty($document['file'])) {
+                $rawData = [
+                    'channel' => 'lazada',
+                    'document' => $document,
+                ];
+                if (! empty($document['file'])) {
+                    $bytes = base64_decode((string) $document['file'], true);
+                    if ($bytes !== false && $bytes !== '') {
+                        $this->cacheShippingLabelBytes($order, $bytes, $document['doc_type'] ?? 'PDF', $rawData);
+                    }
+                }
                 $order->update([
-                    'shipping_label_status'      => 'ready',
-                    'shipping_label_doc_type'    => $document['doc_type'] ?? 'PDF',
+                    'shipping_label_status' => 'ready',
+                    'shipping_label_doc_type' => $document['doc_type'] ?? 'PDF',
                     'shipping_label_prepared_at' => now(),
-                    'shipping_label_raw_data'    => ['channel' => 'lazada', 'document' => $document],
+                    'shipping_label_raw_data' => $order->fresh()?->shipping_label_raw_data ?: $rawData,
                 ]);
 
                 if (! empty($document['pdf_url'])) {
@@ -972,15 +1029,16 @@ class SalesOrderService
                 }
 
                 return [
-                    'type'            => 'base64',
-                    'content_type'    => $isHtml ? 'text/html' : 'application/pdf',
+                    'type' => 'base64',
+                    'content_type' => $isHtml ? 'text/html' : 'application/pdf',
                     'document_base64' => $document['file'],
-                    'source'          => 'lazada',
+                    'source' => 'lazada',
                 ];
             }
 
             PrepareLazadaShippingLabelJob::dispatch($order->id)
-                ->onQueue(config('queue.names.channel_sync'));
+                ->onConnection(config('queue.routing.labels.connection', 'redis-long'))
+                ->onQueue(config('queue.routing.labels.queue', 'labels'));
 
             throw new ShippingLabelPreparingException(
                 'Label Lazada belum siap (pesanan mungkin belum di-RTS). Sistem menyiapkan, tunggu 1-2 menit.'
@@ -988,6 +1046,114 @@ class SalesOrderService
         }
 
         throw new \InvalidArgumentException("Channel '{$source}' belum mendukung cetak resi otomatis.");
+    }
+
+    private function readCachedShippingLabel(SalesOrder $order): ?array
+    {
+        if ($order->shipping_label_status !== 'ready') {
+            return null;
+        }
+
+        $path = data_get($order->shipping_label_raw_data, 'cache.path');
+        $expectedHash = data_get($order->shipping_label_raw_data, 'cache.sha256');
+        if (! is_string($path) || $path === '' || ! is_string($expectedHash) || $expectedHash === '') {
+            return null;
+        }
+
+        try {
+            $disk = Storage::disk('documents');
+            if (! $disk->exists($path)) {
+                return null;
+            }
+
+            $bytes = $disk->get($path);
+            if ($bytes === '' || ! hash_equals($expectedHash, hash('sha256', $bytes))) {
+                Log::warning('Shipping label cache tidak valid, ambil ulang dari channel', [
+                    'order_id' => $order->id,
+                    'path' => $path,
+                ]);
+
+                return null;
+            }
+
+            return [
+                'type' => 'base64',
+                'content_type' => data_get($order->shipping_label_raw_data, 'cache.content_type', 'application/pdf'),
+                'document_base64' => base64_encode($bytes),
+                'source' => strtolower((string) $order->source),
+                'cached' => true,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Shipping label cache gagal dibaca, ambil ulang dari channel', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    public function cacheShippingLabelBytes(
+        SalesOrder $order,
+        string $bytes,
+        ?string $documentType = null,
+        ?array $rawData = null,
+    ): void {
+        if ($bytes === '') {
+            return;
+        }
+
+        $hash = hash('sha256', $bytes);
+        $path = "shipping-label-cache/{$order->id}/{$hash}.pdf";
+        $disk = Storage::disk('documents');
+        if (! $disk->exists($path)) {
+            $disk->put($path, $bytes);
+        }
+
+        $metadata = $rawData
+            ?? (is_array($order->shipping_label_raw_data) ? $order->shipping_label_raw_data : []);
+        $metadata['cache'] = [
+            'path' => $path,
+            'sha256' => $hash,
+            'bytes' => strlen($bytes),
+            'content_type' => strtoupper((string) $documentType) === 'HTML'
+                ? 'text/html'
+                : 'application/pdf',
+            'document_type' => $documentType,
+            'cached_at' => now()->toIso8601String(),
+        ];
+
+        $order->forceFill(['shipping_label_raw_data' => $metadata])->saveQuietly();
+    }
+
+    private function channelPackageIds(SalesOrder $order): array
+    {
+        $ids = is_array($order->channel_package_ids) ? $order->channel_package_ids : [];
+
+        foreach ((array) data_get($order->shipping_label_raw_data, 'documents', []) as $document) {
+            if (is_array($document) && ! empty($document['package_id'])) {
+                $ids[] = (string) $document['package_id'];
+            }
+        }
+
+        return array_values(array_unique(array_filter(
+            array_map('strval', $ids),
+            static fn (string $id): bool => $id !== '',
+        )));
+    }
+
+    private function persistChannelPackageIds(SalesOrder $order, array $packageIds): void
+    {
+        $packageIds = array_values(array_unique(array_filter(
+            array_map('strval', $packageIds),
+            static fn (string $id): bool => $id !== '',
+        )));
+
+        if ($packageIds === [] || $packageIds === $this->channelPackageIds($order)) {
+            return;
+        }
+
+        $order->forceFill(['channel_package_ids' => $packageIds])->saveQuietly();
     }
 
     public function retryShippingLabel(SalesOrder $order): void
@@ -1003,17 +1169,18 @@ class SalesOrderService
         }
 
         $order->update([
-            'shipping_label_status'      => null,
-            'shipping_label_doc_type'    => null,
+            'shipping_label_status' => null,
+            'shipping_label_doc_type' => null,
             'shipping_label_prepared_at' => null,
-            'shipping_label_raw_data'    => null,
+            'shipping_label_raw_data' => null,
         ]);
 
         $job = $source === 'lazada'
             ? PrepareLazadaShippingLabelJob::dispatch($order->id)
             : PrepareShopeeShippingLabelJob::dispatch($order->id);
 
-        $job->onQueue(config('queue.names.channel_sync'));
+        $job->onConnection(config('queue.routing.labels.connection', 'redis-long'));
+        $job->onQueue(config('queue.routing.labels.queue', 'labels'));
     }
 
     public function findOrderOrFail(string $id): SalesOrder
@@ -1071,14 +1238,16 @@ class SalesOrderService
                 return $result;
             }
 
+            $this->cacheShippingLabelBytes($order, $rawBytes, $order->shipping_label_doc_type);
+
             $normalized = $bulkService->normalizeToTarget($rawBytes, $sizeKey, $source);
 
             return [
-                'type'            => 'base64',
-                'content_type'    => 'application/pdf',
+                'type' => 'base64',
+                'content_type' => 'application/pdf',
                 'document_base64' => base64_encode($normalized),
-                'source'          => $source,
-                'document_size'   => $sizeKey,
+                'source' => $source,
+                'document_size' => $sizeKey,
             ];
         } catch (ShippingLabelPreparingException $e) {
             throw new UserFacingException('Aksi tidak dapat diproses', 'Gagal memproses pengiriman.', 202, ['detail' => $e->getMessage()]);
@@ -1089,13 +1258,13 @@ class SalesOrderService
         } catch (\Throwable $e) {
             Log::error('shippingLabel gagal', [
                 'order_id' => $order->id,
-                'source'   => $source,
-                'error'    => $e->getMessage(),
+                'source' => $source,
+                'error' => $e->getMessage(),
             ]);
 
             throw new UserFacingException(
                 'Aksi tidak dapat diproses',
-                'Gagal mengambil label pengiriman: ' . $e->getMessage(),
+                'Gagal mengambil label pengiriman: '.$e->getMessage(),
                 422,
                 ['detail' => $e->getMessage()],
             );
@@ -1164,9 +1333,9 @@ class SalesOrderService
         if ($prefix && $channelOrderNo) {
 
             return [
-                'salesorder_no'  => "{$prefix}-{$channelOrderNo}",
+                'salesorder_no' => "{$prefix}-{$channelOrderNo}",
                 'channel_order_no' => $channelOrderNo,
-                'so_sequence'    => null,
+                'so_sequence' => null,
             ];
         }
 
@@ -1174,9 +1343,9 @@ class SalesOrderService
         $sequence++;
 
         return [
-            'salesorder_no'  => 'SO-' . str_pad($sequence, 5, '0', STR_PAD_LEFT),
+            'salesorder_no' => 'SO-'.str_pad($sequence, 5, '0', STR_PAD_LEFT),
             'channel_order_no' => null,
-            'so_sequence'    => $sequence,
+            'so_sequence' => $sequence,
         ];
     }
 
@@ -1239,7 +1408,7 @@ class SalesOrderService
 
                 return $order;
             });
-        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+        } catch (UniqueConstraintViolationException $e) {
             throw new DuplicateOrderException($marketplace, $marketplaceOrderId);
         }
 
@@ -1270,7 +1439,7 @@ class SalesOrderService
         } catch (\Throwable $e) {
             Log::warning('Gagal dispatch AutoDetectStockReplenishmentJob setelah createOrder', [
                 'order_id' => $order->id ?? null,
-                'error'    => $e->getMessage(),
+                'error' => $e->getMessage(),
             ]);
         }
 
@@ -1279,40 +1448,40 @@ class SalesOrderService
 
     public function logStatusHistory(
         SalesOrder $order,
-        \Modules\Sales\Enums\OrderActivityAction|string $action,
+        OrderActivityAction|string $action,
         ?array $metadata = null,
         $actor = null,
-        \Modules\Sales\Enums\OrderActivityEntity|string $entityType = \Modules\Sales\Enums\OrderActivityEntity::ORDER,
+        OrderActivityEntity|string $entityType = OrderActivityEntity::ORDER,
         ?string $entityId = null,
     ): void {
-        $actionEnum = $action instanceof \Modules\Sales\Enums\OrderActivityAction
+        $actionEnum = $action instanceof OrderActivityAction
             ? $action
-            : (\Modules\Sales\Enums\OrderActivityAction::tryFrom($action)
-                ?? \Modules\Sales\Enums\OrderActivityAction::FIELD_CHANGED);
+            : (OrderActivityAction::tryFrom($action)
+                ?? OrderActivityAction::FIELD_CHANGED);
 
-        $entityEnum = $entityType instanceof \Modules\Sales\Enums\OrderActivityEntity
+        $entityEnum = $entityType instanceof OrderActivityEntity
             ? $entityType
-            : (\Modules\Sales\Enums\OrderActivityEntity::tryFrom($entityType)
-                ?? \Modules\Sales\Enums\OrderActivityEntity::ORDER);
+            : (OrderActivityEntity::tryFrom($entityType)
+                ?? OrderActivityEntity::ORDER);
 
-        if ($actor instanceof \App\Models\User) {
+        if ($actor instanceof User) {
             $email = $actor->email;
-            $name  = $actor->name;
-            $id    = $actor->id;
+            $name = $actor->name;
+            $id = $actor->id;
         } elseif (is_array($actor)) {
             $email = $actor['email'] ?? null;
-            $name  = $actor['name'] ?? null;
-            $id    = $actor['id'] ?? null;
+            $name = $actor['name'] ?? null;
+            $id = $actor['id'] ?? null;
         } else {
             $authUser = auth()->user();
             $email = $authUser?->email;
-            $name  = $authUser?->name;
-            $id    = $authUser?->id;
+            $name = $authUser?->name;
+            $id = $authUser?->id;
         }
 
         if (! $email || $email === 'system') {
-            if ($actionEnum === \Modules\Sales\Enums\OrderActivityAction::FINISH_PACK) {
-                $packer = \Modules\Outbound\Models\Packlist::where('order_id', $order->id)
+            if ($actionEnum === OrderActivityAction::FINISH_PACK) {
+                $packer = Packlist::where('order_id', $order->id)
                     ->whereNotNull('packer_id')
                     ->with('packer')
                     ->latest('completed_at')
@@ -1320,62 +1489,62 @@ class SalesOrderService
                     ?->packer;
                 if ($packer) {
                     $email = $packer->email;
-                    $name  = $packer->name;
-                    $id    = $packer->id;
+                    $name = $packer->name;
+                    $id = $packer->id;
                 }
-            } elseif ($actionEnum === \Modules\Sales\Enums\OrderActivityAction::FINISH_PICK) {
-                $picklist = \Modules\Outbound\Models\Picklist::whereHas('items', function ($q) use ($order) {
+            } elseif ($actionEnum === OrderActivityAction::FINISH_PICK) {
+                $picklist = Picklist::whereHas('items', function ($q) use ($order) {
                     $q->whereHas('orderItem', fn ($oi) => $oi->where('order_id', $order->id));
                 })->whereNotNull('picker_id')->with('picker')->latest('completed_at')->first();
                 if ($picklist?->picker) {
                     $email = $picklist->picker->email;
-                    $name  = $picklist->picker->name;
-                    $id    = $picklist->picker->id;
+                    $name = $picklist->picker->name;
+                    $id = $picklist->picker->id;
                 }
             }
         }
 
         if ($email && (! $name || ! $id)) {
-            $resolved = \App\Models\User::where('email', $email)->first();
+            $resolved = User::where('email', $email)->first();
             if ($resolved) {
                 $name = $name ?: $resolved->name;
-                $id   = $id ?: $resolved->id;
+                $id = $id ?: $resolved->id;
             }
         }
 
         SalesOrderStatusHistory::create([
             'salesorder_id' => $order->id,
-            'entity_type'   => $entityEnum,
-            'entity_id'     => $entityId,
-            'action_id'     => $actionEnum->code(),
-            'action'        => $actionEnum,
-            'actor_email'   => $email ?? 'system',
-            'actor_id'      => $id,
-            'actor_name'    => $name ?? 'System',
-            'metadata'      => $metadata,
-            'created_at'    => now(),
+            'entity_type' => $entityEnum,
+            'entity_id' => $entityId,
+            'action_id' => $actionEnum->code(),
+            'action' => $actionEnum,
+            'actor_email' => $email ?? 'system',
+            'actor_id' => $id,
+            'actor_name' => $name ?? 'System',
+            'metadata' => $metadata,
+            'created_at' => now(),
         ]);
 
-        \Illuminate\Support\Facades\Cache::put('so_audit:'.$order->id.':'.$actionEnum->value, true, 10);
+        Cache::put('so_audit:'.$order->id.':'.$actionEnum->value, true, 10);
     }
 
     public function logLabelPrinted(SalesOrder $order, $actor = null, ?string $documentType = null): void
     {
-        $actorId = $actor instanceof \App\Models\User ? $actor->id : (is_array($actor) ? ($actor['id'] ?? 'user') : (auth()->id() ?? 'system'));
+        $actorId = $actor instanceof User ? $actor->id : (is_array($actor) ? ($actor['id'] ?? 'user') : (auth()->id() ?? 'system'));
         $cacheKey = "label_printed:{$order->id}:{$actorId}";
 
-        if (\Illuminate\Support\Facades\Cache::has($cacheKey)) {
+        if (Cache::has($cacheKey)) {
             return;
         }
-        \Illuminate\Support\Facades\Cache::put($cacheKey, true, 5);
+        Cache::put($cacheKey, true, 5);
 
         $this->logStatusHistory(
             $order,
-            \Modules\Sales\Enums\OrderActivityAction::LABEL_PRINTED,
+            OrderActivityAction::LABEL_PRINTED,
             [
-                'document_type'   => $documentType ?? $order->shipping_label_doc_type ?? 'THERMAL_AIR_WAYBILL',
+                'document_type' => $documentType ?? $order->shipping_label_doc_type ?? 'THERMAL_AIR_WAYBILL',
                 'tracking_number' => $order->tracking_number,
-                'entity_no'       => $order->salesorder_no,
+                'entity_no' => $order->salesorder_no,
             ],
             $actor,
         );
@@ -1383,7 +1552,7 @@ class SalesOrderService
 
     public function logFieldChange(
         SalesOrder $order,
-        \Modules\Sales\Enums\OrderActivityAction|string $action,
+        OrderActivityAction|string $action,
         array $prev,
         array $new,
         ?string $entityNo = null,
@@ -1392,7 +1561,7 @@ class SalesOrderService
         ?SalesOrderItem $item = null,
     ): void {
         $prev = collect($prev)->except(self::AUDIT_IGNORED)->all();
-        $new  = collect($new)->except(self::AUDIT_IGNORED)->all();
+        $new = collect($new)->except(self::AUDIT_IGNORED)->all();
 
         $changedKeys = [];
         foreach ($new as $key => $value) {
@@ -1407,10 +1576,10 @@ class SalesOrderService
         }
 
         $prevValues = [];
-        $newValues  = [];
+        $newValues = [];
         foreach ($changedKeys as $key) {
             $prevValues[$key] = $prev[$key] ?? null;
-            $newValues[$key]  = $new[$key] ?? null;
+            $newValues[$key] = $new[$key] ?? null;
         }
 
         $resolvedEntityNo = $entityNo
@@ -1418,8 +1587,8 @@ class SalesOrderService
 
         $metadata = [
             'prev_values' => $prevValues,
-            'new_values'  => $newValues,
-            'entity_no'   => $resolvedEntityNo,
+            'new_values' => $newValues,
+            'entity_no' => $resolvedEntityNo,
         ];
         if ($note !== null) {
             $metadata['note'] = $note;
@@ -1431,8 +1600,8 @@ class SalesOrderService
             $metadata,
             $actor,
             $item
-                ? \Modules\Sales\Enums\OrderActivityEntity::ITEM
-                : \Modules\Sales\Enums\OrderActivityEntity::ORDER,
+                ? OrderActivityEntity::ITEM
+                : OrderActivityEntity::ORDER,
             $item?->id,
         );
     }
@@ -1465,7 +1634,7 @@ class SalesOrderService
 
             $action = self::STATUS_HISTORY_ACTIONS[$newStatus] ?? null;
             if ($action) {
-                \Illuminate\Support\Facades\Cache::put('so_audit:'.$order->id.':'.$action, true, 10);
+                Cache::put('so_audit:'.$order->id.':'.$action, true, 10);
             }
 
             DB::transaction(function () use ($order, $newStatus, $cancelReason) {
@@ -1498,7 +1667,7 @@ class SalesOrderService
 
             if ($newStatus === 'cancelled') {
                 $actorId = null;
-                if ($actor instanceof \App\Models\User) {
+                if ($actor instanceof User) {
                     $actorId = $actor->id;
                 } elseif (is_array($actor)) {
                     $actorId = $actor['id'] ?? null;
@@ -1603,7 +1772,7 @@ class SalesOrderService
     public function downloadOrderItem(SalesOrder $order, string $orderItemId, ?string $variantId = null): SalesOrder
     {
         if ($order->status === 'cancelled') {
-            throw new ProductNotMappableException();
+            throw new ProductNotMappableException;
         }
 
         $item = $order->items()->whereKey($orderItemId)->firstOrFail();
@@ -1697,6 +1866,7 @@ class SalesOrderService
                 return true;
             }
         }
+
         return false;
     }
 
@@ -1711,16 +1881,16 @@ class SalesOrderService
         }
 
         try {
-            app(\Modules\Channel\Services\ChannelDownloadService::class)
+            app(ChannelDownloadService::class)
                 ->downloadProduct($channel, $shopId, $externalProductId);
         } catch (\Throwable $e) {
             Log::info('Auto-download produk dari channel gagal saat memproses order item', [
-                'order_id'            => $order->id,
-                'order_item_id'       => $item->id,
-                'channel'             => $channel,
-                'channel_shop_id'     => $shopId,
-                'channel_product_id'  => $externalProductId,
-                'error'               => $e->getMessage(),
+                'order_id' => $order->id,
+                'order_item_id' => $item->id,
+                'channel' => $channel,
+                'channel_shop_id' => $shopId,
+                'channel_product_id' => $externalProductId,
+                'error' => $e->getMessage(),
             ]);
         }
     }
@@ -1731,7 +1901,7 @@ class SalesOrderService
         $mappedStatus = $this->mapChannelStatusToInternal($channelStatus);
         $source = $orderData['source'] ?? null;
 
-        if (isset($orderData['channel_shop_id']) && !isset($orderData['is_shadow'])) {
+        if (isset($orderData['channel_shop_id']) && ! isset($orderData['is_shadow'])) {
             $isShadowMode = DB::table('channel_shops')
                 ->where('shop_id', $orderData['channel_shop_id'])
                 ->value('is_shadow_mode');
@@ -1773,12 +1943,12 @@ class SalesOrderService
                     DB::rollBack();
 
                     Log::warning('Pesanan channel ditolak: SKU belum diunduh', [
-                        'salesorder_no'    => $orderData['salesorder_no'] ?? null,
+                        'salesorder_no' => $orderData['salesorder_no'] ?? null,
                         'channel_order_no' => $orderData['channel_order_no'] ?? null,
-                        'source'           => $source,
-                        'channel_shop_id'  => $orderData['channel_shop_id'] ?? null,
+                        'source' => $source,
+                        'channel_shop_id' => $orderData['channel_shop_id'] ?? null,
                         'transaction_date' => $orderData['transaction_date'] ?? null,
-                        'unmapped_skus'    => $unmapped,
+                        'unmapped_skus' => $unmapped,
                     ]);
 
                     return null;
@@ -1839,11 +2009,11 @@ class SalesOrderService
                     $order->load('items');
 
                     Log::info('Channel order dikarantina ke Gagal Download: SKU ada di master tapi belum di-download dari channel', [
-                        'order_id'        => $order->id,
-                        'salesorder_no'   => $order->salesorder_no,
-                        'source'          => $order->source,
+                        'order_id' => $order->id,
+                        'salesorder_no' => $order->salesorder_no,
+                        'source' => $order->source,
                         'channel_shop_id' => $order->channel_shop_id,
-                        'skus'            => $order->items
+                        'skus' => $order->items
                             ->whereIn('id', $undownloadedItemIds)
                             ->pluck('sku')
                             ->values()
@@ -1855,11 +2025,11 @@ class SalesOrderService
             if ($order->source && $this->hasUnmappedItems($order) && $finalStatus !== 'cancelled') {
                 if ($finalStatus !== 'pending') {
                     Log::info('Channel order quarantined: produk belum di-download', [
-                        'order_id'        => $order->id,
-                        'salesorder_no'   => $order->salesorder_no,
-                        'source'          => $order->source,
-                        'channel_status'  => $channelStatus,
-                        'mapped_status'   => $finalStatus,
+                        'order_id' => $order->id,
+                        'salesorder_no' => $order->salesorder_no,
+                        'source' => $order->source,
+                        'channel_status' => $channelStatus,
+                        'mapped_status' => $finalStatus,
                     ]);
                 }
                 $finalStatus = 'pending';
@@ -1871,8 +2041,8 @@ class SalesOrderService
 
             if ($existing === null) {
                 $this->logStatusHistory($order, 'CREATED', [
-                    'to'             => $order->status,
-                    'source'         => $order->source,
+                    'to' => $order->status,
+                    'source' => $order->source,
                     'channel_status' => $channelStatus,
                 ]);
             } else {
@@ -1887,7 +2057,7 @@ class SalesOrderService
 
             if ($finalStatus === 'cancelled') {
 
-                app(\Modules\Outbound\Services\FulfillmentCleanupService::class)
+                app(FulfillmentCleanupService::class)
                     ->detachCancelledOrder($order->id, 'system:channel-cancel');
             }
 
@@ -1902,7 +2072,7 @@ class SalesOrderService
                 && ! $order->is_canceled
             ) {
                 try {
-                    app(\Modules\Sales\Services\BackfillShippedOrdersStockService::class)->backfillOrder($order);
+                    app(BackfillShippedOrdersStockService::class)->backfillOrder($order);
                 } catch (\Throwable $e) {
                     Log::warning('Auto-deduct physical stock on shipped webhook gagal', [
                         'order_id' => $order->id,
@@ -1922,7 +2092,7 @@ class SalesOrderService
                 } catch (\Throwable $e) {
                     Log::warning('Dispatch SyncStockJob gagal setelah commit order', [
                         'order_id' => $order->id,
-                        'error'    => $e->getMessage(),
+                        'error' => $e->getMessage(),
                     ]);
                 }
             }
@@ -1932,12 +2102,12 @@ class SalesOrderService
 
             if (! $order->is_settled && $order->source && $order->channel_shop_id && $isSettlementEligible) {
                 try {
-                    \Modules\Sales\Jobs\SyncOrderFinanceJob::dispatch($order->id)
+                    SyncOrderFinanceJob::dispatch($order->id)
                         ->onQueue(config('queue.names.channel_sync'));
                 } catch (\Throwable $e) {
                     Log::warning('Dispatch SyncOrderFinanceJob gagal setelah commit order', [
                         'order_id' => $order->id,
-                        'error'    => $e->getMessage(),
+                        'error' => $e->getMessage(),
                     ]);
                 }
             }
@@ -1947,7 +2117,7 @@ class SalesOrderService
             return $order->id;
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error("Failed to upsert order: " . $e->getMessage());
+            Log::error('Failed to upsert order: '.$e->getMessage());
             throw $e;
         }
     }
@@ -1959,7 +2129,7 @@ class SalesOrderService
         }
 
         try {
-            $repo = app(\Modules\Channel\Repositories\ChannelShopRepository::class);
+            $repo = app(ChannelShopRepository::class);
             $shopUuid = $repo->getIdByShopIdAndChannelCode((string) $order->channel_shop_id, (string) $order->source);
 
             if ($shopUuid) {
@@ -1968,7 +2138,7 @@ class SalesOrderService
         } catch (\Throwable $e) {
             Log::warning('Gagal stamp order-sync health setelah upsert order', [
                 'order_id' => $order->id,
-                'error'    => $e->getMessage(),
+                'error' => $e->getMessage(),
             ]);
         }
     }
@@ -2092,30 +2262,30 @@ class SalesOrderService
     {
         return match ($channelStatus) {
 
-            'UNPAID', 'PENDING', 'ON_HOLD'            => 'pending',
+            'UNPAID', 'PENDING', 'ON_HOLD' => 'pending',
 
-            'AWAITING_SHIPMENT', 'READY_TO_SHIP'      => 'reserved',
-            'RETRY_SHIP'                              => 'reserved',
+            'AWAITING_SHIPMENT', 'READY_TO_SHIP' => 'reserved',
+            'RETRY_SHIP' => 'reserved',
 
-            'AWAITING_COLLECTION', 'PROCESSED'        => 'reserved',
-            'PARTIALLY_SHIPPING'                      => 'reserved',
+            'AWAITING_COLLECTION', 'PROCESSED' => 'reserved',
+            'PARTIALLY_SHIPPING' => 'reserved',
 
-            'IN_TRANSIT'                              => 'shipped',
-            'SHIPPED', 'TO_CONFIRM_RECEIVE'           => 'shipped',
-            'DELIVERED', 'COMPLETED'                  => 'shipped',
+            'IN_TRANSIT' => 'shipped',
+            'SHIPPED', 'TO_CONFIRM_RECEIVE' => 'shipped',
+            'DELIVERED', 'COMPLETED' => 'shipped',
 
-            'IN_CANCEL', 'TO_RETURN'                  => 'pending',
-            'CANCELLED'                               => 'cancelled',
-            default                                   => 'pending',
+            'IN_CANCEL', 'TO_RETURN' => 'pending',
+            'CANCELLED' => 'cancelled',
+            default => 'pending',
         };
     }
 
     private const STATUS_RANK = [
-        'pending'   => 0,
-        'reserved'  => 1,
-        'picked'    => 2,
-        'packed'    => 3,
-        'shipped'   => 4,
+        'pending' => 0,
+        'reserved' => 1,
+        'picked' => 2,
+        'packed' => 3,
+        'shipped' => 4,
     ];
 
     private function resolveInternalStatus(?string $currentStatus, string $newStatus): string
@@ -2151,7 +2321,7 @@ class SalesOrderService
             $toRank = $this->statusRank($finalStatus, 0);
             for ($rank = 2; $rank <= $toRank; $rank++) {
                 match ($rank) {
-                    2       => $this->pickStockForOrder($order),
+                    2 => $this->pickStockForOrder($order),
                     default => null,
                 };
             }
@@ -2178,8 +2348,8 @@ class SalesOrderService
 
         for ($rank = $fromRank + 1; $rank <= $toRank; $rank++) {
             match ($rank) {
-                1       => $this->reserveStockForOrder($order, false),
-                2       => $this->pickStockForOrder($order),
+                1 => $this->reserveStockForOrder($order, false),
+                2 => $this->pickStockForOrder($order),
                 default => null,
             };
 
@@ -2199,7 +2369,7 @@ class SalesOrderService
         if ($fromStatus === null || $toStatus === null) {
             Log::warning('Transisi status pesanan memakai nilai tak dikenal', [
                 'from' => $from,
-                'to'   => $to,
+                'to' => $to,
             ]);
 
             throw new InvalidStatusTransitionException($from, $to);
@@ -2224,11 +2394,11 @@ class SalesOrderService
         $order->load('items');
 
         match ($newStatus) {
-            'reserved'  => $this->reserveStockForOrder($order),
-            'picked'    => $this->pickStockForOrder($order),
+            'reserved' => $this->reserveStockForOrder($order),
+            'picked' => $this->pickStockForOrder($order),
 
             'cancelled' => $this->releaseStockForOrder($order),
-            default     => null,
+            default => null,
         };
     }
 
@@ -2331,7 +2501,7 @@ class SalesOrderService
         if ($canonical === null) {
             Log::warning('Status pesanan tak dikenal saat melepas stok; sisa kunci tetap dilepas via ledger', [
                 'salesorder_no' => $order->salesorder_no,
-                'status'        => $status,
+                'status' => $status,
             ]);
         }
 
@@ -2399,8 +2569,8 @@ class SalesOrderService
                 continue;
             }
             $remainingByItem[$item->item_id] = [
-                'sku'       => $item->sku ?? "item:{$item->item_id}",
-                'qty'       => (int) $item->qty_in_base,
+                'sku' => $item->sku ?? "item:{$item->item_id}",
+                'qty' => (int) $item->qty_in_base,
             ];
         }
 
@@ -2497,6 +2667,7 @@ class SalesOrderService
     }
 
     private const CONTACT_CHANNELS = ['marketplace_chat', 'whatsapp', 'phone', 'other'];
+
     private const CUSTOMER_DECISIONS = ['waiting', 'cancel', 'replace'];
 
     public function markContacted(string $orderId, ?string $channel = null, ?string $note = null): SalesOrder
@@ -2505,10 +2676,10 @@ class SalesOrderService
         $this->assertContactChannel($channel);
 
         $order->update([
-            'contacted_at'    => now(),
-            'contacted_by'    => Auth::id() ?: null,
+            'contacted_at' => now(),
+            'contacted_by' => Auth::id() ?: null,
             'contact_channel' => $channel,
-            'contact_note'    => $note ?? $order->contact_note,
+            'contact_note' => $note ?? $order->contact_note,
         ]);
 
         return $order->fresh();
@@ -2526,10 +2697,10 @@ class SalesOrderService
             $orders = SalesOrder::whereIn('id', $orderIds)->get();
             foreach ($orders as $order) {
                 $order->update([
-                    'contacted_at'    => $now,
-                    'contacted_by'    => $actorId,
+                    'contacted_at' => $now,
+                    'contacted_by' => $actorId,
                     'contact_channel' => $channel ?? $order->contact_channel,
-                    'contact_note'    => $note ?? $order->contact_note,
+                    'contact_note' => $note ?? $order->contact_note,
                 ]);
                 $count++;
             }
@@ -2548,15 +2719,15 @@ class SalesOrderService
 
         $updates = [
             'customer_decision' => $decision,
-            'decision_at'       => now(),
-            'decision_by'       => Auth::id() ?: null,
-            'contact_note'      => $note ?? $order->contact_note,
+            'decision_at' => now(),
+            'decision_by' => Auth::id() ?: null,
+            'contact_note' => $note ?? $order->contact_note,
         ];
 
         if ($decision === 'cancel' && empty($order->cancel_requested_at)) {
-            $updates['cancel_requested_at']  = now();
-            $updates['cancel_requested_by']  = Auth::id() ?: null;
-            $updates['cancel_channel']       = 'manual';
+            $updates['cancel_requested_at'] = now();
+            $updates['cancel_requested_by'] = Auth::id() ?: null;
+            $updates['cancel_channel'] = 'manual';
             $updates['cancel_request_reason'] = $note ?? $order->cancel_request_reason ?? 'Pembeli tidak menghendaki (stok kosong).';
         }
 
@@ -2578,8 +2749,8 @@ class SalesOrderService
 
             $reservesStock = $order->status === 'reserved' && $item->item_id;
             $oldItemId = $item->item_id;
-            $oldSku    = $item->sku ?? "item:{$item->item_id}";
-            $oldQty    = (int) $item->qty_in_base;
+            $oldSku = $item->sku ?? "item:{$item->item_id}";
+            $oldQty = (int) $item->qty_in_base;
 
             $updates = array_intersect_key($data, array_flip(['sku', 'description', 'qty_in_base', 'price', 'disc', 'disc_amount', 'tax_amount']));
 
@@ -2619,8 +2790,8 @@ class SalesOrderService
             if ($reservesStock) {
                 $item->refresh();
                 $newItemId = $item->item_id;
-                $newSku    = $item->sku ?? "item:{$newItemId}";
-                $newQty    = (int) $item->qty_in_base;
+                $newSku = $item->sku ?? "item:{$newItemId}";
+                $newQty = (int) $item->qty_in_base;
 
                 $changed = $oldItemId !== $newItemId || $oldSku !== $newSku || $oldQty !== $newQty;
                 if ($changed) {
@@ -2706,33 +2877,33 @@ class SalesOrderService
     {
         $order->loadMissing('items');
 
-        $subTotal   = 0.0;
-        $totalDisc  = 0.0;
-        $totalTax   = 0.0;
+        $subTotal = 0.0;
+        $totalDisc = 0.0;
+        $totalTax = 0.0;
         foreach ($order->items as $it) {
-            $subTotal  += (float) $it->price * (float) $it->qty_in_base;
+            $subTotal += (float) $it->price * (float) $it->qty_in_base;
             $totalDisc += (float) $it->disc_amount;
-            $totalTax  += (float) $it->tax_amount;
+            $totalTax += (float) $it->tax_amount;
         }
 
         $grandTotal = OrderTotals::grandTotal([
-            'sub_total'            => $subTotal,
-            'total_disc'           => $totalDisc,
-            'total_tax'            => $totalTax,
-            'other_discount'       => (float) $order->other_discount,
-            'shipping_cost'        => (float) $order->shipping_cost,
-            'shipping_discount'    => (float) $order->shipping_discount,
-            'insurance_cost'       => (float) $order->insurance_cost,
-            'service_fee'          => (float) $order->service_fee,
-            'seller_voucher'       => (float) $order->seller_voucher,
+            'sub_total' => $subTotal,
+            'total_disc' => $totalDisc,
+            'total_tax' => $totalTax,
+            'other_discount' => (float) $order->other_discount,
+            'shipping_cost' => (float) $order->shipping_cost,
+            'shipping_discount' => (float) $order->shipping_discount,
+            'insurance_cost' => (float) $order->insurance_cost,
+            'service_fee' => (float) $order->service_fee,
+            'seller_voucher' => (float) $order->seller_voucher,
             'order_processing_fee' => (float) $order->order_processing_fee,
-            'price_includes_tax'   => (bool) $order->price_includes_tax,
+            'price_includes_tax' => (bool) $order->price_includes_tax,
         ]);
 
         $order->update([
-            'sub_total'   => $subTotal,
-            'total_disc'  => $totalDisc,
-            'total_tax'   => $totalTax,
+            'sub_total' => $subTotal,
+            'total_disc' => $totalDisc,
+            'total_tax' => $totalTax,
             'grand_total' => $grandTotal,
         ]);
     }
