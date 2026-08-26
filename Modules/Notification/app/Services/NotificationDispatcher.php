@@ -50,6 +50,7 @@ class NotificationDispatcher
                             array_merge($data, [
                                 'type' => $type,
                                 'notification_id' => $notification->id,
+                                'target_user_id' => $uid,
                             ]),
                         );
                     }

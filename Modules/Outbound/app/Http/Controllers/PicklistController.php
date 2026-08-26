@@ -23,6 +23,7 @@ use Modules\Outbound\Http\Requests\UnpickItemsRequest;
 
 use Modules\Outbound\Exceptions\OutboundValidationException;
 use Modules\Report\Services\ReportService;
+use App\Traits\AutoScopeMobileToAuth;
 use OpenApi\Attributes as OA;
 use Throwable;
 
@@ -47,6 +48,8 @@ use Throwable;
 )]
 class PicklistController extends Controller
 {
+    use AutoScopeMobileToAuth;
+
     public function __construct(
         protected PicklistService $picklistService,
         protected ReportService $reportService,
@@ -74,6 +77,7 @@ class PicklistController extends Controller
     )]
     public function index(Request $request): JsonResponse
     {
+        $this->forceMobileScopeToAuth($request, 'picker_id');
         $limit = (int) $request->query('per_page', $request->query('limit', 10));
         $data = $this->picklistService->getAllPaginated($limit);
 
@@ -108,9 +112,11 @@ class PicklistController extends Controller
     )]
     public function counts(Request $request): JsonResponse
     {
+        $this->forceMobileScopeToAuth($request, 'picker_id');
         $filter = (array) $request->query('filter', []);
         $counts = $this->picklistService->getStatusCounts(
             locationId: $filter['location_id'] ?? null,
+            pickerId: $filter['picker_id'] ?? null,
         );
 
         return $this->successResponse($counts, 'Jumlah picklist per status');

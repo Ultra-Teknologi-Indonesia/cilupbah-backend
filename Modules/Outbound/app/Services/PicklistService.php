@@ -135,11 +135,14 @@ class PicklistService
         return $this->picklistRepository->getAllPaginated($limit);
     }
 
-    public function getStatusCounts(?string $locationId = null): array
+    public function getStatusCounts(?string $locationId = null, ?string $pickerId = null): array
     {
         $query = Picklist::query();
         if ($locationId !== null && $locationId !== '') {
             $query->where('location_id', $locationId);
+        }
+        if ($pickerId !== null && $pickerId !== '') {
+            $query->where('picker_id', $pickerId);
         }
 
         \App\Support\WarehouseAccess::apply($query, 'location_id');
