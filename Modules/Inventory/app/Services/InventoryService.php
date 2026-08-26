@@ -2304,8 +2304,6 @@ class InventoryService
         $result = DB::transaction(function () use ($data) {
             $transactionNumber = 'SPL-' . now()->format('Ymd') . '-' . Str::upper(Str::random(4));
 
-            // Legacy aggregate splits have no physical bin. When a physical
-            // source bin is supplied, it must be a placed (non-inbound) bin.
             if (! empty($data['bin_id'])) {
                 app(InboundBinPolicy::class)->assertConsumable(
                     $data['location_id'],

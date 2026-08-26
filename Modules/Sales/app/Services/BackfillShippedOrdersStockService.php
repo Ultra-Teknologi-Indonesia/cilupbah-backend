@@ -291,9 +291,6 @@ class BackfillShippedOrdersStockService
             return ['allocations' => $allocations, 'shortage' => 0];
         }
 
-        // Never force a deduction into a fallback bin. Inbound/DEFAULT is a
-        // receiving buffer, not a source of saleable stock. A shortage must be
-        // reconciled physically, not hidden as negative inventory.
         return ['allocations' => [], 'shortage' => $outstanding];
     }
 }

@@ -429,8 +429,7 @@ class SalesOrder extends Model implements HasMedia
         $shortfall = static::shortfallItemWhereRaw();
 
         return $query
-            // Keep the model's complete projection when this scope is used
-            // through Spatie QueryBuilder, which may otherwise replace `*`.
+
             ->select('sales_orders.*')
             ->addSelect(DB::raw(
                 'EXISTS (SELECT 1 FROM sales_order_items '

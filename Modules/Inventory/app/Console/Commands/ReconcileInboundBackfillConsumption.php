@@ -9,11 +9,6 @@ use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Repositories\InventoryRepository;
 
-/**
- * Repairs the historic channel-backfill defect without deleting or rewriting
- * the original ledger. Each repair restores the inbound buffer and records a
- * matching historical sale deduction at the SKU's approved final rack.
- */
 class ReconcileInboundBackfillConsumption extends Command
 {
     private const CONFIRMATION = 'RECONCILE-INBOUND-BACKFILL';
@@ -185,7 +180,6 @@ class ReconcileInboundBackfillConsumption extends Command
             ->orderBy('im.id');
     }
 
-    /** @return array<string, mixed> */
     private function plan(object $row, array &$plannedByTarget): array
     {
         $qty = abs((int) $row->qty);
@@ -355,7 +349,6 @@ class ReconcileInboundBackfillConsumption extends Command
         });
     }
 
-    /** @param array<int, array<string, mixed>> $samples */
     private function appendSample(array &$samples, array $plan): void
     {
         if (count($samples) < 30) {

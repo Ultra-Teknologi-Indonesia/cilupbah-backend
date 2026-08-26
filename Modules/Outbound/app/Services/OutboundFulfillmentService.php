@@ -2,6 +2,7 @@
 
 namespace Modules\Outbound\Services;
 
+use Illuminate\Support\Carbon;
 use Modules\Sales\Models\SalesOrder as Order;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
@@ -320,8 +321,25 @@ class OutboundFulfillmentService
 
     public function getMonitoring(): array
     {
+        $businessNow = $this->businessNow();
+        $bucketStarts = [];
+        for ($daysAgo = 0; $daysAgo <= 3; $daysAgo++) {
+            $bucketStarts[] = $businessNow->copy()->startOfDay()->subDays($daysAgo)->utc();
+        }
 
-        $bucketExpr = 'LEAST(GREATEST(CURRENT_DATE - sales_orders.transaction_date::date, 0), 4)';
+        $bucketExpr = <<<'SQL'
+CASE
+    WHEN sales_orders.transaction_date >= ? THEN 0
+    WHEN sales_orders.transaction_date >= ? THEN 1
+    WHEN sales_orders.transaction_date >= ? THEN 2
+    WHEN sales_orders.transaction_date >= ? THEN 3
+    ELSE 4
+END
+SQL;
+        $bucketBindings = array_map(
+            static fn (Carbon $boundary): string => $boundary->toDateTimeString(),
+            $bucketStarts,
+        );
 
         $stageScopes = [
             'ready_to_process' => fn () => $this->readyToProcess(),
@@ -348,8 +366,9 @@ class OutboundFulfillmentService
         foreach ($stageScopes as $key => $scopeFactory) {
             $rows = $scopeFactory()
                 ->reorder()
-                ->selectRaw("{$bucketExpr} as day_term, COUNT(*) as c")
-                ->groupByRaw($bucketExpr)
+                ->whereNotNull('sales_orders.transaction_date')
+                ->selectRaw("{$bucketExpr} as day_term, COUNT(*) as c", $bucketBindings)
+                ->groupBy('day_term')
                 ->pluck('c', 'day_term');
 
             foreach ($rows as $bucket => $count) {
@@ -365,32 +384,31 @@ class OutboundFulfillmentService
 
     private function monitoringSummary(): array
     {
-        $now      = now();
-        $timeCap  = $now->format('H:i:s');
-        $today    = $now->toDateString();
-        $yesterday = $now->copy()->subDay()->toDateString();
+        $now = $this->businessNow();
+        $todayStart = $now->copy()->startOfDay();
+        $yesterdayStart = $todayStart->copy()->subDay();
+        $yesterdaySameTime = $now->copy()->subDay();
 
-        $todayCount = Order::whereDate('transaction_date', $today)->count();
-        $yestCount  = Order::whereDate('transaction_date', $yesterday)
-            ->whereRaw('transaction_date::time <= ?', [$timeCap])
-            ->count();
+        $todayCount = Order::whereBetween('transaction_date', $this->utcRange($todayStart, $now))->count();
+        $yestCount  = Order::whereBetween('transaction_date', $this->utcRange($yesterdayStart, $yesterdaySameTime))->count();
 
         $mtdCount = Order::whereBetween('transaction_date', [
-            $now->copy()->startOfMonth(),
-            $now,
+            $now->copy()->startOfMonth()->utc(),
+            $now->copy()->utc(),
         ])->count();
+        $previousMonthSameTime = $now->copy()->subMonthNoOverflow();
         $prevMonthCount = Order::whereBetween('transaction_date', [
-            $now->copy()->subMonthNoOverflow()->startOfMonth(),
-            $now->copy()->subMonthNoOverflow(),
+            $previousMonthSameTime->copy()->startOfMonth()->utc(),
+            $previousMonthSameTime->copy()->utc(),
         ])->count();
 
         $readyToPick      = $this->readyToProcess()->count();
         $readyToPick2days = $this->readyToProcess()
-            ->whereDate('transaction_date', '<=', $now->copy()->subDays(2)->toDateString())
+            ->where('transaction_date', '<', $todayStart->copy()->subDay()->utc())
             ->count();
 
-        $pickedToday = $this->pickedOrdersCount($today);
-        $pickedYest  = $this->pickedOrdersCount($yesterday, $timeCap);
+        $pickedToday = $this->pickedOrdersCount($todayStart, $now);
+        $pickedYest  = $this->pickedOrdersCount($yesterdayStart, $yesterdaySameTime);
 
         return [
             'today'               => $todayCount,
@@ -404,15 +422,24 @@ class OutboundFulfillmentService
         ];
     }
 
-    private function pickedOrdersCount(string $date, ?string $timeCap = null): int
+    private function businessNow(): Carbon
     {
-        return Order::whereHas('picklistItems', function ($q) use ($date, $timeCap) {
-            $q->whereHas('picklist', function ($pq) use ($date, $timeCap) {
+        return now((string) config('app.business_timezone', 'Asia/Jakarta'));
+    }
+
+    private function utcRange(Carbon $from, Carbon $to): array
+    {
+        return [$from->copy()->utc(), $to->copy()->utc()];
+    }
+
+    private function pickedOrdersCount(Carbon $from, Carbon $to): int
+    {
+        $range = $this->utcRange($from, $to);
+
+        return Order::whereHas('picklistItems', function ($q) use ($range) {
+            $q->whereHas('picklist', function ($pq) use ($range) {
                 $pq->where('status', Picklist::STATUS_COMPLETED)
-                    ->whereDate('completed_at', $date);
-                if ($timeCap !== null) {
-                    $pq->whereRaw('completed_at::time <= ?', [$timeCap]);
-                }
+                    ->whereBetween('completed_at', $range);
             });
         })->count();
     }

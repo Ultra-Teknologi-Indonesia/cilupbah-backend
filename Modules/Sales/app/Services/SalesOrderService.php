@@ -841,13 +841,6 @@ class SalesOrderService
 
             }
 
-            if ($order->shipping_label_status === 'self_design_required') {
-                throw new \RuntimeException(
-                    'Shopee mengharuskan label resi ini didesain manual (self-design AWB) di Seller Center. '
-                    .'Sistem tidak menyediakan cetak resi untuk kasus ini — resi hanya diambil dari channel.'
-                );
-            }
-
             if ($order->shipping_label_status === 'preparing') {
                 $liveStatus = null;
                 $liveDocType = $order->shipping_label_doc_type ?: 'THERMAL_AIR_WAYBILL';
@@ -856,6 +849,12 @@ class SalesOrderService
                     $liveRow = $liveResult['response']['result_list'][0] ?? [];
                     $liveStatus = strtoupper((string) ($liveRow['status'] ?? ''));
                 } catch (\Throwable $e) {
+                    $reason = $shopeeService->classifyShippingLabelFailure($e);
+                    if ($reason !== null) {
+                        $this->markShopeeShippingLabelFailure($order, $reason, $e->getMessage());
+                        throw $e;
+                    }
+
                     Log::warning('getShippingLabel: live get_shipping_document_result gagal, pakai cache', [
                         'order_id' => $order->id,
                         'error' => $e->getMessage(),
@@ -884,7 +883,12 @@ class SalesOrderService
 
                 if ($liveStatus === 'FAILED') {
                     $failMsg = $liveRow['fail_message'] ?? $liveRow['fail_error'] ?? 'Shopee menolak pembuatan label.';
-                    $order->update(['shipping_label_status' => 'failed']);
+                    $reason = $shopeeService->classifyShippingLabelFailure($liveRow);
+                    if ($reason !== null) {
+                        $this->markShopeeShippingLabelFailure($order, $reason, $failMsg);
+                    } else {
+                        $order->update(['shipping_label_status' => 'failed']);
+                    }
                     throw new \RuntimeException("Shopee gagal membuat label: {$failMsg}");
                 }
 
@@ -917,13 +921,22 @@ class SalesOrderService
             }
 
             $shopeeDocType = $order->shipping_label_doc_type ?? $requestedDocType ?? 'NORMAL_AIR_WAYBILL';
-            $result = $shopeeService->getAirwayBill(
-                $shopId,
-                $channelOrderNo,
-                $shopeeDocType,
-                $order->tracking_number,
-                $order->package_number ?? null
-            );
+            try {
+                $result = $shopeeService->getAirwayBill(
+                    $shopId,
+                    $channelOrderNo,
+                    $shopeeDocType,
+                    $order->tracking_number,
+                    $order->package_number ?? null
+                );
+            } catch (\Throwable $e) {
+                $reason = $shopeeService->classifyShippingLabelFailure($e);
+                if ($reason !== null) {
+                    $this->markShopeeShippingLabelFailure($order, $reason, $e->getMessage());
+                }
+
+                throw $e;
+            }
 
             if (! empty($result['ready']) && ! empty($result['document_base64'])) {
                 $labelBytes = base64_decode((string) $result['document_base64'], true);
@@ -946,6 +959,15 @@ class SalesOrderService
             }
 
             if (! empty($result['error'])) {
+                $reason = $shopeeService->classifyShippingLabelFailure($result);
+                if ($reason !== null) {
+                    $this->markShopeeShippingLabelFailure(
+                        $order,
+                        $reason,
+                        (string) ($result['message'] ?? $result['error']),
+                    );
+                }
+
                 throw new \RuntimeException($result['message'] ?? $result['error']);
             }
 
@@ -1181,6 +1203,32 @@ class SalesOrderService
 
         $job->onConnection(config('queue.routing.labels.connection', 'redis-long'));
         $job->onQueue(config('queue.routing.labels.queue', 'labels'));
+    }
+
+    private function markShopeeShippingLabelFailure(
+        SalesOrder $order,
+        string $reason,
+        ?string $message = null,
+    ): void {
+        $rawData = is_array($order->shipping_label_raw_data)
+            ? $order->shipping_label_raw_data
+            : [];
+        $rawData['shipping_label_failure'] = array_filter([
+            'reason' => $reason,
+            'message' => $message,
+            'at' => now()->toISOString(),
+        ], static fn ($value) => $value !== null && $value !== '');
+
+        $status = $reason === ShopeeOrderService::LABEL_FAILURE_SELF_DESIGN
+            ? 'self_design_required'
+            : 'failed';
+
+        $order->update([
+            'shipping_label_status' => $status,
+            'shipping_label_doc_type' => null,
+            'shipping_label_prepared_at' => now(),
+            'shipping_label_raw_data' => $rawData,
+        ]);
     }
 
     public function findOrderOrFail(string $id): SalesOrder

@@ -295,7 +295,7 @@ class StockAdjustmentService
 
         if ($binIds->diff($validBinIds)->isNotEmpty()) {
             throw new \InvalidArgumentException(
-                'Rak penyesuaian harus berada di gudang yang dipilih dan bukan bin inbound/DEFAULT. Tempatkan penerimaan terlebih dahulu sebelum penyesuaian.',
+                'Rak penyesuaian harus berada di gudang yang dipilih. Rak inbound/DEFAULT tidak dapat dipakai untuk penyesuaian; tempatkan penerimaan terlebih dahulu sebelum penyesuaian.',
             );
         }
     }

@@ -87,4 +87,63 @@ class ShopeePackageDetailTest extends TestCase
         $this->assertFalse($allow);
         Http::assertNotSent(fn ($r) => str_contains($r->url(), '/api/v2/order/get_package_detail'));
     }
+
+    public function test_airway_bill_still_uses_api_flow_when_package_allows_self_design(): void
+    {
+        Http::fake([
+            'partner.shopeemobile.com/api/v2/logistics/get_shipping_document_parameter*' => Http::response([
+                'error' => '',
+                'message' => '',
+                'response' => [
+                    'result_list' => [[
+                        'selectable_shipping_document_type' => ['THERMAL_AIR_WAYBILL'],
+                    ]],
+                ],
+            ], 200),
+            'partner.shopeemobile.com/api/v2/logistics/create_shipping_document*' => Http::response([
+                'error' => '',
+                'message' => '',
+                'response' => ['result_list' => [['status' => 'SUCCESS']]],
+            ], 200),
+            'partner.shopeemobile.com/api/v2/logistics/get_shipping_document_result*' => Http::response([
+                'error' => '',
+                'message' => '',
+                'response' => ['result_list' => [['status' => 'READY']]],
+            ], 200),
+            'partner.shopeemobile.com/api/v2/logistics/download_shipping_document*' => Http::response(
+                '%PDF-1.4 SHOPEE LABEL',
+                200,
+                ['Content-Type' => 'application/pdf'],
+            ),
+            'partner.shopeemobile.com/api/v2/order/get_package_detail*' => Http::response([
+                'error' => '',
+                'message' => '',
+                'response' => ['package_list' => [[
+                    'package_number' => 'OFG-PKG-1',
+                    'allow_self_design_awb' => true,
+                ]]],
+            ], 200),
+        ]);
+
+        $service = app(ShopeeOrderService::class);
+        $this->assertTrue($service->checkAllowSelfDesignAwb(
+            (object) ['shop_id' => '778899'],
+            '2606SHOPEE01',
+            'OFG-PKG-1',
+        ));
+
+        $result = $service->getAirwayBill(
+            '778899',
+            '2606SHOPEE01',
+            'THERMAL_AIR_WAYBILL',
+            'SPXID123',
+            'OFG-PKG-1',
+        );
+
+        $this->assertTrue($result['ready']);
+        $this->assertSame('THERMAL_AIR_WAYBILL', $result['doc_type']);
+        $this->assertSame('%PDF-1.4 SHOPEE LABEL', base64_decode($result['document_base64'], true));
+
+        Http::assertSentCount(5);
+    }
 }

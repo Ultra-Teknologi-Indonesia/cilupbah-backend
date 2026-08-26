@@ -5,12 +5,6 @@ namespace Modules\Warehouse\Services;
 use App\Exceptions\UserFacingException;
 use Modules\Warehouse\Models\LocationBin;
 
-/**
- * Enforces the physical-stock boundary for inbound staging bins.
- *
- * Inbound bins (including DEFAULT) are receiving buffers. They never become
- * sellable or transferable stock; only a putaway may move stock out of them.
- */
 class InboundBinPolicy
 {
     public function assertConsumable(string $locationId, ?string $binId, string $operation): LocationBin

@@ -631,9 +631,12 @@ class BulkShippingLabelService
             return;
         } catch (\RuntimeException $e) {
             $msg = strtolower($e->getMessage());
+            $latestOrder = $order->fresh();
+            $persistedFailure = data_get($latestOrder?->shipping_label_raw_data, 'shipping_label_failure.reason');
             $reason = match (true) {
-                $order->fresh()?->shipping_label_status === 'self_design_required' => BulkShippingLabelItem::REASON_SELF_DESIGN,
                 Str::contains($msg, ['parcel has been shipped', 'already shipped', 'can not print now', 'sudah dikirim']) => BulkShippingLabelItem::REASON_PARCEL_ALREADY_SHIPPED,
+                $persistedFailure === BulkShippingLabelItem::REASON_PARCEL_ALREADY_SHIPPED => BulkShippingLabelItem::REASON_PARCEL_ALREADY_SHIPPED,
+                $latestOrder?->shipping_label_status === 'self_design_required' => BulkShippingLabelItem::REASON_SELF_DESIGN,
                 default => BulkShippingLabelItem::REASON_SHOPEE_PREP_FAILED,
             };
 
@@ -893,6 +896,7 @@ class BulkShippingLabelService
         }
 
         $labelStatus = $order->shipping_label_status ?? null;
+        $persistedFailure = data_get($order->shipping_label_raw_data, 'shipping_label_failure.reason');
 
         foreach ($items as $item) {
             try {
@@ -913,6 +917,8 @@ class BulkShippingLabelService
                     if ($claimed === 1) {
                         $this->dispatchItem($item);
                     }
+                } elseif ($persistedFailure === BulkShippingLabelItem::REASON_PARCEL_ALREADY_SHIPPED) {
+                    $this->fail($item, BulkShippingLabelItem::REASON_PARCEL_ALREADY_SHIPPED);
                 } elseif ($labelStatus === 'self_design_required') {
                     $this->fail($item, BulkShippingLabelItem::REASON_SELF_DESIGN);
                 } elseif ($labelStatus === 'failed') {

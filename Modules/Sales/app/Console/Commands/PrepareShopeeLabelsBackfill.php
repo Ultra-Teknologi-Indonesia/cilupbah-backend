@@ -29,7 +29,7 @@ class PrepareShopeeLabelsBackfill extends Command
         if (! $force) {
             $query->where(function ($q) {
                 $q->whereNull('shipping_label_status')
-                    ->orWhereIn('shipping_label_status', ['not_ready', 'failed']);
+                    ->orWhereIn('shipping_label_status', ['not_ready', 'failed', 'self_design_required']);
             });
         }
 
