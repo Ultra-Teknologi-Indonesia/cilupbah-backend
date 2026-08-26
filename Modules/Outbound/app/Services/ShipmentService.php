@@ -3,6 +3,7 @@
 namespace Modules\Outbound\Services;
 
 use Modules\Outbound\Repositories\ShipmentRepository;
+use Modules\Outbound\Data\ShipmentScanResult;
 use Modules\Outbound\Models\Shipment;
 use Modules\Outbound\Jobs\ProcessShipmentHandOverJob;
 use Modules\Outbound\Jobs\ProcessShipmentPickupJob;
@@ -383,94 +384,112 @@ class ShipmentService
         return $this->shipmentRepository->delete($id);
     }
 
-    public function scanAndAddOrder(string $shipmentId, string $barcode): Shipment
+    public function scanAndAddOrder(string $shipmentId, string $barcode): ShipmentScanResult
     {
-        $shipment = $this->shipmentRepository->findById($shipmentId);
+        $barcode = trim($barcode);
 
-        if (! $shipment) {
-            throw new \Exception('Shipment tidak ditemukan.');
-        }
+        $result = DB::transaction(function () use ($shipmentId, $barcode): ShipmentScanResult {
+            $shipment = Shipment::query()->lockForUpdate()->find($shipmentId);
 
-        if ($shipment->status !== Shipment::STATUS_SCHEDULED) {
-            throw new \Exception('Order hanya bisa ditambah ke shipment SCHEDULED.');
-        }
+            if (! $shipment) {
+                throw new \Exception('Shipment tidak ditemukan.');
+            }
 
-        $order = Order::where('status', 'packed')
-            ->where(function ($q) use ($barcode) {
-                $q->where('salesorder_no', $barcode)
-                  ->orWhere('tracking_number', $barcode);
-            })
-            ->first();
+            if ($shipment->status !== Shipment::STATUS_SCHEDULED) {
+                throw new \Exception('Order hanya bisa ditambah ke shipment SCHEDULED.');
+            }
 
-        if (! $order) {
-            throw new ScanRejectedException(
-                'not_found',
-                "Pesanan '{$barcode}' tidak ditemukan atau belum packed."
-            );
-        }
+            $order = Order::query()
+                ->where('status', 'packed')
+                ->where(function ($q) use ($barcode) {
+                    $q->where('salesorder_no', $barcode)
+                        ->orWhere('tracking_number', $barcode);
+                })
+                ->lockForUpdate()
+                ->first();
 
-        if ($order->is_canceled) {
-            throw new ScanRejectedException(
-                'order_canceled',
-                "Pesanan {$order->salesorder_no} sudah DIBATALKAN — pisahkan paket fisik, jangan dimanifestkan."
-            );
-        }
-
-        if ($order->cancel_requested_at !== null) {
-            throw new ScanRejectedException(
-                'order_cancel_requested',
-                "Pesanan {$order->salesorder_no} sedang MINTA BATAL (req cancel) — cek dulu sebelum dimanifestkan."
-            );
-        }
-
-        if (ShipmentOrder::where('order_id', $order->id)->exists()) {
-            throw new ScanRejectedException(
-                'duplicate',
-                "Pesanan {$order->salesorder_no} sudah ada di pengiriman lain."
-            );
-        }
-
-        if ($shipment->courier_name && $order->shipping_provider) {
-
-            $shipmentCode = $this->courierMapper->resolveCode($shipment->courier_name);
-            $orderCode = $this->courierMapper->resolveCode($order->shipping_provider);
-
-            if ($shipmentCode !== '' && $orderCode !== '' && $shipmentCode !== $orderCode) {
+            if (! $order) {
                 throw new ScanRejectedException(
-                    'courier_mismatch',
-                    "Kurir tidak sesuai. Pengiriman ini '{$shipment->courier_name}', "
-                    . "pesanan menggunakan '{$order->shipping_provider}'."
+                    'not_found',
+                    "Pesanan '{$barcode}' tidak ditemukan atau belum packed."
                 );
             }
-        }
 
-        $orderIsInstant = InstantOrderClassifier::isInstant($order->shipping_provider, $order->shipping_type);
-        $shipmentIsInstant = in_array($shipment->shipment_type, ['INSTANT', 'SAME_DAY'], true);
-        if ($orderIsInstant !== $shipmentIsInstant) {
-            throw new ScanRejectedException(
-                'shipment_type_mismatch',
-                $orderIsInstant
-                    ? "Pesanan {$order->salesorder_no} adalah kurir INSTAN (panggil driver), "
-                        . "tidak bisa masuk manifest reguler '{$shipment->shipment_type}'."
-                    : "Pesanan {$order->salesorder_no} adalah kurir reguler, "
-                        . "tidak bisa masuk manifest instan '{$shipment->shipment_type}'."
-            );
-        }
+            $existing = ShipmentOrder::query()
+                ->where('order_id', $order->id)
+                ->lockForUpdate()
+                ->first();
 
-        if ($shipment->location_id && $order->location_id
-            && $shipment->location_id !== $order->location_id) {
-            throw new ScanRejectedException('location_mismatch', 'Pesanan berasal dari lokasi berbeda.');
-        }
+            if ($existing) {
+                if ($existing->shipment_id === $shipment->id) {
+                    return new ShipmentScanResult(
+                        $shipment,
+                        $this->loadShipmentOrderForResponse($existing),
+                        true,
+                        $barcode,
+                    );
+                }
 
-        $packlist = Packlist::where('order_id', $order->id)
-            ->where('status', Packlist::STATUS_COMPLETED)
-            ->first();
+                throw new ScanRejectedException(
+                    'duplicate',
+                    "Pesanan {$order->salesorder_no} sudah ada di pengiriman lain."
+                );
+            }
 
-        DB::transaction(function () use ($shipment, $order, $packlist): void {
-            $this->shipmentRepository->createOrder([
-                'shipment_id'     => $shipment->id,
-                'order_id'        => $order->id,
-                'packlist_id'     => $packlist?->id,
+            if ($order->is_canceled) {
+                throw new ScanRejectedException(
+                    'order_canceled',
+                    "Pesanan {$order->salesorder_no} sudah DIBATALKAN — pisahkan paket fisik, jangan dimanifestkan."
+                );
+            }
+
+            if ($order->cancel_requested_at !== null) {
+                throw new ScanRejectedException(
+                    'order_cancel_requested',
+                    "Pesanan {$order->salesorder_no} sedang MINTA BATAL (req cancel) — cek dulu sebelum dimanifestkan."
+                );
+            }
+
+            if ($shipment->courier_name && $order->shipping_provider) {
+                $shipmentCode = $this->courierMapper->resolveCode($shipment->courier_name);
+                $orderCode = $this->courierMapper->resolveCode($order->shipping_provider);
+
+                if ($shipmentCode !== '' && $orderCode !== '' && $shipmentCode !== $orderCode) {
+                    throw new ScanRejectedException(
+                        'courier_mismatch',
+                        "Kurir tidak sesuai. Pengiriman ini '{$shipment->courier_name}', "
+                            . "pesanan menggunakan '{$order->shipping_provider}'."
+                    );
+                }
+            }
+
+            $orderIsInstant = InstantOrderClassifier::isInstant($order->shipping_provider, $order->shipping_type);
+            $shipmentIsInstant = in_array($shipment->shipment_type, ['INSTANT', 'SAME_DAY'], true);
+            if ($orderIsInstant !== $shipmentIsInstant) {
+                throw new ScanRejectedException(
+                    'shipment_type_mismatch',
+                    $orderIsInstant
+                        ? "Pesanan {$order->salesorder_no} adalah kurir INSTAN (panggil driver), "
+                            . "tidak bisa masuk manifest reguler '{$shipment->shipment_type}'."
+                        : "Pesanan {$order->salesorder_no} adalah kurir reguler, "
+                            . "tidak bisa masuk manifest instan '{$shipment->shipment_type}'."
+                );
+            }
+
+            if ($shipment->location_id && $order->location_id
+                && $shipment->location_id !== $order->location_id) {
+                throw new ScanRejectedException('location_mismatch', 'Pesanan berasal dari lokasi berbeda.');
+            }
+
+            $packlist = Packlist::query()
+                ->where('order_id', $order->id)
+                ->where('status', Packlist::STATUS_COMPLETED)
+                ->first();
+
+            $shipmentOrder = $this->shipmentRepository->createOrder([
+                'shipment_id' => $shipment->id,
+                'order_id' => $order->id,
+                'packlist_id' => $packlist?->id,
                 'tracking_number' => $order->tracking_number,
             ]);
 
@@ -486,11 +505,28 @@ class ShipmentService
                 "Pesanan dimasukkan ke pengiriman {$shipment->shipment_no}",
                 ['shipment_no' => $shipment->shipment_no],
             );
-        });
 
-        ProcessShipmentPickupJob::dispatch($shipmentId, [$order->id]);
+            return new ShipmentScanResult(
+                $shipment,
+                $this->loadShipmentOrderForResponse($shipmentOrder),
+                false,
+                $barcode,
+            );
+        }, 3);
 
-        return $this->shipmentRepository->findById($shipmentId);
+        if (! $result->alreadyAdded) {
+            ProcessShipmentPickupJob::dispatch($shipmentId, [$result->shipmentOrder->order_id]);
+        }
+
+        return $result;
+    }
+
+    private function loadShipmentOrderForResponse(ShipmentOrder $shipmentOrder): ShipmentOrder
+    {
+        return $shipmentOrder->load([
+            'order:id,salesorder_no,customer_name,status,grand_total,shipping_provider,tracking_number,source,channel_order_no,order_weight_gram,channel_status',
+            'packlist:id,packlist_no',
+        ]);
     }
 
     private function logShipmentActivity(

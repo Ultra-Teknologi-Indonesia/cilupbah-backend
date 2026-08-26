@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Outbound\Exports\ShipmentManifestExport;
 use Modules\Outbound\Http\Resources\CompletedShipmentOrderResource;
+use Modules\Outbound\Http\Resources\ShipmentOrderResource;
 use Modules\Outbound\Http\Resources\ShipmentResource;
 use Modules\Outbound\Repositories\ShipmentRepository;
 use Modules\Outbound\Services\ShipmentService;
@@ -428,7 +429,7 @@ class ShipmentController extends Controller
     public function scanOrder(string $id, ScanShipmentOrderRequest $request): JsonResponse
     {
         try {
-            $shipment = $this->shipmentService->scanAndAddOrder($id, $request->barcode);
+            $result = $this->shipmentService->scanAndAddOrder($id, $request->barcode);
         } catch (ScanRejectedException $e) {
             return $this->errorResponse(
                 $e->getMessage(),
@@ -444,6 +445,13 @@ class ShipmentController extends Controller
                 'Gagal memindai',
             );
         }
+
+        $shipment = (new ShipmentResource($result->shipment))->toArray($request);
+        $shipment['scan_result'] = [
+            'status' => $result->alreadyAdded ? 'already_added' : 'added',
+            'barcode' => $result->barcode,
+            'shipment_order' => (new ShipmentOrderResource($result->shipmentOrder))->toArray($request),
+        ];
 
         return $this->successResponse($shipment);
     }

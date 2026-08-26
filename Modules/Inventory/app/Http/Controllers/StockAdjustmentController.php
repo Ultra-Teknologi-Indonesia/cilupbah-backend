@@ -121,7 +121,9 @@ class StockAdjustmentController extends Controller
                     properties: [
                         new OA\Property(property: 'item_id', type: 'string'),
                         new OA\Property(property: 'bin_id', type: 'string', nullable: true),
-                        new OA\Property(property: 'actual_qty', type: 'integer'),
+                        new OA\Property(property: 'actual_qty', type: 'integer', nullable: true, description: 'Stok akhir untuk mode FINAL/legacy.'),
+                        new OA\Property(property: 'mode', type: 'string', enum: ['DELTA', 'FINAL'], nullable: true, description: 'DELTA memakai input_value sebagai selisih; default FINAL untuk payload lama.'),
+                        new OA\Property(property: 'input_value', type: 'integer', nullable: true, description: 'Nilai input sesuai mode.'),
                         new OA\Property(property: 'batch_no', type: 'string', nullable: true),
                         new OA\Property(property: 'serial_no', type: 'string', nullable: true),
                         new OA\Property(property: 'notes', type: 'string', nullable: true),
@@ -171,7 +173,9 @@ class StockAdjustmentController extends Controller
                     properties: [
                         new OA\Property(property: 'item_id', type: 'string'),
                         new OA\Property(property: 'bin_id', type: 'string', nullable: true),
-                        new OA\Property(property: 'actual_qty', type: 'integer'),
+                        new OA\Property(property: 'actual_qty', type: 'integer', nullable: true, description: 'Stok akhir untuk mode FINAL/legacy.'),
+                        new OA\Property(property: 'mode', type: 'string', enum: ['DELTA', 'FINAL'], nullable: true, description: 'DELTA memakai input_value sebagai selisih; default FINAL untuk payload lama.'),
+                        new OA\Property(property: 'input_value', type: 'integer', nullable: true, description: 'Nilai input sesuai mode.'),
                         new OA\Property(property: 'unit_cost', type: 'number', nullable: true),
                         new OA\Property(property: 'notes', type: 'string', nullable: true),
                     ]

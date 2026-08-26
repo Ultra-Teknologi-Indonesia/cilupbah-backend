@@ -11,6 +11,7 @@ use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Support\InventoryMovementSourceMap;
 use Modules\Product\Repositories\ProductRepository;
 use Modules\Sales\Exceptions\InsufficientStockException;
+use Modules\Warehouse\Services\InboundBinPolicy;
 use App\Traits\StockLockable;
 
 class StockService
@@ -21,6 +22,7 @@ class StockService
         protected InventoryMovementRepository $movementRepository,
         protected InventoryRepository $inventoryRepository,
         protected ProductRepository $productRepository,
+        protected InboundBinPolicy $inboundBinPolicy,
     ) {}
 
     private function cascadeBundle(string $itemId, int $qty, callable $operation): bool
@@ -188,6 +190,8 @@ class StockService
         if ($qty <= 0) {
             return;
         }
+
+        $this->inboundBinPolicy->assertConsumable($locationId, $binId, 'pemotongan stok');
 
         $this->withStockLock($itemId, $locationId, function () use ($sku, $itemId, $locationId, $binId, $qty, $transactionNumber, $source, $createdBy, $allowNegative, $transactionDate) {
             DB::transaction(function () use ($sku, $itemId, $locationId, $binId, $qty, $transactionNumber, $source, $createdBy, $allowNegative, $transactionDate) {

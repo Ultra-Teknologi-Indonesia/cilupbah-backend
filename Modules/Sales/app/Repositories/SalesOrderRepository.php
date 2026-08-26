@@ -61,6 +61,7 @@ class SalesOrderRepository
         }
 
         $query = QueryBuilder::for(SalesOrder::class)
+            ->withStockShortfallFlag()
             ->with(self::LIST_RELATIONS)
             ->allowedFilters(
                 AllowedFilter::callback('item_id', fn ($q, $value) => $q->whereHas('items', fn ($q2) => $q2->whereIn('item_id', (array) $value))),
@@ -535,6 +536,7 @@ class SalesOrderRepository
         }
 
         return QueryBuilder::for(SalesOrder::class)
+            ->withStockShortfallFlag()
             ->allowedIncludes('items')
             ->with([
                 'statusHistory',

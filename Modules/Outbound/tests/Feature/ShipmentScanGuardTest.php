@@ -116,6 +116,27 @@ class ShipmentScanGuardTest extends TestCase
         ]);
     }
 
+    public function test_manifest_orders_are_sorted_by_most_recent_scan_first(): void
+    {
+        Bus::fake();
+        $locationId = $this->seedLocation();
+        $shipmentId = $this->seedShipment($locationId, 'J&T', 'REGULAR');
+        [$firstOrderId, $firstOrderNo] = $this->seedPackedOrder($locationId, 'J&T');
+        [$secondOrderId, $secondOrderNo] = $this->seedPackedOrder($locationId, 'J&T');
+
+        $service = app(ShipmentService::class);
+        $first = $service->scanAndAddOrder($shipmentId, $firstOrderNo);
+        DB::table('shipment_orders')
+            ->where('id', $first->shipmentOrder->id)
+            ->update(['created_at' => now()->subMinute()]);
+        $service->scanAndAddOrder($shipmentId, $secondOrderNo);
+
+        $orders = $service->getOrdersPaginated($shipmentId, 20);
+
+        $this->assertSame($secondOrderId, $orders->first()->order_id);
+        $this->assertSame($firstOrderId, $orders->last()->order_id);
+    }
+
     public function test_rejects_instant_order_into_regular_manifest(): void
     {
         $loc = $this->seedLocation();

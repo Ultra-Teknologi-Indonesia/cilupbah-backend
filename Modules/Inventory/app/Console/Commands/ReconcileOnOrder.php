@@ -148,10 +148,7 @@ class ReconcileOnOrder extends Command
 
             $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $delta, $d, $inventoryRepository, $movementRepository, &$applied, &$residual) {
                 DB::transaction(function () use ($itemId, $locationId, $delta, $d, $inventoryRepository, $movementRepository, &$applied, &$residual) {
-                    // An under-reserved row needs an operational investigation;
-                    // inventing an ORDER_RELEASE (or increasing on_order) would
-                    // make the ledger less trustworthy. This command only
-                    // removes excess on_order.
+
                     if ($delta <= 0) {
                         $residual += $delta;
                         return;

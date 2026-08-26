@@ -4,12 +4,14 @@ namespace Modules\Sales\Models;
 
 use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\DB;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Inventory\Support\StockSummary;
 use Modules\Outbound\Models\Courier;
@@ -240,6 +242,7 @@ class SalesOrder extends Model implements HasMedia
         'is_manual' => 'boolean',
         'is_shadow' => 'boolean',
         'price_includes_tax' => 'boolean',
+        'has_stock_shortfall' => 'boolean',
         'contact_channel' => ContactChannel::class,
         'customer_decision' => CustomerDecision::class,
     ];
@@ -418,7 +421,38 @@ class SalesOrder extends Model implements HasMedia
                     JOIN products p ON p.id = pv.product_id
                     WHERE pv.id = sales_order_items.item_id
                       AND p.is_bundle = true
-                )";
+        )";
+    }
+
+    public function scopeWithStockShortfallFlag(Builder $query): Builder
+    {
+        $shortfall = static::shortfallItemWhereRaw();
+
+        return $query
+            // Keep the model's complete projection when this scope is used
+            // through Spatie QueryBuilder, which may otherwise replace `*`.
+            ->select('sales_orders.*')
+            ->addSelect(DB::raw(
+                'EXISTS (SELECT 1 FROM sales_order_items '
+                .'WHERE sales_order_items.order_id = sales_orders.id '
+                .'AND '.$shortfall.') AS has_stock_shortfall'
+            ));
+    }
+
+    public function hasStockShortfall(): bool
+    {
+        if (array_key_exists('has_stock_shortfall', $this->attributes)) {
+            return (bool) $this->getAttribute('has_stock_shortfall');
+        }
+
+        if ($this->status !== 'reserved') {
+            return false;
+        }
+
+        return self::query()
+            ->whereKey($this->getKey())
+            ->whereHas('items', fn ($query) => $query->whereRaw(static::shortfallItemWhereRaw()))
+            ->exists();
     }
 
     public function scopeHasStockShortfall($query)
@@ -546,6 +580,13 @@ class SalesOrder extends Model implements HasMedia
 
     public function resolveStatusLabel(): string
     {
+        if ($this->status === 'reserved'
+            && $this->handed_to_warehouse_at === null
+            && $this->pick_failed_at === null
+            && $this->hasStockShortfall()) {
+            return 'Stok Kosong';
+        }
+
         if ($this->status === 'reserved'
             && $this->handed_to_warehouse_at === null
             && $this->pick_failed_at === null) {

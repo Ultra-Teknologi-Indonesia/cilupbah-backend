@@ -99,14 +99,14 @@ class PutawayNegativeStockTest extends TestCase
         $this->assertSame(0, (int) $ctx['putawayItem']->fresh()->putaway_qty);
     }
 
-    public function test_putaway_from_empty_storage_bin_throws_when_negative_disallowed(): void
+    public function test_putaway_from_storage_bin_is_rejected_regardless_of_stock_setting(): void
     {
         config(['inventory.allow_negative_stock' => false]);
         $ctx = $this->seedFixture();
         $ctx['sourceBin']->update(['is_inbound' => false]);
 
         $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Stok di source bin tidak mencukupi');
+        $this->expectExceptionMessage('bukan bin inbound');
 
         (new ProcessPutawayItemJob(
             $ctx['putaway']->id,

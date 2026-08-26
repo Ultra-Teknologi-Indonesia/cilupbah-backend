@@ -124,6 +124,8 @@ class BackfillShippedOrdersStockService
         }
 
         $deductions = [];
+        $shortages = [];
+        $plannedQtyByBin = [];
         $transactionDate = $order->pickup_done_time ?: ($order->transaction_date ?: $order->created_at);
 
         foreach ($order->items as $orderItem) {
@@ -141,9 +143,20 @@ class BackfillShippedOrdersStockService
                 $compQty = $component['qty'];
                 $sku = $component['sku'] ?: ($orderItem->sku ?: "item:{$compItemId}");
 
-                $allocatedBins = $this->allocateBinsForItem($compItemId, $locationId, $compQty);
+                $allocation = $this->allocateBinsForItem($compItemId, $locationId, $compQty, $plannedQtyByBin);
 
-                foreach ($allocatedBins as $alloc) {
+                if ($allocation['shortage'] > 0) {
+                    $shortages[] = [
+                        'item_id' => $compItemId,
+                        'sku' => $sku,
+                        'qty_required' => $compQty,
+                        'qty_allocated' => $compQty - $allocation['shortage'],
+                        'qty_short' => $allocation['shortage'],
+                    ];
+                    continue;
+                }
+
+                foreach ($allocation['allocations'] as $alloc) {
                     $deductions[] = [
                         'order_item_id' => $orderItem->id,
                         'item_id' => $compItemId,
@@ -153,33 +166,46 @@ class BackfillShippedOrdersStockService
                         'bin_code' => $alloc['bin_code'],
                         'qty' => $alloc['qty'],
                     ];
-
-                    if (! $dryRun) {
-                        $this->stockService->consumeFromBin(
-                            $sku,
-                            $compItemId,
-                            $locationId,
-                            $alloc['bin_id'],
-                            $alloc['qty'],
-                            $order->salesorder_no,
-                            'ORDER_COMPLETE_OUT',
-                            'system:backfill',
-                            true,
-                            $transactionDate
-                        );
-
-                        OrderBinAllocation::create([
-                            'order_id' => $order->id,
-                            'order_item_id' => $orderItem->id,
-                            'item_id' => $compItemId,
-                            'location_id' => $locationId,
-                            'bin_id' => $alloc['bin_id'],
-                            'qty' => $alloc['qty'],
-                            'completed_by' => null,
-                            'completed_at' => $transactionDate,
-                        ]);
-                    }
                 }
+            }
+        }
+
+        if ($shortages !== []) {
+            return [
+                'success' => false,
+                'order_id' => $order->id,
+                'salesorder_no' => $order->salesorder_no,
+                'message' => 'Backfill tidak dilakukan karena stok final/rak penyimpanan tidak mencukupi. Stok inbound/DEFAULT tidak pernah digunakan.',
+                'deductions' => [],
+                'shortages' => $shortages,
+            ];
+        }
+
+        if (! $dryRun) {
+            foreach ($deductions as $deduction) {
+                $this->stockService->consumeFromBin(
+                    $deduction['sku'],
+                    $deduction['item_id'],
+                    $locationId,
+                    $deduction['bin_id'],
+                    $deduction['qty'],
+                    $order->salesorder_no,
+                    'ORDER_COMPLETE_OUT',
+                    'system:backfill',
+                    false,
+                    $transactionDate,
+                );
+
+                OrderBinAllocation::create([
+                    'order_id' => $order->id,
+                    'order_item_id' => $deduction['order_item_id'],
+                    'item_id' => $deduction['item_id'],
+                    'location_id' => $locationId,
+                    'bin_id' => $deduction['bin_id'],
+                    'qty' => $deduction['qty'],
+                    'completed_by' => null,
+                    'completed_at' => $transactionDate,
+                ]);
             }
         }
 
@@ -228,7 +254,7 @@ class BackfillShippedOrdersStockService
         return $components;
     }
 
-    private function allocateBinsForItem(string $itemId, string $locationId, int $requiredQty): array
+    private function allocateBinsForItem(string $itemId, string $locationId, int $requiredQty, array &$plannedQtyByBin): array
     {
         $allocations = [];
         $outstanding = $requiredQty;
@@ -248,65 +274,26 @@ class BackfillShippedOrdersStockService
                 break;
             }
 
-            $take = min($outstanding, (int) $bin->on_hand);
+            $remainingInBin = max(0, (int) $bin->on_hand - (int) ($plannedQtyByBin[$bin->bin_id] ?? 0));
+            $take = min($outstanding, $remainingInBin);
             if ($take > 0) {
                 $allocations[] = [
                     'bin_id' => $bin->bin_id,
                     'bin_code' => $bin->bin_final_code,
                     'qty' => $take,
                 ];
+                $plannedQtyByBin[$bin->bin_id] = (int) ($plannedQtyByBin[$bin->bin_id] ?? 0) + $take;
                 $outstanding -= $take;
             }
         }
 
         if ($outstanding <= 0) {
-            return $allocations;
+            return ['allocations' => $allocations, 'shortage' => 0];
         }
 
-        $fallbackBin = DB::table('inventories as i')
-            ->join('location_bins as b', 'b.id', '=', 'i.bin_id')
-            ->where('i.item_id', $itemId)
-            ->where('i.location_id', $locationId)
-            ->where('b.is_inbound', false)
-            ->select('i.bin_id', 'b.bin_final_code')
-            ->first();
-
-        if (! $fallbackBin) {
-            $fallbackBin = DB::table('location_bins')
-                ->where('location_id', $locationId)
-                ->where('is_inbound', false)
-                ->orderBy('bin_final_code')
-                ->select('id as bin_id', 'bin_final_code')
-                ->first();
-        }
-
-        if (! $fallbackBin) {
-            $fallbackBin = DB::table('location_bins')
-                ->where('location_id', $locationId)
-                ->orderBy('id')
-                ->select('id as bin_id', 'bin_final_code')
-                ->first();
-        }
-
-        if ($fallbackBin) {
-            $alreadyUsed = false;
-            foreach ($allocations as &$alloc) {
-                if ($alloc['bin_id'] === $fallbackBin->bin_id) {
-                    $alloc['qty'] += $outstanding;
-                    $alreadyUsed = true;
-                    break;
-                }
-            }
-
-            if (! $alreadyUsed) {
-                $allocations[] = [
-                    'bin_id' => $fallbackBin->bin_id,
-                    'bin_code' => $fallbackBin->bin_final_code,
-                    'qty' => $outstanding,
-                ];
-            }
-        }
-
-        return $allocations;
+        // Never force a deduction into a fallback bin. Inbound/DEFAULT is a
+        // receiving buffer, not a source of saleable stock. A shortage must be
+        // reconciled physically, not hidden as negative inventory.
+        return ['allocations' => [], 'shortage' => $outstanding];
     }
 }

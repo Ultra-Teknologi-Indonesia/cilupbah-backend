@@ -219,6 +219,41 @@ class PesananSemuaVisibilityAndStatusFilterTest extends TestCase
         $this->assertSame('Pengambilan - Belum Dimulai', $pickingNotStartedOrder['status_label']);
     }
 
+    public function test_reserved_order_with_stock_shortfall_is_labeled_and_bucketed_as_empty_stock(): void
+    {
+        $user = $this->createPrivilegedUser();
+        $orderId = $this->seedOrder('SO-STOK-KOSONG', [
+            'status' => 'reserved',
+        ]);
+
+        DB::table('inventories')
+            ->where('item_id', $this->variantId)
+            ->where('location_id', $this->locationId)
+            ->update([
+                'on_hand' => 0,
+                'available' => 0,
+            ]);
+
+        $allResponse = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/sales?q=SO-STOK-KOSONG');
+        $allResponse->assertOk();
+
+        $order = collect($allResponse->json('data'))->firstWhere('salesorder_no', 'SO-STOK-KOSONG');
+        $this->assertNotNull($order);
+        $this->assertTrue($order['has_stock_shortfall']);
+        $this->assertSame('reserved', $order['status']);
+        $this->assertSame('Stok Kosong', $order['status_label']);
+        $this->assertSame('PROCESS', $order['wms_status']);
+
+        $readyResponse = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/sales?tab=ready-to-process&q=SO-STOK-KOSONG');
+        $this->assertNotContains('SO-STOK-KOSONG', array_column($readyResponse->json('data'), 'salesorder_no'));
+
+        $emptyResponse = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/sales?tab=empty-stock&q=SO-STOK-KOSONG');
+        $this->assertContains('SO-STOK-KOSONG', array_column($emptyResponse->json('data'), 'salesorder_no'));
+    }
+
     public function test_status_filter_picking_diproses_and_selesai_and_packing_diproses(): void
     {
         $user = $this->createPrivilegedUser();

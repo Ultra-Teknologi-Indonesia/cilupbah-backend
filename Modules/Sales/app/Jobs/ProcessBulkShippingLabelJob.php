@@ -44,8 +44,6 @@ class ProcessBulkShippingLabelJob implements ShouldQueue
 
         try {
 
-            // Fan out one idempotent job per order. The Horizon labels
-            // supervisor limits the actual concurrency.
             $svc->dispatchPendingItems($batch);
             $batch->recomputeCounts();
             $svc->tryFinalize($batch);

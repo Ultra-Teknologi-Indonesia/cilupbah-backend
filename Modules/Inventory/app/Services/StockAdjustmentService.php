@@ -289,12 +289,13 @@ class StockAdjustmentService
         $validBinIds = LocationBin::query()
             ->where('location_id', $locationId)
             ->whereIn('id', $binIds->all())
+            ->where('is_inbound', false)
             ->pluck('id')
             ->map(static fn ($id): string => (string) $id);
 
         if ($binIds->diff($validBinIds)->isNotEmpty()) {
             throw new \InvalidArgumentException(
-                'Rak penyesuaian harus berada di gudang yang dipilih.',
+                'Rak penyesuaian harus berada di gudang yang dipilih dan bukan bin inbound/DEFAULT. Tempatkan penerimaan terlebih dahulu sebelum penyesuaian.',
             );
         }
     }

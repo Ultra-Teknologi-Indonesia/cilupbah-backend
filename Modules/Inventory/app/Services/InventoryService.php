@@ -26,6 +26,7 @@ use Modules\Inventory\Models\InventoryTransferItem;
 use Modules\Inventory\Jobs\SyncTransferDraftItemJob;
 use Modules\Inventory\Support\StockAdjustmentRule;
 use Modules\Inventory\Exceptions\NegativeStockAdjustmentException;
+use Modules\Warehouse\Services\InboundBinPolicy;
 
 class InventoryService
 {
@@ -249,6 +250,14 @@ class InventoryService
         app(\Modules\Product\Services\BundleGuardService::class)
             ->assertNotBundle([$data['item_id'] ?? null], 'operasi stok fisik');
 
+        if (! empty($data['bin_id'])) {
+            app(InboundBinPolicy::class)->assertConsumable(
+                $data['location_id'],
+                $data['bin_id'],
+                'penyesuaian stok',
+            );
+        }
+
         $inventory = DB::transaction(function () use ($data) {
             if (! empty($data['bin_id']) && (int) $data['qty'] > 0) {
                 app(\Modules\Warehouse\Services\BinOccupancyGuard::class)
@@ -310,6 +319,12 @@ class InventoryService
 
         return DB::transaction(function () use ($data) {
             $transactionNumber = $data['transaction_number'] ?? app(\Modules\Inventory\Repositories\PutawayRepository::class)->generatePutawayNo();
+
+            app(InboundBinPolicy::class)->assertPutawayRoute(
+                $data['location_id'],
+                $data['source_bin_id'],
+                $data['destination_bin_id'],
+            );
 
             app(\Modules\Warehouse\Services\BinOccupancyGuard::class)
                 ->assertBinFitsSku($data['destination_bin_id'], $data['item_id']);
@@ -395,6 +410,9 @@ class InventoryService
             if (empty($data['from_bin_id']) || empty($data['to_bin_id'])) {
                 throw new \Exception('Rak asal dan rak tujuan koreksi wajib diisi.');
             }
+
+            app(InboundBinPolicy::class)->assertConsumable($data['location_id'], $data['from_bin_id'], 'koreksi pindah rak');
+            app(InboundBinPolicy::class)->assertConsumable($data['location_id'], $data['to_bin_id'], 'koreksi pindah rak');
 
             $from = $this->inventoryRepository->findExactForUpdate(
                 $data['item_id'],
@@ -545,6 +563,12 @@ class InventoryService
                 $qty = (int) $itemData['qty'];
                 $sourceBinId = $itemData['source_bin_id'];
 
+                app(InboundBinPolicy::class)->assertConsumable(
+                    $data['location_id'],
+                    $sourceBinId,
+                    'transfer antar rak',
+                );
+
                 $source = $this->inventoryRepository->findExactForUpdate(
                     $itemData['item_id'],
                     $data['location_id'],
@@ -604,6 +628,12 @@ class InventoryService
 
             foreach ($items as $item) {
                 $qty = (int) $item->qty;
+
+                app(InboundBinPolicy::class)->assertConsumable(
+                    $header->location_id,
+                    $item->source_bin_id,
+                    'transfer antar rak',
+                );
 
                 $source = $this->inventoryRepository->findExactForUpdate(
                     $item->item_id,
@@ -1316,6 +1346,12 @@ class InventoryService
             ]);
 
             foreach ($data['items'] as $itemData) {
+                app(InboundBinPolicy::class)->assertConsumable(
+                    $data['source_location_id'],
+                    $itemData['source_bin_id'] ?? null,
+                    'transfer keluar',
+                );
+
                 $this->transferRepository->createItem([
                     'inventory_transfer_id' => $transfer->id,
                     'item_id'               => $itemData['item_id'],
@@ -1447,6 +1483,7 @@ class InventoryService
         $rows = Inventory::where('item_id', $item->item_id)
             ->where('location_id', $transfer->source_location_id)
             ->whereNotNull('bin_id')
+            ->placed()
             ->where('available', '>', 0)
             ->orderBy('created_at')
             ->lockForUpdate()
@@ -1750,6 +1787,12 @@ class InventoryService
             }
 
             foreach ($transfer->items as $item) {
+                app(InboundBinPolicy::class)->assertConsumable(
+                    $transfer->source_location_id,
+                    $item->source_bin_id,
+                    'transfer keluar',
+                );
+
                 $sourceInventory = $this->inventoryRepository->findExactForUpdate(
                     $item->item_id,
                     $transfer->source_location_id,
@@ -2261,6 +2304,16 @@ class InventoryService
         $result = DB::transaction(function () use ($data) {
             $transactionNumber = 'SPL-' . now()->format('Ymd') . '-' . Str::upper(Str::random(4));
 
+            // Legacy aggregate splits have no physical bin. When a physical
+            // source bin is supplied, it must be a placed (non-inbound) bin.
+            if (! empty($data['bin_id'])) {
+                app(InboundBinPolicy::class)->assertConsumable(
+                    $data['location_id'],
+                    $data['bin_id'],
+                    'pecah stok',
+                );
+            }
+
             $sourceInventory = $this->inventoryRepository->findExactForUpdate(
                 $data['source_item_id'],
                 $data['location_id'],
@@ -2419,6 +2472,12 @@ class InventoryService
             }
 
             foreach ($transfer->items as $item) {
+                app(InboundBinPolicy::class)->assertConsumable(
+                    $transfer->source_location_id,
+                    $item->source_bin_id,
+                    'transfer keluar',
+                );
+
                 $sourceInventory = $this->inventoryRepository->findExactForUpdate(
                     $item->item_id,
                     $transfer->source_location_id,
@@ -2529,6 +2588,14 @@ class InventoryService
 
         if ($transfer->status !== InventoryTransfer::STATUS_DRAFT) {
             throw new \Exception("Hanya transfer DRAFT yang bisa ditambah item.");
+        }
+
+        if (! empty($data['source_bin_id'])) {
+            app(InboundBinPolicy::class)->assertConsumable(
+                $transfer->source_location_id,
+                $data['source_bin_id'],
+                'transfer keluar',
+            );
         }
 
         $item = $this->transferRepository->createItem([

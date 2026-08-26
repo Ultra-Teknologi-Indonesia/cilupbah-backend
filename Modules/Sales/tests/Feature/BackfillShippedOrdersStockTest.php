@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderItem;
+use Modules\Sales\Services\BackfillShippedOrdersStockService;
 use Modules\Warehouse\Models\Location;
 use Tests\TestCase;
 
@@ -179,6 +180,60 @@ class BackfillShippedOrdersStockTest extends TestCase
         $this->assertEquals(1, DB::table('inventory_movements')->count());
     }
 
+    public function test_backfill_never_consumes_an_inbound_default_bin(): void
+    {
+        $inboundBinId = Str::uuid()->toString();
+        DB::table('location_bins')->insert([
+            'id' => $inboundBinId,
+            'location_id' => $this->kecilLocationId,
+            'bin_code' => 'INBOUND-STAGING',
+            'bin_final_code' => 'INBOUND-STAGING',
+            'is_inbound' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('inventories')->insert([
+            'id' => Str::uuid()->toString(),
+            'item_id' => $this->itemId,
+            'location_id' => $this->kecilLocationId,
+            'bin_id' => $inboundBinId,
+            'on_hand' => 50,
+            'available' => 0,
+            'on_order' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $order = SalesOrder::create([
+            'salesorder_no' => 'SO-INBOUND-BLOCKED',
+            'channel_order_no' => 'CH-INBOUND-BLOCKED',
+            'source' => 'tiktok',
+            'status' => 'shipped',
+            'channel_status' => 'SHIPPED',
+            'is_shadow' => false,
+            'is_canceled' => false,
+            'created_at' => now()->subDay(),
+        ]);
+
+        SalesOrderItem::create([
+            'order_id' => $order->id,
+            'item_id' => $this->itemId,
+            'sku' => $this->sku,
+            'qty_in_base' => 2,
+            'qty' => 2,
+            'unit_price' => 10000,
+        ]);
+
+        $result = app(BackfillShippedOrdersStockService::class)->backfillOrder($order);
+
+        $this->assertFalse($result['success']);
+        $this->assertSame(2, $result['shortages'][0]['qty_short']);
+        $this->assertSame(50, (int) DB::table('inventories')->where('bin_id', $inboundBinId)->value('on_hand'));
+        $this->assertDatabaseCount('inventory_movements', 0);
+        $this->assertDatabaseCount('order_bin_allocations', 0);
+    }
+
     public function test_order_already_handed_to_local_warehouse_is_not_backfilled(): void
     {
         DB::table('inventories')->insert([
@@ -305,7 +360,7 @@ class BackfillShippedOrdersStockTest extends TestCase
             ->value('location_id'));
     }
 
-    public function test_allows_negative_stock_when_on_hand_is_zero(): void
+    public function test_backfill_does_not_create_negative_stock_when_final_bin_is_empty(): void
     {
 
         DB::table('inventories')->insert([
@@ -344,12 +399,9 @@ class BackfillShippedOrdersStockTest extends TestCase
         $this->artisan('orders:backfill-shipped-stock')
             ->assertSuccessful();
 
-        $this->assertEquals(-5, (int) DB::table('inventories')->where('item_id', $this->itemId)->value('on_hand'));
-
-        $movement = DB::table('inventory_movements')->where('transaction_number', 'SO-TEST-003')->first();
-        $this->assertNotNull($movement);
-        $this->assertEquals(-5, (int) $movement->qty);
-        $this->assertEquals(-5, (int) $movement->balance);
+        $this->assertEquals(0, (int) DB::table('inventories')->where('item_id', $this->itemId)->value('on_hand'));
+        $this->assertDatabaseMissing('inventory_movements', ['transaction_number' => 'SO-TEST-003']);
+        $this->assertDatabaseMissing('order_bin_allocations', ['order_id' => $order->id]);
     }
 
     public function test_upsert_from_channel_with_shipped_status_automatically_deducts_stock_synchronously(): void

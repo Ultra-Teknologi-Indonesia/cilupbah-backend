@@ -15,11 +15,6 @@ use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Services\BulkShippingLabelService;
 use Throwable;
 
-/**
- * Processes exactly one order label. Parallelism is controlled by the
- * dedicated Horizon labels supervisor, while uniqueness and the distributed
- * lock protect against duplicate dispatches and manual retries.
- */
 class ProcessBulkShippingLabelItemJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
@@ -68,8 +63,6 @@ class ProcessBulkShippingLabelItemJob implements ShouldBeUnique, ShouldQueue
                 return;
             }
 
-            // Claim the row before any marketplace call. A second worker now
-            // sees a non-pending row and exits without duplicate work.
             $claimed = BulkShippingLabelItem::query()
                 ->whereKey($item->id)
                 ->where('status', BulkShippingLabelItem::STATUS_PENDING)

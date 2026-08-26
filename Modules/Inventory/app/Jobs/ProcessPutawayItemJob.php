@@ -18,6 +18,7 @@ use Modules\Inbound\Models\InboundItem;
 use Modules\Inventory\Models\PutawayItemSource;
 use Modules\Warehouse\Services\BinOccupancyGuard;
 use Modules\Warehouse\Services\SkuHomeBinGuard;
+use Modules\Warehouse\Services\InboundBinPolicy;
 use App\Traits\StockLockable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -70,6 +71,12 @@ class ProcessPutawayItemJob implements ShouldQueue
                 $putaway = $putawayItem->putaway;
                 $destinationBinId = $this->data['destination_bin_id'];
                 $transactionNumber = $putaway->putaway_no;
+
+                app(InboundBinPolicy::class)->assertPutawayRoute(
+                    $putaway->location_id,
+                    $putawayItem->source_bin_id,
+                    $destinationBinId,
+                );
 
                 app(BinOccupancyGuard::class)->assertBinFitsSku($destinationBinId, $putawayItem->item_id);
                 app(SkuHomeBinGuard::class)->assertSkuFitsBin($putaway->location_id, $putawayItem->item_id, $destinationBinId);

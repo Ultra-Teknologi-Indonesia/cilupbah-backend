@@ -211,10 +211,6 @@ class BulkShippingLabelService
         $this->tryFinalize($batch);
     }
 
-    /**
-     * Enqueue only pending items. The unique item job and the row transition
-     * are the idempotency boundary; re-running the parent job is safe.
-     */
     public function dispatchPendingItems(BulkShippingLabelBatch $batch): int
     {
         if ($batch->status !== BulkShippingLabelBatch::STATUS_PROCESSING) {

@@ -52,6 +52,53 @@ class ShipmentActivityAuditTest extends TestCase
             ->assertJsonPath('data.0.entity_no', $history->metadata['entity_no']);
     }
 
+    public function test_repeated_manifest_scan_is_idempotent_and_returns_the_existing_shipment_order(): void
+    {
+        Bus::fake();
+        $operator = $this->createPrivilegedUser(['name' => 'Operator Manifest']);
+        $this->actingAs($operator, 'sanctum');
+
+        $locationId = $this->seedLocation();
+        $shipmentId = $this->seedShipment($locationId);
+        [$orderId, $orderNo] = $this->seedPackedOrder($locationId);
+
+        $service = app(ShipmentService::class);
+        $first = $service->scanAndAddOrder($shipmentId, $orderNo);
+        $second = $service->scanAndAddOrder($shipmentId, $orderNo);
+
+        $this->assertFalse($first->alreadyAdded);
+        $this->assertTrue($second->alreadyAdded);
+        $this->assertSame($first->shipmentOrder->id, $second->shipmentOrder->id);
+        $this->assertDatabaseCount('shipment_orders', 1);
+        $this->assertSame(
+            1,
+            SalesOrderStatusHistory::query()
+                ->where('salesorder_id', $orderId)
+                ->where('action', OrderActivityAction::ADDED_TO_SHIPMENT)
+                ->count(),
+        );
+        Bus::assertDispatchedTimes(ProcessShipmentPickupJob::class, 1);
+    }
+
+    public function test_scan_api_returns_the_scanned_tracking_number_for_immediate_display(): void
+    {
+        Bus::fake();
+        $operator = $this->createPrivilegedUser();
+        $this->actingAs($operator, 'sanctum');
+
+        $locationId = $this->seedLocation();
+        $shipmentId = $this->seedShipment($locationId);
+        [, $orderNo] = $this->seedPackedOrder($locationId, 'J&T Express');
+
+        $this->postJson("/api/v1/outbound/shipments/{$shipmentId}/scan-order", [
+            'barcode' => $orderNo,
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.scan_result.status', 'added')
+            ->assertJsonPath('data.scan_result.barcode', $orderNo)
+            ->assertJsonPath('data.scan_result.shipment_order.order.salesorder_no', $orderNo);
+    }
+
     public function test_bulk_add_is_idempotent_and_does_not_duplicate_audit_rows(): void
     {
         Bus::fake();
