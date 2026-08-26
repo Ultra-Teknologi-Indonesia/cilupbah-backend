@@ -181,4 +181,83 @@ final class InventoryStockExportTest extends TestCase
         $this->assertSame('REPORT-1', $historical->sku);
         $this->assertSame(4, (int) $historical->qty);
     }
+
+    public function test_location_stock_queries_exclude_transit(): void
+    {
+        $warehouse = Location::factory()->create([
+            'location_code' => 'WH-REPORT-STOCK',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+        $transit = Location::factory()->create([
+            'location_code' => Location::SYSTEM_TRANSIT_CODE,
+            'location_name' => 'Transit Sistem',
+            'is_warehouse' => false,
+            'is_active' => true,
+            'is_system' => true,
+        ]);
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'Laporan Transit Test',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $product = Product::create([
+            'category_id' => $categoryId,
+            'name' => 'Produk Transit Test',
+            'status' => 'master',
+            'is_bundle' => false,
+            'is_active' => true,
+        ]);
+        $variant = ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => 'REPORT-TRANSIT-1',
+            'buy_price' => 10,
+            'sell_price' => 20,
+            'min_stock' => 1,
+        ]);
+
+        foreach ([$warehouse, $transit] as $location) {
+            Inventory::create([
+                'item_id' => $variant->id,
+                'location_id' => $location->id,
+                'on_hand' => 4,
+                'on_order' => 0,
+                'available' => 4,
+                'avg_cost' => 10,
+            ]);
+            InventoryMovement::create([
+                'item_id' => $variant->id,
+                'location_id' => $location->id,
+                'transaction_number' => 'REPORT-TRANSIT-'.$location->id,
+                'source' => 'adjustment',
+                'qty' => 4,
+                'balance' => 4,
+                'transaction_date' => '2026-08-01 08:00:00',
+                'created_by' => 'test',
+            ]);
+        }
+
+        $service = app(InventoryStockReportService::class);
+        $filters = [
+            'report_type' => 'by_location',
+            'item_ids' => [$variant->id],
+            'location_ids' => [],
+            'stock_filter' => 'all',
+            'only_not_restocked' => false,
+            'only_with_stock' => false,
+        ];
+
+        $currentRows = $service->query($filters)->get();
+        $this->assertCount(1, $currentRows);
+        $this->assertSame($warehouse->id, $currentRows->first()->location_id);
+
+        $historicalRows = $service->query([
+            ...$filters,
+            'report_type' => 'as_of_date',
+            'as_of_date' => '2026-08-01',
+        ])->get();
+        $this->assertCount(1, $historicalRows);
+        $this->assertSame($warehouse->id, $historicalRows->first()->location_id);
+    }
 }

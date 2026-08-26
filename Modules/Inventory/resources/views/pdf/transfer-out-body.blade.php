@@ -28,25 +28,25 @@
 
 <table class="items">
     <colgroup>
-        <col class="col-no">
-        <col class="col-rak">
-        <col class="col-location">
-        <col class="col-sku">
-        <col class="col-name">
-        <col class="col-qty">
-        <col class="col-unit">
-        <col class="col-notes">
+        <col class="col-no" style="width: 4%;">
+        <col class="col-rak" style="width: 10%;">
+        <col class="col-location" style="width: 11%;">
+        <col class="col-sku" style="width: 22%;">
+        <col class="col-name" style="width: 29%;">
+        <col class="col-qty" style="width: 5%;">
+        <col class="col-unit" style="width: 5%;">
+        <col class="col-notes" style="width: 14%;">
     </colgroup>
     <thead>
         <tr>
-            <th>No</th>
-            <th>Rak</th>
-            <th>Lokasi</th>
-            <th>SKU</th>
-            <th>Nama Barang</th>
-            <th>Qty</th>
-            <th>Unit</th>
-            <th>Keterangan</th>
+            <th style="width: 4%;">No</th>
+            <th style="width: 10%;">Rak</th>
+            <th style="width: 11%;">Lokasi</th>
+            <th style="width: 22%;">SKU</th>
+            <th style="width: 29%;">Nama Barang</th>
+            <th style="width: 5%;">Qty</th>
+            <th style="width: 5%;">Unit</th>
+            <th style="width: 14%;">Keterangan</th>
         </tr>
     </thead>
     <tbody>

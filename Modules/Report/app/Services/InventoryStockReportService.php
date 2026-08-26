@@ -72,6 +72,7 @@ final class InventoryStockReportService
             ->join('products as p', 'p.id', '=', 'pv.product_id')
             ->join('locations as l', 'l.id', '=', 'i.location_id')
             ->where('l.is_active', true)
+            ->where('l.location_code', '!=', Location::SYSTEM_TRANSIT_CODE)
             ->when($filters['item_ids'], fn (Builder $q, array $ids) => $q->whereIn('i.item_id', $ids))
             ->when($filters['location_ids'], fn (Builder $q, array $ids) => $q->whereIn('i.location_id', $ids))
             ->select([
@@ -143,6 +144,7 @@ final class InventoryStockReportService
             ->join('locations as l', 'l.id', '=', 'snapshot.location_id')
             ->where('snapshot.row_number', 1)
             ->where('l.is_active', true)
+            ->where('l.location_code', '!=', Location::SYSTEM_TRANSIT_CODE)
             ->when($filters['item_ids'], fn (Builder $q, array $ids) => $q->whereIn('snapshot.item_id', $ids))
             ->when($filters['location_ids'], fn (Builder $q, array $ids) => $q->whereIn('snapshot.location_id', $ids))
             ->select([

@@ -23,13 +23,13 @@
     .info-grid .r-label { text-align: right; width: 18%; font-weight: 700; }
     .info-grid .r-value { text-align: right; width: 21%; }
     table.items { width: 100%; border-collapse: collapse; margin-top: 1px; table-layout: fixed; }
-    table.items .col-no { width: 5%; }
-    table.items .col-rak { width: 11%; }
+    table.items .col-no { width: 4%; }
+    table.items .col-rak { width: 10%; }
     table.items .col-location { width: 11%; }
-    table.items .col-sku { width: 18%; }
+    table.items .col-sku { width: 22%; }
     table.items .col-name { width: 29%; }
-    table.items .col-qty { width: 6%; }
-    table.items .col-unit { width: 6%; }
+    table.items .col-qty { width: 5%; }
+    table.items .col-unit { width: 5%; }
     table.items .col-notes { width: 14%; }
     table.items th, table.items td {
         border: 1px solid #555;

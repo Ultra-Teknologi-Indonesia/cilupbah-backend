@@ -25,7 +25,7 @@ class StockAdjustmentRepository
                 'updated_at',
             ])
             ->with(['location:id,location_name'])
-            ->allowedSearch('adjustment_no')
+            ->allowedSearch('adjustment_no', 'notes')
             ->allowedFilters(
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::exact('is_beginning_balance'),
@@ -50,7 +50,17 @@ class StockAdjustmentRepository
             ->when($request->filled('filter[location_id]'), fn($q) => $q->where('stock_adjustments.location_id', $request->input('filter[location_id]')))
             ->when($request->filled('filter[date_from]'), fn($q) => $q->whereDate('stock_adjustments.transaction_date', '>=', $request->input('filter[date_from]')))
             ->when($request->filled('filter[date_to]'), fn($q) => $q->whereDate('stock_adjustments.transaction_date', '<=', $request->input('filter[date_to]')))
-            ->when($request->filled('search'), fn($q) => $q->where('stock_adjustments.adjustment_no', 'like', '%' . $request->input('search') . '%'))
+            ->when($request->filled('search'), function ($q) use ($request) {
+                $term = trim((string) $request->input('search'));
+                $escaped = addcslashes($term, "\\%_");
+                $pattern = "%{$escaped}%";
+
+                return $q->where(function ($searchQuery) use ($pattern) {
+                    $searchQuery
+                        ->whereRaw("stock_adjustments.adjustment_no ILIKE ? ESCAPE '\\'", [$pattern])
+                        ->orWhereRaw("stock_adjustments.notes ILIKE ? ESCAPE '\\'", [$pattern]);
+                });
+            })
             ->select([
                 'stock_adjustments.adjustment_no',
                 'stock_adjustments.transaction_date',
