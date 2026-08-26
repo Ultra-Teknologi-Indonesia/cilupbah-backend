@@ -109,23 +109,18 @@ class QtyCorrectionAdjustmentTest extends TestCase
         );
     }
 
-    public function test_qty_correction_creates_stock_adjustment(): void
+    public function test_qty_correction_does_not_create_stock_adjustment(): void
     {
         $inbound = $this->makeReceivedInbound(100);
 
         $this->correct($inbound, 95);
 
-        $adjustment = StockAdjustment::with('items')->latest('created_at')->first();
-
-        $this->assertNotNull($adjustment, 'Dokumen Penyesuaian Stok harus terbentuk otomatis');
-        $this->assertMatchesRegularExpression('/^ADJ-/', $adjustment->adjustment_no);
-        $this->assertEquals($this->location->id, $adjustment->location_id);
-
-        $this->assertCount(1, $adjustment->items);
-        $item = $adjustment->items->first();
-        $this->assertEquals($this->variant->id, $item->item_id);
-        $this->assertEquals($this->inboundBin->id, $item->bin_id);
-        $this->assertEquals(-5, (int) $item->difference_qty);
+        $this->assertSame(0, StockAdjustment::query()->count());
+        $this->assertDatabaseHas('inventory_movements', [
+            'transaction_number' => $inbound->transaction_number . '-KOREKSI-QTY',
+            'source' => 'INBOUND_QTY_CORRECTION',
+            'qty' => -5,
+        ]);
     }
 
     public function test_qty_correction_auto_generates_remarks(): void
@@ -134,16 +129,15 @@ class QtyCorrectionAdjustmentTest extends TestCase
 
         $this->correct($inbound, 95);
 
-        $adjustment = StockAdjustment::with('items')->latest('created_at')->first();
+        $receipt = InboundReceipt::where('condition', 'ADJUSTMENT')->latest('created_at')->first();
 
-        foreach ([$adjustment->notes, $adjustment->items->first()->notes] as $notes) {
-            $this->assertStringContainsString($inbound->transaction_number, $notes);
-            $this->assertStringContainsString('V-QC', $notes, 'SKU harus ikut tercatat');
-            $this->assertStringContainsString('100', $notes);
-            $this->assertStringContainsString('95', $notes);
-            $this->assertStringContainsString('-5', $notes);
-            $this->assertStringContainsString('ADMIN QC', $notes, 'pelaku harus ikut tercatat');
-        }
+        $this->assertNotNull($receipt);
+        $this->assertStringContainsString($inbound->transaction_number, $receipt->notes);
+        $this->assertStringContainsString('V-QC', $receipt->notes, 'SKU harus ikut tercatat');
+        $this->assertStringContainsString('100', $receipt->notes);
+        $this->assertStringContainsString('95', $receipt->notes);
+        $this->assertStringContainsString('-5', $receipt->notes);
+        $this->assertStringContainsString('ADMIN QC', $receipt->notes, 'pelaku harus ikut tercatat');
     }
 
     public function test_qty_correction_auto_remarks_marks_upward_with_plus(): void
@@ -152,9 +146,9 @@ class QtyCorrectionAdjustmentTest extends TestCase
 
         $this->correct($inbound, 105);
 
-        $adjustment = StockAdjustment::latest('created_at')->first();
+        $receipt = InboundReceipt::where('condition', 'ADJUSTMENT')->latest('created_at')->first();
 
-        $this->assertStringContainsString('+5', $adjustment->notes);
+        $this->assertStringContainsString('+5', $receipt->notes);
     }
 
     public function test_qty_correction_uses_explicit_reason_when_given(): void
@@ -163,9 +157,9 @@ class QtyCorrectionAdjustmentTest extends TestCase
 
         $this->correct($inbound, 95, 'barang rusak saat bongkar muat');
 
-        $adjustment = StockAdjustment::latest('created_at')->first();
+        $receipt = InboundReceipt::where('condition', 'ADJUSTMENT')->latest('created_at')->first();
 
-        $this->assertEquals('barang rusak saat bongkar muat', $adjustment->notes);
+        $this->assertEquals('barang rusak saat bongkar muat', $receipt->notes);
     }
 
     public function test_qty_correction_lowers_received_qty(): void
@@ -177,17 +171,16 @@ class QtyCorrectionAdjustmentTest extends TestCase
         $this->assertEquals(95, (int) $inbound->fresh('items')->items->first()->received_qty);
     }
 
-    public function test_qty_correction_links_receipt_row_to_adjustment(): void
+    public function test_qty_correction_keeps_receipt_row_without_adjustment_link(): void
     {
         $inbound = $this->makeReceivedInbound(100);
 
         $this->correct($inbound, 95);
 
-        $adjustment = StockAdjustment::latest('created_at')->first();
         $receipt = InboundReceipt::where('condition', 'ADJUSTMENT')->latest('created_at')->first();
 
         $this->assertNotNull($receipt);
-        $this->assertEquals($adjustment->id, $receipt->stock_adjustment_id);
+        $this->assertNull($receipt->stock_adjustment_id);
         $this->assertEquals(-5, (int) $receipt->qty);
     }
 
@@ -205,19 +198,17 @@ class QtyCorrectionAdjustmentTest extends TestCase
         );
     }
 
-    public function test_qty_correction_writes_adjustment_movement_not_edit_qty(): void
+    public function test_qty_correction_writes_hidden_correction_movement_not_adjustment(): void
     {
         $inbound = $this->makeReceivedInbound(100);
 
         $this->correct($inbound, 95);
 
-        $adjustment = StockAdjustment::latest('created_at')->first();
-
-        $adjustmentMovements = InventoryMovement::where('transaction_number', $adjustment->adjustment_no)
-            ->where('source', 'ADJUSTMENT')
+        $adjustmentMovements = InventoryMovement::where('transaction_number', $inbound->transaction_number . '-KOREKSI-QTY')
+            ->where('source', 'INBOUND_QTY_CORRECTION')
             ->get();
 
-        $this->assertCount(1, $adjustmentMovements, 'tepat satu movement ADJUSTMENT');
+        $this->assertCount(1, $adjustmentMovements, 'tepat satu movement koreksi inbound');
         $this->assertEquals(-5, (int) $adjustmentMovements->first()->qty);
 
         $this->assertEquals(
@@ -227,15 +218,17 @@ class QtyCorrectionAdjustmentTest extends TestCase
         );
     }
 
-    public function test_qty_correction_upward_creates_positive_adjustment(): void
+    public function test_qty_correction_upward_creates_positive_correction_movement(): void
     {
         $inbound = $this->makeReceivedInbound(100);
 
         $this->correct($inbound, 105, 'fisik ternyata lebih 5 pcs dari catatan');
 
-        $adjustment = StockAdjustment::with('items')->latest('created_at')->first();
-
-        $this->assertEquals(5, (int) $adjustment->items->first()->difference_qty);
+        $this->assertDatabaseHas('inventory_movements', [
+            'transaction_number' => $inbound->transaction_number . '-KOREKSI-QTY',
+            'source' => 'INBOUND_QTY_CORRECTION',
+            'qty' => 5,
+        ]);
         $this->assertEquals(105, $this->onHandAtInboundBin());
     }
 

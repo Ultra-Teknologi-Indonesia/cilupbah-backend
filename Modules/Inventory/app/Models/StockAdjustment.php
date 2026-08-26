@@ -3,6 +3,7 @@
 namespace Modules\Inventory\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -25,6 +26,17 @@ class StockAdjustment extends Model
         'transaction_date' => 'datetime',
         'is_beginning_balance' => 'boolean',
     ];
+
+    public function scopeExcludeInboundQtyCorrections(Builder $query): Builder
+    {
+        return $query->whereNotExists(function ($subQuery) {
+            $subQuery
+                ->selectRaw('1')
+                ->from('inbound_receipts')
+                ->whereColumn('inbound_receipts.stock_adjustment_id', 'stock_adjustments.id')
+                ->where('inbound_receipts.condition', 'ADJUSTMENT');
+        });
+    }
 
     public function items(): HasMany
     {

@@ -140,6 +140,15 @@ class InventoryMovementRepository
     {
         $view = strtolower((string) request('view', 'all'));
         $baseQuery = InventoryMovement::query()->where('qty', '!=', 0);
+        $baseQuery->whereNotIn('source', InventoryMovementSourceMap::HIDDEN_SOURCES);
+        $baseQuery->whereNotExists(function ($query) {
+            $query
+                ->selectRaw('1')
+                ->from('inbound_receipts')
+                ->join('stock_adjustments', 'stock_adjustments.id', '=', 'inbound_receipts.stock_adjustment_id')
+                ->whereColumn('stock_adjustments.adjustment_no', 'inventory_movements.transaction_number')
+                ->where('inbound_receipts.condition', 'ADJUSTMENT');
+        });
 
         $baseQuery->where(function ($q) {
             $q->whereNotExists(function ($inboundBinQuery) {

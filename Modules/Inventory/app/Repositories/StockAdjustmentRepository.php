@@ -13,6 +13,7 @@ class StockAdjustmentRepository
     public function getAllPaginated(int $limit = 10)
     {
         return QueryBuilder::for(StockAdjustment::class)
+            ->excludeInboundQtyCorrections()
             ->select([
                 'id',
                 'adjustment_no',
@@ -46,6 +47,13 @@ class StockAdjustmentRepository
             ->join('products', 'product_variants.product_id', '=', 'products.id')
             ->leftJoin('locations', 'stock_adjustments.location_id', '=', 'locations.id')
             ->whereNull('stock_adjustments.deleted_at')
+            ->whereNotExists(function ($query) {
+                $query
+                    ->selectRaw('1')
+                    ->from('inbound_receipts')
+                    ->whereColumn('inbound_receipts.stock_adjustment_id', 'stock_adjustments.id')
+                    ->where('inbound_receipts.condition', 'ADJUSTMENT');
+            })
             ->whereNull('product_variants.deleted_at')
             ->when($request->filled('filter[location_id]'), fn($q) => $q->where('stock_adjustments.location_id', $request->input('filter[location_id]')))
             ->when($request->filled('filter[date_from]'), fn($q) => $q->whereDate('stock_adjustments.transaction_date', '>=', $request->input('filter[date_from]')))

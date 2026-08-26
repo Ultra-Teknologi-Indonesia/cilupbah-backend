@@ -30,7 +30,6 @@ use Modules\Inventory\Models\PutawaySource;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Services\PutawayService;
-use Modules\Inventory\Services\StockAdjustmentService;
 use Modules\Product\Models\ProductVariant;
 use Modules\Warehouse\Models\LocationBin;
 use Modules\Notification\Events\TaskAssigned;
@@ -57,7 +56,6 @@ class InboundService
         protected LocationBinService $binService,
         protected PutawayService $putawayService,
         protected NotificationDispatcher $notifications,
-        protected StockAdjustmentService $stockAdjustmentService,
         protected InventoryRepository $inventoryRepository,
         protected PurchaseOrderRepository $purchaseOrderRepository,
     ) {}
@@ -1762,27 +1760,18 @@ class InboundService
                 throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: 'Gudang ini belum memiliki Bin Inbound default.', status: 422);
             }
 
-            $onHandAtInboundBin = (int) ($this->inventoryRepository->findExact(
-                $item->item_id,
-                $inbound->location_id,
-                $defaultBin->id,
-            )?->on_hand ?? 0);
-
             $note = $reasonNote !== ''
                 ? $reasonNote
                 : $this->buildQtyCorrectionNote($inbound, $item, $current, $targetQty, $userId);
 
-            $adjustment = $this->stockAdjustmentService->create([
-                'transaction_date' => now()->toDateString(),
-                'location_id'      => $inbound->location_id,
-                'created_by'       => \App\Support\ActorName::resolve($userId),
-                'notes'            => $note,
-                'items'            => [[
-                    'item_id'    => $item->item_id,
-                    'bin_id'     => $defaultBin->id,
-                    'actual_qty' => $onHandAtInboundBin + $delta,
-                    'notes'      => $note,
-                ]],
+            $this->inventoryService->adjust([
+                'item_id'            => $item->item_id,
+                'location_id'        => $inbound->location_id,
+                'bin_id'             => $defaultBin->id,
+                'qty'                => $delta,
+                'transaction_number' => $inbound->transaction_number . '-KOREKSI-QTY',
+                'source'             => 'INBOUND_QTY_CORRECTION',
+                'created_by'         => \App\Support\ActorName::resolve($userId),
             ]);
 
             $this->inboundRepository->updateItemReceivedQty($item->id, $delta);
@@ -1796,7 +1785,7 @@ class InboundService
                 'qty'                 => $delta,
                 'bin_id'              => $defaultBin->id,
                 'condition'           => 'ADJUSTMENT',
-                'stock_adjustment_id' => $adjustment->id,
+                'notes'               => $note,
                 'received_by_user_id' => $userId,
                 'received_by'         => \App\Support\ActorName::resolve($userId),
                 'received_date'       => now(),

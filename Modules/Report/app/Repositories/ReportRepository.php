@@ -76,6 +76,7 @@ class ReportRepository
     public function adjustment(array $filters): Model|LengthAwarePaginator
     {
         $query = StockAdjustment::with(['items.product:id,product_id,sku', 'items.product.product:id,name', 'location:id,location_name,location_code'])
+            ->excludeInboundQtyCorrections()
             ->tap(fn ($q) => WarehouseAccess::apply($q, 'location_id'))
             ->when($filters['location_id'] ?? null, fn ($q, $v) => $q->where('location_id', $v))
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
@@ -780,6 +781,7 @@ class ReportRepository
                 'items.product:id,product_id,sku',
                 'items.product.product:id,name',
             ])
+            ->excludeInboundQtyCorrections()
             ->whereDate('transaction_date', '>=', $startDate)
             ->whereDate('transaction_date', '<=', $endDate)
             ->when(! empty($locationIds), fn ($q) => $q->whereIn('location_id', $locationIds))

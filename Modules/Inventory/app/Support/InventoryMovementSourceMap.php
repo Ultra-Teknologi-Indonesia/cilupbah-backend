@@ -4,6 +4,10 @@ namespace Modules\Inventory\Support;
 
 class InventoryMovementSourceMap
 {
+    public const HIDDEN_SOURCES = [
+        'INBOUND_QTY_CORRECTION',
+    ];
+
     public const SOURCES = [
         'PURCHASE'          => ['category' => 'TAGIHAN', 'label' => 'Tagihan'],
         'PURCHASE_REVERSAL' => ['category' => 'TAGIHAN', 'label' => 'Koreksi Tagihan'],
@@ -139,6 +143,7 @@ class InventoryMovementSourceMap
         'ORDER_PICK',
         'ORDER_SHIP',
         ...self::NON_PHYSICAL_SOURCES,
+        ...self::HIDDEN_SOURCES,
     ];
 
     public const TRANSIT_SOURCES = ['TRANSIT_IN', 'TRANSIT_OUT'];
