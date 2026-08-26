@@ -2,7 +2,7 @@
 
 namespace Modules\Sales\Repositories;
 
-use Illuminate\Support\Collection;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -573,9 +573,9 @@ class SalesOrderRepository
         return SalesOrder::with(['items', 'returns.settlement', 'invoices'])->find($id);
     }
 
-    public function getOrdersForTikTokPlatformBackfill(?string $orderReference, ?string $shopId, int $limit): Collection
+    public function getOrdersForTikTokPlatformBackfill(?string $orderReference, ?string $shopId, int $limit): Builder
     {
-        return SalesOrder::query()
+        $query = SalesOrder::query()
             ->where('source', 'tiktok')
             ->whereNotNull('channel_order_no')
             ->when(! $orderReference, function ($query): void {
@@ -602,9 +602,8 @@ class SalesOrderRepository
                 });
             })
             ->when($shopId, fn ($query) => $query->where('channel_shop_id', $shopId))
-            ->orderBy('created_at')
-            ->limit(max(1, $limit))
-            ->get([
+            ->orderBy('id')
+            ->select([
                 'id',
                 'salesorder_no',
                 'channel_order_no',
@@ -612,6 +611,12 @@ class SalesOrderRepository
                 'source',
                 'commerce_platform',
             ]);
+
+        if ($limit > 0) {
+            $query->limit($limit);
+        }
+
+        return $query;
     }
 
     public function salesOrderNoBelongsToAnotherOrder(string $salesOrderNo, string $orderId): bool

@@ -3,6 +3,7 @@
 namespace Modules\Inventory\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Inventory\Models\Inventory;
@@ -27,7 +28,15 @@ class ReconcileInboundBackfillConsumption extends Command
     ): int {
         $apply = (bool) $this->option('apply');
         $sku = trim((string) $this->option('sku'));
-        $limit = max(0, (int) $this->option('limit'));
+        $limitOption = $this->option('limit');
+        $rawLimit = $limitOption === null || $limitOption === '' ? '0' : (string) $limitOption;
+        if (! ctype_digit($rawLimit)) {
+            $this->error('--limit harus berupa 0 atau bilangan bulat positif.');
+
+            return self::FAILURE;
+        }
+
+        $limit = (int) $rawLimit;
 
         if ($apply && $this->option('confirm') !== self::CONFIRMATION) {
             $this->error('Mode tulis ditolak. Tambahkan --confirm='.self::CONFIRMATION.'.');
@@ -41,7 +50,6 @@ class ReconcileInboundBackfillConsumption extends Command
         $this->line('Mode: '.($apply ? '<fg=red;options=bold>APPLY</>' : '<fg=yellow;options=bold>DRY-RUN (TANPA TULIS)</>'));
 
         $runId = Str::uuid()->toString();
-        $plannedByTarget = [];
         $summary = [
             'scanned' => 0,
             'ready' => 0,
@@ -54,61 +62,48 @@ class ReconcileInboundBackfillConsumption extends Command
         $samples = [];
         $processed = 0;
 
-        $query = $this->candidateQuery($sku);
+        if ($apply) {
+            $afterId = null;
 
-        $query->chunkById(200, function ($rows) use (
-            &$plannedByTarget,
-            &$summary,
-            &$samples,
-            &$processed,
-            $limit,
-            $apply,
-            $runId,
-            $inventoryRepository,
-            $movementRepository,
-        ): bool {
-            foreach ($rows as $row) {
-                if ($limit > 0 && $processed >= $limit) {
-                    return false;
+            while ($limit === 0 || $processed < $limit) {
+                $candidateSubquery = $this->candidateQuery($sku);
+                $rows = DB::query()
+                    ->fromSub($candidateSubquery, 'candidate_batch')
+                    ->when($afterId !== null, fn ($query) => $query->where('candidate_batch.id', '>', $afterId))
+                    ->orderBy('candidate_batch.id')
+                    ->limit(200)
+                    ->get();
+                if ($rows->isEmpty()) {
+                    break;
                 }
 
-                $processed++;
-                $summary['scanned']++;
-                $plan = $this->plan($row, $plannedByTarget);
+                $this->processRows(
+                    $rows,
+                    $summary,
+                    $samples,
+                    $processed,
+                    $limit,
+                    true,
+                    $runId,
+                    $inventoryRepository,
+                    $movementRepository,
+                );
 
-                if ($plan['status'] === 'NO_FINAL_RACK_ASSIGNMENT') {
-                    $summary['unresolved_no_assignment']++;
-                    $this->appendSample($samples, $plan);
-                    continue;
-                }
-
-                if ($plan['status'] === 'INSUFFICIENT_FINAL_STOCK') {
-                    $summary['unresolved_insufficient_stock']++;
-                    $this->appendSample($samples, $plan);
-                    continue;
-                }
-
-                $summary['ready']++;
-                $this->appendSample($samples, $plan);
-
-                if (! $apply) {
-                    continue;
-                }
-
-                try {
-                    $outcome = $this->applyPlan($plan, $runId, $inventoryRepository, $movementRepository);
-                    $summary[$outcome]++;
-                } catch (\Throwable $exception) {
-                    $summary['apply_failed']++;
-                    $this->appendSample($samples, array_merge($plan, [
-                        'status' => 'APPLY_FAILED',
-                        'reason' => $exception->getMessage(),
-                    ]));
-                }
+                $afterId = $rows->last()->id;
             }
-
-            return $limit === 0 || $processed < $limit;
-        }, 'im.id', 'id');
+        } else {
+            $this->processRows(
+                $this->candidateQuery($sku)->lazy(200),
+                $summary,
+                $samples,
+                $processed,
+                $limit,
+                false,
+                $runId,
+                $inventoryRepository,
+                $movementRepository,
+            );
+        }
 
         $this->table(
             ['Status', 'Jumlah'],
@@ -141,7 +136,61 @@ class ReconcileInboundBackfillConsumption extends Command
         return $summary['apply_failed'] === 0 ? self::SUCCESS : self::FAILURE;
     }
 
-    private function candidateQuery(string $sku)
+    private function processRows(
+        iterable $rows,
+        array &$summary,
+        array &$samples,
+        int &$processed,
+        int $limit,
+        bool $apply,
+        string $runId,
+        InventoryRepository $inventoryRepository,
+        InventoryMovementRepository $movementRepository,
+    ): void {
+        foreach ($rows as $row) {
+            if ($limit > 0 && $processed >= $limit) {
+                break;
+            }
+
+            $processed++;
+            $summary['scanned']++;
+            $plan = $this->plan($row);
+
+            if ($plan['status'] === 'NO_FINAL_RACK_ASSIGNMENT') {
+                $summary['unresolved_no_assignment']++;
+                $this->appendSample($samples, $plan);
+
+                continue;
+            }
+
+            if ($plan['status'] === 'INSUFFICIENT_FINAL_STOCK') {
+                $summary['unresolved_insufficient_stock']++;
+                $this->appendSample($samples, $plan);
+
+                continue;
+            }
+
+            $summary['ready']++;
+            $this->appendSample($samples, $plan);
+
+            if (! $apply) {
+                continue;
+            }
+
+            try {
+                $outcome = $this->applyPlan($plan, $runId, $inventoryRepository, $movementRepository);
+                $summary[$outcome]++;
+            } catch (\Throwable $exception) {
+                $summary['apply_failed']++;
+                $this->appendSample($samples, array_merge($plan, [
+                    'status' => 'APPLY_FAILED',
+                    'reason' => $exception->getMessage(),
+                ]));
+            }
+        }
+    }
+
+    private function candidateQuery(string $sku): QueryBuilder
     {
         return DB::table('inventory_movements as im')
             ->join('location_bins as inbound_bin', 'inbound_bin.id', '=', 'im.bin_id')
@@ -177,10 +226,11 @@ class ReconcileInboundBackfillConsumption extends Command
                 'target_bin.id as target_bin_id',
                 'target_bin.bin_final_code as target_bin_code',
             ])
+            ->selectRaw('SUM(ABS(im.qty)) OVER (PARTITION BY im.item_id, im.location_id, target_bin.id ORDER BY im.id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) as cumulative_qty')
             ->orderBy('im.id');
     }
 
-    private function plan(object $row, array &$plannedByTarget): array
+    private function plan(object $row): array
     {
         $qty = abs((int) $row->qty);
         $plan = [
@@ -204,13 +254,12 @@ class ReconcileInboundBackfillConsumption extends Command
             ]);
         }
 
-        $key = implode('|', [$row->item_id, $row->location_id, $row->target_bin_id]);
         $available = (int) Inventory::query()
             ->where('item_id', $row->item_id)
             ->where('location_id', $row->location_id)
             ->where('bin_id', $row->target_bin_id)
             ->sum('available');
-        $remaining = $available - (int) ($plannedByTarget[$key] ?? 0);
+        $remaining = $available - ((int) $row->cumulative_qty - $qty);
 
         if ($remaining < $qty) {
             return array_merge($plan, [
@@ -218,8 +267,6 @@ class ReconcileInboundBackfillConsumption extends Command
                 'reason' => "Stok tersedia di rak final {$remaining}; perlu {$qty}. Verifikasi fisik diperlukan.",
             ]);
         }
-
-        $plannedByTarget[$key] = (int) ($plannedByTarget[$key] ?? 0) + $qty;
 
         return array_merge($plan, [
             'status' => 'READY',

@@ -4,6 +4,7 @@ namespace Modules\Channel\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductSyncLog;
 
@@ -11,7 +12,7 @@ class RepairStaleSyncErrors extends Command
 {
     protected $signature = 'channel:repair-stale-sync-errors
         {--apply : Terapkan perubahan (tanpa ini hanya dry-run)}
-        {--limit= : Batasi jumlah mapping yang dipindai}';
+        {--limit=0 : Batasi jumlah mapping yang dipindai; gunakan 0 untuk tanpa batas}';
 
     protected $description = 'Perbaiki pesan error mapping channel yang tertimpa pesan retry generik';
 
@@ -23,13 +24,15 @@ class RepairStaleSyncErrors extends Command
     public function handle(): int
     {
         $apply = (bool) $this->option('apply');
-        $limit = $this->option('limit');
+        $rawLimit = (string) $this->option('limit');
 
-        if ($limit !== null && (! ctype_digit((string) $limit) || (int) $limit < 1)) {
-            $this->error('--limit harus berupa angka positif.');
+        if (! ctype_digit($rawLimit)) {
+            $this->error('--limit harus berupa 0 atau bilangan bulat positif.');
 
             return self::FAILURE;
         }
+
+        $limit = (int) $rawLimit;
 
         $query = ProductChannelMapping::query()
             ->where('sync_status', ProductChannelMapping::STATUS_FAILED)
@@ -41,8 +44,8 @@ class RepairStaleSyncErrors extends Command
             })
             ->orderBy('id');
 
-        if ($limit !== null) {
-            $query->limit((int) $limit);
+        if ($limit > 0) {
+            $query->limit($limit);
         }
 
         $scanned = 0;
@@ -121,25 +124,43 @@ class RepairStaleSyncErrors extends Command
 
     private function latestActionableLogs(Collection $mappings): array
     {
-        $productIds = $mappings->pluck('product_id')->filter()->unique()->values();
-        $shopIds = $mappings->pluck('channel_shop_id')->filter()->unique()->values();
+        $pairs = $mappings
+            ->filter(fn (ProductChannelMapping $mapping): bool => $mapping->product_id && $mapping->channel_shop_id)
+            ->map(fn (ProductChannelMapping $mapping): array => [
+                'product_id' => $mapping->product_id,
+                'channel_shop_id' => $mapping->channel_shop_id,
+            ])
+            ->unique(fn (array $pair): string => $this->key($pair['product_id'], $pair['channel_shop_id']))
+            ->values();
 
-        if ($productIds->isEmpty() || $shopIds->isEmpty()) {
+        if ($pairs->isEmpty()) {
             return [];
         }
 
-        return ProductSyncLog::query()
+        $rankedLogs = ProductSyncLog::query()
             ->where('action', ProductSyncLog::ACTION_UPLOAD)
             ->where('status', ProductSyncLog::STATUS_FAILED)
-            ->whereIn('product_id', $productIds)
-            ->whereIn('channel_shop_id', $shopIds)
             ->whereNotNull('error_message')
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
+            ->where(function ($query) use ($pairs): void {
+                foreach ($pairs as $pair) {
+                    $query->orWhere(function ($pairQuery) use ($pair): void {
+                        $pairQuery
+                            ->where('product_id', $pair['product_id'])
+                            ->where('channel_shop_id', $pair['channel_shop_id']);
+                    });
+                }
+            })
+            ->whereRaw("LOWER(COALESCE(error_message, '')) NOT LIKE ?", ['%too many%'])
+            ->whereRaw("LOWER(COALESCE(error_message, '')) NOT LIKE ?", ['%maxattemptsexceeded%'])
+            ->whereRaw("LOWER(COALESCE(error_message, '')) NOT LIKE ?", ['%attempted too many times%'])
+            ->select(['product_id', 'channel_shop_id', 'error_message'])
+            ->selectRaw('ROW_NUMBER() OVER (PARTITION BY product_id, channel_shop_id ORDER BY created_at DESC, id DESC) as row_number');
+
+        return DB::query()
+            ->fromSub($rankedLogs, 'ranked_logs')
+            ->where('row_number', 1)
             ->get(['product_id', 'channel_shop_id', 'error_message'])
-            ->filter(fn (ProductSyncLog $log): bool => ! $this->isGenericRetryMessage($log->error_message))
-            ->unique(fn (ProductSyncLog $log): string => $this->key($log->product_id, $log->channel_shop_id))
-            ->mapWithKeys(fn (ProductSyncLog $log): array => [
+            ->mapWithKeys(fn (object $log): array => [
                 $this->key($log->product_id, $log->channel_shop_id) => $log->error_message,
             ])
             ->all();
@@ -147,15 +168,6 @@ class RepairStaleSyncErrors extends Command
 
     private function key(?string $productId, ?string $shopId): string
     {
-        return (string) $productId . ':' . (string) $shopId;
-    }
-
-    private function isGenericRetryMessage(?string $message): bool
-    {
-        $message = strtolower(trim((string) $message));
-
-        return str_contains($message, 'too many')
-            || str_contains($message, 'maxattemptsexceeded')
-            || str_contains($message, 'attempted too many times');
+        return (string) $productId.':'.(string) $shopId;
     }
 }
