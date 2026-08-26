@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Modules\Sales\Enums\OrderActivityAction;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelJob;
 use Modules\Sales\Models\BulkShippingLabelBatch;
@@ -129,6 +130,16 @@ class BulkShippingLabelControllerTest extends TestCase
 
         $this->get("/api/v1/sales/shipping-labels/bulk/{$batch->id}/pdf")
             ->assertStatus(404);
+    }
+
+    public function test_unauthenticated_pdf_request_returns_json_401_not_500(): void
+    {
+        $this->actingAsGuest('sanctum');
+
+        $this->get('/api/v1/sales/shipping-labels/bulk/'.Str::uuid().'/pdf')
+            ->assertUnauthorized()
+            ->assertJsonPath('status', 'error')
+            ->assertJsonPath('title', 'Sesi berakhir');
     }
 
     public function test_download_pdf_streams_when_ready(): void

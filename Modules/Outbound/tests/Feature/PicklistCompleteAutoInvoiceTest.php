@@ -134,4 +134,36 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
             ->assertJsonPath('data.data.0.id', $this->order->id)
             ->assertJsonPath('data.data.0.invoice_no', $invoice->invoice_number);
     }
+
+    public function test_last_picked_item_automatically_completes_picklist(): void
+    {
+        $this->order->update(['source' => null]);
+        $item = $this->picklist->items()->firstOrFail();
+        $item->update([
+            'qty_picked' => 0,
+            'item_status' => null,
+        ]);
+
+        DB::table('inventories')->insert([
+            'id' => \Illuminate\Support\Str::uuid()->toString(),
+            'item_id' => $this->variant->id,
+            'location_id' => $this->location->id,
+            'bin_id' => $this->bin->id,
+            'on_hand' => 1,
+            'on_order' => 0,
+            'available' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        app(PicklistService::class)->pickItem($this->picklist->id, $item->id, [
+            'qty_delta' => 1,
+            'bin_code' => $this->bin->bin_final_code,
+        ]);
+
+        $this->assertDatabaseHas('picklists', [
+            'id' => $this->picklist->id,
+            'status' => Picklist::STATUS_COMPLETED,
+        ]);
+    }
 }

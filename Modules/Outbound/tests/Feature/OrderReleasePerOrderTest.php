@@ -236,7 +236,7 @@ class OrderReleasePerOrderTest extends TestCase
         );
     }
 
-    public function test_release_is_idempotent_across_repeated_picks(): void
+    public function test_last_pick_releases_order_and_completes_picklist(): void
     {
         $userId = $this->seedUser();
         $locationId = $this->seedLocation();
@@ -259,20 +259,17 @@ class OrderReleasePerOrderTest extends TestCase
         $service = app(PicklistService::class);
 
         $service->pickItem($picklistId, $order['item_id'], [
-            'qty_delta' => 2,
+            'qty_delta' => 1,
             'bin_code' => 'L1-B1-K1-R1',
         ]);
-        $this->assertSame('picked', $this->orderStatus($order['order_id']));
+        $this->assertSame('reserved', $this->orderStatus($order['order_id']));
 
-        $service->pickItem($picklistId, $order['item_id'], [
-            'qty_picked' => 1,
-            'bin_code' => 'L1-B1-K1-R1',
-        ]);
         $service->pickItem($picklistId, $order['item_id'], [
             'qty_delta' => 1,
             'bin_code' => 'L1-B1-K1-R1',
         ]);
 
         $this->assertSame('picked', $this->orderStatus($order['order_id']));
+        $this->assertSame(Picklist::STATUS_COMPLETED, $this->picklistStatus($picklistId));
     }
 }

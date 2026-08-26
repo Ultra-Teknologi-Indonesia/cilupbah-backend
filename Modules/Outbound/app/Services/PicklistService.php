@@ -400,6 +400,36 @@ class PicklistService
                     ->releaseIfComplete($picklist, (string) $item->order_id);
             }
         });
+
+        $this->autoCompleteIfResolved($picklistId);
+    }
+
+    private function autoCompleteIfResolved(string $picklistId): void
+    {
+        DB::transaction(function () use ($picklistId): void {
+            $picklist = Picklist::query()
+                ->with('items')
+                ->lockForUpdate()
+                ->find($picklistId);
+
+            if (! $picklist || ! in_array($picklist->status, [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS], true)) {
+                return;
+            }
+
+            if ($picklist->items->isEmpty() || ! $picklist->items->every(function (PicklistItem $item): bool {
+                return (int) $item->qty_picked >= (int) $item->qty_ordered
+                    || in_array($item->item_status, [PicklistItem::STATUS_SHORT, PicklistItem::STATUS_REJECTED], true);
+            })) {
+                return;
+            }
+
+            $this->picklistRepository->update($picklistId, [
+                'status' => Picklist::STATUS_COMPLETED,
+                'completed_at' => now(),
+            ]);
+
+            ProcessPicklistCompleteJob::dispatch($picklistId);
+        });
     }
 
     private function itemAlreadyFullException(PicklistItem $item, int $current, int $ordered): UserFacingException
@@ -759,7 +789,7 @@ class PicklistService
             throw new OutboundValidationException("Alasan gagal tidak valid: {$reasonCode}.");
         }
 
-        return DB::transaction(function () use ($picklistId, $itemId, $reasonCode, $reasonNote, $userId) {
+        $picklist = DB::transaction(function () use ($picklistId, $itemId, $reasonCode, $reasonNote, $userId) {
             $picklist = $this->picklistRepository->findById($picklistId);
 
             if (!$picklist) {
@@ -802,6 +832,10 @@ class PicklistService
 
             return $this->picklistRepository->findById($picklistId);
         });
+
+        $this->autoCompleteIfResolved($picklistId);
+
+        return $this->picklistRepository->findById($picklistId) ?? $picklist;
     }
 
     public function unfailPickItem(string $picklistId, string $itemId, string $userId): Picklist
