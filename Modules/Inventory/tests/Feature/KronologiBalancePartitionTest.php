@@ -111,6 +111,27 @@ class KronologiBalancePartitionTest extends TestCase
         );
     }
 
+    public function test_balance_api_menggunakan_saldo_fisik_dan_memisahkan_alokasi(): void
+    {
+        $this->movement('PUTAWAY_IN', 4, 4, 1, $this->finalBinId);
+        $this->movement('ORDER_RESERVE', -2, 2, 2);
+
+        request()->merge([
+            'filter' => ['item_id' => $this->itemId],
+            'per_page' => 50,
+        ]);
+
+        $paginated = app(InventoryMovementRepository::class)->getHistoryPaginated(50);
+        $resource = \Modules\Inventory\Http\Resources\InventoryMovementResource::collection($paginated);
+        $rows = collect($resource->response()->getData(true)['data'])
+            ->keyBy('transaction_number');
+
+        $reserve = $rows['TRX-ORDER_RESERVE-2'];
+
+        $this->assertSame(4, $reserve['balance']);
+        $this->assertSame(2, $reserve['available_balance']);
+    }
+
     public function test_filter_drill_allocation_hanya_baris_alokasi(): void
     {
         $this->movement('PUTAWAY_IN', 10, 10, 1);

@@ -275,7 +275,8 @@ class InventoryMovementRepository
         $deductList = "'" . implode("','", InventoryMovementSourceMap::ORDER_DEDUCT_SOURCES) . "'";
         $restoreList = "'" . implode("','", InventoryMovementSourceMap::ORDER_RESTORE_SOURCES) . "'";
         $effectiveQtySql = "CASE WHEN source IN ($deductList) THEN -ABS(qty) WHEN source IN ($restoreList) THEN ABS(qty) ELSE qty END";
-        $reservedList = "'" . implode("','", InventoryMovementSourceMap::ALLOCATION_PARTITION_SOURCES) . "'";
+        $nonPhysicalList = "'" . implode("','", InventoryMovementSourceMap::NON_PHYSICAL_SOURCES) . "'";
+        $physicalQtySql = "CASE WHEN source IN ($nonPhysicalList) THEN 0 ELSE qty END";
         $hasLocationFilter = ! empty(request('filter.location_id', request('location_id')));
 
         $balanceQuery = InventoryMovement::query()
@@ -329,6 +330,9 @@ class InventoryMovementRepository
             ->select('inventory_movements.id')
             ->selectRaw(
                 "SUM($effectiveQtySql) OVER (PARTITION BY $balancePartition ORDER BY inventory_movements.transaction_date, inventory_movements.id) AS total_balance"
+            )
+            ->selectRaw(
+                "SUM($physicalQtySql) OVER (PARTITION BY $balancePartition ORDER BY inventory_movements.transaction_date, inventory_movements.id) AS physical_balance"
             );
 
         $pickOrderScope = "FROM picklist_items pi"
@@ -346,6 +350,7 @@ class InventoryMovementRepository
             })
             ->select('inventory_movements.*')
             ->selectRaw('movement_balances.total_balance')
+            ->selectRaw('movement_balances.physical_balance')
             ->selectRaw(
                 '(SELECT EXISTS(SELECT 1 FROM sales_invoices si '
                 . 'JOIN picklist_items pi ON pi.order_id = si.order_id '

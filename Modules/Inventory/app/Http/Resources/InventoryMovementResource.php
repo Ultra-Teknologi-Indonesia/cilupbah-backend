@@ -76,7 +76,10 @@ class InventoryMovementResource extends JsonResource
             'is_variance' => InventoryMovementSourceMap::isVariance($this->source),
             'direction' => $direction,
             'qty' => $qty,
-            'balance' => (int) ($this->total_balance ?? $this->balance),
+            // Saldo utama adalah stok fisik. Reservasi pesanan tidak mengurangi
+            // on_hand dan tersedia terpisah melalui available_balance.
+            'balance' => (int) ($this->physical_balance ?? $this->balance),
+            'available_balance' => (int) ($this->total_balance ?? $this->balance),
             'transaction_date' => $this->transaction_date,
             'created_by' => ActorName::resolve($this->created_by),
             'created_at' => $this->created_at,
