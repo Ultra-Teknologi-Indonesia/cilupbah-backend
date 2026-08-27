@@ -2,6 +2,7 @@
 
 namespace Modules\Channel\Tests\Feature;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Modules\Channel\Services\LazadaClient;
 use Tests\TestCase;
@@ -78,6 +79,28 @@ class LazadaClientRetryTest extends TestCase
             (new LazadaClient())->request('GET', '/products/get', [], 'tok', 2, 1);
         } finally {
             Http::assertSentCount(1);
+        }
+    }
+
+    public function test_connection_error_does_not_expose_signed_url_or_access_token(): void
+    {
+        Http::fake([
+            'api.lazada.co.id/rest/*' => function () {
+                throw new ConnectionException(
+                    'cURL error 28: Operation timed out after 1000 milliseconds with 0 bytes received for '
+                    . 'https://api.lazada.co.id/rest/products/get?access_token=secret-token&sign=secret-sign'
+                );
+            },
+        ]);
+
+        try {
+            (new LazadaClient())->request('GET', '/products/get', [], 'secret-token', 1, 1);
+            $this->fail('Expected a Lazada connection exception.');
+        } catch (\Exception $e) {
+            $this->assertStringContainsString('request timeout setelah 1 detik', $e->getMessage());
+            $this->assertStringNotContainsString('secret-token', $e->getMessage());
+            $this->assertStringNotContainsString('secret-sign', $e->getMessage());
+            $this->assertStringNotContainsString('access_token=', $e->getMessage());
         }
     }
 }

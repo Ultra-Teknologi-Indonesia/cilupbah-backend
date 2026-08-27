@@ -9,6 +9,7 @@ use Modules\Channel\Http\Resources\DownloadTransactionResource;
 use Modules\Channel\Services\ChannelDownloadService;
 use OpenApi\Attributes as OA;
 use App\Traits\ApiResponse;
+use Illuminate\Support\Facades\Log;
 
 class ChannelDownloadController extends Controller
 {
@@ -209,10 +210,15 @@ class ChannelDownloadController extends Controller
 
             return $this->successResponse($result['items'], 'Pencarian produk lintas channel berhasil', 200, $result['meta']);
         } catch (\Throwable $e) {
+            Log::error('Unified channel search failed', [
+                'exception' => get_class($e),
+                'code' => $e->getCode(),
+            ]);
+
             return $this->errorResponse(
                 'Gagal mencari produk lintas channel.',
                 500,
-                ['detail' => $e->getMessage()],
+                ['detail' => 'Pencarian produk tidak dapat diproses saat ini.'],
                 'Terjadi kesalahan',
             );
         }

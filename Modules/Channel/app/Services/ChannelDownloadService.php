@@ -180,6 +180,8 @@ class ChannelDownloadService
                     'shop_name' => $shop->shop_name,
                     'channel' => $channelCode,
                     'error' => $remoteResult['error'] ?? 'Pencarian toko gagal',
+                    'error_code' => $remoteResult['error_code'] ?? 'UPSTREAM_ERROR',
+                    'retryable' => (bool) ($remoteResult['retryable'] ?? true),
                 ];
                 continue;
             }
@@ -326,10 +328,33 @@ class ChannelDownloadService
                     'ok' => false,
                     'items' => [],
                     'exception' => get_class($e),
-                    'error' => $e->getMessage(),
+                    ...static::safeRemoteSearchError($channel, $e),
                 ];
             }
         };
+    }
+
+    /**
+     * Keep provider details, signed URLs, and access tokens out of the API response.
+     */
+    protected static function safeRemoteSearchError(string $channel, \Throwable $exception): array
+    {
+        $message = strtolower($exception->getMessage());
+        $label = ucfirst($channel);
+
+        if (str_contains($message, 'curl error 28') || str_contains($message, 'timed out') || str_contains($message, 'timeout')) {
+            return [
+                'error_code' => 'UPSTREAM_TIMEOUT',
+                'retryable' => true,
+                'error' => "{$label} tidak merespons tepat waktu. Silakan coba lagi.",
+            ];
+        }
+
+        return [
+            'error_code' => 'UPSTREAM_ERROR',
+            'retryable' => true,
+            'error' => "Pencarian produk di {$label} gagal. Silakan coba lagi.",
+        ];
     }
 
     protected function runRemoteSearchTasks(array $tasks): array

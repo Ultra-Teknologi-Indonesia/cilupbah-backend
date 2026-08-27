@@ -82,7 +82,18 @@ class LazadaClient
                     continue;
                 }
 
-                throw new \Exception('Lazada API Error: ' . $e->getMessage(), 0, $e);
+                Log::error('Lazada API connection failed', [
+                    'path' => $apiPath,
+                    'attempts' => $attempt,
+                    'timeout_seconds' => $timeout,
+                    'exception' => get_class($e),
+                ]);
+
+                throw new \Exception(
+                    'Lazada API Error: ' . $this->safeConnectionErrorMessage($e, $timeout),
+                    0,
+                    $e,
+                );
             }
 
             $data = $response->json() ?? [];
@@ -187,6 +198,25 @@ class LazadaClient
     {
 
         sleep(min(2 ** ($attempt - 1), 8));
+    }
+
+    protected function safeConnectionErrorMessage(\Illuminate\Http\Client\ConnectionException $exception, int $timeout): string
+    {
+        $message = strtolower($exception->getMessage());
+
+        if (str_contains($message, 'curl error 28') || str_contains($message, 'timed out') || str_contains($message, 'timeout')) {
+            return "request timeout setelah {$timeout} detik";
+        }
+
+        if (str_contains($message, 'could not resolve') || str_contains($message, 'resolve host')) {
+            return 'host Lazada tidak dapat ditemukan';
+        }
+
+        if (str_contains($message, 'ssl') || str_contains($message, 'certificate')) {
+            return 'koneksi TLS ke Lazada gagal';
+        }
+
+        return 'koneksi ke Lazada gagal';
     }
 
     protected function formatErrorDetail($detail): string

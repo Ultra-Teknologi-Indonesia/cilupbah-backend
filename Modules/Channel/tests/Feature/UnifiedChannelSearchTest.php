@@ -328,6 +328,46 @@ class UnifiedChannelSearchTest extends TestCase
             ->assertJsonPath('meta.failed_stores.0.shop_id', 'TT-SHOP-1');
     }
 
+    public function test_unified_search_redacts_provider_credentials_from_failed_store(): void
+    {
+        config([
+            'services.lazada.app_key' => 'test-lazada-key',
+            'services.lazada.app_secret' => 'test-lazada-secret',
+            'services.lazada.base_url' => 'https://api.lazada.co.id/rest',
+            'channel.search_remote_attempts' => 1,
+        ]);
+
+        $lazadaChannel = Channel::create(['code' => 'lazada', 'name' => 'Lazada', 'is_active' => true]);
+        ChannelShop::create([
+            'channel_id' => $lazadaChannel->id,
+            'shop_id' => 'LZ-SECRET-1',
+            'shop_name' => 'Lazada Store',
+            'access_token' => 'secret-token',
+            'is_active' => true,
+        ]);
+
+        Http::fake([
+            'api.lazada.co.id/rest/products/get*' => Http::response([
+                'code' => 'InvalidParameter',
+                'message' => 'provider failure access_token=secret-token sign=secret-sign',
+            ], 500),
+        ]);
+
+        $response = $this->actingAs($this->user)
+            ->postJson('/api/v1/channel/download/search', [
+                'q' => 'SKU-SECRET-1',
+                'shop_ids' => ['LZ-SECRET-1'],
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('meta.failed_stores.0.error_code', 'UPSTREAM_ERROR');
+
+        $body = $response->getContent();
+        $this->assertStringNotContainsString('secret-token', $body);
+        $this->assertStringNotContainsString('secret-sign', $body);
+        $this->assertStringNotContainsString('access_token=', $body);
+    }
+
     public function test_shopee_remote_search_matches_a_non_first_variant_sku(): void
     {
         Http::fake([

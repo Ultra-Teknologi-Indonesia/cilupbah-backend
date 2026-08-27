@@ -463,7 +463,8 @@ class LazadaProductService
         $results = [];
         $seen    = [];
         $limit   = self::SEARCH_PAGE_LIMIT;
-        $searchTimeout = max(1, $timeoutSeconds ?? (int) config('channel.search_remote_timeout_seconds', 8));
+        $searchTimeout = max(1, $timeoutSeconds ?? (int) config('channel.search_remote_timeout_seconds', 10));
+        $searchAttempts = max(1, (int) config('channel.search_remote_attempts', 2));
 
         foreach (self::PULL_FILTERS as $filter) {
 
@@ -484,7 +485,7 @@ class LazadaProductService
                         $params,
                         $shop->access_token,
                         $searchTimeout,
-                        1,
+                        $searchAttempts,
                     );
                 } catch (TokenExpiredException $e) {
                     $this->authService->refreshStoreToken((string) $shop->id);
@@ -495,7 +496,7 @@ class LazadaProductService
                         $params,
                         $shop->access_token,
                         $searchTimeout,
-                        1,
+                        $searchAttempts,
                     );
                 }
 

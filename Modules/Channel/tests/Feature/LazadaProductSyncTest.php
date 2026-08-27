@@ -374,6 +374,26 @@ class LazadaProductSyncTest extends TestCase
         });
     }
 
+    public function test_search_products_retries_transient_lazada_timeout_response(): void
+    {
+        config([
+            'channel.search_remote_timeout_seconds' => 5,
+            'channel.search_remote_attempts' => 2,
+        ]);
+
+        Http::fake([
+            'api.lazada.co.id/rest/products/get*' => Http::sequence()
+                ->push(['code' => 'SystemError', 'message' => 'The request has failed due to RPC timeout'], 200)
+                ->push(['code' => '0', 'data' => ['products' => []]], 200)
+                ->push(['code' => '0', 'data' => ['products' => []]], 200),
+        ]);
+
+        $results = app(LazadaProductService::class)->searchProducts('LZ-100', 'SKU-NOT-FOUND');
+
+        $this->assertSame([], $results);
+        Http::assertSentCount(3);
+    }
+
     public function test_generic_download_endpoint_accepts_lazada(): void
     {
         \Illuminate\Support\Facades\Queue::fake();
