@@ -6,6 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Repositories\MonitorStockRepository;
+use Modules\Inventory\Support\StockSummary;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Modules\Warehouse\Models\Location;
@@ -179,5 +180,44 @@ class MonitorSummaryEquivalenceTest extends TestCase
             $count,
             'Ringkasan harus satu query. Kalau jadi lima lagi, regresi performanya kembali.',
         );
+    }
+
+    public function test_summary_excludes_unplaced_stock_and_keeps_negative_available(): void
+    {
+        $variant = $this->makeVariant('SKU-SCOPE', 10, 10);
+
+        Inventory::where('item_id', $variant->id)
+            ->where('location_id', $this->location->id)
+            ->where('bin_id', $this->bin->id)
+            ->update(['on_order' => 15]);
+
+        $inbound = LocationBin::create([
+            'location_id' => $this->location->id,
+            'bin_code' => 'DEFAULT',
+            'bin_final_code' => 'DEFAULT',
+            'is_inbound' => true,
+        ]);
+
+        Inventory::create([
+            'item_id' => $variant->id,
+            'location_id' => $this->location->id,
+            'bin_id' => null,
+            'on_hand' => 100,
+            'on_order' => 0,
+        ]);
+        Inventory::create([
+            'item_id' => $variant->id,
+            'location_id' => $this->location->id,
+            'bin_id' => $inbound->id,
+            'on_hand' => 200,
+            'on_order' => 0,
+        ]);
+
+        $summary = StockSummary::forItem($variant->id, $this->location->id);
+
+        $this->assertSame(10, $summary['on_hand']);
+        $this->assertSame(300, $summary['pending_placement']);
+        $this->assertSame(15, $summary['on_order']);
+        $this->assertSame(-5, $summary['available']);
     }
 }

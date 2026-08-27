@@ -2036,7 +2036,7 @@ class InboundService
             }
 
             if ($defaultBin) {
-                $this->inventoryService->adjust([
+                $this->applyRollbackInventoryDelta([
                     'item_id'            => $item->item_id,
                     'location_id'        => $inbound->location_id,
                     'bin_id'             => $defaultBin->id,
@@ -2047,7 +2047,7 @@ class InboundService
                 ]);
             }
 
-            $this->inventoryService->adjust([
+            $this->applyRollbackInventoryDelta([
                 'item_id'            => $item->item_id,
                 'location_id'        => $transitLocationId,
                 'bin_id'             => $transitBinId,
@@ -2074,6 +2074,41 @@ class InboundService
                 'received_at'    => null,
             ]);
         }
+    }
+
+    private function applyRollbackInventoryDelta(array $data): void
+    {
+        $alreadyRecorded = InventoryMovement::query()
+            ->where('transaction_number', $data['transaction_number'])
+            ->where('item_id', $data['item_id'])
+            ->where('location_id', $data['location_id'])
+            ->where('bin_id', $data['bin_id'])
+            ->where('source', $data['source'])
+            ->exists();
+
+        if ($alreadyRecorded) {
+            return;
+        }
+
+        $inventory = $this->inventoryRepository->findOrCreateForUpdate(
+            $data['item_id'],
+            $data['location_id'],
+            $data['bin_id'],
+        );
+        $inventory->on_hand += (int) $data['qty'];
+        $this->inventoryRepository->updateStock($inventory);
+
+        InventoryMovement::create([
+            'item_id'            => $data['item_id'],
+            'location_id'        => $data['location_id'],
+            'bin_id'             => $data['bin_id'],
+            'transaction_number' => $data['transaction_number'],
+            'source'             => $data['source'],
+            'qty'                => $data['qty'],
+            'balance'            => $inventory->on_hand,
+            'transaction_date'   => now(),
+            'created_by'         => $data['created_by'],
+        ]);
     }
 
     public function downloadBarcodes(string $id)

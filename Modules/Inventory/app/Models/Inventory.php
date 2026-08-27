@@ -47,7 +47,16 @@ class Inventory extends Model
     public function movements(): HasMany
     {
         return $this->hasMany(InventoryMovement::class, 'item_id', 'item_id')
-            ->where('location_id', $this->location_id);
+            ->where('location_id', $this->location_id)
+            ->where(function ($query) {
+                $query
+                    ->whereColumn('inventory_movements.bin_id', 'inventories.bin_id')
+                    ->orWhere(function ($nullBin) {
+                        $nullBin
+                            ->whereNull('inventory_movements.bin_id')
+                            ->whereNull('inventories.bin_id');
+                    });
+            });
     }
 
     public function scopePlaced($query)

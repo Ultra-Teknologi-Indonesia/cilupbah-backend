@@ -114,6 +114,13 @@ class OrderAllocationLedgerTest extends TestCase
             'qty' => 7,
             'balance' => 7,
         ]);
+
+        $this->assertNotNull(
+            DB::table('inventory_movements')
+                ->where('transaction_number', 'SO-ALLOC-1')
+                ->where('source', 'ORDER_RESERVE')
+                ->value('bin_id')
+        );
     }
 
     public function test_pick_records_order_release_ledger_row(): void
@@ -131,6 +138,17 @@ class OrderAllocationLedgerTest extends TestCase
             'qty' => -4,
             'balance' => 3,
         ]);
+
+        $reserveBin = DB::table('inventory_movements')
+            ->where('transaction_number', 'SO-ALLOC-2')
+            ->where('source', 'ORDER_RESERVE')
+            ->value('bin_id');
+        $releaseBin = DB::table('inventory_movements')
+            ->where('transaction_number', 'SO-ALLOC-2')
+            ->where('source', 'ORDER_RELEASE')
+            ->value('bin_id');
+
+        $this->assertSame($reserveBin, $releaseBin);
     }
 
     public function test_cancel_records_order_release_ledger_row(): void

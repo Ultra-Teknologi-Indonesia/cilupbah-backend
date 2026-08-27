@@ -7,6 +7,7 @@ namespace Modules\Report\Services;
 use App\Support\WarehouseAccess;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
+use Modules\Inventory\Support\StockSummary;
 use Modules\Warehouse\Models\Location;
 
 final class InventoryStockReportService
@@ -32,6 +33,8 @@ final class InventoryStockReportService
             ->where('l.is_active', true)
             ->where('l.is_warehouse', true)
             ->where('l.location_code', '!=', Location::SYSTEM_TRANSIT_CODE)
+            ->whereNotNull('b.id')
+            ->where('b.is_inbound', false)
             ->when($filters['item_ids'], fn (Builder $q, array $ids) => $q->whereIn('i.item_id', $ids))
             ->select([
                 'i.item_id',
@@ -44,8 +47,8 @@ final class InventoryStockReportService
                 'b.column_code',
                 'b.bin_final_code',
             ])
-            ->selectRaw('COALESCE(SUM(i.on_hand), 0) as qty_on_hand')
-            ->selectRaw('COALESCE(SUM(i.on_hand), 0) as qty_actual')
+            ->selectRaw(StockSummary::placedOnHandSql('i', 'b') . ' as qty_on_hand')
+            ->selectRaw(StockSummary::placedOnHandSql('i', 'b') . ' as qty_actual')
             ->groupBy([
                 'i.item_id',
                 'pv.sku',
@@ -56,7 +59,7 @@ final class InventoryStockReportService
                 'b.column_code',
                 'b.bin_final_code',
             ])
-            ->when($filters['only_with_stock'], fn (Builder $q) => $q->havingRaw('COALESCE(SUM(i.on_hand), 0) > 0'))
+            ->when($filters['only_with_stock'], fn (Builder $q) => $q->havingRaw(StockSummary::placedOnHandSql('i', 'b') . ' > 0'))
             ->orderBy('pv.sku')
             ->orderByRaw('COALESCE(b.bin_final_code, \'Tidak ada rak\')');
 
@@ -73,6 +76,10 @@ final class InventoryStockReportService
             ->join('locations as l', 'l.id', '=', 'i.location_id')
             ->where('l.is_active', true)
             ->where('l.location_code', '!=', Location::SYSTEM_TRANSIT_CODE)
+            ->leftJoin('location_bins as b', function ($join): void {
+                $join->on('b.id', '=', 'i.bin_id')
+                    ->on('b.location_id', '=', 'i.location_id');
+            })
             ->when($filters['item_ids'], fn (Builder $q, array $ids) => $q->whereIn('i.item_id', $ids))
             ->when($filters['location_ids'], fn (Builder $q, array $ids) => $q->whereIn('i.location_id', $ids))
             ->select([
@@ -89,11 +96,11 @@ final class InventoryStockReportService
                 'pv.buy_price',
                 'pv.min_stock',
             ])
-            ->selectRaw('COALESCE(SUM(i.on_hand), 0) as qty')
+            ->selectRaw(StockSummary::placedOnHandSql('i', 'b') . ' as qty')
             ->selectRaw('COALESCE(SUM(i.on_order), 0) as ordered')
             ->selectRaw('COALESCE(SUM(i.on_order), 0) as reserved')
-            ->selectRaw('GREATEST(0, COALESCE(SUM(i.on_hand), 0) - COALESCE(SUM(i.on_order), 0)) as available')
-            ->selectRaw('COALESCE(SUM(i.on_hand * i.avg_cost), 0) as inventory_value')
+            ->selectRaw('(' . StockSummary::placedOnHandSql('i', 'b') . ' - COALESCE(SUM(i.on_order), 0)) as available')
+            ->selectRaw('COALESCE(SUM(CASE WHEN b.id IS NOT NULL AND b.is_inbound = false THEN i.on_hand * i.avg_cost ELSE 0 END), 0) as inventory_value')
             ->groupBy([
                 'i.item_id',
                 'pv.sku',
@@ -112,10 +119,10 @@ final class InventoryStockReportService
             ->orderBy('l.location_name');
 
         $this->applyWarehouseAccess($query, 'i.location_id');
-        $this->applyStockFilter($query, $filters['stock_filter'], 'i.on_hand');
+        $this->applyStockFilter($query, $filters['stock_filter'], StockSummary::placedOnHandSql('i', 'b'));
 
         if ($filters['only_not_restocked']) {
-            $query->havingRaw('GREATEST(0, COALESCE(SUM(i.on_hand), 0) - COALESCE(SUM(i.on_order), 0)) >= COALESCE(pv.min_stock, 0)');
+            $query->havingRaw('(' . StockSummary::placedOnHandSql('i', 'b') . ' - COALESCE(SUM(i.on_order), 0)) >= COALESCE(pv.min_stock, 0)');
         }
 
         return $query;
@@ -164,7 +171,7 @@ final class InventoryStockReportService
             ->selectRaw('COALESCE(SUM(snapshot.balance), 0) as qty')
             ->selectRaw('0 as ordered')
             ->selectRaw('0 as reserved')
-            ->selectRaw('GREATEST(0, COALESCE(SUM(snapshot.balance), 0)) as available')
+            ->selectRaw('COALESCE(SUM(snapshot.balance), 0) as available')
             ->selectRaw('COALESCE(SUM(snapshot.balance), 0) * pv.buy_price as inventory_value')
             ->groupBy([
                 'snapshot.item_id',
@@ -184,21 +191,21 @@ final class InventoryStockReportService
             ->orderBy('l.location_name');
 
         $this->applyWarehouseAccess($query, 'snapshot.location_id');
-        $this->applyStockFilter($query, $filters['stock_filter'], 'snapshot.balance');
+        $this->applyStockFilter($query, $filters['stock_filter'], 'COALESCE(SUM(snapshot.balance), 0)');
 
         if ($filters['only_not_restocked']) {
-            $query->havingRaw('GREATEST(0, COALESCE(SUM(snapshot.balance), 0)) >= COALESCE(pv.min_stock, 0)');
+            $query->havingRaw('COALESCE(SUM(snapshot.balance), 0) >= COALESCE(pv.min_stock, 0)');
         }
 
         return $query;
     }
 
-    private function applyStockFilter(Builder $query, string $filter, string $quantityColumn): void
+    private function applyStockFilter(Builder $query, string $filter, string $quantityExpression): void
     {
         if ($filter === 'positive') {
-            $query->havingRaw('GREATEST(0, COALESCE(SUM('.$quantityColumn.'), 0)) > 0');
+            $query->havingRaw($quantityExpression . ' > 0');
         } elseif ($filter === 'zero') {
-            $query->havingRaw('GREATEST(0, COALESCE(SUM('.$quantityColumn.'), 0)) = 0');
+            $query->havingRaw($quantityExpression . ' = 0');
         }
     }
 

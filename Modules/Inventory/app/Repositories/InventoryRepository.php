@@ -174,7 +174,7 @@ class InventoryRepository
             ->sum('on_hand');
         $onOrder = (int) Inventory::where('item_id', $itemId)->sum('on_order');
 
-        return max(0, $placedOnHand - $onOrder);
+        return $placedOnHand - $onOrder;
     }
 
     public function sumOnHandAtLocation(string $itemId, string $locationId): int

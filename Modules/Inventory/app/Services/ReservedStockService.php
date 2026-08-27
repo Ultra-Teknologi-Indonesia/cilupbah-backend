@@ -29,6 +29,16 @@ class ReservedStockService
 
     public function create(array $data): ReservedStock
     {
+        foreach ($data['items'] as $itemData) {
+            if (! empty($itemData['bin_id'])) {
+                app(\Modules\Warehouse\Services\InboundBinPolicy::class)->assertConsumable(
+                    $data['location_id'],
+                    $itemData['bin_id'],
+                    'reservasi stok',
+                );
+            }
+        }
+
         return DB::transaction(function () use ($data) {
             $reservedStockNo = $this->reservedStockRepository->generateReservedStockNo();
 
