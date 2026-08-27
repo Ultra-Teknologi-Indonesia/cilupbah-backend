@@ -3,19 +3,20 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\Log;
+use Modules\Outbound\Support\InstantOrderClassifier;
 
 class TikTokToInternalOrderMapper
 {
     protected const STATUS_MAP = [
-        'UNPAID'              => 'UNPAID',
-        'ON_HOLD'             => 'ON_HOLD',
-        'AWAITING_SHIPMENT'   => 'AWAITING_SHIPMENT',
-        'PARTIALLY_SHIPPING'  => 'PARTIALLY_SHIPPING',
+        'UNPAID' => 'UNPAID',
+        'ON_HOLD' => 'ON_HOLD',
+        'AWAITING_SHIPMENT' => 'AWAITING_SHIPMENT',
+        'PARTIALLY_SHIPPING' => 'PARTIALLY_SHIPPING',
         'AWAITING_COLLECTION' => 'AWAITING_COLLECTION',
-        'IN_TRANSIT'          => 'IN_TRANSIT',
-        'DELIVERED'           => 'DELIVERED',
-        'COMPLETED'           => 'COMPLETED',
-        'CANCELLED'           => 'CANCELLED',
+        'IN_TRANSIT' => 'IN_TRANSIT',
+        'DELIVERED' => 'DELIVERED',
+        'COMPLETED' => 'COMPLETED',
+        'CANCELLED' => 'CANCELLED',
     ];
 
     protected const CODE_MAP = [
@@ -78,7 +79,7 @@ class TikTokToInternalOrderMapper
 
         $priorityFulfillment = ! empty($tiktokOrder['is_replacement_order'])
             || ($tiktokOrder['fulfillment_priority_level'] ?? 0) > 0
-            || \Modules\Outbound\Support\InstantOrderClassifier::isPriority($shippingProvider);
+            || InstantOrderClassifier::isPriority($shippingProvider);
 
         $cancelInitiator = $channelStatus === 'CANCELLED'
             ? ($tiktokOrder['cancellation_initiator'] ?? null)
@@ -92,73 +93,73 @@ class TikTokToInternalOrderMapper
         }
 
         return [
-            'channel_order_no'   => (string) ($tiktokOrder['id'] ?? ''),
-            'channel_shop_id'    => $shopId,
-            'channel_buyer_id'   => isset($tiktokOrder['user_id']) ? (string) $tiktokOrder['user_id'] : null,
-            'customer_name'      => $this->resolveCustomerName($address['name'] ?? null, $tiktokOrder['buyer_nickname'] ?? null, $tiktokOrder['buyer_email'] ?? null),
-            'transaction_date'   => isset($tiktokOrder['create_time']) ? date('Y-m-d H:i:s', $tiktokOrder['create_time']) : now(),
+            'channel_order_no' => (string) ($tiktokOrder['id'] ?? ''),
+            'channel_package_ids' => $this->extractPackageIds($packages),
+            'channel_shop_id' => $shopId,
+            'channel_buyer_id' => isset($tiktokOrder['user_id']) ? (string) $tiktokOrder['user_id'] : null,
+            'customer_name' => $this->resolveCustomerName($address['name'] ?? null, $tiktokOrder['buyer_nickname'] ?? null, $tiktokOrder['buyer_email'] ?? null),
+            'transaction_date' => isset($tiktokOrder['create_time']) ? date('Y-m-d H:i:s', $tiktokOrder['create_time']) : now(),
 
-            'sub_total'          => $subTotal,
-            'total_disc'         => $totalDisc,
+            'sub_total' => $subTotal,
+            'total_disc' => $totalDisc,
 
-            'seller_voucher'     => isset($payment['seller_discount']) ? (float) $payment['seller_discount'] : null,
-            'platform_voucher'   => isset($payment['platform_discount']) ? (float) $payment['platform_discount'] : null,
+            'seller_voucher' => isset($payment['seller_discount']) ? (float) $payment['seller_discount'] : null,
+            'platform_voucher' => isset($payment['platform_discount']) ? (float) $payment['platform_discount'] : null,
             'order_processing_fee' => isset($payment['handling_fee']) ? (float) $payment['handling_fee'] : null,
             'seller_shipping_borne' => isset($payment['shipping_fee_seller_discount']) ? (float) $payment['shipping_fee_seller_discount'] : null,
             'platform_shipping_rebate' => isset($payment['shipping_fee_platform_discount']) || isset($payment['shipping_fee_cofunded_discount'])
                 ? (float) ($payment['shipping_fee_platform_discount'] ?? 0) + (float) ($payment['shipping_fee_cofunded_discount'] ?? 0)
                 : null,
-            'total_tax'          => isset($payment['tax']) ? (float) $payment['tax'] : 0,
-            'shipping_cost'      => isset($payment['original_shipping_fee']) ? (float) $payment['original_shipping_fee'] : 0,
+            'total_tax' => isset($payment['tax']) ? (float) $payment['tax'] : 0,
+            'shipping_cost' => isset($payment['original_shipping_fee']) ? (float) $payment['original_shipping_fee'] : 0,
             'actual_shipping_fee' => isset($payment['shipping_fee']) ? (float) $payment['shipping_fee'] : null,
-            'insurance_cost'     => isset($payment['shipping_insurance_fee']) ? (float) $payment['shipping_insurance_fee'] : 0,
-            'grand_total'        => $netProductTotal > 0 ? $netProductTotal : (isset($payment['total_amount']) ? (float) $payment['total_amount'] : 0),
-            'order_weight_gram'  => null,
+            'insurance_cost' => isset($payment['shipping_insurance_fee']) ? (float) $payment['shipping_insurance_fee'] : 0,
+            'grand_total' => $netProductTotal > 0 ? $netProductTotal : (isset($payment['total_amount']) ? (float) $payment['total_amount'] : 0),
+            'order_weight_gram' => null,
 
             'shipping_full_name' => $address['name'] ?? null,
-            'shipping_phone'     => $address['phone_number'] ?? null,
-            'shipping_address'   => $address['full_address'] ?? null,
-            'shipping_city'      => $address['city'] ?? null,
-            'shipping_province'  => $address['state'] ?? null,
+            'shipping_phone' => $address['phone_number'] ?? null,
+            'shipping_address' => $address['full_address'] ?? null,
+            'shipping_city' => $address['city'] ?? null,
+            'shipping_province' => $address['state'] ?? null,
             'shipping_post_code' => $address['postal_code'] ?? $address['zipcode'] ?? null,
-            'shipping_country'   => $address['region_code'] ?? $address['country'] ?? null,
+            'shipping_country' => $address['region_code'] ?? $address['country'] ?? null,
 
-            'channel_status'              => $channelStatus,
-            'channel_fulfillment_status'  => $fulfillmentStatus,
-            'status'                      => 'UNPAID',
-            'is_paid'                     => $isPaid,
-            'is_canceled'                 => $channelStatus === 'CANCELLED',
-            'is_cod'                      => $isCod,
-            'priority_fulfillment'        => $priorityFulfillment,
-            'is_split_order'              => strtoupper($tiktokOrder['split_or_combine_tag'] ?? '') === 'SPLIT',
+            'channel_status' => $channelStatus,
+            'channel_fulfillment_status' => $fulfillmentStatus,
+            'status' => 'UNPAID',
+            'is_paid' => $isPaid,
+            'is_canceled' => $channelStatus === 'CANCELLED',
+            'is_cod' => $isCod,
+            'priority_fulfillment' => $priorityFulfillment,
+            'is_split_order' => strtoupper($tiktokOrder['split_or_combine_tag'] ?? '') === 'SPLIT',
 
-            'cancel_reason'        => $channelStatus === 'CANCELLED' ? ($tiktokOrder['cancel_reason'] ?? null) : null,
-            'cancel_by'            => $cancelInitiator ? strtolower($cancelInitiator) : null,
-            'cancel_requested_at'  => $isCancelRequested ? (string) now() : null,
+            'cancel_reason' => $channelStatus === 'CANCELLED' ? ($tiktokOrder['cancel_reason'] ?? null) : null,
+            'cancel_by' => $cancelInitiator ? strtolower($cancelInitiator) : null,
+            'cancel_requested_at' => $isCancelRequested ? (string) now() : null,
             'cancel_request_reason' => $isCancelRequested ? ($tiktokOrder['cancel_reason'] ?? null) : null,
-            'fulfillment_flag'     => $fulfillmentType,
-            'payment_method'       => $tiktokOrder['payment_method_code'] ?? null,
-            'payment_method_name'  => $tiktokOrder['payment_method_name'] ?? null,
-            'tracking_number'      => $trackingNumber,
-            'shipping_provider'    => $shippingProvider,
-            'buyer_message'        => $tiktokOrder['buyer_message'] ?? null,
-            'seller_note'          => $tiktokOrder['seller_note'] ?? null,
-            'paid_time'            => ! empty($tiktokOrder['paid_time']) ? date('Y-m-d H:i:s', $tiktokOrder['paid_time']) : null,
-            'ship_by_date'         => ! empty($tiktokOrder['shipping_due_time']) ? date('Y-m-d H:i:s', $tiktokOrder['shipping_due_time'])
+            'fulfillment_flag' => $fulfillmentType,
+            'payment_method' => $tiktokOrder['payment_method_code'] ?? null,
+            'payment_method_name' => $tiktokOrder['payment_method_name'] ?? null,
+            'tracking_number' => $trackingNumber,
+            'shipping_provider' => $shippingProvider,
+            'buyer_message' => $tiktokOrder['buyer_message'] ?? null,
+            'seller_note' => $tiktokOrder['seller_note'] ?? null,
+            'paid_time' => ! empty($tiktokOrder['paid_time']) ? date('Y-m-d H:i:s', $tiktokOrder['paid_time']) : null,
+            'ship_by_date' => ! empty($tiktokOrder['shipping_due_time']) ? date('Y-m-d H:i:s', $tiktokOrder['shipping_due_time'])
                                         : (! empty($tiktokOrder['rts_sla_time']) ? date('Y-m-d H:i:s', $tiktokOrder['rts_sla_time']) : null),
-            'pickup_done_time'     => ! empty($tiktokOrder['collection_time']) ? date('Y-m-d H:i:s', $tiktokOrder['collection_time']) : null,
-            'pickup_code'          => $this->extractPickupCode($tiktokOrder),
-            'channel_updated_at'   => ! empty($tiktokOrder['update_time']) ? date('Y-m-d H:i:s', $tiktokOrder['update_time']) : null,
-            // TikTok Shop is the API/provider. The commerce platform can be
-            // Tokopedia for migrated shops, so keep both dimensions explicit.
-            'source'               => 'tiktok',
-            'commerce_platform'    => $commercePlatform,
+            'pickup_done_time' => ! empty($tiktokOrder['collection_time']) ? date('Y-m-d H:i:s', $tiktokOrder['collection_time']) : null,
+            'pickup_code' => $this->extractPickupCode($tiktokOrder),
+            'channel_updated_at' => ! empty($tiktokOrder['update_time']) ? date('Y-m-d H:i:s', $tiktokOrder['update_time']) : null,
 
-            'fulfillment_type'     => $fulfillmentType,
-            'delivery_option_id'   => $deliveryOptionId,
-            'shipping_type'        => $shippingType,
+            'source' => 'tiktok',
+            'commerce_platform' => $commercePlatform,
 
-            'items'                => $items,
+            'fulfillment_type' => $fulfillmentType,
+            'delivery_option_id' => $deliveryOptionId,
+            'shipping_type' => $shippingType,
+
+            'items' => $items,
         ];
     }
 
@@ -203,6 +204,7 @@ class TikTokToInternalOrderMapper
                 return $mapped;
             }
             Log::warning("TikTok: kode status tidak dikenal '{$rawStatus}' untuk order {$orderId}");
+
             return 'UNPAID';
         }
 
@@ -212,6 +214,7 @@ class TikTokToInternalOrderMapper
         }
 
         Log::warning("TikTok: order_status tidak dikenal '{$rawStatus}' untuk order {$orderId}");
+
         return $upper;
     }
 
@@ -223,7 +226,16 @@ class TikTokToInternalOrderMapper
                 return (string) $tn;
             }
         }
+
         return null;
+    }
+
+    protected function extractPackageIds(array $packages): array
+    {
+        return array_values(array_unique(array_filter(array_map(
+            static fn (array $package): string => (string) ($package['id'] ?? ''),
+            $packages,
+        ))));
     }
 
     protected function extractShippingProvider(array $packages): ?string
@@ -234,6 +246,7 @@ class TikTokToInternalOrderMapper
                 return (string) $sp;
             }
         }
+
         return null;
     }
 
@@ -245,6 +258,7 @@ class TikTokToInternalOrderMapper
                 return (string) $sp;
             }
         }
+
         return null;
     }
 
@@ -257,7 +271,7 @@ class TikTokToInternalOrderMapper
 
         $skuId = $lineItem['sku_id'] ?? null;
         if (! empty($skuId)) {
-            return 'TK-' . $skuId;
+            return 'TK-'.$skuId;
         }
 
         return null;
@@ -281,20 +295,20 @@ class TikTokToInternalOrderMapper
 
             $imageUrl = $li['sku_image']['url'] ?? $li['product_image']['url'] ?? null;
             $sku = $this->resolveItemSku($li);
-            $key = ($li['product_id'] ?? '') . '|' . ($sku ?? '') . '|' . $price;
+            $key = ($li['product_id'] ?? '').'|'.($sku ?? '').'|'.$price;
 
             if (! isset($grouped[$key])) {
                 $grouped[$key] = [
                     'channel_product_id' => $li['product_id'] ?? null,
-                    'sku'                => $sku,
-                    'description'        => trim(($li['product_name'] ?? '') . (isset($li['sku_name']) && $li['sku_name'] ? ' - ' . $li['sku_name'] : '')),
-                    'qty_in_base'        => 0,
-                    'price'              => $price,
-                    'disc'               => $disc,
-                    'disc_amount'        => 0,
-                    'tax_amount'         => 0,
-                    'amount'             => 0,
-                    'image_url'          => $imageUrl,
+                    'sku' => $sku,
+                    'description' => trim(($li['product_name'] ?? '').(isset($li['sku_name']) && $li['sku_name'] ? ' - '.$li['sku_name'] : '')),
+                    'qty_in_base' => 0,
+                    'price' => $price,
+                    'disc' => $disc,
+                    'disc_amount' => 0,
+                    'tax_amount' => 0,
+                    'amount' => 0,
+                    'image_url' => $imageUrl,
                 ];
             }
 

@@ -14,6 +14,8 @@ return [
 
     'timezone' => 'UTC',
 
+    'business_timezone' => env('APP_BUSINESS_TIMEZONE', env('APP_SCHEDULE_TIMEZONE', 'Asia/Jakarta')),
+
     'schedule_timezone' => env('APP_SCHEDULE_TIMEZONE', 'Asia/Jakarta'),
 
     'locale' => env('APP_LOCALE', 'en'),

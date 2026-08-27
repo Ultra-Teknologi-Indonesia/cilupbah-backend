@@ -262,6 +262,19 @@ class StockAdjustmentService
 
     private function assertBinsBelongToLocation(array $items, string $locationId): void
     {
+        $itemBinKeys = collect($items)
+            ->map(static fn (array $item): string => sprintf(
+                '%s|%s',
+                (string) ($item['item_id'] ?? ''),
+                (string) ($item['bin_id'] ?? ''),
+            ));
+
+        if ($itemBinKeys->duplicates()->isNotEmpty()) {
+            throw new \InvalidArgumentException(
+                'SKU yang sama tidak boleh dicantumkan dua kali pada rak yang sama.',
+            );
+        }
+
         $binIds = collect($items)
             ->pluck('bin_id')
             ->filter()
@@ -276,12 +289,13 @@ class StockAdjustmentService
         $validBinIds = LocationBin::query()
             ->where('location_id', $locationId)
             ->whereIn('id', $binIds->all())
+            ->where('is_inbound', false)
             ->pluck('id')
             ->map(static fn ($id): string => (string) $id);
 
         if ($binIds->diff($validBinIds)->isNotEmpty()) {
             throw new \InvalidArgumentException(
-                'Rak penyesuaian harus berada di gudang yang dipilih.',
+                'Rak penyesuaian harus berada di gudang yang dipilih. Rak inbound/DEFAULT tidak dapat dipakai untuk penyesuaian; tempatkan penerimaan terlebih dahulu sebelum penyesuaian.',
             );
         }
     }

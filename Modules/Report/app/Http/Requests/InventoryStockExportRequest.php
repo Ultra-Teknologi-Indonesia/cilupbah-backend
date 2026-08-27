@@ -64,7 +64,7 @@ final class InventoryStockExportRequest extends FormRequest
                 return;
             }
 
-            if ($location->location_code === Location::SYSTEM_TRANSIT_CODE || $location->is_system) {
+            if ($location->location_code === Location::SYSTEM_TRANSIT_CODE) {
                 $validator->errors()->add('location_id', 'Lokasi Transit tidak dapat digunakan untuk laporan persediaan per rak.');
             }
 

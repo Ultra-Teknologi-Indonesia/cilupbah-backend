@@ -660,7 +660,7 @@ class InboundService
             $defaultBin = $inbound ? $this->binService->getDefaultBin($inbound->location_id) : null;
 
             if ($notPutAway > 0 && $defaultBin && $inbound) {
-                $this->inventoryService->adjust([
+                $this->inventoryService->adjustInboundStaging([
                     'item_id'            => $item->item_id,
                     'location_id'        => $inbound->location_id,
                     'bin_id'             => $defaultBin->id,
@@ -923,7 +923,7 @@ class InboundService
                 }
 
                 if (! $isDamage) {
-                    $this->inventoryService->adjust([
+                    $this->inventoryService->adjustInboundStaging([
                         'item_id'            => $inboundItem->item_id,
                         'location_id'        => $inbound->location_id,
                         'bin_id'             => $defaultBin->id,
@@ -1313,7 +1313,7 @@ class InboundService
                     continue;
                 }
 
-                $this->inventoryService->adjust([
+                $this->inventoryService->adjustInboundStaging([
                     'item_id'            => $item->item_id,
                     'location_id'        => $inbound->location_id,
                     'bin_id'             => $defaultBin->id,
@@ -1659,7 +1659,7 @@ class InboundService
                     throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: "Sebagian barang sudah di-putaway atau sedang dalam penempatan aktif; hanya {$available} unit yang masih di bin inbound dan bisa dikoreksi.", status: 422);
                 }
 
-                $this->inventoryService->adjust([
+                $this->inventoryService->adjustInboundStaging([
                     'item_id'            => $item->item_id,
                     'location_id'        => $inbound->location_id,
                     'bin_id'             => $defaultBin->id,
@@ -1764,7 +1764,7 @@ class InboundService
                 ? $reasonNote
                 : $this->buildQtyCorrectionNote($inbound, $item, $current, $targetQty, $userId);
 
-            $this->inventoryService->adjust([
+            $this->inventoryService->adjustInboundStaging([
                 'item_id'            => $item->item_id,
                 'location_id'        => $inbound->location_id,
                 'bin_id'             => $defaultBin->id,
@@ -2010,7 +2010,7 @@ class InboundService
 
             $reverseQty = $item->received_qty - $item->putaway_qty;
             if ($reverseQty > 0 && $defaultBin) {
-                $this->inventoryService->adjust([
+                $this->inventoryService->adjustInboundStaging([
                     'item_id'            => $item->item_id,
                     'location_id'        => $inbound->location_id,
                     'bin_id'             => $defaultBin->id,
@@ -2036,7 +2036,7 @@ class InboundService
             }
 
             if ($defaultBin) {
-                $this->inventoryService->adjust([
+                $this->applyRollbackInventoryDelta([
                     'item_id'            => $item->item_id,
                     'location_id'        => $inbound->location_id,
                     'bin_id'             => $defaultBin->id,
@@ -2047,7 +2047,7 @@ class InboundService
                 ]);
             }
 
-            $this->inventoryService->adjust([
+            $this->applyRollbackInventoryDelta([
                 'item_id'            => $item->item_id,
                 'location_id'        => $transitLocationId,
                 'bin_id'             => $transitBinId,
@@ -2074,6 +2074,41 @@ class InboundService
                 'received_at'    => null,
             ]);
         }
+    }
+
+    private function applyRollbackInventoryDelta(array $data): void
+    {
+        $alreadyRecorded = InventoryMovement::query()
+            ->where('transaction_number', $data['transaction_number'])
+            ->where('item_id', $data['item_id'])
+            ->where('location_id', $data['location_id'])
+            ->where('bin_id', $data['bin_id'])
+            ->where('source', $data['source'])
+            ->exists();
+
+        if ($alreadyRecorded) {
+            return;
+        }
+
+        $inventory = $this->inventoryRepository->findOrCreateForUpdate(
+            $data['item_id'],
+            $data['location_id'],
+            $data['bin_id'],
+        );
+        $inventory->on_hand += (int) $data['qty'];
+        $this->inventoryRepository->updateStock($inventory);
+
+        InventoryMovement::create([
+            'item_id'            => $data['item_id'],
+            'location_id'        => $data['location_id'],
+            'bin_id'             => $data['bin_id'],
+            'transaction_number' => $data['transaction_number'],
+            'source'             => $data['source'],
+            'qty'                => $data['qty'],
+            'balance'            => $inventory->on_hand,
+            'transaction_date'   => now(),
+            'created_by'         => $data['created_by'],
+        ]);
     }
 
     public function downloadBarcodes(string $id)

@@ -2,12 +2,17 @@
 
 namespace Modules\Channel\Services;
 
+use Illuminate\Support\Collection;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Sales\Repositories\SalesOrderRepository;
 use Modules\Sales\Services\SalesOrderService;
 
 class TikTokOrderPlatformBackfillService
 {
+    private const CHUNK_SIZE = 100;
+
+    private const MAX_REPORTED_ROWS = 100;
+
     public function __construct(
         private readonly TikTokClient $client,
         private readonly ChannelShopRepository $shopRepository,
@@ -28,7 +33,7 @@ class TikTokOrderPlatformBackfillService
         );
 
         $result = [
-            'total' => $orders->count(),
+            'total' => 0,
             'updated' => 0,
             'unchanged' => 0,
             'not_found' => 0,
@@ -37,27 +42,30 @@ class TikTokOrderPlatformBackfillService
             'rows' => [],
         ];
 
-        foreach ($orders->groupBy('channel_shop_id') as $channelShopId => $shopOrders) {
-            $shop = $this->shopRepository->findByShopId((string) $channelShopId);
+        $shops = [];
+        $orders->chunkById(self::CHUNK_SIZE, function (Collection $shopOrders) use (&$result, &$shops, $apply): void {
+            foreach ($shopOrders as $order) {
+                $result['total']++;
+                $channelShopId = (string) $order->channel_shop_id;
+                $shop = array_key_exists($channelShopId, $shops)
+                    ? $shops[$channelShopId]
+                    : ($shops[$channelShopId] = $this->shopRepository->findByShopId($channelShopId));
 
-            if (! $shop || ! $shop->access_token || ! $shop->shop_cipher) {
-                foreach ($shopOrders as $order) {
+                if (! $shop || ! $shop->access_token || ! $shop->shop_cipher) {
                     $result['errors']++;
-                    $result['rows'][] = $this->row(
+                    $this->appendRow($result, $this->row(
                         $order,
                         null,
                         'error',
                         'Toko TikTok atau kredensial API tidak tersedia.',
-                    );
+                    ));
+
+                    continue;
                 }
 
-                continue;
-            }
-
-            foreach ($shopOrders as $order) {
                 $this->reconcileOrder($order, $shop, $apply, $result);
             }
-        }
+        }, 'id');
 
         return $result;
     }
@@ -77,7 +85,7 @@ class TikTokOrderPlatformBackfillService
             );
         } catch (\Throwable $exception) {
             $result['errors']++;
-            $result['rows'][] = $this->row($order, null, 'error', $exception->getMessage());
+            $this->appendRow($result, $this->row($order, null, 'error', $exception->getMessage()));
 
             return;
         }
@@ -88,12 +96,12 @@ class TikTokOrderPlatformBackfillService
 
         if (! $remoteOrder) {
             $result['not_found']++;
-            $result['rows'][] = $this->row(
+            $this->appendRow($result, $this->row(
                 $order,
                 null,
                 'not_found',
                 'Pesanan tidak ditemukan pada toko TikTok yang tersimpan.',
-            );
+            ));
 
             return;
         }
@@ -107,13 +115,13 @@ class TikTokOrderPlatformBackfillService
 
         if ($this->orderRepository->salesOrderNoBelongsToAnotherOrder($targetNumber, (string) $order->id)) {
             $result['conflicts']++;
-            $result['rows'][] = $this->row(
+            $this->appendRow($result, $this->row(
                 $order,
                 $targetNumber,
                 'conflict',
                 'Nomor pesanan tujuan sudah dipakai pesanan lain; tidak diubah.',
                 $commercePlatform,
-            );
+            ));
 
             return;
         }
@@ -123,7 +131,7 @@ class TikTokOrderPlatformBackfillService
 
         if (! $changed) {
             $result['unchanged']++;
-            $result['rows'][] = $this->row($order, $targetNumber, 'unchanged', null, $commercePlatform);
+            $this->appendRow($result, $this->row($order, $targetNumber, 'unchanged', null, $commercePlatform));
 
             return;
         }
@@ -141,7 +149,7 @@ class TikTokOrderPlatformBackfillService
             $action = 'would_update';
         }
 
-        $result['rows'][] = $this->row($order, $targetNumber, $action, null, $commercePlatform);
+        $this->appendRow($result, $this->row($order, $targetNumber, $action, null, $commercePlatform));
     }
 
     private function resolveCommercePlatform(array $remoteOrder): string
@@ -168,5 +176,12 @@ class TikTokOrderPlatformBackfillService
             'action' => $action,
             'message' => $message,
         ];
+    }
+
+    private function appendRow(array &$result, array $row): void
+    {
+        if (count($result['rows']) < self::MAX_REPORTED_ROWS) {
+            $result['rows'][] = $row;
+        }
     }
 }

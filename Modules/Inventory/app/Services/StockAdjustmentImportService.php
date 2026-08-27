@@ -52,7 +52,7 @@ class StockAdjustmentImportService
         $binCodes = collect($rows)->pluck('bin_final_code')->filter()->map(fn ($s) => trim((string) $s))->unique()->values()->all();
         $bins = LocationBin::where('location_id', $locationId)
             ->whereIn('bin_final_code', $binCodes)
-            ->get(['id', 'bin_final_code'])
+            ->get(['id', 'bin_final_code', 'is_inbound'])
             ->keyBy('bin_final_code');
 
         $productNames = \Modules\Product\Models\Product::whereIn('id', $variants->pluck('product_id')->filter()->unique())
@@ -120,6 +120,14 @@ class StockAdjustmentImportService
                     $errors[] = ['row' => $rowNo, 'field' => 'bin_final_code', 'error' => "[SKU: {$sku}] Rak '{$binCode}' tidak ditemukan di lokasi ini."];
                     continue;
                 }
+                if ((bool) $bin->is_inbound) {
+                    $errors[] = [
+                        'row' => $rowNo,
+                        'field' => 'bin_final_code',
+                        'error' => "[SKU: {$sku}] Rak '{$binCode}' adalah bin inbound/DEFAULT dan tidak dapat dipakai untuk penyesuaian. Lakukan putaway ke rak final terlebih dahulu.",
+                    ];
+                    continue;
+                }
                 $binId = $bin->id;
                 $binResolved = $bin->bin_final_code;
             } else {
@@ -129,7 +137,7 @@ class StockAdjustmentImportService
                     ->whereNotNull('bin_id')
                     ->where('on_hand', '>', 0)
                     ->with('bin:id,bin_final_code')
-                    ->whereHas('bin', fn ($q) => $q->where('bin_final_code', '!=', 'DEFAULT'))
+                    ->whereHas('bin', fn ($q) => $q->where('is_inbound', false))
                     ->orderBy('created_at')
                     ->first();
 
@@ -138,12 +146,13 @@ class StockAdjustmentImportService
                         ->where('location_id', $locationId)
                         ->whereNotNull('bin_id')
                         ->with('bin:id,bin_final_code')
+                        ->whereHas('bin', fn ($q) => $q->where('is_inbound', false))
                         ->orderBy('created_at')
                         ->first();
                 }
 
                 if (! $primary) {
-                    $errors[] = ['row' => $rowNo, 'field' => 'bin_final_code', 'error' => "[SKU: {$sku}] Item ini belum pernah masuk gudang ini. Harap tentukan kode rak secara manual."];
+                    $errors[] = ['row' => $rowNo, 'field' => 'bin_final_code', 'error' => "[SKU: {$sku}] Tidak ada stok pada rak final di gudang ini. Stok di DEFAULT wajib dipindahkan lewat putaway terlebih dahulu."];
                     continue;
                 }
                 $binId = $primary->bin_id;

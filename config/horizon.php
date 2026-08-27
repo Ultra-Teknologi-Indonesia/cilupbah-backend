@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\HorizonBasicAuth;
 use Illuminate\Support\Str;
 
 return [
@@ -17,7 +18,7 @@ return [
         Str::slug(env('APP_NAME', 'laravel'), '_').'_horizon:'
     ),
 
-    'middleware' => ['web', \App\Http\Middleware\HorizonBasicAuth::class],
+    'middleware' => ['web', HorizonBasicAuth::class],
 
     'allowed_emails' => array_values(array_filter(array_map(
         'trim',
@@ -168,11 +169,11 @@ return [
             'nice' => 0,
         ],
         'supervisor-labels' => [
-            'connection' => 'redis-long',
-            'queue' => ['labels'],
+            'connection' => config('queue.routing.labels.connection', 'redis-long'),
+            'queue' => [config('queue.routing.labels.queue', 'labels')],
             'balance' => 'auto',
             'minProcesses' => 1,
-            'maxProcesses' => 2,
+            'maxProcesses' => max(1, (int) config('queue.routing.labels.parallelism', 2)),
             'maxJobs' => 100,
             'timeout' => 600,
             'tries' => 1,

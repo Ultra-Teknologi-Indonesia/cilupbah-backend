@@ -10,16 +10,16 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelJob;
 use Modules\Sales\Models\BulkShippingLabelBatch;
+use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Services\BulkShippingLabelService;
+use Modules\Sales\Services\SalesOrderService;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class BulkShippingLabelController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private BulkShippingLabelService $svc)
-    {
-    }
+    public function __construct(private BulkShippingLabelService $svc) {}
 
     public function store(Request $req): JsonResponse
     {
@@ -34,6 +34,7 @@ class BulkShippingLabelController extends Controller
         $key = "bulk-label:{$userId}";
         if (RateLimiter::tooManyAttempts($key, 5)) {
             $seconds = RateLimiter::availableIn($key);
+
             return $this->errorResponse("Terlalu sering. Coba lagi dalam {$seconds} detik.", 429);
         }
         RateLimiter::hit($key, 60);
@@ -61,11 +62,11 @@ class BulkShippingLabelController extends Controller
         }]);
 
         $waitingShopee = $batch->items
-            ->where('status', \Modules\Sales\Models\BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP)
+            ->where('status', BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP)
             ->count();
 
         $waitingAwb = $batch->items
-            ->where('status', \Modules\Sales\Models\BulkShippingLabelItem::STATUS_WAITING_AWB)
+            ->where('status', BulkShippingLabelItem::STATUS_WAITING_AWB)
             ->count();
 
         $retryable = $batch->items->filter(fn ($i) => $i->isRecoverable())->count();
@@ -84,6 +85,7 @@ class BulkShippingLabelController extends Controller
             'finished_at' => $batch->finished_at,
             'items' => $batch->items->map(function ($i) {
                 $order = $i->order;
+
                 return [
                     'id' => $i->id,
                     'order_id' => $i->order_id,
@@ -99,7 +101,7 @@ class BulkShippingLabelController extends Controller
                     'status_label' => $this->statusLabel($i->status),
                     'status_message' => $this->statusMessage($i),
                     'reason' => $i->reason,
-                    'is_instant' => $i->status === \Modules\Sales\Models\BulkShippingLabelItem::STATUS_SKIPPED_INSTANT,
+                    'is_instant' => $i->status === BulkShippingLabelItem::STATUS_SKIPPED_INSTANT,
                     'is_retryable' => $i->isRecoverable(),
                     'is_terminal' => $i->isTerminal(),
                 ];
@@ -120,21 +122,22 @@ class BulkShippingLabelController extends Controller
     private function statusLabel(string $status): string
     {
         return match ($status) {
-            \Modules\Sales\Models\BulkShippingLabelItem::STATUS_PENDING => 'Menunggu',
-            \Modules\Sales\Models\BulkShippingLabelItem::STATUS_DOWNLOADING => 'Mengambil',
-            \Modules\Sales\Models\BulkShippingLabelItem::STATUS_WAITING_AWB => 'Menarik No. Resi',
-            \Modules\Sales\Models\BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP => 'Menunggu Shopee',
-            \Modules\Sales\Models\BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP => 'Menunggu Lazada',
-            \Modules\Sales\Models\BulkShippingLabelItem::STATUS_DONE => 'Berhasil',
-            \Modules\Sales\Models\BulkShippingLabelItem::STATUS_SKIPPED_INSTANT => 'Instant courier',
-            \Modules\Sales\Models\BulkShippingLabelItem::STATUS_FAILED => 'Gagal',
+            BulkShippingLabelItem::STATUS_PENDING => 'Menunggu',
+            BulkShippingLabelItem::STATUS_DOWNLOADING => 'Mengambil',
+            BulkShippingLabelItem::STATUS_WAITING_AWB => 'Menarik No. Resi',
+            BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP => 'Menunggu Shopee',
+            BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP => 'Menunggu Lazada',
+            BulkShippingLabelItem::STATUS_DONE => 'Berhasil',
+            BulkShippingLabelItem::STATUS_SKIPPED_INSTANT => 'Instant courier',
+            BulkShippingLabelItem::STATUS_FAILED => 'Gagal',
             default => ucfirst($status),
         };
     }
 
-    private function statusMessage(\Modules\Sales\Models\BulkShippingLabelItem $item): string
+    private function statusMessage(BulkShippingLabelItem $item): string
     {
-        $item_class = \Modules\Sales\Models\BulkShippingLabelItem::class;
+        $item_class = BulkShippingLabelItem::class;
+
         return match (true) {
             $item->status === $item_class::STATUS_PENDING => 'Menunggu antrean',
             $item->status === $item_class::STATUS_DOWNLOADING => 'Sedang mengambil resi...',
@@ -147,8 +150,7 @@ class BulkShippingLabelController extends Controller
                 $item->reason === $item_class::REASON_PARCEL_ALREADY_SHIPPED
                     || str_contains((string) $item->reason, 'parcel has been shipped')
                     || str_contains((string) $item->reason, 'already shipped')
-                    || str_contains((string) $item->reason, 'can not print now')
-                    => 'Paket sudah berstatus dikirim (SHIPPED) di marketplace, label resi tidak dapat diunduh lagi.',
+                    || str_contains((string) $item->reason, 'can not print now') => 'Paket sudah berstatus dikirim (SHIPPED) di marketplace, label resi tidak dapat diunduh lagi.',
                 $item->reason === $item_class::REASON_SHOPEE_PREP_FAILED => 'Shopee gagal menyiapkan label. Coba lagi.',
                 $item->reason === $item_class::REASON_SHOPEE_PREP_TIMEOUT => 'Timeout menunggu Shopee. Coba lagi.',
                 $item->reason === $item_class::REASON_SHOPEE_DECODE_FAILED => 'File label dari Shopee rusak. Coba lagi.',
@@ -179,9 +181,9 @@ class BulkShippingLabelController extends Controller
         $disk = Storage::disk('documents');
         abort_unless($disk->exists($batch->merged_pdf_path), 404);
 
-        $orderService = app(\Modules\Sales\Services\SalesOrderService::class);
+        $orderService = app(SalesOrderService::class);
         $batch->items()
-            ->where('status', \Modules\Sales\Models\BulkShippingLabelItem::STATUS_DONE)
+            ->where('status', BulkShippingLabelItem::STATUS_DONE)
             ->with('order')
             ->get()
             ->each(function ($item) use ($orderService, $req) {
@@ -203,7 +205,13 @@ class BulkShippingLabelController extends Controller
 
         $recoverableOrderIds = $batch->items()
             ->where('status', 'failed')
-            ->whereIn('reason', \Modules\Sales\Models\BulkShippingLabelItem::RECOVERABLE_REASONS)
+            ->where(function ($query) {
+                $query->whereIn('reason', BulkShippingLabelItem::RECOVERABLE_REASONS)
+                    ->orWhere(function ($query) {
+                        $query->where('channel', 'shopee')
+                            ->where('reason', BulkShippingLabelItem::REASON_SELF_DESIGN);
+                    });
+            })
             ->pluck('order_id')
             ->all();
 

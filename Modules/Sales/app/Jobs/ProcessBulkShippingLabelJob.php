@@ -19,12 +19,14 @@ class ProcessBulkShippingLabelJob implements ShouldQueue
     use Queueable;
     use SerializesModels;
 
-    public int $timeout = 120;
+    public int $timeout = 600;
+
     public int $tries = 1;
 
     public function __construct(public string $batchId)
     {
-        $this->onQueue('labels');
+        $this->onConnection(config('queue.routing.labels.connection', 'redis-long'));
+        $this->onQueue(config('queue.routing.labels.queue', 'labels'));
     }
 
     public function handle(BulkShippingLabelService $svc): void
@@ -32,14 +34,19 @@ class ProcessBulkShippingLabelJob implements ShouldQueue
         $batch = BulkShippingLabelBatch::find($this->batchId);
         if (! $batch) {
             Log::warning('ProcessBulkShippingLabelJob: batch not found', ['batch_id' => $this->batchId]);
+
             return;
         }
 
-        $batch->update(['started_at' => now()]);
+        if ($batch->started_at === null) {
+            $batch->update(['started_at' => now()]);
+        }
 
         try {
 
-            $svc->processPendingItems($batch, $batch->per_channel_opts);
+            $svc->dispatchPendingItems($batch);
+            $batch->recomputeCounts();
+            $svc->tryFinalize($batch);
         } catch (Throwable $e) {
             Log::error('ProcessBulkShippingLabelJob crashed', [
                 'batch_id' => $this->batchId,

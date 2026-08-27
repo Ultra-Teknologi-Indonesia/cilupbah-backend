@@ -13,6 +13,7 @@ use Modules\Inbound\Services\InboundService;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Models\StockAdjustment;
+use Modules\Inventory\Services\InventoryService;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Modules\Warehouse\Models\Location;
@@ -242,5 +243,19 @@ class QtyCorrectionAdjustmentTest extends TestCase
         $this->expectExceptionMessageMatches('/tidak bisa di bawah yang sudah ditempatkan/');
 
         $this->correct($inbound, 80);
+    }
+
+    public function test_generic_stock_adjustment_still_rejects_inbound_bin(): void
+    {
+        $this->expectException(\App\Exceptions\UserFacingException::class);
+        $this->expectExceptionMessage('bin inbound/DEFAULT');
+
+        app(InventoryService::class)->adjust([
+            'item_id' => $this->variant->id,
+            'location_id' => $this->location->id,
+            'bin_id' => $this->inboundBin->id,
+            'qty' => 1,
+            'created_by' => $this->admin->id,
+        ]);
     }
 }

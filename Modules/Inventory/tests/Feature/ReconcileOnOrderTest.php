@@ -195,4 +195,23 @@ class ReconcileOnOrderTest extends TestCase
             'balance' => 4,
         ]);
     }
+
+    public function test_fix_does_not_invent_on_order_when_actual_is_below_expected(): void
+    {
+        $v = $this->variant('RECON-UNDER');
+        $this->setAggregateOnOrder($v->id, 2);
+        $this->makeDraftTransfer($v->id, 4);
+
+        $this->artisan('inventory:reconcile-on-order', ['--fix' => true])->assertSuccessful();
+
+        $this->assertDatabaseHas('inventories', [
+            'item_id' => $v->id,
+            'on_order' => 2,
+        ]);
+        $this->assertDatabaseMissing('inventory_movements', [
+            'item_id' => $v->id,
+            'source' => 'ORDER_RELEASE',
+            'qty' => 2,
+        ]);
+    }
 }

@@ -50,6 +50,63 @@ class StockAdjustmentImportRuleTest extends TestCase
         $this->assertStringContainsString('on_hand: 5, adjustment: -10, hasil: -5', $preview['errors'][0]['error']);
     }
 
+    public function test_import_rejects_inbound_default_bin_before_confirmation(): void
+    {
+        $fixture = $this->createFixture(0);
+        $inboundBin = LocationBin::create([
+            'location_id' => $fixture['location']->id,
+            'bin_code' => 'DEFAULT',
+            'bin_final_code' => 'DEFAULT',
+            'is_inbound' => true,
+        ]);
+        Inventory::create([
+            'item_id' => $fixture['variant']->id,
+            'location_id' => $fixture['location']->id,
+            'bin_id' => $inboundBin->id,
+            'on_hand' => 33,
+            'on_order' => 0,
+            'available' => 0,
+        ]);
+
+        $preview = app(StockAdjustmentImportService::class)->preview(
+            $this->createXlsx($fixture['variant']->sku, 'DEFAULT', 1),
+            $fixture['location']->id,
+        );
+
+        $this->assertCount(1, $preview['errors']);
+        $this->assertCount(0, $preview['items']);
+        $this->assertStringContainsString('bin inbound/DEFAULT', $preview['errors'][0]['error']);
+    }
+
+    public function test_import_without_bin_uses_a_final_bin_instead_of_inbound_default_stock(): void
+    {
+        $fixture = $this->createFixture(0);
+        $inboundBin = LocationBin::create([
+            'location_id' => $fixture['location']->id,
+            'bin_code' => 'DEFAULT',
+            'bin_final_code' => 'DEFAULT',
+            'is_inbound' => true,
+        ]);
+        Inventory::create([
+            'item_id' => $fixture['variant']->id,
+            'location_id' => $fixture['location']->id,
+            'bin_id' => $inboundBin->id,
+            'on_hand' => 33,
+            'on_order' => 0,
+            'available' => 0,
+        ]);
+
+        $preview = app(StockAdjustmentImportService::class)->preview(
+            $this->createXlsx($fixture['variant']->sku, '', 1),
+            $fixture['location']->id,
+        );
+
+        $this->assertCount(0, $preview['errors']);
+        $this->assertCount(1, $preview['items']);
+        $this->assertSame($fixture['bin']->id, $preview['items'][0]['bin_id']);
+        $this->assertNotSame($inboundBin->id, $preview['items'][0]['bin_id']);
+    }
+
     private function createFixture(int $onHand): array
     {
         $location = Location::create([

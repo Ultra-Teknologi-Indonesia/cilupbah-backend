@@ -370,6 +370,7 @@ class PicklistService
             $userId = (string) (Auth::id() ?? $picklist->picker_id ?? 'system');
 
             if ($delta > 0) {
+                $this->assertInventoryForPick($item, (string) $picklist->location_id, $bin);
                 $this->commitPickAllocation($picklist, $item, $bin, $delta, $userId);
 
                 $this->picklistRepository->updateItem($itemId, [

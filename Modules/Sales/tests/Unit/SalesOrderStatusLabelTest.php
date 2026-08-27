@@ -22,6 +22,15 @@ class SalesOrderStatusLabelTest extends TestCase
         $this->assertEquals(WmsStatus::PROCESS->value, $order->resolved_wms_status);
     }
 
+    public function test_reserved_order_with_stock_shortfall_is_labeled_empty_stock(): void
+    {
+        $order = new SalesOrder(['status' => 'reserved']);
+        $order->setAttribute('has_stock_shortfall', true);
+
+        $this->assertEquals('Stok Kosong', $order->status_label);
+        $this->assertEquals(WmsStatus::PROCESS->value, $order->resolved_wms_status);
+    }
+
     public function test_reserved_order_after_handover_is_picking_not_started()
     {
         $order = new SalesOrder([

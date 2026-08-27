@@ -10,14 +10,21 @@ class BackfillTikTokCommercePlatform extends Command
     protected $signature = 'channel:backfill-tiktok-commerce-platform
         {--order= : Batasi ke salesorder_no atau channel_order_no}
         {--shop= : Batasi ke shop_id TikTok}
-        {--limit=500 : Jumlah pesanan maksimum}
+        {--limit=500 : Jumlah pesanan maksimum; gunakan 0 untuk tanpa batas}
         {--apply : Terapkan perubahan; tanpa opsi ini hanya dry-run}';
 
     protected $description = 'Rekonsiliasi platform Tokopedia/TikTok dan prefix nomor pesanan dari API TikTok.';
 
     public function handle(TikTokOrderPlatformBackfillService $service): int
     {
-        $limit = max(1, (int) $this->option('limit'));
+        $rawLimit = (string) $this->option('limit');
+        if (! ctype_digit($rawLimit)) {
+            $this->error('--limit harus berupa 0 atau bilangan bulat positif.');
+
+            return self::FAILURE;
+        }
+
+        $limit = (int) $rawLimit;
         $apply = (bool) $this->option('apply');
 
         if (! $apply) {

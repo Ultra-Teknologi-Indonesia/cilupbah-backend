@@ -174,7 +174,7 @@ class InventoryRepository
             ->sum('on_hand');
         $onOrder = (int) Inventory::where('item_id', $itemId)->sum('on_order');
 
-        return max(0, $placedOnHand - $onOrder);
+        return $placedOnHand - $onOrder;
     }
 
     public function sumOnHandAtLocation(string $itemId, string $locationId): int
@@ -583,14 +583,8 @@ class InventoryRepository
 
         $primary = (clone $primaryQuery)
             ->where('on_hand', '>', 0)
-            ->whereHas('bin', fn ($q) => $q->where('bin_final_code', '!=', 'DEFAULT'))
+            ->whereHas('bin', fn ($q) => $q->where('is_inbound', false))
             ->first();
-
-        if (! $primary) {
-            $primary = (clone $primaryQuery)
-                ->where('on_hand', '>', 0)
-                ->first();
-        }
 
         return $primary;
     }
@@ -599,6 +593,7 @@ class InventoryRepository
     {
         return (int) Inventory::where('item_id', $itemId)
             ->tap(fn ($q) => $this->applyStockSourceScope($q, $locationId))
+            ->placed()
             ->sum('on_hand');
     }
 
@@ -608,6 +603,7 @@ class InventoryRepository
             ->whereNotNull('bin_id')
             ->where('on_hand', '>', 0)
             ->tap(fn ($q) => $this->applyStockSourceScope($q, $locationId))
+            ->placed()
             ->with('bin:id,bin_final_code');
 
         if ($strategy === 'fifo') {
@@ -620,6 +616,7 @@ class InventoryRepository
 
         $assignmentQuery = \Modules\Inventory\Models\SkuRackAssignment::where('item_id', $itemId)
             ->when($locationId, fn($q) => $q->where('location_id', $locationId))
+            ->whereHas('bin', fn ($q) => $q->where('is_inbound', false))
             ->with('bin:id,bin_final_code');
 
         if (!empty($assignedBinIds)) {
@@ -669,7 +666,7 @@ class InventoryRepository
             ->join('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
             ->select('inventories.item_id', DB::raw('SUM(inventories.on_hand) as total_on_hand'))
             ->where('inventories.location_id', $locationId)
-            ->where('location_bins.bin_final_code', '!=', 'DEFAULT')
+            ->where('location_bins.is_inbound', false)
             ->groupBy('inventories.item_id');
 
         if (! $includeZero) {

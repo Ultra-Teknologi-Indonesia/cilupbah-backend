@@ -2,17 +2,18 @@
 
 namespace Modules\Channel\Services;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Modules\Channel\Exceptions\ChannelCancelException;
 use Modules\Channel\Exceptions\TokenExpiredException;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Sales\Services\SalesOrderService;
 
 class ShopeeOrderService
 {
-
     public const MAX_TIME_RANGE_DAYS = 14;
 
-    private const DETAIL_FIELDS ='recipient_address,item_list,total_amount,buyer_user_id,buyer_username,payment_method,estimated_shipping_fee,actual_shipping_fee,actual_shipping_fee_confirmed,shipping_carrier,note,pay_time,cancel_reason,buyer_cancel_reason,cancel_by,package_list,fulfillment_flag,pickup_done_time,invoice_data,order_chargeable_weight_gram,dropshipper,dropshipper_phone,split_up,return_request_due_date,ship_by_date,logistics_channel_id';
+    private const DETAIL_FIELDS = 'recipient_address,item_list,total_amount,buyer_user_id,buyer_username,payment_method,estimated_shipping_fee,actual_shipping_fee,actual_shipping_fee_confirmed,shipping_carrier,note,pay_time,cancel_reason,buyer_cancel_reason,cancel_by,package_list,fulfillment_flag,pickup_done_time,invoice_data,order_chargeable_weight_gram,dropshipper,dropshipper_phone,split_up,return_request_due_date,ship_by_date,logistics_channel_id';
 
     public function __construct(
         protected ShopeeClient $client,
@@ -24,7 +25,7 @@ class ShopeeOrderService
 
     public function pullOrders(string $shopId, ?int $updatedAfter = null, ?int $updatedBefore = null): int
     {
-        if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
+        if (app(ChannelSyncSettingService::class)->isPaused()) {
             return 0;
         }
 
@@ -48,7 +49,7 @@ class ShopeeOrderService
                     $this->orderService->upsertFromChannel($internal);
                     $count++;
                 } catch (\Throwable $e) {
-                    Log::error("Shopee: gagal upsert order {$orderSn}: " . $e->getMessage());
+                    Log::error("Shopee: gagal upsert order {$orderSn}: ".$e->getMessage());
                 }
             }
         }
@@ -79,7 +80,7 @@ class ShopeeOrderService
             try {
                 $escrowRaw = $this->getEscrowDetail($shopId, $orderSn);
                 if (! empty($escrowRaw)) {
-                    $finance = app(\Modules\Channel\Services\ShopeeEscrowMapper::class)->map($escrowRaw);
+                    $finance = app(ShopeeEscrowMapper::class)->map($escrowRaw);
                     $this->orderService->updateOrderFinance($orderId, $finance);
                 }
             } catch (\Throwable $e) {
@@ -221,7 +222,9 @@ class ShopeeOrderService
 
     public function getTrackingInfo(string $shopId, string $orderSn): array
     {
-        if ($orderSn === '') return [];
+        if ($orderSn === '') {
+            return [];
+        }
 
         try {
             $shop = $this->requireShop($shopId);
@@ -235,7 +238,7 @@ class ShopeeOrderService
 
             return $res['response']['tracking_info'] ?? [];
         } catch (\Throwable $e) {
-            Log::warning("Shopee: gagal ambil tracking info {$orderSn}: " . $e->getMessage());
+            Log::warning("Shopee: gagal ambil tracking info {$orderSn}: ".$e->getMessage());
 
             return [];
         }
@@ -254,10 +257,10 @@ class ShopeeOrderService
 
             return [
                 'tracking_number' => $res['response']['tracking_number'] ?? null,
-                'pickup_code'     => $res['response']['pickup_code'] ?? null,
+                'pickup_code' => $res['response']['pickup_code'] ?? null,
             ];
         } catch (\Throwable $e) {
-            Log::warning("Shopee: gagal ambil tracking number {$orderSn}: " . $e->getMessage());
+            Log::warning("Shopee: gagal ambil tracking number {$orderSn}: ".$e->getMessage());
 
             return $empty;
         }
@@ -302,11 +305,11 @@ class ShopeeOrderService
 
             return [
                 'tracking_number' => $tracking ? (string) $tracking : null,
-                'carrier'         => $carrier ? (string) $carrier : null,
-                'shipped_at'      => $shippedAt,
+                'carrier' => $carrier ? (string) $carrier : null,
+                'shipped_at' => $shippedAt,
             ];
         } catch (\Throwable $e) {
-            Log::warning("Shopee: gagal ambil resi retur (return_sn={$returnSn}): " . $e->getMessage());
+            Log::warning("Shopee: gagal ambil resi retur (return_sn={$returnSn}): ".$e->getMessage());
 
             return $empty;
         }
@@ -376,7 +379,7 @@ class ShopeeOrderService
                 'raw' => $detail,
             ];
         } catch (\Throwable $e) {
-            Log::warning("Shopee: gagal ambil detail retur (return_sn={$returnSn}): " . $e->getMessage());
+            Log::warning("Shopee: gagal ambil detail retur (return_sn={$returnSn}): ".$e->getMessage());
 
             return $empty;
         }
@@ -413,7 +416,7 @@ class ShopeeOrderService
 
             return ['records' => $records];
         } catch (\Throwable $e) {
-            Log::warning("Shopee: gagal ambil riwayat banding retur (return_sn={$returnSn}): " . $e->getMessage());
+            Log::warning("Shopee: gagal ambil riwayat banding retur (return_sn={$returnSn}): ".$e->getMessage());
 
             return ['records' => []];
         }
@@ -434,7 +437,7 @@ class ShopeeOrderService
 
             return true;
         } catch (\Throwable $e) {
-            Log::warning("Shopee: gagal setujui retur (return_sn={$returnSn}): " . $e->getMessage());
+            Log::warning("Shopee: gagal setujui retur (return_sn={$returnSn}): ".$e->getMessage());
 
             return false;
         }
@@ -466,7 +469,7 @@ class ShopeeOrderService
 
             return true;
         } catch (\Throwable $e) {
-            Log::warning("Shopee: gagal tolak/dispute retur (return_sn={$returnSn}): " . $e->getMessage());
+            Log::warning("Shopee: gagal tolak/dispute retur (return_sn={$returnSn}): ".$e->getMessage());
 
             return false;
         }
@@ -516,16 +519,16 @@ class ShopeeOrderService
 
         $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/api/v2/payment/get_escrow_list', [
             'release_time_from' => $releaseTimeFrom,
-            'release_time_to'   => $releaseTimeTo,
-            'page_no'           => $pageNo,
-            'page_size'         => $pageSize,
+            'release_time_to' => $releaseTimeTo,
+            'page_no' => $pageNo,
+            'page_size' => $pageSize,
         ], $token, $shop->shop_id));
 
         $response = $res['response'] ?? [];
 
         return [
             'escrow_list' => $response['escrow_list'] ?? [],
-            'more'        => (bool) ($response['more'] ?? false),
+            'more' => (bool) ($response['more'] ?? false),
         ];
     }
 
@@ -534,7 +537,7 @@ class ShopeeOrderService
 
         return array_map(
             fn ($r) => ['id' => $r['key'], 'text' => $r['label']],
-            app(\Modules\Channel\Services\MarketplaceCancelReasonService::class)->for('shopee'),
+            app(MarketplaceCancelReasonService::class)->for('shopee'),
         );
     }
 
@@ -550,7 +553,7 @@ class ShopeeOrderService
     public function instantChannelIds(string $shopId): array
     {
         $key = "shopee:instant_channel_ids:{$shopId}";
-        $cached = \Illuminate\Support\Facades\Cache::get($key);
+        $cached = Cache::get($key);
         if (is_array($cached)) {
             return $cached;
         }
@@ -558,7 +561,7 @@ class ShopeeOrderService
         try {
             $channels = $this->getLogistics($shopId);
         } catch (\Throwable $e) {
-            Log::warning("Shopee instantChannelIds: gagal ambil channel list untuk {$shopId}: " . $e->getMessage());
+            Log::warning("Shopee instantChannelIds: gagal ambil channel list untuk {$shopId}: ".$e->getMessage());
 
             return [];
         }
@@ -573,7 +576,7 @@ class ShopeeOrderService
             }
         }
 
-        \Illuminate\Support\Facades\Cache::put($key, $ids, now()->addHours(6));
+        Cache::put($key, $ids, now()->addHours(6));
 
         return $ids;
     }
@@ -589,7 +592,7 @@ class ShopeeOrderService
 
         $addressList = $info['pickup']['address_list'] ?? [];
         $branchList = $info['dropoff']['branch_list'] ?? [];
-        $slug = $info['slug'] ?? ($info['dropoff']['slug'] ?? null); 
+        $slug = $info['slug'] ?? ($info['dropoff']['slug'] ?? null);
 
         $method = $this->resolveHandoverMethod($opts, $infoNeeded, $addressList, $branchList);
 
@@ -660,7 +663,7 @@ class ShopeeOrderService
                 }
             }
             $body['dropoff'] = (object) $dropoff;
-        } else { 
+        } else {
             $trackingNumber = $opts['tracking_number'] ?? null;
             if ($trackingNumber === null || $trackingNumber === '') {
                 return [
@@ -674,7 +677,7 @@ class ShopeeOrderService
         }
 
         if ($slug !== null && $slug !== '') {
-            $body['slug'] = $slug; 
+            $body['slug'] = $slug;
         }
 
         $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/api/v2/logistics/ship_order', $body, $token, $shop->shop_id));
@@ -834,7 +837,7 @@ class ShopeeOrderService
                 return $selectable[0];
             }
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning("Shopee: gagal get_shipping_document_parameter {$orderSn}: " . $e->getMessage());
+            Log::warning("Shopee: gagal get_shipping_document_parameter {$orderSn}: ".$e->getMessage());
         }
 
         return $fallback;
@@ -869,8 +872,8 @@ class ShopeeOrderService
         $shop = $this->requireShop($shopId);
 
         $payload = array_filter([
-            'order_sn'               => $orderSn,
-            'package_number'         => $packageNumber,
+            'order_sn' => $orderSn,
+            'package_number' => $packageNumber,
             'shipping_document_type' => $docType,
         ], static fn ($v) => $v !== null && $v !== '');
 
@@ -886,10 +889,67 @@ class ShopeeOrderService
 
             return (bool) ($pkg['allow_self_design_awb'] ?? false);
         } catch (\Throwable $e) {
-            Log::warning("Shopee: gagal cek allow_self_design_awb {$orderSn}: " . $e->getMessage());
+            Log::warning("Shopee: gagal cek allow_self_design_awb {$orderSn}: ".$e->getMessage());
 
             return false;
         }
+    }
+
+    public const LABEL_FAILURE_SELF_DESIGN = 'self_design_required';
+
+    public const LABEL_FAILURE_PARCEL_SHIPPED = 'parcel_already_shipped';
+
+    public function classifyShippingLabelFailure(mixed $failure): ?string
+    {
+        $parts = [];
+
+        if ($failure instanceof \Throwable) {
+            $parts[] = $failure->getMessage();
+
+            if (property_exists($failure, 'rawMessage')) {
+                $parts[] = (string) $failure->rawMessage;
+            }
+            if (property_exists($failure, 'errorInfo')) {
+                $parts[] = (string) $failure->errorInfo;
+            }
+        } elseif (is_array($failure)) {
+            $parts[] = (string) ($failure['error'] ?? '');
+            $parts[] = (string) ($failure['message'] ?? '');
+            $parts[] = (string) data_get($failure, 'response.result_list.0.fail_error', '');
+            $parts[] = (string) data_get($failure, 'response.result_list.0.fail_message', '');
+        } elseif (is_string($failure)) {
+            $parts[] = $failure;
+        }
+
+        $message = mb_strtolower(implode(' ', array_filter($parts)));
+
+        foreach ([
+            'parcel has been shipped',
+            'package has been shipped',
+            'already shipped',
+            'can not print now',
+            'cannot print now',
+            'sudah dikirim',
+            'statusnya dikirim',
+        ] as $marker) {
+            if (str_contains($message, $marker)) {
+                return self::LABEL_FAILURE_PARCEL_SHIPPED;
+            }
+        }
+
+        foreach ([
+            'self-design',
+            'self design',
+            'self_design',
+            'design label sendiri',
+            'label sendiri',
+        ] as $marker) {
+            if (str_contains($message, $marker)) {
+                return self::LABEL_FAILURE_SELF_DESIGN;
+            }
+        }
+
+        return null;
     }
 
     public function createShippingDocument(string $shopId, string $orderSn, string $docType = 'NORMAL_AIR_WAYBILL', ?string $trackingNumber = null, ?string $packageNumber = null): array
@@ -996,7 +1056,7 @@ class ShopeeOrderService
                 ];
             }
 
-            usleep(800_000); 
+            usleep(800_000);
         }
 
         if ($status !== 'READY') {
@@ -1038,7 +1098,7 @@ class ShopeeOrderService
         $shop = $this->requireShop($shopId);
 
         $body = array_filter([
-            'package_status' => $opts['package_status'] ?? 2, 
+            'package_status' => $opts['package_status'] ?? 2,
             'cursor' => $opts['cursor'] ?? null,
             'page_size' => $opts['page_size'] ?? 40,
             'logistics_channel_id' => $opts['logistics_channel_id'] ?? null,
@@ -1132,9 +1192,9 @@ class ShopeeOrderService
         if (! empty($res['error'])) {
             $code = (string) $res['error'];
             $message = $res['message'] ?? $code;
-            $transient = (bool) preg_match('/server|network|timeout|inner http/i', $code . ' ' . $message);
+            $transient = (bool) preg_match('/server|network|timeout|inner http/i', $code.' '.$message);
 
-            throw new \Modules\Channel\Exceptions\ChannelCancelException(
+            throw new ChannelCancelException(
                 "Shopee menolak pembatalan {$orderSn}: {$message}",
                 retryable: $transient,
                 channelCode: $code,
@@ -1169,7 +1229,7 @@ class ShopeeOrderService
         $addressList = $info['pickup']['address_list'] ?? [];
 
         if (empty($addressList)) {
-            throw new \Exception("Tidak ada alamat pickup yang tersedia. Silakan atur ulang melalui Shopee Seller Center.");
+            throw new \Exception('Tidak ada alamat pickup yang tersedia. Silakan atur ulang melalui Shopee Seller Center.');
         }
 
         $addressId = $addressList[0]['address_id'] ?? null;
@@ -1195,7 +1255,7 @@ class ShopeeOrderService
         try {
             $this->pullOrderById($shopId, $orderSn);
         } catch (\Throwable $e) {
-            Log::warning("Shopee: resync order {$orderSn} gagal pasca aksi: " . $e->getMessage());
+            Log::warning("Shopee: resync order {$orderSn} gagal pasca aksi: ".$e->getMessage());
         }
     }
 

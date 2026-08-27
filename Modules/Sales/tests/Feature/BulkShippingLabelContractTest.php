@@ -3,10 +3,11 @@
 namespace Modules\Sales\Tests\Feature;
 
 use App\Models\User;
+use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Mockery;
-use Modules\Sales\Models\BulkShippingLabelBatch;
 use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\BulkShippingLabelService;
@@ -22,8 +23,8 @@ class BulkShippingLabelContractTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->seed(\Database\Seeders\RoleSeeder::class);
-        \Illuminate\Support\Facades\Storage::fake('documents');
+        $this->seed(RoleSeeder::class);
+        Storage::fake('documents');
         $this->user = User::factory()->create();
     }
 
@@ -31,6 +32,7 @@ class BulkShippingLabelContractTest extends TestCase
     {
         $mock = Mockery::mock(SalesOrderService::class);
         $mock->shouldReceive('getShippingLabel')->andReturn($returnShape);
+        $mock->shouldReceive('cacheShippingLabelBytes')->byDefault();
 
         return new BulkShippingLabelService($mock);
     }

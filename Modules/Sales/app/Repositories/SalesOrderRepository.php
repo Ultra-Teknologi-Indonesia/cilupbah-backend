@@ -2,15 +2,18 @@
 
 namespace Modules\Sales\Repositories;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Collection;
+use Modules\Outbound\Services\CourierMappingService;
 use Modules\Sales\Enums\ChannelStatus;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderStatusHistory;
-use Spatie\QueryBuilder\QueryBuilder;
+use Modules\Sales\Support\ChannelStatusNormalizer;
+use Ramsey\Uuid\Uuid;
 use Spatie\QueryBuilder\AllowedFilter;
+use Spatie\QueryBuilder\QueryBuilder;
 
 class SalesOrderRepository
 {
@@ -58,6 +61,7 @@ class SalesOrderRepository
         }
 
         $query = QueryBuilder::for(SalesOrder::class)
+            ->withStockShortfallFlag()
             ->with(self::LIST_RELATIONS)
             ->allowedFilters(
                 AllowedFilter::callback('item_id', fn ($q, $value) => $q->whereHas('items', fn ($q2) => $q2->whereIn('item_id', (array) $value))),
@@ -137,7 +141,7 @@ class SalesOrderRepository
             return null;
         }
 
-        return (request('sort_dir', 'desc') === 'asc' ? '' : '-') . $sortBy;
+        return (request('sort_dir', 'desc') === 'asc' ? '' : '-').$sortBy;
     }
 
     public function getTabCounts(): array
@@ -146,9 +150,9 @@ class SalesOrderRepository
             $emptyStockItemConstraint = fn ($q) => $q->whereRaw(SalesOrder::shortfallItemWhereRaw());
 
             return [
-                'all'              => $this->scopeExcludeFailedDownload(SalesOrder::query())->count(),
-                'unpaid'           => $this->visibleOrders()->where('status', 'pending')->where('is_paid', false)->count(),
-                'failed'           => $this->scopeFailedDownload(SalesOrder::query())->count(),
+                'all' => $this->scopeExcludeFailedDownload(SalesOrder::query())->count(),
+                'unpaid' => $this->visibleOrders()->where('status', 'pending')->where('is_paid', false)->count(),
+                'failed' => $this->scopeFailedDownload(SalesOrder::query())->count(),
                 'ready-to-process' => $this->excludeChannelCancelPending(
                     $this->visibleOrders()->where('status', 'reserved')
                         ->whereNull('pick_failed_at')
@@ -156,23 +160,23 @@ class SalesOrderRepository
                         ->whereDoesntHave('items', $this->unmappedItemsConstraint())
                         ->whereDoesntHave('items', $emptyStockItemConstraint)
                 )->count(),
-                'empty-stock'      => $this->visibleOrders()->where('status', 'reserved')
+                'empty-stock' => $this->visibleOrders()->where('status', 'reserved')
                     ->whereNull('pick_failed_at')
                     ->whereHas('items', $emptyStockItemConstraint)
                     ->count(),
-                'failed-pick'      => $this->visibleOrders()->where('status', 'reserved')
+                'failed-pick' => $this->visibleOrders()->where('status', 'reserved')
                     ->whereNotNull('pick_failed_at')
                     ->count(),
-                'cancellation'     => $this->visibleOrders()
+                'cancellation' => $this->visibleOrders()
                     ->where(function ($q) {
                         $q->whereIn('channel_status', ['IN_CANCEL', 'Request Cancel', 'Order Request Cancel'])
-                          ->orWhereIn('channel_status_raw', ['IN_CANCEL', 'REQUEST_CANCEL', 'AWAITING_CANCEL'])
-                          ->orWhere(function ($subQ) {
-                              $subQ->whereNotNull('cancel_requested_at')
-                                   ->whereNull('cancel_accepted_at')
-                                   ->whereNull('cancel_rejected_at')
-                                   ->whereNotIn('status', ['cancelled', 'shipped', 'completed']);
-                          });
+                            ->orWhereIn('channel_status_raw', ['IN_CANCEL', 'REQUEST_CANCEL', 'AWAITING_CANCEL'])
+                            ->orWhere(function ($subQ) {
+                                $subQ->whereNotNull('cancel_requested_at')
+                                    ->whereNull('cancel_accepted_at')
+                                    ->whereNull('cancel_rejected_at')
+                                    ->whereNotIn('status', ['cancelled', 'shipped', 'completed']);
+                            });
                     })
                     ->where('status', '!=', 'cancelled')
                     ->count(),
@@ -180,17 +184,17 @@ class SalesOrderRepository
                     ->whereNotNull('handed_to_warehouse_at')
                     ->where(function ($q) {
                         $q->whereIn('channel_status', ['IN_CANCEL', 'Request Cancel', 'Order Request Cancel'])
-                          ->orWhereIn('channel_status_raw', ['IN_CANCEL', 'REQUEST_CANCEL', 'AWAITING_CANCEL'])
-                          ->orWhere(function ($subQ) {
-                              $subQ->whereNotNull('cancel_requested_at')
-                                   ->whereNotIn('status', ['cancelled', 'shipped', 'completed']);
-                          });
+                            ->orWhereIn('channel_status_raw', ['IN_CANCEL', 'REQUEST_CANCEL', 'AWAITING_CANCEL'])
+                            ->orWhere(function ($subQ) {
+                                $subQ->whereNotNull('cancel_requested_at')
+                                    ->whereNotIn('status', ['cancelled', 'shipped', 'completed']);
+                            });
                     })
                     ->where('status', '!=', 'cancelled')
                     ->count(),
-                'channel-cancel'   => $this->visibleOrders()
+                'channel-cancel' => $this->visibleOrders()
                     ->whereIn('channel_cancel_status', ['pending', 'failed'])->count(),
-                'returned'         => $this->visibleOrders()->whereHas('returns')->count(),
+                'returned' => $this->visibleOrders()->whereHas('returns')->count(),
             ];
         });
     }
@@ -206,8 +210,8 @@ class SalesOrderRepository
     {
         return $query->where(function ($q) {
             $q->whereNull('handed_to_warehouse_at')
-              ->orWhereIn('status', ['shipped', 'cancelled'])
-              ->orWhereNotNull('cancel_requested_at');
+                ->orWhereIn('status', ['shipped', 'cancelled'])
+                ->orWhereNotNull('cancel_requested_at');
         });
     }
 
@@ -233,8 +237,8 @@ class SalesOrderRepository
     protected function applyTabScope($query, string $tab, ?string $sub = null)
     {
         return match ($tab) {
-            'unpaid'           => $query->where('status', 'pending')->where('is_paid', false),
-            'failed'           => $this->scopeFailedDownload($query),
+            'unpaid' => $query->where('status', 'pending')->where('is_paid', false),
+            'failed' => $this->scopeFailedDownload($query),
             'ready-to-process' => $this->excludeChannelCancelPending(
                 $query->where('status', 'reserved')
                     ->whereNull('pick_failed_at')
@@ -242,16 +246,16 @@ class SalesOrderRepository
                     ->whereDoesntHave('items', $this->unmappedItemsConstraint())
                     ->whereDoesntHave('items', fn ($q) => $q->whereRaw(SalesOrder::shortfallItemWhereRaw()))
             ),
-            'in-transit'       => $query->where('status', 'shipped')->whereNull('received_date'),
-            'completed'        => $query->where('status', 'shipped')->whereNotNull('received_date'),
-            'empty-stock'      => $this->applyEmptyStockSubScope($query, $sub),
-            'failed-pick'      => $query->where('status', 'reserved')
+            'in-transit' => $query->where('status', 'shipped')->whereNull('received_date'),
+            'completed' => $query->where('status', 'shipped')->whereNotNull('received_date'),
+            'empty-stock' => $this->applyEmptyStockSubScope($query, $sub),
+            'failed-pick' => $query->where('status', 'reserved')
                 ->whereNotNull('pick_failed_at'),
-            'cancellation'     => $this->applyCancellationSubScope($query, $sub),
-            'channel-cancel'   => $this->applyChannelCancelSubScope($query, $sub),
-            'returned'         => $this->applyReturnSubScope($query, $sub),
-            'all'              => $query,
-            default            => $query,
+            'cancellation' => $this->applyCancellationSubScope($query, $sub),
+            'channel-cancel' => $this->applyChannelCancelSubScope($query, $sub),
+            'returned' => $this->applyReturnSubScope($query, $sub),
+            'all' => $query,
+            default => $query,
         };
     }
 
@@ -262,9 +266,9 @@ class SalesOrderRepository
             ->whereHas('items', fn ($q) => $q->whereRaw(SalesOrder::shortfallItemWhereRaw()));
 
         return match ($sub) {
-            'waiting'   => $baseQuery->whereNull('contacted_at'),
+            'waiting' => $baseQuery->whereNull('contacted_at'),
             'confirmed' => $baseQuery->whereNotNull('contacted_at'),
-            default     => $baseQuery,
+            default => $baseQuery,
         };
     }
 
@@ -278,10 +282,10 @@ class SalesOrderRepository
     protected function applyChannelCancelSubScope($query, ?string $sub)
     {
         return match ($sub) {
-            'pending'  => $query->where('channel_cancel_status', 'pending'),
-            'failed'   => $query->where('channel_cancel_status', 'failed'),
+            'pending' => $query->where('channel_cancel_status', 'pending'),
+            'failed' => $query->where('channel_cancel_status', 'failed'),
             'accepted' => $query->where('channel_cancel_status', 'accepted'),
-            default    => $query->whereIn('channel_cancel_status', ['pending', 'failed']),
+            default => $query->whereIn('channel_cancel_status', ['pending', 'failed']),
         };
     }
 
@@ -290,34 +294,34 @@ class SalesOrderRepository
         $activeRequestCancelFilter = function ($q) {
             $q->where(function ($inner) {
                 $inner->whereIn('channel_status', ['IN_CANCEL', 'Request Cancel', 'Order Request Cancel'])
-                      ->orWhereIn('channel_status_raw', ['IN_CANCEL', 'REQUEST_CANCEL', 'AWAITING_CANCEL'])
-                      ->orWhere(function ($subQ) {
-                          $subQ->whereNotNull('cancel_requested_at')
-                               ->whereNull('cancel_accepted_at')
-                               ->whereNull('cancel_rejected_at')
-                               ->whereNotIn('status', ['cancelled', 'shipped', 'completed']);
-                      });
+                    ->orWhereIn('channel_status_raw', ['IN_CANCEL', 'REQUEST_CANCEL', 'AWAITING_CANCEL'])
+                    ->orWhere(function ($subQ) {
+                        $subQ->whereNotNull('cancel_requested_at')
+                            ->whereNull('cancel_accepted_at')
+                            ->whereNull('cancel_rejected_at')
+                            ->whereNotIn('status', ['cancelled', 'shipped', 'completed']);
+                    });
             })->where('status', '!=', 'cancelled');
         };
 
         return match ($sub) {
             'pending', null => $query->where($activeRequestCancelFilter),
-            'accepted'  => $query->whereNotNull('cancel_accepted_at'),
-            'rejected'  => $query->whereNotNull('cancel_rejected_at'),
+            'accepted' => $query->whereNotNull('cancel_accepted_at'),
+            'rejected' => $query->whereNotNull('cancel_rejected_at'),
             'cancelled' => $query->where('status', 'cancelled'),
             'post_pack' => $query->whereNotNull('handed_to_warehouse_at')
                 ->where($activeRequestCancelFilter),
-            default     => $query->where($activeRequestCancelFilter),
+            default => $query->where($activeRequestCancelFilter),
         };
     }
 
     protected function applyReturnSubScope($query, ?string $sub)
     {
         return match ($sub) {
-            'pending'  => $query->whereHas('returns', fn ($q) => $q->where('status', 'PENDING')),
+            'pending' => $query->whereHas('returns', fn ($q) => $q->where('status', 'PENDING')),
             'accepted' => $query->whereHas('returns', fn ($q) => $q->whereIn('status', ['ACCEPTED', 'COMPLETED'])),
             'rejected' => $query->whereHas('returns', fn ($q) => $q->where('status', 'REJECTED')),
-            default    => $query->whereHas('returns'),
+            default => $query->whereHas('returns'),
         };
     }
 
@@ -350,12 +354,12 @@ class SalesOrderRepository
         $emptyStockConstraint = fn ($q) => $q->whereRaw(SalesOrder::shortfallItemWhereRaw());
 
         return match ($key) {
-            'cancelled'        => $query->where('status', 'cancelled'),
-            'open'             => $query->whereIn('status', ['pending', 'reserved', 'picked', 'packed']),
-            'unpaid'           => $query->where('status', 'pending')->where('is_paid', false),
+            'cancelled' => $query->where('status', 'cancelled'),
+            'open' => $query->whereIn('status', ['pending', 'reserved', 'picked', 'packed']),
+            'unpaid' => $query->where('status', 'pending')->where('is_paid', false),
             'cancel-requested' => $query->whereNotNull('cancel_requested_at')->where('status', '!=', 'cancelled'),
-            'completed'        => $query->where('status', 'shipped')->whereNotNull('received_date'),
-            'in-transit'       => $query->where('status', 'shipped')->whereNull('received_date'),
+            'completed' => $query->where('status', 'shipped')->whereNotNull('received_date'),
+            'in-transit' => $query->where('status', 'shipped')->whereNull('received_date'),
 
             'ready-to-process' => $query->where('status', 'reserved')
                 ->whereNull('pick_failed_at')
@@ -363,14 +367,14 @@ class SalesOrderRepository
                 ->whereDoesntHave('picklistItems')
                 ->whereDoesntHave('items', $this->unmappedItemsConstraint())
                 ->whereDoesntHave('items', $emptyStockConstraint),
-            'empty-stock'      => $query->where('status', 'reserved')
+            'empty-stock' => $query->where('status', 'reserved')
                 ->whereNull('pick_failed_at')
                 ->whereNull('handed_to_warehouse_at')
                 ->whereHas('items', $emptyStockConstraint),
-            'failed-pick'      => $query->where('status', 'reserved')->whereNotNull('pick_failed_at'),
-            'returned'         => $query->whereHas('returns'),
+            'failed-pick' => $query->where('status', 'reserved')->whereNotNull('pick_failed_at'),
+            'returned' => $query->whereHas('returns'),
 
-            'picking-belum'    => $query->where('status', 'reserved')
+            'picking-belum' => $query->where('status', 'reserved')
                 ->whereNotNull('handed_to_warehouse_at')
                 ->whereNull('pick_failed_at')
                 ->where(fn ($q) => $q
@@ -382,39 +386,39 @@ class SalesOrderRepository
                 ->whereNull('pick_failed_at')
                 ->whereHas('picklistItems.picklist', fn ($q) => $q->where('status', 'IN_PROGRESS')),
 
-            'picking-selesai'  => $query->where('status', 'picked')
+            'picking-selesai' => $query->where('status', 'picked')
                 ->whereDoesntHave('packlist', fn ($q) => $q->where('status', 'IN_PROGRESS')),
 
             'packing-diproses' => $query->where('status', 'picked')
                 ->whereHas('packlist', fn ($q) => $q->where('status', 'IN_PROGRESS')),
 
-            'ready-to-ship'    => $query->where('status', 'packed')
+            'ready-to-ship' => $query->where('status', 'packed')
                 ->whereDoesntHave('shipmentOrders'),
 
             'waiting-shipment' => $query->where('status', 'packed')
                 ->whereHas('shipmentOrders.shipment', fn ($q) => $q->where('status', 'SCHEDULED')),
 
-            default            => $query->whereRaw('1 = 0'),
+            default => $query->whereRaw('1 = 0'),
         };
     }
 
     protected function applyContentTypeFilter($query, string $contentType)
     {
         return match ($contentType) {
-            'combo'       => $query->whereHas('items', fn ($q) => $q, '>', 1),
+            'combo' => $query->whereHas('items', fn ($q) => $q, '>', 1),
             'single_1qty' => $query->has('items', '=', 1)
                 ->whereHas('items', fn ($q) => $q->where('qty_in_base', 1)),
             'single_nqty' => $query->has('items', '=', 1)
                 ->whereHas('items', fn ($q) => $q->where('qty_in_base', '>', 1)),
-            default       => $query,
+            default => $query,
         };
     }
 
     protected function applyShadowFilter($query, $value)
     {
         return match (strtolower((string) $value)) {
-            'only'  => $query->onlyShadow(),
-            'all'   => $query,
+            'only' => $query->onlyShadow(),
+            'all' => $query,
             default => $query->excludeShadow(),
         };
     }
@@ -422,17 +426,17 @@ class SalesOrderRepository
     protected function applyPaymentFilter($query, $value)
     {
         return match (strtolower((string) $value)) {
-            'cod'    => $query->where('is_cod', true),
+            'cod' => $query->where('is_cod', true),
             'noncod' => $query->where(fn ($q) => $q->where('is_cod', false)->orWhereNull('is_cod')),
-            default  => $query,
+            default => $query,
         };
     }
 
     protected function applyLabelPrintedFilter($query, $value)
     {
         return match (strtolower((string) $value)) {
-            'yes'   => $query->whereNotNull('shipping_label_prepared_at'),
-            'no'    => $query->whereNull('shipping_label_prepared_at'),
+            'yes' => $query->whereNotNull('shipping_label_prepared_at'),
+            'no' => $query->whereNull('shipping_label_prepared_at'),
             default => $query,
         };
     }
@@ -440,9 +444,9 @@ class SalesOrderRepository
     protected function applyContactStatusFilter($query, $value)
     {
         return match (strtolower((string) $value)) {
-            'contacted'     => $query->whereNotNull('contacted_at'),
+            'contacted' => $query->whereNotNull('contacted_at'),
             'not_contacted' => $query->whereNull('contacted_at'),
-            default         => $query,
+            default => $query,
         };
     }
 
@@ -527,11 +531,12 @@ class SalesOrderRepository
 
     public function getOrderById(int|string $id): ?SalesOrder
     {
-        if (! \Ramsey\Uuid\Uuid::isValid((string) $id)) {
+        if (! Uuid::isValid((string) $id)) {
             return null;
         }
 
         return QueryBuilder::for(SalesOrder::class)
+            ->withStockShortfallFlag()
             ->allowedIncludes('items')
             ->with([
                 'statusHistory',
@@ -568,9 +573,9 @@ class SalesOrderRepository
         return SalesOrder::with(['items', 'returns.settlement', 'invoices'])->find($id);
     }
 
-    public function getOrdersForTikTokPlatformBackfill(?string $orderReference, ?string $shopId, int $limit): Collection
+    public function getOrdersForTikTokPlatformBackfill(?string $orderReference, ?string $shopId, int $limit): Builder
     {
-        return SalesOrder::query()
+        $query = SalesOrder::query()
             ->where('source', 'tiktok')
             ->whereNotNull('channel_order_no')
             ->when(! $orderReference, function ($query): void {
@@ -597,9 +602,8 @@ class SalesOrderRepository
                 });
             })
             ->when($shopId, fn ($query) => $query->where('channel_shop_id', $shopId))
-            ->orderBy('created_at')
-            ->limit(max(1, $limit))
-            ->get([
+            ->orderBy('id')
+            ->select([
                 'id',
                 'salesorder_no',
                 'channel_order_no',
@@ -607,6 +611,12 @@ class SalesOrderRepository
                 'source',
                 'commerce_platform',
             ]);
+
+        if ($limit > 0) {
+            $query->limit($limit);
+        }
+
+        return $query;
     }
 
     public function salesOrderNoBelongsToAnotherOrder(string $salesOrderNo, string $orderId): bool
@@ -638,7 +648,7 @@ class SalesOrderRepository
             ->first();
 
         $shippingProvider = $orderData['shipping_provider'] ?? ($existing->shipping_provider ?? null);
-        $courierMapper = app(\Modules\Outbound\Services\CourierMappingService::class);
+        $courierMapper = app(CourierMappingService::class);
         $resolvedCourierId = $shippingProvider
             ? ($courierMapper->resolveCourierId($shippingProvider) ?? ($existing->courier_id ?? null))
             : ($existing->courier_id ?? null);
@@ -646,7 +656,7 @@ class SalesOrderRepository
         $resolvedShipmentType = $shippingProvider
             ? ($courierMapper->resolveShipmentType((string) $shippingProvider, $channelInstant) ?: ($existing->resolved_shipment_type ?? null))
             : ($existing->resolved_shipment_type ?? null);
-        $normalizedChannelStatus = \Modules\Sales\Support\ChannelStatusNormalizer::normalize(
+        $normalizedChannelStatus = ChannelStatusNormalizer::normalize(
             $orderData['source'] ?? null,
             $orderData['channel_status'] ?? null,
         );
@@ -661,23 +671,28 @@ class SalesOrderRepository
         }
 
         $orderRow = [
-            'salesorder_no'       => $orderData['salesorder_no'],
-            'channel_order_no'    => $orderData['channel_order_no'] ?? null,
-            'channel_shop_id'     => $orderData['channel_shop_id'],
-            'commerce_platform'  => $orderData['commerce_platform'] ?? ($existing->commerce_platform ?? null),
-            'channel_buyer_id'    => $orderData['channel_buyer_id'] ?? null,
-            'customer_name'       => $orderData['customer_name'],
-            'transaction_date'    => $orderData['transaction_date'],
-            'sub_total'           => $orderData['sub_total'],
-            'total_disc'          => $orderData['total_disc'],
+            'salesorder_no' => $orderData['salesorder_no'],
+            'channel_order_no' => $orderData['channel_order_no'] ?? null,
+            'channel_package_ids' => $this->encodeChannelPackageIds(
+                array_key_exists('channel_package_ids', $orderData)
+                    ? $orderData['channel_package_ids']
+                    : ($existing->channel_package_ids ?? null),
+            ),
+            'channel_shop_id' => $orderData['channel_shop_id'],
+            'commerce_platform' => $orderData['commerce_platform'] ?? ($existing->commerce_platform ?? null),
+            'channel_buyer_id' => $orderData['channel_buyer_id'] ?? null,
+            'customer_name' => $orderData['customer_name'],
+            'transaction_date' => $orderData['transaction_date'],
+            'sub_total' => $orderData['sub_total'],
+            'total_disc' => $orderData['total_disc'],
 
-            'seller_voucher'      => $existing && $existing->is_settled
+            'seller_voucher' => $existing && $existing->is_settled
                 ? $existing->seller_voucher
                 : ($orderData['seller_voucher'] ?? ($existing->seller_voucher ?? null)),
-            'platform_voucher'    => $existing && $existing->is_settled
+            'platform_voucher' => $existing && $existing->is_settled
                 ? $existing->platform_voucher
                 : ($orderData['platform_voucher'] ?? ($existing->platform_voucher ?? null)),
-            'payment_voucher'     => $existing && $existing->is_settled
+            'payment_voucher' => $existing && $existing->is_settled
                 ? $existing->payment_voucher
                 : ($orderData['payment_voucher'] ?? ($existing->payment_voucher ?? null)),
             'order_processing_fee' => $existing && $existing->is_settled
@@ -689,24 +704,24 @@ class SalesOrderRepository
             'seller_shipping_borne' => $existing && $existing->is_settled
                 ? $existing->seller_shipping_borne
                 : ($orderData['seller_shipping_borne'] ?? ($existing->seller_shipping_borne ?? null)),
-            'total_tax'           => $orderData['total_tax'],
-            'shipping_cost'       => $orderData['shipping_cost'],
+            'total_tax' => $orderData['total_tax'],
+            'shipping_cost' => $orderData['shipping_cost'],
             'actual_shipping_fee' => $orderData['actual_shipping_fee'] ?? null,
             'actual_shipping_fee_confirmed' => $orderData['actual_shipping_fee_confirmed'] ?? false,
-            'insurance_cost'      => $orderData['insurance_cost'],
-            'grand_total'         => $orderData['grand_total'],
-            'order_weight_gram'   => $orderData['order_weight_gram'] ?? null,
-            'shipping_full_name'  => $orderData['shipping_full_name'] ?? null,
-            'shipping_phone'      => $orderData['shipping_phone'] ?? null,
-            'shipping_address'    => $orderData['shipping_address'] ?? null,
-            'shipping_city'       => $orderData['shipping_city'] ?? null,
-            'shipping_province'   => $orderData['shipping_province'] ?? null,
-            'shipping_post_code'  => $orderData['shipping_post_code'] ?? null,
-            'shipping_country'    => $orderData['shipping_country'] ?? null,
-            'dropshipper_name'    => $orderData['dropshipper_name'] ?? null,
-            'dropshipper_phone'   => $orderData['dropshipper_phone'] ?? null,
-            'channel_status'      => $canonicalChannelStatus,
-            'channel_status_raw'  => $orderData['channel_status_raw'] ?? ($existing->channel_status_raw ?? null),
+            'insurance_cost' => $orderData['insurance_cost'],
+            'grand_total' => $orderData['grand_total'],
+            'order_weight_gram' => $orderData['order_weight_gram'] ?? null,
+            'shipping_full_name' => $orderData['shipping_full_name'] ?? null,
+            'shipping_phone' => $orderData['shipping_phone'] ?? null,
+            'shipping_address' => $orderData['shipping_address'] ?? null,
+            'shipping_city' => $orderData['shipping_city'] ?? null,
+            'shipping_province' => $orderData['shipping_province'] ?? null,
+            'shipping_post_code' => $orderData['shipping_post_code'] ?? null,
+            'shipping_country' => $orderData['shipping_country'] ?? null,
+            'dropshipper_name' => $orderData['dropshipper_name'] ?? null,
+            'dropshipper_phone' => $orderData['dropshipper_phone'] ?? null,
+            'channel_status' => $canonicalChannelStatus,
+            'channel_status_raw' => $orderData['channel_status_raw'] ?? ($existing->channel_status_raw ?? null),
             'channel_cancel_status' => array_key_exists('channel_cancel_status', $orderData)
                 ? $orderData['channel_cancel_status']
                 : ($existing->channel_cancel_status ?? null),
@@ -714,55 +729,74 @@ class SalesOrderRepository
                 ? ($orderData['channel_cancel_error'] ?? null)
                 : ($existing->channel_cancel_error ?? null),
             'channel_fulfillment_status' => $orderData['channel_fulfillment_status'] ?? ($existing->channel_fulfillment_status ?? null),
-            'fulfillment_flag'    => $orderData['fulfillment_flag'] ?? ($existing->fulfillment_flag ?? null),
-            'fulfillment_type'    => $orderData['fulfillment_type'] ?? ($existing->fulfillment_type ?? null),
-            'delivery_option_id'  => $orderData['delivery_option_id'] ?? ($existing->delivery_option_id ?? null),
-            'shipping_type'       => $orderData['shipping_type'] ?? ($existing->shipping_type ?? null),
+            'fulfillment_flag' => $orderData['fulfillment_flag'] ?? ($existing->fulfillment_flag ?? null),
+            'fulfillment_type' => $orderData['fulfillment_type'] ?? ($existing->fulfillment_type ?? null),
+            'delivery_option_id' => $orderData['delivery_option_id'] ?? ($existing->delivery_option_id ?? null),
+            'shipping_type' => $orderData['shipping_type'] ?? ($existing->shipping_type ?? null),
             'resolved_shipment_type' => $resolvedShipmentType,
-            'days_to_ship'        => $orderData['days_to_ship'] ?? null,
-            'status'              => $orderData['status'],
-            'is_paid'             => $orderData['is_paid'],
-            'is_canceled'         => $orderData['is_canceled'] ?? false,
-            'is_cod'              => $orderData['is_cod'] ?? false,
+            'days_to_ship' => $orderData['days_to_ship'] ?? null,
+            'status' => $orderData['status'],
+            'is_paid' => $orderData['is_paid'],
+            'is_canceled' => $orderData['is_canceled'] ?? false,
+            'is_cod' => $orderData['is_cod'] ?? false,
             'priority_fulfillment' => $orderData['priority_fulfillment'] ?? false,
-            'is_split_order'      => $orderData['is_split_order'] ?? false,
-            'cancel_reason'       => $orderData['cancel_reason'] ?? null,
-            'cancel_by'           => $orderData['cancel_by'] ?? null,
+            'is_split_order' => $orderData['is_split_order'] ?? false,
+            'cancel_reason' => $orderData['cancel_reason'] ?? null,
+            'cancel_by' => $orderData['cancel_by'] ?? null,
             'cancel_requested_at' => $orderData['cancel_requested_at'] ?? ($existing->cancel_requested_at ?? null),
             'cancel_request_reason' => $orderData['cancel_request_reason'] ?? ($existing->cancel_request_reason ?? null),
-            'payment_method'      => $orderData['payment_method'],
+            'payment_method' => $orderData['payment_method'],
             'payment_method_name' => $orderData['payment_method_name'] ?? null,
-            'tracking_number'     => $orderData['tracking_number'] ?? ($existing->tracking_number ?? null),
-            'shipping_provider'   => $shippingProvider,
-            'courier_id'          => $resolvedCourierId,
-            'buyer_message'       => $orderData['buyer_message'] ?? null,
-            'seller_note'         => $this->mergeWebhookAuditNotes(
+            'tracking_number' => $orderData['tracking_number'] ?? ($existing->tracking_number ?? null),
+            'shipping_provider' => $shippingProvider,
+            'courier_id' => $resolvedCourierId,
+            'buyer_message' => $orderData['buyer_message'] ?? null,
+            'seller_note' => $this->mergeWebhookAuditNotes(
                 $orderData['seller_note'] ?? null,
                 $existing->seller_note ?? null,
             ),
-            'paid_time'           => $orderData['paid_time'] ?? null,
-            'ship_by_date'        => $orderData['ship_by_date'] ?? null,
-            'pickup_done_time'    => $orderData['pickup_done_time'] ?? null,
+            'paid_time' => $orderData['paid_time'] ?? null,
+            'ship_by_date' => $orderData['ship_by_date'] ?? null,
+            'pickup_done_time' => $orderData['pickup_done_time'] ?? null,
 
-            'pickup_code'         => ($existing->pickup_code ?? null) ?: ($orderData['pickup_code'] ?? null),
-            'channel_updated_at'  => $orderData['channel_updated_at'] ?? null,
-            'return_due_date'     => $orderData['return_due_date'] ?? null,
-            'source'              => $orderData['source'],
-            'is_shadow'           => $orderData['is_shadow'] ?? ($existing->is_shadow ?? false),
-            'updated_at'          => now(),
+            'pickup_code' => ($existing->pickup_code ?? null) ?: ($orderData['pickup_code'] ?? null),
+            'channel_updated_at' => $orderData['channel_updated_at'] ?? null,
+            'return_due_date' => $orderData['return_due_date'] ?? null,
+            'source' => $orderData['source'],
+            'is_shadow' => $orderData['is_shadow'] ?? ($existing->is_shadow ?? false),
+            'updated_at' => now(),
         ];
 
         if ($existing) {
             DB::table('sales_orders')->where('id', $existing->id)->update($orderRow);
             $orderId = $existing->id;
         } else {
-            $orderRow['id'] = \Ramsey\Uuid\Uuid::uuid7()->toString();
+            $orderRow['id'] = Uuid::uuid7()->toString();
             $orderRow['created_at'] = now();
             DB::table('sales_orders')->insert($orderRow);
             $orderId = $orderRow['id'];
         }
 
         return SalesOrder::find($orderId);
+    }
+
+    private function encodeChannelPackageIds(mixed $value): ?string
+    {
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            $value = json_last_error() === JSON_ERROR_NONE ? $decoded : [$value];
+        }
+
+        if (! is_array($value)) {
+            return null;
+        }
+
+        $ids = array_values(array_unique(array_filter(
+            array_map('strval', $value),
+            static fn (string $id): bool => $id !== '',
+        )));
+
+        return $ids === [] ? null : json_encode($ids, JSON_THROW_ON_ERROR);
     }
 
     private function mergeWebhookAuditNotes(?string $incoming, ?string $existing): ?string
@@ -824,7 +858,7 @@ class SalesOrderRepository
             ];
 
             $key = $this->itemKey($sku, $item['price'] ?? 0);
-            $existing = !empty($pools[$key]) ? array_shift($pools[$key]) : null;
+            $existing = ! empty($pools[$key]) ? array_shift($pools[$key]) : null;
 
             if ($existing) {
                 if ($resolvedItemId !== null) {
@@ -832,11 +866,12 @@ class SalesOrderRepository
                 }
 
                 DB::table('sales_order_items')->where('id', $existing->id)->update($values);
+
                 continue;
             }
 
             $itemsToInsert[] = array_merge($values, [
-                'id' => \Ramsey\Uuid\Uuid::uuid7()->toString(),
+                'id' => Uuid::uuid7()->toString(),
                 'order_id' => $orderId,
                 'item_id' => $resolvedItemId,
                 'sku' => $sku,
@@ -844,7 +879,7 @@ class SalesOrderRepository
             ]);
         }
 
-        if (!empty($itemsToInsert)) {
+        if (! empty($itemsToInsert)) {
             DB::table('sales_order_items')->insert($itemsToInsert);
         }
 
@@ -853,7 +888,7 @@ class SalesOrderRepository
 
     protected function itemKey(?string $sku, mixed $price): string
     {
-        return ($sku ?? '') . '|' . number_format((float) $price, 2, '.', '');
+        return ($sku ?? '').'|'.number_format((float) $price, 2, '.', '');
     }
 
     protected function consolidateIncomingItems(array $items): array
@@ -862,8 +897,8 @@ class SalesOrderRepository
 
         foreach ($items as $item) {
             $key = ($item['channel_product_id'] ?? '')
-                . '|' . ($item['sku'] ?? '')
-                . '|' . number_format((float) ($item['price'] ?? 0), 2, '.', '');
+                .'|'.($item['sku'] ?? '')
+                .'|'.number_format((float) ($item['price'] ?? 0), 2, '.', '');
 
             if (! isset($grouped[$key])) {
                 $grouped[$key] = $item;
@@ -979,15 +1014,15 @@ class SalesOrderRepository
                 }
 
                 $rows[] = [
-                    'id'               => \Ramsey\Uuid\Uuid::uuid7()->toString(),
-                    'order_id'         => $orderId,
-                    'fee_type'         => $line['fee_type'],
+                    'id' => Uuid::uuid7()->toString(),
+                    'order_id' => $orderId,
+                    'fee_type' => $line['fee_type'],
                     'channel_fee_code' => $line['channel_fee_code'] ?? null,
-                    'amount'           => $line['amount'] ?? 0,
-                    'source'           => $source,
-                    'is_settled'       => $isSettled,
-                    'created_at'       => now(),
-                    'updated_at'       => now(),
+                    'amount' => $line['amount'] ?? 0,
+                    'source' => $source,
+                    'is_settled' => $isSettled,
+                    'created_at' => now(),
+                    'updated_at' => now(),
                 ];
             }
 
@@ -1071,7 +1106,7 @@ class SalesOrderRepository
             ->get();
 
         return $results->map(fn ($r) => [
-            'name'  => $r->shipping_provider,
+            'name' => $r->shipping_provider,
             'count' => (int) $r->count,
         ])->values()->all();
     }

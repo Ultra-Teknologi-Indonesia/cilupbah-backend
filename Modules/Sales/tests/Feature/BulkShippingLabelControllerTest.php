@@ -3,15 +3,19 @@
 namespace Modules\Sales\Tests\Feature;
 
 use App\Models\User;
+use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Modules\Sales\Enums\OrderActivityAction;
+use Modules\Sales\Jobs\ProcessBulkShippingLabelItemJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelJob;
 use Modules\Sales\Models\BulkShippingLabelBatch;
 use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Services\BulkShippingLabelService;
 use Tests\TestCase;
 
 class BulkShippingLabelControllerTest extends TestCase
@@ -23,7 +27,7 @@ class BulkShippingLabelControllerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->seed(\Database\Seeders\RoleSeeder::class);
+        $this->seed(RoleSeeder::class);
         $this->user = User::factory()->create();
         $this->user->assignRole('owner');
         $this->actingAs($this->user, 'sanctum');
@@ -56,6 +60,35 @@ class BulkShippingLabelControllerTest extends TestCase
         ]);
 
         Bus::assertDispatched(ProcessBulkShippingLabelJob::class);
+    }
+
+    public function test_parent_job_fans_out_pending_items_to_the_labels_queue(): void
+    {
+        Queue::fake();
+
+        $order = SalesOrder::factory()->create([
+            'source' => 'shopee',
+            'tracking_number' => 'AWB-FANOUT-001',
+        ]);
+        $batch = BulkShippingLabelBatch::create([
+            'user_id' => $this->user->id,
+            'status' => BulkShippingLabelBatch::STATUS_PROCESSING,
+            'total_count' => 1,
+            'done_count' => 0,
+            'failed_count' => 0,
+        ]);
+        $item = BulkShippingLabelItem::create([
+            'batch_id' => $batch->id,
+            'order_id' => $order->id,
+            'channel' => 'shopee',
+            'status' => BulkShippingLabelItem::STATUS_PENDING,
+        ]);
+
+        (new ProcessBulkShippingLabelJob($batch->id))->handle(app(BulkShippingLabelService::class));
+
+        Queue::assertPushed(ProcessBulkShippingLabelItemJob::class, function ($job) use ($batch, $item): bool {
+            return $job->batchId === $batch->id && $job->itemId === $item->id;
+        });
     }
 
     public function test_store_validates_missing_order_ids(): void

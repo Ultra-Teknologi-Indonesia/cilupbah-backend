@@ -9,6 +9,7 @@ class InventoryMovementSourceMap
     ];
 
     public const SOURCES = [
+        'INBOUND_QTY_CORRECTION' => ['category' => 'PENYESUAIAN', 'label' => 'Koreksi Penerimaan'],
         'PURCHASE'          => ['category' => 'TAGIHAN', 'label' => 'Tagihan'],
         'PURCHASE_REVERSAL' => ['category' => 'TAGIHAN', 'label' => 'Koreksi Tagihan'],
         'BILL'              => ['category' => 'TAGIHAN', 'label' => 'Tagihan'],
@@ -25,6 +26,7 @@ class InventoryMovementSourceMap
         'ORDER_SHIP'        => ['category' => 'FAKTUR', 'label' => 'Faktur'],
         'ORDER_PICK'        => ['category' => 'FAKTUR', 'label' => 'Faktur'],
         'ORDER_COMPLETE_OUT'      => ['category' => 'FAKTUR', 'label' => 'Faktur'],
+        'BACKFILL_INBOUND_RESTORE' => ['category' => 'PENYESUAIAN', 'label' => 'Koreksi Backfill'],
         'ORDER_COMPLETE_REVERSAL' => ['category' => 'FAKTUR', 'label' => 'Koreksi Faktur'],
         'PICKING'           => ['category' => 'FAKTUR', 'label' => 'Barang di-pick'],
         'PICKING_REVERSAL'  => ['category' => 'FAKTUR', 'label' => 'Koreksi Pick'],

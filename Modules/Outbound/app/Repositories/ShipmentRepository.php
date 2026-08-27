@@ -188,6 +188,12 @@ class ShipmentRepository
 
         return QueryBuilder::for($query)
             ->allowedSearch(...SalesOrder::qualifiedSearchColumns())
+            ->allowedSorts(
+                AllowedSort::field('scanned_at', 'shipment_orders.created_at'),
+                AllowedSort::field('tracking_number', 'shipment_orders.tracking_number'),
+                AllowedSort::field('order_no', 'sales_orders.salesorder_no'),
+            )
+            ->defaultSort('-shipment_orders.created_at')
             ->paginate($limit)
             ->appends(request()->query());
     }

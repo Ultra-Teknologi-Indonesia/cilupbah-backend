@@ -148,6 +148,12 @@ class ReconcileOnOrder extends Command
 
             $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $delta, $d, $inventoryRepository, $movementRepository, &$applied, &$residual) {
                 DB::transaction(function () use ($itemId, $locationId, $delta, $d, $inventoryRepository, $movementRepository, &$applied, &$residual) {
+
+                    if ($delta <= 0) {
+                        $residual += $delta;
+                        return;
+                    }
+
                     $aggregate = $inventoryRepository->findOrCreateForUpdate($itemId, $locationId, null);
                     $before = (int) $aggregate->on_order;
                     $after = max(0, $before - $delta);

@@ -2,29 +2,50 @@
 
 namespace Modules\Sales\Models;
 
+use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
-
-use App\Traits\HasUuid7;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\DB;
+use Modules\Channel\Models\ChannelShop;
 use Modules\Inventory\Support\StockSummary;
-use Modules\Sales\Support\ChannelStatusNormalizer;
+use Modules\Outbound\Models\Courier;
+use Modules\Outbound\Models\Packlist;
+use Modules\Outbound\Models\Picklist;
+use Modules\Outbound\Models\PicklistItem;
+use Modules\Outbound\Models\ShipmentOrder;
 use Modules\Outbound\Support\InstantOrderClassifier;
+use Modules\Sales\Database\Factories\SalesOrderFactory;
+use Modules\Sales\Enums\CancelChannel;
+use Modules\Sales\Enums\ChannelStatus;
+use Modules\Sales\Enums\ContactChannel;
+use Modules\Sales\Enums\CustomerDecision;
+use Modules\Sales\Enums\DisputeOutcome;
+use Modules\Sales\Enums\DriverCallStatus;
+use Modules\Sales\Enums\SalesCancelReason;
+use Modules\Sales\Enums\SalesOrderChannel;
+use Modules\Sales\Enums\SalesOrderStatus;
+use Modules\Sales\Enums\WmsStatus;
+use Modules\Sales\Support\ChannelStatusNormalizer;
+use Modules\Sales\Support\WmsStatusNormalizer;
+use Modules\Supplier\Models\Salesman;
+use Modules\Warehouse\Models\Location;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class SalesOrder extends Model implements HasMedia
 {
-    use HasUuid7, InteractsWithMedia, HasFactory;
+    use HasFactory, HasUuid7, InteractsWithMedia;
 
-    protected static function newFactory(): \Modules\Sales\Database\Factories\SalesOrderFactory
+    protected static function newFactory(): SalesOrderFactory
     {
-        return \Modules\Sales\Database\Factories\SalesOrderFactory::new();
+        return SalesOrderFactory::new();
     }
 
     protected $table = 'sales_orders';
@@ -32,6 +53,7 @@ class SalesOrder extends Model implements HasMedia
     public const SEARCH_COLUMNS = [
         'salesorder_no',
         'channel_order_no',
+        'channel_package_ids',
         'customer_name',
         'tracking_number',
         'courier_name',
@@ -185,46 +207,49 @@ class SalesOrder extends Model implements HasMedia
     ];
 
     protected $casts = [
-        'transaction_date'    => 'datetime',
-        'paid_time'           => 'datetime',
-        'ship_by_date'        => 'datetime',
-        'pickup_done_time'    => 'datetime',
-        'channel_updated_at'  => 'datetime',
-        'return_due_date'     => 'datetime',
+        'transaction_date' => 'datetime',
+        'paid_time' => 'datetime',
+        'ship_by_date' => 'datetime',
+        'pickup_done_time' => 'datetime',
+        'channel_updated_at' => 'datetime',
+        'return_due_date' => 'datetime',
         'cancel_requested_at' => 'datetime',
         'channel_cancel_requested_at' => 'datetime',
-        'pick_failed_at'      => 'datetime',
-        'cancel_accepted_at'  => 'datetime',
-        'cancel_rejected_at'  => 'datetime',
+        'pick_failed_at' => 'datetime',
+        'cancel_accepted_at' => 'datetime',
+        'cancel_rejected_at' => 'datetime',
         'cancel_dismissed_at' => 'datetime',
-        'contacted_at'        => 'datetime',
-        'decision_at'         => 'datetime',
-        'received_date'       => 'datetime',
+        'contacted_at' => 'datetime',
+        'decision_at' => 'datetime',
+        'received_date' => 'datetime',
         'handed_to_warehouse_at' => 'datetime',
         'courier_pickup_recorded_at' => 'datetime',
         'shipping_label_prepared_at' => 'datetime',
-        'shipping_label_raw_data'    => 'array',
-        'driver_call_attempted_at'   => 'datetime',
-        'driver_call_response'       => 'array',
-        'finance_synced_at'   => 'datetime',
-        'settled_at'          => 'datetime',
-        'finance_raw'         => 'array',
-        'is_settled'                    => 'boolean',
-        'is_paid'                       => 'boolean',
-        'is_canceled'                   => 'boolean',
-        'is_cod'                        => 'boolean',
-        'priority_fulfillment'          => 'boolean',
-        'is_split_order'                => 'boolean',
+        'shipping_label_raw_data' => 'array',
+        'channel_package_ids' => 'array',
+        'driver_call_attempted_at' => 'datetime',
+        'driver_call_response' => 'array',
+        'finance_synced_at' => 'datetime',
+        'settled_at' => 'datetime',
+        'finance_raw' => 'array',
+        'is_settled' => 'boolean',
+        'is_paid' => 'boolean',
+        'is_canceled' => 'boolean',
+        'is_cod' => 'boolean',
+        'priority_fulfillment' => 'boolean',
+        'is_split_order' => 'boolean',
         'actual_shipping_fee_confirmed' => 'boolean',
-        'is_manual'                     => 'boolean',
-        'is_shadow'                     => 'boolean',
-        'price_includes_tax'            => 'boolean',
-        'contact_channel'   => \Modules\Sales\Enums\ContactChannel::class,
-        'customer_decision' => \Modules\Sales\Enums\CustomerDecision::class,
+        'is_manual' => 'boolean',
+        'is_shadow' => 'boolean',
+        'price_includes_tax' => 'boolean',
+        'has_stock_shortfall' => 'boolean',
+        'contact_channel' => ContactChannel::class,
+        'customer_decision' => CustomerDecision::class,
     ];
 
-    public const DELIVERY_COURIER          = 'COURIER';
-    public const DELIVERY_SELF_PICKUP      = 'SELF_PICKUP';
+    public const DELIVERY_COURIER = 'COURIER';
+
+    public const DELIVERY_SELF_PICKUP = 'SELF_PICKUP';
 
     protected function channelStatus(): Attribute
     {
@@ -235,7 +260,8 @@ class SalesOrder extends Model implements HasMedia
                 }
                 $channel = $attributes['source'] ?? $this->attributes['source'] ?? null;
                 $normalized = ChannelStatusNormalizer::normalize($channel, (string) $value);
-                return $normalized?->value ?? \Modules\Sales\Enums\ChannelStatus::UNKNOWN->value;
+
+                return $normalized?->value ?? ChannelStatus::UNKNOWN->value;
             },
         );
     }
@@ -248,56 +274,57 @@ class SalesOrder extends Model implements HasMedia
                     return null;
                 }
                 $channel = $attributes['source'] ?? $this->attributes['source'] ?? null;
-                $normalized = \Modules\Sales\Support\WmsStatusNormalizer::normalize($channel, (string) $value);
-                return $normalized?->value ?? \Modules\Sales\Enums\WmsStatus::OTHER->value;
+                $normalized = WmsStatusNormalizer::normalize($channel, (string) $value);
+
+                return $normalized?->value ?? WmsStatus::OTHER->value;
             },
         );
     }
 
-    public function statusEnum(): ?\Modules\Sales\Enums\SalesOrderStatus
+    public function statusEnum(): ?SalesOrderStatus
     {
-        return $this->status ? \Modules\Sales\Enums\SalesOrderStatus::tryFrom($this->status) : null;
+        return $this->status ? SalesOrderStatus::tryFrom($this->status) : null;
     }
 
-    public function wmsStatusEnum(): ?\Modules\Sales\Enums\WmsStatus
+    public function wmsStatusEnum(): ?WmsStatus
     {
-        return $this->wms_status ? \Modules\Sales\Enums\WmsStatus::tryFrom($this->wms_status) : null;
+        return $this->wms_status ? WmsStatus::tryFrom($this->wms_status) : null;
     }
 
-    public function channelStatusEnum(): ?\Modules\Sales\Enums\ChannelStatus
+    public function channelStatusEnum(): ?ChannelStatus
     {
         return $this->channel_status
-            ? (\Modules\Sales\Enums\ChannelStatus::tryFrom($this->channel_status)
-                ?? \Modules\Sales\Enums\ChannelStatus::UNKNOWN)
+            ? (ChannelStatus::tryFrom($this->channel_status)
+                ?? ChannelStatus::UNKNOWN)
             : null;
     }
 
-    public function channelEnum(): ?\Modules\Sales\Enums\SalesOrderChannel
+    public function channelEnum(): ?SalesOrderChannel
     {
-        return $this->source ? \Modules\Sales\Enums\SalesOrderChannel::tryFrom($this->source) : null;
+        return $this->source ? SalesOrderChannel::tryFrom($this->source) : null;
     }
 
-    public function disputeOutcomeEnum(): ?\Modules\Sales\Enums\DisputeOutcome
+    public function disputeOutcomeEnum(): ?DisputeOutcome
     {
-        return $this->dispute_outcome ? \Modules\Sales\Enums\DisputeOutcome::tryFrom($this->dispute_outcome) : null;
+        return $this->dispute_outcome ? DisputeOutcome::tryFrom($this->dispute_outcome) : null;
     }
 
-    public function cancelReasonEnum(): ?\Modules\Sales\Enums\SalesCancelReason
+    public function cancelReasonEnum(): ?SalesCancelReason
     {
-        return $this->cancel_reason ? \Modules\Sales\Enums\SalesCancelReason::tryFrom($this->cancel_reason) : null;
+        return $this->cancel_reason ? SalesCancelReason::tryFrom($this->cancel_reason) : null;
     }
 
-    public function driverCallStatusEnum(): ?\Modules\Sales\Enums\DriverCallStatus
+    public function driverCallStatusEnum(): ?DriverCallStatus
     {
         return $this->driver_call_status
-            ? \Modules\Sales\Enums\DriverCallStatus::tryFrom($this->driver_call_status)
+            ? DriverCallStatus::tryFrom($this->driver_call_status)
             : null;
     }
 
-    public function cancelChannelEnum(): ?\Modules\Sales\Enums\CancelChannel
+    public function cancelChannelEnum(): ?CancelChannel
     {
         return $this->cancel_channel
-            ? \Modules\Sales\Enums\CancelChannel::tryFrom($this->cancel_channel)
+            ? CancelChannel::tryFrom($this->cancel_channel)
             : null;
     }
 
@@ -358,7 +385,7 @@ class SalesOrder extends Model implements HasMedia
 
     public function salesman(): BelongsTo
     {
-        return $this->belongsTo(\Modules\Supplier\Models\Salesman::class);
+        return $this->belongsTo(Salesman::class);
     }
 
     public function items(): HasMany
@@ -369,7 +396,7 @@ class SalesOrder extends Model implements HasMedia
 
     public function courier(): BelongsTo
     {
-        return $this->belongsTo(\Modules\Outbound\Models\Courier::class, 'courier_id');
+        return $this->belongsTo(Courier::class, 'courier_id');
     }
 
     public function paymentMethod(): BelongsTo
@@ -394,7 +421,37 @@ class SalesOrder extends Model implements HasMedia
                     JOIN products p ON p.id = pv.product_id
                     WHERE pv.id = sales_order_items.item_id
                       AND p.is_bundle = true
-                )";
+        )";
+    }
+
+    public function scopeWithStockShortfallFlag(Builder $query): Builder
+    {
+        $shortfall = static::shortfallItemWhereRaw();
+
+        return $query
+
+            ->select('sales_orders.*')
+            ->addSelect(DB::raw(
+                'EXISTS (SELECT 1 FROM sales_order_items '
+                .'WHERE sales_order_items.order_id = sales_orders.id '
+                .'AND '.$shortfall.') AS has_stock_shortfall'
+            ));
+    }
+
+    public function hasStockShortfall(): bool
+    {
+        if (array_key_exists('has_stock_shortfall', $this->attributes)) {
+            return (bool) $this->getAttribute('has_stock_shortfall');
+        }
+
+        if ($this->status !== 'reserved') {
+            return false;
+        }
+
+        return self::query()
+            ->whereKey($this->getKey())
+            ->whereHas('items', fn ($query) => $query->whereRaw(static::shortfallItemWhereRaw()))
+            ->exists();
     }
 
     public function scopeHasStockShortfall($query)
@@ -409,38 +466,38 @@ class SalesOrder extends Model implements HasMedia
 
     public function picklistItems(): HasMany
     {
-        return $this->hasMany(\Modules\Outbound\Models\PicklistItem::class, 'order_id');
+        return $this->hasMany(PicklistItem::class, 'order_id');
     }
 
     public function completedPicklists(): BelongsToMany
     {
-        return $this->belongsToMany(\Modules\Outbound\Models\Picklist::class, 'picklist_items', 'order_id', 'picklist_id')
-            ->where('picklists.status', \Modules\Outbound\Models\Picklist::STATUS_COMPLETED);
+        return $this->belongsToMany(Picklist::class, 'picklist_items', 'order_id', 'picklist_id')
+            ->where('picklists.status', Picklist::STATUS_COMPLETED);
     }
 
     public function packlist(): HasOne
     {
-        return $this->hasOne(\Modules\Outbound\Models\Packlist::class, 'order_id');
+        return $this->hasOne(Packlist::class, 'order_id');
     }
 
     public function shipmentOrders(): HasMany
     {
-        return $this->hasMany(\Modules\Outbound\Models\ShipmentOrder::class, 'order_id');
+        return $this->hasMany(ShipmentOrder::class, 'order_id');
     }
 
     public function location(): BelongsTo
     {
-        return $this->belongsTo(\Modules\Warehouse\Models\Location::class);
+        return $this->belongsTo(Location::class);
     }
 
     public function shop(): BelongsTo
     {
-        return $this->belongsTo(\Modules\Channel\Models\ChannelShop::class, 'channel_shop_id', 'shop_id');
+        return $this->belongsTo(ChannelShop::class, 'channel_shop_id', 'shop_id');
     }
 
     public function channelShop(): BelongsTo
     {
-        return $this->belongsTo(\Modules\Channel\Models\ChannelShop::class, 'channel_shop_id', 'shop_id');
+        return $this->belongsTo(ChannelShop::class, 'channel_shop_id', 'shop_id');
     }
 
     public function returns(): HasMany
@@ -485,59 +542,69 @@ class SalesOrder extends Model implements HasMedia
     public function resolveWmsStatus(): string
     {
         if ($this->status === 'cancelled') {
-            return \Modules\Sales\Enums\WmsStatus::CANCELLED->value;
+            return WmsStatus::CANCELLED->value;
         }
         if ($this->status === 'pending') {
-            return $this->is_paid ? \Modules\Sales\Enums\WmsStatus::PAID->value : \Modules\Sales\Enums\WmsStatus::CREATED->value;
+            return $this->is_paid ? WmsStatus::PAID->value : WmsStatus::CREATED->value;
         }
         if ($this->status === 'shipped') {
-            return $this->received_date ? \Modules\Sales\Enums\WmsStatus::COMPLETED->value : \Modules\Sales\Enums\WmsStatus::SHIPPED->value;
+            return $this->received_date ? WmsStatus::COMPLETED->value : WmsStatus::SHIPPED->value;
         }
         if ($this->status === 'packed') {
-            return \Modules\Sales\Enums\WmsStatus::FINISH_PACK->value;
+            return WmsStatus::FINISH_PACK->value;
         }
         if ($this->status === 'picked') {
             if ($this->relationLoaded('packlist') && $this->packlist?->status === 'IN_PROGRESS') {
-                return \Modules\Sales\Enums\WmsStatus::PACK->value;
+                return WmsStatus::PACK->value;
             }
-            return \Modules\Sales\Enums\WmsStatus::FINISH_PICK->value;
+
+            return WmsStatus::FINISH_PICK->value;
         }
         if ($this->status === 'reserved') {
             if ($this->pick_failed_at) {
-                return \Modules\Sales\Enums\WmsStatus::FAILED->value;
+                return WmsStatus::FAILED->value;
             }
             if ($this->relationLoaded('picklistItems')) {
                 $activePicklist = $this->picklistItems->first()?->picklist;
                 if ($activePicklist && in_array($activePicklist->status, ['DRAFT', 'IN_PROGRESS'])) {
-                    return \Modules\Sales\Enums\WmsStatus::PICK->value;
+                    return WmsStatus::PICK->value;
                 }
             }
-            return \Modules\Sales\Enums\WmsStatus::PROCESS->value;
+
+            return WmsStatus::PROCESS->value;
         }
-        return $this->status ?? \Modules\Sales\Enums\WmsStatus::OTHER->value;
+
+        return $this->status ?? WmsStatus::OTHER->value;
     }
 
     public function resolveStatusLabel(): string
     {
         if ($this->status === 'reserved'
             && $this->handed_to_warehouse_at === null
+            && $this->pick_failed_at === null
+            && $this->hasStockShortfall()) {
+            return 'Stok Kosong';
+        }
+
+        if ($this->status === 'reserved'
+            && $this->handed_to_warehouse_at === null
             && $this->pick_failed_at === null) {
             return 'Siap Proses';
         }
 
-        $wms = \Modules\Sales\Enums\WmsStatus::tryFrom($this->wms_status ?? '') ?? \Modules\Sales\Enums\WmsStatus::tryFrom($this->resolveWmsStatus());
+        $wms = WmsStatus::tryFrom($this->wms_status ?? '') ?? WmsStatus::tryFrom($this->resolveWmsStatus());
         if ($wms) {
             return $wms->label();
         }
 
         return match ($this->status) {
-            'pending'   => 'Menunggu Pembayaran',
-            'reserved'  => 'Pengambilan - Belum Dimulai',
-            'picked'    => 'Pengambilan - Selesai',
-            'packed'    => 'Pengepakan - Selesai',
-            'shipped'   => $this->received_date ? 'Selesai' : 'Pengiriman - Sedang Dikirim',
+            'pending' => 'Menunggu Pembayaran',
+            'reserved' => 'Pengambilan - Belum Dimulai',
+            'picked' => 'Pengambilan - Selesai',
+            'packed' => 'Pengepakan - Selesai',
+            'shipped' => $this->received_date ? 'Selesai' : 'Pengiriman - Sedang Dikirim',
             'cancelled' => 'Dibatalkan',
-            default     => ucfirst((string) $this->status),
+            default => ucfirst((string) $this->status),
         };
     }
 

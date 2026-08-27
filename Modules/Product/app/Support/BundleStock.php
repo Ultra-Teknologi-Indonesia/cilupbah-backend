@@ -42,7 +42,7 @@ class BundleStock
             $summary = $inventories
                 ? \Modules\Inventory\Support\StockSummary::partitionLoaded($inventories)
                 : ['on_hand' => 0, 'available' => 0];
-            $compAvailable = max(0, (int) $summary['available']);
+            $compAvailable = (int) $summary['available'];
             $compOnHand = (int) $summary['on_hand'];
 
             $perAvailable = intdiv($compAvailable, $qty);

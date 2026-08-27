@@ -2,6 +2,7 @@
 
 namespace Modules\Inventory\Http\Controllers;
 
+use App\Exceptions\UserFacingException;
 use App\Http\Controllers\Controller;
 use App\Services\PdfRenderer;
 use App\Traits\ApiResponse;
@@ -42,7 +43,9 @@ class PutawayController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Putaway'],
         parameters: [
-            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
+            new OA\Parameter(name: 'search', in: 'query', required: false, description: 'Cari nomor penempatan, nomor penerimaan, nama pembuat, atau nama pelaksana.', schema: new OA\Schema(type: 'string', maxLength: 100)),
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', minimum: 1, maximum: 100, default: 20)),
+            new OA\Parameter(name: 'limit', in: 'query', required: false, description: 'Alias kompatibilitas untuk per_page.', schema: new OA\Schema(type: 'integer', minimum: 1, maximum: 100, default: 20)),
             new OA\Parameter(name: 'filter[status]', in: 'query', required: false, schema: new OA\Schema(type: 'string', enum: ['NOT_STARTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'])),
             new OA\Parameter(name: 'filter[location_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'filter[assigned_to]', in: 'query', required: false, schema: new OA\Schema(type: 'integer')),
@@ -261,7 +264,7 @@ class PutawayController extends Controller
             $history = $this->putawayService->getHistory($id);
 
             return $this->successResponse($history, 'Riwayat aktivitas penempatan berhasil diambil.');
-        } catch (\App\Exceptions\UserFacingException $e) {
+        } catch (UserFacingException $e) {
             throw $e;
         } catch (\Throwable $e) {
             report($e);
@@ -291,7 +294,7 @@ class PutawayController extends Controller
             $items = $this->putawayService->getItems($id, $limit);
 
             return $this->successPaginatedResponse($items, 'Daftar item putaway berhasil diambil.');
-        } catch (\App\Exceptions\UserFacingException $e) {
+        } catch (UserFacingException $e) {
             throw $e;
         } catch (\Exception $e) {
             report($e);
@@ -333,7 +336,7 @@ class PutawayController extends Controller
             $results = $this->putawayService->assignStaff($request->validated());
 
             return $this->successResponse($results, 'Staff berhasil di-assign ke putaway.');
-        } catch (\App\Exceptions\UserFacingException $e) {
+        } catch (UserFacingException $e) {
             throw $e;
         } catch (\Exception $e) {
             report($e);
@@ -366,7 +369,7 @@ class PutawayController extends Controller
             $putaway = $this->putawayService->start($id);
 
             return $this->successResponse($putaway, 'Putaway berhasil dimulai.');
-        } catch (\App\Exceptions\UserFacingException $e) {
+        } catch (UserFacingException $e) {
             throw $e;
         } catch (\Exception $e) {
             report($e);
@@ -407,7 +410,7 @@ class PutawayController extends Controller
             $this->putawayService->processItem($id, $itemId, $request->validated());
 
             return $this->successResponse(null, 'Item berhasil ditempatkan.', 200);
-        } catch (\App\Exceptions\UserFacingException $e) {
+        } catch (UserFacingException $e) {
             throw $e;
         } catch (\DomainException $e) {
             return $this->errorResponse(
@@ -467,7 +470,7 @@ class PutawayController extends Controller
             $item = $this->putawayService->updateItemNotes($id, $itemId, $validated['notes'] ?? null);
 
             return $this->successResponse($item, 'Catatan item berhasil diperbarui.');
-        } catch (\App\Exceptions\UserFacingException $e) {
+        } catch (UserFacingException $e) {
             throw $e;
         } catch (\Exception $e) {
             report($e);
@@ -514,7 +517,7 @@ class PutawayController extends Controller
             );
 
             return $this->successResponse($putaway, 'Penempatan berhasil dikoreksi.');
-        } catch (\App\Exceptions\UserFacingException $e) {
+        } catch (UserFacingException $e) {
             throw $e;
         } catch (\Exception $e) {
             report($e);
@@ -561,7 +564,7 @@ class PutawayController extends Controller
             $putaway = $this->putawayService->deletePlacements($id, $request->validated()['items'], $userId);
 
             return $this->successResponse($putaway, 'Penempatan berhasil dikoreksi.');
-        } catch (\App\Exceptions\UserFacingException $e) {
+        } catch (UserFacingException $e) {
             throw $e;
         } catch (\Exception $e) {
             report($e);
@@ -594,7 +597,7 @@ class PutawayController extends Controller
             $putaway = $this->putawayService->complete($id);
 
             return $this->successResponse($putaway, 'Putaway berhasil diselesaikan.');
-        } catch (\App\Exceptions\UserFacingException $e) {
+        } catch (UserFacingException $e) {
             throw $e;
         } catch (\Exception $e) {
             report($e);
@@ -761,7 +764,7 @@ class PutawayController extends Controller
             $result = $this->putawayService->deletePutaway($id, $userId);
 
             return $this->successResponse($result, $this->putawayService->messageForDeleteAction($result['action'] ?? null));
-        } catch (\App\Exceptions\UserFacingException $e) {
+        } catch (UserFacingException $e) {
             throw $e;
         } catch (\Exception $e) {
             report($e);
@@ -798,7 +801,7 @@ class PutawayController extends Controller
             $results = $this->putawayService->bulkDeletePutaway($request->validated()['ids'], $userId);
 
             return $this->successResponse($results, 'Penempatan terpilih berhasil diproses.');
-        } catch (\App\Exceptions\UserFacingException $e) {
+        } catch (UserFacingException $e) {
             throw $e;
         } catch (\Exception $e) {
             report($e);

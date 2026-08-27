@@ -18,6 +18,7 @@ use Modules\Inbound\Models\InboundItem;
 use Modules\Inventory\Models\PutawayItemSource;
 use Modules\Warehouse\Services\BinOccupancyGuard;
 use Modules\Warehouse\Services\SkuHomeBinGuard;
+use Modules\Warehouse\Services\InboundBinPolicy;
 use App\Traits\StockLockable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -71,6 +72,12 @@ class ProcessPutawayItemJob implements ShouldQueue
                 $destinationBinId = $this->data['destination_bin_id'];
                 $transactionNumber = $putaway->putaway_no;
 
+                app(InboundBinPolicy::class)->assertPutawayRoute(
+                    $putaway->location_id,
+                    $putawayItem->source_bin_id,
+                    $destinationBinId,
+                );
+
                 app(BinOccupancyGuard::class)->assertBinFitsSku($destinationBinId, $putawayItem->item_id);
                 app(SkuHomeBinGuard::class)->assertSkuFitsBin($putaway->location_id, $putawayItem->item_id, $destinationBinId);
 
@@ -92,11 +99,7 @@ class ProcessPutawayItemJob implements ShouldQueue
                     );
                 }
 
-                $sourceIsTransit = (bool) ($putawayItem->sourceBin?->is_inbound)
-                    || in_array(strtoupper((string) $putaway->source_type), ['INBOUND', 'TRANSFER', 'TRANSFER_IN', 'PURCHASE', 'RECEIPT'], true)
-                    || $putawayItem->sources()->exists();
-
-                if (!config('inventory.allow_negative_stock', true) && !$sourceIsTransit && $sourceInventory->on_hand < $qty) {
+                if ($sourceInventory->on_hand < $qty) {
                     throw new \RuntimeException("Stok di source bin tidak mencukupi (tersedia: {$sourceInventory->on_hand}, diminta: {$qty}).");
                 }
 

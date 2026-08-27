@@ -9,7 +9,7 @@ class StockSummary
 
     public static function placedOnHandSql(string $inv = 'inventories', string $bin = 'location_bins'): string
     {
-        return "COALESCE(SUM(CASE WHEN ({$bin}.id IS NULL OR {$bin}.is_inbound = false) THEN {$inv}.on_hand ELSE 0 END),0)";
+        return "COALESCE(SUM(CASE WHEN {$bin}.id IS NOT NULL AND {$bin}.is_inbound = false THEN {$inv}.on_hand ELSE 0 END),0)";
     }
 
     public static function onOrderSql(string $inv = 'inventories'): string
@@ -19,7 +19,7 @@ class StockSummary
 
     public static function availableSql(string $inv = 'inventories', string $bin = 'location_bins'): string
     {
-        return 'GREATEST(0, ' . self::placedOnHandSql($inv, $bin) . ' - ' . self::onOrderSql($inv) . ')';
+        return '(' . self::placedOnHandSql($inv, $bin) . ' - ' . self::onOrderSql($inv) . ')';
     }
 
     public static function forItems(array $itemIds, ?array $locationIds = null): array
@@ -55,7 +55,7 @@ class StockSummary
                 'on_order' => $onOrder,
                 'transit' => (int) ($transitByItem[$row->item_id] ?? 0),
 
-                'available' => max(0, $onHand - $onOrder),
+                'available' => $onHand - $onOrder,
             ];
         }
 
@@ -209,7 +209,7 @@ class StockSummary
 
             'transit' => 0,
 
-            'available' => max(0, $placedOnHand - $onOrder),
+            'available' => $placedOnHand - $onOrder,
         ];
     }
 

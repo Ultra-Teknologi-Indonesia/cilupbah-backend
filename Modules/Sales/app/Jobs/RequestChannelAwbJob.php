@@ -9,14 +9,11 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Repositories\ChannelShopRepository;
-use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\TikTokOrderService;
+use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Outbound\Services\OutboundFulfillmentService;
-use Modules\Outbound\Support\InstantOrderClassifier;
-use Modules\Sales\Jobs\PrepareLazadaShippingLabelJob;
-use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
 use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\BulkShippingLabelService;
@@ -26,6 +23,7 @@ class RequestChannelAwbJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
+
     public array $backoff = [10, 30, 60];
 
     private const TRACKING_RETRY_DELAYS = [30, 60, 300, 600];
@@ -34,7 +32,8 @@ class RequestChannelAwbJob implements ShouldQueue
         public readonly string $orderId,
         public readonly int $trackingAttempt = 0,
     ) {
-        $this->onQueue(config('queue.names.labels', 'labels'));
+        $this->onConnection(config('queue.routing.labels.connection', 'redis-long'));
+        $this->onQueue(config('queue.routing.labels.queue', 'labels'));
     }
 
     public function handle(OutboundFulfillmentService $fulfillment): void
@@ -72,11 +71,11 @@ class RequestChannelAwbJob implements ShouldQueue
                 $result = $results[0] ?? null;
 
                 Log::info('RequestChannelAwbJob: readyToShip dispatched', [
-                    'order_id'      => $order->id,
+                    'order_id' => $order->id,
                     'salesorder_no' => $order->salesorder_no,
-                    'source'        => $source,
-                    'status'        => $result['status'] ?? 'unknown',
-                    'message'       => $result['message'] ?? null,
+                    'source' => $source,
+                    'status' => $result['status'] ?? 'unknown',
+                    'message' => $result['message'] ?? null,
                 ]);
 
                 if (($result['status'] ?? null) === 'failed') {
@@ -98,17 +97,17 @@ class RequestChannelAwbJob implements ShouldQueue
             } elseif (isset(self::TRACKING_RETRY_DELAYS[$this->trackingAttempt])) {
                 $delay = self::TRACKING_RETRY_DELAYS[$this->trackingAttempt];
                 Log::info('RequestChannelAwbJob: tracking belum tersedia, retry', [
-                    'order_id'      => $order->id,
+                    'order_id' => $order->id,
                     'salesorder_no' => $order->salesorder_no,
-                    'next_attempt'  => $this->trackingAttempt + 1,
+                    'next_attempt' => $this->trackingAttempt + 1,
                     'delay_seconds' => $delay,
                 ]);
                 self::dispatch($order->id, $this->trackingAttempt + 1)->delay(now()->addSeconds($delay));
             } else {
                 Log::warning('RequestChannelAwbJob: menyerah, tracking tidak kunjung terbit', [
-                    'order_id'      => $order->id,
+                    'order_id' => $order->id,
                     'salesorder_no' => $order->salesorder_no,
-                    'attempts'      => $this->trackingAttempt + 1,
+                    'attempts' => $this->trackingAttempt + 1,
                 ]);
                 app(BulkShippingLabelService::class)->onOrderAwbGaveUp(
                     $order->id,
@@ -117,10 +116,10 @@ class RequestChannelAwbJob implements ShouldQueue
             }
         } catch (\Throwable $e) {
             Log::error('RequestChannelAwbJob: error saat request AWB', [
-                'order_id'      => $order->id,
+                'order_id' => $order->id,
                 'salesorder_no' => $order->salesorder_no,
-                'source'        => $source,
-                'exception'     => $e->getMessage(),
+                'source' => $source,
+                'exception' => $e->getMessage(),
             ]);
             throw $e;
         }
@@ -129,7 +128,7 @@ class RequestChannelAwbJob implements ShouldQueue
     public function failed(\Throwable $exception): void
     {
         Log::error('RequestChannelAwbJob failed permanently', [
-            'order_id'  => $this->orderId,
+            'order_id' => $this->orderId,
             'exception' => $exception->getMessage(),
         ]);
 
@@ -156,19 +155,20 @@ class RequestChannelAwbJob implements ShouldQueue
             if ($tn) {
                 $order->update(['tracking_number' => $tn]);
                 Log::info('RequestChannelAwbJob: tracking_number disimpan', [
-                    'order_id'        => $order->id,
-                    'salesorder_no'   => $order->salesorder_no,
+                    'order_id' => $order->id,
+                    'salesorder_no' => $order->salesorder_no,
                     'tracking_number' => $tn,
                 ]);
 
                 PrepareShopeeShippingLabelJob::dispatch($order->id)
-                    ->onQueue(config('queue.names.labels', 'labels'));
+                    ->onConnection(config('queue.routing.labels.connection', 'redis-long'))
+                    ->onQueue(config('queue.routing.labels.queue', 'labels'));
 
                 return true;
             }
         } catch (\Throwable $e) {
             Log::warning('RequestChannelAwbJob: gagal fetch tracking_number', [
-                'order_id'  => $order->id,
+                'order_id' => $order->id,
                 'exception' => $e->getMessage(),
             ]);
         }
@@ -198,8 +198,8 @@ class RequestChannelAwbJob implements ShouldQueue
                 $order->update($update);
 
                 Log::info('RequestChannelAwbJob: tracking_number disimpan', [
-                    'order_id'        => $order->id,
-                    'salesorder_no'   => $order->salesorder_no,
+                    'order_id' => $order->id,
+                    'salesorder_no' => $order->salesorder_no,
                     'tracking_number' => $resolved['tracking_number'],
                 ]);
 
@@ -207,7 +207,7 @@ class RequestChannelAwbJob implements ShouldQueue
             }
         } catch (\Throwable $e) {
             Log::warning('RequestChannelAwbJob: gagal fetch tracking_number', [
-                'order_id'  => $order->id,
+                'order_id' => $order->id,
                 'exception' => $e->getMessage(),
             ]);
         }
@@ -228,19 +228,20 @@ class RequestChannelAwbJob implements ShouldQueue
 
             if ($tn !== '') {
                 Log::info('RequestChannelAwbJob: Lazada tracking_number tersimpan via pullOrderById', [
-                    'order_id'        => $order->id,
-                    'salesorder_no'   => $order->salesorder_no,
+                    'order_id' => $order->id,
+                    'salesorder_no' => $order->salesorder_no,
                     'tracking_number' => $tn,
                 ]);
 
                 PrepareLazadaShippingLabelJob::dispatch($order->id)
-                    ->onQueue(config('queue.names.labels', 'labels'));
+                    ->onConnection(config('queue.routing.labels.connection', 'redis-long'))
+                    ->onQueue(config('queue.routing.labels.queue', 'labels'));
 
                 return true;
             }
         } catch (\Throwable $e) {
             Log::warning('RequestChannelAwbJob: gagal fetch Lazada tracking_number', [
-                'order_id'  => $order->id,
+                'order_id' => $order->id,
                 'exception' => $e->getMessage(),
             ]);
         }

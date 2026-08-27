@@ -23,6 +23,7 @@ use OpenApi\Attributes as OA;
         new OA\Property(property: 'channel_status', type: 'string', example: 'UNPAID'),
         new OA\Property(property: 'is_paid', type: 'boolean', example: false),
         new OA\Property(property: 'is_canceled', type: 'boolean', example: false),
+        new OA\Property(property: 'has_stock_shortfall', type: 'boolean', example: false),
         new OA\Property(property: 'payment_method', type: 'string', nullable: true, example: null),
 
         new OA\Property(property: 'sub_total', type: 'number', format: 'float', example: 100000),
@@ -97,6 +98,7 @@ class SalesOrderResource extends JsonResource
             'channel_status_raw'  => $this->channel_status_raw,
             'is_paid'             => (bool) $this->is_paid,
             'is_canceled'         => (bool) $this->is_canceled,
+            'has_stock_shortfall' => $this->hasStockShortfall(),
             'cancel_reason'       => $this->cancel_reason,
             'channel_cancel_status'       => $this->channel_cancel_status,
             'channel_cancel_error'        => $this->channel_cancel_error,

@@ -38,6 +38,14 @@ class ProcessReservedStockJob implements ShouldQueue
             $this->withStockLock($item->item_id, $reservedStock->location_id, function () use ($item, $reservedStock, $inventoryRepository, $movementRepository) {
                 DB::transaction(function () use ($item, $reservedStock, $inventoryRepository, $movementRepository) {
 
+                    if (! empty($item->bin_id)) {
+                        app(\Modules\Warehouse\Services\InboundBinPolicy::class)->assertConsumable(
+                            $reservedStock->location_id,
+                            $item->bin_id,
+                            'reservasi stok',
+                        );
+                    }
+
                     if ($movementRepository->movementExists(
                         $reservedStock->reserved_stock_no,
                         $item->item_id,

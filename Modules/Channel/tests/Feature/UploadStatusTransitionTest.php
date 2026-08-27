@@ -106,7 +106,7 @@ class UploadStatusTransitionTest extends TestCase
         try {
             $job->handle($this->app->make(AdapterFactory::class));
         } catch (\Throwable $exception) {
-            // The worker retries this exception before calling failed().
+
         }
 
         $mapping = ProductChannelMapping::query()

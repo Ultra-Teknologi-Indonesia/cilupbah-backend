@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Modules\Channel\Services\ChannelSyncSettingService;
@@ -14,6 +15,7 @@ use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Sales\Exceptions\ShippingLabelPreparingException;
 use Modules\Sales\Jobs\PrepareLazadaShippingLabelJob;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
+use Modules\Sales\Jobs\ProcessBulkShippingLabelItemJob;
 use Modules\Sales\Jobs\RequestChannelAwbJob;
 use Modules\Sales\Models\BulkShippingLabelBatch;
 use Modules\Sales\Models\BulkShippingLabelItem;
@@ -25,9 +27,13 @@ use Throwable;
 class BulkShippingLabelService
 {
     public const CHANNEL_SHOPEE = 'shopee';
+
     public const CHANNEL_TIKTOK = 'tiktok';
+
     public const CHANNEL_LAZADA = 'lazada';
+
     public const CHANNEL_WC = 'woocommerce';
+
     public const CHANNEL_MANUAL = 'manual';
 
     public const SUPPORTED_CHANNELS = [
@@ -37,7 +43,9 @@ class BulkShippingLabelService
     ];
 
     public const SIZE_100X150 = 'thermal_100x150';
+
     public const SIZE_100X120 = 'thermal_100x120';
+
     public const DEFAULT_SIZE = self::SIZE_100X120;
 
     private const SIZE_DIMENSIONS_MM = [
@@ -52,9 +60,13 @@ class BulkShippingLabelService
     private const BBOX_SAFE_MARGIN_MM = 2.0;
 
     public const TIKTOK_DOWNLOAD_TIMEOUT = 20;
+
     public const TIKTOK_DOWNLOAD_RETRIES = 2;
+
     public const TIKTOK_PARALLEL_LANES = 8;
+
     public const SPLIT_SUB_BATCH_THRESHOLD = 500;
+
     public const SUB_BATCH_SIZE = 100;
 
     private const INSTANT_COURIER_KEYWORDS = [
@@ -68,9 +80,7 @@ class BulkShippingLabelService
         'DEALIVER',
     ];
 
-    public function __construct(private SalesOrderService $salesOrderService)
-    {
-    }
+    public function __construct(private SalesOrderService $salesOrderService) {}
 
     public function createBatch(User $user, array $orderIds, array $perChannelOpts): BulkShippingLabelBatch
     {
@@ -201,6 +211,80 @@ class BulkShippingLabelService
         $this->tryFinalize($batch);
     }
 
+    public function dispatchPendingItems(BulkShippingLabelBatch $batch): int
+    {
+        if ($batch->status !== BulkShippingLabelBatch::STATUS_PROCESSING) {
+            return 0;
+        }
+
+        $count = 0;
+        $batch->items()
+            ->where('status', BulkShippingLabelItem::STATUS_PENDING)
+            ->orderBy('created_at')
+            ->select(['id', 'batch_id'])
+            ->cursor()
+            ->each(function (BulkShippingLabelItem $item) use (&$count): void {
+                $this->dispatchItem($item);
+                $count++;
+            });
+
+        return $count;
+    }
+
+    public function dispatchItem(BulkShippingLabelItem $item): void
+    {
+        ProcessBulkShippingLabelItemJob::dispatch($item->batch_id, $item->id);
+    }
+
+    public function processPendingItem(BulkShippingLabelItem $item): void
+    {
+        $order = SalesOrder::find($item->order_id);
+        if (! $order) {
+            $this->fail($item, BulkShippingLabelItem::REASON_NO_AWB);
+
+            return;
+        }
+
+        $limit = max(1, (int) config('queue.routing.labels.rate_limit_attempts', 5));
+        $decay = max(1, (int) config('queue.routing.labels.rate_limit_decay_seconds', 1));
+        $key = sprintf('bulk-label:%s:%s', $item->channel, $order->channel_shop_id ?: 'internal');
+
+        $startedAt = microtime(true);
+        while (! RateLimiter::attempt($key, $limit, fn (): bool => true, $decay)) {
+            if ((microtime(true) - $startedAt) >= 15) {
+                $this->fail($item, 'channel_rate_limit_timeout');
+
+                return;
+            }
+            usleep(100_000);
+        }
+
+        $this->processItem($item, null);
+    }
+
+    public function markItemCrashed(string $batchId, string $itemId): void
+    {
+        $updated = BulkShippingLabelItem::query()
+            ->whereKey($itemId)
+            ->where('batch_id', $batchId)
+            ->whereIn('status', BulkShippingLabelItem::TRANSIENT_STATUSES)
+            ->update([
+                'status' => BulkShippingLabelItem::STATUS_FAILED,
+                'reason' => BulkShippingLabelItem::REASON_BATCH_CRASHED,
+                'updated_at' => now(),
+            ]);
+
+        if ($updated === 0) {
+            return;
+        }
+
+        $batch = BulkShippingLabelBatch::find($batchId);
+        if ($batch) {
+            $batch->recomputeCounts();
+            $this->tryFinalize($batch);
+        }
+    }
+
     public function resolveChannelOptions(string $channel): array
     {
         return match ($channel) {
@@ -252,12 +336,13 @@ class BulkShippingLabelService
                     return $result;
                 }
             }
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             Log::warning('preprocessPdfForFpdi: gs gagal, pakai bytes asli', ['error' => $e->getMessage()]);
         } finally {
             @unlink($inTmp);
             @unlink($outTmp);
         }
+
         return $srcPdfBytes;
     }
 
@@ -305,7 +390,7 @@ class BulkShippingLabelService
             ];
 
             return ($box[2] > $box[0] && $box[3] > $box[1]) ? $box : null;
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             Log::warning('detectInkBBoxMm gagal', ['error' => $e->getMessage()]);
 
             return null;
@@ -422,7 +507,7 @@ class BulkShippingLabelService
             }
 
             return $out->Output('S');
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             Log::warning('normalizeToTarget: FPDI gagal, return PDF asli', [
                 'error' => $e->getMessage(),
                 'channel' => $channel,
@@ -444,6 +529,7 @@ class BulkShippingLabelService
                 $order = SalesOrder::find($item->order_id);
                 if (! $order) {
                     $this->fail($item, BulkShippingLabelItem::REASON_NO_AWB);
+
                     continue;
                 }
                 $result = $this->salesOrderService->getShippingLabel($order, $options);
@@ -452,12 +538,14 @@ class BulkShippingLabelService
                 if (! empty($url) && is_string($url)) {
 
                     $urlMap[$item->id] = $url;
+
                     continue;
                 }
 
                 $bytes = $this->resolveLabelBytes($result);
                 if ($bytes !== null) {
-                    $this->succeed($item, $bytes);
+                    $this->succeed($item, $bytes, $order);
+
                     continue;
                 }
                 $this->fail($item, 'tiktok_no_label');
@@ -484,18 +572,22 @@ class BulkShippingLabelService
                         ->retry(self::TIKTOK_DOWNLOAD_RETRIES, 500)
                         ->get($url);
                 }
+
                 return $reqs;
             });
 
             foreach ($chunk as $itemId => $_url) {
                 $item = $items->firstWhere('id', $itemId);
-                if (! $item) continue;
-                $response = $responses[$itemId] ?? null;
-                if ($response instanceof \Throwable || $response === null || ! $response->successful()) {
-                    $this->fail($item, 'tiktok_download_failed');
+                if (! $item) {
                     continue;
                 }
-                $this->succeed($item, $response->body());
+                $response = $responses[$itemId] ?? null;
+                if ($response instanceof Throwable || $response === null || ! $response->successful()) {
+                    $this->fail($item, 'tiktok_download_failed');
+
+                    continue;
+                }
+                $this->succeed($item, $response->body(), SalesOrder::find($item->order_id));
             }
         }
     }
@@ -507,6 +599,7 @@ class BulkShippingLabelService
             $order = SalesOrder::find($item->order_id);
             if (! $order) {
                 $this->fail($item, BulkShippingLabelItem::REASON_NO_AWB);
+
                 return;
             }
 
@@ -538,9 +631,12 @@ class BulkShippingLabelService
             return;
         } catch (\RuntimeException $e) {
             $msg = strtolower($e->getMessage());
+            $latestOrder = $order->fresh();
+            $persistedFailure = data_get($latestOrder?->shipping_label_raw_data, 'shipping_label_failure.reason');
             $reason = match (true) {
-                $order->fresh()?->shipping_label_status === 'self_design_required' => BulkShippingLabelItem::REASON_SELF_DESIGN,
                 Str::contains($msg, ['parcel has been shipped', 'already shipped', 'can not print now', 'sudah dikirim']) => BulkShippingLabelItem::REASON_PARCEL_ALREADY_SHIPPED,
+                $persistedFailure === BulkShippingLabelItem::REASON_PARCEL_ALREADY_SHIPPED => BulkShippingLabelItem::REASON_PARCEL_ALREADY_SHIPPED,
+                $latestOrder?->shipping_label_status === 'self_design_required' => BulkShippingLabelItem::REASON_SELF_DESIGN,
                 default => BulkShippingLabelItem::REASON_SHOPEE_PREP_FAILED,
             };
 
@@ -551,13 +647,14 @@ class BulkShippingLabelService
 
         $bytes = $this->resolveLabelBytes($result);
         if ($bytes !== null) {
-            $this->succeed($item, $bytes);
+            $this->succeed($item, $bytes, $order);
 
             return;
         }
 
         PrepareShopeeShippingLabelJob::dispatch($order->id)
-            ->onQueue(config('queue.names.labels', 'labels'));
+            ->onConnection(config('queue.routing.labels.connection', 'redis-long'))
+            ->onQueue(config('queue.routing.labels.queue', 'labels'));
         $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP]);
     }
 
@@ -579,14 +676,14 @@ class BulkShippingLabelService
                     ->retry(self::TIKTOK_DOWNLOAD_RETRIES, 500)
                     ->get($url);
                 if ($response->successful()) {
-                    $this->succeed($item, $response->body());
+                    $this->succeed($item, $response->body(), $order);
 
                     return;
                 }
             } catch (Throwable $e) {
                 Log::warning('TikTok single label download failed', [
                     'item_id' => $item->id,
-                    'error'   => $e->getMessage(),
+                    'error' => $e->getMessage(),
                 ]);
             }
         }
@@ -603,18 +700,21 @@ class BulkShippingLabelService
         } catch (ShippingLabelPreparingException $e) {
 
             PrepareLazadaShippingLabelJob::dispatch($order->id)
-                ->onQueue(config('queue.names.labels', 'labels'));
+                ->onConnection(config('queue.routing.labels.connection', 'redis-long'))
+                ->onQueue(config('queue.routing.labels.queue', 'labels'));
             $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP]);
+
             return;
         } catch (\RuntimeException $e) {
 
             $this->fail($item, BulkShippingLabelItem::REASON_SELF_DESIGN);
+
             return;
         }
 
         $bytes = $this->resolveLabelBytes($result);
         if ($bytes !== null) {
-            $this->succeed($item, $bytes);
+            $this->succeed($item, $bytes, $order);
 
             return;
         }
@@ -630,7 +730,8 @@ class BulkShippingLabelService
         }
 
         PrepareLazadaShippingLabelJob::dispatch($order->id)
-            ->onQueue(config('queue.names.labels', 'labels'));
+            ->onConnection(config('queue.routing.labels.connection', 'redis-long'))
+            ->onQueue(config('queue.routing.labels.queue', 'labels'));
         $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP]);
     }
 
@@ -669,11 +770,19 @@ class BulkShippingLabelService
         if (! $response->successful()) {
             return null;
         }
+
         return $response->body();
     }
 
-    private function succeed(BulkShippingLabelItem $item, string $bytes): void
-    {
+    private function succeed(
+        BulkShippingLabelItem $item,
+        string $bytes,
+        ?SalesOrder $order = null,
+    ): void {
+        if ($order) {
+            $this->salesOrderService->cacheShippingLabelBytes($order, $bytes);
+        }
+
         $item->update([
             'status' => BulkShippingLabelItem::STATUS_DONE,
             'pdf_bytes' => $bytes,
@@ -715,11 +824,18 @@ class BulkShippingLabelService
         }
 
         foreach ($items as $item) {
-            $batch = BulkShippingLabelBatch::find($item->batch_id);
-            $this->processItem($item, $batch?->per_channel_opts);
-        }
+            $claimed = BulkShippingLabelItem::query()
+                ->whereKey($item->id)
+                ->where('status', BulkShippingLabelItem::STATUS_WAITING_AWB)
+                ->update([
+                    'status' => BulkShippingLabelItem::STATUS_PENDING,
+                    'updated_at' => now(),
+                ]);
 
-        $this->finalizeAffectedBatches($items);
+            if ($claimed === 1) {
+                $this->dispatchItem($item);
+            }
+        }
     }
 
     public function onOrderAwbSkippedInstant(string $orderId): void
@@ -775,20 +891,34 @@ class BulkShippingLabelService
                 $this->fail($item, BulkShippingLabelItem::REASON_NO_AWB);
             }
             $this->finalizeAffectedBatches($items);
+
             return;
         }
 
         $labelStatus = $order->shipping_label_status ?? null;
+        $persistedFailure = data_get($order->shipping_label_raw_data, 'shipping_label_failure.reason');
 
         foreach ($items as $item) {
             try {
                 $isLazada = $item->channel === self::CHANNEL_LAZADA;
 
                 if ($labelStatus === 'ready') {
-                    $options = $this->resolveChannelOptions($item->channel);
-                    $isLazada
-                        ? $this->processLazada($item, $order, $options)
-                        : $this->processShopee($item, $order, $options);
+                    $claimed = BulkShippingLabelItem::query()
+                        ->whereKey($item->id)
+                        ->whereIn('status', [
+                            BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP,
+                            BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP,
+                        ])
+                        ->update([
+                            'status' => BulkShippingLabelItem::STATUS_PENDING,
+                            'updated_at' => now(),
+                        ]);
+
+                    if ($claimed === 1) {
+                        $this->dispatchItem($item);
+                    }
+                } elseif ($persistedFailure === BulkShippingLabelItem::REASON_PARCEL_ALREADY_SHIPPED) {
+                    $this->fail($item, BulkShippingLabelItem::REASON_PARCEL_ALREADY_SHIPPED);
                 } elseif ($labelStatus === 'self_design_required') {
                     $this->fail($item, BulkShippingLabelItem::REASON_SELF_DESIGN);
                 } elseif ($labelStatus === 'failed') {
@@ -878,6 +1008,7 @@ class BulkShippingLabelService
                 'finished_at' => now(),
             ]);
             $batch->recomputeCounts();
+
             return;
         }
 

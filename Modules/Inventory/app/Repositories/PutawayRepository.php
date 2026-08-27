@@ -2,6 +2,9 @@
 
 namespace Modules\Inventory\Repositories;
 
+use App\Models\User;
+use App\Support\SearchExpression;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Modules\Inventory\Models\Putaway;
 use Modules\Inventory\Models\PutawayItem;
 use Modules\Inventory\Models\Inventory;
@@ -60,8 +63,11 @@ class PutawayRepository
                 AllowedFilter::exact('assigned_to'),
                 AllowedFilter::exact('source_type'),
             )
-            ->allowedSearch('putaway_no', 'sources.reference_number', 'sources.transaction_number')
-            ->allowedSorts('created_at', 'started_at', 'completed_at', 'putaway_no', 'status')
+            ->allowedSorts('created_at', 'started_at', 'completed_at', 'putaway_no', 'status');
+
+        $this->applySearch($query);
+
+        $query
             ->defaultSort('-created_at');
 
         \App\Support\WarehouseAccess::apply($query);
@@ -79,8 +85,11 @@ class PutawayRepository
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::exact('assigned_to'),
             )
-            ->allowedSearch('putaway_no', 'sources.reference_number', 'sources.transaction_number')
-            ->allowedSorts('created_at', 'started_at', 'completed_at', 'putaway_no', 'status')
+            ->allowedSorts('created_at', 'started_at', 'completed_at', 'putaway_no', 'status');
+
+        $this->applySearch($query);
+
+        $query
             ->defaultSort('-created_at');
 
         \App\Support\WarehouseAccess::apply($query);
@@ -88,6 +97,60 @@ class PutawayRepository
         return $query
             ->paginate(request('per_page', $limit))
             ->appends(request()->query());
+    }
+
+    private function applySearch(QueryBuilder $query): void
+    {
+        $term = trim((string) (request()->query('search') ?? request()->query('q', '')));
+
+        if ($term === '') {
+            return;
+        }
+
+        $putawaysTable = $query->getModel()->getTable();
+        $usersTable = (new User())->getTable();
+
+        $query->where(function (EloquentBuilder $search) use ($term, $putawaysTable, $usersTable): void {
+            $search
+                ->whereRaw(
+                    SearchExpression::match(["{$putawaysTable}.putaway_no"]),
+                    SearchExpression::matchBindings($term, ["{$putawaysTable}.putaway_no"]),
+                )
+
+                ->orWhereRaw(
+                    SearchExpression::match(["{$putawaysTable}.created_by"]),
+                    SearchExpression::matchBindings($term, ["{$putawaysTable}.created_by"]),
+                )
+                ->orWhereHas('sources', function (EloquentBuilder $sourceQuery) use ($term): void {
+                    $columns = ['reference_number', 'transaction_number'];
+                    $sourceQuery->whereRaw(
+                        SearchExpression::match($columns),
+                        SearchExpression::matchBindings($term, $columns),
+                    );
+                })
+                ->orWhereExists(function ($userQuery) use ($term, $putawaysTable, $usersTable): void {
+                    $columns = ["{$usersTable}.name"];
+                    $userQuery
+                        ->selectRaw('1')
+                        ->from($usersTable)
+                        ->whereRaw("{$putawaysTable}.created_by::text = {$usersTable}.id::text")
+                        ->whereRaw(
+                            SearchExpression::match($columns),
+                            SearchExpression::matchBindings($term, $columns),
+                        );
+                })
+                ->orWhereExists(function ($userQuery) use ($term, $putawaysTable, $usersTable): void {
+                    $columns = ["{$usersTable}.name"];
+                    $userQuery
+                        ->selectRaw('1')
+                        ->from($usersTable)
+                        ->whereRaw("{$putawaysTable}.assigned_to::text = {$usersTable}.id::text")
+                        ->whereRaw(
+                            SearchExpression::match($columns),
+                            SearchExpression::matchBindings($term, $columns),
+                        );
+                });
+        });
     }
 
     private function detailRelations(): array

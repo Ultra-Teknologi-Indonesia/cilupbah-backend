@@ -28,6 +28,16 @@ class StockRevaluationService
 
     public function create(array $data): StockRevaluation
     {
+        foreach ($data['items'] as $itemData) {
+            if (! empty($itemData['bin_id'])) {
+                app(\Modules\Warehouse\Services\InboundBinPolicy::class)->assertConsumable(
+                    $data['location_id'],
+                    $itemData['bin_id'],
+                    'ubah nilai stok',
+                );
+            }
+        }
+
         return DB::transaction(function () use ($data) {
             $revaluationNo = $this->revaluationRepository->generateRevaluationNo();
 
@@ -75,6 +85,14 @@ class StockRevaluationService
             }
 
             foreach ($revaluation->items as $item) {
+                if (! empty($item->bin_id)) {
+                    app(\Modules\Warehouse\Services\InboundBinPolicy::class)->assertConsumable(
+                        $revaluation->location_id,
+                        $item->bin_id,
+                        'ubah nilai stok',
+                    );
+                }
+
                 $inventory = $this->inventoryRepository->findOrCreateForUpdate(
                     $item->item_id,
                     $revaluation->location_id,
