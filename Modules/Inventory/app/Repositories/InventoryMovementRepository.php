@@ -172,17 +172,16 @@ class InventoryMovementRepository
 
         if ($view === 'clean') {
             $baseQuery->whereNotIn('source', InventoryMovementSourceMap::CLEAN_HIDDEN_SOURCES);
+            $baseQuery->where('source', 'PUTAWAY_IN');
+            $baseQuery->whereNotNull('inventory_movements.bin_id');
             $baseQuery->where(function ($q) {
-                $q->whereNull('inventory_movements.bin_id')
-                    ->orWhereNotExists(function ($defaultBinQuery) {
-                        $defaultBinQuery
-                            ->selectRaw('1')
-                            ->from('location_bins as default_bins')
-                            ->whereColumn('default_bins.id', 'inventory_movements.bin_id')
-                            ->whereRaw(
-                                "UPPER(TRIM(COALESCE(default_bins.bin_final_code, default_bins.bin_code, ''))) = 'DEFAULT'"
-                            );
-                    });
+                $q->whereNotExists(function ($inboundBinQuery) {
+                    $inboundBinQuery
+                        ->selectRaw('1')
+                        ->from('location_bins as inbound_bins')
+                        ->whereColumn('inbound_bins.id', 'inventory_movements.bin_id')
+                        ->where('inbound_bins.is_inbound', true);
+                });
             });
         } elseif ($view === 'attention') {
             $baseQuery->whereIn('source', InventoryMovementSourceMap::INVOICE_SOURCES);
@@ -287,10 +286,8 @@ class InventoryMovementRepository
                 $inboundBinQuery
                     ->selectRaw('1')
                     ->from('location_bins')
-                    ->join('locations', 'locations.id', '=', 'location_bins.location_id')
                     ->whereColumn('location_bins.id', 'inventory_movements.bin_id')
-                    ->where('location_bins.is_inbound', true)
-                    ->where('locations.is_small_warehouse', false);
+                    ->where('location_bins.is_inbound', true);
             });
         } else {
             $balanceQuery->where(function ($q) {

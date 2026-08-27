@@ -14,6 +14,7 @@ class KronologiBalancePartitionTest extends TestCase
 
     private string $locationId;
     private string $itemId;
+    private string $finalBinId;
 
     protected function setUp(): void
     {
@@ -27,6 +28,16 @@ class KronologiBalancePartitionTest extends TestCase
             'location_code' => 'LOC-PART',
             'location_name' => 'Gudang Partisi',
             'location_type' => 'WAREHOUSE',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->finalBinId = Str::uuid()->toString();
+        DB::table('location_bins')->insert([
+            'id' => $this->finalBinId,
+            'location_id' => $this->locationId,
+            'bin_code' => 'O-A1-K1-X1',
+            'bin_final_code' => 'O-A1-K1-X1',
+            'is_inbound' => false,
             'created_at' => now(), 'updated_at' => now(),
         ]);
 
@@ -47,13 +58,19 @@ class KronologiBalancePartitionTest extends TestCase
         ]);
     }
 
-    private function movement(string $source, int $qty, int $balance, int $minuteOffset): void
+    private function movement(
+        string $source,
+        int $qty,
+        int $balance,
+        int $minuteOffset,
+        ?string $binId = null,
+    ): void
     {
         DB::table('inventory_movements')->insert([
             'id' => Str::uuid()->toString(),
             'item_id' => $this->itemId,
             'location_id' => $this->locationId,
-            'bin_id' => null,
+            'bin_id' => $binId,
             'transaction_number' => 'TRX-' . $source . '-' . $minuteOffset,
             'source' => $source,
             'qty' => $qty,
@@ -184,7 +201,7 @@ class KronologiBalancePartitionTest extends TestCase
 
     public function test_pesanan_masuk_tidak_muncul_dan_tidak_mengubah_saldo(): void
     {
-        $this->movement('PUTAWAY_IN', 69, 69, 1);
+        $this->movement('PUTAWAY_IN', 69, 69, 1, $this->finalBinId);
         $this->movement('ORDER_RESERVE', 6, 6, 2);
 
         request()->merge([
@@ -340,7 +357,7 @@ class KronologiBalancePartitionTest extends TestCase
         );
     }
 
-    public function test_order_complete_out_muncul_di_kronologi_bersih_dan_mengubah_saldo(): void
+    public function test_clean_hanya_menampilkan_putaway_in_dan_menyembunyikan_order_complete_out(): void
     {
         $this->movement('ADJUSTMENT', 88, 88, 1);
         $this->movement('ORDER_COMPLETE_OUT', -1, 87, 2);
@@ -353,15 +370,16 @@ class KronologiBalancePartitionTest extends TestCase
 
         $rows = collect(app(InventoryMovementRepository::class)->getHistoryPaginated(50)->items());
 
-        $this->assertCount(
-            2,
-            $rows,
-            'ORDER_COMPLETE_OUT adalah mutasi fisik pesanan keluar, sehingga wajib muncul di kronologi bersih'
-        );
+        $this->assertCount(0, $rows);
 
-        $sources = $rows->pluck('source')->all();
-        $this->assertContains('ORDER_COMPLETE_OUT', $sources);
-        $this->assertContains('ADJUSTMENT', $sources);
+        request()->merge(['view' => 'all']);
+
+        $allSources = collect(
+            app(InventoryMovementRepository::class)->getHistoryPaginated(50)->items()
+        )->pluck('source')->all();
+
+        $this->assertContains('ORDER_COMPLETE_OUT', $allSources);
+        $this->assertContains('ADJUSTMENT', $allSources);
     }
 
     public function test_partisi_saldo_tanpa_dan_dengan_filter_lokasi(): void
