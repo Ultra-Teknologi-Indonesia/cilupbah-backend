@@ -2,18 +2,24 @@
 
 namespace Modules\Inventory\Repositories;
 
+use App\Support\WarehouseAccess;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Modules\Channel\Models\ChannelShop;
 use Modules\Inventory\Models\Inventory;
-use Modules\Inventory\Models\InventoryMovement;
+use Modules\Inventory\Models\SkuRackAssignment;
 use Modules\Inventory\Support\StockSummary;
 use Modules\Product\Models\ProductVariant;
-use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Support\Facades\DB;
-use Spatie\QueryBuilder\QueryBuilder;
+use Modules\Warehouse\Models\Location;
+use Modules\Warehouse\Models\LocationBin;
 use Spatie\QueryBuilder\AllowedFilter;
+use Spatie\QueryBuilder\QueryBuilder;
 
 class InventoryRepository
 {
-
     private string|null|false $kecilLocationId = false;
 
     private string|null|false $transitLocationId = false;
@@ -21,7 +27,7 @@ class InventoryRepository
     private function kecilLocationId(): ?string
     {
         if ($this->kecilLocationId === false) {
-            $this->kecilLocationId = \Modules\Warehouse\Models\Location::getSmallWarehouseId();
+            $this->kecilLocationId = Location::getSmallWarehouseId();
         }
 
         return $this->kecilLocationId;
@@ -30,8 +36,8 @@ class InventoryRepository
     private function transitLocationId(): ?string
     {
         if ($this->transitLocationId === false) {
-            $this->transitLocationId = \Modules\Warehouse\Models\Location::query()
-                ->where('location_code', \Modules\Warehouse\Models\Location::SYSTEM_TRANSIT_CODE)
+            $this->transitLocationId = Location::query()
+                ->where('location_code', Location::SYSTEM_TRANSIT_CODE)
                 ->value('id');
         }
 
@@ -40,10 +46,10 @@ class InventoryRepository
 
     private function applyStockSourceScope($query, ?string $locationId)
     {
-        $allowed = \App\Support\WarehouseAccess::allowedIds();
+        $allowed = WarehouseAccess::allowedIds();
 
         if ($locationId) {
-            \App\Support\WarehouseAccess::assert($locationId);
+            WarehouseAccess::assert($locationId);
             $query->where('location_id', $locationId);
         } elseif ($allowed !== null) {
             $query->whereIn('location_id', $allowed);
@@ -78,14 +84,14 @@ class InventoryRepository
 
         $existingBinIds = $inventories->pluck('bin_id')->filter()->unique()->all();
 
-        $assignmentQuery = \Modules\Inventory\Models\SkuRackAssignment::where('item_id', $itemId)
+        $assignmentQuery = SkuRackAssignment::where('item_id', $itemId)
             ->with([
                 'location:id,location_name',
                 'bin:id,bin_final_code,floor_code,row_code,column_code,zone_id,location_id',
                 'bin.zone:id,zone_code,zone_name',
             ]);
 
-        if (!empty($existingBinIds)) {
+        if (! empty($existingBinIds)) {
             $assignmentQuery->whereNotIn('bin_id', $existingBinIds);
         }
 
@@ -93,7 +99,7 @@ class InventoryRepository
 
         foreach ($assignments as $assignment) {
             $fakeInv = new Inventory([
-                'id' => (string) \Illuminate\Support\Str::uuid(),
+                'id' => (string) Str::uuid(),
                 'item_id' => $itemId,
                 'bin_id' => $assignment->bin_id,
                 'location_id' => $assignment->location_id,
@@ -141,16 +147,16 @@ class InventoryRepository
 
         try {
             return Inventory::create(array_merge([
-                'item_id'     => $itemId,
+                'item_id' => $itemId,
                 'location_id' => $locationId,
-                'bin_id'      => $binId,
-                'batch_no'    => $batchNo,
-                'serial_no'   => $serialNo,
-                'on_hand'     => 0,
-                'on_order'    => 0,
-                'available'   => 0,
+                'bin_id' => $binId,
+                'batch_no' => $batchNo,
+                'serial_no' => $serialNo,
+                'on_hand' => 0,
+                'on_order' => 0,
+                'available' => 0,
             ], $extra));
-        } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+        } catch (UniqueConstraintViolationException) {
             return $this->findExactForUpdate($itemId, $locationId, $binId, $batchNo, $serialNo);
         }
     }
@@ -163,6 +169,7 @@ class InventoryRepository
     public function updateStock(Inventory $inventory): bool
     {
         $inventory->recalculateAvailable();
+
         return $inventory->save();
     }
 
@@ -195,7 +202,7 @@ class InventoryRepository
 
     public function findTargetBinForItemLocation(string $itemId, string $locationId): ?string
     {
-        $assignedBinId = \Modules\Inventory\Models\SkuRackAssignment::where('item_id', $itemId)
+        $assignedBinId = SkuRackAssignment::where('item_id', $itemId)
             ->where('location_id', $locationId)
             ->value('bin_id');
 
@@ -232,17 +239,17 @@ class InventoryRepository
 
     public function getAllPaginated(int $limit = 10)
     {
-        $query = \Spatie\QueryBuilder\QueryBuilder::for(Inventory::class)
+        $query = QueryBuilder::for(Inventory::class)
             ->with(['product:id,sku,product_id', 'location:id,location_name', 'bin:id,bin_final_code'])
             ->allowedFilters(
-                \Spatie\QueryBuilder\AllowedFilter::exact('item_id'),
-                \Spatie\QueryBuilder\AllowedFilter::exact('location_id'),
-                \Spatie\QueryBuilder\AllowedFilter::exact('bin_id')
+                AllowedFilter::exact('item_id'),
+                AllowedFilter::exact('location_id'),
+                AllowedFilter::exact('bin_id')
             )
             ->allowedSorts('available', 'on_hand', 'created_at')
             ->defaultSort('-created_at');
 
-        \App\Support\WarehouseAccess::apply($query);
+        WarehouseAccess::apply($query);
 
         return $query
             ->paginate(request('per_page', $limit))
@@ -267,7 +274,7 @@ class InventoryRepository
             ->pluck('item_id');
 
         if ($orderItemIds->isEmpty()) {
-            return new \Illuminate\Pagination\LengthAwarePaginator([], 0, $limit);
+            return new LengthAwarePaginator([], 0, $limit);
         }
 
         return DB::table('product_variants')
@@ -276,13 +283,13 @@ class InventoryRepository
             ->leftJoin('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
             ->join('products', 'products.id', '=', 'product_variants.product_id')
             ->groupBy('product_variants.id', 'product_variants.sku', 'products.name')
-            ->havingRaw(StockSummary::availableSql() . ' <= 0')
+            ->havingRaw(StockSummary::availableSql().' <= 0')
             ->select(
                 'product_variants.id as item_id',
                 'product_variants.sku',
                 'products.name as product_name',
-                DB::raw(StockSummary::placedOnHandSql() . ' as total_on_hand'),
-                DB::raw(StockSummary::availableSql() . ' as total_available'),
+                DB::raw(StockSummary::placedOnHandSql().' as total_on_hand'),
+                DB::raw(StockSummary::availableSql().' as total_available'),
             )
             ->paginate(request('per_page', $limit))
             ->appends(request()->query());
@@ -307,10 +314,10 @@ class InventoryRepository
 
         $locationFilter = request('filter.location_id');
 
-        $allowedLocationIds = \App\Support\WarehouseAccess::allowedIds();
+        $allowedLocationIds = WarehouseAccess::allowedIds();
 
-        $transitLocationId = \Modules\Warehouse\Models\Location::query()
-            ->where('location_code', \Modules\Warehouse\Models\Location::SYSTEM_TRANSIT_CODE)
+        $transitLocationId = Location::query()
+            ->where('location_code', Location::SYSTEM_TRANSIT_CODE)
             ->value('id');
 
         return QueryBuilder::for(
@@ -361,13 +368,13 @@ class InventoryRepository
 
     public function getAvailableToSell(string $locationId, int $limit = 10)
     {
-        \App\Support\WarehouseAccess::assert($locationId);
+        WarehouseAccess::assert($locationId);
 
         $sellableItemIds = DB::table('inventories')
             ->leftJoin('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
             ->where('inventories.location_id', $locationId)
             ->groupBy('inventories.item_id')
-            ->havingRaw(StockSummary::availableSql() . ' > 0')
+            ->havingRaw(StockSummary::availableSql().' > 0')
             ->select('inventories.item_id');
 
         return Inventory::where('location_id', $locationId)
@@ -420,7 +427,7 @@ class InventoryRepository
             )
             ->where('available', '>', 0);
 
-        \App\Support\WarehouseAccess::apply($query);
+        WarehouseAccess::apply($query);
 
         return $query
             ->paginate(request('per_page', $limit))
@@ -432,10 +439,12 @@ class InventoryRepository
         return QueryBuilder::for(Inventory::class)
             ->leftJoin('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
             ->select('inventories.item_id')
-            ->selectRaw(StockSummary::placedOnHandSql() . ' as total_on_hand')
-            ->selectRaw('COALESCE(SUM(CASE WHEN location_bins.id IS NULL OR location_bins.is_inbound = true THEN inventories.on_hand ELSE 0 END),0) as total_pending_placement')
-            ->selectRaw(StockSummary::onOrderSql() . ' as total_on_order')
-            ->selectRaw(StockSummary::availableSql() . ' as total_available')
+            ->selectRaw(StockSummary::placedOnHandSql().' as total_on_hand')
+            ->selectRaw(StockSummary::pendingPlacementSql().' as total_pending_placement')
+            ->selectRaw(StockSummary::legacyUnassignedSql().' as total_legacy_unassigned')
+            ->selectRaw(StockSummary::physicalTotalSql().' as total_physical')
+            ->selectRaw(StockSummary::onOrderSql().' as total_on_order')
+            ->selectRaw(StockSummary::availableSql().' as total_available')
             ->groupBy('inventories.item_id')
             ->with(['product:id,sku,product_id'])
             ->allowedFilters(
@@ -448,7 +457,7 @@ class InventoryRepository
 
     public function activeLocationsForFilters(): Collection
     {
-        return \Modules\Warehouse\Models\Location::where('is_active', true)
+        return Location::where('is_active', true)
             ->where('location_name', 'not like', '%Transit%')
             ->orderBy('location_name')
             ->get(['id', 'location_name']);
@@ -456,7 +465,7 @@ class InventoryRepository
 
     public function channelShopsForFilters(): Collection
     {
-        return \Modules\Channel\Models\ChannelShop::query()
+        return ChannelShop::query()
             ->with('channel:id,name')
             ->orderBy('shop_name')
             ->get(['id', 'channel_id', 'shop_id', 'shop_name']);
@@ -534,9 +543,9 @@ class InventoryRepository
     {
         return Inventory::leftJoin('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
             ->select('inventories.item_id', 'inventories.location_id',
-                DB::raw(StockSummary::placedOnHandSql() . ' as total_on_hand'),
-                DB::raw(StockSummary::onOrderSql() . ' as total_on_order'),
-                DB::raw(StockSummary::availableSql() . ' as total_available'))
+                DB::raw(StockSummary::placedOnHandSql().' as total_on_hand'),
+                DB::raw(StockSummary::onOrderSql().' as total_on_order'),
+                DB::raw(StockSummary::availableSql().' as total_available'))
             ->whereIn('inventories.item_id', $ids)
             ->groupBy('inventories.item_id', 'inventories.location_id')
             ->with(['product:id,sku,product_id', 'location:id,location_name,location_code'])
@@ -560,7 +569,7 @@ class InventoryRepository
         return ProductVariant::query()
             ->where(function ($q) use ($normalized) {
                 $q->whereRaw('LOWER(sku) = ?', [strtolower($normalized)])
-                  ->orWhere('barcode', $normalized);
+                    ->orWhere('barcode', $normalized);
             })
             ->with([
                 'product:id,name,sku,category_id,status,is_bundle',
@@ -614,12 +623,12 @@ class InventoryRepository
 
         $assignedBinIds = $inventories->pluck('bin_id')->filter()->unique()->all();
 
-        $assignmentQuery = \Modules\Inventory\Models\SkuRackAssignment::where('item_id', $itemId)
-            ->when($locationId, fn($q) => $q->where('location_id', $locationId))
+        $assignmentQuery = SkuRackAssignment::where('item_id', $itemId)
+            ->when($locationId, fn ($q) => $q->where('location_id', $locationId))
             ->whereHas('bin', fn ($q) => $q->where('is_inbound', false))
             ->with('bin:id,bin_final_code');
 
-        if (!empty($assignedBinIds)) {
+        if (! empty($assignedBinIds)) {
             $assignmentQuery->whereNotIn('bin_id', $assignedBinIds);
         }
 
@@ -642,7 +651,7 @@ class InventoryRepository
 
     public function findBinByFinalCode(string $binCode)
     {
-        return \Modules\Warehouse\Models\LocationBin::where('bin_final_code', $binCode)->first();
+        return LocationBin::where('bin_final_code', $binCode)->first();
     }
 
     public function getStockByBin(string $binId): Collection
@@ -660,7 +669,7 @@ class InventoryRepository
 
     public function getStockedItems(string $locationId, string $search, int $perPage, bool $includeZero = false)
     {
-        \App\Support\WarehouseAccess::assert($locationId);
+        WarehouseAccess::assert($locationId);
 
         $sub = DB::table('inventories')
             ->join('location_bins', 'location_bins.id', '=', 'inventories.bin_id')

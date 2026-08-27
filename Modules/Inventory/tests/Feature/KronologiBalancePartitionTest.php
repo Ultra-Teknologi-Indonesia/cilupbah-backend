@@ -5,7 +5,9 @@ namespace Modules\Inventory\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\Inventory\Http\Resources\InventoryMovementResource;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
+use Modules\Inventory\Support\InventoryMovementSourceMap;
 use Tests\TestCase;
 
 class KronologiBalancePartitionTest extends TestCase
@@ -13,7 +15,9 @@ class KronologiBalancePartitionTest extends TestCase
     use RefreshDatabase;
 
     private string $locationId;
+
     private string $itemId;
+
     private string $finalBinId;
 
     protected function setUp(): void
@@ -64,14 +68,17 @@ class KronologiBalancePartitionTest extends TestCase
         int $balance,
         int $minuteOffset,
         ?string $binId = null,
-    ): void
-    {
+    ): void {
+        if ($binId === null && ! in_array($source, InventoryMovementSourceMap::NON_PHYSICAL_SOURCES, true)) {
+            $binId = $this->finalBinId;
+        }
+
         DB::table('inventory_movements')->insert([
             'id' => Str::uuid()->toString(),
             'item_id' => $this->itemId,
             'location_id' => $this->locationId,
             'bin_id' => $binId,
-            'transaction_number' => 'TRX-' . $source . '-' . $minuteOffset,
+            'transaction_number' => 'TRX-'.$source.'-'.$minuteOffset,
             'source' => $source,
             'qty' => $qty,
             'balance' => $balance,
@@ -122,7 +129,7 @@ class KronologiBalancePartitionTest extends TestCase
         ]);
 
         $paginated = app(InventoryMovementRepository::class)->getHistoryPaginated(50);
-        $resource = \Modules\Inventory\Http\Resources\InventoryMovementResource::collection($paginated);
+        $resource = InventoryMovementResource::collection($paginated);
         $rows = collect($resource->response()->getData(true)['data'])
             ->keyBy('transaction_number');
 
@@ -130,6 +137,61 @@ class KronologiBalancePartitionTest extends TestCase
 
         $this->assertSame(4, $reserve['balance']);
         $this->assertSame(2, $reserve['available_balance']);
+    }
+
+    public function test_history_memisahkan_rak_inbound_legacy_dan_alokasi(): void
+    {
+        $inboundBinId = Str::uuid()->toString();
+        DB::table('location_bins')->insert([
+            'id' => $inboundBinId,
+            'location_id' => $this->locationId,
+            'bin_code' => 'DEFAULT',
+            'bin_final_code' => 'DEFAULT',
+            'is_inbound' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->movement('PUTAWAY_IN', 10, 10, 1, $this->finalBinId);
+        $this->movement('PURCHASE', 4, 4, 2, $inboundBinId);
+
+        DB::table('inventory_movements')->insert([
+            'id' => Str::uuid()->toString(),
+            'item_id' => $this->itemId,
+            'location_id' => $this->locationId,
+            'bin_id' => null,
+            'transaction_number' => 'TRX-LEGACY-3',
+            'source' => 'ADJUSTMENT',
+            'qty' => 3,
+            'balance' => 3,
+            'transaction_date' => now()->addMinutes(3),
+            'created_by' => 'system',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->movement('ORDER_RESERVE', 2, 2, 4);
+
+        request()->merge([
+            'filter' => ['item_id' => $this->itemId, 'location_id' => $this->locationId],
+            'view' => 'all',
+            'per_page' => 50,
+        ]);
+
+        $paginated = app(InventoryMovementRepository::class)->getHistoryPaginated(50);
+        $resource = InventoryMovementResource::collection($paginated);
+        $rows = collect($resource->response()->getData(true)['data'])
+            ->keyBy('transaction_number');
+        $latest = $rows['TRX-ORDER_RESERVE-4'];
+
+        $this->assertSame(10, $latest['balance']);
+        $this->assertSame(10, $latest['placed_balance']);
+        $this->assertSame(4, $latest['pending_placement_balance']);
+        $this->assertSame(3, $latest['legacy_unassigned_balance']);
+        $this->assertSame(14, $latest['physical_total_balance']);
+        $this->assertSame(2, $latest['on_order_balance']);
+        $this->assertSame(8, $latest['available_balance']);
+        $this->assertArrayHasKey('TRX-PURCHASE-2', $rows->all());
     }
 
     public function test_filter_drill_allocation_hanya_baris_alokasi(): void
@@ -173,7 +235,7 @@ class KronologiBalancePartitionTest extends TestCase
             ['ORDER_RESERVE', 'RESERVE'],
             $sources,
             'source=ORDER harus memuat SELURUH source penggerak on_order, termasuk Reserved Stock -- '
-            . 'kalau tidak, jumlah baris tak akan pernah cocok dengan angka di kolom ON ORDER'
+            .'kalau tidak, jumlah baris tak akan pernah cocok dengan angka di kolom ON ORDER'
         );
     }
 
@@ -354,13 +416,13 @@ class KronologiBalancePartitionTest extends TestCase
         $this->movement('ADJUSTMENT', 42, 42, 1);
         DB::table('inventory_movements')->insert([
             ['id' => Str::uuid()->toString(), 'item_id' => $this->itemId, 'location_id' => $this->locationId,
-             'bin_id' => null, 'transaction_number' => 'TT-TEST-CANCEL-BALANCE', 'source' => 'ORDER_RESERVE',
-             'qty' => 1, 'balance' => 1, 'transaction_date' => now()->addMinutes(2),
-             'created_by' => 'system', 'created_at' => now(), 'updated_at' => now()],
+                'bin_id' => null, 'transaction_number' => 'TT-TEST-CANCEL-BALANCE', 'source' => 'ORDER_RESERVE',
+                'qty' => 1, 'balance' => 1, 'transaction_date' => now()->addMinutes(2),
+                'created_by' => 'system', 'created_at' => now(), 'updated_at' => now()],
             ['id' => Str::uuid()->toString(), 'item_id' => $this->itemId, 'location_id' => $this->locationId,
-             'bin_id' => null, 'transaction_number' => 'TT-TEST-CANCEL-BALANCE', 'source' => 'ORDER_RELEASE',
-             'qty' => -1, 'balance' => 0, 'transaction_date' => now()->addMinutes(3),
-             'created_by' => 'system', 'created_at' => now(), 'updated_at' => now()],
+                'bin_id' => null, 'transaction_number' => 'TT-TEST-CANCEL-BALANCE', 'source' => 'ORDER_RELEASE',
+                'qty' => -1, 'balance' => 0, 'transaction_date' => now()->addMinutes(3),
+                'created_by' => 'system', 'created_at' => now(), 'updated_at' => now()],
         ]);
 
         request()->merge([
@@ -414,11 +476,21 @@ class KronologiBalancePartitionTest extends TestCase
             'created_at' => now(), 'updated_at' => now(),
         ]);
 
+        $location2BinId = Str::uuid()->toString();
+        DB::table('location_bins')->insert([
+            'id' => $location2BinId,
+            'location_id' => $location2Id,
+            'bin_code' => 'LOC2-A1-K1-X1',
+            'bin_final_code' => 'LOC2-A1-K1-X1',
+            'is_inbound' => false,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
         DB::table('inventory_movements')->insert([
             'id' => Str::uuid()->toString(),
             'item_id' => $this->itemId,
             'location_id' => $this->locationId,
-            'bin_id' => null,
+            'bin_id' => $this->finalBinId,
             'transaction_number' => 'TRX-LOC1-1',
             'source' => 'PUTAWAY_IN',
             'qty' => 10,
@@ -432,7 +504,7 @@ class KronologiBalancePartitionTest extends TestCase
             'id' => Str::uuid()->toString(),
             'item_id' => $this->itemId,
             'location_id' => $location2Id,
-            'bin_id' => null,
+            'bin_id' => $location2BinId,
             'transaction_number' => 'TRX-LOC2-1',
             'source' => 'PUTAWAY_IN',
             'qty' => 5,
@@ -507,7 +579,7 @@ class KronologiBalancePartitionTest extends TestCase
         ]);
 
         $paginated = app(InventoryMovementRepository::class)->getHistoryPaginated(50);
-        $resource = \Modules\Inventory\Http\Resources\InventoryMovementResource::collection($paginated);
+        $resource = InventoryMovementResource::collection($paginated);
         $data = $resource->response()->getData(true)['data'];
 
         $this->assertCount(1, $data);
@@ -563,7 +635,7 @@ class KronologiBalancePartitionTest extends TestCase
         ]);
 
         $paginated = app(InventoryMovementRepository::class)->getHistoryPaginated(50);
-        $resource = \Modules\Inventory\Http\Resources\InventoryMovementResource::collection($paginated);
+        $resource = InventoryMovementResource::collection($paginated);
         $data = collect($resource->response()->getData(true)['data'])->keyBy('transaction_number');
 
         $this->assertSame('TRANSFER', $data['PUT-000000165']['source_category']);
@@ -642,7 +714,7 @@ class KronologiBalancePartitionTest extends TestCase
         ]);
 
         $paginated = app(InventoryMovementRepository::class)->getHistoryPaginated(50);
-        $resource = \Modules\Inventory\Http\Resources\InventoryMovementResource::collection($paginated);
+        $resource = InventoryMovementResource::collection($paginated);
         $data = collect($resource->response()->getData(true)['data'])->keyBy('transaction_number');
 
         $this->assertSame('return customer', $data['PUT-TEST-0003']['note']);
@@ -652,34 +724,34 @@ class KronologiBalancePartitionTest extends TestCase
     {
         $orderId = Str::uuid()->toString();
         DB::table('sales_orders')->insert([
-            'id'               => $orderId,
-            'salesorder_no'    => 'TT-TEST-CANCEL-001',
+            'id' => $orderId,
+            'salesorder_no' => 'TT-TEST-CANCEL-001',
             'channel_order_no' => 'TEST-CANCEL-001',
-            'source'           => 'tiktok',
-            'status'           => 'cancelled',
-            'is_canceled'      => true,
-            'location_id'      => $this->locationId,
-            'created_at'       => now(), 'updated_at' => now(),
+            'source' => 'tiktok',
+            'status' => 'cancelled',
+            'is_canceled' => true,
+            'location_id' => $this->locationId,
+            'created_at' => now(), 'updated_at' => now(),
         ]);
 
         DB::table('inventory_movements')->insert([
             ['id' => Str::uuid()->toString(), 'item_id' => $this->itemId, 'location_id' => $this->locationId,
-             'bin_id' => null, 'transaction_number' => 'TT-TEST-CANCEL-001', 'source' => 'ORDER_RESERVE',
-             'qty' => 1, 'balance' => 1, 'transaction_date' => now()->subMinutes(2),
-             'created_by' => 'system', 'created_at' => now(), 'updated_at' => now()],
+                'bin_id' => null, 'transaction_number' => 'TT-TEST-CANCEL-001', 'source' => 'ORDER_RESERVE',
+                'qty' => 1, 'balance' => 1, 'transaction_date' => now()->subMinutes(2),
+                'created_by' => 'system', 'created_at' => now(), 'updated_at' => now()],
             ['id' => Str::uuid()->toString(), 'item_id' => $this->itemId, 'location_id' => $this->locationId,
-             'bin_id' => null, 'transaction_number' => 'TT-TEST-CANCEL-001', 'source' => 'ORDER_RELEASE',
-             'qty' => -1, 'balance' => 0, 'transaction_date' => now()->subMinute(),
-             'created_by' => 'system', 'created_at' => now(), 'updated_at' => now()],
+                'bin_id' => null, 'transaction_number' => 'TT-TEST-CANCEL-001', 'source' => 'ORDER_RELEASE',
+                'qty' => -1, 'balance' => 0, 'transaction_date' => now()->subMinute(),
+                'created_by' => 'system', 'created_at' => now(), 'updated_at' => now()],
         ]);
 
         request()->merge([
-            'filter'   => ['item_id' => $this->itemId],
+            'filter' => ['item_id' => $this->itemId],
             'per_page' => 50,
         ]);
 
         $paginated = app(InventoryMovementRepository::class)->getHistoryPaginated(50);
-        $resource = \Modules\Inventory\Http\Resources\InventoryMovementResource::collection($paginated);
+        $resource = InventoryMovementResource::collection($paginated);
         $rows = collect($resource->response()->getData(true)['data'])
             ->where('transaction_number', 'TT-TEST-CANCEL-001')
             ->values();

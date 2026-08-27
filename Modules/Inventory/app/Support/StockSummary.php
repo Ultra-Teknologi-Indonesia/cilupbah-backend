@@ -6,10 +6,24 @@ use Illuminate\Support\Facades\DB;
 
 class StockSummary
 {
-
     public static function placedOnHandSql(string $inv = 'inventories', string $bin = 'location_bins'): string
     {
         return "COALESCE(SUM(CASE WHEN {$bin}.id IS NOT NULL AND {$bin}.is_inbound = false THEN {$inv}.on_hand ELSE 0 END),0)";
+    }
+
+    public static function pendingPlacementSql(string $inv = 'inventories', string $bin = 'location_bins'): string
+    {
+        return "COALESCE(SUM(CASE WHEN {$bin}.id IS NOT NULL AND {$bin}.is_inbound = true THEN {$inv}.on_hand ELSE 0 END),0)";
+    }
+
+    public static function legacyUnassignedSql(string $inv = 'inventories'): string
+    {
+        return "COALESCE(SUM(CASE WHEN {$inv}.bin_id IS NULL THEN {$inv}.on_hand ELSE 0 END),0)";
+    }
+
+    public static function physicalTotalSql(string $inv = 'inventories', string $bin = 'location_bins'): string
+    {
+        return "COALESCE(SUM(CASE WHEN {$bin}.id IS NOT NULL THEN {$inv}.on_hand ELSE 0 END),0)";
     }
 
     public static function onOrderSql(string $inv = 'inventories'): string
@@ -19,7 +33,7 @@ class StockSummary
 
     public static function availableSql(string $inv = 'inventories', string $bin = 'location_bins'): string
     {
-        return '(' . self::placedOnHandSql($inv, $bin) . ' - ' . self::onOrderSql($inv) . ')';
+        return '('.self::placedOnHandSql($inv, $bin).' - '.self::onOrderSql($inv).')';
     }
 
     public static function forItems(array $itemIds, ?array $locationIds = null): array
@@ -34,8 +48,10 @@ class StockSummary
             ->whereIn('i.item_id', $itemIds)
             ->groupBy('i.item_id')
             ->selectRaw('i.item_id')
-            ->selectRaw('COALESCE(SUM(CASE WHEN b.id IS NOT NULL AND b.is_inbound = false THEN i.on_hand ELSE 0 END),0) AS placed_on_hand')
-            ->selectRaw('COALESCE(SUM(CASE WHEN b.id IS NULL OR b.is_inbound = true THEN i.on_hand ELSE 0 END),0) AS pending_on_hand')
+            ->selectRaw(self::placedOnHandSql('i', 'b').' AS placed_on_hand')
+            ->selectRaw(self::pendingPlacementSql('i', 'b').' AS pending_on_hand')
+            ->selectRaw(self::legacyUnassignedSql('i').' AS legacy_unassigned')
+            ->selectRaw(self::physicalTotalSql('i', 'b').' AS physical_total')
             ->selectRaw('COALESCE(SUM(i.on_order),0) AS on_order');
 
         if (! empty($locationIds)) {
@@ -52,6 +68,8 @@ class StockSummary
             $result[$row->item_id] = [
                 'on_hand' => $onHand,
                 'pending_placement' => (int) $row->pending_on_hand,
+                'legacy_unassigned' => (int) $row->legacy_unassigned,
+                'physical_total' => (int) $row->physical_total,
                 'on_order' => $onOrder,
                 'transit' => (int) ($transitByItem[$row->item_id] ?? 0),
 
@@ -198,13 +216,24 @@ class StockSummary
             return $inv->bin !== null && ! (bool) $inv->bin->is_inbound;
         };
 
+        $isPendingPlacement = fn ($inv): bool => $inv->bin_id !== null
+            && $inv->relationLoaded('bin')
+            && $inv->bin !== null
+            && (bool) $inv->bin->is_inbound;
+
+        $isLegacyUnassigned = fn ($inv): bool => $inv->bin_id === null
+            || ($inv->relationLoaded('bin') && $inv->bin === null);
+
         $placedOnHand = (int) $rows->filter($isPlaced)->sum('on_hand');
-        $pending = (int) $rows->reject($isPlaced)->sum('on_hand');
+        $pending = (int) $rows->filter($isPendingPlacement)->sum('on_hand');
+        $legacyUnassigned = (int) $rows->filter($isLegacyUnassigned)->sum('on_hand');
         $onOrder = (int) $rows->sum('on_order');
 
         return [
             'on_hand' => $placedOnHand,
             'pending_placement' => $pending,
+            'legacy_unassigned' => $legacyUnassigned,
+            'physical_total' => $placedOnHand + $pending,
             'on_order' => $onOrder,
 
             'transit' => 0,
@@ -220,6 +249,8 @@ class StockSummary
         return $rows[$itemId] ?? [
             'on_hand' => 0,
             'pending_placement' => 0,
+            'legacy_unassigned' => 0,
+            'physical_total' => 0,
             'on_order' => 0,
             'transit' => 0,
             'available' => 0,

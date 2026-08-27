@@ -2,32 +2,34 @@
 
 namespace Modules\Inventory\Jobs;
 
+use App\Traits\StockLockable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Modules\Inventory\Models\Putaway;
-use Modules\Inventory\Models\PutawayItem;
-use Modules\Inventory\Models\PutawayPlacement;
-use Modules\Inventory\Repositories\PutawayRepository;
-use Modules\Inventory\Repositories\InventoryRepository;
-use Modules\Inventory\Repositories\InventoryMovementRepository;
-use Modules\Inbound\Models\Inbound;
-use Modules\Inbound\Models\InboundItem;
-use Modules\Inventory\Models\PutawayItemSource;
-use Modules\Warehouse\Services\BinOccupancyGuard;
-use Modules\Warehouse\Services\SkuHomeBinGuard;
-use Modules\Warehouse\Services\InboundBinPolicy;
-use App\Traits\StockLockable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Channel\Jobs\SyncStockToChannelsJob;
+use Modules\Inbound\Models\InboundItem;
+use Modules\Inventory\Models\Putaway;
+use Modules\Inventory\Models\PutawayItem;
+use Modules\Inventory\Models\PutawayItemSource;
+use Modules\Inventory\Models\PutawayPlacement;
+use Modules\Inventory\Repositories\InventoryMovementRepository;
+use Modules\Inventory\Repositories\InventoryRepository;
+use Modules\Inventory\Repositories\PutawayRepository;
+use Modules\Sales\Services\BuyerConfirmationService;
+use Modules\Warehouse\Services\BinOccupancyGuard;
+use Modules\Warehouse\Services\InboundBinPolicy;
+use Modules\Warehouse\Services\SkuHomeBinGuard;
 
 class ProcessPutawayItemJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, StockLockable;
 
     public int $tries = 3;
+
     public array $backoff = [3, 10, 30];
 
     public function __construct(
@@ -45,22 +47,22 @@ class ProcessPutawayItemJob implements ShouldQueue
     ): void {
         $putaway = $putawayRepository->findById($this->putawayId);
 
-        if (!$putaway) {
-            throw new \RuntimeException("Putaway tidak ditemukan.");
+        if (! $putaway) {
+            throw new \RuntimeException('Putaway tidak ditemukan.');
         }
 
         $this->withStockLock($this->itemId, $putaway->location_id, function () use ($putawayRepository, $inventoryRepository, $movementRepository) {
             DB::transaction(function () use ($putawayRepository, $inventoryRepository, $movementRepository) {
                 $putawayItem = $putawayRepository->findItemForUpdate($this->putawayId, $this->itemId);
 
-                if (!$putawayItem) {
-                    throw new \RuntimeException("Putaway item tidak ditemukan.");
+                if (! $putawayItem) {
+                    throw new \RuntimeException('Putaway item tidak ditemukan.');
                 }
 
                 $qty = (int) $this->data['qty'];
 
                 if ($qty <= 0) {
-                    throw new \RuntimeException("Qty putaway harus lebih dari 0.");
+                    throw new \RuntimeException('Qty putaway harus lebih dari 0.');
                 }
 
                 $remaining = (int) $putawayItem->qty - (int) $putawayItem->putaway_qty;
@@ -89,7 +91,7 @@ class ProcessPutawayItemJob implements ShouldQueue
                     $putawayItem->serial_no ?? ''
                 );
 
-                if (!$sourceInventory) {
+                if (! $sourceInventory) {
                     $sourceInventory = $inventoryRepository->findOrCreateForUpdate(
                         $putawayItem->item_id,
                         $putaway->location_id,
@@ -187,10 +189,8 @@ class ProcessPutawayItemJob implements ShouldQueue
                         ->join('inbounds', 'inbounds.id', '=', 'inbound_items.inbound_id')
                         ->orderBy('inbounds.created_at')
                         ->lockForUpdate()
-                        ->select('putaway_item_sources.*', 'inbound_items.inbound_id as inbound_id')
+                        ->select('putaway_item_sources.*')
                         ->get();
-
-                    $affectedInboundIds = [];
 
                     if ($sources->isNotEmpty()) {
                         $remaining = $qty;
@@ -205,10 +205,9 @@ class ProcessPutawayItemJob implements ShouldQueue
                             $take = min($capacity, $remaining);
                             $src->increment('putaway_qty', $take);
                             InboundItem::where('id', $src->inbound_item_id)->update([
-                                'putaway_qty' => DB::raw('putaway_qty + ' . (int) $take),
-                                'reserved_qty' => DB::raw('GREATEST(reserved_qty - ' . (int) $take . ', 0)'),
+                                'putaway_qty' => DB::raw('putaway_qty + '.(int) $take),
+                                'reserved_qty' => DB::raw('GREATEST(reserved_qty - '.(int) $take.', 0)'),
                             ]);
-                            $affectedInboundIds[$src->inbound_id] = true;
                             $remaining -= $take;
                         }
                     } elseif ($putaway->source_id) {
@@ -216,14 +215,9 @@ class ProcessPutawayItemJob implements ShouldQueue
                         InboundItem::where('inbound_id', $putaway->source_id)
                             ->where('item_id', $putawayItem->item_id)
                             ->update([
-                                'putaway_qty' => DB::raw('putaway_qty + ' . (int) $qty),
-                                'reserved_qty' => DB::raw('GREATEST(reserved_qty - ' . (int) $qty . ', 0)'),
+                                'putaway_qty' => DB::raw('putaway_qty + '.(int) $qty),
+                                'reserved_qty' => DB::raw('GREATEST(reserved_qty - '.(int) $qty.', 0)'),
                             ]);
-                        $affectedInboundIds[$putaway->source_id] = true;
-                    }
-
-                    foreach (array_keys($affectedInboundIds) as $inboundId) {
-                        $this->recomputeInboundStatus($inboundId);
                     }
                 }
 
@@ -244,7 +238,7 @@ class ProcessPutawayItemJob implements ShouldQueue
             });
         });
 
-        \Modules\Channel\Jobs\SyncStockToChannelsJob::dispatch($this->itemId)->afterCommit();
+        SyncStockToChannelsJob::dispatch($this->itemId)->afterCommit();
 
         $this->releaseOrdersWaitingForStock();
     }
@@ -258,7 +252,7 @@ class ProcessPutawayItemJob implements ShouldQueue
         }
 
         try {
-            app(\Modules\Sales\Services\BuyerConfirmationService::class)
+            app(BuyerConfirmationService::class)
                 ->releaseWaitingForItems([$this->itemId], (string) $locationId);
         } catch (\Throwable $e) {
             Log::warning('Gagal melepas pesanan yang menunggu stok setelah penempatan.', [
@@ -267,10 +261,5 @@ class ProcessPutawayItemJob implements ShouldQueue
                 'error' => $e->getMessage(),
             ]);
         }
-    }
-
-    private function recomputeInboundStatus(string $inboundId): void
-    {
-
     }
 }

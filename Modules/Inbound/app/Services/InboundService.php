@@ -1092,8 +1092,6 @@ class InboundService
                 $inboundItem->putaway_qty += $putawayItem['qty'];
             }
 
-            $this->resolveInboundPutawayStatus($inbound);
-
             return $this->getById($inboundId);
         });
     }
@@ -1149,9 +1147,6 @@ class InboundService
 
                 $this->inboundRepository->updateItemPutawayQty($item->id, $pendingQty);
             }
-
-            $inbound->load('items');
-            $this->resolveInboundPutawayStatus($inbound);
 
             return $this->getById($inboundId);
         });
@@ -1575,8 +1570,6 @@ class InboundService
             $this->inboundRepository->updateItemPutawayQty($inboundItem->id, $qty);
 
             $inbound->load('items');
-            $this->resolveInboundPutawayStatus($inbound);
-
             $this->completeAssignmentIfDone($inbound, $userId);
 
             return $inboundItem->fresh()->load('inbound', 'variant:id,sku,product_id');
@@ -2200,8 +2193,4 @@ class InboundService
         return $map;
     }
 
-    private function resolveInboundPutawayStatus(Inbound $inbound): void
-    {
-
-    }
 }

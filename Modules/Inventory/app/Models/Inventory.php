@@ -2,10 +2,13 @@
 
 namespace Modules\Inventory\Models;
 
+use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use App\Traits\HasUuid7;
+use Modules\Product\Models\ProductVariant;
+use Modules\Warehouse\Models\Location;
+use Modules\Warehouse\Models\LocationBin;
 
 class Inventory extends Model
 {
@@ -31,17 +34,17 @@ class Inventory extends Model
 
     public function product(): BelongsTo
     {
-        return $this->belongsTo(\Modules\Product\Models\ProductVariant::class, 'item_id');
+        return $this->belongsTo(ProductVariant::class, 'item_id');
     }
 
     public function location(): BelongsTo
     {
-        return $this->belongsTo(\Modules\Warehouse\Models\Location::class);
+        return $this->belongsTo(Location::class);
     }
 
     public function bin(): BelongsTo
     {
-        return $this->belongsTo(\Modules\Warehouse\Models\LocationBin::class, 'bin_id');
+        return $this->belongsTo(LocationBin::class, 'bin_id');
     }
 
     public function movements(): HasMany
@@ -75,7 +78,7 @@ class Inventory extends Model
         $lifo = strtolower($strategy) === 'lifo';
 
         $movementSub = InventoryMovement::query()
-            ->selectRaw(($lifo ? 'MAX' : 'MIN') . '(transaction_date)')
+            ->selectRaw(($lifo ? 'MAX' : 'MIN').'(transaction_date)')
             ->whereColumn('inventory_movements.item_id', 'inventories.item_id')
             ->whereColumn('inventory_movements.location_id', 'inventories.location_id')
             ->whereColumn('inventory_movements.bin_id', 'inventories.bin_id')
@@ -84,21 +87,24 @@ class Inventory extends Model
         return $query
             ->select('inventories.*')
             ->selectSub($movementSub, 'movement_at')
-            ->orderByRaw('movement_at ' . ($lifo ? 'DESC' : 'ASC') . ' NULLS LAST')
+            ->orderByRaw('movement_at '.($lifo ? 'DESC' : 'ASC').' NULLS LAST')
             ->orderBy('inventories.created_at', $lifo ? 'desc' : 'asc');
     }
 
     public function scopePendingPlacement($query)
     {
-        return $query->where(function ($w) {
-            $w->whereNull('inventories.bin_id')
-                ->orWhereExists(function ($q) {
-                    $q->selectRaw('1')
-                        ->from('location_bins')
-                        ->whereColumn('location_bins.id', 'inventories.bin_id')
-                        ->where('location_bins.is_inbound', true);
-                });
+        return $query->whereExists(function ($q) {
+            $q->selectRaw('1')
+                ->from('location_bins')
+                ->whereColumn('location_bins.id', 'inventories.bin_id')
+                ->whereColumn('location_bins.location_id', 'inventories.location_id')
+                ->where('location_bins.is_inbound', true);
         });
+    }
+
+    public function scopeLegacyUnassigned($query)
+    {
+        return $query->whereNull('inventories.bin_id');
     }
 
     public function isPlaced(): bool
@@ -109,7 +115,7 @@ class Inventory extends Model
 
         $isInbound = $this->relationLoaded('bin')
             ? $this->bin?->is_inbound
-            : \Modules\Warehouse\Models\LocationBin::whereKey($this->bin_id)->value('is_inbound');
+            : LocationBin::whereKey($this->bin_id)->value('is_inbound');
 
         return $isInbound !== null && ! (bool) $isInbound;
     }

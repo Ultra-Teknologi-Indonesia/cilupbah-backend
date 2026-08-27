@@ -2,25 +2,26 @@
 
 namespace Modules\Inbound\Http\Controllers;
 
+use App\Enums\UnassignReasonEnum;
+use App\Exceptions\UserFacingException;
 use App\Http\Controllers\Controller;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Modules\Inbound\Services\InboundService;
-use Modules\Inbound\Http\Requests\StoreInboundRequest;
-use Modules\Inbound\Http\Requests\ReceiveInboundRequest;
-use Modules\Inbound\Http\Requests\PutawayRequest;
 use Modules\Inbound\Http\Requests\AssignInboundRequest;
-use Modules\Inbound\Http\Requests\ScanPutawayRequest;
-use Modules\Inbound\Http\Requests\UnassignInboundRequest;
-use Modules\Inbound\Http\Requests\ResetInboundAssignmentRequest;
+use Modules\Inbound\Http\Requests\BulkCancelInboundRequest;
 use Modules\Inbound\Http\Requests\CorrectReceivedLineRequest;
 use Modules\Inbound\Http\Requests\CorrectReceivedLinesRequest;
-use Modules\Inbound\Http\Requests\SetReceivedQtyRequest;
-use Modules\Inbound\Http\Requests\SetDiscrepancyNoteRequest;
-use Modules\Inbound\Http\Requests\BulkCancelInboundRequest;
 use Modules\Inbound\Http\Requests\ExecuteAutoPutawayRequest;
-use App\Enums\UnassignReasonEnum;
+use Modules\Inbound\Http\Requests\PutawayRequest;
+use Modules\Inbound\Http\Requests\ReceiveInboundRequest;
+use Modules\Inbound\Http\Requests\ResetInboundAssignmentRequest;
+use Modules\Inbound\Http\Requests\ScanPutawayRequest;
+use Modules\Inbound\Http\Requests\SetDiscrepancyNoteRequest;
+use Modules\Inbound\Http\Requests\SetReceivedQtyRequest;
+use Modules\Inbound\Http\Requests\StoreInboundRequest;
+use Modules\Inbound\Http\Requests\UnassignInboundRequest;
+use Modules\Inbound\Services\InboundService;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Inbounds', description: 'API Endpoints for Inbounds')]
@@ -39,6 +40,20 @@ use OpenApi\Attributes as OA;
         new OA\Property(property: 'source_type', type: 'string', example: 'purchase_order', nullable: true),
         new OA\Property(property: 'source_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e', nullable: true),
         new OA\Property(property: 'status', type: 'string', enum: ['DRAFT', 'PARTIAL', 'RECEIVED', 'PUTAWAY_IN_PROGRESS', 'COMPLETED', 'CANCELLED'], example: 'DRAFT'),
+        new OA\Property(property: 'receiving_status', type: 'string', description: 'Alias eksplisit status dokumen penerimaan', enum: ['DRAFT', 'PARTIAL', 'RECEIVED', 'PUTAWAY_IN_PROGRESS', 'COMPLETED', 'CANCELLED'], example: 'COMPLETED'),
+        new OA\Property(property: 'placement_status', type: 'string', description: 'Status penempatan yang dihitung dari kuantitas item', enum: ['NOT_STARTED', 'PARTIAL', 'COMPLETED', 'CANCELLED'], example: 'PARTIAL'),
+        new OA\Property(
+            property: 'placement_summary',
+            type: 'object',
+            properties: [
+                new OA\Property(property: 'received_qty', type: 'integer', example: 100),
+                new OA\Property(property: 'putaway_qty', type: 'integer', example: 40),
+                new OA\Property(property: 'pending_qty', type: 'integer', example: 60),
+                new OA\Property(property: 'reserved_qty', type: 'integer', example: 60),
+                new OA\Property(property: 'progress_percent', type: 'integer', example: 40),
+                new OA\Property(property: 'is_consistent', type: 'boolean', example: true),
+            ],
+        ),
         new OA\Property(property: 'expected_date', type: 'string', format: 'date-time', example: '2026-06-05T00:00:00Z'),
         new OA\Property(property: 'created_by', type: 'string', example: 'admin'),
         new OA\Property(property: 'created_at', type: 'string', format: 'date-time'),
@@ -65,10 +80,10 @@ use OpenApi\Attributes as OA;
                 required: ['item_id', 'expected_qty'],
                 properties: [
                     new OA\Property(property: 'item_id', type: 'string', example: '019ea2afad1d733eafb905816d10590e'),
-                    new OA\Property(property: 'expected_qty', type: 'integer', example: 50)
+                    new OA\Property(property: 'expected_qty', type: 'integer', example: 50),
                 ]
             )
-        )
+        ),
     ]
 )]
 #[OA\Schema(
@@ -88,10 +103,10 @@ use OpenApi\Attributes as OA;
                     new OA\Property(property: 'qty', type: 'integer', example: 50),
                     new OA\Property(property: 'condition', type: 'string', enum: ['GOOD', 'DAMAGE'], example: 'GOOD', nullable: true),
                     new OA\Property(property: 'batch_no', type: 'string', example: 'BATCH-001', nullable: true),
-                    new OA\Property(property: 'serial_no', type: 'string', example: 'SN-001', nullable: true)
+                    new OA\Property(property: 'serial_no', type: 'string', example: 'SN-001', nullable: true),
                 ]
             )
-        )
+        ),
     ]
 )]
 #[OA\Schema(
@@ -111,10 +126,10 @@ use OpenApi\Attributes as OA;
                     new OA\Property(property: 'destination_bin_id', type: 'string', example: '019ea2afad20700aa53cd1aeaf6a31f7'),
                     new OA\Property(property: 'qty', type: 'integer', example: 50),
                     new OA\Property(property: 'batch_no', type: 'string', example: 'BATCH-001', nullable: true),
-                    new OA\Property(property: 'serial_no', type: 'string', example: 'SN-001', nullable: true)
+                    new OA\Property(property: 'serial_no', type: 'string', example: 'SN-001', nullable: true),
                 ]
             )
-        )
+        ),
     ]
 )]
 #[OA\Schema(
@@ -218,7 +233,7 @@ class InboundController extends Controller
         ],
         responses: [
             new OA\Response(response: 200, description: 'Successful operation'),
-            new OA\Response(response: 401, description: 'Unauthenticated')
+            new OA\Response(response: 401, description: 'Unauthenticated'),
         ]
     )]
     public function index(Request $request): JsonResponse
@@ -275,11 +290,11 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(response: 200, description: 'Successful operation'),
-            new OA\Response(response: 404, description: 'Dokumen Inbound tidak ditemukan')
+            new OA\Response(response: 404, description: 'Dokumen Inbound tidak ditemukan'),
         ]
     )]
     public function show(string $id): JsonResponse
@@ -299,7 +314,7 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(
@@ -307,7 +322,7 @@ class InboundController extends Controller
                 description: 'PDF stream',
                 content: new OA\MediaType(mediaType: 'application/pdf'),
             ),
-            new OA\Response(response: 404, description: 'Dokumen Inbound tidak ditemukan')
+            new OA\Response(response: 404, description: 'Dokumen Inbound tidak ditemukan'),
         ]
     )]
     public function pdf(string $id)
@@ -328,6 +343,7 @@ class InboundController extends Controller
             return $pdf->stream($filename);
         } catch (\Throwable $e) {
             report($e);
+
             return $this->errorResponse(
                 'Gagal membuat PDF penerimaan.',
                 500,
@@ -383,6 +399,7 @@ class InboundController extends Controller
     {
         $perPage = (int) $request->query('per_page', 50);
         $receipts = $this->inboundService->getReceiptsPaginated($id, $perPage);
+
         return $this->successPaginatedResponse($receipts, 'Kronologi penerimaan berhasil diambil');
     }
 
@@ -395,13 +412,14 @@ class InboundController extends Controller
         responses: [
             new OA\Response(response: 201, description: 'Draft Inbound berhasil dibuat'),
             new OA\Response(response: 422, description: 'Validation Error'),
-            new OA\Response(response: 500, description: 'Server Error')
+            new OA\Response(response: 500, description: 'Server Error'),
         ]
     )]
     public function store(StoreInboundRequest $request): JsonResponse
     {
         try {
             $inbound = $this->inboundService->createDraft($request->validated());
+
             return $this->successResponse($inbound, 'Draft Inbound berhasil dibuat', 201);
         } catch (\Exception $e) {
             throw $e;
@@ -414,13 +432,13 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
         ],
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(ref: '#/components/schemas/ReceiveInboundRequest')),
         responses: [
             new OA\Response(response: 200, description: 'Penerimaan berhasil diproses'),
             new OA\Response(response: 422, description: 'Validation Error'),
-            new OA\Response(response: 500, description: 'Server Error')
+            new OA\Response(response: 500, description: 'Server Error'),
         ]
     )]
     public function receive(string $id, ReceiveInboundRequest $request): JsonResponse
@@ -429,6 +447,7 @@ class InboundController extends Controller
         $data['received_by'] = $this->inboundService->resolveReceivedByActor($request, $data['received_by'] ?? null);
 
         $inbound = $this->inboundService->receive($id, $data);
+
         return $this->successResponse($inbound, 'Penerimaan Inbound berhasil diproses');
     }
 
@@ -511,7 +530,7 @@ class InboundController extends Controller
             );
 
             return $this->successResponse($inbound, 'Jumlah diterima diperbarui. Penyesuaian Stok dibuat otomatis.');
-        } catch (\App\Exceptions\UserFacingException $e) {
+        } catch (UserFacingException $e) {
 
             throw $e;
         } catch (\Exception $e) {
@@ -556,7 +575,7 @@ class InboundController extends Controller
             );
 
             return $this->successResponse($inbound, 'Catatan diperbarui.');
-        } catch (\App\Exceptions\UserFacingException $e) {
+        } catch (UserFacingException $e) {
             throw $e;
         } catch (\Exception $e) {
             return $this->errorResponse(
@@ -610,11 +629,11 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(response: 200, description: 'Penerimaan diselesaikan'),
-            new OA\Response(response: 500, description: 'Server Error')
+            new OA\Response(response: 500, description: 'Server Error'),
         ]
     )]
     public function closeReceiving(string $id, Request $request): JsonResponse
@@ -623,6 +642,7 @@ class InboundController extends Controller
 
         try {
             $inbound = $this->inboundService->closeReceiving($id, $closedBy);
+
             return $this->successResponse($inbound, 'Penerimaan diselesaikan.');
         } catch (\Exception $e) {
             throw $e;
@@ -635,19 +655,20 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
         ],
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(ref: '#/components/schemas/PutawayRequest')),
         responses: [
             new OA\Response(response: 200, description: 'Putaway berhasil diproses'),
             new OA\Response(response: 422, description: 'Validation Error'),
-            new OA\Response(response: 500, description: 'Server Error')
+            new OA\Response(response: 500, description: 'Server Error'),
         ]
     )]
     public function putaway(string $id, PutawayRequest $request): JsonResponse
     {
         try {
             $inbound = $this->inboundService->processPutaway($id, $request->validated());
+
             return $this->successResponse($inbound, 'Putaway berhasil diproses');
         } catch (\Exception $e) {
             throw $e;
@@ -660,7 +681,7 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
         ],
         requestBody: new OA\RequestBody(
             required: true,
@@ -668,13 +689,14 @@ class InboundController extends Controller
         ),
         responses: [
             new OA\Response(response: 200, description: 'Auto-putaway berhasil'),
-            new OA\Response(response: 500, description: 'Server Error')
+            new OA\Response(response: 500, description: 'Server Error'),
         ]
     )]
     public function autoPutaway(string $id, ExecuteAutoPutawayRequest $request): JsonResponse
     {
         try {
             $inbound = $this->inboundService->autoPutaway($id, $request->validated()['created_by']);
+
             return $this->successResponse($inbound, 'Auto-putaway berhasil dieksekusi');
         } catch (\Exception $e) {
             throw $e;
@@ -687,7 +709,7 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10))
+            new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
         ],
         responses: [
             new OA\Response(response: 200, description: 'Successful operation'),
@@ -707,7 +729,7 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(response: 200, description: 'Successful operation'),
@@ -716,6 +738,7 @@ class InboundController extends Controller
     public function pendingPutaway(string $id): JsonResponse
     {
         $items = $this->inboundService->getItemsPendingPutaway($id);
+
         return $this->successResponse($items, 'Items pending putaway');
     }
 
@@ -726,7 +749,7 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds - Assignment'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'Inbound ID', schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'Inbound ID', schema: new OA\Schema(type: 'string')),
         ],
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(ref: '#/components/schemas/AssignInboundRequest')),
         responses: [
@@ -740,7 +763,7 @@ class InboundController extends Controller
                 ])
             ),
             new OA\Response(response: 422, description: 'Validation Error'),
-            new OA\Response(response: 500, description: 'Inbound sudah COMPLETED/CANCELLED')
+            new OA\Response(response: 500, description: 'Inbound sudah COMPLETED/CANCELLED'),
         ]
     )]
     public function assign(string $id, AssignInboundRequest $request): JsonResponse
@@ -752,6 +775,7 @@ class InboundController extends Controller
                 $request->user()->id,
                 $request->notes
             );
+
             return $this->successResponse($assignment, 'Inbound berhasil di-assign', 201);
         } catch (\Exception $e) {
             throw $e;
@@ -834,7 +858,7 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds - Assignment'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'Inbound ID', schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'Inbound ID', schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(
@@ -851,6 +875,7 @@ class InboundController extends Controller
     public function assignments(string $id): JsonResponse
     {
         $assignments = $this->inboundService->getAssignments($id);
+
         return $this->successResponse($assignments, 'Daftar assignment berhasil diambil');
     }
 
@@ -861,7 +886,7 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds - Assignment'],
         parameters: [
-            new OA\Parameter(name: 'status', in: 'query', required: false, description: 'Filter berdasarkan status', schema: new OA\Schema(type: 'string', enum: ['PENDING', 'IN_PROGRESS', 'COMPLETED']))
+            new OA\Parameter(name: 'status', in: 'query', required: false, description: 'Filter berdasarkan status', schema: new OA\Schema(type: 'string', enum: ['PENDING', 'IN_PROGRESS', 'COMPLETED'])),
         ],
         responses: [
             new OA\Response(
@@ -884,6 +909,7 @@ class InboundController extends Controller
             $request->query('search'),
             $request->query('sort', '-created_at'),
         );
+
         return $this->successPaginatedResponse($assignments, 'Daftar assignment Anda');
     }
 
@@ -894,7 +920,7 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds - Assignment'],
         parameters: [
-            new OA\Parameter(name: 'assignmentId', in: 'path', required: true, description: 'Assignment ID', schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'assignmentId', in: 'path', required: true, description: 'Assignment ID', schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(
@@ -906,13 +932,14 @@ class InboundController extends Controller
                     new OA\Property(property: 'data', ref: '#/components/schemas/InboundAssignment'),
                 ])
             ),
-            new OA\Response(response: 500, description: 'Bukan assignment Anda / sudah dimulai')
+            new OA\Response(response: 500, description: 'Bukan assignment Anda / sudah dimulai'),
         ]
     )]
     public function startAssignment(string $assignmentId, Request $request): JsonResponse
     {
         try {
             $assignment = $this->inboundService->startAssignment($assignmentId, $request->user()->id);
+
             return $this->successResponse($assignment, 'Assignment dimulai');
         } catch (\Exception $e) {
             throw $e;
@@ -927,7 +954,7 @@ class InboundController extends Controller
         tags: ['Inbounds - QR Scan'],
         parameters: [
             new OA\Parameter(name: 'qrCode', in: 'path', required: true, description: 'Isi QR: SKU / barcode / UUID inbound_item.id', schema: new OA\Schema(type: 'string', example: 'DENIM-GREY-17PM')),
-            new OA\Parameter(name: 'inbound_id', in: 'query', required: false, description: 'Scope lookup ke inbound tertentu (UUID). Tanpa ini, backend jatuh ke "latest" — bisa salah inbound.', schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'inbound_id', in: 'query', required: false, description: 'Scope lookup ke inbound tertentu (UUID). Tanpa ini, backend jatuh ke "latest" — bisa salah inbound.', schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(
@@ -939,13 +966,14 @@ class InboundController extends Controller
                     new OA\Property(property: 'data', ref: '#/components/schemas/InboundItem'),
                 ])
             ),
-            new OA\Response(response: 404, description: 'QR Code tidak ditemukan')
+            new OA\Response(response: 404, description: 'QR Code tidak ditemukan'),
         ]
     )]
     public function scanQr(string $qrCode, Request $request): JsonResponse
     {
         try {
             $item = $this->inboundService->lookupByQr($qrCode, $request->query('inbound_id'));
+
             return $this->successResponse($item, 'Item ditemukan');
         } catch (\Exception $e) {
             return $this->errorResponse(
@@ -976,7 +1004,7 @@ class InboundController extends Controller
             ),
             new OA\Response(response: 404, description: 'QR rak tidak ditemukan'),
             new OA\Response(response: 422, description: 'Validation Error — inbound_item_id / bin_id bukan UUID'),
-            new OA\Response(response: 500, description: 'Qty melebihi pending / inbound belum RECEIVED')
+            new OA\Response(response: 500, description: 'Qty melebihi pending / inbound belum RECEIVED'),
         ]
     )]
     public function scanPutaway(ScanPutawayRequest $request): JsonResponse
@@ -988,8 +1016,9 @@ class InboundController extends Controller
                 $request->qty,
                 $request->user()->id
             );
+
             return $this->successResponse($item, 'Putaway berhasil, stock diperbarui');
-        } catch (\App\Exceptions\UserFacingException $e) {
+        } catch (UserFacingException $e) {
             throw $e;
         } catch (\Exception $e) {
             return $this->errorResponse(
@@ -1007,7 +1036,7 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(response: 200, description: 'PDF stream', content: new OA\MediaType(mediaType: 'application/pdf')),
@@ -1025,17 +1054,18 @@ class InboundController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inbounds'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(response: 200, description: 'Inbound dibatalkan'),
-            new OA\Response(response: 500, description: 'Server Error')
+            new OA\Response(response: 500, description: 'Server Error'),
         ]
     )]
     public function cancel(string $id): JsonResponse
     {
         try {
             $inbound = $this->inboundService->cancel($id);
+
             return $this->successResponse($inbound, 'Inbound berhasil dibatalkan');
         } catch (\Exception $e) {
             throw $e;

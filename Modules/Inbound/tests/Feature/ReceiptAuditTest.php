@@ -186,6 +186,11 @@ class ReceiptAuditTest extends TestCase
         $this->assertSame(15, (int) $item['received_by_me']);
         $this->assertSame(40, (int) $res->json('data.received_total'));
         $this->assertSame(15, (int) $res->json('data.received_by_me'));
+        $this->assertSame('PARTIAL', $res->json('data.receiving_status'));
+        $this->assertSame('NOT_STARTED', $res->json('data.placement_status'));
+        $this->assertSame(40, (int) $res->json('data.placement_summary.received_qty'));
+        $this->assertSame(0, (int) $res->json('data.placement_summary.putaway_qty'));
+        $this->assertSame(40, (int) $res->json('data.placement_summary.pending_qty'));
     }
 
     public function test_receipt_pdf_prints_expected_received_and_remaining_quantities(): void

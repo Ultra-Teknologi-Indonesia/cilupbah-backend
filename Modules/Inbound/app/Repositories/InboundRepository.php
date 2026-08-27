@@ -2,13 +2,17 @@
 
 namespace Modules\Inbound\Repositories;
 
+use App\Models\User;
+use App\Support\WarehouseAccess;
 use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Models\InboundAssignment;
 use Modules\Inbound\Models\InboundItem;
 use Modules\Inbound\Models\InboundReceipt;
-use Spatie\QueryBuilder\QueryBuilder;
+use Modules\Inbound\Support\InboundPlacementProgress;
+use Modules\Purchase\Models\PurchaseOrder;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\AllowedSort;
+use Spatie\QueryBuilder\QueryBuilder;
 
 class InboundRepository
 {
@@ -21,7 +25,7 @@ class InboundRepository
             $query->where('status', '!=', Inbound::STATUS_CANCELLED);
         }
 
-        \App\Support\WarehouseAccess::apply($query, 'location_id');
+        WarehouseAccess::apply($query, 'location_id');
 
         $paginator = $query
             ->allowedFilters(
@@ -30,7 +34,7 @@ class InboundRepository
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('source_type'),
                 AllowedFilter::callback('date_from', fn ($query, $value) => $query->where('created_at', '>=', $value)),
-                AllowedFilter::callback('date_to', fn ($query, $value) => $query->where('created_at', '<=', $value . ' 23:59:59')),
+                AllowedFilter::callback('date_to', fn ($query, $value) => $query->where('created_at', '<=', $value.' 23:59:59')),
             )
             ->allowedSearch('transaction_number', 'reference_number')
             ->allowedSorts('expected_date', 'created_at', 'transaction_number', 'reference_number', 'status', 'type')
@@ -55,8 +59,8 @@ class InboundRepository
             }
         }
 
-        if (!empty($userIds)) {
-            $users = \App\Models\User::whereIn('id', array_unique($userIds))->pluck('name', 'id');
+        if (! empty($userIds)) {
+            $users = User::whereIn('id', array_unique($userIds))->pluck('name', 'id');
             foreach ($paginator->items() as $item) {
                 if (isset($users[$item->created_by])) {
                     $item->created_by = $users[$item->created_by];
@@ -64,14 +68,14 @@ class InboundRepository
             }
         }
 
-        if (!empty($poIds) || !empty($poNumbers)) {
-            $poQuery = \Modules\Purchase\Models\PurchaseOrder::query();
-            if (!empty($poIds) && !empty($poNumbers)) {
+        if (! empty($poIds) || ! empty($poNumbers)) {
+            $poQuery = PurchaseOrder::query();
+            if (! empty($poIds) && ! empty($poNumbers)) {
                 $poQuery->where(function ($q) use ($poIds, $poNumbers) {
                     $q->whereIn('id', array_unique($poIds))
                         ->orWhereIn('po_number', array_unique($poNumbers));
                 });
-            } elseif (!empty($poIds)) {
+            } elseif (! empty($poIds)) {
                 $poQuery->whereIn('id', array_unique($poIds));
             } else {
                 $poQuery->whereIn('po_number', array_unique($poNumbers));
@@ -99,6 +103,10 @@ class InboundRepository
             }
         }
 
+        foreach ($paginator->items() as $item) {
+            InboundPlacementProgress::decorate($item);
+        }
+
         return $paginator;
     }
 
@@ -121,7 +129,7 @@ class InboundRepository
             $inbound->received_by_me = (int) $inbound->items->sum('received_by_me');
 
             if ($inbound->source_type === 'purchase_order' || $inbound->type === Inbound::TYPE_PURCHASE_ORDER) {
-                $poNote = \Modules\Purchase\Models\PurchaseOrder::where('id', $inbound->source_id)
+                $poNote = PurchaseOrder::where('id', $inbound->source_id)
                     ->orWhere('po_number', $inbound->reference_number)
                     ->value('notes');
                 if ($poNote !== null && trim((string) $poNote) !== '') {
@@ -133,13 +141,13 @@ class InboundRepository
         }
 
         if ($inbound && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', (string) $inbound->created_by)) {
-            $user = \App\Models\User::find($inbound->created_by);
+            $user = User::find($inbound->created_by);
             if ($user) {
                 $inbound->created_by = $user->name;
             }
         }
 
-        return $inbound;
+        return $inbound ? InboundPlacementProgress::decorate($inbound) : null;
     }
 
     public function findByIdForUpdate(string $id): ?Inbound
@@ -162,6 +170,7 @@ class InboundRepository
     public function updateStatus(Inbound $inbound, string $status): bool
     {
         $inbound->status = $status;
+
         return $inbound->save();
     }
 
@@ -175,8 +184,10 @@ class InboundRepository
         $item = InboundItem::where('id', $itemId)->lockForUpdate()->first();
         if ($item) {
             $item->received_qty += $addedQty;
+
             return $item->save();
         }
+
         return false;
     }
 
@@ -185,8 +196,10 @@ class InboundRepository
         $item = InboundItem::where('id', $itemId)->lockForUpdate()->first();
         if ($item) {
             $item->rejected_qty = ($item->rejected_qty ?? 0) + $addedQty;
+
             return $item->save();
         }
+
         return false;
     }
 
@@ -195,8 +208,10 @@ class InboundRepository
         $item = InboundItem::where('id', $itemId)->lockForUpdate()->first();
         if ($item) {
             $item->putaway_qty += $addedQty;
+
             return $item->save();
         }
+
         return false;
     }
 
@@ -205,6 +220,7 @@ class InboundRepository
         $item = InboundItem::findOrFail($itemId);
         $item->discrepancy_qty = $discrepancyQty;
         $item->discrepancy_note = $note;
+
         return $item->save();
     }
 
@@ -212,6 +228,7 @@ class InboundRepository
     {
         $item = InboundItem::findOrFail($itemId);
         $item->discrepancy_note = $note;
+
         return $item->save();
     }
 
@@ -264,8 +281,8 @@ class InboundRepository
         return [
             'expected_qty' => (int) ($row->expected_qty ?? 0),
             'received_qty' => (int) ($row->received_qty ?? 0),
-            'putaway_qty'  => (int) ($row->putaway_qty ?? 0),
-            'line_count'   => (int) ($row->line_count ?? 0),
+            'putaway_qty' => (int) ($row->putaway_qty ?? 0),
+            'line_count' => (int) ($row->line_count ?? 0),
         ];
     }
 

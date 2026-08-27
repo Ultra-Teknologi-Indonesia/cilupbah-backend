@@ -1014,12 +1014,6 @@ class PutawayService
                 'completed_at' => now(),
             ]);
 
-            if ($putaway->source_type === 'INBOUND') {
-                foreach ($this->sourceInbounds($putaway) as $inbound) {
-                    $this->recomputeInboundStatus($inbound);
-                }
-            }
-
             return $this->putawayRepository->findById($id);
         });
 
@@ -1063,12 +1057,6 @@ class PutawayService
 
                 PutawayItem::whereIn('id', collect($items)->pluck('item_id')->filter()->all())
                     ->update(['qty' => DB::raw('putaway_qty')]);
-            } else {
-                if ($putaway->source_type === 'INBOUND') {
-                    foreach ($this->sourceInbounds($putaway) as $inbound) {
-                        $this->recomputeInboundStatus($inbound);
-                    }
-                }
             }
 
             Putaway::where('id', $putawayId)->update(['updated_version_at' => now()]);
@@ -1102,15 +1090,7 @@ class PutawayService
                     $this->resetAllPlacements($putaway, $userId);
                 }
 
-                $inbounds = $putaway->source_type === 'INBOUND'
-                    ? $this->sourceInbounds($putaway)
-                    : collect();
-
                 $this->hardDeletePutaway($putaway);
-
-                foreach ($inbounds as $inbound) {
-                    $this->recomputeInboundStatus($inbound);
-                }
 
                 return ['id' => $id, 'action' => 'unassigned'];
             }
@@ -1126,12 +1106,6 @@ class PutawayService
                 : ['started_at' => null, 'completed_at' => null];
 
             $this->putawayRepository->updateStatus($id, $target, $extra);
-
-            if ($putaway->source_type === 'INBOUND') {
-                foreach ($this->sourceInbounds($putaway) as $inbound) {
-                    $this->recomputeInboundStatus($inbound);
-                }
-            }
 
             return [
                 'id' => $id,
@@ -1416,23 +1390,6 @@ class PutawayService
             }
         }
     }
-
-    private function sourceInbounds(Putaway $putaway)
-    {
-        $ids = $putaway->sourceRows()->pluck('inbound_id');
-
-        if ($ids->isEmpty() && $putaway->source_id) {
-            $ids = collect([$putaway->source_id]);
-        }
-
-        if ($ids->isEmpty()) {
-            return collect();
-        }
-
-        return Inbound::with('items')->whereIn('id', $ids->all())->get();
-    }
-
-    private function recomputeInboundStatus(Inbound $inbound): void {}
 
     private function releasePartialReservation(Putaway $putaway, PutawayItem $item, int $unplaced): void
     {

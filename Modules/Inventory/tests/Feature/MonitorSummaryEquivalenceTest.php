@@ -2,8 +2,10 @@
 
 namespace Modules\Inventory\Tests\Feature;
 
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Repositories\MonitorStockRepository;
 use Modules\Inventory\Support\StockSummary;
@@ -46,8 +48,8 @@ class MonitorSummaryEquivalenceTest extends TestCase
     {
         $product = Product::create([
             'category_id' => $this->categoryId,
-            'name' => 'P-' . $sku,
-            'sku' => 'P-' . $sku,
+            'name' => 'P-'.$sku,
+            'sku' => 'P-'.$sku,
             'is_active' => true,
             'is_stored' => true,
             'is_bundle' => false,
@@ -75,10 +77,10 @@ class MonitorSummaryEquivalenceTest extends TestCase
     private function legacySummary(MonitorStockRepository $repo, array $filters): array
     {
         return [
-            'habis'    => $repo->countMode('habis', $filters),
-            'minus'    => $repo->countMode('minus', $filters),
-            'dipesan'  => $repo->countMode('dipesan', $filters),
-            'menipis'  => $repo->countMode('menipis', $filters),
+            'habis' => $repo->countMode('habis', $filters),
+            'minus' => $repo->countMode('minus', $filters),
+            'dipesan' => $repo->countMode('dipesan', $filters),
+            'menipis' => $repo->countMode('menipis', $filters),
             'on_order' => $repo->countMode('on-order', $filters),
         ];
     }
@@ -92,7 +94,7 @@ class MonitorSummaryEquivalenceTest extends TestCase
         $dipesan = $this->makeVariant('SKU-DIPESAN', 0, 0);
         $onOrder = $this->makeVariant('SKU-PO', 50, 50);
 
-        $orderId = (string) \Illuminate\Support\Str::uuid();
+        $orderId = (string) Str::uuid();
         DB::table('sales_orders')->insert([
             'id' => $orderId,
             'salesorder_no' => 'SO-MON-1',
@@ -103,14 +105,14 @@ class MonitorSummaryEquivalenceTest extends TestCase
             'created_at' => now(), 'updated_at' => now(),
         ]);
         DB::table('sales_order_items')->insert([
-            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'id' => (string) Str::uuid(),
             'order_id' => $orderId,
             'item_id' => $dipesan->id,
             'qty_in_base' => 1,
             'created_at' => now(), 'updated_at' => now(),
         ]);
 
-        $contactId = (string) \Illuminate\Support\Str::uuid();
+        $contactId = (string) Str::uuid();
         DB::table('contacts')->insert([
             'id' => $contactId,
             'code' => 'SUP-MON-1',
@@ -118,7 +120,7 @@ class MonitorSummaryEquivalenceTest extends TestCase
             'created_at' => now(), 'updated_at' => now(),
         ]);
 
-        $poId = (string) \Illuminate\Support\Str::uuid();
+        $poId = (string) Str::uuid();
         DB::table('purchase_orders')->insert([
             'id' => $poId,
             'po_number' => 'PO-MON-1',
@@ -126,11 +128,11 @@ class MonitorSummaryEquivalenceTest extends TestCase
             'location_id' => $this->location->id,
             'status' => 'OPEN',
             'order_date' => now()->toDateString(),
-            'created_by' => \App\Models\User::query()->value('id') ?? \App\Models\User::factory()->create()->id,
+            'created_by' => User::query()->value('id') ?? User::factory()->create()->id,
             'created_at' => now(), 'updated_at' => now(),
         ]);
         DB::table('purchase_order_items')->insert([
-            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'id' => (string) Str::uuid(),
             'purchase_order_id' => $poId,
             'item_id' => $onOrder->id,
             'qty' => 5,
@@ -216,8 +218,21 @@ class MonitorSummaryEquivalenceTest extends TestCase
         $summary = StockSummary::forItem($variant->id, $this->location->id);
 
         $this->assertSame(10, $summary['on_hand']);
-        $this->assertSame(300, $summary['pending_placement']);
+        $this->assertSame(200, $summary['pending_placement']);
+        $this->assertSame(100, $summary['legacy_unassigned']);
+        $this->assertSame(210, $summary['physical_total']);
         $this->assertSame(15, $summary['on_order']);
         $this->assertSame(-5, $summary['available']);
+
+        $this->assertSame(
+            200,
+            (int) Inventory::where('item_id', $variant->id)->pendingPlacement()->sum('on_hand'),
+            'Scope pending placement hanya boleh memuat bin inbound yang sah.',
+        );
+        $this->assertSame(
+            100,
+            (int) Inventory::where('item_id', $variant->id)->legacyUnassigned()->sum('on_hand'),
+            'Data tanpa rak wajib terisolasi dari alur penempatan.',
+        );
     }
 }

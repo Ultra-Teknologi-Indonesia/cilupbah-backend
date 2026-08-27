@@ -2,10 +2,13 @@
 
 namespace Modules\Inventory\Repositories;
 
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Support\InventoryMovementSourceMap;
 use Modules\Notification\Services\NotificationDispatcher;
-use Illuminate\Database\Eloquent\Collection;
+use Spatie\QueryBuilder\AllowedFilter;
+use Spatie\QueryBuilder\QueryBuilder;
 
 class InventoryMovementRepository
 {
@@ -95,7 +98,7 @@ class InventoryMovementRepository
                     ],
                 ]);
             } catch (\Throwable $e) {
-                \Log::warning('Notifikasi stok minus gagal: ' . $e->getMessage(), [
+                \Log::warning('Notifikasi stok minus gagal: '.$e->getMessage(), [
                     'movement_id' => $movement->id ?? null,
                 ]);
             }
@@ -148,26 +151,6 @@ class InventoryMovementRepository
                 ->join('stock_adjustments', 'stock_adjustments.id', '=', 'inbound_receipts.stock_adjustment_id')
                 ->whereColumn('stock_adjustments.adjustment_no', 'inventory_movements.transaction_number')
                 ->where('inbound_receipts.condition', 'ADJUSTMENT');
-        });
-
-        $baseQuery->where(function ($q) {
-            $q->whereNotExists(function ($inboundBinQuery) {
-                $inboundBinQuery
-                    ->selectRaw('1')
-                    ->from('location_bins')
-                    ->join('locations', 'locations.id', '=', 'location_bins.location_id')
-                    ->whereColumn('location_bins.id', 'inventory_movements.bin_id')
-                    ->where('location_bins.is_inbound', true)
-                    ->where('locations.is_small_warehouse', false);
-            })->orWhereExists(function ($defaultBinQuery) {
-                $defaultBinQuery
-                    ->selectRaw('1')
-                    ->from('location_bins as default_bins')
-                    ->whereColumn('default_bins.id', 'inventory_movements.bin_id')
-                    ->whereRaw(
-                        "UPPER(TRIM(COALESCE(default_bins.bin_final_code, default_bins.bin_code, ''))) = 'DEFAULT'"
-                    );
-            });
         });
 
         if ($view === 'clean') {
@@ -272,54 +255,32 @@ class InventoryMovementRepository
                 ->leftJoin('products', 'products.id', '=', 'product_variants.product_id');
         }
 
-        $deductList = "'" . implode("','", InventoryMovementSourceMap::ORDER_DEDUCT_SOURCES) . "'";
-        $restoreList = "'" . implode("','", InventoryMovementSourceMap::ORDER_RESTORE_SOURCES) . "'";
-        $effectiveQtySql = "CASE WHEN source IN ($deductList) THEN -ABS(qty) WHEN source IN ($restoreList) THEN ABS(qty) ELSE qty END";
-        $nonPhysicalList = "'" . implode("','", InventoryMovementSourceMap::NON_PHYSICAL_SOURCES) . "'";
-        $physicalQtySql = "CASE WHEN source IN ($nonPhysicalList) THEN 0 ELSE qty END";
+        $deductList = "'".implode("','", InventoryMovementSourceMap::ORDER_DEDUCT_SOURCES)."'";
+        $restoreList = "'".implode("','", InventoryMovementSourceMap::ORDER_RESTORE_SOURCES)."'";
+        $effectiveQtySql = "CASE WHEN inventory_movements.source IN ($deductList) THEN -ABS(inventory_movements.qty) WHEN inventory_movements.source IN ($restoreList) THEN ABS(inventory_movements.qty) ELSE inventory_movements.qty END";
+        $nonPhysicalList = "'".implode("','", InventoryMovementSourceMap::NON_PHYSICAL_SOURCES)."'";
+        $physicalQtySql = "CASE WHEN inventory_movements.source IN ($nonPhysicalList) THEN 0 ELSE inventory_movements.qty END";
+        $allocationDeltaSql = "CASE WHEN inventory_movements.source IN ($deductList) THEN -ABS(inventory_movements.qty) WHEN inventory_movements.source IN ($restoreList) THEN ABS(inventory_movements.qty) ELSE 0 END";
+        $onOrderDeltaSql = "CASE WHEN inventory_movements.source IN ($deductList) THEN ABS(inventory_movements.qty) WHEN inventory_movements.source IN ($restoreList) THEN -ABS(inventory_movements.qty) ELSE 0 END";
+        $placedQtySql = "CASE WHEN balance_bins.id IS NOT NULL AND balance_bins.is_inbound = false THEN ($physicalQtySql) ELSE 0 END";
+        $pendingPlacementQtySql = "CASE WHEN balance_bins.id IS NOT NULL AND balance_bins.is_inbound = true THEN ($physicalQtySql) ELSE 0 END";
+        $legacyUnassignedQtySql = "CASE WHEN inventory_movements.bin_id IS NULL THEN ($physicalQtySql) ELSE 0 END";
+        $physicalTotalQtySql = "CASE WHEN balance_bins.id IS NOT NULL THEN ($physicalQtySql) ELSE 0 END";
+        $availableDeltaSql = "(($placedQtySql) + ($allocationDeltaSql))";
         $hasLocationFilter = ! empty(request('filter.location_id', request('location_id')));
 
         $balanceQuery = InventoryMovement::query()
-            ->where('qty', '!=', 0);
-
-        if ($view === 'clean') {
-            $balanceQuery->whereNotExists(function ($inboundBinQuery) {
-                $inboundBinQuery
-                    ->selectRaw('1')
-                    ->from('location_bins')
-                    ->whereColumn('location_bins.id', 'inventory_movements.bin_id')
-                    ->where('location_bins.is_inbound', true);
-            });
-        } else {
-            $balanceQuery->where(function ($q) {
-                $q->whereNotExists(function ($inboundBinQuery) {
-                    $inboundBinQuery
-                        ->selectRaw('1')
-                        ->from('location_bins')
-                        ->join('locations', 'locations.id', '=', 'location_bins.location_id')
-                        ->whereColumn('location_bins.id', 'inventory_movements.bin_id')
-                        ->where('location_bins.is_inbound', true)
-                        ->where('locations.is_small_warehouse', false);
-                })->orWhereExists(function ($defaultBinQuery) {
-                    $defaultBinQuery
-                        ->selectRaw('1')
-                        ->from('location_bins as default_bins')
-                        ->whereColumn('default_bins.id', 'inventory_movements.bin_id')
-                        ->whereRaw(
-                            "UPPER(TRIM(COALESCE(default_bins.bin_final_code, default_bins.bin_code, ''))) = 'DEFAULT'"
-                        );
-                });
-            });
-        }
+            ->leftJoin('location_bins as balance_bins', 'balance_bins.id', '=', 'inventory_movements.bin_id')
+            ->where('inventory_movements.qty', '!=', 0);
 
         $balanceItemId = request('filter.item_id', request('item_id'));
         if (is_string($balanceItemId) && trim($balanceItemId) !== '') {
-            $balanceQuery->where('item_id', trim($balanceItemId));
+            $balanceQuery->where('inventory_movements.item_id', trim($balanceItemId));
         }
 
         $balanceLocationId = request('filter.location_id', request('location_id'));
         if (is_string($balanceLocationId) && trim($balanceLocationId) !== '') {
-            $balanceQuery->where('location_id', trim($balanceLocationId));
+            $balanceQuery->where('inventory_movements.location_id', trim($balanceLocationId));
         }
 
         $balancePartition = $hasLocationFilter
@@ -329,109 +290,128 @@ class InventoryMovementRepository
         $balanceQuery
             ->select('inventory_movements.id')
             ->selectRaw(
-                "SUM($effectiveQtySql) OVER (PARTITION BY $balancePartition ORDER BY inventory_movements.transaction_date, inventory_movements.id) AS total_balance"
+                "SUM($availableDeltaSql) OVER (PARTITION BY $balancePartition ORDER BY inventory_movements.transaction_date, inventory_movements.id) AS total_balance"
             )
             ->selectRaw(
-                "SUM($physicalQtySql) OVER (PARTITION BY $balancePartition ORDER BY inventory_movements.transaction_date, inventory_movements.id) AS physical_balance"
+                "SUM($placedQtySql) OVER (PARTITION BY $balancePartition ORDER BY inventory_movements.transaction_date, inventory_movements.id) AS physical_balance"
+            )
+            ->selectRaw(
+                "SUM($placedQtySql) OVER (PARTITION BY $balancePartition ORDER BY inventory_movements.transaction_date, inventory_movements.id) AS placed_balance"
+            )
+            ->selectRaw(
+                "SUM($pendingPlacementQtySql) OVER (PARTITION BY $balancePartition ORDER BY inventory_movements.transaction_date, inventory_movements.id) AS pending_placement_balance"
+            )
+            ->selectRaw(
+                "SUM($legacyUnassignedQtySql) OVER (PARTITION BY $balancePartition ORDER BY inventory_movements.transaction_date, inventory_movements.id) AS legacy_unassigned_balance"
+            )
+            ->selectRaw(
+                "SUM($physicalTotalQtySql) OVER (PARTITION BY $balancePartition ORDER BY inventory_movements.transaction_date, inventory_movements.id) AS physical_total_balance"
+            )
+            ->selectRaw(
+                "SUM($onOrderDeltaSql) OVER (PARTITION BY $balancePartition ORDER BY inventory_movements.transaction_date, inventory_movements.id) AS on_order_balance"
             );
 
-        $pickOrderScope = "FROM picklist_items pi"
-            . " JOIN picklists p ON p.id = pi.picklist_id"
-            . " JOIN sales_orders so ON so.id = pi.order_id"
-            . " WHERE p.picklist_no = regexp_replace(inventory_movements.transaction_number, '-(KOREKSI|HAPUS)$', '')"
-            . " AND pi.item_id = inventory_movements.item_id";
+        $pickOrderScope = 'FROM picklist_items pi'
+            .' JOIN picklists p ON p.id = pi.picklist_id'
+            .' JOIN sales_orders so ON so.id = pi.order_id'
+            ." WHERE p.picklist_no = regexp_replace(inventory_movements.transaction_number, '-(KOREKSI|HAPUS)$', '')"
+            .' AND pi.item_id = inventory_movements.item_id';
         $isPick = "inventory_movements.source IN ('PICKING', 'PICKING_REVERSAL')";
-        $pickOrder = fn (string $column) =>
-            "(CASE WHEN {$isPick} THEN (SELECT {$column} {$pickOrderScope} ORDER BY so.salesorder_no LIMIT 1) END)";
+        $pickOrder = fn (string $column) => "(CASE WHEN {$isPick} THEN (SELECT {$column} {$pickOrderScope} ORDER BY so.salesorder_no LIMIT 1) END)";
 
-        $qb = \Spatie\QueryBuilder\QueryBuilder::for($baseQuery)
+        $qb = QueryBuilder::for($baseQuery)
             ->joinSub($balanceQuery, 'movement_balances', function ($join) {
                 $join->on('movement_balances.id', '=', 'inventory_movements.id');
             })
             ->select('inventory_movements.*')
             ->selectRaw('movement_balances.total_balance')
             ->selectRaw('movement_balances.physical_balance')
+            ->selectRaw('movement_balances.placed_balance')
+            ->selectRaw('movement_balances.pending_placement_balance')
+            ->selectRaw('movement_balances.legacy_unassigned_balance')
+            ->selectRaw('movement_balances.physical_total_balance')
+            ->selectRaw('movement_balances.on_order_balance')
             ->selectRaw(
                 '(SELECT EXISTS(SELECT 1 FROM sales_invoices si '
-                . 'JOIN picklist_items pi ON pi.order_id = si.order_id '
-                . 'JOIN picklists p ON p.id = pi.picklist_id '
-                . "WHERE p.picklist_no = regexp_replace(inventory_movements.transaction_number, '-(KOREKSI|HAPUS)$', '') "
-                . "AND pi.item_id = inventory_movements.item_id AND si.status != 'CANCELLED'"
-                . ')) AS has_invoice'
+                .'JOIN picklist_items pi ON pi.order_id = si.order_id '
+                .'JOIN picklists p ON p.id = pi.picklist_id '
+                ."WHERE p.picklist_no = regexp_replace(inventory_movements.transaction_number, '-(KOREKSI|HAPUS)$', '') "
+                ."AND pi.item_id = inventory_movements.item_id AND si.status != 'CANCELLED'"
+                .')) AS has_invoice'
             )
             ->selectRaw(
                 '(SELECT COALESCE(CASE '
-                . " WHEN inb.transaction_number LIKE 'TRFI%' OR inb.type = 'TRANSIT_IN' OR inb.source_type IN ('transfer', 'inventory_transfer') THEN 'transfer'"
-                . " WHEN inb.type = 'SALES_RETURN' OR inb.source_type IN ('sales_return', 'return') THEN 'sales_return'"
-                . " WHEN inb.type = 'PURCHASE_ORDER' OR inb.source_type IN ('purchase_order', 'purchase') THEN 'purchase_order'"
-                . ' ELSE NULL END, NULLIF(inb.source_type, \'\'), NULLIF(inb.type, \'\'), NULLIF(put.source_type, \'\'))'
-                . ' FROM putaways put LEFT JOIN inbounds inb ON inb.id = put.source_id WHERE put.putaway_no = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') LIMIT 1) AS putaway_source_type'
+                ." WHEN inb.transaction_number LIKE 'TRFI%' OR inb.type = 'TRANSIT_IN' OR inb.source_type IN ('transfer', 'inventory_transfer') THEN 'transfer'"
+                ." WHEN inb.type = 'SALES_RETURN' OR inb.source_type IN ('sales_return', 'return') THEN 'sales_return'"
+                ." WHEN inb.type = 'PURCHASE_ORDER' OR inb.source_type IN ('purchase_order', 'purchase') THEN 'purchase_order'"
+                .' ELSE NULL END, NULLIF(inb.source_type, \'\'), NULLIF(inb.type, \'\'), NULLIF(put.source_type, \'\'))'
+                .' FROM putaways put LEFT JOIN inbounds inb ON inb.id = put.source_id WHERE put.putaway_no = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') LIMIT 1) AS putaway_source_type'
             )
-            ->selectRaw($pickOrder('so.salesorder_no') . ' AS pick_order_no')
+            ->selectRaw($pickOrder('so.salesorder_no').' AS pick_order_no')
             ->selectRaw("(CASE WHEN {$isPick} THEN (SELECT COUNT(DISTINCT pi.order_id) {$pickOrderScope}) END) AS pick_order_count")
             ->selectRaw(
                 'COALESCE('
-                . '(SELECT COALESCE(so.channel_order_no, so.no_ref) FROM sales_orders so WHERE so.salesorder_no = inventory_movements.transaction_number LIMIT 1), '
-                . '(SELECT it.transfer_number FROM inventory_transfers it WHERE it.receive_number = inventory_movements.transaction_number LIMIT 1), '
-                . '(SELECT pb.ref_no FROM purchase_bills pb WHERE pb.bill_number = inventory_movements.transaction_number LIMIT 1), '
-                . '(SELECT po.ref_no FROM purchase_orders po WHERE po.po_number = inventory_movements.transaction_number LIMIT 1), '
-                . '(SELECT COALESCE(inb.transaction_number, inb.reference_number) FROM putaways put JOIN inbounds inb ON inb.id = put.source_id WHERE put.putaway_no = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') LIMIT 1), '
-                . $pickOrder('COALESCE(so.channel_order_no, so.no_ref)')
-                . ') AS ref_no'
+                .'(SELECT COALESCE(so.channel_order_no, so.no_ref) FROM sales_orders so WHERE so.salesorder_no = inventory_movements.transaction_number LIMIT 1), '
+                .'(SELECT it.transfer_number FROM inventory_transfers it WHERE it.receive_number = inventory_movements.transaction_number LIMIT 1), '
+                .'(SELECT pb.ref_no FROM purchase_bills pb WHERE pb.bill_number = inventory_movements.transaction_number LIMIT 1), '
+                .'(SELECT po.ref_no FROM purchase_orders po WHERE po.po_number = inventory_movements.transaction_number LIMIT 1), '
+                .'(SELECT COALESCE(inb.transaction_number, inb.reference_number) FROM putaways put JOIN inbounds inb ON inb.id = put.source_id WHERE put.putaway_no = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') LIMIT 1), '
+                .$pickOrder('COALESCE(so.channel_order_no, so.no_ref)')
+                .') AS ref_no'
             )
             ->selectRaw(
                 'COALESCE('
-                . '(SELECT NULLIF(TRIM(CONCAT_WS(\' | \', NULLIF(TRIM(so.buyer_message), \'\'), NULLIF(TRIM(COALESCE(so.seller_note, so.note)), \'\'))), \'\') FROM sales_orders so WHERE so.salesorder_no = inventory_movements.transaction_number LIMIT 1), '
-                . '(SELECT NULLIF(TRIM(COALESCE(sai.notes, sa.notes)), \'\') FROM stock_adjustments sa'
-                . '  LEFT JOIN stock_adjustment_items sai ON sai.stock_adjustment_id = sa.id AND sai.item_id = inventory_movements.item_id'
-                . '  WHERE sa.adjustment_no = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') AND sa.deleted_at IS NULL LIMIT 1), '
-                . '(SELECT NULLIF(TRIM(it.notes), \'\') FROM inventory_transfers it'
-                . '  WHERE (it.transfer_number = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\')'
-                . '     OR it.receive_number = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\')) LIMIT 1), '
-                . '(SELECT CONCAT(\'Transfer: \', sl.location_name, \' → \', dl.location_name) FROM inventory_transfers it'
-                . '  LEFT JOIN locations sl ON sl.id = it.source_location_id'
-                . '  LEFT JOIN locations dl ON dl.id = it.destination_location_id'
-                . '  WHERE (it.transfer_number = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\')'
-                . '     OR it.receive_number = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\')) LIMIT 1), '
-                . '(SELECT NULLIF(TRIM(COALESCE(bti.notes, bt.notes)), \'\') FROM bin_transfers bt'
-                . '  LEFT JOIN bin_transfer_items bti ON bti.bin_transfer_id = bt.id AND bti.item_id = inventory_movements.item_id'
-                . '  WHERE bt.transfer_number = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') AND bt.deleted_at IS NULL LIMIT 1), '
-                . '(SELECT CONCAT(\'Pindah Rak: \', sb.bin_final_code, \' → \', db.bin_final_code) FROM bin_transfers bt'
-                . '  LEFT JOIN bin_transfer_items bti ON bti.bin_transfer_id = bt.id AND bti.item_id = inventory_movements.item_id'
-                . '  LEFT JOIN location_bins sb ON sb.id = bti.source_bin_id'
-                . '  LEFT JOIN location_bins db ON db.id = bti.destination_bin_id'
-                . '  WHERE bt.transfer_number = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') AND bt.deleted_at IS NULL LIMIT 1), '
-                . '(SELECT NULLIF(TRIM(so_op.notes), \'\') FROM stock_opnames so_op'
-                . '  WHERE so_op.opname_no = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') AND so_op.deleted_at IS NULL LIMIT 1), '
-                . '(SELECT NULLIF(TRIM(pb.notes), \'\') FROM purchase_bills pb WHERE pb.bill_number = inventory_movements.transaction_number LIMIT 1), '
-                . '(SELECT NULLIF(TRIM(po.notes), \'\') FROM purchase_orders po WHERE po.po_number = inventory_movements.transaction_number LIMIT 1), '
-                . '(SELECT NULLIF(TRIM(po_inb.notes), \'\') FROM putaways put JOIN inbounds inb ON inb.id = put.source_id LEFT JOIN purchase_orders po_inb ON (po_inb.id = inb.source_id OR po_inb.po_number = inb.reference_number) WHERE put.putaway_no = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') LIMIT 1), '
-                . '(SELECT NULLIF(TRIM(CASE WHEN inb.notes LIKE \'Auto-generated dari PO%\' THEN \'\' ELSE inb.notes END), \'\') FROM putaways put JOIN inbounds inb ON inb.id = put.source_id WHERE put.putaway_no = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') LIMIT 1), '
-                . '(SELECT NULLIF(TRIM(COALESCE(sr.notes, sr.reason)), \'\') FROM sales_returns sr WHERE sr.return_number = inventory_movements.transaction_number LIMIT 1), '
-                . $pickOrder('NULLIF(TRIM(CONCAT_WS(\' | \', NULLIF(TRIM(so.buyer_message), \'\'), NULLIF(TRIM(COALESCE(so.seller_note, so.note)), \'\'))), \'\')')
-                . ') AS ref_note'
+                .'(SELECT NULLIF(TRIM(CONCAT_WS(\' | \', NULLIF(TRIM(so.buyer_message), \'\'), NULLIF(TRIM(COALESCE(so.seller_note, so.note)), \'\'))), \'\') FROM sales_orders so WHERE so.salesorder_no = inventory_movements.transaction_number LIMIT 1), '
+                .'(SELECT NULLIF(TRIM(COALESCE(sai.notes, sa.notes)), \'\') FROM stock_adjustments sa'
+                .'  LEFT JOIN stock_adjustment_items sai ON sai.stock_adjustment_id = sa.id AND sai.item_id = inventory_movements.item_id'
+                .'  WHERE sa.adjustment_no = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') AND sa.deleted_at IS NULL LIMIT 1), '
+                .'(SELECT NULLIF(TRIM(it.notes), \'\') FROM inventory_transfers it'
+                .'  WHERE (it.transfer_number = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\')'
+                .'     OR it.receive_number = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\')) LIMIT 1), '
+                .'(SELECT CONCAT(\'Transfer: \', sl.location_name, \' → \', dl.location_name) FROM inventory_transfers it'
+                .'  LEFT JOIN locations sl ON sl.id = it.source_location_id'
+                .'  LEFT JOIN locations dl ON dl.id = it.destination_location_id'
+                .'  WHERE (it.transfer_number = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\')'
+                .'     OR it.receive_number = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\')) LIMIT 1), '
+                .'(SELECT NULLIF(TRIM(COALESCE(bti.notes, bt.notes)), \'\') FROM bin_transfers bt'
+                .'  LEFT JOIN bin_transfer_items bti ON bti.bin_transfer_id = bt.id AND bti.item_id = inventory_movements.item_id'
+                .'  WHERE bt.transfer_number = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') AND bt.deleted_at IS NULL LIMIT 1), '
+                .'(SELECT CONCAT(\'Pindah Rak: \', sb.bin_final_code, \' → \', db.bin_final_code) FROM bin_transfers bt'
+                .'  LEFT JOIN bin_transfer_items bti ON bti.bin_transfer_id = bt.id AND bti.item_id = inventory_movements.item_id'
+                .'  LEFT JOIN location_bins sb ON sb.id = bti.source_bin_id'
+                .'  LEFT JOIN location_bins db ON db.id = bti.destination_bin_id'
+                .'  WHERE bt.transfer_number = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') AND bt.deleted_at IS NULL LIMIT 1), '
+                .'(SELECT NULLIF(TRIM(so_op.notes), \'\') FROM stock_opnames so_op'
+                .'  WHERE so_op.opname_no = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') AND so_op.deleted_at IS NULL LIMIT 1), '
+                .'(SELECT NULLIF(TRIM(pb.notes), \'\') FROM purchase_bills pb WHERE pb.bill_number = inventory_movements.transaction_number LIMIT 1), '
+                .'(SELECT NULLIF(TRIM(po.notes), \'\') FROM purchase_orders po WHERE po.po_number = inventory_movements.transaction_number LIMIT 1), '
+                .'(SELECT NULLIF(TRIM(po_inb.notes), \'\') FROM putaways put JOIN inbounds inb ON inb.id = put.source_id LEFT JOIN purchase_orders po_inb ON (po_inb.id = inb.source_id OR po_inb.po_number = inb.reference_number) WHERE put.putaway_no = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') LIMIT 1), '
+                .'(SELECT NULLIF(TRIM(CASE WHEN inb.notes LIKE \'Auto-generated dari PO%\' THEN \'\' ELSE inb.notes END), \'\') FROM putaways put JOIN inbounds inb ON inb.id = put.source_id WHERE put.putaway_no = regexp_replace(inventory_movements.transaction_number, \'-(BATAL|KOREKSI|HAPUS)$\', \'\') LIMIT 1), '
+                .'(SELECT NULLIF(TRIM(COALESCE(sr.notes, sr.reason)), \'\') FROM sales_returns sr WHERE sr.return_number = inventory_movements.transaction_number LIMIT 1), '
+                .$pickOrder('NULLIF(TRIM(CONCAT_WS(\' | \', NULLIF(TRIM(so.buyer_message), \'\'), NULLIF(TRIM(COALESCE(so.seller_note, so.note)), \'\'))), \'\')')
+                .') AS ref_note'
             )
             ->selectRaw(
                 'COALESCE('
-                . '(SELECT cs.shop_name FROM sales_orders so'
-                . '  LEFT JOIN channel_shops cs ON cs.shop_id = so.channel_shop_id'
-                . '  WHERE so.salesorder_no = inventory_movements.transaction_number LIMIT 1), '
-                . "(CASE WHEN {$isPick} THEN (SELECT cs2.shop_name"
-                . '  FROM picklist_items pi'
-                . '  JOIN picklists p ON p.id = pi.picklist_id'
-                . '  JOIN sales_orders so ON so.id = pi.order_id'
-                . '  LEFT JOIN channel_shops cs2 ON cs2.shop_id = so.channel_shop_id'
-                . "  WHERE p.picklist_no = regexp_replace(inventory_movements.transaction_number, '-(KOREKSI|HAPUS)$', '')"
-                . '  AND pi.item_id = inventory_movements.item_id'
-                . '  ORDER BY so.salesorder_no LIMIT 1) END)'
-                . ') AS store_name'
+                .'(SELECT cs.shop_name FROM sales_orders so'
+                .'  LEFT JOIN channel_shops cs ON cs.shop_id = so.channel_shop_id'
+                .'  WHERE so.salesorder_no = inventory_movements.transaction_number LIMIT 1), '
+                ."(CASE WHEN {$isPick} THEN (SELECT cs2.shop_name"
+                .'  FROM picklist_items pi'
+                .'  JOIN picklists p ON p.id = pi.picklist_id'
+                .'  JOIN sales_orders so ON so.id = pi.order_id'
+                .'  LEFT JOIN channel_shops cs2 ON cs2.shop_id = so.channel_shop_id'
+                ."  WHERE p.picklist_no = regexp_replace(inventory_movements.transaction_number, '-(KOREKSI|HAPUS)$', '')"
+                .'  AND pi.item_id = inventory_movements.item_id'
+                .'  ORDER BY so.salesorder_no LIMIT 1) END)'
+                .') AS store_name'
             )
             ->with(['product:id,sku,product_id', 'location:id,location_name', 'bin:id,bin_final_code'])
             ->allowedSearch('product_variants.sku', 'products.name')
             ->allowedFilters(
-                \Spatie\QueryBuilder\AllowedFilter::exact('item_id'),
-                \Spatie\QueryBuilder\AllowedFilter::exact('location_id'),
-                \Spatie\QueryBuilder\AllowedFilter::callback('source', function ($query, $value) {
+                AllowedFilter::exact('item_id'),
+                AllowedFilter::exact('location_id'),
+                AllowedFilter::callback('source', function ($query, $value) {
                     $tokens = is_array($value) ? $value : explode(',', (string) $value);
 
                     $sources = InventoryMovementSourceMap::expandFilterTokens($tokens);
@@ -507,7 +487,7 @@ class InventoryMovementRepository
                         });
                     }
                 }),
-                \Spatie\QueryBuilder\AllowedFilter::callback('direction', function ($query, $value) use ($effectiveQtySql) {
+                AllowedFilter::callback('direction', function ($query, $value) use ($effectiveQtySql) {
                     $dir = strtolower((string) $value);
                     if ($dir === 'in' || $dir === 'masuk') {
                         $query->whereRaw("({$effectiveQtySql}) > 0");
@@ -516,13 +496,13 @@ class InventoryMovementRepository
                     }
                 }),
 
-                \Spatie\QueryBuilder\AllowedFilter::callback('drill', function ($query, $value) {
+                AllowedFilter::callback('drill', function ($query, $value) {
                     $value = (string) $value;
 
                     if ($value === 'order_active') {
                         $query->where('inventory_movements.source', 'ORDER_RESERVE')
                             ->whereExists(function ($sub) {
-                                $sub->select(\Illuminate\Support\Facades\DB::raw(1))
+                                $sub->select(DB::raw(1))
                                     ->from('sales_orders')
                                     ->whereColumn('sales_orders.salesorder_no', 'inventory_movements.transaction_number')
                                     ->where('sales_orders.status', 'reserved');
@@ -536,20 +516,22 @@ class InventoryMovementRepository
                         $query->whereIn('source', $sources);
                     }
                 }),
-                \Spatie\QueryBuilder\AllowedFilter::exact('transaction_number'),
-                \Spatie\QueryBuilder\AllowedFilter::callback('store_id', function ($query, $value) {
-                    if ($value === null || $value === '') return;
+                AllowedFilter::exact('transaction_number'),
+                AllowedFilter::callback('store_id', function ($query, $value) {
+                    if ($value === null || $value === '') {
+                        return;
+                    }
                     $query->whereExists(function ($sub) use ($value) {
-                        $sub->select(\Illuminate\Support\Facades\DB::raw(1))
+                        $sub->select(DB::raw(1))
                             ->from('sales_orders')
                             ->whereColumn('sales_orders.salesorder_no', 'inventory_movements.transaction_number')
                             ->where('sales_orders.channel_shop_id', $value);
                     });
                 }),
-                \Spatie\QueryBuilder\AllowedFilter::callback('date_from', function ($query, $value) {
+                AllowedFilter::callback('date_from', function ($query, $value) {
                     $query->whereDate('transaction_date', '>=', $value);
                 }),
-                \Spatie\QueryBuilder\AllowedFilter::callback('date_to', function ($query, $value) {
+                AllowedFilter::callback('date_to', function ($query, $value) {
                     $query->whereDate('transaction_date', '<=', $value);
                 })
             )

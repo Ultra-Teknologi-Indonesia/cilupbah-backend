@@ -5,6 +5,7 @@ namespace Modules\Inventory\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Modules\Inventory\Support\StockSummary;
+use Modules\Product\Support\BundleStock;
 
 class StockItemResource extends JsonResource
 {
@@ -40,7 +41,7 @@ class StockItemResource extends JsonResource
         $bundleDerived = ($this->relationLoaded('product')
             && (bool) $this->product?->is_bundle
             && $this->product?->relationLoaded('bundleItems'))
-            ? \Modules\Product\Support\BundleStock::derive($this->product)
+            ? BundleStock::derive($this->product)
             : null;
 
         return [
@@ -57,6 +58,8 @@ class StockItemResource extends JsonResource
                 ? [
                     'on_hand' => $bundleDerived['on_hand'],
                     'pending_placement' => 0,
+                    'legacy_unassigned' => 0,
+                    'physical_total' => $bundleDerived['on_hand'],
                     'on_order' => 0,
                     'transit' => 0,
                     'available' => $bundleDerived['available'],
@@ -116,6 +119,16 @@ class StockItemResource extends JsonResource
             ->groupBy('location_id')
             ->map(function ($rows, $locationId) {
                 $placedOnHand = (int) $rows->filter(fn ($inv) => $this->isPlaced($inv))->sum('on_hand');
+                $pendingPlacement = (int) $rows
+                    ->filter(fn ($inv) => $inv->bin_id !== null
+                        && $inv->relationLoaded('bin')
+                        && $inv->bin !== null
+                        && (bool) $inv->bin->is_inbound)
+                    ->sum('on_hand');
+                $legacyUnassigned = (int) $rows
+                    ->filter(fn ($inv) => $inv->bin_id === null
+                        || ($inv->relationLoaded('bin') && $inv->bin === null))
+                    ->sum('on_hand');
                 $onOrder = (int) $rows->sum('on_order');
                 $first = $rows->first();
 
@@ -124,6 +137,9 @@ class StockItemResource extends JsonResource
                     'location_id' => $locationId,
                     'location_name' => $first && $first->relationLoaded('location') ? $first->location?->location_name : null,
                     'on_hand' => $placedOnHand,
+                    'pending_placement' => $pendingPlacement,
+                    'legacy_unassigned' => $legacyUnassigned,
+                    'physical_total' => $placedOnHand + $pendingPlacement,
                     'on_order' => $onOrder,
                     'available' => $placedOnHand - $onOrder,
                 ];
@@ -134,13 +150,15 @@ class StockItemResource extends JsonResource
 
     protected function totalStocks($inventories): array
     {
-        $onHand = (int) $inventories->filter(fn ($inv) => $this->isPlaced($inv))->sum('on_hand');
-        $pending = (int) $inventories->reject(fn ($inv) => $this->isPlaced($inv))->sum('on_hand');
-        $onOrder = (int) $inventories->sum('on_order');
+        $summary = StockSummary::partitionLoaded($inventories);
+        $onHand = $summary['on_hand'];
+        $onOrder = $summary['on_order'];
 
         return [
             'on_hand' => $onHand,
-            'pending_placement' => $pending,
+            'pending_placement' => $summary['pending_placement'],
+            'legacy_unassigned' => $summary['legacy_unassigned'],
+            'physical_total' => $summary['physical_total'],
             'on_order' => $onOrder,
             'transit' => $this->transitQty ?? (int) (StockSummary::forItem($this->id)['transit'] ?? 0),
             'available' => $onHand - $onOrder,

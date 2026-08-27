@@ -2,8 +2,8 @@
 
 namespace Modules\Inventory\Http\Resources;
 
-use Illuminate\Http\Request;
 use App\Support\ActorName;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Modules\Inventory\Support\InventoryMovementSourceMap;
 
@@ -50,7 +50,7 @@ class InventoryMovementResource extends JsonResource
                 $sourceLabel = 'Retur Penjualan';
             }
         } elseif ($this->source === 'PICKING') {
-            if (!empty($this->has_invoice)) {
+            if (! empty($this->has_invoice)) {
                 $sourceCategory = 'FAKTUR';
                 $sourceLabel = 'Faktur';
             }
@@ -76,9 +76,14 @@ class InventoryMovementResource extends JsonResource
             'is_variance' => InventoryMovementSourceMap::isVariance($this->source),
             'direction' => $direction,
             'qty' => $qty,
-            // Saldo utama adalah stok fisik. Reservasi pesanan tidak mengurangi
-            // on_hand dan tersedia terpisah melalui available_balance.
-            'balance' => (int) ($this->physical_balance ?? $this->balance),
+            // Backward-compatible alias: saldo utama selalu stok yang sudah
+            // ditempatkan di rak final, sama dengan on_hand pada halaman stok.
+            'balance' => (int) ($this->placed_balance ?? $this->physical_balance ?? $this->balance),
+            'placed_balance' => (int) ($this->placed_balance ?? $this->physical_balance ?? $this->balance),
+            'pending_placement_balance' => (int) ($this->pending_placement_balance ?? 0),
+            'legacy_unassigned_balance' => (int) ($this->legacy_unassigned_balance ?? 0),
+            'physical_total_balance' => (int) ($this->physical_total_balance ?? $this->balance),
+            'on_order_balance' => (int) ($this->on_order_balance ?? 0),
             'available_balance' => (int) ($this->total_balance ?? $this->balance),
             'transaction_date' => $this->transaction_date,
             'created_by' => ActorName::resolve($this->created_by),
