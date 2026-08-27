@@ -83,6 +83,28 @@ final class InventoryStockExportTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    public function test_system_operational_warehouse_is_allowed_for_rack_export(): void
+    {
+        Queue::fake();
+
+        $warehouse = Location::factory()->create([
+            'location_code' => 'WH-SYSTEM-OPS',
+            'location_name' => 'Gudang Operasional Sistem',
+            'is_warehouse' => true,
+            'is_active' => true,
+            'is_system' => true,
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/reports/inventory/stock/export/async', [
+                'report_type' => 'by_rack',
+                'location_id' => $warehouse->id,
+            ]);
+
+        $response->assertStatus(202)->assertJsonPath('data.status', 'queued');
+        Queue::assertPushed(RunExportJob::class);
+    }
+
     public function test_unknown_report_type_returns_validation_error_not_server_error(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')
