@@ -7,6 +7,22 @@ use Modules\Warehouse\Models\LocationBin;
 
 class InboundBinPolicy
 {
+    public function assertInbound(string $locationId, ?string $binId, string $operation): LocationBin
+    {
+        $bin = $this->binAtLocation($locationId, $binId, $operation);
+
+        if (! $bin->is_inbound) {
+            throw new UserFacingException(
+                'Rak Inbound Tidak Valid',
+                "Rak {$bin->bin_final_code} bukan bin inbound/DEFAULT. {$operation} hanya boleh menambah atau mengurangi stok pada bin inbound.",
+                422,
+                ['bin_id' => $bin->id, 'operation' => $operation],
+            );
+        }
+
+        return $bin;
+    }
+
     public function assertConsumable(string $locationId, ?string $binId, string $operation): LocationBin
     {
         $bin = $this->binAtLocation($locationId, $binId, $operation);
