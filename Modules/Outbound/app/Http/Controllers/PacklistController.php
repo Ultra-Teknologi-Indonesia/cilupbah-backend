@@ -3,6 +3,7 @@
 namespace Modules\Outbound\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Traits\AutoScopeMobileToAuth;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Outbound\Http\Resources\PacklistResource;
