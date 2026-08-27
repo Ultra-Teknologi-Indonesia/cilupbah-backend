@@ -2,21 +2,23 @@
 
 namespace App\Traits;
 
-use App\Enums\ClientChannelEnum;
 use Illuminate\Http\Request;
 
 trait AutoScopeMobileToAuth
 {
     protected function forceMobileScopeToAuth(Request $request, string $filterKey): void
     {
-        $channel = $request->attributes->get('client_channel');
-        if ($channel !== ClientChannelEnum::MOBILE) {
+        $user = auth()->user();
+        if (! $user) {
             return;
         }
-        $userId = auth()->id();
-        if (! $userId) {
+
+        // Asumsi: owner/admin berhak melihat semua data tanpa batasan.
+        if (method_exists($user, 'hasRole') && $user->hasRole('owner')) {
             return;
         }
+
+        $userId = $user->id;
 
         $filter = $request->query('filter', []);
         if (! is_array($filter)) {
@@ -31,10 +33,12 @@ trait AutoScopeMobileToAuth
 
     protected function overrideForMobile(Request $request, ?string $webValue): ?string
     {
-        $channel = $request->attributes->get('client_channel');
-        if ($channel === ClientChannelEnum::MOBILE && auth()->id()) {
-            return (string) auth()->id();
+        $user = auth()->user();
+        
+        if ($user && method_exists($user, 'hasRole') && !$user->hasRole('owner')) {
+            return (string) $user->id;
         }
+        
         return $webValue;
     }
 }

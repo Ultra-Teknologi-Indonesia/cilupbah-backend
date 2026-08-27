@@ -3,6 +3,7 @@
 namespace Modules\Outbound\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Traits\AutoScopeMobileToAuth;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Outbound\Http\Resources\PacklistResource;
@@ -41,6 +42,8 @@ use Throwable;
 )]
 class PacklistController extends Controller
 {
+    use AutoScopeMobileToAuth;
+
     public function __construct(
         protected PacklistService $packlistService,
     ) {}
@@ -92,6 +95,7 @@ class PacklistController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        $this->forceMobileScopeToAuth($request, 'packer_id');
         $limit = (int) $request->query('per_page', $request->query('limit', 10));
         $data = $this->packlistService->getAllPaginated($limit);
 
