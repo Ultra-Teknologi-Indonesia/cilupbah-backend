@@ -3,30 +3,34 @@
 namespace Modules\Inventory\Services;
 
 use App\Enums\AssignmentActionEnum;
+use App\Enums\ClientChannelEnum;
 use App\Enums\UnassignReasonEnum;
+use App\Exceptions\UserFacingException;
 use App\Models\AssignmentHistory;
+use App\Models\User;
+use App\Support\WarehouseAccess;
 use App\Traits\EnforcesAssignmentChannel;
 use Illuminate\Database\Eloquent\Model;
-use Modules\Inventory\Repositories\PutawayRepository;
-use Modules\Inventory\Repositories\InventoryRepository;
-use Modules\Inventory\Repositories\InventoryMovementRepository;
-use Modules\Inventory\Models\Inventory;
-use Modules\Warehouse\Models\LocationBin;
-use Modules\Inventory\Models\Putaway;
-use Modules\Inventory\Models\PutawayItem;
-use Modules\Inventory\Models\PutawayPlacement;
-use Modules\Inventory\Models\PutawaySource;
-use Modules\Inventory\Models\PutawayItemSource;
-use Modules\Inventory\Services\InventoryService;
-use Modules\Inventory\Services\StockAdjustmentService;
-use Modules\Warehouse\Services\LocationBinService;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Models\InboundItem;
 use Modules\Inventory\Jobs\ProcessPutawayItemJob;
+use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Models\Putaway;
+use Modules\Inventory\Models\PutawayItem;
+use Modules\Inventory\Models\PutawayItemSource;
+use Modules\Inventory\Models\PutawayPlacement;
+use Modules\Inventory\Models\PutawaySource;
+use Modules\Inventory\Repositories\InventoryMovementRepository;
+use Modules\Inventory\Repositories\InventoryRepository;
+use Modules\Inventory\Repositories\PutawayRepository;
 use Modules\Notification\Events\TaskAssigned;
 use Modules\Notification\Services\NotificationDispatcher;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Carbon;
+use Modules\Warehouse\Models\Location;
+use Modules\Warehouse\Models\LocationBin;
+use Modules\Warehouse\Services\LocationBinService;
+use Modules\Warehouse\Services\SkuHomeBinGuard;
 
 class PutawayService
 {
@@ -83,10 +87,10 @@ class PutawayService
     ): array {
         $query = Putaway::query();
         if ($locationId !== null && $locationId !== '') {
-            \App\Support\WarehouseAccess::assert($locationId);
+            WarehouseAccess::assert($locationId);
             $query->where('location_id', $locationId);
         } else {
-            \App\Support\WarehouseAccess::apply($query);
+            WarehouseAccess::apply($query);
         }
         if ($assignedTo !== null && $assignedTo !== '') {
             $query->where('assigned_to', $assignedTo);
@@ -120,7 +124,7 @@ class PutawayService
 
     public function listBins(string $locationId, ?string $search = null): array
     {
-        \App\Support\WarehouseAccess::assert($locationId);
+        WarehouseAccess::assert($locationId);
 
         $bins = $this->putawayRepository->getPutawayBins($locationId, $search);
 
@@ -135,9 +139,9 @@ class PutawayService
         })->all();
     }
 
-    public function lookupBin(string $code, string $locationId): ?\Modules\Warehouse\Models\LocationBin
+    public function lookupBin(string $code, string $locationId): ?LocationBin
     {
-        \App\Support\WarehouseAccess::assert($locationId);
+        WarehouseAccess::assert($locationId);
 
         $bin = $this->putawayRepository->lookupPutawayBin($locationId, $code);
 
@@ -160,7 +164,7 @@ class PutawayService
         $putaway = $this->putawayRepository->findById($id);
 
         if (! $putaway) {
-            throw new \App\Exceptions\UserFacingException('Dokumen penempatan tidak ditemukan.', 404);
+            throw new UserFacingException('Dokumen penempatan tidak ditemukan.', 404);
         }
 
         $formatTimestamp = static function ($value): ?string {
@@ -172,15 +176,17 @@ class PutawayService
         };
 
         $resolveUser = function ($identifier) {
-            if (empty($identifier)) return null;
-            if ($identifier instanceof \App\Models\User) {
+            if (empty($identifier)) {
+                return null;
+            }
+            if ($identifier instanceof User) {
                 return [
                     'id' => $identifier->id,
                     'name' => $identifier->name,
                     'email' => $identifier->email,
                 ];
             }
-            $u = \App\Models\User::whereRaw("id::text = ?", [(string) $identifier])
+            $u = User::whereRaw('id::text = ?', [(string) $identifier])
                 ->orWhere('name', (string) $identifier)
                 ->orWhere('email', (string) $identifier)
                 ->first();
@@ -191,6 +197,7 @@ class PutawayService
                     'email' => $u->email,
                 ];
             }
+
             return [
                 'id' => null,
                 'name' => (string) $identifier,
@@ -315,7 +322,7 @@ class PutawayService
     {
         $putaway = $this->putawayRepository->findById($putawayId);
 
-        if (!$putaway) {
+        if (! $putaway) {
             throw new \Exception('Putaway tidak ditemukan.');
         }
 
@@ -330,7 +337,7 @@ class PutawayService
 
     protected function attachRackAssignment(Putaway $putaway, $items): void
     {
-        $location = \Modules\Warehouse\Models\Location::find($putaway->location_id);
+        $location = Location::find($putaway->location_id);
         if (! $location || ! $location->enforcesStrictBinSku()) {
             foreach ($items as $item) {
                 $item->is_rack_assigned = true;
@@ -339,7 +346,7 @@ class PutawayService
             return;
         }
 
-        $guard = app(\Modules\Warehouse\Services\SkuHomeBinGuard::class);
+        $guard = app(SkuHomeBinGuard::class);
 
         foreach ($items as $item) {
             $item->is_rack_assigned =
@@ -359,7 +366,7 @@ class PutawayService
 
         $sources = PutawayItemSource::whereIn('putaway_item_id', collect($items)->pluck('id'))
             ->with(['inboundItem:id,inbound_id,item_id,expected_qty,received_qty,putaway_qty,reserved_qty',
-                    'inboundItem.inbound:id,transaction_number,updated_version_at,updated_at'])
+                'inboundItem.inbound:id,transaction_number,updated_version_at,updated_at'])
             ->get()
             ->groupBy('putaway_item_id');
 
@@ -375,13 +382,13 @@ class PutawayService
                     $inbound = $inboundItem->inbound;
 
                     return [
-                        'inbound_id'         => (string) $inboundItem->inbound_id,
-                        'inbound_item_id'    => (string) $inboundItem->id,
+                        'inbound_id' => (string) $inboundItem->inbound_id,
+                        'inbound_item_id' => (string) $inboundItem->id,
                         'transaction_number' => $inbound?->transaction_number,
-                        'expected_qty'       => (int) $inboundItem->expected_qty,
-                        'received_qty'       => (int) $inboundItem->received_qty,
-                        'putaway_qty'        => (int) $inboundItem->putaway_qty,
-                        'qty_in_putaway'     => (int) $src->qty,
+                        'expected_qty' => (int) $inboundItem->expected_qty,
+                        'received_qty' => (int) $inboundItem->received_qty,
+                        'putaway_qty' => (int) $inboundItem->putaway_qty,
+                        'qty_in_putaway' => (int) $src->qty,
 
                         'updated_version_at' => optional($inbound?->updated_version_at ?? $inbound?->updated_at)->toIso8601String(),
                     ];
@@ -394,10 +401,10 @@ class PutawayService
 
     protected function attachStrictRecommendedBins(Putaway $putaway, $items): void
     {
-        $location = \Modules\Warehouse\Models\Location::find($putaway->location_id);
+        $location = Location::find($putaway->location_id);
         $strict = $location && $location->enforcesStrictBinSku();
 
-        if (!$strict) {
+        if (! $strict) {
             foreach ($items as $item) {
                 $item->recommended_bin = null;
                 $item->recommended_bin_locked = false;
@@ -406,7 +413,7 @@ class PutawayService
             return;
         }
 
-        $guard = app(\Modules\Warehouse\Services\SkuHomeBinGuard::class);
+        $guard = app(SkuHomeBinGuard::class);
 
         $homeByItem = [];
         foreach ($items as $item) {
@@ -414,7 +421,7 @@ class PutawayService
         }
 
         $binIds = collect($homeByItem)->filter()->unique()->values()->all();
-        $bins = \Modules\Warehouse\Models\LocationBin::whereIn('id', $binIds)
+        $bins = LocationBin::whereIn('id', $binIds)
             ->get(['id', 'bin_final_code'])
             ->keyBy('id');
 
@@ -485,20 +492,20 @@ class PutawayService
 
                     if (! isset($merged[$locked->item_id])) {
                         $merged[$locked->item_id] = [
-                            'item_id'            => $locked->item_id,
-                            'source_bin_id'      => $defaultBin ? $defaultBin->id : null,
+                            'item_id' => $locked->item_id,
+                            'source_bin_id' => $defaultBin ? $defaultBin->id : null,
                             'destination_bin_id' => null,
-                            'qty'                => 0,
-                            'batch_no'           => null,
-                            'serial_no'          => null,
-                            'sources'            => [],
+                            'qty' => 0,
+                            'batch_no' => null,
+                            'serial_no' => null,
+                            'sources' => [],
                         ];
                     }
 
                     $merged[$locked->item_id]['qty'] += $pending;
                     $merged[$locked->item_id]['sources'][] = [
                         'inbound_item_id' => $locked->id,
-                        'qty'             => $pending,
+                        'qty' => $pending,
                     ];
                     $reservationDeltas[$locked->id] = ($reservationDeltas[$locked->id] ?? 0) + $pending;
                 }
@@ -512,16 +519,16 @@ class PutawayService
 
             $defaultNotes = $inbounds->count() === 1
                 ? "Manual Putaway from Inbound {$inbounds->first()->transaction_number}"
-                : 'Manual Putaway gabungan dari ' . $inbounds->count() . ' penerimaan: ' . $inbounds->pluck('transaction_number')->implode(', ');
+                : 'Manual Putaway gabungan dari '.$inbounds->count().' penerimaan: '.$inbounds->pluck('transaction_number')->implode(', ');
 
             $putaway = $this->create([
                 'location_id' => $locationId,
                 'source_type' => 'INBOUND',
-                'source_id'   => $inbounds->count() === 1 ? $inbounds->first()->id : null,
-                'sources'     => $inbounds->pluck('id')->all(),
-                'notes'       => $notes ?? $defaultNotes,
-                'created_by'  => $userId,
-                'items'       => $items,
+                'source_id' => $inbounds->count() === 1 ? $inbounds->first()->id : null,
+                'sources' => $inbounds->pluck('id')->all(),
+                'notes' => $notes ?? $defaultNotes,
+                'created_by' => $userId,
+                'items' => $items,
             ]);
 
             foreach (collect($reservationDeltas)->groupBy(fn ($delta) => (string) $delta, true) as $delta => $group) {
@@ -533,7 +540,7 @@ class PutawayService
                     'performed_by' => $userId,
                     'data' => [
                         [
-                            'putaway_id'  => $putaway->id,
+                            'putaway_id' => $putaway->id,
                             'assigned_to' => $assignedTo,
                         ],
                     ],
@@ -589,12 +596,16 @@ class PutawayService
 
             $itemStocks = $byItem->get($item->item_id, collect());
             foreach ($itemStocks as $stock) {
-                if ($remaining <= 0) break;
+                if ($remaining <= 0) {
+                    break;
+                }
                 $bin = $stock->bin;
-                if (!$bin) continue;
+                if (! $bin) {
+                    continue;
+                }
 
                 $existingRecommended = $usedBinItems[$bin->id] ?? [];
-                if (!empty($existingRecommended) && !in_array($item->item_id, $existingRecommended)) {
+                if (! empty($existingRecommended) && ! in_array($item->item_id, $existingRecommended)) {
                     continue;
                 }
 
@@ -607,14 +618,18 @@ class PutawayService
 
             if ($remaining > 0) {
                 foreach ($allBins as $bin) {
-                    if ($remaining <= 0) break;
-                    if (in_array($bin->id, $usedBinIds)) continue;
+                    if ($remaining <= 0) {
+                        break;
+                    }
+                    if (in_array($bin->id, $usedBinIds)) {
+                        continue;
+                    }
 
                     $existingItemIds = array_unique(array_merge(
                         $binItemIds[$bin->id] ?? [],
                         $usedBinItems[$bin->id] ?? []
                     ));
-                    if (!empty($existingItemIds) && !in_array($item->item_id, $existingItemIds)) {
+                    if (! empty($existingItemIds) && ! in_array($item->item_id, $existingItemIds)) {
                         continue;
                     }
 
@@ -671,7 +686,7 @@ class PutawayService
                     if ((int) $requested > $pending) {
                         throw new \Exception(
                             "Qty penempatan ({$requested}) melebihi sisa yang bisa diputaway ({$pending}) untuk item {$item->item_id}. "
-                            . "Kemungkinan sudah ada putaway lain untuk item ini — refresh halaman."
+                            .'Kemungkinan sudah ada putaway lain untuk item ini — refresh halaman.'
                         );
                     }
                 }
@@ -744,14 +759,14 @@ class PutawayService
 
             AssignmentHistory::create([
                 'subject_type' => Putaway::class,
-                'subject_id'   => $putaway->id,
+                'subject_id' => $putaway->id,
                 'from_user_id' => $previousAssignee,
-                'to_user_id'   => $newAssigneeId,
-                'actor_id'     => $actorId,
-                'action'       => $action->value,
-                'channel'      => $this->currentChannel()->value,
-                'reason_code'  => $reason->value,
-                'reason_note'  => $reasonNote,
+                'to_user_id' => $newAssigneeId,
+                'actor_id' => $actorId,
+                'action' => $action->value,
+                'channel' => $this->currentChannel()->value,
+                'reason_code' => $reason->value,
+                'reason_note' => $reasonNote,
             ]);
 
             return $putaway->fresh();
@@ -774,22 +789,22 @@ class PutawayService
                 'assigned_to' => $newAssigneeId,
                 'assigned_by' => $newAssigneeId ? $actorId : null,
                 'assigned_at' => $newAssigneeId ? now() : null,
-                'status'      => Putaway::STATUS_NOT_STARTED,
-                'started_at'  => null,
+                'status' => Putaway::STATUS_NOT_STARTED,
+                'started_at' => null,
                 'completed_at' => null,
                 'updated_version_at' => now(),
             ])->save();
 
             AssignmentHistory::create([
                 'subject_type' => Putaway::class,
-                'subject_id'   => $putaway->id,
+                'subject_id' => $putaway->id,
                 'from_user_id' => $previousAssignee,
-                'to_user_id'   => $newAssigneeId,
-                'actor_id'     => $actorId,
-                'action'       => AssignmentActionEnum::FORCE_RESET->value,
-                'channel'      => $this->currentChannel()->value,
-                'reason_code'  => UnassignReasonEnum::FORCE_RESET->value,
-                'reason_note'  => $reasonNote,
+                'to_user_id' => $newAssigneeId,
+                'actor_id' => $actorId,
+                'action' => AssignmentActionEnum::FORCE_RESET->value,
+                'channel' => $this->currentChannel()->value,
+                'reason_code' => UnassignReasonEnum::FORCE_RESET->value,
+                'reason_note' => $reasonNote,
             ]);
 
             return $putaway->fresh();
@@ -803,7 +818,7 @@ class PutawayService
         foreach ($data['data'] as $assignment) {
             $putaway = $this->putawayRepository->findByIdForUpdate($assignment['putaway_id']);
 
-            if (!$putaway) {
+            if (! $putaway) {
                 throw new \Exception("Putaway {$assignment['putaway_id']} tidak ditemukan.");
             }
 
@@ -825,12 +840,12 @@ class PutawayService
 
             AssignmentHistory::create([
                 'subject_type' => Putaway::class,
-                'subject_id'   => $putaway->id,
+                'subject_id' => $putaway->id,
                 'from_user_id' => $previousAssignee,
-                'to_user_id'   => $assignment['assigned_to'],
-                'actor_id'     => $data['performed_by'],
-                'action'       => $action->value,
-                'channel'      => $this->currentChannel()->value,
+                'to_user_id' => $assignment['assigned_to'],
+                'actor_id' => $data['performed_by'],
+                'action' => $action->value,
+                'channel' => $this->currentChannel()->value,
             ]);
 
             $putaway = $this->putawayRepository->findById($assignment['putaway_id']);
@@ -854,7 +869,7 @@ class PutawayService
         return DB::transaction(function () use ($id) {
             $putaway = $this->putawayRepository->findByIdForUpdate($id);
 
-            if (!$putaway) {
+            if (! $putaway) {
                 throw new \Exception('Putaway tidak ditemukan.');
             }
 
@@ -874,29 +889,45 @@ class PutawayService
     {
         $putaway = $this->putawayRepository->findById($putawayId);
 
-        if (!$putaway) {
+        if (! $putaway) {
             throw new \Exception('Putaway tidak ditemukan.');
         }
 
         $actorId = (string) ($data['actor_id'] ?? request()?->user()?->id ?? '');
         $channel = $this->currentChannel();
-        if ($channel === \App\Enums\ClientChannelEnum::MOBILE) {
+        if ($channel === ClientChannelEnum::MOBILE) {
             $this->assertMobileCanMutate($putaway, $actorId);
         } else {
 
             $this->assertVersionMatches($putaway, $data['_expected_updated_at'] ?? null);
         }
 
-        $item = PutawayItem::where('putaway_id', $putawayId)
+        $item = PutawayItem::with('product:id,sku')
+            ->where('putaway_id', $putawayId)
             ->where('id', $itemId)
             ->first();
         if (! $item) {
-            throw new \Exception('Item putaway tidak ditemukan.');
+            throw new UserFacingException(
+                title: 'Barang tidak ditemukan',
+                message: 'Barang ini tidak terdaftar pada dokumen putaway yang sedang dibuka.',
+                status: 404,
+                errors: ['code' => 'PUTAWAY_ITEM_NOT_FOUND'],
+            );
         }
 
-        $location = \Modules\Warehouse\Models\Location::find($putaway->location_id);
+        if ((int) $item->putaway_qty >= (int) $item->qty) {
+            $sku = $item->product?->sku ?? $item->item_id;
+            throw new UserFacingException(
+                title: 'Barang sudah selesai',
+                message: "Seluruh qty {$sku} sudah ditempatkan.",
+                status: 409,
+                errors: ['code' => 'PUTAWAY_ITEM_ALREADY_COMPLETED', 'remaining_qty' => 0],
+            );
+        }
+
+        $location = Location::find($putaway->location_id);
         if ($location && $location->enforcesStrictBinSku()) {
-            $guard = app(\Modules\Warehouse\Services\SkuHomeBinGuard::class);
+            $guard = app(SkuHomeBinGuard::class);
             if ($guard->currentHomeBinId($putaway->location_id, $item->item_id) === null) {
                 throw new \DomainException('Rak belum diassign, silahkan hubungi admin.');
             }
@@ -913,7 +944,12 @@ class PutawayService
                 'started_at' => now(),
             ]);
         } elseif ($putaway->status !== Putaway::STATUS_IN_PROGRESS) {
-            throw new \Exception("Putaway harus IN_PROGRESS untuk memproses item (status saat ini: {$putaway->status}).");
+            throw new UserFacingException(
+                title: 'Putaway tidak dapat diproses',
+                message: "Putaway harus berstatus IN_PROGRESS (status saat ini: {$putaway->status}).",
+                status: 409,
+                errors: ['code' => 'PUTAWAY_NOT_IN_PROGRESS'],
+            );
         }
 
         ProcessPutawayItemJob::dispatchSync($putawayId, $itemId, $data);
@@ -923,7 +959,7 @@ class PutawayService
     {
         $putaway = $this->putawayRepository->findById($putawayId);
 
-        if (!$putaway) {
+        if (! $putaway) {
             throw new \Exception('Putaway tidak ditemukan.');
         }
 
@@ -931,7 +967,7 @@ class PutawayService
             ->where('id', $itemId)
             ->first();
 
-        if (!$item) {
+        if (! $item) {
             throw new \Exception('Item putaway tidak ditemukan.');
         }
 
@@ -946,7 +982,7 @@ class PutawayService
         $putaway = DB::transaction(function () use ($id) {
             $putaway = $this->putawayRepository->findByIdForUpdate($id);
 
-            if (!$putaway) {
+            if (! $putaway) {
                 throw new \Exception('Putaway tidak ditemukan.');
             }
 
@@ -961,12 +997,17 @@ class PutawayService
                 throw new \Exception('Minimal 1 item harus sudah ditempatkan sebelum menyelesaikan.');
             }
 
-            foreach ($putaway->items as $item) {
-                $unplaced = (int) $item->qty - (int) $item->putaway_qty;
-                if ($unplaced > 0 && $putaway->source_type === 'INBOUND') {
-                    $this->releasePartialReservation($putaway, $item, $unplaced);
-                }
+            $remainingQty = $putaway->items->sum(
+                fn ($item): int => max(0, (int) $item->qty - (int) $item->putaway_qty),
+            );
 
+            if ($remainingQty > 0) {
+                throw new UserFacingException(
+                    title: 'Penempatan belum selesai',
+                    message: "Masih ada {$remainingQty} qty yang belum ditempatkan. Selesaikan seluruh qty sebelum menutup putaway.",
+                    status: 422,
+                    errors: ['remaining_qty' => $remainingQty],
+                );
             }
 
             $this->putawayRepository->updateStatus($id, Putaway::STATUS_COMPLETED, [
@@ -1112,6 +1153,7 @@ class PutawayService
             foreach ($ids as $id) {
                 $results[] = $this->deletePutaway($id, $userId);
             }
+
             return $results;
         });
     }
@@ -1145,9 +1187,9 @@ class PutawayService
         foreach ($putaway->items as $item) {
             foreach ($item->placements as $placement) {
                 $this->reverseOnePlacement($putaway, [
-                    'item_id'      => $item->id,
+                    'item_id' => $item->id,
                     'placement_id' => $placement->id,
-                    'qty'          => null,
+                    'qty' => null,
                 ], $userId);
             }
         }
@@ -1181,8 +1223,9 @@ class PutawayService
                     continue;
                 }
                 InboundItem::where('id', $src->inbound_item_id)
-                    ->update(['reserved_qty' => DB::raw('GREATEST(reserved_qty - ' . (int) $release . ', 0)')]);
+                    ->update(['reserved_qty' => DB::raw('GREATEST(reserved_qty - '.(int) $release.', 0)')]);
             }
+
             return;
         }
 
@@ -1195,7 +1238,7 @@ class PutawayService
                 }
                 InboundItem::where('inbound_id', $putaway->source_id)
                     ->where('item_id', $pi->item_id)
-                    ->update(['reserved_qty' => DB::raw('GREATEST(reserved_qty - ' . (int) $release . ', 0)')]);
+                    ->update(['reserved_qty' => DB::raw('GREATEST(reserved_qty - '.(int) $release.', 0)')]);
             }
         }
     }
@@ -1212,9 +1255,9 @@ class PutawayService
         if ($putaways->count() !== count($ids)) {
             $missing = array_values(array_diff($ids, $putaways->pluck('id')->all()));
 
-            throw new \App\Exceptions\UserFacingException(
+            throw new UserFacingException(
                 'Data tidak ditemukan',
-                'Sebagian penempatan tidak ditemukan: ' . implode(', ', $missing),
+                'Sebagian penempatan tidak ditemukan: '.implode(', ', $missing),
                 404,
             );
         }
@@ -1297,16 +1340,16 @@ class PutawayService
         }
 
         $this->inventoryService->reverseBinMove([
-            'item_id'            => $item->item_id,
-            'location_id'        => $putaway->location_id,
-            'from_bin_id'        => $placement->bin_id,
-            'to_bin_id'          => $item->source_bin_id,
-            'qty'                => $qtyRev,
-            'batch_no'           => $item->batch_no ?? '',
-            'serial_no'          => $item->serial_no ?? '',
-            'source'             => 'PUTAWAY_REVERSAL',
-            'transaction_number' => $putaway->putaway_no . '-KOREKSI',
-            'created_by'         => "user:{$userId}",
+            'item_id' => $item->item_id,
+            'location_id' => $putaway->location_id,
+            'from_bin_id' => $placement->bin_id,
+            'to_bin_id' => $item->source_bin_id,
+            'qty' => $qtyRev,
+            'batch_no' => $item->batch_no ?? '',
+            'serial_no' => $item->serial_no ?? '',
+            'source' => 'PUTAWAY_REVERSAL',
+            'transaction_number' => $putaway->putaway_no.'-KOREKSI',
+            'created_by' => "user:{$userId}",
         ]);
 
         if ($qtyRev >= (int) $placement->qty) {
@@ -1327,7 +1370,7 @@ class PutawayService
                 ->where('putaway_item_sources.putaway_item_id', $item->id)
                 ->join('inbound_items', 'inbound_items.id', '=', 'putaway_item_sources.inbound_item_id')
                 ->join('inbounds', 'inbounds.id', '=', 'inbound_items.inbound_id')
-                ->orderByDesc('inbounds.created_at') 
+                ->orderByDesc('inbounds.created_at')
                 ->lockForUpdate()
                 ->select('putaway_item_sources.*')
                 ->get();
@@ -1346,10 +1389,10 @@ class PutawayService
                     $src->decrement('putaway_qty', $take);
 
                     $inboundUpdate = [
-                        'putaway_qty' => DB::raw('GREATEST(putaway_qty - ' . (int) $take . ', 0)'),
+                        'putaway_qty' => DB::raw('GREATEST(putaway_qty - '.(int) $take.', 0)'),
                     ];
                     if (! $stayCompleted) {
-                        $inboundUpdate['reserved_qty'] = DB::raw('reserved_qty + ' . (int) $take);
+                        $inboundUpdate['reserved_qty'] = DB::raw('reserved_qty + '.(int) $take);
                     }
                     InboundItem::where('id', $src->inbound_item_id)->update($inboundUpdate);
                     $remaining -= $take;
@@ -1363,10 +1406,10 @@ class PutawayService
                 if ($inboundItem) {
                     $take = min($qtyRev, (int) $inboundItem->putaway_qty);
                     $inboundUpdate = [
-                        'putaway_qty' => DB::raw('GREATEST(putaway_qty - ' . (int) $take . ', 0)'),
+                        'putaway_qty' => DB::raw('GREATEST(putaway_qty - '.(int) $take.', 0)'),
                     ];
                     if (! $stayCompleted) {
-                        $inboundUpdate['reserved_qty'] = DB::raw('reserved_qty + ' . (int) $take);
+                        $inboundUpdate['reserved_qty'] = DB::raw('reserved_qty + '.(int) $take);
                     }
                     InboundItem::where('id', $inboundItem->id)->update($inboundUpdate);
                 }
@@ -1389,10 +1432,7 @@ class PutawayService
         return Inbound::with('items')->whereIn('id', $ids->all())->get();
     }
 
-    private function recomputeInboundStatus(Inbound $inbound): void
-    {
-
-    }
+    private function recomputeInboundStatus(Inbound $inbound): void {}
 
     private function releasePartialReservation(Putaway $putaway, PutawayItem $item, int $unplaced): void
     {
@@ -1419,13 +1459,13 @@ class PutawayService
                 $take = min($srcUnplaced, $remaining);
                 $src->decrement('qty', $take);
                 InboundItem::where('id', $src->inbound_item_id)
-                    ->update(['reserved_qty' => DB::raw('GREATEST(reserved_qty - ' . (int) $take . ', 0)')]);
+                    ->update(['reserved_qty' => DB::raw('GREATEST(reserved_qty - '.(int) $take.', 0)')]);
                 $remaining -= $take;
             }
         } elseif ($putaway->source_id) {
             InboundItem::where('inbound_id', $putaway->source_id)
                 ->where('item_id', $item->item_id)
-                ->update(['reserved_qty' => DB::raw('GREATEST(reserved_qty - ' . (int) $unplaced . ', 0)')]);
+                ->update(['reserved_qty' => DB::raw('GREATEST(reserved_qty - '.(int) $unplaced.', 0)')]);
         }
     }
 
@@ -1462,10 +1502,10 @@ class PutawayService
             )?->on_hand ?? 0);
 
             $adjItems[] = [
-                'item_id'    => $putawayItem->item_id,
-                'bin_id'     => $sourceBinId,
+                'item_id' => $putawayItem->item_id,
+                'bin_id' => $sourceBinId,
                 'actual_qty' => $onHand - $qtyReversed,
-                'notes'      => "Koreksi penempatan {$putaway->putaway_no}: qty -{$qtyReversed}",
+                'notes' => "Koreksi penempatan {$putaway->putaway_no}: qty -{$qtyReversed}",
             ];
         }
 
@@ -1473,15 +1513,15 @@ class PutawayService
             return;
         }
 
-        $user = \App\Models\User::find($userId);
+        $user = User::find($userId);
         $userName = $user?->name ?? $userId;
 
         app(StockAdjustmentService::class)->create([
             'transaction_date' => now()->toDateString(),
-            'location_id'      => $putaway->location_id,
-            'created_by'       => $userName,
-            'notes'            => "Koreksi penempatan {$putaway->putaway_no} oleh {$userName}",
-            'items'            => $adjItems,
+            'location_id' => $putaway->location_id,
+            'created_by' => $userName,
+            'notes' => "Koreksi penempatan {$putaway->putaway_no} oleh {$userName}",
+            'items' => $adjItems,
         ]);
     }
 
@@ -1537,7 +1577,7 @@ class PutawayService
         $released = $amount - $remaining;
         if ($released > 0) {
             InboundItem::where('id', $inboundItemId)
-                ->update(['reserved_qty' => DB::raw('GREATEST(reserved_qty - ' . (int) $released . ', 0)')]);
+                ->update(['reserved_qty' => DB::raw('GREATEST(reserved_qty - '.(int) $released.', 0)')]);
         }
 
         return $amount - $remaining;

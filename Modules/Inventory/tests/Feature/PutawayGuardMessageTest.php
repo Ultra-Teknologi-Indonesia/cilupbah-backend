@@ -2,18 +2,19 @@
 
 namespace Modules\Inventory\Tests\Feature;
 
-use Tests\TestCase;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\Putaway;
 use Modules\Inventory\Models\PutawayItem;
+use Modules\Inventory\Models\SkuRackAssignment;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
+use Tests\TestCase;
 
 class PutawayGuardMessageTest extends TestCase
 {
@@ -30,17 +31,17 @@ class PutawayGuardMessageTest extends TestCase
 
     private function makeVariant(): ProductVariant
     {
-        $category = Category::create(['name' => 'Kategori ' . Str::random(4)]);
+        $category = Category::create(['name' => 'Kategori '.Str::random(4)]);
         $product = Product::create([
             'category_id' => $category->id,
-            'name' => 'Produk ' . Str::random(4),
-            'sku' => 'SKU-' . Str::random(6),
+            'name' => 'Produk '.Str::random(4),
+            'sku' => 'SKU-'.Str::random(6),
             'status' => 'master',
         ]);
 
         return ProductVariant::create([
             'product_id' => $product->id,
-            'sku' => 'VAR-' . Str::random(6),
+            'sku' => 'VAR-'.Str::random(6),
         ]);
     }
 
@@ -50,7 +51,7 @@ class PutawayGuardMessageTest extends TestCase
             'location_id' => $loc->id,
             'is_inbound' => $inbound,
             'is_stock_acknowledged' => true,
-            'bin_final_code' => $binCode . '-' . Str::random(3),
+            'bin_final_code' => $binCode.'-'.Str::random(3),
         ]);
     }
 
@@ -69,7 +70,7 @@ class PutawayGuardMessageTest extends TestCase
     private function makePutawayItem(Location $loc, LocationBin $sourceBin, ProductVariant $variant): PutawayItem
     {
         $putaway = Putaway::create([
-            'putaway_no' => 'PUT-' . Str::random(6),
+            'putaway_no' => 'PUT-'.Str::random(6),
             'location_id' => $loc->id,
             'source_type' => 'MANUAL',
             'source_id' => null,
@@ -132,11 +133,11 @@ class PutawayGuardMessageTest extends TestCase
         $this->placeStock($loc, $taken, $occupant, 3);
 
         $newcomer = $this->makeVariant();
-        \Modules\Inventory\Models\SkuRackAssignment::create([
+        SkuRackAssignment::create([
             'location_id' => $loc->id,
-            'item_id'     => $newcomer->id,
-            'bin_id'      => $taken->id,
-            'is_locked'   => true,
+            'item_id' => $newcomer->id,
+            'bin_id' => $taken->id,
+            'is_locked' => true,
         ]);
         $item = $this->makePutawayItem($loc, $inbound, $newcomer);
 
@@ -147,5 +148,41 @@ class PutawayGuardMessageTest extends TestCase
 
         $res->assertStatus(422);
         $this->assertStringContainsString('sudah berisi SKU', $res->json('message'));
+    }
+
+    public function test_unknown_item_returns_structured_not_found_message(): void
+    {
+        $loc = $this->locationKecil();
+        $inbound = $this->makeBin($loc, 'INB', true);
+        $variant = $this->makeVariant();
+        $item = $this->makePutawayItem($loc, $inbound, $variant);
+
+        $res = $this->postJson(
+            "/api/v1/putaway/{$item->putaway_id}/items/".Str::uuid()->toString().'/process',
+            ['destination_bin_id' => $inbound->id, 'qty' => 1],
+        );
+
+        $res->assertStatus(404)
+            ->assertJsonPath('title', 'Barang tidak ditemukan')
+            ->assertJsonPath('errors.code', 'PUTAWAY_ITEM_NOT_FOUND');
+    }
+
+    public function test_completed_item_returns_structured_conflict_message(): void
+    {
+        $loc = $this->locationKecil();
+        $inbound = $this->makeBin($loc, 'INB', true);
+        $variant = $this->makeVariant();
+        $item = $this->makePutawayItem($loc, $inbound, $variant);
+        $item->update(['qty' => 1, 'putaway_qty' => 1]);
+
+        $res = $this->postJson(
+            "/api/v1/putaway/{$item->putaway_id}/items/{$item->id}/process",
+            ['destination_bin_id' => $inbound->id, 'qty' => 1],
+        );
+
+        $res->assertStatus(409)
+            ->assertJsonPath('title', 'Barang sudah selesai')
+            ->assertJsonPath('errors.code', 'PUTAWAY_ITEM_ALREADY_COMPLETED')
+            ->assertJsonPath('errors.remaining_qty', 0);
     }
 }
