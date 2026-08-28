@@ -894,10 +894,16 @@ class InventoryRepository
         $joinType = $includeZero ? 'leftJoinSub' : 'joinSub';
 
         $query = ProductVariant::query()
+            ->join('products as parent_product', 'parent_product.id', '=', 'product_variants.product_id')
             ->{$joinType}($sub, 'stock_summary', function ($join) {
                 $join->on('stock_summary.item_id', '=', 'product_variants.id');
             })
-            ->select('product_variants.*', DB::raw('COALESCE(stock_summary.total_on_hand, 0) as total_on_hand'));
+            ->select(
+                'product_variants.*',
+                'parent_product.name as parent_product_name',
+                DB::raw('COALESCE(stock_summary.total_on_hand, 0) as total_on_hand'),
+            )
+            ->whereNull('parent_product.deleted_at');
 
         if ($includeZero) {
             $query->where('product_variants.is_active', true);

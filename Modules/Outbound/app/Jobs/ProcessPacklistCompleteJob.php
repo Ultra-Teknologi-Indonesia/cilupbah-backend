@@ -19,6 +19,7 @@ class ProcessPacklistCompleteJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
+
     public array $backoff = [3, 10, 30];
 
     public function __construct(
@@ -31,7 +32,7 @@ class ProcessPacklistCompleteJob implements ShouldQueue
     {
         $packlist = Packlist::with('order', 'packer')->find($this->packlistId);
 
-        if (!$packlist || $packlist->status !== Packlist::STATUS_COMPLETED) {
+        if (! $packlist || $packlist->status !== Packlist::STATUS_COMPLETED) {
             return;
         }
 
@@ -62,9 +63,9 @@ class ProcessPacklistCompleteJob implements ShouldQueue
             $order->shipping_type,
         )) {
             Log::info('ProcessPacklistCompleteJob: resi tidak ditarik, kurir dipanggil manual lewat Pengiriman', [
-                'order_id'      => $order->id,
+                'order_id' => $order->id,
                 'salesorder_no' => $order->salesorder_no,
-                'courier_name'  => $order->courier_name,
+                'courier_name' => $order->courier_name,
             ]);
 
             return;
@@ -72,7 +73,7 @@ class ProcessPacklistCompleteJob implements ShouldQueue
 
         if (empty($order->tracking_number)) {
             Log::info('ProcessPacklistCompleteJob: resi tidak ditarik otomatis, menunggu operator di Pengiriman > Siap Kirim', [
-                'order_id'      => $order->id,
+                'order_id' => $order->id,
                 'salesorder_no' => $order->salesorder_no,
             ]);
 
@@ -85,14 +86,14 @@ class ProcessPacklistCompleteJob implements ShouldQueue
                 && ! in_array($order->shipping_label_status, ['ready', 'self_design_required', 'preparing'], true)
             ) {
                 PrepareShopeeShippingLabelJob::dispatch($order->id)
-                    ->onQueue(config('queue.names.channel_sync'));
+                    ->onQueue(config('queue.routing.labels.queue', 'labels'));
             }
         } catch (\Throwable $e) {
             Log::error('ProcessPacklistCompleteJob: gagal dispatch permintaan resi ke channel', [
-                'order_id'      => $order->id,
+                'order_id' => $order->id,
                 'salesorder_no' => $order->salesorder_no,
-                'source'        => $source,
-                'exception'     => $e->getMessage(),
+                'source' => $source,
+                'exception' => $e->getMessage(),
             ]);
         }
     }

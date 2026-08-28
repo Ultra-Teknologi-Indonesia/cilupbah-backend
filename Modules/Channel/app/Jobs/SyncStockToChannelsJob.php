@@ -25,14 +25,14 @@ class SyncStockToChannelsJob implements ShouldQueue
     {
         $this->variantId = $variantId;
         $this->excludeChannelShopId = $excludeChannelShopId;
-        $this->onQueue(config('queue.names.channel_sync'));
+        $this->onQueue(config('queue.names.channel_stock'));
     }
 
     public function handle(ProductRepository $productRepository): void
     {
         $variant = ProductVariant::with('product.channelMappings')->find($this->variantId);
 
-        if (!$variant || !$variant->product) {
+        if (! $variant || ! $variant->product) {
             return;
         }
 

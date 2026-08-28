@@ -328,6 +328,16 @@ class SalesOrderService
 
                 Cache::forget($this->idempotencyKey($order->source, $order->salesorder_no));
 
+                if (in_array(strtolower((string) $order->source), ['shopee', 'tiktok'], true)) {
+                    RespondBuyerCancellationJob::dispatch(
+                        $order->id,
+                        RespondBuyerCancellationJob::ACCEPT,
+                    )->onQueue(config('queue.names.channel_cancellation'));
+                } else {
+                    CancelChannelOrderJob::dispatch($order->id, $finalReason)
+                        ->onQueue(config('queue.names.channel_cancellation'));
+                }
+
                 return $order->fresh();
             });
 
@@ -359,9 +369,9 @@ class SalesOrderService
                     RespondBuyerCancellationJob::dispatch(
                         $order->id,
                         RespondBuyerCancellationJob::ACCEPT,
-                    )->onQueue(config('queue.names.channel_sync'));
+                    )->onQueue(config('queue.names.channel_cancellation'));
                 } else {
-                    CancelChannelOrderJob::dispatch($order->id, $finalReason)->onQueue(config('queue.names.channel_sync'));
+                    CancelChannelOrderJob::dispatch($order->id, $finalReason)->onQueue(config('queue.names.channel_cancellation'));
                 }
             }
 
@@ -418,7 +428,7 @@ class SalesOrderService
             RespondBuyerCancellationJob::dispatch(
                 $order->id,
                 RespondBuyerCancellationJob::REJECT,
-            )->onQueue(config('queue.names.channel_sync'));
+            )->onQueue(config('queue.names.channel_cancellation'));
         }
 
         return $order->fresh();
@@ -489,7 +499,7 @@ class SalesOrderService
         ])->save();
 
         CancelChannelOrderJob::dispatch($order->id, $reason)
-            ->onQueue(config('queue.names.channel_sync'));
+            ->onQueue(config('queue.names.channel_cancellation'));
 
         return $order->fresh();
     }
@@ -2151,7 +2161,7 @@ class SalesOrderService
             if (! $order->is_settled && $order->source && $order->channel_shop_id && $isSettlementEligible) {
                 try {
                     SyncOrderFinanceJob::dispatch($order->id)
-                        ->onQueue(config('queue.names.channel_sync'));
+                        ->onQueue(config('queue.names.channel_finance'));
                 } catch (\Throwable $e) {
                     Log::warning('Dispatch SyncOrderFinanceJob gagal setelah commit order', [
                         'order_id' => $order->id,

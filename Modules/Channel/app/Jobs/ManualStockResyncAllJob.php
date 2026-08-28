@@ -16,7 +16,7 @@ class ManualStockResyncAllJob implements ShouldQueue
 
     public function __construct(public array $filters = [])
     {
-        $this->onQueue(config('queue.names.channel_sync'));
+        $this->onQueue(config('queue.names.channel_stock'));
     }
 
     public function handle(ManualStockSyncService $service): void

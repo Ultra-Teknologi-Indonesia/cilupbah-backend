@@ -18,18 +18,22 @@ class ResyncShopStockJob implements ShouldQueue
     public function __construct(string $channelShopId)
     {
         $this->channelShopId = $channelShopId;
-        $this->onQueue(config('queue.names.channel_sync'));
+        $this->onQueue(config('queue.names.channel_stock'));
     }
 
     public function handle(): void
     {
         ProductChannelMapping::where('channel_shop_id', $this->channelShopId)
             ->where('sync_status', '!=', ProductChannelMapping::STATUS_DEACTIVATED)
-            ->pluck('product_id')
-            ->each(fn (string $productId) => SyncProductToChannelJob::dispatch(
-                $productId,
-                $this->channelShopId,
-                'sync_price_stock'
-            ));
+            ->select(['id', 'product_id'])
+            ->chunkById(500, function ($mappings): void {
+                foreach ($mappings as $mapping) {
+                    SyncProductToChannelJob::dispatch(
+                        (string) $mapping->product_id,
+                        $this->channelShopId,
+                        'sync_price_stock'
+                    );
+                }
+            });
     }
 }

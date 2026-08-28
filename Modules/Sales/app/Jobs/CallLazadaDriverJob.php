@@ -11,6 +11,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Jobs\ProcessLazadaFulfillmentJob;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
+use Modules\Channel\Support\UploadErrorPresenter;
 use Modules\Outbound\Support\InstantOrderClassifier;
 use Modules\Sales\Models\SalesOrder;
 
@@ -19,11 +20,12 @@ class CallLazadaDriverJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
+
     public array $backoff = [10, 30, 60];
 
     public function __construct(public readonly string $orderId)
     {
-        $this->onQueue(config('queue.names.channel_sync'));
+        $this->onQueue(config('queue.names.channel_fulfillment'));
     }
 
     public function middleware(): array
@@ -50,8 +52,8 @@ class CallLazadaDriverJob implements ShouldQueue
 
         if (! InstantOrderClassifier::isInstant($order->shipping_provider, $order->shipping_type)) {
             Log::info('CallLazadaDriverJob: bukan Lazada instant/same-day, skip', [
-                'order_id'          => $order->id,
-                'shipping_type'     => $order->shipping_type,
+                'order_id' => $order->id,
+                'shipping_type' => $order->shipping_type,
                 'shipping_provider' => $order->shipping_provider,
             ]);
 
@@ -68,8 +70,8 @@ class CallLazadaDriverJob implements ShouldQueue
 
         if ($shopId === '' || $channelOrderNo === '' || $shippingProvider === '') {
             $order->update([
-                'driver_call_status'       => 'failed',
-                'driver_call_message'      => 'channel_shop_id / channel_order_no / shipping_provider kosong',
+                'driver_call_status' => 'failed',
+                'driver_call_message' => 'channel_shop_id / channel_order_no / shipping_provider kosong',
                 'driver_call_attempted_at' => now(),
             ]);
 
@@ -77,7 +79,7 @@ class CallLazadaDriverJob implements ShouldQueue
         }
 
         $order->update([
-            'driver_call_status'       => 'pending',
+            'driver_call_status' => 'pending',
             'driver_call_attempted_at' => now(),
         ]);
 
@@ -92,19 +94,19 @@ class CallLazadaDriverJob implements ShouldQueue
             );
 
             $order->update([
-                'driver_call_status'   => 'success',
-                'driver_call_message'  => null,
+                'driver_call_status' => 'success',
+                'driver_call_message' => null,
                 'driver_call_response' => ['queued' => true, 'pipeline' => 'lazada_fulfillment'],
             ]);
         } catch (\Throwable $e) {
             $order->update([
-                'driver_call_status'  => 'failed',
-                'driver_call_message' => $this->truncate(\Modules\Channel\Support\UploadErrorPresenter::fromMessage('lazada', $e->getMessage())['reason']),
+                'driver_call_status' => 'failed',
+                'driver_call_message' => $this->truncate(UploadErrorPresenter::fromMessage('lazada', $e->getMessage())['reason']),
             ]);
 
             Log::error('CallLazadaDriverJob: gagal dispatch ProcessLazadaFulfillmentJob', [
                 'order_id' => $order->id,
-                'error'    => $e->getMessage(),
+                'error' => $e->getMessage(),
             ]);
 
             if ($this->attempts() < $this->tries) {
@@ -118,19 +120,19 @@ class CallLazadaDriverJob implements ShouldQueue
         $order = SalesOrder::find($this->orderId);
         if ($order && $order->driver_call_status !== 'success') {
             $order->update([
-                'driver_call_status'  => 'failed',
-                'driver_call_message' => $this->truncate(\Modules\Channel\Support\UploadErrorPresenter::fromMessage('lazada', $exception->getMessage())['reason']),
+                'driver_call_status' => 'failed',
+                'driver_call_message' => $this->truncate(UploadErrorPresenter::fromMessage('lazada', $exception->getMessage())['reason']),
             ]);
         }
 
         Log::error('CallLazadaDriverJob failed permanently', [
             'order_id' => $this->orderId,
-            'error'    => $exception->getMessage(),
+            'error' => $exception->getMessage(),
         ]);
     }
 
     private function truncate(string $s, int $max = 500): string
     {
-        return mb_strlen($s) > $max ? mb_substr($s, 0, $max) . '…' : $s;
+        return mb_strlen($s) > $max ? mb_substr($s, 0, $max).'…' : $s;
     }
 }

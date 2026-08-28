@@ -8,21 +8,29 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+use Modules\Channel\Exceptions\ChannelCancelException;
+use Modules\Channel\Services\LazadaOrderService;
+use Modules\Channel\Services\ShopeeOrderService;
+use Modules\Channel\Services\TikTokOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
+use Modules\Notification\Services\NotificationDispatcher;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Services\SalesOrderService;
 
 class CancelChannelOrderJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
+
     public array $backoff = [5, 15, 30];
 
     public function __construct(
         public readonly string $orderId,
         public readonly string $cancelReason,
     ) {
-        $this->onQueue(config('queue.names.orders'));
+        $this->onQueue(config('queue.names.channel_cancellation'));
     }
 
     public function handle(): void
@@ -39,11 +47,11 @@ class CancelChannelOrderJob implements ShouldQueue
 
         try {
             $result = match ($order->source) {
-                'tiktok'    => $this->cancelOnTikTok($order),
-                'shopee'    => $this->cancelOnShopee($order),
-                'lazada'    => $this->cancelOnLazada($order),
+                'tiktok' => $this->cancelOnTikTok($order),
+                'shopee' => $this->cancelOnShopee($order),
+                'lazada' => $this->cancelOnLazada($order),
                 'tokopedia' => $this->cancelOnTokopedia($order),
-                default     => null,
+                default => null,
             };
 
             $order->refresh();
@@ -58,46 +66,46 @@ class CancelChannelOrderJob implements ShouldQueue
 
             $order->forceFill([
                 'channel_cancel_status' => $status,
-                'channel_cancel_error'  => null,
+                'channel_cancel_error' => null,
             ])->saveQuietly();
-        } catch (\Modules\Channel\Exceptions\ChannelCancelException $e) {
+        } catch (ChannelCancelException $e) {
             if ($e->retryable) {
-                throw $e; 
+                throw $e;
             }
 
             Log::warning("CancelChannelOrderJob: penolakan final dari {$order->source}", [
-                'order_id'      => $this->orderId,
+                'order_id' => $this->orderId,
                 'salesorder_no' => $order->salesorder_no,
-                'channel_code'  => $e->channelCode,
-                'message'       => $e->getMessage(),
+                'channel_code' => $e->channelCode,
+                'message' => $e->getMessage(),
             ]);
 
             $order->forceFill([
                 'channel_cancel_status' => 'failed',
-                'channel_cancel_error'  => \Illuminate\Support\Str::limit($e->getMessage(), 240),
+                'channel_cancel_error' => Str::limit($e->getMessage(), 240),
             ])->saveQuietly();
 
             $this->notifyFailure($order, $e->getMessage());
 
-            return; 
+            return;
         } catch (\Throwable $e) {
             Log::error("CancelChannelOrderJob: gagal cancel di {$order->source}", [
-                'order_id'      => $this->orderId,
+                'order_id' => $this->orderId,
                 'salesorder_no' => $order->salesorder_no,
-                'exception'     => $e->getMessage(),
+                'exception' => $e->getMessage(),
             ]);
-            throw $e; 
+            throw $e;
         }
     }
 
     private function cancelOnTikTok(SalesOrder $order): array
     {
-        $result = app(\Modules\Channel\Services\TikTokOrderService::class)
+        $result = app(TikTokOrderService::class)
             ->cancelProduct($order->salesorder_no, $this->cancelReason);
 
         Log::info('CancelChannelOrderJob: cancel TikTok terkirim', [
             'salesorder_no' => $order->salesorder_no,
-            'shop_id'       => $order->channel_shop_id,
+            'shop_id' => $order->channel_shop_id,
             'cancel_status' => $result['cancel_status'] ?? null,
         ]);
 
@@ -107,7 +115,7 @@ class CancelChannelOrderJob implements ShouldQueue
     private function cancelOnShopee(SalesOrder $order): array
     {
 
-        $result = app(\Modules\Channel\Services\ShopeeOrderService::class)->cancelOrder(
+        $result = app(ShopeeOrderService::class)->cancelOrder(
             $order->channel_shop_id,
             $order->channel_order_no ?: $order->salesorder_no,
             $this->cancelReason,
@@ -115,7 +123,7 @@ class CancelChannelOrderJob implements ShouldQueue
 
         Log::info('CancelChannelOrderJob: cancelled on Shopee', [
             'salesorder_no' => $order->salesorder_no,
-            'shop_id'       => $order->channel_shop_id,
+            'shop_id' => $order->channel_shop_id,
         ]);
 
         return $result;
@@ -124,7 +132,7 @@ class CancelChannelOrderJob implements ShouldQueue
     private function cancelOnLazada(SalesOrder $order): array
     {
 
-        $result = app(\Modules\Channel\Services\LazadaOrderService::class)->cancelOrder(
+        $result = app(LazadaOrderService::class)->cancelOrder(
             $order->channel_shop_id,
             $order->channel_order_no ?: $order->salesorder_no,
             $this->cancelReason,
@@ -132,7 +140,7 @@ class CancelChannelOrderJob implements ShouldQueue
 
         Log::info('CancelChannelOrderJob: cancelled on Lazada', [
             'salesorder_no' => $order->salesorder_no,
-            'shop_id'       => $order->channel_shop_id,
+            'shop_id' => $order->channel_shop_id,
         ]);
 
         return $result;
@@ -150,30 +158,30 @@ class CancelChannelOrderJob implements ShouldQueue
     private function notifyFailure(SalesOrder $order, string $reason): void
     {
         try {
-            app(\Modules\Notification\Services\NotificationDispatcher::class)->toPermission(
-                \Modules\Sales\Services\SalesOrderService::NOTIF_ORDER_PERMISSION,
+            app(NotificationDispatcher::class)->toPermission(
+                SalesOrderService::NOTIF_ORDER_PERMISSION,
                 [
-                    'type'    => 'channel_cancel_failed',
-                    'title'   => 'Pembatalan ke marketplace gagal',
+                    'type' => 'channel_cancel_failed',
+                    'title' => 'Pembatalan ke marketplace gagal',
                     'message' => "Pembatalan pesanan {$order->salesorder_no} ditolak {$order->source}: {$reason}",
-                    'data'    => [
+                    'data' => [
                         'sales_order_id' => $order->id,
-                        'salesorder_no'  => $order->salesorder_no,
-                        'source'         => $order->source,
-                        'reason'         => $reason,
+                        'salesorder_no' => $order->salesorder_no,
+                        'source' => $order->source,
+                        'reason' => $reason,
                     ],
                 ],
             );
         } catch (\Throwable $e) {
-            Log::warning('CancelChannelOrderJob: gagal kirim notifikasi kegagalan: ' . $e->getMessage());
+            Log::warning('CancelChannelOrderJob: gagal kirim notifikasi kegagalan: '.$e->getMessage());
         }
     }
 
     public function failed(\Throwable $exception): void
     {
         Log::error('CancelChannelOrderJob failed permanently', [
-            'order_id'  => $this->orderId,
-            'reason'    => $this->cancelReason,
+            'order_id' => $this->orderId,
+            'reason' => $this->cancelReason,
             'exception' => $exception->getMessage(),
         ]);
 
@@ -182,7 +190,7 @@ class CancelChannelOrderJob implements ShouldQueue
             && $order->status !== 'cancelled' && ! $order->is_canceled) {
             $order->forceFill([
                 'channel_cancel_status' => 'failed',
-                'channel_cancel_error'  => \Illuminate\Support\Str::limit($exception->getMessage(), 240),
+                'channel_cancel_error' => Str::limit($exception->getMessage(), 240),
             ])->saveQuietly();
         }
 

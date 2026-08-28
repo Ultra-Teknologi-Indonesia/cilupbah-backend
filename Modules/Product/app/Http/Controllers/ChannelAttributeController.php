@@ -7,6 +7,7 @@ use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Product\Http\Resources\ChannelAttributeResource;
+use Modules\Product\Jobs\SyncChannelAttributesJob;
 use Modules\Product\Services\ChannelAttributeService;
 
 class ChannelAttributeController extends Controller
@@ -24,13 +25,14 @@ class ChannelAttributeController extends Controller
     {
         try {
             if ($request->query('sync')) {
-                \Modules\Product\Jobs\SyncChannelAttributesJob::dispatch($channelId, $categoryId)
-                    ->onQueue(config('queue.names.channel_sync'));
+                SyncChannelAttributesJob::dispatch($channelId, $categoryId)
+                    ->onQueue(config('queue.names.channel_product'));
 
                 return $this->successResponse(null, 'Proses sinkronisasi atribut sedang berjalan di latar belakang', 202);
             }
 
             $attributes = $this->service->getPaginated($categoryId);
+
             return $this->successPaginatedResponse(ChannelAttributeResource::collection($attributes), 'Berhasil mengambil daftar atribut channel');
         } catch (\Exception $e) {
             throw $e;

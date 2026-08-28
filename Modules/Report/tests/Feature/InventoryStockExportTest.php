@@ -151,6 +151,34 @@ final class InventoryStockExportTest extends TestCase
             'sell_price' => 20,
             'min_stock' => 1,
         ]);
+        $colorAttributeId = DB::table('attributes')->insertGetId([
+            'name' => 'Warna',
+            'type' => 'sales',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $sizeAttributeId = DB::table('attributes')->insertGetId([
+            'name' => 'Ukuran',
+            'type' => 'sales',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('variant_options')->insert([
+            [
+                'variant_id' => $variant->id,
+                'attribute_id' => $colorAttributeId,
+                'value' => 'Biru',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'variant_id' => $variant->id,
+                'attribute_id' => $sizeAttributeId,
+                'value' => '17 Pro',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
         Inventory::create([
             'item_id' => $variant->id,
             'location_id' => $location->id,
@@ -197,6 +225,7 @@ final class InventoryStockExportTest extends TestCase
 
         $current = $service->query($filters)->first();
         $this->assertSame('REPORT-1', $current->sku);
+        $this->assertSame('Biru, 17 Pro', $current->variant_name);
         $this->assertSame(1000.0, (float) $current->buy_price);
         $this->assertSame(4000.0, (float) $current->inventory_value);
         $rack = $service->rackQuery([
@@ -205,6 +234,7 @@ final class InventoryStockExportTest extends TestCase
             'only_with_stock' => true,
         ])->first();
         $this->assertSame('F1-R1-C1-B1', $rack->bin_final_code);
+        $this->assertSame('Biru, 17 Pro', $rack->variant_name);
         $this->assertSame(4, (int) $rack->qty_on_hand);
 
         $historical = $service->query([
@@ -217,6 +247,7 @@ final class InventoryStockExportTest extends TestCase
             'only_with_stock' => false,
         ])->first();
         $this->assertSame('REPORT-1', $historical->sku);
+        $this->assertSame('Biru, 17 Pro', $historical->variant_name);
         $this->assertSame(4, (int) $historical->qty);
         $this->assertSame(1000.0, (float) $historical->buy_price);
         $this->assertSame(4000.0, (float) $historical->inventory_value);

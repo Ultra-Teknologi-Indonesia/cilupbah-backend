@@ -82,7 +82,8 @@ class SyncProductToChannelJob implements ShouldQueue
         $this->draftId = $draftId;
         $this->uploadLogId = $uploadLogId;
 
-        $this->onQueue(config('queue.names.channel_sync'));
+        $this->onConnection(config('queue.routing.channel_product.connection', 'redis-long'))
+            ->onQueue(config('queue.routing.channel_product.queue', 'channel-product'));
     }
 
     public function middleware(): array

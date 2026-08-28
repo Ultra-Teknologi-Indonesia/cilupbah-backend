@@ -15,14 +15,15 @@ class SyncChannelAttributesJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     protected string $channelId;
+
     protected string $categoryId;
 
     public function __construct(string $channelId, string $categoryId)
     {
         $this->channelId = $channelId;
         $this->categoryId = $categoryId;
-        $this->onConnection('redis');
-        $this->onQueue(config('queue.names.product'));
+        $this->onConnection(config('queue.routing.channel_product.connection', 'redis-long'));
+        $this->onQueue(config('queue.routing.channel_product.queue', 'channel-product'));
     }
 
     public function tags(): array
@@ -35,7 +36,7 @@ class SyncChannelAttributesJob implements ShouldQueue
         try {
             $service->syncAttributesFromChannel($this->channelId, $this->categoryId);
         } catch (\Exception $e) {
-            Log::error("Job SyncChannelAttributesJob failed: " . $e->getMessage());
+            Log::error('Job SyncChannelAttributesJob failed: '.$e->getMessage());
             throw $e;
         }
     }

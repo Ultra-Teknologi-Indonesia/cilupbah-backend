@@ -26,6 +26,8 @@ final class InventoryStockReportService
 
     public function rackQuery(array $filters): Builder
     {
+        $variantName = $this->variantNameSql();
+
         $query = DB::table('inventories as i')
             ->join('product_variants as pv', 'pv.id', '=', 'i.item_id')
             ->join('products as p', 'p.id', '=', 'pv.product_id')
@@ -45,17 +47,18 @@ final class InventoryStockReportService
                 'i.item_id',
                 'pv.sku',
                 'p.name as product_name',
-                'p.name as variant_name',
+                DB::raw($variantName.' as variant_name'),
                 'l.location_name',
                 'b.floor_code',
                 'b.row_code',
                 'b.column_code',
                 'b.bin_final_code',
             ])
-            ->selectRaw(StockSummary::placedOnHandSql('i', 'b') . ' as qty_on_hand')
-            ->selectRaw(StockSummary::placedOnHandSql('i', 'b') . ' as qty_actual')
+            ->selectRaw(StockSummary::placedOnHandSql('i', 'b').' as qty_on_hand')
+            ->selectRaw(StockSummary::placedOnHandSql('i', 'b').' as qty_actual')
             ->groupBy([
                 'i.item_id',
+                'pv.id',
                 'pv.sku',
                 'p.name',
                 'l.location_name',
@@ -64,7 +67,7 @@ final class InventoryStockReportService
                 'b.column_code',
                 'b.bin_final_code',
             ])
-            ->when($filters['only_with_stock'], fn (Builder $q) => $q->havingRaw(StockSummary::placedOnHandSql('i', 'b') . ' > 0'))
+            ->when($filters['only_with_stock'], fn (Builder $q) => $q->havingRaw(StockSummary::placedOnHandSql('i', 'b').' > 0'))
             ->orderBy('pv.sku')
             ->orderByRaw('COALESCE(b.bin_final_code, \'Tidak ada rak\')');
 
@@ -77,6 +80,7 @@ final class InventoryStockReportService
     {
         $purchaseCosts = $this->purchaseCostService->averageCostSubquery();
         $placedOnHand = StockSummary::placedOnHandSql('i', 'b');
+        $variantName = $this->variantNameSql();
 
         $query = DB::table('inventories as i')
             ->join('product_variants as pv', 'pv.id', '=', 'i.item_id')
@@ -96,7 +100,7 @@ final class InventoryStockReportService
                 'i.item_id',
                 'pv.sku',
                 'p.name as product_name',
-                'p.name as variant_name',
+                DB::raw($variantName.' as variant_name'),
                 'p.status as product_status',
                 'p.is_bundle',
                 'l.id as location_id',
@@ -106,13 +110,14 @@ final class InventoryStockReportService
                 'pv.min_stock',
             ])
             ->selectRaw('COALESCE(purchase_cost.average_cost, 0) as buy_price')
-            ->selectRaw($placedOnHand . ' as qty')
+            ->selectRaw($placedOnHand.' as qty')
             ->selectRaw('COALESCE(SUM(i.on_order), 0) as ordered')
             ->selectRaw('COALESCE(SUM(i.on_order), 0) as reserved')
-            ->selectRaw('(' . $placedOnHand . ' - COALESCE(SUM(i.on_order), 0)) as available')
-            ->selectRaw('GREATEST(' . $placedOnHand . ', 0) * COALESCE(purchase_cost.average_cost, 0) as inventory_value')
+            ->selectRaw('('.$placedOnHand.' - COALESCE(SUM(i.on_order), 0)) as available')
+            ->selectRaw('GREATEST('.$placedOnHand.', 0) * COALESCE(purchase_cost.average_cost, 0) as inventory_value')
             ->groupBy([
                 'i.item_id',
+                'pv.id',
                 'pv.sku',
                 'p.name',
                 'p.status',
@@ -132,7 +137,7 @@ final class InventoryStockReportService
         $this->applyStockFilter($query, $filters['stock_filter'], StockSummary::placedOnHandSql('i', 'b'));
 
         if ($filters['only_not_restocked']) {
-            $query->havingRaw('(' . StockSummary::placedOnHandSql('i', 'b') . ' - COALESCE(SUM(i.on_order), 0)) >= COALESCE(pv.min_stock, 0)');
+            $query->havingRaw('('.StockSummary::placedOnHandSql('i', 'b').' - COALESCE(SUM(i.on_order), 0)) >= COALESCE(pv.min_stock, 0)');
         }
 
         return $query;
@@ -143,6 +148,7 @@ final class InventoryStockReportService
         $asOf = $filters['as_of_date'].' 23:59:59';
         $purchaseCosts = $this->purchaseCostService->averageCostSubquery();
         $placedBalance = 'COALESCE(SUM(CASE WHEN b.id IS NOT NULL AND b.is_inbound = false THEN snapshot.balance ELSE 0 END), 0)';
+        $variantName = $this->variantNameSql();
 
         $latest = DB::table('inventory_movements as im')
             ->where('im.transaction_date', '<=', $asOf)
@@ -176,7 +182,7 @@ final class InventoryStockReportService
                 'snapshot.item_id',
                 'pv.sku',
                 'p.name as product_name',
-                'p.name as variant_name',
+                DB::raw($variantName.' as variant_name'),
                 'p.status as product_status',
                 'p.is_bundle',
                 'l.id as location_id',
@@ -186,13 +192,14 @@ final class InventoryStockReportService
                 'pv.min_stock',
             ])
             ->selectRaw('COALESCE(purchase_cost.average_cost, 0) as buy_price')
-            ->selectRaw($placedBalance . ' as qty')
+            ->selectRaw($placedBalance.' as qty')
             ->selectRaw('0 as ordered')
             ->selectRaw('0 as reserved')
-            ->selectRaw($placedBalance . ' as available')
-            ->selectRaw('GREATEST(' . $placedBalance . ', 0) * COALESCE(purchase_cost.average_cost, 0) as inventory_value')
+            ->selectRaw($placedBalance.' as available')
+            ->selectRaw('GREATEST('.$placedBalance.', 0) * COALESCE(purchase_cost.average_cost, 0) as inventory_value')
             ->groupBy([
                 'snapshot.item_id',
+                'pv.id',
                 'pv.sku',
                 'p.name',
                 'p.status',
@@ -212,7 +219,7 @@ final class InventoryStockReportService
         $this->applyStockFilter($query, $filters['stock_filter'], $placedBalance);
 
         if ($filters['only_not_restocked']) {
-            $query->havingRaw($placedBalance . ' >= COALESCE(pv.min_stock, 0)');
+            $query->havingRaw($placedBalance.' >= COALESCE(pv.min_stock, 0)');
         }
 
         return $query;
@@ -221,10 +228,21 @@ final class InventoryStockReportService
     private function applyStockFilter(Builder $query, string $filter, string $quantityExpression): void
     {
         if ($filter === 'positive') {
-            $query->havingRaw($quantityExpression . ' > 0');
+            $query->havingRaw($quantityExpression.' > 0');
         } elseif ($filter === 'zero') {
-            $query->havingRaw($quantityExpression . ' = 0');
+            $query->havingRaw($quantityExpression.' = 0');
         }
+    }
+
+    private function variantNameSql(): string
+    {
+        $variantId = 'pv.id';
+
+        return match (DB::connection()->getDriverName()) {
+            'pgsql' => "(SELECT STRING_AGG(vo.value, ', ' ORDER BY vo.id) FROM variant_options vo WHERE vo.variant_id = {$variantId} AND NULLIF(TRIM(vo.value), '') IS NOT NULL)",
+            'mysql', 'mariadb' => "(SELECT GROUP_CONCAT(vo.value ORDER BY vo.id SEPARATOR ', ') FROM variant_options vo WHERE vo.variant_id = {$variantId} AND NULLIF(TRIM(vo.value), '') IS NOT NULL)",
+            default => "(SELECT GROUP_CONCAT(vo.value, ', ') FROM variant_options vo WHERE vo.variant_id = {$variantId} AND TRIM(vo.value) <> '')",
+        };
     }
 
     private function applyWarehouseAccess(Builder $query, string $column): void

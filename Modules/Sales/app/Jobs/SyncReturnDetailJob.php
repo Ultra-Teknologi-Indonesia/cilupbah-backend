@@ -16,12 +16,14 @@ class SyncReturnDetailJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
+
     public array $backoff = [30, 120, 600];
 
     public function __construct(
         public string $salesReturnId,
     ) {
-        $this->onQueue('default');
+        $this->onConnection(config('queue.routing.channel_after_sales.connection', 'redis-long'));
+        $this->onQueue(config('queue.routing.channel_after_sales.queue', 'channel-after-sales'));
     }
 
     public function handle(SalesReturnDetailSyncService $syncService): void
@@ -37,6 +39,6 @@ class SyncReturnDetailJob implements ShouldQueue
 
     public function failed(\Throwable $e): void
     {
-        Log::warning('SyncReturnDetailJob gagal: ' . $e->getMessage(), ['sales_return_id' => $this->salesReturnId]);
+        Log::warning('SyncReturnDetailJob gagal: '.$e->getMessage(), ['sales_return_id' => $this->salesReturnId]);
     }
 }

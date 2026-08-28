@@ -11,12 +11,15 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
+use Modules\Outbound\Models\ShipmentOrder;
+use Modules\Sales\Models\SalesOrder;
 
 class ProcessLazadaFulfillmentJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
+
     public array $backoff = [30, 120, 300];
 
     public function __construct(
@@ -26,7 +29,9 @@ class ProcessLazadaFulfillmentJob implements ShouldQueue
         public string $deliveryType = 'dropship',
         public ?string $trackingNumber = null,
         public ?string $packageId = null,
-    ) {}
+    ) {
+        $this->onQueue(config('queue.names.channel_fulfillment'));
+    }
 
     public function middleware(): array
     {
@@ -68,24 +73,24 @@ class ProcessLazadaFulfillmentJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        Log::error("Lazada fulfillment GAGAL PERMANEN — perlu RTS manual untuk order {$this->orderId} (toko {$this->shopId}): " . $exception->getMessage());
+        Log::error("Lazada fulfillment GAGAL PERMANEN — perlu RTS manual untuk order {$this->orderId} (toko {$this->shopId}): ".$exception->getMessage());
 
         try {
-            $order = \Modules\Sales\Models\SalesOrder::query()
+            $order = SalesOrder::query()
                 ->where('source', 'lazada')
                 ->where('channel_order_no', $this->orderId)
                 ->first();
 
             if ($order) {
-                \Modules\Outbound\Models\ShipmentOrder::query()
+                ShipmentOrder::query()
                     ->where('order_id', $order->id)
                     ->update([
                         'pickup_status' => 'failed',
-                        'pickup_message' => 'Lazada fulfillment gagal: ' . mb_substr($exception->getMessage(), 0, 250),
+                        'pickup_message' => 'Lazada fulfillment gagal: '.mb_substr($exception->getMessage(), 0, 250),
                     ]);
             }
         } catch (\Throwable $e) {
-            Log::warning('ProcessLazadaFulfillmentJob: gagal update status order on failure: ' . $e->getMessage());
+            Log::warning('ProcessLazadaFulfillmentJob: gagal update status order on failure: '.$e->getMessage());
         }
     }
 }

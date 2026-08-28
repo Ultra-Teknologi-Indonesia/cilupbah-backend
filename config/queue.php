@@ -93,7 +93,14 @@ return [
         'stock_sync' => env('QUEUE_NAME_STOCK_SYNC', 'stock-sync'),
         'stock_critical' => env('QUEUE_NAME_STOCK_CRITICAL', 'stock-critical'),
         'stock_default' => env('QUEUE_NAME_STOCK_DEFAULT', 'stock-default'),
+        // Legacy queue is intentionally retained while existing work drains.
         'channel_sync' => env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync'),
+        'channel_cancellation' => env('QUEUE_NAME_CHANNEL_CANCELLATION', 'channel-cancellation'),
+        'channel_stock' => env('QUEUE_NAME_CHANNEL_STOCK', 'channel-stock'),
+        'channel_product' => env('QUEUE_NAME_CHANNEL_PRODUCT', 'channel-product'),
+        'channel_finance' => env('QUEUE_NAME_CHANNEL_FINANCE', 'channel-finance'),
+        'channel_after_sales' => env('QUEUE_NAME_CHANNEL_AFTER_SALES', 'channel-after-sales'),
+        'channel_fulfillment' => env('QUEUE_NAME_CHANNEL_FULFILLMENT', 'channel-fulfillment'),
         'labels' => env('QUEUE_NAME_LABELS', 'labels'),
 
         'shopee_orders' => env('QUEUE_NAME_SHOPEE_ORDERS', 'shopee-orders'),
@@ -121,6 +128,16 @@ return [
     ],
 
     'routing' => [
+
+        'channel_product' => [
+            'connection' => env('QUEUE_CHANNEL_PRODUCT_CONNECTION', 'redis-long'),
+            'queue' => env('QUEUE_NAME_CHANNEL_PRODUCT', 'channel-product'),
+        ],
+
+        'channel_after_sales' => [
+            'connection' => env('QUEUE_CHANNEL_AFTER_SALES_CONNECTION', 'redis-long'),
+            'queue' => env('QUEUE_NAME_CHANNEL_AFTER_SALES', 'channel-after-sales'),
+        ],
 
         'labels' => [
             'connection' => env('QUEUE_LABEL_CONNECTION', 'redis-long'),

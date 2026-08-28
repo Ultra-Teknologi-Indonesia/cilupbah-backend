@@ -7,9 +7,12 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Sales\Jobs\AutoAcceptCancelRequestJob;
+use Modules\Sales\Jobs\RespondBuyerCancellationJob;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderSetting;
+use Modules\Sales\Repositories\SalesOrderRepository;
 use Modules\Sales\Services\SalesOrderService;
+use Modules\Sales\Services\SalesOrderSettingService;
 use Tests\TestCase;
 
 class CancelRequestFlowTest extends TestCase
@@ -93,7 +96,7 @@ class CancelRequestFlowTest extends TestCase
         $picklistId = Str::uuid()->toString();
         DB::table('picklists')->insert([
             'id' => $picklistId,
-            'picklist_no' => 'PL-' . substr($picklistId, 0, 6),
+            'picklist_no' => 'PL-'.substr($picklistId, 0, 6),
             'location_id' => $locationId,
             'status' => 'COMPLETED',
             'created_by' => 'system:test',
@@ -123,7 +126,7 @@ class CancelRequestFlowTest extends TestCase
         [$orderId] = $this->seedBaseOrder('packed', ['cancel_requested_at' => null, 'cancel_request_reason' => null]);
 
         SalesOrder::find($orderId)->update([
-            'cancel_requested_at'   => now(),
+            'cancel_requested_at' => now(),
             'cancel_request_reason' => 'buyer_reason',
         ]);
 
@@ -139,7 +142,7 @@ class CancelRequestFlowTest extends TestCase
 
         (new AutoAcceptCancelRequestJob($orderId))->handle(
             app(SalesOrderService::class),
-            app(\Modules\Sales\Services\SalesOrderSettingService::class),
+            app(SalesOrderSettingService::class),
         );
 
         $order = SalesOrder::find($orderId);
@@ -161,7 +164,7 @@ class CancelRequestFlowTest extends TestCase
 
         (new AutoAcceptCancelRequestJob($orderId))->handle(
             app(SalesOrderService::class),
-            app(\Modules\Sales\Services\SalesOrderSettingService::class),
+            app(SalesOrderSettingService::class),
         );
 
         $order = SalesOrder::find($orderId);
@@ -183,7 +186,12 @@ class CancelRequestFlowTest extends TestCase
 
     public function test_accept_on_shipped_creates_return_and_does_not_touch_stock(): void
     {
-        [$orderId, , , $binId] = $this->seedBaseOrder('shipped');
+        Bus::fake();
+        [$orderId, , , $binId] = $this->seedBaseOrder('shipped', [
+            'source' => 'tiktok',
+            'channel_order_no' => 'CHANNEL-CR-1',
+            'channel_shop_id' => 'SHOP-CR-1',
+        ]);
 
         app(SalesOrderService::class)->acceptCancelRequest($orderId, auto: false, reason: 'buyer late change');
 
@@ -195,13 +203,19 @@ class CancelRequestFlowTest extends TestCase
 
         $inv = DB::table('inventories')->where('bin_id', $binId)->first();
         $this->assertSame(0, (int) $inv->on_hand);
+
+        Bus::assertDispatched(
+            RespondBuyerCancellationJob::class,
+            fn (RespondBuyerCancellationJob $job) => $job->orderId === $orderId
+                && $job->decision === RespondBuyerCancellationJob::ACCEPT,
+        );
     }
 
     public function test_post_pack_cancel_visible_in_list(): void
     {
         [$orderId] = $this->seedBaseOrder('packed');
 
-        $visible = app(\Modules\Sales\Repositories\SalesOrderRepository::class)
+        $visible = app(SalesOrderRepository::class)
             ->getPaginatedOrders();
 
         $this->assertTrue(
@@ -224,9 +238,9 @@ class CancelRequestFlowTest extends TestCase
         $this->assertSame(2, (int) $inv->on_hand);
 
         $this->assertDatabaseHas('inventory_movements', [
-            'bin_id'  => $binId,
-            'source'  => 'ORDER_RESTORE_CANCEL',
-            'qty'     => 2,
+            'bin_id' => $binId,
+            'source' => 'ORDER_RESTORE_CANCEL',
+            'qty' => 2,
         ]);
     }
 
@@ -235,7 +249,7 @@ class CancelRequestFlowTest extends TestCase
         $shipmentId = Str::uuid()->toString();
         DB::table('shipments')->insert([
             'id' => $shipmentId,
-            'shipment_no' => 'SHP-' . substr($shipmentId, 0, 6),
+            'shipment_no' => 'SHP-'.substr($shipmentId, 0, 6),
             'location_id' => $locationId,
             'shipment_type' => 'REGULAR',
             'shipment_date' => now()->toDateString(),
@@ -326,7 +340,7 @@ class CancelRequestFlowTest extends TestCase
 
         (new AutoAcceptCancelRequestJob($orderId))->handle(
             app(SalesOrderService::class),
-            app(\Modules\Sales\Services\SalesOrderSettingService::class),
+            app(SalesOrderSettingService::class),
         );
 
         $order = SalesOrder::find($orderId);

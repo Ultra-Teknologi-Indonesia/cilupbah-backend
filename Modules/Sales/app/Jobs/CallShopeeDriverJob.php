@@ -10,6 +10,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
+use Modules\Channel\Support\UploadErrorPresenter;
 use Modules\Outbound\Support\InstantOrderClassifier;
 use Modules\Sales\Models\SalesOrder;
 
@@ -18,11 +19,12 @@ class CallShopeeDriverJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
+
     public array $backoff = [10, 30, 60];
 
     public function __construct(public readonly string $orderId)
     {
-        $this->onQueue(config('queue.names.channel_sync'));
+        $this->onQueue(config('queue.names.channel_fulfillment'));
     }
 
     public function handle(ShopeeOrderService $shopee): void
@@ -39,9 +41,9 @@ class CallShopeeDriverJob implements ShouldQueue
         if (strtolower((string) $order->source) !== 'shopee'
             || ! InstantOrderClassifier::isInstant($order->shipping_provider, $order->shipping_type)) {
             Log::info('CallShopeeDriverJob: bukan Shopee Instant/Same Day, skip', [
-                'order_id'          => $order->id,
-                'source'            => $order->source,
-                'shipping_type'     => $order->shipping_type,
+                'order_id' => $order->id,
+                'source' => $order->source,
+                'shipping_type' => $order->shipping_type,
                 'shipping_provider' => $order->shipping_provider,
             ]);
 
@@ -56,8 +58,8 @@ class CallShopeeDriverJob implements ShouldQueue
         $orderSn = (string) $order->channel_order_no;
         if ($shopId === '' || $orderSn === '') {
             $order->update([
-                'driver_call_status'       => 'failed',
-                'driver_call_message'      => 'channel_shop_id / channel_order_no kosong',
+                'driver_call_status' => 'failed',
+                'driver_call_message' => 'channel_shop_id / channel_order_no kosong',
                 'driver_call_attempted_at' => now(),
             ]);
 
@@ -65,7 +67,7 @@ class CallShopeeDriverJob implements ShouldQueue
         }
 
         $order->update([
-            'driver_call_status'       => 'pending',
+            'driver_call_status' => 'pending',
             'driver_call_attempted_at' => now(),
         ]);
 
@@ -77,13 +79,13 @@ class CallShopeeDriverJob implements ShouldQueue
             }
         } catch (\Throwable $e) {
             $order->update([
-                'driver_call_status'  => 'failed',
-                'driver_call_message' => $this->truncate(\Modules\Channel\Support\UploadErrorPresenter::fromMessage('shopee', $e->getMessage())['reason']),
+                'driver_call_status' => 'failed',
+                'driver_call_message' => $this->truncate(UploadErrorPresenter::fromMessage('shopee', $e->getMessage())['reason']),
             ]);
             Log::error('CallShopeeDriverJob: shipOrder throw exception', [
                 'order_id' => $order->id,
                 'order_sn' => $orderSn,
-                'error'    => $e->getMessage(),
+                'error' => $e->getMessage(),
             ]);
 
             if ($this->attempts() < $this->tries) {
@@ -98,8 +100,8 @@ class CallShopeeDriverJob implements ShouldQueue
 
         if ($shipped) {
             $order->update([
-                'driver_call_status'   => 'success',
-                'driver_call_message'  => null,
+                'driver_call_status' => 'success',
+                'driver_call_message' => null,
                 'driver_call_response' => $result,
             ]);
 
@@ -109,8 +111,8 @@ class CallShopeeDriverJob implements ShouldQueue
         $errStr = (string) $error;
         if ($this->isAlreadyShipped($errStr)) {
             $order->update([
-                'driver_call_status'   => 'success',
-                'driver_call_message'  => null,
+                'driver_call_status' => 'success',
+                'driver_call_message' => null,
                 'driver_call_response' => $result,
             ]);
 
@@ -118,19 +120,19 @@ class CallShopeeDriverJob implements ShouldQueue
         }
 
         $order->update([
-            'driver_call_status'   => 'failed',
-            'driver_call_message'  => $this->truncate(\Modules\Channel\Support\UploadErrorPresenter::fromMessage('shopee', $errStr !== '' ? $errStr : 'Panggilan driver Shopee gagal tanpa keterangan.')['reason']),
+            'driver_call_status' => 'failed',
+            'driver_call_message' => $this->truncate(UploadErrorPresenter::fromMessage('shopee', $errStr !== '' ? $errStr : 'Panggilan driver Shopee gagal tanpa keterangan.')['reason']),
             'driver_call_response' => $result,
         ]);
 
         Log::error('CallShopeeDriverJob: shipOrder gagal', [
             'order_id' => $order->id,
             'order_sn' => $orderSn,
-            'error'    => $errStr,
+            'error' => $errStr,
         ]);
 
         if ($this->attempts() < $this->tries) {
-            throw new \RuntimeException('Shopee ship_order gagal: ' . $errStr);
+            throw new \RuntimeException('Shopee ship_order gagal: '.$errStr);
         }
     }
 
@@ -139,14 +141,14 @@ class CallShopeeDriverJob implements ShouldQueue
         $order = SalesOrder::find($this->orderId);
         if ($order && $order->driver_call_status !== 'success') {
             $order->update([
-                'driver_call_status'  => 'failed',
-                'driver_call_message' => $this->truncate(\Modules\Channel\Support\UploadErrorPresenter::fromMessage('shopee', $exception->getMessage())['reason']),
+                'driver_call_status' => 'failed',
+                'driver_call_message' => $this->truncate(UploadErrorPresenter::fromMessage('shopee', $exception->getMessage())['reason']),
             ]);
         }
 
         Log::error('CallShopeeDriverJob failed permanently', [
             'order_id' => $this->orderId,
-            'error'    => $exception->getMessage(),
+            'error' => $exception->getMessage(),
         ]);
     }
 
@@ -159,6 +161,6 @@ class CallShopeeDriverJob implements ShouldQueue
 
     private function truncate(string $s, int $max = 500): string
     {
-        return mb_strlen($s) > $max ? mb_substr($s, 0, $max) . '…' : $s;
+        return mb_strlen($s) > $max ? mb_substr($s, 0, $max).'…' : $s;
     }
 }

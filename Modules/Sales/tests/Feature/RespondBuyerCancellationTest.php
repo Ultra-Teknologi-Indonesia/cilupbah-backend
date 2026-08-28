@@ -16,13 +16,22 @@ class RespondBuyerCancellationTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_buyer_cancellation_job_uses_dedicated_queue_and_is_unique_per_decision(): void
+    {
+        $job = new RespondBuyerCancellationJob('order-1', RespondBuyerCancellationJob::ACCEPT);
+
+        $this->assertSame('channel-cancellation', $job->queue);
+        $this->assertSame('order-1:accept', $job->uniqueId());
+        $this->assertSame(900, $job->uniqueFor);
+    }
+
     private function seedOrder(string $source, array $overrides = []): array
     {
         $id = Str::uuid()->toString();
-        $orderNo = 'TT-' . substr($id, 0, 6);
+        $orderNo = 'TT-'.substr($id, 0, 6);
         DB::table('sales_orders')->insert(array_merge([
             'id' => $id,
-            'salesorder_no' => 'SO-' . substr($id, 0, 6),
+            'salesorder_no' => 'SO-'.substr($id, 0, 6),
             'channel_order_no' => $orderNo,
             'channel_shop_id' => 'SHOP-123',
             'customer_name' => 'Buyer',
@@ -38,7 +47,7 @@ class RespondBuyerCancellationTest extends TestCase
 
     public function test_shopee_accept_calls_handle_buyer_cancellation_accept(): void
     {
-        [$id, $orderNo] = $this->seedOrder('shopee');
+        [$id, $orderNo] = $this->seedOrder('shopee', ['cancel_accepted_at' => now()]);
 
         $this->mock(ShopeeOrderService::class, function ($m) use ($orderNo) {
             $m->shouldReceive('handleBuyerCancellation')->once()->with('SHOP-123', $orderNo, 'ACCEPT')->andReturn([]);
@@ -49,7 +58,7 @@ class RespondBuyerCancellationTest extends TestCase
 
     public function test_shopee_reject_calls_handle_buyer_cancellation_reject(): void
     {
-        [$id, $orderNo] = $this->seedOrder('shopee');
+        [$id, $orderNo] = $this->seedOrder('shopee', ['cancel_rejected_at' => now()]);
 
         $this->mock(ShopeeOrderService::class, function ($m) use ($orderNo) {
             $m->shouldReceive('handleBuyerCancellation')->once()->with('SHOP-123', $orderNo, 'REJECT')->andReturn([]);
@@ -60,8 +69,8 @@ class RespondBuyerCancellationTest extends TestCase
 
     public function test_tiktok_accept_and_reject_call_correct_endpoints(): void
     {
-        [$idA, $orderNoA] = $this->seedOrder('tiktok');
-        [$idR, $orderNoR] = $this->seedOrder('tiktok');
+        [$idA, $orderNoA] = $this->seedOrder('tiktok', ['cancel_accepted_at' => now()]);
+        [$idR, $orderNoR] = $this->seedOrder('tiktok', ['cancel_rejected_at' => now()]);
 
         $this->mock(TikTokOrderService::class, function ($m) use ($orderNoA, $orderNoR) {
             $m->shouldReceive('acceptBuyerCancellation')->once()->with('SHOP-123', $orderNoA)->andReturn([]);
@@ -84,7 +93,7 @@ class RespondBuyerCancellationTest extends TestCase
 
         (new RespondBuyerCancellationJob($id, RespondBuyerCancellationJob::ACCEPT))->handle();
 
-        $this->assertTrue(true); 
+        $this->assertTrue(true);
     }
 
     public function test_reject_cancel_request_now_notifies_channel(): void

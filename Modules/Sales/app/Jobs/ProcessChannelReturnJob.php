@@ -23,7 +23,8 @@ class ProcessChannelReturnJob implements ShouldQueue
     public function __construct(
         public readonly array $payload,
     ) {
-        $this->onQueue(config('queue.names.channel_sync'));
+        $this->onConnection(config('queue.routing.channel_after_sales.connection', 'redis-long'))
+            ->onQueue(config('queue.routing.channel_after_sales.queue', 'channel-after-sales'));
     }
 
     public function handle(SalesReturnService $service): void
@@ -39,7 +40,7 @@ class ProcessChannelReturnJob implements ShouldQueue
     public function failed(\Throwable $e): void
     {
         Log::critical('ProcessChannelReturnJob gagal permanen — retur/refund channel BELUM tercatat.', [
-            'error'   => $e->getMessage(),
+            'error' => $e->getMessage(),
             'payload' => $this->payload,
         ]);
 
@@ -47,10 +48,10 @@ class ProcessChannelReturnJob implements ShouldQueue
             'Retur/refund channel gagal dibuat (permanen)',
             $e->getMessage(),
             [
-                'source'            => $this->payload['source'] ?? null,
-                'channel_order_id'  => $this->payload['channel_order_id'] ?? null,
+                'source' => $this->payload['source'] ?? null,
+                'channel_order_id' => $this->payload['channel_order_id'] ?? null,
                 'channel_return_id' => $this->payload['channel_return_id'] ?? null,
-                'channel_shop_id'   => $this->payload['channel_shop_id'] ?? null,
+                'channel_shop_id' => $this->payload['channel_shop_id'] ?? null,
             ],
         );
     }

@@ -313,6 +313,9 @@ class BinTransferTest extends TestCase
         $searchRes->assertStatus(200);
         $searchSkus = collect($searchRes->json('data'))->pluck('sku')->all();
         $this->assertSame(['V-WITH-STOCK'], $searchSkus);
+
+        $searchRes->assertJsonPath('data.0.product_name', 'PSTK');
+        $searchRes->assertJsonPath('data.0.variant_label', '');
     }
 
     public function test_stocked_items_requires_location_id(): void
