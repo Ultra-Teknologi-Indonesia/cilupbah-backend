@@ -152,7 +152,9 @@ class BackfillShippedOrdersStockService
                         'qty_required' => $compQty,
                         'qty_allocated' => $compQty - $allocation['shortage'],
                         'qty_short' => $allocation['shortage'],
+                        'reason' => $allocation['reason'] ?? 'NO_VALID_ASSIGNED_BIN',
                     ];
+
                     continue;
                 }
 
@@ -175,7 +177,7 @@ class BackfillShippedOrdersStockService
                 'success' => false,
                 'order_id' => $order->id,
                 'salesorder_no' => $order->salesorder_no,
-                'message' => 'Backfill tidak dilakukan karena stok final/rak penyimpanan tidak mencukupi. Stok inbound/DEFAULT tidak pernah digunakan.',
+                'message' => 'Backfill tidak dilakukan karena rak alokasi SKU tidak ditemukan atau tidak valid. Stok inbound/DEFAULT tidak pernah digunakan.',
                 'deductions' => [],
                 'shortages' => $shortages,
             ];
@@ -192,7 +194,7 @@ class BackfillShippedOrdersStockService
                     $order->salesorder_no,
                     'ORDER_COMPLETE_OUT',
                     'system:backfill',
-                    false,
+                    true,
                     $transactionDate,
                 );
 
@@ -256,41 +258,43 @@ class BackfillShippedOrdersStockService
 
     private function allocateBinsForItem(string $itemId, string $locationId, int $requiredQty, array &$plannedQtyByBin): array
     {
-        $allocations = [];
-        $outstanding = $requiredQty;
-
-        $binsWithStock = DB::table('inventories as i')
-            ->join('location_bins as b', 'b.id', '=', 'i.bin_id')
-            ->where('i.item_id', $itemId)
-            ->where('i.location_id', $locationId)
-            ->where('b.is_inbound', false)
-            ->where('i.on_hand', '>', 0)
-            ->orderByDesc('i.on_hand')
-            ->select('i.bin_id', 'b.bin_final_code', 'i.on_hand')
-            ->get();
-
-        foreach ($binsWithStock as $bin) {
-            if ($outstanding <= 0) {
-                break;
-            }
-
-            $remainingInBin = max(0, (int) $bin->on_hand - (int) ($plannedQtyByBin[$bin->bin_id] ?? 0));
-            $take = min($outstanding, $remainingInBin);
-            if ($take > 0) {
-                $allocations[] = [
-                    'bin_id' => $bin->bin_id,
-                    'bin_code' => $bin->bin_final_code,
-                    'qty' => $take,
-                ];
-                $plannedQtyByBin[$bin->bin_id] = (int) ($plannedQtyByBin[$bin->bin_id] ?? 0) + $take;
-                $outstanding -= $take;
-            }
+        if ($requiredQty <= 0) {
+            return ['allocations' => [], 'shortage' => 0];
         }
 
-        if ($outstanding <= 0) {
-            return ['allocations' => $allocations, 'shortage' => 0];
+        // The channel event must follow the SKU's designated rack. Never
+        // infer a source rack from current stock and never use DEFAULT.
+        $assignedBin = DB::table('sku_rack_assignments as assignment')
+            ->join('location_bins as bin', 'bin.id', '=', 'assignment.bin_id')
+            ->where('assignment.item_id', $itemId)
+            ->where('assignment.location_id', $locationId)
+            ->where('bin.location_id', $locationId)
+            ->where('bin.is_inbound', false)
+            ->whereRaw("UPPER(TRIM(COALESCE(bin.bin_final_code, bin.bin_code, ''))) <> 'DEFAULT'")
+            ->lockForUpdate()
+            ->first([
+                'assignment.bin_id',
+                'bin.bin_final_code',
+            ]);
+
+        if (! $assignedBin) {
+            return [
+                'allocations' => [],
+                'shortage' => $requiredQty,
+                'reason' => 'NO_VALID_ASSIGNED_BIN',
+            ];
         }
 
-        return ['allocations' => [], 'shortage' => $outstanding];
+        $plannedQtyByBin[$assignedBin->bin_id] = (int) ($plannedQtyByBin[$assignedBin->bin_id] ?? 0) + $requiredQty;
+
+        return [
+            'allocations' => [[
+                'bin_id' => $assignedBin->bin_id,
+                'bin_code' => $assignedBin->bin_final_code,
+                'qty' => $requiredQty,
+            ]],
+            'shortage' => 0,
+            'reason' => null,
+        ];
     }
 }
