@@ -209,11 +209,6 @@ class AuditStockTransactionIntegrity extends Command
         };
     }
 
-    /**
-     * Stok pada rak inbound harus sama dengan barang diterima yang belum
-     * ditempatkan. Query agregat + lazy chunk menjaga audit seluruh SKU tetap
-     * stabil tanpa memuat semua baris ke memori.
-     */
     private function auditInboundStagingBalances(array &$issues, array &$summary): void
     {
         $canonical = DB::table('inbound_items as item')
@@ -277,10 +272,6 @@ class AuditStockTransactionIntegrity extends Command
             });
     }
 
-    /**
-     * Semua tugas penempatan terbuka harus dibiayai stok rak sumber secara
-     * kumulatif, bukan hanya lolos ketika diperiksa satu dokumen per satu.
-     */
     private function auditOpenPutawayFunding(array &$issues, array &$summary): void
     {
         $required = DB::table('putaway_items as item')

@@ -3,32 +3,32 @@
 namespace Modules\Outbound\Services;
 
 use App\Enums\AssignmentActionEnum;
-use App\Enums\ClientChannelEnum;
 use App\Enums\UnassignReasonEnum;
 use App\Exceptions\UserFacingException;
 use App\Models\AssignmentHistory;
 use App\Models\User;
+use App\Support\WarehouseAccess;
 use App\Traits\EnforcesAssignmentChannel;
 use Illuminate\Database\Eloquent\Model;
-use Modules\Outbound\Repositories\PicklistRepository;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Repositories\InventoryMovementRepository;
+use Modules\Inventory\Services\InventoryService;
+use Modules\Notification\Events\TaskAssigned;
+use Modules\Outbound\Events\PicklistItemFailed;
+use Modules\Outbound\Exceptions\OutboundValidationException;
+use Modules\Outbound\Jobs\ProcessPicklistCompleteJob;
+use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
 use Modules\Outbound\Models\PicklistItemAllocation;
-use Modules\Outbound\Models\Packlist;
-use Modules\Outbound\Jobs\ProcessPicklistCompleteJob;
-use Modules\Outbound\Exceptions\OutboundValidationException;
-use Modules\Outbound\Events\PicklistItemFailed;
-use Modules\Notification\Events\TaskAssigned;
-use Modules\Sales\Models\SalesOrder as Order;
-use Modules\Inventory\Models\Inventory;
-use Modules\Inventory\Models\InventoryMovement;
-use Modules\Inventory\Repositories\InventoryMovementRepository;
-use Modules\Inventory\Services\InventoryService;
+use Modules\Outbound\Repositories\PicklistRepository;
 use Modules\Product\Repositories\ProductRepository;
-use Modules\Warehouse\Models\LocationBin;
+use Modules\Sales\Models\SalesOrder as Order;
 use Modules\Warehouse\Models\Location;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
+use Modules\Warehouse\Models\LocationBin;
 
 class PicklistService
 {
@@ -73,14 +73,14 @@ class PicklistService
 
             AssignmentHistory::create([
                 'subject_type' => Picklist::class,
-                'subject_id'   => $picklist->id,
+                'subject_id' => $picklist->id,
                 'from_user_id' => $previousPicker,
-                'to_user_id'   => $newPickerId,
-                'actor_id'     => $actorId,
-                'action'       => $action->value,
-                'channel'      => $this->currentChannel()->value,
-                'reason_code'  => $reason->value,
-                'reason_note'  => $reasonNote,
+                'to_user_id' => $newPickerId,
+                'actor_id' => $actorId,
+                'action' => $action->value,
+                'channel' => $this->currentChannel()->value,
+                'reason_code' => $reason->value,
+                'reason_note' => $reasonNote,
             ]);
 
             return $picklist->fresh();
@@ -116,14 +116,14 @@ class PicklistService
 
             AssignmentHistory::create([
                 'subject_type' => Picklist::class,
-                'subject_id'   => $picklist->id,
+                'subject_id' => $picklist->id,
                 'from_user_id' => $previousPicker,
-                'to_user_id'   => $newPickerId,
-                'actor_id'     => $actorId,
-                'action'       => AssignmentActionEnum::FORCE_RESET->value,
-                'channel'      => $this->currentChannel()->value,
-                'reason_code'  => UnassignReasonEnum::FORCE_RESET->value,
-                'reason_note'  => $reasonNote,
+                'to_user_id' => $newPickerId,
+                'actor_id' => $actorId,
+                'action' => AssignmentActionEnum::FORCE_RESET->value,
+                'channel' => $this->currentChannel()->value,
+                'reason_code' => UnassignReasonEnum::FORCE_RESET->value,
+                'reason_note' => $reasonNote,
             ]);
 
             return $picklist->fresh();
@@ -145,7 +145,7 @@ class PicklistService
             $query->where('picker_id', $pickerId);
         }
 
-        \App\Support\WarehouseAccess::apply($query, 'location_id');
+        WarehouseAccess::apply($query, 'location_id');
 
         $rows = $query
             ->selectRaw('status, COUNT(*) as total')
@@ -186,7 +186,7 @@ class PicklistService
 
     public function create(array $data): Picklist
     {
-        \App\Support\WarehouseAccess::assert($data['location_id'] ?? null);
+        WarehouseAccess::assert($data['location_id'] ?? null);
 
         return DB::transaction(function () use ($data) {
             $picklistNo = $this->picklistRepository->generatePicklistNo();
@@ -246,7 +246,7 @@ class PicklistService
 
             $picklist = $this->picklistRepository->findById($picklist->id);
 
-            if (!empty($data['picker_id'])) {
+            if (! empty($data['picker_id'])) {
                 TaskAssigned::dispatch(
                     $data['picker_id'],
                     'picklist',
@@ -264,7 +264,7 @@ class PicklistService
     {
         $picklist = $this->picklistRepository->findById($id);
 
-        if (!$picklist) {
+        if (! $picklist) {
             throw new \Exception('Picklist tidak ditemukan.');
         }
 
@@ -294,7 +294,7 @@ class PicklistService
     {
         $picklist = $this->picklistRepository->findById($id);
 
-        if (!$picklist) {
+        if (! $picklist) {
             throw new \Exception('Picklist tidak ditemukan.');
         }
 
@@ -315,12 +315,8 @@ class PicklistService
         DB::transaction(function () use ($picklistId, $itemId, $data) {
             $picklist = $this->picklistRepository->findById($picklistId);
 
-            if (!$picklist) {
+            if (! $picklist) {
                 throw new OutboundValidationException('Picklist tidak ditemukan.');
-            }
-
-            if (!in_array($picklist->status, [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS], true)) {
-                throw new OutboundValidationException("Picklist tidak bisa di-pick (status saat ini: {$picklist->status}).");
             }
 
             $item = PicklistItem::where('picklist_id', $picklistId)
@@ -328,8 +324,18 @@ class PicklistService
                 ->lockForUpdate()
                 ->first();
 
-            if (!$item) {
+            if (! $item) {
                 throw new OutboundValidationException('Item picklist tidak ditemukan.');
+            }
+
+            if ($item->item_status === PicklistItem::STATUS_PROCESSED_EXTERNALLY) {
+                throw new OutboundValidationException(
+                    "SKU {$item->sku} untuk pesanan ini sudah terkirim melalui channel dan tidak perlu di-scan ulang."
+                );
+            }
+
+            if (! in_array($picklist->status, [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS], true)) {
+                throw new OutboundValidationException("Picklist tidak bisa di-pick (status saat ini: {$picklist->status}).");
             }
 
             $pickOrder = $item->order_id
@@ -379,12 +385,12 @@ class PicklistService
                 ]);
             } elseif ($delta < 0) {
                 $this->inventoryService->reversePick([
-                    'item_id'            => $item->item_id,
-                    'location_id'        => $picklist->location_id,
-                    'bin_id'             => $item->bin_id ?? $bin->id,
-                    'qty'                => -$delta,
-                    'transaction_number' => $picklist->picklist_no . '-KOREKSI',
-                    'created_by'         => $userId,
+                    'item_id' => $item->item_id,
+                    'location_id' => $picklist->location_id,
+                    'bin_id' => $item->bin_id ?? $bin->id,
+                    'qty' => -$delta,
+                    'transaction_number' => $picklist->picklist_no.'-KOREKSI',
+                    'created_by' => $userId,
                 ]);
 
                 $this->picklistRepository->updateItem($itemId, [
@@ -421,8 +427,7 @@ class PicklistService
             }
 
             if ($picklist->items->isEmpty() || ! $picklist->items->every(function (PicklistItem $item): bool {
-                return (int) $item->qty_picked >= (int) $item->qty_ordered
-                    || in_array($item->item_status, [PicklistItem::STATUS_SHORT, PicklistItem::STATUS_REJECTED], true);
+                return $item->isResolved();
             })) {
                 return;
             }
@@ -455,9 +460,9 @@ class PicklistService
             message: $message,
             status: 409,
             errors: [
-                'code'        => 'ITEM_ALREADY_FULL',
-                'item_id'     => (string) $item->id,
-                'qty_picked'  => $current,
+                'code' => 'ITEM_ALREADY_FULL',
+                'item_id' => (string) $item->id,
+                'qty_picked' => $current,
                 'qty_ordered' => $ordered,
             ],
         );
@@ -537,12 +542,12 @@ class PicklistService
                 }
 
                 $this->inventoryService->reversePick([
-                    'item_id'            => $item->item_id,
-                    'location_id'        => $picklist->location_id,
-                    'bin_id'             => $item->bin_id,
-                    'qty'                => $qtyRev,
-                    'transaction_number' => $picklist->picklist_no . '-KOREKSI',
-                    'created_by'         => (string) ($userId ?: 'system'),
+                    'item_id' => $item->item_id,
+                    'location_id' => $picklist->location_id,
+                    'bin_id' => $item->bin_id,
+                    'qty' => $qtyRev,
+                    'transaction_number' => $picklist->picklist_no.'-KOREKSI',
+                    'created_by' => (string) ($userId ?: 'system'),
                 ]);
 
                 $this->picklistRepository->updateItem($itemId, [
@@ -572,11 +577,11 @@ class PicklistService
     {
         $picklist = $this->picklistRepository->findById($picklistId);
 
-        if (!$picklist) {
+        if (! $picklist) {
             throw new OutboundValidationException('Picklist tidak ditemukan.');
         }
 
-        if (!in_array($picklist->status, [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS])) {
+        if (! in_array($picklist->status, [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS])) {
             throw new OutboundValidationException("Picklist tidak bisa di-pick (status saat ini: {$picklist->status}).");
         }
 
@@ -657,7 +662,7 @@ class PicklistService
             ->where('bin_id', $bin->id)
             ->first();
 
-        if (!$inventory) {
+        if (! $inventory) {
             throw new OutboundValidationException("SKU ini tidak ditemukan di rak {$bin->bin_final_code}. Silahkan pilih rak lain.");
         }
 
@@ -670,7 +675,7 @@ class PicklistService
         return $available;
     }
 
-    private function suggestBinsForItem(Picklist $picklist, PicklistItem $item): \Illuminate\Support\Collection
+    private function suggestBinsForItem(Picklist $picklist, PicklistItem $item): Collection
     {
 
         $rows = Inventory::where('item_id', $item->item_id)
@@ -690,7 +695,7 @@ class PicklistService
             ]);
     }
 
-    private function pickDefaultCandidate(\Illuminate\Support\Collection $candidates, int $remaining, ?string $hintActiveBinCode): array
+    private function pickDefaultCandidate(Collection $candidates, int $remaining, ?string $hintActiveBinCode): array
     {
         if ($hintActiveBinCode !== null && $hintActiveBinCode !== '') {
             $hinted = $candidates->first(fn ($c) => strcasecmp($c['bin_code'], $hintActiveBinCode) === 0);
@@ -719,7 +724,7 @@ class PicklistService
             ?? $items->first(fn ($it) => mb_strtolower($it->sku) === $lower)
             ?? $items->first(fn ($it) => str_contains(mb_strtolower($it->sku ?? ''), $lower) && $it->qty_picked < $it->qty_ordered);
 
-        if (!$item) {
+        if (! $item) {
             throw new OutboundValidationException("SKU {$sku} tidak ada di picklist ini.");
         }
 
@@ -737,7 +742,7 @@ class PicklistService
             ->where('location_id', $picklist->location_id)
             ->first();
 
-        if (!$bin) {
+        if (! $bin) {
             throw new OutboundValidationException("Rak dengan kode '{$binCode}' tidak ditemukan.");
         }
 
@@ -748,11 +753,11 @@ class PicklistService
     {
         $picklist = $this->picklistRepository->findById($id);
 
-        if (!$picklist) {
+        if (! $picklist) {
             throw new \Exception('Picklist tidak ditemukan.');
         }
 
-        if (!in_array($picklist->status, [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS])) {
+        if (! in_array($picklist->status, [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS])) {
             throw new OutboundValidationException("Hanya picklist DRAFT/IN_PROGRESS yang bisa di-complete (saat ini: {$picklist->status}).");
         }
 
@@ -763,7 +768,8 @@ class PicklistService
                 return false;
             }
             $status = $item->item_status;
-            return !in_array($status, [PicklistItem::STATUS_SHORT, PicklistItem::STATUS_REJECTED], true);
+
+            return ! in_array($status, PicklistItem::resolvedStatuses(), true);
         });
         if ($unfinished->isNotEmpty()) {
             throw new OutboundValidationException("Masih ada {$unfinished->count()} item yang belum di-pick atau di-fail.");
@@ -789,18 +795,18 @@ class PicklistService
             PicklistItem::REASON_MISSING,
             PicklistItem::REASON_OTHER,
         ];
-        if (!in_array($reasonCode, $allowed, true)) {
+        if (! in_array($reasonCode, $allowed, true)) {
             throw new OutboundValidationException("Alasan gagal tidak valid: {$reasonCode}.");
         }
 
         $picklist = DB::transaction(function () use ($picklistId, $itemId, $reasonCode, $reasonNote, $userId) {
             $picklist = $this->picklistRepository->findById($picklistId);
 
-            if (!$picklist) {
+            if (! $picklist) {
                 throw new OutboundValidationException('Picklist tidak ditemukan.');
             }
 
-            if (!in_array($picklist->status, [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS], true)) {
+            if (! in_array($picklist->status, [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS], true)) {
                 throw new OutboundValidationException("Item hanya bisa di-fail saat picklist DRAFT/IN_PROGRESS (saat ini: {$picklist->status}).");
             }
 
@@ -809,7 +815,7 @@ class PicklistService
                 ->lockForUpdate()
                 ->first();
 
-            if (!$item) {
+            if (! $item) {
                 throw new OutboundValidationException('Item picklist tidak ditemukan.');
             }
 
@@ -824,12 +830,12 @@ class PicklistService
             $failedQty = (int) $item->qty_ordered - (int) $item->qty_picked;
 
             $this->picklistRepository->updateItem($itemId, [
-                'item_status'      => $itemStatus,
+                'item_status' => $itemStatus,
                 'fail_reason_code' => $reasonCode,
                 'fail_reason_note' => $reasonNote,
-                'failed_qty'       => $failedQty,
-                'failed_at'        => now(),
-                'failed_by'        => $userId ?: null,
+                'failed_qty' => $failedQty,
+                'failed_at' => now(),
+                'failed_by' => $userId ?: null,
             ]);
 
             PicklistItemFailed::dispatch($picklistId, $itemId, $reasonCode, $failedQty, (string) ($userId ?: 'system'));
@@ -847,11 +853,11 @@ class PicklistService
         return DB::transaction(function () use ($picklistId, $itemId) {
             $picklist = $this->picklistRepository->findById($picklistId);
 
-            if (!$picklist) {
+            if (! $picklist) {
                 throw new OutboundValidationException('Picklist tidak ditemukan.');
             }
 
-            if (!in_array($picklist->status, [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS], true)) {
+            if (! in_array($picklist->status, [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS], true)) {
                 throw new OutboundValidationException("Undo fail hanya bisa saat picklist DRAFT/IN_PROGRESS (saat ini: {$picklist->status}).");
             }
 
@@ -860,17 +866,17 @@ class PicklistService
                 ->lockForUpdate()
                 ->first();
 
-            if (!$item) {
+            if (! $item) {
                 throw new OutboundValidationException('Item picklist tidak ditemukan.');
             }
 
             $this->picklistRepository->updateItem($itemId, [
-                'item_status'      => null,
+                'item_status' => null,
                 'fail_reason_code' => null,
                 'fail_reason_note' => null,
-                'failed_qty'       => null,
-                'failed_at'        => null,
-                'failed_by'        => null,
+                'failed_qty' => null,
+                'failed_at' => null,
+                'failed_by' => null,
             ]);
 
             return $this->picklistRepository->findById($picklistId);
@@ -889,7 +895,7 @@ class PicklistService
             ->lockForUpdate()
             ->first();
 
-        if (!$inventory) {
+        if (! $inventory) {
             throw new OutboundValidationException("SKU ini tidak ditemukan di rak {$bin->bin_final_code}. Silahkan pilih rak lain.");
         }
 
@@ -902,24 +908,24 @@ class PicklistService
         $inventory->save();
 
         $movement = $this->movementRepository->create([
-            'item_id'            => $item->item_id,
-            'location_id'        => $picklist->location_id,
-            'bin_id'             => $bin->id,
+            'item_id' => $item->item_id,
+            'location_id' => $picklist->location_id,
+            'bin_id' => $bin->id,
             'transaction_number' => $picklist->picklist_no,
-            'source'             => 'PICKING',
-            'qty'                => -$qty,
-            'balance'            => $inventory->on_hand,
-            'transaction_date'   => now(),
-            'created_by'         => $userId ?: 'system',
+            'source' => 'PICKING',
+            'qty' => -$qty,
+            'balance' => $inventory->on_hand,
+            'transaction_date' => now(),
+            'created_by' => $userId ?: 'system',
         ]);
 
         PicklistItemAllocation::create([
             'picklist_item_id' => $item->id,
-            'bin_id'           => $bin->id,
-            'qty'              => $qty,
-            'picked_at'        => now(),
-            'picked_by'        => $userId ?: null,
-            'movement_id'      => is_object($movement) ? ($movement->id ?? null) : null,
+            'bin_id' => $bin->id,
+            'qty' => $qty,
+            'picked_at' => now(),
+            'picked_by' => $userId ?: null,
+            'movement_id' => is_object($movement) ? ($movement->id ?? null) : null,
         ]);
     }
 
@@ -927,17 +933,17 @@ class PicklistService
     {
         $picklist = $this->picklistRepository->findById($id);
 
-        if (!$picklist) {
+        if (! $picklist) {
             throw new \Exception('Picklist tidak ditemukan.');
         }
 
-        if (!in_array($picklist->status, [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS])) {
+        if (! in_array($picklist->status, [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS])) {
             throw new \Exception("Hanya picklist DRAFT/IN_PROGRESS yang bisa di-fail (saat ini: {$picklist->status}).");
         }
 
         $this->picklistRepository->update($id, [
             'status' => Picklist::STATUS_FAILED,
-            'notes' => $reason ? ($picklist->notes ? $picklist->notes . ' | FAILED: ' . $reason : 'FAILED: ' . $reason) : $picklist->notes,
+            'notes' => $reason ? ($picklist->notes ? $picklist->notes.' | FAILED: '.$reason : 'FAILED: '.$reason) : $picklist->notes,
         ]);
 
         return $this->picklistRepository->findById($id);
@@ -947,7 +953,7 @@ class PicklistService
     {
         $picklist = $this->picklistRepository->findById($id);
 
-        if (!$picklist) {
+        if (! $picklist) {
             throw new \Exception('Picklist tidak ditemukan.');
         }
 
@@ -966,7 +972,7 @@ class PicklistService
     {
         $picklist = $this->picklistRepository->findById($id);
 
-        if (!$picklist) {
+        if (! $picklist) {
             throw new \Exception('Picklist tidak ditemukan.');
         }
 
@@ -982,7 +988,7 @@ class PicklistService
         return DB::transaction(function () use ($picklistId, $orderId, $userId, $reason) {
             $picklist = $this->picklistRepository->findById($picklistId);
 
-            if (!$picklist) {
+            if (! $picklist) {
                 throw new OutboundValidationException('Picklist tidak ditemukan.');
             }
 
@@ -993,14 +999,14 @@ class PicklistService
             if ($order) {
 
                 $order->update([
-                    'pick_failed_at'         => now(),
-                    'pick_failed_by'         => $userId,
-                    'pick_fail_reason'       => $reason,
+                    'pick_failed_at' => now(),
+                    'pick_failed_by' => $userId,
+                    'pick_fail_reason' => $reason,
                     'handed_to_warehouse_at' => null,
                 ]);
             }
 
-            if (!PicklistItem::where('picklist_id', $picklistId)->exists()) {
+            if (! PicklistItem::where('picklist_id', $picklistId)->exists()) {
                 $this->picklistRepository->delete($picklistId);
             }
 
@@ -1013,7 +1019,7 @@ class PicklistService
         DB::transaction(function () use ($picklistId, $userId) {
             $picklist = $this->picklistRepository->findById($picklistId);
 
-            if (!$picklist) {
+            if (! $picklist) {
                 throw new OutboundValidationException('Picklist tidak ditemukan.');
             }
 
@@ -1038,7 +1044,7 @@ class PicklistService
     {
         $order = Order::find($orderId);
 
-        if (!$order) {
+        if (! $order) {
             return;
         }
 
@@ -1078,12 +1084,12 @@ class PicklistService
             }
 
             $this->inventoryService->reversePick([
-                'item_id'            => $item->item_id,
-                'location_id'        => $picklist->location_id,
-                'bin_id'             => $item->bin_id,
-                'qty'                => (int) $item->qty_picked,
-                'transaction_number' => $picklist->picklist_no . '-HAPUS',
-                'created_by'         => $userId ?: 'system',
+                'item_id' => $item->item_id,
+                'location_id' => $picklist->location_id,
+                'bin_id' => $item->bin_id,
+                'qty' => (int) $item->qty_picked,
+                'transaction_number' => $picklist->picklist_no.'-HAPUS',
+                'created_by' => $userId ?: 'system',
             ]);
 
             $reversed = true;
@@ -1122,7 +1128,7 @@ class PicklistService
         }
     }
 
-    public function getForBulkPdf(array $orderIds): \Illuminate\Support\Collection
+    public function getForBulkPdf(array $orderIds): Collection
     {
         $picklists = $this->picklistRepository->getForBulkPdf($orderIds);
 

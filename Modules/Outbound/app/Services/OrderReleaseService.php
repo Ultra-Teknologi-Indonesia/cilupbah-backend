@@ -34,8 +34,7 @@ class OrderReleaseService
             return false;
         }
 
-        $isResolved = fn ($item) => (int) $item->qty_picked >= (int) $item->qty_ordered
-            || in_array($item->item_status, [PicklistItem::STATUS_SHORT, PicklistItem::STATUS_REJECTED], true);
+        $isResolved = fn ($item) => $item->isResolved();
 
         if (! $items->every($isResolved)) {
             return false;
@@ -59,19 +58,19 @@ class OrderReleaseService
                     ->where('id', $orderItemId)
                     ->update([
                         'fulfillment_status' => $shortPart->item_status,
-                        'short_qty'          => $parts->sum(fn ($it) => (int) ($it->failed_qty ?? 0)),
-                        'updated_at'         => now(),
+                        'short_qty' => $parts->sum(fn ($it) => (int) ($it->failed_qty ?? 0)),
+                        'updated_at' => now(),
                     ]);
 
                 continue;
             }
 
-            if ($parts->every(fn ($it) => (int) $it->qty_picked >= (int) $it->qty_ordered)) {
+            if ($parts->every(fn ($it) => $it->isResolved())) {
                 DB::table('sales_order_items')
                     ->where('id', $orderItemId)
                     ->update([
                         'fulfillment_status' => 'PICKED',
-                        'updated_at'         => now(),
+                        'updated_at' => now(),
                     ]);
             }
         }
@@ -80,18 +79,18 @@ class OrderReleaseService
             DB::table('sales_orders')
                 ->where('id', $order->id)
                 ->update([
-                    'status'                   => 'AWAITING_BUYER_CONFIRMATION',
+                    'status' => 'AWAITING_BUYER_CONFIRMATION',
                     'awaiting_confirmation_at' => now(),
-                    'updated_at'               => now(),
+                    'updated_at' => now(),
                 ]);
 
             OrderNeedsBuyerConfirmation::dispatch(
                 (string) $order->id,
                 (string) $picklist->id,
                 $shortItems->map(fn ($it) => [
-                    'item_id'     => (string) $it->id,
-                    'sku'         => $it->sku,
-                    'failed_qty'  => (int) ($it->failed_qty ?? 0),
+                    'item_id' => (string) $it->id,
+                    'sku' => $it->sku,
+                    'failed_qty' => (int) ($it->failed_qty ?? 0),
                     'item_status' => (string) $it->item_status,
                 ])->values()->all(),
             );
@@ -104,13 +103,13 @@ class OrderReleaseService
         try {
             $actorId = $picklist->picker_id ? (string) $picklist->picker_id : (auth()->id() ? (string) auth()->id() : 'system');
             $this->invoiceService->createFromOrder([
-                'order_id'    => (string) $order->id,
+                'order_id' => (string) $order->id,
                 'location_id' => (string) $order->location_id,
-                'created_by'  => $actorId,
+                'created_by' => $actorId,
             ]);
         } catch (\Throwable $e) {
-            Log::warning('Gagal auto-generate SalesInvoice untuk order selesai pick: ' . $e->getMessage(), [
-                'order_id'    => $order->id,
+            Log::warning('Gagal auto-generate SalesInvoice untuk order selesai pick: '.$e->getMessage(), [
+                'order_id' => $order->id,
                 'picklist_id' => $picklist->id,
             ]);
         }

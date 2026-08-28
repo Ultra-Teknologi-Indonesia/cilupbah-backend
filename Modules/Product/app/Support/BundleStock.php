@@ -24,11 +24,6 @@ class BundleStock
         ];
     }
 
-    /**
-     * Derive complete-bundle capacity independently for every location.
-     *
-     * @return Collection<int, array{location_id: string, location_name: ?string, on_hand: int, on_order: int, available: int}>|null
-     */
     public static function deriveByLocation(Product $product): ?Collection
     {
         if (! $product->is_bundle || ! $product->relationLoaded('bundleItems')) {

@@ -1020,11 +1020,6 @@ class InboundService
         return $result;
     }
 
-    /**
-     * A successful client retry must return the original result without creating
-     * another receipt or movement. A reused key with a different payload is a
-     * conflict, not a new stock operation.
-     */
     private function isReceiptRequestReplay(
         Inbound $inbound,
         array $items,

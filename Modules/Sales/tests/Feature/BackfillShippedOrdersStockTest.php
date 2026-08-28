@@ -5,6 +5,9 @@ namespace Modules\Sales\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\Outbound\Models\Picklist;
+use Modules\Outbound\Services\PacklistService;
+use Modules\Outbound\Services\PicklistService;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderItem;
 use Modules\Sales\Services\BackfillShippedOrdersStockService;
@@ -193,6 +196,100 @@ class BackfillShippedOrdersStockTest extends TestCase
 
         $this->assertEquals(7, (int) DB::table('inventories')->where('item_id', $this->itemId)->value('on_hand'));
         $this->assertEquals(1, DB::table('inventory_movements')->count());
+    }
+
+    public function test_channel_backfill_resolves_picklist_without_faking_a_staff_scan(): void
+    {
+        DB::table('inventories')->insert([
+            'id' => Str::uuid()->toString(),
+            'item_id' => $this->itemId,
+            'location_id' => $this->kecilLocationId,
+            'bin_id' => $this->binId,
+            'on_hand' => 1,
+            'available' => 1,
+            'on_order' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $order = SalesOrder::create([
+            'salesorder_no' => 'SO-PICKLIST-EXTERNAL-001',
+            'channel_order_no' => 'CH-PICKLIST-EXTERNAL-001',
+            'source' => 'tiktok',
+            'status' => 'reserved',
+            'channel_status' => 'SHIPPED',
+            'location_id' => $this->kecilLocationId,
+            'is_shadow' => false,
+            'is_canceled' => false,
+            'created_at' => now()->subDay(),
+        ]);
+
+        $orderItem = SalesOrderItem::create([
+            'order_id' => $order->id,
+            'item_id' => $this->itemId,
+            'sku' => $this->sku,
+            'qty_in_base' => 2,
+            'qty' => 2,
+            'unit_price' => 10000,
+        ]);
+
+        $actorId = Str::uuid()->toString();
+        DB::table('users')->insert([
+            'id' => $actorId,
+            'name' => 'Channel Fulfillment',
+            'email' => 'channel-fulfillment-'.substr($actorId, 0, 8).'@example.test',
+            'password' => bcrypt('secret'),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $picklist = Picklist::create([
+            'picklist_no' => 'PICK-EXTERNAL-001',
+            'location_id' => $this->kecilLocationId,
+            'status' => Picklist::STATUS_IN_PROGRESS,
+            'created_by' => $actorId,
+        ]);
+
+        DB::table('picklist_items')->insert([
+            'id' => Str::uuid()->toString(),
+            'picklist_id' => $picklist->id,
+            'order_id' => $order->id,
+            'order_item_id' => $orderItem->id,
+            'item_id' => $this->itemId,
+            'sku' => $this->sku,
+            'qty_ordered' => 2,
+            'qty_picked' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $result = app(BackfillShippedOrdersStockService::class)->backfillOrder($order);
+
+        $this->assertTrue($result['success']);
+        $this->assertSame(-1, (int) DB::table('inventories')->where('bin_id', $this->binId)->value('on_hand'));
+        $this->assertSame(Picklist::STATUS_COMPLETED, (string) DB::table('picklists')->where('id', $picklist->id)->value('status'));
+        $this->assertDatabaseHas('picklist_items', [
+            'picklist_id' => $picklist->id,
+            'item_status' => 'PROCESSED_EXTERNALLY',
+            'qty_picked' => 0,
+        ]);
+        $this->assertSame('picked', (string) DB::table('sales_orders')->where('id', $order->id)->value('status'));
+
+        $packlist = app(PacklistService::class)->create([
+            'order_id' => $order->id,
+            'location_id' => $this->kecilLocationId,
+            'picklist_id' => $picklist->id,
+            'created_by' => $actorId,
+        ]);
+        $this->assertSame('DRAFT', $packlist->status);
+        $this->assertSame(2, (int) $packlist->items->first()->qty_ordered);
+
+        $this->expectExceptionMessage('sudah terkirim melalui channel dan tidak perlu di-scan ulang');
+        app(PicklistService::class)->pickItem(
+            (string) $picklist->id,
+            (string) DB::table('picklist_items')->where('picklist_id', $picklist->id)->value('id'),
+            ['qty_delta' => 1, 'bin_code' => 'RAK-A1'],
+        );
     }
 
     public function test_backfill_never_consumes_an_inbound_default_bin(): void

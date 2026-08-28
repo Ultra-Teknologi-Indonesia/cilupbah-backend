@@ -56,6 +56,16 @@ class InventoryMovementResource extends JsonResource
             }
         }
 
+        if (
+            in_array($this->source, InventoryMovementSourceMap::CLEAN_HISTORICAL_PICKING_SOURCES, true)
+            && $this->created_by === 'system:backfill'
+        ) {
+            $sourceCategory = 'FAKTUR';
+            $sourceLabel = $this->source === 'ORDER_COMPLETE_REVERSAL'
+                ? 'Pembalikan picking historis'
+                : 'Picking historis';
+        }
+
         return [
             'id' => $this->id,
             'item_id' => $this->item_id,
@@ -84,6 +94,8 @@ class InventoryMovementResource extends JsonResource
             'physical_total_balance' => (int) ($this->physical_total_balance ?? $this->balance),
             'on_order_balance' => (int) ($this->on_order_balance ?? 0),
             'available_balance' => (int) ($this->total_balance ?? $this->balance),
+            'current_balance' => (int) ($this->current_balance ?? 0),
+            'current_available_balance' => (int) ($this->current_available_balance ?? 0),
             'transaction_date' => $this->transaction_date,
             'created_by' => ActorName::resolve($this->created_by),
             'created_at' => $this->created_at,

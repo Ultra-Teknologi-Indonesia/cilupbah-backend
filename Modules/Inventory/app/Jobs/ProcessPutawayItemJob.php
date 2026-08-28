@@ -285,7 +285,6 @@ class ProcessPutawayItemJob implements ShouldQueue
                             $src->putaway_qty = (int) $src->putaway_qty + $take;
                             $src->save();
 
-                            /** @var InboundItem $sourceInboundItem */
                             $sourceInboundItem = $sourceInboundItems->get($src->inbound_item_id);
                             $sourceInboundItem->putaway_qty = (int) $sourceInboundItem->putaway_qty + $take;
                             $sourceInboundItem->reserved_qty = (int) $sourceInboundItem->reserved_qty - $take;

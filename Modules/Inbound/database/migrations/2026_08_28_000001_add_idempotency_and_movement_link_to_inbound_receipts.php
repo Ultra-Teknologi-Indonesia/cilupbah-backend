@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /** PostgreSQL concurrent indexes cannot run inside a transaction. */
+
     public $withinTransaction = false;
 
     public function up(): void

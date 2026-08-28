@@ -465,6 +465,102 @@ class KronologiBalancePartitionTest extends TestCase
         $this->assertContains('ADJUSTMENT', $allSources);
     }
 
+    public function test_clean_menampilkan_picking_fisik_dan_backfill_dengan_label_historis(): void
+    {
+        DB::table('inventories')->insert([
+            'id' => Str::uuid()->toString(),
+            'item_id' => $this->itemId,
+            'location_id' => $this->locationId,
+            'bin_id' => $this->finalBinId,
+            'on_hand' => 7,
+            'on_order' => 2,
+            'available' => 5,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->movement('PICKING', -1, 6, 1, $this->finalBinId);
+        $this->movement('ORDER_COMPLETE_OUT', -1, 5, 2, $this->finalBinId);
+
+        DB::table('inventory_movements')
+            ->where('source', 'ORDER_COMPLETE_OUT')
+            ->update(['created_by' => 'system:backfill']);
+
+        DB::table('inventory_movements')->insert([
+            'id' => Str::uuid()->toString(),
+            'item_id' => $this->itemId,
+            'location_id' => $this->locationId,
+            'bin_id' => $this->finalBinId,
+            'transaction_number' => 'TRX-ORDER-COMPLETE-NORMAL',
+            'source' => 'ORDER_COMPLETE_OUT',
+            'qty' => -1,
+            'balance' => 4,
+            'transaction_date' => now()->addMinutes(3),
+            'created_by' => 'system',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        request()->merge([
+            'filter' => ['item_id' => $this->itemId, 'location_id' => $this->locationId],
+            'view' => 'clean',
+            'per_page' => 50,
+        ]);
+
+        $paginated = app(InventoryMovementRepository::class)->getHistoryPaginated(50);
+        $resourceRows = collect(InventoryMovementResource::collection($paginated)
+            ->response()
+            ->getData(true)['data'])
+            ->keyBy('transaction_number');
+
+        $this->assertArrayHasKey('TRX-PICKING-1', $resourceRows->all());
+        $this->assertArrayHasKey('TRX-ORDER_COMPLETE_OUT-2', $resourceRows->all());
+        $this->assertArrayNotHasKey('TRX-ORDER-COMPLETE-NORMAL', $resourceRows->all());
+        $this->assertSame('Picking historis', $resourceRows['TRX-ORDER_COMPLETE_OUT-2']['source_label']);
+        $this->assertSame(7, $resourceRows['TRX-PICKING-1']['current_balance']);
+        $this->assertSame(5, $resourceRows['TRX-PICKING-1']['current_available_balance']);
+    }
+
+    public function test_current_balance_tidak_berubah_karena_view_clean_menyembunyikan_baris(): void
+    {
+        DB::table('inventories')->insert([
+            'id' => Str::uuid()->toString(),
+            'item_id' => $this->itemId,
+            'location_id' => $this->locationId,
+            'bin_id' => $this->finalBinId,
+            'on_hand' => -41,
+            'on_order' => 1,
+            'available' => -42,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->movement('PUTAWAY_IN', 10, 10, 1, $this->finalBinId);
+        $this->movement('ORDER_RESERVE', -2, 8, 2);
+
+        request()->merge([
+            'filter' => ['item_id' => $this->itemId, 'location_id' => $this->locationId],
+            'view' => 'clean',
+            'per_page' => 50,
+        ]);
+
+        $rows = collect(InventoryMovementResource::collection(
+            app(InventoryMovementRepository::class)->getHistoryPaginated(50)
+        )->response()->getData(true)['data']);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame(-41, $rows->first()['current_balance']);
+        $this->assertSame(-42, $rows->first()['current_available_balance']);
+
+        request()->merge(['view' => 'all']);
+        $allRows = collect(InventoryMovementResource::collection(
+            app(InventoryMovementRepository::class)->getHistoryPaginated(50)
+        )->response()->getData(true)['data']);
+
+        $this->assertSame(-41, $allRows->first()['current_balance']);
+        $this->assertSame(-42, $allRows->first()['current_available_balance']);
+    }
+
     public function test_partisi_saldo_tanpa_dan_dengan_filter_lokasi(): void
     {
         $location2Id = Str::uuid()->toString();

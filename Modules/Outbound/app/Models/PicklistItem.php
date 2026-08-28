@@ -2,25 +2,39 @@
 
 namespace Modules\Outbound\Models;
 
+use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use App\Traits\HasUuid7;
+use Modules\Product\Models\ProductVariant;
+use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Models\SalesOrderItem;
+use Modules\Warehouse\Models\LocationBin;
 
 class PicklistItem extends Model
 {
     use HasUuid7;
 
     const STATUS_PENDING = 'PENDING';
+
     const STATUS_PARTIAL = 'PARTIAL';
+
     const STATUS_COMPLETED = 'COMPLETED';
+
     const STATUS_SHORT = 'SHORT';
+
     const STATUS_REJECTED = 'REJECTED';
 
+    const STATUS_PROCESSED_EXTERNALLY = 'PROCESSED_EXTERNALLY';
+
     const REASON_STOCK_EMPTY = 'STOCK_EMPTY';
+
     const REASON_DAMAGED = 'DAMAGED';
+
     const REASON_REJECTED = 'REJECTED';
+
     const REASON_MISSING = 'MISSING';
+
     const REASON_OTHER = 'OTHER';
 
     protected $fillable = [
@@ -54,22 +68,22 @@ class PicklistItem extends Model
 
     public function order(): BelongsTo
     {
-        return $this->belongsTo(\Modules\Sales\Models\SalesOrder::class, 'order_id');
+        return $this->belongsTo(SalesOrder::class, 'order_id');
     }
 
     public function orderItem(): BelongsTo
     {
-        return $this->belongsTo(\Modules\Sales\Models\SalesOrderItem::class, 'order_item_id');
+        return $this->belongsTo(SalesOrderItem::class, 'order_item_id');
     }
 
     public function product(): BelongsTo
     {
-        return $this->belongsTo(\Modules\Product\Models\ProductVariant::class, 'item_id');
+        return $this->belongsTo(ProductVariant::class, 'item_id');
     }
 
     public function bin(): BelongsTo
     {
-        return $this->belongsTo(\Modules\Warehouse\Models\LocationBin::class, 'bin_id');
+        return $this->belongsTo(LocationBin::class, 'bin_id');
     }
 
     public function allocations(): HasMany
@@ -79,7 +93,7 @@ class PicklistItem extends Model
 
     public function getEffectiveItemStatusAttribute(): string
     {
-        if (!empty($this->attributes['item_status'])) {
+        if (! empty($this->attributes['item_status'])) {
             return $this->attributes['item_status'];
         }
 
@@ -95,6 +109,21 @@ class PicklistItem extends Model
         }
 
         return self::STATUS_PARTIAL;
+    }
+
+    public static function resolvedStatuses(): array
+    {
+        return [
+            self::STATUS_SHORT,
+            self::STATUS_REJECTED,
+            self::STATUS_PROCESSED_EXTERNALLY,
+        ];
+    }
+
+    public function isResolved(): bool
+    {
+        return (int) $this->qty_picked >= (int) $this->qty_ordered
+            || in_array($this->item_status, self::resolvedStatuses(), true);
     }
 
     public function getImageUrlAttribute(): ?string

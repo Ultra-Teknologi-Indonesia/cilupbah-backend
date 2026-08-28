@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Support\InventoryMovementSourceMap;
+use Modules\Inventory\Support\StockSummary;
 use Modules\Notification\Services\NotificationDispatcher;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
@@ -154,16 +155,63 @@ class InventoryMovementRepository
         });
 
         if ($view === 'clean') {
-            $baseQuery->whereNotIn('source', InventoryMovementSourceMap::CLEAN_HIDDEN_SOURCES);
-            $baseQuery->where('source', 'PUTAWAY_IN');
-            $baseQuery->whereNotNull('inventory_movements.bin_id');
-            $baseQuery->where(function ($q) {
-                $q->whereNotExists(function ($inboundBinQuery) {
-                    $inboundBinQuery
-                        ->selectRaw('1')
-                        ->from('location_bins as inbound_bins')
-                        ->whereColumn('inbound_bins.id', 'inventory_movements.bin_id')
-                        ->where('inbound_bins.is_inbound', true);
+            $finalBinScope = function ($query): void {
+                $query
+                    ->whereNotNull('inventory_movements.bin_id')
+                    ->whereNotExists(function ($inboundBinQuery) {
+                        $inboundBinQuery
+                            ->selectRaw('1')
+                            ->from('location_bins as inbound_bins')
+                            ->whereColumn('inbound_bins.id', 'inventory_movements.bin_id')
+                            ->where('inbound_bins.is_inbound', true);
+                    })
+                    ->whereNotExists(function ($defaultBinQuery) {
+                        $defaultBinQuery
+                            ->selectRaw('1')
+                            ->from('location_bins as default_bins')
+                            ->whereColumn('default_bins.id', 'inventory_movements.bin_id')
+                            ->whereRaw("UPPER(TRIM(COALESCE(default_bins.bin_final_code, default_bins.bin_code, ''))) = 'DEFAULT'");
+                    });
+            };
+
+            $baseQuery->where(function ($clean) use ($finalBinScope) {
+                $clean->where(function ($q) use ($finalBinScope) {
+                    $q->where('source', 'PUTAWAY_IN')
+                        ->where($finalBinScope);
+                });
+
+                $clean->orWhere(function ($q) use ($finalBinScope) {
+                    $q->whereIn('source', ['PICKING', 'PICKING_REVERSAL'])
+                        ->where($finalBinScope);
+                });
+
+                $clean->orWhere('source', 'SALES_RETURN');
+
+                $clean->orWhere(function ($q) use ($finalBinScope) {
+                    $q->whereIn('source', InventoryMovementSourceMap::CLEAN_PHYSICAL_TRANSFER_SOURCES)
+                        ->where($finalBinScope);
+                });
+
+                $clean->orWhere(function ($q) use ($finalBinScope) {
+                    $q->whereIn('source', InventoryMovementSourceMap::CLEAN_HISTORICAL_PICKING_SOURCES)
+                        ->where('created_by', 'system:backfill')
+                        ->where($finalBinScope);
+                });
+
+                $clean->orWhere(function ($q) use ($finalBinScope) {
+                    $q->where('source', 'ORDER_RELEASE')
+                        ->where($finalBinScope)
+                        ->whereExists(function ($orderQuery) {
+                            $orderQuery
+                                ->selectRaw('1')
+                                ->from('sales_orders as cancelled_orders')
+                                ->whereColumn('cancelled_orders.salesorder_no', 'inventory_movements.transaction_number')
+                                ->where(function ($status) {
+                                    $status
+                                        ->where('cancelled_orders.status', 'cancelled')
+                                        ->orWhere('cancelled_orders.is_canceled', true);
+                                });
+                        });
                 });
             });
         } elseif ($view === 'attention') {
@@ -287,7 +335,33 @@ class InventoryMovementRepository
             ? 'inventory_movements.item_id, inventory_movements.location_id'
             : 'inventory_movements.item_id';
 
+        $currentStockQuery = DB::table('inventories as current_inventory')
+            ->leftJoin('location_bins as current_bins', 'current_bins.id', '=', 'current_inventory.bin_id')
+            ->select('current_inventory.item_id')
+            ->selectRaw(
+                StockSummary::placedOnHandSql('current_inventory', 'current_bins').' AS current_balance'
+            )
+            ->selectRaw(
+                '('.StockSummary::placedOnHandSql('current_inventory', 'current_bins')
+                .' - '.StockSummary::onOrderSql('current_inventory').') AS current_available_balance'
+            );
+
+        if ($hasLocationFilter) {
+            $currentStockQuery
+                ->addSelect('current_inventory.location_id')
+                ->where('current_inventory.location_id', $balanceLocationId)
+                ->groupBy('current_inventory.item_id', 'current_inventory.location_id');
+        } else {
+            $currentStockQuery->groupBy('current_inventory.item_id');
+        }
+
         $balanceQuery
+            ->leftJoinSub($currentStockQuery, 'current_stock', function ($join) use ($hasLocationFilter) {
+                $join->on('current_stock.item_id', '=', 'inventory_movements.item_id');
+                if ($hasLocationFilter) {
+                    $join->on('current_stock.location_id', '=', 'inventory_movements.location_id');
+                }
+            })
             ->select('inventory_movements.id')
             ->selectRaw(
                 "SUM($availableDeltaSql) OVER (PARTITION BY $balancePartition ORDER BY inventory_movements.transaction_date, inventory_movements.id) AS total_balance"
@@ -309,7 +383,9 @@ class InventoryMovementRepository
             )
             ->selectRaw(
                 "SUM($onOrderDeltaSql) OVER (PARTITION BY $balancePartition ORDER BY inventory_movements.transaction_date, inventory_movements.id) AS on_order_balance"
-            );
+            )
+            ->selectRaw('COALESCE(current_stock.current_balance, 0) AS current_balance')
+            ->selectRaw('COALESCE(current_stock.current_available_balance, 0) AS current_available_balance');
 
         $pickOrderScope = 'FROM picklist_items pi'
             .' JOIN picklists p ON p.id = pi.picklist_id'
@@ -331,6 +407,8 @@ class InventoryMovementRepository
             ->selectRaw('movement_balances.legacy_unassigned_balance')
             ->selectRaw('movement_balances.physical_total_balance')
             ->selectRaw('movement_balances.on_order_balance')
+            ->selectRaw('movement_balances.current_balance')
+            ->selectRaw('movement_balances.current_available_balance')
             ->selectRaw(
                 '(SELECT EXISTS(SELECT 1 FROM sales_invoices si '
                 .'JOIN picklist_items pi ON pi.order_id = si.order_id '

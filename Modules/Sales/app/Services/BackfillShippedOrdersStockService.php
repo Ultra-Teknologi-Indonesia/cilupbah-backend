@@ -4,6 +4,9 @@ namespace Modules\Sales\Services;
 
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Modules\Outbound\Jobs\ProcessPicklistCompleteJob;
+use Modules\Outbound\Models\Picklist;
+use Modules\Outbound\Models\PicklistItem;
 use Modules\Sales\Models\OrderBinAllocation;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Warehouse\Models\Location;
@@ -36,6 +39,15 @@ class BackfillShippedOrdersStockService
                     ->from('picklist_items')
                     ->whereColumn('picklist_items.order_id', 'sales_orders.id')
                     ->where('qty_picked', '>', 0);
+            })
+            ->whereNotExists(function ($q) {
+                $q->selectRaw('1')
+                    ->from('picklist_items')
+                    ->whereColumn('picklist_items.order_id', 'sales_orders.id')
+                    ->whereIn('item_status', [
+                        PicklistItem::STATUS_SHORT,
+                        PicklistItem::STATUS_REJECTED,
+                    ]);
             })
             ->whereNotExists(function ($q) {
                 $q->selectRaw('1')
@@ -87,12 +99,16 @@ class BackfillShippedOrdersStockService
     {
         $hasAllocations = DB::table('order_bin_allocations')->where('order_id', $order->id)->exists();
         $hasPickedItems = DB::table('picklist_items')->where('order_id', $order->id)->where('qty_picked', '>', 0)->exists();
+        $hasFailedPickItems = DB::table('picklist_items')
+            ->where('order_id', $order->id)
+            ->whereIn('item_status', [PicklistItem::STATUS_SHORT, PicklistItem::STATUS_REJECTED])
+            ->exists();
         $hasMovements = DB::table('inventory_movements')
             ->where('transaction_number', $order->salesorder_no)
             ->whereIn('source', ['ORDER_COMPLETE_OUT', 'PICKING'])
             ->exists();
 
-        if ($hasAllocations || $hasPickedItems || $hasMovements) {
+        if ($hasAllocations || $hasPickedItems || $hasFailedPickItems || $hasMovements) {
             return [
                 'success' => true,
                 'order_id' => $order->id,
@@ -209,6 +225,10 @@ class BackfillShippedOrdersStockService
                     'completed_at' => $transactionDate,
                 ]);
             }
+
+            $completedPicklists = $this->markPicklistItemsProcessedExternally($order, $deductions);
+        } else {
+            $completedPicklists = [];
         }
 
         return [
@@ -216,7 +236,73 @@ class BackfillShippedOrdersStockService
             'order_id' => $order->id,
             'salesorder_no' => $order->salesorder_no,
             'deductions' => $deductions,
+            'picklists_completed' => $completedPicklists,
         ];
+    }
+
+    private function markPicklistItemsProcessedExternally(SalesOrder $order, array $deductions): array
+    {
+        $itemIds = collect($deductions)
+            ->pluck('item_id')
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($itemIds === []) {
+            return [];
+        }
+
+        $items = DB::table('picklist_items as pi')
+            ->join('picklists as p', 'p.id', '=', 'pi.picklist_id')
+            ->where('pi.order_id', $order->id)
+            ->whereIn('pi.item_id', $itemIds)
+            ->whereIn('p.status', [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS])
+            ->where('pi.qty_picked', 0)
+            ->where(function ($query) {
+                $query->whereNull('pi.item_status')
+                    ->orWhereNotIn('pi.item_status', [PicklistItem::STATUS_SHORT, PicklistItem::STATUS_REJECTED]);
+            })
+            ->lockForUpdate()
+            ->get(['pi.id', 'pi.picklist_id']);
+
+        if ($items->isEmpty()) {
+            return [];
+        }
+
+        $now = now();
+        DB::table('picklist_items')
+            ->whereIn('id', $items->pluck('id')->all())
+            ->update([
+                'item_status' => PicklistItem::STATUS_PROCESSED_EXTERNALLY,
+                'updated_at' => $now,
+            ]);
+
+        $completedPicklists = [];
+        foreach ($items->pluck('picklist_id')->unique() as $picklistId) {
+            $picklist = Picklist::query()
+                ->with('items')
+                ->lockForUpdate()
+                ->find($picklistId);
+
+            if (! $picklist || ! in_array($picklist->status, [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS], true)) {
+                continue;
+            }
+
+            if ($picklist->items->isEmpty() || ! $picklist->items->every(fn (PicklistItem $item): bool => $item->isResolved())) {
+                continue;
+            }
+
+            $picklist->forceFill([
+                'status' => Picklist::STATUS_COMPLETED,
+                'completed_at' => $now,
+            ])->save();
+
+            ProcessPicklistCompleteJob::dispatch((string) $picklist->id)->afterCommit();
+            $completedPicklists[] = (string) $picklist->id;
+        }
+
+        return $completedPicklists;
     }
 
     private function resolveLocationId(): ?string
@@ -262,8 +348,6 @@ class BackfillShippedOrdersStockService
             return ['allocations' => [], 'shortage' => 0];
         }
 
-        // The channel event must follow the SKU's designated rack. Never
-        // infer a source rack from current stock and never use DEFAULT.
         $assignedBin = DB::table('sku_rack_assignments as assignment')
             ->join('location_bins as bin', 'bin.id', '=', 'assignment.bin_id')
             ->where('assignment.item_id', $itemId)

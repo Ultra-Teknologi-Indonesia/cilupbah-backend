@@ -13,10 +13,15 @@ class HideInboundStagingMovementsTest extends TestCase
     use RefreshDatabase;
 
     private string $locationId;
+
     private string $itemId;
+
     private string $defaultBinId;
+
     private string $storageBinId;
+
     private string $inboundId;
+
     private string $putawayId;
 
     protected function setUp(): void
@@ -183,7 +188,7 @@ class HideInboundStagingMovementsTest extends TestCase
         $items = app(InventoryMovementRepository::class)->getHistoryPaginated(50)->items();
         $rows = collect($items);
 
-        $this->assertCount(1, $rows, 'Mode Bersih hanya boleh menampilkan penempatan yang berhasil');
+        $this->assertCount(2, $rows, 'Mode Bersih menampilkan penempatan dan picking fisik');
 
         $putawayRow = $rows->firstWhere('source', 'PUTAWAY_IN');
         $this->assertNotNull($putawayRow);
@@ -191,8 +196,10 @@ class HideInboundStagingMovementsTest extends TestCase
         $this->assertSame(100, (int) $putawayRow->total_balance, 'Saldo berjalan saat putaway selesai harus 100');
         $this->assertSame('INB-T3CNSXUF', $putawayRow->ref_no, 'Putaway harus mengambil ref_no dari Inbound asal');
         $this->assertSame('penerimaan 01', $putawayRow->ref_note, 'Putaway harus mengambil catatan dari Inbound asal');
-        $this->assertTrue($rows->every(fn ($row) => $row->source === 'PUTAWAY_IN'));
-        $this->assertNull($rows->firstWhere('source', 'PICKING'));
+        $pickingRow = $rows->firstWhere('source', 'PICKING');
+        $this->assertNotNull($pickingRow);
+        $this->assertSame(-1, (int) $pickingRow->qty);
+        $this->assertSame(99, (int) $pickingRow->total_balance, 'Saldo setelah picking harus 99');
         $this->assertNull($rows->firstWhere('source', 'ADJUSTMENT_OUT'));
 
         request()->merge(['view' => 'all']);
