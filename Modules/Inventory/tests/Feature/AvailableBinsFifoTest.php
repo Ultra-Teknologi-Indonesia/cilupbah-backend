@@ -41,13 +41,14 @@ class AvailableBinsFifoTest extends TestCase
         ]);
         $variant = ProductVariant::create(['product_id' => $product->id, 'sku' => 'V-FIFO']);
 
-        $invNew = Inventory::create([
-            'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $binNew->id,
+        // OLD dibuat lebih dulu, NEW kemudian (untuk test default sorting by created_at)
+        $invOld = Inventory::create([
+            'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $binOld->id,
             'on_hand' => 5, 'on_order' => 0, 'available' => 5, 'avg_cost' => 500,
             'created_at' => now()->subDays(1),
         ]);
-        $invOld = Inventory::create([
-            'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $binOld->id,
+        $invNew = Inventory::create([
+            'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $binNew->id,
             'on_hand' => 5, 'on_order' => 0, 'available' => 5, 'avg_cost' => 500,
             'created_at' => now(),
         ]);

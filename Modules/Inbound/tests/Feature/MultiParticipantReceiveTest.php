@@ -102,7 +102,7 @@ class MultiParticipantReceiveTest extends TestCase
         ]);
     }
 
-    public function test_multi_participant_auto_join_via_receive(): void
+    public function test_multi_participant_receive_waits_for_admin_finalize(): void
     {
         $inbound = $this->makeInbound(20000);
 
@@ -119,9 +119,9 @@ class MultiParticipantReceiveTest extends TestCase
         $this->assertEquals(20000, $item->received_qty);
 
         $refreshed = $inbound->fresh();
-        $this->assertEquals(Inbound::STATUS_COMPLETED, $refreshed->status, 'Qty penuh = penerimaan selesai walau participant masih ACTIVE');
+        $this->assertEquals(Inbound::STATUS_PARTIAL, $refreshed->status, 'Qty penuh belum selesai tanpa tombol admin');
         $this->assertNotNull($refreshed->receiving_started_at);
-        $this->assertNotNull($refreshed->once_received_at);
+        $this->assertNull($refreshed->once_received_at);
     }
 
     public function test_over_receipt_allowed_no_cap_f1(): void
@@ -164,7 +164,7 @@ class MultiParticipantReceiveTest extends TestCase
         app(InboundService::class)->closeReceiving($inbound->id, $admin->id);
 
         $done = $inbound->fresh();
-        $this->assertEquals(Inbound::STATUS_COMPLETED, $done->status, 'Admin close = penerimaan selesai');
+        $this->assertEquals(Inbound::STATUS_RECEIVED, $done->status, 'Admin close = penerimaan selesai');
 
         $participants = InboundParticipant::where('inbound_id', $inbound->id)->get();
         $this->assertCount(2, $participants);
@@ -184,13 +184,13 @@ class MultiParticipantReceiveTest extends TestCase
         $this->assertEquals(90, $inbound->fresh('items')->items->first()->received_qty);
     }
 
-    public function test_receive_auto_completes_when_expected_reached(): void
+    public function test_receive_stays_partial_even_when_expected_reached(): void
     {
 
         $inbound = $this->makeInbound(100);
         $this->receive($inbound, $this->staff['s1']->id, 100);
 
-        $this->assertEquals(Inbound::STATUS_COMPLETED, $inbound->fresh()->status, 'Qty penuh = penerimaan selesai');
+        $this->assertEquals(Inbound::STATUS_PARTIAL, $inbound->fresh()->status, 'Qty penuh belum selesai tanpa tombol admin');
     }
 
     public function test_late_join_blocked_after_admin_closed_session(): void
@@ -201,7 +201,7 @@ class MultiParticipantReceiveTest extends TestCase
         $admin = User::factory()->create(['name' => 'ADMIN']);
         app(InboundService::class)->closeReceiving($inbound->id, $admin->id);
 
-        $this->expectExceptionMessageMatches('/berstatus COMPLETED/');
+        $this->expectExceptionMessageMatches('/sudah selesai/');
         $this->receive($inbound->fresh('items'), $this->staff['s2']->id, 5);
     }
 
@@ -258,7 +258,7 @@ class MultiParticipantReceiveTest extends TestCase
         $admin = User::factory()->create(['name' => 'ADMIN']);
         app(InboundService::class)->closeReceiving($inbound->id, $admin->id);
 
-        $this->assertEquals(Inbound::STATUS_COMPLETED, $inbound->fresh()->status);
+        $this->assertEquals(Inbound::STATUS_RECEIVED, $inbound->fresh()->status);
     }
 
     public function test_join_session_registers_participant(): void
@@ -288,21 +288,22 @@ class MultiParticipantReceiveTest extends TestCase
         $this->assertTrue($reloaded->isReceivable(), 'Sisa 9.000 masih bisa diterima');
 
         $this->receive($reloaded->fresh('items'), $this->staff['s1']->id, 9000);
-        $this->assertEquals(Inbound::STATUS_COMPLETED, $inbound->fresh()->status);
+        $this->assertEquals(Inbound::STATUS_PARTIAL, $inbound->fresh()->status);
     }
 
-    public function test_completed_inbound_still_putawayable(): void
+    public function test_received_inbound_still_putawayable_after_admin_finalize(): void
     {
         $inbound = $this->makeInbound(100);
         $this->receive($inbound, $this->staff['s1']->id, 100);
 
-        $done = $inbound->fresh();
-        $this->assertEquals(Inbound::STATUS_COMPLETED, $done->status);
-        $this->assertTrue($done->isPutawayable(), 'COMPLETED (penerimaan selesai) tetap bisa di-putaway');
+        $admin = User::factory()->create(['name' => 'ADMIN']);
+        $done = app(InboundService::class)->closeReceiving($inbound->id, $admin->id);
+        $this->assertEquals(Inbound::STATUS_RECEIVED, $done->status);
+        $this->assertTrue($done->isPutawayable(), 'Penerimaan selesai tetap bisa di-putaway');
         $this->assertFalse($done->isReceivable(), 'Penerimaan selesai tidak menerima scan baru');
     }
 
-    public function test_web_edit_completes_when_reaching_expected(): void
+    public function test_web_edit_does_not_finalize_when_reaching_expected(): void
     {
         $inbound = $this->makeInbound(100);
         $this->receive($inbound, $this->staff['s1']->id, 40);
@@ -316,6 +317,6 @@ class MultiParticipantReceiveTest extends TestCase
             $this->staff['s1']->id,
         );
 
-        $this->assertEquals(Inbound::STATUS_COMPLETED, $inbound->fresh()->status, 'Koreksi web ke qty penuh = selesai');
+        $this->assertEquals(Inbound::STATUS_PARTIAL, $inbound->fresh()->status, 'Koreksi web tidak menyelesaikan penerimaan otomatis');
     }
 }
