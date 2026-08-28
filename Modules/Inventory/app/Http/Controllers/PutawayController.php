@@ -2,16 +2,16 @@
 
 namespace Modules\Inventory\Http\Controllers;
 
+use App\Enums\UnassignReasonEnum;
 use App\Exceptions\UserFacingException;
 use App\Http\Controllers\Controller;
 use App\Services\PdfRenderer;
+use App\Support\ActorName;
 use App\Traits\ApiResponse;
 use App\Traits\AutoScopeMobileToAuth;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Modules\Inventory\Services\PutawayPdfPresenter;
-use Modules\Inventory\Services\PutawayService;
-use Modules\Inventory\Models\Putaway;
 use Modules\Inventory\Http\Requests\AssignPutawayStaffRequest;
 use Modules\Inventory\Http\Requests\BulkDestroyPutawayRequest;
 use Modules\Inventory\Http\Requests\BulkPdfPutawayRequest;
@@ -23,6 +23,9 @@ use Modules\Inventory\Http\Requests\ProcessPutawayItemRequest;
 use Modules\Inventory\Http\Requests\ResetPutawayAssignmentRequest;
 use Modules\Inventory\Http\Requests\StorePutawayRequest;
 use Modules\Inventory\Http\Requests\UnassignPutawayRequest;
+use Modules\Inventory\Models\Putaway;
+use Modules\Inventory\Services\PutawayPdfPresenter;
+use Modules\Inventory\Services\PutawayService;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Putaway', description: 'API Endpoints for Standalone Putaway')]
@@ -55,7 +58,7 @@ class PutawayController extends Controller
             new OA\Response(response: 401, description: 'Unauthenticated'),
         ]
     )]
-        #[OA\Post(
+    #[OA\Post(
         path: '/api/v1/putaway',
         summary: 'Create a putaway manually from one or more inbound documents (merged into one progress)',
         security: [['bearerAuth' => []]],
@@ -234,11 +237,11 @@ class PutawayController extends Controller
     {
         try {
             $putaway = $this->putawayService->getById($id);
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (QueryException $e) {
             return $this->errorResponse('Putaway tidak ditemukan.', 404);
         }
 
-        if (!$putaway) {
+        if (! $putaway) {
             return $this->errorResponse('Putaway tidak ditemukan.', 404);
         }
 
@@ -409,7 +412,7 @@ class PutawayController extends Controller
         try {
             $this->putawayService->processItem($id, $itemId, $request->validated());
 
-            return $this->successResponse(null, 'Item berhasil ditempatkan.', 200);
+            return $this->successResponse(null, 'Item berhasil ditempatkan.', 202);
         } catch (UserFacingException $e) {
             throw $e;
         } catch (\DomainException $e) {
@@ -655,7 +658,7 @@ class PutawayController extends Controller
 
         $bin = $this->putawayService->lookupBin($code, $locationId);
 
-        if (!$bin) {
+        if (! $bin) {
             return $this->errorResponse('Rak tidak ditemukan.', 404);
         }
 
@@ -680,7 +683,7 @@ class PutawayController extends Controller
         try {
             $putaway = $this->putawayService->getById($id);
 
-            if (!$putaway) {
+            if (! $putaway) {
                 return $this->errorResponse('Putaway tidak ditemukan.', 404);
             }
 
@@ -692,11 +695,12 @@ class PutawayController extends Controller
             return $this->pdfRenderer->stream('inventory::pdf.putaway', [
                 'putaway' => $prepared['putaway'],
                 'qrDataUri' => $prepared['qrDataUri'],
-                'printedBy' => \App\Support\ActorName::fromUser($request->user(), '-'),
+                'printedBy' => ActorName::fromUser($request->user(), '-'),
                 'sourceLabel' => $prepared['sourceLabel'],
             ], $filename);
         } catch (\Throwable $e) {
             report($e);
+
             return $this->errorResponse(
                 'Gagal membuat PDF putaway.',
                 500,
@@ -731,10 +735,11 @@ class PutawayController extends Controller
         try {
             return $this->pdfRenderer->stream('inventory::pdf.putaway-bulk', [
                 'docs' => $this->pdfPresenter->presentMany($putaways),
-                'printedBy' => \App\Support\ActorName::fromUser($request->user(), '-'),
-            ], 'Putaway-Bulk-' . now()->format('Ymd-His') . '.pdf');
+                'printedBy' => ActorName::fromUser($request->user(), '-'),
+            ], 'Putaway-Bulk-'.now()->format('Ymd-His').'.pdf');
         } catch (\Throwable $e) {
             report($e);
+
             return $this->errorResponse(
                 'Gagal membuat PDF putaway bulk.',
                 500,
@@ -822,7 +827,7 @@ class PutawayController extends Controller
         $putaway = $this->putawayService->unassign(
             $id,
             (string) $request->user()->id,
-            \App\Enums\UnassignReasonEnum::from($validated['reason_code']),
+            UnassignReasonEnum::from($validated['reason_code']),
             $validated['reason_note'] ?? null,
             $validated['new_assignee_id'] ?? null,
         );

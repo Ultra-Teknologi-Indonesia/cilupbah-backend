@@ -2,15 +2,16 @@
 
 namespace Modules\Inventory\Tests\Feature;
 
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
+use Modules\Channel\Jobs\SyncStockToChannelsJob;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\Putaway;
 use Modules\Inventory\Models\PutawayPlacement;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Services\PutawayService;
-use Modules\Channel\Jobs\SyncStockToChannelsJob;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Modules\Warehouse\Models\Location;
@@ -24,9 +25,9 @@ class ScanCorrectionTest extends TestCase
     private function makeProduct(string $sku): ProductVariant
     {
         $categoryId = DB::table('categories')->insertGetId([
-            'name' => 'Cat ' . $sku, 'created_at' => now(), 'updated_at' => now(),
+            'name' => 'Cat '.$sku, 'created_at' => now(), 'updated_at' => now(),
         ]);
-        $product = Product::create(['category_id' => $categoryId, 'name' => 'P-' . $sku, 'sku' => 'P-' . $sku, 'is_active' => true]);
+        $product = Product::create(['category_id' => $categoryId, 'name' => 'P-'.$sku, 'sku' => 'P-'.$sku, 'is_active' => true]);
 
         return ProductVariant::create(['product_id' => $product->id, 'sku' => $sku]);
     }
@@ -49,7 +50,7 @@ class ScanCorrectionTest extends TestCase
             'on_hand' => 10, 'on_order' => 0, 'available' => 10, 'avg_cost' => 2000,
         ]);
 
-        $user = \App\Models\User::factory()->create();
+        $user = User::factory()->create();
         $putawaySvc = app(PutawayService::class);
 
         $putaway = $putawaySvc->create([
@@ -106,7 +107,7 @@ class ScanCorrectionTest extends TestCase
             'on_hand' => 8, 'on_order' => 0, 'available' => 8, 'avg_cost' => 1000,
         ]);
 
-        $user = \App\Models\User::factory()->create();
+        $user = User::factory()->create();
         $putawaySvc = app(PutawayService::class);
         $putaway = $putawaySvc->create([
             'location_id' => $location->id, 'source_type' => 'MANUAL', 'created_by' => $user->id,
@@ -118,7 +119,7 @@ class ScanCorrectionTest extends TestCase
 
         $placement = PutawayPlacement::where('putaway_item_id', $item->id)->firstOrFail();
 
-        $putawaySvc->deletePlacement($putaway->id, $item->id, $placement->id, 2, '99');
+        $putawaySvc->deletePlacement($putaway->id, $item->id, $placement->id, 2, $user->id);
 
         $this->assertSame(4, (int) Inventory::where('bin_id', $sourceBin->id)->where('item_id', $variant->id)->value('on_hand'));
         $this->assertSame(4, (int) Inventory::where('bin_id', $destBin->id)->where('item_id', $variant->id)->value('on_hand'));
@@ -222,7 +223,7 @@ class ScanCorrectionTest extends TestCase
             ]);
         }
 
-        $user = \App\Models\User::factory()->create();
+        $user = User::factory()->create();
         $putawaySvc = app(PutawayService::class);
         $putaway = $putawaySvc->create([
             'location_id' => $location->id, 'source_type' => 'MANUAL', 'created_by' => $user->id,
@@ -240,6 +241,7 @@ class ScanCorrectionTest extends TestCase
 
         $bulk = $items->map(function ($it) {
             $placement = PutawayPlacement::where('putaway_item_id', $it->id)->firstOrFail();
+
             return ['item_id' => $it->id, 'placement_id' => $placement->id, 'qty' => null];
         })->all();
 

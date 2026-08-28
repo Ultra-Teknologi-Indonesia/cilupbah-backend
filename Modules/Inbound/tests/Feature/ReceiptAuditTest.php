@@ -3,11 +3,13 @@
 namespace Modules\Inbound\Tests\Feature;
 
 use App\Enums\ClientChannelEnum;
+use App\Exceptions\UserFacingException;
 use App\Models\User;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Str;
 use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Models\InboundItem;
 use Modules\Inbound\Models\InboundReceipt;
@@ -23,9 +25,13 @@ class ReceiptAuditTest extends TestCase
     use RefreshDatabase;
 
     private Location $location;
+
     private LocationBin $inboundBin;
+
     private ProductVariant $variant;
+
     private User $staffA;
+
     private User $staffB;
 
     protected function setUp(): void
@@ -59,7 +65,7 @@ class ReceiptAuditTest extends TestCase
     {
         $inbound = Inbound::create([
             'location_id' => $this->location->id,
-            'transaction_number' => 'INB-' . fake()->unique()->numerify('########'),
+            'transaction_number' => 'INB-'.fake()->unique()->numerify('########'),
             'type' => Inbound::TYPE_PURCHASE_ORDER,
             'source_type' => 'purchase_order',
             'status' => Inbound::STATUS_DRAFT,
@@ -83,6 +89,7 @@ class ReceiptAuditTest extends TestCase
         $this->actingAs($user);
         app(InboundService::class)->receive($inbound->id, [
             'received_by' => $user->id,
+            'idempotency_key' => (string) Str::uuid(),
             'items' => [[
                 'inbound_item_id' => $inbound->items->first()->id,
                 'qty' => $qty,
@@ -107,6 +114,155 @@ class ReceiptAuditTest extends TestCase
         foreach ($receipts as $r) {
             $this->assertSame($this->staffA->id, $r->received_by_user_id);
         }
+    }
+
+    public function test_same_idempotency_key_creates_exactly_one_receipt_and_one_movement(): void
+    {
+        $inbound = $this->makeInbound(100);
+        $item = $inbound->items->first();
+        $key = 'mobile-receive-operation-001';
+        $payload = [
+            'received_by' => $this->staffA->id,
+            'idempotency_key' => $key,
+            'items' => [[
+                'inbound_item_id' => $item->id,
+                'qty' => 10,
+                'condition' => 'GOOD',
+            ]],
+        ];
+
+        request()->attributes->set('client_channel', ClientChannelEnum::MOBILE);
+        $this->actingAs($this->staffA);
+
+        app(InboundService::class)->receive($inbound->id, $payload);
+        app(InboundService::class)->receive($inbound->id, $payload);
+
+        $receipt = InboundReceipt::where('inbound_item_id', $item->id)
+            ->where('idempotency_key', $key)
+            ->sole();
+
+        $this->assertSame(10, (int) $item->fresh()->received_qty);
+        $this->assertSame(10, (int) DB::table('inventories')
+            ->where('item_id', $this->variant->id)
+            ->where('location_id', $this->location->id)
+            ->where('bin_id', $this->inboundBin->id)
+            ->sum('on_hand'));
+        $this->assertSame(1, DB::table('inventory_movements')
+            ->where('inbound_receipt_id', $receipt->id)
+            ->count());
+        $this->artisan('inventory:audit-transaction-integrity', ['--since' => 1, '--fail-on-issue' => true])
+            ->expectsOutputToContain('AUDIT_RESULT=CONSISTENT')
+            ->assertSuccessful();
+    }
+
+    public function test_integrity_audit_fails_when_receipt_and_movement_qty_diverge(): void
+    {
+        $inbound = $this->makeInbound(100);
+        $item = $inbound->items->first();
+        $key = 'mobile-receive-operation-audit-mismatch';
+
+        request()->attributes->set('client_channel', ClientChannelEnum::MOBILE);
+        $this->actingAs($this->staffA);
+        app(InboundService::class)->receive($inbound->id, [
+            'received_by' => $this->staffA->id,
+            'idempotency_key' => $key,
+            'items' => [[
+                'inbound_item_id' => $item->id,
+                'qty' => 10,
+                'condition' => 'GOOD',
+            ]],
+        ]);
+
+        $receiptId = InboundReceipt::where('idempotency_key', $key)->value('id');
+        DB::table('inventory_movements')->where('inbound_receipt_id', $receiptId)->update(['qty' => 9]);
+
+        $this->artisan('inventory:audit-transaction-integrity', ['--since' => 1, '--fail-on-issue' => true])
+            ->expectsOutputToContain('AUDIT_RESULT=REVIEW_REQUIRED')
+            ->assertFailed();
+    }
+
+    public function test_integrity_audit_fails_when_inbound_staging_balance_diverges(): void
+    {
+        $inbound = $this->makeInbound(100);
+        $this->receiveAs($this->staffA, $inbound, 10);
+
+        DB::table('inventories')
+            ->where('item_id', $this->variant->id)
+            ->where('location_id', $this->location->id)
+            ->where('bin_id', $this->inboundBin->id)
+            ->update(['on_hand' => 9]);
+
+        $this->artisan('inventory:audit-transaction-integrity', ['--since' => 1, '--fail-on-issue' => true])
+            ->expectsOutputToContain('INBOUND_STAGING_BALANCE_MISMATCH')
+            ->expectsOutputToContain('AUDIT_RESULT=REVIEW_REQUIRED')
+            ->assertFailed();
+    }
+
+    public function test_mobile_receipt_without_idempotency_key_is_rejected_without_stock_change(): void
+    {
+        $inbound = $this->makeInbound(100);
+        $item = $inbound->items->first();
+
+        request()->attributes->set('client_channel', ClientChannelEnum::MOBILE);
+        $this->actingAs($this->staffA);
+
+        try {
+            app(InboundService::class)->receive($inbound->id, [
+                'received_by' => $this->staffA->id,
+                'items' => [[
+                    'inbound_item_id' => $item->id,
+                    'qty' => 10,
+                    'condition' => 'GOOD',
+                ]],
+            ]);
+            $this->fail('Penerimaan mobile tanpa idempotency key seharusnya ditolak.');
+        } catch (UserFacingException $exception) {
+            $this->assertSame(422, $exception->getStatus());
+            $this->assertSame('INBOUND_RECEIPT_IDEMPOTENCY_KEY_REQUIRED', $exception->getErrors()['code']);
+        }
+
+        $this->assertSame(0, (int) $item->fresh()->received_qty);
+        $this->assertSame(0, InboundReceipt::where('inbound_item_id', $item->id)->count());
+        $this->assertSame(0, DB::table('inventory_movements')->where('item_id', $this->variant->id)->count());
+    }
+
+    public function test_reusing_idempotency_key_with_different_payload_is_rejected(): void
+    {
+        $inbound = $this->makeInbound(100);
+        $item = $inbound->items->first();
+        $key = 'mobile-receive-operation-002';
+
+        request()->attributes->set('client_channel', ClientChannelEnum::MOBILE);
+        $this->actingAs($this->staffA);
+
+        app(InboundService::class)->receive($inbound->id, [
+            'received_by' => $this->staffA->id,
+            'idempotency_key' => $key,
+            'items' => [[
+                'inbound_item_id' => $item->id,
+                'qty' => 10,
+                'condition' => 'GOOD',
+            ]],
+        ]);
+
+        try {
+            app(InboundService::class)->receive($inbound->id, [
+                'received_by' => $this->staffA->id,
+                'idempotency_key' => $key,
+                'items' => [[
+                    'inbound_item_id' => $item->id,
+                    'qty' => 11,
+                    'condition' => 'GOOD',
+                ]],
+            ]);
+            $this->fail('Idempotency conflict seharusnya ditolak.');
+        } catch (UserFacingException $exception) {
+            $this->assertSame(409, $exception->getStatus());
+            $this->assertSame('INBOUND_RECEIPT_IDEMPOTENCY_CONFLICT', $exception->getErrors()['code']);
+        }
+
+        $this->assertSame(10, (int) $item->fresh()->received_qty);
+        $this->assertSame(1, InboundReceipt::where('inbound_item_id', $item->id)->count());
     }
 
     public function test_multi_staff_receipts_each_carry_own_user_id(): void

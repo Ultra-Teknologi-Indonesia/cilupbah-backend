@@ -291,6 +291,13 @@ class InboundController extends Controller
         tags: ['Inbounds'],
         parameters: [
             new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(
+                name: 'Idempotency-Key',
+                in: 'header',
+                required: false,
+                description: 'Wajib untuk aplikasi mobile. Gunakan nilai UUID yang sama ketika mengulang permintaan yang sama.',
+                schema: new OA\Schema(type: 'string', maxLength: 100),
+            ),
         ],
         responses: [
             new OA\Response(response: 200, description: 'Successful operation'),
@@ -437,6 +444,7 @@ class InboundController extends Controller
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(ref: '#/components/schemas/ReceiveInboundRequest')),
         responses: [
             new OA\Response(response: 200, description: 'Penerimaan berhasil diproses'),
+            new OA\Response(response: 409, description: 'Idempotency conflict atau status dokumen tidak sesuai'),
             new OA\Response(response: 422, description: 'Validation Error'),
             new OA\Response(response: 500, description: 'Server Error'),
         ]
@@ -444,6 +452,8 @@ class InboundController extends Controller
     public function receive(string $id, ReceiveInboundRequest $request): JsonResponse
     {
         $data = $request->validated();
+        $data['idempotency_key'] = $request->header('Idempotency-Key')
+            ?? ($data['idempotency_key'] ?? null);
         $data['received_by'] = $this->inboundService->resolveReceivedByActor($request, $data['received_by'] ?? null);
 
         $inbound = $this->inboundService->receive($id, $data);

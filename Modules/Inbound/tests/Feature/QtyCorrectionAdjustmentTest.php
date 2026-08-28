@@ -3,9 +3,11 @@
 namespace Modules\Inbound\Tests\Feature;
 
 use App\Enums\ClientChannelEnum;
+use App\Exceptions\UserFacingException;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Models\InboundItem;
 use Modules\Inbound\Models\InboundReceipt;
@@ -25,8 +27,11 @@ class QtyCorrectionAdjustmentTest extends TestCase
     use RefreshDatabase;
 
     private Location $location;
+
     private LocationBin $inboundBin;
+
     private ProductVariant $variant;
+
     private User $admin;
 
     protected function setUp(): void
@@ -58,7 +63,7 @@ class QtyCorrectionAdjustmentTest extends TestCase
     {
         $inbound = Inbound::create([
             'location_id' => $this->location->id,
-            'transaction_number' => 'INB-QC-' . fake()->unique()->numerify('######'),
+            'transaction_number' => 'INB-QC-'.fake()->unique()->numerify('######'),
             'type' => Inbound::TYPE_PURCHASE_ORDER,
             'source_type' => 'purchase_order',
             'status' => Inbound::STATUS_DRAFT,
@@ -78,6 +83,7 @@ class QtyCorrectionAdjustmentTest extends TestCase
         request()->attributes->set('client_channel', ClientChannelEnum::MOBILE);
         app(InboundService::class)->receive($inbound->id, [
             'received_by' => $this->admin->id,
+            'idempotency_key' => (string) Str::uuid(),
             'items' => [[
                 'inbound_item_id' => $inbound->items->first()->id,
                 'qty' => $receivedQty,
@@ -118,7 +124,7 @@ class QtyCorrectionAdjustmentTest extends TestCase
 
         $this->assertSame(0, StockAdjustment::query()->count());
         $this->assertDatabaseHas('inventory_movements', [
-            'transaction_number' => $inbound->transaction_number . '-KOREKSI-QTY',
+            'transaction_number' => $inbound->transaction_number.'-KOREKSI-QTY',
             'source' => 'INBOUND_QTY_CORRECTION',
             'qty' => -5,
         ]);
@@ -205,7 +211,7 @@ class QtyCorrectionAdjustmentTest extends TestCase
 
         $this->correct($inbound, 95);
 
-        $adjustmentMovements = InventoryMovement::where('transaction_number', $inbound->transaction_number . '-KOREKSI-QTY')
+        $adjustmentMovements = InventoryMovement::where('transaction_number', $inbound->transaction_number.'-KOREKSI-QTY')
             ->where('source', 'INBOUND_QTY_CORRECTION')
             ->get();
 
@@ -226,7 +232,7 @@ class QtyCorrectionAdjustmentTest extends TestCase
         $this->correct($inbound, 105, 'fisik ternyata lebih 5 pcs dari catatan');
 
         $this->assertDatabaseHas('inventory_movements', [
-            'transaction_number' => $inbound->transaction_number . '-KOREKSI-QTY',
+            'transaction_number' => $inbound->transaction_number.'-KOREKSI-QTY',
             'source' => 'INBOUND_QTY_CORRECTION',
             'qty' => 5,
         ]);
@@ -247,7 +253,7 @@ class QtyCorrectionAdjustmentTest extends TestCase
 
     public function test_generic_stock_adjustment_still_rejects_inbound_bin(): void
     {
-        $this->expectException(\App\Exceptions\UserFacingException::class);
+        $this->expectException(UserFacingException::class);
         $this->expectExceptionMessage('bin inbound/DEFAULT');
 
         app(InventoryService::class)->adjust([

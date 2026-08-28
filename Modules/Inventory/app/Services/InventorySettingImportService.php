@@ -12,6 +12,7 @@ use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
+use Modules\Warehouse\Services\BinMultiSkuRuleService;
 use Modules\Warehouse\Services\BinOccupancyGuard;
 use Modules\Warehouse\Services\SkuHomeBinGuard;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -23,17 +24,25 @@ class InventorySettingImportService
     use StockLockable;
 
     public const CACHE_PREFIX = 'inventory-setting-import:';
+
     public const CACHE_TTL_MINUTES = 30;
+
     public const MAX_ROWS = 5000;
 
     public const TYPE_SAFE_STOCK = 'safe-stock';
+
     public const TYPE_MIN_STOCK = 'min-stock';
+
     public const TYPE_RACK = 'rack-allocation';
 
     private const SKU_ALIASES = ['kode_produk', 'item_code', 'sku'];
+
     private const SAFE_ALIASES = ['batas_stok_aman', 'safe_stock'];
+
     private const MIN_ALIASES = ['batas_stok_menipis', 'min_stock'];
+
     private const LOCATION_ALIASES = ['location_name', 'lokasi', 'nama_lokasi', 'nama lokasi'];
+
     private const BIN_ALIASES = ['bin_final_code', 'rak', 'kode_rak', 'kode rak', 'kode_final_rak', 'kode final rak'];
 
     public function __construct(
@@ -48,14 +57,14 @@ class InventorySettingImportService
             throw new \Exception('File kosong atau format kolom tidak dikenali.');
         }
         if (count($rows) > self::MAX_ROWS) {
-            throw new \Exception('Maksimal ' . self::MAX_ROWS . ' baris. File berisi ' . count($rows) . ' baris.');
+            throw new \Exception('Maksimal '.self::MAX_ROWS.' baris. File berisi '.count($rows).' baris.');
         }
 
         return match ($type) {
             self::TYPE_SAFE_STOCK => $this->previewThreshold($rows, 'safe_stock', self::SAFE_ALIASES, false),
-            self::TYPE_MIN_STOCK  => $this->previewThreshold($rows, 'min_stock', self::MIN_ALIASES, true),
-            self::TYPE_RACK       => $this->previewRack($rows),
-            default               => throw new \Exception('Jenis import tidak dikenali.'),
+            self::TYPE_MIN_STOCK => $this->previewThreshold($rows, 'min_stock', self::MIN_ALIASES, true),
+            self::TYPE_RACK => $this->previewRack($rows),
+            default => throw new \Exception('Jenis import tidak dikenali.'),
         };
     }
 
@@ -86,12 +95,14 @@ class InventorySettingImportService
             if (! $variant) {
                 $items[] = $this->thresholdRow($rowNo, $sku, null, null, null, 'error', 'SKU tidak terdaftar.');
                 $errors++;
+
                 continue;
             }
 
             if ($rawValue === null || $rawValue === '' || ! is_numeric($rawValue)) {
                 $items[] = $this->thresholdRow($rowNo, $sku, $names[$variant->product_id] ?? '', (int) $variant->{$column}, null, 'error', 'Nilai harus berupa angka.');
                 $errors++;
+
                 continue;
             }
 
@@ -107,6 +118,7 @@ class InventorySettingImportService
                     $mustBePositive ? 'Nilai harus lebih besar dari 0.' : 'Nilai tidak boleh kurang dari 0.',
                 );
                 $errors++;
+
                 continue;
             }
 
@@ -126,9 +138,9 @@ class InventorySettingImportService
         $summary = ['total_rows' => count($rows), 'valid' => $valid, 'error' => $errors];
 
         return $this->store([
-            'type'    => $column === 'safe_stock' ? self::TYPE_SAFE_STOCK : self::TYPE_MIN_STOCK,
-            'column'  => $column,
-            'items'   => $items,
+            'type' => $column === 'safe_stock' ? self::TYPE_SAFE_STOCK : self::TYPE_MIN_STOCK,
+            'column' => $column,
+            'items' => $items,
             'summary' => $summary,
         ]) + ['items' => $items, 'summary' => $summary];
     }
@@ -136,14 +148,14 @@ class InventorySettingImportService
     protected function thresholdRow(int $rowNo, string $sku, ?string $name, ?int $current, ?int $new, string $status, ?string $message, ?string $itemId = null): array
     {
         return [
-            'row_no'       => $rowNo,
-            'sku'          => $sku,
+            'row_no' => $rowNo,
+            'sku' => $sku,
             'product_name' => $name,
-            'current'      => $current,
-            'new'          => $new,
-            'status'       => $status,
-            'message'      => $message,
-            'item_id'      => $itemId,
+            'current' => $current,
+            'new' => $new,
+            'status' => $status,
+            'message' => $message,
+            'item_id' => $itemId,
         ];
     }
 
@@ -159,7 +171,7 @@ class InventorySettingImportService
 
         $homeGuard = app(SkuHomeBinGuard::class);
         $binGuard = app(BinOccupancyGuard::class);
-        $ruleService = app(\Modules\Warehouse\Services\BinMultiSkuRuleService::class);
+        $ruleService = app(BinMultiSkuRuleService::class);
 
         $items = [];
         $manualMoves = [];
@@ -178,34 +190,38 @@ class InventorySettingImportService
             $push = function (string $status, string $message, array $extra = []) use (&$items, &$counts, $rowNo, $sku, $locName, $binCode) {
                 $counts[$status] = ($counts[$status] ?? 0) + 1;
                 $items[] = array_merge([
-                    'row_no'         => $rowNo,
-                    'sku'            => $sku,
-                    'location_name'  => $locName,
+                    'row_no' => $rowNo,
+                    'sku' => $sku,
+                    'location_name' => $locName,
                     'bin_final_code' => $binCode,
-                    'status'         => $status,
-                    'message'        => $message,
+                    'status' => $status,
+                    'message' => $message,
                 ], $extra);
             };
 
             $variant = $variants->get(strtolower($sku));
             if (! $variant) {
                 $push('error', 'SKU tidak terdaftar.');
+
                 continue;
             }
 
             $location = $locByName->get(strtolower($locName)) ?? $locByCode->get(strtolower($locName));
             if (! $location) {
                 $push('error', "Lokasi \"{$locName}\" tidak ditemukan.");
+
                 continue;
             }
 
             $bin = LocationBin::where('location_id', $location->id)->where('bin_final_code', $binCode)->first(['id', 'location_id', 'bin_final_code', 'is_inbound']);
             if (! $bin) {
                 $push('error', "Rak \"{$binCode}\" tidak ada di lokasi ini.");
+
                 continue;
             }
             if ($bin->is_inbound) {
                 $push('error', 'Rak inbound tidak bisa dijadikan alokasi.');
+
                 continue;
             }
 
@@ -213,6 +229,7 @@ class InventorySettingImportService
 
             if ($homeBinId === $bin->id) {
                 $push('already', 'SKU sudah berada di rak ini.', ['product_name' => $names[$variant->product_id] ?? '']);
+
                 continue;
             }
 
@@ -220,14 +237,15 @@ class InventorySettingImportService
                 $currentCode = LocationBin::whereKey($homeBinId)->value('bin_final_code');
                 $push('manual_move', "Stok sudah ada di rak {$currentCode}. Pindahkan ke {$binCode} lewat Pindah Bin secara manual.", [
                     'product_name' => $names[$variant->product_id] ?? '',
-                    'current_bin'  => $currentCode,
+                    'current_bin' => $currentCode,
                 ]);
                 $manualMoves[] = [
-                    'sku'            => $sku,
-                    'location_name'  => $location->location_name,
-                    'current_bin'    => $currentCode,
-                    'target_bin'     => $binCode,
+                    'sku' => $sku,
+                    'location_name' => $location->location_name,
+                    'current_bin' => $currentCode,
+                    'target_bin' => $binCode,
                 ];
+
                 continue;
             }
 
@@ -235,6 +253,7 @@ class InventorySettingImportService
                 $occupant = $binGuard->currentOccupantItemId($bin->id);
                 if ($occupant !== null && $occupant !== $variant->id) {
                     $push('error', 'Rak sudah berisi SKU lain (gudang kecil = 1 rak 1 SKU).');
+
                     continue;
                 }
             }
@@ -247,23 +266,24 @@ class InventorySettingImportService
 
             if (! $hasPending) {
                 $push('error', 'Tidak ada stok pending untuk ditempatkan (SKU belum diterima di gudang ini).');
+
                 continue;
             }
 
             $push('place', 'Akan ditempatkan ke rak ini saat disimpan.', [
                 'product_name' => $names[$variant->product_id] ?? '',
-                'item_id'      => $variant->id,
-                'location_id'  => $location->id,
-                'bin_id'       => $bin->id,
+                'item_id' => $variant->id,
+                'location_id' => $location->id,
+                'bin_id' => $bin->id,
             ]);
         }
 
         $summary = array_merge(['total_rows' => count($rows)], $counts);
 
         return $this->store([
-            'type'         => self::TYPE_RACK,
-            'items'        => $items,
-            'summary'      => $summary,
+            'type' => self::TYPE_RACK,
+            'items' => $items,
+            'summary' => $summary,
             'manual_moves' => $manualMoves,
         ]) + ['items' => $items, 'summary' => $summary, 'manual_moves' => $manualMoves];
     }
@@ -312,7 +332,7 @@ class InventorySettingImportService
         }
 
         return [
-            'applied'      => $applied,
+            'applied' => $applied,
             'manual_moves' => count($preview['manual_moves'] ?? []),
         ];
     }
@@ -324,6 +344,7 @@ class InventorySettingImportService
 
         $this->withStockLock($itemId, $locationId, function () use ($locationId, $binId, $itemId, $userId) {
             DB::transaction(function () use ($locationId, $binId, $itemId, $userId) {
+                $transactionNumber = 'RACK-IMPORT-'.Str::upper(Str::random(12));
                 $sources = Inventory::query()->pendingPlacement()
                     ->where('inventories.location_id', $locationId)
                     ->where('inventories.item_id', $itemId)
@@ -337,14 +358,17 @@ class InventorySettingImportService
                         continue;
                     }
                     $this->inventoryService->putaway([
-                        'item_id'            => $itemId,
-                        'location_id'        => $locationId,
-                        'source_bin_id'      => $row->bin_id,
+                        'item_id' => $itemId,
+                        'location_id' => $locationId,
+                        'source_bin_id' => $row->bin_id,
                         'destination_bin_id' => $binId,
-                        'qty'                => $qty,
-                        'batch_no'           => $row->batch_no ?? '',
-                        'serial_no'          => $row->serial_no ?? '',
-                        'created_by'         => "user:{$userId}",
+                        'qty' => $qty,
+                        'batch_no' => $row->batch_no ?? '',
+                        'serial_no' => $row->serial_no ?? '',
+                        'created_by' => "user:{$userId}",
+                        'transaction_number' => $transactionNumber,
+                        'source_out' => 'RACK_PLACEMENT_OUT',
+                        'source_in' => 'RACK_PLACEMENT_IN',
                     ]);
                 }
             });
@@ -353,20 +377,20 @@ class InventorySettingImportService
 
     protected function store(array $payload): array
     {
-        $token = 'imp_' . Str::uuid()->toString();
-        Cache::put(self::CACHE_PREFIX . $token, $payload, now()->addMinutes(self::CACHE_TTL_MINUTES));
+        $token = 'imp_'.Str::uuid()->toString();
+        Cache::put(self::CACHE_PREFIX.$token, $payload, now()->addMinutes(self::CACHE_TTL_MINUTES));
 
         return ['token' => $token];
     }
 
     public function getPreview(string $token): ?array
     {
-        return Cache::get(self::CACHE_PREFIX . $token);
+        return Cache::get(self::CACHE_PREFIX.$token);
     }
 
     public function forgetPreview(string $token): void
     {
-        Cache::forget(self::CACHE_PREFIX . $token);
+        Cache::forget(self::CACHE_PREFIX.$token);
     }
 
     protected function pick(array $assoc, array $aliases)
@@ -410,6 +434,7 @@ class InventorySettingImportService
             if ($header === null) {
                 $line[0] = preg_replace('/^\xEF\xBB\xBF/', '', (string) ($line[0] ?? ''));
                 $header = array_map(fn ($h) => $this->norm($h), $line);
+
                 continue;
             }
             $rows = $this->appendRow($rows, $header, $line);
@@ -472,12 +497,12 @@ class InventorySettingImportService
     {
         [$title, $headers, $examples] = match ($type) {
             self::TYPE_SAFE_STOCK => ['Batas Stok Aman', ['Kode_Produk', 'Batas_Stok_Aman'], [['SKU-CONTOH-1', 100]]],
-            self::TYPE_MIN_STOCK  => ['Batas Stok Menipis', ['Kode_Produk', 'Batas_Stok_Menipis'], [['SKU-CONTOH-1', 50]]],
-            self::TYPE_RACK       => ['Alokasi Rak', ['SKU', 'Lokasi', 'Rak'], [['SKU-CONTOH-1', 'Gudang Kecil', 'O-C3-K1-X4']]],
-            default               => throw new \Exception('Jenis template tidak dikenali.'),
+            self::TYPE_MIN_STOCK => ['Batas Stok Menipis', ['Kode_Produk', 'Batas_Stok_Menipis'], [['SKU-CONTOH-1', 50]]],
+            self::TYPE_RACK => ['Alokasi Rak', ['SKU', 'Lokasi', 'Rak'], [['SKU-CONTOH-1', 'Gudang Kecil', 'O-C3-K1-X4']]],
+            default => throw new \Exception('Jenis template tidak dikenali.'),
         };
 
-        $spreadsheet = new Spreadsheet();
+        $spreadsheet = new Spreadsheet;
 
         $instr = $spreadsheet->getActiveSheet();
         $instr->setTitle('Instruksi');

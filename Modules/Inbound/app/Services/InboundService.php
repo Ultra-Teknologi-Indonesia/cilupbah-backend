@@ -3,6 +3,7 @@
 namespace Modules\Inbound\Services;
 
 use App\Enums\AssignmentActionEnum;
+use App\Enums\ClientChannelEnum;
 use App\Enums\UnassignReasonEnum;
 use App\Exceptions\AssignmentLockException;
 use App\Exceptions\InboundSessionClosedException;
@@ -10,43 +11,50 @@ use App\Exceptions\MobileSessionActiveException;
 use App\Exceptions\PutawayActiveException;
 use App\Exceptions\UserFacingException;
 use App\Models\AssignmentHistory;
+use App\Models\User;
+use App\Support\ActorName;
+use App\Support\WarehouseAccess;
 use App\Traits\AutoScopeMobileToAuth;
 use App\Traits\EnforcesAssignmentChannel;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
-use Modules\Inbound\Repositories\InboundRepository;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Models\InboundAssignment;
 use Modules\Inbound\Models\InboundItem;
 use Modules\Inbound\Models\InboundParticipant;
 use Modules\Inbound\Models\InboundReceipt;
+use Modules\Inbound\Repositories\InboundRepository;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryMovement;
+use Modules\Inventory\Models\InventoryTransfer;
 use Modules\Inventory\Models\Putaway;
 use Modules\Inventory\Models\PutawayItem;
-use Modules\Inventory\Models\PutawayPlacement;
 use Modules\Inventory\Models\PutawayItemSource;
+use Modules\Inventory\Models\PutawayPlacement;
 use Modules\Inventory\Models\PutawaySource;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Services\InventoryService;
+use Modules\Inventory\Services\PurchaseCostService;
 use Modules\Inventory\Services\PutawayService;
-use Modules\Product\Models\ProductVariant;
-use Modules\Warehouse\Models\LocationBin;
 use Modules\Notification\Events\TaskAssigned;
 use Modules\Notification\Services\NotificationDispatcher;
+use Modules\Product\Models\ProductVariant;
 use Modules\Purchase\Models\PurchaseOrder;
 use Modules\Purchase\Models\PurchaseOrderItem;
 use Modules\Purchase\Repositories\PurchaseOrderRepository;
+use Modules\Warehouse\Models\LocationBin;
 use Modules\Warehouse\Services\LocationBinService;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException;
 
 class InboundService
 {
-    use EnforcesAssignmentChannel;
     use AutoScopeMobileToAuth;
+    use EnforcesAssignmentChannel;
 
     public const NOTIF_PENEMPATAN = 'view-penempatan';
 
@@ -180,7 +188,7 @@ class InboundService
             $query->where('location_id', $locationId);
         }
 
-        \App\Support\WarehouseAccess::apply($query, 'location_id');
+        WarehouseAccess::apply($query, 'location_id');
 
         $rows = $query
             ->selectRaw('status, COUNT(*) as total')
@@ -229,10 +237,10 @@ class InboundService
             'items' => $items->items(),
             'meta' => [
                 'current_page' => $items->currentPage(),
-                'last_page'    => $items->lastPage(),
-                'per_page'     => $items->perPage(),
-                'total'        => $items->total(),
-                'totals'       => $this->getItemTotals($inboundId),
+                'last_page' => $items->lastPage(),
+                'per_page' => $items->perPage(),
+                'total' => $items->total(),
+                'totals' => $this->getItemTotals($inboundId),
             ],
         ];
     }
@@ -325,17 +333,17 @@ class InboundService
     {
         return match ($inbound->type) {
             Inbound::TYPE_PURCHASE_ORDER => 'PURCHASE',
-            Inbound::TYPE_SALES_RETURN   => 'SALES_RETURN',
-            Inbound::TYPE_TRANSIT_IN     => 'TRANSFER_IN',
-            Inbound::TYPE_CONSIGNMENT    => 'CONSIGNMENT',
-            default                      => 'ADJUSTMENT',
+            Inbound::TYPE_SALES_RETURN => 'SALES_RETURN',
+            Inbound::TYPE_TRANSIT_IN => 'TRANSFER_IN',
+            Inbound::TYPE_CONSIGNMENT => 'CONSIGNMENT',
+            default => 'ADJUSTMENT',
         };
     }
 
     public function createDraft(array $data): Inbound
     {
         return DB::transaction(function () use ($data) {
-            $data['transaction_number'] = $data['transaction_number'] ?? 'INB-' . Str::upper(Str::random(8));
+            $data['transaction_number'] = $data['transaction_number'] ?? 'INB-'.Str::upper(Str::random(8));
             $data['status'] = Inbound::STATUS_DRAFT;
 
             $inbound = $this->inboundRepository->create($data);
@@ -368,14 +376,14 @@ class InboundService
                 throw new UserFacingException(
                     title: 'PO belum punya item',
                     message: "Auto-create Inbound dari PO {$po->po_number} dibatalkan karena PO belum punya item. "
-                        . 'Pastikan items sudah persist (DB::afterCommit) sebelum panggil createDraftFromPO().',
+                        .'Pastikan items sudah persist (DB::afterCommit) sebelum panggil createDraftFromPO().',
                     status: 500,
                     errors: ['code' => 'PO_ITEMS_EMPTY'],
                 );
             }
 
             do {
-                $candidate = 'INB-' . Str::upper(Str::random(8));
+                $candidate = 'INB-'.Str::upper(Str::random(8));
             } while (Inbound::where('transaction_number', $candidate)->exists());
 
             $poNumber = $po->po_number ?? $po->purchase_order_number ?? '';
@@ -385,30 +393,32 @@ class InboundService
             }
 
             $inbound = $this->inboundRepository->create([
-                'location_id'        => $po->location_id,
+                'location_id' => $po->location_id,
                 'transaction_number' => $candidate,
-                'reference_number'   => $poNumber ?: null,
-                'type'               => Inbound::TYPE_PURCHASE_ORDER,
-                'source_type'        => 'purchase_order',
-                'source_id'          => $po->id,
-                'status'             => Inbound::STATUS_DRAFT,
-                'expected_date'      => now(),
-                'created_by'         => $createdBy,
-                'notes'              => $inboundNotes,
+                'reference_number' => $poNumber ?: null,
+                'type' => Inbound::TYPE_PURCHASE_ORDER,
+                'source_type' => 'purchase_order',
+                'source_id' => $po->id,
+                'status' => Inbound::STATUS_DRAFT,
+                'expected_date' => now(),
+                'created_by' => $createdBy,
+                'notes' => $inboundNotes,
             ]);
 
             foreach ($po->items as $poItem) {
                 if ($isAdditional) {
                     $remaining = max(0, (int) $poItem->qty - (int) $poItem->received_qty);
-                    if ($remaining <= 0) continue;
+                    if ($remaining <= 0) {
+                        continue;
+                    }
                     $expectedQty = $remaining;
                 } else {
                     $expectedQty = (int) $poItem->qty;
                 }
 
                 $this->inboundRepository->createItem([
-                    'inbound_id'   => $inbound->id,
-                    'item_id'      => $poItem->item_id,
+                    'inbound_id' => $inbound->id,
+                    'item_id' => $poItem->item_id,
                     'expected_qty' => $expectedQty,
                     'received_qty' => 0,
                 ]);
@@ -462,12 +472,13 @@ class InboundService
                     if ((int) $row->expected_qty !== $qty) {
                         $row->update(['expected_qty' => $qty]);
                     }
+
                     continue;
                 }
 
                 $this->inboundRepository->createItem([
-                    'inbound_id'   => $inbound->id,
-                    'item_id'      => $itemId,
+                    'inbound_id' => $inbound->id,
+                    'item_id' => $itemId,
                     'expected_qty' => $qty,
                     'received_qty' => 0,
                 ]);
@@ -516,7 +527,7 @@ class InboundService
 
         if ($keptIds->isNotEmpty()) {
             Log::warning('resyncDraftFromPO: baris inbound dipertahankan karena sudah tersentuh penerimaan/putaway', [
-                'inbound_id'       => $inbound->id,
+                'inbound_id' => $inbound->id,
                 'inbound_item_ids' => $keptIds->values()->all(),
             ]);
         }
@@ -578,7 +589,7 @@ class InboundService
                     $take = min($fromPutaway, (int) $placement->placement_qty);
                     $fromPutaway -= $take;
 
-                    $key = $variantId . '|' . $placement->bin_id;
+                    $key = $variantId.'|'.$placement->bin_id;
                     $needed[$key] = ($needed[$key] ?? 0) + $take;
                 }
             }
@@ -594,7 +605,7 @@ class InboundService
             if ($onHand < $need) {
                 $sku = ProductVariant::where('id', $variantId)->value('sku') ?? $variantId;
                 $binCode = LocationBin::where('id', $binId)->value('bin_final_code') ?? $binId;
-                $shortfalls[] = "- {$sku} @ {$binCode}: butuh {$need}, tersedia {$onHand} (kurang " . ($need - $onHand) . ')';
+                $shortfalls[] = "- {$sku} @ {$binCode}: butuh {$need}, tersedia {$onHand} (kurang ".($need - $onHand).')';
             }
         }
 
@@ -605,8 +616,8 @@ class InboundService
         throw ValidationException::withMessages([
             'items' => [
                 "Perubahan ini perlu menarik balik stok yang sudah tidak ada di rak:\n"
-                . implode("\n", $shortfalls)
-                . "\n\nBarangnya sudah dipicking/dipindah/terjual. Batalkan pesanan atau transfer terkait dulu.",
+                .implode("\n", $shortfalls)
+                ."\n\nBarangnya sudah dipicking/dipindah/terjual. Batalkan pesanan atau transfer terkait dulu.",
             ],
         ]);
     }
@@ -645,9 +656,9 @@ class InboundService
                 $this->putawayService->deletePlacements(
                     $placement->putaway_id,
                     [[
-                        'item_id'      => $placement->putaway_item_id,
+                        'item_id' => $placement->putaway_item_id,
                         'placement_id' => $placement->placement_id,
-                        'qty'          => $take,
+                        'qty' => $take,
                     ]],
                     $userId ?? 'system',
                 );
@@ -661,13 +672,13 @@ class InboundService
 
             if ($notPutAway > 0 && $defaultBin && $inbound) {
                 $this->inventoryService->adjustInboundStaging([
-                    'item_id'            => $item->item_id,
-                    'location_id'        => $inbound->location_id,
-                    'bin_id'             => $defaultBin->id,
-                    'qty'                => -$notPutAway,
-                    'transaction_number' => $inbound->transaction_number . '-KOREKSI-PO',
-                    'source'             => 'PURCHASE_REVERSAL',
-                    'created_by'         => $createdBy,
+                    'item_id' => $item->item_id,
+                    'location_id' => $inbound->location_id,
+                    'bin_id' => $defaultBin->id,
+                    'qty' => -$notPutAway,
+                    'transaction_number' => $inbound->transaction_number.'-KOREKSI-PO',
+                    'source' => 'PURCHASE_REVERSAL',
+                    'created_by' => $createdBy,
                 ]);
             }
 
@@ -692,7 +703,7 @@ class InboundService
             unset($data['items']);
 
             do {
-                $candidate = 'INB-' . Str::upper(Str::random(8));
+                $candidate = 'INB-'.Str::upper(Str::random(8));
             } while (Inbound::where('transaction_number', $candidate)->exists());
             $data['transaction_number'] = $candidate;
             $data['status'] = Inbound::STATUS_DRAFT;
@@ -705,33 +716,35 @@ class InboundService
                 $rejectedQty = $itemData['rejected_qty'] ?? 0;
 
                 $inboundItem = $this->inboundRepository->createItem([
-                    'inbound_id'     => $inbound->id,
-                    'item_id'        => $itemData['item_id'],
-                    'expected_qty'   => $itemData['expected_qty'],
-                    'received_qty'   => 0,
-                    'rejected_qty'   => $rejectedQty,
+                    'inbound_id' => $inbound->id,
+                    'item_id' => $itemData['item_id'],
+                    'expected_qty' => $itemData['expected_qty'],
+                    'received_qty' => 0,
+                    'rejected_qty' => $rejectedQty,
                     'rejection_note' => $itemData['rejection_note'] ?? null,
-                    'condition'      => $rejectedQty > 0 ? 'PARTIAL' : 'GOOD',
-                    'notes'          => $itemData['notes'] ?? null,
+                    'condition' => $rejectedQty > 0 ? 'PARTIAL' : 'GOOD',
+                    'notes' => $itemData['notes'] ?? null,
                 ]);
 
                 if ($acceptedQty > 0) {
                     $receiveItems[] = [
                         'inbound_item_id' => $inboundItem->id,
-                        'qty'             => $acceptedQty,
-                        'condition'       => 'GOOD',
+                        'qty' => $acceptedQty,
+                        'condition' => 'GOOD',
                     ];
                 }
             }
 
             if (empty($receiveItems)) {
                 $inbound->update(['status' => Inbound::STATUS_RECEIVED]);
+
                 return $inbound->load('items');
             }
 
             return $this->receive($inbound->id, [
                 'received_by' => $data['created_by'],
-                'items'       => $receiveItems,
+                'idempotency_key' => "purchase-auto-receive:{$inbound->id}",
+                'items' => $receiveItems,
             ]);
         });
     }
@@ -754,8 +767,8 @@ class InboundService
 
             foreach ($items as $itemData) {
                 $this->inboundRepository->createItem([
-                    'inbound_id'   => $inbound->id,
-                    'item_id'      => $itemData['item_id'],
+                    'inbound_id' => $inbound->id,
+                    'item_id' => $itemData['item_id'],
                     'expected_qty' => $itemData['expected_qty'],
                     'received_qty' => $itemData['expected_qty'],
                 ]);
@@ -774,21 +787,21 @@ class InboundService
 
         return DB::transaction(function () use ($data) {
             $inbound = $this->inboundRepository->create([
-                'location_id'        => $data['location_id'],
+                'location_id' => $data['location_id'],
                 'transaction_number' => $data['transaction_number'] ?? app(InventoryService::class)->generateTrfiNumber(),
-                'reference_number'   => $data['reference_number'] ?? null,
-                'type'               => Inbound::TYPE_TRANSIT_IN,
-                'source_type'        => 'transfer',
-                'source_id'          => $data['source_id'],
-                'status'             => Inbound::STATUS_DRAFT,
-                'expected_date'      => $data['expected_date'] ?? now(),
-                'created_by'         => $data['created_by'],
+                'reference_number' => $data['reference_number'] ?? null,
+                'type' => Inbound::TYPE_TRANSIT_IN,
+                'source_type' => 'transfer',
+                'source_id' => $data['source_id'],
+                'status' => Inbound::STATUS_DRAFT,
+                'expected_date' => $data['expected_date'] ?? now(),
+                'created_by' => $data['created_by'],
             ]);
 
             foreach ($data['items'] as $itemData) {
                 $this->inboundRepository->createItem([
-                    'inbound_id'   => $inbound->id,
-                    'item_id'      => $itemData['item_id'],
+                    'inbound_id' => $inbound->id,
+                    'item_id' => $itemData['item_id'],
                     'expected_qty' => $itemData['expected_qty'],
                     'received_qty' => 0,
                 ]);
@@ -820,8 +833,8 @@ class InboundService
 
             $inbound->update([
 
-                'status'             => $anyShortfall ? Inbound::STATUS_PARTIAL : Inbound::STATUS_RECEIVED,
-                'once_received_at'   => $inbound->once_received_at ?? now(),
+                'status' => $anyShortfall ? Inbound::STATUS_PARTIAL : Inbound::STATUS_RECEIVED,
+                'once_received_at' => $inbound->once_received_at ?? now(),
                 'transaction_number' => $data['transaction_number'] ?? $inbound->transaction_number,
             ]);
 
@@ -848,6 +861,7 @@ class InboundService
     {
         $data['type'] = Inbound::TYPE_SALES_RETURN;
         $data['source_type'] = 'sales_return';
+
         return $this->createDraft($data);
     }
 
@@ -855,6 +869,7 @@ class InboundService
     {
         $data['type'] = Inbound::TYPE_CONSIGNMENT;
         $data['source_type'] = 'consignment';
+
         return $this->createDraft($data);
     }
 
@@ -864,10 +879,46 @@ class InboundService
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
 
             if (! $inbound) {
-                throw new UserFacingException(title: 'Tidak ditemukan', message: "Dokumen Inbound tidak ditemukan.", status: 404);
+                throw new UserFacingException(title: 'Tidak ditemukan', message: 'Dokumen Inbound tidak ditemukan.', status: 404);
             }
 
-            if ($this->currentChannel() === \App\Enums\ClientChannelEnum::MOBILE) {
+            $idempotencyKey = trim((string) ($data['idempotency_key'] ?? ''));
+            if (mb_strlen($idempotencyKey) > 100) {
+                throw new UserFacingException(
+                    title: 'Kunci transaksi tidak valid',
+                    message: 'Idempotency-Key maksimal 100 karakter.',
+                    status: 422,
+                    errors: ['code' => 'INVALID_IDEMPOTENCY_KEY'],
+                );
+            }
+
+            $receivedByUserId = auth()->id();
+            if (! $receivedByUserId) {
+                $candidate = (string) ($data['received_by'] ?? '');
+                if (Str::isUuid($candidate)) {
+                    $receivedByUserId = $candidate;
+                }
+            }
+
+            if ($this->currentChannel() === ClientChannelEnum::MOBILE && $idempotencyKey === '') {
+                throw new UserFacingException(
+                    title: 'Aplikasi perlu diperbarui',
+                    message: 'Penerimaan dari aplikasi mobile wajib memiliki kunci transaksi agar retry jaringan tidak menggandakan stok.',
+                    status: 422,
+                    errors: ['code' => 'INBOUND_RECEIPT_IDEMPOTENCY_KEY_REQUIRED'],
+                );
+            }
+
+            if ($idempotencyKey !== '' && $this->isReceiptRequestReplay(
+                $inbound,
+                $data['items'],
+                $idempotencyKey,
+                $receivedByUserId,
+            )) {
+                return $this->getById($inboundId);
+            }
+
+            if ($this->currentChannel() === ClientChannelEnum::MOBILE) {
                 $this->assertMobileCanMutate($inbound, (string) $data['received_by']);
             } else {
                 $this->assertWebCanMutate($inbound);
@@ -879,20 +930,12 @@ class InboundService
 
             $defaultBin = $this->binService->getDefaultBin($inbound->location_id);
             if (! $defaultBin) {
-                throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: "Gudang ini belum memiliki Bin Inbound default.", status: 422);
+                throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: 'Gudang ini belum memiliki Bin Inbound default.', status: 422);
             }
 
             $itemsDict = $inbound->items->keyBy('id');
 
             $landedCostMap = $this->resolveLandedCostMap($inbound);
-
-            $receivedByUserId = auth()->id();
-            if (! $receivedByUserId) {
-                $candidate = (string) ($data['received_by'] ?? '');
-                if (\Illuminate\Support\Str::isUuid($candidate)) {
-                    $receivedByUserId = $candidate;
-                }
-            }
 
             foreach ($data['items'] as $receiptData) {
                 $inboundItem = $itemsDict->get($receiptData['inbound_item_id']);
@@ -903,15 +946,16 @@ class InboundService
                 $condition = $receiptData['condition'] ?? 'GOOD';
                 $isDamage = $condition === 'DAMAGE';
 
-                $this->inboundRepository->createReceipt([
-                    'inbound_item_id'     => $inboundItem->id,
-                    'qty'                 => $receiptData['qty'],
-                    'bin_id'              => $defaultBin->id,
-                    'batch_no'            => $receiptData['batch_no'] ?? null,
-                    'serial_no'           => $receiptData['serial_no'] ?? null,
-                    'condition'           => $condition,
+                $receipt = $this->inboundRepository->createReceipt([
+                    'inbound_item_id' => $inboundItem->id,
+                    'idempotency_key' => $idempotencyKey !== '' ? $idempotencyKey : null,
+                    'qty' => $receiptData['qty'],
+                    'bin_id' => $defaultBin->id,
+                    'batch_no' => $receiptData['batch_no'] ?? null,
+                    'serial_no' => $receiptData['serial_no'] ?? null,
+                    'condition' => $condition,
                     'received_by_user_id' => $receivedByUserId,
-                    'received_date'       => now(),
+                    'received_date' => now(),
                 ]);
 
                 if ($isDamage) {
@@ -924,31 +968,27 @@ class InboundService
 
                 if (! $isDamage) {
                     $this->inventoryService->adjustInboundStaging([
-                        'item_id'            => $inboundItem->item_id,
-                        'location_id'        => $inbound->location_id,
-                        'bin_id'             => $defaultBin->id,
-                        'batch_no'           => $receiptData['batch_no'] ?? '',
-                        'serial_no'          => $receiptData['serial_no'] ?? '',
-                        'qty'                => $receiptData['qty'],
+                        'item_id' => $inboundItem->item_id,
+                        'location_id' => $inbound->location_id,
+                        'bin_id' => $defaultBin->id,
+                        'inbound_receipt_id' => $receipt->id,
+                        'batch_no' => $receiptData['batch_no'] ?? '',
+                        'serial_no' => $receiptData['serial_no'] ?? '',
+                        'qty' => $receiptData['qty'],
                         'transaction_number' => $inbound->transaction_number,
-                        'source'             => $this->movementSourceFor($inbound),
-                        'created_by'         => $data['received_by'],
+                        'source' => $this->movementSourceFor($inbound),
+                        'created_by' => $data['received_by'],
                     ]);
                 }
 
                 $landedCost = (float) ($landedCostMap[$inboundItem->item_id] ?? 0);
                 if ($landedCost > 0 && ! $isDamage) {
-                    InventoryMovement::where('transaction_number', $inbound->transaction_number)
-                        ->where('item_id', $inboundItem->item_id)
-                        ->where('location_id', $inbound->location_id)
-                        ->where('bin_id', $defaultBin->id)
-                        ->where('qty', $receiptData['qty'])
+                    InventoryMovement::where('inbound_receipt_id', $receipt->id)
                         ->whereNull('cost_per_unit')
-                        ->orderByDesc('id')
                         ->limit(1)
                         ->update([
                             'cost_per_unit' => $landedCost,
-                            'total_cost'    => round($landedCost * (float) $receiptData['qty'], 2),
+                            'total_cost' => round($landedCost * (float) $receiptData['qty'], 2),
                         ]);
 
                     $this->inventoryService->recalculateAverageCost(
@@ -980,13 +1020,78 @@ class InboundService
         return $result;
     }
 
+    /**
+     * A successful client retry must return the original result without creating
+     * another receipt or movement. A reused key with a different payload is a
+     * conflict, not a new stock operation.
+     */
+    private function isReceiptRequestReplay(
+        Inbound $inbound,
+        array $items,
+        string $idempotencyKey,
+        ?string $receivedByUserId,
+    ): bool {
+        $itemIds = collect($items)->pluck('inbound_item_id')->values();
+        $ownedItemIds = $inbound->items->pluck('id');
+
+        if ($itemIds->diff($ownedItemIds)->isNotEmpty()) {
+            throw new UserFacingException(
+                title: 'Aksi tidak dapat diproses',
+                message: 'Ada item yang tidak terkait dengan dokumen inbound ini.',
+                status: 422,
+                errors: ['code' => 'INBOUND_ITEM_DOCUMENT_MISMATCH'],
+            );
+        }
+
+        $existing = InboundReceipt::query()
+            ->whereIn('inbound_item_id', $itemIds)
+            ->where('idempotency_key', $idempotencyKey)
+            ->lockForUpdate()
+            ->get()
+            ->keyBy('inbound_item_id');
+
+        if ($existing->isEmpty()) {
+            return false;
+        }
+
+        if ($existing->count() !== $itemIds->count()) {
+            throw new UserFacingException(
+                title: 'Penerimaan perlu diperiksa',
+                message: 'Permintaan ulang hanya tercatat sebagian. Data tidak ditambah agar stok tidak menjadi ganda.',
+                status: 409,
+                errors: ['code' => 'INBOUND_RECEIPT_IDEMPOTENCY_PARTIAL'],
+            );
+        }
+
+        foreach ($items as $item) {
+            $receipt = $existing->get($item['inbound_item_id']);
+            $matches = $receipt
+                && (int) $receipt->qty === (int) $item['qty']
+                && (string) $receipt->condition === (string) ($item['condition'] ?? 'GOOD')
+                && (string) ($receipt->batch_no ?? '') === (string) ($item['batch_no'] ?? '')
+                && (string) ($receipt->serial_no ?? '') === (string) ($item['serial_no'] ?? '')
+                && (string) ($receipt->received_by_user_id ?? '') === (string) ($receivedByUserId ?? '');
+
+            if (! $matches) {
+                throw new UserFacingException(
+                    title: 'Permintaan penerimaan tidak konsisten',
+                    message: 'Kunci transaksi ini sudah pernah digunakan dengan jumlah atau barang yang berbeda.',
+                    status: 409,
+                    errors: ['code' => 'INBOUND_RECEIPT_IDEMPOTENCY_CONFLICT'],
+                );
+            }
+        }
+
+        return true;
+    }
+
     public function closeReceiving(string $inboundId, string $closedBy): Inbound
     {
         $result = DB::transaction(function () use ($inboundId, $closedBy) {
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
 
             if (! $inbound) {
-                throw new UserFacingException(title: 'Tidak ditemukan', message: "Dokumen Inbound tidak ditemukan.", status: 404);
+                throw new UserFacingException(title: 'Tidak ditemukan', message: 'Dokumen Inbound tidak ditemukan.', status: 404);
             }
 
             $closeable = in_array($inbound->status, [
@@ -1048,108 +1153,22 @@ class InboundService
 
     public function processPutaway(string $inboundId, array $data): Inbound
     {
-        return DB::transaction(function () use ($inboundId, $data) {
-            $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
-
-            if (! $inbound) {
-                throw new UserFacingException(title: 'Tidak ditemukan', message: "Dokumen Inbound tidak ditemukan.", status: 404);
-            }
-
-            if (! $inbound->isPutawayable()) {
-                throw new UserFacingException(title: 'Status tidak sesuai', message: "Inbound berstatus {$inbound->status}, tidak bisa di-putaway. Harus berstatus RECEIVED terlebih dahulu.", status: 409);
-            }
-
-            $defaultBin = $this->binService->getDefaultBin($inbound->location_id);
-            if (! $defaultBin) {
-                throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: "Gudang ini belum memiliki Bin Inbound default.", status: 422);
-            }
-
-            $itemsDict = $inbound->items->keyBy('id');
-
-            foreach ($data['putaway_items'] as $putawayItem) {
-                $inboundItem = $itemsDict->get($putawayItem['inbound_item_id']);
-                if (! $inboundItem) {
-                    throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: "Item ID {$putawayItem['inbound_item_id']} tidak terkait dengan Inbound ini.", status: 422);
-                }
-
-                $pendingQty = $inboundItem->pendingPutawayQty();
-                if ($putawayItem['qty'] > $pendingQty) {
-                    throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: "Qty putaway ({$putawayItem['qty']}) melebihi pending putaway ({$pendingQty}) untuk item {$inboundItem->item_id}.", status: 422);
-                }
-
-                $this->inventoryService->putaway([
-                    'item_id'            => $inboundItem->item_id,
-                    'location_id'        => $inbound->location_id,
-                    'source_bin_id'      => $defaultBin->id,
-                    'destination_bin_id' => $putawayItem['destination_bin_id'],
-                    'qty'                => $putawayItem['qty'],
-                    'batch_no'           => $putawayItem['batch_no'] ?? '',
-                    'serial_no'          => $putawayItem['serial_no'] ?? '',
-                    'created_by'         => $data['created_by'],
-                ]);
-
-                $this->inboundRepository->updateItemPutawayQty($inboundItem->id, $putawayItem['qty']);
-                $inboundItem->putaway_qty += $putawayItem['qty'];
-            }
-
-            return $this->getById($inboundId);
-        });
+        throw new UserFacingException(
+            title: 'Gunakan dokumen penempatan',
+            message: 'Jalur penempatan lama dinonaktifkan karena tidak membentuk kronologi dan counter sumber secara lengkap.',
+            status: 409,
+            errors: ['code' => 'LEGACY_PUTAWAY_DISABLED'],
+        );
     }
 
     public function autoPutaway(string $inboundId, string $createdBy): Inbound
     {
-        return DB::transaction(function () use ($inboundId, $createdBy) {
-            $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
-
-            if (! $inbound) {
-                throw new UserFacingException(title: 'Tidak ditemukan', message: "Dokumen Inbound tidak ditemukan.", status: 404);
-            }
-
-            if (! $inbound->isPutawayable()) {
-                throw new UserFacingException(title: 'Status tidak sesuai', message: "Inbound berstatus {$inbound->status}, tidak bisa di-putaway.", status: 409);
-            }
-
-            $defaultBin = $this->binService->getDefaultBin($inbound->location_id);
-            if (! $defaultBin) {
-                throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: "Gudang ini belum memiliki Bin Inbound default.", status: 422);
-            }
-
-            $pendingItems = $this->inboundRepository->getItemsPendingPutaway($inboundId);
-            if ($pendingItems->isEmpty()) {
-                throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: "Tidak ada item yang perlu di-putaway.", status: 422);
-            }
-
-            $availableBins = $this->binService->getByLocation($inbound->location_id)
-                ->where('is_inbound', false);
-
-            if ($availableBins->isEmpty()) {
-                throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: "Tidak ada bin tujuan yang tersedia di gudang ini.", status: 422);
-            }
-
-            $firstBin = $availableBins->first();
-
-            foreach ($pendingItems as $item) {
-                $pendingQty = $item->pendingPutawayQty();
-                if ($pendingQty <= 0) {
-                    continue;
-                }
-
-                $this->inventoryService->putaway([
-                    'item_id'            => $item->item_id,
-                    'location_id'        => $inbound->location_id,
-                    'source_bin_id'      => $defaultBin->id,
-                    'destination_bin_id' => $firstBin->id,
-                    'qty'                => $pendingQty,
-                    'batch_no'           => '',
-                    'serial_no'          => '',
-                    'created_by'         => $createdBy,
-                ]);
-
-                $this->inboundRepository->updateItemPutawayQty($item->id, $pendingQty);
-            }
-
-            return $this->getById($inboundId);
-        });
+        throw new UserFacingException(
+            title: 'Gunakan dokumen penempatan',
+            message: 'Auto-putaway lama dinonaktifkan. Buat dokumen penempatan agar sumber, progres, dan kronologi selalu tercatat bersama.',
+            status: 409,
+            errors: ['code' => 'LEGACY_PUTAWAY_DISABLED'],
+        );
     }
 
     public function getReceivedItemsPaginated(int $limit = 10)
@@ -1168,7 +1187,7 @@ class InboundService
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
 
             if (! $inbound) {
-                throw new UserFacingException(title: 'Tidak ditemukan', message: "Dokumen Inbound tidak ditemukan.", status: 404);
+                throw new UserFacingException(title: 'Tidak ditemukan', message: 'Dokumen Inbound tidak ditemukan.', status: 404);
             }
 
             if ($inbound->status === Inbound::STATUS_CANCELLED) {
@@ -1181,11 +1200,11 @@ class InboundService
                 : AssignmentActionEnum::REASSIGN;
 
             $assignment = $this->inboundRepository->createAssignment([
-                'inbound_id'  => $inboundId,
+                'inbound_id' => $inboundId,
                 'assigned_to' => $assignedTo,
                 'assigned_by' => $assignedBy,
-                'status'      => InboundAssignment::STATUS_PENDING,
-                'notes'       => $notes,
+                'status' => InboundAssignment::STATUS_PENDING,
+                'notes' => $notes,
             ]);
 
             $inbound->forceFill([
@@ -1242,11 +1261,11 @@ class InboundService
 
             if ($newAssigneeId) {
                 $this->inboundRepository->createAssignment([
-                    'inbound_id'  => $inboundId,
+                    'inbound_id' => $inboundId,
                     'assigned_to' => $newAssigneeId,
                     'assigned_by' => $actorId,
-                    'status'      => InboundAssignment::STATUS_PENDING,
-                    'notes'       => "Handover: {$reason->label()}",
+                    'status' => InboundAssignment::STATUS_PENDING,
+                    'notes' => "Handover: {$reason->label()}",
                 ]);
             }
 
@@ -1309,13 +1328,13 @@ class InboundService
                 }
 
                 $this->inventoryService->adjustInboundStaging([
-                    'item_id'            => $item->item_id,
-                    'location_id'        => $inbound->location_id,
-                    'bin_id'             => $defaultBin->id,
-                    'qty'                => -$received,
-                    'transaction_number' => $inbound->transaction_number . '-RESET',
-                    'source'             => $this->movementSourceFor($inbound),
-                    'created_by'         => "user:{$actorId}",
+                    'item_id' => $item->item_id,
+                    'location_id' => $inbound->location_id,
+                    'bin_id' => $defaultBin->id,
+                    'qty' => -$received,
+                    'transaction_number' => $inbound->transaction_number.'-RESET',
+                    'source' => $this->movementSourceFor($inbound),
+                    'created_by' => "user:{$actorId}",
                 ]);
 
                 $this->inboundRepository->updateItemReceivedQty($item->id, -$received);
@@ -1325,7 +1344,7 @@ class InboundService
                 'assigned_to' => $newAssigneeId,
                 'assigned_by' => $newAssigneeId ? $actorId : null,
                 'assigned_at' => $newAssigneeId ? now() : null,
-                'status'      => Inbound::STATUS_DRAFT,
+                'status' => Inbound::STATUS_DRAFT,
                 'updated_version_at' => now(),
             ])->save();
 
@@ -1386,7 +1405,7 @@ class InboundService
             if ($participant->status !== InboundParticipant::STATUS_ACTIVE) {
                 throw new UserFacingException(
                     title: 'Tidak perlu ditarik',
-                    message: 'Peserta sudah tidak aktif (status: ' . $participant->status . ').',
+                    message: 'Peserta sudah tidak aktif (status: '.$participant->status.').',
                     status: 409,
                     errors: ['code' => 'PARTICIPANT_NOT_ACTIVE'],
                 );
@@ -1416,14 +1435,14 @@ class InboundService
     ): void {
         AssignmentHistory::create([
             'subject_type' => Inbound::class,
-            'subject_id'   => $inbound->id,
+            'subject_id' => $inbound->id,
             'from_user_id' => $fromUserId,
-            'to_user_id'   => $toUserId,
-            'actor_id'     => $actorId,
-            'action'       => $action->value,
-            'channel'      => $this->currentChannel()->value,
-            'reason_code'  => $reason?->value,
-            'reason_note'  => $reasonNote,
+            'to_user_id' => $toUserId,
+            'actor_id' => $actorId,
+            'action' => $action->value,
+            'channel' => $this->currentChannel()->value,
+            'reason_code' => $reason?->value,
+            'reason_note' => $reasonNote,
         ]);
     }
 
@@ -1442,7 +1461,7 @@ class InboundService
         $assignment = InboundAssignment::findOrFail($assignmentId);
 
         if ($assignment->assigned_to !== $userId) {
-            throw new UserFacingException(title: 'Akses ditolak', message: "Assignment ini bukan milik Anda.", status: 403);
+            throw new UserFacingException(title: 'Akses ditolak', message: 'Assignment ini bukan milik Anda.', status: 403);
         }
 
         if ($assignment->status !== InboundAssignment::STATUS_PENDING) {
@@ -1450,7 +1469,7 @@ class InboundService
         }
 
         $assignment->update([
-            'status'     => InboundAssignment::STATUS_IN_PROGRESS,
+            'status' => InboundAssignment::STATUS_IN_PROGRESS,
             'started_at' => now(),
         ]);
 
@@ -1488,13 +1507,13 @@ class InboundService
         }
 
         if (! $item) {
-            throw new UserFacingException(title: 'Tidak ditemukan', message: "QR Code tidak ditemukan.", status: 404);
+            throw new UserFacingException(title: 'Tidak ditemukan', message: 'QR Code tidak ditemukan.', status: 404);
         }
 
         return $item->load('inbound.location', 'variant:id,sku,product_id');
     }
 
-    public function lookupCandidatesByQr(string $code): \Illuminate\Support\Collection
+    public function lookupCandidatesByQr(string $code): Collection
     {
         $code = trim($code);
 
@@ -1517,63 +1536,12 @@ class InboundService
 
     public function scanPutaway(string $inboundItemId, string $binId, int $qty, string $userId): InboundItem
     {
-        return DB::transaction(function () use ($inboundItemId, $binId, $qty, $userId) {
-            $inboundItem = $this->inboundRepository->findItemByUuidForUpdate($inboundItemId);
-
-            if (! $inboundItem) {
-                throw new UserFacingException(
-                    title: 'Aksi tidak dapat diproses',
-                    message: 'Gagal memindai.',
-                    status: 404,
-                    errors: ['detail' => 'QR Code barang tidak ditemukan.'],
-                );
-            }
-
-            $destinationBin = \Modules\Warehouse\Models\LocationBin::find($binId);
-
-            if (! $destinationBin) {
-                throw new UserFacingException(
-                    title: 'Aksi tidak dapat diproses',
-                    message: 'Gagal memindai.',
-                    status: 404,
-                    errors: ['detail' => 'QR Code rak tidak ditemukan.'],
-                );
-            }
-
-            $inbound = $inboundItem->inbound;
-
-            if (! $inbound->isPutawayable() && $inbound->status !== Inbound::STATUS_RECEIVED) {
-                throw new UserFacingException(title: 'Status tidak sesuai', message: "Inbound berstatus {$inbound->status}, tidak bisa di-putaway.", status: 409);
-            }
-
-            $pendingQty = $inboundItem->pendingPutawayQty();
-            if ($qty > $pendingQty) {
-                throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: "Qty putaway ({$qty}) melebihi pending putaway ({$pendingQty}).", status: 422);
-            }
-
-            $defaultBin = $this->binService->getDefaultBin($inbound->location_id);
-            if (! $defaultBin) {
-                throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: "Gudang ini belum memiliki Bin Inbound default.", status: 422);
-            }
-
-            $this->inventoryService->putaway([
-                'item_id'            => $inboundItem->item_id,
-                'location_id'        => $inbound->location_id,
-                'source_bin_id'      => $defaultBin->id,
-                'destination_bin_id' => $destinationBin->id,
-                'qty'                => $qty,
-                'batch_no'           => '',
-                'serial_no'          => '',
-                'created_by'         => "user:{$userId}",
-            ]);
-
-            $this->inboundRepository->updateItemPutawayQty($inboundItem->id, $qty);
-
-            $inbound->load('items');
-            $this->completeAssignmentIfDone($inbound, $userId);
-
-            return $inboundItem->fresh()->load('inbound', 'variant:id,sku,product_id');
-        });
+        throw new UserFacingException(
+            title: 'Gunakan tugas penempatan',
+            message: 'Scan penempatan langsung dari inbound sudah dinonaktifkan. Buka tugas PUT agar dokumen, sumber, progres, dan stok diperbarui sekaligus.',
+            status: 409,
+            errors: ['code' => 'LEGACY_PUTAWAY_DISABLED'],
+        );
     }
 
     private function completeAssignmentIfDone(Inbound $inbound, string $userId): void
@@ -1591,7 +1559,7 @@ class InboundService
             ->where('assigned_to', $userId)
             ->where('status', InboundAssignment::STATUS_IN_PROGRESS)
             ->update([
-                'status'       => InboundAssignment::STATUS_COMPLETED,
+                'status' => InboundAssignment::STATUS_COMPLETED,
                 'completed_at' => now(),
             ]);
     }
@@ -1613,18 +1581,18 @@ class InboundService
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
 
             if (! $inbound) {
-                throw new UserFacingException(title: 'Tidak ditemukan', message: "Dokumen Inbound tidak ditemukan.", status: 404);
+                throw new UserFacingException(title: 'Tidak ditemukan', message: 'Dokumen Inbound tidak ditemukan.', status: 404);
             }
 
             if ($inbound->status === Inbound::STATUS_CANCELLED) {
-                throw new UserFacingException(title: 'Status tidak sesuai', message: "Inbound sudah dibatalkan.", status: 409);
+                throw new UserFacingException(title: 'Status tidak sesuai', message: 'Inbound sudah dibatalkan.', status: 409);
             }
 
             $this->assertWebCanMutate($inbound);
 
             $defaultBin = $this->binService->getDefaultBin($inbound->location_id);
             if (! $defaultBin) {
-                throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: "Gudang ini belum memiliki Bin Inbound default.", status: 422);
+                throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: 'Gudang ini belum memiliki Bin Inbound default.', status: 422);
             }
 
             foreach ($items as $entry) {
@@ -1638,7 +1606,7 @@ class InboundService
                 $item = $this->inboundRepository->findItemByUuidForUpdate($inboundItemId);
 
                 if (! $item || $item->inbound_id !== $inbound->id) {
-                    throw new UserFacingException(title: 'Tidak ditemukan', message: "Item inbound tidak ditemukan.", status: 404);
+                    throw new UserFacingException(title: 'Tidak ditemukan', message: 'Item inbound tidak ditemukan.', status: 404);
                 }
 
                 $qtyRev = $qty ?? (int) $item->received_qty;
@@ -1653,13 +1621,13 @@ class InboundService
                 }
 
                 $this->inventoryService->adjustInboundStaging([
-                    'item_id'            => $item->item_id,
-                    'location_id'        => $inbound->location_id,
-                    'bin_id'             => $defaultBin->id,
-                    'qty'                => -$qtyRev,
-                    'transaction_number' => $inbound->transaction_number . '-KOREKSI',
-                    'source'             => $this->movementSourceFor($inbound),
-                    'created_by'         => "user:{$userId}",
+                    'item_id' => $item->item_id,
+                    'location_id' => $inbound->location_id,
+                    'bin_id' => $defaultBin->id,
+                    'qty' => -$qtyRev,
+                    'transaction_number' => $inbound->transaction_number.'-KOREKSI',
+                    'source' => $this->movementSourceFor($inbound),
+                    'created_by' => "user:{$userId}",
                 ]);
 
                 $this->inboundRepository->updateItemReceivedQty($item->id, -$qtyRev);
@@ -1700,7 +1668,7 @@ class InboundService
         $delta = $after - $before;
         $sign = $delta > 0 ? '+' : '';
         $sku = ProductVariant::find($item->item_id)?->sku;
-        $actor = \App\Models\User::find($userId)?->name ?? 'sistem';
+        $actor = User::find($userId)?->name ?? 'sistem';
 
         return sprintf(
             'Koreksi qty diterima %s%s: %d → %d (%s%d) oleh %s',
@@ -1758,13 +1726,13 @@ class InboundService
                 : $this->buildQtyCorrectionNote($inbound, $item, $current, $targetQty, $userId);
 
             $this->inventoryService->adjustInboundStaging([
-                'item_id'            => $item->item_id,
-                'location_id'        => $inbound->location_id,
-                'bin_id'             => $defaultBin->id,
-                'qty'                => $delta,
-                'transaction_number' => $inbound->transaction_number . '-KOREKSI-QTY',
-                'source'             => 'INBOUND_QTY_CORRECTION',
-                'created_by'         => \App\Support\ActorName::resolve($userId),
+                'item_id' => $item->item_id,
+                'location_id' => $inbound->location_id,
+                'bin_id' => $defaultBin->id,
+                'qty' => $delta,
+                'transaction_number' => $inbound->transaction_number.'-KOREKSI-QTY',
+                'source' => 'INBOUND_QTY_CORRECTION',
+                'created_by' => ActorName::resolve($userId),
             ]);
 
             $this->inboundRepository->updateItemReceivedQty($item->id, $delta);
@@ -1774,14 +1742,14 @@ class InboundService
             }
 
             InboundReceipt::create([
-                'inbound_item_id'     => $item->id,
-                'qty'                 => $delta,
-                'bin_id'              => $defaultBin->id,
-                'condition'           => 'ADJUSTMENT',
-                'notes'               => $note,
+                'inbound_item_id' => $item->id,
+                'qty' => $delta,
+                'bin_id' => $defaultBin->id,
+                'condition' => 'ADJUSTMENT',
+                'notes' => $note,
                 'received_by_user_id' => $userId,
-                'received_by'         => \App\Support\ActorName::resolve($userId),
-                'received_date'       => now(),
+                'received_by' => ActorName::resolve($userId),
+                'received_date' => now(),
             ]);
 
             $inbound->load('items');
@@ -1810,15 +1778,15 @@ class InboundService
             $inbound = $this->inboundRepository->findByIdForUpdate($inboundId);
 
             if (! $inbound) {
-                throw new UserFacingException(title: 'Tidak ditemukan', message: "Dokumen Inbound tidak ditemukan.", status: 404);
+                throw new UserFacingException(title: 'Tidak ditemukan', message: 'Dokumen Inbound tidak ditemukan.', status: 404);
             }
 
             if ($inbound->status === Inbound::STATUS_CANCELLED) {
-                throw new UserFacingException(title: 'Status tidak sesuai', message: "Inbound sudah dibatalkan.", status: 409);
+                throw new UserFacingException(title: 'Status tidak sesuai', message: 'Inbound sudah dibatalkan.', status: 409);
             }
 
             if ($inbound->status === Inbound::STATUS_DRAFT) {
-                throw new UserFacingException(title: 'Status tidak sesuai', message: "Inbound DRAFT tidak perlu dibatalkan.", status: 409);
+                throw new UserFacingException(title: 'Status tidak sesuai', message: 'Inbound DRAFT tidak perlu dibatalkan.', status: 409);
             }
 
             if ($inbound->hasActiveParticipant()) {
@@ -1848,6 +1816,7 @@ class InboundService
 
             if ($inbound->source_type === 'transfer' && $inbound->source_id) {
                 $this->revertTransferReceipt($inbound, $userId);
+
                 return $this->getById($inboundId);
             }
 
@@ -1885,7 +1854,7 @@ class InboundService
             if (! $variantId || ! $binId) {
                 continue;
             }
-            $key = $variantId . '|' . $binId;
+            $key = $variantId.'|'.$binId;
             $needed[$key] = ($needed[$key] ?? 0) + (int) $p->qty;
         }
 
@@ -1902,8 +1871,8 @@ class InboundService
             if ($current < $need) {
                 $shortfalls[] = [
                     'variant_id' => $variantId,
-                    'bin_id'     => $binId,
-                    'shortfall'  => $need - $current,
+                    'bin_id' => $binId,
+                    'shortfall' => $need - $current,
                 ];
             }
         }
@@ -1920,8 +1889,8 @@ class InboundService
         }
 
         $message = "Tidak dapat dihapus. Stok berikut akan minus:\n"
-            . implode("\n", $lines)
-            . "\n\nSebagian barang sudah dipicking/dipindah. Batalkan pesanan/transfer terkait dulu.";
+            .implode("\n", $lines)
+            ."\n\nSebagian barang sudah dipicking/dipindah. Batalkan pesanan/transfer terkait dulu.";
 
         throw new UserFacingException(title: 'Aksi tidak dapat diproses', message: $message, status: 422);
     }
@@ -2004,13 +1973,13 @@ class InboundService
             $reverseQty = $item->received_qty - $item->putaway_qty;
             if ($reverseQty > 0 && $defaultBin) {
                 $this->inventoryService->adjustInboundStaging([
-                    'item_id'            => $item->item_id,
-                    'location_id'        => $inbound->location_id,
-                    'bin_id'             => $defaultBin->id,
-                    'qty'                => -$reverseQty,
-                    'transaction_number' => $inbound->transaction_number . '-CANCEL',
-                    'source'             => $this->movementSourceFor($inbound),
-                    'created_by'         => $createdBy,
+                    'item_id' => $item->item_id,
+                    'location_id' => $inbound->location_id,
+                    'bin_id' => $defaultBin->id,
+                    'qty' => -$reverseQty,
+                    'transaction_number' => $inbound->transaction_number.'-CANCEL',
+                    'source' => $this->movementSourceFor($inbound),
+                    'created_by' => $createdBy,
                 ]);
             }
         }
@@ -2030,24 +1999,24 @@ class InboundService
 
             if ($defaultBin) {
                 $this->applyRollbackInventoryDelta([
-                    'item_id'            => $item->item_id,
-                    'location_id'        => $inbound->location_id,
-                    'bin_id'             => $defaultBin->id,
-                    'qty'                => -$qty,
-                    'transaction_number' => $inbound->transaction_number . '-REVERT',
-                    'source'             => 'TRANSFER_REVERT',
-                    'created_by'         => $createdBy,
+                    'item_id' => $item->item_id,
+                    'location_id' => $inbound->location_id,
+                    'bin_id' => $defaultBin->id,
+                    'qty' => -$qty,
+                    'transaction_number' => $inbound->transaction_number.'-REVERT',
+                    'source' => 'TRANSFER_REVERT',
+                    'created_by' => $createdBy,
                 ]);
             }
 
             $this->applyRollbackInventoryDelta([
-                'item_id'            => $item->item_id,
-                'location_id'        => $transitLocationId,
-                'bin_id'             => $transitBinId,
-                'qty'                => $qty,
-                'transaction_number' => $inbound->transaction_number . '-REVERT',
-                'source'             => 'TRANSFER_REVERT',
-                'created_by'         => $createdBy,
+                'item_id' => $item->item_id,
+                'location_id' => $transitLocationId,
+                'bin_id' => $transitBinId,
+                'qty' => $qty,
+                'transaction_number' => $inbound->transaction_number.'-REVERT',
+                'source' => 'TRANSFER_REVERT',
+                'created_by' => $createdBy,
             ]);
 
             $item->update(['received_qty' => 0]);
@@ -2055,16 +2024,16 @@ class InboundService
 
         $this->inboundRepository->updateStatus($inbound, Inbound::STATUS_DRAFT);
 
-        $transfer = \Modules\Inventory\Models\InventoryTransfer::whereKey($inbound->source_id)
+        $transfer = InventoryTransfer::whereKey($inbound->source_id)
             ->lockForUpdate()
             ->first();
 
-        if ($transfer && $transfer->status === \Modules\Inventory\Models\InventoryTransfer::STATUS_RECEIVED) {
+        if ($transfer && $transfer->status === InventoryTransfer::STATUS_RECEIVED) {
             $transfer->update([
-                'status'         => \Modules\Inventory\Models\InventoryTransfer::STATUS_IN_TRANSIT,
+                'status' => InventoryTransfer::STATUS_IN_TRANSIT,
                 'receive_number' => null,
-                'received_by'    => null,
-                'received_at'    => null,
+                'received_by' => null,
+                'received_at' => null,
             ]);
         }
     }
@@ -2092,15 +2061,15 @@ class InboundService
         $this->inventoryRepository->updateStock($inventory);
 
         InventoryMovement::create([
-            'item_id'            => $data['item_id'],
-            'location_id'        => $data['location_id'],
-            'bin_id'             => $data['bin_id'],
+            'item_id' => $data['item_id'],
+            'location_id' => $data['location_id'],
+            'bin_id' => $data['bin_id'],
             'transaction_number' => $data['transaction_number'],
-            'source'             => $data['source'],
-            'qty'                => $data['qty'],
-            'balance'            => $inventory->on_hand,
-            'transaction_date'   => now(),
-            'created_by'         => $data['created_by'],
+            'source' => $data['source'],
+            'qty' => $data['qty'],
+            'balance' => $inventory->on_hand,
+            'transaction_date' => now(),
+            'created_by' => $data['created_by'],
         ]);
     }
 
@@ -2124,7 +2093,7 @@ class InboundService
             }
         }
 
-        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('inbound::pdf.barcodes', compact('pages'))
+        $pdf = Pdf::loadView('inbound::pdf.barcodes', compact('pages'))
             ->setPaper([0, 0, 141.73, 85.04], 'landscape');
 
         return $pdf->stream("barcodes-inbound-{$inbound->transaction_number}.pdf");
@@ -2151,7 +2120,9 @@ class InboundService
             $totalCost = 0.0;
             foreach ($rows as $row) {
                 $qty = (float) $row->qty;
-                if ($qty <= 0) continue;
+                if ($qty <= 0) {
+                    continue;
+                }
                 $totalQty += $qty;
                 $totalCost += $qty * (float) $row->landed_cost_per_unit;
             }
@@ -2168,7 +2139,7 @@ class InboundService
             return [];
         }
 
-        $costService = app(\Modules\Inventory\Services\PurchaseCostService::class);
+        $costService = app(PurchaseCostService::class);
         $purchaseCosts = $costService->averageForItemIds($itemIds->all());
         $map = [];
         foreach ($itemIds as $itemId) {
@@ -2178,5 +2149,4 @@ class InboundService
 
         return $map;
     }
-
 }

@@ -3,13 +3,13 @@
 namespace Modules\Inbound\Tests\Feature;
 
 use App\Enums\ClientChannelEnum;
-use App\Exceptions\InboundSessionClosedException;
 use App\Exceptions\MobileSessionActiveException;
 use App\Exceptions\UserFacingException;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Str;
 use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Models\InboundItem;
 use Modules\Inbound\Models\InboundParticipant;
@@ -25,8 +25,11 @@ class MultiParticipantReceiveTest extends TestCase
     use RefreshDatabase;
 
     private Location $location;
+
     private LocationBin $inboundBin;
+
     private ProductVariant $variant;
+
     private array $staff;
 
     protected function setUp(): void
@@ -61,7 +64,7 @@ class MultiParticipantReceiveTest extends TestCase
     {
         $inbound = Inbound::create([
             'location_id' => $this->location->id,
-            'transaction_number' => 'INB-' . fake()->unique()->numerify('########'),
+            'transaction_number' => 'INB-'.fake()->unique()->numerify('########'),
             'type' => Inbound::TYPE_PURCHASE_ORDER,
             'source_type' => 'purchase_order',
             'status' => Inbound::STATUS_DRAFT,
@@ -87,8 +90,10 @@ class MultiParticipantReceiveTest extends TestCase
     private function receive(Inbound $inbound, string $userId, int $qty): Inbound
     {
         $this->asMobile();
+
         return app(InboundService::class)->receive($inbound->id, [
             'received_by' => $userId,
+            'idempotency_key' => (string) Str::uuid(),
             'items' => [[
                 'inbound_item_id' => $inbound->items->first()->id,
                 'qty' => $qty,
@@ -119,7 +124,7 @@ class MultiParticipantReceiveTest extends TestCase
         $this->assertNotNull($refreshed->once_received_at);
     }
 
-    public function test_over_receipt_allowed_no_cap_F1(): void
+    public function test_over_receipt_allowed_no_cap_f1(): void
     {
         $inbound = $this->makeInbound(100);
 
@@ -129,7 +134,7 @@ class MultiParticipantReceiveTest extends TestCase
         $this->assertEquals(150, $item->received_qty, 'F1: over-receipt tidak diblok');
     }
 
-    public function test_web_edit_allowed_while_participant_active_F2(): void
+    public function test_web_edit_allowed_while_participant_active_f2(): void
     {
         $inbound = $this->makeInbound(100);
         $this->receive($inbound, $this->staff['s1']->id, 50);
@@ -200,7 +205,7 @@ class MultiParticipantReceiveTest extends TestCase
         $this->receive($inbound->fresh('items'), $this->staff['s2']->id, 5);
     }
 
-    public function test_withdrawn_participant_cannot_rejoin_F3(): void
+    public function test_withdrawn_participant_cannot_rejoin_f3(): void
     {
         $inbound = $this->makeInbound(100);
         $this->receive($inbound, $this->staff['s1']->id, 30);
@@ -217,7 +222,7 @@ class MultiParticipantReceiveTest extends TestCase
         $this->receive($inbound->fresh('items'), $this->staff['s1']->id, 5);
     }
 
-    public function test_cancel_blocked_when_participant_active_F4(): void
+    public function test_cancel_blocked_when_participant_active_f4(): void
     {
         $inbound = $this->makeInbound(100);
         $this->receive($inbound, $this->staff['s1']->id, 30);

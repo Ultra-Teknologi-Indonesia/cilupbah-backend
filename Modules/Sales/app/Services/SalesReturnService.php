@@ -2,21 +2,24 @@
 
 namespace Modules\Sales\Services;
 
-use Modules\Sales\Repositories\SalesReturnRepository;
-use Modules\Sales\Models\SalesReturn;
-use Modules\Sales\Models\SalesOrder;
-use Modules\Sales\Exceptions\InvalidReturnStateException;
-use Modules\Sales\Exports\ReturnChannelOnlineExport;
-use Modules\Sales\Exports\SalesReturnReportExport;
-use Modules\Sales\Jobs\AdminAlertJob;
-use Modules\Inbound\Services\InboundService;
-use Modules\Inventory\Models\ImpexActivity;
-use Modules\Inventory\Services\ImpexActivityService;
-use Modules\Notification\Services\NotificationDispatcher;
+use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Modules\Inbound\Services\InboundService;
+use Modules\Inventory\Models\ImpexActivity;
+use Modules\Inventory\Services\ImpexActivityService;
+use Modules\Notification\Services\NotificationDispatcher;
+use Modules\Product\Repositories\ProductRepository;
+use Modules\Sales\Exceptions\InvalidReturnStateException;
+use Modules\Sales\Exports\ReturnChannelOnlineExport;
+use Modules\Sales\Exports\SalesReturnReportExport;
+use Modules\Sales\Jobs\AdminAlertJob;
+use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Models\SalesReturn;
+use Modules\Sales\Repositories\SalesReturnRepository;
 
 class SalesReturnService
 {
@@ -34,11 +37,11 @@ class SalesReturnService
     {
         if ($type === 'channel_online') {
             $dateFrom = $filters['date_from'] ?? now()->toDateString();
-            $dateTo   = $filters['date_to'] ?? $dateFrom;
+            $dateTo = $filters['date_to'] ?? $dateFrom;
 
             $export = new ReturnChannelOnlineExport(
-                dateFrom:   $dateFrom,
-                dateTo:     $dateTo,
+                dateFrom: $dateFrom,
+                dateTo: $dateTo,
                 locationId: $filters['location_id'] ?? null,
             );
 
@@ -46,16 +49,16 @@ class SalesReturnService
             $label = 'Export Retur Channel Online';
         } else {
             $dateFrom = $filters['date_from'] ?? null;
-            $dateTo   = $filters['date_to'] ?? null;
+            $dateTo = $filters['date_to'] ?? null;
 
             $export = new SalesReturnReportExport(
-                dateFrom:            $dateFrom,
-                dateTo:              $dateTo,
-                locationId:          $filters['location_id'] ?? null,
-                channelShopId:       $filters['channel_shop_id'] ?? null,
-                status:              $filters['status'] ?? null,
-                source:              $filters['source'] ?? null,
-                reasonCategory:      $filters['reason_category'] ?? null,
+                dateFrom: $dateFrom,
+                dateTo: $dateTo,
+                locationId: $filters['location_id'] ?? null,
+                channelShopId: $filters['channel_shop_id'] ?? null,
+                status: $filters['status'] ?? null,
+                source: $filters['source'] ?? null,
+                reasonCategory: $filters['reason_category'] ?? null,
                 marketplaceDecision: $filters['marketplace_decision'] ?? null,
             );
 
@@ -125,7 +128,7 @@ class SalesReturnService
     public function create(array $data): SalesReturn
     {
         $return = DB::transaction(function () use ($data) {
-            $data['return_number'] = $data['return_number'] ?? 'RET-' . now()->format('Ymd') . '-' . Str::upper(Str::random(4));
+            $data['return_number'] = $data['return_number'] ?? 'RET-'.now()->format('Ymd').'-'.Str::upper(Str::random(4));
             $data['status'] = SalesReturn::STATUS_PENDING;
             $data['source'] = $data['source'] ?? SalesReturn::SOURCE_MANUAL;
             $data['reason_category'] = $data['reason_category'] ?? SalesReturn::REASON_CATEGORY_OTHER;
@@ -184,6 +187,7 @@ class SalesReturnService
             Log::warning('createFromCancelledShipped: lokasi restock tidak dapat ditentukan.', [
                 'order_id' => $order->id,
             ]);
+
             return null;
         }
 
@@ -192,8 +196,8 @@ class SalesReturnService
         $items = $order->items
             ->filter(fn ($it) => $it->item_id && (float) $it->qty_in_base > 0)
             ->map(fn ($it) => [
-                'item_id'   => $it->item_id,
-                'qty'       => (int) $it->qty_in_base,
+                'item_id' => $it->item_id,
+                'qty' => (int) $it->qty_in_base,
                 'condition' => 'GOOD',
             ])
             ->values()
@@ -203,18 +207,19 @@ class SalesReturnService
             Log::warning('createFromCancelledShipped: order tanpa item valid.', [
                 'order_id' => $order->id,
             ]);
+
             return null;
         }
 
         return $this->create([
-            'order_id'        => $order->id,
-            'location_id'     => $locationId,
-            'source'          => SalesReturn::SOURCE_MANUAL,
-            'customer_name'   => $order->customer_name ?? null,
-            'reason'          => $reason ?: 'Cancel diterima setelah paket dikirim',
+            'order_id' => $order->id,
+            'location_id' => $locationId,
+            'source' => SalesReturn::SOURCE_MANUAL,
+            'customer_name' => $order->customer_name ?? null,
+            'reason' => $reason ?: 'Cancel diterima setelah paket dikirim',
             'reason_category' => SalesReturn::REASON_CATEGORY_CANCEL_SHIPPED,
-            'created_by'      => $createdBy,
-            'items'           => $items,
+            'created_by' => $createdBy,
+            'items' => $items,
         ]);
     }
 
@@ -224,7 +229,7 @@ class SalesReturnService
         $channelOrderId = (string) $payload['channel_order_id'];
 
         $channelReturnId = isset($payload['channel_return_id']) && $payload['channel_return_id'] !== ''
-            ? $source . ':' . $payload['channel_return_id']
+            ? $source.':'.$payload['channel_return_id']
             : null;
 
         if ($channelReturnId && $this->returnRepository->existsByChannelReturn(SalesReturn::SOURCE_MARKETPLACE, $channelReturnId)) {
@@ -239,8 +244,8 @@ class SalesReturnService
             ->where('source', $source)
             ->where(function ($q) use ($channelOrderId) {
                 $q->where('channel_order_no', $channelOrderId)
-                  ->orWhere('salesorder_no', $channelOrderId)
-                  ->orWhere('salesorder_no', 'like', '%-' . $channelOrderId);
+                    ->orWhere('salesorder_no', $channelOrderId)
+                    ->orWhere('salesorder_no', 'like', '%-'.$channelOrderId);
             })
             ->first();
 
@@ -250,6 +255,7 @@ class SalesReturnService
                 'channel_order_id' => $channelOrderId,
                 'channel_return_id' => $channelReturnId,
             ]);
+
             return null;
         }
 
@@ -268,14 +274,15 @@ class SalesReturnService
                 'source' => $source,
                 'order_id' => $order->id,
             ]);
+
             return null;
         }
 
         $items = $order->items
             ->filter(fn ($it) => $it->item_id && (float) $it->qty_in_base > 0)
             ->map(fn ($it) => [
-                'item_id'   => $it->item_id,
-                'qty'       => (int) $it->qty_in_base,
+                'item_id' => $it->item_id,
+                'qty' => (int) $it->qty_in_base,
                 'condition' => 'GOOD',
             ])
             ->values()
@@ -286,6 +293,7 @@ class SalesReturnService
                 'source' => $source,
                 'order_id' => $order->id,
             ]);
+
             return null;
         }
 
@@ -293,21 +301,21 @@ class SalesReturnService
         $marketplaceDecision = $this->channelDecisionFromPayload($source, $payload);
 
         return $this->create([
-            'order_id'          => $order->id,
-            'location_id'       => $locationId,
-            'source'            => SalesReturn::SOURCE_MARKETPLACE,
+            'order_id' => $order->id,
+            'location_id' => $locationId,
+            'source' => SalesReturn::SOURCE_MARKETPLACE,
             'channel_return_id' => $channelReturnId,
-            'channel_shop_id'   => $payload['channel_shop_id'] ?? null,
-            'customer_name'     => $order->customer_name ?? null,
-            'reason'            => $payload['reason'] ?? 'Retur dari marketplace',
+            'channel_shop_id' => $payload['channel_shop_id'] ?? null,
+            'customer_name' => $order->customer_name ?? null,
+            'reason' => $payload['reason'] ?? 'Retur dari marketplace',
             'channel_reason_text' => $payload['channel_reason_text'] ?? null,
             'marketplace_raw_status' => $marketplaceRawStatus,
             'marketplace_decision' => $marketplaceDecision,
             'marketplace_decision_at' => $marketplaceDecision !== null ? now() : null,
 
-            'reason_category'   => SalesReturn::REASON_CATEGORY_COMPLAINT,
-            'created_by'        => $payload['created_by'] ?? 'system:' . $source . '-webhook',
-            'items'             => $items,
+            'reason_category' => SalesReturn::REASON_CATEGORY_COMPLAINT,
+            'created_by' => $payload['created_by'] ?? 'system:'.$source.'-webhook',
+            'items' => $items,
         ]);
     }
 
@@ -404,7 +412,7 @@ class SalesReturnService
                 }
             }
 
-            $productRepo = app(\Modules\Product\Repositories\ProductRepository::class);
+            $productRepo = app(ProductRepository::class);
             $qtyByItem = [];
             $conditionByItem = [];
 
@@ -426,26 +434,26 @@ class SalesReturnService
 
             if (! empty($inboundItems)) {
                 $inbound = $this->inboundService->receiveFromSalesReturn([
-                    'location_id'      => $this->settings->restockLocationId() ?? $return->location_id,
+                    'location_id' => $this->settings->restockLocationId() ?? $return->location_id,
                     'reference_number' => $return->return_number,
-                    'source_id'        => $return->id,
-                    'expected_date'    => now()->toDateString(),
-                    'created_by'       => $data['processed_by'],
-                    'items'            => $inboundItems,
+                    'source_id' => $return->id,
+                    'expected_date' => now()->toDateString(),
+                    'created_by' => $data['processed_by'],
+                    'items' => $inboundItems,
                 ]);
 
                 $receiverId = auth()->id();
                 if (! $receiverId) {
                     $candidate = (string) ($data['processed_by'] ?? '');
-                    if (Str::isUuid($candidate) && \App\Models\User::where('id', $candidate)->exists()) {
+                    if (Str::isUuid($candidate) && User::where('id', $candidate)->exists()) {
                         $receiverId = $candidate;
                     }
                 }
                 if (! $receiverId) {
-                    $receiverId = \App\Models\User::value('id');
+                    $receiverId = User::value('id');
                 }
                 if (! $receiverId) {
-                    $systemUser = \App\Models\User::create([
+                    $systemUser = User::create([
                         'id' => (string) Str::uuid(),
                         'name' => 'System Auto-Receive',
                         'email' => 'system-return@cilupbah.internal',
@@ -456,13 +464,14 @@ class SalesReturnService
 
                 $receiveItems = $inbound->items->map(fn ($item) => [
                     'inbound_item_id' => $item->id,
-                    'qty'             => $item->expected_qty,
-                    'condition'       => $conditionByItem[$item->item_id] ?? 'GOOD',
+                    'qty' => $item->expected_qty,
+                    'condition' => $conditionByItem[$item->item_id] ?? 'GOOD',
                 ])->toArray();
 
                 $this->inboundService->receive($inbound->id, [
                     'received_by' => $receiverId,
-                    'items'       => $receiveItems,
+                    'idempotency_key' => "sales-return-auto-receive:{$return->id}",
+                    'items' => $receiveItems,
                 ]);
             }
 
@@ -556,7 +565,7 @@ class SalesReturnService
 
             $isPlaced = $putawayDate
                 && $return->processed_at
-                && \Carbon\Carbon::parse($putawayDate)->toDateString() === $return->processed_at->toDateString();
+                && Carbon::parse($putawayDate)->toDateString() === $return->processed_at->toDateString();
 
             foreach ($return->items as $item) {
                 $row = [
@@ -594,7 +603,7 @@ class SalesReturnService
             }
 
             if ($return->status === SalesReturn::STATUS_COMPLETED) {
-                return $this->getById($id); 
+                return $this->getById($id);
             }
 
             if ($return->status !== SalesReturn::STATUS_ACCEPTED) {

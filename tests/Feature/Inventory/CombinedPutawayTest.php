@@ -2,13 +2,15 @@
 
 namespace Tests\Feature\Inventory;
 
+use App\Exceptions\UserFacingException;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Modules\Warehouse\Models\Location;
-use Modules\Warehouse\Models\LocationBin;
+use Modules\Inbound\Models\Inbound;
+use Modules\Inbound\Services\InboundService;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
-use Modules\Inbound\Models\Inbound;
-use App\Models\User;
+use Modules\Warehouse\Models\Location;
+use Modules\Warehouse\Models\LocationBin;
 use Tests\TestCase;
 
 class CombinedPutawayTest extends TestCase
@@ -16,13 +18,21 @@ class CombinedPutawayTest extends TestCase
     use RefreshDatabase;
 
     private Location $wh;
+
     private Location $wh2;
+
     private LocationBin $inboundBin;
+
     private LocationBin $inboundBin2;
+
     private LocationBin $storageBin;
+
     private ProductVariant $vShared;
+
     private ProductVariant $vA;
+
     private ProductVariant $vB;
+
     private User $putawayUser;
 
     protected function setUp(): void
@@ -65,7 +75,8 @@ class CombinedPutawayTest extends TestCase
 
         $mk = function (string $sku) use ($categoryId) {
             $p = Product::create(['category_id' => $categoryId, 'name' => $sku, 'sku' => $sku, 'is_active' => true]);
-            return ProductVariant::create(['product_id' => $p->id, 'sku' => $sku . '-V1', 'sell_price' => 1000, 'is_active' => true]);
+
+            return ProductVariant::create(['product_id' => $p->id, 'sku' => $sku.'-V1', 'sell_price' => 1000, 'is_active' => true]);
         };
         $this->vShared = $mk('SHARED');
         $this->vA = $mk('ONLY-A');
@@ -163,6 +174,36 @@ class CombinedPutawayTest extends TestCase
         $this->assertEquals(Inbound::STATUS_COMPLETED, $b->fresh()->status);
     }
 
+    public function test_process_rolls_back_when_source_allocation_is_incomplete(): void
+    {
+        $inbound = $this->createReceivedInbound($this->wh, [[$this->vShared, 6]]);
+        $putawayId = $this->postJson('/api/v1/putaway', ['inbound_ids' => [$inbound->id]])
+            ->assertStatus(201)
+            ->json('data.id');
+
+        $putawayItem = \DB::table('putaway_items')->where('putaway_id', $putawayId)->first();
+        \DB::table('putaway_item_sources')
+            ->where('putaway_item_id', $putawayItem->id)
+            ->update(['qty' => 4]);
+
+        $this->postJson("/api/v1/putaway/{$putawayId}/items/{$putawayItem->id}/process", [
+            'destination_bin_id' => $this->storageBin->id,
+            'qty' => 5,
+        ])->assertStatus(422);
+
+        $this->assertSame(0, (int) \DB::table('putaway_items')
+            ->where('id', $putawayItem->id)
+            ->value('putaway_qty'));
+        $this->assertSame(0, \DB::table('inventory_movements')
+            ->where('transaction_number', \DB::table('putaways')->where('id', $putawayId)->value('putaway_no'))
+            ->count());
+        $this->assertSame(6, (int) \DB::table('inventories')
+            ->where('item_id', $this->vShared->id)
+            ->where('location_id', $this->wh->id)
+            ->where('bin_id', $this->inboundBin->id)
+            ->sum('on_hand'));
+    }
+
     public function test_reversal_decrements_source_and_reverts_inbound_status(): void
     {
         $a = $this->createReceivedInbound($this->wh, [[$this->vShared, 6]]);
@@ -187,6 +228,9 @@ class CombinedPutawayTest extends TestCase
         $this->assertEquals(0, \DB::table('inbound_items')->where('inbound_id', $b->id)->value('putaway_qty'));
         $this->assertEquals(Inbound::STATUS_RECEIVED, $a->fresh()->status);
         $this->assertEquals(Inbound::STATUS_RECEIVED, $b->fresh()->status);
+        $this->artisan('inventory:audit-transaction-integrity', ['--since' => 1, '--fail-on-issue' => true])
+            ->expectsOutputToContain('AUDIT_RESULT=CONSISTENT')
+            ->assertSuccessful();
     }
 
     public function test_reject_combine_across_different_locations(): void
@@ -217,6 +261,9 @@ class CombinedPutawayTest extends TestCase
         $this->postJson('/api/v1/putaway', ['inbound_ids' => [$a->id]])->assertStatus(201);
 
         $item = \DB::table('inbound_items')->where('inbound_id', $a->id)->first();
+        \DB::table('inbound_items')->where('id', $item->id)->update(['expected_qty' => 10]);
+        \DB::table('inbounds')->where('id', $a->id)->update(['status' => Inbound::STATUS_PARTIAL]);
+
         $this->postJson("/api/v1/inbounds/{$a->id}/receive", [
             'received_by' => 'staff',
             'items' => [['inbound_item_id' => $item->id, 'qty' => 4]],
@@ -301,5 +348,56 @@ class CombinedPutawayTest extends TestCase
 
         $this->assertEquals($a->id, \DB::table('putaways')->where('id', $putawayId)->value('source_id'));
         $this->assertEquals(1, \DB::table('putaway_sources')->where('putaway_id', $putawayId)->count());
+    }
+
+    public function test_integrity_audit_detects_cumulative_open_putaway_shortfall(): void
+    {
+        $inbound = $this->createReceivedInbound($this->wh, [[$this->vA, 6]]);
+        $this->postJson('/api/v1/putaway', ['inbound_ids' => [$inbound->id]])
+            ->assertStatus(201);
+
+        \DB::table('inventories')
+            ->where('item_id', $this->vA->id)
+            ->where('location_id', $this->wh->id)
+            ->where('bin_id', $this->inboundBin->id)
+            ->update(['on_hand' => 5]);
+
+        $this->artisan('inventory:audit-transaction-integrity', ['--since' => 1, '--fail-on-issue' => true])
+            ->expectsOutputToContain('OPEN_PUTAWAY_SOURCE_SHORTFALL')
+            ->expectsOutputToContain('AUDIT_RESULT=REVIEW_REQUIRED')
+            ->assertFailed();
+    }
+
+    public function test_legacy_undocumented_putaway_paths_are_disabled(): void
+    {
+        $service = app(InboundService::class);
+        $operations = [
+            fn () => $service->processPutaway('unused', []),
+            fn () => $service->autoPutaway('unused', 'tester'),
+            fn () => $service->scanPutaway('unused', 'unused', 1, $this->putawayUser->id),
+        ];
+
+        foreach ($operations as $operation) {
+            try {
+                $operation();
+                $this->fail('Jalur penempatan lama seharusnya selalu ditolak.');
+            } catch (UserFacingException $exception) {
+                $this->assertSame(409, $exception->getStatus());
+                $this->assertSame('LEGACY_PUTAWAY_DISABLED', $exception->getErrors()['code']);
+            }
+        }
+    }
+
+    public function test_raw_inventory_putaway_endpoint_is_disabled(): void
+    {
+        $this->postJson('/api/v1/inventory/putaway', [
+            'item_id' => $this->vA->id,
+            'location_id' => $this->wh->id,
+            'source_bin_id' => $this->inboundBin->id,
+            'destination_bin_id' => $this->storageBin->id,
+            'qty' => 1,
+            'created_by' => 'tester',
+        ])->assertStatus(409)
+            ->assertJsonPath('errors.code', 'UNDOCUMENTED_STOCK_MOVE_DISABLED');
     }
 }

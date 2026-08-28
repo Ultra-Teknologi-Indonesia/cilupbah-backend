@@ -3,19 +3,24 @@
 namespace Modules\Warehouse\Services;
 
 use App\Traits\StockLockable;
-use Modules\Inventory\Models\Inventory;
-use Modules\Inventory\Models\SkuRackAssignment;
-use Modules\Inventory\Services\InventoryService;
-use Modules\Inventory\Services\StockAdjustmentService;
-use Modules\Product\Models\ProductVariant;
-use Modules\Warehouse\Models\Location;
-use Modules\Warehouse\Repositories\LocationBinRepository;
-use Modules\Warehouse\Repositories\LocationRepository;
-use Modules\Warehouse\Models\LocationBin;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+use Modules\Inventory\Jobs\ProcessStockAdjustmentJob;
+use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Models\SkuRackAssignment;
+use Modules\Inventory\Repositories\InventoryMovementRepository;
+use Modules\Inventory\Repositories\InventoryRepository;
+use Modules\Inventory\Services\InventoryService;
+use Modules\Inventory\Services\StockAdjustmentService;
+use Modules\Product\Models\ProductVariant;
+use Modules\Warehouse\Models\LocationBin;
+use Modules\Warehouse\Models\LocationZone;
+use Modules\Warehouse\Repositories\LocationBinRepository;
+use Modules\Warehouse\Repositories\LocationRepository;
 
 class LocationBinService
 {
@@ -102,7 +107,7 @@ class LocationBinService
         return DB::transaction(function () use ($locationId, $data, $zoneCode) {
             $zoneId = null;
             if ($zoneCode !== '') {
-                $zone = \Modules\Warehouse\Models\LocationZone::firstOrCreate(
+                $zone = LocationZone::firstOrCreate(
                     ['location_id' => $locationId, 'zone_code' => $zoneCode],
                     ['zone_name' => null]
                 );
@@ -178,6 +183,7 @@ class LocationBinService
                     ->update($payload);
                 $updated += $affected;
             }
+
             return $updated;
         });
     }
@@ -248,7 +254,7 @@ class LocationBinService
             'is_large_bin' => array_key_exists('is_large_bin', $values) ? (bool) $values['is_large_bin'] : null,
             'category' => array_key_exists('category', $values) ? $values['category'] : null,
             'zone_id' => array_key_exists('zone_id', $values) ? $values['zone_id'] : null,
-        ], fn($v) => $v !== null);
+        ], fn ($v) => $v !== null);
 
         if (empty($updateData)) {
             return 0;
@@ -285,34 +291,34 @@ class LocationBinService
         if ($search) {
             $query->where(function ($q) use ($search) {
                 $q->where('sku', 'ilike', "%{$search}%")
-                  ->orWhereHas('product', function ($q2) use ($search) {
-                      $q2->where('name', 'ilike', "%{$search}%");
-                  });
+                    ->orWhereHas('product', function ($q2) use ($search) {
+                        $q2->where('name', 'ilike', "%{$search}%");
+                    });
             });
         }
 
         if ($isGuarded && $occupantId) {
             $query->where('id', $occupantId);
-        } else if ($location && $location->enforcesStrictBinSku()) {
+        } elseif ($location && $location->enforcesStrictBinSku()) {
             $query->whereDoesntHave('inventories', function ($q) use ($locationId, $binId) {
                 $q->where('location_id', $locationId)
-                  ->whereNotNull('bin_id')
-                  ->where('bin_id', '!=', $binId)
-                  ->where(function ($w) {
-                      $w->where('on_hand', '>', 0)->orWhere('on_order', '>', 0);
-                  })
-                  ->whereHas('bin', function ($q2) {
-                      $q2->where('is_inbound', false)
-                         ->where('is_stock_acknowledged', true)
-                         ->where('bin_final_code', '!=', \Modules\Warehouse\Services\SkuHomeBinGuard::DEFAULT_BIN_CODE);
-                  });
+                    ->whereNotNull('bin_id')
+                    ->where('bin_id', '!=', $binId)
+                    ->where(function ($w) {
+                        $w->where('on_hand', '>', 0)->orWhere('on_order', '>', 0);
+                    })
+                    ->whereHas('bin', function ($q2) {
+                        $q2->where('is_inbound', false)
+                            ->where('is_stock_acknowledged', true)
+                            ->where('bin_final_code', '!=', SkuHomeBinGuard::DEFAULT_BIN_CODE);
+                    });
             });
 
             $query->whereNotIn('id', function ($q) use ($locationId, $binId) {
                 $q->select('item_id')
-                  ->from('sku_rack_assignments')
-                  ->where('location_id', $locationId)
-                  ->where('bin_id', '!=', $binId);
+                    ->from('sku_rack_assignments')
+                    ->where('location_id', $locationId)
+                    ->where('bin_id', '!=', $binId);
             });
         }
 
@@ -324,7 +330,7 @@ class LocationBinService
                 'sku' => $variant->sku,
                 'name' => $variant->product?->name,
                 'thumbnail' => $variant->media->first()?->url ?? $variant->product?->media->first()?->url,
-                'pending_qty' => 0, 
+                'pending_qty' => 0,
             ];
         });
 
@@ -444,17 +450,17 @@ class LocationBinService
             SkuRackAssignment::updateOrCreate(
                 [
                     'location_id' => $locationId,
-                    'item_id'     => $itemId,
+                    'item_id' => $itemId,
                 ],
                 [
-                    'bin_id'      => $binId,
+                    'bin_id' => $binId,
                     'assigned_by' => $userId,
                 ]
             );
 
             return [
-                'bin_id'     => $binId,
-                'item_id'    => $itemId,
+                'bin_id' => $binId,
+                'item_id' => $itemId,
                 'placed_qty' => 0,
             ];
         });
@@ -495,6 +501,7 @@ class LocationBinService
 
         return $this->withStockLock($itemId, $locationId, function () use ($locationId, $sourceBinId, $destinationBinId, $itemId, $userId, $inventoryService) {
             return DB::transaction(function () use ($locationId, $sourceBinId, $destinationBinId, $itemId, $userId, $inventoryService) {
+                $transactionNumber = 'BIN-MOVE-'.Str::upper(Str::random(12));
                 $rows = Inventory::query()
                     ->where('location_id', $locationId)
                     ->where('bin_id', $sourceBinId)
@@ -523,6 +530,9 @@ class LocationBinService
                         'batch_no' => $row->batch_no ?? '',
                         'serial_no' => $row->serial_no ?? '',
                         'created_by' => "user:{$userId}",
+                        'transaction_number' => $transactionNumber,
+                        'source_out' => 'BIN_TRANSFER_OUT',
+                        'source_in' => 'BIN_TRANSFER_IN',
                         'skip_home_bin_guard' => true,
                     ]);
 
@@ -590,12 +600,12 @@ class LocationBinService
         ]);
 
         try {
-            (new \Modules\Inventory\Jobs\ProcessStockAdjustmentJob($adjustment->id, $createdBy))->handle(
-                app(\Modules\Inventory\Repositories\InventoryRepository::class),
-                app(\Modules\Inventory\Repositories\InventoryMovementRepository::class)
+            (new ProcessStockAdjustmentJob($adjustment->id, $createdBy))->handle(
+                app(InventoryRepository::class),
+                app(InventoryMovementRepository::class)
             );
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning("Gagal eksekusi sinkron ProcessStockAdjustmentJob: " . $e->getMessage());
+            Log::warning('Gagal eksekusi sinkron ProcessStockAdjustmentJob: '.$e->getMessage());
         }
 
         SkuRackAssignment::where('bin_id', $binId)

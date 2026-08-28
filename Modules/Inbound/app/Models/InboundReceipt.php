@@ -14,6 +14,7 @@ class InboundReceipt extends Model
 
     protected $fillable = [
         'inbound_item_id',
+        'idempotency_key',
         'qty',
         'bin_id',
         'batch_no',

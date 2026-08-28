@@ -461,25 +461,7 @@ class PutawayService
                 ->keyBy('id');
 
             $merged = [];
-            $reservationDeltas = [];
             foreach ($inbounds as $inbound) {
-                $isReturn = $inbound->type === Inbound::TYPE_SALES_RETURN;
-                if ($isReturn && ($inbound->status === Inbound::STATUS_DRAFT || $inbound->items->sum('received_qty') == 0)) {
-                    foreach ($inbound->items as $it) {
-                        if ((int) $it->received_qty === 0 && (int) $it->expected_qty > 0) {
-                            $it->update(['received_qty' => (int) $it->expected_qty]);
-                            $locked = $lockedItems->get($it->id);
-                            if ($locked) {
-                                $locked->received_qty = (int) $it->expected_qty;
-                            }
-                        }
-                    }
-                    $inbound->update([
-                        'status' => Inbound::STATUS_RECEIVED,
-                        'once_received_at' => $inbound->once_received_at ?? now(),
-                    ]);
-                }
-
                 foreach ($inbound->items as $item) {
                     $locked = $lockedItems->get($item->id);
                     if (! $locked) {
@@ -507,7 +489,6 @@ class PutawayService
                         'inbound_item_id' => $locked->id,
                         'qty' => $pending,
                     ];
-                    $reservationDeltas[$locked->id] = ($reservationDeltas[$locked->id] ?? 0) + $pending;
                 }
             }
 
@@ -530,10 +511,6 @@ class PutawayService
                 'created_by' => $userId,
                 'items' => $items,
             ]);
-
-            foreach (collect($reservationDeltas)->groupBy(fn ($delta) => (string) $delta, true) as $delta => $group) {
-                InboundItem::whereIn('id', $group->keys())->increment('reserved_qty', $group->first());
-            }
 
             if ($assignedTo) {
                 $this->assignStaff([
@@ -672,17 +649,9 @@ class PutawayService
                     if (! $item) {
                         throw new \Exception("Item inbound {$inboundItemId} tidak ditemukan.");
                     }
-                    $isReturn = $item->inbound?->type === Inbound::TYPE_SALES_RETURN;
-                    $effectiveReceived = ($isReturn && (int) $item->received_qty === 0)
-                        ? (int) $item->expected_qty
-                        : (int) $item->received_qty;
-
-                    if ($isReturn && (int) $item->received_qty === 0) {
-                        $item->update(['received_qty' => $effectiveReceived]);
-                        $item->inbound?->update(['status' => Inbound::STATUS_RECEIVED, 'once_received_at' => now()]);
-                    }
-
-                    $pending = $effectiveReceived - (int) $item->putaway_qty;
+                    $pending = (int) $item->received_qty
+                        - (int) $item->putaway_qty
+                        - (int) ($item->reserved_qty ?? 0);
                     if ((int) $requested > $pending) {
                         throw new \Exception(
                             "Qty penempatan ({$requested}) melebihi sisa yang bisa diputaway ({$pending}) untuk item {$item->item_id}. "
@@ -705,6 +674,14 @@ class PutawayService
             ]);
 
             foreach ($data['items'] as $itemData) {
+                $sources = collect($itemData['sources'] ?? []);
+                if (($data['source_type'] ?? 'MANUAL') === 'INBOUND'
+                    && (int) $sources->sum('qty') !== (int) $itemData['qty']) {
+                    throw new \RuntimeException(
+                        "Total sumber inbound harus sama dengan qty item penempatan ({$itemData['qty']})."
+                    );
+                }
+
                 $putawayItem = $this->putawayRepository->createItem([
                     'putaway_id' => $putaway->id,
                     'item_id' => $itemData['item_id'],
@@ -716,7 +693,7 @@ class PutawayService
                     'serial_no' => $itemData['serial_no'] ?? null,
                 ]);
 
-                foreach ($itemData['sources'] ?? [] as $src) {
+                foreach ($sources as $src) {
                     PutawayItemSource::create([
                         'putaway_item_id' => $putawayItem->id,
                         'inbound_item_id' => $src['inbound_item_id'],
@@ -724,6 +701,11 @@ class PutawayService
                         'putaway_qty' => 0,
                     ]);
                 }
+            }
+
+            foreach ($requestedPerItem ?? collect() as $inboundItemId => $requested) {
+                $item = $locked->get($inboundItemId);
+                $item->increment('reserved_qty', (int) $requested);
             }
 
             foreach (array_unique($data['sources'] ?? []) as $inboundId) {
@@ -1052,17 +1034,56 @@ class PutawayService
                 $this->reverseOnePlacement($putaway, $entry, $userId, $wasCompleted);
             }
 
-            if ($wasCompleted) {
-                $this->createCorrectionAdjustment($putaway, $items, $userId);
+            $this->refreshInboundStatuses($putaway);
 
+            if ($wasCompleted) {
                 PutawayItem::whereIn('id', collect($items)->pluck('item_id')->filter()->all())
                     ->update(['qty' => DB::raw('putaway_qty')]);
+
+                $this->putawayRepository->updateStatus($putawayId, Putaway::STATUS_IN_PROGRESS, [
+                    'completed_at' => null,
+                ]);
             }
 
             Putaway::where('id', $putawayId)->update(['updated_version_at' => now()]);
 
             return $this->putawayRepository->findById($putawayId);
         });
+    }
+
+    private function refreshInboundStatuses(Putaway $putaway): void
+    {
+        if ($putaway->source_type !== 'INBOUND') {
+            return;
+        }
+
+        $inboundIds = PutawaySource::where('putaway_id', $putaway->id)
+            ->pluck('inbound_id')
+            ->when($putaway->source_id, fn ($ids) => $ids->push($putaway->source_id))
+            ->filter()
+            ->unique();
+
+        $inbounds = Inbound::with('items')
+            ->whereIn('id', $inboundIds)
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($inbounds as $inbound) {
+            if ($inbound->status === Inbound::STATUS_CANCELLED) {
+                continue;
+            }
+
+            $allReceived = $inbound->items->isNotEmpty()
+                && $inbound->items->every(fn (InboundItem $item) => $item->isFullyReceived());
+            $allPutaway = $inbound->items->isNotEmpty()
+                && $inbound->items->every(fn (InboundItem $item) => $item->isFullyPutaway());
+
+            $inbound->status = $allPutaway
+                ? Inbound::STATUS_COMPLETED
+                : ($allReceived ? Inbound::STATUS_RECEIVED : Inbound::STATUS_PARTIAL);
+            $inbound->updated_version_at = now();
+            $inbound->save();
+        }
     }
 
     public function deletePutaway(string $id, string $userId): array
@@ -1096,6 +1117,7 @@ class PutawayService
             }
 
             $this->resetAllPlacements($putaway, $userId);
+            $this->refreshInboundStatuses($putaway);
 
             $target = $status === Putaway::STATUS_COMPLETED
                 ? Putaway::STATUS_IN_PROGRESS
@@ -1175,6 +1197,7 @@ class PutawayService
 
         if ($putaway->source_type === 'INBOUND') {
             $this->releaseReservationsForItems($putaway, $itemIds);
+            $this->refreshInboundStatuses($putaway);
         }
 
         PutawayItemSource::whereIn('putaway_item_id', $itemIds)->delete();
@@ -1424,62 +1447,6 @@ class PutawayService
                 ->where('item_id', $item->item_id)
                 ->update(['reserved_qty' => DB::raw('GREATEST(reserved_qty - '.(int) $unplaced.', 0)')]);
         }
-    }
-
-    private function createCorrectionAdjustment(Putaway $putaway, array $entries, string $userId): void
-    {
-        $putaway->load('items');
-        $adjItems = [];
-
-        foreach ($entries as $entry) {
-            $putawayItem = $putaway->items->firstWhere('id', $entry['item_id']);
-            if (! $putawayItem) {
-                continue;
-            }
-
-            $placement = isset($entry['placement_id'])
-                ? PutawayPlacement::find($entry['placement_id'])
-                : null;
-
-            $sourceBinId = $putawayItem->source_bin_id;
-            if (! $sourceBinId) {
-                continue;
-            }
-
-            $qtyReversed = $entry['qty']
-                ?? ($placement ? (int) $placement->qty : 0);
-            if ($qtyReversed <= 0) {
-                continue;
-            }
-
-            $onHand = (int) ($this->inventoryRepository->findExact(
-                $putawayItem->item_id,
-                $putaway->location_id,
-                $sourceBinId,
-            )?->on_hand ?? 0);
-
-            $adjItems[] = [
-                'item_id' => $putawayItem->item_id,
-                'bin_id' => $sourceBinId,
-                'actual_qty' => $onHand - $qtyReversed,
-                'notes' => "Koreksi penempatan {$putaway->putaway_no}: qty -{$qtyReversed}",
-            ];
-        }
-
-        if (empty($adjItems)) {
-            return;
-        }
-
-        $user = User::find($userId);
-        $userName = $user?->name ?? $userId;
-
-        app(StockAdjustmentService::class)->create([
-            'transaction_date' => now()->toDateString(),
-            'location_id' => $putaway->location_id,
-            'created_by' => $userName,
-            'notes' => "Koreksi penempatan {$putaway->putaway_no} oleh {$userName}",
-            'items' => $adjItems,
-        ]);
     }
 
     public function reduceOpenTargetForInboundItem(string $inboundItemId, int $amount): int

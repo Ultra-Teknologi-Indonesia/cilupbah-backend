@@ -2,9 +2,12 @@
 
 namespace Modules\Inventory\Models;
 
+use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use App\Traits\HasUuid7;
+use Modules\Product\Models\ProductVariant;
+use Modules\Warehouse\Models\Location;
+use Modules\Warehouse\Models\LocationBin;
 
 class InventoryMovement extends Model
 {
@@ -14,6 +17,7 @@ class InventoryMovement extends Model
         'item_id',
         'location_id',
         'bin_id',
+        'inbound_receipt_id',
         'transaction_number',
         'source',
         'qty',
@@ -26,22 +30,22 @@ class InventoryMovement extends Model
 
     protected $casts = [
         'transaction_date' => 'datetime',
-        'cost_per_unit'    => 'decimal:4',
-        'total_cost'       => 'decimal:2',
+        'cost_per_unit' => 'decimal:4',
+        'total_cost' => 'decimal:2',
     ];
 
     public function product(): BelongsTo
     {
-        return $this->belongsTo(\Modules\Product\Models\ProductVariant::class, 'item_id');
+        return $this->belongsTo(ProductVariant::class, 'item_id');
     }
 
     public function location(): BelongsTo
     {
-        return $this->belongsTo(\Modules\Warehouse\Models\Location::class);
+        return $this->belongsTo(Location::class);
     }
 
     public function bin(): BelongsTo
     {
-        return $this->belongsTo(\Modules\Warehouse\Models\LocationBin::class, 'bin_id');
+        return $this->belongsTo(LocationBin::class, 'bin_id');
     }
 }

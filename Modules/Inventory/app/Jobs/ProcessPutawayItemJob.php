@@ -84,6 +84,92 @@ class ProcessPutawayItemJob implements ShouldQueue
                 app(BinOccupancyGuard::class)->assertBinFitsSku($destinationBinId, $putawayItem->item_id);
                 app(SkuHomeBinGuard::class)->assertSkuFitsBin($putaway->location_id, $putawayItem->item_id, $destinationBinId);
 
+                $sources = collect();
+                $sourceInboundItems = collect();
+                $fallbackInboundItem = null;
+
+                if ($putaway->source_type === 'INBOUND') {
+                    $sources = PutawayItemSource::query()
+                        ->where('putaway_item_sources.putaway_item_id', $putawayItem->id)
+                        ->join('inbound_items', 'inbound_items.id', '=', 'putaway_item_sources.inbound_item_id')
+                        ->join('inbounds', 'inbounds.id', '=', 'inbound_items.inbound_id')
+                        ->orderBy('inbounds.created_at')
+                        ->lockForUpdate()
+                        ->select('putaway_item_sources.*')
+                        ->get();
+
+                    if ($sources->isNotEmpty()) {
+                        $sourceCapacity = $sources->sum(
+                            fn (PutawayItemSource $source) => max(0, (int) $source->qty - (int) $source->putaway_qty),
+                        );
+                        if ($sourceCapacity < $qty) {
+                            throw new \RuntimeException(
+                                "Alokasi sumber inbound tidak mencukupi (tersedia: {$sourceCapacity}, diminta: {$qty})."
+                            );
+                        }
+
+                        $sourceInboundItems = InboundItem::query()
+                            ->whereIn('id', $sources->pluck('inbound_item_id'))
+                            ->lockForUpdate()
+                            ->get()
+                            ->keyBy('id');
+
+                        $remainingToValidate = $qty;
+                        foreach ($sources as $source) {
+                            if ($remainingToValidate <= 0) {
+                                break;
+                            }
+
+                            $take = min(
+                                max(0, (int) $source->qty - (int) $source->putaway_qty),
+                                $remainingToValidate,
+                            );
+                            if ($take <= 0) {
+                                continue;
+                            }
+
+                            $inboundItem = $sourceInboundItems->get($source->inbound_item_id);
+                            $pendingInbound = $inboundItem
+                                ? (int) $inboundItem->received_qty - (int) $inboundItem->putaway_qty
+                                : 0;
+                            $reservedInbound = (int) ($inboundItem->reserved_qty ?? 0);
+
+                            if (! $inboundItem || $pendingInbound < $take || $reservedInbound < $take) {
+                                throw new \RuntimeException(
+                                    'Counter sumber inbound tidak konsisten dengan dokumen penempatan. Jalankan audit sebelum melanjutkan.'
+                                );
+                            }
+
+                            $remainingToValidate -= $take;
+                        }
+
+                        if ($remainingToValidate !== 0) {
+                            throw new \RuntimeException('Alokasi sumber inbound tidak dapat dipenuhi secara utuh.');
+                        }
+                    } elseif ($putaway->source_id) {
+                        $fallbackItems = InboundItem::query()
+                            ->where('inbound_id', $putaway->source_id)
+                            ->where('item_id', $putawayItem->item_id)
+                            ->lockForUpdate()
+                            ->get();
+
+                        if ($fallbackItems->count() !== 1) {
+                            throw new \RuntimeException('Sumber inbound penempatan tidak tunggal atau tidak ditemukan.');
+                        }
+
+                        $fallbackInboundItem = $fallbackItems->first();
+                        $pendingInbound = (int) $fallbackInboundItem->received_qty
+                            - (int) $fallbackInboundItem->putaway_qty;
+                        if ($pendingInbound < $qty || (int) $fallbackInboundItem->reserved_qty < $qty) {
+                            throw new \RuntimeException(
+                                'Counter sumber inbound tidak konsisten dengan dokumen penempatan. Jalankan audit sebelum melanjutkan.'
+                            );
+                        }
+                    } else {
+                        throw new \RuntimeException('Dokumen penempatan tidak memiliki sumber inbound yang dapat diaudit.');
+                    }
+                }
+
                 $sourceInventory = $inventoryRepository->findExactForUpdate(
                     $putawayItem->item_id,
                     $putaway->location_id,
@@ -185,16 +271,6 @@ class ProcessPutawayItemJob implements ShouldQueue
                 }
 
                 if ($putaway->source_type === 'INBOUND') {
-
-                    $sources = PutawayItemSource::query()
-                        ->where('putaway_item_sources.putaway_item_id', $putawayItem->id)
-                        ->join('inbound_items', 'inbound_items.id', '=', 'putaway_item_sources.inbound_item_id')
-                        ->join('inbounds', 'inbounds.id', '=', 'inbound_items.inbound_id')
-                        ->orderBy('inbounds.created_at')
-                        ->lockForUpdate()
-                        ->select('putaway_item_sources.*')
-                        ->get();
-
                     if ($sources->isNotEmpty()) {
                         $remaining = $qty;
                         foreach ($sources as $src) {
@@ -206,21 +282,24 @@ class ProcessPutawayItemJob implements ShouldQueue
                                 continue;
                             }
                             $take = min($capacity, $remaining);
-                            $src->increment('putaway_qty', $take);
-                            InboundItem::where('id', $src->inbound_item_id)->update([
-                                'putaway_qty' => DB::raw('putaway_qty + '.(int) $take),
-                                'reserved_qty' => DB::raw('GREATEST(reserved_qty - '.(int) $take.', 0)'),
-                            ]);
+                            $src->putaway_qty = (int) $src->putaway_qty + $take;
+                            $src->save();
+
+                            /** @var InboundItem $sourceInboundItem */
+                            $sourceInboundItem = $sourceInboundItems->get($src->inbound_item_id);
+                            $sourceInboundItem->putaway_qty = (int) $sourceInboundItem->putaway_qty + $take;
+                            $sourceInboundItem->reserved_qty = (int) $sourceInboundItem->reserved_qty - $take;
+                            $sourceInboundItem->save();
                             $remaining -= $take;
                         }
-                    } elseif ($putaway->source_id) {
 
-                        InboundItem::where('inbound_id', $putaway->source_id)
-                            ->where('item_id', $putawayItem->item_id)
-                            ->update([
-                                'putaway_qty' => DB::raw('putaway_qty + '.(int) $qty),
-                                'reserved_qty' => DB::raw('GREATEST(reserved_qty - '.(int) $qty.', 0)'),
-                            ]);
+                        if ($remaining !== 0) {
+                            throw new \RuntimeException('Penempatan gagal menghabiskan alokasi sumber secara utuh.');
+                        }
+                    } else {
+                        $fallbackInboundItem->putaway_qty = (int) $fallbackInboundItem->putaway_qty + $qty;
+                        $fallbackInboundItem->reserved_qty = (int) $fallbackInboundItem->reserved_qty - $qty;
+                        $fallbackInboundItem->save();
                     }
                 }
 

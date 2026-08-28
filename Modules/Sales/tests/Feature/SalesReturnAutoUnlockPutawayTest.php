@@ -2,11 +2,11 @@
 
 namespace Modules\Sales\Tests\Feature;
 
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Inbound\Models\Inbound;
-use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Services\PutawayService;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
@@ -21,7 +21,9 @@ class SalesReturnAutoUnlockPutawayTest extends TestCase
     use RefreshDatabase;
 
     private string $locationId;
+
     private LocationBin $inboundBin;
+
     private string $userId;
 
     protected function setUp(): void
@@ -29,7 +31,7 @@ class SalesReturnAutoUnlockPutawayTest extends TestCase
         parent::setUp();
         DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Umum']);
 
-        $user = \App\Models\User::create([
+        $user = User::create([
             'id' => (string) Str::uuid(),
             'name' => 'Tester Putaway',
             'email' => 'tester-putaway@example.com',
@@ -104,7 +106,7 @@ class SalesReturnAutoUnlockPutawayTest extends TestCase
         $this->assertSame(2, (int) $putaway->items->first()->qty, 'Putaway harus menampung 2 pcs barang retur');
     }
 
-    public function test_draft_sales_return_with_zero_received_can_still_be_directly_putawayed(): void
+    public function test_draft_sales_return_cannot_bypass_receipt_ledger_when_creating_putaway(): void
     {
         $product = Product::create([
             'name' => 'Produk Retur 2',
@@ -137,14 +139,17 @@ class SalesReturnAutoUnlockPutawayTest extends TestCase
             'putaway_qty' => 0,
         ]);
 
-        $putawayService = app(PutawayService::class);
-        $putaway = $putawayService->createFromInbounds([$inbound->id], null, $this->userId);
-
-        $this->assertNotNull($putaway);
-        $this->assertSame(3, (int) $putaway->items->first()->qty);
+        try {
+            app(PutawayService::class)->createFromInbounds([$inbound->id], null, $this->userId);
+            $this->fail('Putaway tanpa penerimaan seharusnya ditolak.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('Tidak ada item pending untuk di-putaway', $exception->getMessage());
+        }
 
         $inbound->refresh();
-        $this->assertSame(Inbound::STATUS_RECEIVED, $inbound->status);
-        $this->assertSame(3, (int) $inbound->items->first()->received_qty);
+        $this->assertSame(Inbound::STATUS_DRAFT, $inbound->status);
+        $this->assertSame(0, (int) $inbound->items->first()->received_qty);
+        $this->assertDatabaseCount('inbound_receipts', 0);
+        $this->assertDatabaseCount('inventory_movements', 0);
     }
 }

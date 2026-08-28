@@ -2,32 +2,40 @@
 
 namespace Modules\Inventory\Services;
 
-use Modules\Inventory\Repositories\InventoryRepository;
-use Modules\Inventory\Repositories\InventoryMovementRepository;
-use Modules\Inventory\Repositories\InventoryTransferRepository;
-use Modules\Inventory\Repositories\BinTransferRepository;
-use Modules\Inventory\Models\Inventory;
-use Modules\Inventory\Models\InventoryTransfer;
-use Modules\Inventory\Models\BinTransfer;
-use Modules\Inventory\Models\BinTransferItem;
-use Modules\Inventory\Models\BinTransferReceipt;
-use Modules\Inventory\Models\BinTransferReceiptItem;
-use Modules\Inventory\Models\InventoryMovement;
-use Modules\Warehouse\Models\Location;
-use Modules\Warehouse\Models\LocationBin;
-use Modules\Channel\Models\ChannelShop;
-use Modules\Inbound\Services\InboundService;
-use Modules\Channel\Jobs\SyncStockToChannelsJob;
+use App\Exceptions\UserFacingException;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Modules\Inventory\Models\InventoryTransferItem;
-use Modules\Inventory\Jobs\SyncTransferDraftItemJob;
-use Modules\Inventory\Support\StockAdjustmentRule;
-use Modules\Inventory\Support\MovingAverageCost;
+use Modules\Channel\Jobs\SyncStockToChannelsJob;
+use Modules\Channel\Models\ChannelShop;
+use Modules\Inbound\Models\Inbound;
+use Modules\Inbound\Services\InboundService;
 use Modules\Inventory\Exceptions\NegativeStockAdjustmentException;
+use Modules\Inventory\Jobs\SyncTransferDraftItemJob;
+use Modules\Inventory\Models\BinTransfer;
+use Modules\Inventory\Models\BinTransferItem;
+use Modules\Inventory\Models\BinTransferReceipt;
+use Modules\Inventory\Models\BinTransferReceiptItem;
+use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Models\InventoryTransfer;
+use Modules\Inventory\Models\InventoryTransferItem;
+use Modules\Inventory\Repositories\BinTransferRepository;
+use Modules\Inventory\Repositories\InventoryMovementRepository;
+use Modules\Inventory\Repositories\InventoryRepository;
+use Modules\Inventory\Repositories\InventoryTransferRepository;
+use Modules\Inventory\Support\InventoryMovementSourceMap;
+use Modules\Inventory\Support\MovingAverageCost;
+use Modules\Inventory\Support\StockAdjustmentRule;
+use Modules\Product\Models\ProductVariant;
+use Modules\Product\Services\BundleGuardService;
+use Modules\Warehouse\Models\Location;
+use Modules\Warehouse\Models\LocationBin;
+use Modules\Warehouse\Services\BinOccupancyGuard;
 use Modules\Warehouse\Services\InboundBinPolicy;
+use Modules\Warehouse\Services\LocationBinService;
+use Modules\Warehouse\Services\SkuHomeBinGuard;
 
 class InventoryService
 {
@@ -56,14 +64,14 @@ class InventoryService
         return $this->inventoryRepository->getByLocation($locationId);
     }
 
-    public function getStockItemDetail(string $itemId): \Modules\Product\Models\ProductVariant
+    public function getStockItemDetail(string $itemId): ProductVariant
     {
         return $this->inventoryRepository->findVariantWithStockDetail($itemId);
     }
 
     public function getMovementFilterOptions(): array
     {
-        $base = \Modules\Inventory\Support\InventoryMovementSourceMap::filterOptions();
+        $base = InventoryMovementSourceMap::filterOptions();
 
         $locations = $this->inventoryRepository->activeLocationsForFilters()
             ->map(fn ($l) => ['value' => (string) $l->id, 'label' => $l->location_name])
@@ -73,6 +81,7 @@ class InventoryService
         $stores = $this->inventoryRepository->channelShopsForFilters()
             ->map(function ($s) {
                 $channelName = $s->channel?->name ?? '—';
+
                 return [
                     'value' => (string) $s->shop_id,
                     'label' => "{$channelName} - {$s->shop_name}",
@@ -93,21 +102,21 @@ class InventoryService
         return $this->inventoryRepository->deleteVariants($ids);
     }
 
-    public function findVariantForSku(string $sku): ?\Modules\Product\Models\ProductVariant
+    public function findVariantForSku(string $sku): ?ProductVariant
     {
         return $this->inventoryRepository->findVariantBySkuOrBarcode(trim($sku));
     }
 
-    public function buildSkuStockSummary(\Modules\Product\Models\ProductVariant $variant, ?string $locationId, string $strategy = 'default'): array
+    public function buildSkuStockSummary(ProductVariant $variant, ?string $locationId, string $strategy = 'default'): array
     {
         $primary = $this->inventoryRepository->findPrimaryBinStock($variant->id, $locationId);
         $onHand = $this->inventoryRepository->sumOnHandForSku($variant->id, $locationId);
 
         $availableBins = $this->inventoryRepository->availableBinStocks($variant->id, $locationId, $strategy)
             ->map(fn ($inv) => [
-                'id'       => $inv->bin_id,
-                'code'     => $inv->bin?->bin_final_code,
-                'on_hand'  => (int) $inv->on_hand,
+                'id' => $inv->bin_id,
+                'code' => $inv->bin?->bin_final_code,
+                'on_hand' => (int) $inv->on_hand,
                 'avg_cost' => (float) $inv->avg_cost,
             ])
             ->filter(fn ($b) => $b['code'] !== null)
@@ -120,18 +129,18 @@ class InventoryService
             ->implode(', ');
 
         return [
-            'id'             => $variant->id,
-            'sku'            => $variant->sku,
-            'product_id'     => $variant->product_id,
-            'product_name'   => $variant->product?->name,
-            'variant_label'  => $variantLabel,
-            'thumbnail_url'  => $this->resolveVariantThumbnail($variant),
-            'on_hand'        => (int) $onHand,
-            'avg_cost'       => $primary ? (float) $primary->avg_cost : 0,
-            'primary_bin'    => $primary && $primary->bin ? [
-                'id'       => $primary->bin_id,
-                'code'     => $primary->bin->bin_final_code,
-                'on_hand'  => (int) $primary->on_hand,
+            'id' => $variant->id,
+            'sku' => $variant->sku,
+            'product_id' => $variant->product_id,
+            'product_name' => $variant->product?->name,
+            'variant_label' => $variantLabel,
+            'thumbnail_url' => $this->resolveVariantThumbnail($variant),
+            'on_hand' => (int) $onHand,
+            'avg_cost' => $primary ? (float) $primary->avg_cost : 0,
+            'primary_bin' => $primary && $primary->bin ? [
+                'id' => $primary->bin_id,
+                'code' => $primary->bin->bin_final_code,
+                'on_hand' => (int) $primary->on_hand,
                 'avg_cost' => (float) $primary->avg_cost,
             ] : null,
             'available_bins' => $availableBins,
@@ -178,15 +187,15 @@ class InventoryService
                 ->implode(', ');
 
             return [
-                'item_id'          => $variant->id,
-                'sku'              => $variant->sku,
-                'product_id'       => $variant->product_id,
-                'product_name'     => $variant->product?->name,
-                'variant_label'    => $variantLabel,
+                'item_id' => $variant->id,
+                'sku' => $variant->sku,
+                'product_id' => $variant->product_id,
+                'product_name' => $variant->product?->name,
+                'variant_label' => $variantLabel,
                 'variation_values' => $variationValues,
-                'thumbnail_url'    => $this->resolveVariantThumbnail($variant),
-                'total_on_hand'    => (int) ($variant->total_on_hand ?? 0),
-                'sell_price'       => (float) ($variant->sell_price ?? 0),
+                'thumbnail_url' => $this->resolveVariantThumbnail($variant),
+                'total_on_hand' => (int) ($variant->total_on_hand ?? 0),
+                'sell_price' => (float) ($variant->sell_price ?? 0),
             ];
         });
 
@@ -262,7 +271,7 @@ class InventoryService
 
     private function adjustInternal(array $data, bool $allowInboundBin): Inventory
     {
-        app(\Modules\Product\Services\BundleGuardService::class)
+        app(BundleGuardService::class)
             ->assertNotBundle([$data['item_id'] ?? null], 'operasi stok fisik');
 
         if ($allowInboundBin) {
@@ -281,9 +290,9 @@ class InventoryService
 
         $inventory = DB::transaction(function () use ($data, $allowInboundBin) {
             if (! $allowInboundBin && ! empty($data['bin_id']) && (int) $data['qty'] > 0) {
-                app(\Modules\Warehouse\Services\BinOccupancyGuard::class)
+                app(BinOccupancyGuard::class)
                     ->assertBinFitsSku($data['bin_id'], $data['item_id']);
-                app(\Modules\Warehouse\Services\SkuHomeBinGuard::class)
+                app(SkuHomeBinGuard::class)
                     ->assertSkuFitsBin($data['location_id'], $data['item_id'], $data['bin_id']);
             }
 
@@ -303,7 +312,7 @@ class InventoryService
                     mode: StockAdjustmentRule::MODE_DELTA,
                 );
             } catch (NegativeStockAdjustmentException $e) {
-                throw new \App\Exceptions\UserFacingException(
+                throw new UserFacingException(
                     title: 'Stok Tidak Mencukupi',
                     message: $e->getMessage(),
                     status: 422,
@@ -317,7 +326,8 @@ class InventoryService
                 'item_id' => $data['item_id'],
                 'location_id' => $data['location_id'],
                 'bin_id' => $data['bin_id'] ?? null,
-                'transaction_number' => $data['transaction_number'] ?? 'ADJ-' . Str::upper(Str::random(8)),
+                'inbound_receipt_id' => $data['inbound_receipt_id'] ?? null,
+                'transaction_number' => $data['transaction_number'] ?? 'ADJ-'.Str::upper(Str::random(8)),
                 'source' => $data['source'] ?? 'ADJUSTMENT',
                 'qty' => $data['qty'],
                 'balance' => $inventory->on_hand,
@@ -335,11 +345,19 @@ class InventoryService
 
     public function putaway(array $data): Inventory
     {
-        app(\Modules\Product\Services\BundleGuardService::class)
+        app(BundleGuardService::class)
             ->assertNotBundle([$data['item_id'] ?? null], 'penempatan (putaway)');
 
+        if (empty($data['transaction_number'])) {
+            throw new \RuntimeException(
+                'Perpindahan stok wajib memiliki nomor referensi. Gunakan dokumen penempatan atau pindah bin resmi.'
+            );
+        }
+
         return DB::transaction(function () use ($data) {
-            $transactionNumber = $data['transaction_number'] ?? app(\Modules\Inventory\Repositories\PutawayRepository::class)->generatePutawayNo();
+            $transactionNumber = (string) $data['transaction_number'];
+            $sourceOut = (string) ($data['source_out'] ?? 'BIN_TRANSFER_OUT');
+            $sourceIn = (string) ($data['source_in'] ?? 'BIN_TRANSFER_IN');
 
             app(InboundBinPolicy::class)->assertPutawayRoute(
                 $data['location_id'],
@@ -347,11 +365,11 @@ class InventoryService
                 $data['destination_bin_id'],
             );
 
-            app(\Modules\Warehouse\Services\BinOccupancyGuard::class)
+            app(BinOccupancyGuard::class)
                 ->assertBinFitsSku($data['destination_bin_id'], $data['item_id']);
 
             if (empty($data['skip_home_bin_guard'])) {
-                app(\Modules\Warehouse\Services\SkuHomeBinGuard::class)
+                app(SkuHomeBinGuard::class)
                     ->assertSkuFitsBin($data['location_id'], $data['item_id'], $data['destination_bin_id']);
             }
 
@@ -385,7 +403,7 @@ class InventoryService
                 'location_id' => $data['location_id'],
                 'bin_id' => $data['source_bin_id'],
                 'transaction_number' => $transactionNumber,
-                'source' => 'PUTAWAY_OUT',
+                'source' => $sourceOut,
                 'qty' => -$data['qty'],
                 'balance' => $inboundInventory->on_hand,
                 'transaction_date' => now(),
@@ -409,7 +427,7 @@ class InventoryService
                 'location_id' => $data['location_id'],
                 'bin_id' => $data['destination_bin_id'],
                 'transaction_number' => $transactionNumber,
-                'source' => 'PUTAWAY_IN',
+                'source' => $sourceIn,
                 'qty' => $data['qty'],
                 'balance' => $destInventory->on_hand,
                 'transaction_date' => now(),
@@ -433,7 +451,12 @@ class InventoryService
             }
 
             app(InboundBinPolicy::class)->assertConsumable($data['location_id'], $data['from_bin_id'], 'koreksi pindah rak');
-            app(InboundBinPolicy::class)->assertConsumable($data['location_id'], $data['to_bin_id'], 'koreksi pindah rak');
+            $returnsToInbound = ($data['source'] ?? null) === 'PUTAWAY_REVERSAL';
+            if ($returnsToInbound) {
+                app(InboundBinPolicy::class)->assertInbound($data['location_id'], $data['to_bin_id'], 'koreksi penempatan');
+            } else {
+                app(InboundBinPolicy::class)->assertConsumable($data['location_id'], $data['to_bin_id'], 'koreksi pindah rak');
+            }
 
             $from = $this->inventoryRepository->findExactForUpdate(
                 $data['item_id'],
@@ -454,23 +477,25 @@ class InventoryService
             $this->inventoryRepository->updateStock($from);
 
             $this->movementRepository->create([
-                'item_id'            => $data['item_id'],
-                'location_id'        => $data['location_id'],
-                'bin_id'             => $data['from_bin_id'],
+                'item_id' => $data['item_id'],
+                'location_id' => $data['location_id'],
+                'bin_id' => $data['from_bin_id'],
                 'transaction_number' => $data['transaction_number'],
-                'source'             => $data['source'],
-                'qty'                => -$qty,
-                'balance'            => $from->on_hand,
-                'cost_per_unit'      => $unitCost > 0 ? $unitCost : null,
-                'total_cost'         => $unitCost > 0 ? round($unitCost * $qty, 2) : null,
-                'transaction_date'   => now(),
-                'created_by'         => $data['created_by'],
+                'source' => $data['source'],
+                'qty' => -$qty,
+                'balance' => $from->on_hand,
+                'cost_per_unit' => $unitCost > 0 ? $unitCost : null,
+                'total_cost' => $unitCost > 0 ? round($unitCost * $qty, 2) : null,
+                'transaction_date' => now(),
+                'created_by' => $data['created_by'],
             ]);
 
-            app(\Modules\Warehouse\Services\BinOccupancyGuard::class)
-                ->assertBinFitsSku($data['to_bin_id'], $data['item_id']);
-            app(\Modules\Warehouse\Services\SkuHomeBinGuard::class)
-                ->assertSkuFitsBin($data['location_id'], $data['item_id'], $data['to_bin_id']);
+            if (! $returnsToInbound) {
+                app(BinOccupancyGuard::class)
+                    ->assertBinFitsSku($data['to_bin_id'], $data['item_id']);
+                app(SkuHomeBinGuard::class)
+                    ->assertSkuFitsBin($data['location_id'], $data['item_id'], $data['to_bin_id']);
+            }
 
             $to = $this->inventoryRepository->findOrCreateForUpdate(
                 $data['item_id'],
@@ -497,17 +522,17 @@ class InventoryService
             $this->inventoryRepository->updateStock($to);
 
             $this->movementRepository->create([
-                'item_id'            => $data['item_id'],
-                'location_id'        => $data['location_id'],
-                'bin_id'             => $data['to_bin_id'],
+                'item_id' => $data['item_id'],
+                'location_id' => $data['location_id'],
+                'bin_id' => $data['to_bin_id'],
                 'transaction_number' => $data['transaction_number'],
-                'source'             => $data['source'],
-                'qty'                => $qty,
-                'balance'            => $to->on_hand,
-                'cost_per_unit'      => $unitCost > 0 ? $unitCost : null,
-                'total_cost'         => $unitCost > 0 ? round($unitCost * $qty, 2) : null,
-                'transaction_date'   => now(),
-                'created_by'         => $data['created_by'],
+                'source' => $data['source'],
+                'qty' => $qty,
+                'balance' => $to->on_hand,
+                'cost_per_unit' => $unitCost > 0 ? $unitCost : null,
+                'total_cost' => $unitCost > 0 ? round($unitCost * $qty, 2) : null,
+                'transaction_date' => now(),
+                'created_by' => $data['created_by'],
             ]);
         });
 
@@ -531,19 +556,20 @@ class InventoryService
             );
 
             $inventory->on_hand += $qty;
+            $inventory->on_order += $qty;
             $inventory->recalculateAvailable();
             $this->inventoryRepository->updateStock($inventory);
 
             $this->movementRepository->create([
-                'item_id'            => $data['item_id'],
-                'location_id'        => $data['location_id'],
-                'bin_id'             => $data['bin_id'],
+                'item_id' => $data['item_id'],
+                'location_id' => $data['location_id'],
+                'bin_id' => $data['bin_id'],
                 'transaction_number' => $data['transaction_number'],
-                'source'             => 'PICKING_REVERSAL',
-                'qty'                => $qty,
-                'balance'            => $inventory->on_hand,
-                'transaction_date'   => now(),
-                'created_by'         => $data['created_by'],
+                'source' => 'PICKING_REVERSAL',
+                'qty' => $qty,
+                'balance' => $inventory->on_hand,
+                'transaction_date' => now(),
+                'created_by' => $data['created_by'],
             ]);
         });
 
@@ -558,12 +584,12 @@ class InventoryService
             throw new \Exception('Minimal 1 produk harus ditransfer.');
         }
 
-        app(\Modules\Product\Services\BundleGuardService::class)
+        app(BundleGuardService::class)
             ->assertNotBundle(array_column($items, 'item_id'), 'transfer antar rak');
 
         foreach ($items as $idx => $it) {
             if (empty($it['source_bin_id'])) {
-                throw new \Exception('Setiap baris produk wajib punya rak asal pada baris ke-' . ($idx + 1) . '.');
+                throw new \Exception('Setiap baris produk wajib punya rak asal pada baris ke-'.($idx + 1).'.');
             }
             if ((int) ($it['qty'] ?? 0) <= 0) {
                 throw new \Exception('Qty setiap produk harus lebih dari 0.');
@@ -575,11 +601,11 @@ class InventoryService
 
             $header = BinTransfer::create([
                 'transfer_number' => $transferNumber,
-                'location_id'     => $data['location_id'],
-                'status'          => BinTransfer::STATUS_BARU_DIBUAT,
-                'transfer_date'   => $data['transfer_date'] ?? now()->toDateString(),
-                'created_by'      => $data['created_by'],
-                'notes'           => $data['notes'] ?? null,
+                'location_id' => $data['location_id'],
+                'status' => BinTransfer::STATUS_BARU_DIBUAT,
+                'transfer_date' => $data['transfer_date'] ?? now()->toDateString(),
+                'created_by' => $data['created_by'],
+                'notes' => $data['notes'] ?? null,
             ]);
 
             foreach ($items as $itemData) {
@@ -615,16 +641,16 @@ class InventoryService
                 }
 
                 BinTransferItem::create([
-                    'bin_transfer_id'    => $header->id,
-                    'item_id'            => $itemData['item_id'],
-                    'source_bin_id'      => $sourceBinId,
+                    'bin_transfer_id' => $header->id,
+                    'item_id' => $itemData['item_id'],
+                    'source_bin_id' => $sourceBinId,
                     'destination_bin_id' => null,
-                    'qty'                => $qty,
-                    'placed_qty'         => 0,
-                    'batch_no'           => $itemData['batch_no'] ?? null,
-                    'serial_no'          => $itemData['serial_no'] ?? null,
-                    'expired_date'       => $itemData['expired_date'] ?? null,
-                    'notes'              => $itemData['notes'] ?? null,
+                    'qty' => $qty,
+                    'placed_qty' => 0,
+                    'batch_no' => $itemData['batch_no'] ?? null,
+                    'serial_no' => $itemData['serial_no'] ?? null,
+                    'expired_date' => $itemData['expired_date'] ?? null,
+                    'notes' => $itemData['notes'] ?? null,
                 ]);
             }
 
@@ -686,17 +712,17 @@ class InventoryService
                 $this->inventoryRepository->updateStock($source);
 
                 $this->movementRepository->create([
-                    'item_id'            => $item->item_id,
-                    'location_id'        => $header->location_id,
-                    'bin_id'             => $item->source_bin_id,
+                    'item_id' => $item->item_id,
+                    'location_id' => $header->location_id,
+                    'bin_id' => $item->source_bin_id,
                     'transaction_number' => $header->transfer_number,
-                    'source'             => 'BIN_TRANSFER_OUT',
-                    'qty'                => -$qty,
-                    'balance'            => $source->on_hand,
-                    'cost_per_unit'      => $unitCost > 0 ? $unitCost : null,
-                    'total_cost'         => $unitCost > 0 ? round($unitCost * $qty, 2) : null,
-                    'transaction_date'   => now(),
-                    'created_by'         => $printedBy,
+                    'source' => 'BIN_TRANSFER_OUT',
+                    'qty' => -$qty,
+                    'balance' => $source->on_hand,
+                    'cost_per_unit' => $unitCost > 0 ? $unitCost : null,
+                    'total_cost' => $unitCost > 0 ? round($unitCost * $qty, 2) : null,
+                    'transaction_date' => now(),
+                    'created_by' => $printedBy,
                 ]);
 
                 $transit = $this->inventoryRepository->findOrCreateForUpdate(
@@ -724,22 +750,22 @@ class InventoryService
                 }
 
                 $this->movementRepository->create([
-                    'item_id'            => $item->item_id,
-                    'location_id'        => $transitLocationId,
-                    'bin_id'             => $transitBinId,
+                    'item_id' => $item->item_id,
+                    'location_id' => $transitLocationId,
+                    'bin_id' => $transitBinId,
                     'transaction_number' => $header->transfer_number,
-                    'source'             => 'TRANSIT_IN',
-                    'qty'                => $qty,
-                    'balance'            => $transit->on_hand,
-                    'transaction_date'   => now(),
-                    'created_by'         => $printedBy,
+                    'source' => 'TRANSIT_IN',
+                    'qty' => $qty,
+                    'balance' => $transit->on_hand,
+                    'transaction_date' => now(),
+                    'created_by' => $printedBy,
                 ]);
 
                 $variantIds[] = $item->item_id;
             }
 
             $header->update([
-                'status'     => BinTransfer::STATUS_SEDANG_DIJALAN,
+                'status' => BinTransfer::STATUS_SEDANG_DIJALAN,
                 'printed_at' => now(),
                 'printed_by' => $printedBy,
             ]);
@@ -773,7 +799,7 @@ class InventoryService
             }
 
             [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
-            $txnNumber = $header->transfer_number . '-BATAL';
+            $txnNumber = $header->transfer_number.'-BATAL';
 
             foreach ($items as $item) {
                 $qty = (int) $item->qty;
@@ -797,15 +823,15 @@ class InventoryService
                 $this->inventoryRepository->updateStock($transit);
 
                 $this->movementRepository->create([
-                    'item_id'            => $item->item_id,
-                    'location_id'        => $transitLocationId,
-                    'bin_id'             => $transitBinId,
+                    'item_id' => $item->item_id,
+                    'location_id' => $transitLocationId,
+                    'bin_id' => $transitBinId,
                     'transaction_number' => $txnNumber,
-                    'source'             => 'TRANSIT_OUT',
-                    'qty'                => -$qty,
-                    'balance'            => $transit->on_hand,
-                    'transaction_date'   => now(),
-                    'created_by'         => $actor,
+                    'source' => 'TRANSIT_OUT',
+                    'qty' => -$qty,
+                    'balance' => $transit->on_hand,
+                    'transaction_date' => now(),
+                    'created_by' => $actor,
                 ]);
 
                 $source = $this->inventoryRepository->findOrCreateForUpdate(
@@ -833,24 +859,24 @@ class InventoryService
                 }
 
                 $this->movementRepository->create([
-                    'item_id'            => $item->item_id,
-                    'location_id'        => $header->location_id,
-                    'bin_id'             => $item->source_bin_id,
+                    'item_id' => $item->item_id,
+                    'location_id' => $header->location_id,
+                    'bin_id' => $item->source_bin_id,
                     'transaction_number' => $txnNumber,
-                    'source'             => 'BIN_TRANSFER_REVERSAL',
-                    'qty'                => $qty,
-                    'balance'            => $source->on_hand,
-                    'cost_per_unit'      => $unitCost > 0 ? $unitCost : null,
-                    'total_cost'         => $unitCost > 0 ? round($unitCost * $qty, 2) : null,
-                    'transaction_date'   => now(),
-                    'created_by'         => $actor,
+                    'source' => 'BIN_TRANSFER_REVERSAL',
+                    'qty' => $qty,
+                    'balance' => $source->on_hand,
+                    'cost_per_unit' => $unitCost > 0 ? $unitCost : null,
+                    'total_cost' => $unitCost > 0 ? round($unitCost * $qty, 2) : null,
+                    'transaction_date' => now(),
+                    'created_by' => $actor,
                 ]);
 
                 $variantIds[] = $item->item_id;
             }
 
             $header->update([
-                'status'     => BinTransfer::STATUS_BARU_DIBUAT,
+                'status' => BinTransfer::STATUS_BARU_DIBUAT,
                 'printed_at' => null,
                 'printed_by' => null,
             ]);
@@ -885,12 +911,12 @@ class InventoryService
             [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
 
             $receipt = BinTransferReceipt::create([
-                'receipt_number'  => $this->generateTrfiNumber(),
+                'receipt_number' => $this->generateTrfiNumber(),
                 'bin_transfer_id' => $header->id,
-                'location_id'     => $header->location_id,
-                'received_by'     => $data['received_by'],
-                'received_at'     => now(),
-                'notes'           => $data['notes'] ?? null,
+                'location_id' => $header->location_id,
+                'received_by' => $data['received_by'],
+                'received_at' => now(),
+                'notes' => $data['notes'] ?? null,
             ]);
 
             $lockedRows = BinTransferItem::where('bin_transfer_id', $header->id)
@@ -957,20 +983,20 @@ class InventoryService
                 $this->inventoryRepository->updateStock($transit);
 
                 $this->movementRepository->create([
-                    'item_id'            => $item->item_id,
-                    'location_id'        => $transitLocationId,
-                    'bin_id'             => $transitBinId,
+                    'item_id' => $item->item_id,
+                    'location_id' => $transitLocationId,
+                    'bin_id' => $transitBinId,
                     'transaction_number' => $receipt->receipt_number,
-                    'source'             => 'TRANSIT_OUT',
-                    'qty'                => -$qtyTerima,
-                    'balance'            => $transit->on_hand,
-                    'transaction_date'   => now(),
-                    'created_by'         => $data['received_by'],
+                    'source' => 'TRANSIT_OUT',
+                    'qty' => -$qtyTerima,
+                    'balance' => $transit->on_hand,
+                    'transaction_date' => now(),
+                    'created_by' => $data['received_by'],
                 ]);
 
-                app(\Modules\Warehouse\Services\BinOccupancyGuard::class)
+                app(BinOccupancyGuard::class)
                     ->assertBinFitsSku($destBinId, $item->item_id);
-                app(\Modules\Warehouse\Services\SkuHomeBinGuard::class)
+                app(SkuHomeBinGuard::class)
                     ->assertSkuFitsBin($header->location_id, $item->item_id, $destBinId);
 
                 $dest = $this->inventoryRepository->findOrCreateForUpdate(
@@ -998,28 +1024,28 @@ class InventoryService
                 }
 
                 $this->movementRepository->create([
-                    'item_id'            => $item->item_id,
-                    'location_id'        => $header->location_id,
-                    'bin_id'             => $destBinId,
+                    'item_id' => $item->item_id,
+                    'location_id' => $header->location_id,
+                    'bin_id' => $destBinId,
                     'transaction_number' => $receipt->receipt_number,
-                    'source'             => 'BIN_TRANSFER_IN',
-                    'qty'                => $qtyTerima,
-                    'balance'            => $dest->on_hand,
-                    'cost_per_unit'      => $unitCost > 0 ? $unitCost : null,
-                    'total_cost'         => $unitCost > 0 ? round($unitCost * $qtyTerima, 2) : null,
-                    'transaction_date'   => now(),
-                    'created_by'         => $data['received_by'],
+                    'source' => 'BIN_TRANSFER_IN',
+                    'qty' => $qtyTerima,
+                    'balance' => $dest->on_hand,
+                    'cost_per_unit' => $unitCost > 0 ? $unitCost : null,
+                    'total_cost' => $unitCost > 0 ? round($unitCost * $qtyTerima, 2) : null,
+                    'transaction_date' => now(),
+                    'created_by' => $data['received_by'],
                 ]);
 
                 BinTransferReceiptItem::create([
                     'bin_transfer_receipt_id' => $receipt->id,
-                    'bin_transfer_item_id'    => $item->id,
-                    'destination_bin_id'      => $destBinId,
-                    'qty'                     => $qtyTerima,
+                    'bin_transfer_item_id' => $item->id,
+                    'destination_bin_id' => $destBinId,
+                    'qty' => $qtyTerima,
                 ]);
 
                 $item->placed_qty = (int) $item->placed_qty + $qtyTerima;
-                $item->destination_bin_id = $destBinId; 
+                $item->destination_bin_id = $destBinId;
                 $item->save();
 
                 $variantIds[] = $item->item_id;
@@ -1086,15 +1112,15 @@ class InventoryService
                 $this->inventoryRepository->updateStock($dest);
 
                 $this->movementRepository->create([
-                    'item_id'            => $transferItem->item_id,
-                    'location_id'        => $header->location_id,
-                    'bin_id'             => $destBinId,
-                    'transaction_number' => $receipt->receipt_number . '-BATAL',
-                    'source'             => 'BIN_TRANSFER_REVERT_OUT',
-                    'qty'                => -$qty,
-                    'balance'            => $dest->on_hand,
-                    'transaction_date'   => now(),
-                    'created_by'         => $actor,
+                    'item_id' => $transferItem->item_id,
+                    'location_id' => $header->location_id,
+                    'bin_id' => $destBinId,
+                    'transaction_number' => $receipt->receipt_number.'-BATAL',
+                    'source' => 'BIN_TRANSFER_REVERT_OUT',
+                    'qty' => -$qty,
+                    'balance' => $dest->on_hand,
+                    'transaction_date' => now(),
+                    'created_by' => $actor,
                 ]);
 
                 $transit = $this->inventoryRepository->findOrCreateForUpdate(
@@ -1109,15 +1135,15 @@ class InventoryService
                 $this->inventoryRepository->updateStock($transit);
 
                 $this->movementRepository->create([
-                    'item_id'            => $transferItem->item_id,
-                    'location_id'        => $transitLocationId,
-                    'bin_id'             => $transitBinId,
-                    'transaction_number' => $receipt->receipt_number . '-BATAL',
-                    'source'             => 'TRANSIT_REVERT_IN',
-                    'qty'                => $qty,
-                    'balance'            => $transit->on_hand,
-                    'transaction_date'   => now(),
-                    'created_by'         => $actor,
+                    'item_id' => $transferItem->item_id,
+                    'location_id' => $transitLocationId,
+                    'bin_id' => $transitBinId,
+                    'transaction_number' => $receipt->receipt_number.'-BATAL',
+                    'source' => 'TRANSIT_REVERT_IN',
+                    'qty' => $qty,
+                    'balance' => $transit->on_hand,
+                    'transaction_date' => now(),
+                    'created_by' => $actor,
                 ]);
 
                 $transferItem->placed_qty = max(0, (int) $transferItem->placed_qty - $qty);
@@ -1186,16 +1212,16 @@ class InventoryService
                 }
 
                 $this->reverseBinMove([
-                    'item_id'            => $row->item_id,
-                    'location_id'        => $header->location_id,
-                    'from_bin_id'        => $row->destination_bin_id,
-                    'to_bin_id'          => $row->source_bin_id,
-                    'qty'                => $qtyRev,
-                    'batch_no'           => $row->batch_no ?? '',
-                    'serial_no'          => $row->serial_no ?? '',
-                    'source'             => 'BIN_TRANSFER_REVERSAL',
-                    'transaction_number' => $header->transfer_number . '-KOREKSI',
-                    'created_by'         => "user:{$userId}",
+                    'item_id' => $row->item_id,
+                    'location_id' => $header->location_id,
+                    'from_bin_id' => $row->destination_bin_id,
+                    'to_bin_id' => $row->source_bin_id,
+                    'qty' => $qtyRev,
+                    'batch_no' => $row->batch_no ?? '',
+                    'serial_no' => $row->serial_no ?? '',
+                    'source' => 'BIN_TRANSFER_REVERSAL',
+                    'transaction_number' => $header->transfer_number.'-KOREKSI',
+                    'created_by' => "user:{$userId}",
                 ]);
 
                 if ($qtyRev >= (int) $row->qty) {
@@ -1217,14 +1243,14 @@ class InventoryService
 
         if (isset($data['item_id']) && isset($data['qty'])) {
             return [[
-                'item_id'            => $data['item_id'],
-                'source_bin_id'      => $data['source_bin_id'] ?? null,
+                'item_id' => $data['item_id'],
+                'source_bin_id' => $data['source_bin_id'] ?? null,
                 'destination_bin_id' => $data['destination_bin_id'] ?? null,
-                'qty'                => $data['qty'],
-                'batch_no'           => $data['batch_no'] ?? null,
-                'serial_no'          => $data['serial_no'] ?? null,
-                'expired_date'       => $data['expired_date'] ?? null,
-                'notes'              => $data['notes_item'] ?? null,
+                'qty' => $data['qty'],
+                'batch_no' => $data['batch_no'] ?? null,
+                'serial_no' => $data['serial_no'] ?? null,
+                'expired_date' => $data['expired_date'] ?? null,
+                'notes' => $data['notes_item'] ?? null,
             ]];
         }
 
@@ -1240,12 +1266,12 @@ class InventoryService
 
     protected function generateTrfoNumber(): string
     {
-        return 'TRFO-' . str_pad((string) $this->nextBinTransferSeq(), 9, '0', STR_PAD_LEFT);
+        return 'TRFO-'.str_pad((string) $this->nextBinTransferSeq(), 9, '0', STR_PAD_LEFT);
     }
 
     public function generateTrfiNumber(): string
     {
-        return 'TRFI-' . str_pad((string) $this->nextBinTransferSeq(), 9, '0', STR_PAD_LEFT);
+        return 'TRFI-'.str_pad((string) $this->nextBinTransferSeq(), 9, '0', STR_PAD_LEFT);
     }
 
     public function getBinTransfers(array $filters = [], int $perPage = 10)
@@ -1352,7 +1378,7 @@ class InventoryService
 
     public function transferOut(array $data): InventoryTransfer
     {
-        app(\Modules\Product\Services\BundleGuardService::class)
+        app(BundleGuardService::class)
             ->assertNotBundle(array_column($data['items'] ?? [], 'item_id'), 'transfer stok');
 
         $transfer = DB::transaction(function () use ($data) {
@@ -1360,12 +1386,12 @@ class InventoryService
             $transferNumber = $this->generateTransferNumber();
 
             $transfer = $this->transferRepository->create([
-                'transfer_number'          => $transferNumber,
-                'source_location_id'       => $data['source_location_id'],
-                'destination_location_id'  => $data['destination_location_id'],
-                'status'                   => InventoryTransfer::STATUS_IN_TRANSIT,
-                'notes'                    => $data['notes'] ?? null,
-                'created_by'               => $data['created_by'],
+                'transfer_number' => $transferNumber,
+                'source_location_id' => $data['source_location_id'],
+                'destination_location_id' => $data['destination_location_id'],
+                'status' => InventoryTransfer::STATUS_IN_TRANSIT,
+                'notes' => $data['notes'] ?? null,
+                'created_by' => $data['created_by'],
             ]);
 
             foreach ($data['items'] as $itemData) {
@@ -1377,12 +1403,12 @@ class InventoryService
 
                 $this->transferRepository->createItem([
                     'inventory_transfer_id' => $transfer->id,
-                    'item_id'               => $itemData['item_id'],
-                    'qty'                   => $itemData['qty'],
-                    'source_bin_id'         => $itemData['source_bin_id'] ?? null,
-                    'destination_bin_id'    => $itemData['destination_bin_id'] ?? null,
-                    'batch_no'              => $itemData['batch_no'] ?? '',
-                    'serial_no'             => $itemData['serial_no'] ?? '',
+                    'item_id' => $itemData['item_id'],
+                    'qty' => $itemData['qty'],
+                    'source_bin_id' => $itemData['source_bin_id'] ?? null,
+                    'destination_bin_id' => $itemData['destination_bin_id'] ?? null,
+                    'batch_no' => $itemData['batch_no'] ?? '',
+                    'serial_no' => $itemData['serial_no'] ?? '',
                 ]);
 
                 $sourceInventory = $this->inventoryRepository->findExactForUpdate(
@@ -1411,15 +1437,15 @@ class InventoryService
                 $this->inventoryRepository->updateStock($sourceInventory);
 
                 $this->movementRepository->create([
-                    'item_id'            => $itemData['item_id'],
-                    'location_id'        => $data['source_location_id'],
-                    'bin_id'             => $itemData['source_bin_id'] ?? null,
+                    'item_id' => $itemData['item_id'],
+                    'location_id' => $data['source_location_id'],
+                    'bin_id' => $itemData['source_bin_id'] ?? null,
                     'transaction_number' => $transferNumber,
-                    'source'             => 'TRANSFER_OUT',
-                    'qty'                => -$itemData['qty'],
-                    'balance'            => $sourceInventory->on_hand,
-                    'transaction_date'   => now(),
-                    'created_by'         => $data['created_by'],
+                    'source' => 'TRANSFER_OUT',
+                    'qty' => -$itemData['qty'],
+                    'balance' => $sourceInventory->on_hand,
+                    'transaction_date' => now(),
+                    'created_by' => $data['created_by'],
                 ]);
 
                 $transitInventory = $this->inventoryRepository->findOrCreateForUpdate(
@@ -1434,15 +1460,15 @@ class InventoryService
                 $this->inventoryRepository->updateStock($transitInventory);
 
                 $this->movementRepository->create([
-                    'item_id'            => $itemData['item_id'],
-                    'location_id'        => $transitLocationId,
-                    'bin_id'             => $transitBinId,
+                    'item_id' => $itemData['item_id'],
+                    'location_id' => $transitLocationId,
+                    'bin_id' => $transitBinId,
                     'transaction_number' => $transferNumber,
-                    'source'             => 'TRANSIT_IN',
-                    'qty'                => $itemData['qty'],
-                    'balance'            => $transitInventory->on_hand,
-                    'transaction_date'   => now(),
-                    'created_by'         => $data['created_by'],
+                    'source' => 'TRANSIT_IN',
+                    'qty' => $itemData['qty'],
+                    'balance' => $transitInventory->on_hand,
+                    'transaction_date' => now(),
+                    'created_by' => $data['created_by'],
                 ]);
             }
 
@@ -1482,7 +1508,7 @@ class InventoryService
             }
 
             $transfer->update([
-                'status'      => InventoryTransfer::STATUS_APPROVED,
+                'status' => InventoryTransfer::STATUS_APPROVED,
                 'approved_by' => $data['approved_by'],
                 'assigned_to' => $data['assigned_to'] ?? null,
                 'approved_at' => now(),
@@ -1535,22 +1561,22 @@ class InventoryService
             if ($first) {
                 $item->update([
                     'source_bin_id' => $row->bin_id,
-                    'qty'           => $take,
-                    'batch_no'      => $row->batch_no,
-                    'serial_no'     => $row->serial_no,
-                    'sync_status'   => InventoryTransferItem::SYNC_SYNCED,
-                    'sync_error'    => null,
+                    'qty' => $take,
+                    'batch_no' => $row->batch_no,
+                    'serial_no' => $row->serial_no,
+                    'sync_status' => InventoryTransferItem::SYNC_SYNCED,
+                    'sync_error' => null,
                 ]);
                 $first = false;
             } else {
                 $this->transferRepository->createItem([
                     'inventory_transfer_id' => $transfer->id,
-                    'item_id'               => $item->item_id,
-                    'qty'                   => $take,
-                    'source_bin_id'         => $row->bin_id,
-                    'batch_no'              => $row->batch_no,
-                    'serial_no'             => $row->serial_no,
-                    'sync_status'           => InventoryTransferItem::SYNC_SYNCED,
+                    'item_id' => $item->item_id,
+                    'qty' => $take,
+                    'source_bin_id' => $row->bin_id,
+                    'batch_no' => $row->batch_no,
+                    'serial_no' => $row->serial_no,
+                    'sync_status' => InventoryTransferItem::SYNC_SYNCED,
                 ]);
             }
 
@@ -1594,15 +1620,15 @@ class InventoryService
                     $this->inventoryRepository->updateStock($sourceInventory);
 
                     $this->movementRepository->create([
-                        'item_id'            => $item->item_id,
-                        'location_id'        => $transfer->source_location_id,
-                        'bin_id'             => $item->source_bin_id,
+                        'item_id' => $item->item_id,
+                        'location_id' => $transfer->source_location_id,
+                        'bin_id' => $item->source_bin_id,
                         'transaction_number' => $transfer->transfer_number,
-                        'source'             => 'TRANSFER_OUT',
-                        'qty'                => $releaseQty,
-                        'balance'            => $sourceInventory->on_hand,
-                        'transaction_date'   => now(),
-                        'created_by'         => $data['cancelled_by'],
+                        'source' => 'TRANSFER_OUT',
+                        'qty' => $releaseQty,
+                        'balance' => $sourceInventory->on_hand,
+                        'transaction_date' => now(),
+                        'created_by' => $data['cancelled_by'],
                     ]);
                 }
 
@@ -1620,24 +1646,24 @@ class InventoryService
                     $this->inventoryRepository->updateStock($transitInventory);
 
                     $this->movementRepository->create([
-                        'item_id'            => $item->item_id,
-                        'location_id'        => $transitLocationId,
-                        'bin_id'             => $transitBinId,
+                        'item_id' => $item->item_id,
+                        'location_id' => $transitLocationId,
+                        'bin_id' => $transitBinId,
                         'transaction_number' => $transfer->transfer_number,
-                        'source'             => 'TRANSIT_OUT',
-                        'qty'                => -$deductQty,
-                        'balance'            => $transitInventory->on_hand,
-                        'transaction_date'   => now(),
-                        'created_by'         => $data['cancelled_by'],
+                        'source' => 'TRANSIT_OUT',
+                        'qty' => -$deductQty,
+                        'balance' => $transitInventory->on_hand,
+                        'transaction_date' => now(),
+                        'created_by' => $data['cancelled_by'],
                     ]);
                 }
             }
 
             $transfer->update([
-                'status'        => InventoryTransfer::STATUS_CANCELLED,
-                'cancelled_by'  => $data['cancelled_by'],
+                'status' => InventoryTransfer::STATUS_CANCELLED,
+                'cancelled_by' => $data['cancelled_by'],
                 'cancel_reason' => $data['cancel_reason'] ?? null,
-                'cancelled_at'  => now(),
+                'cancelled_at' => now(),
             ]);
 
             return $this->transferRepository->findById($transferId);
@@ -1714,15 +1740,15 @@ class InventoryService
 
                         if ($recoverQty > 0) {
                             $this->movementRepository->create([
-                                'item_id'            => $item->item_id,
-                                'location_id'        => $transfer->source_location_id,
-                                'bin_id'             => $item->source_bin_id,
+                                'item_id' => $item->item_id,
+                                'location_id' => $transfer->source_location_id,
+                                'bin_id' => $item->source_bin_id,
                                 'transaction_number' => $transfer->transfer_number,
-                                'source'             => 'TRANSFER_OUT',
-                                'qty'                => $recoverQty,
-                                'balance'            => $sourceInventory->on_hand,
-                                'transaction_date'   => now(),
-                                'created_by'         => $actor,
+                                'source' => 'TRANSFER_OUT',
+                                'qty' => $recoverQty,
+                                'balance' => $sourceInventory->on_hand,
+                                'transaction_date' => now(),
+                                'created_by' => $actor,
                             ]);
                         }
                     }
@@ -1732,32 +1758,32 @@ class InventoryService
                         $this->inventoryRepository->updateStock($transitInventory);
 
                         $this->movementRepository->create([
-                            'item_id'            => $item->item_id,
-                            'location_id'        => $transitLocationId,
-                            'bin_id'             => $transitBinId,
+                            'item_id' => $item->item_id,
+                            'location_id' => $transitLocationId,
+                            'bin_id' => $transitBinId,
                             'transaction_number' => $transfer->transfer_number,
-                            'source'             => 'TRANSIT_OUT',
-                            'qty'                => -$recoverQty,
-                            'balance'            => $transitInventory->on_hand,
-                            'transaction_date'   => now(),
-                            'created_by'         => $actor,
+                            'source' => 'TRANSIT_OUT',
+                            'qty' => -$recoverQty,
+                            'balance' => $transitInventory->on_hand,
+                            'transaction_date' => now(),
+                            'created_by' => $actor,
                         ]);
                     }
                 }
             }
 
             $transfer->update([
-                'status'      => InventoryTransfer::STATUS_DRAFT,
-                'shipped_at'  => null,
-                'printed_at'  => null,
-                'printed_by'  => null,
+                'status' => InventoryTransfer::STATUS_DRAFT,
+                'shipped_at' => null,
+                'printed_at' => null,
+                'printed_by' => null,
                 'approved_at' => null,
                 'approved_by' => null,
             ]);
 
-            \Modules\Inbound\Models\Inbound::where('source_type', 'transfer')
+            Inbound::where('source_type', 'transfer')
                 ->where('source_id', $transfer->id)
-                ->where('status', \Modules\Inbound\Models\Inbound::STATUS_DRAFT)
+                ->where('status', Inbound::STATUS_DRAFT)
                 ->delete();
 
             return $this->transferRepository->findById($transferId);
@@ -1770,13 +1796,13 @@ class InventoryService
 
     private function cancelActiveTransferReceipts(InventoryTransfer $transfer, string $actor): void
     {
-        $inboundIds = \Modules\Inbound\Models\Inbound::where('source_type', 'transfer')
+        $inboundIds = Inbound::where('source_type', 'transfer')
             ->where('source_id', $transfer->id)
             ->whereIn('status', [
-                \Modules\Inbound\Models\Inbound::STATUS_PARTIAL,
-                \Modules\Inbound\Models\Inbound::STATUS_RECEIVED,
-                \Modules\Inbound\Models\Inbound::STATUS_PUTAWAY_IN_PROGRESS,
-                \Modules\Inbound\Models\Inbound::STATUS_COMPLETED,
+                Inbound::STATUS_PARTIAL,
+                Inbound::STATUS_RECEIVED,
+                Inbound::STATUS_PUTAWAY_IN_PROGRESS,
+                Inbound::STATUS_COMPLETED,
             ])
             ->pluck('id')
             ->all();
@@ -1806,7 +1832,7 @@ class InventoryService
 
             $missingBin = $transfer->items->first(fn ($it) => empty($it->source_bin_id));
             if ($missingBin) {
-                throw new \Exception("Pilih rak asal untuk semua item sebelum transfer bisa dikirim.");
+                throw new \Exception('Pilih rak asal untuk semua item sebelum transfer bisa dikirim.');
             }
 
             foreach ($transfer->items as $item) {
@@ -1833,15 +1859,15 @@ class InventoryService
                 $this->inventoryRepository->updateStock($sourceInventory);
 
                 $this->movementRepository->create([
-                    'item_id'            => $item->item_id,
-                    'location_id'        => $transfer->source_location_id,
-                    'bin_id'             => $item->source_bin_id,
+                    'item_id' => $item->item_id,
+                    'location_id' => $transfer->source_location_id,
+                    'bin_id' => $item->source_bin_id,
                     'transaction_number' => $transfer->transfer_number,
-                    'source'             => 'TRANSFER_OUT',
-                    'qty'                => -$item->qty,
-                    'balance'            => $sourceInventory->on_hand,
-                    'transaction_date'   => now(),
-                    'created_by'         => $data['shipped_by'] ?? $transfer->assigned_to,
+                    'source' => 'TRANSFER_OUT',
+                    'qty' => -$item->qty,
+                    'balance' => $sourceInventory->on_hand,
+                    'transaction_date' => now(),
+                    'created_by' => $data['shipped_by'] ?? $transfer->assigned_to,
                 ]);
 
                 [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
@@ -1858,20 +1884,20 @@ class InventoryService
                 $this->inventoryRepository->updateStock($transitInventory);
 
                 $this->movementRepository->create([
-                    'item_id'            => $item->item_id,
-                    'location_id'        => $transitLocationId,
-                    'bin_id'             => $transitBinId,
+                    'item_id' => $item->item_id,
+                    'location_id' => $transitLocationId,
+                    'bin_id' => $transitBinId,
                     'transaction_number' => $transfer->transfer_number,
-                    'source'             => 'TRANSIT_IN',
-                    'qty'                => $item->qty,
-                    'balance'            => $transitInventory->on_hand,
-                    'transaction_date'   => now(),
-                    'created_by'         => $data['shipped_by'] ?? $transfer->assigned_to,
+                    'source' => 'TRANSIT_IN',
+                    'qty' => $item->qty,
+                    'balance' => $transitInventory->on_hand,
+                    'transaction_date' => now(),
+                    'created_by' => $data['shipped_by'] ?? $transfer->assigned_to,
                 ]);
             }
 
             $transfer->update([
-                'status'     => InventoryTransfer::STATUS_IN_TRANSIT,
+                'status' => InventoryTransfer::STATUS_IN_TRANSIT,
                 'shipped_at' => now(),
             ]);
 
@@ -1904,15 +1930,15 @@ class InventoryService
 
             $receivedItems = collect($data['items'] ?? []);
             [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
-            $defaultDestBin = app(\Modules\Warehouse\Services\LocationBinService::class)
+            $defaultDestBin = app(LocationBinService::class)
                 ->getDefaultBin($transfer->destination_location_id);
 
             foreach ($transfer->items as $item) {
                 $receivedData = $receivedItems->firstWhere('item_id', $item->item_id);
-                $receivedQty  = $receivedData['received_qty'] ?? $item->qty;
-                $rejectedQty  = $receivedData['rejected_qty'] ?? 0;
-                $condition    = $receivedData['condition'] ?? 'GOOD';
-                $itemNotes    = $receivedData['notes'] ?? null;
+                $receivedQty = $receivedData['received_qty'] ?? $item->qty;
+                $rejectedQty = $receivedData['rejected_qty'] ?? 0;
+                $condition = $receivedData['condition'] ?? 'GOOD';
+                $itemNotes = $receivedData['notes'] ?? null;
 
                 if ($receivedQty > $item->qty) {
                     throw new \Exception("Qty diterima ({$receivedQty}) melebihi qty kirim ({$item->qty}).");
@@ -1934,15 +1960,15 @@ class InventoryService
                         $this->inventoryRepository->updateStock($transitInventory);
 
                         $this->movementRepository->create([
-                            'item_id'            => $item->item_id,
-                            'location_id'        => $transitLocationId,
-                            'bin_id'             => $transitBinId,
+                            'item_id' => $item->item_id,
+                            'location_id' => $transitLocationId,
+                            'bin_id' => $transitBinId,
                             'transaction_number' => $transfer->transfer_number,
-                            'source'             => 'TRANSIT_OUT',
-                            'qty'                => -$deductQty,
-                            'balance'            => $transitInventory->on_hand,
-                            'transaction_date'   => now(),
-                            'created_by'         => $data['received_by'],
+                            'source' => 'TRANSIT_OUT',
+                            'qty' => -$deductQty,
+                            'balance' => $transitInventory->on_hand,
+                            'transaction_date' => now(),
+                            'created_by' => $data['received_by'],
                         ]);
                     }
 
@@ -1952,15 +1978,15 @@ class InventoryService
                         $this->inventoryRepository->updateStock($transitInventory);
 
                         $this->movementRepository->create([
-                            'item_id'            => $item->item_id,
-                            'location_id'        => $transitLocationId,
-                            'bin_id'             => $transitBinId,
+                            'item_id' => $item->item_id,
+                            'location_id' => $transitLocationId,
+                            'bin_id' => $transitBinId,
                             'transaction_number' => $transfer->transfer_number,
-                            'source'             => 'TRANSIT_OUT',
-                            'qty'                => -$rejectDeduct,
-                            'balance'            => $transitInventory->on_hand,
-                            'transaction_date'   => now(),
-                            'created_by'         => $data['received_by'],
+                            'source' => 'TRANSIT_OUT',
+                            'qty' => -$rejectDeduct,
+                            'balance' => $transitInventory->on_hand,
+                            'transaction_date' => now(),
+                            'created_by' => $data['received_by'],
                         ]);
 
                         $sourceInventory = $this->inventoryRepository->findOrCreateForUpdate(
@@ -1974,15 +2000,15 @@ class InventoryService
                         $this->inventoryRepository->updateStock($sourceInventory);
 
                         $this->movementRepository->create([
-                            'item_id'            => $item->item_id,
-                            'location_id'        => $transfer->source_location_id,
-                            'bin_id'             => $item->source_bin_id,
+                            'item_id' => $item->item_id,
+                            'location_id' => $transfer->source_location_id,
+                            'bin_id' => $item->source_bin_id,
                             'transaction_number' => $transfer->transfer_number,
-                            'source'             => 'TRANSFER_REJECT_RETURN',
-                            'qty'                => $rejectDeduct,
-                            'balance'            => $sourceInventory->on_hand,
-                            'transaction_date'   => now(),
-                            'created_by'         => $data['received_by'],
+                            'source' => 'TRANSFER_REJECT_RETURN',
+                            'qty' => $rejectDeduct,
+                            'balance' => $sourceInventory->on_hand,
+                            'transaction_date' => now(),
+                            'created_by' => $data['received_by'],
                         ]);
                     }
                 }
@@ -1990,8 +2016,8 @@ class InventoryService
                 $item->update([
                     'received_qty' => $receivedQty,
                     'rejected_qty' => $rejectedQty,
-                    'condition'    => $condition,
-                    'item_notes'   => $itemNotes,
+                    'condition' => $condition,
+                    'item_notes' => $itemNotes,
                 ]);
 
                 if ($receivedQty > 0) {
@@ -2009,15 +2035,15 @@ class InventoryService
                     $this->inventoryRepository->updateStock($destInventory);
 
                     $this->movementRepository->create([
-                        'item_id'            => $item->item_id,
-                        'location_id'        => $transfer->destination_location_id,
-                        'bin_id'             => $destBinId,
+                        'item_id' => $item->item_id,
+                        'location_id' => $transfer->destination_location_id,
+                        'bin_id' => $destBinId,
                         'transaction_number' => $transfer->transfer_number,
-                        'source'             => 'TRANSFER_IN',
-                        'qty'                => $receivedQty,
-                        'balance'            => $destInventory->on_hand,
-                        'transaction_date'   => now(),
-                        'created_by'         => $data['received_by'],
+                        'source' => 'TRANSFER_IN',
+                        'qty' => $receivedQty,
+                        'balance' => $destInventory->on_hand,
+                        'transaction_date' => now(),
+                        'created_by' => $data['received_by'],
                     ]);
                 }
             }
@@ -2025,10 +2051,10 @@ class InventoryService
             $receiveNumber = $this->generateTrfiNumber();
 
             $updateData = [
-                'status'         => InventoryTransfer::STATUS_RECEIVED,
+                'status' => InventoryTransfer::STATUS_RECEIVED,
                 'receive_number' => $receiveNumber,
-                'received_by'    => $data['received_by'],
-                'received_at'    => now(),
+                'received_by' => $data['received_by'],
+                'received_at' => now(),
             ];
             if (! empty($data['assigned_to'])) {
                 $updateData['assigned_to'] = $data['assigned_to'];
@@ -2039,7 +2065,7 @@ class InventoryService
             $inboundItems = $transfer->items
                 ->filter(fn ($item) => $item->received_qty > 0)
                 ->map(fn ($item) => [
-                    'item_id'      => $item->item_id,
+                    'item_id' => $item->item_id,
                     'expected_qty' => $item->received_qty,
                     'received_qty' => $item->received_qty,
                 ])->values()->toArray();
@@ -2047,18 +2073,18 @@ class InventoryService
             $transitInbound = null;
             if (! empty($inboundItems)) {
                 $transitInbound = $inboundService->syncTransitReceived($transfer->id, [
-                    'location_id'        => $transfer->destination_location_id,
+                    'location_id' => $transfer->destination_location_id,
                     'transaction_number' => $receiveNumber,
-                    'reference_number'   => $transfer->transfer_number,
-                    'source_id'        => $transfer->id,
-                    'expected_date'    => now()->toDateString(),
-                    'created_by'       => $data['received_by'],
-                    'items'            => $inboundItems,
+                    'reference_number' => $transfer->transfer_number,
+                    'source_id' => $transfer->id,
+                    'expected_date' => now()->toDateString(),
+                    'created_by' => $data['received_by'],
+                    'items' => $inboundItems,
                 ]);
             }
 
             if (! empty($data['assigned_to']) && $transitInbound) {
-                $assignedUser = \App\Models\User::where('name', $data['assigned_to'])->first();
+                $assignedUser = User::where('name', $data['assigned_to'])->first();
                 if ($assignedUser) {
                     app(PutawayService::class)->createFromInbounds(
                         [$transitInbound->id],
@@ -2081,12 +2107,12 @@ class InventoryService
         $transit = Location::firstOrCreate(
             ['location_code' => Location::SYSTEM_TRANSIT_CODE],
             [
-                'location_name'   => 'Transit',
-                'location_type'   => 'Lokasi (Non Gudang)',
-                'is_warehouse'    => false,
-                'is_active'       => true,
-                'is_system'       => true,
-                'is_locked'       => true,
+                'location_name' => 'Transit',
+                'location_type' => 'Lokasi (Non Gudang)',
+                'is_warehouse' => false,
+                'is_active' => true,
+                'is_system' => true,
+                'is_locked' => true,
             ]
         );
 
@@ -2150,7 +2176,7 @@ class InventoryService
             $parts[] = "{$result['reverted']} dikembalikan ke Baru Dibuat";
         }
         if (count($result['failed'] ?? []) > 0) {
-            $parts[] = count($result['failed']) . ' gagal';
+            $parts[] = count($result['failed']).' gagal';
         }
 
         return $parts ? implode(', ', $parts) : 'Tidak ada transfer diproses';
@@ -2167,9 +2193,9 @@ class InventoryService
             $foundIds = array_map(fn ($t) => $t->id, $transfers);
             $missing = array_values(array_diff($ids, $foundIds));
 
-            throw new \App\Exceptions\UserFacingException(
+            throw new UserFacingException(
                 'Data tidak ditemukan',
-                'Sebagian dokumen tidak ditemukan: ' . implode(', ', $missing),
+                'Sebagian dokumen tidak ditemukan: '.implode(', ', $missing),
                 404,
             );
         }
@@ -2204,7 +2230,7 @@ class InventoryService
     public function assertSkuHasStock(array $summary, ?string $locationId, bool $requireStock): void
     {
         if ($locationId && $requireStock && empty($summary['available_bins'])) {
-            throw new \App\Exceptions\UserFacingException(
+            throw new UserFacingException(
                 'Stok tidak tersedia',
                 'SKU tidak punya stok di gudang ini.',
                 404,
@@ -2229,11 +2255,11 @@ class InventoryService
         $itemIds = DB::transaction(function () use ($id) {
             $transfer = $this->transferRepository->findByIdForUpdate($id);
 
-            if (!$transfer) {
+            if (! $transfer) {
                 throw new \Exception('Transfer tidak ditemukan.');
             }
 
-            if (!in_array($transfer->status, [InventoryTransfer::STATUS_DRAFT, InventoryTransfer::STATUS_APPROVED])) {
+            if (! in_array($transfer->status, [InventoryTransfer::STATUS_DRAFT, InventoryTransfer::STATUS_APPROVED])) {
                 throw new \Exception("Hanya transfer yang belum dikirim (Draft/Disetujui) yang bisa dihapus (status saat ini: {$transfer->status}).");
             }
 
@@ -2260,15 +2286,15 @@ class InventoryService
                     $this->inventoryRepository->updateStock($sourceInventory);
 
                     $this->movementRepository->create([
-                        'item_id'            => $item->item_id,
-                        'location_id'        => $transfer->source_location_id,
-                        'bin_id'             => $item->source_bin_id,
+                        'item_id' => $item->item_id,
+                        'location_id' => $transfer->source_location_id,
+                        'bin_id' => $item->source_bin_id,
                         'transaction_number' => $transfer->transfer_number,
-                        'source'             => 'TRANSFER_OUT',
-                        'qty'                => $releaseQty,
-                        'balance'            => $sourceInventory->on_hand,
-                        'transaction_date'   => now(),
-                        'created_by'         => $actor,
+                        'source' => 'TRANSFER_OUT',
+                        'qty' => $releaseQty,
+                        'balance' => $sourceInventory->on_hand,
+                        'transaction_date' => now(),
+                        'created_by' => $actor,
                     ]);
                 }
 
@@ -2285,15 +2311,15 @@ class InventoryService
                     $this->inventoryRepository->updateStock($transitInventory);
 
                     $this->movementRepository->create([
-                        'item_id'            => $item->item_id,
-                        'location_id'        => $transitLocationId,
-                        'bin_id'             => $transitBinId,
+                        'item_id' => $item->item_id,
+                        'location_id' => $transitLocationId,
+                        'bin_id' => $transitBinId,
                         'transaction_number' => $transfer->transfer_number,
-                        'source'             => 'TRANSIT_OUT',
-                        'qty'                => -$deductQty,
-                        'balance'            => $transitInventory->on_hand,
-                        'transaction_date'   => now(),
-                        'created_by'         => $actor,
+                        'source' => 'TRANSIT_OUT',
+                        'qty' => -$deductQty,
+                        'balance' => $transitInventory->on_hand,
+                        'transaction_date' => now(),
+                        'created_by' => $actor,
                     ]);
                 }
             }
@@ -2310,7 +2336,7 @@ class InventoryService
     {
         $transfer = $this->transferRepository->findById($transferId);
 
-        if (!$transfer) {
+        if (! $transfer) {
             throw new \Exception('Transfer tidak ditemukan.');
         }
 
@@ -2325,7 +2351,7 @@ class InventoryService
     public function splitItem(array $data): array
     {
         $result = DB::transaction(function () use ($data) {
-            $transactionNumber = 'SPL-' . now()->format('Ymd') . '-' . Str::upper(Str::random(4));
+            $transactionNumber = 'SPL-'.now()->format('Ymd').'-'.Str::upper(Str::random(4));
 
             if (! empty($data['bin_id'])) {
                 app(InboundBinPolicy::class)->assertConsumable(
@@ -2357,15 +2383,15 @@ class InventoryService
             $this->inventoryRepository->updateStock($sourceInventory);
 
             $this->movementRepository->create([
-                'item_id'            => $data['source_item_id'],
-                'location_id'        => $data['location_id'],
-                'bin_id'             => $data['bin_id'] ?? null,
+                'item_id' => $data['source_item_id'],
+                'location_id' => $data['location_id'],
+                'bin_id' => $data['bin_id'] ?? null,
                 'transaction_number' => $transactionNumber,
-                'source'             => 'SPLIT_OUT',
-                'qty'                => -$data['qty_to_split'],
-                'balance'            => $sourceInventory->on_hand,
-                'transaction_date'   => now(),
-                'created_by'         => $data['created_by'],
+                'source' => 'SPLIT_OUT',
+                'qty' => -$data['qty_to_split'],
+                'balance' => $sourceInventory->on_hand,
+                'transaction_date' => now(),
+                'created_by' => $data['created_by'],
             ]);
 
             $targetInventory = $this->inventoryRepository->findOrCreateForUpdate(
@@ -2378,21 +2404,21 @@ class InventoryService
             $this->inventoryRepository->updateStock($targetInventory);
 
             $this->movementRepository->create([
-                'item_id'            => $data['target_item_id'],
-                'location_id'        => $data['location_id'],
-                'bin_id'             => $data['bin_id'] ?? null,
+                'item_id' => $data['target_item_id'],
+                'location_id' => $data['location_id'],
+                'bin_id' => $data['bin_id'] ?? null,
                 'transaction_number' => $transactionNumber,
-                'source'             => 'SPLIT_IN',
-                'qty'                => $data['split_into_qty'],
-                'balance'            => $targetInventory->on_hand,
-                'transaction_date'   => now(),
-                'created_by'         => $data['created_by'],
+                'source' => 'SPLIT_IN',
+                'qty' => $data['split_into_qty'],
+                'balance' => $targetInventory->on_hand,
+                'transaction_date' => now(),
+                'created_by' => $data['created_by'],
             ]);
 
             return [
                 'transaction_number' => $transactionNumber,
-                'source'             => $sourceInventory->fresh(),
-                'target'             => $targetInventory->fresh(),
+                'source' => $sourceInventory->fresh(),
+                'target' => $targetInventory->fresh(),
             ];
         });
 
@@ -2404,7 +2430,7 @@ class InventoryService
     public function generateTransferNumber(): string
     {
         do {
-            $number = 'TRFO-' . str_pad((string) random_int(1, 999999999), 9, '0', STR_PAD_LEFT);
+            $number = 'TRFO-'.str_pad((string) random_int(1, 999999999), 9, '0', STR_PAD_LEFT);
         } while (InventoryTransfer::where('transfer_number', $number)->exists());
 
         return $number;
@@ -2438,7 +2464,7 @@ class InventoryService
 
         $items = $transfer->items
             ->map(fn ($item) => [
-                'item_id'      => $item->item_id,
+                'item_id' => $item->item_id,
                 'expected_qty' => $item->qty,
             ])->values()->toArray();
 
@@ -2447,12 +2473,12 @@ class InventoryService
         }
 
         app(InboundService::class)->createPendingTransit([
-            'location_id'      => $transfer->destination_location_id,
+            'location_id' => $transfer->destination_location_id,
             'reference_number' => $transfer->transfer_number,
-            'source_id'        => $transfer->id,
-            'expected_date'    => $transfer->shipped_at ?? $transfer->created_at ?? now(),
-            'created_by'       => $transfer->created_by,
-            'items'            => $items,
+            'source_id' => $transfer->id,
+            'expected_date' => $transfer->shipped_at ?? $transfer->created_at ?? now(),
+            'created_by' => $transfer->created_by,
+            'items' => $items,
         ]);
     }
 
@@ -2466,20 +2492,20 @@ class InventoryService
             }
 
             if ($transfer->status !== InventoryTransfer::STATUS_DRAFT) {
-                throw new \Exception("Hanya transfer DRAFT yang bisa diajukan.");
+                throw new \Exception('Hanya transfer DRAFT yang bisa diajukan.');
             }
 
             if (! $transfer->source_location_id || ! $transfer->destination_location_id) {
-                throw new \Exception("Gudang asal dan tujuan harus diisi.");
+                throw new \Exception('Gudang asal dan tujuan harus diisi.');
             }
 
             if ($transfer->items->isEmpty()) {
-                throw new \Exception("Minimal harus ada 1 barang untuk diajukan.");
+                throw new \Exception('Minimal harus ada 1 barang untuk diajukan.');
             }
 
             $missingBin = $transfer->items->first(fn ($it) => empty($it->source_bin_id));
             if ($missingBin) {
-                throw new \Exception("Pilih rak asal untuk semua item sebelum transfer bisa dikirim.");
+                throw new \Exception('Pilih rak asal untuk semua item sebelum transfer bisa dikirim.');
             }
 
             $notReady = $transfer->items->first(
@@ -2516,15 +2542,15 @@ class InventoryService
                 $this->inventoryRepository->updateStock($sourceInventory);
 
                 $this->movementRepository->create([
-                    'item_id'            => $item->item_id,
-                    'location_id'        => $transfer->source_location_id,
-                    'bin_id'             => $item->source_bin_id,
+                    'item_id' => $item->item_id,
+                    'location_id' => $transfer->source_location_id,
+                    'bin_id' => $item->source_bin_id,
                     'transaction_number' => $transfer->transfer_number,
-                    'source'             => 'TRANSFER_OUT',
-                    'qty'                => -$item->qty,
-                    'balance'            => $sourceInventory->on_hand,
-                    'transaction_date'   => now(),
-                    'created_by'         => $transfer->created_by,
+                    'source' => 'TRANSFER_OUT',
+                    'qty' => -$item->qty,
+                    'balance' => $sourceInventory->on_hand,
+                    'transaction_date' => now(),
+                    'created_by' => $transfer->created_by,
                 ]);
 
                 [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
@@ -2541,20 +2567,20 @@ class InventoryService
                 $this->inventoryRepository->updateStock($transitInventory);
 
                 $this->movementRepository->create([
-                    'item_id'            => $item->item_id,
-                    'location_id'        => $transitLocationId,
-                    'bin_id'             => $transitBinId,
+                    'item_id' => $item->item_id,
+                    'location_id' => $transitLocationId,
+                    'bin_id' => $transitBinId,
                     'transaction_number' => $transfer->transfer_number,
-                    'source'             => 'TRANSIT_IN',
-                    'qty'                => $item->qty,
-                    'balance'            => $transitInventory->on_hand,
-                    'transaction_date'   => now(),
-                    'created_by'         => $transfer->created_by,
+                    'source' => 'TRANSIT_IN',
+                    'qty' => $item->qty,
+                    'balance' => $transitInventory->on_hand,
+                    'transaction_date' => now(),
+                    'created_by' => $transfer->created_by,
                 ]);
             }
 
             $transfer->update([
-                'status'    => InventoryTransfer::STATUS_IN_TRANSIT,
+                'status' => InventoryTransfer::STATUS_IN_TRANSIT,
                 'shipped_at' => now(),
             ]);
 
@@ -2570,16 +2596,16 @@ class InventoryService
     {
         $transfer = $this->transferRepository->findByIdForUpdate($transferId);
 
-        if (!$transfer) {
+        if (! $transfer) {
             throw new \Exception('Transfer tidak ditemukan.');
         }
 
         if ($transfer->status !== InventoryTransfer::STATUS_DRAFT) {
-            throw new \Exception("Hanya transfer DRAFT yang bisa diubah.");
+            throw new \Exception('Hanya transfer DRAFT yang bisa diubah.');
         }
 
         $updateData = [];
-        if (!empty($data['transfer_number'])) {
+        if (! empty($data['transfer_number'])) {
             $updateData['transfer_number'] = $data['transfer_number'];
         }
         if (array_key_exists('source_location_id', $data)) {
@@ -2592,7 +2618,7 @@ class InventoryService
             $updateData['notes'] = $data['notes'];
         }
 
-        if (!empty($updateData)) {
+        if (! empty($updateData)) {
             $transfer->update($updateData);
         }
 
@@ -2603,12 +2629,12 @@ class InventoryService
     {
         $transfer = $this->transferRepository->findByIdForUpdate($transferId);
 
-        if (!$transfer) {
+        if (! $transfer) {
             throw new \Exception('Transfer tidak ditemukan.');
         }
 
         if ($transfer->status !== InventoryTransfer::STATUS_DRAFT) {
-            throw new \Exception("Hanya transfer DRAFT yang bisa ditambah item.");
+            throw new \Exception('Hanya transfer DRAFT yang bisa ditambah item.');
         }
 
         if (! empty($data['source_bin_id'])) {
@@ -2662,12 +2688,12 @@ class InventoryService
     ): InventoryTransferItem {
         $transfer = $this->transferRepository->findByIdForUpdate($transferId);
 
-        if (!$transfer) {
+        if (! $transfer) {
             throw new \Exception('Transfer tidak ditemukan.');
         }
 
         if ($transfer->status !== InventoryTransfer::STATUS_DRAFT) {
-            throw new \Exception("Hanya transfer DRAFT yang bisa diubah item-nya.");
+            throw new \Exception('Hanya transfer DRAFT yang bisa diubah item-nya.');
         }
 
         $item = InventoryTransferItem::where('id', $itemId)
@@ -2678,11 +2704,11 @@ class InventoryService
             $this->removeDraftItem($transferId, $itemId);
 
             return $this->addDraftItem($transferId, [
-                'item_id'       => $item->item_id,
-                'qty'           => $newQty,
+                'item_id' => $item->item_id,
+                'qty' => $newQty,
                 'source_bin_id' => $newBinId,
-                'batch_no'      => $item->batch_no,
-                'serial_no'     => $item->serial_no,
+                'batch_no' => $item->batch_no,
+                'serial_no' => $item->serial_no,
             ]);
         }
 
@@ -2724,12 +2750,12 @@ class InventoryService
     {
         $transfer = $this->transferRepository->findByIdForUpdate($transferId);
 
-        if (!$transfer) {
+        if (! $transfer) {
             throw new \Exception('Transfer tidak ditemukan.');
         }
 
         if ($transfer->status !== InventoryTransfer::STATUS_DRAFT) {
-            throw new \Exception("Hanya transfer DRAFT yang bisa dihapus item-nya.");
+            throw new \Exception('Hanya transfer DRAFT yang bisa dihapus item-nya.');
         }
 
         $item = InventoryTransferItem::where('id', $itemId)

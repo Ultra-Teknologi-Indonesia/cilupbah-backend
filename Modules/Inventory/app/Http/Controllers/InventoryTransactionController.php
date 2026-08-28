@@ -5,15 +5,13 @@ namespace Modules\Inventory\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Services\PdfRenderer;
 use App\Support\ActorName;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Modules\Inventory\Services\InventoryService;
-use Modules\Inventory\Http\Resources\InventoryTransferResource;
-use Modules\Inventory\Http\Resources\BinTransferResource;
-use Modules\Inventory\Http\Resources\BinTransferReceiptResource;
 use Modules\Inventory\Http\Requests\AddTransferDraftItemRequest;
 use Modules\Inventory\Http\Requests\AdjustStockRequest;
 use Modules\Inventory\Http\Requests\ApproveTransferRequest;
+use Modules\Inventory\Http\Requests\BinTransferRequest;
 use Modules\Inventory\Http\Requests\BulkDeleteTransferRequest;
 use Modules\Inventory\Http\Requests\BulkPdfTransferRequest;
 use Modules\Inventory\Http\Requests\CancelTransferRequest;
@@ -24,12 +22,17 @@ use Modules\Inventory\Http\Requests\ReceiveBinTransferRequest;
 use Modules\Inventory\Http\Requests\ReverseBinTransferItemRequest;
 use Modules\Inventory\Http\Requests\ReverseBinTransferItemsRequest;
 use Modules\Inventory\Http\Requests\ShipTransferRequest;
+use Modules\Inventory\Http\Requests\TransferInRequest;
+use Modules\Inventory\Http\Requests\TransferOutRequest;
 use Modules\Inventory\Http\Requests\TransfersInRequest;
 use Modules\Inventory\Http\Requests\TransfersOutRequest;
-use Modules\Inventory\Http\Requests\TransferStockRequest;
 use Modules\Inventory\Http\Requests\UpdateBinTransferRequest;
 use Modules\Inventory\Http\Requests\UpdateTransferDraftItemRequest;
 use Modules\Inventory\Http\Requests\UpdateTransferDraftRequest;
+use Modules\Inventory\Http\Resources\BinTransferReceiptResource;
+use Modules\Inventory\Http\Resources\BinTransferResource;
+use Modules\Inventory\Http\Resources\InventoryTransferResource;
+use Modules\Inventory\Services\InventoryService;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Inventory Transactions', description: 'API Endpoints for Inventory Transactions')]
@@ -45,7 +48,7 @@ use OpenApi\Attributes as OA;
         new OA\Property(property: 'serial_no', type: 'string', example: 'SN-001', nullable: true),
         new OA\Property(property: 'expired_date', type: 'string', format: 'date', example: '2026-12-31', nullable: true),
         new OA\Property(property: 'qty', type: 'integer', example: 10),
-        new OA\Property(property: 'created_by', type: 'string', example: 'admin')
+        new OA\Property(property: 'created_by', type: 'string', example: 'admin'),
     ]
 )]
 #[OA\Schema(
@@ -61,7 +64,7 @@ use OpenApi\Attributes as OA;
         new OA\Property(property: 'serial_no', type: 'string', example: 'SN-001', nullable: true),
         new OA\Property(property: 'expired_date', type: 'string', format: 'date', example: '2026-12-31', nullable: true),
         new OA\Property(property: 'qty', type: 'integer', example: 50),
-        new OA\Property(property: 'created_by', type: 'string', example: 'admin')
+        new OA\Property(property: 'created_by', type: 'string', example: 'admin'),
     ]
 )]
 #[OA\Schema(
@@ -78,7 +81,7 @@ use OpenApi\Attributes as OA;
         new OA\Property(property: 'serial_no', type: 'string', example: 'SN-001', nullable: true),
         new OA\Property(property: 'expired_date', type: 'string', format: 'date', example: '2026-12-31', nullable: true),
         new OA\Property(property: 'qty', type: 'integer', example: 20),
-        new OA\Property(property: 'created_by', type: 'string', example: 'admin')
+        new OA\Property(property: 'created_by', type: 'string', example: 'admin'),
     ]
 )]
 class InventoryTransactionController extends Controller
@@ -104,12 +107,12 @@ class InventoryTransactionController extends Controller
                 content: new OA\JsonContent(
                     properties: [
                         new OA\Property(property: 'data', type: 'object'),
-                        new OA\Property(property: 'message', type: 'string', example: 'Stock adjustment berhasil.')
+                        new OA\Property(property: 'message', type: 'string', example: 'Stock adjustment berhasil.'),
                     ]
                 )
             ),
             new OA\Response(response: 401, description: 'Unauthenticated'),
-            new OA\Response(response: 422, description: 'Validation Error')
+            new OA\Response(response: 422, description: 'Validation Error'),
         ]
     )]
     public function adjust(AdjustStockRequest $request): JsonResponse
@@ -144,18 +147,19 @@ class InventoryTransactionController extends Controller
                 content: new OA\JsonContent(
                     properties: [
                         new OA\Property(property: 'data', type: 'object'),
-                        new OA\Property(property: 'message', type: 'string', example: 'Transfer Out berhasil dibuat, barang sedang dalam perjalanan (Transit).')
+                        new OA\Property(property: 'message', type: 'string', example: 'Transfer Out berhasil dibuat, barang sedang dalam perjalanan (Transit).'),
                     ]
                 )
             ),
             new OA\Response(response: 401, description: 'Unauthenticated'),
-            new OA\Response(response: 422, description: 'Validation Error')
+            new OA\Response(response: 422, description: 'Validation Error'),
         ]
     )]
-    public function transferOut(\Modules\Inventory\Http\Requests\TransferOutRequest $request): JsonResponse
+    public function transferOut(TransferOutRequest $request): JsonResponse
     {
         try {
             $result = $this->inventoryService->transferOut($request->validated());
+
             return $this->successResponse(new InventoryTransferResource($result), 'Transfer Out berhasil dibuat sebagai draft.');
         } catch (\Exception $e) {
             return $this->errorResponse(
@@ -171,6 +175,7 @@ class InventoryTransactionController extends Controller
     {
         try {
             $result = $this->inventoryService->approveTransfer($id, $request->validated());
+
             return $this->successResponse(new InventoryTransferResource($result), 'Transfer berhasil di-approve.');
         } catch (\Exception $e) {
             return $this->errorResponse(
@@ -186,6 +191,7 @@ class InventoryTransactionController extends Controller
     {
         try {
             $result = $this->inventoryService->cancelTransfer($id, $request->validated());
+
             return $this->successResponse(new InventoryTransferResource($result), 'Transfer berhasil dibatalkan.');
         } catch (\Exception $e) {
             return $this->errorResponse(
@@ -201,6 +207,7 @@ class InventoryTransactionController extends Controller
     {
         try {
             $result = $this->inventoryService->shipTransfer($id, $request->validated());
+
             return $this->successResponse(new InventoryTransferResource($result), 'Transfer berhasil dikirim, barang dalam perjalanan.');
         } catch (\Exception $e) {
             return $this->errorResponse(
@@ -218,14 +225,14 @@ class InventoryTransactionController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inventory Transactions'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'ID of the transfer', schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'ID of the transfer', schema: new OA\Schema(type: 'string')),
         ],
         requestBody: new OA\RequestBody(
             required: true,
             content: new OA\JsonContent(
                 type: 'object',
                 properties: [
-                    new OA\Property(property: 'received_by', type: 'string', example: 'admin')
+                    new OA\Property(property: 'received_by', type: 'string', example: 'admin'),
                 ]
             )
         ),
@@ -236,15 +243,15 @@ class InventoryTransactionController extends Controller
                 content: new OA\JsonContent(
                     properties: [
                         new OA\Property(property: 'data', type: 'object'),
-                        new OA\Property(property: 'message', type: 'string', example: 'Transfer In berhasil, stok telah masuk ke gudang tujuan.')
+                        new OA\Property(property: 'message', type: 'string', example: 'Transfer In berhasil, stok telah masuk ke gudang tujuan.'),
                     ]
                 )
             ),
             new OA\Response(response: 401, description: 'Unauthenticated'),
-            new OA\Response(response: 422, description: 'Validation Error')
+            new OA\Response(response: 422, description: 'Validation Error'),
         ]
     )]
-    public function transferIn(\Modules\Inventory\Http\Requests\TransferInRequest $request, string $id): JsonResponse
+    public function transferIn(TransferInRequest $request, string $id): JsonResponse
     {
         try {
             $validated = $request->validated();
@@ -253,6 +260,7 @@ class InventoryTransactionController extends Controller
             }
 
             $result = $this->inventoryService->transferIn($id, $validated);
+
             return $this->successResponse(new InventoryTransferResource($result), 'Transfer In berhasil, stok telah masuk ke gudang tujuan.');
         } catch (\Exception $e) {
             return $this->errorResponse(
@@ -270,11 +278,11 @@ class InventoryTransactionController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inventory Transactions'],
         parameters: [
-            new OA\Parameter(name: 'limit', in: 'query', required: false, description: 'Number of items per page', schema: new OA\Schema(type: 'integer', default: 10))
+            new OA\Parameter(name: 'limit', in: 'query', required: false, description: 'Number of items per page', schema: new OA\Schema(type: 'integer', default: 10)),
         ],
         responses: [
             new OA\Response(response: 200, description: 'Daftar barang dalam perjalanan (Transit).'),
-            new OA\Response(response: 401, description: 'Unauthenticated')
+            new OA\Response(response: 401, description: 'Unauthenticated'),
         ]
     )]
     public function transitList(Request $request): JsonResponse
@@ -291,18 +299,18 @@ class InventoryTransactionController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inventory Transactions'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(response: 200, description: 'Detail transfer.'),
-            new OA\Response(response: 404, description: 'Transfer tidak ditemukan.')
+            new OA\Response(response: 404, description: 'Transfer tidak ditemukan.'),
         ]
     )]
     public function transferShow(string $id): JsonResponse
     {
         try {
             $transfer = $this->inventoryService->getTransferById($id);
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (QueryException $e) {
             return $this->errorResponse('Transfer tidak ditemukan', 404);
         }
 
@@ -319,7 +327,7 @@ class InventoryTransactionController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inventory Transactions'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(
@@ -327,7 +335,7 @@ class InventoryTransactionController extends Controller
                 description: 'PDF stream',
                 content: new OA\MediaType(mediaType: 'application/pdf'),
             ),
-            new OA\Response(response: 404, description: 'Transfer tidak ditemukan.')
+            new OA\Response(response: 404, description: 'Transfer tidak ditemukan.'),
         ]
     )]
     public function transferPdf(string $id)
@@ -346,6 +354,7 @@ class InventoryTransactionController extends Controller
             );
         } catch (\Throwable $e) {
             report($e);
+
             return $this->errorResponse(
                 'Gagal membuat PDF transfer.',
                 500,
@@ -361,11 +370,11 @@ class InventoryTransactionController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inventory Transactions'],
         parameters: [
-            new OA\Parameter(name: 'limit', in: 'query', required: false, description: 'Number of items per page', schema: new OA\Schema(type: 'integer', default: 10))
+            new OA\Parameter(name: 'limit', in: 'query', required: false, description: 'Number of items per page', schema: new OA\Schema(type: 'integer', default: 10)),
         ],
         responses: [
             new OA\Response(response: 200, description: 'Daftar semua dokumen transfer.'),
-            new OA\Response(response: 401, description: 'Unauthenticated')
+            new OA\Response(response: 401, description: 'Unauthenticated'),
         ]
     )]
     public function transfersList(Request $request): JsonResponse
@@ -383,7 +392,7 @@ class InventoryTransactionController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inventory Transactions'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(response: 200, description: 'Transfer berhasil dihapus.'),
@@ -394,6 +403,7 @@ class InventoryTransactionController extends Controller
     {
         try {
             $this->inventoryService->deleteTransfer($id, ActorName::fromUser($request->user()));
+
             return $this->successResponse(null, 'Transfer berhasil dihapus.');
         } catch (\Exception $e) {
             return $this->errorResponse(
@@ -456,10 +466,11 @@ class InventoryTransactionController extends Controller
             return $this->pdfRenderer->stream(
                 'inventory::pdf.transfer-out-bulk',
                 ['transfers' => $transfers],
-                'Surat-Jalan-Bulk-' . now()->format('Ymd-His') . '.pdf',
+                'Surat-Jalan-Bulk-'.now()->format('Ymd-His').'.pdf',
             );
         } catch (\Throwable $e) {
             report($e);
+
             return $this->errorResponse(
                 'Gagal membuat PDF transfer bulk.',
                 500,
@@ -475,7 +486,7 @@ class InventoryTransactionController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inventory Transactions'],
         parameters: [
-            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10))
+            new OA\Parameter(name: 'limit', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 10)),
         ],
         responses: [
             new OA\Response(response: 200, description: 'Daftar transfer yang sudah selesai diterima.'),
@@ -531,6 +542,7 @@ class InventoryTransactionController extends Controller
     {
         try {
             $result = $this->inventoryService->createDraft($request->validated());
+
             return $this->successResponse(new InventoryTransferResource($result), 'Draft transfer berhasil dibuat.', 201);
         } catch (\Exception $e) {
             return $this->errorResponse(
@@ -546,6 +558,7 @@ class InventoryTransactionController extends Controller
     {
         try {
             $result = $this->inventoryService->submitDraft($id);
+
             return $this->successResponse(new InventoryTransferResource($result), 'Transfer berhasil diajukan untuk approval.');
         } catch (\Exception $e) {
             return $this->errorResponse(
@@ -561,6 +574,7 @@ class InventoryTransactionController extends Controller
     {
         try {
             $result = $this->inventoryService->updateDraft($id, $request->validated());
+
             return $this->successResponse(new InventoryTransferResource($result), 'Draft transfer berhasil diperbarui.');
         } catch (\Exception $e) {
             return $this->errorResponse(
@@ -576,6 +590,7 @@ class InventoryTransactionController extends Controller
     {
         try {
             $result = $this->inventoryService->addDraftItem($id, $request->validated());
+
             return $this->successResponse(new InventoryTransferResource($result), 'Item berhasil ditambahkan ke draft.', 201);
         } catch (\Exception $e) {
             return $this->errorResponse(
@@ -599,6 +614,7 @@ class InventoryTransactionController extends Controller
                 array_key_exists('source_bin_id', $validated) ? $validated['source_bin_id'] : null,
                 $request->has('source_bin_id'),
             );
+
             return $this->successResponse(new InventoryTransferResource($result), 'Item berhasil diperbarui.');
         } catch (\Exception $e) {
             return $this->errorResponse(
@@ -614,6 +630,7 @@ class InventoryTransactionController extends Controller
     {
         try {
             $this->inventoryService->removeDraftItem($transferId, $itemId);
+
             return $this->successResponse(null, 'Item berhasil dihapus dari draft.');
         } catch (\Exception $e) {
             return $this->errorResponse(
@@ -629,6 +646,7 @@ class InventoryTransactionController extends Controller
     {
         try {
             $result = $this->inventoryService->revertToDraft($id, ['actor' => ActorName::fromUser($request->user())]);
+
             return $this->successResponse(new InventoryTransferResource($result), 'Transfer dikembalikan ke Baru Dibuat.');
         } catch (\Exception $e) {
             return $this->errorResponse(
@@ -656,31 +674,25 @@ class InventoryTransactionController extends Controller
                 content: new OA\JsonContent(
                     properties: [
                         new OA\Property(property: 'data', type: 'object'),
-                        new OA\Property(property: 'message', type: 'string', example: 'Putaway berhasil.')
+                        new OA\Property(property: 'message', type: 'string', example: 'Putaway berhasil.'),
                     ]
                 )
             ),
             new OA\Response(response: 401, description: 'Unauthenticated'),
-            new OA\Response(response: 422, description: 'Validation Error')
+            new OA\Response(response: 422, description: 'Validation Error'),
         ]
     )]
     public function putaway(PutawayStockRequest $request): JsonResponse
     {
-        try {
-            $inventory = $this->inventoryService->putaway($request->validated());
-
-            return $this->successResponse($inventory, 'Putaway berhasil.');
-        } catch (\Exception $e) {
-            return $this->errorResponse(
-                'Gagal memproses putaway.',
-                422,
-                ['detail' => $e->getMessage()],
-                'Aksi tidak dapat diproses',
-            );
-        }
+        return $this->errorResponse(
+            'Jalur perpindahan langsung sudah dinonaktifkan. Gunakan dokumen penempatan untuk stok DEFAULT atau dokumen pindah bin untuk stok antarrak.',
+            409,
+            ['code' => 'UNDOCUMENTED_STOCK_MOVE_DISABLED'],
+            'Gunakan dokumen transaksi',
+        );
     }
 
-    public function binTransfer(\Modules\Inventory\Http\Requests\BinTransferRequest $request): JsonResponse
+    public function binTransfer(BinTransferRequest $request): JsonResponse
     {
         try {
             $data = $request->validated();
@@ -733,6 +745,7 @@ class InventoryTransactionController extends Controller
             );
         } catch (\Throwable $e) {
             report($e);
+
             return $this->errorResponse(
                 'Gagal membuat PDF transfer internal.',
                 500,
@@ -783,6 +796,7 @@ class InventoryTransactionController extends Controller
     {
         try {
             $this->inventoryService->deleteBinTransferDraft($id);
+
             return $this->successResponse(null, 'Transfer internal berhasil dihapus.');
         } catch (\Exception $e) {
             return $this->errorResponse(
@@ -823,6 +837,7 @@ class InventoryTransactionController extends Controller
         try {
             $actor = ActorName::fromUser($request->user());
             $this->inventoryService->destroyBinTransferReceipt($id, $actor);
+
             return $this->successResponse(null, 'Penerimaan transfer berhasil dibatalkan dan stok dikembalikan.');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage(), 400);
@@ -966,17 +981,17 @@ class InventoryTransactionController extends Controller
     {
         $transferId = $request->query('transfer_id');
 
-        if (!$transferId) {
+        if (! $transferId) {
             return $this->errorResponse('Parameter transfer_id wajib diisi.', 422);
         }
 
         try {
             $transfer = $this->inventoryService->getTransferById($transferId);
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (QueryException $e) {
             return $this->errorResponse('Transfer tidak ditemukan.', 404);
         }
 
-        if (!$transfer) {
+        if (! $transfer) {
             return $this->errorResponse('Transfer tidak ditemukan.', 404);
         }
 
