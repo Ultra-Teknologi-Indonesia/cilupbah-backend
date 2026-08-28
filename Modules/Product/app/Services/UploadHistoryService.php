@@ -34,12 +34,19 @@ class UploadHistoryService
             throw new DomainException('Produk atau toko untuk entri ini tidak tersedia.');
         }
 
-        SyncProductToChannelJob::dispatch($log->product_id, $log->channel_shop_id, 'push');
-
         $log->update([
             'status' => ProductSyncLog::STATUS_PENDING,
             'error_message' => null,
         ]);
+
+        SyncProductToChannelJob::dispatch(
+            $log->product_id,
+            $log->channel_shop_id,
+            'push',
+            null,
+            null,
+            $log->id,
+        );
 
         return $log;
     }

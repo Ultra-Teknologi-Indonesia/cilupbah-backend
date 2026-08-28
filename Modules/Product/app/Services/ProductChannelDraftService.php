@@ -2,12 +2,14 @@
 
 namespace Modules\Product\Services;
 
+use App\Support\FriendlyError;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Repositories\ChannelProductRepository;
 use Modules\Channel\Services\ChannelListingValidator;
+use Modules\Channel\Services\ChannelSyncSettingService;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelDraft;
 use Modules\Product\Models\ProductSyncLog;
@@ -22,6 +24,7 @@ class ProductChannelDraftService
         private ProductChannelDraftRepository $draftRepository,
         private ProductRepository $productRepository,
         private ChannelProductRepository $channelProductRepository,
+        private ChannelSyncSettingService $syncSettingService,
     ) {}
 
     public function requiredAttributes(string $productId, string $shopId): array
@@ -155,6 +158,7 @@ class ProductChannelDraftService
             }
 
             $this->assertReadyForUpload($draft);
+            $this->assertCatalogUploadEnabled($draft);
 
             $log = ProductSyncLog::record([
                 'product_id' => $draft->product_id,
@@ -165,7 +169,14 @@ class ProductChannelDraftService
 
             $attributeMapping = $draft->attribute_mapping;
 
-            SyncProductToChannelJob::dispatch($draft->product_id, $draft->channel_shop_id, 'push', $attributeMapping, $draft->id)->afterCommit();
+            SyncProductToChannelJob::dispatch(
+                $draft->product_id,
+                $draft->channel_shop_id,
+                'push',
+                $attributeMapping,
+                $draft->id,
+                $log->id,
+            )->afterCommit();
 
             return $log;
         });
@@ -181,7 +192,7 @@ class ProductChannelDraftService
                 $this->uploadDraft($id);
                 $uploaded++;
             } catch (\Throwable $e) {
-                $skipped[] = ['id' => $id, 'reason' => \App\Support\FriendlyError::generic($e->getMessage(), 'Draft tidak dapat di-upload.')];
+                $skipped[] = ['id' => $id, 'reason' => FriendlyError::generic($e->getMessage(), 'Draft tidak dapat di-upload.')];
             }
         }
 
@@ -203,12 +214,29 @@ class ProductChannelDraftService
         }
     }
 
+    private function assertCatalogUploadEnabled(ProductChannelDraft $draft): void
+    {
+        if ($this->syncSettingService->isPaused()) {
+            throw new DomainException('Sinkronisasi channel sedang dinonaktifkan. Upload belum dapat diproses.');
+        }
+
+        $shop = ChannelShop::with('channel')->find($draft->channel_shop_id);
+        if (! $shop || ! $shop->catalog_push_enabled) {
+            $channel = $shop?->channel?->name ?? 'channel';
+            $shopName = $shop?->shop_name ? " untuk toko {$shop->shop_name}" : '';
+
+            throw new DomainException(
+                "Upload katalog{$shopName} dinonaktifkan. Aktifkan catalog push terlebih dahulu di pengaturan {$channel}."
+            );
+        }
+    }
+
     protected function requireChannelShopId(string $shopId): string
     {
         $channelShopId = ChannelShop::where('shop_id', $shopId)->value('id');
 
-        if (!$channelShopId) {
-            throw new \RuntimeException('Toko tidak ditemukan atau tidak aktif', 422);
+        if (! $channelShopId) {
+            throw new RuntimeException('Toko tidak ditemukan atau tidak aktif', 422);
         }
 
         return $channelShopId;

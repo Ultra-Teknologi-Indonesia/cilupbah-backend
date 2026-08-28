@@ -6,19 +6,22 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
 use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
+use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Adapters\AdapterFactory;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\ChannelListingValidator;
+use Modules\Channel\Services\ChannelSyncSettingService;
 use Modules\Channel\Services\LazadaAuthService;
 use Modules\Channel\Services\ShopeeAuthService;
 use Modules\Channel\Services\TikTokAuthService;
+use Modules\Channel\Support\UploadErrorPresenter;
 use Modules\Product\Jobs\RecomputeProductChannelValidationJob;
 use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductChannelDraft;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductSyncLog;
 
@@ -27,17 +30,27 @@ class SyncProductToChannelJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
+
     public int $timeout = 300;
+
     public array $backoff = [30, 120, 300];
 
     public string $productId;
+
     public string $channelShopId;
+
     public string $action;
+
     public ?array $attributeMapping;
+
     public ?string $draftId;
 
+    public ?string $uploadLogId;
+
     protected string $channelCodeResolved = '';
+
     protected bool $uploadResultRecorded = false;
+
     protected ?string $lastActionableFailure = null;
 
     private const STOCK_ACTIONS = ['sync_price_stock', 'sync_stock'];
@@ -54,13 +67,20 @@ class SyncProductToChannelJob implements ShouldQueue
             : (bool) $shop->catalog_push_enabled;
     }
 
-    public function __construct(string $productId, string $channelShopId, string $action, ?array $attributeMapping = null, ?string $draftId = null)
-    {
+    public function __construct(
+        string $productId,
+        string $channelShopId,
+        string $action,
+        ?array $attributeMapping = null,
+        ?string $draftId = null,
+        ?string $uploadLogId = null,
+    ) {
         $this->productId = $productId;
         $this->channelShopId = $channelShopId;
         $this->action = $action;
         $this->attributeMapping = $attributeMapping;
         $this->draftId = $draftId;
+        $this->uploadLogId = $uploadLogId;
 
         $this->onQueue(config('queue.names.channel_sync'));
     }
@@ -80,29 +100,41 @@ class SyncProductToChannelJob implements ShouldQueue
 
     public function handle(AdapterFactory $factory): void
     {
-        if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
+        if (app(ChannelSyncSettingService::class)->isPaused()) {
+            $this->recordUploadResult(false, 'Sinkronisasi channel sedang dinonaktifkan.');
+
             return;
         }
 
         $product = Product::with(['variants.channelMappings.channelMapping'])->find($this->productId);
         $shop = ChannelShop::with('channel')->find($this->channelShopId);
 
-        if (!$product || !$shop) {
-            Log::warning("SyncProductToChannelJob skipped: Product or Shop not found.", [
+        if (! $product || ! $shop) {
+            $this->recordUploadResult(false, 'Produk atau toko tidak ditemukan saat job upload diproses.');
+
+            Log::warning('SyncProductToChannelJob skipped: Product or Shop not found.', [
                 'product_id' => $this->productId,
-                'channel_shop_id' => $this->channelShopId
+                'channel_shop_id' => $this->channelShopId,
             ]);
+
             return;
         }
 
         if (! $this->shopAllowsAction($shop)) {
-            Log::info("SyncProductToChannelJob skipped: sinkronisasi untuk toko ini dimatikan.", [
+            $message = self::isStockAction($this->action)
+                ? 'Sinkronisasi stok untuk toko ini sedang dinonaktifkan.'
+                : 'Upload katalog untuk toko ini sedang dinonaktifkan.';
+
+            $this->recordUploadResult(false, $message);
+
+            Log::info('SyncProductToChannelJob skipped: sinkronisasi untuk toko ini dimatikan.', [
                 'product_id' => $this->productId,
                 'channel_shop_id' => $this->channelShopId,
                 'action' => $this->action,
                 'axis' => self::isStockAction($this->action) ? 'stok' : 'katalog',
                 'is_shadow_mode' => (bool) $shop->is_shadow_mode,
             ]);
+
             return;
         }
 
@@ -129,9 +161,10 @@ class SyncProductToChannelJob implements ShouldQueue
         $circuitKey = "circuit_breaker:{$channelCode}";
         if (Cache::has($circuitKey)) {
             Log::warning("Circuit breaker is open for {$channelCode}. Re-queuing job.", [
-                'product_id' => $this->productId
+                'product_id' => $this->productId,
             ]);
             $this->release(300);
+
             return;
         }
 
@@ -140,8 +173,9 @@ class SyncProductToChannelJob implements ShouldQueue
             'channel_shop_id' => $this->channelShopId,
         ]);
 
-        if ($this->action === 'delete' && !$mapping->external_product_id) {
+        if ($this->action === 'delete' && ! $mapping->external_product_id) {
             $mapping->delete();
+
             return;
         }
 
@@ -154,6 +188,7 @@ class SyncProductToChannelJob implements ShouldQueue
             $mapping->markAsFailed($message);
             $this->recordUploadResult(false, $message);
             $this->refreshChannelValidation();
+
             return;
         }
 
@@ -215,7 +250,7 @@ class SyncProductToChannelJob implements ShouldQueue
                 }
                 $this->recordUploadResult(true, null, $result);
 
-                if (!empty($result['skus'])) {
+                if (! empty($result['skus'])) {
                     $this->updateVariantMappings($mapping, $product, $result['skus']);
                 }
 
@@ -225,9 +260,9 @@ class SyncProductToChannelJob implements ShouldQueue
 
                 if ($this->draftId && in_array($this->action, ['push', 'update'], true)) {
                     try {
-                        \Modules\Product\Models\ProductChannelDraft::whereKey($this->draftId)->delete();
+                        ProductChannelDraft::whereKey($this->draftId)->delete();
                     } catch (\Throwable $e) {
-                        Log::warning('Gagal menghapus draft setelah upload sukses: ' . $e->getMessage(), [
+                        Log::warning('Gagal menghapus draft setelah upload sukses: '.$e->getMessage(), [
                             'draft_id' => $this->draftId,
                         ]);
                     }
@@ -282,11 +317,11 @@ class SyncProductToChannelJob implements ShouldQueue
 
         try {
             app($serviceClass)->refreshStoreToken($shop->id);
-            Log::info("Token refreshed before sync", ['shop_id' => $shop->shop_id, 'channel' => $channelCode]);
+            Log::info('Token refreshed before sync', ['shop_id' => $shop->shop_id, 'channel' => $channelCode]);
 
             return $shop->fresh();
         } catch (\Throwable $e) {
-            Log::warning("Token refresh gagal sebelum sync, lanjut dengan token lama", [
+            Log::warning('Token refresh gagal sebelum sync, lanjut dengan token lama', [
                 'shop_id' => $shop->shop_id,
                 'channel' => $channelCode,
                 'error' => $e->getMessage(),
@@ -307,12 +342,18 @@ class SyncProductToChannelJob implements ShouldQueue
             return;
         }
 
-        $log = ProductSyncLog::query()
+        $query = ProductSyncLog::query()
             ->where('product_id', $this->productId)
             ->where('channel_shop_id', $this->channelShopId)
-            ->where('action', ProductSyncLog::ACTION_UPLOAD)
-            ->latest()
-            ->first();
+            ->where('action', ProductSyncLog::ACTION_UPLOAD);
+
+        if ($this->uploadLogId) {
+            $query->whereKey($this->uploadLogId);
+        } else {
+            $query->where('status', ProductSyncLog::STATUS_PENDING);
+        }
+
+        $log = $query->latest()->first();
 
         if (! $log) {
             return;
@@ -331,7 +372,7 @@ class SyncProductToChannelJob implements ShouldQueue
         }
 
         $structured = $response['error']
-            ?? \Modules\Channel\Support\UploadErrorPresenter::fromMessage($this->channelCodeResolved, (string) $message);
+            ?? UploadErrorPresenter::fromMessage($this->channelCodeResolved, (string) $message);
 
         $raw = $response;
         if (is_array($raw)) {
@@ -367,7 +408,9 @@ class SyncProductToChannelJob implements ShouldQueue
     protected function updateVariantMappings(ProductChannelMapping $mapping, Product $product, array $skus): void
     {
         foreach ($skus as $skuData) {
-            if (empty($skuData['seller_sku'])) continue;
+            if (empty($skuData['seller_sku'])) {
+                continue;
+            }
 
             $variant = $product->variants->where('sku', $skuData['seller_sku'])->first();
             if ($variant) {
@@ -398,6 +441,13 @@ class SyncProductToChannelJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
+        if (! $this->uploadResultRecorded) {
+            $this->recordUploadResult(
+                false,
+                'Sinkronisasi ke channel gagal setelah beberapa percobaan. Silakan coba lagi.'
+            );
+        }
+
         $mappings = ProductChannelMapping::where('product_id', $this->productId)
             ->where('channel_shop_id', $this->channelShopId)
             ->get();
