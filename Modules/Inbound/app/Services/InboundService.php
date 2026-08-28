@@ -938,16 +938,6 @@ class InboundService
 
                 $landedCost = (float) ($landedCostMap[$inboundItem->item_id] ?? 0);
                 if ($landedCost > 0 && ! $isDamage) {
-                    $this->inventoryService->recalculateAverageCost(
-                        $inboundItem->item_id,
-                        $inbound->location_id,
-                        $defaultBin->id,
-                        (float) $receiptData['qty'],
-                        $landedCost,
-                        $receiptData['batch_no'] ?? '',
-                        $receiptData['serial_no'] ?? '',
-                    );
-
                     InventoryMovement::where('transaction_number', $inbound->transaction_number)
                         ->where('item_id', $inboundItem->item_id)
                         ->where('location_id', $inbound->location_id)
@@ -960,6 +950,16 @@ class InboundService
                             'cost_per_unit' => $landedCost,
                             'total_cost'    => round($landedCost * (float) $receiptData['qty'], 2),
                         ]);
+
+                    $this->inventoryService->recalculateAverageCost(
+                        $inboundItem->item_id,
+                        $inbound->location_id,
+                        $defaultBin->id,
+                        (float) $receiptData['qty'],
+                        $landedCost,
+                        $receiptData['batch_no'] ?? '',
+                        $receiptData['serial_no'] ?? '',
+                    );
                 }
             }
 
@@ -2168,26 +2168,12 @@ class InboundService
             return [];
         }
 
-        $rows = Inventory::whereIn('item_id', $itemIds)
-            ->where('avg_cost', '>', 0)
-            ->get(['item_id', 'location_id', 'on_hand', 'avg_cost']);
-
+        $costService = app(\Modules\Inventory\Services\PurchaseCostService::class);
+        $purchaseCosts = $costService->averageForItemIds($itemIds->all());
         $map = [];
-        foreach ($rows->groupBy('item_id') as $itemId => $group) {
-            $preferred = $group->where('location_id', $inbound->location_id);
-            $pool = $preferred->isNotEmpty() ? $preferred : $group;
-
-            $totalQty = 0.0;
-            $totalValue = 0.0;
-            foreach ($pool as $row) {
-                $qty = max((float) $row->on_hand, 0.0);
-                $totalQty += $qty;
-                $totalValue += $qty * (float) $row->avg_cost;
-            }
-
-            $map[$itemId] = $totalQty > 0
-                ? $totalValue / $totalQty
-                : (float) $pool->avg('avg_cost');
+        foreach ($itemIds as $itemId) {
+            $map[$itemId] = $purchaseCosts[$itemId]
+                ?? $costService->currentCostForItem((string) $itemId, $inbound->location_id);
         }
 
         return $map;

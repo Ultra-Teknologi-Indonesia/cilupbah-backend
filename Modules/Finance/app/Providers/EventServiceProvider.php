@@ -7,7 +7,11 @@ use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvi
 class EventServiceProvider extends ServiceProvider
 {
 
-    protected $listen = [];
+    protected $listen = [
+        \Modules\Sales\Events\SalesInvoiceFinalized::class => [
+            \Modules\Finance\Listeners\SynchronizeSalesInvoiceJournal::class,
+        ],
+    ];
 
     protected static $shouldDiscoverEvents = true;
 

@@ -1,162 +1,164 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Modules\Inventory\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Modules\Inbound\Models\Inbound;
 use Modules\Inventory\Models\Inventory;
-use Modules\Inventory\Models\InventoryMovement;
+use Modules\Inventory\Services\PurchaseCostService;
 use Modules\Product\Models\ProductVariant;
-use Modules\Purchase\Models\PurchaseOrderItem;
 
-class RebuildAverageCost extends Command
+final class RebuildAverageCost extends Command
 {
+    private const CONFIRMATION = 'REBUILD-PURCHASE-AVERAGE-COST';
+
     protected $signature = 'inventory:rebuild-avg-cost
-                            {--dry-run : Hitung tapi jangan tulis ke DB}
-                            {--item= : Batasi ke item_id (UUID) tertentu}';
+                            {--item= : Batasi ke item_id (UUID) tertentu}
+                            {--batch=500 : Jumlah SKU per batch, 50-2000}
+                            {--dry-run : Kompatibilitas; dry-run sudah menjadi mode default}
+                            {--apply : Terapkan hasil ke inventories.avg_cost}
+                            {--confirm= : Wajib REBUILD-PURCHASE-AVERAGE-COST saat --apply}';
 
-    protected $description = 'Rebuild avg_cost di table inventories dengan replay moving average dari inventory_movements.';
+    protected $description = 'Audit atau sinkronkan avg_cost seluruh rak ke rata-rata tertimbang penerimaan pembelian.';
 
-    private const RECEIVE_SOURCES = ['ADJUSTMENT', 'PUTAWAY_IN', 'TRANSFER_IN', 'TRANSIT_IN', 'SPLIT_IN'];
+    public function __construct(
+        private readonly PurchaseCostService $purchaseCostService,
+    ) {
+        parent::__construct();
+    }
 
     public function handle(): int
     {
-        $dryRun = (bool) $this->option('dry-run');
+        set_time_limit(0);
+        DB::connection()->disableQueryLog();
+
+        $apply = (bool) $this->option('apply');
         $onlyItem = $this->option('item');
+        $batchSize = max(50, min(2000, (int) $this->option('batch')));
 
-        $this->info('Mulai rebuild avg_cost' . ($dryRun ? ' (DRY-RUN)' : '') . '...');
+        if ($apply && (bool) $this->option('dry-run')) {
+            $this->error('ABORT: pilih salah satu mode --dry-run atau --apply.');
 
-        $sources = InventoryMovement::query()->distinct()->pluck('source');
-        $this->line('Distinct movement sources: ' . $sources->implode(', '));
-
-        $query = Inventory::query();
-        if ($onlyItem) {
-            $query->where('item_id', $onlyItem);
+            return self::FAILURE;
         }
 
-        $inventories = $query->get();
-        $updated = 0;
-        $skipped = 0;
-        $noCostRows = 0;
+        if ($apply && $this->option('confirm') !== self::CONFIRMATION) {
+            $this->error('ABORT: --apply wajib disertai --confirm='.self::CONFIRMATION);
 
-        foreach ($inventories as $inv) {
-            $movements = InventoryMovement::where('item_id', $inv->item_id)
-                ->where('location_id', $inv->location_id)
-                ->where(function ($q) use ($inv) {
-                    $q->where('bin_id', $inv->bin_id);
-                    if (is_null($inv->bin_id)) {
-                        $q->orWhereNull('bin_id');
-                    }
-                })
-                ->orderBy('transaction_date')
-                ->orderBy('id')
-                ->get();
+            return self::FAILURE;
+        }
 
-            if ($movements->isEmpty()) {
-                $skipped++;
-                continue;
-            }
+        $this->info($apply
+            ? 'Mode APPLY: menyamakan avg_cost dengan rata-rata tertimbang pembelian.'
+            : 'Mode DRY-RUN / READ-ONLY: database tidak diubah.');
 
-            $runningQty = 0.0;
-            $runningAvg = 0.0;
+        $summary = [
+            'items_scanned' => 0,
+            'items_changed' => 0,
+            'inventory_rows_changed' => 0,
+            'items_without_purchase_cost' => 0,
+        ];
+        $detailsPrinted = 0;
 
-            foreach ($movements as $mv) {
-                $qty = (float) $mv->qty;
+        $query = ProductVariant::query()
+            ->select(['id', 'sku'])
+            ->whereHas('inventories')
+            ->when($onlyItem, fn (Builder $builder, string $id): Builder => $builder->whereKey($id))
+            ->orderBy('id');
 
-                if ($qty <= 0 || ! in_array($mv->source, self::RECEIVE_SOURCES, true)) {
-                    $runningQty = max(0.0, $runningQty + $qty);
+        $query->chunkById($batchSize, function (Collection $variants) use (
+            $apply,
+            &$summary,
+            &$detailsPrinted,
+        ): void {
+            $itemIds = $variants->pluck('id')->map(fn ($id): string => (string) $id)->all();
+            $purchaseCosts = $this->purchaseCostService->averageForItemIds($itemIds);
+
+            foreach ($variants as $variant) {
+                $summary['items_scanned']++;
+                $itemId = (string) $variant->id;
+                $newCost = $purchaseCosts[$itemId] ?? null;
+
+                if ($newCost === null || $newCost <= 0) {
+                    $summary['items_without_purchase_cost']++;
+
                     continue;
                 }
 
-                $cost = (float) ($mv->cost_per_unit ?? 0);
-                if ($cost <= 0) {
-                    $cost = $this->deriveCostFromPO($mv);
-                }
+                $inventoryQuery = Inventory::query()->where('item_id', $itemId);
+                $costState = (clone $inventoryQuery)
+                    ->selectRaw('COUNT(*) AS row_count')
+                    ->selectRaw('MIN(COALESCE(avg_cost, 0)) AS min_cost')
+                    ->selectRaw('MAX(COALESCE(avg_cost, 0)) AS max_cost')
+                    ->first();
 
-                if ($cost <= 0) {
-                    $noCostRows++;
-                    $runningQty += $qty;
+                $changedRows = (clone $inventoryQuery)
+                    ->whereRaw('ABS(COALESCE(avg_cost, 0) - ?) >= ?', [$newCost, 0.005])
+                    ->count();
+
+                if ($changedRows === 0) {
                     continue;
                 }
 
-                $total = $runningQty + $qty;
-                $runningAvg = $total > 0
-                    ? (($runningQty * $runningAvg) + ($qty * $cost)) / $total
-                    : $cost;
-                $runningQty = $total;
-            }
+                $summary['items_changed']++;
+                $summary['inventory_rows_changed'] += $changedRows;
 
-            if ($runningAvg <= 0) {
-                $skipped++;
-                continue;
-            }
+                if ($detailsPrinted < 100) {
+                    $this->line(sprintf(
+                        'sku=%s item=%s rows=%d old_range=%s..%s purchase_average=%s',
+                        $variant->sku,
+                        $itemId,
+                        $changedRows,
+                        number_format((float) ($costState->min_cost ?? 0), 4, '.', ''),
+                        number_format((float) ($costState->max_cost ?? 0), 4, '.', ''),
+                        number_format($newCost, 4, '.', ''),
+                    ));
+                    $detailsPrinted++;
+                }
 
-            $newAvg = round($runningAvg, 2);
-            $oldAvg = (float) ($inv->avg_cost ?? 0);
-
-            if (abs($newAvg - $oldAvg) < 0.005) {
-                continue;
+                if ($apply) {
+                    DB::transaction(function () use ($inventoryQuery, $newCost): void {
+                        (clone $inventoryQuery)
+                            ->whereRaw('ABS(COALESCE(avg_cost, 0) - ?) >= ?', [$newCost, 0.005])
+                            ->update([
+                                'avg_cost' => round($newCost, 4),
+                                'updated_at' => now(),
+                            ]);
+                    }, 3);
+                }
             }
 
             $this->line(sprintf(
-                '  item=%s loc=%s bin=%s : %s → %s',
-                $inv->item_id,
-                $inv->location_id,
-                $inv->bin_id ?? '-',
-                number_format($oldAvg, 2),
-                number_format($newAvg, 2),
+                'PROGRESS items=%d changed_items=%d changed_rows=%d no_purchase_cost=%d',
+                $summary['items_scanned'],
+                $summary['items_changed'],
+                $summary['inventory_rows_changed'],
+                $summary['items_without_purchase_cost'],
             ));
+        }, 'id');
 
-            if (! $dryRun) {
-                $inv->avg_cost = $newAvg;
-                $inv->save();
-            }
-
-            $updated++;
+        if ($detailsPrinted === 100 && $summary['items_changed'] > 100) {
+            $this->line('Detail dibatasi 100 SKU; seluruh SKU tetap dipindai per batch.');
         }
 
-        $this->info("Selesai. Updated={$updated}, Skipped={$skipped}, Rows_tanpa_cost={$noCostRows}.");
+        $this->newLine();
+        $this->table(
+            ['Mode', 'SKU dipindai', 'SKU berubah', 'Row inventory berubah', 'Tanpa harga pembelian'],
+            [[
+                $apply ? 'APPLY' : 'DRY-RUN',
+                $summary['items_scanned'],
+                $summary['items_changed'],
+                $summary['inventory_rows_changed'],
+                $summary['items_without_purchase_cost'],
+            ]],
+        );
+
+        $this->info($apply ? 'APPLY selesai.' : 'DRY-RUN selesai; database tidak diubah.');
 
         return self::SUCCESS;
-    }
-
-    private function deriveCostFromPO(InventoryMovement $mv): float
-    {
-
-        $inbound = Inbound::where('transaction_number', $mv->transaction_number)->first();
-        if ($inbound && $inbound->source_id) {
-            $poItem = PurchaseOrderItem::where('purchase_order_id', $inbound->source_id)
-                ->where('item_id', $mv->item_id)
-                ->first();
-            if ($poItem) {
-                $cost = (float) $poItem->landed_cost_per_unit;
-                if ($cost > 0) {
-                    return $cost;
-                }
-            }
-        }
-
-        $poItem = PurchaseOrderItem::query()
-            ->where('item_id', $mv->item_id)
-            ->where('received_qty', '>', 0)
-            ->whereHas('purchaseOrder', function ($q) use ($mv) {
-                $q->whereDate('order_date', '<=', $mv->transaction_date);
-            })
-            ->orderByDesc('updated_at')
-            ->first();
-        if ($poItem) {
-            $cost = (float) $poItem->landed_cost_per_unit;
-            if ($cost > 0) {
-                return $cost;
-            }
-        }
-
-        $variant = ProductVariant::find($mv->item_id);
-        if ($variant && (float) $variant->buy_price > 0) {
-            return (float) $variant->buy_price;
-        }
-
-        return 0.0;
     }
 }

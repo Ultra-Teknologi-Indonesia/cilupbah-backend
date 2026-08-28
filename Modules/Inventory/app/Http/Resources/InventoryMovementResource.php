@@ -76,8 +76,7 @@ class InventoryMovementResource extends JsonResource
             'is_variance' => InventoryMovementSourceMap::isVariance($this->source),
             'direction' => $direction,
             'qty' => $qty,
-            // Backward-compatible alias: saldo utama selalu stok yang sudah
-            // ditempatkan di rak final, sama dengan on_hand pada halaman stok.
+
             'balance' => (int) ($this->placed_balance ?? $this->physical_balance ?? $this->balance),
             'placed_balance' => (int) ($this->placed_balance ?? $this->physical_balance ?? $this->balance),
             'pending_placement_balance' => (int) ($this->pending_placement_balance ?? 0),

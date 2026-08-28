@@ -5,6 +5,7 @@ namespace Modules\Inventory\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Models\SkuRackAssignment;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
@@ -17,8 +18,11 @@ class InventoryStockDetailTest extends TestCase
     use RefreshDatabase;
 
     private Location $location;
+
     private ProductVariant $variant;
+
     private LocationBin $binWithStock;
+
     private LocationBin $emptyBin;
 
     protected function setUp(): void
@@ -115,5 +119,49 @@ class InventoryStockDetailTest extends TestCase
         $response->assertStatus(404);
         $response->assertJsonPath('status', 'error');
         $response->assertJsonPath('message', 'Rak tidak ditemukan.');
+    }
+
+    public function test_item_hpp_uses_purchase_average_and_ignores_negative_rack_weighting(): void
+    {
+        Inventory::create([
+            'item_id' => $this->variant->id,
+            'location_id' => $this->location->id,
+            'bin_id' => $this->binWithStock->id,
+            'on_hand' => -41,
+            'on_order' => 0,
+            'available' => -41,
+            'avg_cost' => 76.25,
+        ]);
+        Inventory::create([
+            'item_id' => $this->variant->id,
+            'location_id' => $this->location->id,
+            'bin_id' => $this->emptyBin->id,
+            'on_hand' => 775,
+            'on_order' => 0,
+            'available' => 775,
+            'avg_cost' => 0,
+        ]);
+
+        foreach (['PURCHASE-1', 'PURCHASE-2'] as $transaction) {
+            InventoryMovement::create([
+                'item_id' => $this->variant->id,
+                'location_id' => $this->location->id,
+                'bin_id' => $this->emptyBin->id,
+                'transaction_number' => $transaction,
+                'source' => 'PURCHASE',
+                'qty' => 1,
+                'balance' => 1,
+                'cost_per_unit' => 1000,
+                'total_cost' => 1000,
+                'transaction_date' => now(),
+                'created_by' => 'test',
+            ]);
+        }
+
+        $response = $this->getJson("/api/v1/inventory/{$this->variant->id}");
+
+        $response->assertOk();
+        $response->assertJsonPath('data.average_cost', '1000.0000');
+        $response->assertJsonPath('data.average_cost_source', 'purchase_weighted_average');
     }
 }

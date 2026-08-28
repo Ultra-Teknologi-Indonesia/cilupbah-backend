@@ -4,6 +4,7 @@ namespace Modules\Inventory\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Modules\Inventory\Services\PurchaseCostService;
 use Modules\Inventory\Support\StockSummary;
 use Modules\Product\Support\BundleStock;
 
@@ -13,6 +14,8 @@ class StockItemResource extends JsonResource
         $resource,
         protected ?int $transitQty = null,
         protected ?int $pickedNotPackedQty = null,
+        protected ?float $purchaseAverageCost = null,
+        protected bool $purchaseCostResolved = false,
     ) {
         parent::__construct($resource);
     }
@@ -24,12 +27,15 @@ class StockItemResource extends JsonResource
 
         $transit = StockSummary::transitForItems($itemIds);
         $pickedNotPacked = StockSummary::pickedNotPackedForItems($itemIds);
+        $purchaseCosts = app(PurchaseCostService::class)->averageForItemIds($itemIds);
 
         return $items
             ->map(fn ($item) => (new self(
                 $item,
                 (int) ($transit[$item->id] ?? 0),
                 (int) ($pickedNotPacked[$item->id] ?? 0),
+                $purchaseCosts[$item->id] ?? null,
+                true,
             ))->resolve())
             ->all();
     }
@@ -44,6 +50,8 @@ class StockItemResource extends JsonResource
             ? BundleStock::derive($this->product)
             : null;
 
+        $averageCost = $this->resolvedAverageCost($inventories);
+
         return [
             'item_id' => $this->id,
             'item_code' => $this->sku,
@@ -52,7 +60,8 @@ class StockItemResource extends JsonResource
             'is_bundle' => $this->whenLoaded('product', fn () => (bool) $this->product?->is_bundle, false),
             'variation_values' => $this->variationValues(),
             'stock_this' => $this->whenLoaded('product', fn () => (bool) $this->product?->is_stored, true),
-            'average_cost' => $this->weightedAverageCost($inventories),
+            'average_cost' => number_format($averageCost['value'], 4, '.', ''),
+            'average_cost_source' => $averageCost['source'],
             'location_stocks' => $bundleDerived ? [] : $this->locationStocks($inventories),
             'total_stocks' => $bundleDerived
                 ? [
@@ -84,20 +93,38 @@ class StockItemResource extends JsonResource
         ])->values()->toArray();
     }
 
-    protected function weightedAverageCost($inventories): string
+    protected function resolvedAverageCost($inventories): array
     {
-        if ($inventories->isEmpty()) {
-            return '0.0000';
+        if (! $this->purchaseCostResolved) {
+            $this->purchaseAverageCost = app(PurchaseCostService::class)
+                ->averageForItem((string) $this->id);
+            $this->purchaseCostResolved = true;
         }
 
-        $totalQty = $inventories->sum('on_hand');
+        if ($this->purchaseAverageCost !== null && $this->purchaseAverageCost > 0) {
+            return [
+                'value' => round($this->purchaseAverageCost, 4),
+                'source' => 'purchase_weighted_average',
+            ];
+        }
+
+        $costedPositiveStock = $inventories->filter(
+            fn ($inv) => (float) $inv->on_hand > 0 && (float) $inv->avg_cost > 0
+        );
+        $totalQty = (float) $costedPositiveStock->sum('on_hand');
+
         if ($totalQty <= 0) {
-            return number_format($inventories->avg('avg_cost') ?? 0, 4, '.', '');
+            return ['value' => 0.0, 'source' => 'unavailable'];
         }
 
-        $weightedSum = $inventories->sum(fn ($inv) => $inv->on_hand * $inv->avg_cost);
+        $weightedSum = (float) $costedPositiveStock->sum(
+            fn ($inv) => (float) $inv->on_hand * (float) $inv->avg_cost
+        );
 
-        return number_format($weightedSum / $totalQty, 4, '.', '');
+        return [
+            'value' => round(max(0.0, $weightedSum / $totalQty), 4),
+            'source' => 'positive_inventory_fallback',
+        ];
     }
 
     protected function isPlaced($inv): bool

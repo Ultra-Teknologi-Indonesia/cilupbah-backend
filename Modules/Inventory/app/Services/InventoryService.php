@@ -25,6 +25,7 @@ use Illuminate\Support\Str;
 use Modules\Inventory\Models\InventoryTransferItem;
 use Modules\Inventory\Jobs\SyncTransferDraftItemJob;
 use Modules\Inventory\Support\StockAdjustmentRule;
+use Modules\Inventory\Support\MovingAverageCost;
 use Modules\Inventory\Exceptions\NegativeStockAdjustmentException;
 use Modules\Warehouse\Services\InboundBinPolicy;
 
@@ -224,22 +225,26 @@ class InventoryService
         );
 
         $currentAvg = (float) ($inventory->avg_cost ?? 0);
+        $purchaseAverage = app(PurchaseCostService::class)->averageForItem($itemId);
+
+        if ($purchaseAverage !== null && $purchaseAverage > 0) {
+            $inventory->avg_cost = round($purchaseAverage, 4);
+            $inventory->save();
+
+            return (float) $inventory->avg_cost;
+        }
 
         if ($receivedCostPerUnit <= 0 || $receivedQty <= 0) {
             return $currentAvg;
         }
 
-        $currentOnHand = (float) $inventory->on_hand;
-        $preQty = $currentOnHand - $receivedQty;
-
-        $totalQty = $preQty + $receivedQty;
-        if ($totalQty <= 0) {
-            $newAvg = $receivedCostPerUnit;
-        } else {
-            $newAvg = (($preQty * $currentAvg) + ($receivedQty * $receivedCostPerUnit)) / $totalQty;
-        }
-
-        $inventory->avg_cost = round($newAvg, 2);
+        $preQty = (float) $inventory->on_hand - $receivedQty;
+        $inventory->avg_cost = MovingAverageCost::afterReceipt(
+            $preQty,
+            $currentAvg,
+            $receivedQty,
+            $receivedCostPerUnit,
+        );
         $inventory->save();
 
         return (float) $inventory->avg_cost;
@@ -481,10 +486,12 @@ class InventoryService
             $to->on_hand += $qty;
 
             if ($unitCost > 0) {
-                $newTotal = $preOnHand + $qty;
-                $to->avg_cost = $newTotal > 0
-                    ? round((($preOnHand * $preAvg) + ($qty * $unitCost)) / $newTotal, 2)
-                    : $unitCost;
+                $to->avg_cost = MovingAverageCost::afterReceipt(
+                    $preOnHand,
+                    $preAvg,
+                    (float) $qty,
+                    $unitCost,
+                );
             }
 
             $this->inventoryRepository->updateStock($to);

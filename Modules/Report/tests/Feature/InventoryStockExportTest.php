@@ -164,6 +164,19 @@ final class InventoryStockExportTest extends TestCase
             'item_id' => $variant->id,
             'location_id' => $location->id,
             'bin_id' => $bin->id,
+            'transaction_number' => 'REPORT-PURCHASE-1',
+            'source' => 'PURCHASE',
+            'qty' => 4,
+            'balance' => 4,
+            'cost_per_unit' => 1000,
+            'total_cost' => 4000,
+            'transaction_date' => '2026-08-01 07:00:00',
+            'created_by' => 'test',
+        ]);
+        InventoryMovement::create([
+            'item_id' => $variant->id,
+            'location_id' => $location->id,
+            'bin_id' => $bin->id,
             'transaction_number' => 'REPORT-SNAPSHOT-1',
             'source' => 'adjustment',
             'qty' => 4,
@@ -182,7 +195,10 @@ final class InventoryStockExportTest extends TestCase
             'only_with_stock' => false,
         ];
 
-        $this->assertSame('REPORT-1', $service->query($filters)->first()->sku);
+        $current = $service->query($filters)->first();
+        $this->assertSame('REPORT-1', $current->sku);
+        $this->assertSame(1000.0, (float) $current->buy_price);
+        $this->assertSame(4000.0, (float) $current->inventory_value);
         $rack = $service->rackQuery([
             'location_id' => $location->id,
             'item_ids' => [$variant->id],
@@ -202,6 +218,8 @@ final class InventoryStockExportTest extends TestCase
         ])->first();
         $this->assertSame('REPORT-1', $historical->sku);
         $this->assertSame(4, (int) $historical->qty);
+        $this->assertSame(1000.0, (float) $historical->buy_price);
+        $this->assertSame(4000.0, (float) $historical->inventory_value);
     }
 
     public function test_location_stock_queries_exclude_transit(): void

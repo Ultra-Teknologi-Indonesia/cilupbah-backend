@@ -156,6 +156,7 @@ class ReportService
     {
         $agg = $this->repository->hppAggregates($dateFrom, $dateTo, $locationId);
 
+        $persediaanAwal     = $agg['persediaan_awal'];
         $persediaanAkhir    = $agg['persediaan_akhir'];
         $pembelianBruto     = $agg['pembelian_bruto'];
         $ongkosAngkut       = $agg['ongkos_angkut'];
@@ -164,7 +165,6 @@ class ReportService
         $hppPeriode         = $agg['hpp_periode'];
 
         $pembelianBersih = $pembelianBruto + $ongkosAngkut - $returPembelian - $potonganPembelian;
-        $persediaanAwal  = $persediaanAkhir - $pembelianBersih + $hppPeriode;
         $hpp             = $persediaanAwal + $pembelianBersih - $persediaanAkhir;
 
         return [

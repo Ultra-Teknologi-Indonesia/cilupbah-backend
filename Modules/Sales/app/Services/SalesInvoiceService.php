@@ -4,6 +4,7 @@ namespace Modules\Sales\Services;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\Sales\Events\SalesInvoiceFinalized;
 use Modules\Sales\Models\SalesInvoice;
 use Modules\Sales\Models\SalesPayment;
 use Modules\Sales\Models\SalesOrder;
@@ -54,6 +55,7 @@ class SalesInvoiceService
 
             $invoice->total_amount = $invoice->items()->sum('subtotal');
             $invoice->save();
+            SalesInvoiceFinalized::dispatch($invoice->refresh());
 
             return $invoice->load('items');
         });
@@ -123,6 +125,7 @@ class SalesInvoiceService
 
             $invoice->total_amount = $invoice->items()->sum('subtotal');
             $invoice->save();
+            SalesInvoiceFinalized::dispatch($invoice->refresh());
 
             return $invoice->load('items');
         });

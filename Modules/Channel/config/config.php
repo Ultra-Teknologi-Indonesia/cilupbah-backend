@@ -14,8 +14,7 @@ return [
     'download_max_pages' => (int) env('CHANNEL_DOWNLOAD_MAX_PAGES', 10000),
 
     'search_cache_ttl_seconds' => (int) env('CHANNEL_SEARCH_CACHE_TTL_SECONDS', 30),
-    // Keep the interactive request below the FE/API proxy timeout while allowing
-    // a normal short-lived upstream delay.
+
     'search_remote_timeout_seconds' => (int) env('CHANNEL_SEARCH_REMOTE_TIMEOUT_SECONDS', 10),
     'search_remote_attempts' => (int) env('CHANNEL_SEARCH_REMOTE_ATTEMPTS', 2),
     'search_max_parallel_stores' => (int) env('CHANNEL_SEARCH_MAX_PARALLEL_STORES', 8),

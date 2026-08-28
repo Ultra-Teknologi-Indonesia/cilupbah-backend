@@ -18,6 +18,7 @@ use App\Traits\StockLockable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Inventory\Support\StockAdjustmentRule;
+use Modules\Inventory\Support\MovingAverageCost;
 
 class ProcessStockAdjustmentJob implements ShouldQueue
 {
@@ -93,11 +94,12 @@ class ProcessStockAdjustmentJob implements ShouldQueue
                     );
 
                     if ($delta > 0 && $itemUnitCost > 0) {
-                        $newOnHand = $preOnHand + $delta;
-                        $newAvg = $newOnHand > 0
-                            ? (($preOnHand * $preAvgCost) + ($delta * $itemUnitCost)) / $newOnHand
-                            : $itemUnitCost;
-                        $inventory->avg_cost = round($newAvg, 2);
+                        $inventory->avg_cost = MovingAverageCost::afterReceipt(
+                            $preOnHand,
+                            $preAvgCost,
+                            $delta,
+                            $itemUnitCost,
+                        );
                     }
 
                     $movementCost = $delta > 0 && $itemUnitCost > 0 ? $itemUnitCost : $preAvgCost;

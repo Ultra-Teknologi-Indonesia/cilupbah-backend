@@ -11,7 +11,8 @@ use Modules\Purchase\Models\PurchaseBill;
 use Modules\Purchase\Models\PurchasePayment;
 use Modules\Sales\Models\SalesInvoice;
 use Modules\Sales\Models\SalesPayment;
-use Modules\Supplier\Models\Supplier;
+use Modules\Supplier\Models\Contact;
+use Modules\Warehouse\Models\Location;
 use Tests\TestCase;
 
 class AutoJournalObserverTest extends TestCase
@@ -29,10 +30,10 @@ class AutoJournalObserverTest extends TestCase
     private function makeInvoice(float $amount = 500000): SalesInvoice
     {
         return SalesInvoice::create([
-            'invoice_number' => 'INV-' . fake()->unique()->numerify('####'),
+            'invoice_number' => 'INV-'.fake()->unique()->numerify('####'),
             'customer_name' => 'PT Pelanggan',
-            'location_id' => \Modules\Warehouse\Models\Location::factory()->create()->id,
-            'status' => 'unpaid',
+            'location_id' => Location::factory()->create()->id,
+            'status' => SalesInvoice::STATUS_OPEN,
             'invoice_date' => now(),
             'total_amount' => $amount,
             'paid_amount' => 0,
@@ -42,13 +43,18 @@ class AutoJournalObserverTest extends TestCase
 
     private function makeBill(float $amount = 750000): PurchaseBill
     {
-        $supplier = Supplier::create(['code' => 'SUP-' . fake()->unique()->numerify('###'), 'name' => 'CV Supplier']);
+        $supplier = Contact::create([
+            'code' => 'SUP-'.fake()->unique()->numerify('###'),
+            'name' => 'CV Supplier',
+            'type' => Contact::TYPE_SUPPLIER,
+            'status' => Contact::STATUS_ACTIVE,
+        ]);
 
         return PurchaseBill::create([
-            'bill_number' => 'BILL-' . fake()->unique()->numerify('####'),
-            'supplier_id' => $supplier->id,
-            'location_id' => \Modules\Warehouse\Models\Location::factory()->create()->id,
-            'status' => 'unpaid',
+            'bill_number' => 'BILL-'.fake()->unique()->numerify('####'),
+            'contact_id' => $supplier->id,
+            'location_id' => Location::factory()->create()->id,
+            'status' => PurchaseBill::STATUS_OPEN,
             'bill_date' => now(),
             'total_amount' => $amount,
             'paid_amount' => 0,
@@ -64,7 +70,7 @@ class AutoJournalObserverTest extends TestCase
             ->first();
 
         $this->assertNotNull($journal, "Jurnal {$sourceType} tidak terbentuk.");
-        $this->assertNull($journal->journal_type); 
+        $this->assertNull($journal->journal_type);
         $this->assertCount(2, $journal->details);
 
         $dr = $journal->details->firstWhere('debit', '>', 0);

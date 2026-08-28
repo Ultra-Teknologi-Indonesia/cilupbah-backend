@@ -3,17 +3,18 @@
 namespace Modules\Report\Repositories;
 
 use App\Support\WarehouseAccess;
+use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Modules\Inbound\Models\Inbound;
-use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Models\InventoryTransfer;
 use Modules\Inventory\Models\Putaway;
 use Modules\Inventory\Models\StockAdjustment;
 use Modules\Inventory\Models\StockOpname;
+use Modules\Inventory\Services\PurchaseCostService;
 use Modules\Outbound\Models\Picklist;
 use Modules\Report\Support\OrderPerformanceSpec;
 use Modules\Sales\Support\ChannelStatusNormalizer;
@@ -22,7 +23,6 @@ use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductVariant;
 use Modules\Product\Models\ProductVariantChannelMapping;
 use Modules\Purchase\Models\PurchaseOrder;
-use Modules\Purchase\Models\PurchaseOrderItem;
 use Modules\Sales\Models\SalesInvoice;
 use Modules\Sales\Models\SalesInvoiceItem;
 use Modules\Sales\Models\SalesOrder;
@@ -33,6 +33,10 @@ use Modules\Warehouse\Models\Location;
 
 class ReportRepository
 {
+    public function __construct(
+        private readonly PurchaseCostService $purchaseCostService,
+    ) {}
+
     private function paginate($query): LengthAwarePaginator
     {
         return $query->paginate((int) request('per_page', 20))->appends(request()->query());
@@ -688,36 +692,58 @@ class ReportRepository
 
     public function hppAggregates(string $dateFrom, string $dateTo, ?string $locationId = null): array
     {
-        $inventoryQuery = Inventory::query();
-        if ($locationId) {
-            $inventoryQuery->where('location_id', $locationId);
-        }
-        $persediaanAkhir = (float) $inventoryQuery
-            ->selectRaw('COALESCE(SUM(on_hand * avg_cost), 0) AS total')
+        $periodStart = CarbonImmutable::parse($dateFrom)->startOfDay();
+        $periodEnd = CarbonImmutable::parse($dateTo)->endOfDay();
+        $persediaanAwal = $this->inventoryValueAsOf(
+            $periodStart->subSecond()->toDateTimeString(),
+            $locationId,
+        );
+        $persediaanAkhir = $this->inventoryValueAsOf(
+            $periodEnd->toDateTimeString(),
+            $locationId,
+        );
+
+        $purchaseOrderCosts = DB::table('purchase_order_items as poi')
+            ->groupBy('poi.purchase_order_id', 'poi.item_id')
+            ->select('poi.purchase_order_id', 'poi.item_id')
+            ->selectRaw('SUM(poi.qty * poi.unit_price) / NULLIF(SUM(poi.qty), 0) AS base_cost_per_unit')
+            ->selectRaw('SUM(poi.shipping_cost) / NULLIF(SUM(poi.qty), 0) AS shipping_cost_per_unit')
+            ->selectRaw('SUM(poi.disc_amount) / NULLIF(SUM(poi.qty), 0) AS discount_per_unit');
+
+        $costSql = PurchaseCostService::effectiveCostSql('im');
+        $purchaseComponents = DB::table('inventory_movements as im')
+            ->leftJoin('inbounds as inbound', 'inbound.transaction_number', '=', 'im.transaction_number')
+            ->leftJoinSub($purchaseOrderCosts, 'po_cost', function ($join): void {
+                $join->on('po_cost.purchase_order_id', '=', 'inbound.source_id')
+                    ->on('po_cost.item_id', '=', 'im.item_id');
+            })
+            ->whereBetween('im.transaction_date', [$dateFrom . ' 00:00:00', $dateTo . ' 23:59:59'])
+            ->where('im.source', 'PURCHASE')
+            ->where('im.qty', '>', 0)
+            ->when($locationId, fn ($query, string $id) => $query->where('im.location_id', $id))
+            ->selectRaw("COALESCE(SUM(im.qty * COALESCE(NULLIF(po_cost.base_cost_per_unit, 0), {$costSql})), 0) AS gross")
+            ->selectRaw('COALESCE(SUM(im.qty * COALESCE(po_cost.shipping_cost_per_unit, 0)), 0) AS shipping')
+            ->selectRaw('COALESCE(SUM(im.qty * COALESCE(po_cost.discount_per_unit, 0)), 0) AS discount')
+            ->first();
+
+        $pembelianBruto = (float) ($purchaseComponents->gross ?? 0);
+        $ongkosAngkut = (float) ($purchaseComponents->shipping ?? 0);
+        $potonganPembelian = (float) ($purchaseComponents->discount ?? 0);
+
+        $returnCostSql = PurchaseCostService::effectiveCostSql('im');
+        $returPembelian = (float) DB::table('inventory_movements as im')
+            ->leftJoinSub(
+                $this->purchaseCostService->averageCostSubquery(),
+                'return_purchase_cost',
+                fn ($join) => $join->on('return_purchase_cost.item_id', '=', 'im.item_id'),
+            )
+            ->whereBetween('im.transaction_date', [$dateFrom . ' 00:00:00', $dateTo . ' 23:59:59'])
+            ->whereIn('im.source', ['PURCHASE_RETURN', 'PURCHASE_REVERSAL'])
+            ->where('im.qty', '<', 0)
+            ->whereRaw("COALESCE({$returnCostSql}, return_purchase_cost.average_cost, 0) > 0")
+            ->when($locationId, fn ($query, string $id) => $query->where('im.location_id', $id))
+            ->selectRaw("COALESCE(SUM(ABS(im.qty) * COALESCE({$returnCostSql}, return_purchase_cost.average_cost, 0)), 0) AS total")
             ->value('total');
-
-        $movementQuery = InventoryMovement::whereBetween('transaction_date', [$dateFrom . ' 00:00:00', $dateTo . ' 23:59:59'])
-            ->where('qty', '>', 0)
-            ->whereIn('source', ['ADJUSTMENT', 'PUTAWAY_IN'])
-            ->whereNotNull('cost_per_unit');
-        if ($locationId) {
-            $movementQuery->where('location_id', $locationId);
-        }
-        $pembelianBruto = (float) $movementQuery->sum(DB::raw('qty * cost_per_unit'));
-
-        $poItemsQuery = PurchaseOrderItem::query()
-            ->whereHas('purchaseOrder', function ($q) use ($dateFrom, $dateTo, $locationId) {
-                $q->whereDate('order_date', '>=', $dateFrom)
-                  ->whereDate('order_date', '<=', $dateTo);
-                if ($locationId) {
-                    $q->where('location_id', $locationId);
-                }
-            });
-
-        $ongkosAngkut = (float) (clone $poItemsQuery)->sum('shipping_cost');
-        $potonganPembelian = (float) (clone $poItemsQuery)->sum('disc_amount');
-
-        $returPembelian = 0.0;
 
         $cogsQuery = SalesInvoiceItem::whereHas('invoice', function ($q) use ($dateFrom, $dateTo) {
             $q->whereDate('invoice_date', '>=', $dateFrom)
@@ -727,6 +753,7 @@ class ReportRepository
         $hppPeriode = (float) $cogsQuery->sum('total_cogs');
 
         return [
+            'persediaan_awal'   => $persediaanAwal,
             'persediaan_akhir'   => $persediaanAkhir,
             'pembelian_bruto'    => $pembelianBruto,
             'ongkos_angkut'      => $ongkosAngkut,
@@ -734,6 +761,45 @@ class ReportRepository
             'retur_pembelian'    => $returPembelian,
             'hpp_periode'        => $hppPeriode,
         ];
+    }
+
+    private function inventoryValueAsOf(string $asOf, ?string $locationId): float
+    {
+        $latestMovement = DB::table('inventory_movements as im')
+            ->where('im.transaction_date', '<=', $asOf)
+            ->when($locationId, fn ($query, string $id) => $query->where('im.location_id', $id))
+            ->select('im.item_id', 'im.location_id', 'im.bin_id', 'im.balance')
+            ->selectRaw(
+                'ROW_NUMBER() OVER (PARTITION BY im.item_id, im.location_id, im.bin_id '
+                . 'ORDER BY im.transaction_date DESC, im.id DESC) AS row_number'
+            );
+
+        $itemQuantities = DB::query()
+            ->fromSub($latestMovement, 'snapshot')
+            ->join('location_bins as b', function ($join): void {
+                $join->on('b.id', '=', 'snapshot.bin_id')
+                    ->on('b.location_id', '=', 'snapshot.location_id');
+            })
+            ->join('locations as l', 'l.id', '=', 'snapshot.location_id')
+            ->where('snapshot.row_number', 1)
+            ->where('b.is_inbound', false)
+            ->where('l.location_code', '!=', Location::SYSTEM_TRANSIT_CODE)
+            ->groupBy('snapshot.item_id')
+            ->select('snapshot.item_id')
+            ->selectRaw('SUM(snapshot.balance) AS net_on_hand');
+
+        return (float) DB::query()
+            ->fromSub($itemQuantities, 'stock')
+            ->leftJoinSub(
+                $this->purchaseCostService->averageCostSubquery(),
+                'purchase_cost',
+                fn ($join) => $join->on('purchase_cost.item_id', '=', 'stock.item_id'),
+            )
+            ->selectRaw(
+                'COALESCE(SUM(GREATEST(stock.net_on_hand, 0) '
+                . '* COALESCE(purchase_cost.average_cost, 0)), 0) AS total'
+            )
+            ->value('total');
     }
 
     public function barcodeVariants(string $jenis, array $ids): Collection

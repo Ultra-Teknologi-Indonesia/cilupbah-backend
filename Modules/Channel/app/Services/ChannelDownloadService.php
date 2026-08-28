@@ -334,9 +334,6 @@ class ChannelDownloadService
         };
     }
 
-    /**
-     * Keep provider details, signed URLs, and access tokens out of the API response.
-     */
     protected static function safeRemoteSearchError(string $channel, \Throwable $exception): array
     {
         $message = strtolower($exception->getMessage());

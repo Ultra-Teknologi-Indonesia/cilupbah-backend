@@ -13,7 +13,6 @@ trait AutoScopeMobileToAuth
             return;
         }
 
-        // Asumsi: owner/admin berhak melihat semua data tanpa batasan.
         if (method_exists($user, 'hasRole') && $user->hasRole('owner')) {
             return;
         }
@@ -34,11 +33,11 @@ trait AutoScopeMobileToAuth
     protected function overrideForMobile(Request $request, ?string $webValue): ?string
     {
         $user = auth()->user();
-        
+
         if ($user && method_exists($user, 'hasRole') && !$user->hasRole('owner')) {
             return (string) $user->id;
         }
-        
+
         return $webValue;
     }
 }

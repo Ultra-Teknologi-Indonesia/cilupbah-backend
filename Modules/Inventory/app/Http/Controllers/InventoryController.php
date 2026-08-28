@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Services\MonitorStockService;
+use Modules\Inventory\Services\PurchaseCostService;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Http\Requests\AllStocksByIdsRequest;
 use Modules\Inventory\Http\Requests\MovementsRequest;
@@ -40,6 +41,7 @@ class InventoryController extends Controller
         protected InventoryService $inventoryService,
         protected InventoryRepository $inventoryRepository,
         protected MonitorStockService $monitorStockService,
+        protected PurchaseCostService $purchaseCostService,
     ) {}
 
     #[OA\Get(
@@ -95,7 +97,11 @@ class InventoryController extends Controller
             $variant = $this->inventoryService->getStockItemDetail($itemId);
 
             return $this->successResponse(
-                new StockItemResource($variant),
+                new StockItemResource(
+                    $variant,
+                    purchaseAverageCost: $this->purchaseCostService->averageForItem($variant->id),
+                    purchaseCostResolved: true,
+                ),
                 'Detail stok item berhasil diambil.'
             );
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {

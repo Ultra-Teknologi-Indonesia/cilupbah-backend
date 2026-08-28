@@ -7,11 +7,16 @@ namespace Modules\Report\Services;
 use App\Support\WarehouseAccess;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
+use Modules\Inventory\Services\PurchaseCostService;
 use Modules\Inventory\Support\StockSummary;
 use Modules\Warehouse\Models\Location;
 
 final class InventoryStockReportService
 {
+    public function __construct(
+        private readonly PurchaseCostService $purchaseCostService,
+    ) {}
+
     public function query(array $filters): Builder
     {
         return $filters['report_type'] === 'as_of_date'
@@ -70,6 +75,9 @@ final class InventoryStockReportService
 
     private function currentLocationQuery(array $filters): Builder
     {
+        $purchaseCosts = $this->purchaseCostService->averageCostSubquery();
+        $placedOnHand = StockSummary::placedOnHandSql('i', 'b');
+
         $query = DB::table('inventories as i')
             ->join('product_variants as pv', 'pv.id', '=', 'i.item_id')
             ->join('products as p', 'p.id', '=', 'pv.product_id')
@@ -80,6 +88,8 @@ final class InventoryStockReportService
                 $join->on('b.id', '=', 'i.bin_id')
                     ->on('b.location_id', '=', 'i.location_id');
             })
+            ->leftJoinSub($purchaseCosts, 'purchase_cost', fn ($join) => $join
+                ->on('purchase_cost.item_id', '=', 'i.item_id'))
             ->when($filters['item_ids'], fn (Builder $q, array $ids) => $q->whereIn('i.item_id', $ids))
             ->when($filters['location_ids'], fn (Builder $q, array $ids) => $q->whereIn('i.location_id', $ids))
             ->select([
@@ -93,14 +103,14 @@ final class InventoryStockReportService
                 'l.location_name',
                 'pv.weight',
                 'pv.sell_price',
-                'pv.buy_price',
                 'pv.min_stock',
             ])
-            ->selectRaw(StockSummary::placedOnHandSql('i', 'b') . ' as qty')
+            ->selectRaw('COALESCE(purchase_cost.average_cost, 0) as buy_price')
+            ->selectRaw($placedOnHand . ' as qty')
             ->selectRaw('COALESCE(SUM(i.on_order), 0) as ordered')
             ->selectRaw('COALESCE(SUM(i.on_order), 0) as reserved')
-            ->selectRaw('(' . StockSummary::placedOnHandSql('i', 'b') . ' - COALESCE(SUM(i.on_order), 0)) as available')
-            ->selectRaw('COALESCE(SUM(CASE WHEN b.id IS NOT NULL AND b.is_inbound = false THEN i.on_hand * i.avg_cost ELSE 0 END), 0) as inventory_value')
+            ->selectRaw('(' . $placedOnHand . ' - COALESCE(SUM(i.on_order), 0)) as available')
+            ->selectRaw('GREATEST(' . $placedOnHand . ', 0) * COALESCE(purchase_cost.average_cost, 0) as inventory_value')
             ->groupBy([
                 'i.item_id',
                 'pv.sku',
@@ -111,8 +121,8 @@ final class InventoryStockReportService
                 'l.location_name',
                 'pv.weight',
                 'pv.sell_price',
-                'pv.buy_price',
                 'pv.min_stock',
+                'purchase_cost.average_cost',
             ])
             ->orderBy('p.name')
             ->orderBy('pv.sku')
@@ -131,6 +141,8 @@ final class InventoryStockReportService
     private function historicalQuery(array $filters): Builder
     {
         $asOf = $filters['as_of_date'].' 23:59:59';
+        $purchaseCosts = $this->purchaseCostService->averageCostSubquery();
+        $placedBalance = 'COALESCE(SUM(CASE WHEN b.id IS NOT NULL AND b.is_inbound = false THEN snapshot.balance ELSE 0 END), 0)';
 
         $latest = DB::table('inventory_movements as im')
             ->where('im.transaction_date', '<=', $asOf)
@@ -149,6 +161,12 @@ final class InventoryStockReportService
             ->join('product_variants as pv', 'pv.id', '=', 'snapshot.item_id')
             ->join('products as p', 'p.id', '=', 'pv.product_id')
             ->join('locations as l', 'l.id', '=', 'snapshot.location_id')
+            ->leftJoin('location_bins as b', function ($join): void {
+                $join->on('b.id', '=', 'snapshot.bin_id')
+                    ->on('b.location_id', '=', 'snapshot.location_id');
+            })
+            ->leftJoinSub($purchaseCosts, 'purchase_cost', fn ($join) => $join
+                ->on('purchase_cost.item_id', '=', 'snapshot.item_id'))
             ->where('snapshot.row_number', 1)
             ->where('l.is_active', true)
             ->where('l.location_code', '!=', Location::SYSTEM_TRANSIT_CODE)
@@ -165,14 +183,14 @@ final class InventoryStockReportService
                 'l.location_name',
                 'pv.weight',
                 'pv.sell_price',
-                'pv.buy_price',
                 'pv.min_stock',
             ])
-            ->selectRaw('COALESCE(SUM(snapshot.balance), 0) as qty')
+            ->selectRaw('COALESCE(purchase_cost.average_cost, 0) as buy_price')
+            ->selectRaw($placedBalance . ' as qty')
             ->selectRaw('0 as ordered')
             ->selectRaw('0 as reserved')
-            ->selectRaw('COALESCE(SUM(snapshot.balance), 0) as available')
-            ->selectRaw('COALESCE(SUM(snapshot.balance), 0) * pv.buy_price as inventory_value')
+            ->selectRaw($placedBalance . ' as available')
+            ->selectRaw('GREATEST(' . $placedBalance . ', 0) * COALESCE(purchase_cost.average_cost, 0) as inventory_value')
             ->groupBy([
                 'snapshot.item_id',
                 'pv.sku',
@@ -183,18 +201,18 @@ final class InventoryStockReportService
                 'l.location_name',
                 'pv.weight',
                 'pv.sell_price',
-                'pv.buy_price',
                 'pv.min_stock',
+                'purchase_cost.average_cost',
             ])
             ->orderBy('p.name')
             ->orderBy('pv.sku')
             ->orderBy('l.location_name');
 
         $this->applyWarehouseAccess($query, 'snapshot.location_id');
-        $this->applyStockFilter($query, $filters['stock_filter'], 'COALESCE(SUM(snapshot.balance), 0)');
+        $this->applyStockFilter($query, $filters['stock_filter'], $placedBalance);
 
         if ($filters['only_not_restocked']) {
-            $query->havingRaw('COALESCE(SUM(snapshot.balance), 0) >= COALESCE(pv.min_stock, 0)');
+            $query->havingRaw($placedBalance . ' >= COALESCE(pv.min_stock, 0)');
         }
 
         return $query;

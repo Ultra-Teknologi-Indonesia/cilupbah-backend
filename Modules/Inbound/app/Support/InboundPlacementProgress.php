@@ -23,8 +23,6 @@ final class InboundPlacementProgress
 
         $summary = self::summarize($items, (string) $inbound->status, (string) $inbound->type);
 
-        // status tetap menyatakan progres penerimaan dokumen. Field tambahan ini
-        // memisahkan progres penempatan tanpa membuat state persisten kedua.
         $inbound->setAttribute('receiving_status', (string) $inbound->status);
         $inbound->setAttribute('placement_status', $summary['status']);
         $inbound->setRelation('placement_summary', collect([
@@ -39,18 +37,6 @@ final class InboundPlacementProgress
         return $inbound;
     }
 
-    /**
-     * @param  Collection<int, object>|iterable<int, object>  $items
-     * @return array{
-     *   status: string,
-     *   received_qty: int,
-     *   putaway_qty: int,
-     *   pending_qty: int,
-     *   reserved_qty: int,
-     *   progress_percent: int,
-     *   is_consistent: bool
-     * }
-     */
     public static function summarize(
         iterable $items,
         string $receivingStatus,
@@ -62,9 +48,6 @@ final class InboundPlacementProgress
         $received = (int) $rows->sum(function ($item) use ($isSalesReturn): int {
             $actual = (int) ($item->received_qty ?? 0);
 
-            // Retur lama langsung masuk alur penempatan dan menyimpan kuantitas
-            // sumber di expected_qty. Pertahankan kompatibilitas sampai datanya
-            // dimigrasikan, tetapi jangan terapkan fallback ini pada inbound lain.
             if ($isSalesReturn && $actual === 0) {
                 return (int) ($item->expected_qty ?? 0);
             }

@@ -19,6 +19,7 @@ use Modules\Inventory\Models\PutawayPlacement;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Repositories\PutawayRepository;
+use Modules\Inventory\Support\MovingAverageCost;
 use Modules\Sales\Services\BuyerConfirmationService;
 use Modules\Warehouse\Services\BinOccupancyGuard;
 use Modules\Warehouse\Services\InboundBinPolicy;
@@ -140,10 +141,12 @@ class ProcessPutawayItemJob implements ShouldQueue
                 $destInventory->on_hand += $qty;
 
                 if ($unitCost > 0) {
-                    $newTotal = $preDestOnHand + (float) $qty;
-                    $destInventory->avg_cost = $newTotal > 0
-                        ? round((($preDestOnHand * $preDestAvgCost) + ((float) $qty * $unitCost)) / $newTotal, 2)
-                        : $unitCost;
+                    $destInventory->avg_cost = MovingAverageCost::afterReceipt(
+                        $preDestOnHand,
+                        $preDestAvgCost,
+                        (float) $qty,
+                        $unitCost,
+                    );
                 }
 
                 $inventoryRepository->updateStock($destInventory);

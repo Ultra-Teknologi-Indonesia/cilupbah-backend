@@ -3,12 +3,16 @@
 namespace Modules\Dashboard\Repositories;
 
 use Illuminate\Support\Facades\DB;
-use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Services\PurchaseCostService;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesReturn;
+use Modules\Warehouse\Models\Location;
 
 class DashboardRepository
 {
+    public function __construct(
+        private readonly PurchaseCostService $purchaseCostService,
+    ) {}
 
     public function orderAggregates(?string $dateFrom, ?string $dateTo): array
     {
@@ -43,10 +47,31 @@ class DashboardRepository
 
     public function stockValue(?string $locationId): float
     {
-        return (float) Inventory::query()
-            ->placed()
-            ->when($locationId, fn ($q) => $q->where('location_id', $locationId))
-            ->sum(DB::raw('on_hand * avg_cost'));
+        $stock = DB::table('inventories as i')
+            ->join('location_bins as b', function ($join): void {
+                $join->on('b.id', '=', 'i.bin_id')
+                    ->on('b.location_id', '=', 'i.location_id');
+            })
+            ->join('locations as l', 'l.id', '=', 'i.location_id')
+            ->where('b.is_inbound', false)
+            ->where('l.location_code', '!=', Location::SYSTEM_TRANSIT_CODE)
+            ->when($locationId, fn ($query, string $id) => $query->where('i.location_id', $id))
+            ->groupBy('i.item_id')
+            ->select('i.item_id')
+            ->selectRaw('SUM(i.on_hand) AS net_on_hand');
+
+        return (float) DB::query()
+            ->fromSub($stock, 'stock')
+            ->leftJoinSub(
+                $this->purchaseCostService->averageCostSubquery(),
+                'purchase_cost',
+                fn ($join) => $join->on('purchase_cost.item_id', '=', 'stock.item_id'),
+            )
+            ->selectRaw(
+                'COALESCE(SUM(GREATEST(stock.net_on_hand, 0) '
+                . '* COALESCE(purchase_cost.average_cost, 0)), 0) AS total'
+            )
+            ->value('total');
     }
 
     public function unprocessedReturnsCount(): int
