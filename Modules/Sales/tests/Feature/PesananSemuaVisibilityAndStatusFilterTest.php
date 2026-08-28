@@ -2,7 +2,6 @@
 
 namespace Modules\Sales\Tests\Feature;
 
-use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -14,7 +13,9 @@ class PesananSemuaVisibilityAndStatusFilterTest extends TestCase
     use RefreshDatabase;
 
     protected SalesOrderRepository $repository;
+
     protected string $locationId;
+
     protected string $variantId;
 
     protected function setUp(): void
@@ -95,7 +96,7 @@ class PesananSemuaVisibilityAndStatusFilterTest extends TestCase
         $picklistId = Str::uuid()->toString();
         DB::table('picklists')->insert([
             'id' => $picklistId,
-            'picklist_no' => 'PL-' . substr($picklistId, 0, 6),
+            'picklist_no' => 'PL-'.substr($picklistId, 0, 6),
             'location_id' => $this->locationId,
             'status' => $picklistStatus,
             'created_by' => 'system:test',
@@ -119,7 +120,7 @@ class PesananSemuaVisibilityAndStatusFilterTest extends TestCase
     {
         DB::table('packlists')->insert([
             'id' => Str::uuid()->toString(),
-            'packlist_no' => 'PK-' . substr($orderId, 0, 6),
+            'packlist_no' => 'PK-'.substr($orderId, 0, 6),
             'location_id' => $this->locationId,
             'order_id' => $orderId,
             'status' => $packlistStatus,
@@ -133,7 +134,7 @@ class PesananSemuaVisibilityAndStatusFilterTest extends TestCase
         $shipmentId = Str::uuid()->toString();
         DB::table('shipments')->insert([
             'id' => $shipmentId,
-            'shipment_no' => 'SH-' . substr($shipmentId, 0, 6),
+            'shipment_no' => 'SH-'.substr($shipmentId, 0, 6),
             'location_id' => $this->locationId,
             'shipment_date' => now()->toDateString(),
             'status' => $shipmentStatus,
@@ -190,6 +191,26 @@ class PesananSemuaVisibilityAndStatusFilterTest extends TestCase
 
         $this->assertNotContains('SO-SUDAH-HANDOVER', $nos, 'tab Siap Proses tidak boleh ikut menampilkan order yang sudah di gudang');
         $this->assertContains('SO-BELUM-HANDOVER', $nos);
+    }
+
+    public function test_all_tab_reports_active_draft_picklist_as_picking(): void
+    {
+        $user = $this->createPrivilegedUser();
+        $orderId = $this->seedOrder('SO-PICKLIST-DRAFT', [
+            'status' => 'reserved',
+            'handed_to_warehouse_at' => now(),
+        ]);
+        $this->seedPicklistItem($orderId, 'DRAFT');
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/sales?q=SO-PICKLIST-DRAFT');
+
+        $response->assertOk();
+        $order = collect($response->json('data'))->firstWhere('salesorder_no', 'SO-PICKLIST-DRAFT');
+
+        $this->assertNotNull($order);
+        $this->assertSame('PICK', $order['wms_status']);
+        $this->assertSame('Pengambilan - Sedang Diproses', $order['status_label']);
     }
 
     public function test_status_filter_distinguishes_siap_proses_from_pengambilan_belum(): void
@@ -315,7 +336,7 @@ class PesananSemuaVisibilityAndStatusFilterTest extends TestCase
         $returned = $this->seedOrder('SO-RETUR', ['status' => 'shipped', 'received_date' => now()]);
 
         DB::table('sales_returns')->insert([
-            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'id' => (string) Str::uuid(),
             'order_id' => $returned,
             'location_id' => $this->locationId,
             'return_number' => 'RET-001',

@@ -28,6 +28,7 @@ use Modules\Inventory\Repositories\InventoryTransferRepository;
 use Modules\Inventory\Support\InventoryMovementSourceMap;
 use Modules\Inventory\Support\MovingAverageCost;
 use Modules\Inventory\Support\StockAdjustmentRule;
+use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Modules\Product\Services\BundleGuardService;
 use Modules\Warehouse\Models\Location;
@@ -64,7 +65,7 @@ class InventoryService
         return $this->inventoryRepository->getByLocation($locationId);
     }
 
-    public function getStockItemDetail(string $itemId): ProductVariant
+    public function getStockItemDetail(string $itemId): Product|ProductVariant
     {
         return $this->inventoryRepository->findVariantWithStockDetail($itemId);
     }

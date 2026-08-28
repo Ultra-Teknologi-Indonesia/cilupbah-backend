@@ -6,12 +6,15 @@ use App\Support\WarehouseAccess;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\SkuRackAssignment;
 use Modules\Inventory\Support\StockSummary;
+use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
@@ -311,59 +314,232 @@ class InventoryRepository
 
     public function getStockItems(int $limit = 10)
     {
-
         $locationFilter = request('filter.location_id');
-
         $allowedLocationIds = WarehouseAccess::allowedIds();
-
         $transitLocationId = Location::query()
             ->where('location_code', Location::SYSTEM_TRANSIT_CODE)
             ->value('id');
 
-        return QueryBuilder::for(
-            ProductVariant::query()
-                ->join('products', 'products.id', '=', 'product_variants.product_id')
-                ->select('product_variants.*')
-        )
-            ->allowedSearch('product_variants.sku', 'products.name')
-            ->with([
-                'product:id,name,sku,is_bundle,is_stored',
-                'product.media' => fn ($q) => $q->whereNull('variant_id')->orderBy('sort_order'),
-                'media' => fn ($q) => $q->orderBy('sort_order'),
-                'options.attribute:id,name',
-                'product.bundleItems.component:id,sku,product_id',
-                'product.bundleItems.component.inventories',
-                'product.bundleItems.component.inventories.bin:id,is_inbound',
-                'inventories' => function ($q) use ($locationFilter, $transitLocationId, $allowedLocationIds) {
-                    if ($transitLocationId) {
-                        $q->where('location_id', '!=', $transitLocationId);
-                    }
-                    if ($allowedLocationIds !== null) {
-                        $q->whereIn('location_id', $allowedLocationIds);
-                    }
-                    if ($locationFilter) {
-                        $q->where('location_id', $locationFilter);
-                    }
-                },
-                'inventories.location:id,location_name',
-                'inventories.bin:id,is_inbound',
-            ])
-            ->allowedFilters(
-                AllowedFilter::exact('product_id', 'product_variants.product_id'),
-                AllowedFilter::exact('is_bundle', 'products.is_bundle'),
-                AllowedFilter::callback('location_id', fn ($query, $value) => $query->whereHas('inventories', fn ($q) => $q->where('location_id', $value))),
-                AllowedFilter::callback('channel', fn ($query, $value) => $query->whereExists(function ($sub) use ($value) {
-                    $sub->select(DB::raw(1))
-                        ->from('sales_order_items')
-                        ->join('sales_orders', 'sales_orders.id', '=', 'sales_order_items.order_id')
-                        ->whereColumn('sales_order_items.item_id', 'product_variants.id')
-                        ->where('sales_orders.source', $value);
-                })),
-            )
-            ->allowedSorts('product_variants.sku', 'product_variants.created_at', 'products.name')
-            ->defaultSort('products.name', 'product_variants.sku')
-            ->paginate(request('per_page', 20))
+        if ($locationFilter) {
+            WarehouseAccess::assert((string) $locationFilter);
+        }
+
+        $variantQuery = DB::table('product_variants as pv')
+            ->join('products as p', 'p.id', '=', 'pv.product_id')
+            ->whereNull('pv.deleted_at')
+            ->whereNull('p.deleted_at')
+            ->whereNotExists(function ($query) {
+                $query->selectRaw('1')
+                    ->from('products as shadow_bundle')
+                    ->whereColumn('shadow_bundle.sku', 'pv.sku')
+                    ->whereNull('shadow_bundle.deleted_at')
+                    ->where('shadow_bundle.is_bundle', true)
+                    ->where('shadow_bundle.is_active', true)
+                    ->whereNotNull('shadow_bundle.sku')
+                    ->whereExists(fn ($items) => $items->selectRaw('1')
+                        ->from('product_bundle_items as shadow_items')
+                        ->whereColumn('shadow_items.bundle_product_id', 'shadow_bundle.id'));
+            })
+            ->selectRaw("'variant' as entity_type")
+            ->addSelect([
+                'pv.id as entity_id',
+                'pv.product_id as product_id',
+                'pv.sku as item_code',
+                'p.name as item_name',
+                'pv.created_at as created_at',
+            ]);
+
+        $bundleQuery = DB::table('products as p')
+            ->whereNull('p.deleted_at')
+            ->where('p.is_bundle', true)
+            ->where('p.is_active', true)
+            ->whereNotNull('p.sku')
+            ->whereRaw("TRIM(p.sku) <> ''")
+            ->whereExists(fn ($items) => $items->selectRaw('1')
+                ->from('product_bundle_items as pbi')
+                ->whereColumn('pbi.bundle_product_id', 'p.id'))
+            ->whereNotExists(function ($newer) {
+                $newer->selectRaw('1')
+                    ->from('products as newer_bundle')
+                    ->whereColumn('newer_bundle.sku', 'p.sku')
+                    ->whereColumn('newer_bundle.id', '>', 'p.id')
+                    ->whereNull('newer_bundle.deleted_at')
+                    ->where('newer_bundle.is_bundle', true)
+                    ->where('newer_bundle.is_active', true)
+                    ->whereExists(fn ($items) => $items->selectRaw('1')
+                        ->from('product_bundle_items as newer_items')
+                        ->whereColumn('newer_items.bundle_product_id', 'newer_bundle.id'));
+            })
+            ->selectRaw("'bundle' as entity_type")
+            ->addSelect([
+                'p.id as entity_id',
+                'p.id as product_id',
+                'p.sku as item_code',
+                'p.name as item_name',
+                'p.created_at as created_at',
+            ]);
+
+        $search = trim((string) request('search', ''));
+        if ($search !== '') {
+            $searchPattern = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search).'%';
+            $variantQuery->where(fn ($query) => $query
+                ->whereRaw('LOWER(pv.sku) LIKE LOWER(?)', [$searchPattern])
+                ->orWhereRaw('LOWER(p.name) LIKE LOWER(?)', [$searchPattern]));
+            $bundleQuery->where(fn ($query) => $query
+                ->whereRaw('LOWER(p.sku) LIKE LOWER(?)', [$searchPattern])
+                ->orWhereRaw('LOWER(p.name) LIKE LOWER(?)', [$searchPattern]));
+        }
+
+        $productFilter = request('filter.product_id');
+        if ($productFilter) {
+            $variantQuery->where('pv.product_id', $productFilter);
+            $bundleQuery->where('p.id', $productFilter);
+        }
+
+        if ($locationFilter) {
+            $variantQuery->whereExists(fn ($inventory) => $inventory->selectRaw('1')
+                ->from('inventories as location_inventory')
+                ->whereColumn('location_inventory.item_id', 'pv.id')
+                ->where('location_inventory.location_id', $locationFilter));
+            $bundleQuery->whereExists(fn ($inventory) => $inventory->selectRaw('1')
+                ->from('product_bundle_items as location_pbi')
+                ->join('inventories as location_inventory', 'location_inventory.item_id', '=', 'location_pbi.component_variant_id')
+                ->whereColumn('location_pbi.bundle_product_id', 'p.id')
+                ->where('location_inventory.location_id', $locationFilter));
+        }
+
+        $channelFilter = request('filter.channel');
+        if ($channelFilter) {
+            $variantQuery->whereExists(fn ($orders) => $orders->selectRaw('1')
+                ->from('sales_order_items as soi')
+                ->join('sales_orders as so', 'so.id', '=', 'soi.order_id')
+                ->whereColumn('soi.item_id', 'pv.id')
+                ->where('so.source', $channelFilter));
+            $bundleQuery->whereExists(fn ($orders) => $orders->selectRaw('1')
+                ->from('product_bundle_items as channel_pbi')
+                ->join('sales_order_items as soi', 'soi.item_id', '=', 'channel_pbi.component_variant_id')
+                ->join('sales_orders as so', 'so.id', '=', 'soi.order_id')
+                ->whereColumn('channel_pbi.bundle_product_id', 'p.id')
+                ->where('so.source', $channelFilter));
+        }
+
+        $isBundleFilter = request('filter.is_bundle');
+        if ($isBundleFilter !== null && $isBundleFilter !== '') {
+            $wantsBundle = filter_var($isBundleFilter, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
+            if ($wantsBundle === true) {
+                $variantQuery->whereRaw('1 = 0');
+            } elseif ($wantsBundle === false) {
+                $bundleQuery->whereRaw('1 = 0');
+            }
+        }
+
+        $indexQuery = DB::query()->fromSub($variantQuery->unionAll($bundleQuery), 'stock_entries');
+        [$sortColumn, $sortDirection] = $this->stockPositionSort();
+        $paginator = $indexQuery
+            ->orderBy($sortColumn, $sortDirection)
+            ->orderBy('entity_id')
+            ->paginate((int) request('per_page', 20))
             ->appends(request()->query());
+
+        $inventoryScope = function ($query) use ($locationFilter, $transitLocationId, $allowedLocationIds) {
+            if ($transitLocationId) {
+                $query->where('location_id', '!=', $transitLocationId);
+            }
+            if ($allowedLocationIds !== null) {
+                $query->whereIn('location_id', $allowedLocationIds);
+            }
+            if ($locationFilter) {
+                $query->where('location_id', $locationFilter);
+            }
+        };
+
+        $rows = collect($paginator->items());
+        $variants = ProductVariant::query()
+            ->whereIn('id', $rows->where('entity_type', 'variant')->pluck('entity_id'))
+            ->with($this->stockVariantRelations($inventoryScope))
+            ->get()
+            ->keyBy('id');
+        $bundles = Product::query()
+            ->whereIn('id', $rows->where('entity_type', 'bundle')->pluck('entity_id'))
+            ->with($this->stockBundleRelations($inventoryScope))
+            ->get()
+            ->keyBy('id');
+
+        $this->warnAboutDuplicateBundles($bundles->keys()->all());
+
+        return $paginator->setCollection($rows
+            ->map(fn ($row) => $row->entity_type === 'bundle'
+                ? $bundles->get($row->entity_id)
+                : $variants->get($row->entity_id))
+            ->filter()
+            ->values());
+    }
+
+    private function stockPositionSort(): array
+    {
+        $sort = (string) request('sort', '');
+        $descending = str_starts_with($sort, '-');
+        $field = ltrim($sort, '-');
+        $column = match ($field) {
+            'product_variants.sku', 'sku', 'item_code' => 'item_code',
+            'product_variants.created_at', 'created_at' => 'created_at',
+            'products.name', 'name', 'item_name' => 'item_name',
+            default => 'item_name',
+        };
+
+        return [$column, $descending ? 'desc' : 'asc'];
+    }
+
+    private function stockVariantRelations(callable $inventoryScope): array
+    {
+        return [
+            'product:id,name,sku,is_bundle,is_stored',
+            'product.media' => fn ($query) => $query->whereNull('variant_id')->orderBy('sort_order'),
+            'media' => fn ($query) => $query->orderBy('sort_order'),
+            'options.attribute:id,name',
+            'inventories' => $inventoryScope,
+            'inventories.location:id,location_name',
+            'inventories.bin:id,is_inbound',
+        ];
+    }
+
+    private function stockBundleRelations(callable $inventoryScope): array
+    {
+        return [
+            'media' => fn ($query) => $query->whereNull('variant_id')->orderBy('sort_order'),
+            'bundleItems.component:id,sku,product_id',
+            'bundleItems.component.inventories' => $inventoryScope,
+            'bundleItems.component.inventories.location:id,location_code,location_name',
+            'bundleItems.component.inventories.bin:id,is_inbound',
+        ];
+    }
+
+    private function warnAboutDuplicateBundles(array $canonicalIds): void
+    {
+        if ($canonicalIds === []) {
+            return;
+        }
+
+        $duplicates = Product::query()
+            ->whereIn('sku', Product::query()->whereIn('id', $canonicalIds)->pluck('sku'))
+            ->where('is_bundle', true)
+            ->where('is_active', true)
+            ->get(['id', 'sku'])
+            ->groupBy('sku')
+            ->filter(fn ($rows) => $rows->count() > 1);
+
+        foreach ($duplicates as $sku => $rows) {
+            $cacheKey = 'inventory:duplicate-bundle-warning:'.sha1($sku.':'.$rows->pluck('id')->sort()->implode(','));
+            if (Cache::add($cacheKey, true, now()->addHour())) {
+                Log::warning('Duplicate bundle SKU resolved deterministically for stock position.', [
+                    'sku' => $sku,
+                    'product_ids' => $rows->pluck('id')->values()->all(),
+                    'canonical_product_id' => collect($canonicalIds)->first(
+                        fn ($id) => $rows->contains('id', $id)
+                    ),
+                ]);
+            }
+        }
     }
 
     public function getAvailableToSell(string $locationId, int $limit = 10)
@@ -388,18 +564,51 @@ class InventoryRepository
             ->appends(request()->query());
     }
 
-    public function findVariantWithStockDetail(string $itemId): ProductVariant
+    public function findVariantWithStockDetail(string $itemId): Product|ProductVariant
     {
-        return ProductVariant::query()
-            ->with([
-                'product:id,name,sku,is_bundle,is_stored',
-                'product.media' => fn ($q) => $q->whereNull('variant_id')->orderBy('sort_order'),
-                'media' => fn ($q) => $q->orderBy('sort_order'),
-                'options.attribute:id,name',
-                'inventories.location:id,location_name',
-                'inventories.bin:id,is_inbound',
-            ])
-            ->findOrFail($itemId);
+        $allowedLocationIds = WarehouseAccess::allowedIds();
+        $transitLocationId = $this->transitLocationId();
+        $inventoryScope = function ($query) use ($allowedLocationIds, $transitLocationId) {
+            if ($transitLocationId) {
+                $query->where('location_id', '!=', $transitLocationId);
+            }
+            if ($allowedLocationIds !== null) {
+                $query->whereIn('location_id', $allowedLocationIds);
+            }
+        };
+
+        $requestedBundle = Product::query()
+            ->whereKey($itemId)
+            ->where('is_bundle', true)
+            ->where('is_active', true)
+            ->whereHas('bundleItems')
+            ->first();
+
+        if ($requestedBundle !== null) {
+            return $this->canonicalBundleBySku((string) $requestedBundle->sku, $inventoryScope);
+        }
+
+        $variant = ProductVariant::query()->findOrFail($itemId);
+        $canonicalBundle = $this->canonicalBundleBySku((string) $variant->sku, $inventoryScope, false);
+
+        if ($canonicalBundle !== null) {
+            return $canonicalBundle;
+        }
+
+        return $variant->load($this->stockVariantRelations($inventoryScope));
+    }
+
+    private function canonicalBundleBySku(string $sku, callable $inventoryScope, bool $required = true): ?Product
+    {
+        $query = Product::query()
+            ->where('sku', $sku)
+            ->where('is_bundle', true)
+            ->where('is_active', true)
+            ->whereHas('bundleItems')
+            ->orderByDesc('id')
+            ->with($this->stockBundleRelations($inventoryScope));
+
+        return $required ? $query->firstOrFail() : $query->first();
     }
 
     public function getItemsToStock(int $limit = 10)

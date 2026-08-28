@@ -15,6 +15,7 @@ use Modules\Inventory\Http\Requests\SplitItemRequest;
 use Modules\Inventory\Http\Requests\StockedItemsRequest;
 use Modules\Inventory\Http\Requests\ToAdjustRequest;
 use Modules\Inventory\Http\Resources\StockItemResource;
+use Modules\Product\Models\ProductVariant;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Inventory', description: 'API Endpoints for Inventory')]
@@ -94,12 +95,14 @@ class InventoryController extends Controller
     public function stockItemShow(string $itemId): JsonResponse
     {
         try {
-            $variant = $this->inventoryService->getStockItemDetail($itemId);
+            $item = $this->inventoryService->getStockItemDetail($itemId);
 
             return $this->successResponse(
                 new StockItemResource(
-                    $variant,
-                    purchaseAverageCost: $this->purchaseCostService->averageForItem($variant->id),
+                    $item,
+                    purchaseAverageCost: $item instanceof ProductVariant
+                        ? $this->purchaseCostService->averageForItem($item->id)
+                        : null,
                     purchaseCostResolved: true,
                 ),
                 'Detail stok item berhasil diambil.'

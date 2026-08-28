@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\Enums\ClientChannelEnum;
 use Illuminate\Http\Request;
 
 trait AutoScopeMobileToAuth
@@ -9,7 +10,7 @@ trait AutoScopeMobileToAuth
     protected function forceMobileScopeToAuth(Request $request, string $filterKey): void
     {
         $user = auth()->user();
-        if (! $user) {
+        if (! $user || ! $this->isMobileRequest($request)) {
             return;
         }
 
@@ -34,10 +35,18 @@ trait AutoScopeMobileToAuth
     {
         $user = auth()->user();
 
-        if ($user && method_exists($user, 'hasRole') && !$user->hasRole('owner')) {
+        if ($user
+            && $this->isMobileRequest($request)
+            && method_exists($user, 'hasRole')
+            && ! $user->hasRole('owner')) {
             return (string) $user->id;
         }
 
         return $webValue;
+    }
+
+    private function isMobileRequest(Request $request): bool
+    {
+        return $request->attributes->get('client_channel') === ClientChannelEnum::MOBILE;
     }
 }

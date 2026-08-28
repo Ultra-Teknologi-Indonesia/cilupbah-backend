@@ -11,6 +11,7 @@ class ProductChannelListingResource extends JsonResource
     public function toArray(Request $request): array
     {
         $channel = $request->input('filter.channel');
+        $shopId = $request->input('filter.shop_id');
 
         $listings = collect($this->relationLoaded('channelMappings') ? $this->channelMappings : [])
             ->map(function ($m) {
@@ -44,6 +45,7 @@ class ProductChannelListingResource extends JsonResource
             })
             ->filter()
             ->when($channel, fn ($c) => $c->where('channel_code', $channel))
+            ->when($shopId, fn ($c) => $c->where('channel_shop_id', $shopId))
             ->values();
 
         return [

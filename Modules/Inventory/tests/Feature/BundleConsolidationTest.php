@@ -2,11 +2,14 @@
 
 namespace Modules\Inventory\Tests\Feature;
 
-use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Modules\Inventory\Models\Inventory;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
+use Modules\Warehouse\Models\Location;
+use Modules\Warehouse\Models\LocationBin;
 use Tests\TestCase;
 
 class BundleConsolidationTest extends TestCase
@@ -107,5 +110,186 @@ class BundleConsolidationTest extends TestCase
                 ['variant_id' => $inactive->id, 'qty' => 1],
             ],
         ])->assertStatus(422);
+    }
+
+    public function test_stock_position_uses_product_bundle_and_shadows_legacy_variant_stock(): void
+    {
+        DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Umum']);
+        $user = $this->createPrivilegedUser();
+        [$small, $smallBin] = $this->createWarehouse('BND-SMALL', 'Gudang Kecil');
+        [$central, $centralBin] = $this->createWarehouse('BND-CENTRAL', 'Pusat');
+
+        $case = $this->createVariant('Komponen Case', 'CASE-BUNDLE');
+        $sticker = $this->createVariant('Komponen Sticker', 'STICKER-BUNDLE');
+        $legacy = $this->createVariant('Produk Legacy Bundle', 'BUNDLE-CANONICAL');
+        $bundle = Product::create([
+            'name' => 'Bundle Canonical',
+            'sku' => 'BUNDLE-CANONICAL',
+            'category_id' => 1,
+            'status' => Product::STATUS_MASTER,
+            'is_active' => true,
+            'is_bundle' => true,
+            'is_stored' => false,
+        ]);
+
+        DB::table('product_bundle_items')->insert([
+            [
+                'id' => (string) Str::uuid(),
+                'bundle_product_id' => $bundle->id,
+                'component_variant_id' => $case->id,
+                'qty' => 1,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'id' => (string) Str::uuid(),
+                'bundle_product_id' => $bundle->id,
+                'component_variant_id' => $sticker->id,
+                'qty' => 1,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $this->setInventory($case, $small, $smallBin, 5, 2);
+        $this->setInventory($sticker, $small, $smallBin, 10, 0);
+        $this->setInventory($case, $central, $centralBin, 6, 0);
+        $this->setInventory($sticker, $central, $centralBin, 8, 0);
+        $this->setInventory($legacy, $small, $smallBin, -22, 1);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/inventory?search=BUNDLE-CANONICAL&filter[is_bundle]=true')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.item_id', $bundle->id)
+            ->assertJsonPath('data.0.is_bundle', true)
+            ->assertJsonPath('data.0.total_stocks.on_hand', 11)
+            ->assertJsonPath('data.0.total_stocks.on_order', 2)
+            ->assertJsonPath('data.0.total_stocks.available', 9);
+
+        $locations = collect($response->json('data.0.location_stocks'))->keyBy('location_id');
+        $this->assertSame(5, $locations[$small->id]['on_hand']);
+        $this->assertSame(2, $locations[$small->id]['on_order']);
+        $this->assertSame(3, $locations[$small->id]['available']);
+        $this->assertSame(6, $locations[$central->id]['on_hand']);
+        $this->assertSame(0, $locations[$central->id]['on_order']);
+        $this->assertSame(6, $locations[$central->id]['available']);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/inventory/'.$bundle->id)
+            ->assertOk()
+            ->assertJsonPath('data.item_id', $bundle->id)
+            ->assertJsonPath('data.total_stocks.on_hand', 11)
+            ->assertJsonPath('data.total_stocks.on_order', 2)
+            ->assertJsonPath('data.total_stocks.available', 9);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/inventory/'.$legacy->id)
+            ->assertOk()
+            ->assertJsonPath('data.item_id', $bundle->id)
+            ->assertJsonPath('data.is_bundle', true);
+    }
+
+    public function test_bundle_components_cannot_be_combined_across_warehouses(): void
+    {
+        DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Umum']);
+        $user = $this->createPrivilegedUser();
+        [$firstLocation, $firstBin] = $this->createWarehouse('BND-A', 'Gudang A');
+        [$secondLocation, $secondBin] = $this->createWarehouse('BND-B', 'Gudang B');
+        $first = $this->createVariant('Komponen Pertama', 'COMP-FIRST');
+        $second = $this->createVariant('Komponen Kedua', 'COMP-SECOND');
+        $bundle = Product::create([
+            'name' => 'Bundle Terpisah',
+            'sku' => 'BUNDLE-SPLIT',
+            'category_id' => 1,
+            'status' => Product::STATUS_MASTER,
+            'is_active' => true,
+            'is_bundle' => true,
+        ]);
+
+        DB::table('product_bundle_items')->insert([
+            [
+                'id' => (string) Str::uuid(),
+                'bundle_product_id' => $bundle->id,
+                'component_variant_id' => $first->id,
+                'qty' => 1,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'id' => (string) Str::uuid(),
+                'bundle_product_id' => $bundle->id,
+                'component_variant_id' => $second->id,
+                'qty' => 1,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $this->setInventory($first, $firstLocation, $firstBin, 10, 0);
+        $this->setInventory($second, $secondLocation, $secondBin, 10, 0);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/inventory?search=BUNDLE-SPLIT')
+            ->assertOk()
+            ->assertJsonPath('data.0.total_stocks.on_hand', 0)
+            ->assertJsonPath('data.0.total_stocks.available', 0)
+            ->assertJsonPath('data.0.location_stocks.0.on_hand', 0)
+            ->assertJsonPath('data.0.location_stocks.1.on_hand', 0);
+    }
+
+    private function createVariant(string $name, string $sku): ProductVariant
+    {
+        $product = Product::create([
+            'name' => $name,
+            'category_id' => 1,
+            'status' => Product::STATUS_MASTER,
+            'is_active' => true,
+            'is_bundle' => false,
+        ]);
+
+        return ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => $sku,
+            'is_active' => true,
+        ]);
+    }
+
+    private function createWarehouse(string $code, string $name): array
+    {
+        $location = Location::create([
+            'location_code' => $code,
+            'location_name' => $name,
+            'location_type' => 'WAREHOUSE',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+        $bin = LocationBin::create([
+            'location_id' => $location->id,
+            'bin_code' => $code.'-R1',
+            'bin_final_code' => $code.'-R1',
+            'is_inbound' => false,
+        ]);
+
+        return [$location, $bin];
+    }
+
+    private function setInventory(
+        ProductVariant $variant,
+        Location $location,
+        LocationBin $bin,
+        int $onHand,
+        int $onOrder,
+    ): void {
+        Inventory::create([
+            'item_id' => $variant->id,
+            'location_id' => $location->id,
+            'bin_id' => $bin->id,
+            'batch_no' => '',
+            'serial_no' => '',
+            'on_hand' => $onHand,
+            'on_order' => $onOrder,
+            'available' => $onHand - $onOrder,
+        ]);
     }
 }

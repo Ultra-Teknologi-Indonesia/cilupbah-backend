@@ -6,6 +6,8 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Modules\Inventory\Services\PurchaseCostService;
 use Modules\Inventory\Support\StockSummary;
+use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductVariant;
 use Modules\Product\Support\BundleStock;
 
 class StockItemResource extends JsonResource
@@ -23,7 +25,10 @@ class StockItemResource extends JsonResource
     public static function collectionWithTransit($resource): array
     {
         $items = collect($resource)->values();
-        $itemIds = $items->pluck('id')->all();
+        $itemIds = $items
+            ->filter(fn ($item) => $item instanceof ProductVariant)
+            ->pluck('id')
+            ->all();
 
         $transit = StockSummary::transitForItems($itemIds);
         $pickedNotPacked = StockSummary::pickedNotPackedForItems($itemIds);
@@ -42,34 +47,57 @@ class StockItemResource extends JsonResource
 
     public function toArray(Request $request): array
     {
-        $inventories = $this->relationLoaded('inventories') ? $this->inventories : collect();
+        $bundleProduct = $this->bundleProduct();
+        $isBundle = $bundleProduct !== null;
+        $inventories = ! $isBundle && $this->relationLoaded('inventories')
+            ? $this->inventories
+            : collect();
 
-        $bundleDerived = ($this->relationLoaded('product')
-            && (bool) $this->product?->is_bundle
-            && $this->product?->relationLoaded('bundleItems'))
-            ? BundleStock::derive($this->product)
-            : null;
+        $bundleLocations = $bundleProduct ? BundleStock::deriveByLocation($bundleProduct) : null;
+        $bundleDerived = $bundleLocations === null ? null : [
+            'on_hand' => (int) $bundleLocations->sum('on_hand'),
+            'on_order' => (int) $bundleLocations->sum('on_order'),
+            'available' => (int) $bundleLocations->sum('available'),
+        ];
 
-        $averageCost = $this->resolvedAverageCost($inventories);
+        $averageCost = $isBundle
+            ? ['value' => 0.0, 'source' => 'unavailable']
+            : $this->resolvedAverageCost($inventories);
 
         return [
             'item_id' => $this->id,
-            'item_code' => $this->sku,
-            'item_name' => $this->whenLoaded('product', fn () => $this->product?->name),
-            'item_group_id' => $this->product_id,
-            'is_bundle' => $this->whenLoaded('product', fn () => (bool) $this->product?->is_bundle, false),
-            'variation_values' => $this->variationValues(),
-            'stock_this' => $this->whenLoaded('product', fn () => (bool) $this->product?->is_stored, true),
+            'item_code' => $isBundle ? $bundleProduct->sku : $this->sku,
+            'item_name' => $isBundle
+                ? $bundleProduct->name
+                : $this->whenLoaded('product', fn () => $this->product?->name),
+            'item_group_id' => $isBundle ? $bundleProduct->id : $this->product_id,
+            'is_bundle' => $isBundle,
+            'variation_values' => $isBundle ? [] : $this->variationValues(),
+            'stock_this' => $isBundle
+                ? (bool) $bundleProduct->is_stored
+                : $this->whenLoaded('product', fn () => (bool) $this->product?->is_stored, true),
             'average_cost' => number_format($averageCost['value'], 4, '.', ''),
             'average_cost_source' => $averageCost['source'],
-            'location_stocks' => $bundleDerived ? [] : $this->locationStocks($inventories),
+            'location_stocks' => $bundleDerived
+                ? $bundleLocations->map(fn (array $stock) => [
+                    'item_id' => $bundleProduct->id,
+                    'location_id' => $stock['location_id'],
+                    'location_name' => $stock['location_name'],
+                    'on_hand' => $stock['on_hand'],
+                    'pending_placement' => 0,
+                    'legacy_unassigned' => 0,
+                    'physical_total' => $stock['on_hand'],
+                    'on_order' => $stock['on_order'],
+                    'available' => $stock['available'],
+                ])->values()->all()
+                : $this->locationStocks($inventories),
             'total_stocks' => $bundleDerived
                 ? [
                     'on_hand' => $bundleDerived['on_hand'],
                     'pending_placement' => 0,
                     'legacy_unassigned' => 0,
                     'physical_total' => $bundleDerived['on_hand'],
-                    'on_order' => 0,
+                    'on_order' => $bundleDerived['on_order'],
                     'transit' => 0,
                     'available' => $bundleDerived['available'],
 
@@ -79,6 +107,24 @@ class StockItemResource extends JsonResource
                 : $this->totalStocks($inventories),
             'thumbnail' => $this->resolveThumbnail(),
         ];
+    }
+
+    private function bundleProduct(): ?Product
+    {
+        if ($this->resource instanceof Product) {
+            return (bool) $this->resource->is_bundle && $this->resource->relationLoaded('bundleItems')
+                ? $this->resource
+                : null;
+        }
+
+        if ($this->resource instanceof ProductVariant
+            && $this->resource->relationLoaded('product')
+            && (bool) $this->resource->product?->is_bundle
+            && $this->resource->product?->relationLoaded('bundleItems')) {
+            return $this->resource->product;
+        }
+
+        return null;
     }
 
     protected function variationValues(): array
@@ -206,6 +252,12 @@ class StockItemResource extends JsonResource
 
     protected function resolveThumbnail(): ?string
     {
+        if ($this->resource instanceof Product && $this->resource->relationLoaded('media') && $this->resource->media->isNotEmpty()) {
+            $primary = $this->resource->media->firstWhere('is_primary', true);
+
+            return $primary ? $primary->url : $this->resource->media->first()->url;
+        }
+
         if ($this->relationLoaded('media') && $this->media->isNotEmpty()) {
             $primary = $this->media->firstWhere('is_primary', true);
 

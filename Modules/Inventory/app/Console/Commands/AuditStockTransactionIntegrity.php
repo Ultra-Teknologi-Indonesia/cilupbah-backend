@@ -6,6 +6,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Modules\Warehouse\Models\Location;
 
 class AuditStockTransactionIntegrity extends Command
 {
@@ -217,6 +218,8 @@ class AuditStockTransactionIntegrity extends Command
     {
         $canonical = DB::table('inbound_items as item')
             ->join('inbounds as inbound', 'inbound.id', '=', 'item.inbound_id')
+            ->join('locations as location', 'location.id', '=', 'inbound.location_id')
+            ->where('location.location_code', '!=', Location::SYSTEM_TRANSIT_CODE)
             ->whereNotIn('inbound.status', ['CANCELLED', 'CANCELED'])
             ->whereRaw('item.received_qty <> item.putaway_qty')
             ->groupBy('item.item_id', 'inbound.location_id')
@@ -225,6 +228,8 @@ class AuditStockTransactionIntegrity extends Command
 
         $actual = DB::table('inventories as inventory')
             ->join('location_bins as bin', 'bin.id', '=', 'inventory.bin_id')
+            ->join('locations as location', 'location.id', '=', 'inventory.location_id')
+            ->where('location.location_code', '!=', Location::SYSTEM_TRANSIT_CODE)
             ->where('bin.is_inbound', true)
             ->where('inventory.on_hand', '<>', 0)
             ->groupBy('inventory.item_id', 'inventory.location_id')

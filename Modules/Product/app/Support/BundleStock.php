@@ -2,72 +2,110 @@
 
 namespace Modules\Product\Support;
 
+use Illuminate\Support\Collection;
+use Modules\Inventory\Support\StockSummary;
 use Modules\Product\Models\Product;
+use Modules\Warehouse\Models\Location;
 
 class BundleStock
 {
-    private static ?string $transitLocationId = null;
-
-    private static bool $transitResolved = false;
-
     public static function derive(Product $product): ?array
+    {
+        $byLocation = self::deriveByLocation($product);
+
+        if ($byLocation === null) {
+            return null;
+        }
+
+        return [
+            'on_hand' => (int) $byLocation->sum('on_hand'),
+            'on_order' => (int) $byLocation->sum('on_order'),
+            'available' => (int) $byLocation->sum('available'),
+        ];
+    }
+
+    /**
+     * Derive complete-bundle capacity independently for every location.
+     *
+     * @return Collection<int, array{location_id: string, location_name: ?string, on_hand: int, on_order: int, available: int}>|null
+     */
+    public static function deriveByLocation(Product $product): ?Collection
     {
         if (! $product->is_bundle || ! $product->relationLoaded('bundleItems')) {
             return null;
         }
 
-        $items = $product->bundleItems;
+        $items = $product->bundleItems
+            ->filter(fn ($item) => $item->relationLoaded('component') && $item->component !== null)
+            ->values();
 
         if ($items->isEmpty()) {
-            return ['on_hand' => 0, 'on_order' => 0, 'available' => 0];
+            return collect();
         }
 
-        $available = null;
-        $onHand = null;
+        $inventoriesByComponent = $items->mapWithKeys(function ($item) {
+            $inventories = $item->component->relationLoaded('inventories')
+                ? $item->component->inventories
+                : collect();
 
-        foreach ($items as $item) {
-            $qty = max(1, (int) $item->qty);
-            $variant = $item->relationLoaded('component') ? $item->component : null;
-            $inventories = ($variant && $variant->relationLoaded('inventories')) ? $variant->inventories : null;
+            $inventories = $inventories->reject(fn ($inventory) => $inventory->relationLoaded('location')
+                && $inventory->location?->location_code === Location::SYSTEM_TRANSIT_CODE);
 
-            if ($inventories !== null) {
-                $transitLocationId = self::transitLocationId();
-                if ($transitLocationId !== null) {
-                    $inventories = $inventories->reject(
-                        fn ($inv) => (string) $inv->location_id === (string) $transitLocationId
-                    );
+            return [(string) $item->component_variant_id => $inventories->groupBy('location_id')];
+        });
+
+        $locationIds = $inventoriesByComponent
+            ->flatMap(fn ($locations) => $locations->keys())
+            ->map(fn ($id) => (string) $id)
+            ->unique()
+            ->values();
+
+        if ($locationIds->isEmpty()) {
+            return collect();
+        }
+
+        return $locationIds->map(function (string $locationId) use ($items, $inventoriesByComponent) {
+            $onHand = null;
+            $available = null;
+            $locationName = null;
+
+            foreach ($items as $item) {
+                $qty = max(1, (int) $item->qty);
+                $componentRows = $inventoriesByComponent
+                    ->get((string) $item->component_variant_id, collect())
+                    ->get($locationId, collect());
+                $summary = StockSummary::partitionLoaded($componentRows);
+                $componentOnHand = self::floorDivide((int) $summary['on_hand'], $qty);
+                $componentAvailable = self::floorDivide((int) $summary['available'], $qty);
+                $representative = $componentRows->first();
+
+                if ($locationName === null && $representative?->relationLoaded('location')) {
+                    $locationName = $representative->location?->location_name;
                 }
+
+                $onHand = $onHand === null ? $componentOnHand : min($onHand, $componentOnHand);
+                $available = $available === null ? $componentAvailable : min($available, $componentAvailable);
             }
 
-            $summary = $inventories
-                ? \Modules\Inventory\Support\StockSummary::partitionLoaded($inventories)
-                : ['on_hand' => 0, 'available' => 0];
-            $compAvailable = (int) $summary['available'];
-            $compOnHand = (int) $summary['on_hand'];
+            $onHand ??= 0;
+            $available ??= 0;
 
-            $perAvailable = intdiv($compAvailable, $qty);
-            $perOnHand = intdiv($compOnHand, $qty);
-
-            $available = $available === null ? $perAvailable : min($available, $perAvailable);
-            $onHand = $onHand === null ? $perOnHand : min($onHand, $perOnHand);
-        }
-
-        return [
-            'on_hand' => $onHand ?? 0,
-            'on_order' => 0,
-            'available' => $available ?? 0,
-        ];
+            return [
+                'location_id' => $locationId,
+                'location_name' => $locationName,
+                'on_hand' => $onHand,
+                'on_order' => $onHand - $available,
+                'available' => $available,
+            ];
+        })->values();
     }
 
-    private static function transitLocationId(): ?string
+    private static function floorDivide(int $value, int $divisor): int
     {
-        if (! self::$transitResolved) {
-            self::$transitLocationId = \Modules\Warehouse\Models\Location::query()
-                ->where('location_code', \Modules\Warehouse\Models\Location::SYSTEM_TRANSIT_CODE)
-                ->value('id');
-            self::$transitResolved = true;
-        }
+        $quotient = intdiv($value, $divisor);
 
-        return self::$transitLocationId;
+        return $value < 0 && $value % $divisor !== 0
+            ? $quotient - 1
+            : $quotient;
     }
 }

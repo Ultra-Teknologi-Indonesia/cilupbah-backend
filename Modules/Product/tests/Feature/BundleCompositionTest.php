@@ -4,6 +4,7 @@ namespace Modules\Product\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Product\Models\Attribute;
@@ -11,6 +12,7 @@ use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductVariant;
 use Modules\Product\Models\VariantOption;
+use Modules\Warehouse\Models\LocationBin;
 use Tests\TestCase;
 
 class BundleCompositionTest extends TestCase
@@ -42,7 +44,7 @@ class BundleCompositionTest extends TestCase
         foreach ($values as $value) {
             $variant = ProductVariant::create([
                 'product_id' => $product->id,
-                'sku' => $name . '-' . $value,
+                'sku' => $name.'-'.$value,
                 'is_active' => true,
             ]);
             VariantOption::create([
@@ -60,7 +62,7 @@ class BundleCompositionTest extends TestCase
 
     private function makeLocation(string $code): string
     {
-        $id = \Illuminate\Support\Str::uuid()->toString();
+        $id = Str::uuid()->toString();
         DB::table('locations')->insert([
             'id' => $id,
             'location_code' => $code,
@@ -73,21 +75,21 @@ class BundleCompositionTest extends TestCase
         return $id;
     }
 
-    private function setInventory(string $variantId, string $locationId, int $available): void
+    private function setInventory(string $variantId, string $locationId, int $available, int $onOrder = 0): void
     {
 
-        $bin = \Modules\Warehouse\Models\LocationBin::firstOrCreate(
+        $bin = LocationBin::firstOrCreate(
             ['location_id' => $locationId, 'bin_final_code' => 'RACK-A1'],
             ['floor_code' => '1', 'row_code' => 'A', 'column_code' => '1', 'bin_code' => 'A-1', 'is_inbound' => false]
         );
 
         DB::table('inventories')->insert([
-            'id' => \Illuminate\Support\Str::uuid()->toString(),
+            'id' => Str::uuid()->toString(),
             'item_id' => $variantId,
             'location_id' => $locationId,
             'bin_id' => $bin->id,
-            'on_hand' => $available,
-            'on_order' => 0,
+            'on_hand' => $available + $onOrder,
+            'on_order' => $onOrder,
             'available' => $available,
             'created_at' => now(),
             'updated_at' => now(),
@@ -103,7 +105,7 @@ class BundleCompositionTest extends TestCase
         $bPutih = $b->variants()->where('sku', 'ProdukB-Putih')->first();
 
         DB::table('locations')->insert([
-            'id' => \Illuminate\Support\Str::uuid()->toString(),
+            'id' => Str::uuid()->toString(),
             'location_code' => 'LOC-B1',
             'location_name' => 'Gudang B1',
             'location_type' => 'WAREHOUSE',
@@ -111,7 +113,7 @@ class BundleCompositionTest extends TestCase
             'updated_at' => now(),
         ]);
         $locationId = DB::table('locations')->value('id');
-        $binId = \Illuminate\Support\Str::uuid()->toString();
+        $binId = Str::uuid()->toString();
         DB::table('location_bins')->insert([
             'id' => $binId,
             'location_id' => $locationId,
@@ -121,7 +123,7 @@ class BundleCompositionTest extends TestCase
             'updated_at' => now(),
         ]);
         DB::table('inventories')->insert([
-            'id' => \Illuminate\Support\Str::uuid()->toString(),
+            'id' => Str::uuid()->toString(),
             'item_id' => $aBiru->id,
             'location_id' => $locationId,
             'bin_id' => $binId,
@@ -319,8 +321,8 @@ class BundleCompositionTest extends TestCase
         $bVar = $this->multiVariantProduct('QtyB', ['M'])->variants()->first();
 
         $loc = $this->makeLocation('B3-B');
-        $this->setInventory($aVar->id, $loc, 10); 
-        $this->setInventory($bVar->id, $loc, 8);  
+        $this->setInventory($aVar->id, $loc, 10);
+        $this->setInventory($bVar->id, $loc, 8);
 
         $bundleId = $this->postJson('/api/v1/inventory/items', [
             'name' => 'Bundle Qty',
@@ -337,6 +339,31 @@ class BundleCompositionTest extends TestCase
             ->assertJsonPath('data.bundle_stock.available', 3);
     }
 
+    public function test_bundle_stock_derives_on_order_from_limiting_component(): void
+    {
+        $case = $this->multiVariantProduct('ReservedCase', ['M'])->variants()->first();
+        $sticker = $this->multiVariantProduct('ReservedSticker', ['M'])->variants()->first();
+        $locationId = $this->makeLocation('B3-RESERVED');
+        $this->setInventory($case->id, $locationId, 34, 5);
+        $this->setInventory($sticker->id, $locationId, 129);
+
+        $bundleId = $this->postJson('/api/v1/inventory/items', [
+            'name' => 'Bundle Reserved',
+            'sku' => 'BUNDLE-RESERVED',
+            'category_id' => 1,
+            'components' => [
+                ['variant_id' => $case->id, 'qty' => 1],
+                ['variant_id' => $sticker->id, 'qty' => 1],
+            ],
+        ])->assertStatus(201)->json('data.product_id');
+
+        $this->getJson("/api/v1/products/{$bundleId}")
+            ->assertStatus(200)
+            ->assertJsonPath('data.bundle_stock.on_hand', 39)
+            ->assertJsonPath('data.bundle_stock.on_order', 5)
+            ->assertJsonPath('data.bundle_stock.available', 34);
+    }
+
     public function test_bundle_stock_via_all_stocks_endpoint(): void
     {
         $aVar = $this->multiVariantProduct('AllA', ['M'])->variants()->first();
@@ -351,8 +378,8 @@ class BundleCompositionTest extends TestCase
             'sku' => 'BUNDLE-ALL',
             'category_id' => 1,
             'components' => [
-                ['variant_id' => $aVar->id, 'qty' => 2], 
-                ['variant_id' => $bVar->id, 'qty' => 3], 
+                ['variant_id' => $aVar->id, 'qty' => 2],
+                ['variant_id' => $bVar->id, 'qty' => 3],
             ],
         ])->assertStatus(201)->json('data.product_id');
 

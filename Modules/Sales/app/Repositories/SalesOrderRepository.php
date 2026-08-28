@@ -39,6 +39,8 @@ class SalesOrderRepository
         'items.channelMapping.product.media:id,product_id,url,is_primary',
         'location:id,location_name',
         'shop:shop_id,shop_name',
+        'picklistItems:id,picklist_id,order_id',
+        'picklistItems.picklist:id,status',
     ];
 
     public function paginateStatusHistory(string $salesOrderId, int $perPage)

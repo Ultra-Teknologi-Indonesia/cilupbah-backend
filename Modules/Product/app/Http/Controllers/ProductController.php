@@ -38,6 +38,7 @@ class ProductController extends Controller
         'bundleItems.component.options',
         'bundleItems.component.inventories',
         'bundleItems.component.inventories.bin:id,is_inbound',
+        'bundleItems.component.inventories.location:id,location_code,location_name',
         'bundleItems.component.channelMappings',
         'variationTypes.attribute',
         'media',

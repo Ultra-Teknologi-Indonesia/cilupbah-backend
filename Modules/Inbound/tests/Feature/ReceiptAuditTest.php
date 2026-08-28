@@ -198,6 +198,42 @@ class ReceiptAuditTest extends TestCase
             ->assertFailed();
     }
 
+    public function test_integrity_audit_excludes_system_transit_balance_from_inbound_staging(): void
+    {
+        $transit = Location::create([
+            'location_code' => Location::SYSTEM_TRANSIT_CODE,
+            'location_name' => 'Transit Sistem',
+            'location_type' => 'warehouse',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+        $transitBin = LocationBin::create([
+            'location_id' => $transit->id,
+            'bin_code' => 'TRANSIT',
+            'bin_final_code' => 'TRANSIT',
+            'is_inbound' => true,
+        ]);
+
+        DB::table('inventories')->insert([
+            'id' => (string) Str::uuid(),
+            'item_id' => $this->variant->id,
+            'location_id' => $transit->id,
+            'bin_id' => $transitBin->id,
+            'batch_no' => '',
+            'serial_no' => '',
+            'on_hand' => 7,
+            'on_order' => 0,
+            'available' => 7,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->artisan('inventory:audit-transaction-integrity', ['--since' => 1, '--fail-on-issue' => true])
+            ->expectsOutputToContain('STAGING_ISSUES              | 0')
+            ->expectsOutputToContain('AUDIT_RESULT=CONSISTENT')
+            ->assertSuccessful();
+    }
+
     public function test_mobile_receipt_without_idempotency_key_is_rejected_without_stock_change(): void
     {
         $inbound = $this->makeInbound(100);

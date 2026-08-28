@@ -2,7 +2,6 @@
 
 namespace Modules\Product\Tests\Feature;
 
-use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Modules\Channel\Models\Channel;
@@ -19,6 +18,8 @@ class ProductChannelListingsTest extends TestCase
 
     private Product $product;
 
+    private ChannelShop $shop;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -34,12 +35,12 @@ class ProductChannelListingsTest extends TestCase
         ProductVariant::create(['product_id' => $this->product->id, 'sku' => 'IP-RED', 'sell_price' => 1000, 'is_active' => true]);
 
         $channel = Channel::create(['code' => 'lazada', 'name' => 'Lazada']);
-        $shop = ChannelShop::create([
+        $this->shop = ChannelShop::create([
             'channel_id' => $channel->id, 'shop_id' => 'LZ1', 'shop_name' => 'Toko Lazada', 'is_active' => true,
         ]);
         $pcm = Uuid::uuid7()->toString();
         DB::table('product_channel_mappings')->insert([
-            'id' => $pcm, 'product_id' => $this->product->id, 'channel_shop_id' => $shop->id,
+            'id' => $pcm, 'product_id' => $this->product->id, 'channel_shop_id' => $this->shop->id,
             'external_product_id' => 'IT-1', 'sync_status' => 'synced',
             'created_at' => now(), 'updated_at' => now(),
         ]);
@@ -52,14 +53,14 @@ class ProductChannelListingsTest extends TestCase
 
     private function url(string $q = ''): string
     {
-        return "/api/v1/products/{$this->product->id}/channel-listings" . ($q ? "?{$q}" : '');
+        return "/api/v1/products/{$this->product->id}/channel-listings".($q ? "?{$q}" : '');
     }
 
     public function test_listed_only_by_default(): void
     {
         $res = $this->getJson($this->url())->assertOk();
 
-        $res->assertJsonCount(1, 'data')                       
+        $res->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.sku', 'IP-BLUE')
             ->assertJsonCount(1, 'data.0.listings')
             ->assertJsonPath('data.0.listings.0.channel_code', 'lazada')
@@ -87,9 +88,50 @@ class ProductChannelListingsTest extends TestCase
             ->assertJsonPath('data.0.listings.0.channel_code', 'lazada');
     }
 
+    public function test_filter_by_shop_returns_only_listings_for_selected_shop(): void
+    {
+        $blue = ProductVariant::where('product_id', $this->product->id)
+            ->where('sku', 'IP-BLUE')
+            ->firstOrFail();
+
+        $otherShop = ChannelShop::create([
+            'channel_id' => Channel::where('code', 'lazada')->value('id'),
+            'shop_id' => 'LZ2',
+            'shop_name' => 'Toko Lazada Lain',
+            'is_active' => true,
+        ]);
+
+        $otherProductMappingId = Uuid::uuid7()->toString();
+        DB::table('product_channel_mappings')->insert([
+            'id' => $otherProductMappingId,
+            'product_id' => $this->product->id,
+            'channel_shop_id' => $otherShop->id,
+            'external_product_id' => 'IT-2',
+            'sync_status' => 'synced',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('product_variant_channel_mappings')->insert([
+            'id' => Uuid::uuid7()->toString(),
+            'product_channel_mapping_id' => $otherProductMappingId,
+            'variant_id' => $blue->id,
+            'external_sku_id' => 'SKU-2',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->getJson($this->url('filter[shop_id]='.$this->shop->id))
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonCount(1, 'data.0.listings')
+            ->assertJsonPath('data.0.listings.0.channel_shop_id', $this->shop->id)
+            ->assertJsonPath('data.0.listings.0.shop_name', 'Toko Lazada');
+    }
+
     public function test_unknown_product_returns_404(): void
     {
-        $this->getJson('/api/v1/products/' . Uuid::uuid7()->toString() . '/channel-listings')
+        $this->getJson('/api/v1/products/'.Uuid::uuid7()->toString().'/channel-listings')
             ->assertStatus(404);
     }
 }
