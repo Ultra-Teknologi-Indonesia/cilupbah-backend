@@ -310,7 +310,7 @@ class PicklistService
         return $this->picklistRepository->findById($id);
     }
 
-    public function pickItem(string $picklistId, string $itemId, array $data): void
+    public function pickItem(string $picklistId, string $itemId, array $data)
     {
         DB::transaction(function () use ($picklistId, $itemId, $data) {
             $picklist = $this->picklistRepository->findById($picklistId);
@@ -343,9 +343,20 @@ class PicklistService
                 : null;
 
             if ($pickOrder && in_array($pickOrder->status, ['shipped', 'completed', 'delivered'], true)) {
-                throw new OutboundValidationException(
-                    "Pesanan {$pickOrder->salesorder_no} sudah berstatus dikirim dan tidak boleh dipotong ulang dari rak."
-                );
+                $current = (int) $item->qty_picked;
+                $target = array_key_exists('qty_delta', $data) && $data['qty_delta'] !== null
+                    ? $current + (int) $data['qty_delta']
+                    : (int) $data['qty_picked'];
+
+                $this->picklistRepository->updateItem($itemId, [
+                    'qty_picked' => $target,
+                    'item_status' => PicklistItem::STATUS_PROCESSED_EXTERNALLY,
+                    'bin_id' => $this->resolveBin($picklist, $data['bin_code'])->id ?? null,
+                ]);
+                return [
+                    'already_shipped' => true,
+                    'order_no' => $pickOrder->salesorder_no,
+                ];
             }
 
             if ($pickOrder && $pickOrder->is_canceled) {

@@ -882,13 +882,13 @@ class InventoryRepository
 
         $sub = DB::table('inventories')
             ->join('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
-            ->select('inventories.item_id', DB::raw('SUM(inventories.on_hand) as total_on_hand'))
+            ->select('inventories.item_id', DB::raw('SUM(inventories.available) as total_on_hand'))
             ->where('inventories.location_id', $locationId)
             ->where('location_bins.is_inbound', false)
             ->groupBy('inventories.item_id');
 
         if (! $includeZero) {
-            $sub->havingRaw('SUM(inventories.on_hand) > 0');
+            $sub->havingRaw('SUM(inventories.available) > 0');
         }
 
         $joinType = $includeZero ? 'leftJoinSub' : 'joinSub';
