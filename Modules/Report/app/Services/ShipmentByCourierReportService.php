@@ -32,7 +32,7 @@ class ShipmentByCourierReportService
 
         $rows = collect($this->repository->shipmentByCourierRows($filters))
             ->map(function ($r) {
-                $r->ekspedisi = EkspedisiNormalizer::family($r->provider);
+                $r->ekspedisi = EkspedisiNormalizer::family($r->provider, $r->no_resi ?? null);
 
                 return $r;
             });
@@ -57,7 +57,7 @@ class ShipmentByCourierReportService
 
         $rows = collect($this->repository->shipmentByCourierRows($filters))
             ->map(function ($r) {
-                $r->ekspedisi = EkspedisiNormalizer::family($r->provider);
+                $r->ekspedisi = EkspedisiNormalizer::family($r->provider, $r->no_resi ?? null);
 
                 return $r;
             });

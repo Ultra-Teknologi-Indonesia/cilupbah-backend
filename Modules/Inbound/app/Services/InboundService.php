@@ -760,8 +760,6 @@ class InboundService
 
             $data['transaction_number'] = $data['transaction_number'] ?? app(InventoryService::class)->generateTrfiNumber();
 
-            // Kedatangan transfer mencatat barang diterima, tetapi tetap menunggu
-            // tombol penyelesaian admin agar sesi penerimaan tidak ditutup otomatis.
             $data['status'] = Inbound::STATUS_RECEIVED;
 
             $inbound = $this->inboundRepository->create($data);
@@ -833,8 +831,7 @@ class InboundService
             }
 
             $inbound->update([
-                // Status selesai tetap merupakan keputusan admin, bukan akibat
-                // jumlah yang kebetulan sudah penuh dari sinkronisasi transfer.
+
                 'status' => $anyShortfall ? Inbound::STATUS_PARTIAL : Inbound::STATUS_RECEIVED,
                 'transaction_number' => $data['transaction_number'] ?? $inbound->transaction_number,
             ]);
@@ -1004,8 +1001,6 @@ class InboundService
                 }
             }
 
-            // Scan hanya mencatat jumlah yang sudah diterima. Penyelesaian tetap
-            // dilakukan eksplisit melalui tombol admin closeReceiving().
             $this->inboundRepository->updateStatus($inbound, Inbound::STATUS_PARTIAL);
             $inbound->forceFill(['updated_version_at' => now()])->save();
 
@@ -1115,9 +1110,6 @@ class InboundService
                     'withdrawn_at' => now(),
                 ]);
 
-            // Admin menutup sesi = penerimaan dinyatakan selesai, lepas dari
-            // apakah qty sudah penuh atau belum, dan lepas dari putaway.
-            // RECEIVED adalah status selesai penerimaan; COMPLETED hanya data lama.
             $this->inboundRepository->updateStatus($inbound, Inbound::STATUS_RECEIVED);
             $fill = ['updated_version_at' => now()];
             if ($inbound->once_received_at === null) {
@@ -1745,8 +1737,6 @@ class InboundService
                 'received_date' => now(),
             ]);
 
-            // Koreksi jumlah tidak boleh mengubah status. Status selesai hanya
-            // berubah melalui closeReceiving() yang ditekan admin.
             $inbound->forceFill(['updated_version_at' => now()])->save();
 
             return $this->getById($inboundId);

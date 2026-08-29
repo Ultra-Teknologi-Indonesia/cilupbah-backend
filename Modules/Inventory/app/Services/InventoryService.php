@@ -191,7 +191,7 @@ class InventoryService
                 'item_id' => $variant->id,
                 'sku' => $variant->sku,
                 'product_id' => $variant->product_id,
-                // Keep the picker title tied to the parent product, never to the variant SKU.
+
                 'product_name' => $variant->parent_product_name ?? $variant->product?->name,
                 'variant_label' => $variantLabel,
                 'variation_values' => $variationValues,

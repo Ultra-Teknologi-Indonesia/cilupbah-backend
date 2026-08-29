@@ -31,6 +31,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('reports/wms/pick-list/lookup', [ReportController::class, 'pickListLookup'])->name('reports.wms.pick-list.lookup');
         Route::post('reports/wms/pick-list/pdf', [ReportController::class, 'pickListDetailPdf'])->name('reports.wms.pick-list.pdf');
         Route::get('reports/wms/shipment/export', [ReportController::class, 'shipmentListExport'])->name('reports.wms.shipment.export');
+        Route::get('reports/wms/shipment/export/async', [ReportController::class, 'shipmentListExportAsync'])->name('reports.wms.shipment.export.async');
         Route::get('reports/wms/shipment/options', [ReportController::class, 'shipmentFilterOptions'])->name('reports.wms.shipment.options');
         Route::post('reports/wms/order-performance/pdf', [ReportController::class, 'orderPerformancePdf'])->name('reports.wms.order-performance.pdf');
         Route::post('reports/wms/putaway-performance/pdf', [ReportController::class, 'putawayPerformancePdf'])->name('reports.wms.putaway-performance.pdf');

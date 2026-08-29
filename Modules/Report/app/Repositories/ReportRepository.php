@@ -249,9 +249,14 @@ class ReportRepository
         $courierIds = $filters['courier_ids'] ?? [];
         $statusMp = $filters['status_mp'] ?? null;
 
+        $manifest = DB::table('shipment_orders as sho')
+            ->join('shipments as sh', 'sh.id', '=', 'sho.shipment_id')
+            ->select('sho.order_id')
+            ->selectRaw("STRING_AGG(DISTINCT sh.shipment_no, ', ') AS shipment_no")
+            ->groupBy('sho.order_id');
+
         return DB::table('sales_orders as so')
-            ->leftJoin('shipment_orders as sho', 'sho.order_id', '=', 'so.id')
-            ->leftJoin('shipments as sh', 'sh.id', '=', 'sho.shipment_id')
+            ->leftJoinSub($manifest, 'm', 'm.order_id', '=', 'so.id')
 
             ->tap(fn ($q) => WarehouseAccess::apply($q, 'so.location_id'))
             ->whereNotExists(fn ($q) => $q
@@ -272,7 +277,7 @@ class ReportRepository
             })
             ->select([
                 'so.salesorder_no',
-                'sh.shipment_no',
+                'm.shipment_no',
                 'so.transaction_date',
                 'so.tracking_number',
                 'so.status',
@@ -562,6 +567,7 @@ class ReportRepository
         return DB::table('sales_orders as so')
             ->leftJoinSub($qty, 'q', 'q.order_id', '=', 'so.id')
             ->leftJoinSub($manifest, 'm', 'm.order_id', '=', 'so.id')
+            ->whereNotNull('so.tracking_number')
             ->whereNotExists(fn ($sub) => $sub
                 ->select(DB::raw(1))
                 ->from('sales_order_items as soi')

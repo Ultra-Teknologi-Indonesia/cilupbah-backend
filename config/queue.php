@@ -93,7 +93,7 @@ return [
         'stock_sync' => env('QUEUE_NAME_STOCK_SYNC', 'stock-sync'),
         'stock_critical' => env('QUEUE_NAME_STOCK_CRITICAL', 'stock-critical'),
         'stock_default' => env('QUEUE_NAME_STOCK_DEFAULT', 'stock-default'),
-        // Legacy queue is intentionally retained while existing work drains.
+
         'channel_sync' => env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync'),
         'channel_cancellation' => env('QUEUE_NAME_CHANNEL_CANCELLATION', 'channel-cancellation'),
         'channel_stock' => env('QUEUE_NAME_CHANNEL_STOCK', 'channel-stock'),

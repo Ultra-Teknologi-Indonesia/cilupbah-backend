@@ -94,9 +94,6 @@ class BackfillInboundMovementSourceTest extends TestCase
         ];
     }
 
-    /**
-     * @dataProvider sufiks
-     */
     public function test_setiap_sufiks_ikut_terbawa(string $sufiks): void
     {
         $this->inbound('PO-SUF', 'PURCHASE_ORDER');

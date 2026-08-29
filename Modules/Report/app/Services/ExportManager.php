@@ -24,6 +24,7 @@ class ExportManager
         'picklist-detail-photo',
         'inventory-stock',
         'inventory-rack',
+        'shipment-list',
     ];
 
     public function queue(User $user, string $type, array $params): ExportJob
@@ -112,6 +113,11 @@ class ExportManager
                 )
             ),
 
+            'shipment-list' => new \Modules\Report\Exports\ShipmentListReportExport(
+                app(ReportService::class),
+                $params,
+            ),
+
             'picklist-detail-photo' => $this->buildPicklistPhoto($params),
 
             'inventory-stock' => new InventoryStockReportExport(
@@ -165,6 +171,12 @@ class ExportManager
             'shipment-by-courier' => sprintf(
                 'Laporan-Pengiriman-Ekspedisi-%s_%s_%s.xlsx',
                 ucfirst($params['mode'] ?? ''),
+                $params['from'] ?? '',
+                $params['to'] ?? '',
+            ),
+
+            'shipment-list' => sprintf(
+                'daftar-pengiriman_%s_%s.xlsx',
                 $params['from'] ?? '',
                 $params['to'] ?? '',
             ),

@@ -352,38 +352,63 @@ class StockReplenishmentService
         }
 
         $request = DB::transaction(function () use ($pusatId, $kecilId, $shortages) {
-            $req = $this->repository->create([
-                'requested_by_user_id' => null,
-                'from_location_id'     => $pusatId,
-                'to_location_id'       => $kecilId,
-                'status'               => StockReplenishmentRequest::STATUS_PENDING,
-                'requested_at'         => now(),
-                'note'                 => 'Auto-generated oleh sistem berdasarkan kekurangan stok Gudang Kecil.',
-            ]);
+            $req = StockReplenishmentRequest::whereNull('requested_by_user_id')
+                ->where('from_location_id', $pusatId)
+                ->where('to_location_id', $kecilId)
+                ->where('status', StockReplenishmentRequest::STATUS_PENDING)
+                ->first();
+
+            $isNew = false;
+            if (! $req) {
+                $isNew = true;
+                $req = $this->repository->create([
+                    'requested_by_user_id' => null,
+                    'from_location_id'     => $pusatId,
+                    'to_location_id'       => $kecilId,
+                    'status'               => StockReplenishmentRequest::STATUS_PENDING,
+                    'requested_at'         => now(),
+                    'note'                 => 'Auto-generated oleh sistem berdasarkan kekurangan stok Gudang Kecil.',
+                ]);
+            }
 
             foreach ($shortages as $s) {
-                $this->repository->createItem([
-                    'request_id' => $req->id,
-                    'item_id'    => $s['item_id'],
-                    'sku'        => $s['sku'],
-                    'qty'        => $s['qty'],
-                    'reason'     => sprintf('Kebutuhan %d, tersedia %d, in-flight %d', $s['needed'], $s['available'], $s['in_flight']),
-                ]);
+                $existingItem = null;
+                if (! $isNew) {
+                    $existingItem = \Modules\Inventory\Models\StockReplenishmentRequestItem::where('request_id', $req->id)
+                        ->where('item_id', $s['item_id'])
+                        ->first();
+                }
+
+                if ($existingItem) {
+                    $existingItem->qty += $s['qty'];
+                    $existingItem->reason = sprintf('Diupdate otomatis: Kebutuhan %d, tersedia %d, in-flight lama %d', $s['needed'], $s['available'], $s['in_flight']);
+                    $existingItem->save();
+                } else {
+                    $this->repository->createItem([
+                        'request_id' => $req->id,
+                        'item_id'    => $s['item_id'],
+                        'sku'        => $s['sku'],
+                        'qty'        => $s['qty'],
+                        'reason'     => sprintf('Kebutuhan %d, tersedia %d, in-flight %d', $s['needed'], $s['available'], $s['in_flight']),
+                    ]);
+                }
             }
 
             return $req->fresh(['items']);
         });
 
-        $skuCount = count($shortages);
-        $this->notifications->toPermission(self::NOTIF_PERMISSION, [
-            'type' => 'stock_replenishment_auto_detected',
-            'title' => 'Deteksi kekurangan stok otomatis',
-            'message' => "Sistem mendeteksi kekurangan {$skuCount} SKU di gudang kecil.",
-            'data' => [
-                'request_id' => $request->id,
-                'link' => $this->requestLink($request->id),
-            ],
-        ]);
+        if (! isset($isNew) || (isset($isNew) && $isNew)) { 
+            $skuCount = count($shortages);
+            $this->notifications->toPermission(self::NOTIF_PERMISSION, [
+                'type' => 'stock_replenishment_auto_detected',
+                'title' => 'Deteksi kekurangan stok otomatis',
+                'message' => "Sistem mendeteksi kekurangan {$skuCount} SKU di gudang kecil.",
+                'data' => [
+                    'request_id' => $request->id,
+                    'link' => $this->requestLink($request->id),
+                ],
+            ]);
+        }
 
         return ['shortages' => $shortages, 'request' => $request, 'skipped' => false];
     }

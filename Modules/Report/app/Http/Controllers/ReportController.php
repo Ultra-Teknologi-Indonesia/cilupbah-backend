@@ -597,6 +597,11 @@ class ReportController extends Controller
     )]
     public function shipmentListExport(ShipmentListExportRequest $request)
     {
+        // Karena data yang diexport bisa sangat masif (>125k baris),
+        // kita tingkatkan limit memory dan time agar tidak Error 500 (OOM / Timeout)
+        ini_set('memory_limit', '-1');
+        set_time_limit(0);
+
         $validated = $request->validated();
 
         $export = new ShipmentListReportExport($this->reportService, $validated);
@@ -608,6 +613,11 @@ class ReportController extends Controller
         );
 
         return Excel::download($export, $filename);
+    }
+
+    public function shipmentListExportAsync(ShipmentListExportRequest $request, ExportManager $exports): JsonResponse
+    {
+        return $this->queueExport($exports, 'shipment-list', $request->validated());
     }
 
     #[OA\Get(

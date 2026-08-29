@@ -148,10 +148,6 @@ class InventoryMovementSourceMap
         ...self::HIDDEN_SOURCES,
     ];
 
-    /**
-     * Physical transfer events that are meaningful in the clean chronology.
-     * Reservation, invoice, and staging events deliberately stay out.
-     */
     public const CLEAN_PHYSICAL_TRANSFER_SOURCES = [
         'TRANSFER_IN',
         'TRANSFER_OUT',

@@ -22,21 +22,48 @@ final class EkspedisiNormalizer
 
     private const LAINNYA = 'Lainnya';
 
-    public static function family(?string $provider): string
+    public static function family(?string $provider, ?string $resi = null): string
     {
         $hay = strtoupper(trim((string) $provider));
-        if ($hay === '') {
-            return self::LAINNYA;
-        }
 
-        foreach (self::FAMILIES as $family => $needles) {
-            foreach ($needles as $needle) {
-                if (str_contains($hay, $needle)) {
-                    return $family;
+        if ($hay !== '') {
+            foreach (self::FAMILIES as $family => $needles) {
+                foreach ($needles as $needle) {
+                    if (str_contains($hay, $needle)) {
+                        return $family;
+                    }
                 }
             }
         }
 
+        if ($resi) {
+            $guessed = self::guessFromResi($resi);
+            if ($guessed) {
+                return $guessed;
+            }
+        }
+
         return trim((string) $provider) ?: self::LAINNYA;
+    }
+
+    private static function guessFromResi(?string $resi): ?string
+    {
+        $r = strtoupper(trim((string) $resi));
+        if ($r === '') return null;
+
+        if (str_starts_with($r, 'SPX')) return 'SPX';
+        if (str_starts_with($r, 'JP') || str_starts_with($r, 'JX') || str_starts_with($r, 'JZ') || str_starts_with($r, 'JT') || str_starts_with($r, 'JO')) return 'J&T';
+        if (str_starts_with($r, 'LX') || str_starts_with($r, 'LZ')) return 'Lazada';
+        if (str_starts_with($r, 'GK')) return 'GTL';
+        if (str_starts_with($r, 'ID') || str_starts_with($r, 'IDE')) return 'ID Express';
+        if (str_starts_with($r, 'NL')) return 'Ninja';
+
+        if (str_starts_with($r, '00') && is_numeric($r) && strlen($r) >= 10) return 'SiCepat';
+
+        if (str_starts_with($r, '100') && is_numeric($r) && strlen($r) >= 10) return 'AnterAja';
+
+        if (is_numeric($r) && strlen($r) === 15) return 'JNE';
+
+        return null;
     }
 }
