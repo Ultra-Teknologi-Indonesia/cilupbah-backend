@@ -1,7 +1,7 @@
 @php
     /** @var \Modules\Purchase\Models\PurchaseOrder $po */
     /** @var array $company */
-    $printedAt = now()->format('d M Y H:i');
+    $printedAt = now()->timezone('Asia/Jakarta')->format('d M Y H:i');
     $items = collect($po->items ?? []);
     $supplierName = optional($po->contact ?? null)->name ?? '—';
     $addressParts = array_filter([

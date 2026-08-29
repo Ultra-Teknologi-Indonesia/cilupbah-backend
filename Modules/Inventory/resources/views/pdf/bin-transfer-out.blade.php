@@ -12,7 +12,7 @@
             $locName = optional($transfer->location)->location_name ?? '-';
             $tanggal = optional($transfer->transfer_date)->format('d M Y')
                 ?? optional($transfer->created_at)->format('d M Y') ?? '-';
-            $printedAt = now()->format('d M Y H:i');
+            $printedAt = now()->timezone('Asia/Jakarta')->format('d M Y H:i');
             $totalQty = (int) $items->sum('qty');
         @endphp
         <div class="title">Surat Jalan Transfer Internal</div>

@@ -150,7 +150,7 @@
 <div class="footer">
     <table>
         <tr>
-            <td>Tgl. Cetak: {{ now()->format('d M Y H:i') }}</td>
+            <td>Tgl. Cetak: {{ now()->timezone('Asia/Jakarta')->format('d M Y H:i') }}</td>
             <td class="right">Hal: <span class="page-num"></span></td>
         </tr>
     </table>

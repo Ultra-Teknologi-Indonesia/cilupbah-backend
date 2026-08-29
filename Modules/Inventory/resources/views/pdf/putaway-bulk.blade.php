@@ -1,6 +1,6 @@
 @php
     /** @var array $docs  daftar ['putaway' => ..., 'qrDataUri' => ..., 'sourceLabel' => ...] */
-    $printedAt = now()->format('d M Y H:i');
+    $printedAt = now()->timezone('Asia/Jakarta')->format('d M Y H:i');
     $docs = collect($docs ?? []);
 @endphp
 <!DOCTYPE html>

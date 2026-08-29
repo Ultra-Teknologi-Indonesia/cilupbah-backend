@@ -2,7 +2,7 @@
     /** @var \Modules\Inventory\Models\Putaway $putaway */
     /** @var string|null $qrDataUri */
     /** @var string $sourceLabel */
-    $printedAt = now()->format('d M Y H:i');
+    $printedAt = now()->timezone('Asia/Jakarta')->format('d M Y H:i');
 @endphp
 <!DOCTYPE html>
 <html lang="id">

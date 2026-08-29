@@ -2448,14 +2448,21 @@ class InventoryService
 
         $transferNumber = $manualNumber !== '' ? $manualNumber : $this->generateTransferNumber();
 
-        $transfer = $this->transferRepository->create([
+        $payload = [
             'transfer_number' => $transferNumber,
             'source_location_id' => $data['source_location_id'] ?? null,
             'destination_location_id' => $data['destination_location_id'] ?? null,
             'status' => InventoryTransfer::STATUS_DRAFT,
             'notes' => $data['notes'] ?? null,
             'created_by' => $data['created_by'],
-        ]);
+        ];
+
+        if (!empty($data['transaction_date'])) {
+            $payload['created_at'] = $data['transaction_date'];
+            $payload['updated_at'] = $data['transaction_date'];
+        }
+
+        $transfer = $this->transferRepository->create($payload);
 
         return $this->transferRepository->findById($transfer->id);
     }

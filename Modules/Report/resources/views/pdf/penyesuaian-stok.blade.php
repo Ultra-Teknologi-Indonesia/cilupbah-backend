@@ -1,7 +1,7 @@
 @php
     /** @var \Illuminate\Support\Collection $groups */
     $companyName = config('app.company_name', 'PT ULTRA TEKNOLOGI INDONESIA');
-    $printedAt = now()->format('d M Y');
+    $printedAt = now()->timezone('Asia/Jakarta')->format('d M Y');
     $periodLabel = \Carbon\Carbon::parse($start)->format('d M Y') . ' - ' . \Carbon\Carbon::parse($end)->format('d M Y');
 @endphp
 <!DOCTYPE html>

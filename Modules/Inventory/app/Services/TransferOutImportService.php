@@ -180,6 +180,7 @@ class TransferOutImportService
             if ($status === 'ready') {
                 $payloads[] = [
                     'transfer_number'         => $transferNumber,
+                    'transaction_date'        => $txDate !== '' ? $this->parseDate($txDate) : null,
                     'source_location_id'      => $sourceId,
                     'destination_location_id' => $destId,
                     'notes'                   => trim((string) ($group['note'] ?? '')) ?: null,
@@ -252,6 +253,7 @@ class TransferOutImportService
                 DB::transaction(function () use ($payload, $createdBy, &$transferNumbers) {
                     $transfer = $this->inventoryService->createDraft([
                         'transfer_number'         => $payload['transfer_number'],
+                        'transaction_date'        => $payload['transaction_date'] ?? null,
                         'source_location_id'      => $payload['source_location_id'],
                         'destination_location_id' => $payload['destination_location_id'],
                         'notes'                   => $payload['notes'],
@@ -441,6 +443,19 @@ class TransferOutImportService
         }
 
         return strtotime($value) !== false;
+    }
+
+    protected function parseDate(string $value): ?string
+    {
+        foreach (['j/n/Y G:i', 'j/n/Y H:i', 'd/m/Y H:i', 'd/m/Y', 'Y-m-d H:i', 'Y-m-d'] as $format) {
+            $dt = \DateTime::createFromFormat($format, $value);
+            if ($dt !== false) {
+                return $dt->format('Y-m-d H:i:s');
+            }
+        }
+
+        $time = strtotime($value);
+        return $time !== false ? date('Y-m-d H:i:s', $time) : null;
     }
 
     protected function readDataRows(UploadedFile $file): array

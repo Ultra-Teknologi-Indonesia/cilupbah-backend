@@ -1,7 +1,7 @@
 @php
     /** @var object $return */
     $companyName = config('app.company_name', 'PT ULTRA TEKNOLOGI INDONESIA');
-    $printedAt = now()->format('d M Y H:i');
+    $printedAt = now()->timezone('Asia/Jakarta')->format('d M Y H:i');
     $items = collect($return->items ?? []);
     $money = fn ($v) => 'Rp ' . number_format((float) $v, 0, ',', '.');
 @endphp

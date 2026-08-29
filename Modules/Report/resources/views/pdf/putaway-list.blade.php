@@ -1,6 +1,6 @@
 @php
     $companyName = config('app.company_name', 'PT ULTRA TEKNOLOGI INDONESIA');
-    $printedAt = now()->format('d M Y H:i');
+    $printedAt = now()->timezone('Asia/Jakarta')->format('d M Y H:i');
 @endphp
 <!DOCTYPE html>
 <html lang="id">

@@ -1,6 +1,6 @@
 @php
     $companyName = config('app.company_name', 'PT ULTRA TEKNOLOGI INDONESIA');
-    $printedAt = now()->format('d M Y H:i');
+    $printedAt = now()->timezone('Asia/Jakarta')->format('d M Y H:i');
 
     // Laporan Penempatan memakai susunan kolom Summary yang lebih pendek, punya
     // baris Total di dalam tabel Detail, dan tidak punya Grand Total.

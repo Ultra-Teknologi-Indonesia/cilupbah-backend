@@ -1,6 +1,6 @@
 @php
     /** @var object $transfer */
-    $printedAt = now()->format('d M Y H:i');
+    $printedAt = now()->timezone('Asia/Jakarta')->format('d M Y H:i');
     $items = collect($transfer->items ?? []);
     $sourceName = optional($transfer->sourceLocation ?? $transfer->source_location ?? null)->location_name ?? '-';
     $destName = optional($transfer->destinationLocation ?? $transfer->destination_location ?? null)->location_name ?? '-';

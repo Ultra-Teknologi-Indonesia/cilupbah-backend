@@ -4,7 +4,7 @@
     $rawItems = collect($picklist->items ?? []);
     $locationName = optional($picklist->location)->location_name ?? '-';
     $companyName = config('app.company_name', 'PT ULTRA TEKNOLOGI INDONESIA');
-    $printedAt = now()->format('d M Y H:i');
+    $printedAt = now()->timezone('Asia/Jakarta')->format('d M Y H:i');
 
     // Group by SKU: merge qty dan kumpulkan nomor pesanan + qty per pesanan
     $grouped = $rawItems->groupBy('sku')->map(function ($group) {

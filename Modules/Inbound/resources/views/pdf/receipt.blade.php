@@ -1,7 +1,7 @@
 @php
     /** @var \Modules\Inbound\Models\Inbound $inbound */
     $companyName = config('app.company_name', 'PT ULTRA TEKNOLOGI INDONESIA');
-    $printedAt = now()->format('d M Y H:i');
+    $printedAt = now()->timezone('Asia/Jakarta')->format('d M Y H:i');
     $items = collect($inbound->items ?? [])->values();
     $typeLabel = [
         'PURCHASE_ORDER' => 'Pesanan Pembelian',
