@@ -337,6 +337,16 @@ class ReportRepository
                 ->leftJoin('users as u', 'u.id', '=', 'p.picker_id')
                 ->leftJoin('locations as l', 'l.id', '=', 'p.location_id')
                 ->whereNotIn('p.status', [Picklist::STATUS_DRAFT, Picklist::STATUS_CANCELLED])
+                ->groupBy([
+                    'p.location_id',
+                    'l.location_name',
+                    'p.id',
+                    'p.picklist_no',
+                    'u.name',
+                    'p.started_at',
+                    'p.created_at',
+                    'p.completed_at',
+                ])
                 ->select([
                     'p.location_id',
                     'l.location_name as lokasi',
@@ -345,7 +355,7 @@ class ReportRepository
                 ])
                 ->selectRaw('COALESCE(u.name, ?) AS grup', ['(tanpa picker)'])
                 ->selectRaw('COALESCE(p.started_at, p.created_at) AS tanggal_raw')
-                ->selectRaw('COALESCE(pi.qty_picked, 0) AS qty')
+                ->selectRaw('SUM(COALESCE(pi.qty_picked, 0)) AS qty')
                 ->selectRaw(self::durationSeconds('p.completed_at', 'COALESCE(p.started_at, p.created_at)') . ' AS durasi_detik'),
             'r',
         );
