@@ -45,6 +45,7 @@ class MonitorStockRepository
             ->selectRaw('COALESCE(inv.on_hand, 0) as total_on_hand')
             ->selectRaw('COALESCE(inv.available, 0) as total_available')
             ->selectRaw('COALESCE(inv.on_order, 0) as total_on_order')
+            ->selectRaw('(' . $this->pendingOrderNosSql() . ') as pending_order_nos')
             ->with([
                 'product:id,name,sku,is_bundle,is_stored,category_id',
                 'product.media' => fn ($q) => $q->whereNull('variant_id')->orderBy('sort_order'),
@@ -53,6 +54,17 @@ class MonitorStockRepository
             ]);
 
         return $this->applyCommonFilters($query, $filters);
+    }
+
+    private function pendingOrderNosSql(): string
+    {
+        return <<<SQL
+            SELECT STRING_AGG(DISTINCT sales_orders.salesorder_no, ', ')
+            FROM sales_order_items
+            JOIN sales_orders ON sales_orders.id = sales_order_items.order_id
+            WHERE sales_order_items.item_id = product_variants.id
+              AND sales_orders.status IN ('pending', 'reserved', 'UNPAID', 'AWAITING_BUYER_CONFIRMATION')
+        SQL;
     }
 
     private function pendingOrderItemIds()
@@ -75,10 +87,10 @@ class MonitorStockRepository
     {
         return match ($mode) {
             'habis' => $query->whereRaw('COALESCE(inv.available, 0) <= 0'),
-            'minus' => $query->whereRaw('COALESCE(inv.on_hand, 0) < 0'),
-            'dipesan' => $query
-                ->whereRaw('COALESCE(inv.available, 0) <= 0')
-                ->whereIn('product_variants.id', $this->pendingOrderItemIds()),
+            'minus' => $query->whereRaw('COALESCE(inv.on_hand, 0) > 0')
+                             ->whereRaw('COALESCE(inv.available, 0) < 0'),
+            'dipesan' => $query->whereRaw('COALESCE(inv.on_hand, 0) <= 0')
+                               ->whereRaw('COALESCE(inv.available, 0) < 0'),
             'menipis' => $query
                 ->where('product_variants.min_stock', '>', 0)
                 ->whereRaw('COALESCE(inv.available, 0) < product_variants.min_stock'),
@@ -113,8 +125,8 @@ class MonitorStockRepository
             ->leftJoinSub($this->openPoItemIds()->distinct(), 'open_po', 'open_po.item_id', '=', 'b.id')
             ->selectRaw(<<<'SQL'
                 COUNT(*) FILTER (WHERE b.total_available <= 0) AS habis,
-                COUNT(*) FILTER (WHERE b.total_on_hand < 0) AS minus,
-                COUNT(*) FILTER (WHERE b.total_available <= 0 AND pending.item_id IS NOT NULL) AS dipesan,
+                COUNT(*) FILTER (WHERE b.total_on_hand > 0 AND b.total_available < 0) AS minus,
+                COUNT(*) FILTER (WHERE b.total_on_hand <= 0 AND b.total_available < 0) AS dipesan,
                 COUNT(*) FILTER (WHERE b.min_stock > 0 AND b.total_available < b.min_stock) AS menipis,
                 COUNT(*) FILTER (WHERE open_po.item_id IS NOT NULL) AS on_order
             SQL)

@@ -12,8 +12,8 @@ trait AppliesStockMonitorFilters
         if (! empty($filters['search'])) {
             $term = '%' . trim($filters['search']) . '%';
             $query->where(function ($q) use ($term) {
-                $q->where('product_variants.sku', 'like', $term)
-                    ->orWhere('products.name', 'like', $term);
+                $q->where('product_variants.sku', 'ilike', $term)
+                    ->orWhere('products.name', 'ilike', $term);
             });
         }
 
