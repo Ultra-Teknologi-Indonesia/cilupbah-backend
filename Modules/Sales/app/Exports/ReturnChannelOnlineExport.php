@@ -12,6 +12,7 @@ class ReturnChannelOnlineExport implements WithMultipleSheets
         private readonly ?string $dateFrom,
         private readonly ?string $dateTo,
         private readonly ?string $locationId,
+        private readonly ?string $status = null,
     ) {}
 
     public function sheets(): array
@@ -20,6 +21,7 @@ class ReturnChannelOnlineExport implements WithMultipleSheets
             $this->dateFrom,
             $this->dateTo,
             $this->locationId,
+            $this->status,
         );
 
         return [

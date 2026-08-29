@@ -255,10 +255,10 @@
                                 @endif
                             </td>
                             <td class="text-cell">
-                                <div class="sku {{ $skuClass($cell['sku'], $extras) }}">{{ $clip($cell['sku'], $skuCapFor($extras)) }}</div>
                                 @if($showStore)
                                     <div class="store">{{ $clip($cell['store_name'], $limit['store']) ?: '—' }}</div>
                                 @endif
+                                <div class="sku {{ $skuClass($cell['sku'], $extras) }}">{{ $clip($cell['sku'], $skuCapFor($extras)) }}</div>
                                 @if($cell['bin'])
                                     <div class="bin">RAK {{ $clip($cell['bin'], $limit['bin']) }}</div>
                                 @endif
@@ -287,10 +287,10 @@
                                             @endif
                                         </td>
                                         <td class="text-cell">
-                                            <div class="sku {{ $skuClass($cell['sku'], $extras) }}">{{ $clip($cell['sku'], $skuCapFor($extras)) }}</div>
                                             @if($showStore)
                                                 <div class="store">{{ $clip($cell['store_name'], $limit['store']) ?: '—' }}</div>
                                             @endif
+                                            <div class="sku {{ $skuClass($cell['sku'], $extras) }}">{{ $clip($cell['sku'], $skuCapFor($extras)) }}</div>
                                             @if($cell['bin'])
                                                 <div class="bin">RAK {{ $clip($cell['bin'], $limit['bin']) }}</div>
                                             @endif

@@ -43,6 +43,7 @@ class SalesReturnService
                 dateFrom: $dateFrom,
                 dateTo: $dateTo,
                 locationId: $filters['location_id'] ?? null,
+                status: $filters['status'] ?? null,
             );
 
             $filename = sprintf('retur-channel-online-%s-%s.xlsx', $dateFrom, $dateTo);
@@ -534,15 +535,30 @@ class SalesReturnService
         return $return;
     }
 
-    public function buildChannelOnlinePutawayReport(?string $dateFrom, ?string $dateTo, ?string $locationId): array
+    public function buildChannelOnlinePutawayReport(?string $dateFrom, ?string $dateTo, ?string $locationId, ?string $status): array
     {
         $dateFrom = $dateFrom ?: now()->toDateString();
         $dateTo = $dateTo ?: $dateFrom;
 
         $returns = SalesReturn::query()
-            ->whereIn('status', [SalesReturn::STATUS_ACCEPTED, SalesReturn::STATUS_COMPLETED])
-            ->whereDate('processed_at', '>=', $dateFrom)
-            ->whereDate('processed_at', '<=', $dateTo)
+            ->when($status, function ($q, $s) {
+                if ($s === 'unprocessed') {
+                    $q->where('status', SalesReturn::STATUS_PENDING);
+                } else {
+                    $q->where('status', $s);
+                }
+            }, function ($q) {
+                $q->whereIn('status', [SalesReturn::STATUS_ACCEPTED, SalesReturn::STATUS_COMPLETED]);
+            })
+            ->where(function ($q) use ($dateFrom, $dateTo, $status) {
+                if ($status === 'unprocessed') {
+                    $q->whereDate('created_at', '>=', $dateFrom)
+                      ->whereDate('created_at', '<=', $dateTo);
+                } else {
+                    $q->whereDate('processed_at', '>=', $dateFrom)
+                      ->whereDate('processed_at', '<=', $dateTo);
+                }
+            })
             ->when($locationId, fn ($q) => $q->where('location_id', $locationId))
             ->with([
                 'items.product:id,product_id,sku',
