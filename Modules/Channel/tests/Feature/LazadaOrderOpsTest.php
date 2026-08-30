@@ -7,15 +7,18 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Services\LazadaOrderService;
+use Modules\Channel\Tests\Support\SeedsCatalogVariant;
 use Modules\Sales\Models\SalesOrder;
 use Tests\TestCase;
 
 class LazadaOrderOpsTest extends TestCase
 {
     use RefreshDatabase;
-    use \Modules\Channel\Tests\Support\SeedsCatalogVariant;
+    use SeedsCatalogVariant;
 
     private User $user;
+
     private ChannelShop $shop;
 
     protected function setUp(): void
@@ -180,6 +183,42 @@ class LazadaOrderOpsTest extends TestCase
         $order = SalesOrder::where('salesorder_no', 'LZ-900123')->first();
         $this->assertNotNull($order);
         $this->assertEquals('cancelled', $order->status);
+    }
+
+    public function test_buyer_cancellation_accept_uses_reverse_order_api(): void
+    {
+        $this->fakeItemsForOrder([
+            ['order_item_id' => 111, 'name' => 'Kaos', 'sku' => 'SKU-A', 'item_price' => 100000, 'paid_price' => 100000],
+        ], statusAfter: 'pending', extra: [
+            'api.lazada.co.id/rest/reverse/getreverseordersforseller*' => Http::response([
+                'code' => '0',
+                'result' => [
+                    'items' => [[
+                        'reverse_order_id' => 'REV-900123',
+                        'trade_order_id' => '900123',
+                        'request_type' => 'CANCEL',
+                        'reverse_order_lines' => [[
+                            'trade_order_line_id' => 'ORDER-LINE-111',
+                            'refund_amount' => 100000,
+                            'reverse_status' => 'CANCEL_INIT',
+                        ]],
+                    ]],
+                ],
+            ], 200),
+            'api.lazada.co.id/rest/v2/order/returnRefund/accept*' => Http::response([
+                'code' => '0',
+                'data' => [],
+            ], 200),
+        ]);
+
+        $result = app(LazadaOrderService::class)
+            ->respondBuyerCancellation('LZ-100', '900123', 'accept');
+
+        $this->assertTrue($result['handled']);
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/v2/order/returnRefund/accept')
+            && ($request['OrderId'] ?? null) === '900123'
+            && ($request['OrderItemIdList'] ?? null) === '["ORDER-LINE-111"]'
+            && ($request['refundAmount'] ?? null) === '100000');
     }
 
     public function test_cancel_reasons_returns_list(): void

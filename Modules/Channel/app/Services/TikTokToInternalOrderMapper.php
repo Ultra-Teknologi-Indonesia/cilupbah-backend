@@ -69,7 +69,15 @@ class TikTokToInternalOrderMapper
         $deliveryOptionId = $tiktokOrder['delivery_option_id'] ?? null;
         $shippingType = $tiktokOrder['shipping_type'] ?? null;
 
-        $isCancelRequested = $channelStatus !== 'CANCELLED'
+        // TikTok can keep cancellation_initiator=BUYER on historical orders.
+        // Limit inferred active cancel requests to cancellable order states so
+        // completed/delivered orders do not re-open an old buyer request.
+        $isCancelRequested = in_array($channelStatus, [
+            'UNPAID',
+            'ON_HOLD',
+            'AWAITING_SHIPMENT',
+            'AWAITING_COLLECTION',
+        ], true)
             && ! empty($tiktokOrder['cancellation_initiator'])
             && strtoupper($tiktokOrder['cancellation_initiator']) === 'BUYER';
 

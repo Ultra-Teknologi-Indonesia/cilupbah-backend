@@ -30,6 +30,7 @@ use Modules\Outbound\Models\Shipment;
 use Modules\Outbound\Models\ShipmentOrder;
 use Modules\Outbound\Services\FulfillmentCleanupService;
 use Modules\Outbound\Services\OutboundFulfillmentService;
+use Modules\Sales\Enums\BuyerCancellationSyncStatus;
 use Modules\Sales\Enums\OrderActivityAction;
 use Modules\Sales\Enums\OrderActivityEntity;
 use Modules\Sales\Enums\SalesOrderStatus;
@@ -39,6 +40,7 @@ use Modules\Sales\Exceptions\InvalidStatusTransitionException;
 use Modules\Sales\Exceptions\LocationNotConfiguredException;
 use Modules\Sales\Exceptions\ProductNotMappableException;
 use Modules\Sales\Exceptions\ShippingLabelPreparingException;
+use Modules\Sales\Jobs\AutoAcceptCancelRequestJob;
 use Modules\Sales\Jobs\CancelChannelOrderJob;
 use Modules\Sales\Jobs\PrepareLazadaShippingLabelJob;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
@@ -320,6 +322,9 @@ class SalesOrderService
                 );
 
                 $order->update([
+                    'cancel_requested_at' => null,
+                    'cancel_request_reason' => null,
+                    'cancel_requested_by' => null,
                     'cancel_accepted_at' => now(),
                     'cancel_accepted_by' => $actorId,
                     'cancel_channel' => $channel,
@@ -328,18 +333,15 @@ class SalesOrderService
 
                 Cache::forget($this->idempotencyKey($order->source, $order->salesorder_no));
 
-                if (in_array(strtolower((string) $order->source), ['shopee', 'tiktok'], true)) {
-                    RespondBuyerCancellationJob::dispatch(
-                        $order->id,
-                        RespondBuyerCancellationJob::ACCEPT,
-                    )->onQueue(config('queue.names.channel_cancellation'));
-                } else {
-                    CancelChannelOrderJob::dispatch($order->id, $finalReason)
-                        ->onQueue(config('queue.names.channel_cancellation'));
-                }
-
                 return $order->fresh();
             });
+
+            if (in_array(strtolower((string) $result->source), ['shopee', 'tiktok'], true)) {
+                $this->respondToBuyerCancellationSynchronously($result, RespondBuyerCancellationJob::ACCEPT);
+            } else {
+                CancelChannelOrderJob::dispatch($result->id, $finalReason)
+                    ->onQueue(config('queue.names.channel_cancellation'));
+            }
 
             $this->notifyOrderCancelled($result, $finalReason, $channel, $actorId);
 
@@ -352,6 +354,9 @@ class SalesOrderService
             $order->update([
                 'status' => 'cancelled',
                 'is_canceled' => true,
+                'cancel_requested_at' => null,
+                'cancel_request_reason' => null,
+                'cancel_requested_by' => null,
                 'cancel_reason' => $finalReason,
                 'cancel_accepted_at' => now(),
                 'cancel_accepted_by' => $actorId,
@@ -363,22 +368,19 @@ class SalesOrderService
 
             Cache::forget($this->idempotencyKey($order->source, $order->salesorder_no));
 
-            if ($order->source) {
-                if (in_array(strtolower((string) $order->source), ['shopee', 'tiktok'], true)) {
-
-                    RespondBuyerCancellationJob::dispatch(
-                        $order->id,
-                        RespondBuyerCancellationJob::ACCEPT,
-                    )->onQueue(config('queue.names.channel_cancellation'));
-                } else {
-                    CancelChannelOrderJob::dispatch($order->id, $finalReason)->onQueue(config('queue.names.channel_cancellation'));
-                }
-            }
-
             SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
 
             return $order->fresh();
         });
+
+        if ($result->source) {
+            if (in_array(strtolower((string) $result->source), ['shopee', 'tiktok'], true)) {
+                $this->respondToBuyerCancellationSynchronously($result, RespondBuyerCancellationJob::ACCEPT);
+            } else {
+                CancelChannelOrderJob::dispatch($result->id, $finalReason)
+                    ->onQueue(config('queue.names.channel_cancellation'));
+            }
+        }
 
         $this->notifyOrderCancelled($result, $finalReason, $channel, $actorId);
 
@@ -423,13 +425,99 @@ class SalesOrderService
             'cancel_reject_reason' => $reason,
         ]);
 
-        if (in_array(strtolower((string) $order->source), ['shopee', 'tiktok'], true)) {
+        $result = $order->fresh();
 
-            RespondBuyerCancellationJob::dispatch(
-                $order->id,
-                RespondBuyerCancellationJob::REJECT,
-            )->onQueue(config('queue.names.channel_cancellation'));
+        $this->respondToBuyerCancellationSynchronously($result, RespondBuyerCancellationJob::REJECT);
+
+        return $result;
+    }
+
+    private function respondToBuyerCancellationSynchronously(SalesOrder $order, string $decision): void
+    {
+        if (! in_array(strtolower((string) $order->source), ['shopee', 'tiktok', 'lazada'], true)) {
+            return;
         }
+
+        RespondBuyerCancellationJob::dispatchSync($order->id, $decision);
+    }
+
+    public function retryBuyerCancellationSync(string $orderId): SalesOrder
+    {
+        $order = SalesOrder::findOrFail($orderId);
+        $decision = (string) $order->buyer_cancel_sync_decision;
+
+        if (! in_array($decision, [RespondBuyerCancellationJob::ACCEPT, RespondBuyerCancellationJob::REJECT], true)) {
+            throw new \InvalidArgumentException('Belum ada keputusan pembatalan buyer yang bisa dikirim ulang.');
+        }
+
+        RespondBuyerCancellationJob::dispatchSync($order->id, $decision);
+
+        return $order->fresh();
+    }
+
+    public function markBuyerCancellationRequestedFromChannel(
+        string $source,
+        string $shopId,
+        string $channelOrderNo,
+        ?string $reason = null,
+        ?string $channelReference = null,
+    ): ?SalesOrder {
+        $order = SalesOrder::query()
+            ->where('source', strtolower($source))
+            ->where('channel_shop_id', $shopId)
+            ->where('channel_order_no', $channelOrderNo)
+            ->first();
+
+        if (! $order) {
+            return null;
+        }
+
+        if ($order->cancel_accepted_at || $order->cancel_rejected_at) {
+            return $order;
+        }
+
+        $order->forceFill([
+            'cancel_requested_at' => $order->cancel_requested_at ?: now(),
+            'cancel_request_reason' => $reason ?: $order->cancel_request_reason,
+            'buyer_cancel_sync_status' => BuyerCancellationSyncStatus::PENDING->value,
+            'buyer_cancel_sync_decision' => null,
+            'buyer_cancel_sync_error' => null,
+            'buyer_cancel_channel_reference' => $channelReference ?: $order->buyer_cancel_channel_reference,
+        ])->saveQuietly();
+
+        AutoAcceptCancelRequestJob::dispatch($order->id);
+
+        return $order->fresh();
+    }
+
+    public function markBuyerCancellationFinishedFromChannel(
+        string $source,
+        string $shopId,
+        string $channelOrderNo,
+        string $channelStatus,
+        ?string $channelReference = null,
+    ): ?SalesOrder {
+        $order = SalesOrder::query()
+            ->where('source', strtolower($source))
+            ->where('channel_shop_id', $shopId)
+            ->where('channel_order_no', $channelOrderNo)
+            ->first();
+
+        if (! $order) {
+            return null;
+        }
+
+        $status = strtoupper($channelStatus);
+        $updates = [
+            'buyer_cancel_channel_reference' => $channelReference ?: $order->buyer_cancel_channel_reference,
+            'buyer_cancel_sync_status' => in_array($status, ['CANCEL_SUCCESS', 'CANCEL_REFUND_ISSUED'], true)
+                ? BuyerCancellationSyncStatus::SUCCEEDED->value
+                : BuyerCancellationSyncStatus::STALE->value,
+            'buyer_cancel_sync_error' => null,
+            'buyer_cancel_synced_at' => now(),
+        ];
+
+        $order->forceFill($updates)->saveQuietly();
 
         return $order->fresh();
     }
@@ -1993,6 +2081,10 @@ class SalesOrderService
 
             $wasNewOrder = $existing === null;
             $previousStatus = $existing?->status;
+            $hasBuyerCancellationRequest = ! empty($orderData['cancel_requested_at'])
+                && empty($existing?->cancel_requested_at)
+                && ! $existing?->cancel_accepted_at
+                && ! $existing?->cancel_rejected_at;
 
             if ($wasNewOrder && ! empty($orderData['items']) && is_array($orderData['items'])) {
                 $unmapped = $this->orderRepository->unmappedSkus($orderData['items']);
@@ -2153,6 +2245,30 @@ class SalesOrderService
                         'error' => $e->getMessage(),
                     ]);
                 }
+            }
+
+            if ($hasBuyerCancellationRequest) {
+                $order->forceFill([
+                    'buyer_cancel_sync_status' => BuyerCancellationSyncStatus::PENDING->value,
+                    'buyer_cancel_sync_decision' => null,
+                    'buyer_cancel_sync_error' => null,
+                ])->saveQuietly();
+
+                AutoAcceptCancelRequestJob::dispatch($order->id)
+                    ->onQueue(config('queue.names.channel_cancellation'));
+            }
+
+            if ($finalStatus === 'cancelled'
+                && $existing?->cancel_requested_at
+                && ! $existing?->cancel_accepted_at
+                && ! $existing?->cancel_rejected_at
+            ) {
+                $order->forceFill([
+                    'buyer_cancel_sync_status' => BuyerCancellationSyncStatus::SUCCEEDED->value,
+                    'buyer_cancel_sync_decision' => RespondBuyerCancellationJob::ACCEPT,
+                    'buyer_cancel_sync_error' => null,
+                    'buyer_cancel_synced_at' => now(),
+                ])->saveQuietly();
             }
 
             $isSettlementEligible = $order->is_canceled

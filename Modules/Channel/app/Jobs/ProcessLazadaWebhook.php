@@ -13,29 +13,49 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Services\ChannelDownloadService;
+use Modules\Channel\Services\ChannelSyncSettingService;
 use Modules\Channel\Services\ChannelWebhookAuditService;
 use Modules\Channel\Services\LazadaAuthService;
 use Modules\Channel\Services\LazadaOrderService;
+use Modules\Channel\Support\ChannelOrderIntakeGate;
+use Modules\Channel\Support\WebhookFailureHandler;
+use Modules\Outbound\Jobs\RefreshInstantTrackingJob;
+use Modules\Outbound\Models\Shipment;
+use Modules\Outbound\Models\ShipmentTrackingEvent;
 use Modules\Product\Models\ProductChannelMapping;
+use Modules\Sales\Jobs\PrepareLazadaShippingLabelJob;
+use Modules\Sales\Jobs\ProcessChannelReturnJob;
+use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Services\SalesOrderService;
 
 class ProcessLazadaWebhook implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
+
     public array $backoff = [10, 60, 300];
+
     public int $timeout = 120;
 
     private const MSG_ORDER = 0;
+
     private const MSG_PRODUCT = 1;
+
     private const MSG_PRODUCT_ALT = 2;
+
     private const MSG_PRODUCT_CREATE = 3;
 
     private const MSG_PRODUCT_EDIT = 4;
+
     private const MSG_PRODUCT_DELETE = 5;
+
     private const MSG_TOKEN_EXPIRY = 8;
+
     private const MSG_REVERSE = 10;
+
     private const MSG_SELLER_STATUS = 13;
+
     private const MSG_FULFILLMENT = 14;
 
     public function __construct(
@@ -68,7 +88,7 @@ class ProcessLazadaWebhook implements ShouldQueue
 
     public static function idempotencyKey(array $payload): string
     {
-        return 'lazada:webhook:' . md5(json_encode([
+        return 'lazada:webhook:'.md5(json_encode([
             $payload['seller_id'] ?? '',
             $payload['message_type'] ?? '',
             $payload['timestamp'] ?? '',
@@ -83,7 +103,7 @@ class ProcessLazadaWebhook implements ShouldQueue
         LazadaAuthService $authService,
         ?ChannelWebhookAuditService $webhookAudit = null,
     ): void {
-        if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
+        if (app(ChannelSyncSettingService::class)->isPaused()) {
             return;
         }
 
@@ -126,7 +146,7 @@ class ProcessLazadaWebhook implements ShouldQueue
         if ($this->orderIntakeSkipped) {
             ChannelWebhookInbox::markSkippedByKey(
                 self::idempotencyKey($this->payload),
-                \Modules\Channel\Support\ChannelOrderIntakeGate::reason(),
+                ChannelOrderIntakeGate::reason(),
             );
 
             return;
@@ -151,19 +171,47 @@ class ProcessLazadaWebhook implements ShouldQueue
     {
         $this->handleOrderEvent($orderService, $sellerId, $data);
 
+        $reverseStatus = strtoupper((string) ($data['reverse_status'] ?? $data['status'] ?? ''));
+        $channelOrderId = (string) ($data['trade_order_id'] ?? $data['order_id'] ?? '');
+        $reverseOrderId = (string) ($data['reverse_order_id'] ?? '');
+
+        if ($channelOrderId !== '' && in_array($reverseStatus, ['CANCEL_INIT'], true)) {
+            app(SalesOrderService::class)->markBuyerCancellationRequestedFromChannel(
+                'lazada',
+                $sellerId,
+                $channelOrderId,
+                (string) ($data['reason'] ?? $data['reason_text'] ?? 'Pembeli mengajukan pembatalan'),
+                $reverseOrderId ?: null,
+            );
+
+            return;
+        }
+
+        if ($channelOrderId !== '' && in_array($reverseStatus, ['CANCEL_SUCCESS', 'CANCEL_REFUND_ISSUED'], true)) {
+            app(SalesOrderService::class)->markBuyerCancellationFinishedFromChannel(
+                'lazada',
+                $sellerId,
+                $channelOrderId,
+                $reverseStatus,
+                $reverseOrderId ?: null,
+            );
+
+            return;
+        }
+
         $channelOrderId = (string) ($data['trade_order_id'] ?? $data['order_id'] ?? $data['reverse_order_id'] ?? '');
         if ($channelOrderId === '') {
             return;
         }
 
-        \Modules\Sales\Jobs\ProcessChannelReturnJob::dispatch([
-            'source'            => 'lazada',
-            'channel_order_id'  => $channelOrderId,
+        ProcessChannelReturnJob::dispatch([
+            'source' => 'lazada',
+            'channel_order_id' => $channelOrderId,
             'channel_return_id' => $data['reverse_order_id'] ?? null,
-            'channel_shop_id'   => $sellerId,
-            'reason'            => $data['reverse_status'] ?? $data['order_status'] ?? 'Retur Lazada',
-            'channel_status'    => $data['reverse_status'] ?? $data['order_status'] ?? $data['status'] ?? null,
-            'created_by'        => 'system:lazada-webhook',
+            'channel_shop_id' => $sellerId,
+            'reason' => $data['reverse_status'] ?? $data['order_status'] ?? 'Retur Lazada',
+            'channel_status' => $data['reverse_status'] ?? $data['order_status'] ?? $data['status'] ?? null,
+            'created_by' => 'system:lazada-webhook',
         ]);
     }
 
@@ -191,7 +239,7 @@ class ProcessLazadaWebhook implements ShouldQueue
 
     protected function handleOrderEvent(LazadaOrderService $orderService, string $sellerId, array $data): void
     {
-        if (\Modules\Channel\Support\ChannelOrderIntakeGate::blocksShop($sellerId, 'lazada')) {
+        if (ChannelOrderIntakeGate::blocksShop($sellerId, 'lazada')) {
             $this->orderIntakeSkipped = true;
 
             return;
@@ -209,6 +257,7 @@ class ProcessLazadaWebhook implements ShouldQueue
         if (Cache::has($recentKey)) {
             Log::info("Lazada webhook {$orderId} di-debounce (sudah di-pull dalam 15 detik terakhir).");
             $this->recordLazadaTrackingEvent($orderId, $data);
+
             return;
         }
 
@@ -218,9 +267,9 @@ class ProcessLazadaWebhook implements ShouldQueue
             $orderService->pullOrderById($sellerId, $orderId);
             $this->recordLazadaTrackingEvent($orderId, $data);
         } catch (\Throwable $e) {
-            Log::warning('Gagal memproses Lazada order webhook: ' . $e->getMessage(), [
+            Log::warning('Gagal memproses Lazada order webhook: '.$e->getMessage(), [
                 'seller_id' => $sellerId,
-                'order_id'  => $orderId,
+                'order_id' => $orderId,
             ]);
         }
     }
@@ -233,39 +282,47 @@ class ProcessLazadaWebhook implements ShouldQueue
             'SHIPPED',
             'DELIVERED',
         ], true);
-        if (! $isDriverEvent) return;
+        if (! $isDriverEvent) {
+            return;
+        }
 
-        $order = \Modules\Sales\Models\SalesOrder::query()
+        $order = SalesOrder::query()
             ->where('source', 'lazada')
             ->where('channel_order_no', $orderId)
             ->first();
-        if (! $order) return;
-
-        if ($status === 'READY_TO_SHIP') {
-            \Modules\Sales\Jobs\PrepareLazadaShippingLabelJob::dispatch((string) $order->id);
+        if (! $order) {
+            return;
         }
 
-        $shipment = \Modules\Outbound\Models\Shipment::query()
+        if ($status === 'READY_TO_SHIP') {
+            PrepareLazadaShippingLabelJob::dispatch((string) $order->id);
+        }
+
+        $shipment = Shipment::query()
             ->whereHas('orders', fn ($q) => $q->where('order_id', $order->id))
             ->latest('id')
             ->first();
-        if (! $shipment) return;
+        if (! $shipment) {
+            return;
+        }
 
         $eventType = match ($status) {
-            'READY_TO_SHIP' => \Modules\Outbound\Models\ShipmentTrackingEvent::EVENT_DRIVER_ASSIGNED,
-            'SHIPPED' => \Modules\Outbound\Models\ShipmentTrackingEvent::EVENT_PICKED_UP,
-            'DELIVERED' => \Modules\Outbound\Models\ShipmentTrackingEvent::EVENT_DELIVERED,
-            default => 'lazada_' . strtolower($status),
+            'READY_TO_SHIP' => ShipmentTrackingEvent::EVENT_DRIVER_ASSIGNED,
+            'SHIPPED' => ShipmentTrackingEvent::EVENT_PICKED_UP,
+            'DELIVERED' => ShipmentTrackingEvent::EVENT_DELIVERED,
+            default => 'lazada_'.strtolower($status),
         };
 
-        $exists = \Modules\Outbound\Models\ShipmentTrackingEvent::query()
+        $exists = ShipmentTrackingEvent::query()
             ->where('shipment_id', $shipment->id)
             ->where('source', 'lazada')
             ->where('event_type', $eventType)
             ->exists();
-        if ($exists) return;
+        if ($exists) {
+            return;
+        }
 
-        \Modules\Outbound\Models\ShipmentTrackingEvent::create([
+        ShipmentTrackingEvent::create([
             'shipment_id' => $shipment->id,
             'source' => 'lazada',
             'event_type' => $eventType,
@@ -277,7 +334,7 @@ class ProcessLazadaWebhook implements ShouldQueue
             'received_at' => now(),
         ]);
 
-        \Modules\Outbound\Jobs\RefreshInstantTrackingJob::dispatch($shipment->id);
+        RefreshInstantTrackingJob::dispatch($shipment->id);
     }
 
     protected function handleProductEvent(ChannelDownloadService $downloadService, string $sellerId, array $data): void
@@ -290,7 +347,7 @@ class ProcessLazadaWebhook implements ShouldQueue
         try {
             $downloadService->downloadProductDebounced('lazada', $sellerId, $itemId);
         } catch (\Throwable $e) {
-            Log::warning('Lazada re-sync produk gagal: ' . $e->getMessage(), ['item_id' => $itemId]);
+            Log::warning('Lazada re-sync produk gagal: '.$e->getMessage(), ['item_id' => $itemId]);
         }
 
         $shopUuid = DB::table('channel_shops')->where('shop_id', $sellerId)->value('id');
@@ -314,7 +371,7 @@ class ProcessLazadaWebhook implements ShouldQueue
             $mapping->markInReview();
         } elseif (in_array($status, ['rejected', 'suspended', 'deleted', 'inactive'], true)) {
             $reason = $data['reasons'] ?? $data['reason'] ?? $status;
-            $mapping->markRejected('Lazada QC: ' . (is_array($reason) ? json_encode($reason) : $reason));
+            $mapping->markRejected('Lazada QC: '.(is_array($reason) ? json_encode($reason) : $reason));
         }
     }
 
@@ -333,7 +390,7 @@ class ProcessLazadaWebhook implements ShouldQueue
             $authService->refreshStoreToken((string) $shopUuid);
             Log::info('Lazada token diperbarui via webhook expiry alert.', ['seller_id' => $sellerId]);
         } catch (\Throwable $e) {
-            Log::warning('Lazada refresh token via webhook gagal: ' . $e->getMessage(), ['seller_id' => $sellerId]);
+            Log::warning('Lazada refresh token via webhook gagal: '.$e->getMessage(), ['seller_id' => $sellerId]);
         }
     }
 
@@ -351,10 +408,10 @@ class ProcessLazadaWebhook implements ShouldQueue
 
         if ($status === 'close') {
             DB::table('channel_shops')->where('id', $shopUuid)->update([
-                'is_active'          => false,
+                'is_active' => false,
                 'integration_status' => 'error',
-                'last_error'         => 'Lazada seller closed via webhook',
-                'updated_at'         => now(),
+                'last_error' => 'Lazada seller closed via webhook',
+                'updated_at' => now(),
             ]);
             Log::warning('Lazada seller status CLOSE — toko dinonaktifkan.', ['seller_id' => $sellerId]);
 
@@ -363,10 +420,10 @@ class ProcessLazadaWebhook implements ShouldQueue
 
         if ($status === 'normal') {
             DB::table('channel_shops')->where('id', $shopUuid)->update([
-                'is_active'          => true,
+                'is_active' => true,
                 'integration_status' => 'normal',
-                'last_error'         => null,
-                'updated_at'         => now(),
+                'last_error' => null,
+                'updated_at' => now(),
             ]);
             Log::info('Lazada seller status NORMAL — toko diaktifkan kembali.', ['seller_id' => $sellerId]);
         }
@@ -399,7 +456,7 @@ class ProcessLazadaWebhook implements ShouldQueue
 
         Cache::forget(self::idempotencyKey($this->payload));
 
-        \Modules\Channel\Support\WebhookFailureHandler::record(
+        WebhookFailureHandler::record(
             'lazada',
             self::idempotencyKey($this->payload),
             [

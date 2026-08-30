@@ -22,6 +22,7 @@ use Modules\Outbound\Models\ShipmentOrder;
 use Modules\Outbound\Support\InstantOrderClassifier;
 use Modules\Sales\Database\Factories\SalesOrderFactory;
 use Modules\Sales\Enums\CancelChannel;
+use Modules\Sales\Enums\BuyerCancellationSyncStatus;
 use Modules\Sales\Enums\ChannelStatus;
 use Modules\Sales\Enums\ContactChannel;
 use Modules\Sales\Enums\CustomerDecision;
@@ -144,6 +145,11 @@ class SalesOrder extends Model implements HasMedia
         'cancel_rejected_at',
         'cancel_rejected_by',
         'cancel_reject_reason',
+        'buyer_cancel_sync_status',
+        'buyer_cancel_sync_decision',
+        'buyer_cancel_sync_error',
+        'buyer_cancel_synced_at',
+        'buyer_cancel_channel_reference',
         'cancel_dismissed_at',
         'cancel_dismissed_by',
         'channel_cancel_requested_at',
@@ -218,6 +224,7 @@ class SalesOrder extends Model implements HasMedia
         'pick_failed_at' => 'datetime',
         'cancel_accepted_at' => 'datetime',
         'cancel_rejected_at' => 'datetime',
+        'buyer_cancel_synced_at' => 'datetime',
         'cancel_dismissed_at' => 'datetime',
         'contacted_at' => 'datetime',
         'decision_at' => 'datetime',

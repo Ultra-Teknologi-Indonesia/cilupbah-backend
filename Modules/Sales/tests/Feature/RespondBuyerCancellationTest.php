@@ -3,12 +3,13 @@
 namespace Modules\Sales\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Sales\Jobs\RespondBuyerCancellationJob;
+use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderService;
 use Tests\TestCase;
 
@@ -81,31 +82,62 @@ class RespondBuyerCancellationTest extends TestCase
         (new RespondBuyerCancellationJob($idR, RespondBuyerCancellationJob::REJECT))->handle();
     }
 
-    public function test_lazada_does_not_call_any_buyer_cancel_api(): void
+    public function test_lazada_accept_calls_buyer_cancellation_api_and_records_success(): void
     {
-        [$id] = $this->seedOrder('lazada');
+        [$id, $orderNo] = $this->seedOrder('lazada', ['cancel_accepted_at' => now()]);
 
         $this->mock(ShopeeOrderService::class, fn ($m) => $m->shouldNotReceive('handleBuyerCancellation'));
         $this->mock(TikTokOrderService::class, function ($m) {
             $m->shouldNotReceive('acceptBuyerCancellation');
             $m->shouldNotReceive('rejectBuyerCancellation');
         });
+        $this->mock(LazadaOrderService::class, function ($m) use ($orderNo) {
+            $m->shouldReceive('respondBuyerCancellation')
+                ->once()
+                ->with('SHOP-123', $orderNo, RespondBuyerCancellationJob::ACCEPT, null, null)
+                ->andReturn(['handled' => true]);
+        });
 
         (new RespondBuyerCancellationJob($id, RespondBuyerCancellationJob::ACCEPT))->handle();
 
-        $this->assertTrue(true);
+        $order = SalesOrder::findOrFail($id);
+        $this->assertSame('succeeded', $order->buyer_cancel_sync_status);
+        $this->assertNotNull($order->buyer_cancel_synced_at);
     }
 
-    public function test_reject_cancel_request_now_notifies_channel(): void
+    public function test_channel_failure_is_visible_and_is_rethrowable_for_retry(): void
     {
-        Bus::fake();
-        [$id] = $this->seedOrder('shopee');
+        [$id, $orderNo] = $this->seedOrder('shopee', ['cancel_accepted_at' => now()]);
+
+        $this->mock(ShopeeOrderService::class, function ($m) use ($orderNo) {
+            $m->shouldReceive('handleBuyerCancellation')
+                ->once()
+                ->with('SHOP-123', $orderNo, 'ACCEPT')
+                ->andThrow(new \RuntimeException('Channel timeout'));
+        });
+
+        $this->expectException(\RuntimeException::class);
+        try {
+            (new RespondBuyerCancellationJob($id, RespondBuyerCancellationJob::ACCEPT))->handle();
+        } finally {
+            $this->assertSame('failed', SalesOrder::findOrFail($id)->buyer_cancel_sync_status);
+            $this->assertSame('Channel timeout', SalesOrder::findOrFail($id)->buyer_cancel_sync_error);
+        }
+    }
+
+    public function test_reject_cancel_request_responds_to_channel_synchronously(): void
+    {
+        [$id, $orderNo] = $this->seedOrder('shopee');
+
+        $this->mock(ShopeeOrderService::class, function ($m) use ($orderNo) {
+            $m->shouldReceive('handleBuyerCancellation')
+                ->once()
+                ->with('SHOP-123', $orderNo, 'REJECT')
+                ->andReturn([]);
+        });
 
         app(SalesOrderService::class)->rejectCancelRequest($id, 'stok sudah disiapkan');
 
-        Bus::assertDispatched(
-            RespondBuyerCancellationJob::class,
-            fn (RespondBuyerCancellationJob $job) => $job->orderId === $id && $job->decision === RespondBuyerCancellationJob::REJECT,
-        );
+        $this->assertNotNull(SalesOrder::query()->findOrFail($id)->cancel_rejected_at);
     }
 }

@@ -49,6 +49,10 @@ return [
         'auth_url' => env('LAZADA_AUTH_URL', 'https://auth.lazada.com'),
 
         'base_url' => env('LAZADA_BASE_URL', 'https://api.lazada.co.id/rest'),
+        'buyer_cancel_list_path' => env('LAZADA_BUYER_CANCEL_LIST_PATH', '/reverse/getreverseordersforseller'),
+        'buyer_cancel_accept_path' => env('LAZADA_BUYER_CANCEL_ACCEPT_PATH', '/v2/order/returnRefund/accept'),
+        'buyer_cancel_reject_path' => env('LAZADA_BUYER_CANCEL_REJECT_PATH', '/v2/order/returnRefund/reject'),
+        'buyer_cancel_reject_reason_id' => env('LAZADA_BUYER_CANCEL_REJECT_REASON_ID', '1022'),
     ],
 
     'woocommerce' => [
