@@ -3,6 +3,7 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\Log;
+use Modules\Outbound\Support\ChannelInstantSignal;
 use Modules\Outbound\Support\InstantOrderClassifier;
 
 class ShopeeToInternalOrderMapper
@@ -20,18 +21,17 @@ class ShopeeToInternalOrderMapper
         'cancelled' => 'CANCELLED',
     ];
 
-    public function map(array $shopeeOrder, string $shopId, array $instantChannelIds = []): array
+    public function map(array $shopeeOrder, string $shopId, array $channelShippingTypes = []): array
     {
         $items = $this->mapItems($shopeeOrder['item_list'] ?? []);
 
         $logisticsChannelId = $shopeeOrder['logistics_channel_id']
             ?? ($shopeeOrder['package_list'][0]['logistics_channel_id'] ?? null);
-        $isInstantChannel = $logisticsChannelId !== null && in_array((string) $logisticsChannelId, $instantChannelIds, true);
-        $shippingType = $isInstantChannel ? 'INSTANT' : null;
-
-        $channelInstant = (! empty($instantChannelIds) && $logisticsChannelId !== null)
-            ? $isInstantChannel
-            : null;
+        $channelShippingType = $this->resolveChannelShippingType($logisticsChannelId, $channelShippingTypes);
+        $shippingType = $channelShippingType;
+        $channelInstant = $channelShippingType === null
+            ? null
+            : ChannelInstantSignal::isInstantType($channelShippingType);
 
         $shopeeStatus = strtolower((string) ($shopeeOrder['order_status'] ?? 'unpaid'));
         $channelStatus = self::STATUS_MAP[$shopeeStatus] ?? null;
@@ -116,6 +116,7 @@ class ShopeeToInternalOrderMapper
             'tracking_number' => $shopeeOrder['tracking_number'] ?? null,
             'shipping_provider' => $shippingProvider,
             'shipping_type' => $shippingType,
+            'delivery_option_id' => $logisticsChannelId === null ? null : (string) $logisticsChannelId,
             'channel_instant' => $channelInstant,
             'buyer_message' => $shopeeOrder['note'] ?? $shopeeOrder['message_to_seller'] ?? null,
             'seller_note' => $shopeeOrder['note'] ?? null,
@@ -128,6 +129,26 @@ class ShopeeToInternalOrderMapper
             'source' => 'shopee',
             'items' => $items,
         ];
+    }
+
+    private function resolveChannelShippingType(int|string|null $logisticsChannelId, array $channelShippingTypes): ?string
+    {
+        if ($logisticsChannelId === null) {
+            return null;
+        }
+
+        $id = (string) $logisticsChannelId;
+        if (array_key_exists($id, $channelShippingTypes)) {
+            return ChannelInstantSignal::normalizeType((string) $channelShippingTypes[$id]);
+        }
+
+        // Backward compatibility for callers that still pass the legacy list of instant IDs.
+        $legacyInstantIds = array_map('strval', array_values($channelShippingTypes));
+        if (in_array($id, $legacyInstantIds, true)) {
+            return 'INSTANT';
+        }
+
+        return null;
     }
 
     protected function extractShippingCarrier(array $shopeeOrder): ?string

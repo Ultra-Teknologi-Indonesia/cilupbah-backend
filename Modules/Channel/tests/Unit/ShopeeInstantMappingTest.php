@@ -13,7 +13,7 @@ class ShopeeInstantMappingTest extends TestCase
         return array_merge([
             'order_sn' => 'ORDER-1',
             'order_status' => 'ready_to_ship',
-            'shipping_carrier' => 'J&T Express', 
+            'shipping_carrier' => 'J&T Express',
         ], $overrides);
     }
 
@@ -37,7 +37,36 @@ class ShopeeInstantMappingTest extends TestCase
         $this->assertSame('INSTANT', $mapped['shipping_type']);
     }
 
-    public function test_non_instant_channel_leaves_shipping_type_null_and_falls_back_to_carrier_regex(): void
+    public function test_normalizes_same_day_channel_category_as_instant(): void
+    {
+        $mapper = new ShopeeToInternalOrderMapper;
+
+        $mapped = $mapper->map(
+            $this->order(['logistics_channel_id' => 90003]),
+            'shop-1',
+            ['90003' => 'same_day'],
+        );
+
+        $this->assertSame('SAME_DAY', $mapped['shipping_type']);
+        $this->assertTrue($mapped['channel_instant']);
+        $this->assertSame('90003', $mapped['delivery_option_id']);
+    }
+
+    public function test_unknown_channel_category_is_not_assumed_to_be_regular(): void
+    {
+        $mapper = new ShopeeToInternalOrderMapper;
+
+        $mapped = $mapper->map(
+            $this->order(['logistics_channel_id' => 12345]),
+            'shop-1',
+            ['90003' => 'instant'],
+        );
+
+        $this->assertNull($mapped['shipping_type']);
+        $this->assertNull($mapped['channel_instant']);
+    }
+
+    public function test_unknown_channel_leaves_shipping_type_and_channel_signal_null(): void
     {
         $mapper = app(ShopeeToInternalOrderMapper::class);
 
@@ -58,7 +87,7 @@ class ShopeeInstantMappingTest extends TestCase
         $this->assertTrue($instant['channel_instant']);
 
         $notInstant = $mapper->map($this->order(['logistics_channel_id' => 12345, 'shipping_carrier' => 'Same Day']), 'shop-1', ['90003']);
-        $this->assertFalse($notInstant['channel_instant']);
+        $this->assertNull($notInstant['channel_instant']);
 
         $noData = $mapper->map($this->order(['logistics_channel_id' => 12345]), 'shop-1', []);
         $this->assertNull($noData['channel_instant']);

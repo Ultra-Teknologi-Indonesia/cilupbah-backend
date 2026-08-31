@@ -3,6 +3,7 @@
 namespace Modules\Channel\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Modules\Channel\Jobs\ProcessShopeeWebhook;
 use Modules\Channel\Models\Channel;
@@ -153,6 +154,31 @@ class ShopeeOrderSyncTest extends TestCase
         $this->assertEquals('shopee', $order->source);
         $this->assertEquals('2606SHOPEE01', $order->channel_order_no);
         $this->assertCount(1, $order->items);
+    }
+
+    public function test_shipping_channel_types_use_explicit_channel_categories_only(): void
+    {
+        Cache::forget('shopee:shipping_channel_types:778899');
+
+        Http::fake([
+            'partner.shopeemobile.com/api/v2/logistics/get_channel_list*' => Http::response([
+                'response' => [
+                    'logistics_channel_list' => [
+                        ['logistics_channel_id' => 8001, 'logistics_channel_name' => 'Same Day', 'service_type_identifier' => 'same_day'],
+                        ['logistics_channel_id' => 8003, 'logistics_channel_name' => 'Reguler', 'service_type_identifier' => 'regular'],
+                        ['logistics_channel_id' => 80029, 'logistics_channel_name' => 'SPX Hemat'],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $service = app(ShopeeOrderService::class);
+
+        $this->assertSame(
+            ['8001' => 'SAME_DAY', '8003' => 'REGULAR'],
+            $service->shippingChannelTypes('778899'),
+        );
+        $this->assertSame(['8001'], $service->instantChannelIds('778899'));
     }
 
     public function test_pull_orders_captures_pickup_code_from_tracking_number_response(): void

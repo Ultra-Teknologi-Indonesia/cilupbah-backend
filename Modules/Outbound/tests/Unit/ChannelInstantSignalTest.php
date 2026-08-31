@@ -44,5 +44,17 @@ class ChannelInstantSignalTest extends TestCase
     public function test_returns_null_for_generic_channel_values(): void
     {
         $this->assertNull(ChannelInstantSignal::fromTypes('TIKTOK', 'FULFILLMENT_BY_SELLER'));
+        $this->assertNull(ChannelInstantSignal::fromTypes('Dropshipping'));
+    }
+
+    public function test_normalizes_channel_category_variants(): void
+    {
+        $this->assertSame('INSTANT', ChannelInstantSignal::normalizeType('instant'));
+        $this->assertSame('SAME_DAY', ChannelInstantSignal::normalizeType('same_day'));
+        $this->assertSame('SAME_DAY', ChannelInstantSignal::normalizeType('Same-day delivery'));
+        $this->assertSame('ECONOMY', ChannelInstantSignal::normalizeType('Economical'));
+        $this->assertSame('STANDARD', ChannelInstantSignal::normalizeType('Standard'));
+        $this->assertSame('EXPRESS', ChannelInstantSignal::normalizeType('Next-day delivery'));
+        $this->assertNull(ChannelInstantSignal::normalizeType('SPX Hemat'));
     }
 }

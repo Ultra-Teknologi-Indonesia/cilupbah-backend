@@ -49,12 +49,7 @@ class LazadaToInternalOrderMapper
         }
 
         $address = $lazadaOrder['address_shipping'] ?? [];
-        $channelShippingType = $lazadaOrder['shipping_type']
-            ?? $lazadaOrder['delivery_type']
-            ?? $lazadaOrder['shipping_method']
-            ?? $lazadaOrder['delivery_option_name']
-            ?? ($orderItems[0]['shipping_type'] ?? null)
-            ?? ($orderItems[0]['delivery_type'] ?? null);
+        $channelShippingType = $this->resolveChannelShippingType($lazadaOrder, $orderItems);
         $channelInstant = ChannelInstantSignal::fromTypes(
             is_string($channelShippingType) ? $channelShippingType : null,
         );
@@ -120,6 +115,7 @@ class LazadaToInternalOrderMapper
             'tracking_number' => $orderItems[0]['tracking_code'] ?? null,
             'shipping_provider' => $orderItems[0]['shipment_provider'] ?? null,
             'shipping_type' => is_string($channelShippingType) ? $channelShippingType : null,
+            'delivery_option_id' => $this->resolveChannelShippingServiceId($lazadaOrder, $orderItems),
             'channel_instant' => $channelInstant,
             'pickup_code' => $this->extractPickupCode($lazadaOrder, $orderItems),
             'buyer_message' => $lazadaOrder['remarks'] ?? null,
@@ -136,6 +132,55 @@ class LazadaToInternalOrderMapper
 
     protected function extractPickupCode(array $lazadaOrder, array $orderItems): ?string
     {
+        return null;
+    }
+
+    private function resolveChannelShippingType(array $lazadaOrder, array $orderItems): ?string
+    {
+        $candidates = [
+            $lazadaOrder['delivery_option_name'] ?? null,
+            $lazadaOrder['delivery_type'] ?? null,
+            $lazadaOrder['shipping_method'] ?? null,
+            $lazadaOrder['shipping_type'] ?? null,
+            $orderItems[0]['delivery_option_name'] ?? null,
+            $orderItems[0]['delivery_type'] ?? null,
+            $orderItems[0]['shipping_method'] ?? null,
+            $orderItems[0]['shipping_type'] ?? null,
+        ];
+
+        $firstNonEmpty = null;
+        foreach ($candidates as $candidate) {
+            if (! is_scalar($candidate) || trim((string) $candidate) === '') {
+                continue;
+            }
+
+            $value = trim((string) $candidate);
+            $firstNonEmpty ??= $value;
+            $normalized = ChannelInstantSignal::normalizeType($value);
+
+            if ($normalized !== null) {
+                return $normalized;
+            }
+        }
+
+        return $firstNonEmpty;
+    }
+
+    private function resolveChannelShippingServiceId(array $lazadaOrder, array $orderItems): ?string
+    {
+        $candidates = [
+            $lazadaOrder['delivery_option_id'] ?? null,
+            $lazadaOrder['shipping_provider_id'] ?? null,
+            $orderItems[0]['delivery_option_id'] ?? null,
+            $orderItems[0]['shipping_provider_id'] ?? null,
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (is_scalar($candidate) && trim((string) $candidate) !== '') {
+                return trim((string) $candidate);
+            }
+        }
+
         return null;
     }
 

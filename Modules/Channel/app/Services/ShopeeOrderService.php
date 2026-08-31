@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Exceptions\ChannelCancelException;
 use Modules\Channel\Exceptions\TokenExpiredException;
 use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Outbound\Support\ChannelInstantSignal;
 use Modules\Sales\Services\SalesOrderService;
 
 class ShopeeOrderService
@@ -39,13 +40,13 @@ class ShopeeOrderService
         }
 
         $count = 0;
-        $instantChannelIds = $this->instantChannelIds($shopId);
+        $shippingChannelTypes = $this->shippingChannelTypes($shopId);
         foreach (array_chunk($orderSns, 50) as $chunk) {
             foreach ($this->fetchOrderDetails($shop, $chunk) as $order) {
                 $orderSn = (string) ($order['order_sn'] ?? '');
 
                 try {
-                    $internal = $this->mapper->map($order, $shopId, $instantChannelIds);
+                    $internal = $this->mapper->map($order, $shopId, $shippingChannelTypes);
                     $this->orderService->upsertFromChannel($internal);
                     $count++;
                 } catch (\Throwable $e) {
@@ -73,7 +74,7 @@ class ShopeeOrderService
             return 0;
         }
 
-        $internal = $this->mapper->map($order, $shopId, $this->instantChannelIds($shopId));
+        $internal = $this->mapper->map($order, $shopId, $this->shippingChannelTypes($shopId));
         $orderId = $this->orderService->upsertFromChannel($internal);
 
         if ($orderId) {
@@ -552,7 +553,23 @@ class ShopeeOrderService
 
     public function instantChannelIds(string $shopId): array
     {
-        $key = "shopee:instant_channel_ids:{$shopId}";
+        $types = $this->shippingChannelTypes($shopId);
+
+        return array_keys(array_filter(
+            $types,
+            static fn (string $type): bool => ChannelInstantSignal::isInstantType($type),
+        ));
+    }
+
+    /**
+     * Return only categories explicitly supplied by Shopee.
+     * A service without a channel category is deliberately omitted so it remains unknown.
+     *
+     * @return array<string, string>
+     */
+    public function shippingChannelTypes(string $shopId): array
+    {
+        $key = "shopee:shipping_channel_types:{$shopId}";
         $cached = Cache::get($key);
         if (is_array($cached)) {
             return $cached;
@@ -561,24 +578,30 @@ class ShopeeOrderService
         try {
             $channels = $this->getLogistics($shopId);
         } catch (\Throwable $e) {
-            Log::warning("Shopee instantChannelIds: gagal ambil channel list untuk {$shopId}: ".$e->getMessage());
+            Log::warning("Shopee shippingChannelTypes: gagal ambil channel list untuk {$shopId}: ".$e->getMessage());
 
             return [];
         }
 
-        $ids = [];
+        $types = [];
         foreach ($channels as $channel) {
-            if (($channel['service_type_identifier'] ?? null) === 'instant') {
-                $cid = $channel['logistics_channel_id'] ?? null;
-                if ($cid !== null) {
-                    $ids[] = (string) $cid;
-                }
+            $id = $channel['logistics_channel_id'] ?? null;
+            $rawType = $channel['service_type_identifier']
+                ?? $channel['service_type']
+                ?? $channel['type']
+                ?? null;
+            $normalizedType = ChannelInstantSignal::normalizeType(
+                is_scalar($rawType) ? (string) $rawType : null,
+            );
+
+            if ($id !== null && $normalizedType !== null) {
+                $types[(string) $id] = $normalizedType;
             }
         }
 
-        Cache::put($key, $ids, now()->addHours(6));
+        Cache::put($key, $types, now()->addHours(6));
 
-        return $ids;
+        return $types;
     }
 
     public function shipOrder(string $shopId, string $orderSn, array $opts = []): array

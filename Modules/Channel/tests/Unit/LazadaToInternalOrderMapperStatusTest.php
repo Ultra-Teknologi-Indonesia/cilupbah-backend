@@ -10,7 +10,7 @@ class LazadaToInternalOrderMapperStatusTest extends TestCase
 {
     private function mapWithStatus(string $status): array
     {
-        $mapper = new LazadaToInternalOrderMapper();
+        $mapper = new LazadaToInternalOrderMapper;
 
         return $mapper->map([
             'order_id' => 900123,
@@ -63,7 +63,7 @@ class LazadaToInternalOrderMapperStatusTest extends TestCase
 
     public function test_cancel_by_reads_item_cancel_return_initiator(): void
     {
-        $internal = (new LazadaToInternalOrderMapper())->map(
+        $internal = (new LazadaToInternalOrderMapper)->map(
             ['order_id' => 900200, 'statuses' => ['canceled'], 'price' => '23500.00', 'created_at' => '2026-08-03 23:53:51 +0700'],
             [['sku' => 'X', 'paid_price' => '23500', 'cancel_return_initiator' => 'buyer-cancel', 'reason' => 'Tidak ingin pesanan ini lagi']],
             'LZ-100'
@@ -76,7 +76,7 @@ class LazadaToInternalOrderMapperStatusTest extends TestCase
 
     public function test_cancel_by_captured_for_returned_orders_too(): void
     {
-        $internal = (new LazadaToInternalOrderMapper())->map(
+        $internal = (new LazadaToInternalOrderMapper)->map(
             ['order_id' => 900300, 'statuses' => ['returned'], 'price' => '30000.00'],
             [['sku' => 'X', 'paid_price' => '30000', 'cancel_return_initiator' => 'buyer-return']],
             'LZ-100'
@@ -89,7 +89,7 @@ class LazadaToInternalOrderMapperStatusTest extends TestCase
     public function test_shipping_cost_is_buyer_paid_not_gross_logistics(): void
     {
 
-        $free = (new LazadaToInternalOrderMapper())->map(
+        $free = (new LazadaToInternalOrderMapper)->map(
             ['order_id' => 1, 'statuses' => ['delivered'], 'price' => '23500.00', 'shipping_fee' => 107000],
             [['sku' => 'A', 'paid_price' => '23500']],
             'LZ-100'
@@ -97,7 +97,7 @@ class LazadaToInternalOrderMapperStatusTest extends TestCase
         $this->assertSame(0.0, $free['shipping_cost']);
         $this->assertSame(23500.0, $free['grand_total']);
 
-        $paid = (new LazadaToInternalOrderMapper())->map(
+        $paid = (new LazadaToInternalOrderMapper)->map(
             ['order_id' => 2, 'statuses' => ['delivered'], 'price' => '25000.00', 'shipping_fee' => 5000],
             [['sku' => 'A', 'paid_price' => '20000']],
             'LZ-100'
@@ -108,7 +108,7 @@ class LazadaToInternalOrderMapperStatusTest extends TestCase
 
     public function test_reads_instant_from_lazada_channel_shipping_type(): void
     {
-        $internal = (new LazadaToInternalOrderMapper())->map(
+        $internal = (new LazadaToInternalOrderMapper)->map(
             [
                 'order_id' => 900400,
                 'statuses' => ['ready_to_ship'],
@@ -121,5 +121,55 @@ class LazadaToInternalOrderMapperStatusTest extends TestCase
 
         $this->assertTrue($internal['channel_instant']);
         $this->assertSame('SAME_DAY', $internal['shipping_type']);
+    }
+
+    public function test_prefers_explicit_delivery_category_over_dropshipping_fulfillment_type(): void
+    {
+        $internal = (new LazadaToInternalOrderMapper)->map(
+            [
+                'order_id' => 900401,
+                'statuses' => ['ready_to_ship'],
+                'shipping_type' => 'Dropshipping',
+                'delivery_type' => 'same_day',
+                'price' => '30000.00',
+            ],
+            [],
+            'LZ-100',
+        );
+
+        $this->assertSame('SAME_DAY', $internal['shipping_type']);
+        $this->assertTrue($internal['channel_instant']);
+    }
+
+    public function test_provider_name_alone_does_not_classify_lazada_order_as_instant(): void
+    {
+        $internal = (new LazadaToInternalOrderMapper)->map(
+            [
+                'order_id' => 900402,
+                'statuses' => ['ready_to_ship'],
+                'price' => '30000.00',
+            ],
+            [['shipment_provider' => 'Grab-ID']],
+            'LZ-100',
+        );
+
+        $this->assertNull($internal['channel_instant']);
+        $this->assertNull($internal['shipping_type']);
+    }
+
+    public function test_captures_channel_shipping_service_id_without_using_provider_name(): void
+    {
+        $internal = (new LazadaToInternalOrderMapper)->map(
+            [
+                'order_id' => 900403,
+                'statuses' => ['ready_to_ship'],
+                'delivery_option_id' => 'LZD-SERVICE-1',
+                'price' => '30000.00',
+            ],
+            [],
+            'LZ-100',
+        );
+
+        $this->assertSame('LZD-SERVICE-1', $internal['delivery_option_id']);
     }
 }

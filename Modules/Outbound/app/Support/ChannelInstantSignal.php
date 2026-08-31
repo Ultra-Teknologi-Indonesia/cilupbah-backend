@@ -7,6 +7,39 @@ namespace Modules\Outbound\Support;
 final class ChannelInstantSignal
 {
     /**
+     * Normalize a channel-owned shipping category into the internal vocabulary.
+     * Provider names must not be passed to this method as a classification signal.
+     */
+    public static function normalizeType(?string $type): ?string
+    {
+        $value = strtolower(trim((string) $type));
+
+        if ($value === '') {
+            return null;
+        }
+
+        $compact = preg_replace('/[\s_-]+/', '', $value) ?: $value;
+
+        return match (true) {
+            $compact === 'instant' || str_contains($compact, 'instant') => 'INSTANT',
+            $compact === 'sameday' || str_contains($compact, 'sameday') => 'SAME_DAY',
+            $compact === 'regular' => 'REGULAR',
+            $compact === 'standard' => 'STANDARD',
+            in_array($compact, ['economy', 'economical'], true) => 'ECONOMY',
+            $compact === 'express', $compact === 'nextday' => 'EXPRESS',
+            in_array($compact, ['cargo', 'trucking', 'kargo'], true) => 'CARGO',
+            preg_match('/\binstant\b|same[\s_-]*day/i', $value) === 1 => str_contains($compact, 'same') ? 'SAME_DAY' : 'INSTANT',
+            preg_match('/\bregular\b|\bstandard\b|\beconomical\b|\beconomy\b|next[\s_-]*day|\bexpress\b|\bcargo\b|\btrucking\b|\bkargo\b/i', $value) === 1 => self::normalizeTypeToken($value),
+            default => null,
+        };
+    }
+
+    public static function isInstantType(?string $type): bool
+    {
+        return in_array(self::normalizeType($type), ['INSTANT', 'SAME_DAY'], true);
+    }
+
+    /**
      * Resolve the instant flag from channel-owned type/category fields.
      * A null result means the channel did not provide a usable category.
      */
@@ -15,21 +48,34 @@ final class ChannelInstantSignal
         $hasExplicitNonInstantType = false;
 
         foreach ($types as $type) {
-            $value = strtolower(trim((string) $type));
+            $normalized = self::normalizeType($type);
 
-            if ($value === '') {
+            if ($normalized === null) {
                 continue;
             }
 
-            if (preg_match('/\binstant\b|same[\s_-]*day/i', $value) === 1) {
+            if (self::isInstantType($normalized)) {
                 return true;
             }
 
-            if (preg_match('/\bregular\b|\bstandard\b|\beconomical\b|next[\s_-]*day|\bexpress\b|\bcargo\b|\btrucking\b|\bkargo\b/i', $value) === 1) {
-                $hasExplicitNonInstantType = true;
-            }
+            $hasExplicitNonInstantType = true;
         }
 
         return $hasExplicitNonInstantType ? false : null;
+    }
+
+    private static function normalizeTypeToken(string $value): ?string
+    {
+        $compact = preg_replace('/[\s_-]+/', '', strtolower($value)) ?: strtolower($value);
+
+        return match (true) {
+            str_contains($compact, 'regular') => 'REGULAR',
+            str_contains($compact, 'standard') => 'STANDARD',
+            str_contains($compact, 'econom') => 'ECONOMY',
+            str_contains($compact, 'nextday') => 'EXPRESS',
+            str_contains($compact, 'express') => 'EXPRESS',
+            str_contains($compact, 'cargo'), str_contains($compact, 'trucking'), str_contains($compact, 'kargo') => 'CARGO',
+            default => null,
+        };
     }
 }
