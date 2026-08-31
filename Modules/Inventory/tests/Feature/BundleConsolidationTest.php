@@ -188,6 +188,20 @@ class BundleConsolidationTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.item_id', $bundle->id)
             ->assertJsonPath('data.is_bundle', true);
+
+        foreach (['total_on_hand', '-total_available', 'average_cost'] as $sort) {
+            $this->actingAs($user, 'sanctum')
+                ->getJson('/api/v1/inventory?filter[is_bundle]=true&sort='.$sort)
+                ->assertOk()
+                ->assertJsonPath('meta.total', 1)
+                ->assertJsonPath('data.0.item_id', $bundle->id);
+        }
+
+        $variantResponse = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/inventory?filter[is_bundle]=false&sort=-total_on_hand')
+            ->assertOk();
+
+        $this->assertSame($sticker->id, $variantResponse->json('data.0.item_id'));
     }
 
     public function test_bundle_components_cannot_be_combined_across_warehouses(): void

@@ -19,6 +19,8 @@ class StockOpnameRepository
             ->allowedFilters(
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('location_id'),
+                AllowedFilter::callback('date_from', fn ($query, $value) => $query->whereDate('created_at', '>=', $value)),
+                AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('created_at', '<=', $value)),
             )
             ->allowedSorts('created_at', 'opname_no', 'finalized_at')
             ->defaultSort('-created_at');

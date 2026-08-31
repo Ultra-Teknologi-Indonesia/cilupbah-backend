@@ -43,13 +43,6 @@ final class MonitorStockReportService
         }
     }
 
-    /**
-     * Render PDF in bounded batches and write the final document to disk.
-     *
-     * Dompdf keeps a complete rendered page tree in memory. Rendering a
-     * complete inventory query in one view makes memory grow with row count,
-     * so each batch is rendered independently and merged immediately.
-     */
     public function writePdf(array $params, string $targetPath): void
     {
         set_time_limit((int) config('exports.timeout', 900));

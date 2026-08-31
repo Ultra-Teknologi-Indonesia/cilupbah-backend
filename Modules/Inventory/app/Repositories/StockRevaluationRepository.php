@@ -17,6 +17,8 @@ class StockRevaluationRepository
             ->allowedFilters(
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('location_id'),
+                AllowedFilter::callback('date_from', fn ($query, $value) => $query->whereDate('created_at', '>=', $value)),
+                AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('created_at', '<=', $value)),
             )
             ->allowedSorts('created_at', 'revaluation_no', 'approved_at')
             ->defaultSort('-created_at')

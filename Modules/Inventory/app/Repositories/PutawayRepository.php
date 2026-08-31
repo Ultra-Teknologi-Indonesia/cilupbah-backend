@@ -5,9 +5,10 @@ namespace Modules\Inventory\Repositories;
 use App\Models\User;
 use App\Support\SearchExpression;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
+use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\Putaway;
 use Modules\Inventory\Models\PutawayItem;
-use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Support\PutawayReferenceNumberSort;
 use Modules\Warehouse\Models\LocationBin;
 use Illuminate\Support\Collection;
 use Spatie\QueryBuilder\QueryBuilder;
@@ -62,8 +63,13 @@ class PutawayRepository
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::exact('assigned_to'),
                 AllowedFilter::exact('source_type'),
+                AllowedFilter::callback('date_from', fn ($query, $value) => $query->whereDate('created_at', '>=', $value)),
+                AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('created_at', '<=', $value)),
             )
-            ->allowedSorts('created_at', 'started_at', 'completed_at', 'putaway_no', 'status');
+            ->allowedSorts(
+                'created_at', 'started_at', 'completed_at', 'putaway_no', 'status',
+                \Spatie\QueryBuilder\AllowedSort::custom('no_pembelian', new PutawayReferenceNumberSort()),
+            );
 
         $this->applySearch($query);
 
@@ -84,8 +90,13 @@ class PutawayRepository
             ->allowedFilters(
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::exact('assigned_to'),
+                AllowedFilter::callback('date_from', fn ($query, $value) => $query->whereDate('created_at', '>=', $value)),
+                AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('created_at', '<=', $value)),
             )
-            ->allowedSorts('created_at', 'started_at', 'completed_at', 'putaway_no', 'status');
+            ->allowedSorts(
+                'created_at', 'started_at', 'completed_at', 'putaway_no', 'status',
+                \Spatie\QueryBuilder\AllowedSort::custom('no_pembelian', new PutawayReferenceNumberSort()),
+            );
 
         $this->applySearch($query);
 

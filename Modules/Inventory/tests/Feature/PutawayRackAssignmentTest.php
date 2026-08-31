@@ -6,6 +6,8 @@ use Tests\TestCase;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
+use Modules\Inbound\Models\Inbound;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\Putaway;
 use Modules\Inventory\Models\SkuRackAssignment;
@@ -137,6 +139,55 @@ class PutawayRackAssignmentTest extends TestCase
         }
     }
 
+    public function test_putaway_list_sorts_by_inbound_reference_number_across_pages(): void
+    {
+        $location = $this->regularLocation();
+        $firstPutaway = $this->makePutaway($location);
+        $secondPutaway = $this->makePutaway($location);
+
+        $firstInbound = Inbound::create([
+            'location_id' => $location->id,
+            'transaction_number' => 'INB-SORT-'.Str::random(8),
+            'reference_number' => 'REF-200',
+            'type' => Inbound::TYPE_PURCHASE_ORDER,
+            'status' => Inbound::STATUS_RECEIVED,
+            'expected_date' => now(),
+            'created_by' => $this->user->id,
+        ]);
+        $secondInbound = Inbound::create([
+            'location_id' => $location->id,
+            'transaction_number' => 'INB-SORT-'.Str::random(8),
+            'reference_number' => 'REF-100',
+            'type' => Inbound::TYPE_PURCHASE_ORDER,
+            'status' => Inbound::STATUS_RECEIVED,
+            'expected_date' => now(),
+            'created_by' => $this->user->id,
+        ]);
+
+        DB::table('putaway_sources')->insert([
+            [
+                'id' => (string) Str::uuid(),
+                'putaway_id' => $firstPutaway->id,
+                'inbound_id' => $firstInbound->id,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'id' => (string) Str::uuid(),
+                'putaway_id' => $secondPutaway->id,
+                'inbound_id' => $secondInbound->id,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $response = $this->getJson('/api/v1/putaway?sort=no_pembelian&per_page=1');
+
+        $response->assertOk();
+        $response->assertJsonPath('data.0.putaway_no', $secondPutaway->putaway_no);
+        $response->assertJsonPath('meta.last_page', 2);
+    }
+
     public function test_unassigned_sku_is_rejected_with_hubungi_admin_message(): void
     {
         $loc = $this->regularLocation();
@@ -171,7 +222,7 @@ class PutawayRackAssignmentTest extends TestCase
         $home = $this->makeBin($loc, 'HOME');
 
         $variant = $this->makeVariant();
-        $this->assignRack($loc, $home, $variant); 
+        $this->assignRack($loc, $home, $variant);
 
         $putaway = $this->makePutaway($loc);
         $item = $this->addItem($putaway, $inbound, $variant);

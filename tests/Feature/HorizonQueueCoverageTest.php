@@ -13,8 +13,6 @@ class HorizonQueueCoverageTest extends TestCase
             $served = array_merge($served, (array) ($supervisor['queue'] ?? []));
         }
 
-        // Dedicated workers (for example the isolated export worker) are
-        // intentionally outside the main Horizon process.
         $served = array_merge($served, (array) config('queue.dedicated_queues', []));
 
         return array_values(array_unique($served));

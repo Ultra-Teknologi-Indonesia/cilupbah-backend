@@ -19,6 +19,8 @@ class ReservedStockRepository
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::exact('is_active'),
+                AllowedFilter::callback('date_from', fn ($query, $value) => $query->whereDate('start_date', '>=', $value)),
+                AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('start_date', '<=', $value)),
             )
             ->allowedSorts('start_date', 'end_date', 'created_at', 'reserved_stock_no', 'status')
             ->defaultSort('-created_at')
