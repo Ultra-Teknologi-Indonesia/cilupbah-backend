@@ -37,4 +37,20 @@ final class DatabaseAvailabilityTest extends TestCase
 
         self::assertFalse(DatabaseAvailability::isTransient($exception));
     }
+
+    public function test_invalid_payload_database_errors_are_permanent(): void
+    {
+        $uuidException = new \RuntimeException('SQLSTATE[22P02]: invalid input syntax for type uuid: "-"');
+        $notNullException = new \RuntimeException('null value in column "total_tax" violates not-null constraint');
+
+        self::assertTrue(DatabaseAvailability::isPermanentDataError($uuidException));
+        self::assertTrue(DatabaseAvailability::isPermanentDataError($notNullException));
+    }
+
+    public function test_connection_capacity_error_is_not_classified_as_permanent_data_error(): void
+    {
+        $exception = new \RuntimeException('remaining connection slots are reserved for roles with the SUPERUSER attribute');
+
+        self::assertFalse(DatabaseAvailability::isPermanentDataError($exception));
+    }
 }

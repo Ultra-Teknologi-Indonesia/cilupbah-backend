@@ -53,6 +53,7 @@ use Modules\Sales\Models\SalesOrderItem;
 use Modules\Sales\Models\SalesOrderStatusHistory;
 use Modules\Sales\Repositories\SalesOrderRepository;
 use Modules\Sales\Support\OrderTotals;
+use Modules\Sales\Support\SalesOrderDataNormalizer;
 use Modules\Sales\Support\ShadowOrderGuard;
 use Modules\Warehouse\Models\Location;
 
@@ -2397,16 +2398,44 @@ class SalesOrderService
 
         $update = array_intersect_key($finance, array_flip($allowed));
 
+        foreach ([
+            'seller_voucher',
+            'platform_voucher',
+            'payment_voucher',
+            'commission_fee',
+            'service_fee',
+            'transaction_fee',
+            'affiliate_commission',
+            'order_processing_fee',
+            'other_fee',
+            'seller_shipping_borne',
+            'platform_shipping_rebate',
+            'settlement_amount',
+            'refund_total',
+            'gross_amount',
+            'total_tax',
+            'insurance_cost',
+        ] as $field) {
+            if (array_key_exists($field, $update)) {
+                $update[$field] = SalesOrderDataNormalizer::money($update[$field]);
+            }
+        }
+
         if (array_key_exists('settled_at', $update) && $update['settled_at'] === null) {
             unset($update['settled_at']);
         }
 
-        if (array_key_exists('total_tax', $update) && $update['total_tax'] === null) {
-            $update['total_tax'] = 0;
-        }
+        if (array_key_exists('channel_settlement_id', $update)) {
+            $rawSettlementId = $update['channel_settlement_id'];
+            $update['channel_settlement_id'] = SalesOrderDataNormalizer::nullableUuid($rawSettlementId);
 
-        if (array_key_exists('insurance_cost', $update) && $update['insurance_cost'] === null) {
-            $update['insurance_cost'] = 0;
+            if (SalesOrderDataNormalizer::isInvalidUuid($rawSettlementId)) {
+                Log::warning('sales_order.invalid_channel_settlement_id_normalized', [
+                    'order_id' => $order->id,
+                    'source' => $order->source,
+                    'channel_settlement_id' => $rawSettlementId,
+                ]);
+            }
         }
 
         if (array_key_exists('raw', $finance)) {
@@ -2819,7 +2848,18 @@ class SalesOrderService
                 ->first();
 
             if ($mapping) {
-                return $mapping->location_id;
+                $mappedLocationId = SalesOrderDataNormalizer::nullableUuid($mapping->location_id ?? null);
+
+                if ($mappedLocationId !== null) {
+                    return $mappedLocationId;
+                }
+
+                Log::warning('sales_order.invalid_mapped_location_id_normalized', [
+                    'order_id' => $order->id,
+                    'salesorder_no' => $order->salesorder_no,
+                    'channel_shop_id' => $order->channel_shop_id,
+                    'location_id' => $mapping->location_id ?? null,
+                ]);
             }
         }
 

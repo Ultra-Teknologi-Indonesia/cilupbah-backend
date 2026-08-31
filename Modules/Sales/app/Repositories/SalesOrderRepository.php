@@ -11,6 +11,7 @@ use Modules\Sales\Enums\ChannelStatus;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderStatusHistory;
 use Modules\Sales\Support\ChannelStatusNormalizer;
+use Modules\Sales\Support\SalesOrderDataNormalizer;
 use Ramsey\Uuid\Uuid;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
@@ -654,6 +655,13 @@ class SalesOrderRepository
         $resolvedCourierId = $shippingProvider
             ? ($courierMapper->resolveCourierId($shippingProvider) ?? ($existing->courier_id ?? null))
             : ($existing->courier_id ?? null);
+        if (SalesOrderDataNormalizer::isInvalidUuid($resolvedCourierId)) {
+            Log::warning('sales_order.invalid_courier_id_normalized', [
+                'salesorder_no' => $salesOrderNo,
+                'courier_id' => $resolvedCourierId,
+            ]);
+            $resolvedCourierId = null;
+        }
         $channelInstant = array_key_exists('channel_instant', $orderData) ? $orderData['channel_instant'] : null;
         $resolvedShipmentType = $shippingProvider
             ? ($courierMapper->resolveShipmentType((string) $shippingProvider, $channelInstant) ?: ($existing->resolved_shipment_type ?? null))
@@ -685,8 +693,8 @@ class SalesOrderRepository
             'channel_buyer_id' => $orderData['channel_buyer_id'] ?? null,
             'customer_name' => $orderData['customer_name'],
             'transaction_date' => $orderData['transaction_date'],
-            'sub_total' => $orderData['sub_total'],
-            'total_disc' => $orderData['total_disc'],
+            'sub_total' => SalesOrderDataNormalizer::money($orderData['sub_total'] ?? null),
+            'total_disc' => SalesOrderDataNormalizer::money($orderData['total_disc'] ?? null),
 
             'seller_voucher' => $existing && $existing->is_settled
                 ? $existing->seller_voucher
@@ -706,12 +714,12 @@ class SalesOrderRepository
             'seller_shipping_borne' => $existing && $existing->is_settled
                 ? $existing->seller_shipping_borne
                 : ($orderData['seller_shipping_borne'] ?? ($existing->seller_shipping_borne ?? null)),
-            'total_tax' => $orderData['total_tax'],
-            'shipping_cost' => $orderData['shipping_cost'],
+            'total_tax' => SalesOrderDataNormalizer::money($orderData['total_tax'] ?? null),
+            'shipping_cost' => SalesOrderDataNormalizer::money($orderData['shipping_cost'] ?? null),
             'actual_shipping_fee' => $orderData['actual_shipping_fee'] ?? null,
             'actual_shipping_fee_confirmed' => $orderData['actual_shipping_fee_confirmed'] ?? false,
-            'insurance_cost' => $orderData['insurance_cost'],
-            'grand_total' => $orderData['grand_total'],
+            'insurance_cost' => SalesOrderDataNormalizer::money($orderData['insurance_cost'] ?? null),
+            'grand_total' => SalesOrderDataNormalizer::money($orderData['grand_total'] ?? null),
             'order_weight_gram' => $orderData['order_weight_gram'] ?? null,
             'shipping_full_name' => $orderData['shipping_full_name'] ?? null,
             'shipping_phone' => $orderData['shipping_phone'] ?? null,
