@@ -120,7 +120,9 @@ class OutboundFulfillmentRepository
             $query->reorder();
         } else {
             $query->orderByRaw("CASE WHEN channel_instant IS TRUE
-                OR (channel_instant IS NULL AND resolved_shipment_type IN ('INSTANT', 'SAME_DAY'))
+                OR (channel_instant IS NULL
+                    AND (source IS NULL OR source NOT IN ('shopee', 'tiktok', 'lazada'))
+                    AND resolved_shipment_type IN ('INSTANT', 'SAME_DAY'))
                 THEN 0 ELSE 1 END ASC")
                 ->orderByRaw('ship_by_date ASC NULLS LAST');
         }
@@ -158,6 +160,10 @@ class OutboundFulfillmentRepository
                             $q->where('channel_instant', true)
                                 ->orWhere(function ($qq) {
                                     $qq->whereNull('channel_instant')
+                                        ->where(function ($qqq) {
+                                            $qqq->whereNull('source')
+                                                ->orWhereNotIn('source', ['shopee', 'tiktok', 'lazada']);
+                                        })
                                         ->whereIn('resolved_shipment_type', ['INSTANT', 'SAME_DAY']);
                                 });
                         });
@@ -168,7 +174,8 @@ class OutboundFulfillmentRepository
                                     $qq->whereNull('channel_instant')
                                         ->where(function ($qqq) {
                                             $qqq->whereNull('resolved_shipment_type')
-                                                ->orWhereNotIn('resolved_shipment_type', ['INSTANT', 'SAME_DAY']);
+                                                ->orWhereNotIn('resolved_shipment_type', ['INSTANT', 'SAME_DAY'])
+                                                ->orWhereIn('source', ['shopee', 'tiktok', 'lazada']);
                                         });
                                 });
                         });

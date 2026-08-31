@@ -61,6 +61,7 @@ class PicklistRepository
               AND (
                 sales_orders.channel_instant IS TRUE
                 OR (sales_orders.channel_instant IS NULL
+                    AND (sales_orders.source IS NULL OR sales_orders.source NOT IN ('shopee', 'tiktok', 'lazada'))
                     AND sales_orders.resolved_shipment_type IN ('INSTANT', 'SAME_DAY'))
               )
         ) AS has_instant");

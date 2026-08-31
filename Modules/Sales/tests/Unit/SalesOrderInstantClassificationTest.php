@@ -42,6 +42,18 @@ class SalesOrderInstantClassificationTest extends TestCase
         $this->assertTrue($order->is_instant);
     }
 
+    public function test_marketplace_order_with_stale_legacy_instant_type_is_not_instant_without_channel_category(): void
+    {
+        $order = new SalesOrder([
+            'source' => 'shopee',
+            'channel_instant' => null,
+            'resolved_shipment_type' => 'INSTANT',
+            'shipping_provider' => 'SPX Same Day',
+        ]);
+
+        $this->assertFalse($order->is_instant);
+    }
+
     public function test_channel_order_does_not_fallback_to_provider_name_without_channel_category(): void
     {
         $order = new SalesOrder([

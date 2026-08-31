@@ -108,8 +108,8 @@ class CourierMappingServiceTest extends TestCase
     public function test_jne_cargo_from_shopee_and_lazada_group_together(): void
     {
         $orders = [
-            (object) ['id' => 'S', 'source' => 'shopee', 'shipping_provider' => 'JNE Trucking (JTR)'],
-            (object) ['id' => 'L', 'source' => 'lazada', 'shipping_provider' => 'JNE JTR'],
+            (object) ['id' => 'S', 'source' => 'shopee', 'channel_instant' => false, 'shipping_provider' => 'JNE Trucking (JTR)'],
+            (object) ['id' => 'L', 'source' => 'lazada', 'channel_instant' => false, 'shipping_provider' => 'JNE JTR'],
         ];
 
         $groups = $this->service->groupOrdersForManifest($orders);
@@ -265,9 +265,9 @@ class CourierMappingServiceTest extends TestCase
     public function test_groups_orders_across_channels_into_one_manifest_bucket(): void
     {
         $orders = [
-            (object) ['id' => 'A', 'source' => 'shopee', 'shipping_provider' => 'J&T Express'],
-            (object) ['id' => 'B', 'source' => 'tiktok', 'shipping_provider' => 'JNT express'],
-            (object) ['id' => 'C', 'source' => 'shopee', 'shipping_provider' => 'SPX Instant'],
+            (object) ['id' => 'A', 'source' => 'shopee', 'channel_instant' => false, 'shipping_provider' => 'J&T Express'],
+            (object) ['id' => 'B', 'source' => 'tiktok', 'channel_instant' => false, 'shipping_provider' => 'JNT express'],
+            (object) ['id' => 'C', 'source' => 'shopee', 'channel_instant' => true, 'shipping_provider' => 'SPX Instant'],
         ];
 
         $groups = $this->service->groupOrdersForManifest($orders);

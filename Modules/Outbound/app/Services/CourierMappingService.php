@@ -218,6 +218,16 @@ class CourierMappingService
             ];
         }
 
+        if (in_array($channelCode, ['shopee', 'tiktok', 'lazada'], true)) {
+            $code = $this->resolveCode($providerName);
+
+            return [
+                'courier_code' => $code,
+                'courier_name' => Courier::where('code', $code)->value('name') ?? $providerName,
+                'shipment_type' => 'REGULAR',
+            ];
+        }
+
         $mapping = CourierChannelMapping::with('courier')
             ->where('channel_code', $channelCode)
             ->where('external_name', $providerName)

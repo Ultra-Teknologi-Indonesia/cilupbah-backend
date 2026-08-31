@@ -541,6 +541,11 @@ class SalesOrder extends Model implements HasMedia
             return (bool) $this->channel_instant;
         }
 
+        $source = strtolower(trim((string) ($this->source ?? '')));
+        if (in_array($source, ['shopee', 'tiktok', 'lazada'], true)) {
+            return false;
+        }
+
         $resolvedType = strtoupper(trim((string) ($this->resolved_shipment_type ?? '')));
         if ($resolvedType !== '') {
             return in_array($resolvedType, ['INSTANT', 'SAME_DAY'], true);
@@ -549,11 +554,6 @@ class SalesOrder extends Model implements HasMedia
         $shippingType = strtoupper(trim((string) ($this->shipping_type ?? '')));
         if (in_array($shippingType, ['INSTANT', 'SAME_DAY'], true)) {
             return true;
-        }
-
-        $source = strtolower(trim((string) ($this->source ?? '')));
-        if (in_array($source, ['shopee', 'tiktok', 'lazada'], true)) {
-            return false;
         }
 
         return InstantOrderClassifier::isInstant($this->shipping_provider, $this->shipping_type);
