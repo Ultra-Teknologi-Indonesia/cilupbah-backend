@@ -2,24 +2,26 @@
 
 namespace Modules\Outbound\Services;
 
-use Modules\Outbound\Repositories\ShipmentRepository;
-use Modules\Outbound\Data\ShipmentScanResult;
-use Modules\Outbound\Models\Shipment;
-use Modules\Outbound\Jobs\ProcessShipmentHandOverJob;
-use Modules\Outbound\Jobs\ProcessShipmentPickupJob;
-use Modules\Sales\Models\SalesOrder as Order;
-use Modules\Outbound\Models\Packlist;
-use Modules\Outbound\Models\ShipmentOrder;
-use Modules\Outbound\Exceptions\ScanRejectedException;
+use App\Support\WarehouseAccess;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Outbound\Data\ShipmentScanResult;
+use Modules\Outbound\Exceptions\OutboundValidationException;
+use Modules\Outbound\Exceptions\ScanRejectedException;
+use Modules\Outbound\Jobs\ProcessShipmentHandOverJob;
+use Modules\Outbound\Jobs\ProcessShipmentPickupJob;
+use Modules\Outbound\Models\Packlist;
+use Modules\Outbound\Models\Shipment;
+use Modules\Outbound\Models\ShipmentOrder;
+use Modules\Outbound\Repositories\ShipmentRepository;
 use Modules\Outbound\Support\InstantOrderClassifier;
-use Modules\Warehouse\Models\Location;
 use Modules\Sales\Enums\OrderActivityAction;
 use Modules\Sales\Enums\OrderActivityEntity;
+use Modules\Sales\Models\SalesOrder as Order;
 use Modules\Sales\Services\SalesOrderService;
+use Modules\Warehouse\Models\Location;
 
 class ShipmentService
 {
@@ -65,13 +67,13 @@ class ShipmentService
 
     public function create(array $data): Shipment
     {
-        $shipmentNo = !empty($data['shipment_no'])
+        $shipmentNo = ! empty($data['shipment_no'])
             ? $data['shipment_no']
             : $this->shipmentRepository->generateShipmentNo();
 
         $locationId = $data['location_id'] ?? $this->resolveDefaultLocationId();
 
-        \App\Support\WarehouseAccess::assert($locationId);
+        WarehouseAccess::assert($locationId);
 
         $courierName = $data['courier_name'] ?? null;
         $courierCode = $courierName
@@ -92,11 +94,11 @@ class ShipmentService
         ]);
     }
 
-    public function addOrders(string $shipmentId, array $orderIds): Shipment
+    public function addOrders(string $shipmentId, array $orderIds, bool $internalOnly = false): Shipment
     {
         $shipment = $this->shipmentRepository->findById($shipmentId);
 
-        if (!$shipment) {
+        if (! $shipment) {
             throw new \Exception('Shipment tidak ditemukan.');
         }
 
@@ -120,6 +122,21 @@ class ShipmentService
                     ? "Order berikut dibatalkan atau bukan status 'packed' dan tidak bisa dimanifestkan: {$rejected}"
                     : "Sebagian order tidak ditemukan atau bukan status 'packed'."
             );
+        }
+
+        if ($internalOnly) {
+            $externalOrders = $orders->filter(
+                fn (Order $order): bool => ! $this->isInternalManualOrder($order),
+            );
+
+            if ($externalOrders->isNotEmpty()) {
+                $externalOrderNumbers = $externalOrders->pluck('salesorder_no')->implode(', ');
+
+                throw new OutboundValidationException(
+                    'Buat Pengiriman ini hanya untuk pesanan internal/manual. '
+                    ."Pesanan channel tidak dapat dimasukkan: {$externalOrderNumbers}"
+                );
+            }
         }
 
         $packlistIdByOrder = Packlist::whereIn('order_id', $orders->pluck('id'))
@@ -191,7 +208,7 @@ class ShipmentService
     {
         $shipment = $this->shipmentRepository->findById($shipmentId);
 
-        if (!$shipment) {
+        if (! $shipment) {
             throw new \Exception('Shipment tidak ditemukan.');
         }
 
@@ -227,7 +244,7 @@ class ShipmentService
     {
         $shipment = $this->shipmentRepository->findById($id);
 
-        if (!$shipment) {
+        if (! $shipment) {
             throw new \Exception('Shipment tidak ditemukan.');
         }
 
@@ -297,14 +314,14 @@ class ShipmentService
     {
         $shipment = Shipment::where('shipment_no', $barcode)->first();
 
-        if (!$shipment) {
+        if (! $shipment) {
             $shipmentOrder = ShipmentOrder::where('tracking_number', $barcode)->first();
             if ($shipmentOrder) {
                 $shipment = $this->shipmentRepository->findById($shipmentOrder->shipment_id);
             }
         }
 
-        if (!$shipment) {
+        if (! $shipment) {
             throw new \Exception("Shipment dengan barcode/nomor '{$barcode}' tidak ditemukan.");
         }
 
@@ -317,7 +334,7 @@ class ShipmentService
             ->where('order_id', $orderId)
             ->first();
 
-        if (!$shipmentOrder) {
+        if (! $shipmentOrder) {
             throw new \Exception('Order tidak ditemukan dalam shipment ini.');
         }
 
@@ -337,13 +354,13 @@ class ShipmentService
             ->where('order_id', $orderId)
             ->first();
 
-        if (!$shipmentOrder) {
+        if (! $shipmentOrder) {
             throw new \Exception('Order tidak ditemukan dalam shipment ini.');
         }
 
         $shipment = $this->shipmentRepository->findById($shipmentId);
 
-        if (!$shipment || !in_array($shipment->status, [Shipment::STATUS_HANDED_OVER, Shipment::STATUS_SCHEDULED])) {
+        if (! $shipment || ! in_array($shipment->status, [Shipment::STATUS_HANDED_OVER, Shipment::STATUS_SCHEDULED])) {
             throw new \Exception('Qty handover hanya bisa diupdate pada shipment SCHEDULED/HANDED_OVER.');
         }
 
@@ -354,7 +371,7 @@ class ShipmentService
     {
         $shipment = $this->shipmentRepository->findById($id);
 
-        if (!$shipment) {
+        if (! $shipment) {
             throw new \Exception('Shipment tidak ditemukan.');
         }
 
@@ -373,7 +390,7 @@ class ShipmentService
     {
         $shipment = $this->shipmentRepository->findById($id);
 
-        if (!$shipment) {
+        if (! $shipment) {
             throw new \Exception('Shipment tidak ditemukan.');
         }
 
@@ -458,7 +475,7 @@ class ShipmentService
                     throw new ScanRejectedException(
                         'courier_mismatch',
                         "Kurir tidak sesuai. Pengiriman ini '{$shipment->courier_name}', "
-                            . "pesanan menggunakan '{$order->shipping_provider}'."
+                            ."pesanan menggunakan '{$order->shipping_provider}'."
                     );
                 }
             }
@@ -470,9 +487,9 @@ class ShipmentService
                     'shipment_type_mismatch',
                     $orderIsInstant
                         ? "Pesanan {$order->salesorder_no} adalah kurir INSTAN (panggil driver), "
-                            . "tidak bisa masuk manifest reguler '{$shipment->shipment_type}'."
+                            ."tidak bisa masuk manifest reguler '{$shipment->shipment_type}'."
                         : "Pesanan {$order->salesorder_no} adalah kurir reguler, "
-                            . "tidak bisa masuk manifest instan '{$shipment->shipment_type}'."
+                            ."tidak bisa masuk manifest instan '{$shipment->shipment_type}'."
                 );
             }
 
@@ -562,19 +579,19 @@ class ShipmentService
     }
 
     private const CHANNEL_TO_SHIPMENT_STATUS = [
-        'IN_TRANSIT'         => Shipment::STATUS_IN_TRANSIT,
-        'SHIPPED'            => Shipment::STATUS_IN_TRANSIT,
+        'IN_TRANSIT' => Shipment::STATUS_IN_TRANSIT,
+        'SHIPPED' => Shipment::STATUS_IN_TRANSIT,
         'PARTIALLY_SHIPPING' => Shipment::STATUS_IN_TRANSIT,
         'TO_CONFIRM_RECEIVE' => Shipment::STATUS_DELIVERED,
-        'DELIVERED'          => Shipment::STATUS_DELIVERED,
-        'COMPLETED'          => Shipment::STATUS_DELIVERED,
+        'DELIVERED' => Shipment::STATUS_DELIVERED,
+        'COMPLETED' => Shipment::STATUS_DELIVERED,
     ];
 
     private const SHIPMENT_STATUS_RANK = [
-        Shipment::STATUS_SCHEDULED   => 1,
+        Shipment::STATUS_SCHEDULED => 1,
         Shipment::STATUS_HANDED_OVER => 2,
-        Shipment::STATUS_IN_TRANSIT  => 3,
-        Shipment::STATUS_DELIVERED   => 4,
+        Shipment::STATUS_IN_TRANSIT => 3,
+        Shipment::STATUS_DELIVERED => 4,
     ];
 
     public function syncFromChannelStatus(Order $order): ?Shipment
@@ -613,17 +630,18 @@ class ShipmentService
         $this->shipmentRepository->update($shipment->id, $update);
 
         Log::info('Shipment status advanced from channel_status', [
-            'shipment_id'    => $shipment->id,
-            'order_id'       => $order->id,
+            'shipment_id' => $shipment->id,
+            'order_id' => $order->id,
             'channel_status' => $order->channel_status,
-            'from'           => $shipment->status,
-            'to'             => $targetStatus,
+            'from' => $shipment->status,
+            'to' => $targetStatus,
         ]);
 
         return $this->shipmentRepository->findById($shipment->id);
     }
 
     private const MANUAL_DRIVER_COURIER_REGEX = '/grab|gojek|gosend|gokilat|lalamove/i';
+
     private const BLOCKED_CHANNEL_SOURCES = ['shopee', 'tiktok'];
 
     public function recordDriverCall(string $id, array $data, ?UploadedFile $idCardPhoto = null): Shipment
@@ -632,15 +650,15 @@ class ShipmentService
         $this->guardDriverCallEligible($shipment);
 
         $shipment->update([
-            'driver_name'          => $data['driver_name'] ?? null,
-            'driver_phone'         => $data['driver_phone'] ?? null,
+            'driver_name' => $data['driver_name'] ?? null,
+            'driver_phone' => $data['driver_phone'] ?? null,
             'driver_vehicle_plate' => $data['driver_vehicle_plate'] ?? null,
-            'driver_booking_code'  => $data['driver_booking_code'] ?? null,
-            'driver_call_method'   => Shipment::DRIVER_CALL_METHOD_MANUAL,
-            'driver_call_status'   => Shipment::DRIVER_STATUS_CALLED,
-            'driver_called_at'     => now(),
-            'driver_called_by'     => $data['driver_called_by'] ?? auth()->user()?->email,
-            'shipper_id'           => $data['shipper_id'] ?? null,
+            'driver_booking_code' => $data['driver_booking_code'] ?? null,
+            'driver_call_method' => Shipment::DRIVER_CALL_METHOD_MANUAL,
+            'driver_call_status' => Shipment::DRIVER_STATUS_CALLED,
+            'driver_called_at' => now(),
+            'driver_called_by' => $data['driver_called_by'] ?? auth()->user()?->email,
+            'shipper_id' => $data['shipper_id'] ?? null,
         ]);
 
         if ($idCardPhoto) {
@@ -660,15 +678,15 @@ class ShipmentService
         }
 
         $updates = array_filter([
-            'driver_name'          => $data['driver_name'] ?? null,
-            'driver_phone'         => $data['driver_phone'] ?? null,
+            'driver_name' => $data['driver_name'] ?? null,
+            'driver_phone' => $data['driver_phone'] ?? null,
             'driver_vehicle_plate' => $data['driver_vehicle_plate'] ?? null,
-            'driver_booking_code'  => $data['driver_booking_code'] ?? null,
-            'driver_call_status'   => $data['driver_call_status'] ?? null,
-            'shipper_id'           => $data['shipper_id'] ?? null,
+            'driver_booking_code' => $data['driver_booking_code'] ?? null,
+            'driver_call_status' => $data['driver_call_status'] ?? null,
+            'shipper_id' => $data['shipper_id'] ?? null,
         ], fn ($v) => $v !== null);
 
-        if (!empty($updates)) {
+        if (! empty($updates)) {
             $shipment->update($updates);
         }
 
@@ -684,7 +702,7 @@ class ShipmentService
     {
         $shipment = $this->findOrFail($id);
 
-        if (!in_array($shipment->status, [Shipment::STATUS_HANDED_OVER, Shipment::STATUS_IN_TRANSIT])) {
+        if (! in_array($shipment->status, [Shipment::STATUS_HANDED_OVER, Shipment::STATUS_IN_TRANSIT])) {
             throw new \Exception("Hanya shipment HANDED_OVER atau IN_TRANSIT yang bisa ditandai DELIVERED (saat ini: {$shipment->status}).");
         }
 
@@ -699,7 +717,7 @@ class ShipmentService
     {
         $shipment = $this->findOrFail($id);
 
-        if (!in_array($shipment->status, [Shipment::STATUS_HANDED_OVER, Shipment::STATUS_IN_TRANSIT, Shipment::STATUS_DELIVERED])) {
+        if (! in_array($shipment->status, [Shipment::STATUS_HANDED_OVER, Shipment::STATUS_IN_TRANSIT, Shipment::STATUS_DELIVERED])) {
             throw new \Exception('Reconcile hanya untuk shipment yang sudah di-handover.');
         }
 
@@ -708,7 +726,9 @@ class ShipmentService
 
         foreach ($shipment->orders as $so) {
             $order = $so->order;
-            if (!$order) continue;
+            if (! $order) {
+                continue;
+            }
 
             $summary['total']++;
             $status = $order->channel_status ?? $order->status;
@@ -725,11 +745,11 @@ class ShipmentService
             }
 
             $summary['details'][] = [
-                'order_id'       => $order->id,
-                'salesorder_no'  => $order->salesorder_no,
-                'status'         => $order->status,
+                'order_id' => $order->id,
+                'salesorder_no' => $order->salesorder_no,
+                'status' => $order->status,
                 'channel_status' => $order->channel_status,
-                'category'       => $category,
+                'category' => $category,
             ];
         }
 
@@ -748,7 +768,7 @@ class ShipmentService
     {
         $shipment = $this->shipmentRepository->findById($id);
 
-        if (!$shipment) {
+        if (! $shipment) {
             throw new \Exception('Shipment tidak ditemukan.');
         }
 
@@ -757,12 +777,12 @@ class ShipmentService
 
     private function guardDriverCallEligible(Shipment $shipment): void
     {
-        if (!in_array($shipment->shipment_type, ['INSTANT', 'SAME_DAY'])) {
+        if (! in_array($shipment->shipment_type, ['INSTANT', 'SAME_DAY'])) {
             throw new \Exception('Panggilan driver manual hanya untuk shipment tipe INSTANT atau SAME_DAY.');
         }
 
         $courierKey = $shipment->courier_name ?? $shipment->courier_code ?? '';
-        if (!preg_match(self::MANUAL_DRIVER_COURIER_REGEX, $courierKey)) {
+        if (! preg_match(self::MANUAL_DRIVER_COURIER_REGEX, $courierKey)) {
             throw new \Exception('Panggilan driver manual hanya untuk kurir Grab/GoSend/Lalamove. Shopee menggunakan auto-call.');
         }
 
@@ -775,6 +795,15 @@ class ShipmentService
                 );
             }
         }
+    }
+
+    private function isInternalManualOrder(Order $order): bool
+    {
+        $hasChannelIdentity = filled($order->channel_order_no)
+            || filled($order->channel_shop_id)
+            || filled($order->commerce_platform);
+
+        return (bool) $order->is_manual && ! $hasChannelIdentity;
     }
 
     private function resolveDefaultLocationId(): string
