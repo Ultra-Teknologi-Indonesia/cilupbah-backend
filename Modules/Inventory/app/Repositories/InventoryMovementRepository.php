@@ -128,7 +128,22 @@ class InventoryMovementRepository
             $query->whereNull('bin_id');
         }
 
-        $original = $query->orderByDesc('transaction_date')
+        $original = null;
+        $transactionNumber = trim((string) ($data['transaction_number'] ?? ''));
+
+        if ($transactionNumber !== '') {
+            $original = (clone $query)
+                ->where('transaction_number', $transactionNumber)
+                ->orderByDesc('transaction_date')
+                ->orderByDesc('id')
+                ->first();
+        }
+
+        // Keep the legacy fallback for old correction records whose reversal
+        // used a different reference number. New transfer reversals always
+        // match their own transaction first, preventing cross-transfer netting.
+        $original ??= $query
+            ->orderByDesc('transaction_date')
             ->orderByDesc('id')
             ->first();
 

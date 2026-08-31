@@ -5,6 +5,7 @@ namespace Modules\Inventory\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\Inventory\Models\InventoryTransfer;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Warehouse\Models\Location;
 use Tests\TestCase;
@@ -14,8 +15,11 @@ class TransferDraftTidakMasukTransitTest extends TestCase
     use RefreshDatabase;
 
     private string $sourceLocationId;
+
     private string $destLocationId;
+
     private string $sourceBinId;
+
     private string $itemId;
 
     protected function setUp(): void
@@ -25,7 +29,7 @@ class TransferDraftTidakMasukTransitTest extends TestCase
         DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Umum']);
 
         $this->sourceLocationId = $this->makeLocation('TRF-SRC', 'Gudang Pusat');
-        $this->destLocationId   = $this->makeLocation('TRF-DST', 'Gudang Kecil');
+        $this->destLocationId = $this->makeLocation('TRF-DST', 'Gudang Kecil');
 
         $this->sourceBinId = Str::uuid()->toString();
         DB::table('location_bins')->insert([
@@ -108,7 +112,7 @@ class TransferDraftTidakMasukTransitTest extends TestCase
     private function setujui(string $transferId): void
     {
         DB::table('inventory_transfers')->where('id', $transferId)->update([
-            'status' => \Modules\Inventory\Models\InventoryTransfer::STATUS_APPROVED,
+            'status' => InventoryTransfer::STATUS_APPROVED,
         ]);
     }
 
@@ -219,5 +223,43 @@ class TransferDraftTidakMasukTransitTest extends TestCase
         $src = $this->sourceStock();
         $this->assertSame(20, (int) $src->on_hand, 'stok kembali utuh di rak asal');
         $this->assertSame(5, (int) $src->on_order, 'kembali berstatus terkunci sebagai draft');
+        $this->assertSame(0, $this->movements('TRANSFER_OUT'), 'revert tidak meninggalkan outbound palsu');
+        $this->assertSame(0, $this->movements('TRANSIT_IN'), 'revert tidak meninggalkan transit palsu');
+    }
+
+    public function test_cancel_sebelum_kirim_hanya_melepas_reservasi_tanpa_histori_stok(): void
+    {
+        $transferId = $this->buatDraftBerisi(5);
+        $service = app(InventoryService::class);
+
+        $this->setujui($transferId);
+        $service->cancelTransfer($transferId, [
+            'cancelled_by' => 'tester',
+            'cancel_reason' => 'Tidak jadi dikirim',
+        ]);
+
+        $src = $this->sourceStock();
+
+        $this->assertSame(20, (int) $src->on_hand, 'cancel sebelum kirim tidak mengubah stok fisik');
+        $this->assertSame(0, (int) $src->on_order, 'cancel sebelum kirim melepas reservasi');
+        $this->assertSame(0, $this->movements('TRANSFER_OUT'), 'cancel sebelum kirim tidak menulis histori outbound');
+        $this->assertSame(0, $this->movements('TRANSIT_IN'), 'cancel sebelum kirim tidak menulis histori transit');
+    }
+
+    public function test_delete_transfer_yang_belum_dikirim_tidak_menulis_histori_stok(): void
+    {
+        $transferId = $this->buatDraftBerisi(5);
+        $service = app(InventoryService::class);
+
+        $this->setujui($transferId);
+        $service->deleteTransfer($transferId, 'tester');
+
+        $src = $this->sourceStock();
+
+        $this->assertDatabaseMissing('inventory_transfers', ['id' => $transferId]);
+        $this->assertSame(20, (int) $src->on_hand, 'hapus sebelum kirim tidak mengubah stok fisik');
+        $this->assertSame(0, (int) $src->on_order, 'hapus sebelum kirim melepas reservasi');
+        $this->assertSame(0, $this->movements('TRANSFER_OUT'), 'hapus sebelum kirim tidak menulis histori outbound');
+        $this->assertSame(0, $this->movements('TRANSIT_IN'), 'hapus sebelum kirim tidak menulis histori transit');
     }
 }

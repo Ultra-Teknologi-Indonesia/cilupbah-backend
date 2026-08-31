@@ -1639,17 +1639,9 @@ class InventoryService
                     $sourceInventory->on_order -= $releaseQty;
                     $this->inventoryRepository->updateStock($sourceInventory);
 
-                    $this->movementRepository->create([
-                        'item_id' => $item->item_id,
-                        'location_id' => $transfer->source_location_id,
-                        'bin_id' => $item->source_bin_id,
-                        'transaction_number' => $transfer->transfer_number,
-                        'source' => 'TRANSFER_OUT',
-                        'qty' => $releaseQty,
-                        'balance' => $sourceInventory->on_hand,
-                        'transaction_date' => now(),
-                        'created_by' => $data['cancelled_by'],
-                    ]);
+                    // Cancelling before shipment only releases the reservation
+                    // (on_order). No physical stock moved, so no inventory
+                    // movement must be written to the stock chronology.
                 }
 
                 $transitInventory = $this->inventoryRepository->findExactForUpdate(
@@ -1670,7 +1662,7 @@ class InventoryService
                         'location_id' => $transitLocationId,
                         'bin_id' => $transitBinId,
                         'transaction_number' => $transfer->transfer_number,
-                        'source' => 'TRANSIT_OUT',
+                        'source' => 'TRANSFER_REVERT',
                         'qty' => -$deductQty,
                         'balance' => $transitInventory->on_hand,
                         'transaction_date' => now(),
@@ -1759,12 +1751,16 @@ class InventoryService
                         $this->inventoryRepository->updateStock($sourceInventory);
 
                         if ($recoverQty > 0) {
+                            // TRANSFER_OUT is the original physical outbound
+                            // movement. TRANSFER_REVERT lets the movement
+                            // repository net its matching original instead of
+                            // displaying a fake positive TRANSFER_OUT.
                             $this->movementRepository->create([
                                 'item_id' => $item->item_id,
                                 'location_id' => $transfer->source_location_id,
                                 'bin_id' => $item->source_bin_id,
                                 'transaction_number' => $transfer->transfer_number,
-                                'source' => 'TRANSFER_OUT',
+                                'source' => 'TRANSFER_REVERT',
                                 'qty' => $recoverQty,
                                 'balance' => $sourceInventory->on_hand,
                                 'transaction_date' => now(),
@@ -1777,12 +1773,15 @@ class InventoryService
                         $transitInventory->on_hand -= $recoverQty;
                         $this->inventoryRepository->updateStock($transitInventory);
 
+                        // TRANSIT_IN is also a physical leg of the same
+                        // transfer. Net it with the same reversal source so a
+                        // reverted transfer leaves no fake transit history.
                         $this->movementRepository->create([
                             'item_id' => $item->item_id,
                             'location_id' => $transitLocationId,
                             'bin_id' => $transitBinId,
                             'transaction_number' => $transfer->transfer_number,
-                            'source' => 'TRANSIT_OUT',
+                            'source' => 'TRANSFER_REVERT',
                             'qty' => -$recoverQty,
                             'balance' => $transitInventory->on_hand,
                             'transaction_date' => now(),
@@ -2305,17 +2304,9 @@ class InventoryService
                     $sourceInventory->on_order -= $releaseQty;
                     $this->inventoryRepository->updateStock($sourceInventory);
 
-                    $this->movementRepository->create([
-                        'item_id' => $item->item_id,
-                        'location_id' => $transfer->source_location_id,
-                        'bin_id' => $item->source_bin_id,
-                        'transaction_number' => $transfer->transfer_number,
-                        'source' => 'TRANSFER_OUT',
-                        'qty' => $releaseQty,
-                        'balance' => $sourceInventory->on_hand,
-                        'transaction_date' => now(),
-                        'created_by' => $actor,
-                    ]);
+                    // DRAFT/APPROVED deletion only releases on_order. Since
+                    // no physical movement occurred, keep the chronology
+                    // untouched.
                 }
 
                 $transitInventory = $this->inventoryRepository->findExactForUpdate(
@@ -2475,7 +2466,7 @@ class InventoryService
             'created_by' => $data['created_by'],
         ];
 
-        if (!empty($data['transaction_date'])) {
+        if (! empty($data['transaction_date'])) {
             $payload['created_at'] = $data['transaction_date'];
             $payload['updated_at'] = $data['transaction_date'];
         }
