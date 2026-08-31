@@ -85,6 +85,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
             Route::get('failed-sync', [MonitorStockController::class, 'failedSync'])->name('inventory.monitor.failedSync');
         });
+        Route::middleware('role_or_permission:owner|export-monitor-stok')->group(function () {
+            Route::post('export/async', [MonitorStockController::class, 'exportAsync'])->name('inventory.monitor.exportAsync');
+        });
         Route::middleware('role_or_permission:owner|edit-monitor-stok')->group(function () {
             Route::post('failed-sync/{id}/retry', [MonitorStockController::class, 'retrySync'])->name('inventory.monitor.retrySync');
             Route::post('failed-sync/retry-bulk', [MonitorStockController::class, 'retryBulkSync'])->name('inventory.monitor.retryBulkSync');

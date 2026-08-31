@@ -7,9 +7,11 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Storage;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Report\Models\ExportJob;
 use Modules\Report\Services\ExportManager;
+use Modules\Report\Services\MonitorStockReportService;
 use Throwable;
 
 class RunExportJob implements ShouldQueue
@@ -40,12 +42,18 @@ class RunExportJob implements ShouldQueue
         ]);
 
         $params = $job->params ?? [];
-        $export = $manager->build($job->type, $params);
         $fileName = $manager->filename($job->type, $params);
         $diskName = config('filesystems.disks.documents') ? 'documents' : config('filesystems.default', 'local');
-        $path = "exports/{$job->id}.xlsx";
+        $extension = $job->type === 'monitor-stock-pdf' ? 'pdf' : 'xlsx';
+        $path = "exports/{$job->id}.{$extension}";
 
-        Excel::store($export, $path, $diskName);
+        if ($job->type === 'monitor-stock-pdf') {
+            $bytes = app(MonitorStockReportService::class)->pdfBytes($params);
+            Storage::disk($diskName)->put($path, $bytes);
+        } else {
+            $export = $manager->build($job->type, $params);
+            Excel::store($export, $path, $diskName);
+        }
 
         $job->update([
             'status' => ExportJob::STATUS_READY,

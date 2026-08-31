@@ -3,12 +3,15 @@
 namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Support\WarehouseAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Modules\Inventory\Http\Requests\MonitorStockExportRequest;
 use Modules\Inventory\Http\Resources\FailedSyncResource;
 use Modules\Inventory\Http\Resources\MonitorAnalyticsResource;
 use Modules\Inventory\Http\Resources\MonitorStockResource;
 use Modules\Inventory\Services\MonitorStockService;
+use Modules\Report\Services\ExportManager;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Monitor Stok', description: 'Dashboard pengawasan persediaan (read-only)')]
@@ -46,6 +49,24 @@ class MonitorStockController extends Controller
         return $this->successResponse(
             $this->service->summary($this->filters($request)),
             'Ringkasan monitor stok berhasil diambil.'
+        );
+    }
+
+    public function exportAsync(MonitorStockExportRequest $request, ExportManager $exports): JsonResponse
+    {
+        $params = $request->validated();
+        $params['allowed_location_ids'] = WarehouseAccess::allowedIds();
+
+        $type = $params['format'] === 'pdf'
+            ? 'monitor-stock-pdf'
+            : 'monitor-stock-xlsx';
+
+        $job = $exports->queue($request->user(), $type, $params);
+
+        return $this->successResponse(
+            ['export_id' => $job->id, 'status' => $job->status],
+            'Export Monitor Stok sedang disiapkan.',
+            202,
         );
     }
 
