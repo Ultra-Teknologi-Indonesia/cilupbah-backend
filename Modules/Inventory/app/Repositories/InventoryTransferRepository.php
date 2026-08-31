@@ -2,16 +2,23 @@
 
 namespace Modules\Inventory\Repositories;
 
+use App\Models\User;
+use App\Support\WarehouseAccess;
+use Carbon\CarbonImmutable;
+use Illuminate\Validation\ValidationException;
 use Modules\Inventory\Models\InventoryTransfer;
 use Modules\Inventory\Models\InventoryTransferItem;
-use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
+use Spatie\QueryBuilder\QueryBuilder;
 
 class InventoryTransferRepository
 {
     public function getTransfersPaginated(array $filters = [], int $limit = 10)
     {
         $baseQuery = InventoryTransfer::query();
+        $dateColumn = in_array($filters['date_column'] ?? 'created_at', ['created_at', 'received_at'], true)
+            ? $filters['date_column'] ?? 'created_at'
+            : 'created_at';
 
         if (trim((string) request('search', '')) !== '') {
             $baseQuery->leftJoin('locations as src_loc', 'src_loc.id', '=', 'inventory_transfers.source_location_id')
@@ -30,8 +37,16 @@ class InventoryTransferRepository
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('source_location_id'),
                 AllowedFilter::exact('destination_location_id'),
-                AllowedFilter::callback('date_from', fn($query, $value) => $query->where('created_at', '>=', $value)),
-                AllowedFilter::callback('date_to', fn($query, $value) => $query->where('created_at', '<=', $value)),
+                AllowedFilter::callback('date_from', fn ($query, $value) => $query->where(
+                    "inventory_transfers.{$dateColumn}",
+                    '>=',
+                    $this->dateBoundary($value),
+                )),
+                AllowedFilter::callback('date_to', fn ($query, $value) => $query->where(
+                    "inventory_transfers.{$dateColumn}",
+                    '<',
+                    $this->dateBoundary($value, true),
+                )),
             )
             ->allowedSorts('transfer_number', 'created_at', 'updated_at', 'shipped_at', 'received_at', 'approved_at', 'status', 'id')
             ->defaultSort('-created_at');
@@ -52,11 +67,11 @@ class InventoryTransferRepository
             $query->where('destination_location_id', $filters['destination_location_id']);
         }
 
-        $allowedLocationIds = \App\Support\WarehouseAccess::allowedIds();
+        $allowedLocationIds = WarehouseAccess::allowedIds();
         if ($allowedLocationIds !== null) {
             $query->where(function ($q) use ($allowedLocationIds) {
                 $q->whereIn('inventory_transfers.source_location_id', $allowedLocationIds)
-                  ->orWhereIn('inventory_transfers.destination_location_id', $allowedLocationIds);
+                    ->orWhereIn('inventory_transfers.destination_location_id', $allowedLocationIds);
             });
         }
 
@@ -69,8 +84,8 @@ class InventoryTransferRepository
             }
         }
 
-        if (!empty($userIds)) {
-            $users = \App\Models\User::whereIn('id', array_unique($userIds))->pluck('name', 'id');
+        if (! empty($userIds)) {
+            $users = User::whereIn('id', array_unique($userIds))->pluck('name', 'id');
             foreach ($paginator->items() as $item) {
                 if (isset($users[$item->created_by])) {
                     $item->created_by = $users[$item->created_by];
@@ -79,6 +94,25 @@ class InventoryTransferRepository
         }
 
         return $paginator;
+    }
+
+    private function dateBoundary(mixed $value, bool $exclusiveEnd = false): string
+    {
+        $businessTimezone = (string) config('app.business_timezone', config('app.timezone', 'UTC'));
+        $databaseTimezone = (string) config('app.timezone', 'UTC');
+        $date = CarbonImmutable::createFromFormat('!Y-m-d', trim((string) $value), $businessTimezone);
+
+        if ($date === false || $date->format('Y-m-d') !== trim((string) $value)) {
+            throw ValidationException::withMessages([
+                'filter.date' => 'Format tanggal harus YYYY-MM-DD.',
+            ]);
+        }
+
+        if ($exclusiveEnd) {
+            $date = $date->addDay();
+        }
+
+        return $date->setTimezone($databaseTimezone)->format('Y-m-d H:i:s.u');
     }
 
     public function findById(string $id): ?InventoryTransfer
@@ -96,7 +130,7 @@ class InventoryTransferRepository
         ])->find($id);
 
         if ($transfer && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $transfer->created_by)) {
-            $user = \App\Models\User::find($transfer->created_by);
+            $user = User::find($transfer->created_by);
             if ($user) {
                 $transfer->created_by = $user->name;
             }

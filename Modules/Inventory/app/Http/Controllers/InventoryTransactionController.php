@@ -495,7 +495,10 @@ class InventoryTransactionController extends Controller
     public function finishedList(Request $request): JsonResponse
     {
         $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
-        $transfers = $this->inventoryService->getTransfersPaginated(['status' => 'RECEIVED'], $limit);
+        $transfers = $this->inventoryService->getTransfersPaginated([
+            'status' => 'RECEIVED',
+            'date_column' => 'received_at',
+        ], $limit);
 
         return $this->successPaginatedResponse($transfers, 'Daftar transfer yang sudah selesai diterima.');
     }
