@@ -158,7 +158,7 @@ class ShopeeOrderSyncTest extends TestCase
 
     public function test_shipping_channel_types_use_explicit_channel_categories_only(): void
     {
-        Cache::forget('shopee:shipping_channel_types:778899');
+        Cache::forget('shopee:shipping_channel_types:v2:778899');
 
         Http::fake([
             'partner.shopeemobile.com/api/v2/logistics/get_channel_list*' => Http::response([

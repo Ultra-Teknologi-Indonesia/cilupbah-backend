@@ -574,7 +574,8 @@ class ShopeeOrderService
      */
     public function shippingChannelTypes(string $shopId): array
     {
-        $key = "shopee:shipping_channel_types:{$shopId}";
+        // Version the key so deployments do not reuse a pre-category cache.
+        $key = "shopee:shipping_channel_types:v2:{$shopId}";
         $cached = Cache::get($key);
         if (is_array($cached)) {
             return $cached;
