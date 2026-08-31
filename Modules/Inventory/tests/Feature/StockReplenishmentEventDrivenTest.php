@@ -5,6 +5,8 @@ namespace Modules\Inventory\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use Modules\Channel\Models\Channel;
+use Modules\Channel\Models\ChannelShop;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryTransfer;
 use Modules\Inventory\Models\StockReplenishmentRequest;
@@ -154,6 +156,12 @@ class StockReplenishmentEventDrivenTest extends TestCase
         $this->assertSame(1, StockReplenishmentRequest::where('status', StockReplenishmentRequest::STATUS_PENDING)->count());
         $this->assertSame(1, StockReplenishmentRequest::firstOrFail()->items()->count());
         $this->assertSame(0, InventoryTransfer::count());
+
+        $this->actingAs($this->createPrivilegedUser(), 'sanctum')
+            ->getJson('/api/v1/inventory/monitor/out-of-stock?mode=dipesan&location_id='.$this->small->id)
+            ->assertSuccessful()
+            ->assertJsonPath('data.0.item_id', $variant->id)
+            ->assertJsonPath('data.0.has_active_restock_request', true);
     }
 
     public function test_stock_receipt_recalculation_removes_now_covered_pending_line(): void
@@ -178,6 +186,47 @@ class StockReplenishmentEventDrivenTest extends TestCase
 
         $this->assertSame(0, StockReplenishmentRequest::where('status', StockReplenishmentRequest::STATUS_PENDING)->count());
         $this->assertSame(1, StockReplenishmentRequest::where('status', StockReplenishmentRequest::STATUS_CANCELLED)->count());
+    }
+
+    public function test_rejection_requires_reason_and_records_actor_and_timestamp(): void
+    {
+        $variant = $this->makeVariant('EVT-REJECT-001');
+        $this->makeInventory($variant, 0, 0);
+        $this->makeOrder($variant, 2);
+
+        $user = $this->createPrivilegedUser(['name' => 'Penguji Penolak']);
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/inventory/stock-replenishment/queue', [
+                'item_ids' => [$variant->id],
+            ])
+            ->assertSuccessful();
+
+        $request = StockReplenishmentRequest::where('status', StockReplenishmentRequest::STATUS_PENDING)
+            ->firstOrFail();
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/inventory/stock-replenishment/{$request->id}/reject", [])
+            ->assertStatus(422);
+
+        $this->assertSame(
+            StockReplenishmentRequest::STATUS_PENDING,
+            $request->fresh()->status,
+        );
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/inventory/stock-replenishment/{$request->id}/reject", [
+                'reason' => 'Qty terlalu kecil untuk diproses.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.rejected_by_user_id', $user->id)
+            ->assertJsonPath('data.rejected_by_name', 'Penguji Penolak')
+            ->assertJsonPath('data.reject_reason', 'Qty terlalu kecil untuk diproses.')
+            ->assertJsonPath('data.status', StockReplenishmentRequest::STATUS_REJECTED);
+
+        $rejected = $request->fresh();
+        $this->assertSame($user->id, $rejected->rejected_by_user_id);
+        $this->assertNotNull($rejected->rejected_at);
+        $this->assertSame('Qty terlalu kecil untuk diproses.', $rejected->reject_reason);
     }
 
     public function test_request_page_cannot_create_or_add_items_manually(): void
@@ -237,6 +286,112 @@ class StockReplenishmentEventDrivenTest extends TestCase
             ->assertJsonPath('data.skipped_item_ids.0', $variant->id);
 
         $this->assertSame(0, StockReplenishmentRequest::where('status', StockReplenishmentRequest::STATUS_PENDING)->count());
+    }
+
+    public function test_request_items_are_paginated_and_searchable(): void
+    {
+        $first = $this->makeVariant('EVT-ITEM-001');
+        $second = $this->makeVariant('EVT-ITEM-002');
+        $this->makeInventory($first, 0, 0);
+        $this->makeInventory($second, 0, 0);
+        $this->makeOrder($first, 1);
+        $this->makeOrder($second, 1);
+
+        $user = $this->createPrivilegedUser();
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/inventory/stock-replenishment/queue', [
+                'item_ids' => [$first->id, $second->id],
+            ])
+            ->assertSuccessful();
+
+        $request = StockReplenishmentRequest::where('status', StockReplenishmentRequest::STATUS_PENDING)
+            ->firstOrFail();
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson("/api/v1/inventory/stock-replenishment/{$request->id}/items?search=EVT-ITEM-002&per_page=1")
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.sku', 'EVT-ITEM-002')
+            ->assertJsonPath('data.0.reason_detail.type', 'stock_shortage')
+            ->assertJsonPath('data.0.reason_detail.demand_qty', 1);
+    }
+
+    public function test_request_items_can_be_filtered_by_channel_and_shop(): void
+    {
+        $channel = Channel::create([
+            'code' => 'test-channel',
+            'name' => 'Test Channel',
+            'is_active' => true,
+        ]);
+        $shop = ChannelShop::create([
+            'channel_id' => $channel->id,
+            'shop_id' => 'TEST-SHOP-001',
+            'shop_name' => 'Test Shop',
+            'is_active' => true,
+        ]);
+
+        $matched = $this->makeVariant('EVT-FILTER-001');
+        $unmatched = $this->makeVariant('EVT-FILTER-002');
+        $this->makeInventory($matched, 0, 0);
+        $this->makeInventory($unmatched, 0, 0);
+        $matchedOrder = $this->makeOrder($matched, 1);
+        $this->makeOrder($unmatched, 1);
+        $matchedOrder->update(['channel_shop_id' => $shop->shop_id]);
+
+        $user = $this->createPrivilegedUser();
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/inventory/stock-replenishment/queue', [
+                'item_ids' => [$matched->id, $unmatched->id],
+            ])
+            ->assertSuccessful();
+
+        $request = StockReplenishmentRequest::where('status', StockReplenishmentRequest::STATUS_PENDING)
+            ->firstOrFail();
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson("/api/v1/inventory/stock-replenishment/{$request->id}/item-filters")
+            ->assertOk()
+            ->assertJsonPath('data.channels.0.value', 'test-channel')
+            ->assertJsonPath('data.shops.0.value', 'TEST-SHOP-001');
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson("/api/v1/inventory/stock-replenishment/{$request->id}/items?channel=test-channel&shop_id=TEST-SHOP-001")
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.sku', 'EVT-FILTER-001');
+    }
+
+    public function test_removing_last_pending_item_closes_request_and_allows_requeue(): void
+    {
+        $variant = $this->makeVariant('EVT-RETURN-001');
+        $this->makeInventory($variant, 0, 0);
+        $this->makeOrder($variant, 1);
+        $user = $this->createPrivilegedUser();
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/inventory/stock-replenishment/queue', [
+                'item_ids' => [$variant->id],
+            ])
+            ->assertSuccessful();
+
+        $request = StockReplenishmentRequest::where('status', StockReplenishmentRequest::STATUS_PENDING)
+            ->firstOrFail();
+        $itemId = $request->items()->firstOrFail()->id;
+
+        $this->actingAs($user, 'sanctum')
+            ->deleteJson("/api/v1/inventory/stock-replenishment/{$request->id}/items/{$itemId}")
+            ->assertOk()
+            ->assertJsonPath('data.status', StockReplenishmentRequest::STATUS_CANCELLED);
+
+        $this->assertSame(0, StockReplenishmentRequest::where('status', StockReplenishmentRequest::STATUS_PENDING)->count());
+        $this->assertSame(StockReplenishmentRequest::STATUS_CANCELLED, $request->fresh()->status);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/inventory/stock-replenishment/queue', [
+                'item_ids' => [$variant->id],
+            ])
+            ->assertSuccessful()
+            ->assertJsonPath('data.queued_item_ids.0', $variant->id);
     }
 
     public function test_approval_is_the_boundary_that_creates_and_approves_transfer(): void

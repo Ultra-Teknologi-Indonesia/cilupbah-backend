@@ -18,6 +18,16 @@ class StockReplenishmentRepository
         'toLocation',
         'assignee',
         'requester',
+        'rejecter',
+        'transferOut',
+    ];
+
+    private const DETAIL_RELATIONS = [
+        'fromLocation',
+        'toLocation',
+        'assignee',
+        'requester',
+        'rejecter',
         'transferOut',
     ];
 
@@ -42,12 +52,119 @@ class StockReplenishmentRepository
 
     public function findDetail(string $id): ?StockReplenishmentRequest
     {
-        return StockReplenishmentRequest::with(self::LIST_RELATIONS)->find($id);
+        return StockReplenishmentRequest::with(self::DETAIL_RELATIONS)
+            ->withCount('items')
+            ->withSum('items', 'qty')
+            ->find($id);
     }
 
     public function findDetailOrFail(string $id): StockReplenishmentRequest
     {
-        return StockReplenishmentRequest::with(self::LIST_RELATIONS)->findOrFail($id);
+        return StockReplenishmentRequest::with(self::DETAIL_RELATIONS)
+            ->withCount('items')
+            ->withSum('items', 'qty')
+            ->findOrFail($id);
+    }
+
+    public function paginateItems(
+        string $requestId,
+        ?string $search = null,
+        ?string $channel = null,
+        ?string $shopId = null,
+        int $perPage = 20,
+    ): LengthAwarePaginator {
+        $toLocationId = StockReplenishmentRequest::query()
+            ->whereKey($requestId)
+            ->value('to_location_id');
+
+        $query = StockReplenishmentRequestItem::query()
+            ->where('stock_replenishment_request_items.request_id', $requestId)
+            ->with([
+                'variant.media' => fn ($q) => $q->orderBy('sort_order'),
+                'variant.product.media' => fn ($q) => $q
+                    ->whereNull('variant_id')
+                    ->orderBy('sort_order'),
+            ])
+            ->when(trim((string) $search) !== '', function ($query) use ($search) {
+                $term = '%'.mb_strtolower(trim((string) $search)).'%';
+
+                $query->where(function ($nested) use ($term) {
+                    $nested
+                        ->whereRaw(
+                            'LOWER(stock_replenishment_request_items.sku) LIKE ?',
+                            [$term],
+                        )
+                        ->orWhereHas('variant.product', function ($product) use ($term) {
+                            $product->whereRaw('LOWER(products.name) LIKE ?', [$term]);
+                        });
+                });
+            })
+            ->when($channel, function ($query) use ($channel, $toLocationId) {
+                $query->whereExists(function ($source) use ($channel, $toLocationId) {
+                    $source
+                        ->selectRaw('1')
+                        ->from('sales_order_items as filter_soi')
+                        ->join('sales_orders as filter_so', 'filter_so.id', '=', 'filter_soi.order_id')
+                        ->join('channel_shops as filter_shop', 'filter_shop.shop_id', '=', 'filter_so.channel_shop_id')
+                        ->join('channels as filter_channel', 'filter_channel.id', '=', 'filter_shop.channel_id')
+                        ->whereColumn('filter_soi.item_id', 'stock_replenishment_request_items.item_id')
+                        ->where('filter_so.location_id', $toLocationId)
+                        ->where('filter_channel.code', $channel);
+                });
+            })
+            ->when($shopId, function ($query) use ($shopId, $toLocationId) {
+                $query->whereExists(function ($source) use ($shopId, $toLocationId) {
+                    $source
+                        ->selectRaw('1')
+                        ->from('sales_order_items as filter_soi')
+                        ->join('sales_orders as filter_so', 'filter_so.id', '=', 'filter_soi.order_id')
+                        ->whereColumn('filter_soi.item_id', 'stock_replenishment_request_items.item_id')
+                        ->where('filter_so.location_id', $toLocationId)
+                        ->where('filter_so.channel_shop_id', $shopId);
+                });
+            })
+            ->orderBy('stock_replenishment_request_items.sku')
+            ->orderBy('stock_replenishment_request_items.id');
+
+        return $query->paginate($perPage)->appends(request()->query());
+    }
+
+    public function itemFilterOptions(string $requestId): array
+    {
+        $toLocationId = StockReplenishmentRequest::query()
+            ->whereKey($requestId)
+            ->value('to_location_id');
+
+        $source = DB::table('stock_replenishment_request_items as ri')
+            ->join('sales_order_items as soi', 'soi.item_id', '=', 'ri.item_id')
+            ->join('sales_orders as so', 'so.id', '=', 'soi.order_id')
+            ->leftJoin('channel_shops as cs', 'cs.shop_id', '=', 'so.channel_shop_id')
+            ->leftJoin('channels as c', 'c.id', '=', 'cs.channel_id')
+            ->where('ri.request_id', $requestId)
+            ->where('so.location_id', $toLocationId);
+
+        $channels = (clone $source)
+            ->whereNotNull('c.code')
+            ->select('c.code as value', 'c.name as label')
+            ->distinct()
+            ->orderBy('label')
+            ->get();
+
+        $shops = (clone $source)
+            ->whereNotNull('so.channel_shop_id')
+            ->select(
+                'so.channel_shop_id as value',
+                DB::raw("COALESCE(NULLIF(cs.shop_name, ''), so.channel_shop_id) as label"),
+                'c.code as channel',
+            )
+            ->distinct()
+            ->orderBy('label')
+            ->get();
+
+        return [
+            'channels' => $channels,
+            'shops' => $shops,
+        ];
     }
 
     public function findWithItems(string $id): StockReplenishmentRequest

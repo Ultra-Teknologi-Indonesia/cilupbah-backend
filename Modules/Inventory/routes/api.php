@@ -350,6 +350,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('/pending-count', [StockReplenishmentController::class, 'pendingCount'])->name('inventory.stockReplenishment.pendingCount')->middleware('role_or_permission:owner|view-permintaan-restock');
         Route::post('/', [StockReplenishmentController::class, 'store'])->middleware('role_or_permission:owner|create-permintaan-restock')->name('inventory.stockReplenishment.store');
         Route::post('/queue', [StockReplenishmentController::class, 'queueFromMonitor'])->middleware('role_or_permission:owner|create-permintaan-restock')->name('inventory.stockReplenishment.queue');
+        Route::get('/{id}/items', [StockReplenishmentController::class, 'items'])->middleware('role_or_permission:owner|view-permintaan-restock')->name('inventory.stockReplenishment.items.index');
+        Route::get('/{id}/item-filters', [StockReplenishmentController::class, 'itemFilterOptions'])->middleware('role_or_permission:owner|view-permintaan-restock')->name('inventory.stockReplenishment.items.filters');
         Route::get('/{id}', [StockReplenishmentController::class, 'show'])->middleware('role_or_permission:owner|view-permintaan-restock')->name('inventory.stockReplenishment.show');
         Route::post('/{id}/accept', [StockReplenishmentController::class, 'accept'])->middleware('role_or_permission:owner|edit-permintaan-restock')->name('inventory.stockReplenishment.accept');
         Route::post('/{id}/reject', [StockReplenishmentController::class, 'reject'])->middleware('role_or_permission:owner|edit-permintaan-restock')->name('inventory.stockReplenishment.reject');

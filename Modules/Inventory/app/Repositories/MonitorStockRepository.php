@@ -6,6 +6,7 @@ use App\Support\WarehouseAccess;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
+use Modules\Inventory\Models\StockReplenishmentRequest;
 use Modules\Inventory\Support\AppliesStockMonitorFilters;
 use Modules\Inventory\Support\StockSummary;
 use Modules\Product\Models\ProductChannelMapping;
@@ -35,9 +36,20 @@ class MonitorStockRepository
             ->when($locationId, fn ($q) => $q->where('inventories.location_id', $locationId))
             ->groupBy('inventories.item_id');
 
+        $activeRestock = DB::table('stock_replenishment_request_items as active_ri')
+            ->join('stock_replenishment_requests as active_r', 'active_r.id', '=', 'active_ri.request_id')
+            ->whereIn('active_r.status', [
+                StockReplenishmentRequest::STATUS_PENDING,
+                StockReplenishmentRequest::STATUS_ACCEPTED,
+            ])
+            ->when($locationId, fn ($q) => $q->where('active_r.to_location_id', $locationId))
+            ->select('active_ri.item_id')
+            ->distinct();
+
         $query = ProductVariant::query()
             ->join('products', 'products.id', '=', 'product_variants.product_id')
             ->leftJoinSub($inv, 'inv', 'inv.item_id', '=', 'product_variants.id')
+            ->leftJoinSub($activeRestock, 'active_restock', 'active_restock.item_id', '=', 'product_variants.id')
             ->where('products.is_stored', true)
             ->where('products.is_bundle', false)
             ->select('product_variants.*')
@@ -45,6 +57,7 @@ class MonitorStockRepository
             ->selectRaw('COALESCE(inv.on_hand, 0) as total_on_hand')
             ->selectRaw('COALESCE(inv.available, 0) as total_available')
             ->selectRaw('COALESCE(inv.on_order, 0) as total_on_order')
+            ->selectRaw('CASE WHEN active_restock.item_id IS NULL THEN false ELSE true END as has_active_restock_request')
             ->selectRaw('('.$this->pendingOrderNosSql().') as pending_order_nos')
             ->with([
                 'product:id,name,sku,is_bundle,is_stored,category_id',

@@ -48,6 +48,27 @@ class StockReplenishmentService
         return $this->repository->findDetailOrFail($id);
     }
 
+    public function paginateItems(
+        string $requestId,
+        ?string $search,
+        ?string $channel,
+        ?string $shopId,
+        int $perPage,
+    ): LengthAwarePaginator {
+        return $this->repository->paginateItems(
+            $requestId,
+            $search,
+            $channel,
+            $shopId,
+            $perPage,
+        );
+    }
+
+    public function itemFilterOptions(string $requestId): array
+    {
+        return $this->repository->itemFilterOptions($requestId);
+    }
+
     public function queueFromMonitor(array $payload): array
     {
         $fromId = $payload['from_location_id']
@@ -201,20 +222,18 @@ class StockReplenishmentService
 
     public function reject(string $id, ?string $reason = null): StockReplenishmentRequest
     {
-        $request = $this->repository->findOrFail($id);
+        $fresh = DB::transaction(function () use ($id, $reason): StockReplenishmentRequest {
+            $request = $this->lockPendingRequest($id);
 
-        if ($request->status !== StockReplenishmentRequest::STATUS_PENDING) {
-            throw new \RuntimeException('Permintaan sudah tidak dalam status pending.');
-        }
+            $request->update([
+                'status' => StockReplenishmentRequest::STATUS_REJECTED,
+                'rejected_at' => now(),
+                'rejected_by_user_id' => Auth::id() ?: null,
+                'reject_reason' => $reason,
+            ]);
 
-        $request->update([
-            'status' => StockReplenishmentRequest::STATUS_REJECTED,
-            'rejected_at' => now(),
-            'rejected_by_user_id' => Auth::id() ?: null,
-            'reject_reason' => $reason,
-        ]);
-
-        $fresh = $request->fresh();
+            return $request->fresh();
+        });
 
         if ($fresh->requested_by_user_id) {
             $reasonSuffix = $reason ? " Alasan: {$reason}" : '';
@@ -255,6 +274,15 @@ class StockReplenishmentService
             $request = $this->lockPendingRequest($id);
 
             $request->items()->where('id', $itemId)->firstOrFail()->delete();
+
+            if (! $request->items()->exists()) {
+                $request->update([
+                    'status' => StockReplenishmentRequest::STATUS_CANCELLED,
+                    'cancelled_at' => now(),
+                    'cancel_reason' => 'Request dibatalkan karena item terakhir dihapus.',
+                    'batch_key' => null,
+                ]);
+            }
         });
     }
 

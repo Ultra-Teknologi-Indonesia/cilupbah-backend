@@ -19,6 +19,8 @@ class StockReplenishmentResource extends JsonResource
             'to_location_name' => $this->toLocation?->location_name,
             'requested_by_user_id' => $this->requested_by_user_id,
             'requested_by_name' => $this->requester?->name,
+            'rejected_by_user_id' => $this->rejected_by_user_id,
+            'rejected_by_name' => $this->rejecter?->name,
             'assignee_user_id' => $this->assignee_user_id,
             'assignee_name' => $this->assignee?->name,
             'transfer_out_id' => $this->transfer_out_id,
@@ -45,9 +47,19 @@ class StockReplenishmentResource extends JsonResource
                 'in_flight_qty' => (int) $it->in_flight_qty,
                 'suggested_qty' => (int) $it->suggested_qty,
                 'reason' => $it->reason,
+                'reason_detail' => [
+                    'type' => 'stock_shortage',
+                    'label' => 'Kekurangan stok dari pesanan aktif',
+                    'demand_qty' => (int) $it->demand_qty,
+                    'available_qty' => (int) $it->available_qty,
+                    'in_flight_qty' => (int) $it->in_flight_qty,
+                    'suggested_qty' => (int) $it->suggested_qty,
+                ],
             ])),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
+            'items_count' => $this->items_count,
+            'items_qty' => (int) ($this->items_sum_qty ?? 0),
         ];
     }
 

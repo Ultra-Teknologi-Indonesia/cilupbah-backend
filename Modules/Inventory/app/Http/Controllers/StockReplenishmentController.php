@@ -8,6 +8,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Inventory\Http\Requests\AcceptStockReplenishmentRequest;
 use Modules\Inventory\Http\Requests\QueueStockReplenishmentRequest;
+use Modules\Inventory\Http\Requests\RejectStockReplenishmentRequest;
+use Modules\Inventory\Http\Resources\StockReplenishmentItemResource;
 use Modules\Inventory\Http\Resources\StockReplenishmentResource;
 use Modules\Inventory\Services\StockReplenishmentService;
 
@@ -53,6 +55,53 @@ class StockReplenishmentController extends Controller
         return $this->successResponse(
             new StockReplenishmentResource($req),
             'Detail permintaan pengisian stok',
+        );
+    }
+
+    public function items(string $id, Request $request): JsonResponse
+    {
+        if (! $this->service->findDetail($id)) {
+            return $this->errorResponse('Permintaan tidak ditemukan', 404);
+        }
+
+        $validated = $request->validate([
+            'search' => ['nullable', 'string', 'max:120'],
+            'channel' => ['nullable', 'string', 'max:80'],
+            'shop_id' => ['nullable', 'string', 'max:120'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+        $perPage = (int) ($validated['per_page'] ?? 20);
+        $paginator = $this->service->paginateItems(
+            $id,
+            $validated['search'] ?? null,
+            $validated['channel'] ?? null,
+            $validated['shop_id'] ?? null,
+            $perPage,
+        );
+
+        return $this->successResponse(
+            StockReplenishmentItemResource::collection($paginator->items()),
+            'Daftar item permintaan pengisian stok',
+            200,
+            [
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+            ],
+        );
+    }
+
+    public function itemFilterOptions(string $id): JsonResponse
+    {
+        if (! $this->service->findDetail($id)) {
+            return $this->errorResponse('Permintaan tidak ditemukan', 404);
+        }
+
+        return $this->successResponse(
+            $this->service->itemFilterOptions($id),
+            'Filter item permintaan pengisian stok',
         );
     }
 
@@ -111,14 +160,10 @@ class StockReplenishmentController extends Controller
         );
     }
 
-    public function reject(string $id, Request $request): JsonResponse
+    public function reject(string $id, RejectStockReplenishmentRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'reason' => ['nullable', 'string', 'max:500'],
-        ]);
-
         try {
-            $req = $this->service->reject($id, $validated['reason'] ?? null);
+            $req = $this->service->reject($id, $request->validated('reason'));
         } catch (\RuntimeException $e) {
             return $this->errorResponse(
                 'Gagal menolak.',
@@ -129,7 +174,7 @@ class StockReplenishmentController extends Controller
         }
 
         return $this->successResponse(
-            new StockReplenishmentResource($req->load(['items'])),
+            new StockReplenishmentResource($req->load(['items', 'rejecter'])),
             'Permintaan ditolak',
         );
     }

@@ -89,6 +89,11 @@ class StockReplenishmentRequest extends Model
         return $this->belongsTo(User::class, 'requested_by_user_id');
     }
 
+    public function rejecter(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'rejected_by_user_id');
+    }
+
     public function transferOut(): BelongsTo
     {
         return $this->belongsTo(InventoryTransfer::class, 'transfer_out_id');
