@@ -2,10 +2,13 @@
 
 namespace Modules\Inventory\Services;
 
+use App\Models\User;
+use App\Support\WarehouseAccess;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Modules\Inventory\Models\StockReplenishmentRequest;
+use Modules\Inventory\Models\StockReplenishmentRequestItem;
 use Modules\Inventory\Repositories\StockReplenishmentRepository;
 use Modules\Notification\Services\NotificationDispatcher;
 use Modules\Warehouse\Models\Location;
@@ -18,15 +21,14 @@ class StockReplenishmentService
         private InventoryService $inventoryService,
         private StockReplenishmentRepository $repository,
         private NotificationDispatcher $notifications,
-    ) {
-    }
+    ) {}
 
     private function requestLink(string $id): string
     {
         return "/dashboard/permintaan-restock/{$id}";
     }
 
-    public function list(?string $status, int $perPage = 10): \Illuminate\Pagination\LengthAwarePaginator
+    public function list(?string $status, int $perPage = 10): LengthAwarePaginator
     {
         return $this->repository->paginate($status, $perPage);
     }
@@ -46,52 +48,71 @@ class StockReplenishmentService
         return $this->repository->findDetailOrFail($id);
     }
 
-    public function create(array $payload): StockReplenishmentRequest
+    public function queueFromMonitor(array $payload): array
     {
-        $request = DB::transaction(function () use ($payload) {
-            $fromId = $payload['from_location_id']
-                ?? \Modules\Warehouse\Models\Location::getMainWarehouseId();
-            $toId = $payload['to_location_id']
-                ?? \Modules\Warehouse\Models\Location::getSmallWarehouseId();
+        $fromId = $payload['from_location_id']
+            ?? Location::getMainWarehouseId();
+        $toId = $payload['to_location_id']
+            ?? Location::getSmallWarehouseId();
+        $itemIds = array_values(array_unique(array_filter($payload['item_ids'] ?? [])));
 
-            if (! $fromId || ! $toId) {
-                throw new \RuntimeException('Gudang Pusat / Gudang Kecil belum di-seed.');
+        if (! $fromId || ! $toId) {
+            throw new \RuntimeException('Gudang Pusat / Gudang Kecil belum di-seed.');
+        }
+        if ($itemIds === []) {
+            throw new \RuntimeException('Pilih minimal satu produk untuk dimasukkan ke permintaan restock.');
+        }
+
+        WarehouseAccess::assert($fromId);
+        WarehouseAccess::assert($toId);
+
+        $result = DB::transaction(function () use ($fromId, $toId, $itemIds): array {
+            $this->lockRoute($fromId, $toId);
+            $shortages = $this->repository
+                ->shortagesForLocation($toId, $itemIds)
+                ->filter(fn ($row): bool => (int) $row->on_hand <= 0);
+
+            if ($shortages->isEmpty()) {
+                $request = $this->repository
+                    ->pendingForRouteForUpdate($fromId, $toId)
+                    ->first();
+
+                return [
+                    'request' => $request?->fresh(['items', 'fromLocation', 'toLocation', 'transferOut']),
+                    'queued' => [],
+                    'skipped' => $itemIds,
+                ];
             }
 
-            $req = $this->repository->create([
-                'requested_by_user_id' => $payload['requested_by_user_id'] ?? (Auth::id() ?: null),
-                'from_location_id'     => $fromId,
-                'to_location_id'       => $toId,
-                'status'               => StockReplenishmentRequest::STATUS_PENDING,
-                'requested_at'         => now(),
-                'note'                 => $payload['note'] ?? null,
-            ]);
+            [$request] = $this->getOrCreatePendingBatch(
+                $fromId,
+                $toId,
+                StockReplenishmentRequest::SOURCE_MONITOR,
+                Auth::id() ?: null,
+                'Ditambahkan dari Monitor Stok: Dipesan namun habis.',
+            );
 
-            foreach (($payload['items'] ?? []) as $item) {
-                $this->repository->createItem([
-                    'request_id' => $req->id,
-                    'item_id'    => $item['item_id'],
-                    'sku'        => $item['sku'],
-                    'qty'        => (int) $item['qty'],
-                    'reason'     => $item['reason'] ?? null,
-                ]);
+            $queued = [];
+            foreach ($shortages as $shortage) {
+                $this->upsertShortageItem($request, $shortage);
+                $queued[] = (string) $shortage->item_id;
             }
 
-            return $req->fresh(['items']);
+            $skipped = array_values(array_diff($itemIds, $queued));
+            $request->update(['last_reconciled_at' => now()]);
+
+            return [
+                'request' => $request->fresh(['items', 'fromLocation', 'toLocation', 'transferOut']),
+                'queued' => $queued,
+                'skipped' => $skipped,
+            ];
         });
 
-        $skuCount = $request->items->count();
-        $this->notifications->toPermission(self::NOTIF_PERMISSION, [
-            'type' => 'stock_replenishment_request',
-            'title' => 'Permintaan pengisian stok baru',
-            'message' => "{$skuCount} SKU perlu diisi ke gudang kecil.",
-            'data' => [
-                'request_id' => $request->id,
-                'link' => $this->requestLink($request->id),
-            ],
-        ], excludeUserIds: array_filter([$request->requested_by_user_id]));
+        if ($result['request']) {
+            $this->notifyQueueChanged($result['request'], 'stock_replenishment_request');
+        }
 
-        return $request;
+        return $result;
     }
 
     public function accept(string $id, ?string $assigneeUserId = null, ?string $note = null): StockReplenishmentRequest
@@ -104,52 +125,46 @@ class StockReplenishmentService
             }
 
             $actorName = Auth::user()?->name;
-            if (!$actorName && $request->requested_by_user_id) {
-                $user = \App\Models\User::find($request->requested_by_user_id);
+            if (! $actorName && $request->requested_by_user_id) {
+                $user = User::find($request->requested_by_user_id);
                 $actorName = $user?->name;
             }
             $actorName = $actorName ?? 'System';
 
             $transfer = $this->inventoryService->createDraft([
-                'source_location_id'      => $request->from_location_id,
+                'source_location_id' => $request->from_location_id,
                 'destination_location_id' => $request->to_location_id,
-                'notes'                   => sprintf(
+                'notes' => sprintf(
                     'Auto-generated dari permintaan pengisian stok #%s%s',
                     substr($request->id, 0, 8),
                     $note ? " — {$note}" : '',
                 ),
-                'created_by'              => $actorName,
+                'created_by' => $actorName,
             ]);
 
+            if ($request->items->isEmpty()) {
+                throw new \RuntimeException('Permintaan tidak memiliki item yang dapat ditransfer.');
+            }
+
             foreach ($request->items as $item) {
-                try {
-                    $this->inventoryService->addDraftItem($transfer->id, [
-                        'item_id' => $item->item_id,
-                        'qty'     => (int) $item->qty,
-                    ]);
-                } catch (\Throwable $e) {
-                    Log::warning('Gagal menambah item ke Transfer Keluar DRAFT saat accept replenishment', [
-                        'request_id'  => $request->id,
-                        'transfer_id' => $transfer->id,
-                        'item_id'     => $item->item_id,
-                        'qty'         => $item->qty,
-                        'error'       => $e->getMessage(),
-                    ]);
-                }
+                $this->inventoryService->addDraftItem($transfer->id, [
+                    'item_id' => $item->item_id,
+                    'qty' => (int) $item->qty,
+                ]);
             }
 
             $this->inventoryService->approveTransfer($transfer->id, [
-                'approved_by' => $actorId ?? 'system',
+                'approved_by' => $actorName,
                 'assigned_to' => $assigneeUserId,
             ]);
 
             $request->update([
-                'status'              => StockReplenishmentRequest::STATUS_ACCEPTED,
-                'accepted_at'         => now(),
+                'status' => StockReplenishmentRequest::STATUS_ACCEPTED,
+                'accepted_at' => now(),
                 'accepted_by_user_id' => Auth::id() ?: null,
-                'assignee_user_id'    => $assigneeUserId,
-                'transfer_out_id'     => $transfer->id,
-                'note'                => $note ?? $request->note,
+                'assignee_user_id' => $assigneeUserId,
+                'transfer_out_id' => $transfer->id,
+                'note' => $note ?? $request->note,
             ]);
 
             return $request->fresh(['items', 'transferOut']);
@@ -193,10 +208,10 @@ class StockReplenishmentService
         }
 
         $request->update([
-            'status'              => StockReplenishmentRequest::STATUS_REJECTED,
-            'rejected_at'         => now(),
+            'status' => StockReplenishmentRequest::STATUS_REJECTED,
+            'rejected_at' => now(),
             'rejected_by_user_id' => Auth::id() ?: null,
-            'reject_reason'       => $reason,
+            'reject_reason' => $reason,
         ]);
 
         $fresh = $request->fresh();
@@ -218,40 +233,6 @@ class StockReplenishmentService
         return $fresh;
     }
 
-    public function addItem(string $id, array $payload): StockReplenishmentRequestItem
-    {
-        return DB::transaction(function () use ($id, $payload) {
-            $request = $this->lockPendingRequest($id);
-
-            $variant = \Modules\Product\Models\ProductVariant::find($payload['item_id']);
-            $sku = $payload['sku'] ?? $variant?->sku;
-
-            if (! $sku) {
-                throw new \RuntimeException('SKU tidak ditemukan untuk item ini.');
-            }
-
-            $existing = $request->items()->where('item_id', $payload['item_id'])->first();
-
-            if ($existing) {
-                $existing->update([
-                    'qty'    => $existing->qty + (int) $payload['qty'],
-                    'reason' => $payload['reason'] ?? $existing->reason,
-                ]);
-
-                return $existing->fresh(['variant.product']);
-            }
-
-            $item = $request->items()->create([
-                'item_id' => $payload['item_id'],
-                'sku'     => $sku,
-                'qty'     => (int) $payload['qty'],
-                'reason'  => $payload['reason'] ?? null,
-            ]);
-
-            return $item->fresh(['variant.product']);
-        });
-    }
-
     public function updateItem(string $id, string $itemId, array $payload): StockReplenishmentRequestItem
     {
         return DB::transaction(function () use ($id, $itemId, $payload) {
@@ -260,7 +241,7 @@ class StockReplenishmentService
             $item = $request->items()->where('id', $itemId)->firstOrFail();
 
             $item->update([
-                'qty'    => (int) ($payload['qty'] ?? $item->qty),
+                'qty' => (int) ($payload['qty'] ?? $item->qty),
                 'reason' => array_key_exists('reason', $payload) ? $payload['reason'] : $item->reason,
             ]);
 
@@ -293,7 +274,7 @@ class StockReplenishmentService
         $request = $this->repository->findOrFail($id);
 
         $request->update([
-            'status'  => StockReplenishmentRequest::STATUS_DONE,
+            'status' => StockReplenishmentRequest::STATUS_DONE,
             'done_at' => now(),
         ]);
 
@@ -302,114 +283,241 @@ class StockReplenishmentService
 
     public function autoDetect(bool $dryRun = false): array
     {
-        $kecilId = \Modules\Warehouse\Models\Location::getSmallWarehouseId();
-        $pusatId = \Modules\Warehouse\Models\Location::getMainWarehouseId();
+        return $this->reconcileAutoBatch($dryRun);
+    }
+
+    public function reconcileAutoBatch(bool $dryRun = false): array
+    {
+        $kecilId = Location::getSmallWarehouseId();
+        $pusatId = Location::getMainWarehouseId();
 
         if (! $kecilId || ! $pusatId) {
-            return ['shortages' => [], 'request' => null, 'skipped' => true, 'reason' => 'Gudang Kecil / Gudang Pusat belum di-seed'];
+            return [
+                'shortages' => [],
+                'request' => null,
+                'skipped' => true,
+                'reason' => 'Gudang Kecil / Gudang Pusat belum di-seed',
+            ];
         }
 
-        $demand = $this->repository->demandForLocation($kecilId);
-
-        if ($demand->isEmpty()) {
-            return ['shortages' => [], 'request' => null, 'skipped' => false];
-        }
-
-        $itemIds = $demand->keys()->all();
-
-        $availability = $this->repository->availabilityForItems($itemIds, $kecilId);
-
-        $inFlight = $this->repository->inFlightForItems($itemIds, $kecilId);
-
-        $shortages = [];
-        foreach ($demand as $itemId => $row) {
-            $needed   = (int) $row->needed;
-            $onHand   = (int) ($availability[$itemId]->oh ?? 0);
-            $reserved = (int) ($availability[$itemId]->rv ?? 0);
-            $available = max(0, $onHand - $reserved);
-            $covered  = (int) ($inFlight[$itemId]->inflight ?? 0);
-
-            $shortage = $needed - $available - $covered;
-
-            if ($shortage > 0) {
-                $shortages[] = [
-                    'item_id'    => $itemId,
-                    'sku'        => $row->sku,
-                    'qty'        => $shortage,
-                    'needed'     => $needed,
-                    'available'  => $available,
-                    'in_flight'  => $covered,
-                ];
-            }
-        }
-
-        if (empty($shortages)) {
-            return ['shortages' => [], 'request' => null, 'skipped' => false];
-        }
+        $shortages = $this->repository->shortagesForLocation($kecilId);
+        $shortageRows = $shortages->values()->map(fn ($row): array => [
+            'item_id' => $row->item_id,
+            'sku' => $row->sku,
+            'qty' => $row->shortage,
+            'needed' => $row->needed,
+            'available' => $row->available,
+            'in_flight' => $row->in_flight,
+        ])->all();
 
         if ($dryRun) {
-            return ['shortages' => $shortages, 'request' => null, 'skipped' => false];
+            return ['shortages' => $shortageRows, 'request' => null, 'skipped' => false];
         }
 
-        $request = DB::transaction(function () use ($pusatId, $kecilId, $shortages) {
-            $req = StockReplenishmentRequest::whereNull('requested_by_user_id')
-                ->where('from_location_id', $pusatId)
-                ->where('to_location_id', $kecilId)
-                ->where('status', StockReplenishmentRequest::STATUS_PENDING)
-                ->first();
+        $created = false;
+        $changed = false;
+        $request = DB::transaction(function () use (
+            $pusatId,
+            $kecilId,
+            $shortages,
+            &$created,
+            &$changed,
+        ): ?StockReplenishmentRequest {
+            $this->lockRoute($pusatId, $kecilId);
 
-            $isNew = false;
-            if (! $req) {
-                $isNew = true;
-                $req = $this->repository->create([
-                    'requested_by_user_id' => null,
-                    'from_location_id'     => $pusatId,
-                    'to_location_id'       => $kecilId,
-                    'status'               => StockReplenishmentRequest::STATUS_PENDING,
-                    'requested_at'         => now(),
-                    'note'                 => 'Auto-generated oleh sistem berdasarkan kekurangan stok Gudang Kecil.',
+            $pending = $this->repository->pendingForRouteForUpdate($pusatId, $kecilId);
+            if ($pending->isEmpty()) {
+                return null;
+            }
+
+            [$request, $created] = $this->getOrCreatePendingBatch(
+                $pusatId,
+                $kecilId,
+                StockReplenishmentRequest::SOURCE_MONITOR,
+                null,
+                null,
+            );
+
+            $requestedItemIds = $request->items()->pluck('item_id')->all();
+            foreach ($shortages->only($requestedItemIds) as $shortage) {
+                $changed = $this->upsertShortageItem($request, $shortage) || $changed;
+            }
+
+            $validItemIds = $shortages->keys()
+                ->intersect($requestedItemIds)
+                ->values()
+                ->all();
+            $removed = $request->items()
+                ->whereNotIn('item_id', $validItemIds)
+                ->delete();
+            $changed = $changed || $removed > 0;
+
+            if ($request->items()->doesntExist()) {
+                $request->update([
+                    'status' => StockReplenishmentRequest::STATUS_CANCELLED,
+                    'cancelled_at' => now(),
+                    'cancel_reason' => 'Semua item sudah tidak membutuhkan restock.',
+                    'batch_key' => null,
+                    'last_reconciled_at' => now(),
+                ]);
+
+                return $request->fresh(['items', 'fromLocation', 'toLocation', 'transferOut']);
+            }
+
+            $request->update([
+                'last_reconciled_at' => now(),
+            ]);
+
+            return $request->fresh(['items', 'fromLocation', 'toLocation', 'transferOut']);
+        });
+
+        if ($request && ($created || $changed)) {
+            $this->notifyQueueChanged($request, 'stock_replenishment_auto_detected');
+        }
+
+        return [
+            'shortages' => $shortageRows,
+            'request' => $request,
+            'skipped' => false,
+        ];
+    }
+
+    private function lockRoute(string $fromLocationId, string $toLocationId): void
+    {
+        $key = "stock-replenishment:{$fromLocationId}:{$toLocationId}";
+
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::select('SELECT pg_advisory_xact_lock(hashtext(?))', [$key]);
+        }
+    }
+
+    private function getOrCreatePendingBatch(
+        string $fromLocationId,
+        string $toLocationId,
+        string $source,
+        ?string $requestedByUserId,
+        ?string $note,
+    ): array {
+        $pending = $this->repository->pendingForRouteForUpdate($fromLocationId, $toLocationId);
+        $request = $pending->first();
+
+        if ($request) {
+            foreach ($pending->slice(1) as $duplicate) {
+                foreach ($duplicate->items()->get() as $duplicateItem) {
+                    $sameItem = $request->items()
+                        ->where('item_id', $duplicateItem->item_id)
+                        ->first();
+                    if ($sameItem) {
+                        $sameItem->qty = max((int) $sameItem->qty, (int) $duplicateItem->qty);
+                        $sameItem->save();
+                        $duplicateItem->delete();
+                    } else {
+                        $duplicateItem->update(['request_id' => $request->id]);
+                    }
+                }
+                $duplicate->update([
+                    'status' => StockReplenishmentRequest::STATUS_CANCELLED,
+                    'cancelled_at' => now(),
+                    'cancel_reason' => 'Digabung ke batch pending yang sudah ada.',
+                    'batch_key' => null,
                 ]);
             }
 
-            foreach ($shortages as $s) {
-                $existingItem = null;
-                if (! $isNew) {
-                    $existingItem = \Modules\Inventory\Models\StockReplenishmentRequestItem::where('request_id', $req->id)
-                        ->where('item_id', $s['item_id'])
-                        ->first();
-                }
-
-                if ($existingItem) {
-                    $existingItem->qty += $s['qty'];
-                    $existingItem->reason = sprintf('Diupdate otomatis: Kebutuhan %d, tersedia %d, in-flight lama %d', $s['needed'], $s['available'], $s['in_flight']);
-                    $existingItem->save();
-                } else {
-                    $this->repository->createItem([
-                        'request_id' => $req->id,
-                        'item_id'    => $s['item_id'],
-                        'sku'        => $s['sku'],
-                        'qty'        => $s['qty'],
-                        'reason'     => sprintf('Kebutuhan %d, tersedia %d, in-flight %d', $s['needed'], $s['available'], $s['in_flight']),
-                    ]);
-                }
-            }
-
-            return $req->fresh(['items']);
-        });
-
-        if (! isset($isNew) || (isset($isNew) && $isNew)) { 
-            $skuCount = count($shortages);
-            $this->notifications->toPermission(self::NOTIF_PERMISSION, [
-                'type' => 'stock_replenishment_auto_detected',
-                'title' => 'Deteksi kekurangan stok otomatis',
-                'message' => "Sistem mendeteksi kekurangan {$skuCount} SKU di gudang kecil.",
-                'data' => [
-                    'request_id' => $request->id,
-                    'link' => $this->requestLink($request->id),
-                ],
+            $mergedSource = $this->mergedSource($request->source, $source);
+            $request->update([
+                'source' => $mergedSource,
+                'batch_key' => $this->routeBatchKey($fromLocationId, $toLocationId),
             ]);
+
+            return [$request->fresh(['items']), false];
         }
 
-        return ['shortages' => $shortages, 'request' => $request, 'skipped' => false];
+        $request = $this->repository->create([
+            'requested_by_user_id' => $requestedByUserId,
+            'from_location_id' => $fromLocationId,
+            'to_location_id' => $toLocationId,
+            'status' => StockReplenishmentRequest::STATUS_PENDING,
+            'source' => $source,
+            'batch_key' => $this->routeBatchKey($fromLocationId, $toLocationId),
+            'requested_at' => now(),
+            'note' => $note,
+        ]);
+
+        return [$request, true];
+    }
+
+    private function routeBatchKey(string $fromLocationId, string $toLocationId): string
+    {
+        return "route:{$fromLocationId}:{$toLocationId}";
+    }
+
+    private function mergedSource(?string $current, string $incoming): string
+    {
+        if (! $current || $current === $incoming) {
+            return $incoming;
+        }
+
+        return StockReplenishmentRequest::SOURCE_MIXED;
+    }
+
+    private function upsertShortageItem(
+        StockReplenishmentRequest $request,
+        object $shortage,
+    ): bool {
+        $item = $request->items()
+            ->where('item_id', $shortage->item_id)
+            ->lockForUpdate()
+            ->first();
+
+        $values = [
+            'sku' => $shortage->sku,
+            'qty' => (int) $shortage->shortage,
+            'demand_qty' => (int) $shortage->needed,
+            'available_qty' => (int) $shortage->available,
+            'in_flight_qty' => (int) $shortage->in_flight,
+            'suggested_qty' => (int) $shortage->shortage,
+            'reason' => sprintf(
+                'Kebutuhan %d, tersedia %d, sedang dikirim %d.',
+                $shortage->needed,
+                $shortage->available,
+                $shortage->in_flight,
+            ),
+        ];
+
+        if (! $item) {
+            $request->items()->create(array_merge([
+                'item_id' => $shortage->item_id,
+            ], $values));
+
+            return true;
+        }
+
+        $changed = collect($values)->contains(
+            fn ($value, $key): bool => (string) $item->{$key} !== (string) $value,
+        );
+        $item->update($values);
+
+        return $changed;
+    }
+
+    private function notifyQueueChanged(
+        StockReplenishmentRequest $request,
+        string $notificationType,
+    ): void {
+        $request->loadMissing('items');
+        $skuCount = $request->items->count();
+        if ($skuCount === 0) {
+            return;
+        }
+
+        $this->notifications->toPermission(self::NOTIF_PERMISSION, [
+            'type' => $notificationType,
+            'title' => 'Antrian restock diperbarui',
+            'message' => "{$skuCount} SKU menunggu review permintaan restock.",
+            'data' => [
+                'request_id' => $request->id,
+                'link' => $this->requestLink($request->id),
+            ],
+        ], excludeUserIds: array_filter([$request->requested_by_user_id]));
     }
 }

@@ -614,10 +614,6 @@ class LazadaOrderService
         }
     }
 
-    /**
-     * Read buyer reverse orders. This is also the source of the reverse-order
-     * line IDs required by Lazada when accepting/rejecting a buyer cancel.
-     */
     public function getReverseOrdersForSeller(
         string $shopId,
         ?string $tradeOrderId = null,

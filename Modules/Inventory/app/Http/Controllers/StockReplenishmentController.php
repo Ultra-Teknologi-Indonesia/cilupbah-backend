@@ -7,7 +7,7 @@ use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Inventory\Http\Requests\AcceptStockReplenishmentRequest;
-use Modules\Inventory\Http\Requests\StoreStockReplenishmentRequest;
+use Modules\Inventory\Http\Requests\QueueStockReplenishmentRequest;
 use Modules\Inventory\Http\Resources\StockReplenishmentResource;
 use Modules\Inventory\Services\StockReplenishmentService;
 
@@ -15,24 +15,22 @@ class StockReplenishmentController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private StockReplenishmentService $service)
-    {
-    }
+    public function __construct(private StockReplenishmentService $service) {}
 
     public function index(Request $request): JsonResponse
     {
-        $status  = $request->query('status');
+        $status = $request->query('status');
         $perPage = min(100, max(1, (int) $request->query('per_page', 20)));
 
         $paginator = $this->service->list($status, $perPage);
 
         return $this->successResponse([
             'items' => StockReplenishmentResource::collection($paginator->items()),
-            'meta'  => [
+            'meta' => [
                 'current_page' => $paginator->currentPage(),
-                'last_page'    => $paginator->lastPage(),
-                'per_page'     => $paginator->perPage(),
-                'total'        => $paginator->total(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
             ],
         ], 'Daftar permintaan pengisian stok');
     }
@@ -58,15 +56,36 @@ class StockReplenishmentController extends Controller
         );
     }
 
-    public function store(StoreStockReplenishmentRequest $request): JsonResponse
+    public function store(): JsonResponse
     {
-        $req = $this->service->create($request->validated());
-
-        return $this->successResponse(
-            new StockReplenishmentResource($req->load(['items', 'fromLocation', 'toLocation', 'transferOut'])),
-            'Permintaan pengisian stok berhasil dibuat',
-            201,
+        return $this->errorResponse(
+            'Permintaan hanya dapat dibuat dari Monitor Stok > Dipesan namun habis.',
+            422,
+            [],
+            'Sumber permintaan tidak valid',
         );
+    }
+
+    public function queueFromMonitor(QueueStockReplenishmentRequest $request): JsonResponse
+    {
+        try {
+            $result = $this->service->queueFromMonitor($request->validated());
+        } catch (\RuntimeException $e) {
+            return $this->errorResponse(
+                'Gagal memasukkan produk ke antrian restock.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
+        }
+
+        return $this->successResponse([
+            'request' => $result['request']
+                ? new StockReplenishmentResource($result['request'])
+                : null,
+            'queued_item_ids' => $result['queued'],
+            'skipped_item_ids' => $result['skipped'],
+        ], 'Produk dimasukkan ke antrian permintaan restock');
     }
 
     public function accept(string $id, AcceptStockReplenishmentRequest $request): JsonResponse
@@ -115,37 +134,20 @@ class StockReplenishmentController extends Controller
         );
     }
 
-    public function addItem(string $id, Request $request): JsonResponse
+    public function addItem(): JsonResponse
     {
-        $validated = $request->validate([
-            'item_id' => ['required', 'uuid'],
-            'sku'     => ['nullable', 'string', 'max:64'],
-            'qty'     => ['required', 'integer', 'min:1'],
-            'reason'  => ['nullable', 'string', 'max:500'],
-        ]);
-
-        try {
-            $this->service->addItem($id, $validated);
-        } catch (\RuntimeException $e) {
-            return $this->errorResponse(
-                'Gagal menyimpan.',
-                422,
-                ['detail' => $e->getMessage()],
-                'Aksi tidak dapat diproses',
-            );
-        }
-
-        return $this->successResponse(
-            $this->reloadDetail($id),
-            'Item ditambahkan',
-            201,
+        return $this->errorResponse(
+            'SKU hanya dapat ditambahkan dari Monitor Stok > Dipesan namun habis.',
+            422,
+            [],
+            'Sumber item tidak valid',
         );
     }
 
     public function updateItem(string $id, string $itemId, Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'qty'    => ['sometimes', 'integer', 'min:1'],
+            'qty' => ['sometimes', 'integer', 'min:1'],
             'reason' => ['nullable', 'string', 'max:500'],
         ]);
 

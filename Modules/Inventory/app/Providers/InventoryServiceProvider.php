@@ -56,8 +56,9 @@ class InventoryServiceProvider extends ModuleServiceProvider
             ->onOneServer();
 
         $schedule->command('replenishment:auto-detect')
-            ->everyFiveMinutes()
+            ->everyThirtyMinutes()
             ->withoutOverlapping()
+            ->onOneServer()
             ->runInBackground();
 
         $schedule->command('inventory:reconcile-on-order')

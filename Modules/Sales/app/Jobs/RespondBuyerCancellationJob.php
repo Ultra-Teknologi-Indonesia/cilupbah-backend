@@ -144,10 +144,6 @@ class RespondBuyerCancellationJob implements ShouldBeUnique, ShouldQueue
         }
     }
 
-    /**
-     * Safe in-memory simulation hook for Tinker. It does not read/write the
-     * database and must be used with mocked channel services.
-     */
     public function simulate(SalesOrder $order): array
     {
         $source = strtolower((string) $order->source);

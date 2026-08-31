@@ -44,8 +44,6 @@ class ShopeeToInternalOrderMapper
         $fulfillmentStatus = $shopeeOrder['package_list'][0]['logistics_status']
             ?? ($shopeeOrder['logistics_status'] ?? null);
 
-        // TO_RETURN is a marketplace return/refund flow, not a buyer cancellation.
-        // Only IN_CANCEL can be handled through handle_buyer_cancellation.
         $isBuyerCancelRequested = $channelStatus === 'IN_CANCEL';
 
         $address = $shopeeOrder['recipient_address'] ?? [];

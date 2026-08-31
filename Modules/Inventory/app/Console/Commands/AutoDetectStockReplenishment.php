@@ -8,9 +8,9 @@ use Modules\Inventory\Services\StockReplenishmentService;
 class AutoDetectStockReplenishment extends Command
 {
     protected $signature = 'replenishment:auto-detect
-        {--dry-run : Hanya tampilkan preview kekurangan, tidak membuat request}';
+        {--dry-run : Hanya tampilkan preview, tidak mengubah request pending}';
 
-    protected $description = 'Deteksi otomatis kekurangan stok Gudang Kecil dan buat StockReplenishmentRequest PENDING.';
+    protected $description = 'Sinkronkan baris request restock yang sudah dipilih dari Monitor Stok.';
 
     public function handle(StockReplenishmentService $service): int
     {
@@ -20,6 +20,7 @@ class AutoDetectStockReplenishment extends Command
 
         if (! empty($result['skipped'])) {
             $this->warn($result['reason'] ?? 'Deteksi dilewati.');
+
             return self::FAILURE;
         }
 
@@ -27,6 +28,7 @@ class AutoDetectStockReplenishment extends Command
 
         if (empty($shortages)) {
             $this->info('Tidak ada kekurangan stok di Gudang Kecil. Semua kebutuhan sudah tercover.');
+
             return self::SUCCESS;
         }
 
@@ -49,15 +51,20 @@ class AutoDetectStockReplenishment extends Command
 
         if ($dryRun) {
             $this->line('Dry-run — tidak ada request yang dibuat.');
+
             return self::SUCCESS;
         }
 
         $request = $result['request'];
-        $this->info(sprintf(
-            'Request PENDING dibuat: %s (%d item)',
-            $request?->id ?? '-',
-            count($shortages),
-        ));
+        if ($request) {
+            $this->info(sprintf(
+                'Baris request PENDING disinkronkan: %s (%d SKU terdeteksi di monitor).',
+                $request->id,
+                count($shortages),
+            ));
+        } else {
+            $this->info('Tidak ada request PENDING baru. SKU baru harus dipilih dari Monitor Stok.');
+        }
 
         return self::SUCCESS;
     }

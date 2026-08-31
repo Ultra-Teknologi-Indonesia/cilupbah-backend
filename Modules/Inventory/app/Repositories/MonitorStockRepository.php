@@ -28,9 +28,9 @@ class MonitorStockRepository
         $inv = DB::table('inventories')
             ->leftJoin('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
             ->select('inventories.item_id as item_id')
-            ->selectRaw(StockSummary::placedOnHandSql() . ' as on_hand')
-            ->selectRaw(StockSummary::availableSql() . ' as available')
-            ->selectRaw(StockSummary::onOrderSql() . ' as on_order')
+            ->selectRaw(StockSummary::placedOnHandSql().' as on_hand')
+            ->selectRaw(StockSummary::availableSql().' as available')
+            ->selectRaw(StockSummary::onOrderSql().' as on_order')
             ->tap(fn ($q) => WarehouseAccess::apply($q, 'inventories.location_id'))
             ->when($locationId, fn ($q) => $q->where('inventories.location_id', $locationId))
             ->groupBy('inventories.item_id');
@@ -45,7 +45,7 @@ class MonitorStockRepository
             ->selectRaw('COALESCE(inv.on_hand, 0) as total_on_hand')
             ->selectRaw('COALESCE(inv.available, 0) as total_available')
             ->selectRaw('COALESCE(inv.on_order, 0) as total_on_order')
-            ->selectRaw('(' . $this->pendingOrderNosSql() . ') as pending_order_nos')
+            ->selectRaw('('.$this->pendingOrderNosSql().') as pending_order_nos')
             ->with([
                 'product:id,name,sku,is_bundle,is_stored,category_id',
                 'product.media' => fn ($q) => $q->whereNull('variant_id')->orderBy('sort_order'),
@@ -58,7 +58,7 @@ class MonitorStockRepository
 
     private function pendingOrderNosSql(): string
     {
-        return <<<SQL
+        return <<<'SQL'
             SELECT STRING_AGG(DISTINCT sales_orders.salesorder_no, ', ')
             FROM sales_order_items
             JOIN sales_orders ON sales_orders.id = sales_order_items.order_id
@@ -88,9 +88,9 @@ class MonitorStockRepository
         return match ($mode) {
             'habis' => $query->whereRaw('COALESCE(inv.available, 0) <= 0'),
             'minus' => $query->whereRaw('COALESCE(inv.on_hand, 0) > 0')
-                             ->whereRaw('COALESCE(inv.available, 0) < 0'),
+                ->whereRaw('COALESCE(inv.available, 0) < 0'),
             'dipesan' => $query->whereRaw('COALESCE(inv.on_hand, 0) <= 0')
-                               ->whereRaw('COALESCE(inv.available, 0) < 0'),
+                ->whereIn('product_variants.id', $this->pendingOrderItemIds()),
             'menipis' => $query
                 ->where('product_variants.min_stock', '>', 0)
                 ->whereRaw('COALESCE(inv.available, 0) < product_variants.min_stock'),
@@ -126,17 +126,17 @@ class MonitorStockRepository
             ->selectRaw(<<<'SQL'
                 COUNT(*) FILTER (WHERE b.total_available <= 0) AS habis,
                 COUNT(*) FILTER (WHERE b.total_on_hand > 0 AND b.total_available < 0) AS minus,
-                COUNT(*) FILTER (WHERE b.total_on_hand <= 0 AND b.total_available < 0) AS dipesan,
+                COUNT(*) FILTER (WHERE b.total_on_hand <= 0 AND pending.item_id IS NOT NULL) AS dipesan,
                 COUNT(*) FILTER (WHERE b.min_stock > 0 AND b.total_available < b.min_stock) AS menipis,
                 COUNT(*) FILTER (WHERE open_po.item_id IS NOT NULL) AS on_order
             SQL)
             ->first();
 
         return [
-            'habis'    => (int) ($row->habis ?? 0),
-            'minus'    => (int) ($row->minus ?? 0),
-            'dipesan'  => (int) ($row->dipesan ?? 0),
-            'menipis'  => (int) ($row->menipis ?? 0),
+            'habis' => (int) ($row->habis ?? 0),
+            'minus' => (int) ($row->minus ?? 0),
+            'dipesan' => (int) ($row->dipesan ?? 0),
+            'menipis' => (int) ($row->menipis ?? 0),
             'on_order' => (int) ($row->on_order ?? 0),
         ];
     }
@@ -214,11 +214,11 @@ class MonitorStockRepository
     public function failedSync(int $perPage = 20): LengthAwarePaginator
     {
         return QueryBuilder::for(
-                ProductChannelMapping::failed()
-                    ->join('products', 'products.id', '=', 'product_channel_mappings.product_id')
-                    ->with(['product', 'channelShop.channel'])
-                    ->select('product_channel_mappings.*')
-            )
+            ProductChannelMapping::failed()
+                ->join('products', 'products.id', '=', 'product_channel_mappings.product_id')
+                ->with(['product', 'channelShop.channel'])
+                ->select('product_channel_mappings.*')
+        )
             ->allowedSearch('products.name', 'products.sku')
             ->allowedFilters(
                 AllowedFilter::exact('channel_shop_id'),

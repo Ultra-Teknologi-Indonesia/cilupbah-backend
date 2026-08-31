@@ -66,7 +66,7 @@ class MonitorSummaryEquivalenceTest extends TestCase
             'location_id' => $this->location->id,
             'bin_id' => $this->bin->id,
             'on_hand' => $onHand,
-            'on_order' => 0,
+            'on_order' => max(0, $onHand - $available),
             'available' => $available,
             'avg_cost' => 100,
         ]);
@@ -88,7 +88,7 @@ class MonitorSummaryEquivalenceTest extends TestCase
     public function test_single_pass_summary_matches_the_five_separate_counts(): void
     {
         $habis = $this->makeVariant('SKU-HABIS', 0, 0);
-        $this->makeVariant('SKU-MINUS', -3, -3);
+        $this->makeVariant('SKU-MINUS', 5, -3);
         $this->makeVariant('SKU-MENIPIS', 5, 5, 10);
         $this->makeVariant('SKU-AMAN', 100, 100, 10);
         $dipesan = $this->makeVariant('SKU-DIPESAN', 0, 0);
