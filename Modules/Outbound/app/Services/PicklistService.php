@@ -401,6 +401,7 @@ class PicklistService
                     'bin_id' => $item->bin_id ?? $bin->id,
                     'qty' => -$delta,
                     'transaction_number' => $picklist->picklist_no.'-KOREKSI',
+                    'reference_number' => $this->orderReference($pickOrder),
                     'created_by' => $userId,
                 ]);
 
@@ -528,6 +529,11 @@ class PicklistService
                 ->get()
                 ->keyBy('id');
 
+            $orderReferences = Order::query()
+                ->whereIn('id', $lockedItems->pluck('order_id')->filter()->unique()->values())
+                ->get(['id', 'salesorder_no', 'channel_order_no', 'no_ref'])
+                ->keyBy('id');
+
             foreach ($items as $entry) {
                 $itemId = $entry['item_id'] ?? null;
                 $qty = $entry['qty'] ?? null;
@@ -558,6 +564,7 @@ class PicklistService
                     'bin_id' => $item->bin_id,
                     'qty' => $qtyRev,
                     'transaction_number' => $picklist->picklist_no.'-KOREKSI',
+                    'reference_number' => $this->orderReference($orderReferences->get($item->order_id)),
                     'created_by' => (string) ($userId ?: 'system'),
                 ]);
 
@@ -1076,8 +1083,28 @@ class PicklistService
         }
     }
 
+    private function orderReference(?Order $order): ?string
+    {
+        if (! $order) {
+            return null;
+        }
+
+        foreach (['channel_order_no', 'no_ref', 'salesorder_no'] as $column) {
+            $reference = trim((string) ($order->{$column} ?? ''));
+            if ($reference !== '') {
+                return $reference;
+            }
+        }
+
+        return null;
+    }
+
     private function reverseAndDetachOrderFromPicklist(Picklist $picklist, string $orderId, string $userId): bool
     {
+        $order = Order::query()
+            ->select(['id', 'salesorder_no', 'channel_order_no', 'no_ref', 'status'])
+            ->find($orderId);
+
         $items = PicklistItem::where('picklist_id', $picklist->id)
             ->where('order_id', $orderId)
             ->lockForUpdate()
@@ -1100,6 +1127,7 @@ class PicklistService
                 'bin_id' => $item->bin_id,
                 'qty' => (int) $item->qty_picked,
                 'transaction_number' => $picklist->picklist_no.'-HAPUS',
+                'reference_number' => $this->orderReference($order),
                 'created_by' => $userId ?: 'system',
             ]);
 
@@ -1109,8 +1137,6 @@ class PicklistService
         PicklistItem::where('picklist_id', $picklist->id)
             ->where('order_id', $orderId)
             ->delete();
-
-        $order = Order::find($orderId);
 
         if ($order && $order->status === 'picked') {
             $order->update(['status' => 'reserved']);

@@ -190,7 +190,8 @@ class ScanCorrectionTest extends TestCase
 
         app(InventoryService::class)->reversePick([
             'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $bin->id,
-            'qty' => 2, 'transaction_number' => 'PICK-1-KOREKSI', 'created_by' => 'tester',
+            'qty' => 2, 'transaction_number' => 'PICK-1-KOREKSI',
+            'reference_number' => '260831ORDER001', 'created_by' => 'tester',
         ]);
 
         $inv = Inventory::where('bin_id', $bin->id)->where('item_id', $variant->id)->first();
@@ -199,6 +200,7 @@ class ScanCorrectionTest extends TestCase
         $this->assertSame(3, (int) $inv->available);
         $this->assertDatabaseHas('inventory_movements', [
             'bin_id' => $bin->id, 'source' => 'PICKING_REVERSAL', 'qty' => 2,
+            'reference_number' => '260831ORDER001',
         ]);
     }
 

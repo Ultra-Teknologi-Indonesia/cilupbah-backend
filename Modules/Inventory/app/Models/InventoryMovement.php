@@ -19,6 +19,7 @@ class InventoryMovement extends Model
         'bin_id',
         'inbound_receipt_id',
         'transaction_number',
+        'reference_number',
         'source',
         'qty',
         'balance',

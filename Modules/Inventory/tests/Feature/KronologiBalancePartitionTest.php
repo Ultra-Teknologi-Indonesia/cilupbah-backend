@@ -68,6 +68,7 @@ class KronologiBalancePartitionTest extends TestCase
         int $balance,
         int $minuteOffset,
         ?string $binId = null,
+        ?string $referenceNumber = null,
     ): void {
         if ($binId === null && ! in_array($source, InventoryMovementSourceMap::NON_PHYSICAL_SOURCES, true)) {
             $binId = $this->finalBinId;
@@ -79,6 +80,7 @@ class KronologiBalancePartitionTest extends TestCase
             'location_id' => $this->locationId,
             'bin_id' => $binId,
             'transaction_number' => 'TRX-'.$source.'-'.$minuteOffset,
+            'reference_number' => $referenceNumber,
             'source' => $source,
             'qty' => $qty,
             'balance' => $balance,
@@ -86,6 +88,23 @@ class KronologiBalancePartitionTest extends TestCase
             'created_by' => 'system',
             'created_at' => now(), 'updated_at' => now(),
         ]);
+    }
+
+    public function test_picking_reversal_keeps_order_reference_without_picklist_relation(): void
+    {
+        $this->movement('PICKING_REVERSAL', 1, 1, 1, $this->finalBinId, '260831ORDER001');
+
+        request()->merge([
+            'filter' => ['item_id' => $this->itemId],
+            'per_page' => 50,
+        ]);
+
+        $paginated = app(InventoryMovementRepository::class)->getHistoryPaginated(50);
+        $resource = InventoryMovementResource::collection($paginated);
+        $data = $resource->response()->getData(true)['data'];
+
+        $this->assertCount(1, $data);
+        $this->assertSame('260831ORDER001', $data[0]['reference_number']);
     }
 
     public function test_saldo_merefleksikan_total_stok_available(): void

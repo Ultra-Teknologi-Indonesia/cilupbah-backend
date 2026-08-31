@@ -585,6 +585,7 @@ class InventoryService
                 'location_id' => $data['location_id'],
                 'bin_id' => $data['bin_id'],
                 'transaction_number' => $data['transaction_number'],
+                'reference_number' => $data['reference_number'] ?? null,
                 'source' => 'PICKING_REVERSAL',
                 'qty' => $qty,
                 'balance' => $inventory->on_hand,
