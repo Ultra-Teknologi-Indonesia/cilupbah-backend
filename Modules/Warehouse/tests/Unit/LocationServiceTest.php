@@ -69,10 +69,12 @@ class LocationServiceTest extends TestCase
     }
     public function test_can_get_paginated_locations(): void
     {
+        $existingLocations = Location::count();
         Location::factory()->count(15)->create();
+        request()->merge(['per_page' => 10]);
         $paginator = $this->service->getAllPaginated(10);
 
-        $this->assertEquals(15, $paginator->total());
+        $this->assertEquals($existingLocations + 15, $paginator->total());
         $this->assertCount(10, $paginator->items());
     }
 
