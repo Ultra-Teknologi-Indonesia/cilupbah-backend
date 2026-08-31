@@ -55,6 +55,7 @@ class ShipmentScanGuardTest extends TestCase
         ?string $shippingType = null,
         bool $isCanceled = false,
         ?string $cancelRequestedAt = null,
+        ?bool $channelInstant = null,
         ?string $source = null,
     ): array {
         $orderId = Str::uuid()->toString();
@@ -71,6 +72,7 @@ class ShipmentScanGuardTest extends TestCase
             'cancel_requested_at' => $cancelRequestedAt,
             'shipping_provider' => $provider,
             'shipping_type' => $shippingType,
+            'channel_instant' => $channelInstant,
             'created_at' => now(), 'updated_at' => now(),
         ]);
 
@@ -204,7 +206,7 @@ class ShipmentScanGuardTest extends TestCase
         Bus::fake();
         $loc = $this->seedLocation();
         $shipmentId = $this->seedShipment($loc, 'GoSend', 'INSTANT');
-        [$orderId] = $this->seedPackedOrder($loc, 'GoSend Instant', source: 'shopee');
+        [$orderId] = $this->seedPackedOrder($loc, 'GoSend Instant', channelInstant: true, source: 'shopee');
 
         app(ShipmentService::class)->addOrders($shipmentId, [$orderId]);
 

@@ -228,6 +228,27 @@ class CourierMappingServiceTest extends TestCase
         $this->assertSame('INSTANT', $this->service->resolveShipmentType('Same Day'));
     }
 
+    public function test_manifest_resolution_uses_channel_category_over_courier_mapping(): void
+    {
+        $mapping = $this->service->record('shopee', 'SPX Same Day', 'SHP-SDAY');
+        $mapping->update(['shipment_type' => 'INSTANT']);
+
+        $regular = $this->service->resolveForOrder((object) [
+            'source' => 'shopee',
+            'shipping_provider' => 'SPX Same Day',
+            'channel_instant' => false,
+        ]);
+
+        $instant = $this->service->resolveForOrder((object) [
+            'source' => 'shopee',
+            'shipping_provider' => 'SPX Standard',
+            'channel_instant' => true,
+        ]);
+
+        $this->assertSame('REGULAR', $regular['shipment_type']);
+        $this->assertSame('INSTANT', $instant['shipment_type']);
+    }
+
     public function test_manifest_grouping_honors_stored_resolved_shipment_type(): void
     {
 

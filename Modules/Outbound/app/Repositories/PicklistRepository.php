@@ -5,7 +5,6 @@ namespace Modules\Outbound\Repositories;
 use Modules\Inventory\Models\Inventory;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
-use Modules\Outbound\Support\InstantOrderClassifier;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Spatie\QueryBuilder\QueryBuilder;
@@ -55,13 +54,16 @@ class PicklistRepository
 
         \App\Support\WarehouseAccess::apply($query, 'location_id');
 
-        $rx = InstantOrderClassifier::REGEX;
-        $query->selectRaw('picklists.*, EXISTS(
+        $query->selectRaw("picklists.*, EXISTS(
             SELECT 1 FROM picklist_items
             JOIN sales_orders ON sales_orders.id = picklist_items.order_id
             WHERE picklist_items.picklist_id = picklists.id
-              AND (sales_orders.shipping_provider ~* ? OR sales_orders.shipping_type ~* ?)
-        ) AS has_instant', [$rx, $rx]);
+              AND (
+                sales_orders.channel_instant IS TRUE
+                OR (sales_orders.channel_instant IS NULL
+                    AND sales_orders.resolved_shipment_type IN ('INSTANT', 'SAME_DAY'))
+              )
+        ) AS has_instant");
 
         return $query->withCount('items')
             ->withSum('items', 'qty_ordered')

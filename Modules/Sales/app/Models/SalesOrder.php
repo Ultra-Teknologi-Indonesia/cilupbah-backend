@@ -173,6 +173,7 @@ class SalesOrder extends Model implements HasMedia
         'fulfillment_type',
         'delivery_option_id',
         'shipping_type',
+        'channel_instant',
         'resolved_shipment_type',
         'days_to_ship',
         'payment_method',
@@ -245,6 +246,7 @@ class SalesOrder extends Model implements HasMedia
         'is_cod' => 'boolean',
         'priority_fulfillment' => 'boolean',
         'is_split_order' => 'boolean',
+        'channel_instant' => 'boolean',
         'actual_shipping_fee_confirmed' => 'boolean',
         'is_manual' => 'boolean',
         'is_shadow' => 'boolean',
@@ -535,10 +537,26 @@ class SalesOrder extends Model implements HasMedia
 
     public function getIsInstantAttribute(): bool
     {
-        return InstantOrderClassifier::isInstant(
-            $this->shipping_provider,
-            $this->shipping_type,
-        );
+        if ($this->channel_instant !== null) {
+            return (bool) $this->channel_instant;
+        }
+
+        $resolvedType = strtoupper(trim((string) ($this->resolved_shipment_type ?? '')));
+        if ($resolvedType !== '') {
+            return in_array($resolvedType, ['INSTANT', 'SAME_DAY'], true);
+        }
+
+        $shippingType = strtoupper(trim((string) ($this->shipping_type ?? '')));
+        if (in_array($shippingType, ['INSTANT', 'SAME_DAY'], true)) {
+            return true;
+        }
+
+        $source = strtolower(trim((string) ($this->source ?? '')));
+        if (in_array($source, ['shopee', 'tiktok', 'lazada'], true)) {
+            return false;
+        }
+
+        return InstantOrderClassifier::isInstant($this->shipping_provider, $this->shipping_type);
     }
 
     public function registerMediaCollections(): void

@@ -11,7 +11,6 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Channel\Support\UploadErrorPresenter;
-use Modules\Outbound\Support\InstantOrderClassifier;
 use Modules\Sales\Models\SalesOrder;
 
 class CallShopeeDriverJob implements ShouldQueue
@@ -39,7 +38,7 @@ class CallShopeeDriverJob implements ShouldQueue
         }
 
         if (strtolower((string) $order->source) !== 'shopee'
-            || ! InstantOrderClassifier::isInstant($order->shipping_provider, $order->shipping_type)) {
+            || ! $order->is_instant) {
             Log::info('CallShopeeDriverJob: bukan Shopee Instant/Same Day, skip', [
                 'order_id' => $order->id,
                 'source' => $order->source,

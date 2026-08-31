@@ -3,7 +3,7 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\Log;
-use Modules\Outbound\Support\InstantOrderClassifier;
+use Modules\Outbound\Support\ChannelInstantSignal;
 use Modules\Sales\Services\SalesOrderService as OrderService;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Repositories\ChannelOrderRepository;
@@ -190,12 +190,13 @@ class TikTokOrderService
             return;
         }
 
-        $provider = $item['packages'][0]['shipping_provider_name']
-            ?? ($item['line_items'][0]['shipping_provider_name'] ?? null);
         $fulfillmentType = (string) ($item['fulfillment_type'] ?? '');
 
-        $isInstant = InstantOrderClassifier::isInstant($provider, $item['shipping_type'] ?? null)
-            || preg_match('/instant|same[- ]?day/i', $fulfillmentType) === 1;
+        $isInstant = ChannelInstantSignal::fromTypes(
+            is_string($item['shipping_type'] ?? null) ? $item['shipping_type'] : null,
+            $fulfillmentType,
+            is_string($item['delivery_option_name'] ?? null) ? $item['delivery_option_name'] : null,
+        ) === true;
 
         if (! $isInstant) {
             return;

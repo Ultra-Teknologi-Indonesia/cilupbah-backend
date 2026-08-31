@@ -4,7 +4,6 @@ namespace Modules\Sales\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Modules\Outbound\Support\InstantOrderClassifier;
 use Modules\Sales\Enums\BuyerCancellationSyncStatus;
 use Modules\Sales\Support\CancelReasonHumanizer;
 use OpenApi\Attributes as OA;
@@ -26,6 +25,7 @@ use OpenApi\Attributes as OA;
         new OA\Property(property: 'channel_status', type: 'string', example: 'UNPAID'),
         new OA\Property(property: 'is_paid', type: 'boolean', example: false),
         new OA\Property(property: 'is_canceled', type: 'boolean', example: false),
+        new OA\Property(property: 'channel_instant', type: 'boolean', nullable: true, example: true),
         new OA\Property(property: 'has_stock_shortfall', type: 'boolean', example: false),
         new OA\Property(property: 'payment_method', type: 'string', nullable: true, example: null),
 
@@ -239,7 +239,8 @@ class SalesOrderResource extends JsonResource
             'delivery_method' => $this->delivery_method,
             'is_cod' => (bool) $this->is_cod,
             'priority_fulfillment' => (bool) $this->priority_fulfillment,
-            'is_instant' => InstantOrderClassifier::isInstant($this->shipping_provider, $this->shipping_type),
+            'channel_instant' => $this->channel_instant,
+            'is_instant' => (bool) $this->is_instant,
             'other_discount' => (float) ($this->other_discount ?? 0),
             'shipping_discount' => (float) ($this->shipping_discount ?? 0),
             'price_includes_tax' => (bool) $this->price_includes_tax,

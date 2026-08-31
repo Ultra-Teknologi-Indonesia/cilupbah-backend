@@ -32,13 +32,21 @@ class BackfillOrderCourierLinksCommand extends Command
             ->whereNotNull('shipping_provider')
             ->where('shipping_provider', '!=', '')
             ->orderBy('id')
-            ->select('id', 'shipping_provider', 'courier_id', 'resolved_shipment_type')
+            ->select('id', 'source', 'channel_instant', 'shipping_provider', 'courier_id', 'resolved_shipment_type')
             ->chunkById(500, function ($rows) use (&$scanned, &$setCourier, &$setType, &$typeDist, &$sample, $apply) {
                 foreach ($rows as $row) {
                     $scanned++;
 
+                    $source = strtolower(trim((string) ($row->source ?? '')));
+                    $isChannelOrder = in_array($source, ['shopee', 'tiktok', 'lazada'], true);
+
                     $courierId = $this->mapper->resolveCourierId($row->shipping_provider);
-                    $type = $this->mapper->resolveShipmentType((string) $row->shipping_provider) ?: null;
+                    $type = null;
+                    if (! $isChannelOrder) {
+                        $type = $this->mapper->resolveShipmentType((string) $row->shipping_provider) ?: null;
+                    } elseif ($row->channel_instant === true || $row->channel_instant === 1 || $row->channel_instant === '1') {
+                        $type = 'INSTANT';
+                    }
 
                     $update = [];
                     if ($courierId && $courierId !== $row->courier_id) {
@@ -77,7 +85,7 @@ class BackfillOrderCourierLinksCommand extends Command
 
         if (! empty($typeDist)) {
             ksort($typeDist);
-            $this->line('Sebaran tipe kirim (dari nama kurir):');
+            $this->line('Sebaran tipe kirim dari data channel/manual:');
             foreach ($typeDist as $t => $n) {
                 $this->line("  {$t}: {$n}");
             }

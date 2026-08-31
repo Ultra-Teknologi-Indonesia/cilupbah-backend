@@ -12,10 +12,7 @@ class ShopeeInstantEligibility
             return false;
         }
 
-        return self::matchesInstantOrSameDay(
-            (string) $order->shipping_type,
-            (string) $order->shipping_provider,
-        );
+        return $order->is_instant;
     }
 
     public static function matchesInstantOrSameDay(string $shippingType, string $shippingProvider): bool
@@ -25,8 +22,6 @@ class ShopeeInstantEligibility
             return true;
         }
 
-        $haystack = strtolower($shippingType . ' ' . $shippingProvider);
-
-        return (bool) preg_match('/instant|instan|same[- ]?day/i', $haystack);
+        return (bool) preg_match('/instant|instan|same[- ]?day/i', $shippingType);
     }
 }

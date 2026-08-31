@@ -6,7 +6,6 @@ use App\Exceptions\UserFacingException;
 use Modules\Channel\Jobs\ProcessLazadaFulfillmentJob;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\TikTokOrderService;
-use Modules\Outbound\Support\InstantOrderClassifier;
 use Modules\Sales\Exceptions\ShippingLabelPreparingException;
 use Modules\Sales\Jobs\CallLazadaDriverJob;
 use Modules\Sales\Jobs\CallShopeeDriverJob;
@@ -49,7 +48,7 @@ class SalesOrderDriverCallService
             );
         }
 
-        if (! InstantOrderClassifier::isInstant($order->shipping_provider, $order->shipping_type)) {
+        if (! $order->is_instant) {
             throw new UserFacingException(
                 'Aksi tidak dapat diproses',
                 'Endpoint ini hanya untuk pesanan Instant / Same Day (Shopee / TikTok / Lazada).',
@@ -147,7 +146,7 @@ class SalesOrderDriverCallService
             );
         }
 
-        if (! InstantOrderClassifier::isInstant($order->shipping_provider, $order->shipping_type)) {
+        if (! $order->is_instant) {
             throw new UserFacingException(
                 'Aksi tidak dapat diproses',
                 'Endpoint ini hanya untuk pesanan Instant / Same Day (Shopee / TikTok / Lazada).',

@@ -58,7 +58,7 @@ class BulkShippingLabelController extends Controller
         abort_unless($batch->user_id === $req->user()->id, 403);
 
         $batch->load(['items' => function ($q) {
-            $q->with(['order:id,salesorder_no,channel_order_no,tracking_number,courier_name,shipping_provider,transaction_date,ship_by_date,shipping_label_status']);
+            $q->with(['order:id,salesorder_no,channel_order_no,tracking_number,courier_name,shipping_provider,shipping_type,channel_instant,resolved_shipment_type,transaction_date,ship_by_date,shipping_label_status']);
         }]);
 
         $waitingShopee = $batch->items

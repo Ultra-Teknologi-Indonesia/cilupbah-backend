@@ -17,7 +17,6 @@ use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\Shipment;
 use Modules\Outbound\Models\ShipmentOrder;
 use Modules\Outbound\Repositories\ShipmentRepository;
-use Modules\Outbound\Support\InstantOrderClassifier;
 use Modules\Sales\Enums\OrderActivityAction;
 use Modules\Sales\Enums\OrderActivityEntity;
 use Modules\Sales\Models\SalesOrder as Order;
@@ -244,7 +243,7 @@ class ShipmentService
     {
         $shipmentIsInstant = in_array($shipment->shipment_type, ['INSTANT', 'SAME_DAY'], true);
         $mismatchedType = $orders->first(function (Order $order) use ($shipmentIsInstant): bool {
-            return InstantOrderClassifier::isInstant($order->shipping_provider, $order->shipping_type)
+            return $order->is_instant
                 !== $shipmentIsInstant;
         });
 
@@ -566,7 +565,7 @@ class ShipmentService
                 }
             }
 
-            $orderIsInstant = InstantOrderClassifier::isInstant($order->shipping_provider, $order->shipping_type);
+            $orderIsInstant = $order->is_instant;
             $shipmentIsInstant = in_array($shipment->shipment_type, ['INSTANT', 'SAME_DAY'], true);
             if ($orderIsInstant !== $shipmentIsInstant) {
                 throw new ScanRejectedException(

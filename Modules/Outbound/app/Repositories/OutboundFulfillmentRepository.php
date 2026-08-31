@@ -8,7 +8,6 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\Picklist;
-use Modules\Outbound\Support\InstantOrderClassifier;
 use Modules\Sales\Models\SalesInvoice;
 use Modules\Sales\Models\SalesOrder;
 use Spatie\Permission\Models\Role;
@@ -116,12 +115,13 @@ class OutboundFulfillmentRepository
             ]);
         }
 
-        $rx = InstantOrderClassifier::REGEX;
         if (filled(request()->query('sort'))) {
 
             $query->reorder();
         } else {
-            $query->orderByRaw('CASE WHEN (shipping_provider ~* ? OR shipping_type ~* ?) THEN 0 ELSE 1 END ASC', [$rx, $rx])
+            $query->orderByRaw("CASE WHEN channel_instant IS TRUE
+                OR (channel_instant IS NULL AND resolved_shipment_type IN ('INSTANT', 'SAME_DAY'))
+                THEN 0 ELSE 1 END ASC")
                 ->orderByRaw('ship_by_date ASC NULLS LAST');
         }
 
@@ -153,21 +153,24 @@ class OutboundFulfillmentRepository
 
                 AllowedFilter::callback('courier_type', function ($query, $value) {
                     $v = strtolower((string) $value);
-                    $rx = InstantOrderClassifier::REGEX;
                     if ($v === 'instant') {
-                        $query->where(function ($q) use ($rx) {
-                            $q->whereRaw('shipping_provider ~* ?', [$rx])
-                                ->orWhereRaw('shipping_type ~* ?', [$rx]);
+                        $query->where(function ($q) {
+                            $q->where('channel_instant', true)
+                                ->orWhere(function ($qq) {
+                                    $qq->whereNull('channel_instant')
+                                        ->whereIn('resolved_shipment_type', ['INSTANT', 'SAME_DAY']);
+                                });
                         });
                     } elseif ($v === 'regular') {
-                        $query->where(function ($q) use ($rx) {
-                            $q->where(function ($qq) use ($rx) {
-                                $qq->whereNull('shipping_provider')
-                                    ->orWhereRaw('shipping_provider !~* ?', [$rx]);
-                            })->where(function ($qq) use ($rx) {
-                                $qq->whereNull('shipping_type')
-                                    ->orWhereRaw('shipping_type !~* ?', [$rx]);
-                            });
+                        $query->where(function ($q) {
+                            $q->where('channel_instant', false)
+                                ->orWhere(function ($qq) {
+                                    $qq->whereNull('channel_instant')
+                                        ->where(function ($qqq) {
+                                            $qqq->whereNull('resolved_shipment_type')
+                                                ->orWhereNotIn('resolved_shipment_type', ['INSTANT', 'SAME_DAY']);
+                                        });
+                                });
                         });
                     }
                 }),

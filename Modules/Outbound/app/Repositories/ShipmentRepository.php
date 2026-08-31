@@ -5,7 +5,6 @@ namespace Modules\Outbound\Repositories;
 use Modules\Outbound\Models\Shipment;
 use Modules\Outbound\Models\ShipmentOrder;
 use Modules\Outbound\Models\ShipmentTrackingEvent;
-use Modules\Outbound\Support\InstantOrderClassifier;
 use Modules\Sales\Models\SalesOrder;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
@@ -15,8 +14,6 @@ class ShipmentRepository
 {
     public function getAllPaginated(int $limit = 10)
     {
-        $rx = InstantOrderClassifier::REGEX;
-
         return QueryBuilder::for(Shipment::class)
             ->with(['location:id,location_name,location_code'])
             ->withCount('orders')
@@ -24,12 +21,16 @@ class ShipmentRepository
                 ->join('shipment_orders', 'shipment_orders.order_id', '=', 'sales_orders.id')
                 ->whereColumn('shipment_orders.shipment_id', 'shipments.id'),
             ])
-            ->selectRaw('EXISTS(
+            ->selectRaw("EXISTS(
                 SELECT 1 FROM shipment_orders
                 JOIN sales_orders ON sales_orders.id = shipment_orders.order_id
                 WHERE shipment_orders.shipment_id = shipments.id
-                  AND (sales_orders.shipping_provider ~* ? OR sales_orders.shipping_type ~* ?)
-            ) AS has_instant', [$rx, $rx])
+                  AND (
+                    sales_orders.channel_instant IS TRUE
+                    OR (sales_orders.channel_instant IS NULL
+                        AND sales_orders.resolved_shipment_type IN ('INSTANT', 'SAME_DAY'))
+                  )
+            ) AS has_instant")
             ->allowedFilters(
 
                 AllowedFilter::callback('status', function ($query, $value) {
@@ -109,7 +110,7 @@ class ShipmentRepository
             ->with([
                 'shipment:id,shipment_no,shipment_date,shipment_type,status,handed_over_at,courier_code,courier_name,location_id',
                 'shipment.location:id,location_name,location_code',
-                'order:id,salesorder_no,customer_name,source,channel_status,channel_order_no,courier_name,shipping_provider,tracking_number,transaction_date,shipping_address,shipping_city,shipping_province,pickup_code',
+                'order:id,salesorder_no,customer_name,source,channel_status,channel_order_no,courier_name,shipping_provider,shipping_type,channel_instant,resolved_shipment_type,tracking_number,transaction_date,shipping_address,shipping_city,shipping_province,pickup_code',
                 'packlist:id,packlist_no',
             ]);
 
@@ -182,7 +183,7 @@ class ShipmentRepository
             ->join('sales_orders', 'sales_orders.id', '=', 'shipment_orders.order_id')
             ->select('shipment_orders.*')
             ->with([
-                'order:id,salesorder_no,customer_name,status,grand_total,shipping_provider,shipping_type,tracking_number,source,channel_order_no,order_weight_gram',
+                'order:id,salesorder_no,customer_name,status,grand_total,shipping_provider,shipping_type,channel_instant,resolved_shipment_type,tracking_number,source,channel_order_no,order_weight_gram',
                 'packlist:id,packlist_no',
             ]);
 
@@ -201,7 +202,7 @@ class ShipmentRepository
     public function getForBulkManifestPdf(array $orderIds): \Illuminate\Support\Collection
     {
         return Shipment::with([
-                'orders.order:id,salesorder_no,customer_name,status,grand_total,shipping_provider,shipping_type,tracking_number,source,channel_order_no,order_weight_gram',
+                'orders.order:id,salesorder_no,customer_name,status,grand_total,shipping_provider,shipping_type,channel_instant,resolved_shipment_type,tracking_number,source,channel_order_no,order_weight_gram',
                 'orders.packlist:id,packlist_no',
                 'location:id,location_name,location_code',
             ])
@@ -213,7 +214,7 @@ class ShipmentRepository
     public function findById(string $id): ?Shipment
     {
         return Shipment::with([
-            'orders.order:id,salesorder_no,customer_name,status,grand_total,shipping_provider,shipping_type,tracking_number,source,channel_order_no,order_weight_gram,channel_status',
+                'orders.order:id,salesorder_no,customer_name,status,grand_total,shipping_provider,shipping_type,channel_instant,resolved_shipment_type,tracking_number,source,channel_order_no,order_weight_gram,channel_status',
             'orders.packlist:id,packlist_no',
             'location:id,location_name,location_code',
             'media',

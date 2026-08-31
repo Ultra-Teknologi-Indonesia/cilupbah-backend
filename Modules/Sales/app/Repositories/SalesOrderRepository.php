@@ -664,9 +664,17 @@ class SalesOrderRepository
             $resolvedCourierId = null;
         }
         $channelInstant = array_key_exists('channel_instant', $orderData) ? $orderData['channel_instant'] : null;
-        $resolvedShipmentType = $shippingProvider
-            ? ($courierMapper->resolveShipmentType((string) $shippingProvider, $channelInstant) ?: ($existing->resolved_shipment_type ?? null))
-            : ($existing->resolved_shipment_type ?? null);
+        $source = strtolower(trim((string) ($orderData['source'] ?? ($existing->source ?? ''))));
+        $isChannelOrder = in_array($source, ['shopee', 'tiktok', 'lazada'], true);
+        $resolvedShipmentType = $existing->resolved_shipment_type ?? null;
+        if ($shippingProvider) {
+            if ($channelInstant !== null || ! $isChannelOrder) {
+                $resolvedShipmentType = $courierMapper->resolveShipmentType((string) $shippingProvider, $channelInstant)
+                    ?: $resolvedShipmentType;
+            } elseif (in_array(strtoupper(trim((string) ($orderData['shipping_type'] ?? ''))), ['INSTANT', 'SAME_DAY'], true)) {
+                $resolvedShipmentType = 'INSTANT';
+            }
+        }
         $normalizedChannelStatus = ChannelStatusNormalizer::normalize(
             $orderData['source'] ?? null,
             $orderData['channel_status'] ?? null,
@@ -744,6 +752,9 @@ class SalesOrderRepository
             'fulfillment_type' => $orderData['fulfillment_type'] ?? ($existing->fulfillment_type ?? null),
             'delivery_option_id' => $orderData['delivery_option_id'] ?? ($existing->delivery_option_id ?? null),
             'shipping_type' => $orderData['shipping_type'] ?? ($existing->shipping_type ?? null),
+            'channel_instant' => array_key_exists('channel_instant', $orderData)
+                ? $orderData['channel_instant']
+                : ($existing->channel_instant ?? null),
             'resolved_shipment_type' => $resolvedShipmentType,
             'days_to_ship' => $orderData['days_to_ship'] ?? null,
             'status' => $orderData['status'],

@@ -104,6 +104,36 @@ class TikTokToInternalOrderMapperTest extends TestCase
         $this->assertSame('TIKTOK_SHOP', $result['commerce_platform']);
     }
 
+    public function test_reads_instant_from_tiktok_delivery_category_not_provider_name(): void
+    {
+        $mapper = new TikTokToInternalOrderMapper;
+        $order = $this->order([
+            ['product_id' => '173', 'sku_id' => '999', 'seller_sku' => 'AG-17-BLU', 'quantity' => 1],
+        ]);
+        $order['shipping_provider'] = 'J&T Express';
+        $order['shipping_type'] = 'TIKTOK';
+        $order['delivery_option_name'] = 'Instant Hemat';
+
+        $result = $mapper->map($order, 'shop-1');
+
+        $this->assertTrue($result['channel_instant']);
+    }
+
+    public function test_does_not_infer_instant_from_tiktok_provider_when_category_is_generic(): void
+    {
+        $mapper = new TikTokToInternalOrderMapper;
+        $order = $this->order([
+            ['product_id' => '173', 'sku_id' => '999', 'seller_sku' => 'AG-17-BLU', 'quantity' => 1],
+        ]);
+        $order['shipping_provider'] = 'Grab Instant Hemat';
+        $order['shipping_type'] = 'TIKTOK';
+        $order['fulfillment_type'] = 'FULFILLMENT_BY_SELLER';
+
+        $result = $mapper->map($order, 'shop-1');
+
+        $this->assertNull($result['channel_instant']);
+    }
+
     public function test_does_not_reopen_buyer_cancel_for_completed_order(): void
     {
         $mapper = new TikTokToInternalOrderMapper;
