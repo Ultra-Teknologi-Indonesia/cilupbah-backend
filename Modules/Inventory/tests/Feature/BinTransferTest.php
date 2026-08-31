@@ -368,13 +368,19 @@ class BinTransferTest extends TestCase
         $zeroResponse = $this->getJson("/api/v1/inventory/stock/items?location_id={$warehouse->id}&include_zero=1&search=BUNDLE-PICKER-ZERO");
         $zeroResponse->assertOk()
             ->assertJsonPath('data.0.item_id', $bundleVariant->id)
-            ->assertJsonPath('data.0.total_on_hand', 0);
+            ->assertJsonPath('data.0.total_on_hand', 0)
+            ->assertJsonPath('data.0.item_code', 'BUNDLE-PICKER-ZERO')
+            ->assertJsonPath('data.0.available_qty', 0)
+            ->assertJsonPath('data.0.variant', null)
+            ->assertJsonPath('data.0.is_bundle', true);
 
         $inventory->update(['on_hand' => 5, 'available' => 5]);
         $positiveResponse = $this->getJson("/api/v1/inventory/stock/items?location_id={$warehouse->id}&search=BUNDLE-PICKER-ZERO");
         $positiveResponse->assertOk()
             ->assertJsonPath('data.0.item_id', $bundleVariant->id)
-            ->assertJsonPath('data.0.total_on_hand', 2);
+            ->assertJsonPath('data.0.total_on_hand', 2)
+            ->assertJsonPath('data.0.available_qty', 2)
+            ->assertJsonPath('data.0.variant', null);
     }
 
     public function test_stocked_items_requires_location_id(): void

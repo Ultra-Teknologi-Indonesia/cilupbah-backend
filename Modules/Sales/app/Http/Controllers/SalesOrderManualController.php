@@ -33,6 +33,13 @@ class SalesOrderManualController extends Controller
                     'requested' => $e->getRequested(),
                 ],
             );
+        } catch (\DomainException $e) {
+            return $this->errorResponse(
+                $e->getMessage(),
+                422,
+                [],
+                'Item tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(

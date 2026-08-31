@@ -116,23 +116,41 @@ class ProductRepository
             return $existingVariant->refresh();
         }
 
-        $sku = $product->sku;
+        $technicalSku = '__bundle__'.$product->id;
 
-        if ($sku !== null && ProductVariant::query()
-            ->where('sku', $sku)
-            ->whereNull('deleted_at')
-            ->where('product_id', '!=', $product->id)
-            ->exists()) {
+        $existingTechnicalVariant = ProductVariant::withTrashed()
+            ->where('sku', $technicalSku)
+            ->first();
+
+        if ($existingTechnicalVariant && $existingTechnicalVariant->product_id !== $product->id) {
             throw new \DomainException(
-                "SKU bundle {$sku} sudah digunakan oleh varian aktif lain. "
+                "Kunci teknis bundle {$product->id} sudah digunakan item lain. "
                 .'Periksa data duplikat sebelum menyimpan bundle.'
             );
         }
 
+        if ($existingTechnicalVariant?->trashed()) {
+            $existingTechnicalVariant->restore();
+        }
+
+        if ($existingTechnicalVariant) {
+            $updates = [
+                'is_active' => true,
+                'is_internal' => true,
+            ];
+            if ($sellPrice !== null) {
+                $updates['sell_price'] = $sellPrice;
+            }
+            $existingTechnicalVariant->update($updates);
+
+            return $existingTechnicalVariant->refresh();
+        }
+
         return $product->variants()->create([
-            'sku' => $sku,
+            'sku' => $technicalSku,
             'sell_price' => $sellPrice ?? 0,
             'is_active' => true,
+            'is_internal' => true,
         ]);
     }
 

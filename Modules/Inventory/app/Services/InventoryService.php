@@ -187,17 +187,35 @@ class InventoryService
                 ->map(fn ($v) => $v['value'])
                 ->implode(', ');
 
+            $isBundle = (bool) ($variant->parent_product_is_bundle ?? false);
+            $displaySku = $isBundle
+                ? ($variant->parent_product_sku ?? $variant->sku)
+                : $variant->sku;
+            $availableQty = (int) ($variant->total_on_hand ?? 0);
+
             return [
                 'item_id' => $variant->id,
-                'sku' => $variant->sku,
+                'sku' => $displaySku,
                 'product_id' => $variant->product_id,
 
                 'product_name' => $variant->parent_product_name ?? $variant->product?->name,
-                'variant_label' => $variantLabel,
-                'variation_values' => $variationValues,
+                'variant_label' => $isBundle ? '' : $variantLabel,
+                'variation_values' => $isBundle ? [] : $variationValues,
                 'thumbnail_url' => $this->resolveVariantThumbnail($variant),
-                'total_on_hand' => (int) ($variant->total_on_hand ?? 0),
+                'total_on_hand' => $availableQty,
                 'sell_price' => (float) ($variant->sell_price ?? 0),
+
+                'item_code' => $displaySku,
+                'item_name' => $variant->parent_product_name ?? $variant->product?->name,
+                'item_group_id' => $variant->product_id,
+                'is_bundle' => $isBundle,
+                'sell_unit' => 'Buah',
+                'available_qty' => $availableQty,
+                'variant' => $isBundle ? null : [
+                    'id' => $variant->id,
+                    'sku' => $variant->sku,
+                    'label' => $variantLabel,
+                ],
             ];
         });
 

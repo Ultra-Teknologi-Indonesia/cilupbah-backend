@@ -149,7 +149,8 @@ class BundleCompositionTest extends TestCase
 
         $this->assertDatabaseHas('product_variants', [
             'product_id' => $bundleId,
-            'sku' => 'BUNDLE-AB',
+            'sku' => '__bundle__'.$bundleId,
+            'is_internal' => true,
             'is_active' => true,
         ]);
 

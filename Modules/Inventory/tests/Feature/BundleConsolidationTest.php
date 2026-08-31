@@ -93,8 +93,9 @@ class BundleConsolidationTest extends TestCase
 
         $this->assertDatabaseHas('product_variants', [
             'product_id' => $bundle->id,
-            'sku' => 'BUNDLE-REPAIR',
+            'sku' => '__bundle__'.$bundle->id,
             'sell_price' => 75000,
+            'is_internal' => true,
             'is_active' => true,
         ]);
     }

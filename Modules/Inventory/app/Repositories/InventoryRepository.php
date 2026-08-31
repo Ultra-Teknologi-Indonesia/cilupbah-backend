@@ -1098,6 +1098,8 @@ class InventoryRepository
             ->select(
                 'product_variants.*',
                 'parent_product.name as parent_product_name',
+                'parent_product.sku as parent_product_sku',
+                'parent_product.is_bundle as parent_product_is_bundle',
                 DB::raw(
                     'CASE WHEN parent_product.is_bundle = true '
                     .'THEN COALESCE(bundle_stock_summary.total_available, 0) '
@@ -1124,9 +1126,31 @@ class InventoryRepository
                                 '(COALESCE(stock_summary.placed_on_hand, 0) '
                                 .'- COALESCE(stock_summary.on_order, 0)) > 0'
                             );
-                    });
+                });
             });
         }
+
+        // A bundle is one sellable item even if legacy data contains more
+        // than one active persistence key. Keep only the deterministic
+        // technical/public representative so the picker matches Jubelio's
+        // single-row bundle response.
+        $query->where(function ($query) {
+            $query
+                ->where('parent_product.is_bundle', false)
+                ->orWhere(function ($query) {
+                    $query
+                        ->where('parent_product.is_bundle', true)
+                        ->whereRaw(
+                            'product_variants.id = ('
+                            .'SELECT bundle_variant.id FROM product_variants bundle_variant '
+                            .'WHERE bundle_variant.product_id = parent_product.id '
+                            .'AND bundle_variant.is_active = true '
+                            .'AND bundle_variant.deleted_at IS NULL '
+                            .'ORDER BY bundle_variant.is_internal DESC NULLS LAST, '
+                            .'bundle_variant.created_at ASC, bundle_variant.id ASC LIMIT 1)'
+                        );
+                });
+        });
 
         $query
             ->with([
@@ -1136,7 +1160,15 @@ class InventoryRepository
                 'product.media' => fn ($q) => $q->whereNull('variant_id')->orderByDesc('is_primary')->orderBy('sort_order'),
             ]);
 
-        $query->allowedSearch('product_variants.sku', 'product.name');
+        $query->when($search !== '', function ($query) use ($search) {
+            $like = '%'.addcslashes($search, '%_\\').'%';
+            $query->where(function ($query) use ($like) {
+                $query
+                    ->where('product_variants.sku', 'ilike', $like)
+                    ->orWhere('parent_product.sku', 'ilike', $like)
+                    ->orWhere('parent_product.name', 'ilike', $like);
+            });
+        });
 
         return $query
             ->orderBy('product_variants.sku')

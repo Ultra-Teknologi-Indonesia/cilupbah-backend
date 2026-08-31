@@ -56,11 +56,10 @@ class BundleService
                 'status'      => Product::STATUS_MASTER,
                 'is_active'   => true,
             ]);
-            $product->variants()->create([
-                'sku'        => $payload['sku'],
-                'sell_price' => $payload['sell_price'] ?? 0,
-                'is_active'  => true,
-            ]);
+            $this->productRepository->ensureActiveBundleVariant(
+                $product,
+                array_key_exists('sell_price', $payload) ? $payload['sell_price'] : null,
+            );
         }
 
         $product->bundleItems()->delete();
