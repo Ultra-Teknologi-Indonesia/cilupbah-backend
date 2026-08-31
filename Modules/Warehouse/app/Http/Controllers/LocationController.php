@@ -330,7 +330,7 @@ class LocationController extends Controller
             return $this->successResponse(null, 'Lokasi berhasil dihapus.');
         } catch (\DomainException $e) {
             return $this->errorResponse(
-                'Gagal menghapus.',
+                $e->getMessage(),
                 422,
                 ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',

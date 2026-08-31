@@ -196,6 +196,33 @@ class LocationApiTest extends TestCase
             ->assertJsonPath('errors.detail', 'Lokasi yang dilindungi tidak dapat dinonaktifkan.');
     }
 
+    public function test_can_update_locked_non_system_location(): void
+    {
+        $location = Location::factory()->create([
+            'is_system' => false,
+            'is_locked' => true,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->putJson("/api/v1/locations/{$location->id}", [
+                'address' => 'Alamat baru untuk lokasi terkunci',
+            ])
+            ->assertOk();
+
+        $this->assertDatabaseHas('locations', [
+            'id' => $location->id,
+            'address' => 'Alamat baru untuk lokasi terkunci',
+        ]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->putJson("/api/v1/locations/{$location->id}", [
+                'is_active' => 0,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('errors.detail', 'Lokasi yang dilindungi tidak dapat dinonaktifkan.');
+    }
+
     public function test_cannot_delete_locked_location(): void
     {
         $location = Location::factory()->create(['is_locked' => true]);

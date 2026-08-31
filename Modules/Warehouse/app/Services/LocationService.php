@@ -78,7 +78,11 @@ class LocationService
 
             $protectedLocation = $location->is_system || $location->is_locked;
 
-            if ($protectedLocation && array_key_exists('is_active', $data) && $data['is_active'] === false) {
+            $deactivationRequested = array_key_exists('is_active', $data)
+                && $data['is_active'] !== null
+                && in_array($data['is_active'], [false, 0, '0', 'false'], true);
+
+            if ($protectedLocation && $deactivationRequested) {
                 throw new \DomainException('Lokasi yang dilindungi tidak dapat dinonaktifkan.');
             }
 
