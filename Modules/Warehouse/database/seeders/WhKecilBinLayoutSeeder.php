@@ -28,7 +28,7 @@ class WhKecilBinLayoutSeeder extends Seeder
         $result = app(BinLayoutImporter::class)->import($location, $codes, true);
 
         $this->command?->info(sprintf(
-            'WH-KECIL layout: %d kode total, %d dibuat, %d sudah ada, %d zona baru.',
+            'Gudang Kecil layout: %d kode total, %d dibuat, %d sudah ada, %d zona baru.',
             $result['total'],
             $result['created'],
             $result['existing'],

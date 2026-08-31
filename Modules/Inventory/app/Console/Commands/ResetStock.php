@@ -13,7 +13,7 @@ use Modules\Warehouse\Models\Location;
 class ResetStock extends Command
 {
     protected $signature = 'inventory:reset-stock
-        {--location= : Kode lokasi yang akan direset (misal WH-KECIL, WH-PUSAT, atau ALL)}
+        {--location= : Kode lokasi yang akan direset (misal O, WH-PUSAT, atau ALL)}
         {--purge-history : Hapus seluruh riwayat mutasi stok, penyesuaian stok, dan reservasi terkait}
         {--dry-run : Simulasi tanpa mengubah database}
         {--force : Lewati konfirmasi keamanan}';
@@ -28,7 +28,7 @@ class ResetStock extends Command
         $isForce = (bool) $this->option('force');
 
         if (empty($locationCode)) {
-            $this->error('Parameter --location wajib diisi (contoh: --location=WH-KECIL, --location=WH-PUSAT, atau --location=ALL).');
+            $this->error('Parameter --location wajib diisi (contoh: --location=O, --location=WH-PUSAT, atau --location=ALL).');
             return self::FAILURE;
         }
 

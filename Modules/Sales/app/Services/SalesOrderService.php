@@ -1576,9 +1576,7 @@ class SalesOrderService
         SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
 
         try {
-            $kecilId = DB::table('locations')
-                ->where('location_code', Location::SYSTEM_KECIL_CODE)
-                ->value('id');
+            $kecilId = Location::getOfficialSmallWarehouseId();
 
             if ($kecilId && $order->location_id === $kecilId && ! $this->isManualSource($order->source)) {
                 AutoDetectStockReplenishmentJob::dispatch();

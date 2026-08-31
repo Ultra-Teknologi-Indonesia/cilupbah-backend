@@ -940,7 +940,7 @@ class InventoryRepository
                 DB::raw(StockSummary::availableSql().' as total_available'))
             ->whereIn('inventories.item_id', $ids)
             ->groupBy('inventories.item_id', 'inventories.location_id')
-            ->with(['product:id,sku,product_id', 'location:id,location_name,location_code'])
+            ->with(['product:id,sku,product_id', 'location:id,location_name,location_code,is_small_warehouse'])
             ->get();
     }
 

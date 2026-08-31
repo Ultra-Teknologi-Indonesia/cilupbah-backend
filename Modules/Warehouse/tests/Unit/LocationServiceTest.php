@@ -25,6 +25,25 @@ class LocationServiceTest extends TestCase
         );
     }
 
+    public function test_small_warehouse_resolution_uses_operational_flag_not_legacy_code(): void
+    {
+        Location::query()->update(['is_small_warehouse' => false]);
+
+        $small = Location::query()->where('location_code', 'O')->first();
+        if (! $small) {
+            $small = Location::factory()->create(['location_code' => 'O']);
+        }
+
+        $small->forceFill([
+            'is_warehouse' => true,
+            'is_small_warehouse' => true,
+            'is_active' => true,
+        ])->save();
+
+        $this->assertSame($small->id, Location::getSmallWarehouseId());
+        $this->assertSame($small->id, Location::getOfficialSmallWarehouseId());
+    }
+
     public function test_create_location_generates_default_bin(): void
     {
         $data = [

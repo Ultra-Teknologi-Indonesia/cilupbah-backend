@@ -493,7 +493,7 @@ class PicklistService
 
         if ($officialLocationId !== null && $officialLocationId !== $locationId) {
             throw new OutboundValidationException(
-                'Pesanan channel wajib diproses dan dipotong dari Gudang Kecil (WH-KECIL).'
+                'Pesanan channel wajib diproses dan dipotong dari Gudang Kecil.'
             );
         }
     }
