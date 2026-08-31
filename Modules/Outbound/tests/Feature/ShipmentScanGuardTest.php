@@ -216,6 +216,36 @@ class ShipmentScanGuardTest extends TestCase
         ]);
     }
 
+    public function test_bulk_add_allows_a_packed_marketplace_regular_order_to_regular_shipment(): void
+    {
+        Bus::fake();
+        $loc = $this->seedLocation();
+        $shipmentId = $this->seedShipment($loc, 'SPX Hemat', 'REGULAR');
+        [$orderId] = $this->seedPackedOrder($loc, 'SPX Hemat', source: 'shopee');
+
+        app(ShipmentService::class)->addOrders($shipmentId, [$orderId]);
+
+        $this->assertDatabaseHas('shipment_orders', [
+            'shipment_id' => $shipmentId,
+            'order_id' => $orderId,
+        ]);
+    }
+
+    public function test_bulk_add_rejects_a_marketplace_regular_order_until_packed(): void
+    {
+        $loc = $this->seedLocation();
+        $shipmentId = $this->seedShipment($loc, 'SPX Hemat', 'REGULAR');
+        [$orderId, $orderNo] = $this->seedPackedOrder($loc, 'SPX Hemat', source: 'shopee');
+        DB::table('sales_orders')->where('id', $orderId)->update(['status' => 'reserved']);
+
+        $this->expectException(\Exception::class);
+        $this->expectExceptionMessage(
+            "Order berikut dibatalkan atau bukan status 'packed' dan tidak bisa dimanifestkan: {$orderNo}"
+        );
+
+        app(ShipmentService::class)->addOrders($shipmentId, [$orderId]);
+    }
+
     public function test_bulk_add_rejects_a_regular_order_to_an_instant_shipment(): void
     {
         $loc = $this->seedLocation();
