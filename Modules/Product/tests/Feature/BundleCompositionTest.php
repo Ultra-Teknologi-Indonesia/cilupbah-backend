@@ -168,6 +168,8 @@ class BundleCompositionTest extends TestCase
         $detail = $this->getJson("/api/v1/products/{$bundleId}")->assertStatus(200);
 
         $detail->assertJsonPath('data.product_type', 'bundle');
+        $detail->assertJsonPath('data.total_variants', 0);
+        $detail->assertJsonPath('data.variants', []);
         $components = collect($detail->json('data.bundle_components'));
         $this->assertCount(2, $components);
 

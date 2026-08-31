@@ -123,7 +123,7 @@ class ProductResource extends JsonResource
                         ->groupBy('variant_id')
                     : collect();
 
-                return $this->variants
+                return $this->visibleVariants()
                     ->sortBy(
                         fn ($variant) => $variant->relationLoaded('options')
                             ? $variant->options->pluck('value')->implode(' / ')
@@ -206,10 +206,19 @@ class ProductResource extends JsonResource
     protected function totalVariants(): ?int
     {
         if ($this->resource->relationLoaded('variants')) {
-            return $this->variants->count();
+            return $this->visibleVariants()->count();
         }
 
         return $this->variants_count !== null ? (int) $this->variants_count : null;
+    }
+
+    protected function visibleVariants()
+    {
+        if (! $this->resource->relationLoaded('variants')) {
+            return collect();
+        }
+
+        return $this->is_bundle ? collect() : $this->variants;
     }
 
     protected function productType(): string
@@ -268,7 +277,7 @@ class ProductResource extends JsonResource
             return null;
         }
 
-        $prices = $this->variants
+        $prices = ($this->is_bundle ? $this->variants : $this->visibleVariants())
             ->pluck('sell_price')
             ->filter(fn ($price) => $price !== null);
 
