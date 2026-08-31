@@ -7,6 +7,8 @@ Route::get('/', function () {
     return view('welcome');
 });
 
+Route::get('/healthz', static fn () => response()->json(['status' => 'ok']));
+
 Route::prefix('dev/tracking')->middleware('dev.only')->name('dev.tracking.')->group(function () {
     Route::get('/', [TrackingController::class, 'index'])->name('index');
     Route::get('/data', [TrackingController::class, 'data'])->name('data');

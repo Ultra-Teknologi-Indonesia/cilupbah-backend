@@ -86,7 +86,7 @@ return [
         ],
         'supervisor-orders' => [
             'connection' => 'redis',
-            'queue' => ['orders', env('QUEUE_NAME_WEBHOOK_DOWNLOADS', 'webhook-downloads'), env('QUEUE_NAME_TIKTOK_WEBHOOKS', 'tiktok-webhooks')],
+            'queue' => ['orders'],
             'balance' => 'auto',
             'minProcesses' => 1,
             'maxProcesses' => 4,

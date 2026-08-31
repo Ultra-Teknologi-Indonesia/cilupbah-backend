@@ -12,7 +12,7 @@ class ValidateBaselineImport extends Command
 {
     protected $signature = 'inventory:validate-baseline
         {file : Path file Excel (ekspor Jubelio atau template impor penyesuaian stok)}
-        {--location= : Kode lokasi tujuan, contoh WH-KECIL atau WH-PUSAT}
+        {--location= : Kode lokasi tujuan, contoh O atau WH-PUSAT}
         {--export= : Tulis baris bermasalah ke file CSV}
         {--limit=15 : Jumlah contoh yang ditampilkan per jenis masalah}';
 
@@ -67,7 +67,7 @@ class ValidateBaselineImport extends Command
         $code = trim((string) $this->option('location'));
 
         if ($code === '') {
-            $this->error('Opsi --location wajib diisi. Contoh: --location=WH-KECIL');
+            $this->error('Opsi --location wajib diisi. Contoh: --location=O');
             $this->listLocations();
 
             return null;

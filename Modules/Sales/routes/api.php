@@ -233,6 +233,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('sales/orders/set-as-paid', [SalesOrderController::class, 'setAsPaid'])->name('sales.orders.set-as-paid');
         Route::post('sales/orders/{id}/accept-cancel', [SalesOrderController::class, 'acceptCancelRequest'])->whereUuid('id')->name('sales.orders.accept-cancel');
         Route::post('sales/orders/{id}/reject-cancel', [SalesOrderController::class, 'rejectCancelRequest'])->whereUuid('id')->name('sales.orders.reject-cancel');
+        Route::post('sales/orders/{id}/retry-cancel-sync', [SalesOrderController::class, 'retryBuyerCancellationSync'])->whereUuid('id')->name('sales.orders.retry-cancel-sync');
         Route::post('sales/orders/{id}/request-cancel', [SalesOrderController::class, 'requestChannelCancel'])->whereUuid('id')->name('sales.orders.request-cancel');
         Route::post('sales/orders/{id}/cancel-manual', [SalesOrderController::class, 'cancelManual'])->whereUuid('id')->name('sales.orders.cancel-manual');
         Route::post('sales/orders/bulk-cancel-manual', [SalesOrderController::class, 'bulkCancelManual'])->name('sales.orders.bulk-cancel-manual');

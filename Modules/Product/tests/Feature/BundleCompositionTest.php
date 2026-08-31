@@ -147,6 +147,13 @@ class BundleCompositionTest extends TestCase
         $bundleId = $create->json('data.product_id');
         $this->assertNotNull($bundleId);
 
+        $this->assertDatabaseHas('product_variants', [
+            'product_id' => $bundleId,
+            'sku' => '__bundle__'.$bundleId,
+            'is_internal' => true,
+            'is_active' => true,
+        ]);
+
         $this->assertDatabaseHas('product_bundle_items', [
             'bundle_product_id' => $bundleId,
             'component_variant_id' => $aBiru->id,
@@ -161,6 +168,8 @@ class BundleCompositionTest extends TestCase
         $detail = $this->getJson("/api/v1/products/{$bundleId}")->assertStatus(200);
 
         $detail->assertJsonPath('data.product_type', 'bundle');
+        $detail->assertJsonPath('data.total_variants', 0);
+        $detail->assertJsonPath('data.variants', []);
         $components = collect($detail->json('data.bundle_components'));
         $this->assertCount(2, $components);
 
@@ -283,6 +292,10 @@ class BundleCompositionTest extends TestCase
         ])->assertStatus(200);
 
         $this->assertDatabaseHas('products', ['id' => $product->id, 'is_bundle' => true]);
+        $this->assertDatabaseHas('product_variants', [
+            'product_id' => $product->id,
+            'is_active' => true,
+        ]);
         $this->assertDatabaseHas('product_bundle_items', [
             'bundle_product_id' => $product->id,
             'component_variant_id' => $component->id,

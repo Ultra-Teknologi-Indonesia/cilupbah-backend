@@ -241,9 +241,7 @@ class ReconcileOnOrder extends Command
     {
         $expected = [];
 
-        $kecilId = DB::table('locations')
-            ->where('location_code', Location::SYSTEM_KECIL_CODE)
-            ->value('id');
+        $kecilId = Location::getOfficialSmallWarehouseId();
 
         $orders = SalesOrder::with('items')
             ->whereIn('status', ['pending', 'reserved', 'picked', 'packed'])

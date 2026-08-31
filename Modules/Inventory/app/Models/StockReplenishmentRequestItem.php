@@ -5,6 +5,7 @@ namespace Modules\Inventory\Models;
 use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Modules\Product\Models\ProductVariant;
 
 class StockReplenishmentRequestItem extends Model
 {
@@ -17,11 +18,19 @@ class StockReplenishmentRequestItem extends Model
         'item_id',
         'sku',
         'qty',
+        'demand_qty',
+        'available_qty',
+        'in_flight_qty',
+        'suggested_qty',
         'reason',
     ];
 
     protected $casts = [
         'qty' => 'integer',
+        'demand_qty' => 'integer',
+        'available_qty' => 'integer',
+        'in_flight_qty' => 'integer',
+        'suggested_qty' => 'integer',
     ];
 
     public function request(): BelongsTo
@@ -31,6 +40,6 @@ class StockReplenishmentRequestItem extends Model
 
     public function variant(): BelongsTo
     {
-        return $this->belongsTo(\Modules\Product\Models\ProductVariant::class, 'item_id');
+        return $this->belongsTo(ProductVariant::class, 'item_id');
     }
 }

@@ -22,6 +22,7 @@ use Modules\Outbound\Models\ShipmentOrder;
 use Modules\Outbound\Support\InstantOrderClassifier;
 use Modules\Sales\Database\Factories\SalesOrderFactory;
 use Modules\Sales\Enums\CancelChannel;
+use Modules\Sales\Enums\BuyerCancellationSyncStatus;
 use Modules\Sales\Enums\ChannelStatus;
 use Modules\Sales\Enums\ContactChannel;
 use Modules\Sales\Enums\CustomerDecision;
@@ -144,6 +145,11 @@ class SalesOrder extends Model implements HasMedia
         'cancel_rejected_at',
         'cancel_rejected_by',
         'cancel_reject_reason',
+        'buyer_cancel_sync_status',
+        'buyer_cancel_sync_decision',
+        'buyer_cancel_sync_error',
+        'buyer_cancel_synced_at',
+        'buyer_cancel_channel_reference',
         'cancel_dismissed_at',
         'cancel_dismissed_by',
         'channel_cancel_requested_at',
@@ -167,6 +173,7 @@ class SalesOrder extends Model implements HasMedia
         'fulfillment_type',
         'delivery_option_id',
         'shipping_type',
+        'channel_instant',
         'resolved_shipment_type',
         'days_to_ship',
         'payment_method',
@@ -218,6 +225,7 @@ class SalesOrder extends Model implements HasMedia
         'pick_failed_at' => 'datetime',
         'cancel_accepted_at' => 'datetime',
         'cancel_rejected_at' => 'datetime',
+        'buyer_cancel_synced_at' => 'datetime',
         'cancel_dismissed_at' => 'datetime',
         'contacted_at' => 'datetime',
         'decision_at' => 'datetime',
@@ -238,6 +246,7 @@ class SalesOrder extends Model implements HasMedia
         'is_cod' => 'boolean',
         'priority_fulfillment' => 'boolean',
         'is_split_order' => 'boolean',
+        'channel_instant' => 'boolean',
         'actual_shipping_fee_confirmed' => 'boolean',
         'is_manual' => 'boolean',
         'is_shadow' => 'boolean',
@@ -408,20 +417,41 @@ class SalesOrder extends Model implements HasMedia
     {
 
         $available = StockSummary::availableSql('inventories', 'location_bins');
+        $componentAvailable = StockSummary::availableSql('component_inventories', 'component_bins');
 
-        return "sales_order_items.qty_in_base > COALESCE((
+        $bundleShortfall = "EXISTS (
+                    SELECT 1
+                    FROM product_variants pv
+                    JOIN products p ON p.id = pv.product_id
+                    JOIN product_bundle_items pbi ON pbi.bundle_product_id = p.id
+                    WHERE pv.id = sales_order_items.item_id
+                      AND p.is_bundle = true
+                      AND sales_order_items.qty_in_base * GREATEST(pbi.qty, 1) > COALESCE((
+                          SELECT {$componentAvailable}
+                          FROM inventories component_inventories
+                          LEFT JOIN location_bins component_bins
+                            ON component_bins.id = component_inventories.bin_id
+                          WHERE component_inventories.item_id = pbi.component_variant_id
+                            AND component_inventories.location_id = sales_orders.location_id
+                      ), 0)
+                )";
+
+        $normalShortfall = "NOT EXISTS (
+                    SELECT 1
+                    FROM product_variants pv
+                    JOIN products p ON p.id = pv.product_id
+                    WHERE pv.id = sales_order_items.item_id
+                      AND p.is_bundle = true
+                )
+                AND sales_order_items.qty_in_base > COALESCE((
                     SELECT {$available}
                     FROM inventories
                     LEFT JOIN location_bins ON location_bins.id = inventories.bin_id
                     WHERE inventories.item_id = sales_order_items.item_id
                       AND inventories.location_id = sales_orders.location_id
-                ), 0)
-                AND NOT EXISTS (
-                    SELECT 1 FROM product_variants pv
-                    JOIN products p ON p.id = pv.product_id
-                    WHERE pv.id = sales_order_items.item_id
-                      AND p.is_bundle = true
-        )";
+                ), 0)";
+
+        return "({$bundleShortfall} OR {$normalShortfall})";
     }
 
     public function scopeWithStockShortfallFlag(Builder $query): Builder
@@ -507,10 +537,26 @@ class SalesOrder extends Model implements HasMedia
 
     public function getIsInstantAttribute(): bool
     {
-        return InstantOrderClassifier::isInstant(
-            $this->shipping_provider,
-            $this->shipping_type,
-        );
+        if ($this->channel_instant !== null) {
+            return (bool) $this->channel_instant;
+        }
+
+        $source = strtolower(trim((string) ($this->source ?? '')));
+        if (in_array($source, ['shopee', 'tiktok', 'lazada'], true)) {
+            return false;
+        }
+
+        $resolvedType = strtoupper(trim((string) ($this->resolved_shipment_type ?? '')));
+        if ($resolvedType !== '') {
+            return in_array($resolvedType, ['INSTANT', 'SAME_DAY'], true);
+        }
+
+        $shippingType = strtoupper(trim((string) ($this->shipping_type ?? '')));
+        if (in_array($shippingType, ['INSTANT', 'SAME_DAY'], true)) {
+            return true;
+        }
+
+        return InstantOrderClassifier::isInstant($this->shipping_provider, $this->shipping_type);
     }
 
     public function registerMediaCollections(): void

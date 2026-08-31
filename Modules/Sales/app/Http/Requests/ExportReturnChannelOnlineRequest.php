@@ -17,6 +17,7 @@ class ExportReturnChannelOnlineRequest extends FormRequest
             'date_from'   => 'nullable|date',
             'date_to'     => 'nullable|date|after_or_equal:date_from',
             'location_id' => 'nullable|string',
+            'status'      => 'nullable|string',
         ];
     }
 }

@@ -8,6 +8,10 @@ use Illuminate\Support\Facades\Queue;
 use Modules\Channel\Jobs\ProcessLazadaWebhook;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Services\ChannelDownloadService;
+use Modules\Channel\Services\LazadaAuthService;
+use Modules\Channel\Services\LazadaOrderService;
+use Modules\Channel\Tests\Support\SeedsCatalogVariant;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
@@ -17,7 +21,7 @@ use Tests\TestCase;
 class LazadaWebhookTest extends TestCase
 {
     use RefreshDatabase;
-    use \Modules\Channel\Tests\Support\SeedsCatalogVariant;
+    use SeedsCatalogVariant;
 
     private ChannelShop $shop;
 
@@ -59,7 +63,7 @@ class LazadaWebhookTest extends TestCase
 
     private function sign(string $body): string
     {
-        return hash_hmac('sha256', 'test_key' . $body, 'test_secret');
+        return hash_hmac('sha256', 'test_key'.$body, 'test_secret');
     }
 
     private function postWebhook(array $payload, ?string $signature = null)
@@ -135,11 +139,53 @@ class LazadaWebhookTest extends TestCase
             ], 200),
         ]);
 
-        (new ProcessLazadaWebhook($this->orderPayload()))->handle(app(\Modules\Channel\Services\LazadaOrderService::class), app(\Modules\Channel\Services\ChannelDownloadService::class), app(\Modules\Channel\Services\LazadaAuthService::class));
+        (new ProcessLazadaWebhook($this->orderPayload()))->handle(app(LazadaOrderService::class), app(ChannelDownloadService::class), app(LazadaAuthService::class));
 
         $order = SalesOrder::where('salesorder_no', 'LZ-900123')->first();
         $this->assertNotNull($order);
         $this->assertEquals('lazada', $order->source);
+    }
+
+    public function test_buyer_cancellation_reverse_webhook_records_pending_request(): void
+    {
+        Http::fake([
+            'api.lazada.co.id/rest/order/get*' => Http::response([
+                'code' => '0',
+                'data' => [
+                    'order_id' => 900123,
+                    'statuses' => ['pending'],
+                    'price' => '120000.00',
+                    'created_at' => '2026-06-12 08:00:00 +0700',
+                    'customer_first_name' => 'Sari',
+                ],
+            ], 200),
+            'api.lazada.co.id/rest/orders/items/get*' => Http::response([
+                'code' => '0',
+                'data' => [[
+                    'order_id' => 900123,
+                    'order_items' => [['order_item_id' => 11, 'name' => 'Tas', 'sku' => 'SKU-TAS', 'item_price' => 120000, 'paid_price' => 120000]],
+                ]],
+            ], 200),
+        ]);
+
+        (new ProcessLazadaWebhook($this->orderPayload([
+            'message_type' => 10,
+            'data' => [
+                'trade_order_id' => '900123',
+                'reverse_order_id' => 'REV-900123',
+                'reverse_status' => 'CANCEL_INIT',
+                'reason_text' => 'Pembeli berubah pikiran',
+            ],
+        ])))->handle(
+            app(LazadaOrderService::class),
+            app(ChannelDownloadService::class),
+            app(LazadaAuthService::class),
+        );
+
+        $order = SalesOrder::where('salesorder_no', 'LZ-900123')->firstOrFail();
+        $this->assertNotNull($order->cancel_requested_at);
+        $this->assertSame('pending', $order->buyer_cancel_sync_status);
+        $this->assertSame('REV-900123', $order->buyer_cancel_channel_reference);
     }
 
     public function test_product_qc_rejected_marks_mapping_failed(): void
@@ -170,7 +216,7 @@ class LazadaWebhookTest extends TestCase
             'data' => ['item_id' => '555100', 'qc_status' => 'rejected', 'reasons' => 'Gambar buram'],
         ]);
 
-        (new ProcessLazadaWebhook($payload))->handle(app(\Modules\Channel\Services\LazadaOrderService::class), app(\Modules\Channel\Services\ChannelDownloadService::class), app(\Modules\Channel\Services\LazadaAuthService::class));
+        (new ProcessLazadaWebhook($payload))->handle(app(LazadaOrderService::class), app(ChannelDownloadService::class), app(LazadaAuthService::class));
 
         $mapping->refresh();
         $this->assertEquals('rejected', $mapping->sync_status);
@@ -181,9 +227,9 @@ class LazadaWebhookTest extends TestCase
     {
         $payload = $this->orderPayload(['message_type' => 99, 'data' => []]);
 
-        (new ProcessLazadaWebhook($payload))->handle(app(\Modules\Channel\Services\LazadaOrderService::class), app(\Modules\Channel\Services\ChannelDownloadService::class), app(\Modules\Channel\Services\LazadaAuthService::class));
+        (new ProcessLazadaWebhook($payload))->handle(app(LazadaOrderService::class), app(ChannelDownloadService::class), app(LazadaAuthService::class));
 
-        $this->assertTrue(true); 
+        $this->assertTrue(true);
     }
 
     public function test_horizon_default_supervisor_serves_webhooks_queue(): void

@@ -197,6 +197,7 @@ class CancelRequestFlowTest extends TestCase
 
         $order = SalesOrder::find($orderId);
         $this->assertSame('shipped', $order->status);
+        $this->assertNull($order->cancel_requested_at);
         $this->assertNotNull($order->cancel_accepted_at);
 
         $this->assertDatabaseHas('sales_returns', ['order_id' => $orderId]);

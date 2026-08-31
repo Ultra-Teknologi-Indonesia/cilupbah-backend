@@ -3,6 +3,7 @@
 namespace Modules\Inventory\Repositories;
 
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Support\InventoryMovementSourceMap;
@@ -140,10 +141,40 @@ class InventoryMovementRepository
         return $original;
     }
 
-    public function getHistoryPaginated(int $limit = 10)
+    public function getHistoryQuery(array $params = [])
     {
-        $view = strtolower((string) request('view', 'all'));
+        $input = $params !== [] ? $params : request()->query();
+        $get = static function (string $key, mixed $default = null) use ($input): mixed {
+            if (array_key_exists($key, $input)) {
+                return $input[$key];
+            }
+
+            return data_get($input, "filter.{$key}", $default);
+        };
+
+        $queryRequest = $params !== []
+            ? Request::create('/', 'GET', [
+                'view' => $get('view', 'all'),
+                'search' => $get('search', ''),
+                'filter' => array_filter([
+                    'item_id' => $get('item_id'),
+                    'location_id' => $get('location_id'),
+                    'source' => $get('source'),
+                    'direction' => $get('direction'),
+                    'drill' => $get('drill'),
+                    'store_id' => $get('store_id'),
+                    'transaction_number' => $get('transaction_number'),
+                    'date_from' => $get('date_from'),
+                    'date_to' => $get('date_to'),
+                ], static fn ($value): bool => $value !== null && $value !== ''),
+            ])
+            : request();
+
+        $view = strtolower((string) $get('view', 'all'));
         $baseQuery = InventoryMovement::query()->where('qty', '!=', 0);
+        if (is_array($get('allowed_location_ids'))) {
+            $baseQuery->whereIn('inventory_movements.location_id', $get('allowed_location_ids'));
+        }
         $baseQuery->whereNotIn('source', InventoryMovementSourceMap::HIDDEN_SOURCES);
         $baseQuery->whereNotExists(function ($query) {
             $query
@@ -217,7 +248,7 @@ class InventoryMovementRepository
         } elseif ($view === 'attention') {
             $baseQuery->whereIn('source', InventoryMovementSourceMap::INVOICE_SOURCES);
         } else {
-            $drill = strtolower((string) request('filter.drill', request('drill', '')));
+            $drill = strtolower((string) $get('drill', ''));
             if ($drill !== 'allocation') {
                 $baseQuery->where(function ($q) {
                     $q->where('source', '!=', 'ORDER_RELEASE')
@@ -298,10 +329,11 @@ class InventoryMovementRepository
             }
         }
 
-        if (trim((string) request('search', '')) !== '') {
-            $baseQuery->leftJoin('product_variants', 'product_variants.id', '=', 'inventory_movements.item_id')
-                ->leftJoin('products', 'products.id', '=', 'product_variants.product_id');
-        }
+        $baseQuery
+            ->leftJoin('product_variants', 'product_variants.id', '=', 'inventory_movements.item_id')
+            ->leftJoin('products', 'products.id', '=', 'product_variants.product_id')
+            ->leftJoin('locations', 'locations.id', '=', 'inventory_movements.location_id')
+            ->leftJoin('location_bins', 'location_bins.id', '=', 'inventory_movements.bin_id');
 
         $deductList = "'".implode("','", InventoryMovementSourceMap::ORDER_DEDUCT_SOURCES)."'";
         $restoreList = "'".implode("','", InventoryMovementSourceMap::ORDER_RESTORE_SOURCES)."'";
@@ -315,18 +347,21 @@ class InventoryMovementRepository
         $legacyUnassignedQtySql = "CASE WHEN inventory_movements.bin_id IS NULL THEN ($physicalQtySql) ELSE 0 END";
         $physicalTotalQtySql = "CASE WHEN balance_bins.id IS NOT NULL THEN ($physicalQtySql) ELSE 0 END";
         $availableDeltaSql = "(($placedQtySql) + ($allocationDeltaSql))";
-        $hasLocationFilter = ! empty(request('filter.location_id', request('location_id')));
+        $hasLocationFilter = ! empty($get('location_id'));
 
         $balanceQuery = InventoryMovement::query()
             ->leftJoin('location_bins as balance_bins', 'balance_bins.id', '=', 'inventory_movements.bin_id')
             ->where('inventory_movements.qty', '!=', 0);
+        if (is_array($get('allowed_location_ids'))) {
+            $balanceQuery->whereIn('inventory_movements.location_id', $get('allowed_location_ids'));
+        }
 
-        $balanceItemId = request('filter.item_id', request('item_id'));
+        $balanceItemId = $get('item_id');
         if (is_string($balanceItemId) && trim($balanceItemId) !== '') {
             $balanceQuery->where('inventory_movements.item_id', trim($balanceItemId));
         }
 
-        $balanceLocationId = request('filter.location_id', request('location_id'));
+        $balanceLocationId = $get('location_id');
         if (is_string($balanceLocationId) && trim($balanceLocationId) !== '') {
             $balanceQuery->where('inventory_movements.location_id', trim($balanceLocationId));
         }
@@ -345,6 +380,10 @@ class InventoryMovementRepository
                 '('.StockSummary::placedOnHandSql('current_inventory', 'current_bins')
                 .' - '.StockSummary::onOrderSql('current_inventory').') AS current_available_balance'
             );
+
+        if (is_array($get('allowed_location_ids'))) {
+            $currentStockQuery->whereIn('current_inventory.location_id', $get('allowed_location_ids'));
+        }
 
         if ($hasLocationFilter) {
             $currentStockQuery
@@ -395,11 +434,15 @@ class InventoryMovementRepository
         $isPick = "inventory_movements.source IN ('PICKING', 'PICKING_REVERSAL')";
         $pickOrder = fn (string $column) => "(CASE WHEN {$isPick} THEN (SELECT {$column} {$pickOrderScope} ORDER BY so.salesorder_no LIMIT 1) END)";
 
-        $qb = QueryBuilder::for($baseQuery)
+        $qb = QueryBuilder::for($baseQuery, $queryRequest)
             ->joinSub($balanceQuery, 'movement_balances', function ($join) {
                 $join->on('movement_balances.id', '=', 'inventory_movements.id');
             })
             ->select('inventory_movements.*')
+            ->selectRaw('products.name AS product_name')
+            ->selectRaw('products.sku AS product_sku')
+            ->selectRaw('locations.location_name AS location_name')
+            ->selectRaw('COALESCE(location_bins.bin_final_code, location_bins.bin_code) AS bin_code')
             ->selectRaw('movement_balances.total_balance')
             ->selectRaw('movement_balances.physical_balance')
             ->selectRaw('movement_balances.placed_balance')
@@ -616,7 +659,13 @@ class InventoryMovementRepository
             ->allowedSorts('transaction_date', 'created_at')
             ->defaultSort('-transaction_date');
 
-        return $qb->paginate(request('per_page', $limit))
+        return $qb;
+    }
+
+    public function getHistoryPaginated(int $limit = 10)
+    {
+        return $this->getHistoryQuery()
+            ->paginate(request('per_page', $limit))
             ->appends(request()->query());
     }
 }

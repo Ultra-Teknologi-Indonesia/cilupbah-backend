@@ -54,6 +54,52 @@ class BundleConsolidationTest extends TestCase
         $this->assertDatabaseHas('products', ['id' => $bundleProductId, 'is_bundle' => true]);
     }
 
+    public function test_update_repairs_active_bundle_without_variant(): void
+    {
+        DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Umum']);
+        $user = $this->createPrivilegedUser();
+
+        $component = Product::create([
+            'name' => 'Komponen Repair',
+            'category_id' => 1,
+            'status' => Product::STATUS_MASTER,
+            'is_active' => true,
+            'is_bundle' => false,
+        ]);
+        $componentVariant = ProductVariant::create([
+            'product_id' => $component->id,
+            'sku' => 'COMP-REPAIR',
+            'is_active' => true,
+        ]);
+        $bundle = Product::create([
+            'name' => 'Bundle Tanpa Variant',
+            'sku' => 'BUNDLE-REPAIR',
+            'category_id' => 1,
+            'status' => Product::STATUS_MASTER,
+            'is_active' => true,
+            'is_bundle' => true,
+        ]);
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/inventory/items/bundle', [
+            'id' => $bundle->id,
+            'name' => $bundle->name,
+            'sku' => $bundle->sku,
+            'category_id' => 1,
+            'sell_price' => 75000,
+            'components' => [
+                ['variant_id' => $componentVariant->id, 'qty' => 1],
+            ],
+        ])->assertStatus(200);
+
+        $this->assertDatabaseHas('product_variants', [
+            'product_id' => $bundle->id,
+            'sku' => '__bundle__'.$bundle->id,
+            'sell_price' => 75000,
+            'is_internal' => true,
+            'is_active' => true,
+        ]);
+    }
+
     public function test_store_rejects_bundle_in_bundle(): void
     {
         DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Umum']);
@@ -188,6 +234,20 @@ class BundleConsolidationTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.item_id', $bundle->id)
             ->assertJsonPath('data.is_bundle', true);
+
+        foreach (['total_on_hand', '-total_available', 'average_cost'] as $sort) {
+            $this->actingAs($user, 'sanctum')
+                ->getJson('/api/v1/inventory?filter[is_bundle]=true&sort='.$sort)
+                ->assertOk()
+                ->assertJsonPath('meta.total', 1)
+                ->assertJsonPath('data.0.item_id', $bundle->id);
+        }
+
+        $variantResponse = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/inventory?filter[is_bundle]=false&sort=-total_on_hand')
+            ->assertOk();
+
+        $this->assertSame($sticker->id, $variantResponse->json('data.0.item_id'));
     }
 
     public function test_bundle_components_cannot_be_combined_across_warehouses(): void

@@ -12,7 +12,6 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Channel\Support\UploadErrorPresenter;
-use Modules\Outbound\Support\InstantOrderClassifier;
 use Modules\Sales\Models\SalesOrder;
 
 class CallTikTokDriverJob implements ShouldQueue
@@ -50,7 +49,7 @@ class CallTikTokDriverJob implements ShouldQueue
             return;
         }
 
-        if (! InstantOrderClassifier::isInstant($order->shipping_provider, $order->shipping_type)) {
+        if (! $order->is_instant) {
             Log::info('CallTikTokDriverJob: bukan TikTok instant/same-day, skip', [
                 'order_id' => $order->id,
                 'shipping_type' => $order->shipping_type,

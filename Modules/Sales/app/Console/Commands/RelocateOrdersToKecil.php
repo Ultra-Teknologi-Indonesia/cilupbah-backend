@@ -3,7 +3,6 @@
 namespace Modules\Sales\Console\Commands;
 
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderService;
 use Modules\Warehouse\Models\Location;
@@ -19,12 +18,10 @@ class RelocateOrdersToKecil extends Command
 
     public function handle(SalesOrderService $service): int
     {
-        $kecilId = DB::table('locations')
-            ->where('location_code', Location::SYSTEM_KECIL_CODE)
-            ->value('id');
+        $kecilId = Location::getOfficialSmallWarehouseId();
 
         if (! $kecilId) {
-            $this->error('Gudang Kecil (location_code = WH-KECIL) belum di-seed. Jalankan migration terlebih dahulu.');
+            $this->error('Gudang Kecil resmi belum dikonfigurasi. Tandai satu lokasi aktif sebagai gudang kecil terlebih dahulu.');
             return self::FAILURE;
         }
 

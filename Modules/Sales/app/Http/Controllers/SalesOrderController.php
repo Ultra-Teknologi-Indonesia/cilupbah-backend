@@ -4,19 +4,20 @@ namespace Modules\Sales\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Services\PdfRenderer;
-use Illuminate\Http\Request;
-use OpenApi\Attributes as OA;
-
 use App\Traits\ApiResponse;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Inventory\Models\ImpexActivity;
 use Modules\Inventory\Services\ImpexActivityService;
+use Modules\Sales\Enums\BuyerCancellationSyncStatus;
 use Modules\Sales\Exports\CancelledOrdersExport;
 use Modules\Sales\Exports\SalesOrdersExport;
-use Modules\Sales\Http\Requests\CancelManualOrderRequest;
-use Modules\Sales\Http\Requests\BulkCancelManualOrderRequest;
 use Modules\Sales\Http\Requests\AcceptOrderCancelRequest;
+use Modules\Sales\Http\Requests\BulkCancelManualOrderRequest;
 use Modules\Sales\Http\Requests\BulkMarkContactedRequest;
+use Modules\Sales\Http\Requests\CancelManualOrderRequest;
 use Modules\Sales\Http\Requests\DeleteCanceledOrdersRequest;
 use Modules\Sales\Http\Requests\DownloadOrderItemRequest;
 use Modules\Sales\Http\Requests\ExportCancelledOrdersRequest;
@@ -39,9 +40,11 @@ use Modules\Sales\Http\Requests\UpdateSalesOrderRequest;
 use Modules\Sales\Http\Requests\UploadCourierIdPhotoRequest;
 use Modules\Sales\Http\Resources\SalesOrderResource;
 use Modules\Sales\Http\Resources\ShippingLabelResource;
+use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderDriverCallService;
 use Modules\Sales\Services\SalesOrderService;
 use Modules\Sales\Support\OrderPdfPresenter;
+use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Sales Orders', description: 'API Endpoints for Sales Orders')]
 #[OA\Schema(
@@ -95,7 +98,7 @@ use Modules\Sales\Support\OrderPdfPresenter;
                     new OA\Property(property: 'amount', type: 'number', nullable: true),
                 ]
             )
-        )
+        ),
     ]
 )]
 class SalesOrderController extends Controller
@@ -119,11 +122,11 @@ class SalesOrderController extends Controller
                 description: 'Successful operation',
                 content: new OA\JsonContent(
                     properties: [
-                        new OA\Property(property: 'data', type: 'array', items: new OA\Items(ref: '#/components/schemas/SalesOrder'))
+                        new OA\Property(property: 'data', type: 'array', items: new OA\Items(ref: '#/components/schemas/SalesOrder')),
                     ]
                 )
             ),
-            new OA\Response(response: 401, description: 'Unauthenticated')
+            new OA\Response(response: 401, description: 'Unauthenticated'),
         ]
     )]
     public function index(Request $request)
@@ -163,12 +166,12 @@ class SalesOrderController extends Controller
                 description: 'Sales order created successfully',
                 content: new OA\JsonContent(
                     properties: [
-                        new OA\Property(property: 'data', ref: '#/components/schemas/SalesOrder')
+                        new OA\Property(property: 'data', ref: '#/components/schemas/SalesOrder'),
                     ]
                 )
             ),
             new OA\Response(response: 401, description: 'Unauthenticated'),
-            new OA\Response(response: 422, description: 'Validation Error')
+            new OA\Response(response: 422, description: 'Validation Error'),
         ]
     )]
     public function store(StoreSalesOrderRequest $request)
@@ -184,7 +187,7 @@ class SalesOrderController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Orders'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'ID of the sales order', schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'ID of the sales order', schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(
@@ -192,18 +195,18 @@ class SalesOrderController extends Controller
                 description: 'Successful operation',
                 content: new OA\JsonContent(
                     properties: [
-                        new OA\Property(property: 'data', ref: '#/components/schemas/SalesOrder')
+                        new OA\Property(property: 'data', ref: '#/components/schemas/SalesOrder'),
                     ]
                 )
             ),
             new OA\Response(response: 401, description: 'Unauthenticated'),
-            new OA\Response(response: 404, description: 'Sales order not found')
+            new OA\Response(response: 404, description: 'Sales order not found'),
         ]
     )]
     public function show(Request $request, $id)
     {
         $order = $this->orderService->getOrderById($id);
-        if (!$order) {
+        if (! $order) {
             return $this->errorResponse('Data tidak ditemukan', 404);
         }
 
@@ -216,7 +219,7 @@ class SalesOrderController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Orders'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'ID of the sales order to update', schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'ID of the sales order to update', schema: new OA\Schema(type: 'string')),
         ],
         requestBody: new OA\RequestBody(
             required: true,
@@ -228,13 +231,13 @@ class SalesOrderController extends Controller
                 description: 'Sales order updated successfully',
                 content: new OA\JsonContent(
                     properties: [
-                        new OA\Property(property: 'data', ref: '#/components/schemas/SalesOrder')
+                        new OA\Property(property: 'data', ref: '#/components/schemas/SalesOrder'),
                     ]
                 )
             ),
             new OA\Response(response: 401, description: 'Unauthenticated'),
             new OA\Response(response: 404, description: 'Sales order not found'),
-            new OA\Response(response: 422, description: 'Validation Error')
+            new OA\Response(response: 422, description: 'Validation Error'),
         ]
     )]
     public function update(UpdateSalesOrderRequest $request, $id)
@@ -251,12 +254,12 @@ class SalesOrderController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Orders'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'ID of the sales order to delete', schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, description: 'ID of the sales order to delete', schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(response: 200, description: 'Sales order deleted successfully'),
             new OA\Response(response: 401, description: 'Unauthenticated'),
-            new OA\Response(response: 404, description: 'Sales order not found')
+            new OA\Response(response: 404, description: 'Sales order not found'),
         ]
     )]
     public function destroy($id)
@@ -304,12 +307,12 @@ class SalesOrderController extends Controller
         $validated = $request->validated();
 
         $export = new SalesOrdersExport(
-            tab:        $validated['tab'] ?? null,
-            dateFrom:   $validated['date_from'] ?? null,
-            dateTo:     $validated['date_to'] ?? null,
-            source:     $validated['source'] ?? null,
-            search:     $validated['search'] ?? null,
-            storeId:    $validated['store_id'] ?? null,
+            tab: $validated['tab'] ?? null,
+            dateFrom: $validated['date_from'] ?? null,
+            dateTo: $validated['date_to'] ?? null,
+            source: $validated['source'] ?? null,
+            search: $validated['search'] ?? null,
+            storeId: $validated['store_id'] ?? null,
             locationId: $validated['location_id'] ?? null,
         );
 
@@ -333,10 +336,10 @@ class SalesOrderController extends Controller
         $validated = $request->validated();
 
         $export = new CancelledOrdersExport(
-            dateFrom:     $validated['date_from'] ?? null,
-            dateTo:       $validated['date_to'] ?? null,
+            dateFrom: $validated['date_from'] ?? null,
+            dateTo: $validated['date_to'] ?? null,
             postPackOnly: (bool) ($validated['post_pack_only'] ?? false),
-            source:       $validated['source'] ?? null,
+            source: $validated['source'] ?? null,
         );
 
         $filename = sprintf(
@@ -446,7 +449,7 @@ class SalesOrderController extends Controller
         $result = $this->orderService->moveToReadyToProcess($request->validated()['order_ids'], $request->user());
 
         return $this->successResponse([
-            'moved'   => $result['moved'],
+            'moved' => $result['moved'],
             'skipped' => $result['skipped'],
         ], $result['message']);
     }
@@ -685,9 +688,29 @@ class SalesOrderController extends Controller
     )]
     public function acceptCancelRequest(string $id, AcceptOrderCancelRequest $request)
     {
-        $order = $this->orderService->acceptCancelRequest($id, auto: false, reason: $request->validated()['reason'] ?? null);
+        try {
+            $order = $this->orderService->acceptCancelRequest($id, auto: false, reason: $request->validated()['reason'] ?? null);
+        } catch (\Throwable $e) {
+            if ($e instanceof ModelNotFoundException) {
+                throw $e;
+            }
 
-        return $this->successResponse(new SalesOrderResource($order), 'Pembatalan pesanan diterima');
+            $order = SalesOrder::find($id);
+
+            return $this->errorResponse(
+                'Pembatalan lokal sudah diproses, tetapi keputusan belum berhasil dikirim ke channel. Silakan coba kirim ulang.',
+                422,
+                $order ? [
+                    'buyer_cancel_sync_status' => $order->buyer_cancel_sync_status,
+                    'buyer_cancel_sync_status_label' => $order->buyer_cancel_sync_status
+                        ? BuyerCancellationSyncStatus::tryFrom($order->buyer_cancel_sync_status)?->label()
+                        : null,
+                    'buyer_cancel_sync_error' => $order->buyer_cancel_sync_error,
+                ] : null,
+            );
+        }
+
+        return $this->successResponse(new SalesOrderResource($order), 'Pembatalan buyer diterima dan sudah dikonfirmasi ke channel');
     }
 
     #[OA\Post(
@@ -706,9 +729,56 @@ class SalesOrderController extends Controller
     )]
     public function rejectCancelRequest(string $id, RejectOrderCancelRequest $request)
     {
-        $order = $this->orderService->rejectCancelRequest($id, reason: $request->validated()['reason'] ?? null);
+        try {
+            $order = $this->orderService->rejectCancelRequest($id, reason: $request->validated()['reason'] ?? null);
+        } catch (\Throwable $e) {
+            if ($e instanceof ModelNotFoundException) {
+                throw $e;
+            }
 
-        return $this->successResponse(new SalesOrderResource($order), 'Permintaan pembatalan ditolak');
+            $order = SalesOrder::find($id);
+
+            return $this->errorResponse(
+                'Penolakan lokal sudah diproses, tetapi keputusan belum berhasil dikirim ke channel. Silakan coba kirim ulang.',
+                422,
+                $order ? [
+                    'buyer_cancel_sync_status' => $order->buyer_cancel_sync_status,
+                    'buyer_cancel_sync_status_label' => $order->buyer_cancel_sync_status
+                        ? BuyerCancellationSyncStatus::tryFrom($order->buyer_cancel_sync_status)?->label()
+                        : null,
+                    'buyer_cancel_sync_error' => $order->buyer_cancel_sync_error,
+                ] : null,
+            );
+        }
+
+        return $this->successResponse(new SalesOrderResource($order), 'Pembatalan buyer ditolak dan sudah dikonfirmasi ke channel');
+    }
+
+    public function retryBuyerCancellationSync(string $id)
+    {
+        try {
+            $order = $this->orderService->retryBuyerCancellationSync($id);
+        } catch (\Throwable $e) {
+            if ($e instanceof ModelNotFoundException) {
+                throw $e;
+            }
+
+            $order = SalesOrder::find($id);
+
+            return $this->errorResponse(
+                'Keputusan belum berhasil dikirim ulang ke channel.',
+                422,
+                $order ? [
+                    'buyer_cancel_sync_status' => $order->buyer_cancel_sync_status,
+                    'buyer_cancel_sync_status_label' => $order->buyer_cancel_sync_status
+                        ? BuyerCancellationSyncStatus::tryFrom($order->buyer_cancel_sync_status)?->label()
+                        : null,
+                    'buyer_cancel_sync_error' => $order->buyer_cancel_sync_error,
+                ] : null,
+            );
+        }
+
+        return $this->successResponse(new SalesOrderResource($order), 'Keputusan pembatalan buyer berhasil dikirim ulang ke channel');
     }
 
     #[OA\Post(
@@ -765,13 +835,13 @@ class SalesOrderController extends Controller
     )]
     public function cancelManual(string $id, CancelManualOrderRequest $request)
     {
-        $order = \Modules\Sales\Models\SalesOrder::findOrFail($id);
+        $order = SalesOrder::findOrFail($id);
 
-        if ($order->source && !in_array(strtolower($order->source), ['manual', 'offline'])) {
+        if ($order->source && ! in_array(strtolower($order->source), ['manual', 'offline'])) {
             return $this->errorResponse('Hanya pesanan manual yang dapat dibatalkan melalui rute ini', 422);
         }
 
-        $canceledOrder = $this->orderService->cancelLocally($id, $request->validated('reason'), \Illuminate\Support\Facades\Auth::id());
+        $canceledOrder = $this->orderService->cancelLocally($id, $request->validated('reason'), Auth::id());
 
         return $this->successResponse(new SalesOrderResource($canceledOrder), 'Pesanan berhasil dibatalkan secara langsung');
     }
@@ -799,20 +869,20 @@ class SalesOrderController extends Controller
     public function bulkCancelManual(BulkCancelManualOrderRequest $request)
     {
         $data = $request->validated();
-        $orders = \Modules\Sales\Models\SalesOrder::whereIn('id', $data['order_ids'])->get();
+        $orders = SalesOrder::whereIn('id', $data['order_ids'])->get();
 
         foreach ($orders as $order) {
-            if ($order->source && !in_array(strtolower($order->source), ['manual', 'offline'])) {
+            if ($order->source && ! in_array(strtolower($order->source), ['manual', 'offline'])) {
                 return $this->errorResponse("Pesanan {$order->salesorder_no} bukan pesanan manual dan tidak dapat dibatalkan di sini", 422);
             }
         }
 
-        $actorId = \Illuminate\Support\Facades\Auth::id();
+        $actorId = Auth::id();
         foreach ($orders as $order) {
             $this->orderService->cancelLocally($order->id, $data['reason'] ?? 'Dibatalkan massal', $actorId);
         }
 
-        return $this->successResponse(null, count($orders) . ' pesanan berhasil dibatalkan');
+        return $this->successResponse(null, count($orders).' pesanan berhasil dibatalkan');
     }
 
     #[OA\Get(
@@ -946,11 +1016,11 @@ class SalesOrderController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Orders'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(response: 200, description: 'PDF stream', content: new OA\MediaType(mediaType: 'application/pdf')),
-            new OA\Response(response: 404, description: 'Order not found')
+            new OA\Response(response: 404, description: 'Order not found'),
         ]
     )]
     #[OA\Post(

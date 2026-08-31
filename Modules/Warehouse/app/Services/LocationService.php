@@ -76,11 +76,19 @@ class LocationService
                 return null;
             }
 
-            if ($location->is_locked) {
-                throw new \DomainException('Lokasi sistem terkunci dan tidak dapat diedit.');
+            $protectedLocation = $location->is_system || $location->is_locked;
+
+            $deactivationRequested = array_key_exists('is_active', $data)
+                && $data['is_active'] !== null
+                && in_array($data['is_active'], [false, 0, '0', 'false'], true);
+
+            if ($protectedLocation && $deactivationRequested) {
+                throw new \DomainException('Lokasi yang dilindungi tidak dapat dinonaktifkan.');
             }
 
             if ($location->is_system) {
+                // Protection flags are system-owned; they are never changed by
+                // the regular location edit form.
                 $data['is_active'] = true;
                 unset($data['is_system'], $data['is_locked']);
             }
@@ -157,8 +165,8 @@ class LocationService
                 return false;
             }
 
-            if ($location->is_system) {
-                throw new \DomainException('Lokasi sistem tidak dapat dihapus.');
+            if ($location->is_system || $location->is_locked) {
+                throw new \DomainException('Lokasi yang dilindungi tidak dapat dihapus.');
             }
 
             $hasInventory = \Modules\Inventory\Models\Inventory::where('location_id', $id)->exists();

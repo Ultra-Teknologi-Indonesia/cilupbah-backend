@@ -6,6 +6,9 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductVariant;
+use Modules\Warehouse\Models\LocationBin;
 use Tests\TestCase;
 
 class ManualOrderStockGuardTest extends TestCase
@@ -114,5 +117,66 @@ class ManualOrderStockGuardTest extends TestCase
             ->assertStatus(422);
 
         $this->assertDatabaseMissing('sales_orders', ['salesorder_no' => 'MAN-3']);
+    }
+
+    public function test_bundle_lookup_returns_product_as_single_item_without_public_variant(): void
+    {
+        $locationId = $this->insertLocation();
+        $componentProduct = Product::create([
+            'category_id' => DB::table('categories')->value('id'),
+            'name' => 'Komponen Bundle Lookup',
+            'sku' => 'COMP-LOOKUP',
+            'is_active' => true,
+        ]);
+        $component = ProductVariant::create([
+            'product_id' => $componentProduct->id,
+            'sku' => 'COMP-LOOKUP-V1',
+            'is_active' => true,
+        ]);
+        $bundle = Product::create([
+            'category_id' => DB::table('categories')->value('id'),
+            'name' => 'Bundle Lookup',
+            'sku' => 'BUNDLE-LOOKUP',
+            'is_bundle' => true,
+            'is_active' => true,
+        ]);
+        $bundle->bundleItems()->create([
+            'component_variant_id' => $component->id,
+            'qty' => 1,
+        ]);
+        $bin = LocationBin::create([
+            'location_id' => $locationId,
+            'bin_code' => 'A1',
+            'bin_final_code' => 'LOC-MAN-A1',
+            'is_inbound' => false,
+        ]);
+        DB::table('inventories')->insert([
+            'id' => Str::uuid()->toString(),
+            'item_id' => $component->id,
+            'location_id' => $locationId,
+            'bin_id' => $bin->id,
+            'on_hand' => 18,
+            'on_order' => 0,
+            'available' => 18,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/sales/manual/lookup-sku?sku={$bundle->sku}&location_id={$locationId}")
+            ->assertOk();
+
+        $response->assertJsonPath('data.sku', 'BUNDLE-LOOKUP')
+            ->assertJsonPath('data.name', 'Bundle Lookup')
+            ->assertJsonPath('data.available', 18)
+            ->assertJsonPath('data.variant', null)
+            ->assertJsonPath('data.is_bundle', true);
+
+        $this->assertDatabaseHas('product_variants', [
+            'product_id' => $bundle->id,
+            'sku' => '__bundle__'.$bundle->id,
+            'is_internal' => true,
+            'is_active' => true,
+        ]);
     }
 }

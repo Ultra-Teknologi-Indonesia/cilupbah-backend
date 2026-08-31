@@ -79,8 +79,80 @@ class ProductRepository
                 ]);
             }
 
+            if ($product->is_bundle && $product->is_active) {
+                $this->ensureActiveBundleVariant($product);
+            }
+
             return $product;
         });
+    }
+
+    public function ensureActiveBundleVariant(Product $product, string|int|float|null $sellPrice = null): ProductVariant
+    {
+        $activeVariant = $product->variants()
+            ->where('is_active', true)
+            ->first();
+
+        if ($activeVariant) {
+            if ($sellPrice !== null) {
+                $activeVariant->update(['sell_price' => $sellPrice]);
+            }
+
+            return $activeVariant;
+        }
+
+        $existingVariant = $product->variants()
+            ->where('is_internal', true)
+            ->whereNull('deleted_at')
+            ->orderBy('created_at')
+            ->first();
+
+        if ($existingVariant) {
+            $updates = ['is_active' => true];
+            if ($sellPrice !== null) {
+                $updates['sell_price'] = $sellPrice;
+            }
+            $existingVariant->update($updates);
+
+            return $existingVariant->refresh();
+        }
+
+        $technicalSku = '__bundle__'.$product->id;
+
+        $existingTechnicalVariant = ProductVariant::withTrashed()
+            ->where('sku', $technicalSku)
+            ->first();
+
+        if ($existingTechnicalVariant && $existingTechnicalVariant->product_id !== $product->id) {
+            throw new \DomainException(
+                "Kunci teknis bundle {$product->id} sudah digunakan item lain. "
+                .'Periksa data duplikat sebelum menyimpan bundle.'
+            );
+        }
+
+        if ($existingTechnicalVariant?->trashed()) {
+            $existingTechnicalVariant->restore();
+        }
+
+        if ($existingTechnicalVariant) {
+            $updates = [
+                'is_active' => true,
+                'is_internal' => true,
+            ];
+            if ($sellPrice !== null) {
+                $updates['sell_price'] = $sellPrice;
+            }
+            $existingTechnicalVariant->update($updates);
+
+            return $existingTechnicalVariant->refresh();
+        }
+
+        return $product->variants()->create([
+            'sku' => $technicalSku,
+            'sell_price' => $sellPrice ?? 0,
+            'is_active' => true,
+            'is_internal' => true,
+        ]);
     }
 
     public function variantIdsFromBundleProducts(array $variantIds): array

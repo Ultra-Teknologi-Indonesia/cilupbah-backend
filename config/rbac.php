@@ -166,7 +166,7 @@ return [
 
         'leader outbound' => [
             'group:gudang:*',
-            'pesanan:view', 'posisi-stok:view', 'dashboard:view',
+            'pesanan:*', 'posisi-stok:view', 'dashboard:view',
             'laporan-gudang:*',
         ],
 
@@ -194,7 +194,7 @@ return [
         ],
         'shipper' => [
             'group:gudang:*',
-            'pesanan:view', 'pesanan:edit', 'dashboard:view',
+            'pesanan:*', 'dashboard:view',
         ],
         'putaway' => [
             'group:gudang:*',

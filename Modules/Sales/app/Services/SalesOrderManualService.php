@@ -4,7 +4,10 @@ namespace Modules\Sales\Services;
 
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Repositories\InventoryRepository;
+use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
+use Modules\Product\Repositories\ProductRepository;
+use Modules\Product\Support\BundleStock;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderItem;
 use Modules\Sales\Services\StockService;
@@ -17,10 +20,41 @@ class SalesOrderManualService
         private SalesOrderNumberGenerator $numberGenerator,
         private StockService $stockService,
         private InventoryRepository $inventory,
+        private ProductRepository $products,
     ) {}
 
     public function lookupSku(string $sku, string $locationId): ?array
     {
+        $bundle = Product::with([
+            'bundleItems.component.inventories.location',
+            'bundleItems.component.inventories.bin',
+        ])
+            ->where('sku', $sku)
+            ->where('is_bundle', true)
+            ->where('is_active', true)
+            ->first();
+
+        if ($bundle) {
+            $variant = $bundle->variants()->where('is_active', true)->first()
+                ?? $this->products->ensureActiveBundleVariant($bundle);
+            $stock = BundleStock::deriveByLocation($bundle)
+                ?->firstWhere('location_id', $locationId);
+
+            return [
+                'item_id'     => $variant->id,
+                'sku'         => $bundle->sku,
+                'barcode'     => null,
+                'name'        => $bundle->name,
+                'sell_price'  => (float) $variant->sell_price,
+                'weight_gram' => (int) round(((float) ($bundle->weight ?? 0)) * 1000),
+                'on_hand'     => (int) ($stock['on_hand'] ?? 0),
+                'on_order'    => (int) ($stock['on_order'] ?? 0),
+                'available'   => (int) ($stock['available'] ?? 0),
+                'variant'     => null,
+                'is_bundle'   => true,
+            ];
+        }
+
         $variant = ProductVariant::with('product:id,name')
             ->where('sku', $sku)
             ->where('is_active', true)
@@ -44,6 +78,12 @@ class SalesOrderManualService
             'on_hand'     => (int) $onHand,
             'on_order'    => (int) $onOrder,
             'available'   => $available,
+            'variant'     => [
+                'id' => $variant->id,
+                'sku' => $variant->sku,
+                'label' => null,
+            ],
+            'is_bundle'   => false,
         ];
     }
 
@@ -55,7 +95,15 @@ class SalesOrderManualService
                 ? $this->numberGenerator->nextManualSalesOrderNo()
                 : $rawNo;
 
-            $items    = $payload['items'] ?? [];
+            $items = collect($payload['items'] ?? [])
+                ->map(function (array $item): array {
+                    $resolved = $this->resolveOrderableVariant($item);
+                    $item['item_id'] = $resolved['variant']->id;
+                    $item['sku'] = $resolved['sku'];
+
+                    return $item;
+                })
+                ->all();
             $totals   = $this->computeTotals($items, $payload);
 
             $order = SalesOrder::create([
@@ -149,6 +197,47 @@ class SalesOrderManualService
 
             return $order->fresh(['items', 'internalStore', 'salesman']);
         });
+    }
+
+    private function resolveOrderableVariant(array $item): array
+    {
+        $itemId = (string) ($item['item_id'] ?? '');
+        $sku = trim((string) ($item['sku'] ?? ''));
+
+        $selectedVariant = ProductVariant::with('product:id,sku,is_bundle')
+            ->where('id', $itemId)
+            ->where('is_active', true)
+            ->first();
+
+        if ($selectedVariant && ! $selectedVariant->product?->is_bundle) {
+            return ['variant' => $selectedVariant, 'sku' => (string) $selectedVariant->sku];
+        }
+
+        $bundle = Product::query()
+            ->where('is_bundle', true)
+            ->where('is_active', true)
+            ->where(function ($query) use ($itemId, $sku) {
+                $query->where('id', $itemId);
+                if ($sku !== '') {
+                    $query->orWhere('sku', $sku);
+                }
+            })
+            ->first();
+
+        if ($bundle) {
+            $variant = $bundle->variants()->where('is_active', true)->first()
+                ?? $this->products->ensureActiveBundleVariant($bundle);
+
+            return ['variant' => $variant, 'sku' => (string) $bundle->sku];
+        }
+
+        $variant = $selectedVariant;
+
+        if (! $variant || $variant->product?->is_bundle) {
+            throw new \DomainException('Item yang dipilih sudah tidak tersedia atau tidak valid.');
+        }
+
+        return ['variant' => $variant, 'sku' => (string) $variant->sku];
     }
 
     private function computeTotals(array $items, array $payload): array

@@ -33,12 +33,15 @@ class InboundRepository
                 AllowedFilter::exact('type'),
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('source_type'),
-                AllowedFilter::callback('date_from', fn ($query, $value) => $query->where('created_at', '>=', $value)),
-                AllowedFilter::callback('date_to', fn ($query, $value) => $query->where('created_at', '<=', $value.' 23:59:59')),
+                AllowedFilter::callback('date_from', fn ($query, $value) => $query->whereDate('created_at', '>=', $value)),
+                AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('created_at', '<=', $value)),
             )
             ->allowedSearch('transaction_number', 'reference_number')
             ->allowedSorts('expected_date', 'created_at', 'transaction_number', 'reference_number', 'status', 'type')
             ->defaultSort('-expected_date')
+
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->paginate($limit)
             ->appends(request()->query());
 
@@ -306,8 +309,8 @@ class InboundRepository
                 AllowedFilter::exact('received_by_user_id', 'inbound_receipts.received_by_user_id'),
                 AllowedFilter::exact('inbound_item_id', 'inbound_receipts.inbound_item_id'),
                 AllowedFilter::exact('condition', 'inbound_receipts.condition'),
-                AllowedFilter::callback('date_from', fn ($q, $v) => $q->where('inbound_receipts.received_date', '>=', $v)),
-                AllowedFilter::callback('date_to', fn ($q, $v) => $q->where('inbound_receipts.received_date', '<=', $v)),
+                AllowedFilter::callback('date_from', fn ($q, $v) => $q->whereDate('inbound_receipts.received_date', '>=', $v)),
+                AllowedFilter::callback('date_to', fn ($q, $v) => $q->whereDate('inbound_receipts.received_date', '<=', $v)),
             )
             ->allowedSorts(
                 AllowedSort::field('received_date', 'inbound_receipts.received_date'),

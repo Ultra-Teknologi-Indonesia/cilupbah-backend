@@ -3,7 +3,6 @@
 namespace Modules\Inventory\Console\Commands;
 
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\StockService;
 use Modules\Warehouse\Models\Location;
@@ -19,9 +18,7 @@ class BackfillOrderAllocations extends Command
     {
         $dryRun = (bool) $this->option('dry-run');
 
-        $kecilId = DB::table('locations')
-            ->where('location_code', Location::SYSTEM_KECIL_CODE)
-            ->value('id');
+        $kecilId = Location::getOfficialSmallWarehouseId();
 
         $orders = SalesOrder::with('items')
             ->where('status', 'reserved')

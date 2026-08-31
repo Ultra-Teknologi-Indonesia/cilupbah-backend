@@ -5,7 +5,6 @@ namespace Tests\Feature\Report;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Storage;
-use Modules\Report\Jobs\RunExportJob;
 use Modules\Report\Models\ExportJob;
 use Modules\Report\Services\ExportManager;
 use Tests\TestCase;
@@ -19,6 +18,7 @@ class ExportJobEndToEndTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config(['exports.connection' => 'sync']);
         $this->user = $this->createPrivilegedUser();
         Storage::fake('documents');
         Storage::fake('local');

@@ -207,6 +207,27 @@ class CourierMappingService
             return null;
         }
 
+        if (($order->channel_instant ?? null) !== null) {
+            $code = $this->resolveCode($providerName);
+            $shipmentType = $this->resolveShipmentType($providerName, (bool) $order->channel_instant);
+
+            return [
+                'courier_code' => $code,
+                'courier_name' => Courier::where('code', $code)->value('name') ?? $providerName,
+                'shipment_type' => $shipmentType,
+            ];
+        }
+
+        if (in_array($channelCode, ['shopee', 'tiktok', 'lazada'], true)) {
+            $code = $this->resolveCode($providerName);
+
+            return [
+                'courier_code' => $code,
+                'courier_name' => Courier::where('code', $code)->value('name') ?? $providerName,
+                'shipment_type' => 'REGULAR',
+            ];
+        }
+
         $mapping = CourierChannelMapping::with('courier')
             ->where('channel_code', $channelCode)
             ->where('external_name', $providerName)

@@ -3,10 +3,10 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\Log;
+use Modules\Outbound\Support\InstantOrderClassifier;
 
 class ShopeeToInternalOrderMapper
 {
-
     protected const STATUS_MAP = [
         'unpaid' => 'UNPAID',
         'ready_to_ship' => 'AWAITING_SHIPMENT',
@@ -37,20 +37,20 @@ class ShopeeToInternalOrderMapper
         $channelStatus = self::STATUS_MAP[$shopeeStatus] ?? null;
         if ($channelStatus === null) {
 
-            Log::warning("Shopee: order_status tidak dikenal '{$shopeeStatus}' untuk order " . ($shopeeOrder['order_sn'] ?? ''));
+            Log::warning("Shopee: order_status tidak dikenal '{$shopeeStatus}' untuk order ".($shopeeOrder['order_sn'] ?? ''));
             $channelStatus = strtoupper($shopeeStatus);
         }
 
         $fulfillmentStatus = $shopeeOrder['package_list'][0]['logistics_status']
             ?? ($shopeeOrder['logistics_status'] ?? null);
 
-        $isCancelOrReturn = in_array($channelStatus, ['IN_CANCEL', 'TO_RETURN'], true);
+        $isBuyerCancelRequested = $channelStatus === 'IN_CANCEL';
 
         $address = $shopeeOrder['recipient_address'] ?? [];
 
-        $netProductTotal = array_sum(array_column($items, 'amount'));   
-        $totalDisc = array_sum(array_column($items, 'disc_amount'));    
-        $subTotal = $netProductTotal + $totalDisc;                      
+        $netProductTotal = array_sum(array_column($items, 'amount'));
+        $totalDisc = array_sum(array_column($items, 'disc_amount'));
+        $subTotal = $netProductTotal + $totalDisc;
         $shippingFee = (float) ($shopeeOrder['estimated_shipping_fee'] ?? 0);
 
         $grandTotal = $netProductTotal > 0 ? $netProductTotal : (isset($shopeeOrder['total_amount']) ? (float) $shopeeOrder['total_amount'] : ($netProductTotal + $shippingFee));
@@ -97,15 +97,15 @@ class ShopeeToInternalOrderMapper
             'is_paid' => $isPaid,
             'is_canceled' => $channelStatus === 'CANCELLED',
             'is_cod' => $isCod,
-            'priority_fulfillment' => \Modules\Outbound\Support\InstantOrderClassifier::isPriority($shippingProvider),
+            'priority_fulfillment' => InstantOrderClassifier::isPriority($shippingProvider),
             'is_split_order' => ! empty($shopeeOrder['split_up']),
 
             'cancel_reason' => $channelStatus === 'CANCELLED'
                 ? ($shopeeOrder['buyer_cancel_reason'] ?? $shopeeOrder['cancel_reason'] ?? null)
                 : null,
             'cancel_by' => $shopeeOrder['cancel_by'] ?? null,
-            'cancel_requested_at' => $isCancelOrReturn ? (string) now() : null,
-            'cancel_request_reason' => $isCancelOrReturn
+            'cancel_requested_at' => $isBuyerCancelRequested ? (string) now() : null,
+            'cancel_request_reason' => $isBuyerCancelRequested
                 ? ($shopeeOrder['buyer_cancel_reason'] ?? $shopeeOrder['cancel_reason'] ?? null)
                 : null,
             'channel_fulfillment_status' => $fulfillmentStatus,
@@ -164,13 +164,13 @@ class ShopeeToInternalOrderMapper
             $original = (float) ($row['model_original_price'] ?? $discounted);
             $disc = max(0.0, $original - $discounted);
             $qty = (int) ($row['model_quantity_purchased'] ?? 1);
-            $key = $sku . '|' . $original . '|' . $disc;
+            $key = $sku.'|'.$original.'|'.$disc;
 
             if (! isset($grouped[$key])) {
                 $grouped[$key] = [
                     'channel_product_id' => isset($row['item_id']) ? (string) $row['item_id'] : null,
                     'sku' => $sku,
-                    'description' => trim(($row['item_name'] ?? '') . (! empty($row['model_name']) ? ' - ' . $row['model_name'] : '')),
+                    'description' => trim(($row['item_name'] ?? '').(! empty($row['model_name']) ? ' - '.$row['model_name'] : '')),
                     'qty_in_base' => 0,
                     'price' => $original,
                     'disc' => $disc,

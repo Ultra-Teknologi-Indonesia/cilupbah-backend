@@ -55,7 +55,7 @@ class InventoryController extends Controller
             new OA\Parameter(name: 'search', in: 'query', required: false, description: 'Search by SKU or product name', schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'filter[product_id]', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'filter[location_id]', in: 'query', required: false, schema: new OA\Schema(type: 'integer')),
-            new OA\Parameter(name: 'sort', in: 'query', required: false, description: 'Sort by: product_variants.sku, product_variants.created_at', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'sort', in: 'query', required: false, description: 'Sort by: product_variants.sku, product_variants.created_at, average_cost, total_on_hand, total_available', schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(response: 200, description: 'Daftar stok inventory berhasil diambil.'),

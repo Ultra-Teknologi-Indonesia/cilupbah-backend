@@ -3,6 +3,7 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\Log;
+use Modules\Outbound\Support\ChannelInstantSignal;
 use Modules\Outbound\Support\InstantOrderClassifier;
 
 class TikTokToInternalOrderMapper
@@ -68,8 +69,18 @@ class TikTokToInternalOrderMapper
         $fulfillmentType = $tiktokOrder['fulfillment_type'] ?? null;
         $deliveryOptionId = $tiktokOrder['delivery_option_id'] ?? null;
         $shippingType = $tiktokOrder['shipping_type'] ?? null;
+        $channelInstant = ChannelInstantSignal::fromTypes(
+            is_string($shippingType) ? $shippingType : null,
+            is_string($fulfillmentType) ? $fulfillmentType : null,
+            is_string($deliveryOption) ? $deliveryOption : null,
+        );
 
-        $isCancelRequested = $channelStatus !== 'CANCELLED'
+        $isCancelRequested = in_array($channelStatus, [
+            'UNPAID',
+            'ON_HOLD',
+            'AWAITING_SHIPMENT',
+            'AWAITING_COLLECTION',
+        ], true)
             && ! empty($tiktokOrder['cancellation_initiator'])
             && strtoupper($tiktokOrder['cancellation_initiator']) === 'BUYER';
 
@@ -158,6 +169,7 @@ class TikTokToInternalOrderMapper
             'fulfillment_type' => $fulfillmentType,
             'delivery_option_id' => $deliveryOptionId,
             'shipping_type' => $shippingType,
+            'channel_instant' => $channelInstant,
 
             'items' => $items,
         ];

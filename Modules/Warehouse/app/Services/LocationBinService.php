@@ -425,7 +425,7 @@ class LocationBinService
             throw new ModelNotFoundException('Lokasi tidak ditemukan.');
         }
         if (! $location->enforcesStrictBinSku()) {
-            throw new \DomainException('Penempatan SKU langsung hanya berlaku untuk gudang kecil (WH-KECIL).');
+            throw new \DomainException('Penempatan SKU langsung hanya berlaku untuk Gudang Kecil.');
         }
 
         $bin = LocationBin::where('location_id', $locationId)->find($binId);
@@ -473,7 +473,7 @@ class LocationBinService
             throw new ModelNotFoundException('Lokasi tidak ditemukan.');
         }
         if (! $location->enforcesStrictBinSku()) {
-            throw new \DomainException('Pindah rak hanya berlaku untuk gudang kecil (WH-KECIL).');
+            throw new \DomainException('Pindah rak hanya berlaku untuk Gudang Kecil.');
         }
 
         if ($sourceBinId === $destinationBinId) {
@@ -556,7 +556,7 @@ class LocationBinService
             throw new ModelNotFoundException('Lokasi tidak ditemukan.');
         }
         if (! $location->enforcesStrictBinSku()) {
-            throw new \DomainException('Keluarkan SKU hanya berlaku untuk gudang kecil (WH-KECIL).');
+            throw new \DomainException('Keluarkan SKU hanya berlaku untuk Gudang Kecil.');
         }
 
         $bin = LocationBin::where('location_id', $locationId)->find($binId);

@@ -3,6 +3,7 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\Log;
+use Modules\Outbound\Support\ChannelInstantSignal;
 use Modules\Outbound\Support\InstantOrderClassifier;
 
 class LazadaToInternalOrderMapper
@@ -48,6 +49,15 @@ class LazadaToInternalOrderMapper
         }
 
         $address = $lazadaOrder['address_shipping'] ?? [];
+        $channelShippingType = $lazadaOrder['shipping_type']
+            ?? $lazadaOrder['delivery_type']
+            ?? $lazadaOrder['shipping_method']
+            ?? $lazadaOrder['delivery_option_name']
+            ?? ($orderItems[0]['shipping_type'] ?? null)
+            ?? ($orderItems[0]['delivery_type'] ?? null);
+        $channelInstant = ChannelInstantSignal::fromTypes(
+            is_string($channelShippingType) ? $channelShippingType : null,
+        );
         $customerName = trim(
             ($lazadaOrder['customer_first_name'] ?? '').' '.($lazadaOrder['customer_last_name'] ?? '')
         ) ?: 'Lazada Buyer';
@@ -109,6 +119,8 @@ class LazadaToInternalOrderMapper
             'payment_method_name' => $lazadaOrder['payment_method'] ?? null,
             'tracking_number' => $orderItems[0]['tracking_code'] ?? null,
             'shipping_provider' => $orderItems[0]['shipment_provider'] ?? null,
+            'shipping_type' => is_string($channelShippingType) ? $channelShippingType : null,
+            'channel_instant' => $channelInstant,
             'pickup_code' => $this->extractPickupCode($lazadaOrder, $orderItems),
             'buyer_message' => $lazadaOrder['remarks'] ?? null,
             'seller_note' => null,

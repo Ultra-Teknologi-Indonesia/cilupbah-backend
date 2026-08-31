@@ -8,6 +8,7 @@ use Modules\Report\Exports\InventoryStockReportExport;
 use Modules\Report\Exports\NegativeStockReportExport;
 use Modules\Report\Exports\PicklistDetailPhotoExport;
 use Modules\Report\Exports\SectionedReportExport;
+use Modules\Report\Exports\ShipmentListReportExport;
 use Modules\Report\Exports\TransferReportExport;
 use Modules\Report\Jobs\RunExportJob;
 use Modules\Report\Models\ExportJob;
@@ -25,6 +26,8 @@ class ExportManager
         'inventory-stock',
         'inventory-rack',
         'shipment-list',
+        'monitor-stock-xlsx',
+        'monitor-stock-pdf',
     ];
 
     public function queue(User $user, string $type, array $params): ExportJob
@@ -113,7 +116,7 @@ class ExportManager
                 )
             ),
 
-            'shipment-list' => new \Modules\Report\Exports\ShipmentListReportExport(
+            'shipment-list' => new ShipmentListReportExport(
                 app(ReportService::class),
                 $params,
             ),
@@ -129,6 +132,10 @@ class ExportManager
                 app(InventoryStockReportService::class),
                 $params,
             ),
+
+            'monitor-stock-xlsx' => app(MonitorStockReportService::class)->export($params),
+
+            'monitor-stock-pdf' => throw new \LogicException('PDF Monitor Stok diproses langsung oleh worker.'),
         };
     }
 
@@ -197,6 +204,10 @@ class ExportManager
                 'persediaan-per-rak-%s.xlsx',
                 now()->format('Y-m-d'),
             ),
+
+            'monitor-stock-xlsx' => 'monitor-stok-'.($params['tab'] ?? 'export').'-'.now()->format('Y-m-d_His').'.xlsx',
+
+            'monitor-stock-pdf' => 'monitor-stok-'.($params['tab'] ?? 'export').'-'.now()->format('Y-m-d_His').'.pdf',
 
             default => 'export.xlsx',
         };

@@ -1,17 +1,27 @@
 <?php
 
+use App\Models\User;
+use App\Traits\ApiResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use Modules\Inventory\Http\Controllers\InventoryController;
-use Modules\Inventory\Http\Controllers\InventoryTransactionController;
-use Modules\Inventory\Http\Controllers\StockAdjustmentController;
-use Modules\Inventory\Http\Controllers\ReservedStockController;
-use Modules\Inventory\Http\Controllers\PutawayController;
-use Modules\Inventory\Http\Controllers\StockOpnameController;
-use Modules\Inventory\Http\Controllers\StockRevaluationController;
-use Modules\Inventory\Http\Controllers\PriceListController;
 use Modules\Inventory\Http\Controllers\BundleController;
-use Modules\Inventory\Http\Controllers\StockReplenishmentController;
 use Modules\Inventory\Http\Controllers\ImpexActivityController;
+use Modules\Inventory\Http\Controllers\InventoryController;
+use Modules\Inventory\Http\Controllers\InventorySettingController;
+use Modules\Inventory\Http\Controllers\InventorySyncSettingController;
+use Modules\Inventory\Http\Controllers\InventoryTransactionController;
+use Modules\Inventory\Http\Controllers\MonitorStockController;
+use Modules\Inventory\Http\Controllers\PutawayController;
+use Modules\Inventory\Http\Controllers\RackImportController;
+use Modules\Inventory\Http\Controllers\ReservedStockController;
+use Modules\Inventory\Http\Controllers\StockAdjustmentController;
+use Modules\Inventory\Http\Controllers\StockAdjustmentImportController;
+use Modules\Inventory\Http\Controllers\StockOpnameController;
+use Modules\Inventory\Http\Controllers\StockReplenishmentController;
+use Modules\Inventory\Http\Controllers\StockRevaluationController;
+use Modules\Inventory\Http\Controllers\TransferOutImportController;
+use Modules\Product\Models\Product;
+use Modules\Product\Services\ProductLifecycleService;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::prefix('impex/activities')->middleware('role_or_permission:owner|view-impex')->group(function () {
@@ -64,51 +74,54 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::prefix('inventory/monitor')->group(function () {
         Route::middleware('role_or_permission:owner|view-monitor-stok')->group(function () {
-            Route::get('summary', [\Modules\Inventory\Http\Controllers\MonitorStockController::class, 'summary'])->name('inventory.monitor.summary');
-            Route::get('out-of-stock', [\Modules\Inventory\Http\Controllers\MonitorStockController::class, 'outOfStock'])->name('inventory.monitor.outOfStock');
-            Route::get('low-stock', [\Modules\Inventory\Http\Controllers\MonitorStockController::class, 'lowStock'])->name('inventory.monitor.lowStock');
-            Route::get('on-order', [\Modules\Inventory\Http\Controllers\MonitorStockController::class, 'onOrder'])->name('inventory.monitor.onOrder');
+            Route::get('summary', [MonitorStockController::class, 'summary'])->name('inventory.monitor.summary');
+            Route::get('out-of-stock', [MonitorStockController::class, 'outOfStock'])->name('inventory.monitor.outOfStock');
+            Route::get('low-stock', [MonitorStockController::class, 'lowStock'])->name('inventory.monitor.lowStock');
+            Route::get('on-order', [MonitorStockController::class, 'onOrder'])->name('inventory.monitor.onOrder');
 
-            Route::get('dead-stock', [\Modules\Inventory\Http\Controllers\MonitorStockController::class, 'deadStock'])->name('inventory.monitor.deadStock');
-            Route::get('fast-moving', [\Modules\Inventory\Http\Controllers\MonitorStockController::class, 'fastMoving'])->name('inventory.monitor.fastMoving');
-            Route::get('estimated-stock-out', [\Modules\Inventory\Http\Controllers\MonitorStockController::class, 'estimatedStockOut'])->name('inventory.monitor.estimatedStockOut');
+            Route::get('dead-stock', [MonitorStockController::class, 'deadStock'])->name('inventory.monitor.deadStock');
+            Route::get('fast-moving', [MonitorStockController::class, 'fastMoving'])->name('inventory.monitor.fastMoving');
+            Route::get('estimated-stock-out', [MonitorStockController::class, 'estimatedStockOut'])->name('inventory.monitor.estimatedStockOut');
 
-            Route::get('failed-sync', [\Modules\Inventory\Http\Controllers\MonitorStockController::class, 'failedSync'])->name('inventory.monitor.failedSync');
+            Route::get('failed-sync', [MonitorStockController::class, 'failedSync'])->name('inventory.monitor.failedSync');
+        });
+        Route::middleware('role_or_permission:owner|export-monitor-stok')->group(function () {
+            Route::post('export/async', [MonitorStockController::class, 'exportAsync'])->name('inventory.monitor.exportAsync');
         });
         Route::middleware('role_or_permission:owner|edit-monitor-stok')->group(function () {
-            Route::post('failed-sync/{id}/retry', [\Modules\Inventory\Http\Controllers\MonitorStockController::class, 'retrySync'])->name('inventory.monitor.retrySync');
-            Route::post('failed-sync/retry-bulk', [\Modules\Inventory\Http\Controllers\MonitorStockController::class, 'retryBulkSync'])->name('inventory.monitor.retryBulkSync');
+            Route::post('failed-sync/{id}/retry', [MonitorStockController::class, 'retrySync'])->name('inventory.monitor.retrySync');
+            Route::post('failed-sync/retry-bulk', [MonitorStockController::class, 'retryBulkSync'])->name('inventory.monitor.retryBulkSync');
         });
     });
 
     Route::prefix('inventory/sync-settings')->group(function () {
         Route::middleware('role_or_permission:owner|view-pengaturan-persediaan')->group(function () {
-            Route::get('/', [\Modules\Inventory\Http\Controllers\InventorySyncSettingController::class, 'index'])->name('inventory.syncSettings.index');
+            Route::get('/', [InventorySyncSettingController::class, 'index'])->name('inventory.syncSettings.index');
         });
         Route::middleware('role_or_permission:owner|edit-pengaturan-persediaan')->group(function () {
-            Route::patch('/', [\Modules\Inventory\Http\Controllers\InventorySyncSettingController::class, 'update'])->name('inventory.syncSettings.update');
-            Route::post('bulk', [\Modules\Inventory\Http\Controllers\InventorySyncSettingController::class, 'bulkUpdate'])->name('inventory.syncSettings.bulk');
+            Route::patch('/', [InventorySyncSettingController::class, 'update'])->name('inventory.syncSettings.update');
+            Route::post('bulk', [InventorySyncSettingController::class, 'bulkUpdate'])->name('inventory.syncSettings.bulk');
         });
     });
 
     Route::prefix('inventory/settings')->group(function () {
         Route::middleware('role_or_permission:owner|view-pengaturan-persediaan')->group(function () {
-            Route::get('products', [\Modules\Inventory\Http\Controllers\InventorySettingController::class, 'products'])->name('inventory.settings.products');
-            Route::get('export/rack-allocation', [\Modules\Inventory\Http\Controllers\InventorySettingController::class, 'exportRackAllocation'])->name('inventory.settings.export.rack');
-            Route::get('import/template/{type}', [\Modules\Inventory\Http\Controllers\InventorySettingController::class, 'importTemplate'])->name('inventory.settings.import.template');
+            Route::get('products', [InventorySettingController::class, 'products'])->name('inventory.settings.products');
+            Route::get('export/rack-allocation', [InventorySettingController::class, 'exportRackAllocation'])->name('inventory.settings.export.rack');
+            Route::get('import/template/{type}', [InventorySettingController::class, 'importTemplate'])->name('inventory.settings.import.template');
 
-            Route::get('rack-import/batches', [\Modules\Inventory\Http\Controllers\RackImportController::class, 'batches'])->name('inventory.settings.rack-import.batches');
-            Route::get('rack-import/batches/{batch}', [\Modules\Inventory\Http\Controllers\RackImportController::class, 'show'])->whereUuid('batch')->name('inventory.settings.rack-import.show');
-            Route::get('rack-import/batches/{batch}/rows', [\Modules\Inventory\Http\Controllers\RackImportController::class, 'rows'])->whereUuid('batch')->name('inventory.settings.rack-import.rows');
-            Route::get('rack-import/batches/{batch}/errors/download', [\Modules\Inventory\Http\Controllers\RackImportController::class, 'downloadErrors'])->whereUuid('batch')->name('inventory.settings.rack-import.errors');
+            Route::get('rack-import/batches', [RackImportController::class, 'batches'])->name('inventory.settings.rack-import.batches');
+            Route::get('rack-import/batches/{batch}', [RackImportController::class, 'show'])->whereUuid('batch')->name('inventory.settings.rack-import.show');
+            Route::get('rack-import/batches/{batch}/rows', [RackImportController::class, 'rows'])->whereUuid('batch')->name('inventory.settings.rack-import.rows');
+            Route::get('rack-import/batches/{batch}/errors/download', [RackImportController::class, 'downloadErrors'])->whereUuid('batch')->name('inventory.settings.rack-import.errors');
         });
         Route::middleware('role_or_permission:owner|edit-pengaturan-persediaan')->group(function () {
-            Route::patch('products/{itemId}', [\Modules\Inventory\Http\Controllers\InventorySettingController::class, 'updateThresholds'])->whereUuid('itemId')->name('inventory.settings.products.update');
-            Route::post('import/{type}/preview', [\Modules\Inventory\Http\Controllers\InventorySettingController::class, 'importPreview'])->name('inventory.settings.import.preview');
-            Route::post('import/{type}/confirm', [\Modules\Inventory\Http\Controllers\InventorySettingController::class, 'importConfirm'])->name('inventory.settings.import.confirm');
+            Route::patch('products/{itemId}', [InventorySettingController::class, 'updateThresholds'])->whereUuid('itemId')->name('inventory.settings.products.update');
+            Route::post('import/{type}/preview', [InventorySettingController::class, 'importPreview'])->name('inventory.settings.import.preview');
+            Route::post('import/{type}/confirm', [InventorySettingController::class, 'importConfirm'])->name('inventory.settings.import.confirm');
 
-            Route::post('rack-import', [\Modules\Inventory\Http\Controllers\RackImportController::class, 'upload'])->name('inventory.settings.rack-import.upload');
-            Route::post('rack-import/batches/{batch}/confirm', [\Modules\Inventory\Http\Controllers\RackImportController::class, 'confirm'])->whereUuid('batch')->name('inventory.settings.rack-import.confirm');
+            Route::post('rack-import', [RackImportController::class, 'upload'])->name('inventory.settings.rack-import.upload');
+            Route::post('rack-import/batches/{batch}/confirm', [RackImportController::class, 'confirm'])->whereUuid('batch')->name('inventory.settings.rack-import.confirm');
         });
     });
 
@@ -147,15 +160,15 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     });
 
     Route::prefix('inventory/adjustments/import')->middleware('role_or_permission:owner|import-penyesuaian-stok')->group(function () {
-        Route::get('/template', [\Modules\Inventory\Http\Controllers\StockAdjustmentImportController::class, 'template'])->name('inventory.adjustments.import.template');
-        Route::post('/preview', [\Modules\Inventory\Http\Controllers\StockAdjustmentImportController::class, 'preview'])->name('inventory.adjustments.import.preview');
-        Route::post('/confirm', [\Modules\Inventory\Http\Controllers\StockAdjustmentImportController::class, 'confirm'])->name('inventory.adjustments.import.confirm');
+        Route::get('/template', [StockAdjustmentImportController::class, 'template'])->name('inventory.adjustments.import.template');
+        Route::post('/preview', [StockAdjustmentImportController::class, 'preview'])->name('inventory.adjustments.import.preview');
+        Route::post('/confirm', [StockAdjustmentImportController::class, 'confirm'])->name('inventory.adjustments.import.confirm');
     });
 
     Route::prefix('inventory/transfers/import')->middleware('role_or_permission:owner|create-barang-keluar')->group(function () {
-        Route::get('/template', [\Modules\Inventory\Http\Controllers\TransferOutImportController::class, 'template'])->name('inventory.transfers.import.template');
-        Route::post('/preview', [\Modules\Inventory\Http\Controllers\TransferOutImportController::class, 'preview'])->name('inventory.transfers.import.preview');
-        Route::post('/confirm', [\Modules\Inventory\Http\Controllers\TransferOutImportController::class, 'confirm'])->name('inventory.transfers.import.confirm');
+        Route::get('/template', [TransferOutImportController::class, 'template'])->name('inventory.transfers.import.template');
+        Route::post('/preview', [TransferOutImportController::class, 'preview'])->name('inventory.transfers.import.preview');
+        Route::post('/confirm', [TransferOutImportController::class, 'confirm'])->name('inventory.transfers.import.confirm');
     });
 
     Route::prefix('inventory/adjustments/documents')->group(function () {
@@ -191,12 +204,16 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     });
 
     Route::get('inventory/warehouse-workers/{locationId}', function (string $locationId) {
-        $users = \App\Models\User::where('warehouse_id', $locationId)
+        $users = User::where('warehouse_id', $locationId)
             ->select('id', 'name')
             ->orderBy('name')
             ->get();
 
-        $responder = new class { use \App\Traits\ApiResponse; };
+        $responder = new class
+        {
+            use ApiResponse;
+        };
+
         return $responder->successResponse($users);
     })->name('inventory.warehouseWorkers')->middleware('role_or_permission:owner|view-user');
 
@@ -239,12 +256,16 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('inventory/transfer/delivery', [InventoryTransactionController::class, 'transferDelivery'])->name('inventory.transfer.delivery');
     });
 
-    Route::post('inventory/catalog/set-master', function (\Illuminate\Http\Request $request) {
-        $product = \Modules\Product\Models\Product::findOrFail($request->input('product_id'));
+    Route::post('inventory/catalog/set-master', function (Request $request) {
+        $product = Product::findOrFail($request->input('product_id'));
         $userId = $request->user()->name ?? $request->user()->email;
-        $result = app(\Modules\Product\Services\ProductLifecycleService::class)->approve($product, $userId);
+        $result = app(ProductLifecycleService::class)->approve($product, $userId);
 
-        $responder = new class { use \App\Traits\ApiResponse; };
+        $responder = new class
+        {
+            use ApiResponse;
+        };
+
         return $responder->successResponse($result, 'Product berhasil di-set sebagai master.');
     })->name('inventory.catalog.setMaster')->middleware('role_or_permission:owner|edit-produk-naik');
 
@@ -331,6 +352,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('/', [StockReplenishmentController::class, 'index'])->middleware('role_or_permission:owner|view-permintaan-restock')->name('inventory.stockReplenishment.index');
         Route::get('/pending-count', [StockReplenishmentController::class, 'pendingCount'])->name('inventory.stockReplenishment.pendingCount')->middleware('role_or_permission:owner|view-permintaan-restock');
         Route::post('/', [StockReplenishmentController::class, 'store'])->middleware('role_or_permission:owner|create-permintaan-restock')->name('inventory.stockReplenishment.store');
+        Route::post('/queue', [StockReplenishmentController::class, 'queueFromMonitor'])->middleware('role_or_permission:owner|create-permintaan-restock')->name('inventory.stockReplenishment.queue');
+        Route::get('/{id}/items', [StockReplenishmentController::class, 'items'])->middleware('role_or_permission:owner|view-permintaan-restock')->name('inventory.stockReplenishment.items.index');
+        Route::get('/{id}/item-filters', [StockReplenishmentController::class, 'itemFilterOptions'])->middleware('role_or_permission:owner|view-permintaan-restock')->name('inventory.stockReplenishment.items.filters');
         Route::get('/{id}', [StockReplenishmentController::class, 'show'])->middleware('role_or_permission:owner|view-permintaan-restock')->name('inventory.stockReplenishment.show');
         Route::post('/{id}/accept', [StockReplenishmentController::class, 'accept'])->middleware('role_or_permission:owner|edit-permintaan-restock')->name('inventory.stockReplenishment.accept');
         Route::post('/{id}/reject', [StockReplenishmentController::class, 'reject'])->middleware('role_or_permission:owner|edit-permintaan-restock')->name('inventory.stockReplenishment.reject');

@@ -13,6 +13,7 @@ use Illuminate\Support\Str;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\SkuRackAssignment;
+use Modules\Inventory\Services\PurchaseCostService;
 use Modules\Inventory\Support\StockSummary;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
@@ -324,6 +325,10 @@ class InventoryRepository
             WarehouseAccess::assert((string) $locationFilter);
         }
 
+        $metricSort = in_array(ltrim((string) request('sort', ''), '-'), [
+            'average_cost', 'total_on_hand', 'total_available',
+        ], true);
+
         $variantQuery = DB::table('product_variants as pv')
             ->join('products as p', 'p.id', '=', 'pv.product_id')
             ->whereNull('pv.deleted_at')
@@ -348,6 +353,28 @@ class InventoryRepository
                 'p.name as item_name',
                 'pv.created_at as created_at',
             ]);
+
+        if ($metricSort) {
+            [$onHandSql, $onHandBindings] = $this->variantStockMetricSql(
+                'pv.id', 'on_hand', $locationFilter, $allowedLocationIds, $transitLocationId,
+            );
+            [$availableSql, $availableBindings] = $this->variantStockMetricSql(
+                'pv.id', 'available', $locationFilter, $allowedLocationIds, $transitLocationId,
+            );
+            [$averageCostSql, $averageCostBindings] = $this->variantAverageCostSql(
+                'pv.id', $locationFilter, $allowedLocationIds, $transitLocationId,
+            );
+
+            $variantQuery
+                ->selectRaw("{$onHandSql} as sort_on_hand", $onHandBindings)
+                ->selectRaw("{$availableSql} as sort_available", $availableBindings)
+                ->selectRaw("{$averageCostSql} as sort_average_cost", $averageCostBindings);
+        } else {
+            $variantQuery
+                ->selectRaw('0 as sort_on_hand')
+                ->selectRaw('0 as sort_available')
+                ->selectRaw('0 as sort_average_cost');
+        }
 
         $bundleQuery = DB::table('products as p')
             ->whereNull('p.deleted_at')
@@ -378,6 +405,25 @@ class InventoryRepository
                 'p.name as item_name',
                 'p.created_at as created_at',
             ]);
+
+        if ($metricSort) {
+            [$bundleOnHandSql, $bundleOnHandBindings] = $this->bundleStockMetricSql(
+                'on_hand', $locationFilter, $allowedLocationIds, $transitLocationId,
+            );
+            [$bundleAvailableSql, $bundleAvailableBindings] = $this->bundleStockMetricSql(
+                'available', $locationFilter, $allowedLocationIds, $transitLocationId,
+            );
+
+            $bundleQuery
+                ->selectRaw("{$bundleOnHandSql} as sort_on_hand", $bundleOnHandBindings)
+                ->selectRaw("{$bundleAvailableSql} as sort_available", $bundleAvailableBindings)
+                ->selectRaw('0 as sort_average_cost');
+        } else {
+            $bundleQuery
+                ->selectRaw('0 as sort_on_hand')
+                ->selectRaw('0 as sort_available')
+                ->selectRaw('0 as sort_average_cost');
+        }
 
         $search = trim((string) request('search', ''));
         if ($search !== '') {
@@ -483,11 +529,148 @@ class InventoryRepository
         $column = match ($field) {
             'product_variants.sku', 'sku', 'item_code' => 'item_code',
             'product_variants.created_at', 'created_at' => 'created_at',
+            'average_cost' => 'sort_average_cost',
+            'total_on_hand', 'on_hand' => 'sort_on_hand',
+            'total_available', 'available' => 'sort_available',
             'products.name', 'name', 'item_name' => 'item_name',
             default => 'item_name',
         };
 
         return [$column, $descending ? 'desc' : 'asc'];
+    }
+
+    private function inventoryMetricScopeSql(
+        string $alias,
+        ?string $locationFilter,
+        ?array $allowedLocationIds,
+        ?string $transitLocationId,
+    ): array {
+        $conditions = [];
+        $bindings = [];
+
+        if ($transitLocationId) {
+            $conditions[] = "{$alias}.location_id <> ?";
+            $bindings[] = $transitLocationId;
+        }
+
+        if ($allowedLocationIds !== null) {
+            if ($allowedLocationIds === []) {
+                $conditions[] = '1 = 0';
+            } else {
+                $conditions[] = "{$alias}.location_id IN (".implode(',', array_fill(0, count($allowedLocationIds), '?')).')';
+                array_push($bindings, ...$allowedLocationIds);
+            }
+        }
+
+        if ($locationFilter) {
+            $conditions[] = "{$alias}.location_id = ?";
+            $bindings[] = $locationFilter;
+        }
+
+        return [empty($conditions) ? '' : ' AND '.implode(' AND ', $conditions), $bindings];
+    }
+
+    private function variantStockMetricSql(
+        string $itemReference,
+        string $metric,
+        ?string $locationFilter,
+        ?array $allowedLocationIds,
+        ?string $transitLocationId,
+    ): array {
+        [$scope, $scopeBindings] = $this->inventoryMetricScopeSql(
+            'vsi', $locationFilter, $allowedLocationIds, $transitLocationId,
+        );
+        $onHand = 'COALESCE((SELECT SUM(CASE WHEN vsb.id IS NOT NULL AND vsb.is_inbound = false THEN vsi.on_hand ELSE 0 END)'
+            .' FROM inventories vsi LEFT JOIN location_bins vsb ON vsb.id = vsi.bin_id'
+            ." WHERE vsi.item_id = {$itemReference}{$scope}), 0)";
+
+        if ($metric === 'on_hand') {
+            return [$onHand, $scopeBindings];
+        }
+
+        [$orderScope, $orderBindings] = $this->inventoryMetricScopeSql(
+            'vso', $locationFilter, $allowedLocationIds, $transitLocationId,
+        );
+        $onOrder = 'COALESCE((SELECT SUM(vso.on_order) FROM inventories vso'
+            ." WHERE vso.item_id = {$itemReference}{$orderScope}), 0)";
+
+        return ["({$onHand} - {$onOrder})", array_merge($scopeBindings, $orderBindings)];
+    }
+
+    private function variantAverageCostSql(
+        string $itemReference,
+        ?string $locationFilter,
+        ?array $allowedLocationIds,
+        ?string $transitLocationId,
+    ): array {
+        $costSql = PurchaseCostService::effectiveCostSql('vcm');
+        $purchase = "(SELECT SUM(vcm.qty * {$costSql}) / NULLIF(SUM(vcm.qty), 0)"
+            .' FROM inventory_movements vcm'
+            ." WHERE vcm.item_id = {$itemReference}"
+            ." AND vcm.source = 'PURCHASE' AND vcm.qty > 0 AND {$costSql} > 0)";
+
+        [$scope, $scopeBindings] = $this->inventoryMetricScopeSql(
+            'vci', $locationFilter, $allowedLocationIds, $transitLocationId,
+        );
+        $fallback = '(SELECT SUM(vci.on_hand * vci.avg_cost) / NULLIF(SUM(vci.on_hand), 0)'
+            .' FROM inventories vci'
+            ." WHERE vci.item_id = {$itemReference}"
+            ." AND vci.on_hand > 0 AND vci.avg_cost > 0{$scope})";
+
+        return ["COALESCE(NULLIF({$purchase}, 0), {$fallback}, 0)", $scopeBindings];
+    }
+
+    private function bundleStockMetricSql(
+        string $metric,
+        ?string $locationFilter,
+        ?array $allowedLocationIds,
+        ?string $transitLocationId,
+    ): array {
+        [$locationScope, $locationBindings] = $this->inventoryMetricScopeSql(
+            'bsl', $locationFilter, $allowedLocationIds, $transitLocationId,
+        );
+        [$componentScope, $componentBindings] = $this->inventoryMetricScopeSql(
+            'bsi', $locationFilter, $allowedLocationIds, $transitLocationId,
+        );
+
+        $placed = 'COALESCE((SELECT SUM(CASE WHEN bsb.id IS NOT NULL AND bsb.is_inbound = false THEN bsi.on_hand ELSE 0 END)'
+            .' FROM inventories bsi LEFT JOIN location_bins bsb ON bsb.id = bsi.bin_id'
+            .' WHERE bsi.item_id = bundle_item.component_variant_id'
+            ." AND bsi.location_id = bundle_locations.location_id{$componentScope}), 0)";
+
+        $value = $placed;
+
+        $bindings = $componentBindings;
+        if ($metric === 'available') {
+            [$orderScope, $orderBindings] = $this->inventoryMetricScopeSql(
+                'bso', $locationFilter, $allowedLocationIds, $transitLocationId,
+            );
+            $onOrder = 'COALESCE((SELECT SUM(bso.on_order) FROM inventories bso'
+                .' WHERE bso.item_id = bundle_item.component_variant_id'
+                ." AND bso.location_id = bundle_locations.location_id{$orderScope}), 0)";
+            $value = "({$placed} - {$onOrder})";
+            $bindings = array_merge($bindings, $orderBindings);
+        }
+
+        $bindings = array_merge($bindings, $locationBindings);
+
+        $sql = '(SELECT COALESCE(SUM(bundle_location.metric), 0)'
+            .' FROM LATERAL ('
+            .' SELECT bundle_locations.location_id,'
+            ." MIN(FLOOR(({$value}) / GREATEST(bundle_item.qty, 1)::numeric)) AS metric"
+            .' FROM LATERAL ('
+            .' SELECT DISTINCT bsl.location_id FROM inventories bsl'
+            .' WHERE bsl.item_id IN ('
+            .' SELECT bsl_item.component_variant_id FROM product_bundle_items bsl_item'
+            .' WHERE bsl_item.bundle_product_id = p.id'
+            ." ){$locationScope}"
+            .' ) bundle_locations'
+            .' CROSS JOIN product_bundle_items bundle_item'
+            .' WHERE bundle_item.bundle_product_id = p.id'
+            .' GROUP BY bundle_locations.location_id'
+            .' ) bundle_location)';
+
+        return [$sql, $bindings];
     }
 
     private function stockVariantRelations(callable $inventoryScope): array
@@ -757,7 +940,7 @@ class InventoryRepository
                 DB::raw(StockSummary::availableSql().' as total_available'))
             ->whereIn('inventories.item_id', $ids)
             ->groupBy('inventories.item_id', 'inventories.location_id')
-            ->with(['product:id,sku,product_id', 'location:id,location_name,location_code'])
+            ->with(['product:id,sku,product_id', 'location:id,location_name,location_code,is_small_warehouse'])
             ->get();
     }
 
@@ -880,34 +1063,94 @@ class InventoryRepository
     {
         WarehouseAccess::assert($locationId);
 
-        $sub = DB::table('inventories')
-            ->join('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
-            ->select('inventories.item_id', DB::raw('SUM(inventories.available) as total_on_hand'))
-            ->where('inventories.location_id', $locationId)
-            ->where('location_bins.is_inbound', false)
-            ->groupBy('inventories.item_id');
+        $inventorySummary = DB::table('inventories as i')
+            ->leftJoin('location_bins as b', 'b.id', '=', 'i.bin_id')
+            ->where('i.location_id', $locationId)
+            ->select('i.item_id')
+            ->selectRaw(StockSummary::placedOnHandSql('i', 'b').' as placed_on_hand')
+            ->selectRaw('COALESCE(SUM(i.on_order), 0) as on_order')
+            ->groupBy('i.item_id');
 
-        if (! $includeZero) {
-            $sub->havingRaw('SUM(inventories.available) > 0');
-        }
-
-        $joinType = $includeZero ? 'leftJoinSub' : 'joinSub';
+        $bundleSummary = DB::table('product_bundle_items as pbi')
+            ->leftJoinSub($inventorySummary, 'component_stock', function ($join) {
+                $join->on('component_stock.item_id', '=', 'pbi.component_variant_id');
+            })
+            ->select('pbi.bundle_product_id')
+            ->selectRaw(
+                'COALESCE(MIN(FLOOR(COALESCE(component_stock.placed_on_hand, 0) / '
+                .'GREATEST(pbi.qty, 1)::numeric)), 0) as total_on_hand'
+            )
+            ->selectRaw(
+                'COALESCE(MIN(FLOOR((COALESCE(component_stock.placed_on_hand, 0) '
+                .'- COALESCE(component_stock.on_order, 0)) / '
+                .'GREATEST(pbi.qty, 1)::numeric)), 0) as total_available'
+            )
+            ->groupBy('pbi.bundle_product_id');
 
         $query = ProductVariant::query()
             ->join('products as parent_product', 'parent_product.id', '=', 'product_variants.product_id')
-            ->{$joinType}($sub, 'stock_summary', function ($join) {
+            ->leftJoinSub($inventorySummary, 'stock_summary', function ($join) {
                 $join->on('stock_summary.item_id', '=', 'product_variants.id');
+            })
+            ->leftJoinSub($bundleSummary, 'bundle_stock_summary', function ($join) {
+                $join->on('bundle_stock_summary.bundle_product_id', '=', 'parent_product.id');
             })
             ->select(
                 'product_variants.*',
                 'parent_product.name as parent_product_name',
-                DB::raw('COALESCE(stock_summary.total_on_hand, 0) as total_on_hand'),
+                'parent_product.sku as parent_product_sku',
+                'parent_product.is_bundle as parent_product_is_bundle',
+                DB::raw(
+                    'CASE WHEN parent_product.is_bundle = true '
+                    .'THEN COALESCE(bundle_stock_summary.total_available, 0) '
+                    .'ELSE COALESCE(stock_summary.placed_on_hand, 0) '
+                    .' - COALESCE(stock_summary.on_order, 0) END as total_on_hand'
+                ),
             )
             ->whereNull('parent_product.deleted_at');
 
         if ($includeZero) {
             $query->where('product_variants.is_active', true);
+        } else {
+            $query->where(function ($query) {
+                $query
+                    ->where(function ($query) {
+                        $query
+                            ->where('parent_product.is_bundle', true)
+                            ->whereRaw('COALESCE(bundle_stock_summary.total_available, 0) > 0');
+                    })
+                    ->orWhere(function ($query) {
+                        $query
+                            ->where('parent_product.is_bundle', false)
+                            ->whereRaw(
+                                '(COALESCE(stock_summary.placed_on_hand, 0) '
+                                .'- COALESCE(stock_summary.on_order, 0)) > 0'
+                            );
+                });
+            });
         }
+
+        // A bundle is one sellable item even if legacy data contains more
+        // than one active persistence key. Keep only the deterministic
+        // technical/public representative so the picker matches Jubelio's
+        // single-row bundle response.
+        $query->where(function ($query) {
+            $query
+                ->where('parent_product.is_bundle', false)
+                ->orWhere(function ($query) {
+                    $query
+                        ->where('parent_product.is_bundle', true)
+                        ->whereRaw(
+                            'product_variants.id = ('
+                            .'SELECT bundle_variant.id FROM product_variants bundle_variant '
+                            .'WHERE bundle_variant.product_id = parent_product.id '
+                            .'AND bundle_variant.is_active = true '
+                            .'AND bundle_variant.deleted_at IS NULL '
+                            .'ORDER BY bundle_variant.is_internal DESC NULLS LAST, '
+                            .'bundle_variant.created_at ASC, bundle_variant.id ASC LIMIT 1)'
+                        );
+                });
+        });
 
         $query
             ->with([
@@ -917,7 +1160,15 @@ class InventoryRepository
                 'product.media' => fn ($q) => $q->whereNull('variant_id')->orderByDesc('is_primary')->orderBy('sort_order'),
             ]);
 
-        $query->allowedSearch('product_variants.sku', 'product.name');
+        $query->when($search !== '', function ($query) use ($search) {
+            $like = '%'.addcslashes($search, '%_\\').'%';
+            $query->where(function ($query) use ($like) {
+                $query
+                    ->where('product_variants.sku', 'ilike', $like)
+                    ->orWhere('parent_product.sku', 'ilike', $like)
+                    ->orWhere('parent_product.name', 'ilike', $like);
+            });
+        });
 
         return $query
             ->orderBy('product_variants.sku')

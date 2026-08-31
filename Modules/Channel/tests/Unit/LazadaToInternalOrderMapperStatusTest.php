@@ -105,4 +105,21 @@ class LazadaToInternalOrderMapperStatusTest extends TestCase
         $this->assertSame(5000.0, $paid['shipping_cost']);
         $this->assertSame(25000.0, $paid['grand_total']);
     }
+
+    public function test_reads_instant_from_lazada_channel_shipping_type(): void
+    {
+        $internal = (new LazadaToInternalOrderMapper())->map(
+            [
+                'order_id' => 900400,
+                'statuses' => ['ready_to_ship'],
+                'shipping_type' => 'SAME_DAY',
+                'price' => '30000.00',
+            ],
+            [],
+            'LZ-100',
+        );
+
+        $this->assertTrue($internal['channel_instant']);
+        $this->assertSame('SAME_DAY', $internal['shipping_type']);
+    }
 }

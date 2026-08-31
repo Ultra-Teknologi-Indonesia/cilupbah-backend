@@ -9,16 +9,11 @@ use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Maatwebsite\Excel\Facades\Excel;
-use Modules\Outbound\Exports\ShipmentManifestExport;
-use Modules\Outbound\Http\Resources\CompletedShipmentOrderResource;
-use Modules\Outbound\Http\Resources\ShipmentOrderResource;
-use Modules\Outbound\Http\Resources\ShipmentResource;
-use Modules\Outbound\Repositories\ShipmentRepository;
-use Modules\Outbound\Services\ShipmentService;
 use Modules\Outbound\Exceptions\ScanRejectedException;
-use Modules\Outbound\Http\Requests\CreateShipmentRequest;
+use Modules\Outbound\Exports\ShipmentManifestExport;
 use Modules\Outbound\Http\Requests\AddShipmentOrdersRequest;
 use Modules\Outbound\Http\Requests\BulkManifestPdfRequest;
+use Modules\Outbound\Http\Requests\CreateShipmentRequest;
 use Modules\Outbound\Http\Requests\DriverCallRequest;
 use Modules\Outbound\Http\Requests\RemoveShipmentOrdersRequest;
 use Modules\Outbound\Http\Requests\SaveAwbRequest;
@@ -27,6 +22,12 @@ use Modules\Outbound\Http\Requests\ScanShipmentRequest;
 use Modules\Outbound\Http\Requests\StoreInstantShipmentRequest;
 use Modules\Outbound\Http\Requests\UpdateDriverCallRequest;
 use Modules\Outbound\Http\Requests\UpdateHandoverQtyRequest;
+use Modules\Outbound\Http\Resources\CompletedShipmentOrderResource;
+use Modules\Outbound\Http\Resources\ShipmentOrderResource;
+use Modules\Outbound\Http\Resources\ShipmentResource;
+use Modules\Outbound\Jobs\RefreshInstantTrackingJob;
+use Modules\Outbound\Repositories\ShipmentRepository;
+use Modules\Outbound\Services\ShipmentService;
 use OpenApi\Attributes as OA;
 use Throwable;
 
@@ -187,9 +188,9 @@ class ShipmentController extends Controller
             'data' => $items,
             'meta' => [
                 'current_page' => $paginator->currentPage(),
-                'per_page'     => $paginator->perPage(),
-                'last_page'    => $paginator->lastPage(),
-                'total'        => $paginator->total(),
+                'per_page' => $paginator->perPage(),
+                'last_page' => $paginator->lastPage(),
+                'total' => $paginator->total(),
             ],
         ]);
     }
@@ -291,7 +292,7 @@ class ShipmentController extends Controller
     {
         $shipment = $this->shipmentService->getById($id);
 
-        if (!$shipment) {
+        if (! $shipment) {
             return $this->errorResponse('Shipment tidak ditemukan.', 404);
         }
 
@@ -334,6 +335,7 @@ class ShipmentController extends Controller
                 required: ['order_ids'],
                 properties: [
                     new OA\Property(property: 'order_ids', type: 'array', items: new OA\Items(type: 'string')),
+                    new OA\Property(property: 'internal_only', type: 'boolean', nullable: true, description: 'Batasi penambahan hanya untuk order manual/internal.'),
                 ]
             )
         ),
@@ -343,7 +345,11 @@ class ShipmentController extends Controller
     )]
     public function addOrders(string $id, AddShipmentOrdersRequest $request): JsonResponse
     {
-        $shipment = $this->shipmentService->addOrders($id, $request->order_ids);
+        $shipment = $this->shipmentService->addOrders(
+            $id,
+            $request->order_ids,
+            $request->boolean('internal_only'),
+        );
 
         return $this->successResponse($shipment);
     }
@@ -560,7 +566,7 @@ class ShipmentController extends Controller
     {
         $shipment = $this->shipmentService->getById($id);
 
-        if (!$shipment) {
+        if (! $shipment) {
             return $this->errorResponse('Shipment tidak ditemukan.', 404);
         }
 
@@ -576,6 +582,7 @@ class ShipmentController extends Controller
             ], $filename, 'a4', 'portrait');
         } catch (Throwable $e) {
             report($e);
+
             return $this->errorResponse(
                 'Gagal membuat PDF manifest.',
                 500,
@@ -606,7 +613,7 @@ class ShipmentController extends Controller
     {
         $shipment = $this->shipmentService->getById($id);
 
-        if (!$shipment) {
+        if (! $shipment) {
             return $this->errorResponse('Shipment tidak ditemukan.', 404);
         }
 
@@ -617,6 +624,7 @@ class ShipmentController extends Controller
             return Excel::download(new ShipmentManifestExport($shipment), $filename);
         } catch (Throwable $e) {
             report($e);
+
             return $this->errorResponse(
                 'Gagal membuat Excel manifest.',
                 500,
@@ -660,7 +668,7 @@ class ShipmentController extends Controller
                 fn ($shipment) => (string) ($shipment->shipment_no ?? ''),
             );
 
-            $filename = 'Manifest-Bulk-' . now()->format('Ymd-His') . '.pdf';
+            $filename = 'Manifest-Bulk-'.now()->format('Ymd-His').'.pdf';
 
             return $this->pdfRenderer->stream('outbound::pdf.manifest-bulk', [
                 'shipments' => $shipments,
@@ -668,6 +676,7 @@ class ShipmentController extends Controller
             ], $filename, 'a4', 'portrait');
         } catch (Throwable $e) {
             report($e);
+
             return $this->errorResponse(
                 'Gagal membuat PDF manifest bulk.',
                 500,
@@ -848,8 +857,8 @@ class ShipmentController extends Controller
     {
 
         try {
-            \Modules\Outbound\Jobs\RefreshInstantTrackingJob::dispatchSync($id);
-        } catch (\Throwable $e) {
+            RefreshInstantTrackingJob::dispatchSync($id);
+        } catch (Throwable $e) {
             report($e);
         }
 

@@ -12,15 +12,15 @@ use Modules\Warehouse\Services\BinLayoutImporter;
 class ReconcileBinLayout extends Command
 {
     protected $signature = 'warehouse:reconcile-bin-layout
-        {--location=* : Kode lokasi (boleh banyak). Default: WH-PUSAT & WH-KECIL.}
+        {--location=* : Kode lokasi (boleh banyak). Default: WH-PUSAT & lokasi Gudang Kecil resmi.}
         {--commit : Terapkan perubahan. Tanpa flag ini = dry-run (aman).}
         {--report-dir= : Direktori output laporan CSV (default: storage/app/bin-migration).}';
 
     protected $description = 'Rekonsiliasi kode rak gudang ke daftar otoritatif (buat baru + hapus dummy aman). Dry-run default.';
 
     private const TARGETS = [
-        'WH-PUSAT' => 'wh-pusat-bin-codes.csv',
-        'WH-KECIL' => 'wh-kecil-bin-codes.csv',
+        Location::SYSTEM_PUSAT_CODE => 'wh-pusat-bin-codes.csv',
+        Location::SYSTEM_KECIL_CODE => 'wh-kecil-bin-codes.csv',
     ];
 
     private const REF_TABLES = [
@@ -41,7 +41,11 @@ class ReconcileBinLayout extends Command
     public function handle(): int
     {
         $this->commit = (bool) $this->option('commit');
-        $locations = $this->option('location') ?: array_keys(self::TARGETS);
+        $requestedLocations = $this->option('location') ?: array_keys(self::TARGETS);
+        $locations = array_values(array_unique(array_map(
+            fn ($code) => $this->normalizeLocationCode((string) $code),
+            $requestedLocations,
+        )));
 
         $this->refCols = $this->resolveRefColumns();
 
@@ -70,6 +74,27 @@ class ReconcileBinLayout extends Command
         return self::SUCCESS;
     }
 
+    private function normalizeLocationCode(string $code): string
+    {
+        $location = Location::where('location_code', $code)
+            ->first(['id', 'is_small_warehouse']);
+
+        return $location?->is_small_warehouse
+            ? Location::SYSTEM_KECIL_CODE
+            : $code;
+    }
+
+    private function resolveLocation(string $code): ?Location
+    {
+        if ($code === Location::SYSTEM_KECIL_CODE) {
+            $id = Location::getOfficialSmallWarehouseId();
+
+            return $id ? Location::find($id) : null;
+        }
+
+        return Location::where('location_code', $code)->first();
+    }
+
     private function processLocation(string $code): ?array
     {
         $this->line("── {$code} ──");
@@ -79,7 +104,7 @@ class ReconcileBinLayout extends Command
             return null;
         }
 
-        $location = Location::where('location_code', $code)->first();
+        $location = $this->resolveLocation($code);
         if (! $location) {
             $this->warn("  Lokasi '{$code}' tidak ada, dilewati.");
             return null;

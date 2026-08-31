@@ -280,4 +280,42 @@ class EmptyStockGuardTest extends TestCase
         $this->assertSame(1, $response->json('data.moved'));
         $this->assertCount(0, $response->json('data.skipped'));
     }
+
+    public function test_bundle_order_with_insufficient_component_stock_is_flagged_empty_stock(): void
+    {
+        $bundleProduct = Product::create([
+            'category_id' => $this->product->category_id,
+            'name' => 'Bundle Stok Kosong',
+            'sku' => 'BUNDLE-EMPTY-DENIM',
+            'is_active' => true,
+            'is_bundle' => true,
+        ]);
+        $bundleVariant = ProductVariant::create([
+            'product_id' => $bundleProduct->id,
+            'sku' => 'BUNDLE-EMPTY-DENIM-1',
+            'sell_price' => 100000,
+            'is_active' => true,
+        ]);
+        $bundleProduct->bundleItems()->create([
+            'component_variant_id' => $this->variant->id,
+            'qty' => 1,
+        ]);
+
+        $orderId = $this->createOrder([$this->item($bundleVariant->id, 2)]);
+        $this->drainOnHand($this->variant->id);
+
+        $this->assertTrue(
+            SalesOrder::whereKey($orderId)->hasStockShortfall()->exists(),
+            'Bundle dengan komponen kurang harus ditandai Empty Stock.',
+        );
+
+        $response = $this->postJson('/api/v1/sales/orders/move-to-ready', [
+            'order_ids' => [$orderId],
+        ]);
+
+        $response->assertOk();
+        $this->assertSame(0, $response->json('data.moved'));
+        $this->assertSame($orderId, $response->json('data.skipped.0.id'));
+        $this->assertSame('empty_stock', $response->json('data.skipped.0.reason'));
+    }
 }

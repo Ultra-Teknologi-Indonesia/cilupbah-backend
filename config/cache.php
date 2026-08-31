@@ -4,7 +4,7 @@ use Illuminate\Support\Str;
 
 return [
 
-    'default' => env('CACHE_STORE', 'database'),
+    'default' => env('CACHE_STORE', 'redis'),
 
     'stores' => [
 
@@ -68,7 +68,7 @@ return [
         'failover' => [
             'driver' => 'failover',
             'stores' => [
-                'database',
+                'redis',
                 'array',
             ],
         ],

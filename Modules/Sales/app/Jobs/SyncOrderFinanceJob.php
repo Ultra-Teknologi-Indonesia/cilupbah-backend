@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Jobs;
 
+use App\Support\DatabaseAvailability;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -108,6 +109,25 @@ class SyncOrderFinanceJob implements ShouldBeUnique, ShouldQueue
 
             throw $e;
         } catch (\Throwable $e) {
+            if (DatabaseAvailability::isPermanentDataError($e)) {
+                $this->failWithoutRetry($e, $order);
+
+                return;
+            }
+
+            if (DatabaseAvailability::isTransient($e)) {
+                Log::warning('SyncOrderFinanceJob database temporarily unavailable; allowing delayed retry', [
+                    'job' => self::class,
+                    'order_id' => $order->id,
+                    'source' => $order->source,
+                    'channel_shop_id' => $order->channel_shop_id,
+                    'attempt' => $this->attempts(),
+                    'exception' => $e->getMessage(),
+                ]);
+
+                throw $e;
+            }
+
             if (str_contains(strtolower($e->getMessage()), 'too many requests') || str_contains($e->getMessage(), '429')) {
                 $delay = min(300, (int) pow(2, $this->attempts()) * 10 + rand(3, 10));
                 Log::warning("SyncOrderFinanceJob: Rate limit encountered for order {$order->id}, releasing with delay {$delay}s: ".$e->getMessage());
@@ -123,14 +143,58 @@ class SyncOrderFinanceJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        $orderService->updateOrderFinance($order->id, $finance);
+        try {
+            $orderService->updateOrderFinance($order->id, $finance);
+        } catch (\Throwable $e) {
+            if (DatabaseAvailability::isPermanentDataError($e)) {
+                $this->failWithoutRetry($e, $order);
+
+                return;
+            }
+
+            if (DatabaseAvailability::isTransient($e)) {
+                Log::warning('SyncOrderFinanceJob database temporarily unavailable during update', [
+                    'job' => self::class,
+                    'order_id' => $order->id,
+                    'source' => $order->source,
+                    'channel_shop_id' => $order->channel_shop_id,
+                    'attempt' => $this->attempts(),
+                    'exception' => $e->getMessage(),
+                ]);
+            }
+
+            throw $e;
+        }
 
         Log::info('SyncOrderFinanceJob: finance updated', [
+            'job' => self::class,
             'order_id' => $order->id,
             'salesorder_no' => $order->salesorder_no,
             'source' => $order->source,
+            'channel_shop_id' => $order->channel_shop_id,
             'is_settled' => $finance['is_settled'] ?? false,
         ]);
+    }
+
+    private function failWithoutRetry(\Throwable $exception, SalesOrder $order): void
+    {
+        Log::error('SyncOrderFinanceJob rejected permanent data error', [
+            'job' => self::class,
+            'order_id' => $order->id,
+            'salesorder_no' => $order->salesorder_no,
+            'source' => $order->source,
+            'channel_shop_id' => $order->channel_shop_id,
+            'attempt' => $this->attempts(),
+            'exception' => $exception->getMessage(),
+        ]);
+
+        if ($this->job !== null) {
+            $this->fail($exception);
+
+            return;
+        }
+
+        throw $exception;
     }
 
     private function fetchShopee(SalesOrder $order): ?array
@@ -178,7 +242,9 @@ class SyncOrderFinanceJob implements ShouldBeUnique, ShouldQueue
     public function failed(\Throwable $exception): void
     {
         Log::error('SyncOrderFinanceJob failed permanently', [
+            'job' => self::class,
             'order_id' => $this->orderId,
+            'attempt' => $this->attempts(),
             'exception' => $exception->getMessage(),
         ]);
     }

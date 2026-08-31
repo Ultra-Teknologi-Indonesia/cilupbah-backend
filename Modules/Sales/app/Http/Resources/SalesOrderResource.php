@@ -4,6 +4,8 @@ namespace Modules\Sales\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Modules\Sales\Enums\BuyerCancellationSyncStatus;
+use Modules\Sales\Support\CancelReasonHumanizer;
 use OpenApi\Attributes as OA;
 
 #[OA\Schema(
@@ -23,6 +25,7 @@ use OpenApi\Attributes as OA;
         new OA\Property(property: 'channel_status', type: 'string', example: 'UNPAID'),
         new OA\Property(property: 'is_paid', type: 'boolean', example: false),
         new OA\Property(property: 'is_canceled', type: 'boolean', example: false),
+        new OA\Property(property: 'channel_instant', type: 'boolean', nullable: true, example: true),
         new OA\Property(property: 'has_stock_shortfall', type: 'boolean', example: false),
         new OA\Property(property: 'payment_method', type: 'string', nullable: true, example: null),
 
@@ -81,81 +84,80 @@ class SalesOrderResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
-            'id'              => $this->id,
-            'salesorder_no'   => $this->salesorder_no,
-            'channel_order_no'=> $this->channel_order_no,
-            'source'          => $this->source,
+            'id' => $this->id,
+            'salesorder_no' => $this->salesorder_no,
+            'channel_order_no' => $this->channel_order_no,
+            'source' => $this->source,
             'commerce_platform' => $this->commerce_platform,
             'channel_shop_id' => $this->channel_shop_id,
-            'shop_name'       => $this->whenLoaded('shop', fn () => $this->shop?->shop_name),
-            'customer_name'   => $this->customer_name,
-            'transaction_date'=> $this->transaction_date,
+            'shop_name' => $this->whenLoaded('shop', fn () => $this->shop?->shop_name),
+            'customer_name' => $this->customer_name,
+            'transaction_date' => $this->transaction_date,
 
-            'status'              => $this->status,
-            'status_label'        => $this->status_label,
-            'wms_status'          => $this->wms_status ?? $this->resolved_wms_status,
-            'channel_status'      => $this->channel_status,
-            'channel_status_raw'  => $this->channel_status_raw,
-            'is_paid'             => (bool) $this->is_paid,
-            'is_canceled'         => (bool) $this->is_canceled,
+            'status' => $this->status,
+            'status_label' => $this->status_label,
+            'wms_status' => $this->wms_status ?? $this->resolved_wms_status,
+            'channel_status' => $this->channel_status,
+            'channel_status_raw' => $this->channel_status_raw,
+            'is_paid' => (bool) $this->is_paid,
+            'is_canceled' => (bool) $this->is_canceled,
             'has_stock_shortfall' => $this->hasStockShortfall(),
-            'cancel_reason'       => $this->cancel_reason,
-            'channel_cancel_status'       => $this->channel_cancel_status,
-            'channel_cancel_error'        => $this->channel_cancel_error,
+            'cancel_reason' => $this->cancel_reason,
+            'channel_cancel_status' => $this->channel_cancel_status,
+            'channel_cancel_error' => $this->channel_cancel_error,
             'channel_cancel_requested_at' => $this->channel_cancel_requested_at,
-            'payment_method'      => $this->payment_method,
+            'payment_method' => $this->payment_method,
             'payment_method_name' => $this->payment_method_name,
-            'paid_time'           => $this->paid_time,
-            'ship_by_date'        => $this->ship_by_date,
+            'paid_time' => $this->paid_time,
+            'ship_by_date' => $this->ship_by_date,
 
-            'sub_total'      => (float) $this->sub_total,
-            'total_disc'     => (float) $this->total_disc,
-            'total_tax'      => (float) $this->total_tax,
-            'shipping_cost'  => (float) $this->shipping_cost,
+            'sub_total' => (float) $this->sub_total,
+            'total_disc' => (float) $this->total_disc,
+            'total_tax' => (float) $this->total_tax,
+            'shipping_cost' => (float) $this->shipping_cost,
             'insurance_cost' => (float) $this->insurance_cost,
-            'grand_total'    => (float) $this->grand_total,
+            'grand_total' => (float) $this->grand_total,
 
             'finance' => [
-                'seller_voucher'           => $this->floatOrNull($this->seller_voucher),
-                'platform_voucher'         => $this->floatOrNull($this->platform_voucher),
-                'payment_voucher'          => $this->floatOrNull($this->payment_voucher),
-                'commission_fee'           => $this->floatOrNull($this->commission_fee),
-                'service_fee'              => $this->floatOrNull($this->service_fee),
-                'transaction_fee'          => $this->floatOrNull($this->transaction_fee),
-                'affiliate_commission'     => $this->floatOrNull($this->affiliate_commission),
-                'order_processing_fee'     => $this->floatOrNull($this->order_processing_fee),
-                'seller_shipping_borne'    => $this->floatOrNull($this->seller_shipping_borne),
+                'seller_voucher' => $this->floatOrNull($this->seller_voucher),
+                'platform_voucher' => $this->floatOrNull($this->platform_voucher),
+                'payment_voucher' => $this->floatOrNull($this->payment_voucher),
+                'commission_fee' => $this->floatOrNull($this->commission_fee),
+                'service_fee' => $this->floatOrNull($this->service_fee),
+                'transaction_fee' => $this->floatOrNull($this->transaction_fee),
+                'affiliate_commission' => $this->floatOrNull($this->affiliate_commission),
+                'order_processing_fee' => $this->floatOrNull($this->order_processing_fee),
+                'seller_shipping_borne' => $this->floatOrNull($this->seller_shipping_borne),
                 'platform_shipping_rebate' => $this->floatOrNull($this->platform_shipping_rebate),
-                'settlement_amount'        => $this->floatOrNull($this->settlement_amount),
-                'refund_total'             => $this->floatOrNull($this->refund_total) ?? $this->refundTotal(),
-                'gross_amount'             => $this->floatOrNull($this->gross_amount),
-                'total_tax'                => $this->floatOrNull($this->total_tax),
-                'insurance_cost'           => $this->floatOrNull($this->insurance_cost),
-                'currency'                 => $this->fee_currency ?? 'IDR',
-                'is_settled'               => (bool) $this->is_settled,
-                'settled_at'               => $this->settled_at,
-                'synced_at'                => $this->finance_synced_at,
-                'fee_lines'                => $this->whenLoaded('feeLines', fn () =>
-                    $this->feeLines->map(fn ($line) => [
-                        'fee_type'         => $line->fee_type,
-                        'channel_fee_code' => $line->channel_fee_code,
-                        'amount'           => (float) $line->amount,
-                    ])->values(), []),
+                'settlement_amount' => $this->floatOrNull($this->settlement_amount),
+                'refund_total' => $this->floatOrNull($this->refund_total) ?? $this->refundTotal(),
+                'gross_amount' => $this->floatOrNull($this->gross_amount),
+                'total_tax' => $this->floatOrNull($this->total_tax),
+                'insurance_cost' => $this->floatOrNull($this->insurance_cost),
+                'currency' => $this->fee_currency ?? 'IDR',
+                'is_settled' => (bool) $this->is_settled,
+                'settled_at' => $this->settled_at,
+                'synced_at' => $this->finance_synced_at,
+                'fee_lines' => $this->whenLoaded('feeLines', fn () => $this->feeLines->map(fn ($line) => [
+                    'fee_type' => $line->fee_type,
+                    'channel_fee_code' => $line->channel_fee_code,
+                    'amount' => (float) $line->amount,
+                ])->values(), []),
             ],
 
             'shipping' => [
-                'full_name'     => $this->shipping_full_name,
-                'phone'         => $this->shipping_phone,
-                'address'       => $this->shipping_address,
-                'city'          => $this->shipping_city,
-                'province'      => $this->shipping_province,
-                'post_code'     => $this->shipping_post_code,
-                'country'       => $this->shipping_country,
-                'coordinate'    => $this->shipping_coordinate,
-                'provider'      => $this->shipping_provider,
+                'full_name' => $this->shipping_full_name,
+                'phone' => $this->shipping_phone,
+                'address' => $this->shipping_address,
+                'city' => $this->shipping_city,
+                'province' => $this->shipping_province,
+                'post_code' => $this->shipping_post_code,
+                'country' => $this->shipping_country,
+                'coordinate' => $this->shipping_coordinate,
+                'provider' => $this->shipping_provider,
                 'resolved_shipment_type' => $this->resolved_shipment_type,
-                'courier'       => $this->whenLoaded('courier', fn () => $this->courier ? [
-                    'id'   => $this->courier->id,
+                'courier' => $this->whenLoaded('courier', fn () => $this->courier ? [
+                    'id' => $this->courier->id,
                     'code' => $this->courier->code,
                     'name' => $this->courier->name,
                 ] : null),
@@ -163,68 +165,92 @@ class SalesOrderResource extends JsonResource
             ],
 
             'shipping_label' => [
-                'status'      => $this->shipping_label_status,
-                'doc_type'    => $this->shipping_label_doc_type,
+                'status' => $this->shipping_label_status,
+                'doc_type' => $this->shipping_label_doc_type,
                 'prepared_at' => $this->shipping_label_prepared_at,
             ],
 
             'courier_pickup' => [
-                'courier_name'  => $this->courier_name,
+                'courier_name' => $this->courier_name,
                 'courier_phone' => $this->courier_phone,
-                'pickup_code'   => $this->pickup_code,
-                'id_photo_url'   => $this->relationLoaded('media') && $this->media->contains('collection_name', 'courier_id')
+                'pickup_code' => $this->pickup_code,
+                'id_photo_url' => $this->relationLoaded('media') && $this->media->contains('collection_name', 'courier_id')
                     ? ($this->getFirstMediaUrl('courier_id') ?: null)
                     : null,
                 'id_photo_thumb' => $this->relationLoaded('media') && $this->media->contains('collection_name', 'courier_id')
                     ? ($this->getFirstMediaUrl('courier_id', 'thumb') ?: null)
                     : null,
-                'recorded_at'   => $this->courier_pickup_recorded_at,
-                'recorded_by'   => $this->courier_pickup_recorded_by,
+                'recorded_at' => $this->courier_pickup_recorded_at,
+                'recorded_by' => $this->courier_pickup_recorded_by,
             ],
 
             'buyer_message' => $this->buyer_message,
-            'seller_note'   => $this->seller_note,
+            'seller_note' => $this->seller_note,
 
-            'location_id'   => $this->location_id,
+            'location_id' => $this->location_id,
             'location_name' => $this->whenLoaded('location', fn () => $this->location?->location_name),
-            'total_qty'     => $this->whenLoaded('items', fn () => $this->items->sum('qty_in_base'), 0),
-            'total_sku'     => $this->whenLoaded('items', fn () => $this->items->count(), 0),
+            'scheduled_shipment' => $this->whenLoaded('shipmentOrders', function () {
+                $shipmentOrder = $this->shipmentOrders->first(
+                    fn ($shipmentOrder): bool => $shipmentOrder->relationLoaded('shipment')
+                        && $shipmentOrder->shipment?->status === 'SCHEDULED',
+                );
+
+                return $shipmentOrder?->shipment ? [
+                    'id' => $shipmentOrder->shipment->id,
+                    'shipment_no' => $shipmentOrder->shipment->shipment_no,
+                    'status' => $shipmentOrder->shipment->status,
+                    'shipment_date' => $shipmentOrder->shipment->shipment_date,
+                    'courier_name' => $shipmentOrder->shipment->courier_name,
+                    'courier_code' => $shipmentOrder->shipment->courier_code,
+                ] : null;
+            }),
+            'total_qty' => $this->whenLoaded('items', fn () => $this->items->sum('qty_in_base'), 0),
+            'total_sku' => $this->whenLoaded('items', fn () => $this->items->count(), 0),
             'has_unmapped_items' => $this->whenLoaded('items', fn () => $this->items->contains(fn ($item) => $item->item_id === null), false),
-            'cancel_requested_at'    => $this->cancel_requested_at,
-            'cancel_request_reason'  => \Modules\Sales\Support\CancelReasonHumanizer::buyer($this->cancel_request_reason),
-            'cancel_reject_reason'   => \Modules\Sales\Support\CancelReasonHumanizer::sellerReject($this->cancel_reject_reason),
+            'cancel_requested_at' => $this->cancel_requested_at,
+            'cancel_request_reason' => CancelReasonHumanizer::buyer($this->cancel_request_reason),
+            'cancel_reject_reason' => CancelReasonHumanizer::sellerReject($this->cancel_reject_reason),
+            'buyer_cancel_sync_status' => $this->buyer_cancel_sync_status,
+            'buyer_cancel_sync_status_label' => $this->buyer_cancel_sync_status
+                ? BuyerCancellationSyncStatus::tryFrom($this->buyer_cancel_sync_status)?->label()
+                : null,
+            'buyer_cancel_sync_decision' => $this->buyer_cancel_sync_decision,
+            'buyer_cancel_sync_error' => $this->buyer_cancel_sync_error,
+            'buyer_cancel_synced_at' => $this->buyer_cancel_synced_at,
+            'buyer_cancel_channel_reference' => $this->buyer_cancel_channel_reference,
             'handed_to_warehouse_at' => $this->handed_to_warehouse_at,
 
-            'pick_failed_at'     => $this->pick_failed_at,
-            'pick_failed_by'     => $this->pick_failed_by,
-            'pick_fail_reason'   => $this->pick_fail_reason,
+            'pick_failed_at' => $this->pick_failed_at,
+            'pick_failed_by' => $this->pick_failed_by,
+            'pick_fail_reason' => $this->pick_fail_reason,
 
-            'contacted_at'       => $this->contacted_at,
-            'contacted_by'       => $this->contacted_by,
-            'contact_channel'    => $this->contact_channel,
-            'customer_decision'  => $this->customer_decision,
-            'decision_at'        => $this->decision_at,
-            'decision_by'        => $this->decision_by,
-            'contact_note'       => $this->contact_note,
+            'contacted_at' => $this->contacted_at,
+            'contacted_by' => $this->contacted_by,
+            'contact_channel' => $this->contact_channel,
+            'customer_decision' => $this->customer_decision,
+            'decision_at' => $this->decision_at,
+            'decision_by' => $this->decision_by,
+            'contact_note' => $this->contact_note,
 
-            'is_manual'           => (bool) $this->is_manual,
-            'is_shadow'           => (bool) $this->is_shadow,
-            'no_ref'              => $this->no_ref,
-            'note'                => $this->note,
-            'delivery_method'     => $this->delivery_method,
-            'is_cod'              => (bool) $this->is_cod,
-            'priority_fulfillment'=> (bool) $this->priority_fulfillment,
-            'is_instant'          => \Modules\Outbound\Support\InstantOrderClassifier::isInstant($this->shipping_provider, $this->shipping_type),
-            'other_discount'      => (float) ($this->other_discount ?? 0),
-            'shipping_discount'   => (float) ($this->shipping_discount ?? 0),
-            'price_includes_tax'  => (bool) $this->price_includes_tax,
-            'order_weight_gram'   => $this->order_weight_gram,
+            'is_manual' => (bool) $this->is_manual,
+            'is_shadow' => (bool) $this->is_shadow,
+            'no_ref' => $this->no_ref,
+            'note' => $this->note,
+            'delivery_method' => $this->delivery_method,
+            'is_cod' => (bool) $this->is_cod,
+            'priority_fulfillment' => (bool) $this->priority_fulfillment,
+            'channel_instant' => $this->channel_instant,
+            'is_instant' => (bool) $this->is_instant,
+            'other_discount' => (float) ($this->other_discount ?? 0),
+            'shipping_discount' => (float) ($this->shipping_discount ?? 0),
+            'price_includes_tax' => (bool) $this->price_includes_tax,
+            'order_weight_gram' => $this->order_weight_gram,
 
             'internal_store' => $this->whenLoaded('internalStore', fn () => $this->internalStore ? [
-                'id'         => $this->internalStore->id,
-                'code'       => $this->internalStore->code,
-                'name'       => $this->internalStore->name,
-                'logo_url'   => $this->internalStore->relationLoaded('media') && $this->internalStore->media->contains('collection_name', 'logo')
+                'id' => $this->internalStore->id,
+                'code' => $this->internalStore->code,
+                'name' => $this->internalStore->name,
+                'logo_url' => $this->internalStore->relationLoaded('media') && $this->internalStore->media->contains('collection_name', 'logo')
                     ? ($this->internalStore->getFirstMediaUrl('logo') ?: null)
                     : null,
                 'logo_thumb' => $this->internalStore->relationLoaded('media') && $this->internalStore->media->contains('collection_name', 'logo')
@@ -233,21 +259,20 @@ class SalesOrderResource extends JsonResource
             ] : null),
 
             'salesman' => $this->whenLoaded('salesman', fn () => $this->salesman ? [
-                'id'   => $this->salesman->id,
+                'id' => $this->salesman->id,
                 'code' => $this->salesman->code,
                 'name' => $this->salesman->name,
             ] : null),
 
             'items' => SalesOrderItemResource::collection($this->whenLoaded('items')),
 
-            'status_history' => $this->whenLoaded('statusHistory', fn () =>
-                $this->statusHistory->map(fn ($h) => [
-                    'action'      => $h->action,
-                    'action_id'   => $h->action_id,
-                    'actor_email' => $h->actor_email,
-                    'actor_name'  => $h->actor_name,
-                    'created_at'  => $h->created_at,
-                ])->values()
+            'status_history' => $this->whenLoaded('statusHistory', fn () => $this->statusHistory->map(fn ($h) => [
+                'action' => $h->action,
+                'action_id' => $h->action_id,
+                'actor_email' => $h->actor_email,
+                'actor_name' => $h->actor_name,
+                'created_at' => $h->created_at,
+            ])->values()
             ),
 
             'created_at' => $this->created_at,

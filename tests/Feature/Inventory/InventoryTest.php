@@ -7,18 +7,13 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryTransfer;
-use Modules\Inventory\Models\StockAdjustment;
 use Modules\Inventory\Models\StockAdjustmentItem;
-use Modules\Inventory\Models\StockRevaluation;
-use Modules\Inventory\Models\StockRevaluationItem;
-use Modules\Inventory\Models\ReservedStock;
 use Modules\Inventory\Models\StockOpname;
-use Modules\Inventory\Models\Putaway;
+use Modules\Inventory\Models\StockRevaluationItem;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
-use App\Models\User;
 use Tests\TestCase;
 
 class InventoryTest extends TestCase
@@ -26,12 +21,19 @@ class InventoryTest extends TestCase
     use RefreshDatabase;
 
     private Location $location;
+
     private Location $location2;
+
     private Product $product;
+
     private ProductVariant $variant;
+
     private ProductVariant $variant2;
+
     private Inventory $inventory;
+
     private LocationBin $binInbound;
+
     private LocationBin $binStorage;
 
     protected function setUp(): void
@@ -49,75 +51,75 @@ class InventoryTest extends TestCase
             'location_code' => 'WH-01',
             'location_name' => 'Gudang Utama',
             'location_type' => 'warehouse',
-            'is_warehouse'  => true,
-            'is_active'     => true,
+            'is_warehouse' => true,
+            'is_active' => true,
         ]);
 
         $this->location2 = Location::create([
             'location_code' => 'WH-02',
             'location_name' => 'Gudang Cabang',
             'location_type' => 'warehouse',
-            'is_warehouse'  => true,
-            'is_active'     => true,
+            'is_warehouse' => true,
+            'is_active' => true,
         ]);
 
         $this->binInbound = LocationBin::create([
-            'location_id'    => $this->location->id,
-            'floor_code'     => 'F1',
-            'row_code'       => 'R1',
-            'column_code'    => 'C1',
-            'bin_code'       => 'F1-R1-C1',
+            'location_id' => $this->location->id,
+            'floor_code' => 'F1',
+            'row_code' => 'R1',
+            'column_code' => 'C1',
+            'bin_code' => 'F1-R1-C1',
             'bin_final_code' => 'WH01-F1-R1-C1',
-            'is_inbound'     => true,
+            'is_inbound' => true,
         ]);
 
         $this->binStorage = LocationBin::create([
-            'location_id'    => $this->location->id,
-            'floor_code'     => 'F1',
-            'row_code'       => 'R2',
-            'column_code'    => 'C1',
-            'bin_code'       => 'F1-R2-C1',
+            'location_id' => $this->location->id,
+            'floor_code' => 'F1',
+            'row_code' => 'R2',
+            'column_code' => 'C1',
+            'bin_code' => 'F1-R2-C1',
             'bin_final_code' => 'WH01-F1-R2-C1',
-            'is_inbound'     => false,
+            'is_inbound' => false,
         ]);
 
         $category = \DB::table('categories')->insertGetId([
-            'name'       => 'Electronics',
-            'is_active'  => true,
+            'name' => 'Electronics',
+            'is_active' => true,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
 
         $this->product = Product::create([
             'category_id' => $category,
-            'name'        => 'Test Product',
-            'sku'         => 'TST-001',
-            'is_active'   => true,
+            'name' => 'Test Product',
+            'sku' => 'TST-001',
+            'is_active' => true,
         ]);
 
         $this->variant = ProductVariant::create([
             'product_id' => $this->product->id,
-            'sku'        => 'TST-001-BLK',
+            'sku' => 'TST-001-BLK',
             'sell_price' => 100000,
-            'is_active'  => true,
+            'is_active' => true,
         ]);
 
         $this->variant2 = ProductVariant::create([
             'product_id' => $this->product->id,
-            'sku'        => 'TST-001-WHT',
+            'sku' => 'TST-001-WHT',
             'sell_price' => 100000,
-            'is_active'  => true,
+            'is_active' => true,
         ]);
 
         $this->inventory = Inventory::create([
-            'item_id'     => $this->variant->id,
+            'item_id' => $this->variant->id,
             'location_id' => $this->location->id,
-            'bin_id'      => null,
-            'batch_no'    => '',
-            'serial_no'   => '',
-            'on_hand'     => 100,
-            'on_order'    => 0,
-            'available'   => 100,
+            'bin_id' => null,
+            'batch_no' => '',
+            'serial_no' => '',
+            'on_hand' => 100,
+            'on_order' => 0,
+            'available' => 100,
         ]);
     }
 
@@ -149,41 +151,41 @@ class InventoryTest extends TestCase
     {
 
         Inventory::create([
-            'item_id'     => $this->variant->id,
+            'item_id' => $this->variant->id,
             'location_id' => $this->location->id,
-            'bin_id'      => $this->binStorage->id,
-            'batch_no'    => '',
-            'serial_no'   => '',
-            'on_hand'     => 40,
-            'on_order'    => 5,
-            'available'   => 35,
+            'bin_id' => $this->binStorage->id,
+            'batch_no' => '',
+            'serial_no' => '',
+            'on_hand' => 40,
+            'on_order' => 5,
+            'available' => 35,
         ]);
 
         $transit = Location::create([
             'location_code' => Location::SYSTEM_TRANSIT_CODE,
             'location_name' => 'Transit',
             'location_type' => 'Lokasi (Non Gudang)',
-            'is_warehouse'  => false,
-            'is_active'     => true,
+            'is_warehouse' => false,
+            'is_active' => true,
         ]);
         $transitBin = LocationBin::create([
-            'location_id'    => $transit->id,
-            'bin_code'       => 'TRANSIT-DEFAULT',
+            'location_id' => $transit->id,
+            'bin_code' => 'TRANSIT-DEFAULT',
             'bin_final_code' => 'DEFAULT',
-            'is_inbound'     => true,
+            'is_inbound' => true,
         ]);
         Inventory::create([
-            'item_id'     => $this->variant->id,
+            'item_id' => $this->variant->id,
             'location_id' => $transit->id,
-            'bin_id'      => $transitBin->id,
-            'batch_no'    => '',
-            'serial_no'   => '',
-            'on_hand'     => 7,
-            'on_order'    => 5,
-            'available'   => 2,
+            'bin_id' => $transitBin->id,
+            'batch_no' => '',
+            'serial_no' => '',
+            'on_hand' => 7,
+            'on_order' => 5,
+            'available' => 2,
         ]);
 
-        $response = $this->getJson('/api/v1/inventory?filter[product_id]=' . $this->product->id);
+        $response = $this->getJson('/api/v1/inventory?filter[product_id]='.$this->product->id);
         $response->assertOk();
 
         $item = collect($response->json('data'))->firstWhere('item_id', $this->variant->id);
@@ -234,10 +236,10 @@ class InventoryTest extends TestCase
     public function test_adjust_stock_positive(): void
     {
         $response = $this->postJson('/api/v1/inventory/adjustments', [
-            'item_id'     => $this->variant->id,
+            'item_id' => $this->variant->id,
             'location_id' => $this->location->id,
-            'qty'         => 50,
-            'created_by'  => 'admin',
+            'qty' => 50,
+            'created_by' => 'admin',
         ]);
 
         $response->assertOk()
@@ -249,17 +251,17 @@ class InventoryTest extends TestCase
 
         $this->assertDatabaseHas('inventory_movements', [
             'item_id' => $this->variant->id,
-            'source'  => 'ADJUSTMENT',
+            'source' => 'ADJUSTMENT',
         ]);
     }
 
     public function test_adjust_stock_negative(): void
     {
         $response = $this->postJson('/api/v1/inventory/adjustments', [
-            'item_id'     => $this->variant->id,
+            'item_id' => $this->variant->id,
             'location_id' => $this->location->id,
-            'qty'         => -30,
-            'created_by'  => 'admin',
+            'qty' => -30,
+            'created_by' => 'admin',
         ]);
 
         $response->assertOk();
@@ -271,10 +273,10 @@ class InventoryTest extends TestCase
     public function test_adjust_stock_prevents_negative_on_hand(): void
     {
         $response = $this->postJson('/api/v1/inventory/adjustments', [
-            'item_id'     => $this->variant->id,
+            'item_id' => $this->variant->id,
             'location_id' => $this->location->id,
-            'qty'         => -200,
-            'created_by'  => 'admin',
+            'qty' => -200,
+            'created_by' => 'admin',
         ]);
 
         $response->assertStatus(422);
@@ -286,29 +288,29 @@ class InventoryTest extends TestCase
     public function test_adjust_stock_creates_new_inventory_record(): void
     {
         $response = $this->postJson('/api/v1/inventory/adjustments', [
-            'item_id'     => $this->variant2->id,
+            'item_id' => $this->variant2->id,
             'location_id' => $this->location->id,
-            'qty'         => 25,
-            'created_by'  => 'admin',
+            'qty' => 25,
+            'created_by' => 'admin',
         ]);
 
         $response->assertOk();
 
         $this->assertDatabaseHas('inventories', [
-            'item_id'     => $this->variant2->id,
+            'item_id' => $this->variant2->id,
             'location_id' => $this->location->id,
-            'on_hand'     => 25,
-            'available'   => 25,
+            'on_hand' => 25,
+            'available' => 25,
         ]);
     }
 
     public function test_adjust_stock_validation_rejects_zero_qty(): void
     {
         $response = $this->postJson('/api/v1/inventory/adjustments', [
-            'item_id'     => $this->variant->id,
+            'item_id' => $this->variant->id,
             'location_id' => $this->location->id,
-            'qty'         => 0,
-            'created_by'  => 'admin',
+            'qty' => 0,
+            'created_by' => 'admin',
         ]);
 
         $response->assertStatus(422);
@@ -318,8 +320,8 @@ class InventoryTest extends TestCase
     {
         $response = $this->postJson('/api/v1/inventory/adjustments', [
             'location_id' => $this->location->id,
-            'qty'         => 10,
-            'created_by'  => 'admin',
+            'qty' => 10,
+            'created_by' => 'admin',
         ]);
 
         $response->assertStatus(422);
@@ -330,10 +332,10 @@ class InventoryTest extends TestCase
         $this->inventory->update(['on_order' => 20, 'available' => 80]);
 
         $this->postJson('/api/v1/inventory/adjustments', [
-            'item_id'     => $this->variant->id,
+            'item_id' => $this->variant->id,
             'location_id' => $this->location->id,
-            'qty'         => 10,
-            'created_by'  => 'admin',
+            'qty' => 10,
+            'created_by' => 'admin',
         ])->assertOk();
 
         $this->inventory->refresh();
@@ -345,13 +347,13 @@ class InventoryTest extends TestCase
     public function test_transfer_out_deducts_source_stock(): void
     {
         $response = $this->postJson('/api/v1/inventory/transfers', [
-            'source_location_id'      => $this->location->id,
+            'source_location_id' => $this->location->id,
             'destination_location_id' => $this->location2->id,
-            'created_by'              => 'admin',
-            'items'                   => [
+            'created_by' => 'admin',
+            'items' => [
                 [
                     'item_id' => $this->variant->id,
-                    'qty'     => 30,
+                    'qty' => 30,
                 ],
             ],
         ]);
@@ -364,21 +366,21 @@ class InventoryTest extends TestCase
 
         $this->assertDatabaseHas('inventory_movements', [
             'item_id' => $this->variant->id,
-            'source'  => 'TRANSFER_OUT',
-            'qty'     => -30,
+            'source' => 'TRANSFER_OUT',
+            'qty' => -30,
         ]);
     }
 
     public function test_transfer_out_fails_insufficient_stock(): void
     {
         $response = $this->postJson('/api/v1/inventory/transfers', [
-            'source_location_id'      => $this->location->id,
+            'source_location_id' => $this->location->id,
             'destination_location_id' => $this->location2->id,
-            'created_by'              => 'admin',
-            'items'                   => [
+            'created_by' => 'admin',
+            'items' => [
                 [
                     'item_id' => $this->variant->id,
-                    'qty'     => 999,
+                    'qty' => 999,
                 ],
             ],
         ]);
@@ -392,10 +394,10 @@ class InventoryTest extends TestCase
     public function test_transfer_out_requires_different_locations(): void
     {
         $response = $this->postJson('/api/v1/inventory/transfers', [
-            'source_location_id'      => $this->location->id,
+            'source_location_id' => $this->location->id,
             'destination_location_id' => $this->location->id,
-            'created_by'              => 'admin',
-            'items'                   => [
+            'created_by' => 'admin',
+            'items' => [
                 ['item_id' => $this->variant->id, 'qty' => 10],
             ],
         ]);
@@ -406,10 +408,10 @@ class InventoryTest extends TestCase
     public function test_transfer_in_adds_stock_to_destination(): void
     {
         $outResponse = $this->postJson('/api/v1/inventory/transfers', [
-            'source_location_id'      => $this->location->id,
+            'source_location_id' => $this->location->id,
             'destination_location_id' => $this->location2->id,
-            'created_by'              => 'admin',
-            'items'                   => [
+            'created_by' => 'admin',
+            'items' => [
                 ['item_id' => $this->variant->id, 'qty' => 20],
             ],
         ]);
@@ -431,21 +433,21 @@ class InventoryTest extends TestCase
         $this->assertEquals(20, $destInventory->on_hand);
 
         $this->assertDatabaseHas('inventory_movements', [
-            'item_id'     => $this->variant->id,
+            'item_id' => $this->variant->id,
             'location_id' => $this->location2->id,
-            'source'      => 'TRANSFER_IN',
-            'qty'         => 20,
+            'source' => 'TRANSFER_IN',
+            'qty' => 20,
         ]);
     }
 
     public function test_transfer_in_fails_on_non_transit_status(): void
     {
         $transfer = InventoryTransfer::create([
-            'transfer_number'         => 'TRF-TEST-001',
-            'source_location_id'      => $this->location->id,
+            'transfer_number' => 'TRF-TEST-001',
+            'source_location_id' => $this->location->id,
             'destination_location_id' => $this->location2->id,
-            'status'                  => InventoryTransfer::STATUS_RECEIVED,
-            'created_by'              => 'admin',
+            'status' => InventoryTransfer::STATUS_RECEIVED,
+            'created_by' => 'admin',
         ]);
 
         $response = $this->postJson("/api/v1/inventory/transfers/{$transfer->id}/receive", [
@@ -458,11 +460,11 @@ class InventoryTest extends TestCase
     public function test_delete_transfer_only_draft(): void
     {
         $transfer = InventoryTransfer::create([
-            'transfer_number'         => 'TRF-DEL-001',
-            'source_location_id'      => $this->location->id,
+            'transfer_number' => 'TRF-DEL-001',
+            'source_location_id' => $this->location->id,
             'destination_location_id' => $this->location2->id,
-            'status'                  => InventoryTransfer::STATUS_IN_TRANSIT,
-            'created_by'              => 'admin',
+            'status' => InventoryTransfer::STATUS_IN_TRANSIT,
+            'created_by' => 'admin',
         ]);
 
         $response = $this->deleteJson("/api/v1/inventory/transfers/{$transfer->id}");
@@ -472,11 +474,11 @@ class InventoryTest extends TestCase
     public function test_transfer_list_endpoints(): void
     {
         InventoryTransfer::create([
-            'transfer_number'         => 'TRF-LIST-001',
-            'source_location_id'      => $this->location->id,
+            'transfer_number' => 'TRF-LIST-001',
+            'source_location_id' => $this->location->id,
             'destination_location_id' => $this->location2->id,
-            'status'                  => InventoryTransfer::STATUS_IN_TRANSIT,
-            'created_by'              => 'admin',
+            'status' => InventoryTransfer::STATUS_IN_TRANSIT,
+            'created_by' => 'admin',
         ]);
 
         $this->getJson('/api/v1/inventory/transfers')->assertOk();
@@ -484,14 +486,39 @@ class InventoryTest extends TestCase
         $this->getJson('/api/v1/inventory/transfers/out-finished')->assertOk();
     }
 
+    public function test_finished_transfer_date_filter_uses_received_at_and_includes_the_full_end_date(): void
+    {
+        $transfer = InventoryTransfer::create([
+            'transfer_number' => 'TRF-FINISHED-DATE-001',
+            'source_location_id' => $this->location->id,
+            'destination_location_id' => $this->location2->id,
+            'status' => InventoryTransfer::STATUS_RECEIVED,
+            'created_by' => 'admin',
+            'created_at' => '2026-08-30 23:56:13',
+            'received_at' => '2026-08-31 04:05:55',
+        ]);
+
+        $this->getJson('/api/v1/inventory/transfers/out-finished?filter[date_from]=2026-08-31&filter[date_to]=2026-08-31')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.id', $transfer->id);
+    }
+
+    public function test_finished_transfer_rejects_invalid_date_without_server_error(): void
+    {
+        $this->getJson('/api/v1/inventory/transfers/out-finished?filter[date_to]=2026-02-31')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['filter.date']);
+    }
+
     public function test_transfer_show(): void
     {
         $transfer = InventoryTransfer::create([
-            'transfer_number'         => 'TRF-SHOW-001',
-            'source_location_id'      => $this->location->id,
+            'transfer_number' => 'TRF-SHOW-001',
+            'source_location_id' => $this->location->id,
             'destination_location_id' => $this->location2->id,
-            'status'                  => InventoryTransfer::STATUS_IN_TRANSIT,
-            'created_by'              => 'admin',
+            'status' => InventoryTransfer::STATUS_IN_TRANSIT,
+            'created_by' => 'admin',
         ]);
 
         $this->getJson("/api/v1/inventory/transfers/{$transfer->id}")
@@ -508,11 +535,11 @@ class InventoryTest extends TestCase
     public function test_mark_transfer_printed(): void
     {
         $transfer = InventoryTransfer::create([
-            'transfer_number'         => 'TRF-PRINT-001',
-            'source_location_id'      => $this->location->id,
+            'transfer_number' => 'TRF-PRINT-001',
+            'source_location_id' => $this->location->id,
             'destination_location_id' => $this->location2->id,
-            'status'                  => InventoryTransfer::STATUS_IN_TRANSIT,
-            'created_by'              => 'admin',
+            'status' => InventoryTransfer::STATUS_IN_TRANSIT,
+            'created_by' => 'admin',
         ]);
 
         $response = $this->postJson('/api/v1/inventory/transfer/mark-printed', [
@@ -535,23 +562,23 @@ class InventoryTest extends TestCase
     public function test_putaway_moves_stock_between_bins(): void
     {
         Inventory::create([
-            'item_id'     => $this->variant->id,
+            'item_id' => $this->variant->id,
             'location_id' => $this->location->id,
-            'bin_id'      => $this->binInbound->id,
-            'batch_no'    => '',
-            'serial_no'   => '',
-            'on_hand'     => 50,
-            'on_order'    => 0,
-            'available'   => 50,
+            'bin_id' => $this->binInbound->id,
+            'batch_no' => '',
+            'serial_no' => '',
+            'on_hand' => 50,
+            'on_order' => 0,
+            'available' => 50,
         ]);
 
         $response = $this->postJson('/api/v1/inventory/putaway', [
-            'item_id'            => $this->variant->id,
-            'location_id'        => $this->location->id,
-            'source_bin_id'      => $this->binInbound->id,
+            'item_id' => $this->variant->id,
+            'location_id' => $this->location->id,
+            'source_bin_id' => $this->binInbound->id,
             'destination_bin_id' => $this->binStorage->id,
-            'qty'                => 30,
-            'created_by'         => 'admin',
+            'qty' => 30,
+            'created_by' => 'admin',
         ]);
 
         $response->assertOk()
@@ -570,36 +597,36 @@ class InventoryTest extends TestCase
 
         $this->assertDatabaseHas('inventory_movements', [
             'item_id' => $this->variant->id,
-            'source'  => 'PUTAWAY_OUT',
-            'qty'     => -30,
+            'source' => 'PUTAWAY_OUT',
+            'qty' => -30,
         ]);
         $this->assertDatabaseHas('inventory_movements', [
             'item_id' => $this->variant->id,
-            'source'  => 'PUTAWAY_IN',
-            'qty'     => 30,
+            'source' => 'PUTAWAY_IN',
+            'qty' => 30,
         ]);
     }
 
     public function test_putaway_fails_insufficient_source_stock(): void
     {
         Inventory::create([
-            'item_id'     => $this->variant->id,
+            'item_id' => $this->variant->id,
             'location_id' => $this->location->id,
-            'bin_id'      => $this->binInbound->id,
-            'batch_no'    => '',
-            'serial_no'   => '',
-            'on_hand'     => 5,
-            'on_order'    => 0,
-            'available'   => 5,
+            'bin_id' => $this->binInbound->id,
+            'batch_no' => '',
+            'serial_no' => '',
+            'on_hand' => 5,
+            'on_order' => 0,
+            'available' => 5,
         ]);
 
         $response = $this->postJson('/api/v1/inventory/putaway', [
-            'item_id'            => $this->variant->id,
-            'location_id'        => $this->location->id,
-            'source_bin_id'      => $this->binInbound->id,
+            'item_id' => $this->variant->id,
+            'location_id' => $this->location->id,
+            'source_bin_id' => $this->binInbound->id,
             'destination_bin_id' => $this->binStorage->id,
-            'qty'                => 50,
-            'created_by'         => 'admin',
+            'qty' => 50,
+            'created_by' => 'admin',
         ]);
 
         $response->assertStatus(422);
@@ -610,8 +637,8 @@ class InventoryTest extends TestCase
         $response = $this->postJson('/api/v1/inventory/items/split-item', [
             'source_item_id' => $this->variant->id,
             'target_item_id' => $this->variant2->id,
-            'location_id'    => $this->location->id,
-            'qty_to_split'   => 10,
+            'location_id' => $this->location->id,
+            'qty_to_split' => 10,
             'split_into_qty' => 100,
         ]);
 
@@ -629,11 +656,11 @@ class InventoryTest extends TestCase
 
         $this->assertDatabaseHas('inventory_movements', [
             'item_id' => $this->variant->id,
-            'source'  => 'SPLIT_OUT',
+            'source' => 'SPLIT_OUT',
         ]);
         $this->assertDatabaseHas('inventory_movements', [
             'item_id' => $this->variant2->id,
-            'source'  => 'SPLIT_IN',
+            'source' => 'SPLIT_IN',
         ]);
     }
 
@@ -642,8 +669,8 @@ class InventoryTest extends TestCase
         $response = $this->postJson('/api/v1/inventory/items/split-item', [
             'source_item_id' => $this->variant->id,
             'target_item_id' => $this->variant2->id,
-            'location_id'    => $this->location->id,
-            'qty_to_split'   => 999,
+            'location_id' => $this->location->id,
+            'qty_to_split' => 999,
             'split_into_qty' => 100,
         ]);
 
@@ -658,8 +685,8 @@ class InventoryTest extends TestCase
         $response = $this->postJson('/api/v1/inventory/items/split-item', [
             'source_item_id' => $this->variant->id,
             'target_item_id' => $this->variant->id,
-            'location_id'    => $this->location->id,
-            'qty_to_split'   => 1,
+            'location_id' => $this->location->id,
+            'qty_to_split' => 1,
             'split_into_qty' => 10,
         ]);
 
@@ -670,10 +697,10 @@ class InventoryTest extends TestCase
     {
         $response = $this->postJson('/api/v1/inventory/adjustments/documents', [
             'transaction_date' => now()->toDateTimeString(),
-            'location_id'      => $this->location->id,
-            'items'            => [
+            'location_id' => $this->location->id,
+            'items' => [
                 [
-                    'item_id'    => $this->variant->id,
+                    'item_id' => $this->variant->id,
                     'actual_qty' => 120,
                 ],
             ],
@@ -684,7 +711,7 @@ class InventoryTest extends TestCase
 
         $this->assertDatabaseHas('stock_adjustments', [
             'location_id' => $this->location->id,
-            'status'      => 'DRAFT',
+            'status' => 'DRAFT',
         ]);
     }
 
@@ -692,10 +719,10 @@ class InventoryTest extends TestCase
     {
         $response = $this->postJson('/api/v1/inventory/adjustments/documents', [
             'transaction_date' => now()->toDateTimeString(),
-            'location_id'      => $this->location->id,
-            'items'            => [
+            'location_id' => $this->location->id,
+            'items' => [
                 [
-                    'item_id'    => $this->variant->id,
+                    'item_id' => $this->variant->id,
                     'actual_qty' => 80,
                 ],
             ],
@@ -713,8 +740,8 @@ class InventoryTest extends TestCase
     {
         $create = $this->postJson('/api/v1/inventory/adjustments/documents', [
             'transaction_date' => now()->toDateTimeString(),
-            'location_id'      => $this->location->id,
-            'items'            => [
+            'location_id' => $this->location->id,
+            'items' => [
                 ['item_id' => $this->variant->id, 'actual_qty' => 90],
             ],
         ]);
@@ -727,7 +754,7 @@ class InventoryTest extends TestCase
             ->assertJsonPath('data.status', 'APPROVED');
 
         $this->assertDatabaseHas('stock_adjustments', [
-            'id'     => $id,
+            'id' => $id,
             'status' => 'APPROVED',
         ]);
     }
@@ -736,8 +763,8 @@ class InventoryTest extends TestCase
     {
         $create = $this->postJson('/api/v1/inventory/adjustments/documents', [
             'transaction_date' => now()->toDateTimeString(),
-            'location_id'      => $this->location->id,
-            'items'            => [
+            'location_id' => $this->location->id,
+            'items' => [
                 ['item_id' => $this->variant->id, 'actual_qty' => 90],
             ],
         ]);
@@ -752,8 +779,8 @@ class InventoryTest extends TestCase
     {
         $create = $this->postJson('/api/v1/inventory/adjustments/documents', [
             'transaction_date' => now()->toDateTimeString(),
-            'location_id'      => $this->location->id,
-            'items'            => [
+            'location_id' => $this->location->id,
+            'items' => [
                 ['item_id' => $this->variant->id, 'actual_qty' => 50],
             ],
         ]);
@@ -770,8 +797,8 @@ class InventoryTest extends TestCase
     {
         $create = $this->postJson('/api/v1/inventory/adjustments/documents', [
             'transaction_date' => now()->toDateTimeString(),
-            'location_id'      => $this->location->id,
-            'items'            => [
+            'location_id' => $this->location->id,
+            'items' => [
                 ['item_id' => $this->variant->id, 'actual_qty' => 50],
             ],
         ]);
@@ -786,8 +813,8 @@ class InventoryTest extends TestCase
     {
         $create = $this->postJson('/api/v1/inventory/adjustments/documents', [
             'transaction_date' => now()->toDateTimeString(),
-            'location_id'      => $this->location->id,
-            'items'            => [
+            'location_id' => $this->location->id,
+            'items' => [
                 ['item_id' => $this->variant->id, 'actual_qty' => 50],
             ],
         ]);
@@ -802,8 +829,8 @@ class InventoryTest extends TestCase
     {
         $create = $this->postJson('/api/v1/inventory/adjustments/documents', [
             'transaction_date' => now()->toDateTimeString(),
-            'location_id'      => $this->location->id,
-            'items'            => [
+            'location_id' => $this->location->id,
+            'items' => [
                 ['item_id' => $this->variant->id, 'actual_qty' => 50],
             ],
         ]);
@@ -818,8 +845,8 @@ class InventoryTest extends TestCase
     {
         $this->postJson('/api/v1/inventory/adjustments/documents', [
             'transaction_date' => now()->toDateTimeString(),
-            'location_id'      => $this->location->id,
-            'items'            => [
+            'location_id' => $this->location->id,
+            'items' => [
                 ['item_id' => $this->variant->id, 'actual_qty' => 50],
             ],
         ]);
@@ -833,8 +860,8 @@ class InventoryTest extends TestCase
     {
         $create = $this->postJson('/api/v1/inventory/adjustments/documents', [
             'transaction_date' => now()->toDateTimeString(),
-            'location_id'      => $this->location->id,
-            'items'            => [
+            'location_id' => $this->location->id,
+            'items' => [
                 ['item_id' => $this->variant->id, 'actual_qty' => 50],
             ],
         ]);
@@ -856,12 +883,12 @@ class InventoryTest extends TestCase
     {
         $response = $this->postJson('/api/v1/inventory/reserved-stocks', [
             'location_id' => $this->location->id,
-            'start_date'  => now()->toDateString(),
-            'end_date'    => now()->addDays(7)->toDateString(),
-            'items'       => [
+            'start_date' => now()->toDateString(),
+            'end_date' => now()->addDays(7)->toDateString(),
+            'items' => [
                 [
                     'item_id' => $this->variant->id,
-                    'qty'     => 10,
+                    'qty' => 10,
                 ],
             ],
         ]);
@@ -871,7 +898,7 @@ class InventoryTest extends TestCase
 
         $this->assertDatabaseHas('reserved_stocks', [
             'location_id' => $this->location->id,
-            'status'      => 'ACTIVE',
+            'status' => 'ACTIVE',
         ]);
     }
 
@@ -879,9 +906,9 @@ class InventoryTest extends TestCase
     {
         $create = $this->postJson('/api/v1/inventory/reserved-stocks', [
             'location_id' => $this->location->id,
-            'start_date'  => now()->toDateString(),
-            'end_date'    => now()->addDays(7)->toDateString(),
-            'items'       => [
+            'start_date' => now()->toDateString(),
+            'end_date' => now()->addDays(7)->toDateString(),
+            'items' => [
                 ['item_id' => $this->variant->id, 'qty' => 10],
             ],
         ]);
@@ -898,9 +925,9 @@ class InventoryTest extends TestCase
     {
         $create = $this->postJson('/api/v1/inventory/reserved-stocks', [
             'location_id' => $this->location->id,
-            'start_date'  => now()->toDateString(),
-            'end_date'    => now()->addDays(7)->toDateString(),
-            'items'       => [
+            'start_date' => now()->toDateString(),
+            'end_date' => now()->addDays(7)->toDateString(),
+            'items' => [
                 ['item_id' => $this->variant->id, 'qty' => 10],
             ],
         ]);
@@ -922,9 +949,9 @@ class InventoryTest extends TestCase
     {
         $create = $this->postJson('/api/v1/inventory/reserved-stocks', [
             'location_id' => $this->location->id,
-            'start_date'  => now()->toDateString(),
-            'end_date'    => now()->addDays(7)->toDateString(),
-            'items'       => [
+            'start_date' => now()->toDateString(),
+            'end_date' => now()->addDays(7)->toDateString(),
+            'items' => [
                 ['item_id' => $this->variant->id, 'qty' => 10],
             ],
         ]);
@@ -940,9 +967,9 @@ class InventoryTest extends TestCase
     {
         $response = $this->postJson('/api/v1/inventory/revaluations', [
             'location_id' => $this->location->id,
-            'items'       => [
+            'items' => [
                 [
-                    'item_id'  => $this->variant->id,
+                    'item_id' => $this->variant->id,
                     'new_cost' => 150000,
                 ],
             ],
@@ -958,9 +985,9 @@ class InventoryTest extends TestCase
 
         $create = $this->postJson('/api/v1/inventory/revaluations', [
             'location_id' => $this->location->id,
-            'items'       => [
+            'items' => [
                 [
-                    'item_id'  => $this->variant->id,
+                    'item_id' => $this->variant->id,
                     'new_cost' => 150000,
                 ],
             ],
@@ -981,7 +1008,7 @@ class InventoryTest extends TestCase
     {
         $create = $this->postJson('/api/v1/inventory/revaluations', [
             'location_id' => $this->location->id,
-            'items'       => [
+            'items' => [
                 ['item_id' => $this->variant->id, 'new_cost' => 150000],
             ],
         ]);
@@ -996,7 +1023,7 @@ class InventoryTest extends TestCase
     {
         $create = $this->postJson('/api/v1/inventory/revaluations', [
             'location_id' => $this->location->id,
-            'items'       => [
+            'items' => [
                 ['item_id' => $this->variant->id, 'new_cost' => 150000],
             ],
         ]);
@@ -1012,7 +1039,7 @@ class InventoryTest extends TestCase
     {
         $create = $this->postJson('/api/v1/inventory/revaluations', [
             'location_id' => $this->location->id,
-            'items'       => [
+            'items' => [
                 ['item_id' => $this->variant->id, 'new_cost' => 150000],
             ],
         ]);
@@ -1036,7 +1063,7 @@ class InventoryTest extends TestCase
 
         $create = $this->postJson('/api/v1/inventory/revaluations', [
             'location_id' => $this->location->id,
-            'items'       => [
+            'items' => [
                 ['item_id' => $this->variant->id, 'new_cost' => 90000],
             ],
         ]);
@@ -1051,14 +1078,14 @@ class InventoryTest extends TestCase
     public function test_create_stock_opname(): void
     {
         Inventory::create([
-            'item_id'     => $this->variant->id,
+            'item_id' => $this->variant->id,
             'location_id' => $this->location->id,
-            'bin_id'      => $this->binStorage->id,
-            'batch_no'    => '',
-            'serial_no'   => '',
-            'on_hand'     => 50,
-            'on_order'    => 0,
-            'available'   => 50,
+            'bin_id' => $this->binStorage->id,
+            'batch_no' => '',
+            'serial_no' => '',
+            'on_hand' => 50,
+            'on_order' => 0,
+            'available' => 50,
         ]);
 
         $response = $this->postJson('/api/v1/inventory/stock-opname', [
@@ -1072,14 +1099,14 @@ class InventoryTest extends TestCase
     public function test_start_stock_opname(): void
     {
         Inventory::create([
-            'item_id'     => $this->variant->id,
+            'item_id' => $this->variant->id,
             'location_id' => $this->location->id,
-            'bin_id'      => $this->binStorage->id,
-            'batch_no'    => '',
-            'serial_no'   => '',
-            'on_hand'     => 50,
-            'on_order'    => 0,
-            'available'   => 50,
+            'bin_id' => $this->binStorage->id,
+            'batch_no' => '',
+            'serial_no' => '',
+            'on_hand' => 50,
+            'on_order' => 0,
+            'available' => 50,
         ]);
 
         $create = $this->postJson('/api/v1/inventory/stock-opname', [
@@ -1097,14 +1124,14 @@ class InventoryTest extends TestCase
     public function test_start_non_draft_opname_fails(): void
     {
         Inventory::create([
-            'item_id'     => $this->variant->id,
+            'item_id' => $this->variant->id,
             'location_id' => $this->location->id,
-            'bin_id'      => $this->binStorage->id,
-            'batch_no'    => '',
-            'serial_no'   => '',
-            'on_hand'     => 50,
-            'on_order'    => 0,
-            'available'   => 50,
+            'bin_id' => $this->binStorage->id,
+            'batch_no' => '',
+            'serial_no' => '',
+            'on_hand' => 50,
+            'on_order' => 0,
+            'available' => 50,
         ]);
 
         $create = $this->postJson('/api/v1/inventory/stock-opname', [
@@ -1120,14 +1147,14 @@ class InventoryTest extends TestCase
     public function test_finalize_opname_fails_when_items_uncounted(): void
     {
         Inventory::create([
-            'item_id'     => $this->variant->id,
+            'item_id' => $this->variant->id,
             'location_id' => $this->location->id,
-            'bin_id'      => $this->binStorage->id,
-            'batch_no'    => '',
-            'serial_no'   => '',
-            'on_hand'     => 50,
-            'on_order'    => 0,
-            'available'   => 50,
+            'bin_id' => $this->binStorage->id,
+            'batch_no' => '',
+            'serial_no' => '',
+            'on_hand' => 50,
+            'on_order' => 0,
+            'available' => 50,
         ]);
 
         $create = $this->postJson('/api/v1/inventory/stock-opname', [
@@ -1145,14 +1172,14 @@ class InventoryTest extends TestCase
     public function test_count_opname_item_and_finalize(): void
     {
         Inventory::create([
-            'item_id'     => $this->variant->id,
+            'item_id' => $this->variant->id,
             'location_id' => $this->location->id,
-            'bin_id'      => $this->binStorage->id,
-            'batch_no'    => '',
-            'serial_no'   => '',
-            'on_hand'     => 50,
-            'on_order'    => 0,
-            'available'   => 50,
+            'bin_id' => $this->binStorage->id,
+            'batch_no' => '',
+            'serial_no' => '',
+            'on_hand' => 50,
+            'on_order' => 0,
+            'available' => 50,
         ]);
 
         $create = $this->postJson('/api/v1/inventory/stock-opname', [
@@ -1178,14 +1205,14 @@ class InventoryTest extends TestCase
     public function test_cancel_stock_opname(): void
     {
         Inventory::create([
-            'item_id'     => $this->variant->id,
+            'item_id' => $this->variant->id,
             'location_id' => $this->location->id,
-            'bin_id'      => $this->binStorage->id,
-            'batch_no'    => '',
-            'serial_no'   => '',
-            'on_hand'     => 50,
-            'on_order'    => 0,
-            'available'   => 50,
+            'bin_id' => $this->binStorage->id,
+            'batch_no' => '',
+            'serial_no' => '',
+            'on_hand' => 50,
+            'on_order' => 0,
+            'available' => 50,
         ]);
 
         $create = $this->postJson('/api/v1/inventory/stock-opname', [
@@ -1202,14 +1229,14 @@ class InventoryTest extends TestCase
     public function test_cancel_finalized_opname_fails(): void
     {
         Inventory::create([
-            'item_id'     => $this->variant->id,
+            'item_id' => $this->variant->id,
             'location_id' => $this->location->id,
-            'bin_id'      => $this->binStorage->id,
-            'batch_no'    => '',
-            'serial_no'   => '',
-            'on_hand'     => 50,
-            'on_order'    => 0,
-            'available'   => 50,
+            'bin_id' => $this->binStorage->id,
+            'batch_no' => '',
+            'serial_no' => '',
+            'on_hand' => 50,
+            'on_order' => 0,
+            'available' => 50,
         ]);
 
         $create = $this->postJson('/api/v1/inventory/stock-opname', [
@@ -1232,14 +1259,14 @@ class InventoryTest extends TestCase
     public function test_delete_stock_opname_only_draft(): void
     {
         Inventory::create([
-            'item_id'     => $this->variant->id,
+            'item_id' => $this->variant->id,
             'location_id' => $this->location->id,
-            'bin_id'      => $this->binStorage->id,
-            'batch_no'    => '',
-            'serial_no'   => '',
-            'on_hand'     => 50,
-            'on_order'    => 0,
-            'available'   => 50,
+            'bin_id' => $this->binStorage->id,
+            'batch_no' => '',
+            'serial_no' => '',
+            'on_hand' => 50,
+            'on_order' => 0,
+            'available' => 50,
         ]);
 
         $create = $this->postJson('/api/v1/inventory/stock-opname', [
@@ -1254,14 +1281,14 @@ class InventoryTest extends TestCase
     public function test_delete_in_progress_opname_fails(): void
     {
         Inventory::create([
-            'item_id'     => $this->variant->id,
+            'item_id' => $this->variant->id,
             'location_id' => $this->location->id,
-            'bin_id'      => $this->binStorage->id,
-            'batch_no'    => '',
-            'serial_no'   => '',
-            'on_hand'     => 50,
-            'on_order'    => 0,
-            'available'   => 50,
+            'bin_id' => $this->binStorage->id,
+            'batch_no' => '',
+            'serial_no' => '',
+            'on_hand' => 50,
+            'on_order' => 0,
+            'available' => 50,
         ]);
 
         $create = $this->postJson('/api/v1/inventory/stock-opname', [
@@ -1277,14 +1304,14 @@ class InventoryTest extends TestCase
     public function test_mark_opname_printed(): void
     {
         Inventory::create([
-            'item_id'     => $this->variant->id,
+            'item_id' => $this->variant->id,
             'location_id' => $this->location->id,
-            'bin_id'      => $this->binStorage->id,
-            'batch_no'    => '',
-            'serial_no'   => '',
-            'on_hand'     => 50,
-            'on_order'    => 0,
-            'available'   => 50,
+            'bin_id' => $this->binStorage->id,
+            'batch_no' => '',
+            'serial_no' => '',
+            'on_hand' => 50,
+            'on_order' => 0,
+            'available' => 50,
         ]);
 
         $create = $this->postJson('/api/v1/inventory/stock-opname', [
@@ -1334,14 +1361,14 @@ class InventoryTest extends TestCase
     public function test_batch_numbers_for_item(): void
     {
         Inventory::create([
-            'item_id'     => $this->variant->id,
+            'item_id' => $this->variant->id,
             'location_id' => $this->location->id,
-            'bin_id'      => null,
-            'batch_no'    => 'BATCH-001',
-            'serial_no'   => '',
-            'on_hand'     => 20,
-            'on_order'    => 0,
-            'available'   => 20,
+            'bin_id' => null,
+            'batch_no' => 'BATCH-001',
+            'serial_no' => '',
+            'on_hand' => 20,
+            'on_order' => 0,
+            'available' => 20,
         ]);
 
         $response = $this->getJson("/api/v1/inventory/items/{$this->variant->id}/batch-number");
@@ -1364,7 +1391,7 @@ class InventoryTest extends TestCase
 
     public function test_recalculate_available_formula(): void
     {
-        $inv = new Inventory();
+        $inv = new Inventory;
         $inv->on_hand = 100;
         $inv->on_order = 10;
 
@@ -1375,7 +1402,7 @@ class InventoryTest extends TestCase
 
     public function test_recalculate_available_with_negative_result(): void
     {
-        $inv = new Inventory();
+        $inv = new Inventory;
         $inv->on_hand = 10;
         $inv->on_order = 20;
 

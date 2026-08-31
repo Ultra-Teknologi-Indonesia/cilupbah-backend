@@ -5,6 +5,7 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Sentry\Laravel\Integration;
 use App\Exceptions\UserFacingException;
+use App\Support\DatabaseAvailability;
 use Modules\Sales\Exceptions\CannotDeleteActiveOrderException;
 use Modules\Sales\Exceptions\DuplicateOrderException;
 use Modules\Sales\Exceptions\InsufficientStockException;
@@ -71,6 +72,22 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->render(function (\Throwable $e, \Illuminate\Http\Request $request) {
             if ($request->is('api/*')) {
                 $responder = new class { use \App\Traits\ApiResponse; };
+
+                if (DatabaseAvailability::isTransient($e)) {
+                    \Illuminate\Support\Facades\Log::warning('API unavailable because database connectivity is temporarily limited.', [
+                        'exception' => class_basename($e),
+                        'path' => $request->path(),
+                        'method' => $request->method(),
+                    ]);
+
+                    return $responder->errorResponse(
+                        'Server sedang padat. Silakan coba lagi beberapa saat.',
+                        503,
+                        null,
+                        'Layanan sementara tidak tersedia',
+                        'DATABASE_CAPACITY_TEMPORARILY_UNAVAILABLE',
+                    )->header('Retry-After', (string) config('app.database_unavailable_retry_after', 10));
+                }
 
                 if ($e instanceof UserFacingException) {
                     return $responder->errorResponse(
@@ -142,6 +159,16 @@ return Application::configure(basePath: dirname(__DIR__))
 
                 if ($e instanceof \Symfony\Component\HttpKernel\Exception\HttpException) {
                     $status = $e->getStatusCode();
+
+                    if ($status === 503) {
+                        return $responder->errorResponse(
+                            'Layanan sedang tidak tersedia. Silakan coba lagi beberapa saat.',
+                            503,
+                            null,
+                            'Layanan sementara tidak tersedia',
+                            'SERVICE_TEMPORARILY_UNAVAILABLE',
+                        )->header('Retry-After', (string) config('app.database_unavailable_retry_after', 10));
+                    }
 
                     if ($status === 422) {
                         \App\Support\ErrorReporter::captureThrottled(

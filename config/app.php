@@ -22,6 +22,8 @@ return [
 
     'fallback_locale' => env('APP_FALLBACK_LOCALE', 'en'),
 
+    'database_unavailable_retry_after' => max(1, min(60, (int) env('DATABASE_UNAVAILABLE_RETRY_AFTER', 10))),
+
     'faker_locale' => env('APP_FAKER_LOCALE', 'en_US'),
 
     'cipher' => 'AES-256-CBC',

@@ -4,11 +4,13 @@ namespace Tests\Feature\Inventory;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
 use Modules\Inventory\Models\Inventory;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Modules\Warehouse\Models\Location;
-use App\Models\User;
+use Modules\Warehouse\Models\LocationBin;
+use Ramsey\Uuid\Uuid;
 use Tests\TestCase;
 
 class MonitorStockTest extends TestCase
@@ -16,6 +18,9 @@ class MonitorStockTest extends TestCase
     use RefreshDatabase;
 
     private Location $location;
+
+    private LocationBin $bin;
+
     private int $categoryId;
 
     protected function setUp(): void
@@ -28,8 +33,15 @@ class MonitorStockTest extends TestCase
             'location_code' => 'WH-01',
             'location_name' => 'Pusat',
             'location_type' => 'warehouse',
-            'is_warehouse'  => true,
-            'is_active'     => true,
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+
+        $this->bin = LocationBin::create([
+            'location_id' => $this->location->id,
+            'bin_code' => 'A-01',
+            'bin_final_code' => 'WH-01-A-01',
+            'is_inbound' => false,
         ]);
 
         $this->categoryId = \DB::table('categories')->insertGetId([
@@ -41,29 +53,29 @@ class MonitorStockTest extends TestCase
     {
         $product = Product::create([
             'category_id' => $this->categoryId,
-            'name'        => "Produk {$sku}",
-            'sku'         => "P-{$sku}",
-            'is_active'   => true,
-            'is_stored'   => $isStored,
+            'name' => "Produk {$sku}",
+            'sku' => "P-{$sku}",
+            'is_active' => true,
+            'is_stored' => $isStored,
         ]);
 
         $variant = ProductVariant::create(array_merge([
             'product_id' => $product->id,
-            'sku'        => $sku,
+            'sku' => $sku,
             'sell_price' => 100000,
-            'is_active'  => true,
+            'is_active' => true,
         ], $variantAttrs));
 
         if ($stock !== null) {
             Inventory::create(array_merge([
-                'item_id'     => $variant->id,
+                'item_id' => $variant->id,
                 'location_id' => $this->location->id,
-                'bin_id'      => null,
-                'batch_no'    => '',
-                'serial_no'   => '',
-                'on_hand'     => 0,
-                'on_order'    => 0,
-                'available'   => 0,
+                'bin_id' => $this->bin->id,
+                'batch_no' => '',
+                'serial_no' => '',
+                'on_hand' => 0,
+                'on_order' => 0,
+                'available' => 0,
             ], $stock));
         }
 
@@ -89,7 +101,7 @@ class MonitorStockTest extends TestCase
 
     public function test_minus_lists_only_negative_on_hand(): void
     {
-        $this->makeVariant('MINUS-1', [], ['on_hand' => -5, 'available' => -5]);
+        $this->makeVariant('MINUS-1', [], ['on_hand' => 5, 'on_order' => 10, 'available' => -5]);
         $this->makeVariant('HABIS-2', [], ['on_hand' => 0, 'available' => 0]);
 
         $res = $this->getJson('/api/v1/inventory/monitor/out-of-stock?mode=minus')->assertOk();
@@ -155,13 +167,13 @@ class MonitorStockTest extends TestCase
     public function test_summary_returns_counts(): void
     {
         $this->makeVariant('S-HABIS', [], ['on_hand' => 0, 'available' => 0]);
-        $this->makeVariant('S-MINUS', [], ['on_hand' => -1, 'available' => -1]);
+        $this->makeVariant('S-MINUS', [], ['on_hand' => 1, 'on_order' => 2, 'available' => -1]);
         $this->makeVariant('S-TIPIS', ['min_stock' => 10], ['on_hand' => 3, 'available' => 3]);
 
         $res = $this->getJson('/api/v1/inventory/monitor/summary')->assertOk();
         $summary = $res->json('data');
 
-        $this->assertGreaterThanOrEqual(2, $summary['habis']); 
+        $this->assertGreaterThanOrEqual(2, $summary['habis']);
         $this->assertGreaterThanOrEqual(1, $summary['minus']);
         $this->assertGreaterThanOrEqual(1, $summary['menipis']);
         $this->assertArrayHasKey('on_order', $summary);
@@ -191,18 +203,18 @@ class MonitorStockTest extends TestCase
     private function ship(string $itemId, int $qty, int $daysAgo): void
     {
         \DB::table('inventory_movements')->insert([
-            'id'                 => \Ramsey\Uuid\Uuid::uuid7()->toString(),
-            'item_id'            => $itemId,
-            'location_id'        => $this->location->id,
-            'bin_id'             => null,
+            'id' => Uuid::uuid7()->toString(),
+            'item_id' => $itemId,
+            'location_id' => $this->location->id,
+            'bin_id' => null,
             'transaction_number' => 'TST',
-            'source'             => 'ORDER_SHIP',
-            'qty'                => -abs($qty),
-            'balance'            => 0,
-            'transaction_date'   => now()->subDays($daysAgo),
-            'created_by'         => 'test',
-            'created_at'         => now(),
-            'updated_at'         => now(),
+            'source' => 'ORDER_SHIP',
+            'qty' => -abs($qty),
+            'balance' => 0,
+            'transaction_date' => now()->subDays($daysAgo),
+            'created_by' => 'test',
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
     }
 
@@ -221,6 +233,44 @@ class MonitorStockTest extends TestCase
         $this->assertNotContains('DEAD-RECENT', $skus);
     }
 
+    public function test_dead_stock_excludes_variant_with_active_order_demand(): void
+    {
+        $variant = $this->makeVariant('DEAD-WITH-ACTIVE-ORDER', [], ['on_hand' => 30, 'available' => 30]);
+        $orderId = (string) Str::uuid();
+
+        \DB::table('sales_orders')->insert([
+            'id' => $orderId,
+            'salesorder_no' => 'SO-ACTIVE-DEAD-STOCK',
+            'customer_name' => 'Buyer',
+            'status' => 'reserved',
+            'is_canceled' => false,
+            'sub_total' => 0,
+            'total_disc' => 0,
+            'total_tax' => 0,
+            'shipping_cost' => 0,
+            'insurance_cost' => 0,
+            'grand_total' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('sales_order_items')->insert([
+            'id' => (string) Str::uuid(),
+            'order_id' => $orderId,
+            'item_id' => $variant->id,
+            'sku' => $variant->sku,
+            'qty_in_base' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $skus = $this->skus(
+            $this->getJson('/api/v1/inventory/monitor/dead-stock?days=90')->assertOk()->json('data')
+        );
+
+        $this->assertNotContains('DEAD-WITH-ACTIVE-ORDER', $skus);
+    }
+
     public function test_fast_moving_aggregates_window_volume(): void
     {
         $hot = $this->makeVariant('FAST-HOT', [], ['on_hand' => 100, 'available' => 100]);
@@ -228,7 +278,7 @@ class MonitorStockTest extends TestCase
         foreach ([1, 2, 3] as $d) {
             $this->ship($hot->id, 20, $d);
         }
-        $this->ship($old->id, 50, 200); 
+        $this->ship($old->id, 50, 200);
 
         $data = collect($this->getJson('/api/v1/inventory/monitor/fast-moving?days=30')->assertOk()->json('data'));
         $row = $data->firstWhere('sku', 'FAST-HOT');

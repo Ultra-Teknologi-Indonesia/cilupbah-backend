@@ -17,7 +17,7 @@ class ImportBaselineStock extends Command
 {
     protected $signature = 'inventory:import-baseline
         {file : Path file Excel (ekspor Jubelio atau template impor penyesuaian stok)}
-        {--location= : Kode lokasi tujuan, contoh WH-KECIL atau WH-PUSAT}
+        {--location= : Kode lokasi tujuan, contoh O atau WH-PUSAT}
         {--commit : Terapkan perubahan ke database. Default: DRY-RUN simulasi}
         {--zero-missing : Nolkan stok SKU x Rak yang ada di sistem tetapi tidak ada di file}
         {--chunk=1000 : Ukuran batch transaksi database}
@@ -133,7 +133,7 @@ class ImportBaselineStock extends Command
         $code = trim((string) $this->option('location'));
 
         if ($code === '') {
-            $this->error('Opsi --location wajib diisi. Contoh: --location=WH-KECIL atau --location=WH-PUSAT');
+            $this->error('Opsi --location wajib diisi. Contoh: --location=O atau --location=WH-PUSAT');
             $this->listLocations();
 
             return null;

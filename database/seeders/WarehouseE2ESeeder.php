@@ -133,7 +133,7 @@ class WarehouseE2ESeeder extends Seeder
                 'source_location_id'     => $pusat->id,
                 'destination_location_id' => $kecil->id,
                 'status'                 => InventoryTransfer::STATUS_DRAFT,
-                'notes'                  => 'E2E test: Transfer WH-PUSAT → WH-KECIL',
+                'notes'                  => 'E2E test: Transfer Gudang Pusat → Gudang Kecil',
                 'created_by'             => 'e2e-seeder',
             ]);
             InventoryTransferItem::create([
@@ -154,7 +154,7 @@ class WarehouseE2ESeeder extends Seeder
                 'source_location_id'     => $kecil->id,
                 'destination_location_id' => $pusat->id,
                 'status'                 => InventoryTransfer::STATUS_DRAFT,
-                'notes'                  => 'E2E test: Transfer WH-KECIL → WH-PUSAT',
+                'notes'                  => 'E2E test: Transfer Gudang Kecil → Gudang Pusat',
                 'created_by'             => 'e2e-seeder',
             ]);
             InventoryTransferItem::create([
@@ -180,7 +180,7 @@ class WarehouseE2ESeeder extends Seeder
         $this->command->line('');
         $this->command->line('Bin tambahan:');
         $this->command->line('  WH-PUSAT: A-01, A-02, A-03, B-01 (1 rak = 1 SKU, SKU boleh di M rak)');
-        $this->command->line('  WH-KECIL: K-01, K-02, K-03 (strict 1 rak 1 SKU + 1 SKU 1 rak)');
+        $this->command->line('  Gudang Kecil: K-01, K-02, K-03 (strict 1 rak 1 SKU + 1 SKU 1 rak)');
     }
 
     private function findStagingBin(Location $location): ?string

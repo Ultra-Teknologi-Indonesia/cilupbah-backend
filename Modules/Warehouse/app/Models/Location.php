@@ -58,7 +58,12 @@ class Location extends Model
 
     public const SYSTEM_TRANSIT_CODE = 'SYS-TRANSIT';
     public const SYSTEM_PUSAT_CODE   = 'WH-PUSAT';
-    public const SYSTEM_KECIL_CODE   = 'WH-KECIL';
+    /**
+     * Default code for new installations. Runtime resolution uses the
+     * is_small_warehouse flag because existing installations may use a
+     * different operational code (production uses O).
+     */
+    public const SYSTEM_KECIL_CODE   = 'O';
 
     public function village(): BelongsTo
     {
@@ -92,19 +97,17 @@ class Location extends Model
 
     public static function getSmallWarehouseId(): ?string
     {
-        return self::query()->where('is_small_warehouse', true)->value('id');
+        return self::query()
+            ->where('is_small_warehouse', true)
+            ->where('is_warehouse', true)
+            ->where('is_active', true)
+            ->orderBy('id')
+            ->value('id');
     }
 
     public static function getOfficialSmallWarehouseId(): ?string
     {
-        return self::query()
-            ->where('location_code', self::SYSTEM_KECIL_CODE)
-            ->value('id')
-            ?? self::query()
-                ->where('is_small_warehouse', true)
-                ->where('is_warehouse', true)
-                ->where('is_active', true)
-                ->value('id');
+        return self::getSmallWarehouseId();
     }
 
     public static function getMainWarehouseId(): ?string

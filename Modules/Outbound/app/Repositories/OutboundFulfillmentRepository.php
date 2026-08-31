@@ -8,8 +8,9 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\Picklist;
-use Modules\Outbound\Support\InstantOrderClassifier;
+use Modules\Sales\Models\SalesInvoice;
 use Modules\Sales\Models\SalesOrder;
+use Spatie\Permission\Models\Role;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
 
@@ -30,7 +31,7 @@ class OutboundFulfillmentRepository
         if ($locationId !== null && $locationId !== '') {
             $query->where(function ($q) use ($locationId) {
                 $q->where('warehouse_id', $locationId)
-                  ->orWhereNull('warehouse_id');
+                    ->orWhereNull('warehouse_id');
             });
         }
 
@@ -40,7 +41,7 @@ class OutboundFulfillmentRepository
             default => [$role],
         };
 
-        $existingRoles = \Spatie\Permission\Models\Role::whereIn('name', $roles)->pluck('name')->all();
+        $existingRoles = Role::whereIn('name', $roles)->pluck('name')->all();
 
         if (empty($existingRoles)) {
             return collect();
@@ -101,29 +102,32 @@ class OutboundFulfillmentRepository
             $query->addSelect([
                 'invoice_id' => DB::table('sales_invoices')
                     ->whereColumn('sales_invoices.order_id', 'sales_orders.id')
-                    ->where('sales_invoices.status', '!=', \Modules\Sales\Models\SalesInvoice::STATUS_CANCELLED)
+                    ->where('sales_invoices.status', '!=', SalesInvoice::STATUS_CANCELLED)
                     ->orderByDesc('sales_invoices.created_at')
                     ->limit(1)
                     ->select('sales_invoices.id'),
                 'invoice_no' => DB::table('sales_invoices')
                     ->whereColumn('sales_invoices.order_id', 'sales_orders.id')
-                    ->where('sales_invoices.status', '!=', \Modules\Sales\Models\SalesInvoice::STATUS_CANCELLED)
+                    ->where('sales_invoices.status', '!=', SalesInvoice::STATUS_CANCELLED)
                     ->orderByDesc('sales_invoices.created_at')
                     ->limit(1)
                     ->select('sales_invoices.invoice_number'),
             ]);
         }
 
-        $rx = InstantOrderClassifier::REGEX;
         if (filled(request()->query('sort'))) {
 
             $query->reorder();
         } else {
-            $query->orderByRaw('CASE WHEN (shipping_provider ~* ? OR shipping_type ~* ?) THEN 0 ELSE 1 END ASC', [$rx, $rx])
+            $query->orderByRaw("CASE WHEN channel_instant IS TRUE
+                OR (channel_instant IS NULL
+                    AND (source IS NULL OR source NOT IN ('shopee', 'tiktok', 'lazada'))
+                    AND resolved_shipment_type IN ('INSTANT', 'SAME_DAY'))
+                THEN 0 ELSE 1 END ASC")
                 ->orderByRaw('ship_by_date ASC NULLS LAST');
         }
 
-        return QueryBuilder::for($query->with(['items', 'items.product.media', 'items.product.product.media', 'location:id,location_name,location_code']))
+        $paginator = QueryBuilder::for($query->with(['items', 'items.product.media', 'items.product.product.media', 'location:id,location_name,location_code']))
             ->allowedFilters(
                 AllowedFilter::exact('source'),
                 AllowedFilter::exact('location_id'),
@@ -133,58 +137,85 @@ class OutboundFulfillmentRepository
                 AllowedFilter::callback('channel_status', function ($query, $value) {
                     $values = is_array($value) ? $value : explode(',', (string) $value);
                     $values = array_filter(array_map('trim', $values));
-                    if (! empty($values)) $query->whereIn('channel_status', $values);
+                    if (! empty($values)) {
+                        $query->whereIn('channel_status', $values);
+                    }
                 }),
 
                 AllowedFilter::callback('payment', function ($query, $value) {
                     $v = strtolower((string) $value);
-                    if ($v === 'cod') $query->where('is_cod', true);
-                    elseif ($v === 'noncod') $query->where(function ($q) { $q->where('is_cod', false)->orWhereNull('is_cod'); });
+                    if ($v === 'cod') {
+                        $query->where('is_cod', true);
+                    } elseif ($v === 'noncod') {
+                        $query->where(function ($q) {
+                            $q->where('is_cod', false)->orWhereNull('is_cod');
+                        });
+                    }
                 }),
 
                 AllowedFilter::callback('courier_type', function ($query, $value) {
                     $v = strtolower((string) $value);
-                    $rx = InstantOrderClassifier::REGEX;
                     if ($v === 'instant') {
-                        $query->where(function ($q) use ($rx) {
-                            $q->whereRaw('shipping_provider ~* ?', [$rx])
-                              ->orWhereRaw('shipping_type ~* ?', [$rx]);
+                        $query->where(function ($q) {
+                            $q->where('channel_instant', true)
+                                ->orWhere(function ($qq) {
+                                    $qq->whereNull('channel_instant')
+                                        ->where(function ($qqq) {
+                                            $qqq->whereNull('source')
+                                                ->orWhereNotIn('source', ['shopee', 'tiktok', 'lazada']);
+                                        })
+                                        ->whereIn('resolved_shipment_type', ['INSTANT', 'SAME_DAY']);
+                                });
                         });
                     } elseif ($v === 'regular') {
-                        $query->where(function ($q) use ($rx) {
-                            $q->where(function ($qq) use ($rx) {
-                                $qq->whereNull('shipping_provider')
-                                   ->orWhereRaw('shipping_provider !~* ?', [$rx]);
-                            })->where(function ($qq) use ($rx) {
-                                $qq->whereNull('shipping_type')
-                                   ->orWhereRaw('shipping_type !~* ?', [$rx]);
-                            });
+                        $query->where(function ($q) {
+                            $q->where('channel_instant', false)
+                                ->orWhere(function ($qq) {
+                                    $qq->whereNull('channel_instant')
+                                        ->where(function ($qqq) {
+                                            $qqq->whereNull('resolved_shipment_type')
+                                                ->orWhereNotIn('resolved_shipment_type', ['INSTANT', 'SAME_DAY'])
+                                                ->orWhereIn('source', ['shopee', 'tiktok', 'lazada']);
+                                        });
+                                });
                         });
                     }
                 }),
 
                 AllowedFilter::callback('awb', function ($query, $value) {
                     $v = strtolower((string) $value);
-                    if ($v === 'yes') $query->whereNotNull('tracking_number')->where('tracking_number', '<>', '');
-                    elseif ($v === 'no') $query->where(fn ($q) => $q->whereNull('tracking_number')->orWhere('tracking_number', ''));
+                    if ($v === 'yes') {
+                        $query->whereNotNull('tracking_number')->where('tracking_number', '<>', '');
+                    } elseif ($v === 'no') {
+                        $query->where(fn ($q) => $q->whereNull('tracking_number')->orWhere('tracking_number', ''));
+                    }
                 }),
 
                 AllowedFilter::callback('label_printed', function ($query, $value) {
                     $v = strtolower((string) $value);
-                    if ($v === 'yes') $query->whereNotNull('shipping_label_prepared_at');
-                    elseif ($v === 'no') $query->whereNull('shipping_label_prepared_at');
+                    if ($v === 'yes') {
+                        $query->whereNotNull('shipping_label_prepared_at');
+                    } elseif ($v === 'no') {
+                        $query->whereNull('shipping_label_prepared_at');
+                    }
                 }),
 
                 AllowedFilter::callback('date_from', function ($query, $value) {
-                    if ($value) $query->whereDate('transaction_date', '>=', $value);
+                    if ($value) {
+                        $query->whereDate('transaction_date', '>=', $value);
+                    }
                 }),
                 AllowedFilter::callback('date_to', function ($query, $value) {
-                    if ($value) $query->whereDate('transaction_date', '<=', $value);
+                    if ($value) {
+                        $query->whereDate('transaction_date', '<=', $value);
+                    }
                 }),
 
                 AllowedFilter::callback('exclude_transit', function ($query, $value) {
                     if (in_array(strtolower((string) $value), ['1', 'true', 'yes'], true)) {
-                        $query->whereHas('location', function ($q) { $q->where('is_warehouse', true); });
+                        $query->whereHas('location', function ($q) {
+                            $q->where('is_warehouse', true);
+                        });
                     }
                 }),
             )
@@ -193,5 +224,21 @@ class OutboundFulfillmentRepository
             ->defaultSort('-created_at')
             ->paginate($limit)
             ->appends(request()->query());
+
+        $labelCapabilities = (array) config('channel_print_capabilities', []);
+        $paginator->getCollection()->transform(function (SalesOrder $order) use ($labelCapabilities): SalesOrder {
+            $source = strtolower(trim((string) ($order->source ?? '')));
+            $capability = $labelCapabilities[$source] ?? null;
+
+            $order->setAttribute(
+                'shipping_label_supported',
+                is_array($capability)
+                    && (! empty($capability['document_types']) || ! empty($capability['document_sizes'])),
+            );
+
+            return $order;
+        });
+
+        return $paginator;
     }
 }

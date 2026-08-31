@@ -6,13 +6,14 @@ use Tests\TestCase;
 
 class HorizonQueueCoverageTest extends TestCase
 {
-
     private function servedQueues(): array
     {
         $served = [];
         foreach (config('horizon.defaults', []) as $supervisor) {
             $served = array_merge($served, (array) ($supervisor['queue'] ?? []));
         }
+
+        $served = array_merge($served, (array) config('queue.dedicated_queues', []));
 
         return array_values(array_unique($served));
     }
@@ -49,7 +50,7 @@ class HorizonQueueCoverageTest extends TestCase
             $src = file_get_contents($file);
 
             if (! preg_match("/onQueue\((?:config\('([^']+)'(?:\s*,\s*'([^']+)')?\)|'([^']+)')\)/", $src, $m)) {
-                continue; 
+                continue;
             }
 
             $queue = $m[3] ?? null;
@@ -61,7 +62,7 @@ class HorizonQueueCoverageTest extends TestCase
             $this->assertContains(
                 $queue,
                 $served,
-                basename($file) . " memakai queue '{$queue}' yang tidak dilayani supervisor Horizon."
+                basename($file)." memakai queue '{$queue}' yang tidak dilayani supervisor Horizon."
             );
         }
     }
@@ -77,5 +78,4 @@ class HorizonQueueCoverageTest extends TestCase
             $this->assertEquals('redis', $connections[$connection]['driver'] ?? null, "Supervisor {$name}: Horizon hanya bisa memproses driver redis.");
         }
     }
-
 }

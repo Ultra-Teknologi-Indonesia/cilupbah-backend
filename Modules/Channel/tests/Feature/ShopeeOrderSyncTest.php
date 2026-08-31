@@ -10,13 +10,14 @@ use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\ChannelDownloadService;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\ShopeeToInternalOrderMapper;
+use Modules\Channel\Tests\Support\SeedsCatalogVariant;
 use Modules\Sales\Models\SalesOrder;
 use Tests\TestCase;
 
 class ShopeeOrderSyncTest extends TestCase
 {
     use RefreshDatabase;
-    use \Modules\Channel\Tests\Support\SeedsCatalogVariant;
+    use SeedsCatalogVariant;
 
     protected function setUp(): void
     {
@@ -64,7 +65,7 @@ class ShopeeOrderSyncTest extends TestCase
 
     public function test_mapper_maps_status_and_groups_items(): void
     {
-        $mapper = new ShopeeToInternalOrderMapper();
+        $mapper = new ShopeeToInternalOrderMapper;
 
         $internal = $mapper->map($this->orderDetail(['order_status' => 'READY_TO_SHIP']), '778899');
 
@@ -77,9 +78,37 @@ class ShopeeOrderSyncTest extends TestCase
         $this->assertEquals(120000.0, $internal['items'][0]['amount']);
     }
 
+    public function test_return_status_does_not_create_buyer_cancel_request(): void
+    {
+        $mapper = new ShopeeToInternalOrderMapper;
+
+        $internal = $mapper->map($this->orderDetail([
+            'order_status' => 'TO_RETURN',
+            'buyer_cancel_reason' => 'buyer_changed_mind',
+        ]), '778899');
+
+        $this->assertSame('TO_RETURN', $internal['channel_status']);
+        $this->assertNull($internal['cancel_requested_at']);
+        $this->assertNull($internal['cancel_request_reason']);
+    }
+
+    public function test_in_cancel_creates_buyer_cancel_request(): void
+    {
+        $mapper = new ShopeeToInternalOrderMapper;
+
+        $internal = $mapper->map($this->orderDetail([
+            'order_status' => 'IN_CANCEL',
+            'buyer_cancel_reason' => 'buyer_changed_mind',
+        ]), '778899');
+
+        $this->assertSame('IN_CANCEL', $internal['channel_status']);
+        $this->assertNotNull($internal['cancel_requested_at']);
+        $this->assertSame('buyer_changed_mind', $internal['cancel_request_reason']);
+    }
+
     public function test_mapper_derives_discount_from_original_vs_discounted_price(): void
     {
-        $mapper = new ShopeeToInternalOrderMapper();
+        $mapper = new ShopeeToInternalOrderMapper;
 
         $internal = $mapper->map($this->orderDetail([
             'item_list' => [[
@@ -93,10 +122,10 @@ class ShopeeOrderSyncTest extends TestCase
         ]), '778899');
 
         $item = $internal['items'][0];
-        $this->assertEquals(100000.0, $item['price']);        
-        $this->assertEquals(40000.0, $item['disc']);          
-        $this->assertEquals(80000.0, $item['disc_amount']);   
-        $this->assertEquals(120000.0, $item['amount']);       
+        $this->assertEquals(100000.0, $item['price']);
+        $this->assertEquals(40000.0, $item['disc']);
+        $this->assertEquals(80000.0, $item['disc_amount']);
+        $this->assertEquals(120000.0, $item['amount']);
         $this->assertEquals(80000.0, $internal['total_disc']);
     }
 

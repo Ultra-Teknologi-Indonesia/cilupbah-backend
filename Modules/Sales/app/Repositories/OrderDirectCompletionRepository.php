@@ -43,9 +43,7 @@ class OrderDirectCompletionRepository
 
     public function sourceLocationId(): ?string
     {
-        return DB::table('locations')
-            ->where('location_code', Location::SYSTEM_KECIL_CODE)
-            ->value('id');
+        return Location::getOfficialSmallWarehouseId();
     }
 
     public function bundleComponents(array $itemIds): array

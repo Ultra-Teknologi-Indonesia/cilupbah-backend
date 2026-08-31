@@ -2,6 +2,7 @@
 
 namespace Modules\Inventory\Observers;
 
+use Modules\Inventory\Jobs\RefreshStockReplenishmentJob;
 use Modules\Inventory\Models\InventoryTransfer;
 use Modules\Inventory\Models\StockReplenishmentRequest;
 
@@ -21,11 +22,14 @@ class InventoryTransferReplenishmentObserver
             ->whereNotIn('status', [
                 StockReplenishmentRequest::STATUS_DONE,
                 StockReplenishmentRequest::STATUS_REJECTED,
+                StockReplenishmentRequest::STATUS_CANCELLED,
             ])
             ->get()
             ->each(fn (StockReplenishmentRequest $req) => $req->update([
-                'status'  => StockReplenishmentRequest::STATUS_DONE,
+                'status' => StockReplenishmentRequest::STATUS_DONE,
                 'done_at' => now(),
             ]));
+
+        RefreshStockReplenishmentJob::dispatch($transfer->destination_location_id)->afterCommit();
     }
 }

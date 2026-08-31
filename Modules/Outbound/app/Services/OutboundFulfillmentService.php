@@ -497,7 +497,7 @@ SQL;
         $officialLocationId = Location::getOfficialSmallWarehouseId();
         if ($source !== '' && $source !== 'manual' && $officialLocationId !== null && $locationId !== $officialLocationId) {
             throw new OutboundValidationException(
-                'Pesanan channel wajib diproses dan dipotong dari Gudang Kecil (WH-KECIL).'
+                'Pesanan channel wajib diproses dan dipotong dari Gudang Kecil.'
             );
         }
 

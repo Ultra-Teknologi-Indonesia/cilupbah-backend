@@ -2,10 +2,13 @@
 
 namespace Modules\Channel\Services;
 
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
+use Modules\Channel\Exceptions\ChannelCancelException;
 use Modules\Channel\Exceptions\ChannelLabelUnsupportedException;
 use Modules\Channel\Exceptions\TokenExpiredException;
 use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Sales\Jobs\RespondBuyerCancellationJob;
 use Modules\Sales\Services\SalesOrderService;
 
 class LazadaOrderService
@@ -20,7 +23,7 @@ class LazadaOrderService
 
     public function pullOrders(string $shopId, ?string $updatedAfter = null, ?string $updatedBefore = null): int
     {
-        if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
+        if (app(ChannelSyncSettingService::class)->isPaused()) {
             return 0;
         }
 
@@ -63,7 +66,7 @@ class LazadaOrderService
                     $this->orderService->upsertFromChannel($internal);
                     $count++;
                 } catch (\Throwable $e) {
-                    Log::error("Lazada: gagal upsert order {$orderId}: " . $e->getMessage());
+                    Log::error("Lazada: gagal upsert order {$orderId}: ".$e->getMessage());
                 }
             }
 
@@ -148,9 +151,9 @@ class LazadaOrderService
         $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/order/fulfill/pack', $params, $token));
 
         Log::info('Lazada fulfillPack response', [
-            'shop_id'  => $shopId,
+            'shop_id' => $shopId,
             'order_id' => $orderId,
-            'params'   => $params,
+            'params' => $params,
             'response' => $res,
         ]);
 
@@ -184,9 +187,9 @@ class LazadaOrderService
         $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/order/package/rts', $params, $token));
 
         Log::info('Lazada readyToShip response', [
-            'shop_id'  => $shopId,
+            'shop_id' => $shopId,
             'order_id' => $orderId,
-            'params'   => $params,
+            'params' => $params,
             'response' => $res,
         ]);
 
@@ -201,7 +204,9 @@ class LazadaOrderService
 
     public function getOrderTrace(string $shopId, string $orderId): array
     {
-        if ($orderId === '') return [];
+        if ($orderId === '') {
+            return [];
+        }
 
         try {
             $shop = $this->requireShop($shopId);
@@ -211,7 +216,7 @@ class LazadaOrderService
 
             return $res['data'] ?? $res['result'] ?? [];
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning("Lazada: gagal ambil order trace {$orderId}: " . $e->getMessage());
+            Log::warning("Lazada: gagal ambil order trace {$orderId}: ".$e->getMessage());
 
             return [];
         }
@@ -262,9 +267,9 @@ class LazadaOrderService
             if ($code !== '0' && $code !== '') {
                 $message = $res['message'] ?? $code;
 
-                $final = (bool) preg_match('/status|not[_ ]?allowed|reverse|invalid[_ ]?order/i', $code . ' ' . $message);
+                $final = (bool) preg_match('/status|not[_ ]?allowed|reverse|invalid[_ ]?order/i', $code.' '.$message);
 
-                throw new \Modules\Channel\Exceptions\ChannelCancelException(
+                throw new ChannelCancelException(
                     "Lazada menolak pembatalan {$orderId} (item {$itemId}): {$message}",
                     retryable: ! $final,
                     channelCode: $code,
@@ -292,7 +297,7 @@ class LazadaOrderService
         return $res['data'] ?? [];
     }
 
-    public function getPayoutStatus(string $shopId, \Carbon\Carbon $createdAfter): array
+    public function getPayoutStatus(string $shopId, Carbon $createdAfter): array
     {
         $shop = $this->requireShop($shopId);
 
@@ -448,7 +453,7 @@ class LazadaOrderService
         try {
             $this->pullOrderById($shopId, $orderId);
         } catch (\Throwable $e) {
-            Log::warning("Lazada: resync order {$orderId} gagal pasca aksi: " . $e->getMessage());
+            Log::warning("Lazada: resync order {$orderId} gagal pasca aksi: ".$e->getMessage());
         }
     }
 
@@ -502,11 +507,11 @@ class LazadaOrderService
 
             return [
                 'tracking_number' => $tracking ? (string) $tracking : null,
-                'carrier'         => $carrier ? (string) $carrier : null,
-                'shipped_at'      => $shippedAt ? (string) $shippedAt : null,
+                'carrier' => $carrier ? (string) $carrier : null,
+                'shipped_at' => $shippedAt ? (string) $shippedAt : null,
             ];
         } catch (\Throwable $e) {
-            Log::warning("Lazada: gagal ambil resi retur (reverse_order_id={$reverseOrderId}): " . $e->getMessage());
+            Log::warning("Lazada: gagal ambil resi retur (reverse_order_id={$reverseOrderId}): ".$e->getMessage());
 
             return $empty;
         }
@@ -571,7 +576,7 @@ class LazadaOrderService
                 'raw' => $detail,
             ];
         } catch (\Throwable $e) {
-            Log::warning("Lazada: gagal ambil detail retur (reverse_order_id={$reverseOrderId}): " . $e->getMessage());
+            Log::warning("Lazada: gagal ambil detail retur (reverse_order_id={$reverseOrderId}): ".$e->getMessage());
 
             return $empty;
         }
@@ -603,10 +608,173 @@ class LazadaOrderService
 
             return ['records' => $records];
         } catch (\Throwable $e) {
-            Log::warning("Lazada: gagal ambil riwayat banding retur (reverse_order_id={$reverseOrderId}): " . $e->getMessage());
+            Log::warning("Lazada: gagal ambil riwayat banding retur (reverse_order_id={$reverseOrderId}): ".$e->getMessage());
 
             return ['records' => []];
         }
+    }
+
+    public function getReverseOrdersForSeller(
+        string $shopId,
+        ?string $tradeOrderId = null,
+        ?string $reverseOrderId = null,
+        array $requestTypes = ['CANCEL'],
+        array $reverseStatuses = ['CANCEL_INIT', 'REQUEST_INITIATE'],
+    ): array {
+        $shop = $this->requireShop($shopId);
+        $params = [
+            'request_type_list' => json_encode(array_values($requestTypes), JSON_THROW_ON_ERROR),
+            'reverse_status_list' => json_encode(array_values($reverseStatuses), JSON_THROW_ON_ERROR),
+            'page_size' => 100,
+            'page_no' => 1,
+        ];
+
+        if ($tradeOrderId) {
+            $params['trade_order_id'] = $tradeOrderId;
+        }
+        if ($reverseOrderId) {
+            $params['reverse_order_id'] = $reverseOrderId;
+        }
+
+        $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request(
+            'GET',
+            (string) config('services.lazada.buyer_cancel_list_path', '/reverse/getreverseordersforseller'),
+            $params,
+            $token,
+        ));
+
+        return $res['result']['items']
+            ?? $res['data']['items']
+            ?? $res['data']['reverse_orders']
+            ?? $res['reverse_orders']
+            ?? [];
+    }
+
+    public function findBuyerCancellation(string $shopId, string $orderId, ?string $reverseOrderId = null): ?array
+    {
+        $items = $this->getReverseOrdersForSeller($shopId, $orderId, $reverseOrderId);
+
+        foreach ($items as $item) {
+            $requestType = strtoupper((string) ($item['request_type'] ?? $item['reverse_type'] ?? ''));
+            $status = strtoupper((string) ($item['reverse_status'] ?? $item['status'] ?? ''));
+
+            if ($requestType !== 'CANCEL' || ($status !== '' && ! in_array($status, ['CANCEL_INIT', 'REQUEST_INITIATE', 'CANCEL_PENDING'], true))) {
+                continue;
+            }
+
+            $lines = $item['reverse_order_lines'] ?? $item['reverseOrderLineDTOList'] ?? [];
+            $lineIds = array_values(array_filter(array_map(
+                static fn (array $line): string => (string) ($line['trade_order_line_id'] ?? $line['tradeOrderLineId'] ?? $line['order_item_id'] ?? $line['reverse_order_line_id'] ?? $line['reverseOrderLineId'] ?? ''),
+                is_array($lines) ? $lines : [],
+            )));
+
+            $refundAmount = 0.0;
+            foreach ($lines as $line) {
+                $refundAmount += (float) ($line['refund_amount'] ?? $line['refundAmount'] ?? 0);
+            }
+
+            return [
+                'reverse_order_id' => (string) ($item['reverse_order_id'] ?? $item['reverseOrderId'] ?? $reverseOrderId ?? ''),
+                'trade_order_id' => (string) ($item['trade_order_id'] ?? $orderId),
+                'reverse_order_line_ids' => $lineIds,
+                'refund_amount' => $refundAmount > 0 ? $refundAmount : (float) ($item['refund_amount'] ?? $item['total_refund'] ?? 0),
+                'status' => $status,
+                'raw' => $item,
+            ];
+        }
+
+        if ($reverseOrderId) {
+            $detail = $this->fetchReturnDetail($shopId, $reverseOrderId);
+            $raw = $detail['raw'] ?? [];
+            $lines = $raw['reverse_order_lines'] ?? $raw['reverseOrderLineDTOList'] ?? [];
+            $requestType = strtoupper((string) ($raw['request_type'] ?? $raw['reverse_type'] ?? ''));
+
+            if ($requestType === 'CANCEL' && is_array($lines)) {
+                $lineIds = array_values(array_filter(array_map(
+                    static fn (array $line): string => (string) ($line['trade_order_line_id'] ?? $line['tradeOrderLineId'] ?? $line['order_item_id'] ?? $line['reverse_order_line_id'] ?? ''),
+                    $lines,
+                )));
+
+                if ($lineIds) {
+                    return [
+                        'reverse_order_id' => $reverseOrderId,
+                        'trade_order_id' => $orderId,
+                        'reverse_order_line_ids' => $lineIds,
+                        'refund_amount' => (float) ($raw['refund_amount'] ?? $raw['total_refund'] ?? 0),
+                        'status' => strtoupper((string) ($raw['reverse_status'] ?? '')),
+                        'raw' => $raw,
+                    ];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    public function respondBuyerCancellation(
+        string $shopId,
+        string $orderId,
+        string $decision,
+        ?string $reverseOrderId = null,
+        ?string $rejectComment = null,
+    ): array {
+        $reverse = $this->findBuyerCancellation($shopId, $orderId, $reverseOrderId);
+
+        if (! $reverse || empty($reverse['reverse_order_id']) || empty($reverse['reverse_order_line_ids'])) {
+            throw new \RuntimeException('Permintaan pembatalan buyer Lazada tidak ditemukan atau detail item belum tersedia.');
+        }
+
+        if (! in_array($decision, [
+            RespondBuyerCancellationJob::ACCEPT,
+            RespondBuyerCancellationJob::REJECT,
+        ], true)) {
+            throw new \InvalidArgumentException('Keputusan pembatalan buyer Lazada tidak valid.');
+        }
+
+        $accept = $decision === RespondBuyerCancellationJob::ACCEPT;
+        if (! $accept && $rejectComment === null) {
+            $rejectComment = 'Pesanan sudah diproses dan tidak dapat dibatalkan.';
+        }
+
+        $params = [
+            'OrderId' => $orderId,
+            'OrderItemIdList' => json_encode($reverse['reverse_order_line_ids'], JSON_THROW_ON_ERROR),
+        ];
+
+        $path = $accept
+            ? (string) config('services.lazada.buyer_cancel_accept_path', '/v2/order/returnRefund/accept')
+            : (string) config('services.lazada.buyer_cancel_reject_path', '/v2/order/returnRefund/reject');
+
+        if ($accept) {
+            if ((float) $reverse['refund_amount'] <= 0) {
+                throw new \RuntimeException('Nominal pengembalian dana Lazada tidak tersedia untuk menerima pembatalan buyer.');
+            }
+            $params['refundAmount'] = (string) $reverse['refund_amount'];
+        } else {
+            $params['comment'] = $rejectComment;
+            $params['reasonId'] = (string) config('services.lazada.buyer_cancel_reject_reason_id', '1022');
+        }
+
+        $shop = $this->requireShop($shopId);
+        $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', $path, $params, $token));
+
+        try {
+            $this->resyncLocalOrder($shopId, $orderId);
+        } catch (\Throwable $e) {
+            Log::warning('Lazada buyer cancellation berhasil, tetapi resync order lokal gagal', [
+                'shop_id' => $shopId,
+                'order_id' => $orderId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return [
+            'handled' => true,
+            'order_id' => $orderId,
+            'reverse_order_id' => $reverse['reverse_order_id'],
+            'decision' => $decision,
+            'response' => $res,
+        ];
     }
 
     public function approveReturn(string $shopId, string $reverseOrderId): bool
@@ -623,7 +791,7 @@ class LazadaOrderService
 
             return true;
         } catch (\Throwable $e) {
-            Log::warning("Lazada: gagal setujui retur (reverse_order_id={$reverseOrderId}): " . $e->getMessage());
+            Log::warning("Lazada: gagal setujui retur (reverse_order_id={$reverseOrderId}): ".$e->getMessage());
 
             return false;
         }
@@ -648,7 +816,7 @@ class LazadaOrderService
 
             return true;
         } catch (\Throwable $e) {
-            Log::warning("Lazada: gagal tolak retur (reverse_order_id={$reverseOrderId}): " . $e->getMessage());
+            Log::warning("Lazada: gagal tolak retur (reverse_order_id={$reverseOrderId}): ".$e->getMessage());
 
             return false;
         }
@@ -673,7 +841,7 @@ class LazadaOrderService
                 'text' => (string) ($r['reason_text'] ?? $r['text'] ?? ''),
             ], $reasons);
         } catch (\Throwable $e) {
-            Log::warning("Lazada: gagal ambil alasan tolak retur (reverse_order_id={$reverseOrderId}): " . $e->getMessage());
+            Log::warning("Lazada: gagal ambil alasan tolak retur (reverse_order_id={$reverseOrderId}): ".$e->getMessage());
 
             return [];
         }
