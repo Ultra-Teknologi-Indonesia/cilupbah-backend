@@ -111,6 +111,7 @@ jobs:
             echo "==> Menunggu rollout selesai..."
             kubectl rollout status deployment/cilupbah-app -n $NAMESPACE --timeout=180s
             kubectl rollout status deployment/cilupbah-horizon -n $NAMESPACE --timeout=180s
+            kubectl rollout status deployment/cilupbah-export-worker -n $NAMESPACE --timeout=180s
             kubectl rollout status deployment/cilupbah-scheduler -n $NAMESPACE --timeout=180s
 
             # Migrasi DB: explicit gated deploy step (sesuai catatan di start.production.sh).

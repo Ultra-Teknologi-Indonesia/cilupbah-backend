@@ -8,6 +8,7 @@ use App\Services\PdfRenderer;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Repositories\MonitorStockRepository;
 use Modules\Report\Exports\MonitorStockReportExport;
+use setasign\Fpdi\Fpdi;
 
 final class MonitorStockReportService
 {
@@ -24,20 +25,93 @@ final class MonitorStockReportService
 
     public function pdfBytes(array $params): string
     {
-        set_time_limit(600);
+        $temporaryPath = tempnam(sys_get_temp_dir(), 'cilupbah-export-pdf-');
+        if ($temporaryPath === false) {
+            throw new \RuntimeException('Tidak dapat membuat berkas PDF sementara.');
+        }
+
+        try {
+            $this->writePdf($params, $temporaryPath);
+            $bytes = file_get_contents($temporaryPath);
+            if ($bytes === false) {
+                throw new \RuntimeException('Tidak dapat membaca berkas PDF sementara.');
+            }
+
+            return $bytes;
+        } finally {
+            @unlink($temporaryPath);
+        }
+    }
+
+    /**
+     * Render PDF in bounded batches and write the final document to disk.
+     *
+     * Dompdf keeps a complete rendered page tree in memory. Rendering a
+     * complete inventory query in one view makes memory grow with row count,
+     * so each batch is rendered independently and merged immediately.
+     */
+    public function writePdf(array $params, string $targetPath): void
+    {
+        set_time_limit((int) config('exports.timeout', 900));
 
         $export = $this->export($params);
-        $query = $export->reportQuery();
-        $hasRows = (clone $query)->exists();
-        $rows = $query->cursor()->map(fn ($row): array => $export->map($row));
+        $rows = [];
+        $pdf = new Fpdi('L', 'mm', 'A4');
+        $pdf->SetAutoPageBreak(false);
+        $hasRows = false;
+        $chunkSize = (int) config('exports.pdf_chunk_size', 250);
 
-        return $this->pdfRenderer->bytes('report::pdf.monitor-stock', [
-            'title' => $this->title($params),
-            'filters' => $this->filterLabel($params),
-            'headings' => $export->headings(),
-            'rows' => $rows,
-            'hasRows' => $hasRows,
-        ], 'a4', 'landscape');
+        foreach ($export->reportQuery()->cursor() as $row) {
+            $rows[] = $export->map($row);
+            $hasRows = true;
+
+            if (count($rows) >= $chunkSize) {
+                $this->appendPdfChunk($pdf, $params, $export, $rows, true);
+                $rows = [];
+                gc_collect_cycles();
+            }
+        }
+
+        if ($rows !== [] || ! $hasRows) {
+            $this->appendPdfChunk($pdf, $params, $export, $rows, $hasRows);
+        }
+
+        $pdf->Output('F', $targetPath);
+    }
+
+    private function appendPdfChunk(
+        Fpdi $pdf,
+        array $params,
+        MonitorStockReportExport $export,
+        array $rows,
+        bool $hasRows,
+    ): void {
+        $chunkPath = tempnam(sys_get_temp_dir(), 'cilupbah-pdf-chunk-');
+        if ($chunkPath === false) {
+            throw new \RuntimeException('Tidak dapat membuat bagian PDF sementara.');
+        }
+
+        try {
+            $bytes = $this->pdfRenderer->bytes('report::pdf.monitor-stock', [
+                'title' => $this->title($params),
+                'filters' => $this->filterLabel($params),
+                'headings' => $export->headings(),
+                'rows' => $rows,
+                'hasRows' => $hasRows,
+            ], 'a4', 'landscape');
+
+            if (file_put_contents($chunkPath, $bytes) === false) {
+                throw new \RuntimeException('Tidak dapat menulis bagian PDF sementara.');
+            }
+
+            $pageCount = $pdf->setSourceFile($chunkPath);
+            for ($page = 1; $page <= $pageCount; $page++) {
+                $pdf->AddPage('L', 'A4');
+                $pdf->useTemplate($pdf->importPage($page), 0, 0, 297, 210);
+            }
+        } finally {
+            @unlink($chunkPath);
+        }
     }
 
     private function title(array $params): string

@@ -36,10 +36,10 @@ spec:
           resources:
             requests:
               memory: "256Mi"
-              cpu: "100m"
+              cpu: "250m"
             limits:
               memory: "2Gi"
-              cpu: "500m"
+              cpu: "1000m"
           lifecycle:
             preStop:
               exec:
@@ -47,7 +47,7 @@ spec:
           # ── Readiness: kapan pod menerima traffic ──
           readinessProbe:
             httpGet:
-              path: /
+              path: /healthz
               port: 8000
             initialDelaySeconds: 15
             periodSeconds: 10
@@ -58,7 +58,7 @@ spec:
           # sebelum di-restart. Mencegah restart agresif saat lonjakan beban.
           livenessProbe:
             httpGet:
-              path: /
+              path: /healthz
               port: 8000
             initialDelaySeconds: 30
             periodSeconds: 30

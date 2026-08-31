@@ -7,6 +7,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Report\Models\ExportJob;
@@ -18,18 +19,24 @@ class RunExportJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $timeout = 600;
+    public int $timeout = 900;
 
     public int $tries = 2;
+
+    public bool $failOnTimeout = true;
 
     public function __construct(public string $exportJobId)
     {
 
-        $this->onQueue('downloads');
+        $this->onConnection(config('exports.connection', 'redis-long'));
+        $this->onQueue(config('exports.queue', 'exports'));
     }
 
     public function handle(ExportManager $manager): void
     {
+        ini_set('memory_limit', (string) config('exports.memory_limit', '1536M'));
+        set_time_limit((int) config('exports.timeout', 900));
+
         $job = ExportJob::find($this->exportJobId);
 
         if (! $job || $job->status === ExportJob::STATUS_READY) {
@@ -47,9 +54,33 @@ class RunExportJob implements ShouldQueue
         $extension = $job->type === 'monitor-stock-pdf' ? 'pdf' : 'xlsx';
         $path = "exports/{$job->id}.{$extension}";
 
+        Log::info('export.started', [
+            'export_id' => $job->id,
+            'type' => $job->type,
+            'memory_limit' => ini_get('memory_limit'),
+        ]);
+
         if ($job->type === 'monitor-stock-pdf') {
-            $bytes = app(MonitorStockReportService::class)->pdfBytes($params);
-            Storage::disk($diskName)->put($path, $bytes);
+            $temporaryPath = tempnam(sys_get_temp_dir(), 'cilupbah-export-');
+            if ($temporaryPath === false) {
+                throw new \RuntimeException('Tidak dapat membuat berkas sementara untuk export PDF.');
+            }
+
+            try {
+                app(MonitorStockReportService::class)->writePdf($params, $temporaryPath);
+                $stream = fopen($temporaryPath, 'rb');
+                if ($stream === false) {
+                    throw new \RuntimeException('Tidak dapat membaca hasil export PDF.');
+                }
+
+                try {
+                    Storage::disk($diskName)->put($path, $stream);
+                } finally {
+                    fclose($stream);
+                }
+            } finally {
+                @unlink($temporaryPath);
+            }
         } else {
             $export = $manager->build($job->type, $params);
             Excel::store($export, $path, $diskName);
@@ -61,6 +92,13 @@ class RunExportJob implements ShouldQueue
             'file_path' => $path,
             'file_name' => $fileName,
             'finished_at' => now(),
+        ]);
+
+        Log::info('export.finished', [
+            'export_id' => $job->id,
+            'type' => $job->type,
+            'duration_seconds' => $job->finished_at?->diffInSeconds($job->started_at),
+            'peak_memory_bytes' => memory_get_peak_usage(true),
         ]);
     }
 
@@ -75,5 +113,11 @@ class RunExportJob implements ShouldQueue
                 'finished_at' => now(),
             ]);
         }
+
+        Log::error('export.failed', [
+            'export_id' => $this->exportJobId,
+            'error' => $e->getMessage(),
+            'peak_memory_bytes' => memory_get_peak_usage(true),
+        ]);
     }
 }

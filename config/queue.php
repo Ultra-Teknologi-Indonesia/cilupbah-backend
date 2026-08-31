@@ -125,6 +125,11 @@ return [
         'failed_jobs' => env('QUEUE_NAME_FAILED_JOBS', 'failed-jobs'),
         'product' => env('QUEUE_NAME_PRODUCT', 'product'),
         'downloads' => env('QUEUE_NAME_DOWNLOADS', 'downloads'),
+        'exports' => env('QUEUE_NAME_EXPORTS', 'exports'),
+    ],
+
+    'dedicated_queues' => [
+        env('QUEUE_NAME_EXPORTS', 'exports'),
     ],
 
     'routing' => [
