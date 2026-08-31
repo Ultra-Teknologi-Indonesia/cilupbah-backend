@@ -175,6 +175,8 @@ class PicklistController extends Controller
             return $this->errorResponse('Picklist tidak ditemukan.', 404);
         }
 
+        $this->picklistService->attachRecommendedBins($picklist);
+
         return $this->successResponse(new PicklistResource($picklist));
     }
 
