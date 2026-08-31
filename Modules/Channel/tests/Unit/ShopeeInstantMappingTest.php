@@ -66,6 +66,20 @@ class ShopeeInstantMappingTest extends TestCase
         $this->assertNull($mapped['channel_instant']);
     }
 
+    public function test_explicit_null_channel_category_is_known_not_instant(): void
+    {
+        $mapper = new ShopeeToInternalOrderMapper;
+
+        $mapped = $mapper->map(
+            $this->order(['logistics_channel_id' => 8005]),
+            'shop-1',
+            ['8005' => null],
+        );
+
+        $this->assertNull($mapped['shipping_type']);
+        $this->assertFalse($mapped['channel_instant']);
+    }
+
     public function test_unknown_channel_leaves_shipping_type_and_channel_signal_null(): void
     {
         $mapper = app(ShopeeToInternalOrderMapper::class);

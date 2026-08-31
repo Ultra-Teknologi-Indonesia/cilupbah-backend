@@ -166,7 +166,8 @@ class ShopeeOrderSyncTest extends TestCase
                     'logistics_channel_list' => [
                         ['logistics_channel_id' => 8001, 'logistics_channel_name' => 'Same Day', 'service_type_identifier' => 'same_day'],
                         ['logistics_channel_id' => 8003, 'logistics_channel_name' => 'Reguler', 'service_type_identifier' => 'regular'],
-                        ['logistics_channel_id' => 80029, 'logistics_channel_name' => 'SPX Hemat'],
+                        ['logistics_channel_id' => 8005, 'logistics_channel_name' => 'SPX Hemat', 'service_type_identifier' => null],
+                        ['logistics_channel_id' => 80029, 'logistics_channel_name' => 'Unknown service'],
                     ],
                 ],
             ], 200),
@@ -175,7 +176,7 @@ class ShopeeOrderSyncTest extends TestCase
         $service = app(ShopeeOrderService::class);
 
         $this->assertSame(
-            ['8001' => 'SAME_DAY', '8003' => 'REGULAR'],
+            ['8001' => 'SAME_DAY', '8003' => 'REGULAR', '8005' => null],
             $service->shippingChannelTypes('778899'),
         );
         $this->assertSame(['8001'], $service->instantChannelIds('778899'));

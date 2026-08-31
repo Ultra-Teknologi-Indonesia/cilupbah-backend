@@ -555,17 +555,22 @@ class ShopeeOrderService
     {
         $types = $this->shippingChannelTypes($shopId);
 
-        return array_keys(array_filter(
-            $types,
-            static fn (string $type): bool => ChannelInstantSignal::isInstantType($type),
+        return array_values(array_map(
+            'strval',
+            array_keys(array_filter(
+                $types,
+                static fn (?string $type): bool => ChannelInstantSignal::isInstantType($type),
+            )),
         ));
     }
 
     /**
      * Return only categories explicitly supplied by Shopee.
-     * A service without a channel category is deliberately omitted so it remains unknown.
+     * A service with an explicit null category is retained as null. Shopee documents
+     * null as a valid value, which is enough to determine that it is not instant,
+     * while a missing category remains unknown.
      *
-     * @return array<string, string>
+     * @return array<string, ?string>
      */
     public function shippingChannelTypes(string $shopId): array
     {
@@ -586,15 +591,23 @@ class ShopeeOrderService
         $types = [];
         foreach ($channels as $channel) {
             $id = $channel['logistics_channel_id'] ?? null;
-            $rawType = $channel['service_type_identifier']
-                ?? $channel['service_type']
-                ?? $channel['type']
-                ?? null;
+            $rawType = null;
+            $hasCategory = false;
+            foreach (['service_type_identifier', 'service_type', 'type'] as $field) {
+                if (! array_key_exists($field, $channel)) {
+                    continue;
+                }
+
+                $rawType = $channel[$field];
+                $hasCategory = true;
+                break;
+            }
+
             $normalizedType = ChannelInstantSignal::normalizeType(
                 is_scalar($rawType) ? (string) $rawType : null,
             );
 
-            if ($id !== null && $normalizedType !== null) {
+            if ($id !== null && $hasCategory) {
                 $types[(string) $id] = $normalizedType;
             }
         }

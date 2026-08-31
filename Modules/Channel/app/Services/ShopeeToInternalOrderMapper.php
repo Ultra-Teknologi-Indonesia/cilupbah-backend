@@ -27,11 +27,11 @@ class ShopeeToInternalOrderMapper
 
         $logisticsChannelId = $shopeeOrder['logistics_channel_id']
             ?? ($shopeeOrder['package_list'][0]['logistics_channel_id'] ?? null);
-        $channelShippingType = $this->resolveChannelShippingType($logisticsChannelId, $channelShippingTypes);
+        [$channelShippingType, $channelTypeKnown] = $this->resolveChannelShippingType($logisticsChannelId, $channelShippingTypes);
         $shippingType = $channelShippingType;
-        $channelInstant = $channelShippingType === null
-            ? null
-            : ChannelInstantSignal::isInstantType($channelShippingType);
+        $channelInstant = $channelTypeKnown
+            ? ChannelInstantSignal::isInstantType($channelShippingType)
+            : null;
 
         $shopeeStatus = strtolower((string) ($shopeeOrder['order_status'] ?? 'unpaid'));
         $channelStatus = self::STATUS_MAP[$shopeeStatus] ?? null;
@@ -131,24 +131,32 @@ class ShopeeToInternalOrderMapper
         ];
     }
 
-    private function resolveChannelShippingType(int|string|null $logisticsChannelId, array $channelShippingTypes): ?string
+    /**
+     * @return array{0: ?string, 1: bool}
+     */
+    private function resolveChannelShippingType(int|string|null $logisticsChannelId, array $channelShippingTypes): array
     {
         if ($logisticsChannelId === null) {
-            return null;
+            return [null, false];
         }
 
         $id = (string) $logisticsChannelId;
         if (array_key_exists($id, $channelShippingTypes)) {
-            return ChannelInstantSignal::normalizeType((string) $channelShippingTypes[$id]);
+            $rawType = $channelShippingTypes[$id];
+
+            return [
+                is_scalar($rawType) ? ChannelInstantSignal::normalizeType((string) $rawType) : null,
+                true,
+            ];
         }
 
         // Backward compatibility for callers that still pass the legacy list of instant IDs.
         $legacyInstantIds = array_map('strval', array_values($channelShippingTypes));
         if (in_array($id, $legacyInstantIds, true)) {
-            return 'INSTANT';
+            return ['INSTANT', true];
         }
 
-        return null;
+        return [null, false];
     }
 
     protected function extractShippingCarrier(array $shopeeOrder): ?string
