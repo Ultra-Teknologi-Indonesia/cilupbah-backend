@@ -214,6 +214,25 @@ class MonitorStockRepository
             ->where(function ($w) use ($threshold) {
                 $w->whereNull('sales.last_sold')->orWhere('sales.last_sold', '<', $threshold);
             })
+            ->whereNotExists(function ($query) use ($filters) {
+                $query->selectRaw('1')
+                    ->from('sales_order_items as active_order_items')
+                    ->join('sales_orders as active_orders', 'active_orders.id', '=', 'active_order_items.order_id')
+                    ->whereColumn('active_order_items.item_id', 'product_variants.id')
+                    ->whereIn('active_orders.status', self::PENDING_ORDER_STATUSES)
+                    ->when(
+                        is_array($filters['allowed_location_ids'] ?? null),
+                        fn ($q) => $q->whereIn('active_orders.location_id', $filters['allowed_location_ids'])
+                    )
+                    ->when(
+                        $filters['location_id'] ?? null,
+                        fn ($q, $locationId) => $q->where('active_orders.location_id', $locationId)
+                    )
+                    ->where(function ($status) {
+                        $status->where('active_orders.is_canceled', false)
+                            ->orWhereNull('active_orders.is_canceled');
+                    });
+            })
             ->selectRaw('CASE WHEN sales.last_sold IS NULL THEN NULL ELSE (CURRENT_DATE - sales.last_sold::date) END as days_idle')
             ->orderByRaw('sales.last_sold ASC NULLS FIRST');
     }
