@@ -189,6 +189,21 @@ class SalesOrderResource extends JsonResource
 
             'location_id' => $this->location_id,
             'location_name' => $this->whenLoaded('location', fn () => $this->location?->location_name),
+            'scheduled_shipment' => $this->whenLoaded('shipmentOrders', function () {
+                $shipmentOrder = $this->shipmentOrders->first(
+                    fn ($shipmentOrder): bool => $shipmentOrder->relationLoaded('shipment')
+                        && $shipmentOrder->shipment?->status === 'SCHEDULED',
+                );
+
+                return $shipmentOrder?->shipment ? [
+                    'id' => $shipmentOrder->shipment->id,
+                    'shipment_no' => $shipmentOrder->shipment->shipment_no,
+                    'status' => $shipmentOrder->shipment->status,
+                    'shipment_date' => $shipmentOrder->shipment->shipment_date,
+                    'courier_name' => $shipmentOrder->shipment->courier_name,
+                    'courier_code' => $shipmentOrder->shipment->courier_code,
+                ] : null;
+            }),
             'total_qty' => $this->whenLoaded('items', fn () => $this->items->sum('qty_in_base'), 0),
             'total_sku' => $this->whenLoaded('items', fn () => $this->items->count(), 0),
             'has_unmapped_items' => $this->whenLoaded('items', fn () => $this->items->contains(fn ($item) => $item->item_id === null), false),

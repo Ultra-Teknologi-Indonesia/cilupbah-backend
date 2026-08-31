@@ -4,6 +4,7 @@ namespace Modules\Outbound\Services;
 
 use App\Support\WarehouseAccess;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -108,6 +109,7 @@ class ShipmentService
 
         $orders = Order::whereIn('id', $orderIds)
             ->where('status', 'packed')
+            ->where('is_canceled', false)
             ->whereNull('cancel_requested_at')
             ->get();
 
@@ -139,25 +141,59 @@ class ShipmentService
             }
         }
 
-        $packlistIdByOrder = Packlist::whereIn('order_id', $orders->pluck('id'))
-            ->where('status', Packlist::STATUS_COMPLETED)
-            ->pluck('id', 'order_id');
+        $this->assertOrdersCompatibleWithShipment($shipment, $orders);
 
-        $addedOrderIds = DB::transaction(function () use ($shipment, $orders, $packlistIdByOrder): array {
+        $addedOrderIds = DB::transaction(function () use ($shipment, $orders): array {
+            $lockedShipment = Shipment::query()
+                ->whereKey($shipment->id)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $lockedShipment || $lockedShipment->status !== Shipment::STATUS_SCHEDULED) {
+                throw new OutboundValidationException('Pengiriman sudah tidak tersedia untuk dijadwalkan.');
+            }
+
+            $lockedOrders = Order::query()
+                ->whereIn('id', $orders->pluck('id')->all())
+                ->lockForUpdate()
+                ->get();
+
+            $invalidOrder = $lockedOrders->first(
+                fn (Order $order): bool => $order->status !== 'packed'
+                    || $order->is_canceled
+                    || $order->cancel_requested_at !== null,
+            );
+
+            if ($lockedOrders->count() !== $orders->count() || $invalidOrder) {
+                $invalidOrderNumber = $invalidOrder?->salesorder_no;
+
+                throw new OutboundValidationException(
+                    $invalidOrderNumber
+                        ? "Pesanan {$invalidOrderNumber} sudah tidak berstatus packed atau telah dibatalkan."
+                        : 'Sebagian pesanan sudah tidak tersedia untuk dijadwalkan.'
+                );
+            }
+
+            $this->assertOrdersCompatibleWithShipment($lockedShipment, $lockedOrders);
+
+            $packlistIdByOrder = Packlist::whereIn('order_id', $lockedOrders->pluck('id'))
+                ->where('status', Packlist::STATUS_COMPLETED)
+                ->pluck('id', 'order_id');
+
             $addedOrderIds = [];
             $existingRelations = ShipmentOrder::query()
-                ->whereIn('order_id', $orders->pluck('id')->all())
+                ->whereIn('order_id', $lockedOrders->pluck('id')->all())
                 ->lockForUpdate()
                 ->get(['shipment_id', 'order_id']);
 
             $foreignOrderIds = $existingRelations
-                ->where('shipment_id', '!=', $shipment->id)
+                ->where('shipment_id', '!=', $lockedShipment->id)
                 ->pluck('order_id')
                 ->map(fn ($orderId) => (string) $orderId)
                 ->values();
 
             if ($foreignOrderIds->isNotEmpty()) {
-                $foreignOrders = $orders
+                $foreignOrders = $lockedOrders
                     ->whereIn('id', $foreignOrderIds)
                     ->pluck('salesorder_no')
                     ->implode(', ');
@@ -168,28 +204,28 @@ class ShipmentService
             }
 
             $existingOrderIds = $existingRelations
-                ->where('shipment_id', $shipment->id)
+                ->where('shipment_id', $lockedShipment->id)
                 ->pluck('order_id')
                 ->map(fn ($orderId) => (string) $orderId)
                 ->flip();
 
-            foreach ($orders as $order) {
+            foreach ($lockedOrders as $order) {
                 if ($existingOrderIds->has((string) $order->id)) {
                     continue;
                 }
 
                 $this->shipmentRepository->createOrder([
-                    'shipment_id' => $shipment->id,
+                    'shipment_id' => $lockedShipment->id,
                     'order_id' => $order->id,
                     'packlist_id' => $packlistIdByOrder[$order->id] ?? null,
                 ]);
 
                 $this->logShipmentActivity(
                     $order,
-                    $shipment,
+                    $lockedShipment,
                     OrderActivityAction::ADDED_TO_SHIPMENT,
-                    "Pesanan dimasukkan ke pengiriman {$shipment->shipment_no}",
-                    ['shipment_no' => $shipment->shipment_no],
+                    "Pesanan dimasukkan ke pengiriman {$lockedShipment->shipment_no}",
+                    ['shipment_no' => $lockedShipment->shipment_no],
                 );
                 $addedOrderIds[] = $order->id;
             }
@@ -202,6 +238,56 @@ class ShipmentService
         }
 
         return $this->shipmentRepository->findById($shipmentId);
+    }
+
+    private function assertOrdersCompatibleWithShipment(Shipment $shipment, Collection $orders): void
+    {
+        $shipmentIsInstant = in_array($shipment->shipment_type, ['INSTANT', 'SAME_DAY'], true);
+        $mismatchedType = $orders->first(function (Order $order) use ($shipmentIsInstant): bool {
+            return InstantOrderClassifier::isInstant($order->shipping_provider, $order->shipping_type)
+                !== $shipmentIsInstant;
+        });
+
+        if ($mismatchedType) {
+            $expected = $shipmentIsInstant ? 'instant/same-day' : 'reguler';
+
+            throw new OutboundValidationException(
+                "Pesanan {$mismatchedType->salesorder_no} tidak sesuai dengan pengiriman {$expected}."
+            );
+        }
+
+        $mismatchedLocation = $orders->first(
+            fn (Order $order): bool => $shipment->location_id !== null
+                && $order->location_id !== null
+                && (string) $shipment->location_id !== (string) $order->location_id,
+        );
+
+        if ($mismatchedLocation) {
+            throw new OutboundValidationException(
+                "Pesanan {$mismatchedLocation->salesorder_no} berasal dari lokasi berbeda dengan pengiriman."
+            );
+        }
+
+        if ($shipment->courier_name || $shipment->courier_code) {
+            $shipmentCourierCode = $this->courierMapper->resolveCode((string) $shipment->courier_name)
+                ?: (string) ($shipment->courier_code ?? '');
+
+            $mismatchedCourier = $orders->first(function (Order $order) use ($shipmentCourierCode): bool {
+                if ($shipmentCourierCode === '' || ! $order->shipping_provider) {
+                    return false;
+                }
+
+                $orderCourierCode = $this->courierMapper->resolveCode((string) $order->shipping_provider);
+
+                return $orderCourierCode !== '' && $orderCourierCode !== $shipmentCourierCode;
+            });
+
+            if ($mismatchedCourier) {
+                throw new OutboundValidationException(
+                    "Kurir pesanan {$mismatchedCourier->salesorder_no} tidak sesuai dengan pengiriman."
+                );
+            }
+        }
     }
 
     public function removeOrders(string $shipmentId, array $orderIds): Shipment

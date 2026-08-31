@@ -199,6 +199,33 @@ class ShipmentScanGuardTest extends TestCase
         ]);
     }
 
+    public function test_bulk_add_allows_a_packed_marketplace_instant_order_to_instant_shipment(): void
+    {
+        Bus::fake();
+        $loc = $this->seedLocation();
+        $shipmentId = $this->seedShipment($loc, 'GoSend', 'INSTANT');
+        [$orderId] = $this->seedPackedOrder($loc, 'GoSend Instant', source: 'shopee');
+
+        app(ShipmentService::class)->addOrders($shipmentId, [$orderId]);
+
+        $this->assertDatabaseHas('shipment_orders', [
+            'shipment_id' => $shipmentId,
+            'order_id' => $orderId,
+        ]);
+    }
+
+    public function test_bulk_add_rejects_a_regular_order_to_an_instant_shipment(): void
+    {
+        $loc = $this->seedLocation();
+        $shipmentId = $this->seedShipment($loc, 'GoSend', 'INSTANT');
+        [$orderId, $orderNo] = $this->seedPackedOrder($loc, 'JNE', source: 'shopee');
+
+        $this->expectException(OutboundValidationException::class);
+        $this->expectExceptionMessage("Pesanan {$orderNo} tidak sesuai dengan pengiriman instant/same-day.");
+
+        app(ShipmentService::class)->addOrders($shipmentId, [$orderId]);
+    }
+
     public function test_bulk_add_rejects_a_channel_order_for_internal_only_shipment(): void
     {
         $loc = $this->seedLocation();

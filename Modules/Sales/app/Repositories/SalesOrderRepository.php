@@ -544,6 +544,7 @@ class SalesOrderRepository
             ->with([
                 'statusHistory',
                 'returns.settlement',
+                'shipmentOrders.shipment:id,shipment_no,status,shipment_date,courier_name,courier_code',
                 'items',
                 'items.product:id,product_id',
                 'items.product.media:id,variant_id,url,is_primary',
