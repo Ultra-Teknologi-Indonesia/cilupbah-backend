@@ -3,6 +3,7 @@
 namespace Modules\Inventory\Services;
 
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Repositories\BundleRepository;
 use Modules\Product\Models\Product;
 use Modules\Product\Repositories\ProductRepository;
@@ -22,6 +23,11 @@ class BundleService
 
     public function save(array $payload): array
     {
+        return DB::transaction(fn () => $this->saveInTransaction($payload));
+    }
+
+    private function saveInTransaction(array $payload): array
+    {
         $componentVariantIds = array_values(array_filter(array_column($payload['components'], 'variant_id')));
         if ($this->productRepository->variantIdsFromBundleProducts($componentVariantIds) !== []) {
             throw new \RuntimeException('Komponen bundle tidak boleh berisi produk bundle (bundle-in-bundle tidak diizinkan).');
@@ -35,10 +41,10 @@ class BundleService
                 'name' => $payload['name'],
                 'sku'  => $payload['sku'],
             ]);
-            $variant = $product->variants()->first();
-            if ($variant && array_key_exists('sell_price', $payload)) {
-                $variant->update(['sell_price' => $payload['sell_price']]);
-            }
+            $this->productRepository->ensureActiveBundleVariant(
+                $product,
+                array_key_exists('sell_price', $payload) ? $payload['sell_price'] : null,
+            );
         } else {
             $categoryId = $payload['category_id'] ?? $this->bundleRepository->firstCategoryId();
 

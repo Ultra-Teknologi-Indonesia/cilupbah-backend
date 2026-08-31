@@ -79,8 +79,61 @@ class ProductRepository
                 ]);
             }
 
+            if ($product->is_bundle && $product->is_active) {
+                $this->ensureActiveBundleVariant($product);
+            }
+
             return $product;
         });
+    }
+
+    public function ensureActiveBundleVariant(Product $product, string|int|float|null $sellPrice = null): ProductVariant
+    {
+        $activeVariant = $product->variants()
+            ->where('is_active', true)
+            ->first();
+
+        if ($activeVariant) {
+            if ($sellPrice !== null) {
+                $activeVariant->update(['sell_price' => $sellPrice]);
+            }
+
+            return $activeVariant;
+        }
+
+        $existingVariant = $product->variants()
+            ->whereNull('deleted_at')
+            ->orderBy('created_at')
+            ->first();
+
+        if ($existingVariant) {
+            $updates = ['is_active' => true];
+            if ($sellPrice !== null) {
+                $updates['sell_price'] = $sellPrice;
+            }
+            $existingVariant->update($updates);
+
+            return $existingVariant->refresh();
+        }
+
+        $sku = $product->sku;
+
+        if ($sku !== null && ProductVariant::query()
+            ->where('sku', $sku)
+            ->whereNull('deleted_at')
+            ->where('product_id', '!=', $product->id)
+            ->exists()) {
+            throw new \DomainException(
+                "SKU bundle {$sku} sudah digunakan oleh varian aktif lain. "
+                .'Periksa data duplikat sebelum menyimpan bundle.'
+            );
+        }
+
+        return $product->variants()->create([
+            'sku' => $sku,
+            'sell_price' => $sellPrice ?? 0,
+            'is_active' => true,
+        ]);
     }
 
     public function variantIdsFromBundleProducts(array $variantIds): array

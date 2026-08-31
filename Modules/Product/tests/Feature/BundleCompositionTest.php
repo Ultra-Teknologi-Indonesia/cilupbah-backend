@@ -147,6 +147,12 @@ class BundleCompositionTest extends TestCase
         $bundleId = $create->json('data.product_id');
         $this->assertNotNull($bundleId);
 
+        $this->assertDatabaseHas('product_variants', [
+            'product_id' => $bundleId,
+            'sku' => 'BUNDLE-AB',
+            'is_active' => true,
+        ]);
+
         $this->assertDatabaseHas('product_bundle_items', [
             'bundle_product_id' => $bundleId,
             'component_variant_id' => $aBiru->id,
@@ -283,6 +289,10 @@ class BundleCompositionTest extends TestCase
         ])->assertStatus(200);
 
         $this->assertDatabaseHas('products', ['id' => $product->id, 'is_bundle' => true]);
+        $this->assertDatabaseHas('product_variants', [
+            'product_id' => $product->id,
+            'is_active' => true,
+        ]);
         $this->assertDatabaseHas('product_bundle_items', [
             'bundle_product_id' => $product->id,
             'component_variant_id' => $component->id,

@@ -415,20 +415,41 @@ class SalesOrder extends Model implements HasMedia
     {
 
         $available = StockSummary::availableSql('inventories', 'location_bins');
+        $componentAvailable = StockSummary::availableSql('component_inventories', 'component_bins');
 
-        return "sales_order_items.qty_in_base > COALESCE((
+        $bundleShortfall = "EXISTS (
+                    SELECT 1
+                    FROM product_variants pv
+                    JOIN products p ON p.id = pv.product_id
+                    JOIN product_bundle_items pbi ON pbi.bundle_product_id = p.id
+                    WHERE pv.id = sales_order_items.item_id
+                      AND p.is_bundle = true
+                      AND sales_order_items.qty_in_base * GREATEST(pbi.qty, 1) > COALESCE((
+                          SELECT {$componentAvailable}
+                          FROM inventories component_inventories
+                          LEFT JOIN location_bins component_bins
+                            ON component_bins.id = component_inventories.bin_id
+                          WHERE component_inventories.item_id = pbi.component_variant_id
+                            AND component_inventories.location_id = sales_orders.location_id
+                      ), 0)
+                )";
+
+        $normalShortfall = "NOT EXISTS (
+                    SELECT 1
+                    FROM product_variants pv
+                    JOIN products p ON p.id = pv.product_id
+                    WHERE pv.id = sales_order_items.item_id
+                      AND p.is_bundle = true
+                )
+                AND sales_order_items.qty_in_base > COALESCE((
                     SELECT {$available}
                     FROM inventories
                     LEFT JOIN location_bins ON location_bins.id = inventories.bin_id
                     WHERE inventories.item_id = sales_order_items.item_id
                       AND inventories.location_id = sales_orders.location_id
-                ), 0)
-                AND NOT EXISTS (
-                    SELECT 1 FROM product_variants pv
-                    JOIN products p ON p.id = pv.product_id
-                    WHERE pv.id = sales_order_items.item_id
-                      AND p.is_bundle = true
-        )";
+                ), 0)";
+
+        return "({$bundleShortfall} OR {$normalShortfall})";
     }
 
     public function scopeWithStockShortfallFlag(Builder $query): Builder

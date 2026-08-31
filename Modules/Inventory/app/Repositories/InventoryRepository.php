@@ -639,8 +639,7 @@ class InventoryRepository
             ." AND bsi.location_id = bundle_locations.location_id{$componentScope}), 0)";
 
         $value = $placed;
-        // The metric expression appears before the location list subquery in
-        // the SQL text, so its bindings must be appended first.
+
         $bindings = $componentBindings;
         if ($metric === 'available') {
             [$orderScope, $orderBindings] = $this->inventoryMetricScopeSql(
@@ -1064,33 +1063,69 @@ class InventoryRepository
     {
         WarehouseAccess::assert($locationId);
 
-        $sub = DB::table('inventories')
-            ->join('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
-            ->select('inventories.item_id', DB::raw('SUM(inventories.available) as total_on_hand'))
-            ->where('inventories.location_id', $locationId)
-            ->where('location_bins.is_inbound', false)
-            ->groupBy('inventories.item_id');
+        $inventorySummary = DB::table('inventories as i')
+            ->leftJoin('location_bins as b', 'b.id', '=', 'i.bin_id')
+            ->where('i.location_id', $locationId)
+            ->select('i.item_id')
+            ->selectRaw(StockSummary::placedOnHandSql('i', 'b').' as placed_on_hand')
+            ->selectRaw('COALESCE(SUM(i.on_order), 0) as on_order')
+            ->groupBy('i.item_id');
 
-        if (! $includeZero) {
-            $sub->havingRaw('SUM(inventories.available) > 0');
-        }
-
-        $joinType = $includeZero ? 'leftJoinSub' : 'joinSub';
+        $bundleSummary = DB::table('product_bundle_items as pbi')
+            ->leftJoinSub($inventorySummary, 'component_stock', function ($join) {
+                $join->on('component_stock.item_id', '=', 'pbi.component_variant_id');
+            })
+            ->select('pbi.bundle_product_id')
+            ->selectRaw(
+                'COALESCE(MIN(FLOOR(COALESCE(component_stock.placed_on_hand, 0) / '
+                .'GREATEST(pbi.qty, 1)::numeric)), 0) as total_on_hand'
+            )
+            ->selectRaw(
+                'COALESCE(MIN(FLOOR((COALESCE(component_stock.placed_on_hand, 0) '
+                .'- COALESCE(component_stock.on_order, 0)) / '
+                .'GREATEST(pbi.qty, 1)::numeric)), 0) as total_available'
+            )
+            ->groupBy('pbi.bundle_product_id');
 
         $query = ProductVariant::query()
             ->join('products as parent_product', 'parent_product.id', '=', 'product_variants.product_id')
-            ->{$joinType}($sub, 'stock_summary', function ($join) {
+            ->leftJoinSub($inventorySummary, 'stock_summary', function ($join) {
                 $join->on('stock_summary.item_id', '=', 'product_variants.id');
+            })
+            ->leftJoinSub($bundleSummary, 'bundle_stock_summary', function ($join) {
+                $join->on('bundle_stock_summary.bundle_product_id', '=', 'parent_product.id');
             })
             ->select(
                 'product_variants.*',
                 'parent_product.name as parent_product_name',
-                DB::raw('COALESCE(stock_summary.total_on_hand, 0) as total_on_hand'),
+                DB::raw(
+                    'CASE WHEN parent_product.is_bundle = true '
+                    .'THEN COALESCE(bundle_stock_summary.total_available, 0) '
+                    .'ELSE COALESCE(stock_summary.placed_on_hand, 0) '
+                    .' - COALESCE(stock_summary.on_order, 0) END as total_on_hand'
+                ),
             )
             ->whereNull('parent_product.deleted_at');
 
         if ($includeZero) {
             $query->where('product_variants.is_active', true);
+        } else {
+            $query->where(function ($query) {
+                $query
+                    ->where(function ($query) {
+                        $query
+                            ->where('parent_product.is_bundle', true)
+                            ->whereRaw('COALESCE(bundle_stock_summary.total_available, 0) > 0');
+                    })
+                    ->orWhere(function ($query) {
+                        $query
+                            ->where('parent_product.is_bundle', false)
+                            ->whereRaw(
+                                '(COALESCE(stock_summary.placed_on_hand, 0) '
+                                .'- COALESCE(stock_summary.on_order, 0)) > 0'
+                            );
+                    });
+            });
         }
 
         $query

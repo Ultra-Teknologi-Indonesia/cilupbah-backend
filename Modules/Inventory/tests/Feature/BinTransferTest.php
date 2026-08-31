@@ -309,6 +309,11 @@ class BinTransferTest extends TestCase
         $this->assertNotContains('V-ZERO', $skus);
         $this->assertNotContains('V-NONE', $skus);
 
+        $includeZeroRes = $this->getJson("/api/v1/inventory/stock/items?location_id={$whA->id}&include_zero=1&search=V-ZERO");
+        $includeZeroRes->assertStatus(200);
+        $includeZeroRes->assertJsonPath('data.0.sku', 'V-ZERO');
+        $includeZeroRes->assertJsonPath('data.0.total_on_hand', 0);
+
         $searchRes = $this->getJson("/api/v1/inventory/stock/items?location_id={$whA->id}&search=WITH");
         $searchRes->assertStatus(200);
         $searchSkus = collect($searchRes->json('data'))->pluck('sku')->all();
@@ -316,6 +321,60 @@ class BinTransferTest extends TestCase
 
         $searchRes->assertJsonPath('data.0.product_name', 'PSTK');
         $searchRes->assertJsonPath('data.0.variant_label', '');
+    }
+
+    public function test_stocked_items_derives_bundle_stock_and_includes_zero_stock_bundle(): void
+    {
+        Queue::fake();
+
+        $warehouse = Location::create([
+            'location_code' => 'WH-BUNDLE-PICKER', 'location_name' => 'Gudang Bundle Picker',
+            'location_type' => 'warehouse', 'is_warehouse' => true, 'is_active' => true,
+        ]);
+        $bin = LocationBin::create([
+            'location_id' => $warehouse->id, 'bin_code' => 'B', 'bin_final_code' => 'WH-BUNDLE-PICKER-B',
+            'is_inbound' => false,
+        ]);
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'C-BUNDLE-PICKER', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $componentProduct = Product::create([
+            'category_id' => $categoryId, 'name' => 'Komponen Bundle Picker',
+            'sku' => 'COMP-BUNDLE-PICKER', 'is_active' => true,
+        ]);
+        $component = ProductVariant::create([
+            'product_id' => $componentProduct->id, 'sku' => 'COMPONENT-BUNDLE-PICKER',
+            'is_active' => true,
+        ]);
+        $bundle = Product::create([
+            'category_id' => $categoryId, 'name' => 'Bundle Picker',
+            'sku' => 'BUNDLE-PICKER-ZERO', 'is_bundle' => true, 'is_active' => true,
+        ]);
+        $bundleVariant = ProductVariant::create([
+            'product_id' => $bundle->id, 'sku' => 'BUNDLE-PICKER-ZERO',
+            'is_active' => true,
+        ]);
+        $bundle->bundleItems()->create([
+            'component_variant_id' => $component->id, 'qty' => 2,
+        ]);
+        $inventory = Inventory::create([
+            'item_id' => $component->id, 'location_id' => $warehouse->id, 'bin_id' => $bin->id,
+            'on_hand' => 0, 'on_order' => 0, 'available' => 0, 'avg_cost' => 100,
+        ]);
+
+        $user = $this->createPrivilegedUser();
+        $this->actingAs($user);
+
+        $zeroResponse = $this->getJson("/api/v1/inventory/stock/items?location_id={$warehouse->id}&include_zero=1&search=BUNDLE-PICKER-ZERO");
+        $zeroResponse->assertOk()
+            ->assertJsonPath('data.0.item_id', $bundleVariant->id)
+            ->assertJsonPath('data.0.total_on_hand', 0);
+
+        $inventory->update(['on_hand' => 5, 'available' => 5]);
+        $positiveResponse = $this->getJson("/api/v1/inventory/stock/items?location_id={$warehouse->id}&search=BUNDLE-PICKER-ZERO");
+        $positiveResponse->assertOk()
+            ->assertJsonPath('data.0.item_id', $bundleVariant->id)
+            ->assertJsonPath('data.0.total_on_hand', 2);
     }
 
     public function test_stocked_items_requires_location_id(): void

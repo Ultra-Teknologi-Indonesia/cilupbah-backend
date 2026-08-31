@@ -47,7 +47,7 @@ class BundleController extends Controller
 
         try {
             [$product, $isUpdate] = $this->bundleService->save($request->all());
-        } catch (\RuntimeException $e) {
+        } catch (\DomainException|\RuntimeException $e) {
             return $this->errorResponse(
                 'Gagal menyimpan.',
                 422,

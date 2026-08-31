@@ -54,6 +54,51 @@ class BundleConsolidationTest extends TestCase
         $this->assertDatabaseHas('products', ['id' => $bundleProductId, 'is_bundle' => true]);
     }
 
+    public function test_update_repairs_active_bundle_without_variant(): void
+    {
+        DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Umum']);
+        $user = $this->createPrivilegedUser();
+
+        $component = Product::create([
+            'name' => 'Komponen Repair',
+            'category_id' => 1,
+            'status' => Product::STATUS_MASTER,
+            'is_active' => true,
+            'is_bundle' => false,
+        ]);
+        $componentVariant = ProductVariant::create([
+            'product_id' => $component->id,
+            'sku' => 'COMP-REPAIR',
+            'is_active' => true,
+        ]);
+        $bundle = Product::create([
+            'name' => 'Bundle Tanpa Variant',
+            'sku' => 'BUNDLE-REPAIR',
+            'category_id' => 1,
+            'status' => Product::STATUS_MASTER,
+            'is_active' => true,
+            'is_bundle' => true,
+        ]);
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/inventory/items/bundle', [
+            'id' => $bundle->id,
+            'name' => $bundle->name,
+            'sku' => $bundle->sku,
+            'category_id' => 1,
+            'sell_price' => 75000,
+            'components' => [
+                ['variant_id' => $componentVariant->id, 'qty' => 1],
+            ],
+        ])->assertStatus(200);
+
+        $this->assertDatabaseHas('product_variants', [
+            'product_id' => $bundle->id,
+            'sku' => 'BUNDLE-REPAIR',
+            'sell_price' => 75000,
+            'is_active' => true,
+        ]);
+    }
+
     public function test_store_rejects_bundle_in_bundle(): void
     {
         DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Umum']);
