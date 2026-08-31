@@ -102,6 +102,7 @@ class ProductRepository
         }
 
         $existingVariant = $product->variants()
+            ->where('is_internal', true)
             ->whereNull('deleted_at')
             ->orderBy('created_at')
             ->first();
