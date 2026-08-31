@@ -142,10 +142,12 @@ class LazadaToInternalOrderMapper
             $lazadaOrder['delivery_type'] ?? null,
             $lazadaOrder['shipping_method'] ?? null,
             $lazadaOrder['shipping_type'] ?? null,
+            $lazadaOrder['shipping_provider_type'] ?? null,
             $orderItems[0]['delivery_option_name'] ?? null,
             $orderItems[0]['delivery_type'] ?? null,
             $orderItems[0]['shipping_method'] ?? null,
             $orderItems[0]['shipping_type'] ?? null,
+            $orderItems[0]['shipping_provider_type'] ?? null,
         ];
 
         $firstNonEmpty = null;

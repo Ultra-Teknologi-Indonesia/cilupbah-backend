@@ -141,6 +141,23 @@ class LazadaToInternalOrderMapperStatusTest extends TestCase
         $this->assertTrue($internal['channel_instant']);
     }
 
+    public function test_reads_lazada_shipping_provider_type_from_order_item(): void
+    {
+        $internal = (new LazadaToInternalOrderMapper)->map(
+            [
+                'order_id' => 900404,
+                'statuses' => ['ready_to_ship'],
+                'shipping_type' => 'Dropshipping',
+                'price' => '30000.00',
+            ],
+            [['shipping_provider_type' => 'standard']],
+            'LZ-100',
+        );
+
+        $this->assertSame('STANDARD', $internal['shipping_type']);
+        $this->assertFalse($internal['channel_instant']);
+    }
+
     public function test_provider_name_alone_does_not_classify_lazada_order_as_instant(): void
     {
         $internal = (new LazadaToInternalOrderMapper)->map(
