@@ -5,6 +5,7 @@ namespace Modules\Product\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Modules\Product\Support\ChannelUrlBuilder;
+use Modules\Product\Support\TechnicalSku;
 
 class MasterItemResource extends JsonResource
 {
@@ -15,6 +16,7 @@ class MasterItemResource extends JsonResource
     public function toArray(Request $request): array
     {
         $isBundle = (bool) $this->is_bundle;
+        $visibleVariants = $this->visibleVariants();
         $totalComponents = $isBundle && $this->resource->relationLoaded('bundleItems') ? $this->bundleItems->count() : 0;
 
         return [
@@ -22,7 +24,7 @@ class MasterItemResource extends JsonResource
             'status' => $this->status,
             'is_po' => $this->order_type === 'PREORDER',
             'is_bundle' => $isBundle,
-            'sku' => $this->sku ?? ($this->resource->relationLoaded('variants') && $this->variants->count() === 1 ? $this->variants->first()?->sku : null),
+            'sku' => TechnicalSku::isTechnical($this->sku) ? null : ($this->sku ?? ($visibleVariants->count() === 1 ? $visibleVariants->first()?->sku : null)),
             'item_name' => $this->name,
             'last_modified' => $this->updated_at,
             'variations' => $this->variations(),
@@ -32,7 +34,7 @@ class MasterItemResource extends JsonResource
             'is_consignment' => (bool) $this->is_consignment,
             'variants' => $this->variantList(),
             'total_components' => $totalComponents,
-            'total_variants' => $isBundle ? $totalComponents : ($this->resource->relationLoaded('variants') ? $this->variants->count() : 0),
+            'total_variants' => $isBundle ? $totalComponents : $visibleVariants->count(),
             'online_status' => $this->onlineStatus(),
             'thumbnail' => $this->productThumbnail(),
             'is_merged' => (bool) ($this->is_merged ?? false),
@@ -49,7 +51,7 @@ class MasterItemResource extends JsonResource
 
         $valuesByAttribute = [];
         if ($this->resource->relationLoaded('variants')) {
-            foreach ($this->variants as $variant) {
+            foreach ($this->visibleVariants() as $variant) {
                 if (! $variant->relationLoaded('options')) {
                     continue;
                 }
@@ -99,7 +101,7 @@ class MasterItemResource extends JsonResource
             return [];
         }
 
-        return $this->variants->map(fn ($variant) => [
+        return $this->visibleVariants()->map(fn ($variant) => [
             'item_group_id' => $this->id,
             'item_id' => $variant->id,
             'item_code' => $variant->sku,
@@ -115,6 +117,15 @@ class MasterItemResource extends JsonResource
             'sell_price' => $variant->sell_price !== null ? (float) $variant->sell_price : null,
             'sequence_item' => $variant->sequence_item,
         ])->values()->all();
+    }
+
+    protected function visibleVariants()
+    {
+        if (! $this->resource->relationLoaded('variants')) {
+            return collect();
+        }
+
+        return $this->variants->filter(fn ($variant) => ! TechnicalSku::isTechnical($variant->sku));
     }
 
     protected function variationValues($variant): array

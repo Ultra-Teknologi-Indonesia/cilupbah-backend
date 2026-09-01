@@ -4,13 +4,16 @@ namespace Modules\Product\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Modules\Product\Support\TechnicalSku;
 
 class ProductPriceResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        $prices = $this->variants->pluck('sell_price')->filter(fn ($p) => $p !== null);
-        $visibleVariants = $this->is_bundle ? collect() : $this->variants;
+        $visibleVariants = $this->is_bundle
+            ? collect()
+            : $this->variants->filter(fn ($variant) => ! TechnicalSku::isTechnical($variant->sku));
+        $prices = $visibleVariants->pluck('sell_price')->filter(fn ($p) => $p !== null);
 
         return [
             'item_id' => $this->id,
