@@ -21,6 +21,7 @@ use Modules\Inventory\Http\Requests\ListPutawayBinsRequest;
 use Modules\Inventory\Http\Requests\LookupPutawayBinRequest;
 use Modules\Inventory\Http\Requests\ProcessPutawayItemRequest;
 use Modules\Inventory\Http\Requests\ResetPutawayAssignmentRequest;
+use Modules\Inventory\Http\Requests\ScanPutawayItemRequest;
 use Modules\Inventory\Http\Requests\StorePutawayRequest;
 use Modules\Inventory\Http\Requests\UnassignPutawayRequest;
 use Modules\Inventory\Models\Putaway;
@@ -308,6 +309,44 @@ class PutawayController extends Controller
                 app()->environment('production') ? null : ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
             );
+        }
+    }
+
+    #[OA\Post(
+        path: '/api/v1/putaway/{id}/scan',
+        summary: 'Resolve scanned SKU against a putaway document',
+        security: [['bearerAuth' => []]],
+        tags: ['Putaway'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            required: ['code'],
+            properties: [
+                new OA\Property(property: 'code', type: 'string', maxLength: 255, description: 'SKU atau ID varian dari QR barang.'),
+            ],
+        )),
+        responses: [
+            new OA\Response(response: 200, description: 'Kode barang cocok dengan item putaway.'),
+            new OA\Response(response: 404, description: 'Kode tidak terdaftar pada dokumen putaway.'),
+            new OA\Response(response: 409, description: 'Item sudah selesai ditempatkan.'),
+        ],
+    )]
+    public function scanItem(ScanPutawayItemRequest $request, string $id): JsonResponse
+    {
+        try {
+            $result = $this->putawayService->resolveScannedItem(
+                $id,
+                $request->validated()['code'],
+            );
+
+            return $this->successResponse($result, 'Kode barang cocok dengan dokumen putaway.');
+        } catch (UserFacingException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return $this->errorResponse('Gagal memvalidasi barang.', 500);
         }
     }
 

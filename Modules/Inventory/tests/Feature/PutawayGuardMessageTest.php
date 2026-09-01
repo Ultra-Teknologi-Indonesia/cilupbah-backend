@@ -181,6 +181,40 @@ class PutawayGuardMessageTest extends TestCase
             ->assertJsonPath('data.0.product.barcode', '8999000012345');
     }
 
+    public function test_scan_resolves_sku_in_the_putaway_document(): void
+    {
+        $loc = $this->locationKecil();
+        $inbound = $this->makeBin($loc, 'INB', true);
+        $variant = $this->makeVariant();
+        $item = $this->makePutawayItem($loc, $inbound, $variant);
+
+        $this->postJson(
+            "/api/v1/putaway/{$item->putaway_id}/scan",
+            ['code' => strtolower($variant->sku)],
+        )
+            ->assertOk()
+            ->assertJsonPath('data.putaway_item_id', $item->id)
+            ->assertJsonPath('data.item_id', $variant->id)
+            ->assertJsonPath('data.sku', $variant->sku)
+            ->assertJsonPath('data.remaining_qty', 5);
+    }
+
+    public function test_scan_returns_structured_error_when_sku_is_not_in_document(): void
+    {
+        $loc = $this->locationKecil();
+        $inbound = $this->makeBin($loc, 'INB', true);
+        $variant = $this->makeVariant();
+        $item = $this->makePutawayItem($loc, $inbound, $variant);
+
+        $this->postJson(
+            "/api/v1/putaway/{$item->putaway_id}/scan",
+            ['code' => 'SKU-NOT-IN-DOCUMENT'],
+        )
+            ->assertStatus(404)
+            ->assertJsonPath('title', 'Barang tidak ditemukan')
+            ->assertJsonPath('errors.code', 'PUTAWAY_ITEM_NOT_FOUND');
+    }
+
     public function test_completed_item_returns_structured_conflict_message(): void
     {
         $loc = $this->locationKecil();

@@ -335,6 +335,86 @@ class PutawayService
         return $paginated;
     }
 
+    /**
+     * Resolve the scanned QR value against the current putaway document.
+     *
+     * Putaway labels use the variant SKU or variant ID as their QR payload;
+     * barcode is intentionally not required because it is not populated for
+     * every item. The document boundary is part of the query so a valid SKU
+     * from another putaway cannot be selected accidentally.
+     *
+     * @return array{putaway_item_id: string, item_id: string, sku: string, remaining_qty: int}
+     */
+    public function resolveScannedItem(string $putawayId, string $code): array
+    {
+        $normalized = trim($code);
+
+        if ($normalized === '') {
+            throw new UserFacingException(
+                title: 'Kode barang tidak valid',
+                message: 'Kode QR barang wajib diisi.',
+                status: 422,
+                errors: ['code' => 'PUTAWAY_SCAN_CODE_REQUIRED'],
+            );
+        }
+
+        if (! Putaway::query()->whereKey($putawayId)->exists()) {
+            throw new UserFacingException(
+                title: 'Putaway tidak ditemukan',
+                message: 'Dokumen putaway yang sedang dibuka tidak ditemukan.',
+                status: 404,
+                errors: ['code' => 'PUTAWAY_NOT_FOUND'],
+            );
+        }
+
+        $item = PutawayItem::query()
+            ->with('product:id,sku')
+            ->where('putaway_id', $putawayId)
+            ->whereHas('product', function ($query) use ($normalized): void {
+                $query->whereRaw('LOWER(product_variants.sku) = ?', [strtolower($normalized)])
+                    ->orWhereRaw('CAST(product_variants.id AS TEXT) = ?', [strtolower($normalized)]);
+            })
+            ->orderByRaw('CASE WHEN putaway_qty < qty THEN 0 ELSE 1 END')
+            ->orderBy('id')
+            ->first();
+
+        if (! $item) {
+            throw new UserFacingException(
+                title: 'Barang tidak ditemukan',
+                message: "Kode {$normalized} tidak terdaftar pada dokumen putaway ini.",
+                status: 404,
+                errors: [
+                    'code' => 'PUTAWAY_ITEM_NOT_FOUND',
+                    'scanned_code' => $normalized,
+                ],
+            );
+        }
+
+        $remainingQty = max(0, (int) $item->qty - (int) $item->putaway_qty);
+
+        if ($remainingQty === 0) {
+            $sku = $item->product?->sku ?? $item->item_id;
+
+            throw new UserFacingException(
+                title: 'Barang sudah selesai',
+                message: "Seluruh qty {$sku} sudah ditempatkan.",
+                status: 409,
+                errors: [
+                    'code' => 'PUTAWAY_ITEM_ALREADY_COMPLETED',
+                    'putaway_item_id' => (string) $item->id,
+                    'remaining_qty' => 0,
+                ],
+            );
+        }
+
+        return [
+            'putaway_item_id' => (string) $item->id,
+            'item_id' => (string) $item->item_id,
+            'sku' => (string) ($item->product?->sku ?? $item->item_id),
+            'remaining_qty' => $remainingQty,
+        ];
+    }
+
     protected function attachRackAssignment(Putaway $putaway, $items): void
     {
         $location = Location::find($putaway->location_id);

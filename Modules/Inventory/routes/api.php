@@ -335,6 +335,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('/{id}/history', [PutawayController::class, 'history'])->middleware('role_or_permission:owner|view-penempatan')->name('putaway.history');
         Route::get('/{id}', [PutawayController::class, 'show'])->middleware('role_or_permission:owner|view-penempatan')->name('putaway.show');
         Route::get('/{id}/items', [PutawayController::class, 'items'])->middleware('role_or_permission:owner|view-penempatan')->name('putaway.items');
+        Route::post('/{id}/scan', [PutawayController::class, 'scanItem'])->middleware('role_or_permission:owner|edit-penempatan')->name('putaway.scanItem');
         Route::post('/assign-staff', [PutawayController::class, 'assignStaff'])->middleware('role_or_permission:owner|edit-penempatan')->name('putaway.assignStaff');
 
         Route::delete('/{id}/assignment', [PutawayController::class, 'unassign'])->middleware('role_or_permission:owner|edit-penempatan')->name('putaway.unassign');
