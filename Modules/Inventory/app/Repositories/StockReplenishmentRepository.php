@@ -199,8 +199,10 @@ class StockReplenishmentRepository
 
     public function demandForLocation(string $kecilId, ?array $itemIds = null): Collection
     {
-        return DB::table('sales_order_items as i')
+        $direct = DB::table('sales_order_items as i')
             ->join('sales_orders as o', 'o.id', '=', 'i.order_id')
+            ->join('product_variants as v', 'v.id', '=', 'i.item_id')
+            ->join('products as p', 'p.id', '=', 'v.product_id')
             ->whereIn('o.status', [
                 'pending',
                 'reserved',
@@ -209,9 +211,37 @@ class StockReplenishmentRepository
             ])
             ->where('o.location_id', $kecilId)
             ->whereNotNull('i.item_id')
+            ->where('p.is_bundle', false)
             ->when($itemIds !== null, fn ($query) => $query->whereIn('i.item_id', $itemIds))
             ->groupBy('i.item_id', 'i.sku')
-            ->select('i.item_id', 'i.sku', DB::raw('SUM(i.qty_in_base) as needed'))
+            ->select('i.item_id', 'i.sku', DB::raw('SUM(i.qty_in_base) as needed'));
+
+        $bundleComponents = DB::table('sales_order_items as i')
+            ->join('sales_orders as o', 'o.id', '=', 'i.order_id')
+            ->join('product_variants as bundle_variant', 'bundle_variant.id', '=', 'i.item_id')
+            ->join('products as bundle_product', 'bundle_product.id', '=', 'bundle_variant.product_id')
+            ->join('product_bundle_items as bundle_item', 'bundle_item.bundle_product_id', '=', 'bundle_product.id')
+            ->join('product_variants as component', 'component.id', '=', 'bundle_item.component_variant_id')
+            ->whereIn('o.status', [
+                'pending',
+                'reserved',
+                'UNPAID',
+                'AWAITING_BUYER_CONFIRMATION',
+            ])
+            ->where('o.location_id', $kecilId)
+            ->where('bundle_product.is_bundle', true)
+            ->whereNotNull('bundle_item.component_variant_id')
+            ->when($itemIds !== null, fn ($query) => $query->whereIn('bundle_item.component_variant_id', $itemIds))
+            ->groupBy('bundle_item.component_variant_id', 'component.sku')
+            ->selectRaw('bundle_item.component_variant_id as item_id')
+            ->selectRaw('component.sku as sku')
+            ->selectRaw('SUM(i.qty_in_base * GREATEST(bundle_item.qty, 1)) as needed');
+
+        return DB::query()
+            ->fromSub($direct->unionAll($bundleComponents), 'demand')
+            ->select('item_id', 'sku')
+            ->selectRaw('SUM(needed) as needed')
+            ->groupBy('item_id', 'sku')
             ->get()
             ->keyBy('item_id');
     }

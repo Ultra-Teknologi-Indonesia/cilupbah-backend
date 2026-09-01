@@ -85,17 +85,45 @@ class MonitorStockRepository
             SELECT STRING_AGG(DISTINCT sales_orders.salesorder_no, ', ')
             FROM sales_order_items
             JOIN sales_orders ON sales_orders.id = sales_order_items.order_id
-            WHERE sales_order_items.item_id = product_variants.id
-              AND sales_orders.status IN ('pending', 'reserved', 'UNPAID', 'AWAITING_BUYER_CONFIRMATION')
+            WHERE sales_orders.status IN ('pending', 'reserved', 'UNPAID', 'AWAITING_BUYER_CONFIRMATION')
+              AND (
+                  sales_order_items.item_id = product_variants.id
+                  OR EXISTS (
+                      SELECT 1
+                      FROM product_variants AS pending_bundle_variant
+                      JOIN products AS pending_bundle_product
+                        ON pending_bundle_product.id = pending_bundle_variant.product_id
+                      JOIN product_bundle_items AS pending_bundle_item
+                        ON pending_bundle_item.bundle_product_id = pending_bundle_product.id
+                      WHERE pending_bundle_variant.id = sales_order_items.item_id
+                        AND pending_bundle_product.is_bundle = true
+                        AND pending_bundle_item.component_variant_id = product_variants.id
+                  )
+              )
         SQL;
     }
 
     private function pendingOrderItemIds()
     {
-        return DB::table('sales_order_items')
+        $direct = DB::table('sales_order_items')
             ->join('sales_orders', 'sales_orders.id', '=', 'sales_order_items.order_id')
             ->whereIn('sales_orders.status', self::PENDING_ORDER_STATUSES)
+            ->whereNotNull('sales_order_items.item_id')
             ->select('sales_order_items.item_id');
+
+        $bundleComponents = DB::table('sales_order_items as pending_items')
+            ->join('sales_orders as pending_orders', 'pending_orders.id', '=', 'pending_items.order_id')
+            ->join('product_variants as pending_bundle_variant', 'pending_bundle_variant.id', '=', 'pending_items.item_id')
+            ->join('products as pending_bundle_product', 'pending_bundle_product.id', '=', 'pending_bundle_variant.product_id')
+            ->join('product_bundle_items as pending_bundle_item', 'pending_bundle_item.bundle_product_id', '=', 'pending_bundle_product.id')
+            ->whereIn('pending_orders.status', self::PENDING_ORDER_STATUSES)
+            ->where('pending_bundle_product.is_bundle', true)
+            ->whereNotNull('pending_bundle_item.component_variant_id')
+            ->select('pending_bundle_item.component_variant_id as item_id');
+
+        return DB::query()
+            ->fromSub($direct->union($bundleComponents), 'pending_item_ids')
+            ->select('item_id');
     }
 
     private function openPoItemIds()

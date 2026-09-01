@@ -10,6 +10,7 @@ use Modules\Channel\Models\ChannelShop;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryTransfer;
 use Modules\Inventory\Models\StockReplenishmentRequest;
+use Modules\Inventory\Repositories\MonitorStockRepository;
 use Modules\Inventory\Repositories\StockReplenishmentRepository;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Services\StockReplenishmentService;
@@ -90,6 +91,67 @@ class StockReplenishmentEventDrivenTest extends TestCase
         $this->assertSame(4, $shortage->needed);
         $this->assertSame(-18, $shortage->available);
         $this->assertSame(4, $shortage->shortage);
+    }
+
+    public function test_bundle_shortage_is_exposed_as_short_component_sku(): void
+    {
+        $shortComponent = $this->makeVariant('JELLY-TOSKA-IP-15');
+        $availableComponent = $this->makeVariant('DOG-2');
+        $this->makeInventory($shortComponent, 0, 0);
+        $this->makeInventory($availableComponent, 20, 0);
+
+        $bundle = Product::create([
+            'category_id' => DB::table('categories')->insertGetId([
+                'name' => 'Bundle Test',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]),
+            'name' => 'JELLY TOSKA BUNDLE',
+            'sku' => 'JELLY-TOSKA-2-IP-15',
+            'is_active' => true,
+            'is_stored' => true,
+            'is_bundle' => true,
+        ]);
+        $bundleVariant = ProductVariant::create([
+            'product_id' => $bundle->id,
+            'sku' => $bundle->sku,
+            'is_active' => true,
+        ]);
+        $bundle->bundleItems()->createMany([
+            ['component_variant_id' => $shortComponent->id, 'qty' => 1],
+            ['component_variant_id' => $availableComponent->id, 'qty' => 1],
+        ]);
+
+        $order = $this->makeOrder($bundleVariant, 2);
+        $shortages = app(StockReplenishmentRepository::class)
+            ->shortagesForLocation($this->small->id);
+
+        $this->assertCount(1, $shortages);
+        $shortage = $shortages->first();
+        $this->assertSame($shortComponent->id, $shortage->item_id);
+        $this->assertSame('JELLY-TOSKA-IP-15', $shortage->sku);
+        $this->assertSame(2, $shortage->needed);
+        $this->assertArrayNotHasKey($bundleVariant->id, $shortages->all());
+
+        $monitor = app(MonitorStockRepository::class)
+            ->modeQuery('dipesan', ['location_id' => $this->small->id])
+            ->get();
+        $this->assertCount(1, $monitor);
+        $this->assertSame($shortComponent->id, $monitor->first()->id);
+        $this->assertSame($order->salesorder_no, $monitor->first()->pending_order_nos);
+
+        $this->actingAs($this->createPrivilegedUser(), 'sanctum');
+        $queued = app(StockReplenishmentService::class)->queueFromMonitor([
+            'from_location_id' => $this->main->id,
+            'to_location_id' => $this->small->id,
+            'item_ids' => [$shortComponent->id],
+        ]);
+
+        $this->assertSame([$shortComponent->id], $queued['queued']);
+        $this->assertSame(
+            'JELLY-TOSKA-IP-15',
+            $queued['request']->items->firstOrFail()->sku,
+        );
     }
 
     public function test_reconciliation_is_idempotent_and_reacts_to_order_cancellation(): void
