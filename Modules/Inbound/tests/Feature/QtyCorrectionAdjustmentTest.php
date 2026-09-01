@@ -206,7 +206,7 @@ class QtyCorrectionAdjustmentTest extends TestCase
         );
     }
 
-    public function test_qty_correction_writes_hidden_correction_movement_not_adjustment(): void
+    public function test_qty_correction_writes_correction_movement_not_adjustment(): void
     {
         $inbound = $this->makeReceivedInbound(100);
 
