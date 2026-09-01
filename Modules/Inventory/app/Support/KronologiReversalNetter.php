@@ -16,13 +16,6 @@ class KronologiReversalNetter
         return array_values(array_unique($ids));
     }
 
-    /**
-     * Return deterministic original/reversal pairs without changing the ledger.
-     *
-     * The active stack mirrors the existing operational netting rule: a reversal
-     * closes the newest unmatched movement in the same item/location/bin cell
-     * with the exact opposite quantity.
-     */
     public static function pairs(iterable $rows): array
     {
         $active = [];

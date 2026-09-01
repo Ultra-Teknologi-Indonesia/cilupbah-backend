@@ -30,8 +30,15 @@ class RackAllocationClassifierTest extends TestCase
 
     private function kecil(): Location
     {
-        return Location::where('location_code', Location::SYSTEM_KECIL_CODE)->first()
-            ?? Location::factory()->create(['location_code' => Location::SYSTEM_KECIL_CODE]);
+        $location = Location::where('location_code', Location::SYSTEM_KECIL_CODE)->first()
+            ?? Location::factory()->smallWarehouse()->create(['location_code' => Location::SYSTEM_KECIL_CODE]);
+
+        if (! $location->is_small_warehouse) {
+            $location->forceFill(['is_small_warehouse' => true])->save();
+            $location->refresh();
+        }
+
+        return $location;
     }
 
     private function bin(Location $loc, string $code, bool $inbound = false, bool $ack = true): LocationBin
@@ -93,6 +100,7 @@ class RackAllocationClassifierTest extends TestCase
         $this->assertSame(RackImportBatch::STATUS_PLACE, $rec['status']);
         $this->assertSame($target->id, $rec['bin_id']);
         $this->assertSame($v->id, $rec['item_id']);
+        $this->assertStringContainsString('tidak dipindahkan', $rec['message']);
     }
 
     public function test_unregistered_sku_is_error(): void

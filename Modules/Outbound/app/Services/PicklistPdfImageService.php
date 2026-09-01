@@ -12,13 +12,6 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Modules\Outbound\Models\Picklist;
 
-/**
- * Materializes picklist photos as bounded local thumbnails for Dompdf.
- *
- * Remote images are never passed directly to Dompdf for the normal path. This
- * prevents one slow origin or a full-size product image from multiplying the
- * PDF render time and worker memory usage.
- */
 final class PicklistPdfImageService
 {
     private const DOWNLOAD_CONCURRENCY = 8;
@@ -82,13 +75,6 @@ final class PicklistPdfImageService
         }
     }
 
-    /**
-     * Download a small batch concurrently, while streaming every response to
-     * disk. Response bodies therefore do not accumulate in PHP memory.
-     *
-     * @param  list<string>  $urls
-     * @return array<string, string>
-     */
     private function downloadBatch(array $urls, string $directory): array
     {
         $requests = [];
@@ -124,7 +110,7 @@ final class PicklistPdfImageService
 
             $downloaded = [];
             foreach ($requests as $url => $sourcePath) {
-                /** @var Response|null $response */
+
                 $response = $responses[sha1($url)] ?? null;
                 if ($response?->successful() && is_file($sourcePath)) {
                     $downloaded[$url] = $sourcePath;

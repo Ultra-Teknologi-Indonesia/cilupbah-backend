@@ -4,11 +4,7 @@ namespace Modules\Outbound\Support;
 
 final class FilterValues
 {
-    /**
-     * Normalize both repeated query parameters and comma-separated values.
-     *
-     * @return list<string>
-     */
+
     public static function list(mixed $value): array
     {
         $values = is_array($value) ? $value : explode(',', (string) $value);

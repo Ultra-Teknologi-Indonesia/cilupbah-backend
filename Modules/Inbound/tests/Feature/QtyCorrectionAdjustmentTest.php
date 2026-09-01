@@ -15,6 +15,7 @@ use Modules\Inbound\Services\InboundService;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Models\StockAdjustment;
+use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
@@ -237,6 +238,33 @@ class QtyCorrectionAdjustmentTest extends TestCase
             'qty' => 5,
         ]);
         $this->assertEquals(105, $this->onHandAtInboundBin());
+    }
+
+    public function test_qty_correction_is_visible_in_stock_history_with_corrected_balance(): void
+    {
+        $inbound = $this->makeReceivedInbound(100);
+
+        $this->correct($inbound, 95);
+
+        request()->merge([
+            'filter' => ['item_id' => $this->variant->id],
+            'view' => 'all',
+            'per_page' => 50,
+        ]);
+
+        $rows = collect(
+            app(InventoryMovementRepository::class)->getHistoryPaginated(50)->items()
+        );
+
+        $receipt = $rows->firstWhere('source', 'PURCHASE');
+        $correction = $rows->firstWhere('source', 'INBOUND_QTY_CORRECTION');
+
+        $this->assertNotNull($receipt, 'Penerimaan awal harus tetap menjadi jejak audit');
+        $this->assertNotNull($correction, 'Koreksi qty harus tampil di riwayat stok');
+        $this->assertSame(100, (int) $receipt->qty);
+        $this->assertSame(-5, (int) $correction->qty);
+        $this->assertSame(95, (int) $correction->physical_total_balance);
+        $this->assertSame(95, (int) $correction->pending_placement_balance);
     }
 
     public function test_qty_correction_rejects_below_already_placed(): void

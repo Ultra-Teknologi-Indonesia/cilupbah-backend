@@ -128,10 +128,6 @@ class PicklistRepository
             ])->find($id);
     }
 
-    /**
-     * Resolve only the export authorization/header data. The export request
-     * must not hydrate every item before it is queued.
-     */
     public function findAccessibleHeader(string $id): ?Picklist
     {
         $query = Picklist::query()

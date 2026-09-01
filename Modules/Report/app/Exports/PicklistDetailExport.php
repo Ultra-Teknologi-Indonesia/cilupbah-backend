@@ -17,13 +17,6 @@ use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-/**
- * Lightweight operational picklist export.
- *
- * It deliberately uses a joined query instead of hydrating the complete
- * picklist graph or downloading remote product images. Laravel Excel can
- * therefore consume the result in chunks and keep worker memory bounded.
- */
 final class PicklistDetailExport implements FromQuery, WithColumnFormatting, WithColumnWidths, WithHeadings, WithMapping, WithStyles, WithTitle
 {
     private const DATE_FORMAT = 'dd/mm/yyyy hh:mm';

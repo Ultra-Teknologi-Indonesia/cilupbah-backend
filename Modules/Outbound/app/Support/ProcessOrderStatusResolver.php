@@ -9,19 +9,9 @@ use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\Shipment;
 use Modules\Sales\Models\SalesOrder;
 
-/**
- * Resolves one order to the single current position shown by Proses Pesanan.
- *
- * Some UI views intentionally share the same backend stage (for example,
- * finish-pick is the last Picking view and the first Packing view). Export
- * must therefore choose the next operational position and never duplicate an
- * order in two process rows.
- */
 final class ProcessOrderStatusResolver
 {
-    /**
-     * @return array{stage: string, sub_status: string}|null
-     */
+
     public function resolve(SalesOrder $order): ?array
     {
         return match ($order->status) {
@@ -37,9 +27,6 @@ final class ProcessOrderStatusResolver
         };
     }
 
-    /**
-     * @return array{stage: string, sub_status: string}|null
-     */
     private function resolveReserved(SalesOrder $order): ?array
     {
         $picklistStatuses = $order->picklistItems
@@ -77,9 +64,6 @@ final class ProcessOrderStatusResolver
         return null;
     }
 
-    /**
-     * @return array{stage: string, sub_status: string}|null
-     */
     private function resolvePicked(SalesOrder $order): ?array
     {
         $packlistStatus = $order->packlist?->status;
@@ -104,9 +88,6 @@ final class ProcessOrderStatusResolver
         return null;
     }
 
-    /**
-     * @return array{stage: string, sub_status: string}|null
-     */
     private function resolvePacked(SalesOrder $order): ?array
     {
         $shipment = $order->shipmentOrders
@@ -132,9 +113,6 @@ final class ProcessOrderStatusResolver
         return null;
     }
 
-    /**
-     * @return array{stage: string, sub_status: string}|null
-     */
     private function resolveCancelled(SalesOrder $order): ?array
     {
         $hasScheduledShipment = $order->shipmentOrders

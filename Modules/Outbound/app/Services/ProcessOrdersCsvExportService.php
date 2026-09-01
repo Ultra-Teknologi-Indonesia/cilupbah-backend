@@ -58,10 +58,6 @@ final class ProcessOrdersCsvExportService
         private readonly ProcessOrderStatusResolver $statusResolver,
     ) {}
 
-    /**
-     * Write all current Proses Pesanan orders without loading the full result
-     * set into PHP memory.
-     */
     public function write(string $path): int
     {
         $handle = fopen($path, 'wb');
@@ -72,7 +68,7 @@ final class ProcessOrdersCsvExportService
         $written = 0;
 
         try {
-            // UTF-8 BOM keeps Indonesian text readable in desktop Excel.
+
             if (fwrite($handle, "\xEF\xBB\xBF") === false) {
                 throw new RuntimeException('Gagal menulis header CSV.');
             }
@@ -171,10 +167,6 @@ final class ProcessOrdersCsvExportService
             ]);
     }
 
-    /**
-     * @param  array{stage: string, sub_status: string}  $status
-     * @return array<int, string|int|float|null>
-     */
     private function map(SalesOrder $order, array $status): array
     {
         $picklist = $order->picklistItems
@@ -231,9 +223,6 @@ final class ProcessOrdersCsvExportService
         ];
     }
 
-    /**
-     * @param  array<int, mixed>  $row
-     */
     private function putRow($handle, array $row): void
     {
         $sanitized = array_map(function ($value) {

@@ -299,9 +299,6 @@ class ChannelDownloadService
         return $flagged;
     }
 
-    /**
-     * Add an explicit action while keeping the legacy boolean response field.
-     */
     protected function decorateDownloadStatus(array $item, ?ProductChannelMapping $mapping): array
     {
         $isDeleted = $mapping?->product?->trashed() ?? false;

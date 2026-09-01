@@ -13,7 +13,6 @@ use Modules\Inventory\Models\RackImportBatch;
 use Modules\Inventory\Models\RackImportRow;
 use Modules\Inventory\Services\RackImport\RackAssignmentService;
 use Modules\Inventory\Services\RackImport\RackImportBatchService;
-use Modules\Inventory\Services\RackImport\RackPlacementService;
 
 class ApplyRackChunkJob implements ShouldQueue
 {
@@ -27,7 +26,7 @@ class ApplyRackChunkJob implements ShouldQueue
         $this->onQueue(config('queue.names.product'));
     }
 
-    public function handle(RackImportBatchService $batches, RackPlacementService $placer): void
+    public function handle(RackImportBatchService $batches): void
     {
         if ($this->batch()?->cancelled()) {
             return;
@@ -56,13 +55,10 @@ class ApplyRackChunkJob implements ShouldQueue
 
             try {
                 app(RackAssignmentService::class)->assign($row->location_id, $row->bin_id, $row->item_id, $userId);
-                $placed = $placer->placeSkuToBin($row->location_id, $row->bin_id, $row->item_id, $userId);
 
                 $row->update([
                     'status' => RackImportBatch::STATUS_PLACED,
-                    'message' => $placed > 0
-                        ? "Alokasi rak disiapkan (+{$placed} unit ditempatkan)."
-                        : 'Alokasi rak disiapkan (stok menyusul).',
+                    'message' => 'Alokasi rak disimpan. Stok tidak dipindahkan; lanjutkan penempatan melalui proses putaway.',
                 ]);
                 $success++;
             } catch (\Throwable $e) {

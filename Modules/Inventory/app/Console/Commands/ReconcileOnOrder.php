@@ -313,11 +313,6 @@ class ReconcileOnOrder extends Command
         return $actual;
     }
 
-    /**
-     * Legacy transfer reservations must be reclassified before generic order cleanup.
-     *
-     * @return array<string, true>
-     */
     private function activeTransferItemLocationKeys(): array
     {
         return DB::table('inventory_transfer_items as ti')

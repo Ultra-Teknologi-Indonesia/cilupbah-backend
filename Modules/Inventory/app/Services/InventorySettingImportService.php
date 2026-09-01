@@ -2,14 +2,13 @@
 
 namespace Modules\Inventory\Services;
 
-use App\Traits\StockLockable;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Modules\Inventory\Models\Inventory;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
+use Modules\Inventory\Services\RackImport\RackAssignmentService;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 use Modules\Warehouse\Services\BinMultiSkuRuleService;
@@ -21,8 +20,6 @@ use PhpOffice\PhpSpreadsheet\Style\Fill;
 
 class InventorySettingImportService
 {
-    use StockLockable;
-
     public const CACHE_PREFIX = 'inventory-setting-import:';
 
     public const CACHE_TTL_MINUTES = 30;
@@ -46,7 +43,7 @@ class InventorySettingImportService
     private const BIN_ALIASES = ['bin_final_code', 'rak', 'kode_rak', 'kode rak', 'kode_final_rak', 'kode final rak'];
 
     public function __construct(
-        protected InventoryService $inventoryService,
+        protected RackAssignmentService $rackAssignmentService,
     ) {}
 
     public function preview(UploadedFile $file, string $type): array
@@ -258,19 +255,7 @@ class InventorySettingImportService
                 }
             }
 
-            $hasPending = Inventory::query()->pendingPlacement()
-                ->where('inventories.location_id', $location->id)
-                ->where('inventories.item_id', $variant->id)
-                ->where('inventories.on_hand', '>', 0)
-                ->exists();
-
-            if (! $hasPending) {
-                $push('error', 'Tidak ada stok pending untuk ditempatkan (SKU belum diterima di gudang ini).');
-
-                continue;
-            }
-
-            $push('place', 'Akan ditempatkan ke rak ini saat disimpan.', [
+            $push('place', 'Alokasi rak akan disimpan. Stok tidak dipindahkan oleh import ini.', [
                 'product_name' => $names[$variant->product_id] ?? '',
                 'item_id' => $variant->id,
                 'location_id' => $location->id,
@@ -327,7 +312,12 @@ class InventorySettingImportService
         $applied = 0;
 
         foreach ($placeRows as $it) {
-            $this->placeSkuToBin($it['location_id'], $it['bin_id'], $it['item_id'], (string) ($userId ?? ''));
+            $this->rackAssignmentService->assign(
+                $it['location_id'],
+                $it['bin_id'],
+                $it['item_id'],
+                $userId,
+            );
             $applied++;
         }
 
@@ -335,44 +325,6 @@ class InventorySettingImportService
             'applied' => $applied,
             'manual_moves' => count($preview['manual_moves'] ?? []),
         ];
-    }
-
-    protected function placeSkuToBin(string $locationId, string $binId, string $itemId, string $userId): void
-    {
-        app(SkuHomeBinGuard::class)->assertSkuFitsBin($locationId, $itemId, $binId);
-        app(BinOccupancyGuard::class)->assertBinFitsSku($binId, $itemId);
-
-        $this->withStockLock($itemId, $locationId, function () use ($locationId, $binId, $itemId, $userId) {
-            DB::transaction(function () use ($locationId, $binId, $itemId, $userId) {
-                $transactionNumber = 'RACK-IMPORT-'.Str::upper(Str::random(12));
-                $sources = Inventory::query()->pendingPlacement()
-                    ->where('inventories.location_id', $locationId)
-                    ->where('inventories.item_id', $itemId)
-                    ->where('inventories.on_hand', '>', 0)
-                    ->lockForUpdate()
-                    ->get();
-
-                foreach ($sources as $row) {
-                    $qty = (int) $row->on_hand;
-                    if ($qty <= 0) {
-                        continue;
-                    }
-                    $this->inventoryService->putaway([
-                        'item_id' => $itemId,
-                        'location_id' => $locationId,
-                        'source_bin_id' => $row->bin_id,
-                        'destination_bin_id' => $binId,
-                        'qty' => $qty,
-                        'batch_no' => $row->batch_no ?? '',
-                        'serial_no' => $row->serial_no ?? '',
-                        'created_by' => "user:{$userId}",
-                        'transaction_number' => $transactionNumber,
-                        'source_out' => 'RACK_PLACEMENT_OUT',
-                        'source_in' => 'RACK_PLACEMENT_IN',
-                    ]);
-                }
-            });
-        });
     }
 
     protected function store(array $payload): array
@@ -515,7 +467,7 @@ class InventorySettingImportService
             '3. Simpan sebagai .csv (delimiter koma) lalu unggah.',
         ];
         if ($type === self::TYPE_RACK) {
-            $lines[] = '4. Alokasi rak menempatkan stok yang belum punya rak. SKU yang sudah punya stok di rak lain akan ditandai untuk dipindah manual (Pindah Bin).';
+            $lines[] = '4. Import ini hanya menyimpan alokasi SKU ke rak. Stok tidak dipindahkan; SKU yang sudah punya stok di rak lain akan ditandai untuk dipindah manual (Pindah Bin).';
         }
         $r = 2;
         foreach ($lines as $line) {

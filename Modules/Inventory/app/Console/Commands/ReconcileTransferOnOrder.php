@@ -156,11 +156,6 @@ class ReconcileTransferOnOrder extends Command
         return self::SUCCESS;
     }
 
-    /**
-     * Group active synced transfer items by their exact inventory row.
-     *
-     * @return array<string, array<string, mixed>>
-     */
     private function buildPlans(): array
     {
         $query = DB::table('inventory_transfer_items as ti')

@@ -15,8 +15,7 @@ final class ExportProcessOrdersRequest extends FormRequest
 
     public function rules(): array
     {
-        // Export Proses Pesanan intentionally has no stage selector: it always
-        // exports every current process status in one file.
+
         return [
             'format' => ['sometimes', 'string', 'in:csv'],
         ];

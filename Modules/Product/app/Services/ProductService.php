@@ -268,12 +268,6 @@ class ProductService
         return $placeholder;
     }
 
-    /**
-     * A deleted master may still have a live variant from an earlier import.
-     * Keep that historical identity intact and give the new import a unique
-     * internal SKU; the original marketplace SKU is written to its channel
-     * mapping by the channel linker.
-     */
     private function makeDeletedChannelVariantSkusUnique(array $data): array
     {
         $externalProductId = trim((string) ($data['channel_external_product_id'] ?? ''));

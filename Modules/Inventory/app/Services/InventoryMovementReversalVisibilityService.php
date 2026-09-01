@@ -11,11 +11,6 @@ final class InventoryMovementReversalVisibilityService
 {
     private const PAIRS_TABLE = 'inventory_movement_reversal_pairs';
 
-    /**
-     * Pair a newly-created automatic reversal with its exact prior movement.
-     * This only creates a visibility relation; it never changes inventory or
-     * deletes either ledger row.
-     */
     public function pairReversal(InventoryMovement $reversal): ?array
     {
         if (! in_array($reversal->source, InventoryMovementSourceMap::CHRONOLOGY_NETTABLE_REVERSAL_SOURCES, true)) {

@@ -4,9 +4,8 @@ namespace Modules\Inventory\Support;
 
 class InventoryMovementSourceMap
 {
-    public const HIDDEN_SOURCES = [
-        'INBOUND_QTY_CORRECTION',
-    ];
+
+    public const HIDDEN_SOURCES = [];
 
     public const SOURCES = [
         'INBOUND_QTY_CORRECTION' => ['category' => 'PENYESUAIAN', 'label' => 'Koreksi Penerimaan'],
@@ -104,10 +103,6 @@ class InventoryMovementSourceMap
         'TRANSFER_REVERT',
     ];
 
-    /**
-     * Automatic cancellation/revert sources whose exact net-zero pairs are
-     * hidden from the operational chronology while retained in the ledger.
-     */
     public const CHRONOLOGY_NETTABLE_REVERSAL_SOURCES = [
         ...self::UNRECORDED_REVERSAL_SOURCES,
         'BIN_TRANSFER_REVERT_OUT',

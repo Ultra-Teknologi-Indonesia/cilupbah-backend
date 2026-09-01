@@ -9,7 +9,7 @@ use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
-use Modules\Warehouse\Services\BinMultiSkuRuleService;
+use Modules\Warehouse\Services\BinOccupancyGuard;
 use Modules\Warehouse\Services\SkuHomeBinGuard;
 
 class RackAllocationClassifier
@@ -22,7 +22,7 @@ class RackAllocationClassifier
 
     public function __construct(
         private SkuHomeBinGuard $homeGuard,
-        private BinMultiSkuRuleService $ruleService,
+        private BinOccupancyGuard $occupancyGuard,
     ) {
         $locations = Location::all(['id', 'location_name', 'location_code']);
         $this->locByName = $locations->keyBy(fn ($l) => mb_strtolower(trim((string) $l->location_name)))->all();
@@ -109,14 +109,14 @@ class RackAllocationClassifier
             ];
         }
 
-        if ($location->enforcesStrictBinSku() && ! $this->ruleService->allowsMultiSku($bin)) {
-            $occupant = $maps['occupants'][$bin->id] ?? null;
-            if ($occupant !== null && $occupant !== $variant->id) {
-                return $error('Rak sudah berisi SKU lain (gudang kecil = 1 rak 1 SKU).');
-            }
+        if (! $this->occupancyGuard->isBinFreeFor($bin->id, $variant->id)) {
+            return $error('Rak sudah berisi SKU lain (gudang kecil = 1 rak 1 SKU).');
         }
 
-        return $base + ['status' => RackImportBatch::STATUS_PLACE, 'message' => 'Akan ditempatkan ke rak ini saat disimpan.'];
+        return $base + [
+            'status' => RackImportBatch::STATUS_PLACE,
+            'message' => 'Alokasi rak akan disimpan. Stok tidak dipindahkan oleh import ini.',
+        ];
     }
 
     private function preload(array $rows): array
@@ -183,20 +183,6 @@ class RackAllocationClassifier
         }
 
         $binIds = $bins->pluck('id')->all();
-        $occupants = [];
-        if (! empty($binIds)) {
-            DB::table('inventories')
-                ->whereIn('bin_id', $binIds)
-                ->where(function ($w) {
-                    $w->where('on_hand', '>', 0)->orWhere('on_order', '>', 0);
-                })
-                ->select('bin_id', 'item_id')
-                ->get()
-                ->each(function ($r) use (&$occupants) {
-                    $occupants[$r->bin_id] ??= $r->item_id;
-                });
-        }
-
         if (! empty($itemIds) || ! empty($binIds)) {
             SkuRackAssignment::query()
                 ->join('location_bins', 'location_bins.id', '=', 'sku_rack_assignments.bin_id')
@@ -211,9 +197,8 @@ class RackAllocationClassifier
                     'sku_rack_assignments.bin_id',
                     'location_bins.bin_final_code',
                 ])
-                ->each(function ($r) use (&$homeBins, &$occupants) {
+                ->each(function ($r) use (&$homeBins) {
                     $homeBins[$r->location_id . '|' . $r->item_id] ??= ['bin_id' => $r->bin_id, 'bin_code' => $r->bin_final_code];
-                    $occupants[$r->bin_id] ??= $r->item_id;
                 });
         }
 
@@ -222,7 +207,6 @@ class RackAllocationClassifier
             'names' => $names,
             'bins' => $bins,
             'homeBins' => $homeBins,
-            'occupants' => $occupants,
         ];
     }
 }

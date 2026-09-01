@@ -38,8 +38,15 @@ class RackImportJobsTest extends TestCase
 
     private function kecil(): Location
     {
-        return Location::where('location_code', Location::SYSTEM_KECIL_CODE)->first()
-            ?? Location::factory()->create(['location_code' => Location::SYSTEM_KECIL_CODE]);
+        $location = Location::where('location_code', Location::SYSTEM_KECIL_CODE)->first()
+            ?? Location::factory()->smallWarehouse()->create(['location_code' => Location::SYSTEM_KECIL_CODE]);
+
+        if (! $location->is_small_warehouse) {
+            $location->forceFill(['is_small_warehouse' => true])->save();
+            $location->refresh();
+        }
+
+        return $location;
     }
 
     private function bin(Location $loc, string $code, bool $inbound = false): LocationBin
@@ -115,7 +122,7 @@ class RackImportJobsTest extends TestCase
         $this->assertSame(2, RackImportRow::where('batch_id', $batch->id)->count());
     }
 
-    public function test_apply_job_places_pending_stock_and_is_idempotent(): void
+    public function test_apply_job_only_saves_assignment_and_does_not_move_pending_stock(): void
     {
         $loc = $this->kecil();
         $staging = $this->bin($loc, 'STAGE-1', inbound: true);
@@ -145,6 +152,15 @@ class RackImportJobsTest extends TestCase
             'created_at' => now(),
         ]);
 
+        $stockBefore = (int) Inventory::where('item_id', $v->id)
+            ->where('location_id', $loc->id)
+            ->where('bin_id', $staging->id)
+            ->value('on_hand');
+        $movementCountBefore = \DB::table('inventory_movements')
+            ->where('item_id', $v->id)
+            ->where('location_id', $loc->id)
+            ->count();
+
         ApplyRackChunkJob::dispatchSync($batch->id, [$row->id]);
 
         $row->refresh();
@@ -152,6 +168,14 @@ class RackImportJobsTest extends TestCase
         $this->assertSame(RackImportBatch::STATUS_PLACED, $row->status);
         $this->assertSame(1, $batch->success_rows);
         $this->assertSame($target->id, app(SkuHomeBinGuard::class)->currentHomeBinId($loc->id, $v->id));
+        $this->assertSame($stockBefore, (int) Inventory::where('item_id', $v->id)
+            ->where('location_id', $loc->id)
+            ->where('bin_id', $staging->id)
+            ->value('on_hand'));
+        $this->assertSame($movementCountBefore, \DB::table('inventory_movements')
+            ->where('item_id', $v->id)
+            ->where('location_id', $loc->id)
+            ->count());
 
         ApplyRackChunkJob::dispatchSync($batch->id, [$row->id]);
         $batch->refresh();

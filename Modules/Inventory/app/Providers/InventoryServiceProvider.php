@@ -8,6 +8,7 @@ use Modules\Inventory\Console\Commands\AutoDetectStockReplenishment;
 use Modules\Inventory\Console\Commands\BackfillInboundMovementSource;
 use Modules\Inventory\Console\Commands\BackfillOrderAllocations;
 use Modules\Inventory\Console\Commands\BackfillReversalVisibility;
+use Modules\Inventory\Console\Commands\BackfillRackImportPutaway;
 use Modules\Inventory\Console\Commands\BackfillTransitInbounds;
 use Modules\Inventory\Console\Commands\CleanupDraftTransitStock;
 use Modules\Inventory\Console\Commands\ImportBaselineStock;
@@ -36,6 +37,7 @@ class InventoryServiceProvider extends ModuleServiceProvider
         BackfillTransitInbounds::class,
         BackfillOrderAllocations::class,
         BackfillReversalVisibility::class,
+        BackfillRackImportPutaway::class,
         ReconcileOnOrder::class,
         ReconcileTransferOnOrder::class,
         ReconcileOrderAllocationLedger::class,
