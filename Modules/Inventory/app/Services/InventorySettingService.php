@@ -26,11 +26,11 @@ class InventorySettingService
             ]);
 
         if ($search !== '') {
-            $like = '%' . $search . '%';
+            $like = '%'.$search.'%';
             $query->where(function ($w) use ($like) {
-                $w->where('product_variants.sku', 'like', $like)
-                    ->orWhere('product_variants.barcode', 'like', $like)
-                    ->orWhere('products.name', 'like', $like);
+                $w->where('product_variants.sku', 'ilike', $like)
+                    ->orWhere('product_variants.barcode', 'ilike', $like)
+                    ->orWhere('products.name', 'ilike', $like);
             });
         }
 

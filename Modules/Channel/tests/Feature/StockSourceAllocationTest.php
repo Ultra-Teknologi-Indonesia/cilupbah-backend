@@ -263,6 +263,7 @@ class StockSourceAllocationTest extends TestCase
 
         $row = collect($res->json('data'))->firstWhere('store_id', $shop->id);
 
+        $this->assertSame('shopee', $row['channel_code']);
         $this->assertSame('SHOPEE', $row['channel_name']);
         $this->assertSame('Cilupbah Case Official Shop', $row['store_name']);
         $this->assertSame('SHOPEE - Cilupbah Case Official Shop', $row['full_store_name']);

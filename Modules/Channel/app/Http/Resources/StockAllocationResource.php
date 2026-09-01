@@ -14,6 +14,7 @@ class StockAllocationResource extends JsonResource
 
         return [
             'store_id' => $this->id,
+            'channel_code' => strtolower((string) optional($this->channel)->code),
             'channel_name' => $channelName,
             'store_name' => $this->shop_name,
             'full_store_name' => trim($channelName . ' - ' . $this->shop_name, ' -'),

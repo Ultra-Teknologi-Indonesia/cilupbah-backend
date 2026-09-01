@@ -2,6 +2,7 @@
 
 namespace Modules\Inventory\Repositories;
 
+use App\Support\WarehouseAccess;
 use Modules\Inventory\Models\BinTransfer;
 use Modules\Inventory\Models\BinTransferReceipt;
 use Spatie\QueryBuilder\QueryBuilder;
@@ -21,7 +22,7 @@ class BinTransferRepository
             $query->where('location_id', $filters['location_id']);
         }
 
-        \App\Support\WarehouseAccess::apply($query);
+        WarehouseAccess::apply($query);
 
         if (! empty($filters['status'])) {
             $statuses = is_array($filters['status']) ? $filters['status'] : [$filters['status']];
@@ -38,8 +39,8 @@ class BinTransferRepository
         if (! empty($filters['search'])) {
             $search = $filters['search'];
             $query->where(function ($q) use ($search) {
-                $q->where('transfer_number', 'like', "%{$search}%")
-                  ->orWhere('notes', 'like', "%{$search}%");
+                $q->where('transfer_number', 'ilike', "%{$search}%")
+                    ->orWhere('notes', 'ilike', "%{$search}%");
             });
         }
 

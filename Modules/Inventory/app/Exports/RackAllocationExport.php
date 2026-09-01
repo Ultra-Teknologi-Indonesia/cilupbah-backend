@@ -11,7 +11,7 @@ use Maatwebsite\Excel\Concerns\WithMapping;
 use Maatwebsite\Excel\Concerns\WithStyles;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-class RackAllocationExport implements FromCollection, WithHeadings, WithMapping, WithStyles, ShouldAutoSize
+class RackAllocationExport implements FromCollection, ShouldAutoSize, WithHeadings, WithMapping, WithStyles
 {
     public function __construct(
         private readonly ?string $locationId = null,
@@ -26,10 +26,10 @@ class RackAllocationExport implements FromCollection, WithHeadings, WithMapping,
             ->join('product_variants', 'product_variants.id', '=', 'sku_rack_assignments.item_id')
             ->when($this->locationId, fn ($q) => $q->where('sku_rack_assignments.location_id', $this->locationId))
             ->when($this->search, function ($q) {
-                $s = '%' . $this->search . '%';
+                $s = '%'.$this->search.'%';
                 $q->where(function ($w) use ($s) {
-                    $w->where('product_variants.sku', 'like', $s)
-                        ->orWhere('location_bins.bin_final_code', 'like', $s);
+                    $w->where('product_variants.sku', 'ilike', $s)
+                        ->orWhere('location_bins.bin_final_code', 'ilike', $s);
                 });
             })
             ->orderBy('product_variants.sku')
