@@ -26,7 +26,7 @@ services:
     container_name: cilupbah-staging
     entrypoint: ["/usr/local/bin/start.staging.sh"]
     ports:
-      - "8001:8000"
+      - "8007:8000"
 
   horizon:
     <<: *app-config
