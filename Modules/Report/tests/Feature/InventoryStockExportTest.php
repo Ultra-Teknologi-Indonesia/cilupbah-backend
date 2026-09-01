@@ -14,10 +14,12 @@ use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryMovement;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
+use Modules\Report\Exports\InventoryStockReportExport;
 use Modules\Report\Jobs\RunExportJob;
 use Modules\Report\Services\InventoryStockReportService;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use Tests\TestCase;
 
 final class InventoryStockExportTest extends TestCase
@@ -81,6 +83,34 @@ final class InventoryStockExportTest extends TestCase
 
         $response->assertStatus(422)->assertJsonValidationErrors('location_id');
         Queue::assertNothingPushed();
+    }
+
+    public function test_rack_export_shows_zero_for_empty_quantity_cells(): void
+    {
+        $export = new InventoryStockReportExport(app(InventoryStockReportService::class), [
+            'report_type' => 'by_rack',
+        ]);
+
+        $row = (object) [
+            'sku' => 'REPORT-ZERO',
+            'product_name' => 'Produk Zero',
+            'variant_name' => null,
+            'location_name' => 'Pusat',
+            'floor_code' => null,
+            'row_code' => null,
+            'column_code' => null,
+            'bin_final_code' => null,
+            'qty_on_hand' => null,
+            'qty_actual' => null,
+        ];
+
+        $mapped = $export->map($row);
+        $sheet = (new Spreadsheet)->getActiveSheet();
+        $export->styles($sheet);
+
+        $this->assertSame(0, $mapped[8]);
+        $this->assertSame(0, $mapped[9]);
+        $this->assertTrue($sheet->getSheetView()->getShowZeros());
     }
 
     public function test_system_operational_warehouse_is_allowed_for_rack_export(): void

@@ -90,6 +90,7 @@ final class InventoryStockReportExport implements FromQuery, WithColumnWidths, W
     public function styles(Worksheet $sheet): array
     {
         $sheet->freezePane('A2');
+        $sheet->getSheetView()->setShowZeros(true);
         $sheet->getStyle('A1:'.($this->filters['report_type'] === 'by_rack' ? 'J1' : 'N1'))->getFont()->setBold(true);
 
         if ($this->filters['report_type'] === 'by_rack') {
