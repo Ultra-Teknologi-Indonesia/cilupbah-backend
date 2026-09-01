@@ -24,19 +24,19 @@ services:
   app:
     <<: *app-config
     container_name: cilupbah-staging
-    entrypoint: ["/usr/local/bin/start.staging.sh"]
+    entrypoint: [ "/usr/local/bin/start.staging.sh" ]
     ports:
-      - "8007:8000"
+      - "8002:8000"
 
   horizon:
     <<: *app-config
     container_name: cilupbah-staging-horizon
-    entrypoint: ["php", "artisan", "horizon"]
+    entrypoint: [ "php", "artisan", "horizon" ]
 
   scheduler:
     <<: *app-config
     container_name: cilupbah-staging-scheduler
-    entrypoint: ["php", "artisan", "schedule:work"]
+    entrypoint: [ "php", "artisan", "schedule:work" ]
 
   redis:
     container_name: cilupbah-staging-redis
