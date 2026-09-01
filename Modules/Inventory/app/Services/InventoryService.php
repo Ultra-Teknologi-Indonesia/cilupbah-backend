@@ -160,7 +160,9 @@ class InventoryService
         return $this->inventoryRepository->getStockByBin($bin->id)
             ->map(fn ($inv) => [
                 'item_id' => $inv->item_id,
-                'sku' => $inv->product?->sku,
+                'sku' => $inv->product?->product?->is_bundle && $inv->product->product?->sku
+                    ? $inv->product->product->sku
+                    : $inv->product?->sku,
                 'product_name' => $inv->product?->product?->name,
                 'bin_code' => $inv->bin?->bin_final_code ?? $binCode,
                 'on_hand' => (int) $inv->on_hand,

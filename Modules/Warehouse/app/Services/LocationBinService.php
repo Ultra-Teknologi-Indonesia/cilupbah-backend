@@ -17,6 +17,7 @@ use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Services\StockAdjustmentService;
 use Modules\Product\Models\ProductVariant;
+use Modules\Product\Support\TechnicalSku;
 use Modules\Warehouse\Models\LocationBin;
 use Modules\Warehouse\Models\LocationZone;
 use Modules\Warehouse\Repositories\LocationBinRepository;
@@ -286,7 +287,7 @@ class LocationBinService
             $isGuarded = ! $bin->is_inbound && $bin->is_stock_acknowledged && ! app(BinMultiSkuRuleService::class)->allowsMultiSku($bin);
         }
 
-        $query = ProductVariant::with(['media', 'product:id,name', 'product.media']);
+        $query = TechnicalSku::exclude(ProductVariant::with(['media', 'product:id,name', 'product.media']));
 
         if ($search) {
             $query->where(function ($q) use ($search) {
@@ -356,7 +357,7 @@ class LocationBinService
             return [];
         }
 
-        $variants = ProductVariant::with(['media', 'product:id,name', 'product.media'])
+        $variants = TechnicalSku::exclude(ProductVariant::with(['media', 'product:id,name', 'product.media']))
             ->whereIn('id', $rows->pluck('item_id'))
             ->get()
             ->keyBy('id');

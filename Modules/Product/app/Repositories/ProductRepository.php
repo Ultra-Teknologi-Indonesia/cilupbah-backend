@@ -2,21 +2,25 @@
 
 namespace Modules\Product\Repositories;
 
-use Modules\Inventory\Support\StockSummary;
-use Modules\Product\Models\Product;
-use Modules\Product\Models\ProductBundleItem;
-use Modules\Product\Models\ProductVariant;
-use Modules\Product\Models\ProductWholesalePrice;
+use App\Support\AllowedSearch;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
-use Spatie\QueryBuilder\QueryBuilder;
+use Modules\Inventory\Models\InventoryMovement;
+use Modules\Inventory\Support\StockSummary;
+use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductBundleItem;
+use Modules\Product\Models\ProductChannelMapping;
+use Modules\Product\Models\ProductVariant;
+use Modules\Product\Models\ProductWholesalePrice;
+use Modules\Product\Support\TechnicalSku;
+use Modules\Sales\Models\SalesOrderItem;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\AllowedSort;
+use Spatie\QueryBuilder\QueryBuilder;
 
 class ProductRepository
 {
-
     public function findBySku(string $sku, array $with = []): ?Product
     {
         $product = Product::with($with)->where('sku', $sku)->first();
@@ -24,7 +28,7 @@ class ProductRepository
             return $product;
         }
 
-        $variant = ProductVariant::where('sku', $sku)->first();
+        $variant = TechnicalSku::exclude(ProductVariant::where('sku', $sku))->first();
 
         return $variant ? Product::with($with)->find($variant->product_id) : null;
     }
@@ -62,7 +66,7 @@ class ProductRepository
     public function saveBundle(?string $id, array $attributes, array $components): Product
     {
         return DB::transaction(function () use ($id, $attributes, $components) {
-            $product = $id ? Product::findOrFail($id) : new Product();
+            $product = $id ? Product::findOrFail($id) : new Product;
 
             if (! $product->exists) {
                 $product->status = Product::STATUS_MASTER;
@@ -179,17 +183,17 @@ class ProductRepository
         $variantIds = ProductVariant::where('product_id', $productId)->pluck('id');
 
         if ($variantIds->isNotEmpty()) {
-            if (\Modules\Inventory\Models\InventoryMovement::whereIn('item_id', $variantIds)->exists()) {
+            if (InventoryMovement::whereIn('item_id', $variantIds)->exists()) {
                 return 'sudah memiliki riwayat pergerakan stok';
             }
 
-            if (\Modules\Sales\Models\SalesOrderItem::whereIn('item_id', $variantIds)->exists()) {
+            if (SalesOrderItem::whereIn('item_id', $variantIds)->exists()) {
                 return 'sudah memiliki transaksi penjualan';
             }
         }
 
-        $hasActiveMapping = \Modules\Product\Models\ProductChannelMapping::where('product_id', $productId)
-            ->where('sync_status', '!=', \Modules\Product\Models\ProductChannelMapping::STATUS_DEACTIVATED)
+        $hasActiveMapping = ProductChannelMapping::where('product_id', $productId)
+            ->where('sync_status', '!=', ProductChannelMapping::STATUS_DEACTIVATED)
             ->exists();
 
         if ($hasActiveMapping) {
@@ -257,6 +261,7 @@ class ProductRepository
     {
         return QueryBuilder::for(ProductVariant::class)
             ->where('product_id', $productId)
+            ->tap(fn ($query) => TechnicalSku::exclude($query, 'product_variants.sku'))
             ->with(['options', 'media'])
             ->select('product_variants.*')
             ->addSelect(['inventories_sum_available' => DB::table('inventories')
@@ -271,7 +276,7 @@ class ProductRepository
                 'sku',
                 'sell_price',
 
-                AllowedSort::callback('stock', fn ($q, bool $desc) => $q->orderByRaw('inventories_sum_available ' . ($desc ? 'desc' : 'asc') . ' nulls last'))
+                AllowedSort::callback('stock', fn ($q, bool $desc) => $q->orderByRaw('inventories_sum_available '.($desc ? 'desc' : 'asc').' nulls last'))
             )
             ->defaultSort('sku')
             ->paginate(request('per_page', 20))
@@ -287,8 +292,8 @@ class ProductRepository
 
         $isBundle = Product::where('id', $productId)->value('is_bundle');
 
-        $baseQuery = ProductVariant::query();
-        \App\Support\AllowedSearch::apply($baseQuery, ['sku', 'options.value']);
+        $baseQuery = TechnicalSku::exclude(ProductVariant::query());
+        AllowedSearch::apply($baseQuery, ['sku', 'options.value']);
 
         $query = QueryBuilder::for($baseQuery);
 
@@ -322,7 +327,7 @@ class ProductRepository
     public function paginatePriceBook(string $productId): LengthAwarePaginator
     {
         return QueryBuilder::for(ProductWholesalePrice::class)
-            ->whereHas('variant', fn ($v) => $v->where('product_id', $productId))
+            ->whereHas('variant', fn ($v) => TechnicalSku::exclude($v)->where('product_id', $productId))
             ->with('variant:id,sku')
             ->allowedSorts('min_qty', 'customer_type', 'price')
             ->defaultSort('variant_id', 'min_qty')
@@ -361,7 +366,7 @@ class ProductRepository
         return Product::with(['variants:id,product_id,sku', 'channelMappings'])
             ->whereHas('channelMappings', function ($q) use ($externalId, $channelShopId) {
                 $q->where('external_product_id', $externalId)
-                  ->where('channel_shop_id', $channelShopId);
+                    ->where('channel_shop_id', $channelShopId);
             })
             ->firstOrFail();
     }

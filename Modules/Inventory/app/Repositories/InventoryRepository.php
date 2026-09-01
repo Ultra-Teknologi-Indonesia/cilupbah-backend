@@ -17,6 +17,7 @@ use Modules\Inventory\Services\PurchaseCostService;
 use Modules\Inventory\Support\StockSummary;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
+use Modules\Product\Support\TechnicalSku;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 use Spatie\QueryBuilder\AllowedFilter;
@@ -245,6 +246,7 @@ class InventoryRepository
     {
         $query = QueryBuilder::for(Inventory::class)
             ->with(['product:id,sku,product_id', 'location:id,location_name', 'bin:id,bin_final_code'])
+            ->whereHas('product', fn ($q) => TechnicalSku::exclude($q))
             ->allowedFilters(
                 AllowedFilter::exact('item_id'),
                 AllowedFilter::exact('location_id'),
@@ -263,6 +265,7 @@ class InventoryRepository
     public function getStockByItemIds(array $itemIds)
     {
         return Inventory::whereIn('item_id', $itemIds)
+            ->whereHas('product', fn ($q) => TechnicalSku::exclude($q))
             ->with(['product:id,sku,product_id', 'location:id,location_name', 'bin:id,bin_final_code'])
             ->select('id', 'item_id', 'location_id', 'bin_id', 'batch_no', 'serial_no', 'on_hand', 'on_order', 'available')
             ->get();
@@ -283,6 +286,7 @@ class InventoryRepository
 
         return DB::table('product_variants')
             ->whereIn('product_variants.id', $orderItemIds)
+            ->tap(fn ($q) => TechnicalSku::exclude($q, 'product_variants.sku'))
             ->leftJoin('inventories', 'inventories.item_id', '=', 'product_variants.id')
             ->leftJoin('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
             ->join('products', 'products.id', '=', 'product_variants.product_id')
@@ -332,6 +336,7 @@ class InventoryRepository
         $variantQuery = DB::table('product_variants as pv')
             ->join('products as p', 'p.id', '=', 'pv.product_id')
             ->whereNull('pv.deleted_at')
+            ->tap(fn ($q) => TechnicalSku::exclude($q, 'pv.sku'))
             ->whereNull('p.deleted_at')
             ->whereNotExists(function ($query) {
                 $query->selectRaw('1')
@@ -740,6 +745,7 @@ class InventoryRepository
             ->placed()
             ->where('on_hand', '>', 0)
             ->whereIn('item_id', $sellableItemIds)
+            ->whereHas('product', fn ($q) => TechnicalSku::exclude($q))
             ->with(['product:id,sku,product_id', 'product.product:id,name', 'bin:id,bin_final_code'])
             ->select('id', 'item_id', 'location_id', 'bin_id', 'batch_no', 'serial_no', 'on_hand', 'on_order', 'available')
             ->orderBy('item_id')
@@ -798,6 +804,7 @@ class InventoryRepository
     {
         return QueryBuilder::for(ProductVariant::class)
             ->select('product_variants.id', 'product_variants.sku', 'product_variants.product_id')
+            ->tap(fn ($q) => TechnicalSku::exclude($q, 'product_variants.sku'))
             ->with(['product:id,name'])
             ->allowedFilters(
                 AllowedFilter::partial('sku'),
@@ -813,6 +820,7 @@ class InventoryRepository
 
         $query = QueryBuilder::for(Inventory::class)
             ->with(['product:id,sku,product_id', 'product.product:id,name', 'bin:id,bin_final_code'])
+            ->whereHas('product', fn ($q) => TechnicalSku::exclude($q))
             ->allowedFilters(
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::partial('sku', 'product.sku'),
@@ -839,6 +847,7 @@ class InventoryRepository
             ->selectRaw(StockSummary::availableSql().' as total_available')
             ->groupBy('inventories.item_id')
             ->with(['product:id,sku,product_id'])
+            ->whereHas('product', fn ($q) => TechnicalSku::exclude($q))
             ->allowedFilters(
                 AllowedFilter::exact('item_id', 'inventories.item_id'),
             )
@@ -940,6 +949,7 @@ class InventoryRepository
                 DB::raw(StockSummary::availableSql().' as total_available'))
             ->whereIn('inventories.item_id', $ids)
             ->groupBy('inventories.item_id', 'inventories.location_id')
+            ->whereHas('product', fn ($q) => TechnicalSku::exclude($q))
             ->with(['product:id,sku,product_id', 'location:id,location_name,location_code,is_small_warehouse'])
             ->get();
     }
@@ -958,7 +968,7 @@ class InventoryRepository
 
     public function findVariantBySkuOrBarcode(string $normalized): ?ProductVariant
     {
-        return ProductVariant::query()
+        return TechnicalSku::exclude(ProductVariant::query())
             ->where(function ($q) use ($normalized) {
                 $q->whereRaw('LOWER(sku) = ?', [strtolower($normalized)])
                     ->orWhere('barcode', $normalized);
@@ -1050,6 +1060,7 @@ class InventoryRepository
     {
         return Inventory::where('bin_id', $binId)
             ->where('on_hand', '>', 0)
+            ->whereHas('product', fn ($q) => TechnicalSku::exclude($q))
             ->with([
                 'product:id,sku,product_id',
                 'product.product:id,name',
@@ -1126,7 +1137,7 @@ class InventoryRepository
                                 '(COALESCE(stock_summary.placed_on_hand, 0) '
                                 .'- COALESCE(stock_summary.on_order, 0)) > 0'
                             );
-                });
+                    });
             });
         }
 
@@ -1160,7 +1171,11 @@ class InventoryRepository
             $like = '%'.addcslashes($search, '%_\\').'%';
             $query->where(function ($query) use ($like) {
                 $query
-                    ->where('product_variants.sku', 'ilike', $like)
+                    ->where(function ($query) use ($like) {
+                        $query
+                            ->where('parent_product.is_bundle', false)
+                            ->where('product_variants.sku', 'ilike', $like);
+                    })
                     ->orWhere('parent_product.sku', 'ilike', $like)
                     ->orWhere('parent_product.name', 'ilike', $like);
             });

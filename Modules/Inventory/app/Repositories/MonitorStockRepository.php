@@ -12,6 +12,7 @@ use Modules\Inventory\Support\AppliesStockMonitorFilters;
 use Modules\Inventory\Support\StockSummary;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductVariant;
+use Modules\Product\Support\TechnicalSku;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
 
@@ -61,6 +62,7 @@ class MonitorStockRepository
             ->leftJoinSub($activeRestock, 'active_restock', 'active_restock.item_id', '=', 'product_variants.id')
             ->where('products.is_stored', true)
             ->where('products.is_bundle', false)
+            ->tap(fn ($q) => TechnicalSku::exclude($q, 'product_variants.sku'))
             ->whereNull('products.deleted_at')
             ->select('product_variants.*')
             ->selectRaw('products.name as product_name')

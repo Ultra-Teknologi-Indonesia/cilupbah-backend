@@ -4,11 +4,13 @@ namespace Modules\Product\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Modules\Product\Models\Product;
+use Illuminate\Support\Collection;
+use Modules\Inventory\Support\StockSummary;
+use Modules\Product\Support\BundleStock;
+use Modules\Product\Support\TechnicalSku;
 
 class ProductResource extends JsonResource
 {
-
     public function toArray(Request $request): array
     {
         return [
@@ -65,7 +67,7 @@ class ProductResource extends JsonResource
             'product_type' => $this->productType(),
             'total_variants' => $this->totalVariants(),
             'bundle_components' => $this->whenLoaded('bundleItems', fn () => $this->bundleComponents()),
-            'bundle_stock' => $this->whenLoaded('bundleItems', fn () => \Modules\Product\Support\BundleStock::derive($this->resource)),
+            'bundle_stock' => $this->whenLoaded('bundleItems', fn () => BundleStock::derive($this->resource)),
             'is_consignment' => $this->is_consignment,
             'is_stored' => $this->is_stored,
             'is_sold' => $this->is_sold,
@@ -132,64 +134,64 @@ class ProductResource extends JsonResource
                     )
                     ->values()
                     ->map(function ($variant) use ($variantImages) {
-                    $imgs = $variantImages->get($variant->id);
-                    $variantImage = null;
-                    if ($imgs && $imgs->isNotEmpty()) {
-                        $primary = $imgs->firstWhere('is_primary', true) ?? $imgs->first();
-                        $variantImage = $primary->url ?? null;
-                    }
+                        $imgs = $variantImages->get($variant->id);
+                        $variantImage = null;
+                        if ($imgs && $imgs->isNotEmpty()) {
+                            $primary = $imgs->firstWhere('is_primary', true) ?? $imgs->first();
+                            $variantImage = $primary->url ?? null;
+                        }
 
-                    $data = [
-                        'id' => $variant->id,
-                        'sku' => $variant->sku,
-                        'image' => $variantImage,
-                        'options' => $variant->relationLoaded('options')
-                            ? $variant->options->map(fn ($o) => [
-                                'attribute_id' => $o->attribute_id,
-                                'value' => $o->value,
-                            ])->values()
-                            : [],
-                        'barcode' => $variant->barcode,
-                        'buy_price' => $variant->buy_price,
-                        'sell_price' => $variant->sell_price,
-                        'tax_rate' => $variant->tax_rate,
-                        'min_stock' => $variant->min_stock,
-                        'safe_stock' => $variant->safe_stock,
-                        'is_active' => $variant->is_active,
-                        'weight' => $variant->weight,
-                        'length' => $variant->length,
-                        'width' => $variant->width,
-                        'height' => $variant->height,
-                        'sales_tax' =>($variant->relationLoaded('salesTax') && $variant->salesTax) ? [
-                            'id' => $variant->salesTax->id,
-                            'name' => $variant->salesTax->name,
-                            'rate' => (float) $variant->salesTax->rate,
-                        ] : null,
-                        'purchase_tax' => ($variant->relationLoaded('purchaseTax') && $variant->purchaseTax) ? [
-                            'id' => $variant->purchaseTax->id,
-                            'name' => $variant->purchaseTax->name,
-                            'rate' => (float) $variant->purchaseTax->rate,
-                        ] : null,
-                        'unlimited_shops' => $variant->relationLoaded('unlimitedShops')
-                            ? $variant->unlimitedShops->map(fn ($s) => [
-                                'channel_shop_id' => $s->id,
-                                'shop_name' => $s->shop_name,
-                            ])->values()
-                            : [],
-                    ];
-
-                    if ($variant->relationLoaded('inventories')) {
-                        $summary = \Modules\Inventory\Support\StockSummary::partitionLoaded($variant->inventories);
-                        $data['stock'] = [
-                            'on_hand'   => $summary['on_hand'],
-                            'pending_placement' => $summary['pending_placement'],
-                            'on_order'  => $summary['on_order'],
-                            'available' => $summary['available'],
+                        $data = [
+                            'id' => $variant->id,
+                            'sku' => $variant->sku,
+                            'image' => $variantImage,
+                            'options' => $variant->relationLoaded('options')
+                                ? $variant->options->map(fn ($o) => [
+                                    'attribute_id' => $o->attribute_id,
+                                    'value' => $o->value,
+                                ])->values()
+                                : [],
+                            'barcode' => $variant->barcode,
+                            'buy_price' => $variant->buy_price,
+                            'sell_price' => $variant->sell_price,
+                            'tax_rate' => $variant->tax_rate,
+                            'min_stock' => $variant->min_stock,
+                            'safe_stock' => $variant->safe_stock,
+                            'is_active' => $variant->is_active,
+                            'weight' => $variant->weight,
+                            'length' => $variant->length,
+                            'width' => $variant->width,
+                            'height' => $variant->height,
+                            'sales_tax' => ($variant->relationLoaded('salesTax') && $variant->salesTax) ? [
+                                'id' => $variant->salesTax->id,
+                                'name' => $variant->salesTax->name,
+                                'rate' => (float) $variant->salesTax->rate,
+                            ] : null,
+                            'purchase_tax' => ($variant->relationLoaded('purchaseTax') && $variant->purchaseTax) ? [
+                                'id' => $variant->purchaseTax->id,
+                                'name' => $variant->purchaseTax->name,
+                                'rate' => (float) $variant->purchaseTax->rate,
+                            ] : null,
+                            'unlimited_shops' => $variant->relationLoaded('unlimitedShops')
+                                ? $variant->unlimitedShops->map(fn ($s) => [
+                                    'channel_shop_id' => $s->id,
+                                    'shop_name' => $s->shop_name,
+                                ])->values()
+                                : [],
                         ];
-                    }
 
-                    return $data;
-                });
+                        if ($variant->relationLoaded('inventories')) {
+                            $summary = StockSummary::partitionLoaded($variant->inventories);
+                            $data['stock'] = [
+                                'on_hand' => $summary['on_hand'],
+                                'pending_placement' => $summary['pending_placement'],
+                                'on_order' => $summary['on_order'],
+                                'available' => $summary['available'],
+                            ];
+                        }
+
+                        return $data;
+                    });
             }),
             'verified_at' => $this->verified_at,
             'archived_at' => $this->archived_at,
@@ -218,7 +220,9 @@ class ProductResource extends JsonResource
             return collect();
         }
 
-        return $this->is_bundle ? collect() : $this->variants;
+        return $this->is_bundle ? collect() : $this->variants->filter(
+            fn ($variant) => ! TechnicalSku::isTechnical($variant->sku)
+        );
     }
 
     protected function productType(): string
@@ -230,7 +234,7 @@ class ProductResource extends JsonResource
         return ($this->totalVariants() ?? 1) > 1 ? 'variant' : 'single';
     }
 
-    protected function bundleComponents(): \Illuminate\Support\Collection
+    protected function bundleComponents(): Collection
     {
         return $this->bundleItems->map(function ($item) {
             $variant = $item->relationLoaded('component') ? $item->component : null;
@@ -250,10 +254,10 @@ class ProductResource extends JsonResource
                     ])->values()
                     : [],
                 'stock' => ($variant && $variant->relationLoaded('inventories')) ? [
-                    'on_hand' => \Modules\Inventory\Support\StockSummary::partitionLoaded($variant->inventories)['on_hand'],
-                    'pending_placement' => \Modules\Inventory\Support\StockSummary::partitionLoaded($variant->inventories)['pending_placement'],
+                    'on_hand' => StockSummary::partitionLoaded($variant->inventories)['on_hand'],
+                    'pending_placement' => StockSummary::partitionLoaded($variant->inventories)['pending_placement'],
                     'on_order' => (int) $variant->inventories->sum('on_order'),
-                    'available' => \Modules\Inventory\Support\StockSummary::partitionLoaded($variant->inventories)['available'],
+                    'available' => StockSummary::partitionLoaded($variant->inventories)['available'],
                 ] : null,
             ];
         })->values();
@@ -261,7 +265,7 @@ class ProductResource extends JsonResource
 
     protected function primaryImageUrl(): ?string
     {
-        if (!$this->resource->relationLoaded('media')) {
+        if (! $this->resource->relationLoaded('media')) {
             return null;
         }
 
@@ -273,7 +277,7 @@ class ProductResource extends JsonResource
 
     protected function priceRange(): ?array
     {
-        if (!$this->resource->relationLoaded('variants')) {
+        if (! $this->resource->relationLoaded('variants')) {
             return null;
         }
 

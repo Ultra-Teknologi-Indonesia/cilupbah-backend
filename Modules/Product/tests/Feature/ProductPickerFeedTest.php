@@ -16,7 +16,9 @@ class ProductPickerFeedTest extends TestCase
     use RefreshDatabase;
 
     private Product $product;
+
     private ProductVariant $variantPink;
+
     private ProductVariant $variantBrown;
 
     protected function setUp(): void
@@ -120,6 +122,23 @@ class ProductPickerFeedTest extends TestCase
 
         $this->assertCount(1, $productItem['variants']);
         $this->assertSame('LSM-H-PINK-IP-11-PRO', $productItem['variants'][0]['item_code']);
+    }
+
+    public function test_picker_does_not_return_technical_bundle_sku(): void
+    {
+        $technicalSku = '__bundle__'.$this->product->id;
+        ProductVariant::create([
+            'product_id' => $this->product->id,
+            'sku' => $technicalSku,
+            'is_active' => true,
+            'is_internal' => true,
+        ]);
+
+        $response = $this->getJson('/api/v1/products/picker?search='.urlencode($technicalSku));
+
+        $response->assertOk()
+            ->assertJsonPath('meta.total', 0)
+            ->assertJsonPath('data', []);
     }
 
     public function test_master_catalog_api_remains_intact(): void

@@ -197,6 +197,13 @@ class BundleConsolidationTest extends TestCase
             ],
         ]);
 
+        $technicalVariant = ProductVariant::create([
+            'product_id' => $bundle->id,
+            'sku' => '__bundle__'.$bundle->id,
+            'is_active' => true,
+            'is_internal' => true,
+        ]);
+
         $this->setInventory($case, $small, $smallBin, 5, 2);
         $this->setInventory($sticker, $small, $smallBin, 10, 0);
         $this->setInventory($case, $central, $centralBin, 6, 0);
@@ -248,6 +255,11 @@ class BundleConsolidationTest extends TestCase
             ->assertOk();
 
         $this->assertSame($sticker->id, $variantResponse->json('data.0.item_id'));
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/inventory?search='.urlencode($technicalVariant->sku))
+            ->assertOk()
+            ->assertJsonPath('meta.total', 0);
     }
 
     public function test_bundle_components_cannot_be_combined_across_warehouses(): void

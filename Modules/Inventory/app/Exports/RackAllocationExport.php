@@ -9,6 +9,7 @@ use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
 use Maatwebsite\Excel\Concerns\WithStyles;
+use Modules\Product\Support\TechnicalSku;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 class RackAllocationExport implements FromCollection, ShouldAutoSize, WithHeadings, WithMapping, WithStyles
@@ -20,7 +21,7 @@ class RackAllocationExport implements FromCollection, ShouldAutoSize, WithHeadin
 
     public function collection(): Collection
     {
-        $query = DB::table('sku_rack_assignments')
+        $query = TechnicalSku::exclude(DB::table('sku_rack_assignments')
             ->join('location_bins', 'location_bins.id', '=', 'sku_rack_assignments.bin_id')
             ->join('locations', 'locations.id', '=', 'sku_rack_assignments.location_id')
             ->join('product_variants', 'product_variants.id', '=', 'sku_rack_assignments.item_id')
@@ -38,7 +39,7 @@ class RackAllocationExport implements FromCollection, ShouldAutoSize, WithHeadin
                 'product_variants.sku as item_code',
                 'locations.location_name as location_name',
                 'location_bins.bin_final_code as bin_final_code',
-            ]);
+            ]), 'product_variants.sku');
 
         return collect($query->get());
     }

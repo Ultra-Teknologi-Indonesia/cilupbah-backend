@@ -16,6 +16,7 @@ class ManualOrderStockGuardTest extends TestCase
     use RefreshDatabase;
 
     protected User $user;
+
     protected string $variantId;
 
     protected function setUp(): void
@@ -100,7 +101,7 @@ class ManualOrderStockGuardTest extends TestCase
 
     public function test_missing_inventory_row_returns_422(): void
     {
-        $this->insertLocation(); 
+        $this->insertLocation();
 
         $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/sales', $this->payload('MAN-2', 1))
@@ -178,5 +179,9 @@ class ManualOrderStockGuardTest extends TestCase
             'is_internal' => true,
             'is_active' => true,
         ]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/sales/manual/lookup-sku?sku='.urlencode('__bundle__'.$bundle->id)."&location_id={$locationId}")
+            ->assertNotFound();
     }
 }

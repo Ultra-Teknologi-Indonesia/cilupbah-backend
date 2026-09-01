@@ -4,6 +4,7 @@ namespace Modules\Inventory\Services;
 
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Modules\Product\Models\ProductVariant;
+use Modules\Product\Support\TechnicalSku;
 
 class InventorySettingService
 {
@@ -11,7 +12,7 @@ class InventorySettingService
     {
         $search = trim((string) ($filters['search'] ?? ''));
 
-        $query = ProductVariant::query()
+        $query = TechnicalSku::exclude(ProductVariant::query(), 'product_variants.sku')
             ->join('products', 'products.id', '=', 'product_variants.product_id')
             ->where('products.is_stored', true)
             ->select('product_variants.*')

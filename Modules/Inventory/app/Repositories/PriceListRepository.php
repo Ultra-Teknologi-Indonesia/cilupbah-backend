@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Modules\Product\Models\ProductVariant;
 use Modules\Product\Models\ProductWholesalePrice;
+use Modules\Product\Support\TechnicalSku;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
 
@@ -17,6 +18,7 @@ class PriceListRepository
     {
         $query = QueryBuilder::for(ProductVariant::query())
             ->select(self::COLUMNS)
+            ->tap(fn ($q) => TechnicalSku::exclude($q, 'product_variants.sku'))
             ->with(['product:id,name', 'wholesalePrices'])
             ->allowedSearch('sku')
             ->allowedFilters(AllowedFilter::exact('product_id'))
@@ -34,7 +36,7 @@ class PriceListRepository
 
     public function findByIds(array $ids): Collection
     {
-        return ProductVariant::select(self::COLUMNS)
+        return TechnicalSku::exclude(ProductVariant::select(self::COLUMNS))
             ->with(['product:id,name', 'wholesalePrices'])
             ->whereIn('id', $ids)
             ->get();

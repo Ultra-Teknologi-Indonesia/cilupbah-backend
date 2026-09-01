@@ -69,7 +69,14 @@ class InventoryMovementResource extends JsonResource
         return [
             'id' => $this->id,
             'item_id' => $this->item_id,
-            'sku' => $this->whenLoaded('product', fn () => $this->product?->sku),
+            'sku' => $this->whenLoaded('product', function () {
+                $variant = $this->product;
+                $parent = $variant?->relationLoaded('product') ? $variant->product : null;
+
+                return $parent?->is_bundle && $parent->sku
+                    ? $parent->sku
+                    : $variant?->sku;
+            }),
             'product_id' => $this->whenLoaded('product', fn () => $this->product?->product_id),
             'location_id' => $this->location_id,
             'location_name' => $this->whenLoaded('location', fn () => $this->location?->location_name),

@@ -7,27 +7,27 @@ use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Modules\Inbound\Models\Inbound;
-use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Models\InventoryTransfer;
 use Modules\Inventory\Models\Putaway;
 use Modules\Inventory\Models\StockAdjustment;
 use Modules\Inventory\Models\StockOpname;
 use Modules\Inventory\Services\PurchaseCostService;
 use Modules\Outbound\Models\Picklist;
-use Modules\Report\Support\OrderPerformanceSpec;
-use Modules\Sales\Support\ChannelStatusNormalizer;
 use Modules\Outbound\Models\Shipment;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductVariant;
 use Modules\Product\Models\ProductVariantChannelMapping;
 use Modules\Purchase\Models\PurchaseOrder;
+use Modules\Report\Support\OrderPerformanceSpec;
 use Modules\Sales\Models\SalesInvoice;
 use Modules\Sales\Models\SalesInvoiceItem;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderItem;
 use Modules\Sales\Models\SalesReturnItem;
+use Modules\Sales\Support\ChannelStatusNormalizer;
 use Modules\Supplier\Models\Contact;
 use Modules\Warehouse\Models\Location;
 
@@ -194,17 +194,17 @@ class ReportRepository
         $orderIds = $filters['order_ids'] ?? null;
 
         $query = Picklist::with([
-                'items.product:id,product_id,sku',
-                'items.product.product:id,name',
-                'items.product.options:id,variant_id,attribute_id,value',
-                'items.product.media:id,product_id,variant_id,url,is_primary,sort_order',
-                'items.product.product.media:id,product_id,variant_id,url,is_primary,sort_order',
-                'items.orderItem:id,order_id,description',
-                'items.order:id,salesorder_no,customer_name',
-                'items.bin:id,bin_final_code',
-                'location:id,location_name,location_code',
-                'picker:id,name,email',
-            ])
+            'items.product:id,product_id,sku',
+            'items.product.product:id,name',
+            'items.product.options:id,variant_id,attribute_id,value',
+            'items.product.media:id,product_id,variant_id,url,is_primary,sort_order',
+            'items.product.product.media:id,product_id,variant_id,url,is_primary,sort_order',
+            'items.orderItem:id,order_id,description',
+            'items.order:id,salesorder_no,customer_name',
+            'items.bin:id,bin_final_code',
+            'location:id,location_name,location_code',
+            'picker:id,name,email',
+        ])
             ->tap(fn ($q) => WarehouseAccess::apply($q, 'location_id'))
             ->when($filters['location_id'] ?? null, fn ($q, $v) => $q->where('location_id', $v))
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
@@ -242,7 +242,7 @@ class ReportRepository
         return $this->paginate($query);
     }
 
-    public function shipmentListQuery(array $filters): \Illuminate\Database\Query\Builder
+    public function shipmentListQuery(array $filters): Builder
     {
         $from = $filters['from'] ?? null;
         $to = $filters['to'] ?? null;
@@ -264,8 +264,8 @@ class ReportRepository
                 ->from('sales_order_items as soi')
                 ->whereColumn('soi.order_id', 'so.id')
                 ->whereNull('soi.item_id'))
-            ->when($from, fn ($q, $v) => $q->where('so.transaction_date', '>=', $v . ' 00:00:00'))
-            ->when($to, fn ($q, $v) => $q->where('so.transaction_date', '<=', $v . ' 23:59:59.999999'))
+            ->when($from, fn ($q, $v) => $q->where('so.transaction_date', '>=', $v.' 00:00:00'))
+            ->when($to, fn ($q, $v) => $q->where('so.transaction_date', '<=', $v.' 23:59:59.999999'))
             ->when(! empty($courierIds), fn ($q) => $q->whereIn('so.courier_id', $courierIds))
 
             ->when($statusMp, function ($q, $v) {
@@ -300,8 +300,8 @@ class ReportRepository
 
     public function orderPerformanceRows(string $type, array $filters): array
     {
-        $from = ($filters['from'] ?? null) ? $filters['from'] . ' 00:00:00' : null;
-        $to = ($filters['to'] ?? null) ? $filters['to'] . ' 23:59:59.999999' : null;
+        $from = ($filters['from'] ?? null) ? $filters['from'].' 00:00:00' : null;
+        $to = ($filters['to'] ?? null) ? $filters['to'].' 23:59:59.999999' : null;
         $locationIds = WarehouseAccess::constrain(empty($filters['location_ids']) ? null : $filters['location_ids']);
 
         $query = match ($type) {
@@ -329,7 +329,7 @@ class ReportRepository
         return sprintf(self::DURATION_SQL, $end, $start);
     }
 
-    private function pickerPerformanceQuery(): \Illuminate\Database\Query\Builder
+    private function pickerPerformanceQuery(): Builder
     {
         return DB::query()->fromSub(
             DB::table('picklist_items as pi')
@@ -356,12 +356,12 @@ class ReportRepository
                 ->selectRaw('COALESCE(u.name, ?) AS grup', ['(tanpa picker)'])
                 ->selectRaw('COALESCE(p.started_at, p.created_at) AS tanggal_raw')
                 ->selectRaw('SUM(COALESCE(pi.qty_picked, 0)) AS qty')
-                ->selectRaw(self::durationSeconds('p.completed_at', 'COALESCE(p.started_at, p.created_at)') . ' AS durasi_detik'),
+                ->selectRaw(self::durationSeconds('p.completed_at', 'COALESCE(p.started_at, p.created_at)').' AS durasi_detik'),
             'r',
         );
     }
 
-    private function packerPerformanceQuery(): \Illuminate\Database\Query\Builder
+    private function packerPerformanceQuery(): Builder
     {
         return DB::query()->fromSub(
             DB::table('packlist_items as pi')
@@ -381,12 +381,12 @@ class ReportRepository
                 ->selectRaw('COALESCE(u.name, ?) AS grup', ['(tanpa packer)'])
                 ->selectRaw('COALESCE(p.started_at, p.created_at) AS tanggal_raw')
                 ->selectRaw('COALESCE(pi.qty_packed, 0) AS qty')
-                ->selectRaw(self::durationSeconds('p.completed_at', 'COALESCE(p.started_at, p.created_at)') . ' AS durasi_detik'),
+                ->selectRaw(self::durationSeconds('p.completed_at', 'COALESCE(p.started_at, p.created_at)').' AS durasi_detik'),
             'r',
         );
     }
 
-    private function shipmentPerformanceQuery(string $type): \Illuminate\Database\Query\Builder
+    private function shipmentPerformanceQuery(string $type): Builder
     {
         $grup = $type === OrderPerformanceSpec::KURIR
             ? "COALESCE(NULLIF(s.courier_name, ''), '(tanpa kurir)')"
@@ -404,15 +404,15 @@ class ReportRepository
                     's.id as transaksi_id',
                     's.shipment_no as no_transaksi',
                 ])
-                ->selectRaw($grup . ' AS grup')
+                ->selectRaw($grup.' AS grup')
                 ->selectRaw('s.created_at AS tanggal_raw')
                 ->selectRaw('COALESCE(so.qty_given, 0) AS qty')
-                ->selectRaw(self::durationSeconds('s.handed_over_at', 's.created_at') . ' AS durasi_detik'),
+                ->selectRaw(self::durationSeconds('s.handed_over_at', 's.created_at').' AS durasi_detik'),
             'r',
         );
     }
 
-    private function orderProcessingQuery(): \Illuminate\Database\Query\Builder
+    private function orderProcessingQuery(): Builder
     {
         $pick = DB::table('picklist_items as pit')
             ->join('picklists as pl', 'pl.id', '=', 'pit.picklist_id')
@@ -455,12 +455,12 @@ class ReportRepository
                 ->selectRaw("'' AS grup")
                 ->selectRaw('o.transaction_date AS tanggal_raw')
                 ->selectRaw('0 AS qty')
-                ->selectRaw(self::durationSeconds('pk.started_at', 'o.transaction_date') . ' AS durasi_proses_detik')
-                ->selectRaw(self::durationSeconds('pk.started_at', 'pk.assigned_at') . ' AS durasi_penugasan_pick_detik')
-                ->selectRaw(self::durationSeconds('pk.completed_at', 'pk.started_at') . ' AS durasi_pick_detik')
-                ->selectRaw(self::durationSeconds('pc.completed_at', 'pc.started_at') . ' AS durasi_pack_detik')
-                ->selectRaw(self::durationSeconds('sp.handed_over_at', 'sp.created_at') . ' AS durasi_ship_detik')
-                ->selectRaw(self::durationSeconds('sp.handed_over_at', 'o.transaction_date') . ' AS durasi_selesai_detik')
+                ->selectRaw(self::durationSeconds('pk.started_at', 'o.transaction_date').' AS durasi_proses_detik')
+                ->selectRaw(self::durationSeconds('pk.started_at', 'pk.assigned_at').' AS durasi_penugasan_pick_detik')
+                ->selectRaw(self::durationSeconds('pk.completed_at', 'pk.started_at').' AS durasi_pick_detik')
+                ->selectRaw(self::durationSeconds('pc.completed_at', 'pc.started_at').' AS durasi_pack_detik')
+                ->selectRaw(self::durationSeconds('sp.handed_over_at', 'sp.created_at').' AS durasi_ship_detik')
+                ->selectRaw(self::durationSeconds('sp.handed_over_at', 'o.transaction_date').' AS durasi_selesai_detik')
                 ->selectRaw('0 AS durasi_detik'),
             'r',
         );
@@ -468,8 +468,8 @@ class ReportRepository
 
     public function putawayPerformanceRows(array $filters): array
     {
-        $from = ($filters['from'] ?? null) ? $filters['from'] . ' 00:00:00' : null;
-        $to = ($filters['to'] ?? null) ? $filters['to'] . ' 23:59:59.999999' : null;
+        $from = ($filters['from'] ?? null) ? $filters['from'].' 00:00:00' : null;
+        $to = ($filters['to'] ?? null) ? $filters['to'].' 23:59:59.999999' : null;
         $locationIds = $filters['location_ids'] ?? [];
 
         $items = DB::table('putaway_items')
@@ -493,7 +493,7 @@ class ReportRepository
                 ->selectRaw('COALESCE(p.started_at, p.created_at) AS tanggal_raw')
                 ->selectRaw('COALESCE(it.qty, 0) AS qty')
                 ->selectRaw('COALESCE(it.sku_count, 0) AS sku_count')
-                ->selectRaw(self::durationSeconds('p.completed_at', 'COALESCE(p.started_at, p.created_at)') . ' AS durasi_detik'),
+                ->selectRaw(self::durationSeconds('p.completed_at', 'COALESCE(p.started_at, p.created_at)').' AS durasi_detik'),
             'r',
         )
             ->when($from, fn ($q, $v) => $q->where('tanggal_raw', '>=', $v))
@@ -559,8 +559,8 @@ class ReportRepository
 
     public function shipmentByCourierRows(array $filters): array
     {
-        $from = ($filters['from'] ?? null) ? $filters['from'] . ' 00:00:00' : null;
-        $to = ($filters['to'] ?? null) ? $filters['to'] . ' 23:59:59.999999' : null;
+        $from = ($filters['from'] ?? null) ? $filters['from'].' 00:00:00' : null;
+        $to = ($filters['to'] ?? null) ? $filters['to'].' 23:59:59.999999' : null;
         $locationIds = $filters['location_ids'] ?? [];
 
         $qty = DB::table('sales_order_items')
@@ -620,7 +620,7 @@ class ReportRepository
             ->get();
     }
 
-    public function pickListRowsQuery(array $filters): \Illuminate\Database\Query\Builder
+    public function pickListRowsQuery(array $filters): Builder
     {
         $from = $filters['from'] ?? null;
         $to = $filters['to'] ?? null;
@@ -635,8 +635,8 @@ class ReportRepository
             ->leftJoin('channel_shops as cs', 'cs.shop_id', '=', 'so.channel_shop_id')
             ->leftJoin('channels as ch', 'ch.id', '=', 'cs.channel_id')
             ->whereNotIn('p.status', [Picklist::STATUS_DRAFT, Picklist::STATUS_CANCELLED])
-            ->when($from, fn ($q, $v) => $q->where('p.created_at', '>=', $v . ' 00:00:00'))
-            ->when($to, fn ($q, $v) => $q->where('p.created_at', '<=', $v . ' 23:59:59.999999'))
+            ->when($from, fn ($q, $v) => $q->where('p.created_at', '>=', $v.' 00:00:00'))
+            ->when($to, fn ($q, $v) => $q->where('p.created_at', '<=', $v.' 23:59:59.999999'))
             ->select([
                 'so.salesorder_no',
                 'p.picklist_no',
@@ -655,7 +655,7 @@ class ReportRepository
             ->orderBy('pi.sku');
     }
 
-    public function transferQuery(array $filters): \Illuminate\Database\Query\Builder
+    public function transferQuery(array $filters): Builder
     {
         $isMasuk = ($filters['jenis'] ?? 'keluar') === 'masuk';
         $from = $filters['from'] ?? null;
@@ -683,7 +683,7 @@ class ReportRepository
                 'p.name as product_name',
             ])
             ->selectRaw('COALESCE(t.shipped_at, t.created_at) AS tanggal')
-            ->selectRaw($qtyColumn . ' AS qty');
+            ->selectRaw($qtyColumn.' AS qty');
 
         if ($isMasuk) {
             $query->where('t.status', InventoryTransfer::STATUS_RECEIVED)
@@ -696,8 +696,8 @@ class ReportRepository
             ]);
         }
 
-        $query->when($from, fn ($q, $v) => $q->where($dateColumn, '>=', $v . ' 00:00:00'))
-            ->when($to, fn ($q, $v) => $q->where($dateColumn, '<=', $v . ' 23:59:59.999999'));
+        $query->when($from, fn ($q, $v) => $q->where($dateColumn, '>=', $v.' 00:00:00'))
+            ->when($to, fn ($q, $v) => $q->where($dateColumn, '<=', $v.' 23:59:59.999999'));
 
         if (! empty($itemIds)) {
             $query->whereIn('i.item_id', $itemIds);
@@ -733,7 +733,7 @@ class ReportRepository
                 $join->on('po_cost.purchase_order_id', '=', 'inbound.source_id')
                     ->on('po_cost.item_id', '=', 'im.item_id');
             })
-            ->whereBetween('im.transaction_date', [$dateFrom . ' 00:00:00', $dateTo . ' 23:59:59.999999'])
+            ->whereBetween('im.transaction_date', [$dateFrom.' 00:00:00', $dateTo.' 23:59:59.999999'])
             ->where('im.source', 'PURCHASE')
             ->where('im.qty', '>', 0)
             ->when($locationId, fn ($query, string $id) => $query->where('im.location_id', $id))
@@ -753,7 +753,7 @@ class ReportRepository
                 'return_purchase_cost',
                 fn ($join) => $join->on('return_purchase_cost.item_id', '=', 'im.item_id'),
             )
-            ->whereBetween('im.transaction_date', [$dateFrom . ' 00:00:00', $dateTo . ' 23:59:59.999999'])
+            ->whereBetween('im.transaction_date', [$dateFrom.' 00:00:00', $dateTo.' 23:59:59.999999'])
             ->whereIn('im.source', ['PURCHASE_RETURN', 'PURCHASE_REVERSAL'])
             ->where('im.qty', '<', 0)
             ->whereRaw("COALESCE({$returnCostSql}, return_purchase_cost.average_cost, 0) > 0")
@@ -763,19 +763,19 @@ class ReportRepository
 
         $cogsQuery = SalesInvoiceItem::whereHas('invoice', function ($q) use ($dateFrom, $dateTo) {
             $q->whereDate('invoice_date', '>=', $dateFrom)
-              ->whereDate('invoice_date', '<=', $dateTo)
-              ->where('status', '!=', SalesInvoice::STATUS_CANCELLED);
+                ->whereDate('invoice_date', '<=', $dateTo)
+                ->where('status', '!=', SalesInvoice::STATUS_CANCELLED);
         });
         $hppPeriode = (float) $cogsQuery->sum('total_cogs');
 
         return [
-            'persediaan_awal'   => $persediaanAwal,
-            'persediaan_akhir'   => $persediaanAkhir,
-            'pembelian_bruto'    => $pembelianBruto,
-            'ongkos_angkut'      => $ongkosAngkut,
+            'persediaan_awal' => $persediaanAwal,
+            'persediaan_akhir' => $persediaanAkhir,
+            'pembelian_bruto' => $pembelianBruto,
+            'ongkos_angkut' => $ongkosAngkut,
             'potongan_pembelian' => $potonganPembelian,
-            'retur_pembelian'    => $returPembelian,
-            'hpp_periode'        => $hppPeriode,
+            'retur_pembelian' => $returPembelian,
+            'hpp_periode' => $hppPeriode,
         ];
     }
 
@@ -787,7 +787,7 @@ class ReportRepository
             ->select('im.item_id', 'im.location_id', 'im.bin_id', 'im.balance')
             ->selectRaw(
                 'ROW_NUMBER() OVER (PARTITION BY im.item_id, im.location_id, im.bin_id '
-                . 'ORDER BY im.transaction_date DESC, im.id DESC) AS row_number'
+                .'ORDER BY im.transaction_date DESC, im.id DESC) AS row_number'
             );
 
         $itemQuantities = DB::query()
@@ -813,7 +813,7 @@ class ReportRepository
             )
             ->selectRaw(
                 'COALESCE(SUM(GREATEST(stock.net_on_hand, 0) '
-                . '* COALESCE(purchase_cost.average_cost, 0)), 0) AS total'
+                .'* COALESCE(purchase_cost.average_cost, 0)), 0) AS total'
             )
             ->value('total');
     }
@@ -859,10 +859,10 @@ class ReportRepository
     public function penyesuaianAdjustments(string $startDate, string $endDate, array $productIds, array $locationIds): Collection
     {
         return StockAdjustment::with([
-                'items' => fn ($q) => $q->when(! empty($productIds), fn ($q2) => $q2->whereIn('item_id', $productIds)),
-                'items.product:id,product_id,sku',
-                'items.product.product:id,name',
-            ])
+            'items' => fn ($q) => $q->when(! empty($productIds), fn ($q2) => $q2->whereIn('item_id', $productIds)),
+            'items.product:id,product_id,sku',
+            'items.product.product:id,name',
+        ])
             ->excludeInboundQtyCorrections()
             ->whereDate('transaction_date', '>=', $startDate)
             ->whereDate('transaction_date', '<=', $endDate)
@@ -874,14 +874,14 @@ class ReportRepository
     public function lazadaOrder(string $orderId): SalesOrder
     {
         return SalesOrder::select([
-                'id', 'salesorder_no', 'customer_name', 'source',
-                'shipping_full_name', 'shipping_address', 'shipping_city',
-                'tracking_number', 'shipping_provider',
-            ])->with('items:id,order_id,sku,description,qty_in_base,price,amount')
+            'id', 'salesorder_no', 'customer_name', 'source',
+            'shipping_full_name', 'shipping_address', 'shipping_city',
+            'tracking_number', 'shipping_provider',
+        ])->with('items:id,order_id,sku,description,qty_in_base,price,amount')
             ->findOrFail($orderId);
     }
 
-    public function negativeStockHistoryQuery(array $filters): \Illuminate\Database\Query\Builder
+    public function negativeStockHistoryQuery(array $filters): Builder
     {
         $from = $filters['from'] ?? null;
         $to = $filters['to'] ?? null;
@@ -896,31 +896,31 @@ class ReportRepository
             ->selectRaw('MIN(balance) AS min_balance')
             ->selectRaw('COUNT(*) AS negative_movements_count')
             ->where('balance', '<', 0)
-            ->when($from, fn ($q, $v) => $q->where('transaction_date', '>=', $v . ' 00:00:00'))
-            ->when($to, fn ($q, $v) => $q->where('transaction_date', '<=', $v . ' 23:59:59.999999'))
+            ->when($from, fn ($q, $v) => $q->where('transaction_date', '>=', $v.' 00:00:00'))
+            ->when($to, fn ($q, $v) => $q->where('transaction_date', '<=', $v.' 23:59:59.999999'))
             ->when($locationId, fn ($q, $v) => $q->where('location_id', $v))
             ->groupBy('item_id', 'location_id', 'bin_id');
 
         $currentBalanceSql = '(SELECT balance FROM inventory_movements m2 '
-            . 'WHERE m2.item_id = agg.item_id '
-            . 'AND m2.location_id IS NOT DISTINCT FROM agg.location_id '
-            . 'AND m2.bin_id IS NOT DISTINCT FROM agg.bin_id '
-            . 'ORDER BY m2.transaction_date DESC LIMIT 1)';
+            .'WHERE m2.item_id = agg.item_id '
+            .'AND m2.location_id IS NOT DISTINCT FROM agg.location_id '
+            .'AND m2.bin_id IS NOT DISTINCT FROM agg.bin_id '
+            .'ORDER BY m2.transaction_date DESC LIMIT 1)';
 
         $normalizedAtSql = '(SELECT MIN(m3.transaction_date) FROM inventory_movements m3 '
-            . 'WHERE m3.item_id = agg.item_id '
-            . 'AND m3.location_id IS NOT DISTINCT FROM agg.location_id '
-            . 'AND m3.bin_id IS NOT DISTINCT FROM agg.bin_id '
-            . 'AND m3.balance >= 0 '
-            . 'AND m3.transaction_date > agg.first_negative_at)';
+            .'WHERE m3.item_id = agg.item_id '
+            .'AND m3.location_id IS NOT DISTINCT FROM agg.location_id '
+            .'AND m3.bin_id IS NOT DISTINCT FROM agg.bin_id '
+            .'AND m3.balance >= 0 '
+            .'AND m3.transaction_date > agg.first_negative_at)';
 
         $triggeredBySql = '(SELECT m4.created_by FROM inventory_movements m4 '
-            . 'WHERE m4.item_id = agg.item_id '
-            . 'AND m4.location_id IS NOT DISTINCT FROM agg.location_id '
-            . 'AND m4.bin_id IS NOT DISTINCT FROM agg.bin_id '
-            . 'AND m4.balance < 0 '
-            . 'AND m4.transaction_date >= agg.first_negative_at '
-            . 'ORDER BY m4.transaction_date ASC LIMIT 1)';
+            .'WHERE m4.item_id = agg.item_id '
+            .'AND m4.location_id IS NOT DISTINCT FROM agg.location_id '
+            .'AND m4.bin_id IS NOT DISTINCT FROM agg.bin_id '
+            .'AND m4.balance < 0 '
+            .'AND m4.transaction_date >= agg.first_negative_at '
+            .'ORDER BY m4.transaction_date ASC LIMIT 1)';
 
         $enriched = DB::query()
             ->fromSub($agg, 'agg')
@@ -941,15 +941,15 @@ class ReportRepository
                 'l.location_name',
                 'lb.bin_final_code',
             ])
-            ->selectRaw($currentBalanceSql . ' AS current_balance')
-            ->selectRaw($normalizedAtSql . ' AS normalized_at')
-            ->selectRaw($triggeredBySql . ' AS triggered_by');
+            ->selectRaw($currentBalanceSql.' AS current_balance')
+            ->selectRaw($normalizedAtSql.' AS normalized_at')
+            ->selectRaw($triggeredBySql.' AS triggered_by');
 
         return DB::query()
             ->fromSub($enriched, 'e')
             ->select('*')
             ->when($search, fn ($q, $v) => $q->where(function ($qq) use ($v) {
-                $like = '%' . $v . '%';
+                $like = '%'.$v.'%';
                 $qq->whereRaw('e.sku ILIKE ?', [$like])
                     ->orWhereRaw('e.product_name ILIKE ?', [$like]);
             }))
@@ -965,8 +965,8 @@ class ReportRepository
 
         return SalesOrder::query()
             ->excludeShadow()
-            ->when($from, fn ($q, $v) => $q->where('sales_orders.transaction_date', '>=', $v . ' 00:00:00'))
-            ->when($to, fn ($q, $v) => $q->where('sales_orders.transaction_date', '<=', $v . ' 23:59:59.999999'))
+            ->when($from, fn ($q, $v) => $q->where('sales_orders.transaction_date', '>=', $v.' 00:00:00'))
+            ->when($to, fn ($q, $v) => $q->where('sales_orders.transaction_date', '<=', $v.' 23:59:59.999999'))
             ->when(! empty($locationIds), fn ($q) => $q->whereIn('sales_orders.location_id', $locationIds))
             ->whereNotExists(fn ($q) => $q
                 ->select(DB::raw(1))
@@ -975,10 +975,10 @@ class ReportRepository
                 ->whereNull('soi.item_id'))
             ->select('sales_orders.*')
             ->selectRaw('(SELECT location_name FROM locations WHERE locations.id = sales_orders.location_id LIMIT 1) AS loc_name')
-            ->selectRaw("COALESCE(
+            ->selectRaw('COALESCE(
                 (SELECT shop_name FROM channel_shops WHERE channel_shops.shop_id = sales_orders.channel_shop_id LIMIT 1),
                 (SELECT name FROM internal_stores WHERE internal_stores.id = sales_orders.internal_store_id LIMIT 1)
-            ) AS shop_label")
+            ) AS shop_label')
             ->orderByDesc('sales_orders.transaction_date')
             ->orderByDesc('sales_orders.salesorder_no');
     }
@@ -993,8 +993,8 @@ class ReportRepository
         return SalesOrderItem::query()
             ->join('sales_orders', 'sales_orders.id', '=', 'sales_order_items.order_id')
             ->where(fn ($q) => $q->where('sales_orders.is_shadow', false)->orWhereNull('sales_orders.is_shadow'))
-            ->when($from, fn ($q, $v) => $q->where('sales_orders.transaction_date', '>=', $v . ' 00:00:00'))
-            ->when($to, fn ($q, $v) => $q->where('sales_orders.transaction_date', '<=', $v . ' 23:59:59.999999'))
+            ->when($from, fn ($q, $v) => $q->where('sales_orders.transaction_date', '>=', $v.' 00:00:00'))
+            ->when($to, fn ($q, $v) => $q->where('sales_orders.transaction_date', '<=', $v.' 23:59:59.999999'))
             ->when(! empty($locationIds), fn ($q) => $q->whereIn('sales_orders.location_id', $locationIds))
             ->when(! empty($itemIds), fn ($q) => $q->whereIn('sales_order_items.item_id', $itemIds))
             ->whereNotNull('sales_order_items.item_id')
@@ -1009,10 +1009,10 @@ class ReportRepository
                 'sales_orders.buyer_message as so_note',
             ])
             ->selectRaw('(SELECT location_name FROM locations WHERE locations.id = sales_orders.location_id LIMIT 1) AS loc_name')
-            ->selectRaw("COALESCE(
+            ->selectRaw('COALESCE(
                 (SELECT shop_name FROM channel_shops WHERE channel_shops.shop_id = sales_orders.channel_shop_id LIMIT 1),
                 (SELECT name FROM internal_stores WHERE internal_stores.id = sales_orders.internal_store_id LIMIT 1)
-            ) AS shop_label")
+            ) AS shop_label')
             ->orderByDesc('sales_orders.transaction_date')
             ->orderByDesc('sales_order_items.sku');
     }
@@ -1029,8 +1029,8 @@ class ReportRepository
 
         return SalesReturnItem::query()
             ->join('sales_returns', 'sales_returns.id', '=', 'sales_return_items.sales_return_id')
-            ->when($from, fn ($q, $v) => $q->where('sales_returns.created_at', '>=', $v . ' 00:00:00'))
-            ->when($to, fn ($q, $v) => $q->where('sales_returns.created_at', '<=', $v . ' 23:59:59.999999'))
+            ->when($from, fn ($q, $v) => $q->where('sales_returns.created_at', '>=', $v.' 00:00:00'))
+            ->when($to, fn ($q, $v) => $q->where('sales_returns.created_at', '<=', $v.' 23:59:59.999999'))
             ->when(! empty($locationIds), fn ($q) => $q->whereIn('sales_returns.location_id', $locationIds))
             ->select('sales_return_items.*')
             ->addSelect([
@@ -1044,11 +1044,11 @@ class ReportRepository
             ->selectRaw('(SELECT location_name FROM locations WHERE locations.id = sales_returns.location_id LIMIT 1) AS loc_name')
             ->selectRaw('(SELECT salesorder_no FROM sales_orders WHERE sales_orders.id = sales_returns.order_id LIMIT 1) AS so_no')
             ->selectRaw('(SELECT invoice_number FROM sales_invoices WHERE sales_invoices.order_id = sales_returns.order_id ORDER BY invoice_date DESC LIMIT 1) AS invoice_no')
-            ->selectRaw("COALESCE(
+            ->selectRaw('COALESCE(
                 (SELECT shop_name FROM channel_shops WHERE channel_shops.shop_id = sales_returns.channel_shop_id LIMIT 1),
                 (SELECT shop_name FROM channel_shops WHERE channel_shops.shop_id =
                     (SELECT channel_shop_id FROM sales_orders WHERE sales_orders.id = sales_returns.order_id LIMIT 1) LIMIT 1)
-            ) AS shop_label")
+            ) AS shop_label')
             ->selectRaw("(SELECT p.putaway_no FROM putaways p
                 JOIN putaway_sources ps ON ps.putaway_id = p.id
                 JOIN inbounds ib ON ib.id = ps.inbound_id
@@ -1066,11 +1066,11 @@ class ReportRepository
 
     public function salesProductSkuOptions(?string $search, int $perPage = 20): LengthAwarePaginator
     {
-        return ProductVariant::query()
+        return TechnicalSku::exclude(ProductVariant::query())
             ->with(['media:id,variant_id,url,is_primary', 'product:id,name', 'product.media:id,product_id,url,is_primary'])
             ->select('id', 'product_id', 'sku')
             ->when($search, function ($q, $v) {
-                $like = '%' . $v . '%';
+                $like = '%'.$v.'%';
                 $q->where(function ($qq) use ($like) {
                     $qq->where('sku', 'ILIKE', $like)
                         ->orWhereHas('product', fn ($p) => $p->where('name', 'ILIKE', $like));
@@ -1082,10 +1082,10 @@ class ReportRepository
 
     private function shopLabelSub(): string
     {
-        return "COALESCE(
+        return 'COALESCE(
             (SELECT shop_name FROM channel_shops WHERE channel_shops.shop_id = sales_orders.channel_shop_id LIMIT 1),
             (SELECT name FROM internal_stores WHERE internal_stores.id = sales_orders.internal_store_id LIMIT 1)
-        )";
+        )';
     }
 
     public function rincianPendapatanQuery(array $filters): \Illuminate\Database\Eloquent\Builder
@@ -1096,8 +1096,8 @@ class ReportRepository
         return SalesInvoice::query()
             ->join('sales_orders', 'sales_orders.id', '=', 'sales_invoices.order_id')
             ->tap(fn ($q) => WarehouseAccess::apply($q, 'sales_orders.location_id'))
-            ->when($from, fn ($q, $v) => $q->where('sales_orders.transaction_date', '>=', $v . ' 00:00:00'))
-            ->when($to, fn ($q, $v) => $q->where('sales_orders.transaction_date', '<=', $v . ' 23:59:59.999999'))
+            ->when($from, fn ($q, $v) => $q->where('sales_orders.transaction_date', '>=', $v.' 00:00:00'))
+            ->when($to, fn ($q, $v) => $q->where('sales_orders.transaction_date', '<=', $v.' 23:59:59.999999'))
             ->select('sales_invoices.id', 'sales_invoices.invoice_number as invoice_no')
             ->addSelect([
                 'sales_orders.salesorder_no as so_no',
@@ -1117,7 +1117,7 @@ class ReportRepository
                 'sales_orders.settlement_amount as escrow',
                 'sales_orders.channel_updated_at as tgl_complete',
             ])
-            ->selectRaw($this->shopLabelSub() . ' AS shop_label')
+            ->selectRaw($this->shopLabelSub().' AS shop_label')
             ->selectRaw('(SELECT COALESCE(SUM(total_cogs), 0) FROM sales_invoice_items WHERE sales_invoice_id = sales_invoices.id) AS hpp')
             ->orderByDesc('sales_orders.transaction_date')
             ->orderBy('sales_invoices.invoice_number');
@@ -1133,8 +1133,8 @@ class ReportRepository
             ->join('sales_invoices', 'sales_invoices.id', '=', 'sales_invoice_items.sales_invoice_id')
             ->join('sales_orders', 'sales_orders.id', '=', 'sales_invoices.order_id')
             ->tap(fn ($q) => WarehouseAccess::apply($q, 'sales_orders.location_id'))
-            ->when($from, fn ($q, $v) => $q->where('sales_orders.transaction_date', '>=', $v . ' 00:00:00'))
-            ->when($to, fn ($q, $v) => $q->where('sales_orders.transaction_date', '<=', $v . ' 23:59:59.999999'))
+            ->when($from, fn ($q, $v) => $q->where('sales_orders.transaction_date', '>=', $v.' 00:00:00'))
+            ->when($to, fn ($q, $v) => $q->where('sales_orders.transaction_date', '<=', $v.' 23:59:59.999999'))
             ->when(! empty($itemIds), fn ($q) => $q->whereIn('sales_invoice_items.item_id', $itemIds))
             ->select('sales_invoice_items.*')
             ->addSelect([
@@ -1153,7 +1153,7 @@ class ReportRepository
                 'sales_orders.order_processing_fee as biaya_proses',
             ])
             ->selectRaw('(SELECT location_name FROM locations WHERE locations.id = sales_orders.location_id LIMIT 1) AS loc_name')
-            ->selectRaw($this->shopLabelSub() . ' AS shop_label')
+            ->selectRaw($this->shopLabelSub().' AS shop_label')
             ->selectRaw('(SELECT sku FROM product_variants WHERE id = sales_invoice_items.item_id LIMIT 1) AS line_sku')
             ->selectRaw('(SELECT p.name FROM products p JOIN product_variants pv ON pv.product_id = p.id WHERE pv.id = sales_invoice_items.item_id LIMIT 1) AS line_desc')
             ->selectRaw('(SELECT name FROM salesmen WHERE salesmen.id = sales_orders.salesman_id LIMIT 1) AS salesman_name')
@@ -1168,8 +1168,8 @@ class ReportRepository
 
         return Contact::query()
             ->customers()
-            ->when($from, fn ($q, $v) => $q->where('contacts.created_at', '>=', $v . ' 00:00:00'))
-            ->when($to, fn ($q, $v) => $q->where('contacts.created_at', '<=', $v . ' 23:59:59.999999'))
+            ->when($from, fn ($q, $v) => $q->where('contacts.created_at', '>=', $v.' 00:00:00'))
+            ->when($to, fn ($q, $v) => $q->where('contacts.created_at', '<=', $v.' 23:59:59.999999'))
             ->select('contacts.*')
             ->selectRaw('(SELECT name FROM contact_categories WHERE contact_categories.id = contacts.category_id LIMIT 1) AS category_name')
             ->orderByDesc('contacts.created_at')

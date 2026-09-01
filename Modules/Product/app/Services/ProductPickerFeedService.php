@@ -10,6 +10,7 @@ use Modules\Product\Models\ProductMerge;
 use Modules\Product\Models\ProductVariant;
 use Modules\Product\Repositories\MasterFeedRepository;
 use Modules\Product\Support\ProductPickerHydrator;
+use Modules\Product\Support\TechnicalSku;
 
 class ProductPickerFeedService
 {
@@ -29,7 +30,7 @@ class ProductPickerFeedService
             return ProductPickerHydrator::hydrate($paginator);
         }
 
-        $matchingVariantQuery = ProductVariant::query()
+        $matchingVariantQuery = TechnicalSku::exclude(ProductVariant::query(), 'product_variants.sku')
             ->join('products', 'products.id', '=', 'product_variants.product_id')
             ->where('products.status', $status)
             ->whereNull('product_variants.deleted_at')
@@ -49,7 +50,7 @@ class ProductPickerFeedService
         $matchingVariantIds = $matchingVariants->pluck('id')->all();
         $matchedProductIds = $matchingVariants->pluck('product_id')->unique()->all();
 
-        $bundleMatchedProductIds = DB::table('product_bundle_items')
+        $bundleMatchedQuery = TechnicalSku::exclude(DB::table('product_bundle_items')
             ->join('product_variants', 'product_variants.id', '=', 'product_bundle_items.component_variant_id')
             ->join('products', 'products.id', '=', 'product_bundle_items.bundle_product_id')
             ->where('products.status', $status)
@@ -57,7 +58,9 @@ class ProductPickerFeedService
             ->where(function ($q) use ($search) {
                 $q->where('product_variants.sku', 'ILIKE', "%{$search}%")
                     ->orWhere('products.name', 'ILIKE', "%{$search}%");
-            })
+            }), 'product_variants.sku');
+
+        $bundleMatchedProductIds = $bundleMatchedQuery
             ->pluck('product_bundle_items.bundle_product_id')
             ->all();
 

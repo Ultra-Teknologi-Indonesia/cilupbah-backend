@@ -59,7 +59,7 @@ class MasterFeedHydrator
             $variationTypesByProduct[$vt->product_id][] = $vt;
         }
 
-        $rawVariants = DB::table('product_variants')
+        $rawVariants = TechnicalSku::exclude(DB::table('product_variants'))
             ->whereIn('product_id', $allProductIds)
             ->whereNull('deleted_at')
             ->orderBy('sequence_item')
@@ -76,10 +76,10 @@ class MasterFeedHydrator
             $variantsByProduct[$v->product_id][] = $v;
         }
 
-        $rawBundleItems = DB::table('product_bundle_items')
+        $rawBundleItems = TechnicalSku::exclude(DB::table('product_bundle_items')
             ->join('product_variants', 'product_variants.id', '=', 'product_bundle_items.component_variant_id')
             ->whereIn('product_bundle_items.bundle_product_id', $allProductIds)
-            ->whereNull('product_variants.deleted_at')
+            ->whereNull('product_variants.deleted_at'), 'product_variants.sku')
             ->get([
                 'product_bundle_items.bundle_product_id',
                 'product_bundle_items.component_variant_id',
@@ -349,7 +349,7 @@ class MasterFeedHydrator
                 'status' => $product->status,
                 'is_po' => $product->order_type === 'PREORDER',
                 'is_bundle' => $isBundle,
-                'sku' => $product->sku ?? (!empty($variantItems) && count($variantItems) === 1 ? ($variantItems[0]['item_code'] ?? null) : null),
+                'sku' => $product->sku ?? (! empty($variantItems) && count($variantItems) === 1 ? ($variantItems[0]['item_code'] ?? null) : null),
                 'item_name' => $masterName,
                 'last_modified' => $product->updated_at,
                 'variations' => $masterVariations,

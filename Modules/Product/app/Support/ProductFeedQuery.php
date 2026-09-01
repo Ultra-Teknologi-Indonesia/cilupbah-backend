@@ -32,8 +32,13 @@ class ProductFeedQuery
     public static function applyCriteria(QueryBuilder|Builder $query): QueryBuilder|Builder
     {
         if ($query instanceof QueryBuilder) {
+            $query->allowedSearch(...self::SEARCHABLE);
+
+            if (filled(request()->query('search'))) {
+                self::excludeTechnicalVariantMatches($query);
+            }
+
             return $query
-                ->allowedSearch(...self::SEARCHABLE)
                 ->allowedFilters(...self::filters());
         }
 
@@ -56,6 +61,10 @@ class ProductFeedQuery
                     ->orWhere('sku', 'ilike', "%{$search}%")
                     ->orWhereHas('variants', fn ($vq) => $vq->where('sku', 'ilike', "%{$search}%"));
             });
+        }
+
+        if (method_exists($query, 'whereDoesntHave') && filled(request()->query('search'))) {
+            self::excludeTechnicalVariantMatches($query);
         }
 
         foreach ((array) request()->query('filter', []) as $name => $value) {
@@ -81,6 +90,14 @@ class ProductFeedQuery
     public static function criteriaAreEffective(Builder|\Illuminate\Database\Query\Builder|QueryBuilder $probe): bool
     {
         return self::applyCriteriaTo($probe);
+    }
+
+    private static function excludeTechnicalVariantMatches(Builder|QueryBuilder $query): void
+    {
+        $search = (string) request()->query('search');
+        $query->whereDoesntHave('variants', fn ($vq) => $vq
+            ->whereRaw('LEFT(LOWER(sku), ?) = ?', [strlen(TechnicalSku::BUNDLE_PREFIX), TechnicalSku::BUNDLE_PREFIX])
+            ->where('sku', 'ilike', "%{$search}%"));
     }
 
     public static function applySort(Builder|\Illuminate\Database\Query\Builder|QueryBuilder $query)

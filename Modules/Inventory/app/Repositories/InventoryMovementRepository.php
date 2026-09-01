@@ -9,6 +9,7 @@ use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Support\InventoryMovementSourceMap;
 use Modules\Inventory\Support\StockSummary;
 use Modules\Notification\Services\NotificationDispatcher;
+use Modules\Product\Support\TechnicalSku;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
 
@@ -540,8 +541,29 @@ class InventoryMovementRepository
                 .'  ORDER BY so.salesorder_no LIMIT 1) END)'
                 .') AS store_name'
             )
-            ->with(['product:id,sku,product_id', 'location:id,location_name', 'bin:id,bin_final_code'])
-            ->allowedSearch('product_variants.sku', 'products.name')
+            ->with([
+                'product:id,sku,product_id,is_internal',
+                'product.product:id,sku,is_bundle',
+                'location:id,location_name',
+                'bin:id,bin_final_code',
+            ])
+            ->when(
+                filled(request()->query('search')) || filled(request()->query('q')),
+                function ($query) {
+                    $term = (string) (request()->query('search') ?? request()->query('q'));
+                    $like = '%'.addcslashes($term, '%_\\').'%';
+
+                    $query->where(function ($searchQuery) use ($like) {
+                        $searchQuery
+                            ->where(function ($variantQuery) use ($like) {
+                                TechnicalSku::exclude($variantQuery, 'product_variants.sku')
+                                    ->where('product_variants.sku', 'ilike', $like);
+                            })
+                            ->orWhere('products.sku', 'ilike', $like)
+                            ->orWhere('products.name', 'ilike', $like);
+                    });
+                }
+            )
             ->allowedFilters(
                 AllowedFilter::exact('item_id'),
                 AllowedFilter::exact('location_id'),
