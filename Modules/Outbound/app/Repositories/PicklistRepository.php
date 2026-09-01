@@ -114,7 +114,7 @@ class PicklistRepository
     public function findById(string $id): ?Picklist
     {
         return Picklist::with([
-            'items.product:id,sku,product_id',
+            'items.product:id,sku,product_id,barcode',
             'items.product.product:id,name',
             'items.product.media:id,variant_id,product_id,url,is_primary,sort_order,media_type',
             'items.product.product.media:id,product_id,variant_id,url,is_primary,sort_order,media_type',
@@ -185,7 +185,7 @@ class PicklistRepository
             ->leftJoin('products', 'product_variants.product_id', '=', 'products.id')
             ->where('picklist_id', $picklistId)
             ->with([
-                'product:id,sku,product_id',
+                'product:id,sku,product_id,barcode',
                 'product.product:id,name',
                 'product.media:id,variant_id,product_id,url,is_primary,sort_order,media_type',
                 'product.product.media:id,product_id,variant_id,url,is_primary,sort_order,media_type',

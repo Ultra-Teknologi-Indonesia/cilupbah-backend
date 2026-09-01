@@ -746,7 +746,7 @@ class InventoryRepository
             ->where('on_hand', '>', 0)
             ->whereIn('item_id', $sellableItemIds)
             ->whereHas('product', fn ($q) => TechnicalSku::exclude($q))
-            ->with(['product:id,sku,product_id', 'product.product:id,name', 'bin:id,bin_final_code'])
+            ->with(['product:id,sku,product_id,barcode', 'product.product:id,name', 'bin:id,bin_final_code'])
             ->select('id', 'item_id', 'location_id', 'bin_id', 'batch_no', 'serial_no', 'on_hand', 'on_order', 'available')
             ->orderBy('item_id')
             ->paginate(request('per_page', $limit))
@@ -819,7 +819,7 @@ class InventoryRepository
     {
 
         $query = QueryBuilder::for(Inventory::class)
-            ->with(['product:id,sku,product_id', 'product.product:id,name', 'bin:id,bin_final_code'])
+            ->with(['product:id,sku,product_id,barcode', 'product.product:id,name', 'bin:id,bin_final_code'])
             ->whereHas('product', fn ($q) => TechnicalSku::exclude($q))
             ->allowedFilters(
                 AllowedFilter::exact('location_id'),
