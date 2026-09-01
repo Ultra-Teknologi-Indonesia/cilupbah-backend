@@ -2,13 +2,14 @@
 
 namespace Modules\Warehouse\Models;
 
+use App\Traits\HasUuid7;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-
-use App\Traits\HasUuid7;
+use Modules\Inventory\Models\Inventory;
 use Modules\Region\Models\Village;
+use Modules\Warehouse\Database\Factories\LocationFactory;
 
 class Location extends Model
 {
@@ -16,7 +17,7 @@ class Location extends Model
 
     protected static function newFactory()
     {
-        return \Modules\Warehouse\Database\Factories\LocationFactory::new();
+        return LocationFactory::new();
     }
 
     protected $fillable = [
@@ -57,9 +58,10 @@ class Location extends Model
     ];
 
     public const SYSTEM_TRANSIT_CODE = 'SYS-TRANSIT';
-    public const SYSTEM_PUSAT_CODE   = 'WH-PUSAT';
 
-    public const SYSTEM_KECIL_CODE   = 'O';
+    public const SYSTEM_PUSAT_CODE = 'WH-PUSAT';
+
+    public const SYSTEM_KECIL_CODE = 'O';
 
     public function village(): BelongsTo
     {
@@ -83,7 +85,7 @@ class Location extends Model
 
     public function inventories(): HasMany
     {
-        return $this->hasMany(\Modules\Inventory\Models\Inventory::class);
+        return $this->hasMany(Inventory::class);
     }
 
     public function enforcesStrictBinSku(): bool
@@ -104,6 +106,18 @@ class Location extends Model
     public static function getOfficialSmallWarehouseId(): ?string
     {
         return self::getSmallWarehouseId();
+    }
+
+    public static function isCentralWarehouseId(?string $locationId): bool
+    {
+        if ($locationId === null || $locationId === '') {
+            return false;
+        }
+
+        return self::query()
+            ->whereKey($locationId)
+            ->where('location_code', self::SYSTEM_PUSAT_CODE)
+            ->exists();
     }
 
     public static function getMainWarehouseId(): ?string

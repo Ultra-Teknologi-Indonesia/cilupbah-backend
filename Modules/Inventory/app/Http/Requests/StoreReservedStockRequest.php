@@ -3,6 +3,8 @@
 namespace Modules\Inventory\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
+use Modules\Warehouse\Models\Location;
 
 class StoreReservedStockRequest extends FormRequest
 {
@@ -24,5 +26,21 @@ class StoreReservedStockRequest extends FormRequest
             'items.*.bin_id' => 'nullable|string|exists:location_bins,id',
             'items.*.qty' => 'required|integer|min:1',
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            $locationId = $this->input('location_id');
+
+            if (! is_string($locationId) || ! Location::isCentralWarehouseId($locationId)) {
+                return;
+            }
+
+            $validator->errors()->add(
+                'location_id',
+                'Reservasi stok tidak dapat dibuat di Gudang Pusat.',
+            );
+        });
     }
 }

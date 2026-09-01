@@ -2,22 +2,26 @@
 
 namespace Modules\Inventory\Jobs;
 
+use App\Exceptions\UserFacingException;
+use App\Traits\StockLockable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Modules\Inventory\Models\ReservedStock;
-use Modules\Inventory\Repositories\InventoryRepository;
-use Modules\Inventory\Repositories\InventoryMovementRepository;
-use App\Traits\StockLockable;
 use Illuminate\Support\Facades\DB;
+use Modules\Inventory\Models\ReservedStock;
+use Modules\Inventory\Repositories\InventoryMovementRepository;
+use Modules\Inventory\Repositories\InventoryRepository;
+use Modules\Warehouse\Models\Location;
+use Modules\Warehouse\Services\InboundBinPolicy;
 
 class ProcessReservedStockJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, StockLockable;
 
     public int $tries = 3;
+
     public array $backoff = [3, 10, 30];
 
     public function __construct(
@@ -30,8 +34,15 @@ class ProcessReservedStockJob implements ShouldQueue
     {
         $reservedStock = ReservedStock::with('items')->find($this->reservedStockId);
 
-        if (!$reservedStock || $reservedStock->status !== ReservedStock::STATUS_ACTIVE) {
+        if (! $reservedStock || $reservedStock->status !== ReservedStock::STATUS_ACTIVE) {
             return;
+        }
+
+        if (Location::isCentralWarehouseId((string) $reservedStock->location_id)) {
+            throw new UserFacingException(
+                'Reservasi stok tidak dapat diproses',
+                'Reservasi stok di Gudang Pusat diblokir dan tidak mengubah on_order.',
+            );
         }
 
         foreach ($reservedStock->items as $item) {
@@ -39,7 +50,7 @@ class ProcessReservedStockJob implements ShouldQueue
                 DB::transaction(function () use ($item, $reservedStock, $inventoryRepository, $movementRepository) {
 
                     if (! empty($item->bin_id)) {
-                        app(\Modules\Warehouse\Services\InboundBinPolicy::class)->assertConsumable(
+                        app(InboundBinPolicy::class)->assertConsumable(
                             $reservedStock->location_id,
                             $item->bin_id,
                             'reservasi stok',
@@ -62,7 +73,7 @@ class ProcessReservedStockJob implements ShouldQueue
                         $item->bin_id,
                     );
 
-                    if (!$inventory) {
+                    if (! $inventory) {
                         throw new \RuntimeException("Inventory tidak ditemukan untuk item {$item->item_id}.");
                     }
 

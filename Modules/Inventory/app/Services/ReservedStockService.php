@@ -2,12 +2,15 @@
 
 namespace Modules\Inventory\Services;
 
-use Modules\Inventory\Repositories\ReservedStockRepository;
-use Modules\Inventory\Repositories\InventoryRepository;
-use Modules\Inventory\Repositories\InventoryMovementRepository;
-use Modules\Inventory\Models\ReservedStock;
-use Modules\Inventory\Jobs\ProcessReservedStockJob;
+use App\Exceptions\UserFacingException;
 use Illuminate\Support\Facades\DB;
+use Modules\Inventory\Jobs\ProcessReservedStockJob;
+use Modules\Inventory\Models\ReservedStock;
+use Modules\Inventory\Repositories\InventoryMovementRepository;
+use Modules\Inventory\Repositories\InventoryRepository;
+use Modules\Inventory\Repositories\ReservedStockRepository;
+use Modules\Warehouse\Models\Location;
+use Modules\Warehouse\Services\InboundBinPolicy;
 
 class ReservedStockService
 {
@@ -29,9 +32,16 @@ class ReservedStockService
 
     public function create(array $data): ReservedStock
     {
+        if (Location::isCentralWarehouseId((string) ($data['location_id'] ?? ''))) {
+            throw new UserFacingException(
+                'Reservasi stok tidak dapat diproses',
+                'Reservasi stok tidak dapat dibuat di Gudang Pusat.',
+            );
+        }
+
         foreach ($data['items'] as $itemData) {
             if (! empty($itemData['bin_id'])) {
-                app(\Modules\Warehouse\Services\InboundBinPolicy::class)->assertConsumable(
+                app(InboundBinPolicy::class)->assertConsumable(
                     $data['location_id'],
                     $itemData['bin_id'],
                     'reservasi stok',
@@ -73,7 +83,7 @@ class ReservedStockService
         return DB::transaction(function () use ($id) {
             $reservedStock = $this->reservedStockRepository->findByIdForUpdate($id);
 
-            if (!$reservedStock) {
+            if (! $reservedStock) {
                 throw new \Exception('Dokumen reserved stock tidak ditemukan.');
             }
 
