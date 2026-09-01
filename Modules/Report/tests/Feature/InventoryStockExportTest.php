@@ -253,6 +253,106 @@ final class InventoryStockExportTest extends TestCase
         $this->assertSame(4000.0, (float) $historical->inventory_value);
     }
 
+    public function test_current_and_rack_queries_exclude_soft_deleted_catalog_rows(): void
+    {
+        $location = Location::factory()->create([
+            'location_code' => 'WH-DELETED-CATALOG',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+        $bin = LocationBin::create([
+            'location_id' => $location->id,
+            'floor_code' => 'F1',
+            'row_code' => 'R1',
+            'column_code' => 'C1',
+            'bin_code' => 'B1',
+            'bin_final_code' => 'F1-R1-C1-B1',
+            'is_inbound' => false,
+        ]);
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'Laporan Deleted Catalog Test',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $activeProduct = Product::create([
+            'category_id' => $categoryId,
+            'name' => 'Produk Aktif dengan Catalog Valid',
+            'status' => 'master',
+            'is_bundle' => false,
+            'is_active' => true,
+        ]);
+        $activeVariant = ProductVariant::create([
+            'product_id' => $activeProduct->id,
+            'sku' => 'REPORT-DELETED-CATALOG-1',
+            'buy_price' => 10,
+            'sell_price' => 20,
+            'min_stock' => 1,
+        ]);
+
+        $deletedProduct = Product::create([
+            'category_id' => $categoryId,
+            'name' => 'Produk Lama yang Dihapus',
+            'status' => 'master',
+            'is_bundle' => false,
+            'is_active' => true,
+        ]);
+        $deletedVariant = ProductVariant::create([
+            'product_id' => $deletedProduct->id,
+            'sku' => 'REPORT-DELETED-CATALOG-OLD',
+            'buy_price' => 10,
+            'sell_price' => 20,
+            'min_stock' => 1,
+        ]);
+
+        Inventory::create([
+            'item_id' => $activeVariant->id,
+            'location_id' => $location->id,
+            'bin_id' => $bin->id,
+            'on_hand' => 4,
+            'on_order' => 0,
+            'available' => 4,
+            'avg_cost' => 10,
+        ]);
+        Inventory::create([
+            'item_id' => $deletedVariant->id,
+            'location_id' => $location->id,
+            'bin_id' => $bin->id,
+            'on_hand' => 99,
+            'on_order' => 0,
+            'available' => 99,
+            'avg_cost' => 10,
+        ]);
+
+        $deletedVariant->delete();
+        $deletedProduct->delete();
+
+        $service = app(InventoryStockReportService::class);
+        $filters = [
+            'report_type' => 'by_location',
+            'item_ids' => [],
+            'location_ids' => [$location->id],
+            'stock_filter' => 'all',
+            'only_not_restocked' => false,
+            'only_with_stock' => false,
+        ];
+
+        $currentRows = $service->query($filters)->get();
+        $this->assertCount(1, $currentRows);
+        $this->assertSame($activeVariant->id, $currentRows->first()->item_id);
+        $this->assertSame(4, (int) $currentRows->first()->qty);
+
+        $rackRows = $service->rackQuery([
+            'location_id' => $location->id,
+            'item_ids' => [],
+            'only_with_stock' => true,
+        ])->get();
+        $this->assertCount(1, $rackRows);
+        $this->assertSame($activeVariant->id, $rackRows->first()->item_id);
+        $this->assertSame(4, (int) $rackRows->first()->qty_on_hand);
+    }
+
     public function test_location_stock_queries_exclude_transit(): void
     {
         $warehouse = Location::factory()->create([

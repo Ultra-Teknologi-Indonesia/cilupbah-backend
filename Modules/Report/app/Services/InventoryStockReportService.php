@@ -40,6 +40,8 @@ final class InventoryStockReportService
             ->where('l.is_active', true)
             ->where('l.is_warehouse', true)
             ->where('l.location_code', '!=', Location::SYSTEM_TRANSIT_CODE)
+            ->whereNull('pv.deleted_at')
+            ->whereNull('p.deleted_at')
             ->whereNotNull('b.id')
             ->where('b.is_inbound', false)
             ->when($filters['item_ids'], fn (Builder $q, array $ids) => $q->whereIn('i.item_id', $ids))
@@ -88,6 +90,8 @@ final class InventoryStockReportService
             ->join('locations as l', 'l.id', '=', 'i.location_id')
             ->where('l.is_active', true)
             ->where('l.location_code', '!=', Location::SYSTEM_TRANSIT_CODE)
+            ->whereNull('pv.deleted_at')
+            ->whereNull('p.deleted_at')
             ->leftJoin('location_bins as b', function ($join): void {
                 $join->on('b.id', '=', 'i.bin_id')
                     ->on('b.location_id', '=', 'i.location_id');
