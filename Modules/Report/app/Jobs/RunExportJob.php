@@ -51,7 +51,9 @@ class RunExportJob implements ShouldQueue
         $params = $job->params ?? [];
         $fileName = $manager->filename($job->type, $params);
         $diskName = config('filesystems.disks.documents') ? 'documents' : config('filesystems.default', 'local');
-        $extension = $job->type === 'monitor-stock-pdf' ? 'pdf' : 'xlsx';
+        $extension = in_array($job->type, ['monitor-stock-pdf', 'picklist-pdf'], true)
+            ? 'pdf'
+            : 'xlsx';
         $path = "exports/{$job->id}.{$extension}";
 
         Log::info('export.started', [
@@ -60,14 +62,19 @@ class RunExportJob implements ShouldQueue
             'memory_limit' => ini_get('memory_limit'),
         ]);
 
-        if ($job->type === 'monitor-stock-pdf') {
+        if (in_array($job->type, ['monitor-stock-pdf', 'picklist-pdf'], true)) {
             $temporaryPath = tempnam(sys_get_temp_dir(), 'cilupbah-export-');
             if ($temporaryPath === false) {
                 throw new \RuntimeException('Tidak dapat membuat berkas sementara untuk export PDF.');
             }
 
             try {
-                app(MonitorStockReportService::class)->writePdf($params, $temporaryPath);
+                if ($job->type === 'monitor-stock-pdf') {
+                    app(MonitorStockReportService::class)->writePdf($params, $temporaryPath);
+                } else {
+                    app(\Modules\Outbound\Services\PicklistPdfExportService::class)
+                        ->write((string) ($params['picklist_id'] ?? ''), $temporaryPath);
+                }
                 $stream = fopen($temporaryPath, 'rb');
                 if ($stream === false) {
                     throw new \RuntimeException('Tidak dapat membaca hasil export PDF.');

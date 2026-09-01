@@ -9,22 +9,19 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Modules\Inventory\Models\InventoryTransfer;
 use Modules\Inventory\Models\InventoryTransferItem;
-use Modules\Inventory\Repositories\InventoryRepository;
-use Modules\Inventory\Repositories\InventoryMovementRepository;
-use Modules\Inventory\Services\InventoryService;
-use Modules\Channel\Jobs\SyncStockToChannelsJob;
-use App\Traits\StockLockable;
-use Illuminate\Support\Facades\DB;
 
 class SyncTransferDraftItemJob implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, StockLockable;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
+
     public array $backoff = [3, 10, 30];
 
     const ACTION_RESERVE = 'reserve';
+
     const ACTION_ADJUST = 'adjust';
+
     const ACTION_RELEASE = 'release';
 
     public function __construct(
@@ -37,160 +34,30 @@ class SyncTransferDraftItemJob implements ShouldQueue
         $this->onQueue(config('queue.names.stock_sync'));
     }
 
-    public function handle(InventoryRepository $inventoryRepository, InventoryMovementRepository $movementRepository): void
+    public function handle(): void
     {
         $item = InventoryTransferItem::find($this->transferItemId);
 
         if ($this->action === self::ACTION_RELEASE) {
-            $shouldSync = $item?->sync_status === 'SYNCED';
-            $variantId = $item?->item_id;
-            $this->handleRelease($item, $inventoryRepository, $movementRepository);
-            if ($shouldSync && $variantId !== null) {
-                SyncStockToChannelsJob::dispatch($variantId);
-            }
+            $item?->delete();
+
             return;
         }
 
-        if (!$item) return;
+        if (! $item) {
+            return;
+        }
 
         $transfer = InventoryTransfer::find($item->inventory_transfer_id);
-        if (!$transfer || $transfer->status !== InventoryTransfer::STATUS_DRAFT) return;
-        if (!$transfer->source_location_id) {
+        if (! $transfer || $transfer->status !== InventoryTransfer::STATUS_DRAFT) {
+            return;
+        }
+        if (! $transfer->source_location_id) {
             $item->update(['sync_status' => 'FAILED', 'sync_error' => 'Lokasi asal belum diatur']);
+
             return;
-        }
-
-        $this->withStockLock($item->item_id, $transfer->source_location_id, function () use ($item, $transfer, $inventoryRepository, $movementRepository) {
-            DB::transaction(function () use ($item, $transfer, $inventoryRepository, $movementRepository) {
-                match ($this->action) {
-                    self::ACTION_RESERVE => $this->handleReserve($item, $transfer, $inventoryRepository, $movementRepository),
-                    self::ACTION_ADJUST => $this->handleAdjust($item, $transfer, $inventoryRepository, $movementRepository),
-                    default => null,
-                };
-            });
-        });
-
-        if ($item->fresh()?->sync_status === 'SYNCED') {
-            SyncStockToChannelsJob::dispatch($item->item_id);
-        }
-    }
-
-    protected function handleReserve(
-        InventoryTransferItem $item,
-        InventoryTransfer $transfer,
-        InventoryRepository $inventoryRepository,
-        InventoryMovementRepository $movementRepository,
-    ): void {
-        $sourceInventory = $inventoryRepository->findExactForUpdate(
-            $item->item_id,
-            $transfer->source_location_id,
-            $item->source_bin_id,
-            $item->batch_no ?? '',
-            $item->serial_no ?? '',
-        );
-
-        if (!$sourceInventory) {
-            $sourceInventory = $inventoryRepository->findOrCreateForUpdate(
-                $item->item_id,
-                $transfer->source_location_id,
-                $item->source_bin_id,
-                $item->batch_no ?? '',
-                $item->serial_no ?? '',
-            );
-        }
-
-        if (!config('inventory.allow_negative_stock', true) && $sourceInventory->available < $this->qty) {
-            $item->update([
-                'sync_status' => 'FAILED',
-                'sync_error' => "Stok tidak mencukupi (tersedia: {$sourceInventory->available}, diminta: {$this->qty})",
-            ]);
-            return;
-        }
-
-        $sourceInventory->on_order += $this->qty;
-        $inventoryRepository->updateStock($sourceInventory);
-
-        $item->update(['sync_status' => 'SYNCED', 'sync_error' => null]);
-    }
-
-    protected function handleAdjust(
-        InventoryTransferItem $item,
-        InventoryTransfer $transfer,
-        InventoryRepository $inventoryRepository,
-        InventoryMovementRepository $movementRepository,
-    ): void {
-        $delta = $this->qty;
-        $sourceInventory = $inventoryRepository->findExactForUpdate(
-            $item->item_id,
-            $transfer->source_location_id,
-            $item->source_bin_id,
-            $item->batch_no ?? '',
-            $item->serial_no ?? '',
-        );
-
-        if ($delta > 0 && !$sourceInventory) {
-            $sourceInventory = $inventoryRepository->findOrCreateForUpdate(
-                $item->item_id,
-                $transfer->source_location_id,
-                $item->source_bin_id,
-                $item->batch_no ?? '',
-                $item->serial_no ?? '',
-            );
-        }
-
-        if ($delta > 0 && !config('inventory.allow_negative_stock', true) && $sourceInventory && $sourceInventory->available < $delta) {
-            $item->update([
-                'sync_status' => 'FAILED',
-                'sync_error' => "Stok tidak mencukupi untuk penambahan (tersedia: {$sourceInventory->available}, diminta: +{$delta})",
-            ]);
-            return;
-        }
-
-        if ($sourceInventory) {
-            $sourceInventory->on_order += $delta;
-            $inventoryRepository->updateStock($sourceInventory);
         }
 
         $item->update(['sync_status' => 'SYNCED', 'sync_error' => null]);
-    }
-
-    protected function handleRelease(
-        ?InventoryTransferItem $item,
-        InventoryRepository $inventoryRepository,
-        InventoryMovementRepository $movementRepository,
-    ): void {
-
-        if (!$item) {
-
-            return;
-        }
-
-        $transfer = InventoryTransfer::find($item->inventory_transfer_id);
-        if (!$transfer || !$transfer->source_location_id) return;
-
-        if ($item->sync_status !== 'SYNCED') {
-            $item->delete();
-            return;
-        }
-
-        $this->withStockLock($item->item_id, $transfer->source_location_id, function () use ($item, $transfer, $inventoryRepository, $movementRepository) {
-            DB::transaction(function () use ($item, $transfer, $inventoryRepository, $movementRepository) {
-                $sourceInventory = $inventoryRepository->findExactForUpdate(
-                    $item->item_id,
-                    $transfer->source_location_id,
-                    $item->source_bin_id,
-                    $item->batch_no ?? '',
-                    $item->serial_no ?? '',
-                );
-
-                if ($sourceInventory) {
-                    $releaseQty = min($this->qty, $sourceInventory->on_order);
-                    $sourceInventory->on_order -= $releaseQty;
-                    $inventoryRepository->updateStock($sourceInventory);
-                }
-
-                $item->delete();
-            });
-        });
     }
 }

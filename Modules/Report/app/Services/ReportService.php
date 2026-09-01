@@ -396,6 +396,14 @@ class ReportService
         return $this->repository->pickListRowsQuery($filters);
     }
 
+    public function pickListDetailQuery(string $picklistId, ?array $orderIds = null): \Illuminate\Database\Query\Builder
+    {
+        return $this->repository->pickListDetailQuery(
+            $picklistId,
+            $this->normalizeOrderIds($orderIds),
+        );
+    }
+
     public function shipmentListQuery(array $filters): \Illuminate\Database\Query\Builder
     {
         return $this->repository->shipmentListQuery($filters);

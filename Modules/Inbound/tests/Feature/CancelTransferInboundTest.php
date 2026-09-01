@@ -9,6 +9,7 @@ use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Models\InboundItem;
 use Modules\Inbound\Services\InboundService;
 use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Models\InventoryTransfer;
 use Modules\Inventory\Models\InventoryTransferItem;
 use Modules\Inventory\Services\InventoryService;
@@ -161,6 +162,52 @@ class CancelTransferInboundTest extends TestCase
 
         $this->assertSame(0, $destAfter, 'stok destination harus 0 setelah revert');
         $this->assertSame((int) $transitBefore + $qty, $transitAfter, 'stok SYS-TRANSIT harus naik sebanyak qty (konservasi)');
+    }
+
+    public function test_cancel_transfer_inbound_mendaftarkan_pasangan_history_tanpa_menghapus_ledger(): void
+    {
+        $qty = 5;
+        [, $inbound] = $this->buildReceivedState(qty: $qty);
+
+        InventoryMovement::create([
+            'item_id' => $this->variant->id,
+            'location_id' => $this->destination->id,
+            'bin_id' => $this->destBin->id,
+            'transaction_number' => $inbound->transaction_number,
+            'source' => 'TRANSFER_IN',
+            'qty' => $qty,
+            'balance' => $qty,
+            'transaction_date' => now()->subMinute(),
+            'created_by' => 'tester',
+        ]);
+        [$transitLocationId, $transitBinId] = app(InventoryService::class)->resolveTransitLocation();
+        InventoryMovement::create([
+            'item_id' => $this->variant->id,
+            'location_id' => $transitLocationId,
+            'bin_id' => $transitBinId,
+            'transaction_number' => $inbound->transaction_number,
+            'source' => 'TRANSIT_OUT',
+            'qty' => -$qty,
+            'balance' => 0,
+            'transaction_date' => now()->subMinute(),
+            'created_by' => 'tester',
+        ]);
+
+        app(InboundService::class)->cancel($inbound->id);
+
+        $movements = DB::table('inventory_movements')
+            ->where('transaction_number', $inbound->transaction_number.'-REVERT')
+            ->where('item_id', $this->variant->id)
+            ->where('qty', '!=', 0)
+            ->get(['id', 'source', 'qty']);
+
+        $this->assertCount(2, $movements);
+        $this->assertSame(2, DB::table('inventory_movement_reversal_pairs')
+            ->whereIn('reversal_movement_id', $movements->pluck('id'))
+            ->count());
+        $this->assertSame(2, DB::table('inventory_movements')
+            ->whereIn('id', $movements->pluck('id'))
+            ->count(), 'ledger reversal tetap disimpan untuk audit');
     }
 
     public function test_cancel_proceeds_when_putaway_qty_positive_but_no_placements(): void

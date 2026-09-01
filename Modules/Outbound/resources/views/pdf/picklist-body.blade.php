@@ -1,7 +1,9 @@
 @php
     /** @var \Modules\Outbound\Models\Picklist $picklist */
     /** @var string|null $qrDataUri */
+    /** @var bool $includeImages */
     $rawItems = collect($picklist->items ?? []);
+    $includeImages = $includeImages ?? true;
     $locationName = optional($picklist->location)->location_name ?? '-';
     $companyName = config('app.company_name', 'PT ULTRA TEKNOLOGI INDONESIA');
     $printedAt = now()->timezone('Asia/Jakarta')->format('d M Y H:i');
@@ -24,7 +26,9 @@
     $resolveVariantName = function ($item) {
         $variant = $item->product ?? null;
         $parentName = optional(optional($variant)->product)->name;
-        $optionValues = collect(optional($variant)->options ?? [])
+        $optionValues = collect(
+            $variant && $variant->relationLoaded('options') ? $variant->options : []
+        )
             ->map(fn ($o) => trim((string) ($o->value ?? '')))
             ->filter()
             ->values();
@@ -101,7 +105,9 @@
                 $productName = optional(optional($item->product)->product)->name ?? '-';
                 $binCode = $item->recommended_bin_code;
                 $variantName = $resolveVariantName($item);
-                $imageUrl = $resolveImageUrl($item);
+                $imageUrl = $includeImages
+                    ? ($item->pdf_image_path ?? $resolveImageUrl($item))
+                    : null;
             @endphp
             <tr>
                 <td class="center mono">{{ $i + 1 }}</td>

@@ -23,6 +23,7 @@ use Modules\Outbound\Http\Requests\UnpickItemsRequest;
 
 use Modules\Outbound\Exceptions\OutboundValidationException;
 use Modules\Report\Services\ReportService;
+use Modules\Report\Services\ExportManager;
 use App\Traits\AutoScopeMobileToAuth;
 use OpenApi\Attributes as OA;
 use Throwable;
@@ -56,6 +57,7 @@ class PicklistController extends Controller
         protected PicklistRepository $picklistRepository,
         protected QrCodeGenerator $qrCodeGenerator,
         protected PdfRenderer $pdfRenderer,
+        protected ExportManager $exportManager,
     ) {}
 
     #[OA\Get(
@@ -210,46 +212,57 @@ class PicklistController extends Controller
             new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
-            new OA\Response(
-                response: 200,
-                description: 'PDF stream',
-                content: new OA\MediaType(mediaType: 'application/pdf'),
-            ),
+            new OA\Response(response: 202, description: 'Export PDF masuk antrean.'),
             new OA\Response(response: 404, description: 'Picklist tidak ditemukan'),
         ]
     )]
-    public function pdf(string $id, PicklistPdfRequest $request)
+    public function pdf(string $id, PicklistPdfRequest $request): JsonResponse
     {
-        try {
-            $report = $this->reportService->pickListReport(['picklist_id' => $id]);
-            $picklist = $report['data'] ?? null;
-
-            if (!$picklist) {
-                return $this->errorResponse('Picklist tidak ditemukan.', 404);
-            }
-
-            $this->picklistService->attachRecommendedBins($picklist);
-
-            $picklistNo = $picklist->picklist_no ?? 'PICK';
-            $filename = str_starts_with((string) $picklistNo, 'PK-')
-                ? "{$picklistNo}.pdf"
-                : "PICK-{$picklistNo}.pdf";
-
-            $qrDataUri = $this->qrCodeGenerator->svgDataUri((string) $picklistNo);
-
-            return $this->pdfRenderer->stream('outbound::pdf.picklist', [
-                'picklist' => $picklist,
-                'qrDataUri' => $qrDataUri,
-            ], $filename, 'a4', 'portrait');
-        } catch (Throwable $e) {
-            report($e);
-            return $this->errorResponse(
-                'Gagal membuat PDF picklist.',
-                500,
-                ['detail' => $e->getMessage()],
-                'Aksi tidak dapat diproses',
-            );
+        $picklist = $this->picklistRepository->findAccessibleHeader($id);
+        if (! $picklist) {
+            return $this->errorResponse('Picklist tidak ditemukan.', 404);
         }
+
+        $job = $this->exportManager->queue($request->user(), 'picklist-pdf', [
+            'picklist_id' => $id,
+            'picklist_no' => $picklist->picklist_no,
+        ]);
+
+        return $this->successResponse([
+            'export_id' => $job->id,
+            'status' => $job->status,
+        ], 'PDF picklist sedang disiapkan.', 202);
+    }
+
+    #[OA\Get(
+        path: '/api/v1/outbound/picklists/{id}/xlsx',
+        summary: 'Export detail Picklist sebagai Excel',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Picklist'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        responses: [
+            new OA\Response(response: 202, description: 'Export Excel masuk antrean.'),
+            new OA\Response(response: 404, description: 'Picklist tidak ditemukan'),
+        ]
+    )]
+    public function excel(string $id, PicklistPdfRequest $request): JsonResponse
+    {
+        $picklist = $this->picklistRepository->findAccessibleHeader($id);
+        if (! $picklist) {
+            return $this->errorResponse('Picklist tidak ditemukan.', 404);
+        }
+
+        $job = $this->exportManager->queue($request->user(), 'picklist-detail', [
+            'picklist_id' => $id,
+            'picklist_no' => $picklist->picklist_no,
+        ]);
+
+        return $this->successResponse([
+            'export_id' => $job->id,
+            'status' => $job->status,
+        ], 'Excel picklist sedang disiapkan.', 202);
     }
 
     #[OA\Post(

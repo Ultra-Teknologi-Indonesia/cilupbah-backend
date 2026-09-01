@@ -6,8 +6,27 @@ class KronologiReversalNetter
 {
     public static function hiddenIds(iterable $rows): array
     {
+        $ids = [];
+
+        foreach (self::pairs($rows) as $pair) {
+            $ids[] = $pair['original_id'];
+            $ids[] = $pair['reversal_id'];
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
+     * Return deterministic original/reversal pairs without changing the ledger.
+     *
+     * The active stack mirrors the existing operational netting rule: a reversal
+     * closes the newest unmatched movement in the same item/location/bin cell
+     * with the exact opposite quantity.
+     */
+    public static function pairs(iterable $rows): array
+    {
         $active = [];
-        $hidden = [];
+        $pairs = [];
 
         foreach ($rows as $row) {
             $qty = (int) ($row->qty ?? 0);
@@ -15,9 +34,9 @@ class KronologiReversalNetter
                 continue;
             }
 
-            $cell = ($row->item_id ?? '') . '|' . ($row->location_id ?? '') . '|' . ($row->bin_id ?? 'NULL');
+            $cell = ($row->item_id ?? '').'|'.($row->location_id ?? '').'|'.($row->bin_id ?? 'NULL');
 
-            if (in_array($row->source, InventoryMovementSourceMap::UNRECORDED_REVERSAL_SOURCES, true)) {
+            if (in_array($row->source, InventoryMovementSourceMap::CHRONOLOGY_NETTABLE_REVERSAL_SOURCES, true)) {
                 $stack = $active[$cell] ?? [];
                 $matchIdx = null;
                 for ($i = count($stack) - 1; $i >= 0; $i--) {
@@ -28,8 +47,10 @@ class KronologiReversalNetter
                 }
 
                 if ($matchIdx !== null) {
-                    $hidden[] = $stack[$matchIdx]['id'];
-                    $hidden[] = $row->id;
+                    $pairs[] = [
+                        'original_id' => $stack[$matchIdx]['id'],
+                        'reversal_id' => $row->id,
+                    ];
                     array_splice($stack, $matchIdx, 1);
                     $active[$cell] = $stack;
                 }
@@ -40,6 +61,6 @@ class KronologiReversalNetter
             $active[$cell][] = ['id' => $row->id, 'qty' => $qty];
         }
 
-        return $hidden;
+        return $pairs;
     }
 }

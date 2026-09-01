@@ -91,6 +91,8 @@ class InventoryMovementSourceMap
         'PUTAWAY_REVERSAL',
         'BIN_TRANSFER_REVERSAL',
         'TRANSFER_REVERT',
+        'BIN_TRANSFER_REVERT_OUT',
+        'TRANSIT_REVERT_IN',
         'PURCHASE_REVERSAL',
         'PICKING_REVERSAL',
         'ORDER_COMPLETE_REVERSAL',
@@ -100,6 +102,16 @@ class InventoryMovementSourceMap
         'PUTAWAY_REVERSAL',
         'BIN_TRANSFER_REVERSAL',
         'TRANSFER_REVERT',
+    ];
+
+    /**
+     * Automatic cancellation/revert sources whose exact net-zero pairs are
+     * hidden from the operational chronology while retained in the ledger.
+     */
+    public const CHRONOLOGY_NETTABLE_REVERSAL_SOURCES = [
+        ...self::UNRECORDED_REVERSAL_SOURCES,
+        'BIN_TRANSFER_REVERT_OUT',
+        'TRANSIT_REVERT_IN',
     ];
 
     public const ALLOCATION_PARTITION_SOURCES = [

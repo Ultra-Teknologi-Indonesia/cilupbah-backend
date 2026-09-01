@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
+use Modules\Warehouse\Models\LocationBin;
 use Tests\TestCase;
 
 class ReconcileOnOrderTest extends TestCase
@@ -14,6 +15,7 @@ class ReconcileOnOrderTest extends TestCase
     use RefreshDatabase;
 
     private string $locationId;
+
     private string $destLocationId;
 
     protected function setUp(): void
@@ -74,6 +76,16 @@ class ReconcileOnOrderTest extends TestCase
     private function makeDraftTransfer(string $variantId, int $qty): void
     {
         $transferId = Str::uuid()->toString();
+        $sourceBinId = Str::uuid()->toString();
+
+        DB::table('location_bins')->insert([
+            'id' => $sourceBinId,
+            'location_id' => $this->locationId,
+            'bin_final_code' => 'RECON-TRANSFER-BIN',
+            'is_inbound' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         DB::table('inventory_transfers')->insert([
             'id' => $transferId,
@@ -91,6 +103,8 @@ class ReconcileOnOrderTest extends TestCase
             'inventory_transfer_id' => $transferId,
             'item_id' => $variantId,
             'qty' => $qty,
+            'source_bin_id' => $sourceBinId,
+            'sync_status' => 'SYNCED',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -127,13 +141,13 @@ class ReconcileOnOrderTest extends TestCase
         ]);
     }
 
-    public function test_draft_transfer_reservation_is_legit_and_not_touched(): void
+    public function test_draft_transfer_reservation_is_not_fixed_by_order_reconcile(): void
     {
         $v = $this->variant('RECON-3');
         $this->setAggregateOnOrder($v->id, 3);
         $this->makeDraftTransfer($v->id, 3);
 
-        $this->artisan('inventory:reconcile-on-order', ['--fix' => true])->assertSuccessful();
+        $this->artisan('inventory:reconcile-on-order', ['--fix' => true])->assertExitCode(1);
 
         $this->assertDatabaseHas('inventories', ['item_id' => $v->id, 'on_order' => 3]);
         $this->assertDatabaseMissing('inventory_movements', ['item_id' => $v->id]);
@@ -141,7 +155,7 @@ class ReconcileOnOrderTest extends TestCase
 
     private function setBinOnOrder(string $variantId, int $onOrder, int $onHand = 50): void
     {
-        $bin = \Modules\Warehouse\Models\LocationBin::firstOrCreate(
+        $bin = LocationBin::firstOrCreate(
             ['location_id' => $this->locationId, 'bin_final_code' => 'RECON-BIN-1'],
             ['floor_code' => '1', 'row_code' => 'A', 'column_code' => '1', 'bin_code' => 'A-1', 'is_inbound' => false]
         );
@@ -179,21 +193,16 @@ class ReconcileOnOrderTest extends TestCase
         ]);
     }
 
-    public function test_partial_drift_only_removes_the_excess(): void
+    public function test_order_reconcile_does_not_fix_transfer_backed_drift(): void
     {
         $v = $this->variant('RECON-4');
         $this->setAggregateOnOrder($v->id, 10);
         $this->makeDraftTransfer($v->id, 4);
 
-        $this->artisan('inventory:reconcile-on-order', ['--fix' => true])->assertSuccessful();
+        $this->artisan('inventory:reconcile-on-order', ['--fix' => true])->assertExitCode(1);
 
-        $this->assertDatabaseHas('inventories', ['item_id' => $v->id, 'on_order' => 4]);
-        $this->assertDatabaseHas('inventory_movements', [
-            'item_id' => $v->id,
-            'source' => 'ORDER_RELEASE',
-            'qty' => -6,
-            'balance' => 4,
-        ]);
+        $this->assertDatabaseHas('inventories', ['item_id' => $v->id, 'on_order' => 10]);
+        $this->assertDatabaseMissing('inventory_movements', ['item_id' => $v->id]);
     }
 
     public function test_fix_does_not_invent_on_order_when_actual_is_below_expected(): void
@@ -202,7 +211,7 @@ class ReconcileOnOrderTest extends TestCase
         $this->setAggregateOnOrder($v->id, 2);
         $this->makeDraftTransfer($v->id, 4);
 
-        $this->artisan('inventory:reconcile-on-order', ['--fix' => true])->assertSuccessful();
+        $this->artisan('inventory:reconcile-on-order', ['--fix' => true])->assertExitCode(1);
 
         $this->assertDatabaseHas('inventories', [
             'item_id' => $v->id,
@@ -212,6 +221,79 @@ class ReconcileOnOrderTest extends TestCase
             'item_id' => $v->id,
             'source' => 'ORDER_RELEASE',
             'qty' => 2,
+        ]);
+    }
+
+    public function test_transfer_reconcile_removes_only_legacy_transfer_on_order(): void
+    {
+        $v = $this->variant('RECON-TRANSFER-CLEANUP');
+        $binId = Str::uuid()->toString();
+
+        DB::table('location_bins')->insert([
+            'id' => $binId,
+            'location_id' => $this->locationId,
+            'bin_final_code' => 'RECON-CLEANUP-BIN',
+            'is_inbound' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('inventories')->insert([
+            'id' => Str::uuid()->toString(),
+            'item_id' => $v->id,
+            'location_id' => $this->locationId,
+            'bin_id' => $binId,
+            'on_hand' => 20,
+            'on_order' => 5,
+            'available' => 15,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $transferId = Str::uuid()->toString();
+        DB::table('inventory_transfers')->insert([
+            'id' => $transferId,
+            'transfer_number' => 'TRFO-CLEANUP-1',
+            'source_location_id' => $this->locationId,
+            'destination_location_id' => $this->destLocationId,
+            'status' => 'DRAFT',
+            'created_by' => 'test',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('inventory_transfer_items')->insert([
+            'id' => Str::uuid()->toString(),
+            'inventory_transfer_id' => $transferId,
+            'item_id' => $v->id,
+            'qty' => 5,
+            'source_bin_id' => $binId,
+            'sync_status' => 'SYNCED',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->artisan('inventory:reconcile-transfer-on-order', [
+            '--sku' => 'RECON-TRANSFER-CLEANUP',
+        ])
+            ->expectsOutputToContain('1 baris siap dibersihkan.')
+            ->assertSuccessful();
+
+        $this->assertDatabaseHas('inventories', [
+            'item_id' => $v->id,
+            'on_order' => 5,
+            'available' => 15,
+        ]);
+
+        $this->artisan('inventory:reconcile-transfer-on-order', [
+            '--sku' => 'RECON-TRANSFER-CLEANUP',
+            '--fix' => true,
+        ])->assertSuccessful();
+
+        $this->assertDatabaseHas('inventories', [
+            'item_id' => $v->id,
+            'on_order' => 0,
+            'available' => 20,
         ]);
     }
 }

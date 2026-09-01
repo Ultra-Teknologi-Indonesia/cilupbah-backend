@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
+use Modules\Inventory\Services\InventoryMovementReversalVisibilityService;
 use Modules\Inventory\Support\KronologiReversalNetter;
 use Tests\TestCase;
 
@@ -169,7 +170,8 @@ class KronologiReversalNettingTest extends TestCase
         $this->assertSame(2, InventoryMovement::where('item_id', $this->itemId)->count(), 'dry-run tidak menghapus apa pun');
 
         $this->artisan('inventory:purge-reversals --apply')->assertSuccessful();
-        $this->assertSame(0, InventoryMovement::where('item_id', $this->itemId)->count(), 'reversal + asal terhapus setelah --apply');
+        $this->assertSame(2, InventoryMovement::where('item_id', $this->itemId)->count(), 'ledger tetap utuh setelah --apply');
+        $this->assertDatabaseCount('inventory_movement_reversal_pairs', 1);
     }
 
     public function test_command_repair_transfer_history_hanya_menghapus_orphan_positif(): void
@@ -230,5 +232,66 @@ class KronologiReversalNettingTest extends TestCase
         sort($hidden);
 
         $this->assertSame(['b', 'c'], $hidden, 'hanya TRANSFER_IN yang dibalik + reverten-nya yang dipasangkan');
+    }
+
+    public function test_visibility_pair_menyembunyikan_pasangan_sebelum_pagination_tanpa_menghapus_ledger(): void
+    {
+        $original = InventoryMovement::create([
+            ...$this->payload('TRANSFER_IN', 10, 10),
+            'transaction_date' => now()->subMinute(),
+        ]);
+        $reversal = InventoryMovement::create([
+            ...$this->payload('TRANSFER_REVERT', -10, 0),
+            'transaction_date' => now(),
+        ]);
+
+        app(InventoryMovementReversalVisibilityService::class)->pairReversal($reversal);
+
+        request()->merge(['view' => 'all', 'per_page' => 1]);
+        $page = $this->repo()->getHistoryPaginated(1);
+
+        $this->assertSame(0, $page->total(), 'pasangan net-nol tidak boleh masuk total pagination');
+        $this->assertEmpty($page->items());
+        $this->assertDatabaseHas('inventory_movements', ['id' => $original->id]);
+        $this->assertDatabaseHas('inventory_movements', ['id' => $reversal->id]);
+        $this->assertDatabaseHas('inventory_movement_reversal_pairs', [
+            'original_movement_id' => $original->id,
+            'reversal_movement_id' => $reversal->id,
+        ]);
+    }
+
+    public function test_visibility_backfill_tidak_memasangkan_reversal_partial(): void
+    {
+        $original = InventoryMovement::create($this->payload('TRANSFER_IN', 10, 10));
+        $reversal = InventoryMovement::create($this->payload('TRANSFER_REVERT', -5, 5));
+
+        app(InventoryMovementReversalVisibilityService::class)->pairReversal($reversal);
+
+        $this->assertDatabaseMissing('inventory_movement_reversal_pairs', [
+            'original_movement_id' => $original->id,
+            'reversal_movement_id' => $reversal->id,
+        ]);
+        $this->assertDatabaseHas('inventory_movements', ['id' => $original->id]);
+        $this->assertDatabaseHas('inventory_movements', ['id' => $reversal->id]);
+    }
+
+    public function test_command_backfill_visibility_idempotent_dan_tidak_mengubah_stok(): void
+    {
+        $original = InventoryMovement::create($this->payload('TRANSFER_IN', 7, 7));
+        $reversal = InventoryMovement::create($this->payload('TRANSFER_REVERT', -7, 0));
+
+        $this->artisan('inventory:backfill-reversal-visibility')
+            ->assertSuccessful();
+        $this->assertDatabaseCount('inventory_movement_reversal_pairs', 0);
+
+        $this->artisan('inventory:backfill-reversal-visibility --apply')
+            ->assertSuccessful();
+        $this->assertDatabaseCount('inventory_movement_reversal_pairs', 1);
+
+        $this->artisan('inventory:backfill-reversal-visibility --apply')
+            ->assertSuccessful();
+        $this->assertDatabaseCount('inventory_movement_reversal_pairs', 1);
+        $this->assertDatabaseHas('inventory_movements', ['id' => $original->id]);
+        $this->assertDatabaseHas('inventory_movements', ['id' => $reversal->id]);
     }
 }

@@ -6,7 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Modules\Outbound\Http\Requests\ExportProcessOrdersRequest;
+use Modules\Outbound\Jobs\RunProcessOrdersCsvExportJob;
+use Modules\Outbound\Models\BulkRtsBatch;
 use Modules\Outbound\Services\OutboundFulfillmentService;
+use Modules\Report\Models\ExportJob;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Outbound - Fulfillment', description: 'API Endpoints for Outbound Fulfillment Queue Views')]
@@ -52,6 +57,35 @@ class OutboundFulfillmentController extends Controller
         }
 
         return $this->successResponse($data);
+    }
+
+    #[OA\Post(
+        path: '/api/v1/outbound/orders/export/async',
+        summary: 'Queue CSV export for all Proses Pesanan statuses',
+        description: 'Queues a memory-safe export containing every current process status and sub-status. No stage selection is required.',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Fulfillment'],
+        responses: [
+            new OA\Response(response: 202, description: 'Export queued'),
+            new OA\Response(response: 403, description: 'Missing export permission'),
+        ],
+    )]
+    public function exportProcessOrders(ExportProcessOrdersRequest $request): JsonResponse
+    {
+        $job = ExportJob::create([
+            'user_id' => $request->user()->id,
+            'type' => 'outbound-orders-csv',
+            'params' => ['scope' => 'all-process-statuses'],
+            'status' => ExportJob::STATUS_QUEUED,
+        ]);
+
+        RunProcessOrdersCsvExportJob::dispatch($job->id);
+
+        return $this->successResponse(
+            ['export_id' => $job->id, 'status' => $job->status],
+            null,
+            202,
+        );
     }
 
     public function courierOptionsByStage(string $stage): JsonResponse
@@ -177,7 +211,7 @@ class OutboundFulfillmentController extends Controller
 
         $order = $this->fulfillmentService->findOrderByNo($request->order_no);
 
-        if (!$order) {
+        if (! $order) {
             return $this->errorResponse('Order tidak ditemukan.', 404);
         }
 
@@ -193,7 +227,7 @@ class OutboundFulfillmentController extends Controller
         } catch (\Throwable $e) {
 
             report($e);
-            \Illuminate\Support\Facades\Log::warning('getOrderByNo: moveToReadyToPick gagal', [
+            Log::warning('getOrderByNo: moveToReadyToPick gagal', [
                 'order_no' => $request->order_no,
                 'order_id' => $order->id,
                 'error' => $e->getMessage(),
@@ -358,18 +392,18 @@ class OutboundFulfillmentController extends Controller
         $batch = $this->fulfillmentService->createBulkRtsBatch($request->user(), $validated['order_ids']);
 
         return $this->successResponse([
-            'batch_id'      => $batch->id,
-            'status'        => $batch->status,
-            'total_count'   => $batch->total_count,
+            'batch_id' => $batch->id,
+            'status' => $batch->status,
+            'total_count' => $batch->total_count,
             'success_count' => $batch->success_count,
-            'failed_count'  => $batch->failed_count,
+            'failed_count' => $batch->failed_count,
             'skipped_count' => $batch->skipped_count,
         ], 'Batch Siap Dikirim berhasil dibuat dan sedang diproses di background.');
     }
 
     public function getRtsBatch(string $batchId): JsonResponse
     {
-        $batch = \Modules\Outbound\Models\BulkRtsBatch::with(['items'])->find($batchId);
+        $batch = BulkRtsBatch::with(['items'])->find($batchId);
 
         if (! $batch) {
             return $this->errorResponse('Batch Siap Dikirim tidak ditemukan.', 404);
@@ -379,24 +413,24 @@ class OutboundFulfillmentController extends Controller
         $progressPct = $batch->total_count > 0 ? round(($processed / $batch->total_count) * 100, 1) : 100;
 
         return $this->successResponse([
-            'batch_id'      => $batch->id,
-            'status'        => $batch->status,
-            'progress_pct'  => $progressPct,
-            'total_count'   => $batch->total_count,
+            'batch_id' => $batch->id,
+            'status' => $batch->status,
+            'progress_pct' => $progressPct,
+            'total_count' => $batch->total_count,
             'success_count' => $batch->success_count,
-            'failed_count'  => $batch->failed_count,
+            'failed_count' => $batch->failed_count,
             'skipped_count' => $batch->skipped_count,
             'pending_count' => max(0, $batch->total_count - $processed),
-            'started_at'    => $batch->started_at,
-            'finished_at'   => $batch->finished_at,
-            'items'         => $batch->items->map(fn ($item) => [
-                'id'            => $item->id,
-                'order_id'      => $item->order_id,
+            'started_at' => $batch->started_at,
+            'finished_at' => $batch->finished_at,
+            'items' => $batch->items->map(fn ($item) => [
+                'id' => $item->id,
+                'order_id' => $item->order_id,
                 'salesorder_no' => $item->salesorder_no,
-                'source'        => $item->source,
-                'status'        => $item->status,
-                'message'       => $item->message,
-                'processed_at'  => $item->processed_at,
+                'source' => $item->source,
+                'status' => $item->status,
+                'message' => $item->message,
+                'processed_at' => $item->processed_at,
             ]),
         ], 'Data status batch Siap Dikirim berhasil diambil.');
     }
@@ -498,9 +532,9 @@ class OutboundFulfillmentController extends Controller
     public function bulkDestroyOrders(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'order_ids'   => 'required|array|min:1',
+            'order_ids' => 'required|array|min:1',
             'order_ids.*' => 'required|string|exists:sales_orders,id',
-            'reason'      => 'required|string|max:500',
+            'reason' => 'required|string|max:500',
         ], [
             'reason.required' => 'Alasan penghapusan wajib diisi (mis. barang apa yang minus).',
         ]);
@@ -540,8 +574,8 @@ class OutboundFulfillmentController extends Controller
 
         $pickers = $this->fulfillmentService->getPickers($locationId, $roleFilter)
             ->map(fn ($u) => [
-                'id'    => $u->id,
-                'name'  => $u->name,
+                'id' => $u->id,
+                'name' => $u->name,
                 'email' => $u->email,
             ])
             ->values();

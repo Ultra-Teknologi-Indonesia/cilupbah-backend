@@ -20,7 +20,7 @@ class ReconcileOnOrder extends Command
         {--sku= : Filter berdasarkan SKU tertentu}
         {--fix : Terapkan koreksi. Tanpa flag ini command hanya melapor (DRY-RUN).}';
 
-    protected $description = 'Bandingkan on_order terhadap reservasi sah (pesanan reserved + transfer draft) dan laporkan/koreksi selisihnya.';
+    protected $description = 'Bandingkan on_order hanya terhadap alokasi sales order aktif dan laporkan/koreksi selisihnya.';
 
     public function handle(
         InventoryRepository $inventoryRepository,
@@ -96,7 +96,8 @@ class ReconcileOnOrder extends Command
         $this->line('===============================================================');
         $this->line('  DRY-RUN / INSPEKSI ANGKA ON_ORDER PER SKU');
         $this->line('===============================================================');
-        $this->line('Mode : ' . ($fix ? '<fg=red;options=bold>FIX (KOREKSI DATABASE)</>' : '<fg=yellow;options=bold>DRY-RUN / INSPECTION ONLY (AMAN)</>'));
+        $this->line('Mode : '.($fix ? '<fg=red;options=bold>FIX (KOREKSI DATABASE)</>' : '<fg=yellow;options=bold>DRY-RUN / INSPECTION ONLY (AMAN)</>'));
+        $this->line('Sumber valid on_order: sales order aktif. Transfer tidak dihitung sebagai on_order.');
         if ($skuFilter) {
             $this->line("Filter SKU : {$skuFilter}");
         }
@@ -112,6 +113,7 @@ class ReconcileOnOrder extends Command
             if (! $showAll) {
                 $this->line('💡 Tip: Gunakan flag <fg=cyan>--show-all</> untuk melihat rincian seluruh SKU yang sedang memiliki on_order.');
             }
+
             return self::SUCCESS;
         }
 
@@ -136,7 +138,17 @@ class ReconcileOnOrder extends Command
 
         if (! $fix) {
             $this->line('Jalankan ulang dengan flag <fg=cyan>--fix</> untuk menerapkan koreksi ke database.');
+
             return self::SUCCESS;
+        }
+
+        $legacyTransferKeys = $this->activeTransferItemLocationKeys();
+        $blockedKeys = array_values(array_intersect(array_keys($drifts), array_keys($legacyTransferKeys)));
+        if (! empty($blockedKeys)) {
+            $this->error('Koreksi dihentikan karena sebagian drift masih terkait transfer aktif.');
+            $this->line('Jalankan inventory:reconcile-transfer-on-order --fix terlebih dahulu.');
+
+            return self::FAILURE;
         }
 
         $applied = 0;
@@ -146,11 +158,12 @@ class ReconcileOnOrder extends Command
             [$itemId, $locationId] = explode('|', $key);
             $delta = $d['drift'];
 
-            $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $delta, $d, $inventoryRepository, $movementRepository, &$applied, &$residual) {
-                DB::transaction(function () use ($itemId, $locationId, $delta, $d, $inventoryRepository, $movementRepository, &$applied, &$residual) {
+            $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $delta, $inventoryRepository, $movementRepository, &$applied, &$residual) {
+                DB::transaction(function () use ($itemId, $locationId, $delta, $inventoryRepository, $movementRepository, &$applied, &$residual) {
 
                     if ($delta <= 0) {
                         $residual += $delta;
+
                         return;
                     }
 
@@ -164,15 +177,15 @@ class ReconcileOnOrder extends Command
                         $inventoryRepository->updateStock($aggregate);
 
                         $movementRepository->create([
-                            'item_id'            => $itemId,
-                            'location_id'        => $locationId,
-                            'bin_id'             => null,
+                            'item_id' => $itemId,
+                            'location_id' => $locationId,
+                            'bin_id' => null,
                             'transaction_number' => 'RECONCILE-ON-ORDER',
-                            'source'             => 'ORDER_RELEASE',
-                            'qty'                => -$realDelta,
-                            'balance'            => $after,
-                            'transaction_date'   => now(),
-                            'created_by'         => 'system',
+                            'source' => 'ORDER_RELEASE',
+                            'qty' => -$realDelta,
+                            'balance' => $after,
+                            'transaction_date' => now(),
+                            'created_by' => 'system',
                         ]);
 
                         $applied++;
@@ -205,15 +218,15 @@ class ReconcileOnOrder extends Command
                             $inventoryRepository->updateStock($binInv);
 
                             $movementRepository->create([
-                                'item_id'            => $itemId,
-                                'location_id'        => $locationId,
-                                'bin_id'             => $binRow->bin_id,
+                                'item_id' => $itemId,
+                                'location_id' => $locationId,
+                                'bin_id' => $binRow->bin_id,
                                 'transaction_number' => 'RECONCILE-ON-ORDER',
-                                'source'             => 'ORDER_RELEASE',
-                                'qty'                => -$take,
-                                'balance'            => (int) $binInv->on_order,
-                                'transaction_date'   => now(),
-                                'created_by'         => 'system',
+                                'source' => 'ORDER_RELEASE',
+                                'qty' => -$take,
+                                'balance' => (int) $binInv->on_order,
+                                'transaction_date' => now(),
+                                'created_by' => 'system',
                             ]);
 
                             $remaining -= $take;
@@ -263,18 +276,6 @@ class ReconcileOnOrder extends Command
             }
         }
 
-        $transfers = DB::table('inventory_transfer_items as ti')
-            ->join('inventory_transfers as t', 't.id', '=', 'ti.inventory_transfer_id')
-            ->whereIn('t.status', ['DRAFT', 'APPROVED'])
-            ->select('ti.item_id', 't.source_location_id', DB::raw('SUM(ti.qty) as q'))
-            ->groupBy('ti.item_id', 't.source_location_id')
-            ->get();
-
-        foreach ($transfers as $row) {
-            $key = $row->item_id.'|'.$row->source_location_id;
-            $expected[$key] = ($expected[$key] ?? 0) + (int) $row->q;
-        }
-
         return $expected;
     }
 
@@ -310,6 +311,25 @@ class ReconcileOnOrder extends Command
         }
 
         return $actual;
+    }
+
+    /**
+     * Legacy transfer reservations must be reclassified before generic order cleanup.
+     *
+     * @return array<string, true>
+     */
+    private function activeTransferItemLocationKeys(): array
+    {
+        return DB::table('inventory_transfer_items as ti')
+            ->join('inventory_transfers as t', 't.id', '=', 'ti.inventory_transfer_id')
+            ->whereIn('t.status', ['DRAFT', 'APPROVED'])
+            ->where('ti.sync_status', 'SYNCED')
+            ->whereNotNull('ti.source_bin_id')
+            ->select('ti.item_id', 't.source_location_id')
+            ->distinct()
+            ->get()
+            ->mapWithKeys(fn ($row) => [$row->item_id.'|'.$row->source_location_id => true])
+            ->all();
     }
 
     private function resolveLocationId(object $order, ?string $kecilId): ?string

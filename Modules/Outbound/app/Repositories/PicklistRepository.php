@@ -125,7 +125,20 @@ class PicklistRepository
             'location:id,location_name,location_code',
             'picker:id,name,email',
             'creator:id,name',
-        ])->find($id);
+            ])->find($id);
+    }
+
+    /**
+     * Resolve only the export authorization/header data. The export request
+     * must not hydrate every item before it is queued.
+     */
+    public function findAccessibleHeader(string $id): ?Picklist
+    {
+        $query = Picklist::query()
+            ->select(['id', 'picklist_no', 'location_id'])
+            ->tap(fn ($q) => \App\Support\WarehouseAccess::apply($q, 'location_id'));
+
+        return $query->find($id);
     }
 
     public function create(array $data): Picklist

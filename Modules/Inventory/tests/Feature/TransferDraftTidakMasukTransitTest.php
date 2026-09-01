@@ -135,7 +135,7 @@ class TransferDraftTidakMasukTransitTest extends TestCase
         return $transfer->id;
     }
 
-    public function test_draft_mengunci_stok_tanpa_memindahkannya_ke_transit(): void
+    public function test_draft_tidak_mengubah_on_order_dan_tidak_memindahkan_ke_transit(): void
     {
         $this->buatDraftBerisi(5);
 
@@ -146,7 +146,8 @@ class TransferDraftTidakMasukTransitTest extends TestCase
             (int) $src->on_hand,
             'barang masih fisik di rak asal selama transfer belum dikirim'
         );
-        $this->assertSame(5, (int) $src->on_order, 'stok dikunci lewat on_order, bukan dipindahkan');
+        $this->assertSame(0, (int) $src->on_order, 'transfer draft bukan sales order dan tidak boleh mengubah on_order');
+        $this->assertSame(20, (int) $src->available, 'available tetap on_hand - on_order');
 
         $this->assertSame(0, $this->transitOnHand(), 'DRAFT tidak boleh menaruh stok di lokasi transit');
         $this->assertSame(0, $this->movements('TRANSIT_IN'), 'DRAFT tidak boleh menulis movement TRANSIT_IN');
@@ -163,7 +164,7 @@ class TransferDraftTidakMasukTransitTest extends TestCase
         $src = $this->sourceStock();
 
         $this->assertSame(15, (int) $src->on_hand, 'fisik berkurang saat dikirim');
-        $this->assertSame(0, (int) $src->on_order, 'kuncian dilepas karena stoknya sudah benar-benar keluar');
+        $this->assertSame(0, (int) $src->on_order, 'pengiriman transfer tidak mengubah on_order');
 
         $this->assertSame(5, $this->transitOnHand(), 'barang sedang di jalan = ada di transit');
         $this->assertSame(1, $this->movements('TRANSIT_IN'));
@@ -188,7 +189,7 @@ class TransferDraftTidakMasukTransitTest extends TestCase
 
         $src = $this->sourceStock();
         $this->assertSame(20, (int) $src->on_hand, 'approve tidak memindahkan fisik dari rak asal');
-        $this->assertSame(5, (int) $src->on_order, 'approve me-reserve on_order');
+        $this->assertSame(0, (int) $src->on_order, 'approve transfer tidak boleh me-reserve on_order');
         $this->assertSame(0, $this->transitOnHand(), 'approve FIFO tidak boleh menaruh stok di transit');
         $this->assertSame(0, $this->movements('TRANSIT_IN'), 'approve tidak menulis TRANSIT_IN');
         $this->assertSame(0, $this->movements('TRANSFER_OUT'), 'approve tidak menulis TRANSFER_OUT');
@@ -197,7 +198,7 @@ class TransferDraftTidakMasukTransitTest extends TestCase
 
         $src = $this->sourceStock();
         $this->assertSame(15, (int) $src->on_hand, 'fisik berkurang sekali saat dikirim');
-        $this->assertSame(0, (int) $src->on_order, 'kuncian dilepas saat kirim');
+        $this->assertSame(0, (int) $src->on_order, 'kirim transfer tidak mengubah on_order');
         $this->assertSame(5, $this->transitOnHand(), 'transit = qty, BUKAN 2x (tidak ada phantom stock nyangkut)');
         $this->assertSame(1, $this->movements('TRANSIT_IN'), 'TRANSIT_IN tepat sekali');
         $this->assertSame(1, $this->movements('TRANSFER_OUT'), 'TRANSFER_OUT tepat sekali');
@@ -222,7 +223,7 @@ class TransferDraftTidakMasukTransitTest extends TestCase
 
         $src = $this->sourceStock();
         $this->assertSame(20, (int) $src->on_hand, 'stok kembali utuh di rak asal');
-        $this->assertSame(5, (int) $src->on_order, 'kembali berstatus terkunci sebagai draft');
+        $this->assertSame(0, (int) $src->on_order, 'revert ke draft tidak boleh menambah on_order');
         $this->assertSame(0, $this->movements('TRANSFER_OUT'), 'revert tidak meninggalkan outbound palsu');
         $this->assertSame(0, $this->movements('TRANSIT_IN'), 'revert tidak meninggalkan transit palsu');
     }
@@ -241,7 +242,7 @@ class TransferDraftTidakMasukTransitTest extends TestCase
         $src = $this->sourceStock();
 
         $this->assertSame(20, (int) $src->on_hand, 'cancel sebelum kirim tidak mengubah stok fisik');
-        $this->assertSame(0, (int) $src->on_order, 'cancel sebelum kirim melepas reservasi');
+        $this->assertSame(0, (int) $src->on_order, 'cancel transfer tidak mengubah on_order');
         $this->assertSame(0, $this->movements('TRANSFER_OUT'), 'cancel sebelum kirim tidak menulis histori outbound');
         $this->assertSame(0, $this->movements('TRANSIT_IN'), 'cancel sebelum kirim tidak menulis histori transit');
     }
@@ -258,7 +259,7 @@ class TransferDraftTidakMasukTransitTest extends TestCase
 
         $this->assertDatabaseMissing('inventory_transfers', ['id' => $transferId]);
         $this->assertSame(20, (int) $src->on_hand, 'hapus sebelum kirim tidak mengubah stok fisik');
-        $this->assertSame(0, (int) $src->on_order, 'hapus sebelum kirim melepas reservasi');
+        $this->assertSame(0, (int) $src->on_order, 'hapus transfer tidak mengubah on_order');
         $this->assertSame(0, $this->movements('TRANSFER_OUT'), 'hapus sebelum kirim tidak menulis histori outbound');
         $this->assertSame(0, $this->movements('TRANSIT_IN'), 'hapus sebelum kirim tidak menulis histori transit');
     }
@@ -289,5 +290,34 @@ class TransferDraftTidakMasukTransitTest extends TestCase
                 ->count(),
             'edit metadata tidak boleh membuat histori baru',
         );
+    }
+
+    public function test_pengiriman_menolak_stok_yang_tidak_lagi_available(): void
+    {
+        config(['inventory.allow_negative_stock' => false]);
+
+        $transferId = $this->buatDraftBerisi(5);
+        $this->setujui($transferId);
+
+        DB::table('inventories')
+            ->where('item_id', $this->itemId)
+            ->where('bin_id', $this->sourceBinId)
+            ->update([
+                'on_order' => 16,
+                'available' => 4,
+            ]);
+
+        try {
+            app(InventoryService::class)->shipTransfer($transferId, ['shipped_by' => 'tester']);
+            $this->fail('Transfer seharusnya ditolak ketika available tidak mencukupi.');
+        } catch (\Exception $exception) {
+            $this->assertStringContainsString(
+                'Stok tersedia tidak mencukupi untuk transfer',
+                $exception->getMessage(),
+            );
+        }
+
+        $this->assertSame(20, (int) $this->sourceStock()->on_hand);
+        $this->assertSame(0, $this->transitOnHand());
     }
 }

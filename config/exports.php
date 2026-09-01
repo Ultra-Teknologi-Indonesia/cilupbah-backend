@@ -6,6 +6,8 @@ return [
     'memory_limit' => env('EXPORT_MEMORY_LIMIT', '1536M'),
     'pdf_chunk_size' => max(50, (int) env('EXPORT_PDF_CHUNK_SIZE', 250)),
     'timeout' => max(120, (int) env('EXPORT_TIMEOUT', 900)),
+    'csv_memory_limit' => env('EXPORT_CSV_MEMORY_LIMIT', '512M'),
+    'csv_chunk_size' => max(100, (int) env('EXPORT_CSV_CHUNK_SIZE', 250)),
     'dedicated_queues' => [
         env('QUEUE_NAME_EXPORTS', 'exports'),
     ],

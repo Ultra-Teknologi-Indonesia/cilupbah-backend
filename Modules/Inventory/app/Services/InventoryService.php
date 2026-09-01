@@ -1604,8 +1604,6 @@ class InventoryService
                 ]);
             }
 
-            $row->on_order += $take;
-            $this->inventoryRepository->updateStock($row);
         }
     }
 
@@ -1627,29 +1625,6 @@ class InventoryService
             }
 
             $this->assertNoUnreconciledPhysicalMovementsBeforeShipment($transfer);
-
-            foreach ($transfer->items as $item) {
-
-                if ($item->sync_status !== InventoryTransferItem::SYNC_SYNCED) {
-                    continue;
-                }
-
-                $sourceInventory = $this->inventoryRepository->findExactForUpdate(
-                    $item->item_id,
-                    $transfer->source_location_id,
-                    $item->source_bin_id,
-                    $item->batch_no,
-                    $item->serial_no,
-                );
-
-                if ($sourceInventory) {
-                    $releaseQty = min((int) $item->qty, (int) $sourceInventory->on_order);
-                    $sourceInventory->on_order -= $releaseQty;
-                    $this->inventoryRepository->updateStock($sourceInventory);
-
-                }
-
-            }
 
             $transfer->update([
                 'status' => InventoryTransfer::STATUS_CANCELLED,
@@ -1738,7 +1713,6 @@ class InventoryService
 
                 if ($sourceInventory) {
                     $sourceInventory->on_hand += $recoverQty;
-                    $sourceInventory->on_order += (int) $item->qty;
                     $this->inventoryRepository->updateStock($sourceInventory);
 
                     if ($recoverQty > 0) {
@@ -1853,7 +1827,7 @@ class InventoryService
                     throw new \Exception("Stok tidak ditemukan untuk item {$item->item_id}.");
                 }
 
-                $sourceInventory->on_order -= $item->qty;
+                $this->assertTransferSourceAvailable($sourceInventory, (int) $item->qty);
                 $sourceInventory->on_hand -= $item->qty;
                 $this->inventoryRepository->updateStock($sourceInventory);
 
@@ -2265,27 +2239,6 @@ class InventoryService
 
             $itemIds = $transfer->items->pluck('item_id')->unique()->all();
 
-            foreach ($transfer->items as $item) {
-                if ($item->sync_status !== InventoryTransferItem::SYNC_SYNCED) {
-                    continue;
-                }
-
-                $sourceInventory = $this->inventoryRepository->findExactForUpdate(
-                    $item->item_id,
-                    $transfer->source_location_id,
-                    $item->source_bin_id,
-                    $item->batch_no,
-                    $item->serial_no,
-                );
-                if ($sourceInventory) {
-                    $releaseQty = min((int) $item->qty, (int) $sourceInventory->on_order);
-                    $sourceInventory->on_order -= $releaseQty;
-                    $this->inventoryRepository->updateStock($sourceInventory);
-
-                }
-
-            }
-
             $transfer->delete();
 
             return $itemIds;
@@ -2506,7 +2459,7 @@ class InventoryService
                     throw new \Exception("Stok tidak ditemukan untuk item {$item->item_id}.");
                 }
 
-                $sourceInventory->on_order -= $item->qty;
+                $this->assertTransferSourceAvailable($sourceInventory, (int) $item->qty);
                 $sourceInventory->on_hand -= $item->qty;
                 $this->inventoryRepository->updateStock($sourceInventory);
 
@@ -2748,6 +2701,19 @@ class InventoryService
             $transfer->transfer_number,
             $transfer->created_by,
         );
+    }
+
+    private function assertTransferSourceAvailable(Inventory $sourceInventory, int $qty): void
+    {
+        if (config('inventory.allow_negative_stock', true)) {
+            return;
+        }
+
+        if ((int) $sourceInventory->available < $qty) {
+            throw new \Exception(
+                "Stok tersedia tidak mencukupi untuk transfer (tersedia: {$sourceInventory->available}, diminta: {$qty})."
+            );
+        }
     }
 
     private function assertNoUnreconciledPhysicalMovementsBeforeShipment(InventoryTransfer $transfer): void

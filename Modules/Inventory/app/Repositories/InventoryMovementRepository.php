@@ -79,6 +79,10 @@ class InventoryMovementRepository
         }
 
         $movement = InventoryMovement::create($data);
+        if (in_array($movement->source, InventoryMovementSourceMap::CHRONOLOGY_NETTABLE_REVERSAL_SOURCES, true)) {
+            app(\Modules\Inventory\Services\InventoryMovementReversalVisibilityService::class)
+                ->pairReversal($movement);
+        }
 
         $newBalance = $data['balance'] ?? null;
         $qty = (int) ($data['qty'] ?? 0);
@@ -189,6 +193,16 @@ class InventoryMovementRepository
             $baseQuery->whereIn('inventory_movements.location_id', $get('allowed_location_ids'));
         }
         $baseQuery->whereNotIn('source', InventoryMovementSourceMap::HIDDEN_SOURCES);
+        $baseQuery->whereNotExists(function ($query): void {
+            $query
+                ->selectRaw('1')
+                ->from('inventory_movement_reversal_pairs as reversal_pair')
+                ->where(function ($pair) {
+                    $pair
+                        ->whereColumn('reversal_pair.original_movement_id', 'inventory_movements.id')
+                        ->orWhereColumn('reversal_pair.reversal_movement_id', 'inventory_movements.id');
+                });
+        });
         $baseQuery->whereNotExists(function ($query) {
             $query
                 ->selectRaw('1')

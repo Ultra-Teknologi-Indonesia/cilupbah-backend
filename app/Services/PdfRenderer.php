@@ -12,6 +12,11 @@ class PdfRenderer
         return $this->make($view, $data, $paper, $orientation)->output();
     }
 
+    public function save(string $view, array $data, string $path, string $paper = 'a4', string $orientation = 'portrait'): void
+    {
+        $this->make($view, $data, $paper, $orientation)->save($path);
+    }
+
     public function stream(string $view, array $data, string $filename, string $paper = 'a4', string $orientation = 'portrait'): Response
     {
         $pdf = $this->make($view, $data, $paper, $orientation);

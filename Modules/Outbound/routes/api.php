@@ -14,6 +14,7 @@ use Modules\Outbound\Http\Controllers\WmsController;
 Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
 
     Route::post('orders/get-by-no', [OutboundFulfillmentController::class, 'getOrderByNo'])->name('outbound.orders.get-by-no')->middleware('role_or_permission:owner|view-pesanan');
+    Route::post('orders/export/async', [OutboundFulfillmentController::class, 'exportProcessOrders'])->name('outbound.orders.export.async')->middleware('role_or_permission:owner|export-pesanan');
     Route::post('orders/move-to-ready-to-pick', [OutboundFulfillmentController::class, 'moveToReadyToPick'])->name('outbound.orders.move-to-ready-to-pick')->middleware('role_or_permission:owner|edit-pesanan');
     Route::post('orders/move-to-ready-to-process', [OutboundFulfillmentController::class, 'moveToReadyToProcess'])->name('outbound.orders.move-to-ready-to-process')->middleware('role_or_permission:owner|edit-pesanan');
     Route::post('orders/change-location', [OutboundFulfillmentController::class, 'changeLocation'])->name('outbound.orders.change-location')->middleware('role_or_permission:owner|edit-pesanan');
@@ -43,6 +44,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::get('picklists/{id}', [PicklistController::class, 'show'])->name('outbound.picklists.show')->middleware('role_or_permission:owner|view-picking');
     Route::get('picklists/{id}/items', [PicklistController::class, 'items'])->name('outbound.picklists.items')->middleware('role_or_permission:owner|view-picking');
     Route::get('picklists/{id}/pdf', [PicklistController::class, 'pdf'])->name('outbound.picklists.pdf')->middleware('role_or_permission:owner|export-picking');
+    Route::get('picklists/{id}/xlsx', [PicklistController::class, 'excel'])->name('outbound.picklists.xlsx')->middleware('role_or_permission:owner|export-picking');
     Route::post('picklists/documents/bulk/pdf', [PicklistController::class, 'bulkPdf'])->name('outbound.picklists.bulk-pdf')->middleware('role_or_permission:owner|export-picking');
     Route::post('picklists/{id}/assign-picker', [PicklistController::class, 'assignPicker'])->name('outbound.picklists.assign-picker')->middleware('role_or_permission:owner|edit-picking');
 

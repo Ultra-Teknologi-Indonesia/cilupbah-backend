@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\Route;
 use Modules\Report\Exports\InventoryStockReportExport;
 use Modules\Report\Exports\NegativeStockReportExport;
+use Modules\Report\Exports\PicklistDetailExport;
 use Modules\Report\Exports\PicklistDetailPhotoExport;
 use Modules\Report\Exports\SectionedReportExport;
 use Modules\Report\Exports\ShipmentListReportExport;
@@ -23,6 +24,8 @@ class ExportManager
         'putaway-list',
         'shipment-by-courier',
         'picklist-detail-photo',
+        'picklist-detail',
+        'picklist-pdf',
         'inventory-stock',
         'inventory-rack',
         'shipment-list',
@@ -123,6 +126,11 @@ class ExportManager
 
             'picklist-detail-photo' => $this->buildPicklistPhoto($params),
 
+            'picklist-detail' => new PicklistDetailExport(
+                app(ReportService::class),
+                $params,
+            ),
+
             'inventory-stock' => new InventoryStockReportExport(
                 app(InventoryStockReportService::class),
                 $params,
@@ -193,6 +201,19 @@ class ExportManager
                 substr((string) ($params['picklist_id'] ?? 'export'), 0, 8),
             ),
 
+            'picklist-detail' => sprintf(
+                'Detail-Picklist_%s.xlsx',
+                substr((string) ($params['picklist_id'] ?? 'export'), 0, 8),
+            ),
+
+            'picklist-pdf' => sprintf(
+                '%s.pdf',
+                $this->safeFilenameStem(
+                    (string) ($params['picklist_no'] ?? '')
+                    ?: 'Picklist_'.substr((string) ($params['picklist_id'] ?? 'export'), 0, 8),
+                ),
+            ),
+
             'inventory-stock' => sprintf(
                 'persediaan-barang-%s.xlsx',
                 ($params['report_type'] ?? 'per-lokasi') === 'as_of_date'
@@ -228,5 +249,12 @@ class ExportManager
         if (! in_array($type, self::TYPES, true)) {
             throw new \InvalidArgumentException("Tipe export tidak dikenal: {$type}");
         }
+    }
+
+    private function safeFilenameStem(string $value): string
+    {
+        $safe = preg_replace('/[^A-Za-z0-9._-]+/', '_', trim($value));
+
+        return $safe !== null && $safe !== '' ? $safe : 'export';
     }
 }

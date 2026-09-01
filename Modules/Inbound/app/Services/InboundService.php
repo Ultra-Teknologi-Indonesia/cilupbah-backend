@@ -40,6 +40,7 @@ use Modules\Inventory\Models\PutawayPlacement;
 use Modules\Inventory\Models\PutawaySource;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Services\InventoryService;
+use Modules\Inventory\Services\InventoryMovementReversalVisibilityService;
 use Modules\Inventory\Services\PurchaseCostService;
 use Modules\Inventory\Services\PutawayService;
 use Modules\Notification\Events\TaskAssigned;
@@ -66,6 +67,7 @@ class InboundService
         protected NotificationDispatcher $notifications,
         protected InventoryRepository $inventoryRepository,
         protected PurchaseOrderRepository $purchaseOrderRepository,
+        protected InventoryMovementReversalVisibilityService $movementReversalVisibility,
     ) {}
 
     protected function unlockedOnceColumn(Model $doc): string
@@ -2031,7 +2033,7 @@ class InboundService
         $inventory->on_hand += (int) $data['qty'];
         $this->inventoryRepository->updateStock($inventory);
 
-        InventoryMovement::create([
+        $movement = InventoryMovement::create([
             'item_id' => $data['item_id'],
             'location_id' => $data['location_id'],
             'bin_id' => $data['bin_id'],
@@ -2042,6 +2044,8 @@ class InboundService
             'transaction_date' => now(),
             'created_by' => $data['created_by'],
         ]);
+
+        $this->movementReversalVisibility->pairReversal($movement);
     }
 
     public function downloadBarcodes(string $id)

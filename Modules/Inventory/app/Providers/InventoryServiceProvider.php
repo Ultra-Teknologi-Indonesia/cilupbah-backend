@@ -7,6 +7,7 @@ use Modules\Inventory\Console\Commands\AuditStockTransactionIntegrity;
 use Modules\Inventory\Console\Commands\AutoDetectStockReplenishment;
 use Modules\Inventory\Console\Commands\BackfillInboundMovementSource;
 use Modules\Inventory\Console\Commands\BackfillOrderAllocations;
+use Modules\Inventory\Console\Commands\BackfillReversalVisibility;
 use Modules\Inventory\Console\Commands\BackfillTransitInbounds;
 use Modules\Inventory\Console\Commands\CleanupDraftTransitStock;
 use Modules\Inventory\Console\Commands\ImportBaselineStock;
@@ -15,6 +16,7 @@ use Modules\Inventory\Console\Commands\RebuildAverageCost;
 use Modules\Inventory\Console\Commands\ReconcileInboundBackfillConsumption;
 use Modules\Inventory\Console\Commands\ReconcileOnOrder;
 use Modules\Inventory\Console\Commands\ReconcileOrderAllocationLedger;
+use Modules\Inventory\Console\Commands\ReconcileTransferOnOrder;
 use Modules\Inventory\Console\Commands\RepairOrphanTransferHistory;
 use Modules\Inventory\Console\Commands\ResetStock;
 use Modules\Inventory\Console\Commands\ValidateBaselineImport;
@@ -33,7 +35,9 @@ class InventoryServiceProvider extends ModuleServiceProvider
         AutoDetectStockReplenishment::class,
         BackfillTransitInbounds::class,
         BackfillOrderAllocations::class,
+        BackfillReversalVisibility::class,
         ReconcileOnOrder::class,
+        ReconcileTransferOnOrder::class,
         ReconcileOrderAllocationLedger::class,
         ReconcileInboundBackfillConsumption::class,
         BackfillInboundMovementSource::class,

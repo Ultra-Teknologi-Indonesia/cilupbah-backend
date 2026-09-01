@@ -193,18 +193,23 @@ class ReportRepository
     {
         $orderIds = $filters['order_ids'] ?? null;
 
-        $query = Picklist::with([
+        $with = [
             'items.product:id,product_id,sku',
             'items.product.product:id,name',
-            'items.product.options:id,variant_id,attribute_id,value',
-            'items.product.media:id,product_id,variant_id,url,is_primary,sort_order',
-            'items.product.product.media:id,product_id,variant_id,url,is_primary,sort_order',
             'items.orderItem:id,order_id,description',
             'items.order:id,salesorder_no,customer_name',
             'items.bin:id,bin_final_code',
             'location:id,location_name,location_code',
             'picker:id,name,email',
-        ])
+        ];
+
+        if (! ($filters['compact'] ?? false)) {
+            $with[] = 'items.product.options:id,variant_id,attribute_id,value';
+            $with[] = 'items.product.media:id,product_id,variant_id,url,is_primary,sort_order';
+            $with[] = 'items.product.product.media:id,product_id,variant_id,url,is_primary,sort_order';
+        }
+
+        $query = Picklist::with($with)
             ->tap(fn ($q) => WarehouseAccess::apply($q, 'location_id'))
             ->when($filters['location_id'] ?? null, fn ($q, $v) => $q->where('location_id', $v))
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
@@ -653,6 +658,36 @@ class ReportRepository
             ->orderBy('p.created_at')
             ->orderBy('p.picklist_no')
             ->orderBy('pi.sku');
+    }
+
+    public function pickListDetailQuery(string $picklistId, ?array $orderIds = null): Builder
+    {
+        return DB::table('picklist_items as pi')
+            ->join('picklists as p', 'p.id', '=', 'pi.picklist_id')
+            ->leftJoin('sales_orders as so', 'so.id', '=', 'pi.order_id')
+            ->leftJoin('users as u', 'u.id', '=', 'p.picker_id')
+            ->leftJoin('product_variants as v', 'v.id', '=', 'pi.item_id')
+            ->leftJoin('products as pr', 'pr.id', '=', 'v.product_id')
+            ->leftJoin('locations as l', 'l.id', '=', 'p.location_id')
+            ->leftJoin('location_bins as b', 'b.id', '=', 'pi.bin_id')
+            ->tap(fn ($q) => WarehouseAccess::apply($q, 'p.location_id'))
+            ->where('p.id', $picklistId)
+            ->when(! empty($orderIds), fn ($q) => $q->whereIn('pi.order_id', $orderIds))
+            ->select([
+                'so.salesorder_no',
+                'p.picklist_no',
+                'p.created_at as picklist_date',
+                'u.name as picker_name',
+                'pi.sku',
+                'pr.name as product_name',
+                'l.location_name',
+                DB::raw('COALESCE(b.bin_final_code, b.bin_code) as bin_code'),
+                'pi.qty_ordered',
+                'pi.qty_picked',
+            ])
+            ->orderBy('so.salesorder_no')
+            ->orderBy('pi.sku')
+            ->orderBy('pi.id');
     }
 
     public function transferQuery(array $filters): Builder
