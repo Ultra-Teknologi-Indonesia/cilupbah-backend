@@ -180,15 +180,15 @@ jobs:
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ secrets.DEPLOY_SERVER }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          host: ${{ secrets.STAGING_DEPLOY_SERVER }}
+          username: ${{ secrets.STAGING_DEPLOY_USER }}
+          key: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
           timeout: 60m
           command_timeout: 60m
           script: |
             set -e
 
-            cd ${{ secrets.DEPLOY_PATH }}
+            cd ${{ secrets.STAGING_DEPLOY_PATH }}
 
             # 1. Update file docker-compose.staging.yml dari repository
             PREVIOUS_COMMIT=$(git rev-parse HEAD || echo "")

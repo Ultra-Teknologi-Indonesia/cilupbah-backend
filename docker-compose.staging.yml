@@ -10,14 +10,15 @@ x-app-config: &app-config
     - PHP_INI_SCAN_DIR=/usr/local/etc/php/conf.d:/var/www/html/docker/php
   depends_on:
     - redis
+    - pgsql
   volumes:
     # Mount file .env langsung ke root aplikasi di dalam container
-    - /var/www/cilupbah/.env:/var/www/html/.env
+    - ./.env:/var/www/html/.env
     # Mount folder yang isinya berubah/dinamis di production
-    - /var/www/cilupbah/storage/app:/var/www/html/storage/app
-    - /var/www/cilupbah/storage/framework:/var/www/html/storage/framework
-    - /var/www/cilupbah/storage/logs:/var/www/html/storage/logs
-    - /var/www/cilupbah/bootstrap/cache:/var/www/html/bootstrap/cache
+    - ./storage/app:/var/www/html/storage/app
+    - ./storage/framework:/var/www/html/storage/framework
+    - ./storage/logs:/var/www/html/storage/logs
+    - ./bootstrap/cache:/var/www/html/bootstrap/cache
 
 services:
   app:
@@ -54,5 +55,19 @@ services:
     volumes:
       - staging_redisdata:/data
 
+  pgsql:
+    container_name: cilupbah-staging-db
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cilupbah_staging
+      POSTGRES_USER: user_staging
+      POSTGRES_PASSWORD: password_staging
+    volumes:
+      - staging_pgdata:/var/lib/postgresql/data
+    ports:
+      - "5433:5432" # Diekspos ke port 5433 di host agar tidak bentrok jika host punya postgres
+
 volumes:
   staging_redisdata:
+  staging_pgdata:
