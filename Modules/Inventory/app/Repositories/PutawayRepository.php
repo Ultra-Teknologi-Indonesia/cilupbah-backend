@@ -167,7 +167,7 @@ class PutawayRepository
     private function detailRelations(): array
     {
         return [
-            'items.product:id,sku,product_id',
+            'items.product:id,sku,product_id,barcode',
             'items.product.product:id,name',
             'items.product.options:id,variant_id,value',
             'items.product.media' => fn ($q) => $q->orderBy('sort_order')->limit(1),
@@ -220,7 +220,7 @@ class PutawayRepository
     {
         return QueryBuilder::for(PutawayItem::where('putaway_id', $putawayId))
             ->with([
-                'product:id,sku,product_id',
+                'product:id,sku,product_id,barcode',
                 'product.product:id,name',
                 'product.options:id,variant_id,value',
                 'product.media' => fn ($q) => $q->orderBy('sort_order')->limit(1),

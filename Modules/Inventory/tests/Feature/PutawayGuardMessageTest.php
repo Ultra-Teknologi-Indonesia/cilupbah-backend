@@ -167,6 +167,20 @@ class PutawayGuardMessageTest extends TestCase
             ->assertJsonPath('errors.code', 'PUTAWAY_ITEM_NOT_FOUND');
     }
 
+    public function test_putaway_items_include_barcode_for_mobile_scanning(): void
+    {
+        $loc = $this->locationKecil();
+        $inbound = $this->makeBin($loc, 'INB', true);
+        $variant = $this->makeVariant();
+        $variant->update(['barcode' => '8999000012345']);
+        $item = $this->makePutawayItem($loc, $inbound, $variant);
+
+        $this->getJson("/api/v1/putaway/{$item->putaway_id}/items")
+            ->assertOk()
+            ->assertJsonPath('data.0.product.sku', $variant->sku)
+            ->assertJsonPath('data.0.product.barcode', '8999000012345');
+    }
+
     public function test_completed_item_returns_structured_conflict_message(): void
     {
         $loc = $this->locationKecil();

@@ -8,6 +8,7 @@ use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Models\InboundAssignment;
 use Modules\Inbound\Models\InboundItem;
 use Modules\Inbound\Models\InboundReceipt;
+use Modules\Inbound\Support\InboundDisplayNotes;
 use Modules\Inbound\Support\InboundPlacementProgress;
 use Modules\Purchase\Models\PurchaseOrder;
 use Spatie\QueryBuilder\AllowedFilter;
@@ -19,7 +20,7 @@ class InboundRepository
     public function getAllPaginated(int $limit = 10)
     {
         $query = QueryBuilder::for(Inbound::class)
-            ->with(['location:id,location_name', 'items.variant:id,sku,product_id', 'assignments.worker:id,name', 'putaways:id,source_id,status,assigned_to', 'putaways.assignee:id,name', 'assignee:id,name', 'assignedByUser:id,name']);
+            ->with(['location:id,location_name', 'items.variant:id,sku,product_id', 'assignments.worker:id,name', 'putaways:id,source_id,status,assigned_to,notes,created_at', 'putaways.assignee:id,name', 'directPutaways:id,source_id,status,assigned_to,notes,created_at', 'directPutaways.assignee:id,name', 'assignee:id,name', 'assignedByUser:id,name']);
 
         if (! request()->query('filter.status')) {
             $query->where('status', '!=', Inbound::STATUS_CANCELLED);
@@ -107,6 +108,7 @@ class InboundRepository
         }
 
         foreach ($paginator->items() as $item) {
+            $item->notes = InboundDisplayNotes::resolve($item);
             InboundPlacementProgress::decorate($item);
         }
 
@@ -123,6 +125,8 @@ class InboundRepository
             'items.variant.product:id,name',
             'items.variant.media',
             'items.variant.product.media',
+            'putaways:id,source_id,status,notes,created_at',
+            'directPutaways:id,source_id,status,notes,created_at',
             'assignee:id,name',
             'assignedByUser:id,name',
         ])->find($id);
@@ -141,6 +145,8 @@ class InboundRepository
                     $inbound->notes = null;
                 }
             }
+
+            $inbound->notes = InboundDisplayNotes::resolve($inbound);
         }
 
         if ($inbound && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', (string) $inbound->created_by)) {

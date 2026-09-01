@@ -2,20 +2,26 @@
 
 namespace Modules\Inbound\Models;
 
+use App\Models\User;
 use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Modules\Inventory\Models\Putaway;
 use Modules\Warehouse\Models\Location;
 
 class Inbound extends Model
 {
     use HasUuid7;
+
     const TYPE_PURCHASE_ORDER = 'PURCHASE_ORDER';
-    const TYPE_SALES_RETURN   = 'SALES_RETURN';
-    const TYPE_TRANSIT_IN     = 'TRANSIT_IN';
-    const TYPE_CONSIGNMENT    = 'CONSIGNMENT';
+
+    const TYPE_SALES_RETURN = 'SALES_RETURN';
+
+    const TYPE_TRANSIT_IN = 'TRANSIT_IN';
+
+    const TYPE_CONSIGNMENT = 'CONSIGNMENT';
 
     const TYPES = [
         self::TYPE_PURCHASE_ORDER,
@@ -24,12 +30,17 @@ class Inbound extends Model
         self::TYPE_CONSIGNMENT,
     ];
 
-    const STATUS_DRAFT                = 'DRAFT';
-    const STATUS_PARTIAL              = 'PARTIAL';
-    const STATUS_RECEIVED             = 'RECEIVED';
-    const STATUS_PUTAWAY_IN_PROGRESS  = 'PUTAWAY_IN_PROGRESS';
-    const STATUS_COMPLETED            = 'COMPLETED';
-    const STATUS_CANCELLED            = 'CANCELLED';
+    const STATUS_DRAFT = 'DRAFT';
+
+    const STATUS_PARTIAL = 'PARTIAL';
+
+    const STATUS_RECEIVED = 'RECEIVED';
+
+    const STATUS_PUTAWAY_IN_PROGRESS = 'PUTAWAY_IN_PROGRESS';
+
+    const STATUS_COMPLETED = 'COMPLETED';
+
+    const STATUS_CANCELLED = 'CANCELLED';
 
     protected $fillable = [
         'location_id',
@@ -60,12 +71,12 @@ class Inbound extends Model
 
     public function assignee(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\User::class, 'assigned_to');
+        return $this->belongsTo(User::class, 'assigned_to');
     }
 
     public function assignedByUser(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\User::class, 'assigned_by');
+        return $this->belongsTo(User::class, 'assigned_by');
     }
 
     public function location(): BelongsTo
@@ -109,11 +120,20 @@ class Inbound extends Model
     public function putaways(): BelongsToMany
     {
         return $this->belongsToMany(
-            \Modules\Inventory\Models\Putaway::class,
+            Putaway::class,
             'putaway_sources',
             'inbound_id',
             'putaway_id',
         )->withTimestamps();
+    }
+
+    /**
+     * Legacy putaways linked directly through putaways.source_id.
+     * New records use the putaway_sources pivot, but old records may not have it.
+     */
+    public function directPutaways(): HasMany
+    {
+        return $this->hasMany(Putaway::class, 'source_id', 'id');
     }
 
     public function scopeByStatus($query, string $status)
