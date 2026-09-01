@@ -23,7 +23,9 @@ class ProductRepository
 {
     public function findBySku(string $sku, array $with = []): ?Product
     {
-        $product = Product::with($with)->where('sku', $sku)->first();
+        $product = TechnicalSku::exclude(Product::with($with))
+            ->where('sku', $sku)
+            ->first();
         if ($product) {
             return $product;
         }
@@ -36,6 +38,7 @@ class ProductRepository
     public function paginateBundles(): LengthAwarePaginator
     {
         return QueryBuilder::for(Product::class)
+            ->tap(fn ($query) => TechnicalSku::exclude($query, 'products.sku'))
             ->where('is_bundle', true)
             ->with(['variants', 'media', 'category'])
             ->allowedSearch('name')
@@ -47,18 +50,18 @@ class ProductRepository
 
     public function getByIdsWithStock(array $ids): Collection
     {
-        return Product::with([
+        return TechnicalSku::exclude(Product::with([
             'variants.inventories',
             'variants.inventories.bin:id,is_inbound',
             'bundleItems.component.inventories',
             'bundleItems.component.inventories.bin:id,is_inbound',
             'bundleItems.component.inventories.location:id,location_code,location_name',
-        ])->whereIn('id', $ids)->get();
+        ]), 'products.sku')->whereIn('id', $ids)->get();
     }
 
     public function getByIdsWithVariants(array $ids): Collection
     {
-        return Product::with('variants:id,product_id,sku,sell_price')
+        return TechnicalSku::exclude(Product::with('variants:id,product_id,sku,sell_price'), 'products.sku')
             ->whereIn('id', $ids)
             ->get(['id', 'sku', 'name']);
     }
@@ -234,6 +237,7 @@ class ProductRepository
     public function paginateIndex(?string $status = null): LengthAwarePaginator
     {
         return QueryBuilder::for(Product::class)
+            ->tap(fn ($query) => TechnicalSku::exclude($query, 'products.sku'))
             ->with(['variants', 'media', 'category', 'channelMappings.channelShop.channel'])
             ->allowedSearch('name')
             ->allowedFilters(
@@ -248,6 +252,7 @@ class ProductRepository
     public function paginateUploadable(string $channelShopId): LengthAwarePaginator
     {
         return QueryBuilder::for(Product::class)
+            ->tap(fn ($query) => TechnicalSku::exclude($query, 'products.sku'))
             ->with(['variants', 'media', 'category'])
             ->where('status', Product::STATUS_MASTER)
             ->whereDoesntHave('channelMappings', fn ($query) => $query->where('channel_shop_id', $channelShopId))
