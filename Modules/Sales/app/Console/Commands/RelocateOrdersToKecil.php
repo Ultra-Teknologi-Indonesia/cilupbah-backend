@@ -11,6 +11,7 @@ class RelocateOrdersToKecil extends Command
 {
     protected $signature = 'orders:relocate-to-kecil
         {--dry-run : Hanya tampilkan preview, tidak menulis apa pun}
+        {--salesorder= : Batasi ke nomor sales order tertentu}
         {--limit=0 : Batasi jumlah order yang diproses (0 = semua)}
         {--chunk=100 : Ukuran chunk saat iterasi order}';
 
@@ -22,12 +23,13 @@ class RelocateOrdersToKecil extends Command
 
         if (! $kecilId) {
             $this->error('Gudang Kecil resmi belum dikonfigurasi. Tandai satu lokasi aktif sebagai gudang kecil terlebih dahulu.');
+
             return self::FAILURE;
         }
 
         $dryRun = (bool) $this->option('dry-run');
-        $limit  = (int) $this->option('limit');
-        $chunk  = max(1, (int) $this->option('chunk'));
+        $limit = (int) $this->option('limit');
+        $chunk = max(1, (int) $this->option('chunk'));
 
         $baseQuery = SalesOrder::query()
             ->whereNotNull('source')
@@ -39,10 +41,16 @@ class RelocateOrdersToKecil extends Command
                     ->orWhere('location_id', '!=', $kecilId);
             });
 
+        $salesOrder = trim((string) ($this->option('salesorder') ?? ''));
+        if ($salesOrder !== '') {
+            $baseQuery->where('salesorder_no', $salesOrder);
+        }
+
         $total = (clone $baseQuery)->count();
 
         if ($total === 0) {
             $this->info('Tidak ada pesanan channel yang perlu di-relocate.');
+
             return self::SUCCESS;
         }
 
@@ -54,7 +62,7 @@ class RelocateOrdersToKecil extends Command
         ));
 
         $success = 0;
-        $failed  = 0;
+        $failed = 0;
         $skipped = 0;
         $processed = 0;
 
@@ -81,6 +89,7 @@ class RelocateOrdersToKecil extends Command
 
                 if ($order->location_id === $kecilId) {
                     $skipped++;
+
                     continue;
                 }
 
@@ -94,6 +103,7 @@ class RelocateOrdersToKecil extends Command
                         $kecilId,
                     ));
                     $success++;
+
                     continue;
                 }
 

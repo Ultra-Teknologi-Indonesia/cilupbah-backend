@@ -1529,7 +1529,13 @@ class SalesOrderService
                 $order = SalesOrder::create(array_merge($validated, ['status' => 'pending']));
                 $this->logStatusHistory($order, 'CREATED', ['to' => 'pending']);
 
-                if (! $order->location_id) {
+                if (! $this->isManualSource($order->source)) {
+                    if (! $order->location_id || $this->isCentralLocationId((string) $order->location_id)) {
+                        $order->update([
+                            'location_id' => $this->resolveChannelOrderLocationId($order),
+                        ]);
+                    }
+                } elseif (! $order->location_id) {
                     try {
                         $locationId = $this->resolveLocationId($order);
                         $order->update(['location_id' => $locationId]);
@@ -1869,9 +1875,19 @@ class SalesOrderService
     public function relocateOrder(SalesOrder $order, string $newLocationId, bool $enforce = true): SalesOrder
     {
         return DB::transaction(function () use ($order, $newLocationId, $enforce) {
-            $oldLocationId = $this->resolveLocationId($order);
+            if (! $this->isManualSource($order->source)) {
+                $channelLocationId = $this->resolveChannelOrderLocationId($order);
+                if ($newLocationId !== $channelLocationId) {
+                    throw new UserFacingException(
+                        'Lokasi order marketplace harus Gudang Kecil.',
+                        'Order marketplace tidak dapat dialokasikan ke gudang pusat.',
+                    );
+                }
+            }
 
-            if ($order->status === 'reserved' && $oldLocationId !== $newLocationId) {
+            $oldLocationId = (string) ($order->location_id ?: $this->resolveLocationId($order));
+
+            if (in_array($order->status, ['pending', 'reserved'], true) && $oldLocationId !== $newLocationId) {
                 $order->load('items');
 
                 foreach ($order->items as $item) {
@@ -2142,6 +2158,27 @@ class SalesOrderService
             }
 
             $order->load('items');
+
+            if (! $this->isManualSource($order->source)
+                && $this->isCentralLocationId((string) $order->location_id)
+            ) {
+                $channelLocationId = $this->resolveChannelOrderLocationId($order);
+
+                if ($existing !== null && in_array($order->status, ['pending', 'reserved'], true)) {
+                    $order = $this->relocateOrder($order, $channelLocationId, enforce: false);
+                } elseif ($existing === null) {
+                    $order->update(['location_id' => $channelLocationId]);
+                } else {
+                    Log::warning('sales_order.channel_terminal_order_still_at_central', [
+                        'order_id' => $order->id,
+                        'salesorder_no' => $order->salesorder_no,
+                        'source' => $order->source,
+                        'status' => $order->status,
+                        'location_id' => $order->location_id,
+                        'target_location_id' => $channelLocationId,
+                    ]);
+                }
+            }
 
             if ($wasNewOrder && $order->source && ! empty($orderData['items']) && is_array($orderData['items'])) {
                 $downloaded = $this->orderRepository->channelDownloadedSkus($orderData['items']);
@@ -2827,38 +2864,14 @@ class SalesOrderService
 
     private function resolveLocationId(SalesOrder $order): string
     {
+        if ($order->location_id) {
+            return (string) $order->location_id;
+        }
 
         $isManual = $this->isManualSource($order->source);
 
-        if ($isManual && $order->location_id) {
-            return $order->location_id;
-        }
-
-        $kecilId = Location::getOfficialSmallWarehouseId();
-
-        if ($kecilId) {
-            return $kecilId;
-        }
-
-        if (! $isManual && $order->channel_shop_id) {
-            $mapping = DB::table('channel_warehouses')
-                ->where('store_id', $order->channel_shop_id)
-                ->first();
-
-            if ($mapping) {
-                $mappedLocationId = SalesOrderDataNormalizer::nullableUuid($mapping->location_id ?? null);
-
-                if ($mappedLocationId !== null) {
-                    return $mappedLocationId;
-                }
-
-                Log::warning('sales_order.invalid_mapped_location_id_normalized', [
-                    'order_id' => $order->id,
-                    'salesorder_no' => $order->salesorder_no,
-                    'channel_shop_id' => $order->channel_shop_id,
-                    'location_id' => $mapping->location_id ?? null,
-                ]);
-            }
+        if (! $isManual) {
+            return $this->resolveChannelOrderLocationId($order);
         }
 
         $defaultLocation = DB::table('locations')
@@ -2871,6 +2884,25 @@ class SalesOrderService
         }
 
         return $defaultLocation->id;
+    }
+
+    private function resolveChannelOrderLocationId(SalesOrder $order): string
+    {
+        $kecilId = Location::getOfficialSmallWarehouseId();
+
+        if (! $kecilId) {
+            throw new LocationNotConfiguredException($order->salesorder_no ?? 'unknown');
+        }
+
+        return (string) $kecilId;
+    }
+
+    private function isCentralLocationId(string $locationId): bool
+    {
+        return DB::table('locations')
+            ->where('id', $locationId)
+            ->where('location_code', Location::SYSTEM_PUSAT_CODE)
+            ->exists();
     }
 
     private function isManualSource(?string $source): bool
