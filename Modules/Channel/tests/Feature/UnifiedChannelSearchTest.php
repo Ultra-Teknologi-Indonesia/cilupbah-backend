@@ -139,12 +139,14 @@ class UnifiedChannelSearchTest extends TestCase
         $this->assertNotNull($shopeeItem);
         $this->assertSame('101', (string) $shopeeItem['external_product_id']);
         $this->assertTrue($shopeeItem['already_downloaded']);
+        $this->assertSame('none', $shopeeItem['download_action']);
         $this->assertSame($masterProduct->id, $shopeeItem['master_product_id']);
 
         $tiktokItem = collect($items)->firstWhere('channel_code', 'tiktok');
         $this->assertNotNull($tiktokItem);
         $this->assertSame('tt-prod-202', (string) $tiktokItem['external_product_id']);
         $this->assertFalse($tiktokItem['already_downloaded']);
+        $this->assertSame('download', $tiktokItem['download_action']);
     }
 
     public function test_unified_search_can_filter_by_specific_shop_ids(): void

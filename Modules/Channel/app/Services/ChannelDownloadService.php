@@ -25,7 +25,7 @@ class ChannelDownloadService
     public function download(string $channel, string $shopId, ?string $executedBy = null): DownloadTransaction
     {
         $this->assertSupported($channel);
-        $channelShopId = $this->requireChannelShopId($shopId);
+        $channelShopId = $this->requireChannelShopId($shopId, $channel);
 
         $debounceKey = 'channel_full_pull_debounce:' . strtolower($channel) . ":{$shopId}";
         if (! Cache::add($debounceKey, true, 10)) {
@@ -68,7 +68,7 @@ class ChannelDownloadService
 
     public function pull(string $channel, string $shopId, ?\Closure $onProgress = null): int
     {
-        $channelShopId = $this->channelShopRepository->getIdByShopId($shopId);
+        $channelShopId = $this->requireChannelShopId($shopId, $channel);
 
         try {
             $count = ($this->pullerFor($channel, $onProgress))($shopId);
@@ -212,10 +212,12 @@ class ChannelDownloadService
         $allExtIds = collect($allItems)->pluck('external_product_id')->filter()->unique()->values()->all();
         $shopIdMap = $shops->pluck('id', 'shop_id')->all();
 
-        $existingMappings = ProductChannelMapping::with(['product:id,name,sku'])
+        $existingMappings = ProductChannelMapping::with(['product' => fn ($query) => $query
+                ->withTrashed()
+                ->select('id', 'name', 'sku', 'deleted_at')])
             ->whereIn('channel_shop_id', $shops->pluck('id'))
             ->whereIn('external_product_id', $allExtIds)
-            ->whereHas('product')
+            ->whereHas('product', fn ($query) => $query->withTrashed())
             ->get()
             ->keyBy(fn ($m) => $m->channel_shop_id . ':' . $m->external_product_id);
 
@@ -224,15 +226,7 @@ class ChannelDownloadService
             $mappingKey = $dbShopId ? ($dbShopId . ':' . ($it['external_product_id'] ?? '')) : null;
             $mapping = $mappingKey ? $existingMappings->get($mappingKey) : null;
 
-            $it['already_downloaded'] = (bool) $mapping
-                && ! in_array($mapping->sync_status, [
-                    ProductChannelMapping::STATUS_FAILED,
-                    ProductChannelMapping::STATUS_DEACTIVATED,
-                ], true);
-            $it['mapping_status'] = $mapping?->sync_status;
-            $it['master_product_id'] = $mapping?->product_id;
-            $it['master_product_name'] = $mapping?->product?->name;
-            $it['master_product_sku'] = $mapping?->product?->sku;
+            $it = $this->decorateDownloadStatus($it, $mapping);
         }
         unset($it);
 
@@ -280,25 +274,21 @@ class ChannelDownloadService
             )));
 
             if (! empty($ids)) {
-                $downloaded = array_flip(
-                    ProductChannelMapping::where('channel_shop_id', $channelShopId)
-                        ->whereIn('external_product_id', $ids)
-                        ->whereHas('product')
-                        ->whereNotIn('sync_status', [
-                            ProductChannelMapping::STATUS_FAILED,
-                            ProductChannelMapping::STATUS_DEACTIVATED,
-                        ])
-                        ->pluck('external_product_id')
-                        ->map(fn ($v) => (string) $v)
-                        ->all()
-                );
+                $downloaded = ProductChannelMapping::with(['product' => fn ($query) => $query
+                        ->withTrashed()
+                        ->select('id', 'name', 'sku', 'deleted_at')])
+                    ->where('channel_shop_id', $channelShopId)
+                    ->whereIn('external_product_id', $ids)
+                    ->whereHas('product', fn ($query) => $query->withTrashed())
+                    ->get()
+                    ->keyBy(fn ($mapping) => (string) $mapping->external_product_id);
             }
         }
 
         $flagged = array_map(function ($r) use ($downloaded) {
-            $r['already_downloaded'] = isset($downloaded[(string) ($r['external_product_id'] ?? '')]);
+            $mapping = $downloaded[(string) ($r['external_product_id'] ?? '')] ?? null;
 
-            return $r;
+            return $this->decorateDownloadStatus($r, $mapping);
         }, $results);
 
         usort(
@@ -307,6 +297,32 @@ class ChannelDownloadService
         );
 
         return $flagged;
+    }
+
+    /**
+     * Add an explicit action while keeping the legacy boolean response field.
+     */
+    protected function decorateDownloadStatus(array $item, ?ProductChannelMapping $mapping): array
+    {
+        $isDeleted = $mapping?->product?->trashed() ?? false;
+        $isUsableMapping = $mapping
+            && ! $isDeleted
+            && ! in_array($mapping->sync_status, [
+                ProductChannelMapping::STATUS_FAILED,
+                ProductChannelMapping::STATUS_DEACTIVATED,
+            ], true);
+
+        $action = $isUsableMapping ? 'none' : 'download';
+
+        $item['download_action'] = $action;
+        $item['master_status'] = $isDeleted ? 'deleted' : ($isUsableMapping ? 'active' : 'missing');
+        $item['already_downloaded'] = $action === 'none';
+        $item['mapping_status'] = $mapping?->sync_status;
+        $item['master_product_id'] = $mapping?->product_id;
+        $item['master_product_name'] = $mapping?->product?->name;
+        $item['master_product_sku'] = $mapping?->product?->sku;
+
+        return $item;
     }
 
     protected function buildRemoteSearchTask(string $channel, string $shopId, string $query, int $limit): callable
@@ -426,7 +442,7 @@ class ChannelDownloadService
     public function downloadProductManual(string $channel, string $shopId, string $externalProductId, ?string $executedBy = null): DownloadTransaction
     {
         $this->assertSupported($channel);
-        $channelShopId = $this->requireChannelShopId($shopId);
+        $channelShopId = $this->requireChannelShopId($shopId, $channel);
 
         $transaction = DownloadTransaction::create([
             'channel_shop_id' => $channelShopId,
@@ -451,7 +467,7 @@ class ChannelDownloadService
     public function downloadProduct(string $channel, string $shopId, string $externalProductId): bool
     {
         $this->assertSupported($channel);
-        $channelShopId = $this->requireChannelShopId($shopId);
+        $channelShopId = $this->requireChannelShopId($shopId, $channel);
 
         $ok = match (strtolower($channel)) {
             'tiktok' => app(TikTokProductService::class)->pullProductById($shopId, $externalProductId),
@@ -493,12 +509,19 @@ class ChannelDownloadService
         }
     }
 
-    protected function requireChannelShopId(string $shopId): string
+    protected function requireChannelShopId(string $shopId, ?string $channel = null): string
     {
         $channelShopId = $this->channelShopRepository->getIdByShopId($shopId);
 
         if (! $channelShopId) {
             throw new \RuntimeException('Toko tidak ditemukan', 422);
+        }
+
+        if ($channel !== null && ! ChannelShop::query()
+            ->whereKey($channelShopId)
+            ->whereHas('channel', fn ($query) => $query->whereRaw('LOWER(code) = ?', [strtolower($channel)]))
+            ->exists()) {
+            throw new \RuntimeException('Toko tidak sesuai dengan channel yang dipilih', 422);
         }
 
         return $channelShopId;

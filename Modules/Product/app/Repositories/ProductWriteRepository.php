@@ -48,7 +48,12 @@ class ProductWriteRepository
 
     public function productIdByVariantSku(string $sku): ?string
     {
-        return DB::table('product_variants')->where('sku', $sku)->whereNull('deleted_at')->value('product_id');
+        return DB::table('product_variants as pv')
+            ->join('products as p', 'p.id', '=', 'pv.product_id')
+            ->where('pv.sku', $sku)
+            ->whereNull('pv.deleted_at')
+            ->whereNull('p.deleted_at')
+            ->value('pv.product_id');
     }
 
     public function productIdByChannelExternalId(string $shopId, string $externalProductId): ?string
@@ -71,11 +76,13 @@ class ProductWriteRepository
         }
 
         return DB::table('product_variants')
-            ->whereIn('sku', $skus)
-            ->whereNull('deleted_at')
-            ->groupBy('product_id')
-            ->orderByRaw('COUNT(*) DESC, MIN(id::text) ASC')
-            ->value('product_id');
+            ->join('products as p', 'p.id', '=', 'product_variants.product_id')
+            ->whereIn('product_variants.sku', $skus)
+            ->whereNull('product_variants.deleted_at')
+            ->whereNull('p.deleted_at')
+            ->groupBy('product_variants.product_id')
+            ->orderByRaw('COUNT(*) DESC, MIN(product_variants.id::text) ASC')
+            ->value('product_variants.product_id');
     }
 
     public function productCategoryId(string $productId)

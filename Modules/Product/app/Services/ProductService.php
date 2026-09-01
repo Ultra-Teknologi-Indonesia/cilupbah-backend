@@ -230,6 +230,7 @@ class ProductService
             $data['variants'] ?? [],
             isset($data['channel_external_product_id']) ? (string) $data['channel_external_product_id'] : null,
         );
+        $data['variants'] = $this->makeDeletedChannelVariantSkusUnique($data);
         $variantIds = [];
         $productId = $this->resolveExistingProductFromChannel($data);
 
@@ -265,6 +266,65 @@ class ProductService
         }
 
         return $placeholder;
+    }
+
+    /**
+     * A deleted master may still have a live variant from an earlier import.
+     * Keep that historical identity intact and give the new import a unique
+     * internal SKU; the original marketplace SKU is written to its channel
+     * mapping by the channel linker.
+     */
+    private function makeDeletedChannelVariantSkusUnique(array $data): array
+    {
+        $externalProductId = trim((string) ($data['channel_external_product_id'] ?? ''));
+        if ($externalProductId === '') {
+            return $data['variants'] ?? [];
+        }
+
+        $skus = collect($data['variants'] ?? [])
+            ->pluck('sku')
+            ->filter(fn ($sku) => is_string($sku) && trim($sku) !== '')
+            ->map(fn ($sku) => trim($sku))
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($skus === []) {
+            return $data['variants'] ?? [];
+        }
+
+        $blocked = DB::table('product_variants as pv')
+            ->join('products as p', 'p.id', '=', 'pv.product_id')
+            ->whereIn('pv.sku', $skus)
+            ->whereNull('pv.deleted_at')
+            ->whereNotNull('p.deleted_at')
+            ->pluck('pv.sku')
+            ->map(fn ($sku) => (string) $sku)
+            ->flip();
+
+        if ($blocked->isEmpty()) {
+            return $data['variants'] ?? [];
+        }
+
+        foreach ($data['variants'] as &$variant) {
+            $sku = trim((string) ($variant['sku'] ?? ''));
+            if (! isset($blocked[$sku])) {
+                continue;
+            }
+
+            $base = $sku . '-REIMPORT-' . substr(sha1($externalProductId . ':' . $sku), 0, 8);
+            $candidate = $base;
+            $suffix = 2;
+
+            while (DB::table('product_variants')->where('sku', $candidate)->exists()) {
+                $candidate = $base . '-' . $suffix++;
+            }
+
+            $variant['sku'] = $candidate;
+        }
+        unset($variant);
+
+        return $data['variants'];
     }
 
     public function addVariantFromChannel(string $productId, array $variant): ?string
