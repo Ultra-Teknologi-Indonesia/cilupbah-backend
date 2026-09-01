@@ -212,6 +212,7 @@ class StockReplenishmentRepository
             ->where('o.location_id', $kecilId)
             ->whereNotNull('i.item_id')
             ->where('p.is_bundle', false)
+            ->whereNull('p.deleted_at')
             ->when($itemIds !== null, fn ($query) => $query->whereIn('i.item_id', $itemIds))
             ->groupBy('i.item_id', 'i.sku')
             ->select('i.item_id', 'i.sku', DB::raw('SUM(i.qty_in_base) as needed'));
@@ -230,6 +231,7 @@ class StockReplenishmentRepository
             ])
             ->where('o.location_id', $kecilId)
             ->where('bundle_product.is_bundle', true)
+            ->whereNull('bundle_product.deleted_at')
             ->whereNotNull('bundle_item.component_variant_id')
             ->when($itemIds !== null, fn ($query) => $query->whereIn('bundle_item.component_variant_id', $itemIds))
             ->groupBy('bundle_item.component_variant_id', 'component.sku')

@@ -61,6 +61,7 @@ class MonitorStockRepository
             ->leftJoinSub($activeRestock, 'active_restock', 'active_restock.item_id', '=', 'product_variants.id')
             ->where('products.is_stored', true)
             ->where('products.is_bundle', false)
+            ->whereNull('products.deleted_at')
             ->select('product_variants.*')
             ->selectRaw('products.name as product_name')
             ->selectRaw('COALESCE(inv.on_hand, 0) as total_on_hand')
@@ -97,6 +98,7 @@ class MonitorStockRepository
                         ON pending_bundle_item.bundle_product_id = pending_bundle_product.id
                       WHERE pending_bundle_variant.id = sales_order_items.item_id
                         AND pending_bundle_product.is_bundle = true
+                        AND pending_bundle_product.deleted_at IS NULL
                         AND pending_bundle_item.component_variant_id = product_variants.id
                   )
               )
@@ -118,6 +120,7 @@ class MonitorStockRepository
             ->join('product_bundle_items as pending_bundle_item', 'pending_bundle_item.bundle_product_id', '=', 'pending_bundle_product.id')
             ->whereIn('pending_orders.status', self::PENDING_ORDER_STATUSES)
             ->where('pending_bundle_product.is_bundle', true)
+            ->whereNull('pending_bundle_product.deleted_at')
             ->whereNotNull('pending_bundle_item.component_variant_id')
             ->select('pending_bundle_item.component_variant_id as item_id');
 

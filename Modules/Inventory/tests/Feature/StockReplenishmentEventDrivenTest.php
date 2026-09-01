@@ -154,6 +154,23 @@ class StockReplenishmentEventDrivenTest extends TestCase
         );
     }
 
+    public function test_active_variant_with_deleted_product_parent_is_not_exposed(): void
+    {
+        $variant = $this->makeVariant('JELLY-TOSKA-2-IP-15');
+        $variant->product()->firstOrFail()->delete();
+        $this->makeInventory($variant, -5, 1);
+        $this->makeOrder($variant, 1);
+
+        $shortages = app(StockReplenishmentRepository::class)
+            ->shortagesForLocation($this->small->id);
+        $monitor = app(MonitorStockRepository::class)
+            ->modeQuery('dipesan', ['location_id' => $this->small->id])
+            ->get();
+
+        $this->assertFalse($shortages->has($variant->id));
+        $this->assertFalse($monitor->contains('id', $variant->id));
+    }
+
     public function test_reconciliation_is_idempotent_and_reacts_to_order_cancellation(): void
     {
         $variant = $this->makeVariant('EVT-002');
