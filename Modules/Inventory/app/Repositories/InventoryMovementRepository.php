@@ -139,9 +139,6 @@ class InventoryMovementRepository
                 ->first();
         }
 
-        // Keep the legacy fallback for old correction records whose reversal
-        // used a different reference number. New transfer reversals always
-        // match their own transaction first, preventing cross-transfer netting.
         $original ??= $query
             ->orderByDesc('transaction_date')
             ->orderByDesc('id')

@@ -39,9 +39,7 @@ class InventoryTransferReplenishmentObserver
 
     public function deleting(InventoryTransfer $transfer): void
     {
-        // A deleted transfer must not leave an ACCEPTED replenishment request
-        // pointing at a document that no longer exists. Keep terminal states
-        // immutable, but close any active request before the FK is nulled.
+
         self::cancelLinkedRequests($transfer, detachTransfer: true);
     }
 

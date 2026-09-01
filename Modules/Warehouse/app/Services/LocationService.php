@@ -87,8 +87,7 @@ class LocationService
             }
 
             if ($location->is_system) {
-                // Protection flags are system-owned; they are never changed by
-                // the regular location edit form.
+
                 $data['is_active'] = true;
                 unset($data['is_system'], $data['is_locked']);
             }

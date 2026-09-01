@@ -58,11 +58,7 @@ class Location extends Model
 
     public const SYSTEM_TRANSIT_CODE = 'SYS-TRANSIT';
     public const SYSTEM_PUSAT_CODE   = 'WH-PUSAT';
-    /**
-     * Default code for new installations. Runtime resolution uses the
-     * is_small_warehouse flag because existing installations may use a
-     * different operational code (production uses O).
-     */
+
     public const SYSTEM_KECIL_CODE   = 'O';
 
     public function village(): BelongsTo

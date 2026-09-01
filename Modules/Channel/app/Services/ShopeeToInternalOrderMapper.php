@@ -131,9 +131,6 @@ class ShopeeToInternalOrderMapper
         ];
     }
 
-    /**
-     * @return array{0: ?string, 1: bool}
-     */
     private function resolveChannelShippingType(int|string|null $logisticsChannelId, array $channelShippingTypes): array
     {
         if ($logisticsChannelId === null) {
@@ -150,7 +147,6 @@ class ShopeeToInternalOrderMapper
             ];
         }
 
-        // Backward compatibility for callers that still pass the legacy list of instant IDs.
         $legacyInstantIds = array_map('strval', array_values($channelShippingTypes));
         if (in_array($id, $legacyInstantIds, true)) {
             return ['INSTANT', true];

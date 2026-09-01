@@ -1616,6 +1616,10 @@ class InventoryService
                 throw new \Exception('Transfer tidak ditemukan.');
             }
 
+            if ($transfer->status === InventoryTransfer::STATUS_CANCELLED) {
+                return $this->transferRepository->findById($transferId);
+            }
+
             if (! in_array($transfer->status, [InventoryTransfer::STATUS_DRAFT, InventoryTransfer::STATUS_PENDING, InventoryTransfer::STATUS_APPROVED])) {
                 throw new \Exception("Transfer berstatus {$transfer->status}, hanya bisa dibatalkan sebelum dikirim.");
             }
@@ -1641,9 +1645,6 @@ class InventoryService
                     $sourceInventory->on_order -= $releaseQty;
                     $this->inventoryRepository->updateStock($sourceInventory);
 
-                    // Cancelling before shipment only releases the reservation
-                    // (on_order). No physical stock moved, so no inventory
-                    // movement must be written to the stock chronology.
                 }
 
             }
@@ -1684,110 +1685,110 @@ class InventoryService
                 throw new \Exception("Transfer berstatus {$transfer->status} tidak bisa dikembalikan ke Baru Dibuat.");
             }
 
-            $actor = $data['actor'] ?? $transfer->created_by ?? 'system';
-
-            $this->cancelActiveTransferReceipts($transfer, $actor);
-            $transfer = $this->transferRepository->findByIdForUpdate($transferId);
-
-            if (! in_array($transfer->status, [InventoryTransfer::STATUS_APPROVED, InventoryTransfer::STATUS_IN_TRANSIT])) {
-                throw new \Exception("Penerimaan transfer {$transfer->transfer_number} belum sepenuhnya dibatalkan (status {$transfer->status}). Coba ulangi atau cek menu Penerimaan Barang.");
-            }
-
-            if ($transfer->status === InventoryTransfer::STATUS_IN_TRANSIT) {
-                foreach ($transfer->items as $item) {
-                    if ($item->sync_status !== InventoryTransferItem::SYNC_SYNCED) {
-                        continue;
-                    }
-
-                    [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
-
-                    $transitInventory = $this->inventoryRepository->findExactForUpdate(
-                        $item->item_id,
-                        $transitLocationId,
-                        $transitBinId,
-                        $item->batch_no ?? '',
-                        $item->serial_no ?? '',
-                    );
-
-                    $recoverQty = $transitInventory
-                        ? min((int) $item->qty, (int) $transitInventory->on_hand)
-                        : 0;
-
-                    $sourceInventory = $this->inventoryRepository->findExactForUpdate(
-                        $item->item_id,
-                        $transfer->source_location_id,
-                        $item->source_bin_id,
-                        $item->batch_no,
-                        $item->serial_no,
-                    );
-
-                    if ($sourceInventory) {
-                        $sourceInventory->on_hand += $recoverQty;
-
-                        $sourceInventory->on_order += (int) $item->qty;
-                        $this->inventoryRepository->updateStock($sourceInventory);
-
-                        if ($recoverQty > 0) {
-                            // TRANSFER_OUT is the original physical outbound
-                            // movement. TRANSFER_REVERT lets the movement
-                            // repository net its matching original instead of
-                            // displaying a fake positive TRANSFER_OUT.
-                            $this->movementRepository->create([
-                                'item_id' => $item->item_id,
-                                'location_id' => $transfer->source_location_id,
-                                'bin_id' => $item->source_bin_id,
-                                'transaction_number' => $transfer->transfer_number,
-                                'source' => 'TRANSFER_REVERT',
-                                'qty' => $recoverQty,
-                                'balance' => $sourceInventory->on_hand,
-                                'transaction_date' => now(),
-                                'created_by' => $actor,
-                            ]);
-                        }
-                    }
-
-                    if ($transitInventory && $recoverQty > 0) {
-                        $transitInventory->on_hand -= $recoverQty;
-                        $this->inventoryRepository->updateStock($transitInventory);
-
-                        // TRANSIT_IN is also a physical leg of the same
-                        // transfer. Net it with the same reversal source so a
-                        // reverted transfer leaves no fake transit history.
-                        $this->movementRepository->create([
-                            'item_id' => $item->item_id,
-                            'location_id' => $transitLocationId,
-                            'bin_id' => $transitBinId,
-                            'transaction_number' => $transfer->transfer_number,
-                            'source' => 'TRANSFER_REVERT',
-                            'qty' => -$recoverQty,
-                            'balance' => $transitInventory->on_hand,
-                            'transaction_date' => now(),
-                            'created_by' => $actor,
-                        ]);
-                    }
-                }
-            }
-
-            $transfer->update([
-                'status' => InventoryTransfer::STATUS_DRAFT,
-                'shipped_at' => null,
-                'printed_at' => null,
-                'printed_by' => null,
-                'approved_at' => null,
-                'approved_by' => null,
-            ]);
-
-            Inbound::where('source_type', 'transfer')
-                ->where('source_id', $transfer->id)
-                ->where('status', Inbound::STATUS_DRAFT)
-                ->delete();
-
-            return $this->transferRepository->findById($transferId);
+            return $this->revertToDraftWithinTransaction($transfer, $data);
         });
 
         $this->notifyChannelStock($transfer->items->pluck('item_id')->unique()->all());
 
         return $transfer;
+    }
+
+    private function revertToDraftWithinTransaction(InventoryTransfer $transfer, array $data = []): InventoryTransfer
+    {
+        $actor = $data['actor'] ?? $transfer->created_by ?? 'system';
+
+        $this->cancelActiveTransferReceipts($transfer, $actor);
+        $transfer = $this->transferRepository->findByIdForUpdate($transfer->id);
+
+        if (! $transfer || ! in_array($transfer->status, [InventoryTransfer::STATUS_APPROVED, InventoryTransfer::STATUS_IN_TRANSIT])) {
+            $number = $transfer?->transfer_number ?? 'tidak diketahui';
+            $status = $transfer?->status ?? 'UNKNOWN';
+            throw new \Exception("Penerimaan transfer {$number} belum sepenuhnya dibatalkan (status {$status}). Coba ulangi atau cek menu Penerimaan Barang.");
+        }
+
+        if ($transfer->status === InventoryTransfer::STATUS_IN_TRANSIT) {
+            foreach ($transfer->items as $item) {
+                if ($item->sync_status !== InventoryTransferItem::SYNC_SYNCED) {
+                    continue;
+                }
+
+                [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
+
+                $transitInventory = $this->inventoryRepository->findExactForUpdate(
+                    $item->item_id,
+                    $transitLocationId,
+                    $transitBinId,
+                    $item->batch_no ?? '',
+                    $item->serial_no ?? '',
+                );
+
+                $recoverQty = $transitInventory
+                    ? max(0, min((int) $item->qty, (int) $transitInventory->on_hand))
+                    : 0;
+
+                $sourceInventory = $this->inventoryRepository->findExactForUpdate(
+                    $item->item_id,
+                    $transfer->source_location_id,
+                    $item->source_bin_id,
+                    $item->batch_no,
+                    $item->serial_no,
+                );
+
+                if ($sourceInventory) {
+                    $sourceInventory->on_hand += $recoverQty;
+                    $sourceInventory->on_order += (int) $item->qty;
+                    $this->inventoryRepository->updateStock($sourceInventory);
+
+                    if ($recoverQty > 0) {
+
+                        $this->movementRepository->create([
+                            'item_id' => $item->item_id,
+                            'location_id' => $transfer->source_location_id,
+                            'bin_id' => $item->source_bin_id,
+                            'transaction_number' => $transfer->transfer_number,
+                            'source' => 'TRANSFER_REVERT',
+                            'qty' => $recoverQty,
+                            'balance' => $sourceInventory->on_hand,
+                            'transaction_date' => now(),
+                            'created_by' => $actor,
+                        ]);
+                    }
+                }
+
+                if ($transitInventory && $recoverQty > 0) {
+                    $transitInventory->on_hand -= $recoverQty;
+                    $this->inventoryRepository->updateStock($transitInventory);
+
+                    $this->movementRepository->create([
+                        'item_id' => $item->item_id,
+                        'location_id' => $transitLocationId,
+                        'bin_id' => $transitBinId,
+                        'transaction_number' => $transfer->transfer_number,
+                        'source' => 'TRANSFER_REVERT',
+                        'qty' => -$recoverQty,
+                        'balance' => $transitInventory->on_hand,
+                        'transaction_date' => now(),
+                        'created_by' => $actor,
+                    ]);
+                }
+            }
+        }
+
+        $transfer->update([
+            'status' => InventoryTransfer::STATUS_DRAFT,
+            'shipped_at' => null,
+            'printed_at' => null,
+            'printed_by' => null,
+            'approved_at' => null,
+            'approved_by' => null,
+        ]);
+
+        Inbound::where('source_type', 'transfer')
+            ->where('source_id', $transfer->id)
+            ->where('status', Inbound::STATUS_DRAFT)
+            ->delete();
+
+        return $this->transferRepository->findById($transfer->id);
     }
 
     private function cancelActiveTransferReceipts(InventoryTransfer $transfer, string $actor): void
@@ -2236,36 +2237,29 @@ class InventoryService
 
     public function deleteTransfer(string $id, ?string $actor = null): void
     {
-        $transfer = $this->transferRepository->findById($id);
-
-        if (! $transfer) {
-            throw new \Exception('Transfer tidak ditemukan.');
-        }
-
-        $actor = $actor ?? $transfer->created_by ?? 'system';
-        $wasNeverShipped = in_array($transfer->status, [
-            InventoryTransfer::STATUS_DRAFT,
-            InventoryTransfer::STATUS_APPROVED,
-        ], true);
-
-        if (! in_array($transfer->status, [InventoryTransfer::STATUS_DRAFT, InventoryTransfer::STATUS_APPROVED])) {
-            $this->revertToDraft($id, ['actor' => $actor]);
-        }
-
-        $itemIds = DB::transaction(function () use ($id, $wasNeverShipped) {
+        $itemIds = DB::transaction(function () use ($id, $actor) {
             $transfer = $this->transferRepository->findByIdForUpdate($id);
 
             if (! $transfer) {
                 throw new \Exception('Transfer tidak ditemukan.');
             }
 
+            $actor = $actor ?? $transfer->created_by ?? 'system';
+
+            if (! in_array($transfer->status, [InventoryTransfer::STATUS_DRAFT, InventoryTransfer::STATUS_APPROVED], true)) {
+                $this->revertToDraftWithinTransaction($transfer, ['actor' => $actor]);
+                $transfer = $this->transferRepository->findByIdForUpdate($id);
+            }
+
+            if (! $transfer) {
+                throw new \Exception('Transfer tidak ditemukan setelah proses pembatalan.');
+            }
+
             if (! in_array($transfer->status, [InventoryTransfer::STATUS_DRAFT, InventoryTransfer::STATUS_APPROVED])) {
                 throw new \Exception("Hanya transfer yang belum dikirim (Draft/Disetujui) yang bisa dihapus (status saat ini: {$transfer->status}).");
             }
 
-            if ($wasNeverShipped) {
-                $this->assertNoUnreconciledPhysicalMovementsBeforeShipment($transfer);
-            }
+            $this->assertNoUnreconciledPhysicalMovementsBeforeShipment($transfer);
 
             $itemIds = $transfer->items->pluck('item_id')->unique()->all();
 
@@ -2286,9 +2280,6 @@ class InventoryService
                     $sourceInventory->on_order -= $releaseQty;
                     $this->inventoryRepository->updateStock($sourceInventory);
 
-                    // DRAFT/APPROVED deletion only releases on_order. Since
-                    // no physical movement occurred, keep the chronology
-                    // untouched.
                 }
 
             }

@@ -6,10 +6,7 @@ namespace Modules\Outbound\Support;
 
 final class ChannelInstantSignal
 {
-    /**
-     * Normalize a channel-owned shipping category into the internal vocabulary.
-     * Provider names must not be passed to this method as a classification signal.
-     */
+
     public static function normalizeType(?string $type): ?string
     {
         $value = strtolower(trim((string) $type));
@@ -39,10 +36,6 @@ final class ChannelInstantSignal
         return in_array(self::normalizeType($type), ['INSTANT', 'SAME_DAY'], true);
     }
 
-    /**
-     * Resolve the instant flag from channel-owned type/category fields.
-     * A null result means the channel did not provide a usable category.
-     */
     public static function fromTypes(?string ...$types): ?bool
     {
         $hasExplicitNonInstantType = false;

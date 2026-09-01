@@ -465,6 +465,53 @@ class StockReplenishmentEventDrivenTest extends TestCase
         $this->assertSame(0, DB::table('inventory_movements')->count());
     }
 
+    public function test_deleting_shipped_linked_transfer_reverts_once_then_cancels_request(): void
+    {
+        $variant = $this->makeVariant('EVT-DELETE-SHIPPED-TRANSFER');
+        $this->makeInventory($variant, 10, 0);
+        Inventory::where('item_id', $variant->id)
+            ->where('location_id', $this->small->id)
+            ->update([
+                'location_id' => $this->main->id,
+                'bin_id' => $this->mainBin->id,
+            ]);
+
+        $request = StockReplenishmentRequest::create([
+            'from_location_id' => $this->main->id,
+            'to_location_id' => $this->small->id,
+            'status' => StockReplenishmentRequest::STATUS_PENDING,
+            'source' => StockReplenishmentRequest::SOURCE_MONITOR,
+            'requested_at' => now(),
+        ]);
+        $request->items()->create([
+            'item_id' => $variant->id,
+            'sku' => $variant->sku,
+            'qty' => 3,
+        ]);
+
+        $accepted = app(StockReplenishmentService::class)->accept($request->id);
+        $transferId = (string) $accepted->transfer_out_id;
+        $service = app(InventoryService::class);
+
+        $service->shipTransfer($transferId, ['shipped_by' => 'tester']);
+        $service->deleteTransfer($transferId, 'tester');
+
+        $cancelled = $request->fresh();
+        $source = Inventory::where('item_id', $variant->id)
+            ->where('location_id', $this->main->id)
+            ->where('bin_id', $this->mainBin->id)
+            ->firstOrFail();
+
+        $this->assertSame(StockReplenishmentRequest::STATUS_CANCELLED, $cancelled->status);
+        $this->assertNull($cancelled->transfer_out_id);
+        $this->assertNotNull($cancelled->cancelled_at);
+        $this->assertDatabaseMissing('inventory_transfers', ['id' => $transferId]);
+        $this->assertSame(10, (int) $source->on_hand, 'revert mengembalikan stok fisik tepat satu kali');
+        $this->assertSame(0, (int) $source->on_order, 'delete melepas reservasi setelah revert');
+        $this->assertSame(0, $this->transitOnHand($variant), 'stok tidak boleh menggantung di transit');
+        $this->assertSame(0, DB::table('inventory_movements')->count(), 'kronologi transfer batal harus netral');
+    }
+
     public function test_cancelling_linked_transfer_cancels_request_and_keeps_audit_link(): void
     {
         $variant = $this->makeVariant('EVT-CANCEL-TRANSFER');
@@ -505,6 +552,61 @@ class StockReplenishmentEventDrivenTest extends TestCase
         $this->assertNotNull($cancelled->cancelled_at);
         $this->assertSame(InventoryTransfer::STATUS_CANCELLED, $transfer->status);
         $this->assertSame(0, DB::table('inventory_movements')->count());
+    }
+
+    public function test_repeating_cancel_is_idempotent_and_does_not_release_twice(): void
+    {
+        $variant = $this->makeVariant('EVT-IDEMPOTENT-CANCEL');
+        $this->makeInventory($variant, 10, 0);
+        Inventory::where('item_id', $variant->id)
+            ->where('location_id', $this->small->id)
+            ->update([
+                'location_id' => $this->main->id,
+                'bin_id' => $this->mainBin->id,
+            ]);
+
+        $transfer = app(InventoryService::class)->createDraft([
+            'source_location_id' => $this->main->id,
+            'destination_location_id' => $this->small->id,
+            'created_by' => 'tester',
+        ]);
+        app(InventoryService::class)->addDraftItem($transfer->id, [
+            'item_id' => $variant->id,
+            'qty' => 3,
+            'source_bin_id' => $this->mainBin->id,
+        ]);
+        app(InventoryService::class)->approveTransfer($transfer->id, ['approved_by' => 'tester']);
+
+        $service = app(InventoryService::class);
+        $service->cancelTransfer($transfer->id, [
+            'cancelled_by' => 'tester',
+            'cancel_reason' => 'Pembatalan pertama',
+        ]);
+        $service->cancelTransfer($transfer->id, [
+            'cancelled_by' => 'retrying-user',
+            'cancel_reason' => 'Retry jaringan',
+        ]);
+
+        $source = Inventory::where('item_id', $variant->id)
+            ->where('location_id', $this->main->id)
+            ->where('bin_id', $this->mainBin->id)
+            ->firstOrFail();
+        $cancelled = InventoryTransfer::findOrFail($transfer->id);
+
+        $this->assertSame(InventoryTransfer::STATUS_CANCELLED, $cancelled->status);
+        $this->assertSame('tester', $cancelled->cancelled_by, 'retry tidak menimpa audit cancel pertama');
+        $this->assertSame(10, (int) $source->on_hand);
+        $this->assertSame(0, (int) $source->on_order, 'reservasi hanya dilepas satu kali');
+        $this->assertSame(0, DB::table('inventory_movements')->count());
+    }
+
+    private function transitOnHand(ProductVariant $variant): int
+    {
+        return (int) DB::table('inventories as i')
+            ->join('locations as l', 'l.id', '=', 'i.location_id')
+            ->where('i.item_id', $variant->id)
+            ->where('l.location_code', Location::SYSTEM_TRANSIT_CODE)
+            ->sum('i.on_hand');
     }
 
     private function makeVariant(string $sku): ProductVariant

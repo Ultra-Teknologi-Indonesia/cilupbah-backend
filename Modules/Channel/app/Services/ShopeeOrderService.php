@@ -564,17 +564,9 @@ class ShopeeOrderService
         ));
     }
 
-    /**
-     * Return only categories explicitly supplied by Shopee.
-     * A service with an explicit null category is retained as null. Shopee documents
-     * null as a valid value, which is enough to determine that it is not instant,
-     * while a missing category remains unknown.
-     *
-     * @return array<string, ?string>
-     */
     public function shippingChannelTypes(string $shopId): array
     {
-        // Version the key so deployments do not reuse a pre-category cache.
+
         $key = "shopee:shipping_channel_types:v2:{$shopId}";
         $cached = Cache::get($key);
         if (is_array($cached)) {

@@ -1130,10 +1130,6 @@ class InventoryRepository
             });
         }
 
-        // A bundle is one sellable item even if legacy data contains more
-        // than one active persistence key. Keep only the deterministic
-        // technical/public representative so the picker matches Jubelio's
-        // single-row bundle response.
         $query->where(function ($query) {
             $query
                 ->where('parent_product.is_bundle', false)
