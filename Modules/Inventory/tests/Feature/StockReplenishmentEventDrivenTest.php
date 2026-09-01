@@ -11,6 +11,7 @@ use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryTransfer;
 use Modules\Inventory\Models\StockReplenishmentRequest;
 use Modules\Inventory\Repositories\StockReplenishmentRepository;
+use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Services\StockReplenishmentService;
 use Modules\Notification\Services\NotificationDispatcher;
 use Modules\Product\Models\Product;
@@ -422,6 +423,88 @@ class StockReplenishmentEventDrivenTest extends TestCase
         $this->assertNotNull($accepted->transfer_out_id);
         $this->assertSame(InventoryTransfer::STATUS_APPROVED, $accepted->transferOut->status);
         $this->assertSame(1, InventoryTransfer::count());
+    }
+
+    public function test_deleting_linked_transfer_cancels_request_and_keeps_history_empty(): void
+    {
+        $variant = $this->makeVariant('EVT-DELETE-TRANSFER');
+        $this->makeInventory($variant, 10, 0);
+        Inventory::where('item_id', $variant->id)
+            ->where('location_id', $this->small->id)
+            ->update([
+                'location_id' => $this->main->id,
+                'bin_id' => $this->mainBin->id,
+            ]);
+
+        $request = StockReplenishmentRequest::create([
+            'from_location_id' => $this->main->id,
+            'to_location_id' => $this->small->id,
+            'status' => StockReplenishmentRequest::STATUS_PENDING,
+            'source' => StockReplenishmentRequest::SOURCE_MONITOR,
+            'requested_at' => now(),
+        ]);
+        $request->items()->create([
+            'item_id' => $variant->id,
+            'sku' => $variant->sku,
+            'qty' => 3,
+        ]);
+
+        $accepted = app(StockReplenishmentService::class)->accept($request->id);
+        $transferId = (string) $accepted->transfer_out_id;
+
+        app(InventoryService::class)
+            ->deleteTransfer($transferId, 'tester');
+
+        $cancelled = $request->fresh();
+
+        $this->assertSame(StockReplenishmentRequest::STATUS_CANCELLED, $cancelled->status);
+        $this->assertNull($cancelled->transfer_out_id);
+        $this->assertNotNull($cancelled->cancelled_at);
+        $this->assertSame('Transfer keluar dibatalkan atau dihapus.', $cancelled->cancel_reason);
+        $this->assertDatabaseMissing('inventory_transfers', ['id' => $transferId]);
+        $this->assertSame(0, DB::table('inventory_movements')->count());
+    }
+
+    public function test_cancelling_linked_transfer_cancels_request_and_keeps_audit_link(): void
+    {
+        $variant = $this->makeVariant('EVT-CANCEL-TRANSFER');
+        $this->makeInventory($variant, 10, 0);
+        Inventory::where('item_id', $variant->id)
+            ->where('location_id', $this->small->id)
+            ->update([
+                'location_id' => $this->main->id,
+                'bin_id' => $this->mainBin->id,
+            ]);
+
+        $request = StockReplenishmentRequest::create([
+            'from_location_id' => $this->main->id,
+            'to_location_id' => $this->small->id,
+            'status' => StockReplenishmentRequest::STATUS_PENDING,
+            'source' => StockReplenishmentRequest::SOURCE_MONITOR,
+            'requested_at' => now(),
+        ]);
+        $request->items()->create([
+            'item_id' => $variant->id,
+            'sku' => $variant->sku,
+            'qty' => 3,
+        ]);
+
+        $accepted = app(StockReplenishmentService::class)->accept($request->id);
+        $transferId = (string) $accepted->transfer_out_id;
+
+        app(InventoryService::class)->cancelTransfer($transferId, [
+            'cancelled_by' => 'tester',
+            'cancel_reason' => 'Pembatalan test',
+        ]);
+
+        $cancelled = $request->fresh();
+        $transfer = InventoryTransfer::findOrFail($transferId);
+
+        $this->assertSame(StockReplenishmentRequest::STATUS_CANCELLED, $cancelled->status);
+        $this->assertSame($transferId, (string) $cancelled->transfer_out_id);
+        $this->assertNotNull($cancelled->cancelled_at);
+        $this->assertSame(InventoryTransfer::STATUS_CANCELLED, $transfer->status);
+        $this->assertSame(0, DB::table('inventory_movements')->count());
     }
 
     private function makeVariant(string $sku): ProductVariant

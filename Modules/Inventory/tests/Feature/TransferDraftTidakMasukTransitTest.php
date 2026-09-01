@@ -262,4 +262,32 @@ class TransferDraftTidakMasukTransitTest extends TestCase
         $this->assertSame(0, $this->movements('TRANSFER_OUT'), 'hapus sebelum kirim tidak menulis histori outbound');
         $this->assertSame(0, $this->movements('TRANSIT_IN'), 'hapus sebelum kirim tidak menulis histori transit');
     }
+
+    public function test_transfer_yang_dikembalikan_ke_draft_tetap_bisa_diedit(): void
+    {
+        $transferId = $this->buatDraftBerisi(5);
+        $service = app(InventoryService::class);
+
+        $this->setujui($transferId);
+        $service->shipTransfer($transferId, ['shipped_by' => 'tester']);
+        $service->revertToDraft($transferId, ['actor' => 'tester']);
+
+        $transfer = InventoryTransfer::findOrFail($transferId);
+        $movementCountBeforeEdit = DB::table('inventory_movements')
+            ->where('transaction_number', $transfer->transfer_number)
+            ->count();
+
+        $updated = $service->updateDraft($transferId, [
+            'notes' => 'Diedit setelah dikembalikan ke draft',
+        ]);
+
+        $this->assertSame('Diedit setelah dikembalikan ke draft', $updated->notes);
+        $this->assertSame(
+            $movementCountBeforeEdit,
+            DB::table('inventory_movements')
+                ->where('transaction_number', $updated->transfer_number)
+                ->count(),
+            'edit metadata tidak boleh membuat histori baru',
+        );
+    }
 }

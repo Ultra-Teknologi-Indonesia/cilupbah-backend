@@ -26,6 +26,7 @@ use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Repositories\InventoryTransferRepository;
 use Modules\Inventory\Support\InventoryMovementSourceMap;
+use Modules\Inventory\Support\KronologiReversalNetter;
 use Modules\Inventory\Support\MovingAverageCost;
 use Modules\Inventory\Support\StockAdjustmentRule;
 use Modules\Product\Models\Product;
@@ -1619,7 +1620,7 @@ class InventoryService
                 throw new \Exception("Transfer berstatus {$transfer->status}, hanya bisa dibatalkan sebelum dikirim.");
             }
 
-            [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
+            $this->assertNoUnreconciledPhysicalMovementsBeforeShipment($transfer);
 
             foreach ($transfer->items as $item) {
 
@@ -1645,31 +1646,6 @@ class InventoryService
                     // movement must be written to the stock chronology.
                 }
 
-                $transitInventory = $this->inventoryRepository->findExactForUpdate(
-                    $item->item_id,
-                    $transitLocationId,
-                    $transitBinId,
-                    $item->batch_no ?? '',
-                    $item->serial_no ?? '',
-                );
-
-                if ($transitInventory) {
-                    $deductQty = min((int) $item->qty, (int) $transitInventory->on_hand);
-                    $transitInventory->on_hand -= $deductQty;
-                    $this->inventoryRepository->updateStock($transitInventory);
-
-                    $this->movementRepository->create([
-                        'item_id' => $item->item_id,
-                        'location_id' => $transitLocationId,
-                        'bin_id' => $transitBinId,
-                        'transaction_number' => $transfer->transfer_number,
-                        'source' => 'TRANSFER_REVERT',
-                        'qty' => -$deductQty,
-                        'balance' => $transitInventory->on_hand,
-                        'transaction_date' => now(),
-                        'created_by' => $data['cancelled_by'],
-                    ]);
-                }
             }
 
             $transfer->update([
@@ -2267,12 +2243,16 @@ class InventoryService
         }
 
         $actor = $actor ?? $transfer->created_by ?? 'system';
+        $wasNeverShipped = in_array($transfer->status, [
+            InventoryTransfer::STATUS_DRAFT,
+            InventoryTransfer::STATUS_APPROVED,
+        ], true);
 
         if (! in_array($transfer->status, [InventoryTransfer::STATUS_DRAFT, InventoryTransfer::STATUS_APPROVED])) {
             $this->revertToDraft($id, ['actor' => $actor]);
         }
 
-        $itemIds = DB::transaction(function () use ($id) {
+        $itemIds = DB::transaction(function () use ($id, $wasNeverShipped) {
             $transfer = $this->transferRepository->findByIdForUpdate($id);
 
             if (! $transfer) {
@@ -2283,10 +2263,11 @@ class InventoryService
                 throw new \Exception("Hanya transfer yang belum dikirim (Draft/Disetujui) yang bisa dihapus (status saat ini: {$transfer->status}).");
             }
 
-            $itemIds = $transfer->items->pluck('item_id')->unique()->all();
-            $actor = $transfer->created_by ?? 'system';
+            if ($wasNeverShipped) {
+                $this->assertNoUnreconciledPhysicalMovementsBeforeShipment($transfer);
+            }
 
-            [$transitLocationId, $transitBinId] = $this->resolveTransitLocation();
+            $itemIds = $transfer->items->pluck('item_id')->unique()->all();
 
             foreach ($transfer->items as $item) {
                 if ($item->sync_status !== InventoryTransferItem::SYNC_SYNCED) {
@@ -2310,33 +2291,9 @@ class InventoryService
                     // untouched.
                 }
 
-                $transitInventory = $this->inventoryRepository->findExactForUpdate(
-                    $item->item_id,
-                    $transitLocationId,
-                    $transitBinId,
-                    $item->batch_no ?? '',
-                    $item->serial_no ?? '',
-                );
-                if ($transitInventory) {
-                    $deductQty = min((int) $item->qty, (int) $transitInventory->on_hand);
-                    $transitInventory->on_hand -= $deductQty;
-                    $this->inventoryRepository->updateStock($transitInventory);
-
-                    $this->movementRepository->create([
-                        'item_id' => $item->item_id,
-                        'location_id' => $transitLocationId,
-                        'bin_id' => $transitBinId,
-                        'transaction_number' => $transfer->transfer_number,
-                        'source' => 'TRANSIT_OUT',
-                        'qty' => -$deductQty,
-                        'balance' => $transitInventory->on_hand,
-                        'transaction_date' => now(),
-                        'created_by' => $actor,
-                    ]);
-                }
             }
 
-            $this->transferRepository->delete($id);
+            $transfer->delete();
 
             return $itemIds;
         });
@@ -2623,6 +2580,8 @@ class InventoryService
             throw new \Exception('Hanya transfer DRAFT yang bisa diubah.');
         }
 
+        $this->assertNoUnreconciledPhysicalMovementsBeforeShipment($transfer);
+
         $updateData = [];
         if (! empty($data['transfer_number'])) {
             $updateData['transfer_number'] = $data['transfer_number'];
@@ -2655,6 +2614,8 @@ class InventoryService
         if ($transfer->status !== InventoryTransfer::STATUS_DRAFT) {
             throw new \Exception('Hanya transfer DRAFT yang bisa ditambah item.');
         }
+
+        $this->assertNoUnreconciledPhysicalMovementsBeforeShipment($transfer);
 
         if (! empty($data['source_bin_id'])) {
             app(InboundBinPolicy::class)->assertConsumable(
@@ -2714,6 +2675,8 @@ class InventoryService
         if ($transfer->status !== InventoryTransfer::STATUS_DRAFT) {
             throw new \Exception('Hanya transfer DRAFT yang bisa diubah item-nya.');
         }
+
+        $this->assertNoUnreconciledPhysicalMovementsBeforeShipment($transfer);
 
         $item = InventoryTransferItem::where('id', $itemId)
             ->where('inventory_transfer_id', $transferId)
@@ -2777,6 +2740,8 @@ class InventoryService
             throw new \Exception('Hanya transfer DRAFT yang bisa dihapus item-nya.');
         }
 
+        $this->assertNoUnreconciledPhysicalMovementsBeforeShipment($transfer);
+
         $item = InventoryTransferItem::where('id', $itemId)
             ->where('inventory_transfer_id', $transferId)
             ->firstOrFail();
@@ -2790,5 +2755,38 @@ class InventoryService
             $transfer->transfer_number,
             $transfer->created_by,
         );
+    }
+
+    private function assertNoUnreconciledPhysicalMovementsBeforeShipment(InventoryTransfer $transfer): void
+    {
+        $movements = DB::table('inventory_movements')
+            ->where('transaction_number', $transfer->transfer_number)
+            ->where('qty', '!=', 0)
+            ->whereIn('source', [
+                'TRANSFER_OUT',
+                'TRANSFER_IN',
+                'TRANSFER_REVERT',
+                'TRANSIT_IN',
+                'TRANSIT_OUT',
+                'TRANSFER_REJECT_RETURN',
+            ])
+            ->orderBy('transaction_date')
+            ->orderBy('id')
+            ->get(['id', 'item_id', 'location_id', 'bin_id', 'source', 'qty']);
+
+        if ($movements->isEmpty()) {
+            return;
+        }
+
+        $hiddenIds = KronologiReversalNetter::hiddenIds($movements);
+        $hasUnreconciledMovement = $movements->contains(
+            fn (object $movement): bool => ! in_array($movement->id, $hiddenIds, true),
+        );
+
+        if ($hasUnreconciledMovement) {
+            throw new \Exception(
+                'Transfer memiliki histori stok fisik sebelum pengiriman. Aksi dihentikan; lakukan rekonsiliasi histori terlebih dahulu.',
+            );
+        }
     }
 }

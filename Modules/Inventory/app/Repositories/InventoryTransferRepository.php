@@ -169,6 +169,8 @@ class InventoryTransferRepository
 
     public function delete(string $id): bool
     {
-        return InventoryTransfer::where('id', $id)->delete() > 0;
+        $transfer = InventoryTransfer::find($id);
+
+        return $transfer?->delete() ?? false;
     }
 }
