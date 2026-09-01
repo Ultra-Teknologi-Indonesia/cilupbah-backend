@@ -9,6 +9,7 @@ use Modules\Sales\Models\SalesOrder;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\AllowedSort;
+use Modules\Outbound\Support\FilterValues;
 
 class ShipmentRepository
 {
@@ -40,8 +41,18 @@ class ShipmentRepository
                     if (! empty($values)) $query->whereIn('status', $values);
                 }),
                 AllowedFilter::exact('location_id'),
-                AllowedFilter::exact('courier_code'),
-                AllowedFilter::exact('courier_name'),
+                AllowedFilter::callback('courier_code', function ($query, $value) {
+                    $values = FilterValues::list($value);
+                    if (! empty($values)) {
+                        $query->whereIn('courier_code', $values);
+                    }
+                }),
+                AllowedFilter::callback('courier_name', function ($query, $value) {
+                    $values = FilterValues::list($value);
+                    if (! empty($values)) {
+                        $query->whereIn('courier_name', $values);
+                    }
+                }),
                 AllowedFilter::exact('shipment_type'),
                 AllowedFilter::callback('date_from', function ($query, $value) {
                     if ($value) $query->whereDate('shipment_date', '>=', $value);

@@ -10,6 +10,7 @@ use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\Picklist;
 use Modules\Sales\Models\SalesInvoice;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Outbound\Support\FilterValues;
 use Spatie\Permission\Models\Role;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
@@ -131,7 +132,12 @@ class OutboundFulfillmentRepository
             ->allowedFilters(
                 AllowedFilter::exact('source'),
                 AllowedFilter::exact('location_id'),
-                AllowedFilter::exact('shipping_provider'),
+                AllowedFilter::callback('shipping_provider', function ($query, $value) {
+                    $values = FilterValues::list($value);
+                    if (! empty($values)) {
+                        $query->whereIn('shipping_provider', $values);
+                    }
+                }),
                 AllowedFilter::exact('channel_shop_id'),
 
                 AllowedFilter::callback('channel_status', function ($query, $value) {

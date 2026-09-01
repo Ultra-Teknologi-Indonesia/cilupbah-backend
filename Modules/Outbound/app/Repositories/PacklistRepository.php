@@ -6,6 +6,7 @@ use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\PacklistItem;
 use Modules\Sales\Models\SalesOrder;
 use Spatie\QueryBuilder\QueryBuilder;
+use Modules\Outbound\Support\FilterValues;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\AllowedSort;
 
@@ -25,7 +26,10 @@ class PacklistRepository
                 AllowedFilter::exact('order_id'),
 
                 AllowedFilter::callback('shipping_provider', function ($query, $value) {
-                    $query->whereHas('order', fn ($q) => $q->where('shipping_provider', $value));
+                    $values = FilterValues::list($value);
+                    if (! empty($values)) {
+                        $query->whereHas('order', fn ($q) => $q->whereIn('shipping_provider', $values));
+                    }
                 }),
                 AllowedFilter::callback('date_from', function ($query, $value) {
                     if ($value) $query->whereHas('order', fn ($q) => $q->whereDate('transaction_date', '>=', $value));

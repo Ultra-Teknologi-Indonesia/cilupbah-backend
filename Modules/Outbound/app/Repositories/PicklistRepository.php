@@ -9,6 +9,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
+use Modules\Outbound\Support\FilterValues;
 
 class PicklistRepository
 {
@@ -76,7 +77,10 @@ class PicklistRepository
                 AllowedFilter::exact('picker_id'),
 
                 AllowedFilter::callback('shipping_provider', function ($query, $value) {
-                    $query->whereHas('items.order', fn ($q) => $q->where('shipping_provider', $value));
+                    $values = FilterValues::list($value);
+                    if (! empty($values)) {
+                        $query->whereHas('items.order', fn ($q) => $q->whereIn('shipping_provider', $values));
+                    }
                 }),
                 AllowedFilter::callback('source', function ($query, $value) {
                     $query->whereHas('items.order', fn ($q) => $q->where('source', $value));
