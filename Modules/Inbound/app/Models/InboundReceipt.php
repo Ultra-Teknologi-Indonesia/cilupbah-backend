@@ -23,6 +23,8 @@ class InboundReceipt extends Model
         'notes',
         'stock_adjustment_id',
         'received_by_user_id',
+        'received_by_name',
+        'received_by_email',
         'received_date',
     ];
 

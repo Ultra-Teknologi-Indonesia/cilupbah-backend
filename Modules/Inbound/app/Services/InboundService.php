@@ -160,6 +160,9 @@ class InboundService
         InboundParticipant::create([
             'inbound_id' => $doc->id,
             'user_id' => $actorId,
+            'user_id_snapshot' => $actorId,
+            'user_name' => auth()->user()?->name ?? User::query()->whereKey($actorId)->value('name'),
+            'user_email' => auth()->user()?->email ?? User::query()->whereKey($actorId)->value('email'),
             'role' => InboundParticipant::ROLE_RECEIVER,
             'joined_at' => now(),
             'status' => InboundParticipant::STATUS_ACTIVE,
@@ -282,7 +285,7 @@ class InboundService
             return null;
         }
 
-        $inbound->load(['participants.user:id,name']);
+        $inbound->load(['participants.user:id,name,email']);
 
         $receiptAgg = InboundReceipt::query()
             ->join('inbound_items as i', 'inbound_receipts.inbound_item_id', '=', 'i.id')
@@ -300,7 +303,9 @@ class InboundService
             return [
                 'id' => $p->id,
                 'user_id' => $p->user_id,
-                'name' => $p->user?->name ?? 'staff',
+                'user_id_snapshot' => $p->user_id_snapshot,
+                'name' => $p->user?->name ?? $p->user_name ?? 'staff',
+                'email' => $p->user?->email ?? $p->user_email,
                 'role' => $p->role,
                 'status' => $p->status,
                 'joined_at' => $p->joined_at?->toIso8601String(),
@@ -900,6 +905,10 @@ class InboundService
                 }
             }
 
+            $receivedByUser = $receivedByUserId
+                ? User::query()->find($receivedByUserId, ['id', 'name', 'email'])
+                : null;
+
             if ($this->currentChannel() === ClientChannelEnum::MOBILE && $idempotencyKey === '') {
                 throw new UserFacingException(
                     title: 'Aplikasi perlu diperbarui',
@@ -955,6 +964,8 @@ class InboundService
                     'serial_no' => $receiptData['serial_no'] ?? null,
                     'condition' => $condition,
                     'received_by_user_id' => $receivedByUserId,
+                    'received_by_name' => $receivedByUser?->name,
+                    'received_by_email' => $receivedByUser?->email,
                     'received_date' => now(),
                 ]);
 
@@ -1735,7 +1746,8 @@ class InboundService
                 'condition' => 'ADJUSTMENT',
                 'notes' => $note,
                 'received_by_user_id' => $userId,
-                'received_by' => ActorName::resolve($userId),
+                'received_by_name' => User::query()->whereKey($userId)->value('name') ?? ActorName::resolve($userId),
+                'received_by_email' => User::query()->whereKey($userId)->value('email'),
                 'received_date' => now(),
             ]);
 

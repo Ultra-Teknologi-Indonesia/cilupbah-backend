@@ -19,6 +19,9 @@ class InboundParticipant extends Model
     protected $fillable = [
         'inbound_id',
         'user_id',
+        'user_id_snapshot',
+        'user_name',
+        'user_email',
         'role',
         'joined_at',
         'completed_at',

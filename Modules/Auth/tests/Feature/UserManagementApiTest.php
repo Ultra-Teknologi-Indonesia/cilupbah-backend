@@ -147,6 +147,55 @@ class UserManagementApiTest extends TestCase
         $this->assertDatabaseMissing('users', ['id' => $target->id]);
     }
 
+    public function test_delete_preserves_history_and_allows_a_clean_account_with_same_email(): void
+    {
+        $email = 'recyclable.user@example.com';
+        $target = User::factory()->create([
+            'name' => 'User Lama',
+            'email' => $email,
+        ]);
+        $target->assignRole('picker');
+        $targetId = $target->id;
+
+        $this->actingAs($this->owner, 'sanctum')
+            ->deleteJson("/api/v1/users/{$targetId}")
+            ->assertStatus(200);
+
+        $this->assertDatabaseMissing('users', ['id' => $targetId]);
+        $this->assertDatabaseMissing('model_has_roles', [
+            'model_id' => $targetId,
+            'model_type' => User::class,
+        ]);
+        $this->assertDatabaseHas('user_histories', [
+            'target_user_id' => null,
+            'target_user_id_snapshot' => $targetId,
+            'target_user_name' => 'User Lama',
+            'target_user_email' => $email,
+            'action' => 'deleted',
+        ]);
+
+        $this->actingAs($this->owner, 'sanctum')
+            ->getJson("/api/v1/users/{$targetId}/histories")
+            ->assertStatus(200)
+            ->assertJsonPath('data.0.action', 'deleted')
+            ->assertJsonPath('data.0.target_user_name', 'User Lama');
+
+        $this->actingAs($this->owner, 'sanctum')
+            ->postJson('/api/v1/users', [
+                'name' => 'User Baru',
+                'email' => $email,
+                'password' => 'StrongP@ss1',
+                'password_confirmation' => 'StrongP@ss1',
+                'roles' => ['picker'],
+            ])
+            ->assertStatus(201)
+            ->assertJsonPath('data.email', $email);
+
+        $newUser = User::where('email', $email)->firstOrFail();
+        $this->assertNotSame($targetId, $newUser->id);
+        $this->assertTrue($newUser->hasRole('picker'));
+    }
+
     public function test_cannot_delete_own_account_returns_422(): void
     {
         $this->actingAs($this->owner, 'sanctum')

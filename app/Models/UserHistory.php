@@ -12,7 +12,13 @@ class UserHistory extends Model
 
     protected $fillable = [
         'actor_id',
+        'actor_id_snapshot',
+        'actor_user_name',
+        'actor_user_email',
         'target_user_id',
+        'target_user_id_snapshot',
+        'target_user_name',
+        'target_user_email',
         'action',
     ];
 

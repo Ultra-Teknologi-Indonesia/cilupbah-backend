@@ -12,6 +12,9 @@ class LoginHistoryResource extends JsonResource
         return [
             'id' => $this->id,
             'user_id' => $this->user_id,
+            'user_id_snapshot' => $this->user_id_snapshot,
+            'user_name' => $this->user?->name ?? $this->user_name,
+            'user_email' => $this->user?->email ?? $this->user_email,
             'agent_device' => $this->agent_device,
             'agent_os' => $this->agent_os,
             'agent_browser' => $this->agent_browser,

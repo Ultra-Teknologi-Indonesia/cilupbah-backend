@@ -367,6 +367,20 @@ class InboundRepository
 
     public function createAssignment(array $data): InboundAssignment
     {
+        if (! empty($data['assigned_to'])) {
+            $assignee = User::query()->find($data['assigned_to'], ['id', 'name', 'email']);
+            $data['assigned_to_snapshot'] ??= $assignee?->id;
+            $data['assigned_to_name'] ??= $assignee?->name;
+            $data['assigned_to_email'] ??= $assignee?->email;
+        }
+
+        if (! empty($data['assigned_by'])) {
+            $assigner = User::query()->find($data['assigned_by'], ['id', 'name', 'email']);
+            $data['assigned_by_snapshot'] ??= $assigner?->id;
+            $data['assigned_by_name'] ??= $assigner?->name;
+            $data['assigned_by_email'] ??= $assigner?->email;
+        }
+
         return InboundAssignment::create($data);
     }
 

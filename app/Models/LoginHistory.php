@@ -19,6 +19,9 @@ class LoginHistory extends Model
 
     protected $fillable = [
         'user_id',
+        'user_id_snapshot',
+        'user_name',
+        'user_email',
         'client_type',
         'status',
         'token_id',
@@ -64,9 +67,13 @@ class LoginHistory extends Model
     ): self {
         [$device, $os, $browser] = self::parseAgent($userAgent, $clientType);
         $location = self::resolveLocation($ipAddress);
+        $user = User::query()->find($userId, ['id', 'name', 'email']);
 
         return self::create([
             'user_id' => $userId,
+            'user_id_snapshot' => $user?->id,
+            'user_name' => $user?->name,
+            'user_email' => $user?->email,
             'client_type' => $clientType,
             'status' => self::STATUS_SUCCESS,
             'token_id' => $tokenId,

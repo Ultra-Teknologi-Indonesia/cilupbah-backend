@@ -18,7 +18,13 @@ class InboundAssignment extends Model
     protected $fillable = [
         'inbound_id',
         'assigned_to',
+        'assigned_to_snapshot',
+        'assigned_to_name',
+        'assigned_to_email',
         'assigned_by',
+        'assigned_by_snapshot',
+        'assigned_by_name',
+        'assigned_by_email',
         'status',
         'notes',
         'started_at',

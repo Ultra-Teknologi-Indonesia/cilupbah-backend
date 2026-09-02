@@ -5,6 +5,7 @@ namespace Modules\Auth\Services;
 use App\Models\User;
 use Modules\Auth\Support\PermissionCatalog;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\QueryException;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Facades\Auth;
@@ -200,26 +201,82 @@ class UserService
 
     public function deleteUser(string $id): void
     {
-        DB::transaction(function () use ($id) {
-            $user = $this->userRepository->findById($id);
+        try {
+            DB::transaction(function () use ($id) {
+                $user = $this->userRepository->findById($id);
 
-            if ($user->id === Auth::id()) {
-                throw new HttpException(422, 'Anda tidak dapat menghapus akun sendiri.');
+                if ($user->id === Auth::id()) {
+                    throw new HttpException(422, 'Anda tidak dapat menghapus akun sendiri.');
+                }
+
+                if ($user->hasRole('owner')) {
+                    throw new HttpException(403, 'Akun owner tidak dapat dihapus.');
+                }
+
+                // Hanya pointer penugasan aktif yang dikosongkan; dokumen pekerjaannya tetap ada.
+                DB::table('inbounds')
+                    ->where('assigned_to', $user->id)
+                    ->whereIn('status', ['DRAFT', 'PARTIAL'])
+                    ->update(['assigned_to' => null]);
+                DB::table('stock_replenishment_requests')
+                    ->where('assignee_user_id', $user->id)
+                    ->whereIn('status', ['PENDING', 'ACCEPTED'])
+                    ->update(['assignee_user_id' => null]);
+                DB::table('inbound_participants')
+                    ->where('user_id', $user->id)
+                    ->where('status', 'ACTIVE')
+                    ->update([
+                        'status' => 'WITHDRAWN',
+                        'withdrawn_by' => Auth::id(),
+                        'withdraw_reason' => 'Akun pengguna dihapus',
+                        'withdrawn_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+
+                // Relasi identitas tidak boleh ikut terbawa ke akun baru dengan email yang sama.
+                $user->syncRoles([]);
+                $user->syncPermissions([]);
+                $user->locations()->detach();
+                $this->userRepository->deleteTokens($user);
+
+                // Tulis jejak penghapusan sebelum parent user dihapus.
+                $this->historyRepository->createHistory([
+                    'actor_id' => Auth::id(),
+                    'target_user_id' => $user->id,
+                    'action' => 'deleted',
+                ]);
+
+                $this->userRepository->delete($user);
+
+                Log::info('Pengguna dihapus', [
+                    'user_id' => $user->id,
+                    'actor_id' => Auth::id(),
+                ]);
+            });
+        } catch (QueryException $exception) {
+            // Constraint baru di masa depan tetap menghasilkan respons bisnis yang terbaca, bukan 500.
+            if ($this->isForeignKeyViolation($exception)) {
+                throw new HttpException(
+                    409,
+                    'Pengguna masih terhubung ke data yang tidak dapat dilepas. Lepaskan hubungan tersebut lalu coba lagi.',
+                );
             }
 
-            if ($user->hasRole('owner')) {
-                throw new HttpException(403, 'Akun owner tidak dapat dihapus.');
-            }
+            throw $exception;
+        }
+    }
 
-            $this->userRepository->deleteTokens($user);
-            $this->userRepository->delete($user);
+    private function isForeignKeyViolation(QueryException $exception): bool
+    {
+        $sqlState = (string) ($exception->errorInfo[0] ?? $exception->getCode());
+        $driverCode = (string) ($exception->errorInfo[1] ?? '');
 
-            Log::info('Pengguna dihapus', [
-                'user_id' => $user->id,
-                'email' => $user->email,
-                'actor_id' => Auth::id(),
-            ]);
-        });
+        if ($sqlState === '23503' || in_array($driverCode, ['1217', '1451'], true)) {
+            return true;
+        }
+
+        return $sqlState === '23000'
+            && str_contains(strtolower($exception->getMessage()), 'foreign key');
     }
 
     public function setAvatar(User $user, ?string $mediaUuid): User
@@ -260,15 +317,11 @@ class UserService
 
     public function getLoginHistories(string $userId): LengthAwarePaginator
     {
-        $user = $this->userRepository->findById($userId);
-
-        return $this->historyRepository->getLoginHistoriesByUserId($user->id);
+        return $this->historyRepository->getLoginHistoriesByUserId($userId);
     }
 
     public function getUserHistories(string $userId): LengthAwarePaginator|Collection
     {
-        $user = $this->userRepository->findById($userId);
-
-        return $this->historyRepository->getHistoriesByUserId($user->id);
+        return $this->historyRepository->getHistoriesByUserId($userId);
     }
 }
