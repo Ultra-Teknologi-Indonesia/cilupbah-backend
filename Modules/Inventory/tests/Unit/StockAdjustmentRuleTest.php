@@ -22,24 +22,24 @@ class StockAdjustmentRuleTest extends TestCase
         $this->assertSame(8, $final->differenceQty);
     }
 
-    public function test_positive_delta_can_recover_negative_stock_when_negative_stock_is_disallowed(): void
+    public function test_positive_delta_can_recover_existing_channel_shortage_to_zero(): void
     {
         config(['inventory.allow_negative_stock' => false]);
 
-        $result = app(StockAdjustmentRule::class)->calculate(-158, 1, StockAdjustmentRule::MODE_DELTA);
+        $result = app(StockAdjustmentRule::class)->calculate(-158, 158, StockAdjustmentRule::MODE_DELTA);
 
-        $this->assertSame(-157, $result->actualQty);
-        $this->assertSame(1, $result->differenceQty);
+        $this->assertSame(0, $result->actualQty);
+        $this->assertSame(158, $result->differenceQty);
     }
 
-    public function test_negative_delta_is_allowed_and_reported_when_policy_allows_negative_stock(): void
+    public function test_negative_delta_is_rejected_even_when_global_negative_stock_is_enabled(): void
     {
         config(['inventory.allow_negative_stock' => true]);
 
-        $result = app(StockAdjustmentRule::class)->calculate(-53, -2, StockAdjustmentRule::MODE_DELTA);
+        $this->expectException(NegativeStockAdjustmentException::class);
+        $this->expectExceptionMessage('on_hand: -53, adjustment: -2, hasil: -55');
 
-        $this->assertSame(-55, $result->actualQty);
-        $this->assertTrue($result->resultsInNegativeStock());
+        app(StockAdjustmentRule::class)->calculate(-53, -2, StockAdjustmentRule::MODE_DELTA);
     }
 
     public function test_negative_delta_is_rejected_when_policy_disallows_negative_stock(): void

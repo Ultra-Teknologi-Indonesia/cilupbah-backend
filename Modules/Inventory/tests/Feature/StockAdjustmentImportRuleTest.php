@@ -19,7 +19,7 @@ class StockAdjustmentImportRuleTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_import_uses_manual_policy_and_returns_warning_for_allowed_negative_result(): void
+    public function test_import_rejects_negative_result_even_when_global_negative_stock_is_enabled_for_channel_webhook(): void
     {
         config(['inventory.allow_negative_stock' => true]);
         $fixture = $this->createFixture(-53);
@@ -29,10 +29,9 @@ class StockAdjustmentImportRuleTest extends TestCase
             $fixture['location']->id,
         );
 
-        $this->assertCount(0, $preview['errors']);
-        $this->assertCount(1, $preview['items']);
-        $this->assertSame(-55, $preview['items'][0]['actual_qty']);
-        $this->assertSame(1, $preview['summary']['warnings']);
+        $this->assertCount(1, $preview['errors']);
+        $this->assertCount(0, $preview['items']);
+        $this->assertStringContainsString('on_hand: -53, adjustment: -2, hasil: -55', $preview['errors'][0]['error']);
     }
 
     public function test_import_rejects_the_same_negative_result_when_manual_policy_disallows_it(): void

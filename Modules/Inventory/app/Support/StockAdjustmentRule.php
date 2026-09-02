@@ -64,15 +64,10 @@ final class StockAdjustmentRule
         throw new InvalidArgumentException("{$field} harus berupa bilangan bulat.");
     }
 
-    public function negativeStockAllowed(): bool
-    {
-        return (bool) config('inventory.allow_negative_stock', true);
-    }
-
     public function assertAllowed(int $systemQty, int $differenceQty, int $actualQty): void
     {
 
-        if ($this->negativeStockAllowed() || $differenceQty >= 0 || $actualQty >= 0) {
+        if ($differenceQty >= 0 || $actualQty >= 0) {
             return;
         }
 

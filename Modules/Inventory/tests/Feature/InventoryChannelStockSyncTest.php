@@ -33,7 +33,7 @@ class InventoryChannelStockSyncTest extends TestCase
     private function variant(string $sku): ProductVariant
     {
         $product = Product::create([
-            'name' => $sku . ' product',
+            'name' => $sku.' product',
             'category_id' => 1,
             'status' => Product::STATUS_MASTER,
             'is_active' => true,
@@ -52,7 +52,7 @@ class InventoryChannelStockSyncTest extends TestCase
         DB::table('locations')->insert([
             'id' => $id,
             'location_code' => $code,
-            'location_name' => 'Gudang ' . $code,
+            'location_name' => 'Gudang '.$code,
             'location_type' => 'WAREHOUSE',
             'created_at' => now(),
             'updated_at' => now(),
@@ -125,5 +125,38 @@ class InventoryChannelStockSyncTest extends TestCase
 
         Queue::assertPushed(SyncStockToChannelsJob::class, fn ($job) => $job->variantId === $source->id);
         Queue::assertPushed(SyncStockToChannelsJob::class, fn ($job) => $job->variantId === $target->id);
+    }
+
+    public function test_split_rejects_insufficient_source_on_hand_even_when_negative_is_enabled(): void
+    {
+        config(['inventory.allow_negative_stock' => true]);
+
+        $source = $this->variant('INV-SRC-NEG');
+        $target = $this->variant('INV-TGT-NEG');
+        $this->setInventory($source->id, 2);
+
+        try {
+            $this->svc()->splitItem([
+                'source_item_id' => $source->id,
+                'target_item_id' => $target->id,
+                'location_id' => $this->locationId,
+                'qty_to_split' => 5,
+                'split_into_qty' => 5,
+                'created_by' => 'tester',
+            ]);
+            $this->fail('Split seharusnya ditolak ketika stok asal tidak mencukupi.');
+        } catch (\Exception $exception) {
+            $this->assertStringContainsString('Stok tidak mencukupi untuk split', $exception->getMessage());
+        }
+
+        $this->assertDatabaseHas('inventories', [
+            'item_id' => $source->id,
+            'location_id' => $this->locationId,
+            'on_hand' => 2,
+        ]);
+        $this->assertDatabaseMissing('inventory_movements', [
+            'item_id' => $source->id,
+            'source' => 'SPLIT_OUT',
+        ]);
     }
 }

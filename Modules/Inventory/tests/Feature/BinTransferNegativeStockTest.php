@@ -149,4 +149,47 @@ class BinTransferNegativeStockTest extends TestCase
         $this->expectExceptionMessage('Stok fisik di rak asal tidak mencukupi');
         $svc->printBinTransfer($transfer->id, 'tester');
     }
+
+    public function test_receive_bin_transfer_rejects_when_transit_on_hand_is_insufficient_even_when_negative_allowed(): void
+    {
+        config(['inventory.allow_negative_stock' => true]);
+        $ctx = $this->seedFixture(2);
+
+        $svc = app(InventoryService::class);
+        $transfer = $svc->createBinTransferDraft([
+            'location_id' => $ctx['location']->id,
+            'created_by' => 'tester',
+            'items' => [
+                ['item_id' => $ctx['variant']->id, 'source_bin_id' => $ctx['binA']->id, 'qty' => 1],
+            ],
+        ]);
+        $transfer = $svc->printBinTransfer($transfer->id, 'tester');
+        $item = $transfer->items->first();
+
+        $transitLocationId = Location::where('location_code', Location::SYSTEM_TRANSIT_CODE)->value('id');
+        DB::table('inventories')
+            ->where('item_id', $ctx['variant']->id)
+            ->where('location_id', $transitLocationId)
+            ->update(['on_hand' => 0, 'available' => 0]);
+
+        try {
+            $svc->receiveBinTransfer($transfer->id, [
+                'received_by' => 'tester',
+                'items' => [[
+                    'bin_transfer_item_id' => $item->id,
+                    'destination_bin_id' => $ctx['binB']->id,
+                    'qty' => 1,
+                ]],
+            ]);
+            $this->fail('Penerimaan seharusnya ditolak ketika stok Transit tidak mencukupi.');
+        } catch (\Exception $exception) {
+            $this->assertStringContainsString('Stok transit tidak mencukupi', $exception->getMessage());
+        }
+
+        $this->assertSame(BinTransfer::STATUS_SEDANG_DIJALAN, $transfer->fresh()->status);
+        $this->assertSame(0, Inventory::where('location_id', $ctx['location']->id)
+            ->where('bin_id', $ctx['binB']->id)
+            ->where('item_id', $ctx['variant']->id)
+            ->sum('on_hand'));
+    }
 }

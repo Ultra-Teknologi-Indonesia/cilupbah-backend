@@ -46,27 +46,21 @@ class AdjustmentNegativeStockTest extends TestCase
         return compact('location', 'bin', 'variant');
     }
 
-    public function test_adjust_below_zero_succeeds_when_negative_allowed(): void
+    public function test_adjust_below_zero_is_rejected_even_when_negative_is_allowed_for_channel_webhook(): void
     {
         config(['inventory.allow_negative_stock' => true]);
         $ctx = $this->seedFixture(5);
 
-        $result = app(InventoryService::class)->adjust([
+        $this->expectException(\Exception::class);
+        $this->expectExceptionMessage('Stok tidak mencukupi');
+
+        app(InventoryService::class)->adjust([
             'item_id' => $ctx['variant']->id,
             'location_id' => $ctx['location']->id,
             'bin_id' => $ctx['bin']->id,
             'qty' => -10,
             'created_by' => 'tester',
             'source' => 'ADJUSTMENT',
-        ]);
-
-        $this->assertSame(-5, (int) $result->on_hand);
-        $this->assertDatabaseHas('inventory_movements', [
-            'bin_id' => $ctx['bin']->id,
-            'item_id' => $ctx['variant']->id,
-            'source' => 'ADJUSTMENT',
-            'qty' => -10,
-            'balance' => -5,
         ]);
     }
 
@@ -87,7 +81,7 @@ class AdjustmentNegativeStockTest extends TestCase
         ]);
     }
 
-    public function test_adjust_positive_qty_when_already_negative_succeeds_even_if_negative_disallowed(): void
+    public function test_adjust_positive_qty_can_recover_existing_channel_shortage_to_zero(): void
     {
         config(['inventory.allow_negative_stock' => false]);
         $ctx = $this->seedFixture(-158);
@@ -96,18 +90,17 @@ class AdjustmentNegativeStockTest extends TestCase
             'item_id' => $ctx['variant']->id,
             'location_id' => $ctx['location']->id,
             'bin_id' => $ctx['bin']->id,
-            'qty' => 1,
+            'qty' => 158,
             'created_by' => 'tester',
             'source' => 'PURCHASE',
         ]);
 
-        $this->assertSame(-157, (int) $result->on_hand);
+        $this->assertSame(0, (int) $result->on_hand);
         $this->assertDatabaseHas('inventory_movements', [
             'bin_id' => $ctx['bin']->id,
             'item_id' => $ctx['variant']->id,
-            'qty' => 1,
-            'balance' => -157,
+            'qty' => 158,
+            'balance' => 0,
         ]);
     }
 }
-

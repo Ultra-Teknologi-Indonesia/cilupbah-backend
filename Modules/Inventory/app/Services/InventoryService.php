@@ -995,7 +995,7 @@ class InventoryService
                     );
                 }
 
-                if (! config('inventory.allow_negative_stock', true) && $transit->on_hand < $qtyTerima) {
+                if ($transit->on_hand < $qtyTerima) {
                     throw new \Exception("Stok transit tidak mencukupi (tersedia: {$transit->on_hand}, diminta: {$qtyTerima}).");
                 }
 
@@ -2286,7 +2286,7 @@ class InventoryService
                 );
             }
 
-            if (! config('inventory.allow_negative_stock', true) && $sourceInventory->on_hand < $data['qty_to_split']) {
+            if ($sourceInventory->on_hand < $data['qty_to_split']) {
                 throw new \Exception("Stok tidak mencukupi untuk split (tersedia: {$sourceInventory->on_hand}, diminta: {$data['qty_to_split']}).");
             }
 
