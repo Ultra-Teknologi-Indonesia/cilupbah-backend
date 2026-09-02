@@ -27,6 +27,18 @@ class InventoryMovementResource extends JsonResource
 
         $sourceCategory = $meta['category'];
         $sourceLabel = $meta['label'];
+        $workflow = match ($this->source) {
+            'TRANSFER_OUT' => ['type' => 'transfer', 'label' => 'Keluar dari rak asal', 'order' => 10],
+            'TRANSIT_IN' => ['type' => 'transfer', 'label' => 'Masuk transit', 'order' => 20],
+            'TRANSIT_OUT' => ['type' => 'transfer', 'label' => 'Keluar transit', 'order' => 30],
+            'TRANSFER_IN' => ['type' => 'transfer', 'label' => 'Masuk gudang tujuan', 'order' => 40],
+            default => null,
+        };
+
+        if ($workflow !== null) {
+            $sourceCategory = 'TRANSFER';
+            $sourceLabel = $workflow['label'];
+        }
 
         if (in_array($this->source, ['PUTAWAY_IN', 'PUTAWAY_OUT', 'PUTAWAY_REVERSAL'], true)) {
             $putawayType = strtolower((string) ($this->putaway_source_type ?? ''));
@@ -39,7 +51,12 @@ class InventoryMovementResource extends JsonResource
                 str_contains($putawayType, 'transfer')
             ) {
                 $sourceCategory = 'TRANSFER';
-                $sourceLabel = 'Transfer';
+                $workflow = match ($this->source) {
+                    'PUTAWAY_OUT' => ['type' => 'transfer', 'label' => 'Keluar dari DEFAULT', 'order' => 50],
+                    'PUTAWAY_IN' => ['type' => 'transfer', 'label' => 'Masuk rak alokasi', 'order' => 60],
+                    default => ['type' => 'transfer', 'label' => 'Koreksi putaway transfer', 'order' => 70],
+                };
+                $sourceLabel = $workflow['label'];
             } elseif (
                 $putawayType === 'sales_return' ||
                 $putawayType === 'return' ||
@@ -90,6 +107,7 @@ class InventoryMovementResource extends JsonResource
             'source' => $this->source,
             'source_category' => $sourceCategory,
             'source_label' => $sourceLabel,
+            'workflow' => $workflow,
             'is_variance' => InventoryMovementSourceMap::isVariance($this->source),
             'direction' => $direction,
             'qty' => $qty,

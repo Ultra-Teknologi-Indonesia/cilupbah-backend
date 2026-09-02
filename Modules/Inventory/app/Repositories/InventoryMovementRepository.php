@@ -15,6 +15,7 @@ use Modules\Product\Support\TechnicalSku;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 use Spatie\QueryBuilder\AllowedFilter;
+use Spatie\QueryBuilder\AllowedSort;
 use Spatie\QueryBuilder\QueryBuilder;
 
 class InventoryMovementRepository
@@ -417,6 +418,38 @@ class InventoryMovementRepository
 
         $deductList = "'".implode("','", InventoryMovementSourceMap::ORDER_DEDUCT_SOURCES)."'";
         $restoreList = "'".implode("','", InventoryMovementSourceMap::ORDER_RESTORE_SOURCES)."'";
+        $transferPutawayExistsSql = <<<'SQL'
+EXISTS (
+    SELECT 1
+    FROM putaways AS workflow_putaway
+    LEFT JOIN inbounds AS workflow_inbound
+        ON workflow_inbound.id = workflow_putaway.source_id
+    WHERE workflow_putaway.putaway_no = regexp_replace(
+        inventory_movements.transaction_number,
+        '-(BATAL|KOREKSI|HAPUS)$',
+        ''
+    )
+    AND (
+        workflow_inbound.source_type IN ('transfer', 'inventory_transfer')
+        OR workflow_inbound.type = 'TRANSIT_IN'
+        OR workflow_inbound.transaction_number LIKE 'TRFI%'
+        OR workflow_inbound.reference_number LIKE 'TRFI%'
+        OR workflow_putaway.source_type = 'TRANSFER'
+    )
+)
+SQL;
+        $workflowPhaseSql = <<<SQL
+CASE
+    WHEN inventory_movements.source = 'TRANSFER_OUT' THEN 10
+    WHEN inventory_movements.source = 'TRANSIT_IN' THEN 20
+    WHEN inventory_movements.source = 'TRANSIT_OUT' THEN 30
+    WHEN inventory_movements.source = 'TRANSFER_IN' THEN 40
+    WHEN inventory_movements.source = 'PUTAWAY_OUT' AND {$transferPutawayExistsSql} THEN 50
+    WHEN inventory_movements.source = 'PUTAWAY_IN' AND {$transferPutawayExistsSql} THEN 60
+    WHEN inventory_movements.source = 'PUTAWAY_REVERSAL' AND {$transferPutawayExistsSql} THEN 70
+    ELSE 100
+END
+SQL;
         $effectiveQtySql = "CASE WHEN inventory_movements.source IN ($deductList) THEN -ABS(inventory_movements.qty) WHEN inventory_movements.source IN ($restoreList) THEN ABS(inventory_movements.qty) ELSE inventory_movements.qty END";
         $nonPhysicalList = "'".implode("','", InventoryMovementSourceMap::NON_PHYSICAL_SOURCES)."'";
         $physicalQtySql = "CASE WHEN inventory_movements.source IN ($nonPhysicalList) THEN 0 ELSE inventory_movements.qty END";
@@ -483,25 +516,25 @@ class InventoryMovementRepository
             })
             ->select('inventory_movements.id')
             ->selectRaw(
-                "SUM($availableDeltaSql) OVER (PARTITION BY $balancePartition ORDER BY inventory_movements.transaction_date, inventory_movements.id) AS total_balance"
+                "SUM($availableDeltaSql) OVER (PARTITION BY $balancePartition ORDER BY inventory_movements.transaction_date, $workflowPhaseSql, inventory_movements.transaction_number, inventory_movements.id) AS total_balance"
             )
             ->selectRaw(
-                "SUM($placedQtySql) OVER (PARTITION BY $balancePartition ORDER BY inventory_movements.transaction_date, inventory_movements.id) AS physical_balance"
+                "SUM($placedQtySql) OVER (PARTITION BY $balancePartition ORDER BY inventory_movements.transaction_date, $workflowPhaseSql, inventory_movements.transaction_number, inventory_movements.id) AS physical_balance"
             )
             ->selectRaw(
-                "SUM($placedQtySql) OVER (PARTITION BY $balancePartition ORDER BY inventory_movements.transaction_date, inventory_movements.id) AS placed_balance"
+                "SUM($placedQtySql) OVER (PARTITION BY $balancePartition ORDER BY inventory_movements.transaction_date, $workflowPhaseSql, inventory_movements.transaction_number, inventory_movements.id) AS placed_balance"
             )
             ->selectRaw(
-                "SUM($pendingPlacementQtySql) OVER (PARTITION BY $balancePartition ORDER BY inventory_movements.transaction_date, inventory_movements.id) AS pending_placement_balance"
+                "SUM($pendingPlacementQtySql) OVER (PARTITION BY $balancePartition ORDER BY inventory_movements.transaction_date, $workflowPhaseSql, inventory_movements.transaction_number, inventory_movements.id) AS pending_placement_balance"
             )
             ->selectRaw(
-                "SUM($legacyUnassignedQtySql) OVER (PARTITION BY $balancePartition ORDER BY inventory_movements.transaction_date, inventory_movements.id) AS legacy_unassigned_balance"
+                "SUM($legacyUnassignedQtySql) OVER (PARTITION BY $balancePartition ORDER BY inventory_movements.transaction_date, $workflowPhaseSql, inventory_movements.transaction_number, inventory_movements.id) AS legacy_unassigned_balance"
             )
             ->selectRaw(
-                "SUM($physicalTotalQtySql) OVER (PARTITION BY $balancePartition ORDER BY inventory_movements.transaction_date, inventory_movements.id) AS physical_total_balance"
+                "SUM($physicalTotalQtySql) OVER (PARTITION BY $balancePartition ORDER BY inventory_movements.transaction_date, $workflowPhaseSql, inventory_movements.transaction_number, inventory_movements.id) AS physical_total_balance"
             )
             ->selectRaw(
-                "SUM($onOrderDeltaSql) OVER (PARTITION BY $balancePartition ORDER BY inventory_movements.transaction_date, inventory_movements.id) AS on_order_balance"
+                "SUM($onOrderDeltaSql) OVER (PARTITION BY $balancePartition ORDER BY inventory_movements.transaction_date, $workflowPhaseSql, inventory_movements.transaction_number, inventory_movements.id) AS on_order_balance"
             )
             ->selectRaw('COALESCE(current_stock.current_balance, 0) AS current_balance')
             ->selectRaw('COALESCE(current_stock.current_available_balance, 0) AS current_available_balance');
@@ -758,7 +791,19 @@ class InventoryMovementRepository
                     $query->whereDate('transaction_date', '<=', $value);
                 })
             )
-            ->allowedSorts('transaction_date', 'created_at')
+            ->allowedSorts(
+                'transaction_date',
+                'created_at',
+                AllowedSort::callback('workflow', function ($query, bool $descending) use ($workflowPhaseSql): void {
+                    $direction = $descending ? 'desc' : 'asc';
+
+                    $query
+                        ->orderBy('inventory_movements.transaction_date', $direction)
+                        ->orderByRaw("{$workflowPhaseSql} {$direction}")
+                        ->orderBy('inventory_movements.transaction_number', $direction)
+                        ->orderBy('inventory_movements.id', $direction);
+                }),
+            )
             ->defaultSort('-transaction_date');
 
         return $qb;

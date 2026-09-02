@@ -699,7 +699,7 @@ class KronologiBalancePartitionTest extends TestCase
 
         $this->assertCount(1, $data);
         $this->assertSame('TRANSFER', $data[0]['source_category']);
-        $this->assertSame('Transfer', $data[0]['source_label']);
+        $this->assertSame('Masuk rak alokasi', $data[0]['source_label']);
     }
 
     public function test_putaway_trfi_transfer_masuk_berlabel_transfer(): void
@@ -754,7 +754,7 @@ class KronologiBalancePartitionTest extends TestCase
         $data = collect($resource->response()->getData(true)['data'])->keyBy('transaction_number');
 
         $this->assertSame('TRANSFER', $data['PUT-000000165']['source_category']);
-        $this->assertSame('Transfer', $data['PUT-000000165']['source_label']);
+        $this->assertSame('Masuk rak alokasi', $data['PUT-000000165']['source_label']);
     }
 
     public function test_keterangan_kronologi_menggunakan_keterangan_po(): void
@@ -879,5 +879,80 @@ class KronologiBalancePartitionTest extends TestCase
         $this->assertSame('Pesanan Batal', $row['source_label']);
         $this->assertSame(1, $row['qty'], 'Qty harus positif (+1) untuk pemulihan stok');
         $this->assertSame('in', $row['direction']);
+    }
+
+    public function test_transfer_workflow_sort_mengikuti_urutan_fisik(): void
+    {
+        $transitLocationId = Str::uuid()->toString();
+        DB::table('locations')->insert([
+            'id' => $transitLocationId,
+            'location_code' => 'TRANSIT-PART',
+            'location_name' => 'Transit Partisi',
+            'location_type' => 'TRANSIT',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $transitBinId = Str::uuid()->toString();
+        DB::table('location_bins')->insert([
+            'id' => $transitBinId,
+            'location_id' => $transitLocationId,
+            'bin_code' => 'DEFAULT',
+            'bin_final_code' => 'DEFAULT',
+            'is_inbound' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $baseTime = now()->startOfMinute();
+        $movements = [
+            ['source' => 'TRANSFER_OUT', 'qty' => -20, 'bin_id' => $this->finalBinId, 'location_id' => $this->locationId, 'offset' => 0],
+            ['source' => 'TRANSIT_IN', 'qty' => 20, 'bin_id' => $transitBinId, 'location_id' => $transitLocationId, 'offset' => 0],
+            ['source' => 'TRANSIT_OUT', 'qty' => -20, 'bin_id' => $transitBinId, 'location_id' => $transitLocationId, 'offset' => 1],
+            ['source' => 'TRANSFER_IN', 'qty' => 20, 'bin_id' => null, 'location_id' => $this->locationId, 'offset' => 1],
+        ];
+
+        foreach ($movements as $movement) {
+            DB::table('inventory_movements')->insert([
+                'id' => Str::uuid()->toString(),
+                'item_id' => $this->itemId,
+                'location_id' => $movement['location_id'],
+                'bin_id' => $movement['bin_id'],
+                'transaction_number' => 'TRF-WORKFLOW-001',
+                'source' => $movement['source'],
+                'qty' => $movement['qty'],
+                'balance' => 0,
+                'transaction_date' => $baseTime->copy()->addMinutes($movement['offset']),
+                'created_by' => 'system',
+                'created_at' => $baseTime,
+                'updated_at' => $baseTime,
+            ]);
+        }
+
+        request()->merge([
+            'filter' => ['item_id' => $this->itemId],
+            'sort' => 'workflow',
+            'per_page' => 50,
+        ]);
+
+        $paginated = app(InventoryMovementRepository::class)->getHistoryPaginated(50);
+        $rows = collect(InventoryMovementResource::collection($paginated)
+            ->response()
+            ->getData(true)['data']);
+
+        $transferRows = $rows
+            ->where('transaction_number', 'TRF-WORKFLOW-001')
+            ->values();
+
+        $this->assertSame(
+            ['TRANSFER_OUT', 'TRANSIT_IN', 'TRANSIT_OUT', 'TRANSFER_IN'],
+            $transferRows->pluck('source')->all(),
+        );
+        $this->assertSame(
+            ['Keluar dari rak asal', 'Masuk transit', 'Keluar transit', 'Masuk gudang tujuan'],
+            $transferRows->pluck('source_label')->all(),
+        );
+        $this->assertSame(
+            [10, 20, 30, 40],
+            $transferRows->pluck('workflow.order')->all(),
+        );
     }
 }
