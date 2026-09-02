@@ -10,6 +10,7 @@ use Modules\Inventory\Models\Putaway;
 use Modules\Inventory\Models\StockOpname;
 use Modules\Notification\Models\DeviceToken;
 use Modules\Notification\Models\Notification;
+use Modules\Notification\Support\NotificationVisibility;
 use Modules\Outbound\Models\Picklist;
 use Spatie\QueryBuilder\QueryBuilder;
 
@@ -17,7 +18,9 @@ class NotificationRepository
 {
     public function paginatedForUser(string $userId, Request $request): LengthAwarePaginator
     {
-        return QueryBuilder::for(Notification::where('user_id', $userId))
+        $query = NotificationVisibility::applyVisible(Notification::where('user_id', $userId));
+
+        return QueryBuilder::for($query)
             ->when(
                 $request->has('is_read'),
                 fn ($q) => $q->where('is_read', filter_var($request->is_read, FILTER_VALIDATE_BOOLEAN))
@@ -30,19 +33,20 @@ class NotificationRepository
 
     public function countUnreadForUser(string $userId): int
     {
-        return Notification::where('user_id', $userId)
+        return NotificationVisibility::applyVisible(Notification::where('user_id', $userId))
             ->where('is_read', false)
             ->count();
     }
 
     public function findForUser(string $userId, string $id): Notification
     {
-        return Notification::where('user_id', $userId)->findOrFail($id);
+        return NotificationVisibility::applyVisible(Notification::where('user_id', $userId))
+            ->findOrFail($id);
     }
 
     public function markAllReadForUser(string $userId): void
     {
-        Notification::where('user_id', $userId)
+        NotificationVisibility::applyVisible(Notification::where('user_id', $userId))
             ->where('is_read', false)
             ->update([
                 'is_read' => true,

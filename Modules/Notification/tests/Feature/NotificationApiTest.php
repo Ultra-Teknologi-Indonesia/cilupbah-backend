@@ -5,6 +5,7 @@ namespace Modules\Notification\Tests\Feature;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Notification\Models\Notification;
+use Modules\Notification\Services\NotificationDispatcher;
 use Tests\TestCase;
 
 class NotificationApiTest extends TestCase
@@ -65,6 +66,54 @@ class NotificationApiTest extends TestCase
             ->getJson('/api/v1/notifications/unread-count')
             ->assertStatus(200)
             ->assertJsonPath('data.count', 2);
+    }
+
+    public function test_channel_order_notifications_are_hidden_but_manual_orders_remain_visible(): void
+    {
+        $channel = $this->makeNotification($this->user, [
+            'title' => 'Pesanan baru dari channel',
+            'message' => 'Pesanan SP-123 masuk.',
+            'type' => 'order_new',
+            'data' => ['source' => 'shopee'],
+        ]);
+        $manual = $this->makeNotification($this->user, [
+            'title' => 'Pesanan baru masuk',
+            'message' => 'Pesanan SO-00001 siap diproses.',
+            'type' => 'order_new',
+            'data' => ['source' => null],
+        ]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/notifications')
+            ->assertStatus(200)
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $manual->id)
+            ->assertJsonPath('meta.total', 1);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/notifications/{$channel->id}")
+            ->assertStatus(404);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/notifications/unread-count')
+            ->assertStatus(200)
+            ->assertJsonPath('data.count', 1);
+    }
+
+    public function test_new_channel_order_notification_is_not_stored_or_pushed(): void
+    {
+        app(NotificationDispatcher::class)->toUser($this->user->id, [
+            'type' => 'order_new',
+            'title' => 'Pesanan baru dari channel',
+            'message' => 'Pesanan TT-123 masuk.',
+            'data' => ['source' => 'tiktok'],
+            'push' => false,
+        ]);
+
+        $this->assertDatabaseMissing('notifications', [
+            'user_id' => $this->user->id,
+            'type' => 'order_new',
+        ]);
     }
 
     public function test_mark_as_read_flips_flag_for_owned_notification(): void

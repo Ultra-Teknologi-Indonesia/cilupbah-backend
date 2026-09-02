@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Notification\Jobs\SendPushNotificationJob;
 use Modules\Notification\Models\Notification;
+use Modules\Notification\Support\NotificationVisibility;
 
 class NotificationDispatcher
 {
@@ -30,6 +31,10 @@ class NotificationDispatcher
         $message = (string) ($payload['message'] ?? '');
         $data = (array) ($payload['data'] ?? []);
         $push = $payload['push'] ?? true;
+
+        if (NotificationVisibility::shouldSuppress($type, $data)) {
+            return;
+        }
 
         DB::afterCommit(function () use ($userIds, $type, $title, $message, $data, $push) {
             foreach ($userIds as $uid) {

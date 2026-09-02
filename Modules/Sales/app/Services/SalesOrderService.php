@@ -1982,32 +1982,9 @@ class SalesOrderService
 
         if ($mutated) {
             SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
-
-            if ($wasUnmapped) {
-                $fresh = $order->fresh('items');
-                if ($fresh && ! $this->hasUnmappedItems($fresh) && $fresh->status !== 'cancelled') {
-                    $this->notifyChannelOrderReady($fresh);
-                }
-            }
         }
 
         return $this->freshOrderWithItems($order);
-    }
-
-    private function notifyChannelOrderReady(SalesOrder $order): void
-    {
-        $marketplace = $order->source ?: 'channel';
-        $this->notifications->toPermission(self::NOTIF_ORDER_PERMISSION, [
-            'type' => 'order_new',
-            'title' => 'Pesanan baru dari channel',
-            'message' => "Pesanan {$order->salesorder_no} ({$marketplace}) masuk.",
-            'data' => [
-                'sales_order_id' => $order->id,
-                'salesorder_no' => $order->salesorder_no,
-                'source' => $order->source,
-                'link' => $this->orderLink($order->id),
-            ],
-        ]);
     }
 
     private function freshOrderWithItems(SalesOrder $order): SalesOrder
@@ -2266,10 +2243,6 @@ class SalesOrderService
                         'error' => $e->getMessage(),
                     ]);
                 }
-            }
-
-            if ($wasNewOrder && ! $this->hasUnmappedItems($order)) {
-                $this->notifyChannelOrderReady($order);
             }
 
             if ($stockMutated) {
