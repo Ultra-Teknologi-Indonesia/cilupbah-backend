@@ -726,9 +726,7 @@ class InventoryService
                     );
                 }
 
-                if (! config('inventory.allow_negative_stock', true) && $source->on_hand < $qty) {
-                    throw new \Exception("Stok di rak asal tidak mencukupi untuk salah satu produk (tersedia: {$source->on_hand}, diminta: {$qty}). Batalkan/ubah transfer.");
-                }
+                $this->assertPhysicalSourceAvailable($source, $qty);
 
                 $unitCost = (float) ($source->avg_cost ?? 0);
 
@@ -1453,9 +1451,7 @@ class InventoryService
                     );
                 }
 
-                if (! config('inventory.allow_negative_stock', true) && $sourceInventory->available < $itemData['qty']) {
-                    throw new \Exception("Stok tidak mencukupi di lokasi asal (tersedia: {$sourceInventory->available}, diminta: {$itemData['qty']}).");
-                }
+                $this->assertTransferSourceAvailable($sourceInventory, (int) $itemData['qty']);
 
                 $sourceInventory->on_hand -= $itemData['qty'];
                 $this->inventoryRepository->updateStock($sourceInventory);
@@ -2705,13 +2701,21 @@ class InventoryService
 
     private function assertTransferSourceAvailable(Inventory $sourceInventory, int $qty): void
     {
-        if (config('inventory.allow_negative_stock', true)) {
-            return;
-        }
+        $this->assertPhysicalSourceAvailable($sourceInventory, $qty);
 
-        if ((int) $sourceInventory->available < $qty) {
+        if (! config('inventory.allow_negative_stock', true)
+            && (int) $sourceInventory->available < $qty) {
             throw new \Exception(
                 "Stok tersedia tidak mencukupi untuk transfer (tersedia: {$sourceInventory->available}, diminta: {$qty})."
+            );
+        }
+    }
+
+    private function assertPhysicalSourceAvailable(Inventory $sourceInventory, int $qty): void
+    {
+        if ((int) $sourceInventory->on_hand < $qty) {
+            throw new \Exception(
+                "Stok fisik di rak asal tidak mencukupi (tersedia: {$sourceInventory->on_hand}, diminta: {$qty})."
             );
         }
     }

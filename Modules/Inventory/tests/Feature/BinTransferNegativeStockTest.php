@@ -54,7 +54,7 @@ class BinTransferNegativeStockTest extends TestCase
     public function test_create_draft_for_missing_source_stock_succeeds_when_negative_allowed(): void
     {
         config(['inventory.allow_negative_stock' => true]);
-        $ctx = $this->seedFixture(0); 
+        $ctx = $this->seedFixture(0);
 
         $transfer = app(InventoryService::class)->createBinTransferDraft([
             'location_id' => $ctx['location']->id,
@@ -74,10 +74,10 @@ class BinTransferNegativeStockTest extends TestCase
         $this->assertSame(0, (int) $inv->on_hand);
     }
 
-    public function test_print_bin_transfer_drives_source_negative_when_negative_allowed(): void
+    public function test_print_bin_transfer_rejects_insufficient_physical_stock_even_when_negative_allowed(): void
     {
         config(['inventory.allow_negative_stock' => true]);
-        $ctx = $this->seedFixture(2); 
+        $ctx = $this->seedFixture(2);
 
         $svc = app(InventoryService::class);
         $transfer = $svc->createBinTransferDraft([
@@ -88,25 +88,25 @@ class BinTransferNegativeStockTest extends TestCase
             ],
         ]);
 
-        $transfer = $svc->printBinTransfer($transfer->id, 'tester');
-
-        $this->assertSame(BinTransfer::STATUS_SEDANG_DIJALAN, $transfer->status);
+        try {
+            $svc->printBinTransfer($transfer->id, 'tester');
+            $this->fail('Pindah rak seharusnya ditolak ketika stok fisik tidak mencukupi.');
+        } catch (\Exception $exception) {
+            $this->assertStringContainsString(
+                'Stok fisik di rak asal tidak mencukupi',
+                $exception->getMessage(),
+            );
+        }
 
         $source = Inventory::where('bin_id', $ctx['binA']->id)
             ->where('item_id', $ctx['variant']->id)->first();
-        $this->assertSame(-8, (int) $source->on_hand);
-
-        $this->assertDatabaseHas('inventory_movements', [
-            'bin_id' => $ctx['binA']->id,
+        $this->assertSame(2, (int) $source->on_hand);
+        $this->assertSame(BinTransfer::STATUS_BARU_DIBUAT, $transfer->fresh()->status);
+        $this->assertSame(0, Inventory::where('location_id', Location::where('location_code', Location::SYSTEM_TRANSIT_CODE)->value('id'))
+            ->where('item_id', $ctx['variant']->id)
+            ->sum('on_hand'));
+        $this->assertDatabaseMissing('inventory_movements', [
             'source' => 'BIN_TRANSFER_OUT',
-            'qty' => -10,
-            'balance' => -8,
-            'transaction_number' => $transfer->transfer_number,
-        ]);
-
-        $this->assertDatabaseHas('inventory_movements', [
-            'source' => 'TRANSIT_IN',
-            'qty' => 10,
             'transaction_number' => $transfer->transfer_number,
         ]);
     }
@@ -146,7 +146,7 @@ class BinTransferNegativeStockTest extends TestCase
         config(['inventory.allow_negative_stock' => false]);
 
         $this->expectException(\Exception::class);
-        $this->expectExceptionMessage('Stok di rak asal tidak mencukupi');
+        $this->expectExceptionMessage('Stok fisik di rak asal tidak mencukupi');
         $svc->printBinTransfer($transfer->id, 'tester');
     }
 }

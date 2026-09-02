@@ -320,4 +320,87 @@ class TransferDraftTidakMasukTransitTest extends TestCase
         $this->assertSame(20, (int) $this->sourceStock()->on_hand);
         $this->assertSame(0, $this->transitOnHand());
     }
+
+    public function test_pengiriman_menolak_stok_fisik_tidak_mencukupi_meski_negative_diizinkan(): void
+    {
+        config(['inventory.allow_negative_stock' => true]);
+
+        $transferId = $this->buatDraftBerisi(25);
+        $this->setujui($transferId);
+
+        try {
+            app(InventoryService::class)->shipTransfer($transferId, ['shipped_by' => 'tester']);
+            $this->fail('Transfer seharusnya ditolak ketika stok fisik tidak mencukupi.');
+        } catch (\Exception $exception) {
+            $this->assertStringContainsString(
+                'Stok fisik di rak asal tidak mencukupi',
+                $exception->getMessage(),
+            );
+        }
+
+        $this->assertSame(20, (int) $this->sourceStock()->on_hand);
+        $this->assertSame(0, $this->transitOnHand());
+        $this->assertSame(0, $this->movements('TRANSFER_OUT'));
+        $this->assertSame(0, $this->movements('TRANSIT_IN'));
+    }
+
+    public function test_pengiriman_menolak_stok_fisik_kosong_meski_negative_diizinkan(): void
+    {
+        config(['inventory.allow_negative_stock' => true]);
+
+        DB::table('inventories')
+            ->where('item_id', $this->itemId)
+            ->where('bin_id', $this->sourceBinId)
+            ->update([
+                'on_hand' => 0,
+                'available' => 0,
+            ]);
+
+        $transferId = $this->buatDraftBerisi(1);
+        $this->setujui($transferId);
+
+        try {
+            app(InventoryService::class)->shipTransfer($transferId, ['shipped_by' => 'tester']);
+            $this->fail('Transfer seharusnya ditolak ketika stok fisik kosong.');
+        } catch (\Exception $exception) {
+            $this->assertStringContainsString(
+                'Stok fisik di rak asal tidak mencukupi',
+                $exception->getMessage(),
+            );
+        }
+
+        $this->assertSame(0, (int) $this->sourceStock()->on_hand);
+        $this->assertSame(0, $this->transitOnHand());
+        $this->assertSame(0, $this->movements('TRANSFER_OUT'));
+        $this->assertSame(0, $this->movements('TRANSIT_IN'));
+    }
+
+    public function test_transfer_langsung_menolak_stok_fisik_tidak_mencukupi_meski_negative_diizinkan(): void
+    {
+        config(['inventory.allow_negative_stock' => true]);
+
+        try {
+            app(InventoryService::class)->transferOut([
+                'source_location_id' => $this->sourceLocationId,
+                'destination_location_id' => $this->destLocationId,
+                'created_by' => 'tester',
+                'items' => [[
+                    'item_id' => $this->itemId,
+                    'qty' => 25,
+                    'source_bin_id' => $this->sourceBinId,
+                ]],
+            ]);
+            $this->fail('Transfer langsung seharusnya ditolak ketika stok fisik tidak mencukupi.');
+        } catch (\Exception $exception) {
+            $this->assertStringContainsString(
+                'Stok fisik di rak asal tidak mencukupi',
+                $exception->getMessage(),
+            );
+        }
+
+        $this->assertSame(20, (int) $this->sourceStock()->on_hand);
+        $this->assertSame(0, $this->transitOnHand());
+        $this->assertSame(0, $this->movements('TRANSFER_OUT'));
+        $this->assertSame(0, $this->movements('TRANSIT_IN'));
+    }
 }
