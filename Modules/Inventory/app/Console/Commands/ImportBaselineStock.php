@@ -368,11 +368,6 @@ class ImportBaselineStock extends Command
         $binsHere = $this->lookupBins($bins, $locationId);
         $binsElsewhere = $this->lookupBinsElsewhere($bins, $locationId, array_keys($binsHere));
 
-        $defaultBinId = DB::table('location_bins')
-            ->where('location_id', $locationId)
-            ->where('is_inbound', true)
-            ->value('id');
-
         $problems = [
             'sku_hilang' => [],
             'sku_beda_huruf' => [],
@@ -381,6 +376,7 @@ class ImportBaselineStock extends Command
             'rak_hilang' => [],
             'rak_gudang_lain' => [],
             'rak_kosong' => [],
+            'rak_inbound' => [],
         ];
 
         $lowerIndex = [];
@@ -446,8 +442,10 @@ class ImportBaselineStock extends Command
             $resolvedBinId = null;
 
             if ($bin === '') {
-                $problems['rak_kosong'][] = $row + ['catatan' => 'kode rak kosong, dialokasikan ke rak default/inbound'];
-                $resolvedBinId = $defaultBinId;
+                $notes = 'kode rak kosong; import baseline wajib memakai rak final, bukan DEFAULT/inbound';
+                $problems['rak_kosong'][] = $row + ['catatan' => $notes];
+                $status = 'DITOLAK_RAK_KOSONG';
+                $blocked = true;
             } elseif (! isset($binsHere[$bin])) {
                 if (isset($binsElsewhere[$bin])) {
                     $notes = 'Kode rak milik gudang lain: ' . $binsElsewhere[$bin];
@@ -461,7 +459,16 @@ class ImportBaselineStock extends Command
 
                 $blocked = true;
             } else {
-                $resolvedBinId = $binsHere[$bin]->id;
+                $candidateBin = $binsHere[$bin];
+                if ((bool) ($candidateBin->is_inbound ?? false)
+                    || strtoupper(trim((string) ($candidateBin->bin_final_code ?? ''))) === 'DEFAULT') {
+                    $notes = 'rak inbound/DEFAULT tidak boleh menjadi target import baseline; lakukan putaway ke rak final terlebih dahulu';
+                    $problems['rak_inbound'][] = $row + ['catatan' => $notes];
+                    $status = 'DITOLAK_RAK_INBOUND';
+                    $blocked = true;
+                } else {
+                    $resolvedBinId = $candidateBin->id;
+                }
             }
 
             $variantId = isset($variants[$sku]) ? $variants[$sku]->id : null;
@@ -545,7 +552,7 @@ class ImportBaselineStock extends Command
             $rows = DB::table('location_bins')
                 ->where('location_id', $locationId)
                 ->whereIn('bin_final_code', $chunk)
-                ->get(['id', 'bin_final_code']);
+                ->get(['id', 'bin_final_code', 'is_inbound']);
 
             foreach ($rows as $row) {
                 $found[$row->bin_final_code] = $row;
@@ -616,7 +623,8 @@ class ImportBaselineStock extends Command
             'rak_gudang_lain' => 'Kode rak milik gudang lain (baris DITOLAK)',
             'sku_ganda' => 'SKU dipakai lebih dari satu varian (peringatan)',
             'sku_nonaktif' => 'Varian non-aktif (peringatan)',
-            'rak_kosong' => 'Kode rak kosong (peringatan)',
+            'rak_kosong' => 'Kode rak kosong (baris DITOLAK)',
+            'rak_inbound' => 'Rak inbound/DEFAULT (baris DITOLAK)',
         ];
 
         foreach ($labels as $key => $label) {

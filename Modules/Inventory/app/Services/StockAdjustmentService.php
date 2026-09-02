@@ -146,6 +146,14 @@ class StockAdjustmentService
                     continue;
                 }
 
+                if (! empty($item->bin_id)) {
+                    app(\Modules\Warehouse\Services\InboundBinPolicy::class)->assertConsumable(
+                        $adjustment->location_id,
+                        $item->bin_id,
+                        'pembaruan penyesuaian stok',
+                    );
+                }
+
                 $revertDelta = -1 * $delta;
                 $inventory = $this->inventoryRepository->findOrCreateForUpdate(
                     $item->item_id,
@@ -230,6 +238,14 @@ class StockAdjustmentService
                 $delta = (float) $item->difference_qty;
                 if ($delta === 0.0) {
                     continue;
+                }
+
+                if (! empty($item->bin_id)) {
+                    app(\Modules\Warehouse\Services\InboundBinPolicy::class)->assertConsumable(
+                        $adjustment->location_id,
+                        $item->bin_id,
+                        'penghapusan penyesuaian stok',
+                    );
                 }
 
                 $revertDelta = -1 * $delta;

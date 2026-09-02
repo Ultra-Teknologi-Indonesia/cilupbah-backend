@@ -110,6 +110,7 @@ class ImportBaselineStockTest extends TestCase
         $excelPath = $this->createSampleExcel([
             ['sku' => 'SKU-001', 'bin' => 'GK-01-A1', 'qty' => 50],
             ['sku' => 'SKU-UNKNOWN', 'bin' => 'GK-01-A1', 'qty' => 10],
+            ['sku' => 'SKU-001', 'bin' => '', 'qty' => 10],
         ]);
 
         $this->artisan('inventory:import-baseline', [
@@ -118,6 +119,7 @@ class ImportBaselineStockTest extends TestCase
         ])
             ->assertExitCode(0)
             ->expectsOutputToContain('DRY-RUN (SIMULASI AMAN)')
+            ->expectsOutputToContain('Kode rak kosong (baris DITOLAK)')
             ->expectsOutputToContain('LAPORAN LENGKAP TELAH DIBUAT');
 
         $this->assertSame(0, StockAdjustment::count());

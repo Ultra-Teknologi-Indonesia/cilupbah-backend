@@ -274,7 +274,9 @@ class StockOpnameService
 
     private function resolveBins(array $data): \Illuminate\Database\Eloquent\Collection|\Illuminate\Support\Collection
     {
-        $query = LocationBin::where('location_id', $data['location_id']);
+        $query = LocationBin::where('location_id', $data['location_id'])
+            ->where('is_inbound', false)
+            ->whereRaw("UPPER(TRIM(COALESCE(bin_final_code, bin_code, ''))) <> 'DEFAULT'");
 
         if (!empty($data['filter_zone_id'])) {
             $query->where('zone_id', $data['filter_zone_id']);

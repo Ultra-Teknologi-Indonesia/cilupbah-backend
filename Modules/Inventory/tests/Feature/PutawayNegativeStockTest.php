@@ -139,4 +139,24 @@ class PutawayNegativeStockTest extends TestCase
 
         $this->assertSame(0, (int) $ctx['putawayItem']->fresh()->putaway_qty);
     }
+
+    public function test_non_putaway_negative_movement_cannot_bypass_inbound_guard_with_transit_source(): void
+    {
+        $ctx = $this->seedFixture();
+
+        $this->expectException(\App\Exceptions\UserFacingException::class);
+        $this->expectExceptionMessage('Stok inbound/DEFAULT hanya boleh berubah melalui alur putaway atau transit yang sah.');
+
+        app(\Modules\Inventory\Repositories\InventoryMovementRepository::class)->create([
+            'item_id' => $ctx['variant']->id,
+            'location_id' => $ctx['location']->id,
+            'bin_id' => $ctx['sourceBin']->id,
+            'transaction_number' => 'INVALID-TRANSIT-DEFAULT',
+            'source' => 'TRANSIT_OUT',
+            'qty' => -50,
+            'balance' => 0,
+            'transaction_date' => now(),
+            'created_by' => 'test',
+        ]);
+    }
 }

@@ -16,6 +16,7 @@ use Modules\Notification\Services\NotificationDispatcher;
 use App\Traits\StockLockable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Warehouse\Services\InboundBinPolicy;
 
 class ProcessStockOpnameFinalizeJob implements ShouldQueue
 {
@@ -48,6 +49,14 @@ class ProcessStockOpnameFinalizeJob implements ShouldQueue
         foreach ($itemsWithDifference as $item) {
             $this->withStockLock($item->item_id, $opname->location_id, function () use ($item, $opname, $inventoryRepository, $movementRepository, &$totalSignedValue) {
                 DB::transaction(function () use ($item, $opname, $inventoryRepository, $movementRepository, &$totalSignedValue) {
+                    if (! empty($item->bin_id)) {
+                        app(InboundBinPolicy::class)->assertConsumable(
+                            $opname->location_id,
+                            $item->bin_id,
+                            'stock opname',
+                        );
+                    }
+
                     $inventory = $inventoryRepository->findOrCreateForUpdate(
                         $item->item_id,
                         $opname->location_id,

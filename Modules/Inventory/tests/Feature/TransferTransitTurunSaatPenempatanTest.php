@@ -229,7 +229,7 @@ class TransferTransitTurunSaatPenempatanTest extends TestCase
         $this->assertSame(3, $finalOnHand, 'stok masuk rak final tujuan');
     }
 
-    public function test_terima_dengan_auto_assign_membuat_putaway_inbound_dan_transit_turun_bertahap(): void
+    public function test_terima_dengan_assignee_hanya_membuat_dokumen_putaway_tanpa_memindahkan_stok(): void
     {
         $userId = Str::uuid()->toString();
         DB::table('users')->insert([
@@ -252,16 +252,21 @@ class TransferTransitTurunSaatPenempatanTest extends TestCase
         ]);
 
         $putaway = Putaway::where('source_id', $this->transitInboundId($transferId))->first();
-        $this->assertNotNull($putaway, 'auto-assign membuat putaway tertaut inbound TRANSIT_IN');
-        $this->assertSame('INBOUND', $putaway->source_type);
-
-        $this->assertSame(3, $this->transitMetric(), 'setelah terima+assign transit tetap 3');
-
-        $this->tempatkan($putaway->id, 2);
-        $this->assertSame(1, $this->transitMetric(), 'tempatkan 2 -> transit 1');
-
-        $this->tempatkan($putaway->id, 1);
-        $this->assertSame(0, $this->transitMetric(), 'tempatkan sisa -> transit 0');
+        $this->assertNotNull($putaway, 'assigned_to membuat dokumen putaway kerja');
+        $this->assertSame('NOT_STARTED', $putaway->status, 'dokumen putaway belum dieksekusi');
+        $this->assertSame(3, $this->transitMetric(), 'stok tetap menunggu putaway eksplisit');
+        $this->assertSame(3, (int) DB::table('inventories')
+            ->where('item_id', $this->itemId)
+            ->where('location_id', $this->destLocationId)
+            ->where('bin_id', $this->destInboundBinId)
+            ->value('on_hand'), 'stok tetap berada di DEFAULT/inbound');
+        $this->assertSame(0, (int) DB::table('putaway_items')
+            ->where('putaway_id', $putaway->id)
+            ->sum('putaway_qty'), 'belum ada qty yang dianggap terputaway');
+        $this->assertSame(0, DB::table('inventory_movements')
+            ->where('transaction_number', $putaway->putaway_no)
+            ->whereIn('source', ['PUTAWAY_OUT', 'PUTAWAY_IN'])
+            ->count(), 'belum ada movement putaway sebelum aksi process');
     }
 
     public function test_qty_ditolak_dikembalikan_ke_asal_dan_tidak_orphan_di_transit(): void

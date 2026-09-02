@@ -12,6 +12,7 @@ use Modules\Inventory\Support\InventoryMovementSourceMap;
 use Modules\Inventory\Support\StockSummary;
 use Modules\Notification\Services\NotificationDispatcher;
 use Modules\Product\Support\TechnicalSku;
+use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
@@ -124,12 +125,37 @@ class InventoryMovementRepository
         $binId = $data['bin_id'] ?? null;
         $source = strtoupper(trim((string) ($data['source'] ?? '')));
 
-        if ($qty >= 0 || ! $binId || str_starts_with($source, 'PUTAWAY_') || str_starts_with($source, 'TRANSIT_')) {
+        $authorizedInboundReversals = [
+            'INBOUND_QTY_CORRECTION',
+            'PURCHASE_REVERSAL',
+            'TRANSFER_REVERT',
+        ];
+
+        if ($qty >= 0 || ! $binId) {
             return;
         }
 
         $bin = LocationBin::query()->find($binId);
         $binCode = strtoupper(trim((string) ($bin?->bin_final_code ?: $bin?->bin_code ?: '')));
+        $locationCode = $bin
+            ? strtoupper(trim((string) Location::query()->whereKey($bin->location_id)->value('location_code')))
+            : '';
+
+        if (str_starts_with($source, 'TRANSIT_')
+            && $locationCode === Location::SYSTEM_TRANSIT_CODE
+        ) {
+            return;
+        }
+
+        if (! $bin?->is_inbound && $binCode !== 'DEFAULT') {
+            return;
+        }
+
+        if (str_starts_with($source, 'PUTAWAY_')
+            || in_array($source, $authorizedInboundReversals, true)
+        ) {
+            return;
+        }
 
         if ($bin?->is_inbound || $binCode === 'DEFAULT') {
             throw new UserFacingException(

@@ -7,6 +7,7 @@ use App\Enums\UnassignReasonEnum;
 use App\Exceptions\UserFacingException;
 use App\Models\AssignmentHistory;
 use App\Models\User;
+use App\Support\ChannelWarehousePolicy;
 use App\Support\WarehouseAccess;
 use App\Traits\EnforcesAssignmentChannel;
 use Illuminate\Database\Eloquent\Model;
@@ -27,7 +28,6 @@ use Modules\Outbound\Models\PicklistItemAllocation;
 use Modules\Outbound\Repositories\PicklistRepository;
 use Modules\Product\Repositories\ProductRepository;
 use Modules\Sales\Models\SalesOrder as Order;
-use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 
 class PicklistService
@@ -39,6 +39,7 @@ class PicklistService
         protected InventoryMovementRepository $movementRepository,
         protected InventoryService $inventoryService,
         protected ProductRepository $productRepository,
+        protected ChannelWarehousePolicy $channelWarehousePolicy,
     ) {}
 
     protected function assignedToColumn(Model $doc): string
@@ -210,9 +211,14 @@ class PicklistService
                 throw new \Exception('Tidak ada order dengan status reserved yang ditemukan.');
             }
 
-            $this->assertChannelLocation($orders, (string) $data['location_id']);
-
             foreach ($orders as $order) {
+                $this->channelWarehousePolicy->assertOrderAndTargetLocation(
+                    $order->source,
+                    $order->location_id,
+                    (string) $data['location_id'],
+                    'Pembuatan picklist',
+                );
+
                 foreach ($order->items as $orderItem) {
                     $components = $this->productRepository->bundleComponentsForVariant($orderItem->item_id);
 
@@ -365,7 +371,14 @@ class PicklistService
                 );
             }
 
-            $this->assertChannelLocation(collect([$pickOrder])->filter(), (string) $picklist->location_id);
+            if ($pickOrder) {
+                $this->channelWarehousePolicy->assertOrderAndTargetLocation(
+                    $pickOrder->source,
+                    $pickOrder->location_id,
+                    (string) $picklist->location_id,
+                    'Picking',
+                );
+            }
 
             $current = (int) $item->qty_picked;
             $ordered = (int) $item->qty_ordered;
@@ -478,25 +491,6 @@ class PicklistService
                 'qty_ordered' => $ordered,
             ],
         );
-    }
-
-    private function assertChannelLocation(iterable $orders, string $locationId): void
-    {
-        $hasChannelOrder = collect($orders)->contains(function ($order): bool {
-            return ! in_array(strtolower((string) ($order?->source ?? '')), ['', 'manual'], true);
-        });
-
-        if (! $hasChannelOrder) {
-            return;
-        }
-
-        $officialLocationId = Location::getOfficialSmallWarehouseId();
-
-        if ($officialLocationId !== null && $officialLocationId !== $locationId) {
-            throw new OutboundValidationException(
-                'Pesanan channel wajib diproses dan dipotong dari Gudang Kecil.'
-            );
-        }
     }
 
     public function unpickItem(string $picklistId, string $itemId, ?int $qty, string $userId): Picklist

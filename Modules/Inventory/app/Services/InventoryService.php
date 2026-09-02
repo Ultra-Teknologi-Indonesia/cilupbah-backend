@@ -2054,7 +2054,10 @@ class InventoryService
             }
 
             if (! empty($data['assigned_to']) && $transitInbound) {
-                $assignedUser = User::where('name', $data['assigned_to'])->first();
+                $assignedUser = User::query()
+                    ->where('name', $data['assigned_to'])
+                    ->first(['id']);
+
                 if ($assignedUser) {
                     app(PutawayService::class)->createFromInbounds(
                         [$transitInbound->id],

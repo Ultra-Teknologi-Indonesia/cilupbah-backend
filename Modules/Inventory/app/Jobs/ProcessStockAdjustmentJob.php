@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Inventory\Support\StockAdjustmentRule;
 use Modules\Inventory\Support\MovingAverageCost;
+use Modules\Warehouse\Services\InboundBinPolicy;
 
 class ProcessStockAdjustmentJob implements ShouldQueue
 {
@@ -69,6 +70,14 @@ class ProcessStockAdjustmentJob implements ShouldQueue
                         $totalSignedValue += (float) ($existing->total_cost ?? 0);
 
                         return;
+                    }
+
+                    if (! empty($item->bin_id)) {
+                        app(InboundBinPolicy::class)->assertConsumable(
+                            $adjustment->location_id,
+                            $item->bin_id,
+                            'penyesuaian stok',
+                        );
                     }
 
                     if (! empty($item->bin_id) && (float) $item->difference_qty > 0) {
