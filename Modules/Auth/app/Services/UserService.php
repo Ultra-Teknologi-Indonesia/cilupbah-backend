@@ -213,7 +213,6 @@ class UserService
                     throw new HttpException(403, 'Akun owner tidak dapat dihapus.');
                 }
 
-                // Hanya pointer penugasan aktif yang dikosongkan; dokumen pekerjaannya tetap ada.
                 DB::table('inbounds')
                     ->where('assigned_to', $user->id)
                     ->whereIn('status', ['DRAFT', 'PARTIAL'])
@@ -233,13 +232,11 @@ class UserService
                         'updated_at' => now(),
                     ]);
 
-                // Relasi identitas tidak boleh ikut terbawa ke akun baru dengan email yang sama.
                 $user->syncRoles([]);
                 $user->syncPermissions([]);
                 $user->locations()->detach();
                 $this->userRepository->deleteTokens($user);
 
-                // Tulis jejak penghapusan sebelum parent user dihapus.
                 $this->historyRepository->createHistory([
                     'actor_id' => Auth::id(),
                     'target_user_id' => $user->id,
@@ -254,7 +251,7 @@ class UserService
                 ]);
             });
         } catch (QueryException $exception) {
-            // Constraint baru di masa depan tetap menghasilkan respons bisnis yang terbaca, bukan 500.
+
             if ($this->isForeignKeyViolation($exception)) {
                 throw new HttpException(
                     409,

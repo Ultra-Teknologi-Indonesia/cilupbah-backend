@@ -161,7 +161,7 @@ final class BackfillRackImportPutaway extends Command
 
             $pair = $this->findMovementPair($row);
             if ($pair === []) {
-                // Imports after the fix have no RACK_PLACEMENT movement and are clean.
+
                 continue;
             }
 
@@ -224,7 +224,6 @@ final class BackfillRackImportPutaway extends Command
         return ['ready' => $ready, 'review' => $review];
     }
 
-    /** @return array{exists: bool, empty: bool, on_hand: ?int} */
     private function sourceInventoryState(object $row, string $sourceBinId): array
     {
         $inventories = DB::table('inventories')
@@ -237,8 +236,6 @@ final class BackfillRackImportPutaway extends Command
             return ['exists' => false, 'empty' => false, 'on_hand' => null];
         }
 
-        // A bin is considered empty only when every lot/serial row is exactly zero.
-        // This avoids treating offsetting positive/negative rows as an empty bin.
         $onHandValues = $inventories->map(static fn (object $inventory): int => (int) $inventory->on_hand);
 
         return [
@@ -508,7 +505,6 @@ final class BackfillRackImportPutaway extends Command
             ->update(['updated_version_at' => now(), 'updated_at' => now()]);
     }
 
-    /** @param array<string, mixed> $plan */
     private function validateMovementPlan(array $plan): void
     {
         $ids = array_merge($plan['out_ids'], $plan['in_ids']);
@@ -529,7 +525,6 @@ final class BackfillRackImportPutaway extends Command
         }
     }
 
-    /** @param array<string, mixed> $plan */
     private function applySourceCounters(array $plan): void
     {
         $remaining = (int) $plan['qty'];

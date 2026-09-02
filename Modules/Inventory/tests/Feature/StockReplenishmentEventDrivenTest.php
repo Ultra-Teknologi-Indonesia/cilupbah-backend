@@ -544,7 +544,7 @@ class StockReplenishmentEventDrivenTest extends TestCase
         $this->assertSame(0, DB::table('inventory_movements')->count());
     }
 
-    public function test_deleting_shipped_linked_transfer_reverts_once_then_cancels_request(): void
+    public function test_deleting_shipped_linked_transfer_restores_once_then_cancels_request(): void
     {
         $variant = $this->makeVariant('EVT-DELETE-SHIPPED-TRANSFER');
         $this->makeInventory($variant, 10, 0);

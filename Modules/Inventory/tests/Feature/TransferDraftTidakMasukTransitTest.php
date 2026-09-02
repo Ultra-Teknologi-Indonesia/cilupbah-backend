@@ -5,6 +5,7 @@ namespace Modules\Inventory\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Models\InventoryTransfer;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Warehouse\Models\Location;
@@ -262,6 +263,108 @@ class TransferDraftTidakMasukTransitTest extends TestCase
         $this->assertSame(0, (int) $src->on_order, 'hapus transfer tidak mengubah on_order');
         $this->assertSame(0, $this->movements('TRANSFER_OUT'), 'hapus sebelum kirim tidak menulis histori outbound');
         $this->assertSame(0, $this->movements('TRANSIT_IN'), 'hapus sebelum kirim tidak menulis histori transit');
+    }
+
+    public function test_delete_legacy_draft_restores_stock_and_removes_existing_transfer_history(): void
+    {
+        $destinationBinId = Str::uuid()->toString();
+        DB::table('location_bins')->insert([
+            'id' => $destinationBinId,
+            'location_id' => $this->destLocationId,
+            'bin_final_code' => 'DST-DEFAULT',
+            'is_inbound' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $transitLocationId = $this->makeLocation('TRF-TRANSIT', 'Transit');
+        $transitBinId = Str::uuid()->toString();
+        DB::table('location_bins')->insert([
+            'id' => $transitBinId,
+            'location_id' => $transitLocationId,
+            'bin_final_code' => 'DEFAULT',
+            'is_inbound' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $transfer = app(InventoryService::class)->createDraft([
+            'source_location_id' => $this->sourceLocationId,
+            'destination_location_id' => $this->destLocationId,
+            'created_by' => 'tester',
+        ]);
+        $item = app(InventoryService::class)->addDraftItem($transfer->id, [
+            'item_id' => $this->itemId,
+            'qty' => 100,
+            'source_bin_id' => $this->sourceBinId,
+        ]);
+        $item->update(['received_qty' => 100]);
+
+        DB::table('inventories')->insert([
+            'id' => Str::uuid()->toString(),
+            'item_id' => $this->itemId,
+            'location_id' => $this->destLocationId,
+            'bin_id' => $destinationBinId,
+            'on_hand' => 100,
+            'on_order' => 0,
+            'available' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('inventories')->insert([
+            'id' => Str::uuid()->toString(),
+            'item_id' => $this->itemId,
+            'location_id' => $transitLocationId,
+            'bin_id' => $transitBinId,
+            'on_hand' => 0,
+            'on_order' => 0,
+            'available' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        InventoryMovement::create([
+            'item_id' => $this->itemId,
+            'location_id' => $transitLocationId,
+            'bin_id' => $transitBinId,
+            'transaction_number' => $transfer->transfer_number,
+            'source' => 'TRANSIT_OUT',
+            'qty' => -100,
+            'balance' => 0,
+            'transaction_date' => now(),
+            'created_by' => 'tester',
+        ]);
+        InventoryMovement::create([
+            'item_id' => $this->itemId,
+            'location_id' => $this->destLocationId,
+            'bin_id' => $destinationBinId,
+            'transaction_number' => $transfer->transfer_number,
+            'source' => 'TRANSFER_IN',
+            'qty' => 100,
+            'balance' => 100,
+            'transaction_date' => now(),
+            'created_by' => 'tester',
+        ]);
+
+        app(InventoryService::class)->deleteTransfer($transfer->id, 'tester');
+
+        $destination = DB::table('inventories')
+            ->where('item_id', $this->itemId)
+            ->where('location_id', $this->destLocationId)
+            ->where('bin_id', $destinationBinId)
+            ->first();
+        $transit = DB::table('inventories')
+            ->where('item_id', $this->itemId)
+            ->where('location_id', $transitLocationId)
+            ->where('bin_id', $transitBinId)
+            ->first();
+
+        $this->assertDatabaseMissing('inventory_transfers', ['id' => $transfer->id]);
+        $this->assertDatabaseMissing('inventory_movements', [
+            'transaction_number' => $transfer->transfer_number,
+        ]);
+        $this->assertSame(0, (int) $destination->on_hand);
+        $this->assertSame(100, (int) $transit->on_hand);
     }
 
     public function test_transfer_yang_dikembalikan_ke_draft_tetap_bisa_diedit(): void

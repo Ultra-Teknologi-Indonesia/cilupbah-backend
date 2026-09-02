@@ -86,7 +86,6 @@ final class ProcessOrdersCsvExportService
                             continue;
                         }
 
-                        // Keep the CSV labels aligned with the tab the user exported.
                         $this->putRow($handle, $this->map($order, $exportStatus));
                         $written++;
                     }

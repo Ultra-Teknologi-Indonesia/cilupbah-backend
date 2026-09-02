@@ -47,6 +47,7 @@ class InventoryService
         protected InventoryTransferRepository $transferRepository,
         protected BinTransferRepository $binTransferRepository,
         protected StockAdjustmentRule $stockAdjustmentRule,
+        protected TransferDeletionService $transferDeletionService,
     ) {}
 
     private function notifyChannelStock(array $variantIds): void
@@ -2116,13 +2117,8 @@ class InventoryService
                     throw new \Exception('Transfer tidak ditemukan.');
                 }
 
-                if ($transfer->status === InventoryTransfer::STATUS_IN_TRANSIT) {
-                    $this->revertToDraft($id, ['actor' => $actor]);
-                    $reverted++;
-                } else {
-                    $this->deleteTransfer($id, $actor);
-                    $deleted++;
-                }
+                $this->deleteTransfer($id, $actor);
+                $deleted++;
             } catch (\Throwable $e) {
                 $failed[] = [
                     'id' => $id,
@@ -2209,35 +2205,17 @@ class InventoryService
 
     public function deleteTransfer(string $id, ?string $actor = null): void
     {
-        $itemIds = DB::transaction(function () use ($id, $actor) {
+        // Kept for backwards compatibility with controller/caller signatures.
+        unset($actor);
+
+        $itemIds = DB::transaction(function () use ($id) {
             $transfer = $this->transferRepository->findByIdForUpdate($id);
 
             if (! $transfer) {
                 throw new \Exception('Transfer tidak ditemukan.');
             }
 
-            $actor = $actor ?? $transfer->created_by ?? 'system';
-
-            if (! in_array($transfer->status, [InventoryTransfer::STATUS_DRAFT, InventoryTransfer::STATUS_APPROVED], true)) {
-                $this->revertToDraftWithinTransaction($transfer, ['actor' => $actor]);
-                $transfer = $this->transferRepository->findByIdForUpdate($id);
-            }
-
-            if (! $transfer) {
-                throw new \Exception('Transfer tidak ditemukan setelah proses pembatalan.');
-            }
-
-            if (! in_array($transfer->status, [InventoryTransfer::STATUS_DRAFT, InventoryTransfer::STATUS_APPROVED])) {
-                throw new \Exception("Hanya transfer yang belum dikirim (Draft/Disetujui) yang bisa dihapus (status saat ini: {$transfer->status}).");
-            }
-
-            $this->assertNoUnreconciledPhysicalMovementsBeforeShipment($transfer);
-
-            $itemIds = $transfer->items->pluck('item_id')->unique()->all();
-
-            $transfer->delete();
-
-            return $itemIds;
+            return $this->transferDeletionService->delete($transfer)['item_ids'];
         });
 
         $this->notifyChannelStock($itemIds);

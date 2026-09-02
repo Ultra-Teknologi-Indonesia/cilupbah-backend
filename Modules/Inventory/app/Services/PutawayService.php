@@ -335,16 +335,6 @@ class PutawayService
         return $paginated;
     }
 
-    /**
-     * Resolve the scanned QR value against the current putaway document.
-     *
-     * Putaway labels use the variant SKU or variant ID as their QR payload;
-     * barcode is intentionally not required because it is not populated for
-     * every item. The document boundary is part of the query so a valid SKU
-     * from another putaway cannot be selected accidentally.
-     *
-     * @return array{putaway_item_id: string, item_id: string, sku: string, remaining_qty: int}
-     */
     public function resolveScannedItem(string $putawayId, string $code): array
     {
         $normalized = trim($code);

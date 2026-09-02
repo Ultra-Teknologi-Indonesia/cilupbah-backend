@@ -127,10 +127,6 @@ class Inbound extends Model
         )->withTimestamps();
     }
 
-    /**
-     * Legacy putaways linked directly through putaways.source_id.
-     * New records use the putaway_sources pivot, but old records may not have it.
-     */
     public function directPutaways(): HasMany
     {
         return $this->hasMany(Putaway::class, 'source_id', 'id');

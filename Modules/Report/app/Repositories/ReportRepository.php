@@ -305,8 +305,8 @@ class ReportRepository
 
     public function orderPerformanceRows(string $type, array $filters): array
     {
-        $from = ($filters['from'] ?? null) ? $filters['from'].' 00:00:00' : null;
-        $to = ($filters['to'] ?? null) ? $filters['to'].' 23:59:59.999999' : null;
+        $from = $filters['from'] ?? null;
+        $to = $filters['to'] ?? null;
         $locationIds = WarehouseAccess::constrain(empty($filters['location_ids']) ? null : $filters['location_ids']);
 
         $query = match ($type) {

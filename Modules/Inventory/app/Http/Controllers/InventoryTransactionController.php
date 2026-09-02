@@ -388,7 +388,7 @@ class InventoryTransactionController extends Controller
     #[OA\Delete(
         path: '/api/v1/inventory/transfers/{id}',
         summary: 'Delete a transfer document',
-        description: 'Only DRAFT transfers can be deleted.',
+        description: 'Transfer dapat dihapus dari status apa pun selama seluruh aktivitas stok turunannya masih dapat dikembalikan dengan aman. Sistem menghapus histori transfer terkait tanpa membuat mutasi koreksi baru.',
         security: [['bearerAuth' => []]],
         tags: ['Inventory Transactions'],
         parameters: [
@@ -418,7 +418,7 @@ class InventoryTransactionController extends Controller
     #[OA\Post(
         path: '/api/v1/inventory/transfers/bulk/delete',
         summary: 'Hapus/kembalikan banyak transfer sekaligus',
-        description: 'Transfer DRAFT/APPROVED dihapus, transfer IN_TRANSIT dikembalikan ke Baru Dibuat (revert).',
+        description: 'Transfer dihapus dari status apa pun selama seluruh aktivitas stok turunannya masih dapat dikembalikan dengan aman. Histori transfer terkait dibersihkan tanpa membuat mutasi koreksi baru.',
         security: [['bearerAuth' => []]],
         tags: ['Inventory Transactions'],
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(

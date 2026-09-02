@@ -119,9 +119,6 @@ class BinQrPrintService
 
         $filename = 'qr-rak-'.substr($job->id, 0, 8).'.pdf';
 
-        // QR PDFs are stored on the remote S3-compatible disk. Use the disk's
-        // streamed response so the object key is read from remote storage
-        // instead of being treated as a local filesystem path.
         return $disk->download($job->file_path, $filename, [
             'Content-Type' => 'application/pdf',
         ]);
