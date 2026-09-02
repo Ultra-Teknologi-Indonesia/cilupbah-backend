@@ -61,12 +61,24 @@ class OutboundFulfillmentController extends Controller
 
     #[OA\Post(
         path: '/api/v1/outbound/orders/export/async',
-        summary: 'Queue CSV export for all Proses Pesanan statuses',
-        description: 'Queues a memory-safe export containing every current process status and sub-status. No stage selection is required.',
+        summary: 'Queue CSV export for the active Proses Pesanan queue',
+        description: 'Queues a memory-safe export for the selected active stage and sub-status. Historical delivered and completed queues are not exportable from this endpoint.',
         security: [['bearerAuth' => []]],
         tags: ['Outbound - Fulfillment'],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['stage', 'sub'],
+                properties: [
+                    new OA\Property(property: 'stage', type: 'string', enum: ['picking', 'packing', 'shipping']),
+                    new OA\Property(property: 'sub', type: 'string', enum: ['belum', 'diproses', 'selesai', 'siap-kirim', 'jadwal', 'batal']),
+                    new OA\Property(property: 'format', type: 'string', enum: ['csv'], default: 'csv'),
+                ],
+            ),
+        ),
         responses: [
             new OA\Response(response: 202, description: 'Export queued'),
+            new OA\Response(response: 422, description: 'Invalid or historical process scope'),
             new OA\Response(response: 403, description: 'Missing export permission'),
         ],
     )]
@@ -75,7 +87,11 @@ class OutboundFulfillmentController extends Controller
         $job = ExportJob::create([
             'user_id' => $request->user()->id,
             'type' => 'outbound-orders-csv',
-            'params' => ['scope' => 'all-process-statuses'],
+            'params' => [
+                'scope' => 'active-process-step',
+                'stage' => $request->validated('stage'),
+                'sub' => $request->validated('sub'),
+            ],
             'status' => ExportJob::STATUS_QUEUED,
         ]);
 

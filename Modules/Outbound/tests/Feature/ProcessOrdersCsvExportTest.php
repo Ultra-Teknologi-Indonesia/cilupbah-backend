@@ -14,6 +14,7 @@ use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Outbound\Jobs\RunProcessOrdersCsvExportJob;
 use Modules\Outbound\Services\ProcessOrdersCsvExportService;
+use Modules\Outbound\Support\ActiveProcessOrderScope;
 use Modules\Report\Models\ExportJob;
 use Modules\Sales\Models\SalesOrder;
 use Tests\TestCase;
@@ -28,7 +29,10 @@ final class ProcessOrdersCsvExportTest extends TestCase
         $user = $this->exportUser();
 
         $response = $this->actingAs($user, 'sanctum')
-            ->postJson('/api/v1/outbound/orders/export/async');
+            ->postJson('/api/v1/outbound/orders/export/async', [
+                'stage' => 'picking',
+                'sub' => 'belum',
+            ]);
 
         $response->assertStatus(202)
             ->assertJsonPath('data.status', ExportJob::STATUS_QUEUED);
@@ -39,6 +43,33 @@ final class ProcessOrdersCsvExportTest extends TestCase
             'type' => 'outbound-orders-csv',
             'status' => ExportJob::STATUS_QUEUED,
         ]);
+
+        $this->assertSame([
+            'scope' => 'active-process-step',
+            'stage' => 'picking',
+            'sub' => 'belum',
+        ], ExportJob::query()->latest('created_at')->value('params'));
+    }
+
+    public function test_process_orders_export_requires_an_active_stage_and_sub_status(): void
+    {
+        Queue::fake();
+        $user = $this->exportUser();
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/outbound/orders/export/async')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['stage', 'sub']);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/outbound/orders/export/async', [
+                'stage' => 'done',
+                'sub' => '',
+            ])
+            ->assertUnprocessable();
+
+        Queue::assertNothingPushed();
+        $this->assertDatabaseCount('export_jobs', 0);
     }
 
     public function test_process_orders_export_requires_export_permission(): void
@@ -54,6 +85,31 @@ final class ProcessOrdersCsvExportTest extends TestCase
         $this->assertDatabaseCount('export_jobs', 0);
     }
 
+    public function test_all_active_board_scopes_are_supported_and_historical_scopes_are_not(): void
+    {
+        $scope = app(ActiveProcessOrderScope::class);
+
+        foreach ([
+            ['picking', 'belum'],
+            ['picking', 'diproses'],
+            ['picking', 'selesai'],
+            ['packing', 'belum'],
+            ['packing', 'diproses'],
+            ['packing', 'selesai'],
+            ['shipping', 'siap-kirim'],
+            ['shipping', 'jadwal'],
+            ['shipping', 'batal'],
+        ] as [$stage, $sub]) {
+            $this->assertIsInt(
+                $scope->apply(SalesOrder::query(), $stage, $sub)->count(),
+                "Scope {$stage}/{$sub} tidak dapat dijalankan.",
+            );
+        }
+
+        $this->assertFalse(ActiveProcessOrderScope::isAllowed('delivered', ''));
+        $this->assertFalse(ActiveProcessOrderScope::isAllowed('done', ''));
+    }
+
     public function test_csv_is_utf8_and_contains_process_status_without_loading_all_rows(): void
     {
         SalesOrder::factory()->create([
@@ -66,7 +122,7 @@ final class ProcessOrdersCsvExportTest extends TestCase
         $this->assertNotFalse($path);
 
         try {
-            $count = app(ProcessOrdersCsvExportService::class)->write($path);
+            $count = app(ProcessOrdersCsvExportService::class)->write($path, 'picking', 'belum');
             $csv = file_get_contents($path);
 
             $this->assertSame(1, $count);
@@ -74,6 +130,34 @@ final class ProcessOrdersCsvExportTest extends TestCase
             $this->assertStringStartsWith("\xEF\xBB\xBF\"No. Pesanan\"", $csv);
             $this->assertStringContainsString('Picking', $csv);
             $this->assertStringContainsString("'=HYPERLINK", $csv);
+        } finally {
+            @unlink($path);
+        }
+    }
+
+    public function test_csv_exports_only_the_selected_active_queue_and_excludes_history(): void
+    {
+        $active = SalesOrder::factory()->create([
+            'status' => 'reserved',
+            'handed_to_warehouse_at' => now(),
+            'salesorder_no' => 'SO-ACTIVE-EXPORT',
+        ]);
+        SalesOrder::factory()->create([
+            'status' => 'shipped',
+            'salesorder_no' => 'SO-HISTORY-EXPORT',
+        ]);
+
+        $path = tempnam(sys_get_temp_dir(), 'process-orders-scope-test-');
+        $this->assertNotFalse($path);
+
+        try {
+            $count = app(ProcessOrdersCsvExportService::class)->write($path, 'picking', 'belum');
+            $csv = file_get_contents($path);
+
+            $this->assertSame(1, $count);
+            $this->assertIsString($csv);
+            $this->assertStringContainsString($active->salesorder_no, $csv);
+            $this->assertStringNotContainsString('SO-HISTORY-EXPORT', $csv);
         } finally {
             @unlink($path);
         }
@@ -103,7 +187,7 @@ final class ProcessOrdersCsvExportTest extends TestCase
         $this->assertNotFalse($path);
 
         try {
-            app(ProcessOrdersCsvExportService::class)->write($path);
+            app(ProcessOrdersCsvExportService::class)->write($path, 'picking', 'belum');
             $csv = file_get_contents($path);
 
             $this->assertIsString($csv);
@@ -118,14 +202,18 @@ final class ProcessOrdersCsvExportTest extends TestCase
         Storage::fake('documents');
         $user = $this->exportUser();
         SalesOrder::factory()->create([
-            'status' => 'shipped',
-            'received_date' => null,
+            'status' => 'reserved',
+            'handed_to_warehouse_at' => now(),
         ]);
 
         $exportJob = ExportJob::create([
             'user_id' => $user->id,
             'type' => 'outbound-orders-csv',
-            'params' => ['scope' => 'all-process-statuses'],
+            'params' => [
+                'scope' => 'active-process-step',
+                'stage' => 'picking',
+                'sub' => 'belum',
+            ],
             'status' => ExportJob::STATUS_QUEUED,
         ]);
 

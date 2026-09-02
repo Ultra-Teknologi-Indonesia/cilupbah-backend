@@ -69,7 +69,9 @@ final class RunProcessOrdersCsvExportJob implements ShouldQueue
         ]);
 
         try {
-            $rowCount = $exporter->write($temporaryPath);
+            $stage = (string) ($job->params['stage'] ?? '');
+            $subStatus = (string) ($job->params['sub'] ?? '');
+            $rowCount = $exporter->write($temporaryPath, $stage, $subStatus);
             $stream = fopen($temporaryPath, 'rb');
             if ($stream === false) {
                 throw new \RuntimeException('Tidak dapat membaca hasil export pesanan.');
@@ -87,7 +89,12 @@ final class RunProcessOrdersCsvExportJob implements ShouldQueue
                 'status' => ExportJob::STATUS_READY,
                 'file_disk' => $diskName,
                 'file_path' => $path,
-                'file_name' => 'export-pesanan-proses-'.now()->format('Y-m-d_His').'.csv',
+                'file_name' => sprintf(
+                    'export-pesanan-%s-%s_%s.csv',
+                    $stage,
+                    $subStatus,
+                    now()->format('Y-m-d_His'),
+                ),
                 'finished_at' => now(),
             ]);
 

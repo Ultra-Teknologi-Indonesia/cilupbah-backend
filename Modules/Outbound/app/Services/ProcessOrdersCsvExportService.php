@@ -7,6 +7,7 @@ namespace Modules\Outbound\Services;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Modules\Outbound\Models\Shipment;
+use Modules\Outbound\Support\ActiveProcessOrderScope;
 use Modules\Outbound\Support\ProcessOrderStatusResolver;
 use Modules\Sales\Models\SalesOrder;
 use RuntimeException;
@@ -56,9 +57,10 @@ final class ProcessOrdersCsvExportService
 
     public function __construct(
         private readonly ProcessOrderStatusResolver $statusResolver,
+        private readonly ActiveProcessOrderScope $activeScope,
     ) {}
 
-    public function write(string $path): int
+    public function write(string $path, string $stage, string $subStatus): int
     {
         $handle = fopen($path, 'wb');
         if ($handle === false) {
@@ -66,6 +68,7 @@ final class ProcessOrdersCsvExportService
         }
 
         $written = 0;
+        $exportStatus = ActiveProcessOrderScope::exportStatus($stage, $subStatus);
 
         try {
 
@@ -74,16 +77,17 @@ final class ProcessOrdersCsvExportService
             }
             $this->putRow($handle, self::HEADINGS);
 
-            $this->query()->chunkById(
+            $this->scopedQuery($stage, $subStatus)->chunkById(
                 (int) config('exports.csv_chunk_size', 250),
-                function (Collection $orders) use ($handle, &$written): void {
+                function (Collection $orders) use ($handle, &$written, $stage, $subStatus, $exportStatus): void {
                     foreach ($orders as $order) {
-                        $status = $this->statusResolver->resolve($order);
-                        if ($status === null) {
+                        $resolvedStatus = $this->statusResolver->resolve($order);
+                        if (! ActiveProcessOrderScope::matchesResolvedStatus($stage, $subStatus, $resolvedStatus)) {
                             continue;
                         }
 
-                        $this->putRow($handle, $this->map($order, $status));
+                        // Keep the CSV labels aligned with the tab the user exported.
+                        $this->putRow($handle, $this->map($order, $exportStatus));
                         $written++;
                     }
 
@@ -97,6 +101,11 @@ final class ProcessOrdersCsvExportService
         }
 
         return $written;
+    }
+
+    private function scopedQuery(string $stage, string $subStatus): Builder
+    {
+        return $this->activeScope->apply($this->query(), $stage, $subStatus);
     }
 
     private function query(): Builder
@@ -137,13 +146,6 @@ final class ProcessOrdersCsvExportService
                 'sales_orders.handed_to_warehouse_at',
                 'sales_orders.cancel_dismissed_at',
                 'sales_orders.pick_failed_at',
-            ])
-            ->whereIn('sales_orders.status', [
-                'reserved',
-                'picked',
-                'packed',
-                'cancelled',
-                'shipped',
             ])
             ->withCount('items')
             ->withSum('items', 'qty_in_base')
