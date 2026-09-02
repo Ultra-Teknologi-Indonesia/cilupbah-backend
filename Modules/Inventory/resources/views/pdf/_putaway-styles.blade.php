@@ -22,34 +22,36 @@
         margin-top: 2px;
     }
     .header .right { text-align: right; }
-    .header .putaway-no {
+    .header .doc-no {
         font-size: 12px;
         font-weight: 700;
         margin-top: 4px;
     }
-    .header .qr img { width: 78px; height: 78px; }
-    .meta-table {
+    .info-grid {
         width: 100%;
         border-collapse: collapse;
-        margin: 8px 0 10px 0;
+        margin: 10px 0 14px;
     }
-    .meta-table td {
+    .info-grid td {
         padding: 3px 0;
         font-size: 10px;
         vertical-align: top;
     }
-    .meta-table .label {
+    .info-grid .label {
         color: #555;
-        width: 140px;
+        width: 110px;
     }
-    .meta-table .value {
+    .info-grid .value {
         font-weight: 700;
+        padding-right: 18px;
     }
     table.items {
         width: 100%;
         border-collapse: collapse;
         margin-top: 2px;
     }
+    table.items thead { display: table-header-group; }
+    table.items tr { page-break-inside: avoid; }
     table.items th, table.items td {
         border: 1px solid #555;
         padding: 5px 6px;

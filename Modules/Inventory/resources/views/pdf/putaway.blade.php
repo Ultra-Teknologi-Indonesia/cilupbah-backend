@@ -1,6 +1,5 @@
 @php
     /** @var \Modules\Inventory\Models\Putaway $putaway */
-    /** @var string|null $qrDataUri */
     /** @var string $sourceLabel */
     $printedAt = now()->timezone('Asia/Jakarta')->format('d M Y H:i');
 @endphp
@@ -14,7 +13,6 @@
 <body>
     @include('inventory::pdf._putaway-body', [
         'putaway' => $putaway,
-        'qrDataUri' => $qrDataUri,
         'sourceLabel' => $sourceLabel,
     ])
 

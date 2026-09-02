@@ -1,16 +1,14 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Modules\Inventory\Services;
 
-use App\Services\QrCodeGenerator;
 use Modules\Inventory\Models\Putaway;
 
 class PutawayPdfPresenter
 {
-    public function __construct(
-        protected PutawayService $putawayService,
-        protected QrCodeGenerator $qrCode,
-    ) {}
+    public function __construct(protected PutawayService $putawayService) {}
 
     public function present(Putaway $putaway): array
     {
@@ -18,7 +16,6 @@ class PutawayPdfPresenter
 
         return [
             'putaway' => $putaway,
-            'qrDataUri' => $this->qrCode->svgDataUri((string) ($putaway->putaway_no ?? 'PUT')),
             'sourceLabel' => $this->putawayService->resolvePdfSourceLabel($putaway),
         ];
     }

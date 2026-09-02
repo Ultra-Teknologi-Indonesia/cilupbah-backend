@@ -1,13 +1,16 @@
 @php
     /** @var \Modules\Inventory\Models\Putaway $putaway */
-    /** @var string|null $qrDataUri */
     /** @var string $sourceLabel */
     $items = collect($putaway->items ?? []);
     $locationName = optional($putaway->location)->location_name ?? '-';
     $isStrictBin = optional($putaway->location)->enforcesStrictBinSku() ?? false;
     $companyName = config('app.company_name', 'PT ULTRA TEKNOLOGI INDONESIA');
-    $assigneeName = optional($putaway->assignee)->name ?? '-';
-    $creatorName = optional($putaway->creator)->name ?? '-';
+    $inboundNumber = optional($putaway->inbound)->transaction_number
+        ?? ($putaway->sources ?? collect())->pluck('transaction_number')->filter()->implode(', ')
+        ?: '-';
+    $receivedDate = optional($putaway->inbound)->once_received_at
+        ?? optional($putaway->inbound)->expected_date
+        ?? $putaway->created_at;
 @endphp
 <table class="header">
     <tr>
@@ -15,31 +18,30 @@
             <div class="company">{{ $companyName }}</div>
             <div class="title">Laporan Putaway</div>
         </td>
-        <td class="right qr">
-            @if($qrDataUri)
-                <img src="{{ $qrDataUri }}" alt="QR">
-            @endif
-            <div class="putaway-no">{{ $putaway->putaway_no }}</div>
+        <td class="right">
+            <div class="doc-no">{{ $putaway->putaway_no }}</div>
         </td>
     </tr>
 </table>
 
-<table class="meta-table">
+<table class="info-grid">
     <tr>
         <td class="label">No Putaway</td>
-        <td class="value">: {{ $putaway->putaway_no }}</td>
+        <td class="value">{{ $putaway->putaway_no }}</td>
+        <td class="label">No. Penerimaan</td>
+        <td class="value">{{ $inboundNumber }}</td>
     </tr>
     <tr>
-        <td class="label">Gudang</td>
-        <td class="value">: {{ $locationName }}</td>
+        <td class="label">Tgl. Penerimaan</td>
+        <td class="value">{{ $receivedDate ? \Carbon\Carbon::parse($receivedDate)->format('d M Y') : '-' }}</td>
+        <td class="label">Status</td>
+        <td class="value">{{ $putaway->status ?? '-' }}</td>
     </tr>
     <tr>
-        <td class="label">Ditugaskan Kepada</td>
-        <td class="value">: {{ $assigneeName }}</td>
-    </tr>
-    <tr>
-        <td class="label">Dibuat Oleh</td>
-        <td class="value">: {{ $creatorName }}</td>
+        <td class="label">Sumber</td>
+        <td class="value">{{ $sourceLabel ?: '-' }}</td>
+        <td class="label">Lokasi</td>
+        <td class="value">{{ $locationName }}</td>
     </tr>
 </table>
 
@@ -48,7 +50,7 @@
         <tr>
             <th class="col-no">No</th>
             <th class="col-sku">SKU</th>
-            <th>Nama Barang</th>
+            <th>Nama Produk</th>
             <th class="col-qty">Qty</th>
             <th class="col-date">Tgl. Penerimaan</th>
             <th class="col-source">Sumber</th>
@@ -61,13 +63,13 @@
             @php
                 $sku = optional($item->product)->sku ?? '-';
                 $productName = optional(optional($item->product)->product)->name ?? optional($item->product)->name ?? '-';
-                $sourceRef = $sourceLabel ?? '-';
+                $sourceRef = $sourceLabel ?: '-';
                 $placedBins = collect($item->placements ?? [])->map(fn($p) => [
                     'code' => optional($p->bin)->bin_final_code ?? '-',
                     'qty' => (int) $p->qty,
                 ])->all();
                 $recommendedBins = $item->recommended_bins ?? [];
-                $receivedAt = $putaway->created_at ? \Carbon\Carbon::parse($putaway->created_at)->format('d M Y') : '-';
+                $receivedAt = $receivedDate ? \Carbon\Carbon::parse($receivedDate)->format('d M Y') : '-';
             @endphp
             <tr>
                 <td class="center mono">{{ $i + 1 }}</td>

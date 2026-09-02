@@ -733,7 +733,6 @@ class PutawayController extends Controller
 
             return $this->pdfRenderer->stream('inventory::pdf.putaway', [
                 'putaway' => $prepared['putaway'],
-                'qrDataUri' => $prepared['qrDataUri'],
                 'printedBy' => ActorName::fromUser($request->user(), '-'),
                 'sourceLabel' => $prepared['sourceLabel'],
             ], $filename);

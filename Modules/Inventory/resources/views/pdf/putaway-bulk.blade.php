@@ -1,5 +1,5 @@
 @php
-    /** @var array $docs  daftar ['putaway' => ..., 'qrDataUri' => ..., 'sourceLabel' => ...] */
+    /** @var array $docs  daftar ['putaway' => ..., 'sourceLabel' => ...] */
     $printedAt = now()->timezone('Asia/Jakarta')->format('d M Y H:i');
     $docs = collect($docs ?? []);
 @endphp
@@ -15,7 +15,6 @@
         <div @if(! $loop->last) class="doc-break" @endif>
             @include('inventory::pdf._putaway-body', [
                 'putaway' => $doc['putaway'],
-                'qrDataUri' => $doc['qrDataUri'],
                 'sourceLabel' => $doc['sourceLabel'],
             ])
         </div>
