@@ -567,23 +567,20 @@ class ReportRepository
         $from = ($filters['from'] ?? null) ? $filters['from'].' 00:00:00' : null;
         $to = ($filters['to'] ?? null) ? $filters['to'].' 23:59:59.999999' : null;
         $locationIds = $filters['location_ids'] ?? [];
-        $providerExpression = "COALESCE(NULLIF(BTRIM(so.shipping_provider), ''), NULLIF(BTRIM(so.courier_name), ''))";
+        $providerExpression = "NULLIF(BTRIM(s.courier_name), '')";
+        $trackingExpression = "COALESCE(NULLIF(BTRIM(shso.tracking_number), ''), NULLIF(BTRIM(so.tracking_number), ''))";
 
         $qty = DB::table('sales_order_items')
             ->select('order_id')
             ->selectRaw('COALESCE(SUM(qty_in_base), 0) AS qty')
             ->groupBy('order_id');
 
-        $manifest = DB::table('shipment_orders as sho')
-            ->join('shipments as sh', 'sh.id', '=', 'sho.shipment_id')
-            ->select('sho.order_id')
-            ->selectRaw("STRING_AGG(DISTINCT sh.shipment_no, ', ') AS kode_pengiriman")
-            ->groupBy('sho.order_id');
-
-        return DB::table('sales_orders as so')
+        return DB::table('shipment_orders as shso')
+            ->join('shipments as s', 's.id', '=', 'shso.shipment_id')
+            ->join('sales_orders as so', 'so.id', '=', 'shso.order_id')
             ->leftJoinSub($qty, 'q', 'q.order_id', '=', 'so.id')
-            ->leftJoinSub($manifest, 'm', 'm.order_id', '=', 'so.id')
-            ->whereRaw("BTRIM(COALESCE(so.tracking_number, '')) <> ''")
+            ->where('s.status', '<>', 'CANCELLED')
+            ->whereRaw("BTRIM(COALESCE({$trackingExpression}, '')) <> ''")
             ->whereRaw("BTRIM(COALESCE({$providerExpression}, '')) <> ''")
             ->whereRaw("UPPER(BTRIM(COALESCE({$providerExpression}, ''))) <> ?", ['REGULER (CASHLESS)'])
             ->whereNotExists(fn ($sub) => $sub
@@ -591,18 +588,18 @@ class ReportRepository
                 ->from('sales_order_items as soi')
                 ->whereColumn('soi.order_id', 'so.id')
                 ->whereNull('soi.item_id'))
-            ->when($from, fn ($qb, $v) => $qb->where('so.transaction_date', '>=', $v))
-            ->when($to, fn ($qb, $v) => $qb->where('so.transaction_date', '<=', $v))
-            ->when(! empty($locationIds), fn ($qb) => $qb->whereIn('so.location_id', $locationIds))
+            ->when($from, fn ($qb, $v) => $qb->whereDate('s.created_at', '>=', $v))
+            ->when($to, fn ($qb, $v) => $qb->whereDate('s.created_at', '<=', $v))
+            ->when(! empty($locationIds), fn ($qb) => $qb->whereIn('s.location_id', $locationIds))
             ->select([
-                'so.transaction_date as tanggal',
+                's.created_at as tanggal',
                 'so.salesorder_no as no_pesanan',
-                'so.tracking_number as no_resi',
-                'm.kode_pengiriman',
+                DB::raw("{$trackingExpression} as no_resi"),
+                's.shipment_no as kode_pengiriman',
             ])
             ->selectRaw("{$providerExpression} AS provider")
             ->selectRaw('COALESCE(q.qty, 0) AS qty')
-            ->orderByDesc('so.transaction_date')
+            ->orderByDesc('s.created_at')
             ->get()
             ->all();
     }

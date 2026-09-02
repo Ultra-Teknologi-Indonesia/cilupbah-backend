@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
+use Modules\Outbound\Models\Shipment;
 use Modules\Report\Exports\PicklistDetailPhotoExport;
 use Modules\Report\Services\ShipmentByCourierReportService;
 use Modules\Report\Support\SectionedReport;
@@ -68,6 +69,30 @@ class ReportExcelExportTest extends TestCase
             'item_id' => $this->variant->id,
             'sku' => 'XLS-SKU-1', 'qty_in_base' => $qty,
             'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $shipment = Shipment::create([
+            'shipment_no' => 'SHP-'.$no,
+            'location_id' => $this->kecil->id,
+            'courier_name' => $provider,
+            'courier_code' => strtolower(str_replace([' ', '&'], '-', $provider)),
+            'shipment_type' => 'REGULAR',
+            'shipment_date' => '2026-07-18',
+            'status' => Shipment::STATUS_HANDED_OVER,
+            'created_by' => (string) auth()->id(),
+        ]);
+        DB::table('shipments')->where('id', $shipment->id)->update([
+            'created_at' => '2026-07-18 08:00:00',
+            'updated_at' => '2026-07-18 08:00:00',
+        ]);
+
+        DB::table('shipment_orders')->insert([
+            'id' => (string) Str::uuid7(),
+            'shipment_id' => $shipment->id,
+            'order_id' => $order->id,
+            'tracking_number' => 'RESI-'.$no,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         return $order;

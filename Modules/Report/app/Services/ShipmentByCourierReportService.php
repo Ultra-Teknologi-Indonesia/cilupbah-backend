@@ -74,7 +74,7 @@ class ShipmentByCourierReportService
         if ($detail) {
             $rows->groupBy('ekspedisi')->sortKeys()->each(function (Collection $items, $ekspedisi) use ($report) {
                 $report->group("Nama Ekspedisi: {$ekspedisi}")
-                    ->head(['Tanggal Transaksi', 'Kode Pengiriman', 'No Pesanan', 'No Resi', 'Quantity']);
+                    ->head(['Tanggal SHP', 'Kode Pengiriman', 'No Pesanan', 'No Resi', 'Quantity']);
 
                 foreach ($items as $r) {
                     $report->row([

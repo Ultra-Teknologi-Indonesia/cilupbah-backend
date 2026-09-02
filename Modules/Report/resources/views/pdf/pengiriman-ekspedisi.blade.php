@@ -85,7 +85,7 @@
         <table class="data">
             <thead>
                 <tr>
-                    <th>Tanggal Transaksi</th>
+                    <th>Tanggal SHP</th>
                     <th>Kode Pengiriman</th>
                     <th>No Pesanan</th>
                     <th>No Resi</th>

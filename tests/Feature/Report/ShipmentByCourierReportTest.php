@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
+use Modules\Outbound\Models\Shipment;
 use Modules\Report\Services\ShipmentByCourierReportService;
 use Modules\Report\Support\EkspedisiNormalizer;
 use Modules\Sales\Models\SalesOrder;
@@ -68,6 +69,30 @@ class ShipmentByCourierReportTest extends TestCase
             'item_id' => $unmapped ? null : $this->variant->id,
             'sku' => 'EKS-SKU-1', 'qty_in_base' => $qty,
             'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $shipment = Shipment::create([
+            'shipment_no' => 'SHP-'.$no,
+            'location_id' => $this->kecil->id,
+            'courier_name' => $provider,
+            'courier_code' => strtolower(str_replace([' ', '&'], '-', $provider)),
+            'shipment_type' => 'REGULAR',
+            'shipment_date' => '2026-07-18',
+            'status' => Shipment::STATUS_HANDED_OVER,
+            'created_by' => (string) auth()->id(),
+        ]);
+        DB::table('shipments')->where('id', $shipment->id)->update([
+            'created_at' => '2026-07-18 08:00:00',
+            'updated_at' => '2026-07-18 08:00:00',
+        ]);
+
+        DB::table('shipment_orders')->insert([
+            'id' => (string) Str::uuid7(),
+            'shipment_id' => $shipment->id,
+            'order_id' => $order->id,
+            'tracking_number' => 'RESI-'.$no,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         return $order;
@@ -153,6 +178,7 @@ class ShipmentByCourierReportTest extends TestCase
 
         $withoutTracking = $this->makeOrder('NO-RESI', 'SPX Hemat', 1);
         DB::table('sales_orders')->where('id', $withoutTracking->id)->update(['tracking_number' => '']);
+        DB::table('shipment_orders')->where('order_id', $withoutTracking->id)->update(['tracking_number' => '']);
 
         $withoutProvider = $this->makeOrder('NO-PROVIDER', '', 1);
         DB::table('sales_orders')->where('id', $withoutProvider->id)->update(['tracking_number' => 'RESI-NO-PROVIDER']);
@@ -174,12 +200,35 @@ class ShipmentByCourierReportTest extends TestCase
         $this->assertStringNotContainsString('Lainnya', $exported);
     }
 
+    public function test_hanya_pesanan_yang_terhubung_ke_shp_yang_dilaporkan(): void
+    {
+        $linked = $this->makeOrder('SHP-LINKED', 'SPX Hemat', 1);
+        $unlinked = $this->makeOrder('WITHOUT-SHP', 'SPX Hemat', 1);
+
+        DB::table('shipment_orders')->where('order_id', $unlinked->id)->delete();
+
+        $report = $this->service->sectioned(true, [
+            'from' => '2026-07-18',
+            'to' => '2026-07-18',
+        ]);
+        $exported = collect($report->rows)
+            ->flatMap(fn (array $row) => $row['cells'])
+            ->filter(fn ($cell) => is_string($cell))
+            ->implode(' | ');
+
+        $this->assertStringContainsString('SHP-LINKED', $exported);
+        $this->assertStringNotContainsString('WITHOUT-SHP', $exported);
+    }
+
     public function test_filter_tanggal_membatasi_hasil(): void
     {
         $this->makeOrder('SP-HARI-INI', 'SPX Hemat', 1);
         $luar = $this->makeOrder('SP-LUAR', 'SPX Hemat', 1);
-        DB::table('sales_orders')->where('id', $luar->id)
-            ->update(['transaction_date' => '2026-07-25 08:00:00']);
+        $luarShipmentId = DB::table('shipment_orders')
+            ->where('order_id', $luar->id)
+            ->value('shipment_id');
+        DB::table('shipments')->where('id', $luarShipmentId)
+            ->update(['created_at' => '2026-07-25 08:00:00']);
 
         $html = $this->html(true);
 
@@ -196,7 +245,10 @@ class ShipmentByCourierReportTest extends TestCase
 
         $this->makeOrder('SP-KECIL', 'SPX Hemat', 1);
         $ord = $this->makeOrder('SP-LAIN', 'SPX Hemat', 1);
-        DB::table('sales_orders')->where('id', $ord->id)->update(['location_id' => $lain->id]);
+        $shipmentId = DB::table('shipment_orders')
+            ->where('order_id', $ord->id)
+            ->value('shipment_id');
+        DB::table('shipments')->where('id', $shipmentId)->update(['location_id' => $lain->id]);
 
         $html = $this->html(true, ['location_ids' => [$lain->id]]);
 
