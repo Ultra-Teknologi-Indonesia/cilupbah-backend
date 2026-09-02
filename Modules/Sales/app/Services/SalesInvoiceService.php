@@ -2,18 +2,20 @@
 
 namespace Modules\Sales\Services;
 
+use App\Support\ChannelWarehousePolicy;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Sales\Events\SalesInvoiceFinalized;
 use Modules\Sales\Models\SalesInvoice;
-use Modules\Sales\Models\SalesPayment;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Models\SalesPayment;
 use Modules\Sales\Repositories\SalesInvoiceRepository;
 
 class SalesInvoiceService
 {
     public function __construct(
         protected SalesInvoiceRepository $invoiceRepository,
+        protected ChannelWarehousePolicy $channelWarehousePolicy,
     ) {}
 
     public function getAllPaginated(int $limit = 10)
@@ -29,6 +31,16 @@ class SalesInvoiceService
     public function createOrUpdate(array $data): SalesInvoice
     {
         return DB::transaction(function () use ($data) {
+            if (! empty($data['order_id'])) {
+                $order = SalesOrder::query()->findOrFail($data['order_id']);
+                $this->channelWarehousePolicy->assertOrderAndTargetLocation(
+                    $order->source,
+                    $order->location_id,
+                    $data['location_id'] ?? null,
+                    'Pembuatan invoice',
+                );
+            }
+
             $items = $data['items'] ?? [];
             unset($data['items']);
 
@@ -95,17 +107,24 @@ class SalesInvoiceService
                 return $existing;
             }
 
+            $this->channelWarehousePolicy->assertOrderAndTargetLocation(
+                $order->source,
+                $order->location_id,
+                $data['location_id'] ?? $order->location_id,
+                'Pembuatan invoice',
+            );
+
             $invoiceData = [
                 'invoice_number' => $data['invoice_number'] ?? $this->invoiceRepository->generateInvoiceNo(),
-                'order_id'       => $order->id,
-                'customer_name'  => $order->customer_name,
-                'location_id'    => $data['location_id'] ?? $order->location_id,
-                'status'         => SalesInvoice::STATUS_OPEN,
-                'invoice_date'   => now()->toDateString(),
-                'due_date'       => $data['due_date'] ?? now()->addDays(30)->toDateString(),
-                'total_amount'   => 0,
-                'paid_amount'    => 0,
-                'created_by'     => $data['created_by'],
+                'order_id' => $order->id,
+                'customer_name' => $order->customer_name,
+                'location_id' => $data['location_id'] ?? $order->location_id,
+                'status' => SalesInvoice::STATUS_OPEN,
+                'invoice_date' => now()->toDateString(),
+                'due_date' => $data['due_date'] ?? now()->addDays(30)->toDateString(),
+                'total_amount' => 0,
+                'paid_amount' => 0,
+                'created_by' => $data['created_by'],
             ];
 
             $invoice = $this->invoiceRepository->create($invoiceData);
@@ -114,12 +133,12 @@ class SalesInvoiceService
                 $subtotal = $orderItem->amount ?: ($orderItem->qty_in_base * $orderItem->price);
                 $this->invoiceRepository->createItem([
                     'sales_invoice_id' => $invoice->id,
-                    'item_id'          => $orderItem->item_id,
-                    'qty'              => $orderItem->qty_in_base,
-                    'unit_price'       => $orderItem->price,
-                    'disc_amount'      => $orderItem->disc_amount ?? 0,
-                    'tax_amount'       => $orderItem->tax_amount ?? 0,
-                    'subtotal'         => $subtotal,
+                    'item_id' => $orderItem->item_id,
+                    'qty' => $orderItem->qty_in_base,
+                    'unit_price' => $orderItem->price,
+                    'disc_amount' => $orderItem->disc_amount ?? 0,
+                    'tax_amount' => $orderItem->tax_amount ?? 0,
+                    'subtotal' => $subtotal,
                 ]);
             }
 
@@ -137,19 +156,19 @@ class SalesInvoiceService
             $invoice = $this->createFromOrder($data);
 
             $payment = SalesPayment::create([
-                'payment_number'   => 'PAY-' . now()->format('Ymd') . '-' . Str::upper(Str::random(4)),
+                'payment_number' => 'PAY-'.now()->format('Ymd').'-'.Str::upper(Str::random(4)),
                 'sales_invoice_id' => $invoice->id,
-                'amount'           => $invoice->total_amount,
-                'payment_date'     => now()->toDateString(),
-                'payment_method'   => $data['payment_method'] ?? 'CASH',
-                'reference_no'     => $data['reference_no'] ?? null,
-                'notes'            => $data['notes'] ?? null,
-                'created_by'       => $data['created_by'],
+                'amount' => $invoice->total_amount,
+                'payment_date' => now()->toDateString(),
+                'payment_method' => $data['payment_method'] ?? 'CASH',
+                'reference_no' => $data['reference_no'] ?? null,
+                'notes' => $data['notes'] ?? null,
+                'created_by' => $data['created_by'],
             ]);
 
             $invoice->update([
                 'paid_amount' => $invoice->total_amount,
-                'status'      => SalesInvoice::STATUS_PAID,
+                'status' => SalesInvoice::STATUS_PAID,
             ]);
 
             return [

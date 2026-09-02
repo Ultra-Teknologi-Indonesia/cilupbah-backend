@@ -2,22 +2,25 @@
 
 namespace Modules\Outbound\Services;
 
-use Modules\Outbound\Repositories\PacklistRepository;
+use App\Support\ChannelWarehousePolicy;
+use App\Support\WarehouseAccess;
+use Illuminate\Support\Facades\DB;
+use Modules\Notification\Events\TaskAssigned;
+use Modules\Outbound\Exceptions\OutboundValidationException;
+use Modules\Outbound\Jobs\ProcessPacklistCompleteJob;
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\PacklistItem;
 use Modules\Outbound\Models\ShipmentOrder;
-use Modules\Outbound\Jobs\ProcessPacklistCompleteJob;
-use Modules\Outbound\Exceptions\OutboundValidationException;
-use Modules\Notification\Events\TaskAssigned;
-use Modules\Sales\Models\SalesOrder as Order;
+use Modules\Outbound\Repositories\PacklistRepository;
 use Modules\Product\Repositories\ProductRepository;
-use Illuminate\Support\Facades\DB;
+use Modules\Sales\Models\SalesOrder as Order;
 
 class PacklistService
 {
     public function __construct(
         protected PacklistRepository $packlistRepository,
         protected ProductRepository $productRepository,
+        protected ChannelWarehousePolicy $channelWarehousePolicy,
     ) {}
 
     public function getAllPaginated(int $limit = 10)
@@ -42,7 +45,7 @@ class PacklistService
             ->orWhere('tracking_number', $orderNo)
             ->first();
 
-        if (!$order) {
+        if (! $order) {
             return null;
         }
 
@@ -54,7 +57,7 @@ class PacklistService
             ->whereIn('status', [Packlist::STATUS_DRAFT, Packlist::STATUS_IN_PROGRESS])
             ->first();
 
-        if (!$packlist && $order->status === 'picked') {
+        if (! $packlist && $order->status === 'picked') {
             $packlist = $this->create([
                 'order_id' => $order->id,
                 'location_id' => $order->location_id,
@@ -63,7 +66,7 @@ class PacklistService
             ]);
         }
 
-        if (!$packlist) {
+        if (! $packlist) {
             return null;
         }
 
@@ -93,14 +96,21 @@ class PacklistService
 
     public function create(array $data): Packlist
     {
-        \App\Support\WarehouseAccess::assert($data['location_id'] ?? null);
+        WarehouseAccess::assert($data['location_id'] ?? null);
 
         return DB::transaction(function () use ($data) {
             $order = Order::with('items')->find($data['order_id']);
 
-            if (!$order) {
+            if (! $order) {
                 throw new \Exception('Order tidak ditemukan.');
             }
+
+            $this->channelWarehousePolicy->assertOrderAndTargetLocation(
+                $order->source,
+                $order->location_id,
+                $data['location_id'] ?? null,
+                'Pembuatan packlist',
+            );
 
             if ($order->status !== 'picked') {
                 throw new \Exception("Order harus berstatus 'picked' untuk membuat packlist (saat ini: {$order->status}).");
@@ -158,7 +168,7 @@ class PacklistService
 
             $packlist = $this->packlistRepository->findById($packlist->id);
 
-            if (!empty($data['packer_id'])) {
+            if (! empty($data['packer_id'])) {
                 TaskAssigned::dispatch(
                     $data['packer_id'],
                     'packlist',
@@ -176,7 +186,7 @@ class PacklistService
     {
         $packlist = $this->packlistRepository->findById($id);
 
-        if (!$packlist) {
+        if (! $packlist) {
             throw new \Exception('Packlist tidak ditemukan.');
         }
 
@@ -206,7 +216,7 @@ class PacklistService
     {
         $packlist = $this->packlistRepository->findById($id);
 
-        if (!$packlist) {
+        if (! $packlist) {
             throw new \Exception('Packlist tidak ditemukan.');
         }
 
@@ -226,11 +236,11 @@ class PacklistService
     {
         $packlist = $this->packlistRepository->findById($packlistId);
 
-        if (!$packlist) {
+        if (! $packlist) {
             throw new \Exception('Packlist tidak ditemukan.');
         }
 
-        if (!in_array($packlist->status, [Packlist::STATUS_DRAFT, Packlist::STATUS_IN_PROGRESS])) {
+        if (! in_array($packlist->status, [Packlist::STATUS_DRAFT, Packlist::STATUS_IN_PROGRESS])) {
             throw new \Exception("Packlist tidak bisa di-pack (status saat ini: {$packlist->status}).");
         }
 
@@ -240,7 +250,7 @@ class PacklistService
         }
 
         $item = $packlist->items->firstWhere('id', $itemId);
-        if (!$item) {
+        if (! $item) {
             throw new \Exception('Item packlist tidak ditemukan.');
         }
 
@@ -315,7 +325,7 @@ class PacklistService
             ->where('sku', $barcode)
             ->first();
 
-        if (!$item) {
+        if (! $item) {
             throw new OutboundValidationException("Barcode/SKU '{$barcode}' tidak ditemukan dalam packlist ini.");
         }
 
@@ -328,11 +338,11 @@ class PacklistService
     {
         $packlist = $this->packlistRepository->findById($id);
 
-        if (!$packlist) {
+        if (! $packlist) {
             throw new \Exception('Packlist tidak ditemukan.');
         }
 
-        if (!in_array($packlist->status, [Packlist::STATUS_DRAFT, Packlist::STATUS_IN_PROGRESS])) {
+        if (! in_array($packlist->status, [Packlist::STATUS_DRAFT, Packlist::STATUS_IN_PROGRESS])) {
             throw new OutboundValidationException("Hanya packlist DRAFT/IN_PROGRESS yang bisa di-complete (saat ini: {$packlist->status}).");
         }
 
@@ -355,7 +365,7 @@ class PacklistService
     {
         $packlist = $this->packlistRepository->findById($id);
 
-        if (!$packlist) {
+        if (! $packlist) {
             throw new \Exception('Packlist tidak ditemukan.');
         }
 
@@ -374,7 +384,7 @@ class PacklistService
     {
         $packlist = $this->packlistRepository->findById($id);
 
-        if (!$packlist) {
+        if (! $packlist) {
             throw new \Exception('Packlist tidak ditemukan.');
         }
 
@@ -390,7 +400,7 @@ class PacklistService
         DB::transaction(function () use ($id) {
             $packlist = $this->packlistRepository->findById($id);
 
-            if (!$packlist) {
+            if (! $packlist) {
                 throw new \Exception('Packlist tidak ditemukan.');
             }
 

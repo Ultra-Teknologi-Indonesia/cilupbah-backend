@@ -15,10 +15,6 @@ final class NotificationVisibility
 
     private const CHANNEL_ORDER_TYPE = 'order_new';
 
-    /**
-     * Channel order updates are intentionally not persisted or pushed to users.
-     * Manual/offline order notifications remain visible.
-     */
     public static function shouldSuppress(string $type, array $data): bool
     {
         if ($type !== self::CHANNEL_ORDER_TYPE) {
@@ -28,10 +24,6 @@ final class NotificationVisibility
         return ! in_array(self::sourceFromData($data), self::MANUAL_SOURCES, true);
     }
 
-    /**
-     * Hide historical channel order notifications from every notification read path.
-     * The rows remain stored for auditability; only operational visibility is changed.
-     */
     public static function applyVisible(Builder $query): Builder
     {
         $driver = $query->getModel()->getConnection()->getDriverName();

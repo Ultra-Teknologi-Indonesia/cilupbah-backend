@@ -4,6 +4,7 @@ namespace Modules\Sales\Services;
 
 use App\Exceptions\UserFacingException;
 use App\Models\User;
+use App\Support\ChannelWarehousePolicy;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
@@ -123,6 +124,7 @@ class SalesOrderService
         protected SalesOrderRepository $orderRepository,
         protected StockService $stockService,
         protected NotificationDispatcher $notifications,
+        protected ChannelWarehousePolicy $channelWarehousePolicy,
     ) {}
 
     private function orderLink(string $id): string
@@ -715,6 +717,15 @@ class SalesOrderService
                 ->get();
 
             foreach ($orders as $order) {
+                if ($order->status === 'reserved'
+                    && ! OrderBinAllocation::query()->where('order_id', $order->id)->exists()
+                ) {
+                    throw new UserFacingException(
+                        'Pesanan Belum Dipicking',
+                        "Pesanan {$order->salesorder_no} masih reserved dan belum memiliki alokasi pemotongan stok fisik.",
+                        422,
+                    );
+                }
 
                 $this->reconcileStockTransition($order, $order->status, 'shipped');
                 $order->update(['status' => 'shipped']);
@@ -1530,11 +1541,10 @@ class SalesOrderService
                 $this->logStatusHistory($order, 'CREATED', ['to' => 'pending']);
 
                 if (! $this->isManualSource($order->source)) {
-                    if (! $order->location_id || $this->isCentralLocationId((string) $order->location_id)) {
-                        $order->update([
-                            'location_id' => $this->resolveChannelOrderLocationId($order),
-                        ]);
-                    }
+
+                    $order->update([
+                        'location_id' => $this->resolveChannelOrderLocationId($order),
+                    ]);
                 } elseif (! $order->location_id) {
                     try {
                         $locationId = $this->resolveLocationId($order);
@@ -1879,8 +1889,8 @@ class SalesOrderService
                 $channelLocationId = $this->resolveChannelOrderLocationId($order);
                 if ($newLocationId !== $channelLocationId) {
                     throw new UserFacingException(
-                        'Lokasi order marketplace harus Gudang Kecil.',
-                        'Order marketplace tidak dapat dialokasikan ke gudang pusat.',
+                        'Lokasi order channel harus Gudang Kecil.',
+                        'Order channel tidak dapat dialokasikan ke lokasi selain Gudang Kecil.',
                     );
                 }
             }
@@ -2136,17 +2146,18 @@ class SalesOrderService
 
             $order->load('items');
 
-            if (! $this->isManualSource($order->source)
-                && $this->isCentralLocationId((string) $order->location_id)
-            ) {
+            if (! $this->isManualSource($order->source)) {
                 $channelLocationId = $this->resolveChannelOrderLocationId($order);
 
                 if ($existing !== null && in_array($order->status, ['pending', 'reserved'], true)) {
-                    $order = $this->relocateOrder($order, $channelLocationId, enforce: false);
-                } elseif ($existing === null) {
+                    if ((string) $order->location_id !== $channelLocationId) {
+                        $order = $this->relocateOrder($order, $channelLocationId, enforce: false);
+                    }
+                } elseif ($existing === null && (string) $order->location_id !== $channelLocationId) {
                     $order->update(['location_id' => $channelLocationId]);
-                } else {
-                    Log::warning('sales_order.channel_terminal_order_still_at_central', [
+                } elseif ($existing !== null && (string) $order->location_id !== $channelLocationId) {
+
+                    Log::warning('sales_order.channel_terminal_order_location_mismatch', [
                         'order_id' => $order->id,
                         'salesorder_no' => $order->salesorder_no,
                         'source' => $order->source,
@@ -2235,7 +2246,15 @@ class SalesOrderService
                 && ! $order->is_canceled
             ) {
                 try {
-                    app(BackfillShippedOrdersStockService::class)->backfillOrder($order);
+                    $backfillResult = app(BackfillShippedOrdersStockService::class)->backfillOrder($order);
+
+                    if (($backfillResult['success'] ?? false) !== true) {
+                        Log::warning('Auto-deduct physical stock on shipped webhook tidak selesai', [
+                            'order_id' => $order->id,
+                            'salesorder_no' => $order->salesorder_no,
+                            'result' => $backfillResult,
+                        ]);
+                    }
                 } catch (\Throwable $e) {
                     Log::warning('Auto-deduct physical stock on shipped webhook gagal', [
                         'order_id' => $order->id,
@@ -2870,17 +2889,9 @@ class SalesOrderService
         return (string) $kecilId;
     }
 
-    private function isCentralLocationId(string $locationId): bool
-    {
-        return DB::table('locations')
-            ->where('id', $locationId)
-            ->where('location_code', Location::SYSTEM_PUSAT_CODE)
-            ->exists();
-    }
-
     private function isManualSource(?string $source): bool
     {
-        return in_array($source, [null, '', 'manual'], true);
+        return ! $this->channelWarehousePolicy->isChannelSource($source);
     }
 
     private const CONTACT_CHANNELS = ['marketplace_chat', 'whatsapp', 'phone', 'other'];

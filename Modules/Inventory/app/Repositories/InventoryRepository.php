@@ -209,6 +209,10 @@ class InventoryRepository
     {
         $assignedBinId = SkuRackAssignment::where('item_id', $itemId)
             ->where('location_id', $locationId)
+            ->whereHas('bin', function ($query): void {
+                $query->where('is_inbound', false)
+                    ->whereRaw("UPPER(TRIM(COALESCE(bin_final_code, bin_code, ''))) <> 'DEFAULT'");
+            })
             ->value('bin_id');
 
         if ($assignedBinId) {
@@ -218,6 +222,9 @@ class InventoryRepository
         $placedWithStock = Inventory::where('item_id', $itemId)
             ->where('location_id', $locationId)
             ->placed()
+            ->whereHas('bin', function ($query): void {
+                $query->whereRaw("UPPER(TRIM(COALESCE(bin_final_code, bin_code, ''))) <> 'DEFAULT'");
+            })
             ->where('on_hand', '>', 0)
             ->orderByDesc('on_hand')
             ->value('bin_id');
@@ -229,6 +236,9 @@ class InventoryRepository
         return Inventory::where('item_id', $itemId)
             ->where('location_id', $locationId)
             ->placed()
+            ->whereHas('bin', function ($query): void {
+                $query->whereRaw("UPPER(TRIM(COALESCE(bin_final_code, bin_code, ''))) <> 'DEFAULT'");
+            })
             ->value('bin_id');
     }
 

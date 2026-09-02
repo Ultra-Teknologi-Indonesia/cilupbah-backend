@@ -2205,7 +2205,7 @@ class InventoryService
 
     public function deleteTransfer(string $id, ?string $actor = null): void
     {
-        // Kept for backwards compatibility with controller/caller signatures.
+
         unset($actor);
 
         $itemIds = DB::transaction(function () use ($id) {

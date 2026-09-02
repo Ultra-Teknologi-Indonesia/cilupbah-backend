@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Services;
 
+use App\Support\ChannelWarehousePolicy;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Modules\Outbound\Jobs\ProcessPicklistCompleteJob;
@@ -15,6 +16,7 @@ class BackfillShippedOrdersStockService
 {
     public function __construct(
         protected StockService $stockService,
+        protected ChannelWarehousePolicy $channelWarehousePolicy,
     ) {}
 
     public function getEligibleOrdersQuery(?string $orderNo = null, ?string $since = null, ?int $limit = null)
@@ -109,6 +111,17 @@ class BackfillShippedOrdersStockService
             ->exists();
 
         if ($hasAllocations || $hasPickedItems || $hasFailedPickItems || $hasMovements) {
+            if (! $this->hasCompletePhysicalProcessing($order)) {
+                return [
+                    'success' => false,
+                    'order_id' => $order->id,
+                    'salesorder_no' => $order->salesorder_no,
+                    'message' => 'Backfill dihentikan karena histori pemotongan stok hanya sebagian dan perlu rekonsiliasi.',
+                    'deductions' => [],
+                    'shortages' => [['reason' => 'PARTIAL_PHYSICAL_PROCESSING']],
+                ];
+            }
+
             return [
                 'success' => true,
                 'order_id' => $order->id,
@@ -136,6 +149,23 @@ class BackfillShippedOrdersStockService
                 'salesorder_no' => $order->salesorder_no,
                 'message' => 'Lokasi gudang tidak ditemukan.',
                 'deductions' => [],
+            ];
+        }
+
+        if ($this->channelWarehousePolicy->isChannelSource($order->source)
+            && (string) $order->location_id !== (string) $locationId
+        ) {
+            return [
+                'success' => false,
+                'order_id' => $order->id,
+                'salesorder_no' => $order->salesorder_no,
+                'message' => 'Backfill dihentikan karena lokasi order channel bukan Gudang Kecil.',
+                'deductions' => [],
+                'shortages' => [[
+                    'reason' => 'INVALID_CHANNEL_LOCATION',
+                    'location_id' => $order->location_id,
+                    'required_location_id' => $locationId,
+                ]],
             ];
         }
 
@@ -210,7 +240,6 @@ class BackfillShippedOrdersStockService
                     $order->salesorder_no,
                     'ORDER_COMPLETE_OUT',
                     'system:backfill',
-                    true,
                     $transactionDate,
                 );
 
@@ -238,6 +267,55 @@ class BackfillShippedOrdersStockService
             'deductions' => $deductions,
             'picklists_completed' => $completedPicklists,
         ];
+    }
+
+    private function hasCompletePhysicalProcessing(SalesOrder $order): bool
+    {
+        $requiredByItem = [];
+
+        foreach ($order->items as $orderItem) {
+            if (! $orderItem->item_id || (int) $orderItem->qty_in_base <= 0) {
+                continue;
+            }
+
+            foreach ($this->resolveComponents($orderItem->item_id, (int) $orderItem->qty_in_base) as $component) {
+                $requiredByItem[$component['item_id']] = (int) ($requiredByItem[$component['item_id']] ?? 0) + (int) $component['qty'];
+            }
+        }
+
+        if ($requiredByItem === []) {
+            return true;
+        }
+
+        $processedByItem = DB::table('inventory_movements')
+            ->where('transaction_number', $order->salesorder_no)
+            ->whereIn('source', ['ORDER_COMPLETE_OUT', 'PICKING'])
+            ->where('qty', '<', 0)
+            ->select('item_id')
+            ->selectRaw('SUM(ABS(qty)) as processed_qty')
+            ->groupBy('item_id')
+            ->pluck('processed_qty', 'item_id');
+
+        $allocatedByItem = DB::table('order_bin_allocations')
+            ->where('order_id', $order->id)
+            ->select('item_id')
+            ->selectRaw('SUM(qty) as allocated_qty')
+            ->groupBy('item_id')
+            ->pluck('allocated_qty', 'item_id');
+
+        foreach ($requiredByItem as $itemId => $requiredQty) {
+
+            $processedQty = max(
+                (int) ($processedByItem[$itemId] ?? 0),
+                (int) ($allocatedByItem[$itemId] ?? 0),
+            );
+
+            if ($processedQty < $requiredQty) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function markPicklistItemsProcessedExternally(SalesOrder $order, array $deductions): array
@@ -369,7 +447,28 @@ class BackfillShippedOrdersStockService
             ];
         }
 
-        $plannedQtyByBin[$assignedBin->bin_id] = (int) ($plannedQtyByBin[$assignedBin->bin_id] ?? 0) + $requiredQty;
+        $inventory = DB::table('inventories')
+            ->where('item_id', $itemId)
+            ->where('location_id', $locationId)
+            ->where('bin_id', $assignedBin->bin_id)
+            ->where('batch_no', '')
+            ->where('serial_no', '')
+            ->lockForUpdate()
+            ->first(['id', 'on_hand']);
+
+        $plannedKey = $itemId.'|'.$assignedBin->bin_id;
+        $plannedQty = (int) ($plannedQtyByBin[$plannedKey] ?? 0);
+        $available = max(0, (int) ($inventory->on_hand ?? 0) - $plannedQty);
+
+        if ($available < $requiredQty) {
+            return [
+                'allocations' => [],
+                'shortage' => $requiredQty,
+                'reason' => 'INSUFFICIENT_ASSIGNED_BIN',
+            ];
+        }
+
+        $plannedQtyByBin[$plannedKey] = $plannedQty + $requiredQty;
 
         return [
             'allocations' => [[

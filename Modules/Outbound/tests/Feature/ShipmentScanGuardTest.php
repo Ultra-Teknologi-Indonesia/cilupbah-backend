@@ -9,6 +9,7 @@ use Illuminate\Support\Str;
 use Modules\Outbound\Exceptions\OutboundValidationException;
 use Modules\Outbound\Exceptions\ScanRejectedException;
 use Modules\Outbound\Services\ShipmentService;
+use Modules\Warehouse\Models\Location;
 use Tests\TestCase;
 
 class ShipmentScanGuardTest extends TestCase
@@ -17,13 +18,19 @@ class ShipmentScanGuardTest extends TestCase
 
     private function seedLocation(): string
     {
+        $officialId = Location::getOfficialSmallWarehouseId();
+        if ($officialId) {
+            return (string) $officialId;
+        }
+
         $id = Str::uuid()->toString();
         DB::table('locations')->insert([
             'id' => $id,
-            'location_code' => 'LOC-SG-'.substr($id, 0, 6),
-            'location_name' => 'Gudang SG',
+            'location_code' => Location::SYSTEM_KECIL_CODE,
+            'location_name' => 'Gudang Kecil',
             'location_type' => 'WAREHOUSE',
             'is_warehouse' => true,
+            'is_small_warehouse' => true,
             'is_active' => true,
             'created_at' => now(), 'updated_at' => now(),
         ]);

@@ -2,6 +2,8 @@
 
 namespace Modules\Outbound\Services;
 
+use App\Exceptions\UserFacingException;
+use App\Support\ChannelWarehousePolicy;
 use App\Support\WarehouseAccess;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
@@ -29,6 +31,7 @@ class ShipmentService
         protected ShipmentRepository $shipmentRepository,
         protected CourierMappingService $courierMapper,
         protected SalesOrderService $orderService,
+        protected ChannelWarehousePolicy $channelWarehousePolicy,
     ) {}
 
     public function getAllPaginated(int $limit = 10)
@@ -241,6 +244,19 @@ class ShipmentService
 
     private function assertOrdersCompatibleWithShipment(Shipment $shipment, Collection $orders): void
     {
+        foreach ($orders as $order) {
+            try {
+                $this->channelWarehousePolicy->assertOrderAndTargetLocation(
+                    $order->source,
+                    $order->location_id,
+                    $shipment->location_id,
+                    'Penjadwalan shipment',
+                );
+            } catch (UserFacingException $exception) {
+                throw new OutboundValidationException($exception->getMessage(), 422, $exception);
+            }
+        }
+
         $shipmentIsInstant = in_array($shipment->shipment_type, ['INSTANT', 'SAME_DAY'], true);
         $mismatchedType = $orders->first(function (Order $order) use ($shipmentIsInstant): bool {
             return $order->is_instant

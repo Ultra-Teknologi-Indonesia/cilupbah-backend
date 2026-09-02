@@ -2,32 +2,41 @@
 
 namespace Modules\Outbound\Services;
 
+use App\Models\User;
+use App\Support\ChannelWarehousePolicy;
+use App\Support\WarehouseAccess;
 use Illuminate\Support\Carbon;
-use Modules\Sales\Models\SalesOrder as Order;
-use Modules\Outbound\Models\Picklist;
-use Modules\Outbound\Models\PicklistItem;
-use Modules\Outbound\Models\Packlist;
-use Modules\Outbound\Models\ShipmentOrder;
-use Modules\Outbound\Models\FulfillmentRemoval;
-use Modules\Outbound\Repositories\OutboundFulfillmentRepository;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
+use Modules\Channel\Support\UploadErrorPresenter;
 use Modules\Outbound\Contracts\DriverCallResult;
+use Modules\Outbound\Jobs\ProcessBulkReadyToShipJob;
+use Modules\Outbound\Models\BulkRtsBatch;
+use Modules\Outbound\Models\BulkRtsItem;
+use Modules\Outbound\Models\FulfillmentRemoval;
+use Modules\Outbound\Models\Packlist;
+use Modules\Outbound\Models\Picklist;
+use Modules\Outbound\Models\PicklistItem;
+use Modules\Outbound\Models\ShipmentOrder;
+use Modules\Outbound\Repositories\OutboundFulfillmentRepository;
 use Modules\Outbound\Services\Logistics\LogisticsGateway;
-use Modules\Warehouse\Models\Location;
-use Modules\Outbound\Exceptions\OutboundValidationException;
+use Modules\Sales\Models\SalesOrder as Order;
+use Modules\Sales\Services\SalesOrderService;
 
 class OutboundFulfillmentService
 {
     private const FULFILLMENT_PUSH_OFF = 'Pengiriman ke marketplace dimatikan untuk toko ini.';
 
     public function __construct(
-        protected \Modules\Sales\Services\SalesOrderService $orderService,
+        protected SalesOrderService $orderService,
         protected ShopeeOrderService $shopeeOrderService,
         protected OutboundFulfillmentRepository $fulfillmentRepository,
         protected LogisticsGateway $logisticsGateway,
+        protected ChannelWarehousePolicy $channelWarehousePolicy,
     ) {}
 
     public function resolveDriverCallOrderIds(array $orderIds, array $shipmentIds): array
@@ -59,6 +68,7 @@ class OutboundFulfillmentService
                     'status' => DriverCallResult::STATUS_SKIPPED,
                     'message' => self::FULFILLMENT_PUSH_OFF,
                 ];
+
                 continue;
             }
 
@@ -99,30 +109,34 @@ class OutboundFulfillmentService
         foreach ($orderIds as $orderId) {
             $order = $orders[$orderId] ?? null;
 
-            if (!$order) {
+            if (! $order) {
                 $results[] = [
-                    'order_id'      => $orderId,
+                    'order_id' => $orderId,
                     'salesorder_no' => null,
-                    'source'        => null,
-                    'status'        => 'failed',
-                    'message'       => 'Order tidak ditemukan.',
+                    'source' => null,
+                    'status' => 'failed',
+                    'message' => 'Order tidak ditemukan.',
                 ];
+
                 continue;
             }
 
             if ($skip = $this->alreadyHandledMessage((string) $order->channel_status)) {
                 $results[] = $this->result($order, 'skipped', $skip);
+
                 continue;
             }
 
             if (ChannelFulfillmentGuard::blocks($order->channel_shop_id, 'ready_to_ship', $order->salesorder_no)) {
                 $results[] = $this->result($order, 'skipped', self::FULFILLMENT_PUSH_OFF);
+
                 continue;
             }
 
-            $lock = \Illuminate\Support\Facades\Cache::lock("rts:{$order->id}", 30);
+            $lock = Cache::lock("rts:{$order->id}", 30);
             if (! $lock->get()) {
                 $results[] = $this->result($order, 'skipped', 'Order sedang diproses RTS.');
+
                 continue;
             }
 
@@ -136,14 +150,14 @@ class OutboundFulfillmentService
                 );
             } catch (\Throwable $e) {
                 Log::error('readyToShip dispatcher gagal untuk order', [
-                    'order_id'         => $order->id,
-                    'salesorder_no'    => $order->salesorder_no,
-                    'source'           => $order->source,
-                    'channel_shop_id'  => (string) ($order->channel_shop_id ?? ''),
+                    'order_id' => $order->id,
+                    'salesorder_no' => $order->salesorder_no,
+                    'source' => $order->source,
+                    'channel_shop_id' => (string) ($order->channel_shop_id ?? ''),
                     'channel_order_no' => (string) ($order->channel_order_no ?? ''),
-                    'error'            => $e->getMessage(),
+                    'error' => $e->getMessage(),
                 ]);
-                $results[] = $this->result($order, 'failed', \Modules\Channel\Support\UploadErrorPresenter::fromMessage((string) $order->source, $e->getMessage())['reason']);
+                $results[] = $this->result($order, 'failed', UploadErrorPresenter::fromMessage((string) $order->source, $e->getMessage())['reason']);
             } finally {
                 optional($lock)->release();
             }
@@ -152,37 +166,37 @@ class OutboundFulfillmentService
         return $results;
     }
 
-    public function createBulkRtsBatch(?\App\Models\User $user, array $orderIds): \Modules\Outbound\Models\BulkRtsBatch
+    public function createBulkRtsBatch(?User $user, array $orderIds): BulkRtsBatch
     {
         $orderIds = array_values(array_unique(array_filter($orderIds)));
         $orders = $this->ordersByIds($orderIds);
 
         $batch = DB::transaction(function () use ($user, $orderIds, $orders) {
-            $batch = \Modules\Outbound\Models\BulkRtsBatch::create([
-                'user_id'       => $user?->id,
-                'status'        => \Modules\Outbound\Models\BulkRtsBatch::STATUS_PROCESSING,
-                'total_count'   => count($orderIds),
+            $batch = BulkRtsBatch::create([
+                'user_id' => $user?->id,
+                'status' => BulkRtsBatch::STATUS_PROCESSING,
+                'total_count' => count($orderIds),
                 'success_count' => 0,
-                'failed_count'  => 0,
+                'failed_count' => 0,
                 'skipped_count' => 0,
-                'started_at'    => now(),
+                'started_at' => now(),
             ]);
 
             foreach ($orderIds as $orderId) {
                 $order = $orders[$orderId] ?? null;
-                \Modules\Outbound\Models\BulkRtsItem::create([
-                    'batch_id'      => $batch->id,
-                    'order_id'      => $orderId,
+                BulkRtsItem::create([
+                    'batch_id' => $batch->id,
+                    'order_id' => $orderId,
                     'salesorder_no' => $order?->salesorder_no,
-                    'source'        => $order?->source,
-                    'status'        => \Modules\Outbound\Models\BulkRtsItem::STATUS_PENDING,
+                    'source' => $order?->source,
+                    'status' => BulkRtsItem::STATUS_PENDING,
                 ]);
             }
 
             return $batch;
         });
 
-        \Modules\Outbound\Jobs\ProcessBulkReadyToShipJob::dispatch($batch->id);
+        ProcessBulkReadyToShipJob::dispatch($batch->id);
 
         return $batch;
     }
@@ -198,16 +212,19 @@ class OutboundFulfillmentService
 
             if (! $order) {
                 $results[] = ['order_id' => $orderId, 'salesorder_no' => null, 'source' => null, 'status' => 'failed', 'message' => 'Order tidak ditemukan.'];
+
                 continue;
             }
 
             if ($order->channel_status !== 'RETRY_SHIP') {
                 $results[] = $this->result($order, 'skipped', 'Order tidak dalam status RETRY_SHIP.');
+
                 continue;
             }
 
             if (ChannelFulfillmentGuard::blocks($order->channel_shop_id, 'retry_pickup', $order->salesorder_no)) {
                 $results[] = $this->result($order, 'skipped', self::FULFILLMENT_PUSH_OFF);
+
                 continue;
             }
 
@@ -215,6 +232,7 @@ class OutboundFulfillmentService
 
             if ($source !== 'shopee') {
                 $results[] = $this->result($order, 'skipped', 'Retry pickup hanya tersedia untuk order Shopee.');
+
                 continue;
             }
 
@@ -225,7 +243,7 @@ class OutboundFulfillmentService
                 if (! empty($res['updated'])) {
                     $results[] = $this->result($order, 'success', 'Pickup berhasil diatur ulang.');
                 } else {
-                    $results[] = $this->result($order, 'failed', 'Gagal atur ulang pickup' . (! empty($res['error']) ? " ({$res['error']})" : '') . '.');
+                    $results[] = $this->result($order, 'failed', 'Gagal atur ulang pickup'.(! empty($res['error']) ? " ({$res['error']})" : '').'.');
                 }
             } catch (\Throwable $e) {
                 Log::error('retryPickup gagal', [
@@ -233,7 +251,7 @@ class OutboundFulfillmentService
                     'salesorder_no' => $order->salesorder_no,
                     'error' => $e->getMessage(),
                 ]);
-                $results[] = $this->result($order, 'failed', \Modules\Channel\Support\UploadErrorPresenter::fromMessage((string) $order->source, $e->getMessage())['reason']);
+                $results[] = $this->result($order, 'failed', UploadErrorPresenter::fromMessage((string) $order->source, $e->getMessage())['reason']);
             }
         }
 
@@ -243,7 +261,7 @@ class OutboundFulfillmentService
     private function assertChannelRefs(string $source, string $shopId, string $channelOrderNo): void
     {
         if ($shopId === '' || $channelOrderNo === '') {
-            throw new \Exception(ucfirst($source) . ': channel_shop_id atau channel_order_no kosong, tidak bisa kirim ke marketplace.');
+            throw new \Exception(ucfirst($source).': channel_shop_id atau channel_order_no kosong, tidak bisa kirim ke marketplace.');
         }
     }
 
@@ -263,11 +281,11 @@ class OutboundFulfillmentService
     private function result(Order $order, string $status, string $message): array
     {
         return [
-            'order_id'      => $order->id,
+            'order_id' => $order->id,
             'salesorder_no' => $order->salesorder_no,
-            'source'        => $order->source,
-            'status'        => $status,
-            'message'       => $message,
+            'source' => $order->source,
+            'status' => $status,
+            'message' => $message,
         ];
     }
 
@@ -293,7 +311,7 @@ class OutboundFulfillmentService
     {
         $query = $this->stageQuery($stage);
 
-        \App\Support\WarehouseAccess::apply($query, 'sales_orders.location_id');
+        WarehouseAccess::apply($query, 'sales_orders.location_id');
 
         return $query->reorder()
             ->whereNotNull('shipping_provider')
@@ -313,10 +331,10 @@ class OutboundFulfillmentService
         $extraSelects = match ($stage) {
             'finish-pick' => ['picker_name', 'picklist_ref', 'invoice_ref'],
             'finish-pack' => ['packer_name', 'picklist_ref', 'invoice_ref'],
-            default       => ['invoice_ref'],
+            default => ['invoice_ref'],
         };
 
-        \App\Support\WarehouseAccess::apply($query, 'sales_orders.location_id');
+        WarehouseAccess::apply($query, 'sales_orders.location_id');
 
         return $this->fulfillmentRepository->paginateStage($query, $limit, $extraSelects);
     }
@@ -345,23 +363,23 @@ SQL;
 
         $stageScopes = [
             'ready_to_process' => fn () => $this->readyToProcess(),
-            'pick'             => fn () => $this->onPicking(),
-            'pending'          => fn () => $this->emptyStock(),      
-            'pack'             => fn () => $this->onPacking(),
-            'ready_to_ship'    => fn () => $this->finishPack(),
-            'waiting_ship'     => fn () => $this->readyToShipStage(),
+            'pick' => fn () => $this->onPicking(),
+            'pending' => fn () => $this->emptyStock(),
+            'pack' => fn () => $this->onPacking(),
+            'ready_to_ship' => fn () => $this->finishPack(),
+            'waiting_ship' => fn () => $this->readyToShipStage(),
         ];
 
         $periods = [];
         for ($bucket = 0; $bucket <= 4; $bucket++) {
             $periods[$bucket] = [
-                'day_term'         => $bucket,
+                'day_term' => $bucket,
                 'ready_to_process' => 0,
-                'pick'             => 0,
-                'pending'          => 0,
-                'pack'             => 0,
-                'ready_to_ship'    => 0,
-                'waiting_ship'     => 0,
+                'pick' => 0,
+                'pending' => 0,
+                'pack' => 0,
+                'ready_to_ship' => 0,
+                'waiting_ship' => 0,
             ];
         }
 
@@ -378,9 +396,15 @@ SQL;
             }
         }
 
+        $periodRows = array_values($periods);
+        $summary = $this->monitoringSummary();
+
+        $summary['ready_to_process_today'] = (int) ($periodRows[0]['ready_to_process'] ?? 0);
+        $summary['pending_from_two_days_ago'] = (int) ($periodRows[2]['ready_to_process'] ?? 0);
+
         return [
-            'summary' => $this->monitoringSummary(),
-            'periods' => array_values($periods),
+            'summary' => $summary,
+            'periods' => $periodRows,
         ];
     }
 
@@ -392,7 +416,7 @@ SQL;
         $yesterdaySameTime = $now->copy()->subDay();
 
         $todayCount = Order::whereBetween('transaction_date', $this->utcRange($todayStart, $now))->count();
-        $yestCount  = Order::whereBetween('transaction_date', $this->utcRange($yesterdayStart, $yesterdaySameTime))->count();
+        $yestCount = Order::whereBetween('transaction_date', $this->utcRange($yesterdayStart, $yesterdaySameTime))->count();
 
         $mtdCount = Order::whereBetween('transaction_date', [
             $now->copy()->startOfMonth()->utc(),
@@ -404,23 +428,23 @@ SQL;
             $previousMonthSameTime->copy()->utc(),
         ])->count();
 
-        $readyToPick      = $this->readyToProcess()->count();
+        $readyToPick = $this->readyToProcess()->count();
         $readyToPick2days = $this->readyToProcess()
             ->where('transaction_date', '<', $todayStart->copy()->subDay()->utc())
             ->count();
 
         $pickedToday = $this->pickedOrdersCount($todayStart, $now);
-        $pickedYest  = $this->pickedOrdersCount($yesterdayStart, $yesterdaySameTime);
+        $pickedYest = $this->pickedOrdersCount($yesterdayStart, $yesterdaySameTime);
 
         return [
-            'today'               => $todayCount,
-            'yest'                => $yestCount,
-            'mtd'                 => $mtdCount,
-            'prev_month'          => $prevMonthCount,
-            'ready_to_pick'       => $readyToPick,
+            'today' => $todayCount,
+            'yest' => $yestCount,
+            'mtd' => $mtdCount,
+            'prev_month' => $prevMonthCount,
+            'ready_to_pick' => $readyToPick,
             'ready_to_pick_2days' => $readyToPick2days,
-            'picked_today'        => $pickedToday,
-            'picked_yest'         => $pickedYest,
+            'picked_today' => $pickedToday,
+            'picked_yest' => $pickedYest,
         ];
     }
 
@@ -446,22 +470,22 @@ SQL;
         })->count();
     }
 
-    public function getPickers(?string $locationId, string $role): \Illuminate\Support\Collection
+    public function getPickers(?string $locationId, string $role): Collection
     {
         return $this->fulfillmentRepository->getPickers($locationId, $role);
     }
 
     public function changeLocation(string $orderId, string $locationId, string $changedBy): Order
     {
-        \App\Support\WarehouseAccess::assert($locationId);
+        WarehouseAccess::assert($locationId);
 
         $order = Order::find($orderId);
 
-        if (!$order) {
+        if (! $order) {
             throw new \Exception('Order tidak ditemukan.');
         }
 
-        if (!in_array($order->status, ['pending', 'reserved'])) {
+        if (! in_array($order->status, ['pending', 'reserved'])) {
             throw new \Exception("Order hanya bisa dipindah lokasi saat status pending/reserved (saat ini: {$order->status}).");
         }
 
@@ -483,11 +507,11 @@ SQL;
 
     public function moveToReadyToPick(string $orderId, string $locationId, string $movedBy): Order
     {
-        \App\Support\WarehouseAccess::assert($locationId);
+        WarehouseAccess::assert($locationId);
 
         $order = Order::find($orderId);
 
-        if (!$order) {
+        if (! $order) {
             throw new \Exception('Order tidak ditemukan.');
         }
 
@@ -495,13 +519,12 @@ SQL;
             throw new \Exception("Order harus berstatus 'reserved' untuk dipindah ke ready-to-pick (saat ini: {$order->status}).");
         }
 
-        $source = strtolower((string) ($order->source ?? ''));
-        $officialLocationId = Location::getOfficialSmallWarehouseId();
-        if ($source !== '' && $source !== 'manual' && $officialLocationId !== null && $locationId !== $officialLocationId) {
-            throw new OutboundValidationException(
-                'Pesanan channel wajib diproses dan dipotong dari Gudang Kecil.'
-            );
-        }
+        $this->channelWarehousePolicy->assertOrderAndTargetLocation(
+            $order->source,
+            $order->location_id,
+            $locationId,
+            'Pemindahan order ke ready-to-pick',
+        );
 
         $existing = PicklistItem::where('order_id', $orderId)
             ->whereHas('picklist', fn ($q) => $q->whereNotIn('status', [Picklist::STATUS_CANCELLED, Picklist::STATUS_FAILED]))
@@ -539,7 +562,7 @@ SQL;
     {
         $order = Order::find($orderId);
 
-        if (!$order) {
+        if (! $order) {
             throw new \Exception('Order tidak ditemukan.');
         }
 
@@ -557,19 +580,19 @@ SQL;
     private function generatePicklistNo(): string
     {
         $last = Picklist::whereRaw("picklist_no ~ '^PICK-[0-9]+$'")
-            ->orderByRaw("CAST(SUBSTRING(picklist_no FROM 6) AS BIGINT) DESC")
+            ->orderByRaw('CAST(SUBSTRING(picklist_no FROM 6) AS BIGINT) DESC')
             ->value('picklist_no');
 
         $seq = $last ? ((int) substr($last, 5)) + 1 : (Picklist::count() + 1);
 
-        return 'PICK-' . str_pad((string) $seq, 9, '0', STR_PAD_LEFT);
+        return 'PICK-'.str_pad((string) $seq, 9, '0', STR_PAD_LEFT);
     }
 
     public function requestCancelOrder(string $orderId, ?string $reason = null, ?string $requestedBy = null): Order
     {
         $order = Order::find($orderId);
 
-        if (!$order) {
+        if (! $order) {
             throw new \Exception('Order tidak ditemukan.');
         }
 
@@ -689,7 +712,7 @@ SQL;
         $shipmentId = ShipmentOrder::where('order_id', $order->id)->value('shipment_id');
 
         if ($shipmentId) {
-            app(\Modules\Outbound\Services\ShipmentService::class)->removeOrders($shipmentId, [$order->id]);
+            app(ShipmentService::class)->removeOrders($shipmentId, [$order->id]);
             $this->logRemoval($order->id, FulfillmentRemoval::STAGE_SHIPPING, $removedBy, $reason, false);
 
             return;
@@ -700,7 +723,7 @@ SQL;
             ->first();
 
         if ($activePacklist) {
-            app(\Modules\Outbound\Services\PacklistService::class)->revert($activePacklist->id);
+            app(PacklistService::class)->revert($activePacklist->id);
             $this->logRemoval($order->id, FulfillmentRemoval::STAGE_PACKING, $removedBy, $reason, false);
 
             return;
@@ -716,7 +739,7 @@ SQL;
         $picklistId = PicklistItem::where('order_id', $order->id)->value('picklist_id');
 
         if ($picklistId) {
-            $reversed = app(\Modules\Outbound\Services\PicklistService::class)
+            $reversed = app(PicklistService::class)
                 ->failPickOrder($picklistId, $order->id, $removedBy, (string) $reason);
             $this->logRemoval($order->id, FulfillmentRemoval::STAGE_PICKING, $removedBy, $reason, $reversed);
 
@@ -725,10 +748,10 @@ SQL;
 
         if (in_array($order->status, ['picked', 'reserved'], true)) {
             $order->update([
-                'status'                 => 'reserved',
-                'pick_failed_at'         => now(),
-                'pick_failed_by'         => $removedBy,
-                'pick_fail_reason'       => $reason,
+                'status' => 'reserved',
+                'pick_failed_at' => now(),
+                'pick_failed_by' => $removedBy,
+                'pick_fail_reason' => $reason,
                 'handed_to_warehouse_at' => null,
             ]);
             $this->logRemoval($order->id, FulfillmentRemoval::STAGE_PICKING, $removedBy, $reason, false);
@@ -750,12 +773,13 @@ SQL;
 
             if (! $order) {
                 $results[] = [
-                    'order_id'      => $orderId,
+                    'order_id' => $orderId,
                     'salesorder_no' => null,
-                    'source'        => null,
-                    'status'        => 'failed',
-                    'message'       => 'Order tidak ditemukan.',
+                    'source' => null,
+                    'status' => 'failed',
+                    'message' => 'Order tidak ditemukan.',
                 ];
+
                 continue;
             }
 
@@ -770,7 +794,7 @@ SQL;
         return $results;
     }
 
-    private function ordersByIds(array $orderIds): \Illuminate\Support\Collection
+    private function ordersByIds(array $orderIds): Collection
     {
         if (empty($orderIds)) {
             return collect();
@@ -782,10 +806,10 @@ SQL;
     private function logRemoval(string $orderId, string $stage, string $removedBy, ?string $reason, bool $reversedStock): void
     {
         FulfillmentRemoval::create([
-            'order_id'       => $orderId,
-            'stage'          => $stage,
-            'removed_by'     => $removedBy,
-            'reason'         => $reason,
+            'order_id' => $orderId,
+            'stage' => $stage,
+            'removed_by' => $removedBy,
+            'reason' => $reason,
             'reversed_stock' => $reversedStock,
         ]);
     }

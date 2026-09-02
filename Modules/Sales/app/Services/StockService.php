@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Services;
 
+use App\Traits\StockLockable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Jobs\SyncStockToChannelsJob;
@@ -12,7 +13,6 @@ use Modules\Inventory\Support\InventoryMovementSourceMap;
 use Modules\Product\Repositories\ProductRepository;
 use Modules\Sales\Exceptions\InsufficientStockException;
 use Modules\Warehouse\Services\InboundBinPolicy;
-use App\Traits\StockLockable;
 
 class StockService
 {
@@ -66,8 +66,8 @@ class StockService
         $this->withStockLock($itemId, $locationId, function () use ($sku, $itemId, $locationId, $qty, $transactionNumber, $enforce) {
             DB::transaction(function () use ($sku, $itemId, $locationId, $qty, $transactionNumber, $enforce) {
 
-                $onHand   = $this->inventoryRepository->sumOnHandAtLocation($itemId, $locationId);
-                $onOrder  = $this->inventoryRepository->sumOnOrderAtLocation($itemId, $locationId);
+                $onHand = $this->inventoryRepository->sumOnHandAtLocation($itemId, $locationId);
+                $onOrder = $this->inventoryRepository->sumOnOrderAtLocation($itemId, $locationId);
                 $available = $onHand - $onOrder;
 
                 if ($available < $qty) {
@@ -76,17 +76,17 @@ class StockService
                     }
 
                     Log::warning('Stock oversold on channel booking', [
-                        'sku'                => $sku,
-                        'item_id'            => $itemId,
-                        'location_id'        => $locationId,
-                        'available'          => $available,
-                        'requested'          => $qty,
+                        'sku' => $sku,
+                        'item_id' => $itemId,
+                        'location_id' => $locationId,
+                        'available' => $available,
+                        'requested' => $qty,
                         'transaction_number' => $transactionNumber,
                     ]);
                 }
 
                 $targetBinId = $this->inventoryRepository->findTargetBinForItemLocation($itemId, $locationId);
-                $targetInv   = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, $targetBinId);
+                $targetInv = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, $targetBinId);
                 $targetInv->on_order = ((int) $targetInv->on_order) + $qty;
                 $targetInv->recalculateAvailable();
                 $this->inventoryRepository->updateStock($targetInv);
@@ -148,6 +148,7 @@ class StockService
 
         if ($binId === null) {
             $this->restore($sku, $itemId, $locationId, $qty, $transactionNumber);
+
             return;
         }
 
@@ -158,15 +159,15 @@ class StockService
                 $this->inventoryRepository->updateStock($binRow);
 
                 $this->movementRepository->create([
-                    'item_id'            => $itemId,
-                    'location_id'        => $locationId,
-                    'bin_id'             => $binId,
+                    'item_id' => $itemId,
+                    'location_id' => $locationId,
+                    'bin_id' => $binId,
                     'transaction_number' => $transactionNumber,
-                    'source'             => $source,
-                    'qty'                => $qty,
-                    'balance'            => $binRow->on_hand,
-                    'transaction_date'   => now(),
-                    'created_by'         => 'system',
+                    'source' => $source,
+                    'qty' => $qty,
+                    'balance' => $binRow->on_hand,
+                    'transaction_date' => now(),
+                    'created_by' => 'system',
                 ]);
             });
         });
@@ -181,7 +182,6 @@ class StockService
         string $transactionNumber,
         string $source,
         ?string $createdBy = null,
-        bool $allowNegative = false,
         ?\DateTimeInterface $transactionDate = null,
     ): void {
         if ($qty <= 0) {
@@ -190,12 +190,12 @@ class StockService
 
         $this->inboundBinPolicy->assertConsumable($locationId, $binId, 'pemotongan stok');
 
-        $this->withStockLock($itemId, $locationId, function () use ($sku, $itemId, $locationId, $binId, $qty, $transactionNumber, $source, $createdBy, $allowNegative, $transactionDate) {
-            DB::transaction(function () use ($sku, $itemId, $locationId, $binId, $qty, $transactionNumber, $source, $createdBy, $allowNegative, $transactionDate) {
+        $this->withStockLock($itemId, $locationId, function () use ($sku, $itemId, $locationId, $binId, $qty, $transactionNumber, $source, $createdBy, $transactionDate) {
+            DB::transaction(function () use ($sku, $itemId, $locationId, $binId, $qty, $transactionNumber, $source, $createdBy, $transactionDate) {
                 $binRow = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, $binId);
                 $onHand = (int) $binRow->on_hand;
 
-                if (! $allowNegative && $onHand < $qty) {
+                if ($onHand < $qty) {
                     throw new InsufficientStockException($sku, max(0, $onHand), $qty);
                 }
 
@@ -204,15 +204,15 @@ class StockService
                 $this->inventoryRepository->updateStock($binRow);
 
                 $this->movementRepository->create([
-                    'item_id'            => $itemId,
-                    'location_id'        => $locationId,
-                    'bin_id'             => $binId,
+                    'item_id' => $itemId,
+                    'location_id' => $locationId,
+                    'bin_id' => $binId,
                     'transaction_number' => $transactionNumber,
-                    'source'             => $source,
-                    'qty'                => -$qty,
-                    'balance'            => $binRow->on_hand,
-                    'transaction_date'   => $transactionDate ?: now(),
-                    'created_by'         => $createdBy ?: 'system',
+                    'source' => $source,
+                    'qty' => -$qty,
+                    'balance' => $binRow->on_hand,
+                    'transaction_date' => $transactionDate ?: now(),
+                    'created_by' => $createdBy ?: 'system',
                 ]);
             });
         });
@@ -228,15 +228,15 @@ class StockService
                 $this->inventoryRepository->updateStock($aggregate);
 
                 $this->movementRepository->create([
-                    'item_id'            => $itemId,
-                    'location_id'        => $locationId,
-                    'bin_id'             => null,
+                    'item_id' => $itemId,
+                    'location_id' => $locationId,
+                    'bin_id' => null,
                     'transaction_number' => $transactionNumber,
-                    'source'             => 'ORDER_RESTORE',
-                    'qty'                => $qty,
-                    'balance'            => $aggregate->on_hand,
-                    'transaction_date'   => now(),
-                    'created_by'         => 'system',
+                    'source' => 'ORDER_RESTORE',
+                    'qty' => $qty,
+                    'balance' => $aggregate->on_hand,
+                    'transaction_date' => now(),
+                    'created_by' => 'system',
                 ]);
             });
         });
@@ -326,7 +326,7 @@ class StockService
         }
 
         $remaining = $qty;
-        $query = \Modules\Inventory\Models\Inventory::where('item_id', $itemId)
+        $query = Inventory::where('item_id', $itemId)
             ->where('location_id', $locationId)
             ->where('on_order', '>', 0);
 
@@ -424,11 +424,11 @@ class StockService
 
                     if ($actuallyReleased < $outstanding) {
                         Log::warning('Reservation ledger dilepas melebihi on_order aktual; drift ditutup tanpa saldo negatif', [
-                            'item_id'            => $row->item_id,
-                            'location_id'        => $row->location_id,
+                            'item_id' => $row->item_id,
+                            'location_id' => $row->location_id,
                             'transaction_number' => $transactionNumber,
-                            'ledger_release'     => $outstanding,
-                            'inventory_release'  => $actuallyReleased,
+                            'ledger_release' => $outstanding,
+                            'inventory_release' => $actuallyReleased,
                         ]);
                     }
 
@@ -584,15 +584,15 @@ class StockService
     private function recordAllocation(string $itemId, string $locationId, int $qty, string $transactionNumber, string $source, int $reservedBalance, ?string $binId = null): void
     {
         $this->movementRepository->create([
-            'item_id'            => $itemId,
-            'location_id'        => $locationId,
-            'bin_id'             => $binId,
+            'item_id' => $itemId,
+            'location_id' => $locationId,
+            'bin_id' => $binId,
             'transaction_number' => $transactionNumber,
-            'source'             => $source,
-            'qty'                => $qty,
-            'balance'            => $reservedBalance,
-            'transaction_date'   => now(),
-            'created_by'         => 'system',
+            'source' => $source,
+            'qty' => $qty,
+            'balance' => $reservedBalance,
+            'transaction_date' => now(),
+            'created_by' => 'system',
         ]);
     }
 }

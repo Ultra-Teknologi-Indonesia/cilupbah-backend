@@ -2,14 +2,17 @@
 
 namespace Modules\Inventory\Repositories;
 
+use App\Exceptions\UserFacingException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Models\InventoryMovement;
+use Modules\Inventory\Services\InventoryMovementReversalVisibilityService;
 use Modules\Inventory\Support\InventoryMovementSourceMap;
 use Modules\Inventory\Support\StockSummary;
 use Modules\Notification\Services\NotificationDispatcher;
 use Modules\Product\Support\TechnicalSku;
+use Modules\Warehouse\Models\LocationBin;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
 
@@ -70,6 +73,7 @@ class InventoryMovementRepository
 
     public function create(array $data): InventoryMovement
     {
+        $this->assertConsumptiveMovementBin($data);
 
         if (in_array($data['source'] ?? null, InventoryMovementSourceMap::UNRECORDED_REVERSAL_SOURCES, true)) {
             $cancelled = $this->cancelMatchedOriginal($data);
@@ -80,7 +84,7 @@ class InventoryMovementRepository
 
         $movement = InventoryMovement::create($data);
         if (in_array($movement->source, InventoryMovementSourceMap::CHRONOLOGY_NETTABLE_REVERSAL_SOURCES, true)) {
-            app(\Modules\Inventory\Services\InventoryMovementReversalVisibilityService::class)
+            app(InventoryMovementReversalVisibilityService::class)
                 ->pairReversal($movement);
         }
 
@@ -112,6 +116,29 @@ class InventoryMovementRepository
         }
 
         return $movement;
+    }
+
+    private function assertConsumptiveMovementBin(array $data): void
+    {
+        $qty = (int) ($data['qty'] ?? 0);
+        $binId = $data['bin_id'] ?? null;
+        $source = strtoupper(trim((string) ($data['source'] ?? '')));
+
+        if ($qty >= 0 || ! $binId || str_starts_with($source, 'PUTAWAY_') || str_starts_with($source, 'TRANSIT_')) {
+            return;
+        }
+
+        $bin = LocationBin::query()->find($binId);
+        $binCode = strtoupper(trim((string) ($bin?->bin_final_code ?: $bin?->bin_code ?: '')));
+
+        if ($bin?->is_inbound || $binCode === 'DEFAULT') {
+            throw new UserFacingException(
+                'Pemotongan Stok Tidak Valid',
+                'Stok inbound/DEFAULT hanya boleh berubah melalui alur putaway atau transit yang sah.',
+                422,
+                ['bin_id' => $binId, 'source' => $source],
+            );
+        }
     }
 
     private function cancelMatchedOriginal(array $data): ?InventoryMovement

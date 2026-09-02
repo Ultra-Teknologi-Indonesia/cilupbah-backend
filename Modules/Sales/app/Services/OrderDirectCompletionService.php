@@ -3,6 +3,7 @@
 namespace Modules\Sales\Services;
 
 use App\Exceptions\UserFacingException;
+use App\Support\ChannelWarehousePolicy;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -14,12 +15,20 @@ use Modules\Sales\Repositories\OrderDirectCompletionRepository;
 class OrderDirectCompletionService
 {
     public const BLOCK_NOT_ELIGIBLE = 'not_eligible';
+
     public const BLOCK_HAS_PICKLIST = 'has_picklist';
+
     public const BLOCK_SHADOW = 'shadow';
+
     public const BLOCK_CANCEL_PENDING = 'cancel_pending';
+
     public const BLOCK_AWAITING_BUYER = 'awaiting_buyer_confirmation';
+
     public const BLOCK_STOCK_SHORT = 'stock_short';
+
     public const BLOCK_FAILED = 'failed';
+
+    public const BLOCK_INVALID_LOCATION = 'invalid_location';
 
     private const ELIGIBLE_STATUSES = ['reserved'];
 
@@ -27,6 +36,7 @@ class OrderDirectCompletionService
         protected OrderDirectCompletionRepository $repository,
         protected SalesOrderService $orderService,
         protected StockService $stockService,
+        protected ChannelWarehousePolicy $channelWarehousePolicy,
     ) {}
 
     public function preview(array $orderIds): array
@@ -153,6 +163,13 @@ class OrderDirectCompletionService
                 throw new UserFacingException('Pesanan sudah masuk daftar picking, selesaikan dari sana.');
             }
 
+            $this->channelWarehousePolicy->assertOrderAndTargetLocation(
+                $locked->source,
+                $locked->location_id,
+                $locationId,
+                'Penyelesaian langsung',
+            );
+
             $actorId = Auth::id() ?: null;
             $now = now();
 
@@ -244,6 +261,7 @@ class OrderDirectCompletionService
 
             if ($shortage !== []) {
                 $short[$order->id] = $shortage;
+
                 continue;
             }
 
@@ -264,10 +282,11 @@ class OrderDirectCompletionService
         $merged = [];
 
         foreach ($draws as $draw) {
-            $key = $draw['order_item_id'] . '|' . $draw['item_id'] . '|' . $draw['bin_id'];
+            $key = $draw['order_item_id'].'|'.$draw['item_id'].'|'.$draw['bin_id'];
 
             if (! isset($merged[$key])) {
                 $merged[$key] = $draw;
+
                 continue;
             }
 
@@ -308,6 +327,7 @@ class OrderDirectCompletionService
                     'sku' => $item->sku ?: ($meta[$item->item_id]['sku'] ?? "item:{$item->item_id}"),
                     'qty' => $qty,
                 ];
+
                 continue;
             }
 
@@ -337,6 +357,7 @@ class OrderDirectCompletionService
 
             if ($reason !== null) {
                 $blocked[] = $this->blockedEntry($order, $reason);
+
                 continue;
             }
 
@@ -358,6 +379,12 @@ class OrderDirectCompletionService
 
         if ($order->channel_cancel_status === 'pending') {
             return self::BLOCK_CANCEL_PENDING;
+        }
+
+        if ($this->channelWarehousePolicy->isChannelSource($order->source)
+            && (string) $order->location_id !== $this->channelWarehousePolicy->officialSmallWarehouseId()
+        ) {
+            return self::BLOCK_INVALID_LOCATION;
         }
 
         if (isset($picklistOrderIds[$order->id])) {
@@ -406,6 +433,7 @@ class OrderDirectCompletionService
             self::BLOCK_CANCEL_PENDING => 'Permintaan pembatalan sedang diproses.',
             self::BLOCK_AWAITING_BUYER => 'Menunggu konfirmasi pembeli.',
             self::BLOCK_STOCK_SHORT => 'Stok Gudang Kecil tidak mencukupi.',
+            self::BLOCK_INVALID_LOCATION => 'Lokasi pesanan channel bukan Gudang Kecil.',
             default => 'Pesanan belum siap diselesaikan.',
         };
     }

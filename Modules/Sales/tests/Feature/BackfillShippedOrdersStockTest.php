@@ -205,8 +205,8 @@ class BackfillShippedOrdersStockTest extends TestCase
             'item_id' => $this->itemId,
             'location_id' => $this->kecilLocationId,
             'bin_id' => $this->binId,
-            'on_hand' => 1,
-            'available' => 1,
+            'on_hand' => 2,
+            'available' => 2,
             'on_order' => 0,
             'created_at' => now(),
             'updated_at' => now(),
@@ -266,7 +266,7 @@ class BackfillShippedOrdersStockTest extends TestCase
         $result = app(BackfillShippedOrdersStockService::class)->backfillOrder($order);
 
         $this->assertTrue($result['success']);
-        $this->assertSame(-1, (int) DB::table('inventories')->where('bin_id', $this->binId)->value('on_hand'));
+        $this->assertSame(0, (int) DB::table('inventories')->where('bin_id', $this->binId)->value('on_hand'));
         $this->assertSame(Picklist::STATUS_COMPLETED, (string) DB::table('picklists')->where('id', $picklist->id)->value('status'));
         $this->assertDatabaseHas('picklist_items', [
             'picklist_id' => $picklist->id,
@@ -323,6 +323,7 @@ class BackfillShippedOrdersStockTest extends TestCase
             'source' => 'tiktok',
             'status' => 'shipped',
             'channel_status' => 'SHIPPED',
+            'location_id' => $this->kecilLocationId,
             'is_shadow' => false,
             'is_canceled' => false,
             'created_at' => now()->subDay(),
@@ -339,22 +340,18 @@ class BackfillShippedOrdersStockTest extends TestCase
 
         $result = app(BackfillShippedOrdersStockService::class)->backfillOrder($order);
 
-        $this->assertTrue($result['success']);
-        $this->assertSame(-2, (int) DB::table('inventories')
+        $this->assertFalse($result['success']);
+        $this->assertSame(0, (int) DB::table('inventories')
             ->where('location_id', $this->kecilLocationId)
             ->where('bin_id', $this->binId)
             ->value('on_hand'));
         $this->assertSame(50, (int) DB::table('inventories')->where('bin_id', $inboundBinId)->value('on_hand'));
-        $this->assertDatabaseHas('inventory_movements', [
+        $this->assertDatabaseMissing('inventory_movements', [
             'transaction_number' => 'SO-INBOUND-BLOCKED',
             'source' => 'ORDER_COMPLETE_OUT',
-            'bin_id' => $this->binId,
-            'qty' => -2,
         ]);
-        $this->assertDatabaseHas('order_bin_allocations', [
+        $this->assertDatabaseMissing('order_bin_allocations', [
             'order_id' => $order->id,
-            'bin_id' => $this->binId,
-            'qty' => 2,
         ]);
     }
 
@@ -473,18 +470,19 @@ class BackfillShippedOrdersStockTest extends TestCase
 
         $this->artisan('orders:backfill-shipped-stock')->assertSuccessful();
 
-        $this->assertSame(8, (int) DB::table('inventories')
+        $this->assertSame(10, (int) DB::table('inventories')
             ->where('location_id', $this->kecilLocationId)
             ->value('on_hand'));
         $this->assertSame(100, (int) DB::table('inventories')
             ->where('location_id', $otherLocationId)
             ->value('on_hand'));
-        $this->assertSame($this->kecilLocationId, DB::table('inventory_movements')
-            ->where('transaction_number', 'SO-TEST-KCL-001')
-            ->value('location_id'));
+        $this->assertDatabaseMissing('inventory_movements', [
+            'transaction_number' => 'SO-TEST-KCL-001',
+            'source' => 'ORDER_COMPLETE_OUT',
+        ]);
     }
 
-    public function test_backfill_consumes_assigned_bin_even_when_stock_is_empty(): void
+    public function test_backfill_does_not_consume_assigned_bin_when_stock_is_empty(): void
     {
 
         DB::table('inventories')->insert([
@@ -521,19 +519,16 @@ class BackfillShippedOrdersStockTest extends TestCase
         ]);
 
         $this->artisan('orders:backfill-shipped-stock')
+            ->expectsOutputToContain('0 pesanan berhasil diproses (0 mutasi baris rak), 1 gagal.')
             ->assertSuccessful();
 
-        $this->assertEquals(-5, (int) DB::table('inventories')->where('item_id', $this->itemId)->value('on_hand'));
-        $this->assertDatabaseHas('inventory_movements', [
+        $this->assertEquals(0, (int) DB::table('inventories')->where('item_id', $this->itemId)->value('on_hand'));
+        $this->assertDatabaseMissing('inventory_movements', [
             'transaction_number' => 'SO-TEST-003',
             'source' => 'ORDER_COMPLETE_OUT',
-            'bin_id' => $this->binId,
-            'qty' => -5,
         ]);
-        $this->assertDatabaseHas('order_bin_allocations', [
+        $this->assertDatabaseMissing('order_bin_allocations', [
             'order_id' => $order->id,
-            'bin_id' => $this->binId,
-            'qty' => 5,
         ]);
     }
 
@@ -596,16 +591,15 @@ class BackfillShippedOrdersStockTest extends TestCase
 
         $this->artisan('orders:backfill-shipped-stock')->assertSuccessful();
 
-        $this->assertSame(-2, (int) DB::table('inventories')
+        $this->assertSame(0, (int) DB::table('inventories')
             ->where('bin_id', $this->binId)
             ->value('on_hand'));
         $this->assertSame(100, (int) DB::table('inventories')
             ->where('bin_id', $otherBinId)
             ->value('on_hand'));
-        $this->assertDatabaseHas('inventory_movements', [
+        $this->assertDatabaseMissing('inventory_movements', [
             'transaction_number' => 'SO-ASSIGNED-BIN-ONLY',
-            'bin_id' => $this->binId,
-            'qty' => -2,
+            'source' => 'ORDER_COMPLETE_OUT',
         ]);
     }
 
