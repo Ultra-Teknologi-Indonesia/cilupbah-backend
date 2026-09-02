@@ -10,6 +10,8 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Modules\Channel\Models\Channel;
+use Modules\Channel\Models\ChannelShop;
 use Modules\Outbound\Jobs\RunProcessOrdersCsvExportJob;
 use Modules\Outbound\Services\ProcessOrdersCsvExportService;
 use Modules\Report\Models\ExportJob;
@@ -72,6 +74,40 @@ final class ProcessOrdersCsvExportTest extends TestCase
             $this->assertStringStartsWith("\xEF\xBB\xBF\"No. Pesanan\"", $csv);
             $this->assertStringContainsString('Picking', $csv);
             $this->assertStringContainsString("'=HYPERLINK", $csv);
+        } finally {
+            @unlink($path);
+        }
+    }
+
+    public function test_csv_resolves_channel_shop_name(): void
+    {
+        $channel = Channel::create([
+            'code' => 'shopee',
+            'name' => 'Shopee',
+            'is_active' => true,
+        ]);
+        $shop = ChannelShop::create([
+            'channel_id' => $channel->id,
+            'shop_id' => 'EXPORT-SHOP-001',
+            'shop_name' => 'Toko Export Uji',
+            'is_active' => true,
+        ]);
+
+        SalesOrder::factory()->create([
+            'status' => 'reserved',
+            'channel_shop_id' => $shop->shop_id,
+            'handed_to_warehouse_at' => now(),
+        ]);
+
+        $path = tempnam(sys_get_temp_dir(), 'process-orders-shop-test-');
+        $this->assertNotFalse($path);
+
+        try {
+            app(ProcessOrdersCsvExportService::class)->write($path);
+            $csv = file_get_contents($path);
+
+            $this->assertIsString($csv);
+            $this->assertStringContainsString('Toko Export Uji', $csv);
         } finally {
             @unlink($path);
         }

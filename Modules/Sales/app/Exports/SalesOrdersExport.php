@@ -30,7 +30,7 @@ class SalesOrdersExport implements FromCollection, WithHeadings, WithMapping, Wi
                 'items:id,order_id,sku,qty_in_base',
                 'location:id,location_name',
                 'internalStore:id,name',
-                'shop:id,name',
+                'shop:shop_id,shop_name',
             ]);
 
         $this->applyTabFilter($query);
@@ -107,7 +107,7 @@ class SalesOrdersExport implements FromCollection, WithHeadings, WithMapping, Wi
 
     public function map($order): array
     {
-        $storeName = $order->internalStore?->name ?? $order->shop?->name ?? '';
+        $storeName = $order->internalStore?->name ?? $order->shop?->shop_name ?? '';
 
         return [
             $order->salesorder_no,

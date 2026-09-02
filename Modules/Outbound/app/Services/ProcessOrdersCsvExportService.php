@@ -150,7 +150,7 @@ final class ProcessOrdersCsvExportService
             ->with([
                 'location:id,location_name,location_code',
                 'internalStore:id,name',
-                'shop:shop_id,name',
+                'shop:shop_id,shop_name',
                 'picklistItems' => function ($query): void {
                     $query->select(['id', 'order_id', 'picklist_id'])
                         ->with('picklist:id,picklist_no,status,completed_at');
@@ -179,7 +179,7 @@ final class ProcessOrdersCsvExportService
             fn ($shipmentOrder): bool => $shipmentOrder->shipment?->status === Shipment::STATUS_SCHEDULED,
         ) ?? $order->shipmentOrders->first();
         $shipment = $shipmentOrder?->shipment;
-        $storeName = $order->internalStore?->name ?? $order->shop?->name ?? '';
+        $storeName = $order->internalStore?->name ?? $order->shop?->shop_name ?? '';
 
         return [
             $order->salesorder_no,
