@@ -304,9 +304,11 @@ class OutboundFulfillmentService
             ->all();
     }
 
-    public function getOrdersByStage(string $stage, int $limit = 10)
+    public function getOrdersByStage(string $stage, int $limit = 10, ?string $locationId = null)
     {
         $query = $this->stageQuery($stage);
+
+        $query->when($locationId, fn ($q) => $q->where('sales_orders.location_id', $locationId));
 
         $extraSelects = match ($stage) {
             'finish-pick' => ['picker_name', 'picklist_ref', 'invoice_ref'],

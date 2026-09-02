@@ -2,6 +2,7 @@
 
 namespace Modules\Dashboard\Repositories;
 
+use App\Support\WarehouseAccess;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Services\PurchaseCostService;
 use Modules\Sales\Models\SalesOrder;
@@ -14,15 +15,17 @@ class DashboardRepository
         private readonly PurchaseCostService $purchaseCostService,
     ) {}
 
-    public function orderAggregates(?string $dateFrom, ?string $dateTo): array
+    public function orderAggregates(?string $dateFrom, ?string $dateTo, ?string $locationId = null): array
     {
         $ordersQuery = SalesOrder::query()
             ->excludeShadow()
             ->when($dateFrom, fn ($q) => $q->whereDateFrom($dateFrom))
-            ->when($dateTo, fn ($q) => $q->whereDateTo($dateTo));
+            ->when($dateTo, fn ($q) => $q->whereDateTo($dateTo))
+            ->when($locationId, fn ($q) => $q->where('location_id', $locationId));
+
+        WarehouseAccess::apply($ordersQuery, 'location_id');
 
         return [
-            'revenue' => (float) (clone $ordersQuery)->where('is_canceled', false)->sum('grand_total'),
             'orders_total' => (int) (clone $ordersQuery)->count(),
             'orders_by_status' => (clone $ordersQuery)
                 ->select('status', DB::raw('COUNT(*) as total'))
@@ -32,15 +35,19 @@ class DashboardRepository
                 ->select('source', DB::raw('COUNT(*) as total'))
                 ->groupBy('source')
                 ->pluck('total', 'source'),
-            'data_starts_at' => $this->orderDataStartsAt(),
+            'data_starts_at' => $this->orderDataStartsAt($locationId),
         ];
     }
 
-    private function orderDataStartsAt(): ?string
+    private function orderDataStartsAt(?string $locationId = null): ?string
     {
-        $earliest = SalesOrder::query()
+        $query = SalesOrder::query()
             ->excludeShadow()
-            ->min('transaction_date');
+            ->when($locationId, fn ($q) => $q->where('location_id', $locationId));
+
+        WarehouseAccess::apply($query, 'location_id');
+
+        $earliest = $query->min('transaction_date');
 
         return $earliest ? (string) $earliest : null;
     }
@@ -69,14 +76,20 @@ class DashboardRepository
             )
             ->selectRaw(
                 'COALESCE(SUM(GREATEST(stock.net_on_hand, 0) '
-                . '* COALESCE(purchase_cost.average_cost, 0)), 0) AS total'
+                .'* COALESCE(purchase_cost.average_cost, 0)), 0) AS total'
             )
             ->value('total');
     }
 
-    public function unprocessedReturnsCount(): int
+    public function unprocessedReturnsCount(?string $locationId = null): int
     {
-        return (int) SalesReturn::query()->unprocessed()->count();
+        $query = SalesReturn::query()
+            ->unprocessed()
+            ->when($locationId, fn ($q) => $q->where('location_id', $locationId));
+
+        WarehouseAccess::apply($query, 'location_id');
+
+        return (int) $query->count();
     }
 
     public function unprocessedReturnsRefund(): float

@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Repositories;
 
+use App\Support\WarehouseAccess;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -147,30 +148,33 @@ class SalesOrderRepository
         return (request('sort_dir', 'desc') === 'asc' ? '' : '-').$sortBy;
     }
 
-    public function getTabCounts(): array
+    public function getTabCounts(?string $locationId = null): array
     {
-        return Cache::remember('sales_order_tab_counts_global', 15, function () {
+        $scopeKey = implode(',', WarehouseAccess::allowedIds() ?? ['all']);
+        $cacheKey = 'sales_order_tab_counts:'.($locationId ?? 'all').':'.$scopeKey;
+
+        return Cache::remember($cacheKey, 15, function () use ($locationId) {
             $emptyStockItemConstraint = fn ($q) => $q->whereRaw(SalesOrder::shortfallItemWhereRaw());
 
             return [
-                'all' => $this->scopeExcludeFailedDownload(SalesOrder::query())->count(),
-                'unpaid' => $this->visibleOrders()->where('status', 'pending')->where('is_paid', false)->count(),
-                'failed' => $this->scopeFailedDownload(SalesOrder::query())->count(),
+                'all' => $this->withLocation($this->scopeExcludeFailedDownload(SalesOrder::query()), $locationId)->count(),
+                'unpaid' => $this->visibleOrders($locationId)->where('status', 'pending')->where('is_paid', false)->count(),
+                'failed' => $this->withLocation($this->scopeFailedDownload(SalesOrder::query()), $locationId)->count(),
                 'ready-to-process' => $this->excludeChannelCancelPending(
-                    $this->visibleOrders()->where('status', 'reserved')
+                    $this->visibleOrders($locationId)->where('status', 'reserved')
                         ->whereNull('pick_failed_at')
                         ->whereDoesntHave('picklistItems')
                         ->whereDoesntHave('items', $this->unmappedItemsConstraint())
                         ->whereDoesntHave('items', $emptyStockItemConstraint)
                 )->count(),
-                'empty-stock' => $this->visibleOrders()->where('status', 'reserved')
+                'empty-stock' => $this->visibleOrders($locationId)->where('status', 'reserved')
                     ->whereNull('pick_failed_at')
                     ->whereHas('items', $emptyStockItemConstraint)
                     ->count(),
-                'failed-pick' => $this->visibleOrders()->where('status', 'reserved')
+                'failed-pick' => $this->visibleOrders($locationId)->where('status', 'reserved')
                     ->whereNotNull('pick_failed_at')
                     ->count(),
-                'cancellation' => $this->visibleOrders()
+                'cancellation' => $this->visibleOrders($locationId)
                     ->where(function ($q) {
                         $q->whereIn('channel_status', ['IN_CANCEL', 'Request Cancel', 'Order Request Cancel'])
                             ->orWhereIn('channel_status_raw', ['IN_CANCEL', 'REQUEST_CANCEL', 'AWAITING_CANCEL'])
@@ -183,7 +187,7 @@ class SalesOrderRepository
                     })
                     ->where('status', '!=', 'cancelled')
                     ->count(),
-                'cancellation_post_pack' => $this->visibleOrders()
+                'cancellation_post_pack' => $this->visibleOrders($locationId)
                     ->whereNotNull('handed_to_warehouse_at')
                     ->where(function ($q) {
                         $q->whereIn('channel_status', ['IN_CANCEL', 'Request Cancel', 'Order Request Cancel'])
@@ -195,18 +199,28 @@ class SalesOrderRepository
                     })
                     ->where('status', '!=', 'cancelled')
                     ->count(),
-                'channel-cancel' => $this->visibleOrders()
+                'channel-cancel' => $this->visibleOrders($locationId)
                     ->whereIn('channel_cancel_status', ['pending', 'failed'])->count(),
-                'returned' => $this->visibleOrders()->whereHas('returns')->count(),
+                'returned' => $this->visibleOrders($locationId)->whereHas('returns')->count(),
             ];
         });
     }
 
-    protected function visibleOrders()
+    protected function visibleOrders(?string $locationId = null)
     {
-        return $this->scopeExcludeHandedToWarehouse(
-            $this->scopeExcludeFailedDownload(SalesOrder::query())
+        return $this->withLocation(
+            $this->scopeExcludeHandedToWarehouse(
+                $this->scopeExcludeFailedDownload(SalesOrder::query())
+            ),
+            $locationId,
         );
+    }
+
+    private function withLocation($query, ?string $locationId)
+    {
+        $query->when($locationId, fn ($q) => $q->where('location_id', $locationId));
+
+        return WarehouseAccess::apply($query, 'location_id');
     }
 
     protected function scopeExcludeHandedToWarehouse($query)
