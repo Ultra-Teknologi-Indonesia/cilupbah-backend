@@ -147,6 +147,33 @@ class ShipmentByCourierReportTest extends TestCase
         $this->assertStringNotContainsString('LZ-UNMAPPED', $html);
     }
 
+    public function test_pesanan_tanpa_resi_provider_kosong_dan_reguler_cashless_dikecualikan(): void
+    {
+        $this->makeOrder('SP-VALID', 'SPX Hemat', 1);
+
+        $withoutTracking = $this->makeOrder('NO-RESI', 'SPX Hemat', 1);
+        DB::table('sales_orders')->where('id', $withoutTracking->id)->update(['tracking_number' => '']);
+
+        $withoutProvider = $this->makeOrder('NO-PROVIDER', '', 1);
+        DB::table('sales_orders')->where('id', $withoutProvider->id)->update(['tracking_number' => 'RESI-NO-PROVIDER']);
+
+        $this->makeOrder('REGULER-CASHLESS', 'Reguler (Cashless)', 1);
+
+        $rows = $this->service
+            ->sectioned(true, ['from' => '2026-07-18', 'to' => '2026-07-18']);
+
+        $exported = collect($rows->rows)
+            ->flatMap(fn (array $row) => $row['cells'])
+            ->filter(fn ($cell) => is_string($cell))
+            ->implode(' | ');
+
+        $this->assertStringContainsString('SP-VALID', $exported);
+        $this->assertStringNotContainsString('NO-RESI', $exported);
+        $this->assertStringNotContainsString('NO-PROVIDER', $exported);
+        $this->assertStringNotContainsString('REGULER-CASHLESS', $exported);
+        $this->assertStringNotContainsString('Lainnya', $exported);
+    }
+
     public function test_filter_tanggal_membatasi_hasil(): void
     {
         $this->makeOrder('SP-HARI-INI', 'SPX Hemat', 1);

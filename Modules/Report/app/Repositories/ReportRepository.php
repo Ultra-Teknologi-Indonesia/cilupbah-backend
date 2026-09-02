@@ -567,6 +567,7 @@ class ReportRepository
         $from = ($filters['from'] ?? null) ? $filters['from'].' 00:00:00' : null;
         $to = ($filters['to'] ?? null) ? $filters['to'].' 23:59:59.999999' : null;
         $locationIds = $filters['location_ids'] ?? [];
+        $providerExpression = "COALESCE(NULLIF(BTRIM(so.shipping_provider), ''), NULLIF(BTRIM(so.courier_name), ''))";
 
         $qty = DB::table('sales_order_items')
             ->select('order_id')
@@ -582,7 +583,9 @@ class ReportRepository
         return DB::table('sales_orders as so')
             ->leftJoinSub($qty, 'q', 'q.order_id', '=', 'so.id')
             ->leftJoinSub($manifest, 'm', 'm.order_id', '=', 'so.id')
-            ->whereNotNull('so.tracking_number')
+            ->whereRaw("BTRIM(COALESCE(so.tracking_number, '')) <> ''")
+            ->whereRaw("BTRIM(COALESCE({$providerExpression}, '')) <> ''")
+            ->whereRaw("UPPER(BTRIM(COALESCE({$providerExpression}, ''))) <> ?", ['REGULER (CASHLESS)'])
             ->whereNotExists(fn ($sub) => $sub
                 ->select(DB::raw(1))
                 ->from('sales_order_items as soi')
@@ -597,7 +600,7 @@ class ReportRepository
                 'so.tracking_number as no_resi',
                 'm.kode_pengiriman',
             ])
-            ->selectRaw('COALESCE(so.shipping_provider, so.courier_name) AS provider')
+            ->selectRaw("{$providerExpression} AS provider")
             ->selectRaw('COALESCE(q.qty, 0) AS qty')
             ->orderByDesc('so.transaction_date')
             ->get()
