@@ -2,6 +2,7 @@
 
 namespace Modules\Warehouse\Services;
 
+use App\Support\FriendlyError;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -9,7 +10,7 @@ use Modules\Warehouse\Jobs\GenerateBinQrPdfJob;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 use Modules\Warehouse\Models\QrPrintJob;
-use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class BinQrPrintService
 {
@@ -94,7 +95,7 @@ class BinQrPrintService
                 'total' => $job->total_bins,
                 'percent' => $job->progressPercent(),
             ],
-            'error_message' => empty($job->error_message) ? null : \App\Support\FriendlyError::generic($job->error_message, 'Gagal membuat PDF label rak. Coba lagi.'),
+            'error_message' => empty($job->error_message) ? null : FriendlyError::generic($job->error_message, 'Gagal membuat PDF label rak. Coba lagi.'),
             'started_at' => optional($job->started_at)->toIso8601String(),
             'completed_at' => optional($job->completed_at)->toIso8601String(),
             'download_url' => $job->status === QrPrintJob::STATUS_READY
@@ -103,7 +104,7 @@ class BinQrPrintService
         ];
     }
 
-    public function downloadJobPdf(string $jobId): BinaryFileResponse
+    public function downloadJobPdf(string $jobId): StreamedResponse
     {
         $job = QrPrintJob::findOrFail($jobId);
 
@@ -116,10 +117,12 @@ class BinQrPrintService
             abort(404, 'File PDF tidak ditemukan (mungkin sudah dihapus).');
         }
 
-        $abs = $disk->path($job->file_path);
         $filename = 'qr-rak-'.substr($job->id, 0, 8).'.pdf';
 
-        return response()->download($abs, $filename, [
+        // QR PDFs are stored on the remote S3-compatible disk. Use the disk's
+        // streamed response so the object key is read from remote storage
+        // instead of being treated as a local filesystem path.
+        return $disk->download($job->file_path, $filename, [
             'Content-Type' => 'application/pdf',
         ]);
     }
