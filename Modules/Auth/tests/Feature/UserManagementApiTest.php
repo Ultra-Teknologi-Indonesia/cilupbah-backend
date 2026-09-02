@@ -6,6 +6,7 @@ use App\Models\User;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use Modules\Warehouse\Models\Location;
 use Tests\TestCase;
 
 class UserManagementApiTest extends TestCase
@@ -41,6 +42,25 @@ class UserManagementApiTest extends TestCase
             ->assertStatus(200)
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.id', $picker->id);
+    }
+
+    public function test_user_list_includes_assigned_locations(): void
+    {
+        $location = Location::factory()->create([
+            'location_name' => 'Gudang Kecil',
+        ]);
+        $target = User::factory()->create([
+            'email' => 'picker.location@example.com',
+        ]);
+        $target->assignRole('picker');
+        $target->syncLocations([$location->id]);
+
+        $this->actingAs($this->owner, 'sanctum')
+            ->getJson('/api/v1/users?search=picker.location@example.com')
+            ->assertStatus(200)
+            ->assertJsonPath('data.0.id', $target->id)
+            ->assertJsonPath('data.0.locations.0.location_id', $location->id)
+            ->assertJsonPath('data.0.locations.0.location_name', 'Gudang Kecil');
     }
 
     public function test_systemsetting_users_lookup_accessible_without_view_user_permission(): void
