@@ -34,11 +34,15 @@ final class OutboundMonitoringTimezoneTest extends TestCase
         $this->seedOrder('today-early-wib', '2026-08-25 17:30:00');
         $this->seedOrder('today-late-wib', '2026-08-26 10:00:00');
         $this->seedOrder('yesterday', '2026-08-25 10:00:00');
+        $this->seedOrder('previous-month-in-range', '2026-07-26 14:00:00');
+        $this->seedOrder('previous-month-after-same-time', '2026-07-26 15:00:00');
 
         $result = app(OutboundFulfillmentService::class)->getMonitoring();
 
         $this->assertSame(2, $result['summary']['today']);
         $this->assertSame(1, $result['summary']['yest']);
+        $this->assertSame(3, $result['summary']['mtd']);
+        $this->assertSame(1, $result['summary']['prev_month']);
         $this->assertSame(2, $result['periods'][0]['ready_to_process']);
         $this->assertSame(1, $result['periods'][1]['ready_to_process']);
     }
