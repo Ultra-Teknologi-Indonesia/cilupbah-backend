@@ -22,7 +22,7 @@ class RefreshInstantTrackingJob implements ShouldQueue
     public function __construct(
         public ?string $shipmentId = null,
     ) {
-        $this->onQueue('default');
+        $this->onQueue(config('queue.names.tracking', 'tracking'));
     }
 
     public function handle(LogisticsGateway $gateway): void
@@ -41,7 +41,9 @@ class RefreshInstantTrackingJob implements ShouldQueue
         foreach ($shipments as $shipment) {
             foreach ($shipment->orders as $shipmentOrder) {
                 $order = SalesOrder::query()->find($shipmentOrder->order_id);
-                if (! $order || ! $order->source) continue;
+                if (! $order || ! $order->source) {
+                    continue;
+                }
 
                 try {
                     $adapter = $gateway->for($order->source);

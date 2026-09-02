@@ -93,6 +93,9 @@ return [
         'stock_sync' => env('QUEUE_NAME_STOCK_SYNC', 'stock-sync'),
         'stock_critical' => env('QUEUE_NAME_STOCK_CRITICAL', 'stock-critical'),
         'stock_default' => env('QUEUE_NAME_STOCK_DEFAULT', 'stock-default'),
+        'tracking' => env('QUEUE_NAME_TRACKING', 'tracking'),
+        'imports' => env('QUEUE_NAME_IMPORTS', 'product'),
+        'sales' => env('QUEUE_NAME_SALES', 'orders'),
 
         'channel_sync' => env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync'),
         'channel_cancellation' => env('QUEUE_NAME_CHANNEL_CANCELLATION', 'channel-cancellation'),
@@ -102,6 +105,7 @@ return [
         'channel_after_sales' => env('QUEUE_NAME_CHANNEL_AFTER_SALES', 'channel-after-sales'),
         'channel_fulfillment' => env('QUEUE_NAME_CHANNEL_FULFILLMENT', 'channel-fulfillment'),
         'labels' => env('QUEUE_NAME_LABELS', 'labels'),
+        'qr_labels' => env('QUEUE_NAME_QR_LABELS', 'qr-labels'),
 
         'shopee_orders' => env('QUEUE_NAME_SHOPEE_ORDERS', 'shopee-orders'),
         'shopee_tracking' => env('QUEUE_NAME_SHOPEE_TRACKING', 'shopee-tracking'),
@@ -150,6 +154,12 @@ return [
             'parallelism' => (int) env('QUEUE_LABEL_PARALLELISM', 2),
             'rate_limit_attempts' => (int) env('QUEUE_LABEL_RATE_LIMIT_ATTEMPTS', 5),
             'rate_limit_decay_seconds' => (int) env('QUEUE_LABEL_RATE_LIMIT_DECAY_SECONDS', 1),
+        ],
+
+        'qr_labels' => [
+            'connection' => env('QUEUE_QR_LABELS_CONNECTION', 'redis-long'),
+            'queue' => env('QUEUE_NAME_QR_LABELS', 'qr-labels'),
+            'memory_limit' => env('QUEUE_QR_LABELS_MEMORY_LIMIT', '512M'),
         ],
     ],
 

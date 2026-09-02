@@ -27,12 +27,14 @@ return [
 
     'waits' => [
         'redis:default' => 60,
+        'redis:tracking' => 60,
         'redis:channel-cancellation' => 30,
         'redis:channel-stock' => 60,
         'redis:channel-finance' => 120,
         'redis:channel-fulfillment' => 60,
         'redis-long:channel-product' => 120,
         'redis-long:channel-after-sales' => 120,
+        'redis-long:qr-labels' => 300,
     ],
 
     'trim' => [
@@ -270,6 +272,31 @@ return [
             'memory' => 512,
             'nice' => 0,
         ],
+        'supervisor-qr-labels' => [
+            'connection' => config('queue.routing.qr_labels.connection', 'redis-long'),
+            'queue' => [config('queue.routing.qr_labels.queue', 'qr-labels')],
+            'balance' => 'simple',
+            'minProcesses' => 1,
+            'maxProcesses' => 1,
+            'maxJobs' => 20,
+            'timeout' => 1800,
+            'tries' => 1,
+            'memory' => 512,
+            'nice' => 5,
+        ],
+        'supervisor-tracking' => [
+            'connection' => 'redis',
+            'queue' => [config('queue.names.tracking', 'tracking')],
+            'balance' => 'simple',
+            'minProcesses' => 1,
+            'maxProcesses' => 1,
+            'maxJobs' => 250,
+            'timeout' => 120,
+            'tries' => 2,
+            'backoff' => [10, 60],
+            'memory' => 128,
+            'nice' => 5,
+        ],
         'supervisor-tiktok-webhooks' => [
             'connection' => 'redis',
             'queue' => [
@@ -372,6 +399,14 @@ return [
                 'minProcesses' => 1,
                 'maxProcesses' => 2,
             ],
+            'supervisor-qr-labels' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 1,
+            ],
+            'supervisor-tracking' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 1,
+            ],
             'supervisor-tiktok-webhooks' => [
                 'minProcesses' => 1,
                 'maxProcesses' => 4,
@@ -433,6 +468,14 @@ return [
                 'minProcesses' => 1,
                 'maxProcesses' => 1,
             ],
+            'supervisor-qr-labels' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 1,
+            ],
+            'supervisor-tracking' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 1,
+            ],
             'supervisor-tiktok-webhooks' => [
                 'minProcesses' => 1,
                 'maxProcesses' => 3,
@@ -482,6 +525,14 @@ return [
             'supervisor-labels' => [
                 'minProcesses' => 1,
                 'maxProcesses' => 2,
+            ],
+            'supervisor-qr-labels' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 1,
+            ],
+            'supervisor-tracking' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 1,
             ],
             'supervisor-tiktok-webhooks' => [
                 'minProcesses' => 1,

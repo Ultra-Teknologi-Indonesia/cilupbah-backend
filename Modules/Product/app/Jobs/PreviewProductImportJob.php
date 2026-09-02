@@ -22,11 +22,12 @@ class PreviewProductImportJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $timeout = 600;
+
     public int $tries = 2;
 
     public function __construct(public readonly string $batchId)
     {
-        $this->onQueue(config('queue.names.imports', 'default'));
+        $this->onQueue(config('queue.names.imports', 'product'));
     }
 
     public function handle(
@@ -58,7 +59,7 @@ class PreviewProductImportJob implements ShouldQueue
         try {
             Excel::import($importer, $batch->stored_path, ImportBatchService::disk());
         } catch (\Throwable $e) {
-            Log::error("PreviewProductImportJob failed for batch {$batch->id}: " . $e->getMessage());
+            Log::error("PreviewProductImportJob failed for batch {$batch->id}: ".$e->getMessage());
             $batchService->markPreviewFailed($batch, $e->getMessage());
 
             return;

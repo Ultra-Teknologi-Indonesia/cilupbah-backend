@@ -15,6 +15,11 @@ class AutoDetectStockReplenishmentJob implements ShouldQueue
 
     public int $tries = 3;
 
+    public function __construct()
+    {
+        $this->onQueue(config('queue.names.stock_default', 'stock-default'));
+    }
+
     public function handle(StockReplenishmentService $service): void
     {
         $service->autoDetect(false);

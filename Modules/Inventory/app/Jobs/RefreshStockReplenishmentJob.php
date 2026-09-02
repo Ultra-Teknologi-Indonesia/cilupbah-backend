@@ -19,7 +19,10 @@ class RefreshStockReplenishmentJob implements ShouldBeUnique, ShouldQueue
 
     public int $uniqueFor = 60;
 
-    public function __construct(public readonly ?string $locationId = null) {}
+    public function __construct(public readonly ?string $locationId = null)
+    {
+        $this->onQueue(config('queue.names.stock_default', 'stock-default'));
+    }
 
     public function uniqueId(): string
     {

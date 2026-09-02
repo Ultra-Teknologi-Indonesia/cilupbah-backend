@@ -20,11 +20,12 @@ class ConfirmProductImportJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $timeout = 600;
+
     public int $tries = 2;
 
     public function __construct(public readonly string $batchId)
     {
-        $this->onQueue(config('queue.names.imports', 'default'));
+        $this->onQueue(config('queue.names.imports', 'product'));
     }
 
     public function handle(
@@ -74,6 +75,7 @@ class ConfirmProductImportJob implements ShouldQueue
                         'message' => 'Data baris tidak valid.',
                     ]);
                     $chunkFailed++;
+
                     continue;
                 }
 
@@ -115,7 +117,7 @@ class ConfirmProductImportJob implements ShouldQueue
                 $disk->delete($batch->stored_path);
             }
         } catch (\Throwable $e) {
-            Log::warning("Could not delete stored file for batch {$batch->id}: " . $e->getMessage());
+            Log::warning("Could not delete stored file for batch {$batch->id}: ".$e->getMessage());
         }
     }
 }

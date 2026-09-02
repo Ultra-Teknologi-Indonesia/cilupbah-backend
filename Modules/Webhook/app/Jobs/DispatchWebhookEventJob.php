@@ -16,6 +16,7 @@ class DispatchWebhookEventJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
+
     public array $backoff = [5, 30, 120];
 
     public function __construct(
@@ -23,6 +24,7 @@ class DispatchWebhookEventJob implements ShouldQueue
         public array $payload,
         public string $eventId,
     ) {
+        $this->onQueue(config('webhook.queue', 'webhooks'));
     }
 
     public function handle(

@@ -26,7 +26,7 @@ class ProcessSalesOrderImportJob implements ShouldQueue
 
     public function __construct(public string $batchId)
     {
-        $this->onQueue(config('queue.names.sales', 'default'));
+        $this->onQueue(config('queue.names.sales', 'orders'));
     }
 
     public function handle(
@@ -66,7 +66,7 @@ class ProcessSalesOrderImportJob implements ShouldQueue
         try {
             Excel::import($importer, $batch->stored_path, $diskName);
         } catch (\Throwable $e) {
-            Log::error("ProcessSalesOrderImportJob failed for batch {$batch->id}: " . $e->getMessage());
+            Log::error("ProcessSalesOrderImportJob failed for batch {$batch->id}: ".$e->getMessage());
             $batches->markFailed($batch, $e->getMessage());
             if ($activity) {
                 $activities->markFailed($activity, $e->getMessage());

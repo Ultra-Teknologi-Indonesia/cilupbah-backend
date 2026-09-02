@@ -15,6 +15,7 @@ use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 use Modules\Warehouse\Models\QrPrintJob;
 use Modules\Warehouse\Services\BinQrPrintService;
+use setasign\Fpdi\Fpdi;
 use Throwable;
 
 class GenerateBinQrPdfJob implements ShouldQueue
@@ -23,17 +24,20 @@ class GenerateBinQrPdfJob implements ShouldQueue
 
     public int $tries = 1;
 
-    public int $timeout = 1800; 
+    public int $timeout = 1800;
 
     private const CHUNK_SIZE = 100;
 
-    public function __construct(public readonly string $jobId) {}
+    public function __construct(public readonly string $jobId)
+    {
+        $this->onConnection(config('queue.routing.qr_labels.connection', 'redis-long'));
+        $this->onQueue(config('queue.routing.qr_labels.queue', 'qr-labels'));
+    }
 
     public function handle(QrCodeGenerator $qrCodeGenerator): void
     {
-
-        ini_set('memory_limit', '-1');
-        set_time_limit(0);
+        ini_set('memory_limit', (string) config('queue.routing.qr_labels.memory_limit', '512M'));
+        set_time_limit($this->timeout);
 
         $printJob = QrPrintJob::find($this->jobId);
         if (! $printJob) {
@@ -63,6 +67,8 @@ class GenerateBinQrPdfJob implements ShouldQueue
             'processed_bins' => 0,
         ]);
 
+        $temporaryFiles = [];
+
         try {
             $paper = $printJob->paper;
             $qrSize = $this->qrSizeFor($paper);
@@ -77,10 +83,12 @@ class GenerateBinQrPdfJob implements ShouldQueue
                 $query->whereIn('id', $binIds);
             }
 
-            $items = [];
+            $mergedPdf = new Fpdi('P', 'mm');
+            $hasPages = false;
             $processed = 0;
 
-            $query->chunk(self::CHUNK_SIZE, function ($chunk) use (&$items, &$processed, $qrSize, $printJob, $qrCodeGenerator) {
+            $query->chunk(self::CHUNK_SIZE, function ($chunk) use (&$mergedPdf, &$hasPages, &$temporaryFiles, &$processed, $qrSize, $printJob, $qrCodeGenerator, $location, $paper) {
+                $items = [];
 
                 foreach ($chunk as $bin) {
                     $code = (string) $bin->bin_final_code;
@@ -91,26 +99,68 @@ class GenerateBinQrPdfJob implements ShouldQueue
                         'bin_final_code' => $code,
                         'qr_data_uri' => $qrCodeGenerator->svgDataUri($code, $qrSize),
                     ];
-                    $processed++;
                 }
+
+                if (! empty($items)) {
+                    $chunkPath = $this->temporaryPdfPath();
+                    $temporaryFiles[] = $chunkPath;
+
+                    $chunkPdf = Pdf::loadView('warehouse::pdf.bin-qr', [
+                        'location' => $location,
+                        'items' => $items,
+                        'paper' => $paper,
+                    ]);
+                    $this->applyPaperSettings($chunkPdf, $paper);
+                    $chunkPdf->save($chunkPath);
+
+                    $this->appendPdfFile($mergedPdf, $chunkPath);
+                    $hasPages = true;
+                    @unlink($chunkPath);
+                    $processed += count($items);
+                    unset($chunkPdf, $items);
+                    gc_collect_cycles();
+                }
+
                 $printJob->update(['processed_bins' => $processed]);
             });
 
-            $pdf = Pdf::loadView('warehouse::pdf.bin-qr', [
-                'location' => $location,
-                'items' => $items,
-                'paper' => $paper,
-            ]);
-            $this->applyPaperSettings($pdf, $paper);
-
             $relPath = BinQrPrintService::storagePathFor($printJob->id);
             $disk = Storage::disk(BinQrPrintService::STORAGE_DISK);
-            $disk->put($relPath, $pdf->output());
+
+            $mergedPath = $this->temporaryPdfPath();
+            $temporaryFiles[] = $mergedPath;
+
+            if (! $hasPages) {
+                $emptyPdf = Pdf::loadView('warehouse::pdf.bin-qr', [
+                    'location' => $location,
+                    'items' => [],
+                    'paper' => $paper,
+                ]);
+                $this->applyPaperSettings($emptyPdf, $paper);
+                $emptyPdf->save($mergedPath);
+                unset($emptyPdf);
+            } else {
+                $mergedPdf->Output('F', $mergedPath);
+            }
+            unset($mergedPdf);
+
+            $stream = fopen($mergedPath, 'rb');
+            if ($stream === false) {
+                throw new \RuntimeException('PDF QR hasil generate tidak dapat dibaca.');
+            }
+
+            try {
+                if (! $disk->put($relPath, $stream)) {
+                    throw new \RuntimeException('PDF QR gagal disimpan ke storage.');
+                }
+            } finally {
+                fclose($stream);
+            }
 
             $printJob->update([
                 'status' => QrPrintJob::STATUS_READY,
-                'processed_bins' => count($items),
-                'total_bins' => max($printJob->total_bins, count($items)),
+                'processed_bins' => $processed,
+                'total_bins' => max($printJob->total_bins, $processed),
                 'file_path' => $relPath,
                 'completed_at' => now(),
             ]);
@@ -118,7 +168,7 @@ class GenerateBinQrPdfJob implements ShouldQueue
             Log::info('GenerateBinQrPdfJob: selesai', [
                 'job_id' => $printJob->id,
                 'location_id' => $printJob->location_id,
-                'total' => count($items),
+                'total' => $processed,
                 'size_bytes' => $disk->size($relPath),
             ]);
         } catch (Throwable $e) {
@@ -132,6 +182,12 @@ class GenerateBinQrPdfJob implements ShouldQueue
                 'completed_at' => now(),
             ]);
             throw $e;
+        } finally {
+            foreach ($temporaryFiles as $temporaryFile) {
+                if (is_file($temporaryFile)) {
+                    @unlink($temporaryFile);
+                }
+            }
         }
     }
 
@@ -171,5 +227,31 @@ class GenerateBinQrPdfJob implements ShouldQueue
             'a4_multi' => 220,
             default => 200,
         };
+    }
+
+    private function temporaryPdfPath(): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'qr-labels-');
+        if ($path === false) {
+            throw new \RuntimeException('Temporary file PDF QR tidak dapat dibuat.');
+        }
+
+        @unlink($path);
+
+        return $path.'.pdf';
+    }
+
+    private function appendPdfFile(Fpdi $merged, string $chunkPath): void
+    {
+        $pageCount = $merged->setSourceFile($chunkPath);
+
+        for ($page = 1; $page <= $pageCount; $page++) {
+            $template = $merged->importPage($page);
+            $size = $merged->getTemplateSize($template);
+            $orientation = $size['width'] > $size['height'] ? 'L' : 'P';
+
+            $merged->AddPage($orientation, [$size['width'], $size['height']]);
+            $merged->useTemplate($template);
+        }
     }
 }

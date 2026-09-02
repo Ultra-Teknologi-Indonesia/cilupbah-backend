@@ -21,6 +21,7 @@ class SendWebhookJob implements ShouldQueue
     public function __construct(
         public string $deliveryId,
     ) {
+        $this->onQueue(config('webhook.queue', 'webhooks'));
     }
 
     public function backoff(): array
@@ -42,7 +43,7 @@ class SendWebhookJob implements ShouldQueue
             return;
         }
 
-        if (! (new WebhookUrlGuard())->isSafe($subscription->target_url)) {
+        if (! (new WebhookUrlGuard)->isSafe($subscription->target_url)) {
             $deliveries->markFailed($delivery, null, 'Target URL diblokir (privat/non-https).');
 
             return;
