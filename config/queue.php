@@ -130,10 +130,12 @@ return [
         'product' => env('QUEUE_NAME_PRODUCT', 'product'),
         'downloads' => env('QUEUE_NAME_DOWNLOADS', 'downloads'),
         'exports' => env('QUEUE_NAME_EXPORTS', 'exports'),
+        'catalog_exports' => env('QUEUE_NAME_CATALOG_EXPORTS', 'catalog-exports'),
     ],
 
     'dedicated_queues' => [
         env('QUEUE_NAME_EXPORTS', 'exports'),
+        env('QUEUE_NAME_CATALOG_EXPORTS', 'catalog-exports'),
     ],
 
     'routing' => [

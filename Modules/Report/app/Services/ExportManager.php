@@ -4,6 +4,7 @@ namespace Modules\Report\Services;
 
 use App\Models\User;
 use Illuminate\Support\Facades\Route;
+use Modules\Product\Exports\ProductCatalogCsvExport;
 use Modules\Report\Exports\InventoryStockReportExport;
 use Modules\Report\Exports\NegativeStockReportExport;
 use Modules\Report\Exports\PicklistDetailExport;
@@ -31,6 +32,7 @@ class ExportManager
         'shipment-list',
         'monitor-stock-xlsx',
         'monitor-stock-pdf',
+        'product-catalog-csv',
     ];
 
     public function queue(User $user, string $type, array $params): ExportJob
@@ -44,7 +46,14 @@ class ExportManager
             'status' => ExportJob::STATUS_QUEUED,
         ]);
 
-        RunExportJob::dispatch($job->id);
+        $queue = $type === 'product-catalog-csv'
+            ? config('exports.catalog_queue', 'catalog-exports')
+            : config('exports.queue', 'exports');
+        $connection = $type === 'product-catalog-csv'
+            ? config('exports.catalog_connection', 'redis-long')
+            : config('exports.connection', 'redis-long');
+
+        RunExportJob::dispatch($job->id, $connection, $queue);
 
         return $job;
     }
@@ -144,6 +153,8 @@ class ExportManager
             'monitor-stock-xlsx' => app(MonitorStockReportService::class)->export($params),
 
             'monitor-stock-pdf' => throw new \LogicException('PDF Monitor Stok diproses langsung oleh worker.'),
+
+            'product-catalog-csv' => new ProductCatalogCsvExport($params),
         };
     }
 
@@ -229,6 +240,8 @@ class ExportManager
             'monitor-stock-xlsx' => 'monitor-stok-'.($params['tab'] ?? 'export').'-'.now()->format('Y-m-d_His').'.xlsx',
 
             'monitor-stock-pdf' => 'monitor-stok-'.($params['tab'] ?? 'export').'-'.now()->format('Y-m-d_His').'.pdf',
+
+            'product-catalog-csv' => 'katalog-produk-'.now()->format('Y-m-d_His').'.csv',
 
             default => 'export.xlsx',
         };

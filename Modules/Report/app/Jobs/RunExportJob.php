@@ -25,23 +25,31 @@ class RunExportJob implements ShouldQueue
 
     public bool $failOnTimeout = true;
 
-    public function __construct(public string $exportJobId)
-    {
+    public function __construct(
+        public string $exportJobId,
+        ?string $connection = null,
+        ?string $queue = null,
+    ) {
 
-        $this->onConnection(config('exports.connection', 'redis-long'));
-        $this->onQueue(config('exports.queue', 'exports'));
+        $this->onConnection($connection ?? config('exports.connection', 'redis-long'));
+        $this->onQueue($queue ?? config('exports.queue', 'exports'));
     }
 
     public function handle(ExportManager $manager): void
     {
-        ini_set('memory_limit', (string) config('exports.memory_limit', '1536M'));
-        set_time_limit((int) config('exports.timeout', 900));
-
         $job = ExportJob::find($this->exportJobId);
 
         if (! $job || $job->status === ExportJob::STATUS_READY) {
             return;
         }
+
+        $isCatalog = $job->type === 'product-catalog-csv';
+        ini_set('memory_limit', (string) ($isCatalog
+            ? config('exports.catalog_memory_limit', '512M')
+            : config('exports.memory_limit', '1536M')));
+        set_time_limit((int) ($isCatalog
+            ? config('exports.catalog_timeout', 600)
+            : config('exports.timeout', 900)));
 
         $job->update([
             'status' => ExportJob::STATUS_PROCESSING,
@@ -53,7 +61,7 @@ class RunExportJob implements ShouldQueue
         $diskName = config('filesystems.disks.documents') ? 'documents' : config('filesystems.default', 'local');
         $extension = in_array($job->type, ['monitor-stock-pdf', 'picklist-pdf'], true)
             ? 'pdf'
-            : 'xlsx';
+            : ($job->type === 'product-catalog-csv' ? 'csv' : 'xlsx');
         $path = "exports/{$job->id}.{$extension}";
 
         Log::info('export.started', [
@@ -90,7 +98,15 @@ class RunExportJob implements ShouldQueue
             }
         } else {
             $export = $manager->build($job->type, $params);
-            Excel::store($export, $path, $diskName);
+            $writerType = $job->type === 'product-catalog-csv'
+                ? \Maatwebsite\Excel\Excel::CSV
+                : null;
+
+            if ($writerType === null) {
+                Excel::store($export, $path, $diskName);
+            } else {
+                Excel::store($export, $path, $diskName, $writerType);
+            }
         }
 
         $job->update([

@@ -23,6 +23,7 @@ use Modules\Product\Http\Controllers\CatalogController;
 use Modules\Product\Http\Controllers\ProductMasterDataController;
 use Modules\Product\Http\Controllers\ProductPickerFeedController;
 use Modules\Product\Http\Controllers\PriceListController;
+use Modules\Product\Http\Controllers\ProductCatalogExportController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
@@ -59,6 +60,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('products/channel-products', [ChannelProductListingController::class, 'index']);
         Route::get('products/channel-products/{id}', [ChannelProductListingController::class, 'show'])->whereUuid('id');
     });
+
+    Route::post('products/master/export', [ProductCatalogExportController::class, 'store'])
+        ->middleware('role_or_permission:owner|export-produk');
 
     Route::middleware('role_or_permission:owner|view-pantauan-produk')->group(function () {
         Route::get('products/pantauan', [ProductPantauanController::class, 'index']);

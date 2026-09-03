@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cilupbah-catalog-export-worker
+  namespace: cilupbah
+  labels:
+    app: cilupbah-catalog-export-worker
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: cilupbah-catalog-export-worker
+  template:
+    metadata:
+      labels:
+        app: cilupbah-catalog-export-worker
+    spec:
+      terminationGracePeriodSeconds: 660
+      imagePullSecrets:
+        - name: ghcr-creds
+      containers:
+        - name: catalog-export-worker
+          image: ghcr.io/ultra-teknologi-indonesia/cilupbah:v1.0.0
+          command:
+            - sh
+            - -lc
+            - >-
+              exec php artisan queue:work
+              "${CATALOG_EXPORT_QUEUE_CONNECTION:-redis-long}"
+              --queue="${QUEUE_NAME_CATALOG_EXPORTS:-catalog-exports}"
+              --sleep=3 --tries=2 --backoff=10 --timeout=660
+              --memory=512 --max-jobs=1 --max-time=600
+          envFrom:
+            - secretRef:
+                name: cilupbah-env
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "150m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
