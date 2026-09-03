@@ -3,14 +3,22 @@
 namespace Modules\Inventory\Services;
 
 use App\Support\WarehouseAccess;
-use Modules\Inventory\Repositories\StockAdjustmentRepository;
-use Modules\Inventory\Repositories\InventoryRepository;
-use Modules\Inventory\Repositories\InventoryMovementRepository;
-use Modules\Inventory\Models\StockAdjustment;
-use Modules\Inventory\Jobs\ProcessStockAdjustmentJob;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Modules\Channel\Jobs\SyncStockToChannelsJob;
+use Modules\Inventory\Jobs\ProcessStockAdjustmentJob;
+use Modules\Inventory\Models\InventoryMovement;
+use Modules\Inventory\Models\StockAdjustment;
+use Modules\Inventory\Models\StockAdjustmentItem;
+use Modules\Inventory\Repositories\InventoryMovementRepository;
+use Modules\Inventory\Repositories\InventoryRepository;
+use Modules\Inventory\Repositories\StockAdjustmentRepository;
+use Modules\Inventory\Support\InventoryOnHandGuard;
 use Modules\Inventory\Support\StockAdjustmentRule;
+use Modules\Product\Services\BundleGuardService;
 use Modules\Warehouse\Models\LocationBin;
+use Modules\Warehouse\Services\InboundBinPolicy;
 
 class StockAdjustmentService
 {
@@ -19,6 +27,7 @@ class StockAdjustmentService
         protected InventoryRepository $inventoryRepository,
         protected InventoryMovementRepository $movementRepository,
         protected StockAdjustmentRule $stockAdjustmentRule,
+        protected InventoryOnHandGuard $onHandGuard,
     ) {}
 
     public function getAllPaginated(int $limit = 10)
@@ -26,12 +35,12 @@ class StockAdjustmentService
         return $this->adjustmentRepository->getAllPaginated($limit);
     }
 
-    public function getAllForExport(\Illuminate\Http\Request $request): array
+    public function getAllForExport(Request $request): array
     {
         return $this->adjustmentRepository->getAllForExport($request);
     }
 
-    public function getQueryForExport(\Illuminate\Http\Request $request): \Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Query\Builder
+    public function getQueryForExport(Request $request): Builder|\Illuminate\Database\Query\Builder
     {
         return $this->adjustmentRepository->getQueryForExport($request);
     }
@@ -61,7 +70,7 @@ class StockAdjustmentService
         WarehouseAccess::assert($data['location_id'] ?? null);
         $this->assertBinsBelongToLocation($data['items'] ?? [], $data['location_id']);
 
-        app(\Modules\Product\Services\BundleGuardService::class)->assertNotBundle(
+        app(BundleGuardService::class)->assertNotBundle(
             array_column($data['items'] ?? [], 'item_id'),
             'penyesuaian stok',
         );
@@ -128,13 +137,13 @@ class StockAdjustmentService
         WarehouseAccess::apply($adjustmentQuery, 'location_id');
         $adjustment = $adjustmentQuery->first();
 
-        if (!$adjustment) {
+        if (! $adjustment) {
             throw new \Exception('Dokumen adjustment tidak ditemukan.');
         }
 
         $this->assertBinsBelongToLocation($data['items'] ?? [], $adjustment->location_id);
 
-        app(\Modules\Product\Services\BundleGuardService::class)->assertNotBundle(
+        app(BundleGuardService::class)->assertNotBundle(
             array_column($data['items'] ?? [], 'item_id'),
             'penyesuaian stok',
         );
@@ -151,7 +160,7 @@ class StockAdjustmentService
                 }
 
                 if (! empty($item->bin_id)) {
-                    app(\Modules\Warehouse\Services\InboundBinPolicy::class)->assertConsumable(
+                    app(InboundBinPolicy::class)->assertConsumable(
                         $adjustment->location_id,
                         $item->bin_id,
                         'pembaruan penyesuaian stok',
@@ -165,15 +174,19 @@ class StockAdjustmentService
                     $item->bin_id,
                 );
 
-                $inventory->on_hand += $revertDelta;
+                $inventory->on_hand = $this->onHandGuard->resultAfterDelta(
+                    (int) $inventory->on_hand,
+                    (int) $revertDelta,
+                    'Pembaruan penyesuaian stok',
+                );
                 $this->inventoryRepository->updateStock($inventory);
             }
 
-            \Modules\Inventory\Models\InventoryMovement::where('transaction_number', $adjustment->adjustment_no)
+            InventoryMovement::where('transaction_number', $adjustment->adjustment_no)
                 ->where('location_id', $adjustment->location_id)
                 ->delete();
 
-            \Modules\Inventory\Models\StockAdjustmentItem::where('stock_adjustment_id', $adjustment->id)->delete();
+            StockAdjustmentItem::where('stock_adjustment_id', $adjustment->id)->delete();
 
             $adjustment->update([
                 'transaction_date' => $data['transaction_date'] ?? $adjustment->transaction_date,
@@ -221,7 +234,7 @@ class StockAdjustmentService
         );
 
         foreach (array_values(array_unique($affectedItemIds)) as $itemId) {
-            \Modules\Channel\Jobs\SyncStockToChannelsJob::dispatch($itemId);
+            SyncStockToChannelsJob::dispatch($itemId);
         }
 
         return $this->adjustmentRepository->findById($adjustment->id);
@@ -233,7 +246,7 @@ class StockAdjustmentService
         WarehouseAccess::apply($adjustmentQuery, 'location_id');
         $adjustment = $adjustmentQuery->first();
 
-        if (!$adjustment) {
+        if (! $adjustment) {
             throw new \Exception('Dokumen adjustment tidak ditemukan.');
         }
 
@@ -247,7 +260,7 @@ class StockAdjustmentService
                 }
 
                 if (! empty($item->bin_id)) {
-                    app(\Modules\Warehouse\Services\InboundBinPolicy::class)->assertConsumable(
+                    app(InboundBinPolicy::class)->assertConsumable(
                         $adjustment->location_id,
                         $item->bin_id,
                         'penghapusan penyesuaian stok',
@@ -261,10 +274,14 @@ class StockAdjustmentService
                     $item->bin_id,
                 );
 
-                $inventory->on_hand += $revertDelta;
+                $inventory->on_hand = $this->onHandGuard->resultAfterDelta(
+                    (int) $inventory->on_hand,
+                    (int) $revertDelta,
+                    'Penghapusan penyesuaian stok',
+                );
                 $this->inventoryRepository->updateStock($inventory);
 
-                \Modules\Inventory\Models\InventoryMovement::where('transaction_number', $adjustment->adjustment_no)
+                InventoryMovement::where('transaction_number', $adjustment->adjustment_no)
                     ->where('item_id', $item->item_id)
                     ->where('location_id', $adjustment->location_id)
                     ->delete();
@@ -275,7 +292,7 @@ class StockAdjustmentService
             $this->adjustmentRepository->delete($id);
 
             foreach (array_values(array_unique($adjustedItemIds)) as $itemId) {
-                \Modules\Channel\Jobs\SyncStockToChannelsJob::dispatch($itemId);
+                SyncStockToChannelsJob::dispatch($itemId);
             }
         });
 

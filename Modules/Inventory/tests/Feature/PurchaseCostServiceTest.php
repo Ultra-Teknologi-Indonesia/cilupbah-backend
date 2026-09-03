@@ -16,10 +16,12 @@ use Modules\Sales\Models\SalesInvoice;
 use Modules\Sales\Models\SalesInvoiceItem;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
+use Tests\Concerns\CreatesLegacyNegativeInventory;
 use Tests\TestCase;
 
 final class PurchaseCostServiceTest extends TestCase
 {
+    use CreatesLegacyNegativeInventory;
     use RefreshDatabase;
 
     public function test_it_returns_the_weighted_average_of_purchase_receipts_only(): void
@@ -43,7 +45,7 @@ final class PurchaseCostServiceTest extends TestCase
             'is_inbound' => false,
         ]);
 
-        Inventory::create([
+        $this->createLegacyNegativeInventory([
             'item_id' => $variant->id,
             'location_id' => $location->id,
             'bin_id' => $negativeBin->id,

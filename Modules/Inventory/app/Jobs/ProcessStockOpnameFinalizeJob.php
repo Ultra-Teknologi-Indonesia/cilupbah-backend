@@ -2,20 +2,21 @@
 
 namespace Modules\Inventory\Jobs;
 
+use App\Traits\StockLockable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Modules\Channel\Jobs\SyncStockToChannelsJob;
 use Modules\Finance\Services\AutoJournalService;
 use Modules\Inventory\Models\StockOpname;
-use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
+use Modules\Inventory\Repositories\InventoryRepository;
+use Modules\Inventory\Support\InventoryOnHandGuard;
 use Modules\Notification\Services\NotificationDispatcher;
-use App\Traits\StockLockable;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Modules\Warehouse\Services\InboundBinPolicy;
 
 class ProcessStockOpnameFinalizeJob implements ShouldQueue
@@ -23,6 +24,7 @@ class ProcessStockOpnameFinalizeJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, StockLockable;
 
     public int $tries = 3;
+
     public array $backoff = [3, 10, 30];
 
     public function __construct(
@@ -36,10 +38,12 @@ class ProcessStockOpnameFinalizeJob implements ShouldQueue
         InventoryRepository $inventoryRepository,
         InventoryMovementRepository $movementRepository,
         NotificationDispatcher $notifications,
+        ?InventoryOnHandGuard $onHandGuard = null,
     ): void {
+        $onHandGuard ??= app(InventoryOnHandGuard::class);
         $opname = StockOpname::with('items')->find($this->opnameId);
 
-        if (!$opname || $opname->status !== StockOpname::STATUS_FINALIZED) {
+        if (! $opname || $opname->status !== StockOpname::STATUS_FINALIZED) {
             return;
         }
 
@@ -47,8 +51,8 @@ class ProcessStockOpnameFinalizeJob implements ShouldQueue
         $totalSignedValue = 0.0;
 
         foreach ($itemsWithDifference as $item) {
-            $this->withStockLock($item->item_id, $opname->location_id, function () use ($item, $opname, $inventoryRepository, $movementRepository, &$totalSignedValue) {
-                DB::transaction(function () use ($item, $opname, $inventoryRepository, $movementRepository, &$totalSignedValue) {
+            $this->withStockLock($item->item_id, $opname->location_id, function () use ($item, $opname, $inventoryRepository, $movementRepository, $onHandGuard, &$totalSignedValue) {
+                DB::transaction(function () use ($item, $opname, $inventoryRepository, $movementRepository, $onHandGuard, &$totalSignedValue) {
                     if (! empty($item->bin_id)) {
                         app(InboundBinPolicy::class)->assertConsumable(
                             $opname->location_id,
@@ -69,7 +73,11 @@ class ProcessStockOpnameFinalizeJob implements ShouldQueue
                     $signedValue = (float) $item->qty_difference * $avgCost;
                     $totalSignedValue += $signedValue;
 
-                    $inventory->on_hand += $item->qty_difference;
+                    $inventory->on_hand = $onHandGuard->resultAfterDelta(
+                        (int) $inventory->on_hand,
+                        (int) $item->qty_difference,
+                        'Finalisasi stock opname',
+                    );
                     $inventoryRepository->updateStock($inventory);
 
                     $movementRepository->create([
@@ -101,7 +109,7 @@ class ProcessStockOpnameFinalizeJob implements ShouldQueue
                 $totalSignedValue,
             );
         } catch (\Throwable $e) {
-            Log::warning('AutoJournal stock opname gagal: ' . $e->getMessage(), [
+            Log::warning('AutoJournal stock opname gagal: '.$e->getMessage(), [
                 'opname_no' => $opname->opname_no,
             ]);
         }

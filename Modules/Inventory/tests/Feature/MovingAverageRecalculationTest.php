@@ -4,7 +4,6 @@ namespace Modules\Inventory\Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Product\Models\Category;
@@ -12,10 +11,12 @@ use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
+use Tests\Concerns\CreatesLegacyNegativeInventory;
 use Tests\TestCase;
 
 class MovingAverageRecalculationTest extends TestCase
 {
+    use CreatesLegacyNegativeInventory;
     use RefreshDatabase;
 
     private function makeContext(): array
@@ -90,7 +91,7 @@ class MovingAverageRecalculationTest extends TestCase
         [$user, $loc, $bin, $variant] = $this->makeContext();
         $service = app(InventoryService::class);
 
-        Inventory::create([
+        $this->createLegacyNegativeInventory([
             'item_id' => $variant->id,
             'location_id' => $loc->id,
             'bin_id' => $bin->id,
@@ -104,14 +105,14 @@ class MovingAverageRecalculationTest extends TestCase
             'item_id' => $variant->id,
             'location_id' => $loc->id,
             'bin_id' => $bin->id,
-            'qty' => 2,
+            'qty' => 5,
             'created_by' => (string) $user->id,
         ]);
         $newAvg = $service->recalculateAverageCost(
             $variant->id,
             $loc->id,
             $bin->id,
-            2,
+            5,
             1000,
         );
 

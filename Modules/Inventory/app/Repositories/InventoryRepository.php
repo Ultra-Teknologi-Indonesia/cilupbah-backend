@@ -14,6 +14,7 @@ use Modules\Channel\Models\ChannelShop;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\SkuRackAssignment;
 use Modules\Inventory\Services\PurchaseCostService;
+use Modules\Inventory\Support\InventoryOnHandGuard;
 use Modules\Inventory\Support\StockSummary;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
@@ -25,6 +26,10 @@ use Spatie\QueryBuilder\QueryBuilder;
 
 class InventoryRepository
 {
+    public function __construct(
+        private readonly InventoryOnHandGuard $onHandGuard,
+    ) {}
+
     private string|null|false $kecilLocationId = false;
 
     private string|null|false $transitLocationId = false;
@@ -186,6 +191,7 @@ class InventoryRepository
     public function updateStock(Inventory $inventory): bool
     {
         WarehouseAccess::assertOperational($inventory->location_id ? (string) $inventory->location_id : null);
+        $this->onHandGuard->assertNonNegative((int) $inventory->on_hand);
 
         $inventory->recalculateAvailable();
 
@@ -302,8 +308,7 @@ class InventoryRepository
         $query = Inventory::whereIn('item_id', $itemIds)
             ->whereHas('product', fn ($q) => TechnicalSku::exclude($q))
             ->with(['product:id,sku,product_id', 'location:id,location_name', 'bin:id,bin_final_code'])
-            ->select('id', 'item_id', 'location_id', 'bin_id', 'batch_no', 'serial_no', 'on_hand', 'on_order', 'available')
-            ;
+            ->select('id', 'item_id', 'location_id', 'bin_id', 'batch_no', 'serial_no', 'on_hand', 'on_order', 'available');
 
         WarehouseAccess::apply($query, 'location_id');
 
@@ -900,8 +905,7 @@ class InventoryRepository
             ->allowedFilters(
                 AllowedFilter::exact('item_id', 'inventories.item_id'),
             )
-            ->allowedSorts('total_on_hand', 'total_available')
-            ;
+            ->allowedSorts('total_on_hand', 'total_available');
 
         WarehouseAccess::apply($query, 'inventories.location_id');
 
@@ -985,8 +989,7 @@ class InventoryRepository
                 'purchase_bill_items.*',
                 'product_variants.sku',
                 'products.name as product_name',
-            )
-            ;
+            );
         WarehouseAccess::apply($query, 'purchase_bills.location_id');
 
         return $query->get();
@@ -1004,8 +1007,7 @@ class InventoryRepository
                 'sales_invoice_items.*',
                 'product_variants.sku',
                 'products.name as product_name',
-            )
-            ;
+            );
         WarehouseAccess::apply($query, 'sales_orders.location_id');
 
         return $query->get();
@@ -1021,8 +1023,7 @@ class InventoryRepository
             ->whereIn('inventories.item_id', $ids)
             ->groupBy('inventories.item_id', 'inventories.location_id')
             ->whereHas('product', fn ($q) => TechnicalSku::exclude($q))
-            ->with(['product:id,sku,product_id', 'location:id,location_name,location_code,is_small_warehouse'])
-            ;
+            ->with(['product:id,sku,product_id', 'location:id,location_name,location_code,is_small_warehouse']);
         WarehouseAccess::apply($query, 'inventories.location_id');
 
         return $query->get();

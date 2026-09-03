@@ -8,10 +8,12 @@ use Illuminate\Support\Str;
 use Modules\Inventory\Http\Resources\InventoryMovementResource;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Support\InventoryMovementSourceMap;
+use Tests\Concerns\CreatesLegacyNegativeInventory;
 use Tests\TestCase;
 
 class KronologiBalancePartitionTest extends TestCase
 {
+    use CreatesLegacyNegativeInventory;
     use RefreshDatabase;
 
     private string $locationId;
@@ -544,7 +546,8 @@ class KronologiBalancePartitionTest extends TestCase
 
     public function test_current_balance_tidak_berubah_karena_view_clean_menyembunyikan_baris(): void
     {
-        DB::table('inventories')->insert([
+        $this->createLegacyNegativeInventory([
+            // This row represents a legacy negative balance that predates the invariant.
             'id' => Str::uuid()->toString(),
             'item_id' => $this->itemId,
             'location_id' => $this->locationId,

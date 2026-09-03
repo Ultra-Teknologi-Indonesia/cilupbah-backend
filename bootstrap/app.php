@@ -12,6 +12,7 @@ use App\Traits\ApiResponse;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -116,6 +117,17 @@ return Application::configure(basePath: dirname(__DIR__))
                         $e->getStatus(),
                         $e->getErrors(),
                         $e->getTitle(),
+                    );
+                }
+
+                if ($e instanceof QueryException
+                    && $e->getCode() === '23514'
+                    && str_contains($e->getMessage(), 'inventories_on_hand_non_negative_check')) {
+                    return $responder->errorResponse(
+                        'Aksi dibatalkan karena saldo stok fisik tidak boleh kurang dari 0.',
+                        422,
+                        null,
+                        'Stok fisik tidak mencukupi',
                     );
                 }
 

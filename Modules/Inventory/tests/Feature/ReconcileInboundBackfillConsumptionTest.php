@@ -5,16 +5,22 @@ namespace Modules\Inventory\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Tests\Concerns\CreatesLegacyNegativeInventory;
 use Tests\TestCase;
 
 class ReconcileInboundBackfillConsumptionTest extends TestCase
 {
+    use CreatesLegacyNegativeInventory;
     use RefreshDatabase;
 
     private string $locationId;
+
     private string $itemId;
+
     private string $inboundBinId;
+
     private string $finalBinId;
+
     private string $movementId;
 
     protected function setUp(): void
@@ -51,7 +57,7 @@ class ReconcileInboundBackfillConsumptionTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        DB::table('inventories')->insert([
+        $this->createLegacyNegativeInventory([
             'id' => Str::uuid()->toString(),
             'item_id' => $this->itemId,
             'location_id' => $this->locationId,

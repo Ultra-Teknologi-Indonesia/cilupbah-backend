@@ -11,10 +11,12 @@ use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
+use Tests\Concerns\CreatesLegacyNegativeInventory;
 use Tests\TestCase;
 
 class InventoryStockDetailTest extends TestCase
 {
+    use CreatesLegacyNegativeInventory;
     use RefreshDatabase;
 
     private Location $location;
@@ -95,7 +97,8 @@ class InventoryStockDetailTest extends TestCase
 
     public function test_it_returns_stock_items_by_bin_code(): void
     {
-        Inventory::create([
+        $this->createLegacyNegativeInventory([
+            // This row represents a legacy negative balance that predates the invariant.
             'item_id' => $this->variant->id,
             'location_id' => $this->location->id,
             'bin_id' => $this->binWithStock->id,
@@ -123,7 +126,8 @@ class InventoryStockDetailTest extends TestCase
 
     public function test_item_hpp_uses_purchase_average_and_ignores_negative_rack_weighting(): void
     {
-        Inventory::create([
+        $this->createLegacyNegativeInventory([
+            // This row represents a legacy negative balance that predates the invariant.
             'item_id' => $this->variant->id,
             'location_id' => $this->location->id,
             'bin_id' => $this->binWithStock->id,
