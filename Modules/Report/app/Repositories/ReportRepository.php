@@ -33,13 +33,22 @@ use Modules\Warehouse\Models\Location;
 
 class ReportRepository
 {
+    private const MAX_PAGE_SIZE = 500;
+
     public function __construct(
         private readonly PurchaseCostService $purchaseCostService,
     ) {}
 
     private function paginate($query): LengthAwarePaginator
     {
-        return $query->paginate((int) request('per_page', 20))->appends(request()->query());
+        $requested = request('per_page', 20);
+        $perPage = is_scalar($requested) && filter_var($requested, FILTER_VALIDATE_INT) !== false
+            ? (int) $requested
+            : 20;
+
+        return $query
+            ->paginate(max(1, min(self::MAX_PAGE_SIZE, $perPage)))
+            ->appends(request()->query());
     }
 
     public function putaway(array $filters): Model|LengthAwarePaginator

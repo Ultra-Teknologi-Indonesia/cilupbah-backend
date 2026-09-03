@@ -19,22 +19,18 @@ final class NormalizePaginationParameters
             ? $request->query('per_page')
             : $request->query('limit');
 
-        if (is_scalar($value) && filter_var($value, FILTER_VALIDATE_INT) !== false) {
-            $normalized = (int) $value;
+        if (is_scalar($value)) {
+            $normalized = filter_var($value, FILTER_VALIDATE_INT);
+            $normalized = $normalized === false
+                ? 1
+                : max(1, min(self::MAX_PER_PAGE, (int) $normalized));
 
-            if ($normalized > self::MAX_PER_PAGE) {
-                $normalized = self::MAX_PER_PAGE;
-            }
+            $request->query->set('per_page', $normalized);
+            $request->merge(['per_page' => $normalized]);
 
-            if ($normalized > 0) {
-
-                $request->query->set('per_page', $normalized);
-                $request->merge(['per_page' => $normalized]);
-
-                if ($request->query->has('limit')) {
-                    $request->query->set('limit', $normalized);
-                    $request->merge(['limit' => $normalized]);
-                }
+            if ($request->query->has('limit')) {
+                $request->query->set('limit', $normalized);
+                $request->merge(['limit' => $normalized]);
             }
         }
 

@@ -407,7 +407,8 @@ class ShopeeProductService implements ChunkedDownloadable
         do {
             $list = $this->fetchItemList($shop, $offset, $pageSize, $timeoutSeconds);
             $itemIds = $this->extractItemIds($list);
-            $baseItems = $this->fetchBaseInfo($shop, $itemIds, $timeoutSeconds);
+
+            $baseItems = $this->fetchBaseInfo($shop, $itemIds, $timeoutSeconds, includeOptionalFields: false);
             $modelLists = $this->shouldHydrateVariantModels($needle)
                 ? $this->fetchSearchModelLists($shop, $baseItems, $needle, $timeoutSeconds)
                 : [];
@@ -431,7 +432,7 @@ class ShopeeProductService implements ChunkedDownloadable
 
         $list = $this->fetchItemList($shop, $offset, $pageSize, $timeoutSeconds);
         $itemIds = $this->extractItemIds($list);
-        $baseItems = $this->fetchBaseInfo($shop, $itemIds, $timeoutSeconds);
+        $baseItems = $this->fetchBaseInfo($shop, $itemIds, $timeoutSeconds, includeOptionalFields: false);
         $modelLists = $this->shouldHydrateVariantModels($needle)
             ? $this->fetchSearchModelLists($shop, $baseItems, $needle, $timeoutSeconds)
             : [];
@@ -458,7 +459,12 @@ class ShopeeProductService implements ChunkedDownloadable
         return strpbrk($needle, '-_/') !== false || preg_match('/\d/', $needle) === 1;
     }
 
-    protected function fetchBaseInfo(object $shop, array $itemIds, ?int $timeoutSeconds = null): array
+    protected function fetchBaseInfo(
+        object $shop,
+        array $itemIds,
+        ?int $timeoutSeconds = null,
+        bool $includeOptionalFields = true,
+    ): array
     {
         if (empty($itemIds)) {
             return [];
@@ -466,8 +472,8 @@ class ShopeeProductService implements ChunkedDownloadable
 
         $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/api/v2/product/get_item_base_info', [
             'item_id_list' => implode(',', $itemIds),
-            'need_complete_description' => true,
-            'need_complement' => true,
+            'need_complete_description' => $includeOptionalFields,
+            'need_complement' => $includeOptionalFields,
         ], $token, $shop->shop_id, $timeoutSeconds));
 
         return $res['response']['item_list'] ?? [];

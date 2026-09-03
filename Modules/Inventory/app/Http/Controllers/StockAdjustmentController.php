@@ -3,6 +3,7 @@
 namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Support\ActorName;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -41,6 +42,7 @@ class StockAdjustmentController extends Controller
     {
         $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
         $adjustments = $this->adjustmentService->getAllPaginated($limit);
+        ActorName::preload($adjustments->getCollection()->pluck('created_by'));
 
         return $this->successResponse(
             StockAdjustmentResource::collection($adjustments->items()),

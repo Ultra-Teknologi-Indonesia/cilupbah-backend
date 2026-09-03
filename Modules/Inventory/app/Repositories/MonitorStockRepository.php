@@ -24,7 +24,7 @@ class MonitorStockRepository
 
     private const PENDING_ORDER_STATUSES = ['pending', 'reserved', 'UNPAID', 'AWAITING_BUYER_CONFIRMATION'];
 
-    private function baseQuery(array $filters): Builder
+    private function baseQuery(array $filters, bool $includePresentation = true): Builder
     {
         $locationId = $filters['location_id'] ?? null;
 
@@ -64,20 +64,28 @@ class MonitorStockRepository
             ->where('products.is_bundle', false)
             ->tap(fn ($q) => TechnicalSku::exclude($q, 'product_variants.sku'))
             ->whereNull('products.deleted_at')
-            ->select('product_variants.*')
+            ->when(
+                $includePresentation,
+                fn ($q) => $q->select('product_variants.*'),
+                fn ($q) => $q->select(['product_variants.id', 'product_variants.min_stock'])
+            )
             ->selectRaw('products.name as product_name')
             ->selectRaw('COALESCE(inv.on_hand, 0) as total_on_hand')
             ->selectRaw('COALESCE(inv.available, 0) as total_available')
             ->selectRaw('COALESCE(inv.on_order, 0) as total_on_order')
             ->selectRaw('CASE WHEN active_restock.item_id IS NULL THEN false ELSE true END as has_active_restock_request')
-            ->selectRaw('('.$this->pendingOrderNosSql().') as pending_order_nos')
-            ->selectRaw("(SELECT STRING_AGG(CONCAT_WS(': ', attributes.name, variant_options.value), ', ' ORDER BY variant_options.id) FROM variant_options JOIN attributes ON attributes.id = variant_options.attribute_id WHERE variant_options.variant_id = product_variants.id) as variation_text")
-            ->with([
-                'product:id,name,sku,is_bundle,is_stored,category_id',
-                'product.media' => fn ($q) => $q->whereNull('variant_id')->orderBy('sort_order'),
-                'media' => fn ($q) => $q->orderBy('sort_order'),
-                'options.attribute:id,name',
-            ]);
+            ->when(
+                $includePresentation,
+                fn ($q) => $q
+                    ->selectRaw('('.$this->pendingOrderNosSql().') as pending_order_nos')
+                    ->selectRaw("(SELECT STRING_AGG(CONCAT_WS(': ', attributes.name, variant_options.value), ', ' ORDER BY variant_options.id) FROM variant_options JOIN attributes ON attributes.id = variant_options.attribute_id WHERE variant_options.variant_id = product_variants.id) as variation_text")
+                    ->with([
+                        'product:id,name,sku,is_bundle,is_stored,category_id',
+                        'product.media' => fn ($q) => $q->whereNull('variant_id')->orderBy('sort_order'),
+                        'media' => fn ($q) => $q->orderBy('sort_order'),
+                        'options.attribute:id,name',
+                    ])
+            );
 
         return $this->applyCommonFilters($query, $filters);
     }
@@ -178,7 +186,8 @@ class MonitorStockRepository
 
     public function summary(array $filters): array
     {
-        $base = $this->baseQuery($filters)->toBase();
+
+        $base = $this->baseQuery($filters, includePresentation: false)->toBase();
 
         $row = DB::query()
             ->fromSub($base, 'b')

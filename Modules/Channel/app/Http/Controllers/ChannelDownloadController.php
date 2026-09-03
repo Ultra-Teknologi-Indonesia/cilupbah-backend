@@ -128,17 +128,28 @@ class ChannelDownloadController extends Controller
         try {
             $result = $this->downloadService->searchProducts($channel, $data['shop_id'], $data['q'] ?? '', $offset, $limit);
         } catch (\RuntimeException $e) {
+            $status = in_array($e->getCode(), [400, 401, 403, 404, 409, 422], true)
+                ? $e->getCode()
+                : 422;
+
             return $this->errorResponse(
                 'Gagal mencari produk.',
-                $e->getCode() ?: 422,
+                $status,
                 ['detail' => $e->getMessage()],
                 'Terjadi kesalahan',
             );
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            Log::error('Channel product search failed', [
+                'channel' => $channel,
+                'shop_id' => $data['shop_id'] ?? null,
+                'exception' => get_class($e),
+                'code' => $e->getCode(),
+            ]);
+
             return $this->errorResponse(
                 'Gagal mencari produk.',
-                500,
-                ['detail' => $e->getMessage()],
+                422,
+                ['detail' => 'Pencarian produk channel tidak dapat diproses saat ini.'],
                 'Terjadi kesalahan',
             );
         }
@@ -228,8 +239,8 @@ class ChannelDownloadController extends Controller
 
             return $this->errorResponse(
                 'Gagal mencari produk lintas channel.',
-                500,
-                ['detail' => 'Pencarian produk tidak dapat diproses saat ini.'],
+                422,
+                ['detail' => 'Pencarian produk lintas channel tidak dapat diproses saat ini.'],
                 'Terjadi kesalahan',
             );
         }

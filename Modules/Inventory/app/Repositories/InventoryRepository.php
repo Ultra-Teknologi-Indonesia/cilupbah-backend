@@ -5,7 +5,6 @@ namespace Modules\Inventory\Repositories;
 use App\Support\WarehouseAccess;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\UniqueConstraintViolationException;
-use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -325,14 +324,8 @@ class InventoryRepository
 
         WarehouseAccess::apply($orderItemsQuery, 'sales_orders.location_id');
 
-        $orderItemIds = $orderItemsQuery->pluck('item_id');
-
-        if ($orderItemIds->isEmpty()) {
-            return new LengthAwarePaginator([], 0, $limit);
-        }
-
         $query = DB::table('product_variants')
-            ->whereIn('product_variants.id', $orderItemIds)
+            ->whereIn('product_variants.id', $orderItemsQuery)
             ->tap(fn ($q) => TechnicalSku::exclude($q, 'product_variants.sku'))
             ->leftJoin('inventories', 'inventories.item_id', '=', 'product_variants.id')
             ->leftJoin('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
