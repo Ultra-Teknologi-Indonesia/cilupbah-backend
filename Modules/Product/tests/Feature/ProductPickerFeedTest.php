@@ -6,6 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Modules\Product\Models\Attribute;
 use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductBundleItem;
 use Modules\Product\Models\ProductVariant;
 use Modules\Product\Models\ProductVariationType;
 use Modules\Product\Models\VariantOption;
@@ -139,6 +140,33 @@ class ProductPickerFeedTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('meta.total', 0)
             ->assertJsonPath('data', []);
+    }
+
+    public function test_picker_can_exclude_bundles_without_hiding_physical_variants(): void
+    {
+        $bundle = Product::create([
+            'name' => 'Bundle Liquid Silicone',
+            'category_id' => 1,
+            'status' => Product::STATUS_MASTER,
+            'is_active' => true,
+            'is_bundle' => true,
+            'is_consignment' => false,
+        ]);
+
+        ProductBundleItem::create([
+            'bundle_product_id' => $bundle->id,
+            'component_variant_id' => $this->variantPink->id,
+            'qty' => 1,
+        ]);
+
+        $response = $this->getJson('/api/v1/products/picker?search='.urlencode($this->variantPink->sku).'&exclude_bundles=1');
+
+        $response->assertOk();
+        $data = collect($response->json('data'));
+
+        $this->assertNotNull($data->firstWhere('item_group_id', $this->product->id));
+        $this->assertNull($data->firstWhere('item_group_id', $bundle->id));
+        $this->assertTrue($data->every(fn (array $item) => $item['is_bundle'] === false));
     }
 
     public function test_master_catalog_api_remains_intact(): void

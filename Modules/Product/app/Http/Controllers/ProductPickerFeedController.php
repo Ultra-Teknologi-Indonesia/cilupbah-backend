@@ -24,6 +24,7 @@ class ProductPickerFeedController extends Controller
             new OA\Parameter(name: 'search', in: 'query', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'per_page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 20)),
             new OA\Parameter(name: 'page', in: 'query', required: false, schema: new OA\Schema(type: 'integer', default: 1)),
+            new OA\Parameter(name: 'exclude_bundles', in: 'query', required: false, schema: new OA\Schema(type: 'boolean', default: false)),
         ],
         responses: [
             new OA\Response(response: 200, description: 'Get picker products success'),
@@ -35,12 +36,14 @@ class ProductPickerFeedController extends Controller
             'search' => 'nullable|string',
             'per_page' => 'nullable|integer|min:1|max:100',
             'page' => 'nullable|integer|min:1',
+            'exclude_bundles' => 'nullable|boolean',
         ]);
 
         $paginator = $this->service->paginate(
             $request->query('search'),
             (int) $request->query('per_page', 20),
-            (int) $request->query('page', 1)
+            (int) $request->query('page', 1),
+            $request->boolean('exclude_bundles'),
         );
 
         return $this->successPaginatedResponse($paginator, 'Get picker products success');

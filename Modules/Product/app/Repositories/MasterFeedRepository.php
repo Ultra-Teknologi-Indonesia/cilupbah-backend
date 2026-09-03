@@ -29,13 +29,18 @@ class MasterFeedRepository
         });
     }
 
-    public function paginate(?string $status = null, ?string $updatedSince = null): LengthAwarePaginator
+    public function paginate(
+        ?string $status = null,
+        ?string $updatedSince = null,
+        bool $excludeBundles = false,
+    ): LengthAwarePaginator
     {
         $status = $status ?? Product::STATUS_MASTER;
         $hasRepCol = self::hasRepresentativeColumn();
 
         $query = Product::query()
             ->where('status', $status)
+            ->when($excludeBundles, fn ($q) => $q->where('is_bundle', false))
             ->when($updatedSince, fn ($q) => $q->where('updated_at', '>=', $updatedSince));
 
         if ($hasRepCol) {

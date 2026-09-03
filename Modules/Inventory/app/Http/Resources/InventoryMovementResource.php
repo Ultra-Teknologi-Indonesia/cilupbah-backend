@@ -131,11 +131,6 @@ class InventoryMovementResource extends JsonResource
         ];
     }
 
-    /**
-     * Explain the stock dimension affected by a movement without changing its
-     * quantity or running balance. This is intentionally derived from the
-     * immutable source vocabulary so history reads remain side-effect free.
-     */
     private function stockEffect(string $source): ?array
     {
         if ($source === 'ORDER_RELEASE') {

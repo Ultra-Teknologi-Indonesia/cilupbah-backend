@@ -16,7 +16,12 @@ class ProductPickerFeedService
 {
     public function __construct(private MasterFeedRepository $repository) {}
 
-    public function paginate(?string $search = null, int $perPage = 20, int $page = 1): LengthAwarePaginator
+    public function paginate(
+        ?string $search = null,
+        int $perPage = 20,
+        int $page = 1,
+        bool $excludeBundles = false,
+    ): LengthAwarePaginator
     {
         $status = Product::STATUS_MASTER;
         $hasRepCol = MasterFeedRepository::hasRepresentativeColumn();
@@ -24,7 +29,7 @@ class ProductPickerFeedService
         $search = trim($search ?? '');
 
         if ($search === '') {
-            $paginator = $this->repository->paginate($status);
+            $paginator = $this->repository->paginate($status, null, $excludeBundles);
             $this->applyPageMergeGrouping($paginator);
 
             return ProductPickerHydrator::hydrate($paginator);
@@ -50,19 +55,22 @@ class ProductPickerFeedService
         $matchingVariantIds = $matchingVariants->pluck('id')->all();
         $matchedProductIds = $matchingVariants->pluck('product_id')->unique()->all();
 
-        $bundleMatchedQuery = TechnicalSku::exclude(DB::table('product_bundle_items')
-            ->join('product_variants', 'product_variants.id', '=', 'product_bundle_items.component_variant_id')
-            ->join('products', 'products.id', '=', 'product_bundle_items.bundle_product_id')
-            ->where('products.status', $status)
-            ->whereNull('product_variants.deleted_at')
-            ->where(function ($q) use ($search) {
-                $q->where('product_variants.sku', 'ILIKE', "%{$search}%")
-                    ->orWhere('products.name', 'ILIKE', "%{$search}%");
-            }), 'product_variants.sku');
+        $bundleMatchedProductIds = [];
+        if (! $excludeBundles) {
+            $bundleMatchedQuery = TechnicalSku::exclude(DB::table('product_bundle_items')
+                ->join('product_variants', 'product_variants.id', '=', 'product_bundle_items.component_variant_id')
+                ->join('products', 'products.id', '=', 'product_bundle_items.bundle_product_id')
+                ->where('products.status', $status)
+                ->whereNull('product_variants.deleted_at')
+                ->where(function ($q) use ($search) {
+                    $q->where('product_variants.sku', 'ILIKE', "%{$search}%")
+                        ->orWhere('products.name', 'ILIKE', "%{$search}%");
+                }), 'product_variants.sku');
 
-        $bundleMatchedProductIds = $bundleMatchedQuery
-            ->pluck('product_bundle_items.bundle_product_id')
-            ->all();
+            $bundleMatchedProductIds = $bundleMatchedQuery
+                ->pluck('product_bundle_items.bundle_product_id')
+                ->all();
+        }
 
         $allMatchedProductIds = array_values(array_unique(array_merge($matchedProductIds, $bundleMatchedProductIds)));
 
@@ -97,7 +105,8 @@ class ProductPickerFeedService
 
         $query = Product::query()
             ->where('status', $status)
-            ->whereIn('id', $finalProductIds);
+            ->whereIn('id', $finalProductIds)
+            ->when($excludeBundles, fn ($q) => $q->where('is_bundle', false));
 
         if ($hasRepCol) {
             $query->whereNotExists(function ($sub) {
