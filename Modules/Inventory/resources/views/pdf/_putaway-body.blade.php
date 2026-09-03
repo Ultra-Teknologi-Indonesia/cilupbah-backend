@@ -48,9 +48,9 @@
             <th class="col-no">No</th>
             <th class="col-sku">SKU</th>
             <th>Nama Produk</th>
-            <th class="col-qty">Qty<br>Ditetapkan</th>
-            <th class="col-qty">Qty<br>Ditempatkan</th>
-            <th class="col-qty">Qty<br>Sisa</th>
+            <th class="col-qty-assigned">Qty<br>Ditetapkan</th>
+            <th class="col-qty-placed">Qty<br>Ditempatkan</th>
+            <th class="col-qty-remaining">Qty<br>Sisa</th>
             <th class="col-rak">Kode Rak</th>
         </tr>
     </thead>

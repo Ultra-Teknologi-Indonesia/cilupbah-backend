@@ -60,8 +60,10 @@
     .num { text-align: right; }
     .col-no { width: 24px; }
     .col-sku { width: 92px; }
-    .col-qty { width: 54px; }
-    .col-rak { width: 98px; }
+    /* Match the receipt print widths for the shared quantity columns. */
+    .col-qty-assigned { width: 70px; }
+    .col-qty-placed, .col-qty-remaining { width: 64px; }
+    .col-rak { width: 88px; }
     .rak-line { margin-bottom: 1px; }
     .barang-sku {
         font-family: DejaVu Sans Mono, monospace;
