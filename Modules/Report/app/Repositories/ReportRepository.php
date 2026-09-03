@@ -598,6 +598,7 @@ class ReportRepository
                 'so.salesorder_no as no_pesanan',
                 DB::raw("{$trackingExpression} as no_resi"),
                 's.shipment_no as kode_pengiriman',
+                's.shipment_type',
             ])
             ->selectRaw("{$providerExpression} AS provider")
             ->selectRaw('COALESCE(q.qty, 0) AS qty')

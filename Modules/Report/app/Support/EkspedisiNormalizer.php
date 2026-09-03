@@ -22,9 +22,14 @@ final class EkspedisiNormalizer
 
     private const LAINNYA = 'Lainnya';
 
-    public static function family(?string $provider, ?string $resi = null): string
+    public static function family(?string $provider, ?string $resi = null, ?string $shipmentType = null): string
     {
         $hay = strtoupper(trim((string) $provider));
+        $type = strtoupper(trim((string) $shipmentType));
+
+        if (in_array($type, ['INSTANT', 'SAME_DAY'], true)) {
+            return 'Instan/Sameday';
+        }
 
         if ($hay !== '') {
             foreach (self::FAMILIES as $family => $needles) {
