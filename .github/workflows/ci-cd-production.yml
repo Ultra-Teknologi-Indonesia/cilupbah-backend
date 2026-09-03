@@ -101,18 +101,25 @@ jobs:
 
             echo "Deploying $IMAGE ke production..."
             NAMESPACE="cilupbah"
+            K8S_DIR="/tmp/cilupbah-k8s/k8s/production"
 
             echo "==> Mengupdate image tag di file YAML temporary..."
-            sed -i "s|image: ghcr.io/ultra-teknologi-indonesia/cilupbah:.*|image: $IMAGE|g" /tmp/cilupbah-k8s/k8s/production/*.yaml
+            sed -i "s|image: ghcr.io/ultra-teknologi-indonesia/cilupbah:.*|image: $IMAGE|g" "$K8S_DIR"/*.yaml
 
             echo "==> Mengaplikasikan konfigurasi YAML ke Kubernetes..."
-            kubectl apply -f /tmp/cilupbah-k8s/k8s/production/ -n $NAMESPACE
+            kubectl apply -f "$K8S_DIR" -n "$NAMESPACE"
 
-            echo "==> Menunggu rollout selesai..."
-            kubectl rollout status deployment/cilupbah-app -n $NAMESPACE --timeout=180s
-            kubectl rollout status deployment/cilupbah-horizon -n $NAMESPACE --timeout=180s
-            kubectl rollout status deployment/cilupbah-export-worker -n $NAMESPACE --timeout=180s
-            kubectl rollout status deployment/cilupbah-scheduler -n $NAMESPACE --timeout=180s
+            echo "==> Menunggu rollout seluruh Deployment dari manifest production..."
+            DEPLOYMENTS="$(kubectl get -f "$K8S_DIR" -n "$NAMESPACE" -o name | sed -n 's#^deployment.apps/##p')"
+            if [ -z "$DEPLOYMENTS" ]; then
+              echo "Tidak ada Deployment yang ditemukan dari manifest production."
+              exit 1
+            fi
+
+            for deployment in $DEPLOYMENTS; do
+              echo "Menunggu rollout deployment/$deployment..."
+              kubectl rollout status "deployment/$deployment" -n "$NAMESPACE" --timeout=180s
+            done
 
             # Migrasi DB: explicit gated deploy step (sesuai catatan di start.production.sh).
             # Dijalankan dari pod app yang sudah ter-rollout (punya file migrasi versi baru).
