@@ -5,7 +5,7 @@ namespace Modules\Channel\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
-use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Channel\Services\ChannelService;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\ShopeeProductService;
 use OpenApi\Attributes as OA;
@@ -17,7 +17,7 @@ class ShopeeSyncApiController extends Controller
 
     public function __construct(
         protected ShopeeOrderService $orderService,
-        protected ChannelShopRepository $shopRepository,
+        protected ChannelService $channelService,
     ) {}
 
     #[OA\Post(
@@ -48,26 +48,17 @@ class ShopeeSyncApiController extends Controller
     {
         $updatedAfter = $request->integer('updated_after') ?: null;
 
-        $results = [];
-        $total = 0;
+        $summary = $this->channelService->syncOrdersForAllStores(
+            'shopee',
+            fn (string $shopId): int => $this->orderService->pullOrders($shopId, $updatedAfter),
+        );
+        $results = collect($summary['stores'])->map(fn (array $store): array => array_filter([
+            'shop_id' => $store['shop_id'],
+            'synced' => $store['status'] === 'success' ? $store['pulled_count'] : null,
+            'error' => $store['status'] !== 'success' ? $store['error'] : null,
+        ], fn ($value) => $value !== null))->all();
 
-        foreach ($this->shopRepository->getShopsByChannelCode('shopee') as $shop) {
-            if (! $shop->is_active || ! $shop->access_token) {
-                continue;
-            }
-
-            try {
-                $count = $this->orderService->pullOrders($shop->shop_id, $updatedAfter);
-                $this->shopRepository->markOrderSyncOk($shop->id);
-                $results[] = ['shop_id' => $shop->shop_id, 'synced' => $count];
-                $total += $count;
-            } catch (\Throwable $e) {
-                $this->shopRepository->markOrderSyncProblem($shop->id, $e->getMessage());
-                $results[] = ['shop_id' => $shop->shop_id, 'error' => $e->getMessage()];
-            }
-        }
-
-        return $this->successResponse(['total' => $total, 'shops' => $results], "{$total} order Shopee disinkronkan dari semua toko.");
+        return $this->successResponse(['total' => $summary['total'], 'shops' => $results], "{$summary['total']} order Shopee disinkronkan dari semua toko.");
     }
 
     #[OA\Post(path: '/api/v1/shopee/sync/ship', summary: 'Terima & kirim order Shopee', tags: ['Shopee'])]

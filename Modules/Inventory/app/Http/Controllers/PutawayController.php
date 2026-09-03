@@ -306,7 +306,7 @@ class PutawayController extends Controller
             return $this->errorResponse(
                 'Gagal memproses aksi.',
                 404,
-                app()->environment('production') ? null : ['detail' => $e->getMessage()],
+                config('app.env') === 'production' ? null : ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
             );
         }
@@ -386,7 +386,7 @@ class PutawayController extends Controller
             return $this->errorResponse(
                 'Gagal menetapkan.',
                 422,
-                app()->environment('production') ? null : ['detail' => $e->getMessage()],
+                config('app.env') === 'production' ? null : ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
             );
         }
@@ -419,7 +419,7 @@ class PutawayController extends Controller
             return $this->errorResponse(
                 'Gagal memulai.',
                 422,
-                app()->environment('production') ? null : ['detail' => $e->getMessage()],
+                config('app.env') === 'production' ? null : ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
             );
         }
@@ -567,7 +567,7 @@ class PutawayController extends Controller
             return $this->errorResponse(
                 'Gagal menghapus.',
                 422,
-                app()->environment('production') ? null : ['detail' => $e->getMessage()],
+                config('app.env') === 'production' ? null : ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
             );
         }
@@ -614,7 +614,7 @@ class PutawayController extends Controller
             return $this->errorResponse(
                 'Gagal menghapus.',
                 422,
-                app()->environment('production') ? null : ['detail' => $e->getMessage()],
+                config('app.env') === 'production' ? null : ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
             );
         }
@@ -647,7 +647,7 @@ class PutawayController extends Controller
             return $this->errorResponse(
                 'Gagal menyelesaikan.',
                 422,
-                app()->environment('production') ? null : ['detail' => $e->getMessage()],
+                config('app.env') === 'production' ? null : ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
             );
         }
@@ -742,7 +742,7 @@ class PutawayController extends Controller
             return $this->errorResponse(
                 'Gagal membuat PDF putaway.',
                 500,
-                app()->environment('production') ? null : ['detail' => $e->getMessage()],
+                config('app.env') === 'production' ? null : ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
             );
         }
@@ -781,7 +781,7 @@ class PutawayController extends Controller
             return $this->errorResponse(
                 'Gagal membuat PDF putaway bulk.',
                 500,
-                app()->environment('production') ? null : ['detail' => $e->getMessage()],
+                config('app.env') === 'production' ? null : ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
             );
         }
@@ -815,7 +815,7 @@ class PutawayController extends Controller
             return $this->errorResponse(
                 'Gagal menghapus.',
                 422,
-                app()->environment('production') ? null : ['detail' => $e->getMessage()],
+                config('app.env') === 'production' ? null : ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
             );
         }
@@ -852,7 +852,7 @@ class PutawayController extends Controller
             return $this->errorResponse(
                 'Gagal menghapus.',
                 422,
-                app()->environment('production') ? null : ['detail' => $e->getMessage()],
+                config('app.env') === 'production' ? null : ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
             );
         }

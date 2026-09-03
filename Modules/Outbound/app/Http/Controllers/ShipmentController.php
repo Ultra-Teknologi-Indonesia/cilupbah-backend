@@ -25,11 +25,8 @@ use Modules\Outbound\Http\Requests\UpdateHandoverQtyRequest;
 use Modules\Outbound\Http\Resources\CompletedShipmentOrderResource;
 use Modules\Outbound\Http\Resources\ShipmentOrderResource;
 use Modules\Outbound\Http\Resources\ShipmentResource;
-use Modules\Outbound\Jobs\RefreshInstantTrackingJob;
-use Modules\Outbound\Repositories\ShipmentRepository;
 use Modules\Outbound\Services\ShipmentService;
 use OpenApi\Attributes as OA;
-use Throwable;
 
 #[OA\Tag(name: 'Outbound - Shipment', description: 'API Endpoints for Shipment management')]
 #[OA\Schema(
@@ -58,7 +55,6 @@ class ShipmentController extends Controller
 
     public function __construct(
         protected ShipmentService $shipmentService,
-        protected ShipmentRepository $shipmentRepository,
         protected QrCodeGenerator $qrCodeGenerator,
         protected PdfRenderer $pdfRenderer,
     ) {}
@@ -646,7 +642,7 @@ class ShipmentController extends Controller
         try {
             $orderIds = $request->validated()['order_ids'];
 
-            $shipments = $this->shipmentRepository->getForBulkManifestPdf($orderIds);
+            $shipments = $this->shipmentService->getForBulkManifestPdf($orderIds);
 
             if ($shipments->isEmpty()) {
                 return $this->errorResponse('Tidak ada shipment ditemukan untuk pesanan yang dipilih.', 404);
@@ -845,19 +841,14 @@ class ShipmentController extends Controller
     )]
     public function refreshTracking(string $id): JsonResponse
     {
-
-        try {
-            RefreshInstantTrackingJob::dispatchSync($id);
-        } catch (Throwable $e) {
-            report($e);
-        }
+        $this->shipmentService->refreshTracking($id);
 
         return $this->successResponse(null, 'Refresh tracking diproses.', 202);
     }
 
     public function trackingEvents(string $id): JsonResponse
     {
-        $events = $this->shipmentRepository->getTrackingEvents($id);
+        $events = $this->shipmentService->getTrackingEvents($id);
 
         return $this->successResponse($events, 'Timeline tracking shipment.');
     }

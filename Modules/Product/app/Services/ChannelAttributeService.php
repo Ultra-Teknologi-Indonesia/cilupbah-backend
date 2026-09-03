@@ -5,6 +5,7 @@ namespace Modules\Product\Services;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Log;
+use Modules\Product\Jobs\SyncChannelAttributesJob;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Services\TikTokClient;
 use Modules\Product\Models\ChannelCategory;
@@ -23,6 +24,12 @@ class ChannelAttributeService
     ) {
         $this->attributeRepository = $attributeRepository;
         $this->optionRepository = $optionRepository;
+    }
+
+    public function queueSync(string $channelId, string $categoryId): void
+    {
+        SyncChannelAttributesJob::dispatch($channelId, $categoryId)
+            ->onQueue(config('queue.names.channel_product'));
     }
 
     public function syncAttributesFromChannel(string $channelId, string $channelCategoryId): void

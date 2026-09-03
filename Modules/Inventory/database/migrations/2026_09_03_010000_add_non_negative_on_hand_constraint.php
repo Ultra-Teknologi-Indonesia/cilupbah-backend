@@ -25,8 +25,6 @@ return new class extends Migration
             return;
         }
 
-        // NOT VALID protects every new insert/update immediately while allowing
-        // existing legacy negative rows to be reconciled explicitly first.
         DB::statement(
             'ALTER TABLE inventories ADD CONSTRAINT '.self::CONSTRAINT.' CHECK (on_hand >= 0) NOT VALID'
         );

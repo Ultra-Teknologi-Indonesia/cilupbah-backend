@@ -66,6 +66,11 @@ class PurchaseOrderService
         return $this->poRepository->getPaginatedItems($poId, $perPage);
     }
 
+    public function getActivities(string $purchaseOrderId, int $perPage)
+    {
+        return $this->poRepository->paginateActivities($purchaseOrderId, $perPage);
+    }
+
     public function create(array $data): PurchaseOrder
     {
         WarehouseAccess::assert($data['location_id'] ?? null);

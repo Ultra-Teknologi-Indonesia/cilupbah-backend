@@ -5,8 +5,6 @@ namespace Modules\Inventory\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Modules\Inventory\Models\ImpexActivity;
-use Modules\Inventory\Services\ImpexActivityService;
 use Modules\Inventory\Services\TransferOutImportService;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx as XlsxWriter;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -15,7 +13,6 @@ class TransferOutImportController extends Controller
 {
     public function __construct(
         protected TransferOutImportService $importService,
-        protected ImpexActivityService $activityService,
     ) {}
 
     public function template(): StreamedResponse
@@ -59,45 +56,15 @@ class TransferOutImportController extends Controller
             'created_by'    => 'required|string|max:100',
         ]);
 
-        $activity = $this->activityService->record(
-            ImpexActivity::DIRECTION_IMPORT,
-            'Import Transfer Keluar',
-            $request->user()?->id,
-        );
-
         try {
-            $result = $this->importService->confirm(
+            $result = $this->importService->confirmWithActivity(
                 $request->input('preview_token'),
                 $request->input('created_by'),
+                $request->user()?->id,
             );
-
-            if ($result['failed'] > 0) {
-                foreach ($result['errors'] as $err) {
-                    $ref = trim(\Illuminate\Support\Str::before($err, ':'));
-                    $desc = trim(\Illuminate\Support\Str::after($err, ':')) ?: $err;
-                    \Modules\Inventory\Models\ImpexActivityDetail::create([
-                        'impex_activity_id' => $activity->id,
-                        'reference_id'      => $ref ?: 'Error',
-                        'description'       => $desc,
-                    ]);
-                }
-
-                if ($result['created'] === 0) {
-                    $this->activityService->markFailed($activity, implode('; ', $result['errors']));
-                } else {
-                    $this->activityService->markSuccess($activity);
-                    $activity->update([
-                        'error_message' => "{$result['created']} transfer dibuat, {$result['failed']} gagal.",
-                    ]);
-                }
-            } else {
-                $this->activityService->markSuccess($activity);
-            }
 
             return $this->successResponse($result, 'Import transfer keluar selesai.');
         } catch (\Exception $e) {
-            $this->activityService->markFailed($activity, $e->getMessage());
-
             return $this->errorResponse(
                 'Gagal menyetujui.',
                 422,

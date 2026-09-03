@@ -3,6 +3,7 @@
 namespace Modules\Product\Services;
 
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Services\ChannelListingValidator;
@@ -22,6 +23,11 @@ class ProductChannelValidationService
     ];
 
     public function __construct(private ChannelListingValidator $validator) {}
+
+    public function queueRecomputeForMappedProducts(): void
+    {
+        Artisan::queue('products:recompute-validation', ['--queue' => true]);
+    }
 
     public function recompute(Product $product): void
     {

@@ -3,15 +3,26 @@
 namespace Modules\Inventory\Services\RackImport;
 
 use Illuminate\Http\UploadedFile;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Inventory\Models\RackImportBatch;
 use Modules\Inventory\Models\RackImportRow;
+use Modules\Inventory\Models\ImpexActivity;
+use Modules\Inventory\Jobs\ConfirmRackImportJob;
+use Modules\Inventory\Jobs\PreviewRackImportJob;
+use Modules\Inventory\Repositories\RackImportBatchRepository;
+use Modules\Inventory\Services\ImpexActivityService;
 
 class RackImportBatchService
 {
     public const DISK = 's3';
     public const DIR = 'imports/rack-allocation';
+
+    public function __construct(
+        private readonly RackImportBatchRepository $repository,
+        private readonly ImpexActivityService $activityService,
+    ) {}
 
     public static function disk(): string
     {
@@ -37,6 +48,46 @@ class RackImportBatchService
             'stored_path' => $path,
             'state' => RackImportBatch::STATE_QUEUED,
         ]);
+    }
+
+    public function queuePreview(RackImportBatch $batch): void
+    {
+        PreviewRackImportJob::dispatch($batch->id);
+    }
+
+    public function confirmBatch(RackImportBatch $batch, ?string $userId): bool
+    {
+        if ($batch->state !== RackImportBatch::STATE_PREVIEWED || ! $this->startConfirm($batch)) {
+            return false;
+        }
+
+        $this->activityService->record(
+            ImpexActivity::DIRECTION_IMPORT,
+            'Import Alokasi Rak',
+            $userId,
+            null,
+            'rack_import_batch',
+            $batch->id,
+        );
+
+        ConfirmRackImportJob::dispatch($batch->id);
+
+        return true;
+    }
+
+    public function paginateBatches(): LengthAwarePaginator
+    {
+        return $this->repository->paginateBatches();
+    }
+
+    public function findBatch(string $batch): ?RackImportBatch
+    {
+        return $this->repository->find($batch);
+    }
+
+    public function paginateRows(RackImportBatch $batch): LengthAwarePaginator
+    {
+        return $this->repository->paginateRows($batch);
     }
 
     public function markPreviewing(RackImportBatch $batch): void

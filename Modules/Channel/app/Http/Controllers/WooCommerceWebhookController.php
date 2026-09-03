@@ -8,8 +8,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Helpers\WooCommerceSignature;
 use Modules\Channel\Jobs\ProcessWooCommerceWebhook;
-use Modules\Channel\Repositories\ChannelShopRepository;
-use Modules\Channel\Repositories\ChannelWebhookInboxRepository;
+use Modules\Channel\Services\ChannelService;
+use Modules\Channel\Services\ChannelWebhookService;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'WooCommerce', description: 'Integrasi WooCommerce')]
@@ -18,8 +18,8 @@ class WooCommerceWebhookController extends Controller
     use ApiResponse;
 
     public function __construct(
-        protected ChannelShopRepository $shopRepository,
-        protected ChannelWebhookInboxRepository $inbox,
+        protected ChannelService $channelService,
+        protected ChannelWebhookService $webhookService,
     ) {}
 
     public function verify()
@@ -42,11 +42,11 @@ class WooCommerceWebhookController extends Controller
         $topic = (string) $request->header('x-wc-webhook-topic', '');
         $source = (string) $request->header('x-wc-webhook-source', '');
 
-        $shop = $this->shopRepository->findConnectedByStoreUrl($source);
+        $shop = $this->channelService->findConnectedStoreByUrl($source);
 
         if (! $shop) {
 
-            $this->quarantine($topic, $source, $rawBody, 'Toko WooCommerce tidak ditemukan dari source URL.');
+            $this->webhookService->quarantine($topic, $source, $rawBody, 'Toko WooCommerce tidak ditemukan dari source URL.');
 
             return response('', 200);
         }
@@ -54,7 +54,7 @@ class WooCommerceWebhookController extends Controller
         $secret = (string) $shop->webhook_secret;
 
         $mustVerify = config('services.woocommerce.verify_webhook_signature', true)
-            || app()->environment('production')
+            || config('app.env') === 'production'
             || $secret === '';
 
         if ($mustVerify) {
@@ -83,7 +83,7 @@ class WooCommerceWebhookController extends Controller
 
         if (! is_array($payload) || empty($payload['id'])) {
 
-            $this->quarantine($topic, $source, $rawBody, 'Payload WooCommerce tidak valid atau tanpa id.', is_array($payload) ? $payload : null);
+            $this->webhookService->quarantine($topic, $source, $rawBody, 'Payload WooCommerce tidak valid atau tanpa id.', is_array($payload) ? $payload : null);
 
             return response('', 200);
         }
@@ -92,19 +92,14 @@ class WooCommerceWebhookController extends Controller
             return response('', 200);
         }
 
-        ProcessWooCommerceWebhook::dispatch(
-            $shop->shop_id,
-            $topic,
-            (string) $payload['id'],
-            $payload,
-        );
+        $this->webhookService->dispatchWooCommerce($shop->shop_id, $topic, $payload);
 
         return response('', 200);
     }
 
     protected function isFirstDelivery(string $shopId, string $topic, array $payload): bool
     {
-        return $this->inbox->recordFirstDelivery(
+        return $this->webhookService->recordFirstDelivery(
             'woocommerce',
             $shopId,
             ProcessWooCommerceWebhook::idempotencyKey($shopId, $topic, $payload),
@@ -115,26 +110,6 @@ class WooCommerceWebhookController extends Controller
 
     protected function quarantine(string $topic, string $source, string $rawBody, string $reason, ?array $payload = null): void
     {
-        $eventKey = 'woocommerce:anomaly:' . md5($source . '|' . $topic . '|' . $rawBody);
-
-        $row = $this->inbox->recordFirstDelivery(
-            'woocommerce',
-            null,
-            $eventKey,
-            $topic,
-            $payload ?? ['_source' => $source, '_raw' => mb_substr($rawBody, 0, 5000)],
-        );
-
-        if ($row === null) {
-            return; 
-        }
-
-        $row->markFailed($reason);
-
-        \Modules\Sales\Jobs\AdminAlertJob::dispatch(
-            'WooCommerce webhook tidak dapat diproses',
-            $reason,
-            ['source' => $source, 'topic' => $topic, 'inbox_id' => $row->id],
-        );
+        $this->webhookService->quarantine($topic, $source, $rawBody, $reason, $payload);
     }
 }

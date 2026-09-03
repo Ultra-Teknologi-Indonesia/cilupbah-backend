@@ -7,13 +7,17 @@ use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Finance\Http\Resources\AccountLookupResource;
-use Modules\Finance\Repositories\AccountRepository;
+use Modules\Finance\Services\AccountService;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Journal', description: 'Jurnal umum & Chart of Accounts')]
 class AccountLookupController extends Controller
 {
     use ApiResponse;
+
+    public function __construct(
+        private readonly AccountService $accountService,
+    ) {}
 
     #[OA\Get(
         path: '/api/v1/accounts/lookup/all',
@@ -25,12 +29,12 @@ class AccountLookupController extends Controller
             new OA\Response(response: 401, description: 'Unauthenticated'),
         ]
     )]
-    public function all(Request $request, AccountRepository $accounts): JsonResponse
+    public function all(Request $request): JsonResponse
     {
 
         $type = $request->query('type');
 
-        $data = AccountLookupResource::collection($accounts->getActiveLookup($type));
+        $data = AccountLookupResource::collection($this->accountService->activeLookup($type));
 
         return $this->successResponse($data, 'Daftar akun berhasil diambil.');
     }

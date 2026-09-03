@@ -6,14 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
 use Maatwebsite\Excel\Facades\Excel;
-use Modules\Inventory\Models\ImpexActivity;
-use Modules\Inventory\Services\ImpexActivityService;
 use Modules\Sales\Exports\SalesOrderImportErrorReportExport;
 use Modules\Sales\Exports\SalesOrderImportTemplateExport;
 use Modules\Sales\Http\Resources\SalesOrderImportBatchResource;
 use Modules\Sales\Http\Resources\SalesOrderImportErrorResource;
-use Modules\Sales\Jobs\ProcessSalesOrderImportJob;
-use Modules\Sales\Repositories\SalesOrderImportBatchRepository;
 use Modules\Sales\Services\SalesOrderImportBatchService;
 
 class SalesOrderImportController extends Controller
@@ -22,8 +18,6 @@ class SalesOrderImportController extends Controller
 
     public function __construct(
         private SalesOrderImportBatchService $batchService,
-        private SalesOrderImportBatchRepository $batchRepository,
-        private ImpexActivityService $activityService,
     ) {}
 
     public function import(Request $request)
@@ -37,16 +31,7 @@ class SalesOrderImportController extends Controller
             $request->user()?->id,
         );
 
-        $this->activityService->record(
-            ImpexActivity::DIRECTION_IMPORT,
-            'Import Pesanan',
-            $request->user()?->id,
-            null,
-            'sales_order_import_batch',
-            $batch->id,
-        );
-
-        ProcessSalesOrderImportJob::dispatch($batch->id);
+        $this->batchService->queueImport($batch, $request->user()?->id);
 
         return $this->successResponse(
             new SalesOrderImportBatchResource($batch),
@@ -57,7 +42,7 @@ class SalesOrderImportController extends Controller
 
     public function batches(Request $request)
     {
-        $paginator = $this->batchRepository->paginate(
+        $paginator = $this->batchService->paginate(
             $request->query('state'),
             (int) $request->query('per_page', 25),
         );
@@ -77,7 +62,7 @@ class SalesOrderImportController extends Controller
 
     public function show(string $batch)
     {
-        $model = $this->batchRepository->find($batch);
+        $model = $this->batchService->findBatch($batch);
         if (! $model) {
             return $this->errorResponse('Batch tidak ditemukan', 404);
         }
@@ -90,12 +75,12 @@ class SalesOrderImportController extends Controller
 
     public function errors(Request $request, string $batch)
     {
-        $model = $this->batchRepository->find($batch);
+        $model = $this->batchService->findBatch($batch);
         if (! $model) {
             return $this->errorResponse('Batch tidak ditemukan', 404);
         }
 
-        $paginator = $this->batchRepository->paginateErrors(
+        $paginator = $this->batchService->paginateErrors(
             $model,
             (int) $request->query('per_page', 50),
         );
@@ -115,7 +100,7 @@ class SalesOrderImportController extends Controller
 
     public function downloadErrors(string $batch)
     {
-        $model = $this->batchRepository->find($batch);
+        $model = $this->batchService->findBatch($batch);
         if (! $model) {
             return $this->errorResponse('Batch tidak ditemukan', 404);
         }

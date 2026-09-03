@@ -99,50 +99,11 @@ class SalesReturnController extends Controller
     )]
     public function filterOptions(): JsonResponse
     {
-        $reasons = \Illuminate\Support\Facades\DB::table('sales_returns')
-            ->where('source', 'marketplace')
-            ->where(function ($query): void {
-                $query->whereNotNull('channel_reason_code')
-                    ->orWhereNotNull('channel_reason_text')
-                    ->orWhereNotNull('reason');
-            })
-            ->get(['channel_reason_code', 'channel_reason_text', 'reason'])
-            ->map(function ($row): ?array {
-                $value = trim((string) ($row->channel_reason_code ?: $row->channel_reason_text ?: $row->reason ?: ''));
-                $label = trim((string) ($row->channel_reason_text ?: $row->reason ?: $row->channel_reason_code ?: ''));
-
-                if ($value === '' || $label === '') {
-                    return null;
-                }
-
-                return ['value' => $value, 'label' => $label];
-            })
-            ->filter()
-            ->unique('value')
-            ->sortBy('label', SORT_NATURAL | SORT_FLAG_CASE)
-            ->values();
-
-        $shops = \Illuminate\Support\Facades\DB::table('channel_shops as shops')
-            ->join('channels', 'channels.id', '=', 'shops.channel_id')
-            ->whereExists(function ($query): void {
-                $query->selectRaw('1')
-                    ->from('sales_returns')
-                    ->where('sales_returns.source', 'marketplace')
-                    ->whereColumn('sales_returns.channel_shop_id', 'shops.shop_id');
-            })
-            ->get([
-                'shops.shop_id as value',
-                'shops.shop_name as label',
-                'channels.code as channel',
-                'channels.name as channel_name',
-            ])
-            ->unique(fn ($shop): string => $shop->channel . '|' . $shop->value)
-            ->sortBy(fn ($shop): string => strtolower($shop->channel_name . ' ' . $shop->label))
-            ->values();
+        $options = $this->returnService->filterOptions();
 
         return $this->successResponse([
-            'reasons' => $reasons,
-            'shops' => $shops,
+            'reasons' => $options['reasons'],
+            'shops' => $options['shops'],
         ], 'Opsi filter sales return berhasil diambil');
     }
 

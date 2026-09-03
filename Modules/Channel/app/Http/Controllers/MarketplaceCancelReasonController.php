@@ -15,6 +15,7 @@ class MarketplaceCancelReasonController extends Controller
 {
     public function __construct(
         private readonly MarketplaceCancelReasonService $service,
+        private readonly LazadaOrderService $lazadaOrderService,
     ) {}
 
     #[OA\Get(
@@ -66,7 +67,7 @@ class MarketplaceCancelReasonController extends Controller
             }
 
             try {
-                $raw = app(LazadaOrderService::class)->getCancelReasons($shopId);
+                $raw = $this->lazadaOrderService->getCancelReasons($shopId);
                 $reasons = $this->service->normalize($raw);
 
                 return $this->successResponse(

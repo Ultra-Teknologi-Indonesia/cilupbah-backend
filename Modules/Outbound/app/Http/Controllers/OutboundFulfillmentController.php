@@ -8,10 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Modules\Outbound\Http\Requests\ExportProcessOrdersRequest;
-use Modules\Outbound\Jobs\RunProcessOrdersCsvExportJob;
-use Modules\Outbound\Models\BulkRtsBatch;
 use Modules\Outbound\Services\OutboundFulfillmentService;
-use Modules\Report\Models\ExportJob;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Outbound - Fulfillment', description: 'API Endpoints for Outbound Fulfillment Queue Views')]
@@ -84,18 +81,10 @@ class OutboundFulfillmentController extends Controller
     )]
     public function exportProcessOrders(ExportProcessOrdersRequest $request): JsonResponse
     {
-        $job = ExportJob::create([
-            'user_id' => $request->user()->id,
-            'type' => 'outbound-orders-csv',
-            'params' => [
-                'scope' => 'active-process-step',
-                'stage' => $request->validated('stage'),
-                'sub' => $request->validated('sub'),
-            ],
-            'status' => ExportJob::STATUS_QUEUED,
-        ]);
-
-        RunProcessOrdersCsvExportJob::dispatch($job->id);
+        $job = $this->fulfillmentService->queueProcessOrdersExport(
+            $request->user(),
+            $request->validated(),
+        );
 
         return $this->successResponse(
             ['export_id' => $job->id, 'status' => $job->status],
@@ -419,7 +408,7 @@ class OutboundFulfillmentController extends Controller
 
     public function getRtsBatch(string $batchId): JsonResponse
     {
-        $batch = BulkRtsBatch::with(['items'])->find($batchId);
+        $batch = $this->fulfillmentService->findBulkRtsBatch($batchId);
 
         if (! $batch) {
             return $this->errorResponse('Batch Siap Dikirim tidak ditemukan.', 404);

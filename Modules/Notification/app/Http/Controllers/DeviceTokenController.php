@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Modules\Notification\Http\Requests\StoreDeviceTokenRequest;
 use Modules\Notification\Http\Resources\DeviceTokenResource;
-use Modules\Notification\Repositories\NotificationRepository;
+use Modules\Notification\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use OpenApi\Attributes as OA;
@@ -17,7 +17,7 @@ class DeviceTokenController extends Controller
     use ApiResponse;
 
     public function __construct(
-        protected NotificationRepository $notifications
+        protected NotificationService $notificationService
     ) {}
     #[OA\Post(
         path: '/api/v1/device-tokens',
@@ -42,7 +42,7 @@ class DeviceTokenController extends Controller
     )]
     public function store(StoreDeviceTokenRequest $request): JsonResponse
     {
-        $token = $this->notifications->updateOrCreateToken(
+        $token = $this->notificationService->registerDeviceToken(
             $request->user()->id,
             $request->fcm_token,
             $request->device_id,
@@ -73,7 +73,7 @@ class DeviceTokenController extends Controller
     )]
     public function destroy(Request $request): JsonResponse
     {
-        $this->notifications->deleteTokenForUser($request->user()->id, $request->fcm_token);
+        $this->notificationService->removeDeviceToken($request->user()->id, $request->fcm_token);
 
         return $this->successResponse(null, 'Token removed');
     }

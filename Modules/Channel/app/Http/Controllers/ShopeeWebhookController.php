@@ -8,7 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Helpers\ShopeeSignature;
 use Modules\Channel\Jobs\ProcessShopeeWebhook;
-use Modules\Channel\Repositories\ChannelWebhookInboxRepository;
+use Modules\Channel\Services\ChannelWebhookService;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Shopee', description: 'Integrasi OAuth Shopee')]
@@ -17,7 +17,7 @@ class ShopeeWebhookController extends Controller
     use ApiResponse;
 
     public function __construct(
-        protected ChannelWebhookInboxRepository $inbox,
+        protected ChannelWebhookService $webhookService,
     ) {}
 
     public function verify()
@@ -86,7 +86,7 @@ class ShopeeWebhookController extends Controller
                 return response('', 200);
             }
 
-            ProcessShopeeWebhook::dispatch($payload);
+            $this->webhookService->dispatchShopee($payload);
             $result = 'dispatched_200';
 
             return response('', 200);
@@ -173,7 +173,7 @@ class ShopeeWebhookController extends Controller
 
     protected function isFirstDelivery(array $payload): bool
     {
-        return $this->inbox->recordFirstDelivery(
+        return $this->webhookService->recordFirstDelivery(
             'shopee',
             isset($payload['shop_id']) ? (string) $payload['shop_id'] : null,
             ProcessShopeeWebhook::idempotencyKey($payload),

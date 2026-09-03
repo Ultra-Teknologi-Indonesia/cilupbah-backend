@@ -18,8 +18,6 @@ use Modules\Warehouse\Http\Requests\StoreLocationBinRequest;
 use Modules\Warehouse\Http\Requests\UniformApplyLocationBinRequest;
 use Modules\Warehouse\Http\Resources\BinQrItemResource;
 use Modules\Warehouse\Http\Resources\LocationBinResource;
-use Modules\Warehouse\Repositories\LocationBinRepository;
-use Modules\Warehouse\Repositories\LocationRepository;
 use Modules\Warehouse\Services\BinImportTemplateService;
 use Modules\Warehouse\Services\BinLayoutImporter;
 use Modules\Warehouse\Services\BinQrPrintService;
@@ -51,8 +49,6 @@ class LocationBinController extends Controller
 {
     public function __construct(
         protected LocationBinService $binService,
-        protected LocationRepository $locationRepository,
-        protected LocationBinRepository $locationBinRepository,
         protected BinLayoutImporter $binLayoutImporter,
         protected BinQrPrintService $qrPrintService,
         protected BinImportTemplateService $templateService,
@@ -253,10 +249,10 @@ class LocationBinController extends Controller
 
     public function importTemplate(string $locationId): StreamedResponse
     {
-        $location = $this->locationRepository->find($locationId);
+        $location = $this->binService->getLocation($locationId);
         abort_if(! $location, 404, 'Lokasi tidak ditemukan.');
 
-        $examples = $this->locationBinRepository->sampleFinalCodes($locationId, 3);
+        $examples = $this->binService->sampleFinalCodes($locationId, 3);
 
         $spreadsheet = $this->templateService->build($location->location_name ?? '', $examples);
 
@@ -471,7 +467,7 @@ class LocationBinController extends Controller
     )]
     public function printQr(PrintQrLocationBinRequest $request, string $locationId)
     {
-        $location = $this->locationRepository->find($locationId);
+        $location = $this->binService->getLocation($locationId);
         if (! $location) {
             return $this->errorResponse('Lokasi tidak ditemukan.', 404);
         }

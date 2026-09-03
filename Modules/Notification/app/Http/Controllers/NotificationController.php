@@ -5,7 +5,7 @@ namespace Modules\Notification\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Modules\Notification\Http\Resources\NotificationResource;
-use Modules\Notification\Repositories\NotificationRepository;
+use Modules\Notification\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use OpenApi\Attributes as OA;
@@ -33,7 +33,7 @@ class NotificationController extends Controller
     use ApiResponse;
 
     public function __construct(
-        protected NotificationRepository $notifications
+        protected NotificationService $notificationService
     ) {}
 
     #[OA\Get(
@@ -60,7 +60,7 @@ class NotificationController extends Controller
     )]
     public function index(Request $request): JsonResponse
     {
-        $paginator = $this->notifications->paginatedForUser($request->user()->id, $request);
+        $paginator = $this->notificationService->paginateForUser($request->user()->id, $request);
 
         return $this->successPaginatedResponse($paginator);
     }
@@ -84,7 +84,7 @@ class NotificationController extends Controller
     )]
     public function unreadCount(Request $request): JsonResponse
     {
-        $count = $this->notifications->countUnreadForUser($request->user()->id);
+        $count = $this->notificationService->unreadCount($request->user()->id);
 
         return $this->successResponse(['count' => $count]);
     }
@@ -108,7 +108,7 @@ class NotificationController extends Controller
     )]
     public function show(Request $request, string $id): JsonResponse
     {
-        $notification = $this->notifications->findForUser($request->user()->id, $id);
+        $notification = $this->notificationService->findForUser($request->user()->id, $id);
 
         return $this->successResponse(new NotificationResource($notification));
     }
@@ -128,9 +128,7 @@ class NotificationController extends Controller
     )]
     public function markAsRead(Request $request, string $id): JsonResponse
     {
-        $notification = $this->notifications->findForUser($request->user()->id, $id);
-
-        $notification->markAsRead();
+        $notification = $this->notificationService->markAsRead($request->user()->id, $id);
 
         return $this->successResponse(new NotificationResource($notification));
     }
@@ -146,7 +144,7 @@ class NotificationController extends Controller
     )]
     public function markAllAsRead(Request $request): JsonResponse
     {
-        $this->notifications->markAllReadForUser($request->user()->id);
+        $this->notificationService->markAllAsRead($request->user()->id);
 
         return $this->successResponse(null, 'All notifications marked as read');
     }
@@ -166,9 +164,7 @@ class NotificationController extends Controller
     )]
     public function destroy(Request $request, string $id): JsonResponse
     {
-        $notification = $this->notifications->findForUser($request->user()->id, $id);
-
-        $notification->delete();
+        $this->notificationService->deleteForUser($request->user()->id, $id);
 
         return $this->successResponse(null, 'Notification deleted');
     }

@@ -9,7 +9,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Product\Http\Requests\CreateProductRequest;
 use Modules\Product\Http\Requests\ItemIdsRequest;
 use Modules\Product\Http\Requests\StoreBundleRequest;
@@ -21,10 +20,6 @@ use Modules\Product\Http\Resources\ProductResource;
 use Modules\Product\Http\Resources\ProductStockResource;
 use Modules\Product\Http\Resources\ProductVariantRowResource;
 use Modules\Product\Models\Product;
-use Modules\Product\Models\ProductChannelMapping;
-use Modules\Product\Models\ProductSyncLog;
-use Modules\Product\Models\ProductVariantChannelMapping;
-use Modules\Product\Repositories\ProductRepository;
 use Modules\Product\Services\ProductLifecycleService;
 use Modules\Product\Services\ProductService;
 use OpenApi\Attributes as OA;
@@ -63,16 +58,12 @@ class ProductController extends Controller
 
     protected ProductLifecycleService $lifecycleService;
 
-    protected ProductRepository $productRepository;
-
     public function __construct(
         ProductService $productService,
-        ProductLifecycleService $lifecycleService,
-        ProductRepository $productRepository
+        ProductLifecycleService $lifecycleService
     ) {
         $this->productService = $productService;
         $this->lifecycleService = $lifecycleService;
-        $this->productRepository = $productRepository;
     }
 
     #[OA\Get(
@@ -110,7 +101,7 @@ class ProductController extends Controller
             ]);
         }
 
-        $products = $this->productRepository->paginateIndex($status);
+        $products = $this->productService->paginateIndex($status);
 
         return $this->successPaginatedResponse(ProductResource::collection($products), 'Get products success');
     }
@@ -142,7 +133,7 @@ class ProductController extends Controller
             return $this->errorResponse('Toko tidak ditemukan atau tidak aktif', 422);
         }
 
-        $products = $this->productRepository->paginateUploadable($channelShopId);
+        $products = $this->productService->paginateUploadable($channelShopId);
 
         return $this->successPaginatedResponse(ProductResource::collection($products), 'Get uploadable products success');
     }
@@ -515,7 +506,7 @@ class ProductController extends Controller
         }
 
         return $this->successPaginatedResponse(
-            ProductVariantRowResource::collection($this->productRepository->paginateVariants($product->id)),
+            ProductVariantRowResource::collection($this->productService->paginateVariants($product->id)),
             'Daftar varian berhasil diambil.'
         );
     }
@@ -570,7 +561,7 @@ class ProductController extends Controller
         }
 
         return $this->successPaginatedResponse(
-            ProductChannelListingResource::collection($this->productRepository->paginateListedVariants($product->id)),
+            ProductChannelListingResource::collection($this->productService->paginateListedVariants($product->id)),
             'Daftar listing channel berhasil diambil.'
         );
     }
@@ -596,7 +587,7 @@ class ProductController extends Controller
         }
 
         return $this->successPaginatedResponse(
-            ProductPriceBookResource::collection($this->productRepository->paginatePriceBook($product->id)),
+            ProductPriceBookResource::collection($this->productService->paginatePriceBook($product->id)),
             'Buku harga berhasil diambil.'
         );
     }
@@ -622,27 +613,13 @@ class ProductController extends Controller
             return $this->errorResponse('Produk tidak ditemukan', 404);
         }
 
-        $mapping = ProductChannelMapping::where('id', $mappingId)
-            ->where('product_id', $product->id)
-            ->first();
-
-        if (! $mapping) {
-            return $this->errorResponse('Tautan channel tidak ditemukan.', 404);
+        try {
+            $this->productService->unlinkChannelMapping($product->id, $mappingId);
+        } catch (\RuntimeException $e) {
+            return $this->errorResponse($e->getMessage(), $e->getCode() ?: 409);
+        } catch (DomainException $e) {
+            return $this->errorResponse($e->getMessage(), 404);
         }
-
-        if ($mapping->sync_status === 'syncing') {
-            return $this->errorResponse('Tidak dapat menghapus tautan saat proses sinkronisasi sedang berjalan.', 409);
-        }
-
-        $shopId = $mapping->channel_shop_id;
-        $mapping->delete();
-
-        ProductSyncLog::record([
-            'product_id' => $product->id,
-            'channel_shop_id' => $shopId,
-            'action' => ProductSyncLog::ACTION_UNLINK,
-            'status' => ProductSyncLog::STATUS_SUCCESS,
-        ]);
 
         return $this->successResponse(['success' => true], 'Tautan channel berhasil dihapus.');
     }
@@ -667,22 +644,10 @@ class ProductController extends Controller
             return $this->errorResponse('Produk tidak ditemukan', 404);
         }
 
-        $variantMapping = ProductVariantChannelMapping::where('id', $variantMappingId)
-            ->whereHas('variant', function ($q) use ($product) {
-                $q->where('product_id', $product->id);
-            })
-            ->first();
-
-        if (! $variantMapping) {
-            return $this->errorResponse('Tautan varian channel tidak ditemukan.', 404);
-        }
-
-        $parentMappingId = $variantMapping->product_channel_mapping_id;
-        $variantMapping->delete();
-
-        $remaining = ProductVariantChannelMapping::where('product_channel_mapping_id', $parentMappingId)->count();
-        if ($remaining === 0) {
-            ProductChannelMapping::where('id', $parentMappingId)->delete();
+        try {
+            $this->productService->unlinkVariantChannelMapping($product->id, $variantMappingId);
+        } catch (DomainException $e) {
+            return $this->errorResponse($e->getMessage(), 404);
         }
 
         return $this->successResponse(['success' => true], 'Tautan varian channel berhasil dihapus.');
@@ -725,27 +690,9 @@ class ProductController extends Controller
 
         $variantMappingIds = $request->input('variant_mapping_ids');
 
-        $variantMappings = ProductVariantChannelMapping::whereIn('id', $variantMappingIds)
-            ->whereHas('variant', function ($q) use ($product) {
-                $q->where('product_id', $product->id);
-            })
-            ->get();
+        $deleted = $this->productService->bulkUnlinkChannelMappings($product->id, $variantMappingIds);
 
-        $parentMappingIds = collect();
-
-        foreach ($variantMappings as $variantMapping) {
-            $parentMappingIds->push($variantMapping->product_channel_mapping_id);
-            $variantMapping->delete();
-        }
-
-        foreach ($parentMappingIds->unique() as $parentMappingId) {
-            $remaining = ProductVariantChannelMapping::where('product_channel_mapping_id', $parentMappingId)->count();
-            if ($remaining === 0) {
-                ProductChannelMapping::where('id', $parentMappingId)->delete();
-            }
-        }
-
-        return $this->successResponse(['success' => true, 'deleted' => $variantMappings->count()], 'Tautan masal berhasil dihapus.');
+        return $this->successResponse(['success' => true, 'deleted' => $deleted], 'Tautan masal berhasil dihapus.');
     }
 
     #[OA\Post(
@@ -768,34 +715,17 @@ class ProductController extends Controller
             return $this->errorResponse('Produk tidak ditemukan', 404);
         }
 
-        $mapping = ProductChannelMapping::where('id', $mappingId)
-            ->where('product_id', $product->id)
-            ->first();
-
-        if (! $mapping) {
-            return $this->errorResponse('Tautan channel tidak ditemukan.', 404);
+        try {
+            $this->productService->resyncChannelMapping($product->id, $mappingId);
+        } catch (DomainException $e) {
+            return $this->errorResponse($e->getMessage(), 404);
         }
-
-        $mapping->markAsSyncing();
-        SyncProductToChannelJob::dispatch($product->id, $mapping->channel_shop_id, 'sync_price_stock');
-
-        ProductSyncLog::record([
-            'product_id' => $product->id,
-            'channel_shop_id' => $mapping->channel_shop_id,
-            'action' => ProductSyncLog::ACTION_SYNC_STOCK,
-            'status' => ProductSyncLog::STATUS_PENDING,
-        ]);
 
         return $this->successResponse(['success' => true], 'Sinkronisasi channel berhasil dijadwalkan.');
     }
 
     private function findProduct($id, array $with = []): ?Product
     {
-        $normalizedId = str_replace('-', '', (string) $id);
-        if (strlen($normalizedId) !== 32 || ! ctype_xdigit($normalizedId)) {
-            return null;
-        }
-
-        return $this->productRepository->findWithRelations($id, $with);
+        return $this->productService->findProduct((string) $id, $with);
     }
 }

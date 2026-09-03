@@ -86,6 +86,11 @@ class SalesReturnService
         return $this->returnRepository->getAllPaginated($limit);
     }
 
+    public function filterOptions(): array
+    {
+        return $this->returnRepository->filterOptions();
+    }
+
     public function getReportPaginated(array $filters, int $limit = 10)
     {
         return $this->returnRepository->getReportPaginated($filters, $limit);

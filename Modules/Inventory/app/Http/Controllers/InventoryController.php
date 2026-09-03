@@ -8,7 +8,6 @@ use Illuminate\Http\Request;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Services\MonitorStockService;
 use Modules\Inventory\Services\PurchaseCostService;
-use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Http\Requests\AllStocksByIdsRequest;
 use Modules\Inventory\Http\Requests\MovementsRequest;
 use Modules\Inventory\Http\Requests\SplitItemRequest;
@@ -40,7 +39,6 @@ class InventoryController extends Controller
 {
     public function __construct(
         protected InventoryService $inventoryService,
-        protected InventoryRepository $inventoryRepository,
         protected MonitorStockService $monitorStockService,
         protected PurchaseCostService $purchaseCostService,
     ) {}
@@ -247,7 +245,7 @@ class InventoryController extends Controller
     {
         $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
 
-        $items = $this->inventoryRepository->getItemsToStock($limit);
+        $items = $this->inventoryService->getItemsToStock($limit);
 
         return $this->successPaginatedResponse($items, 'Daftar item to-stock berhasil diambil.');
     }
@@ -257,7 +255,7 @@ class InventoryController extends Controller
 
         $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 200);
 
-        $items = $this->inventoryRepository->getItemsOnStock($limit);
+        $items = $this->inventoryService->getItemsOnStock($limit);
 
         return $this->successPaginatedResponse($items, 'Daftar item on-stock berhasil diambil.');
     }
@@ -278,7 +276,7 @@ class InventoryController extends Controller
     {
         $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
 
-        $stocks = $this->inventoryRepository->getStockProducts($limit);
+        $stocks = $this->inventoryService->getStockProducts($limit);
 
         return $this->successPaginatedResponse($stocks, 'Daftar stok produk berhasil diambil.');
     }
@@ -361,7 +359,7 @@ class InventoryController extends Controller
     {
         $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
 
-        $items = $this->inventoryRepository->getPurchaseOrderItems($limit);
+        $items = $this->inventoryService->getPurchaseOrderItems($limit);
 
         return $this->successPaginatedResponse($items, 'Daftar item PO berhasil diambil.');
     }
@@ -383,7 +381,7 @@ class InventoryController extends Controller
     )]
     public function toAdjust(ToAdjustRequest $request): JsonResponse
     {
-        $stocks = $this->inventoryRepository->getStockByItemIds($request->validated()['item_ids']);
+        $stocks = $this->inventoryService->getStockByItemIds($request->validated()['item_ids']);
 
         return $this->successResponse($stocks, 'Data stok untuk penyesuaian berhasil diambil.');
     }
@@ -403,7 +401,7 @@ class InventoryController extends Controller
     public function outOfStockInOrder(Request $request): JsonResponse
     {
         $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
-        $items = $this->inventoryRepository->getOutOfStockInOrder($limit);
+        $items = $this->inventoryService->getOutOfStockInOrder($limit);
 
         return $this->successPaginatedResponse($items, 'Daftar produk habis stok dalam order berhasil diambil.');
     }
@@ -422,7 +420,7 @@ class InventoryController extends Controller
     )]
     public function batchNumbers(string $id): JsonResponse
     {
-        $batches = $this->inventoryRepository->getBatchNumbers($id);
+        $batches = $this->inventoryService->getBatchNumbers($id);
 
         return $this->successResponse($batches, 'Daftar batch number berhasil diambil.');
     }
@@ -443,7 +441,7 @@ class InventoryController extends Controller
     public function toSell(Request $request, string $locationId): JsonResponse
     {
         $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
-        $items = $this->inventoryRepository->getAvailableToSell($locationId, $limit);
+        $items = $this->inventoryService->getAvailableToSell($locationId, $limit);
 
         return $this->successPaginatedResponse($items, 'Daftar item yang bisa dijual berhasil diambil.');
     }
@@ -464,7 +462,7 @@ class InventoryController extends Controller
     {
         $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
 
-        $items = $this->inventoryRepository->getSalesReturnItems($limit);
+        $items = $this->inventoryService->getSalesReturnItems($limit);
 
         return $this->successPaginatedResponse($items, 'Daftar item retur penjualan berhasil diambil.');
     }
@@ -551,7 +549,7 @@ class InventoryController extends Controller
     )]
     public function itemsByBill(string $docId): JsonResponse
     {
-        $items = $this->inventoryRepository->getItemsByBill($docId);
+        $items = $this->inventoryService->getItemsByBill($docId);
 
         return $this->successResponse($items, 'Daftar item purchase bill berhasil diambil.');
     }
@@ -570,7 +568,7 @@ class InventoryController extends Controller
     )]
     public function itemsByInvoice(string $invoiceId): JsonResponse
     {
-        $items = $this->inventoryRepository->getItemsByInvoice($invoiceId);
+        $items = $this->inventoryService->getItemsByInvoice($invoiceId);
 
         return $this->successResponse($items, 'Daftar item sales invoice berhasil diambil.');
     }
@@ -588,7 +586,7 @@ class InventoryController extends Controller
     )]
     public function allStocksByIds(AllStocksByIdsRequest $request): JsonResponse
     {
-        $stocks = $this->inventoryRepository->getAggregatedStocksByIds($request->validated()['ids']);
+        $stocks = $this->inventoryService->getAggregatedStocksByIds($request->validated()['ids']);
 
         return $this->successResponse($stocks, 'Stok produk berhasil diambil.');
     }

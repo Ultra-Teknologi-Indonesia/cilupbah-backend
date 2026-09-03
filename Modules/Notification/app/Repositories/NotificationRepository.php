@@ -54,6 +54,18 @@ class NotificationRepository
             ]);
     }
 
+    public function markAsRead(Notification $notification): Notification
+    {
+        $notification->markAsRead();
+
+        return $notification;
+    }
+
+    public function deleteNotification(Notification $notification): void
+    {
+        $notification->delete();
+    }
+
     public function taskCounts(): array
     {
 

@@ -4,6 +4,7 @@ namespace Modules\Sales\Services;
 
 use App\Models\User;
 use App\Support\WarehouseAccess;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -17,6 +18,7 @@ use Modules\Sales\Exceptions\ShippingLabelPreparingException;
 use Modules\Sales\Jobs\PrepareLazadaShippingLabelJob;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelItemJob;
+use Modules\Sales\Jobs\ProcessBulkShippingLabelJob;
 use Modules\Sales\Jobs\RequestChannelAwbJob;
 use Modules\Sales\Models\BulkShippingLabelBatch;
 use Modules\Sales\Models\BulkShippingLabelItem;
@@ -133,6 +135,67 @@ class BulkShippingLabelService
         }
 
         return $batch;
+    }
+
+    public function queueBatch(BulkShippingLabelBatch $batch): void
+    {
+        ProcessBulkShippingLabelJob::dispatch($batch->id);
+    }
+
+    public function downloadablePath(BulkShippingLabelBatch $batch, User $user): string
+    {
+        if ((string) $batch->user_id !== (string) $user->id) {
+            throw new AuthorizationException('Batch label bukan milik pengguna ini.');
+        }
+
+        if ($batch->status !== BulkShippingLabelBatch::STATUS_READY || empty($batch->merged_pdf_path)) {
+            throw new \Symfony\Component\HttpKernel\Exception\NotFoundHttpException('File label belum siap.');
+        }
+
+        $disk = Storage::disk('documents');
+        if (! $disk->exists($batch->merged_pdf_path)) {
+            throw new \Symfony\Component\HttpKernel\Exception\NotFoundHttpException('File label tidak ditemukan.');
+        }
+
+        $batch->items()
+            ->where('status', BulkShippingLabelItem::STATUS_DONE)
+            ->with('order')
+            ->get()
+            ->each(function (BulkShippingLabelItem $item) use ($user): void {
+                if ($item->order) {
+                    $this->salesOrderService->logLabelPrinted($item->order, $user, $item->order->shipping_label_doc_type);
+                }
+            });
+
+        return $batch->merged_pdf_path;
+    }
+
+    public function retryFailed(User $user, BulkShippingLabelBatch $batch): BulkShippingLabelBatch
+    {
+        if ((string) $batch->user_id !== (string) $user->id) {
+            throw new AuthorizationException('Batch label bukan milik pengguna ini.');
+        }
+
+        $recoverableOrderIds = $batch->items()
+            ->where('status', BulkShippingLabelItem::STATUS_FAILED)
+            ->where(function ($query): void {
+                $query->whereIn('reason', BulkShippingLabelItem::RECOVERABLE_REASONS)
+                    ->orWhere(function ($query): void {
+                        $query->where('channel', 'shopee')
+                            ->where('reason', BulkShippingLabelItem::REASON_SELF_DESIGN);
+                    });
+            })
+            ->pluck('order_id')
+            ->all();
+
+        if ($recoverableOrderIds === []) {
+            throw new \InvalidArgumentException('Tidak ada label gagal yang bisa dicoba ulang.');
+        }
+
+        $newBatch = $this->createBatch($user, $recoverableOrderIds, $batch->per_channel_opts ?? []);
+        $this->queueBatch($newBatch);
+
+        return $newBatch;
     }
 
     private function initialItemStatus(?SalesOrder $order, string $channel): array

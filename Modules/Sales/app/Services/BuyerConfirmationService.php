@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Modules\Notification\Services\NotificationDispatcher;
 use Modules\Sales\Models\OrderBuyerConfirmation;
 use Modules\Sales\Repositories\OrderDirectCompletionRepository;
+use Modules\Sales\Repositories\BuyerConfirmationRepository;
 
 class BuyerConfirmationService
 {
@@ -15,9 +16,20 @@ class BuyerConfirmationService
 
     public function __construct(
         protected OrderDirectCompletionRepository $repository,
+        protected BuyerConfirmationRepository $confirmationRepository,
         protected SalesOrderService $orderService,
         protected NotificationDispatcher $notifications,
     ) {}
+
+    public function paginate(string $state)
+    {
+        return $this->confirmationRepository->paginate($state);
+    }
+
+    public function forOrder(string $orderId)
+    {
+        return $this->confirmationRepository->forOrder($orderId);
+    }
 
     public function decide(string $confirmationId, string $outcome, ?string $replacementSku, ?string $note): OrderBuyerConfirmation
     {

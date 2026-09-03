@@ -27,6 +27,48 @@ class SalesReturnRepository
         'order.salesorder_no',
     ];
 
+    public function filterOptions(): array
+    {
+        $reasons = SalesReturn::query()
+            ->where('source', SalesReturn::SOURCE_MARKETPLACE)
+            ->where(function ($query): void {
+                $query->whereNotNull('channel_reason_code')
+                    ->orWhereNotNull('channel_reason_text')
+                    ->orWhereNotNull('reason');
+            })
+            ->get(['channel_reason_code', 'channel_reason_text', 'reason'])
+            ->map(function (SalesReturn $row): ?array {
+                $value = trim((string) ($row->channel_reason_code ?: $row->channel_reason_text ?: $row->reason ?: ''));
+                $label = trim((string) ($row->channel_reason_text ?: $row->reason ?: $row->channel_reason_code ?: ''));
+
+                return $value !== '' && $label !== '' ? ['value' => $value, 'label' => $label] : null;
+            })
+            ->filter()
+            ->unique('value')
+            ->sortBy('label', SORT_NATURAL | SORT_FLAG_CASE)
+            ->values();
+
+        $shops = DB::table('channel_shops as shops')
+            ->join('channels', 'channels.id', '=', 'shops.channel_id')
+            ->whereExists(function ($query): void {
+                $query->selectRaw('1')
+                    ->from('sales_returns')
+                    ->where('sales_returns.source', SalesReturn::SOURCE_MARKETPLACE)
+                    ->whereColumn('sales_returns.channel_shop_id', 'shops.shop_id');
+            })
+            ->get([
+                'shops.shop_id as value',
+                'shops.shop_name as label',
+                'channels.code as channel',
+                'channels.name as channel_name',
+            ])
+            ->unique(fn ($shop): string => $shop->channel . '|' . $shop->value)
+            ->sortBy(fn ($shop): string => strtolower($shop->channel_name . ' ' . $shop->label))
+            ->values();
+
+        return ['reasons' => $reasons, 'shops' => $shops];
+    }
+
     private function withOrderJoin(QueryBuilder $query): QueryBuilder
     {
         WarehouseAccess::apply($query, 'sales_returns.location_id');

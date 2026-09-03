@@ -188,6 +188,11 @@ class PicklistService
         return $this->picklistRepository->getItemsPaginated($picklistId, $limit);
     }
 
+    public function getAccessibleHeader(string $id): ?Picklist
+    {
+        return $this->picklistRepository->findAccessibleHeader($id);
+    }
+
     public function create(array $data): Picklist
     {
         WarehouseAccess::assert($data['location_id'] ?? null);

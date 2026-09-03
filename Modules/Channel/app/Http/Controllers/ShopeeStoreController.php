@@ -5,7 +5,7 @@ namespace Modules\Channel\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Modules\Channel\Http\Resources\ChannelShopResource;
-use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Channel\Services\ChannelService;
 use Modules\Channel\Services\ShopeeAuthService;
 use OpenApi\Attributes as OA;
 
@@ -16,7 +16,7 @@ class ShopeeStoreController extends Controller
 
     public function __construct(
         protected ShopeeAuthService $authService,
-        protected ChannelShopRepository $shopRepository,
+        protected ChannelService $channelService,
     ) {}
 
     #[OA\Get(
@@ -30,7 +30,7 @@ class ShopeeStoreController extends Controller
     {
         try {
             return $this->successPaginatedResponse(
-                ChannelShopResource::collection($this->shopRepository->getPaginatedShops('shopee')),
+                ChannelShopResource::collection($this->channelService->getPaginatedStores('shopee')),
                 'Daftar toko Shopee berhasil diambil'
             );
         } catch (\Exception $e) {

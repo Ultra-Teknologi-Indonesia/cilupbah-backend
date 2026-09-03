@@ -9,7 +9,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Modules\Outbound\Http\Resources\PicklistResource;
-use Modules\Outbound\Repositories\PicklistRepository;
 use Modules\Outbound\Services\PicklistService;
 use Modules\Outbound\Http\Requests\CreatePicklistRequest;
 use Modules\Outbound\Http\Requests\PickItemRequest;
@@ -54,7 +53,6 @@ class PicklistController extends Controller
     public function __construct(
         protected PicklistService $picklistService,
         protected ReportService $reportService,
-        protected PicklistRepository $picklistRepository,
         protected QrCodeGenerator $qrCodeGenerator,
         protected PdfRenderer $pdfRenderer,
         protected ExportManager $exportManager,
@@ -218,7 +216,7 @@ class PicklistController extends Controller
     )]
     public function pdf(string $id, PicklistPdfRequest $request): JsonResponse
     {
-        $picklist = $this->picklistRepository->findAccessibleHeader($id);
+        $picklist = $this->picklistService->getAccessibleHeader($id);
         if (! $picklist) {
             return $this->errorResponse('Picklist tidak ditemukan.', 404);
         }
@@ -249,7 +247,7 @@ class PicklistController extends Controller
     )]
     public function excel(string $id, PicklistPdfRequest $request): JsonResponse
     {
-        $picklist = $this->picklistRepository->findAccessibleHeader($id);
+        $picklist = $this->picklistService->getAccessibleHeader($id);
         if (! $picklist) {
             return $this->errorResponse('Picklist tidak ditemukan.', 404);
         }

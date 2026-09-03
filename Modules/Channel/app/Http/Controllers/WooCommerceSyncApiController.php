@@ -5,8 +5,7 @@ namespace Modules\Channel\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
-use Modules\Channel\Jobs\SyncProductToChannelJob;
-use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Channel\Services\ChannelService;
 use Modules\Channel\Services\WooCommerceOrderService;
 use OpenApi\Attributes as OA;
 
@@ -17,7 +16,7 @@ class WooCommerceSyncApiController extends Controller
 
     public function __construct(
         protected WooCommerceOrderService $orderService,
-        protected ChannelShopRepository $shopRepository,
+        protected ChannelService $channelService,
     ) {}
 
     public function pullOrders(Request $request)
@@ -45,23 +44,18 @@ class WooCommerceSyncApiController extends Controller
     {
         $updatedAfter = $request->integer('updated_after') ?: null;
 
-        $shops = $this->shopRepository->getShopsByChannelCode('woocommerce')
-            ->where('is_active', true);
+        $summary = $this->channelService->syncOrdersForAllStores(
+            'woocommerce',
+            fn (string $shopId): int => $this->orderService->pullOrders($shopId, $updatedAfter),
+        );
+        $errors = collect($summary['stores'])
+            ->filter(fn (array $store): bool => $store['status'] !== 'success')
+            ->map(fn (array $store): array => [
+                'shop_id' => $store['shop_id'],
+                'error' => $store['error'],
+            ])->values()->all();
 
-        $total = 0;
-        $errors = [];
-
-        foreach ($shops as $shop) {
-            try {
-                $total += $this->orderService->pullOrders($shop->shop_id, $updatedAfter);
-                $this->shopRepository->markOrderSyncOk($shop->id);
-            } catch (\Throwable $e) {
-                $this->shopRepository->markOrderSyncProblem($shop->id, $e->getMessage());
-                $errors[] = ['shop_id' => $shop->shop_id, 'error' => $e->getMessage()];
-            }
-        }
-
-        return $this->successResponse(['pulled' => $total, 'errors' => $errors], "{$total} pesanan WooCommerce ditarik");
+        return $this->successResponse(['pulled' => $summary['total'], 'errors' => $errors], "{$summary['total']} pesanan WooCommerce ditarik");
     }
 
     public function shipOrder(Request $request)
@@ -125,7 +119,7 @@ class WooCommerceSyncApiController extends Controller
             'channel_shop_id' => ['required', 'string'],
         ]);
 
-        SyncProductToChannelJob::dispatch($validated['product_id'], $validated['channel_shop_id'], 'push');
+        $this->channelService->queueProductPush($validated['product_id'], $validated['channel_shop_id']);
 
         return $this->successResponse(null, 'Produk WooCommerce sedang didorong');
     }

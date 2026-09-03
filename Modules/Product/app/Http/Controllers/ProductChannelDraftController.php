@@ -11,8 +11,6 @@ use Modules\Product\Http\Requests\StoreCatalogListingRequest;
 use Modules\Product\Http\Requests\StoreChannelDraftRequest;
 use Modules\Product\Http\Resources\ProductChannelDraftResource;
 use Modules\Product\Models\ProductChannelDraft;
-use Modules\Product\Repositories\ProductChannelDraftRepository;
-use Modules\Product\Repositories\ProductRepository;
 use Modules\Product\Services\ProductChannelDraftService;
 use OpenApi\Attributes as OA;
 use App\Traits\ApiResponse;
@@ -23,8 +21,6 @@ class ProductChannelDraftController extends Controller
 
     public function __construct(
         protected ProductChannelDraftService $draftService,
-        protected ProductChannelDraftRepository $draftRepository,
-        protected ProductRepository $productRepository,
     ) {}
 
     #[OA\Get(
@@ -39,7 +35,7 @@ class ProductChannelDraftController extends Controller
     )]
     public function list(Request $request): JsonResponse
     {
-        $paginator = $this->draftRepository->paginate();
+        $paginator = $this->draftService->paginate();
 
         $paginator->setCollection(
             $paginator->getCollection()->map(
@@ -89,11 +85,11 @@ class ProductChannelDraftController extends Controller
     )]
     public function index($id): JsonResponse
     {
-        if (!$this->productExists($id)) {
+        if (! $this->draftService->productExists((string) $id)) {
             return $this->errorResponse('Produk tidak ditemukan', 404);
         }
 
-        $drafts = $this->draftRepository->forProduct($id);
+        $drafts = $this->draftService->draftsForProduct($id);
 
         return $this->successResponse(
             ProductChannelDraftResource::collection($drafts),
@@ -114,7 +110,7 @@ class ProductChannelDraftController extends Controller
     )]
     public function store(StoreChannelDraftRequest $request, $id): JsonResponse
     {
-        if (!$this->productExists($id)) {
+        if (! $this->draftService->productExists((string) $id)) {
             return $this->errorResponse('Produk tidak ditemukan', 404);
         }
 
@@ -135,7 +131,7 @@ class ProductChannelDraftController extends Controller
         }
 
         return $this->successResponse(
-            new ProductChannelDraftResource($draft->load('channelShop')),
+            new ProductChannelDraftResource($draft),
             'Draft berhasil disimpan',
             201
         );
@@ -153,7 +149,7 @@ class ProductChannelDraftController extends Controller
     )]
     public function update(Request $request, $id, $draftId): JsonResponse
     {
-        $draft = $this->resolveDraft($id, $draftId);
+        $draft = $this->draftService->findDraftForProduct((string) $id, (string) $draftId);
         if (!$draft) {
             return $this->errorResponse('Draft tidak ditemukan', 404);
         }
@@ -183,7 +179,7 @@ class ProductChannelDraftController extends Controller
     )]
     public function destroy($id, $draftId): JsonResponse
     {
-        $draft = $this->resolveDraft($id, $draftId);
+        $draft = $this->draftService->findDraftForProduct((string) $id, (string) $draftId);
         if (!$draft) {
             return $this->errorResponse('Draft tidak ditemukan', 404);
         }
@@ -214,7 +210,7 @@ class ProductChannelDraftController extends Controller
         }
 
         return $this->successResponse(
-            new ProductChannelDraftResource($draft->load('channelShop')),
+            new ProductChannelDraftResource($draft),
             'Listing produk berhasil disimpan',
             201
         );
@@ -222,7 +218,7 @@ class ProductChannelDraftController extends Controller
 
     public function requiredAttributes(Request $request, $id): JsonResponse
     {
-        if (! $this->isUuid($id)) {
+        if (! $this->draftService->productExists((string) $id)) {
             return $this->errorResponse('Produk tidak ditemukan', 404);
         }
 
@@ -247,28 +243,4 @@ class ProductChannelDraftController extends Controller
             : $this->successResponse($result['data']);
     }
 
-    private function productExists($id): bool
-    {
-        if (!$this->isUuid($id)) {
-            return false;
-        }
-
-        return $this->productRepository->findWithRelations($id) !== null;
-    }
-
-    private function resolveDraft($productId, $draftId): ?ProductChannelDraft
-    {
-        if (!$this->isUuid($productId) || !$this->isUuid($draftId)) {
-            return null;
-        }
-
-        return $this->draftRepository->findForProduct($productId, $draftId);
-    }
-
-    private function isUuid($value): bool
-    {
-        $normalized = str_replace('-', '', (string) $value);
-
-        return strlen($normalized) === 32 && ctype_xdigit($normalized);
-    }
 }

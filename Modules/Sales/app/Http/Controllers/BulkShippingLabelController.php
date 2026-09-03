@@ -8,11 +8,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
-use Modules\Sales\Jobs\ProcessBulkShippingLabelJob;
 use Modules\Sales\Models\BulkShippingLabelBatch;
 use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Services\BulkShippingLabelService;
-use Modules\Sales\Services\SalesOrderService;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class BulkShippingLabelController extends Controller
@@ -48,7 +46,7 @@ class BulkShippingLabelController extends Controller
             $perChannelOpts,
         );
 
-        ProcessBulkShippingLabelJob::dispatch($batch->id);
+        $this->svc->queueBatch($batch);
 
         return $this->successResponse(['batch_id' => $batch->id], null, 202);
     }
@@ -173,27 +171,11 @@ class BulkShippingLabelController extends Controller
     public function downloadPdf(Request $req, BulkShippingLabelBatch $batch): StreamedResponse
     {
         abort_unless($batch->user_id === $req->user()->id, 403);
-        abort_unless(
-            $batch->status === BulkShippingLabelBatch::STATUS_READY && $batch->merged_pdf_path,
-            404,
-        );
-
+        $path = $this->svc->downloadablePath($batch, $req->user());
         $disk = Storage::disk('documents');
-        abort_unless($disk->exists($batch->merged_pdf_path), 404);
-
-        $orderService = app(SalesOrderService::class);
-        $batch->items()
-            ->where('status', BulkShippingLabelItem::STATUS_DONE)
-            ->with('order')
-            ->get()
-            ->each(function ($item) use ($orderService, $req) {
-                if ($item->order) {
-                    $orderService->logLabelPrinted($item->order, $req->user(), $item->order->shipping_label_doc_type);
-                }
-            });
 
         return $disk->response(
-            $batch->merged_pdf_path,
+            $path,
             "labels-{$batch->id}.pdf",
             ['Content-Type' => 'application/pdf'],
         );
@@ -203,33 +185,15 @@ class BulkShippingLabelController extends Controller
     {
         abort_unless($batch->user_id === $req->user()->id, 403);
 
-        $recoverableOrderIds = $batch->items()
-            ->where('status', 'failed')
-            ->where(function ($query) {
-                $query->whereIn('reason', BulkShippingLabelItem::RECOVERABLE_REASONS)
-                    ->orWhere(function ($query) {
-                        $query->where('channel', 'shopee')
-                            ->where('reason', BulkShippingLabelItem::REASON_SELF_DESIGN);
-                    });
-            })
-            ->pluck('order_id')
-            ->all();
-
-        if (empty($recoverableOrderIds)) {
-            return $this->errorResponse('Tidak ada label gagal yang bisa dicoba ulang.', 422);
+        try {
+            $newBatch = $this->svc->retryFailed($req->user(), $batch);
+        } catch (\InvalidArgumentException $e) {
+            return $this->errorResponse($e->getMessage(), 422);
         }
-
-        $newBatch = $this->svc->createBatch(
-            $req->user(),
-            $recoverableOrderIds,
-            $batch->per_channel_opts ?? [],
-        );
-
-        ProcessBulkShippingLabelJob::dispatch($newBatch->id);
 
         return $this->successResponse([
             'batch_id' => $newBatch->id,
-            'retried_count' => count($recoverableOrderIds),
+            'retried_count' => $newBatch->total_count,
         ], null, 202);
     }
 }

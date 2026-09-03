@@ -3,15 +3,26 @@
 namespace Modules\Product\Services;
 
 use Illuminate\Http\UploadedFile;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Modules\Inventory\Models\ImpexActivity;
+use Modules\Inventory\Services\ImpexActivityService;
+use Modules\Product\Jobs\ConfirmProductImportJob;
+use Modules\Product\Jobs\PreviewProductImportJob;
 use Modules\Product\Models\ProductImportBatch;
 use Modules\Product\Models\ProductImportError;
+use Modules\Product\Repositories\ProductImportBatchRepository;
 
 class ImportBatchService
 {
     public const DISK = 's3';
     public const DIR = 'imports/products';
+
+    public function __construct(
+        private readonly ProductImportBatchRepository $repository,
+        private readonly ImpexActivityService $activityService,
+    ) {}
 
     public static function disk(): string
     {
@@ -38,6 +49,51 @@ class ImportBatchService
             'stored_path' => $path,
             'state' => ProductImportBatch::STATE_QUEUED,
         ]);
+    }
+
+    public function queuePreview(ProductImportBatch $batch): void
+    {
+        PreviewProductImportJob::dispatch($batch->id);
+    }
+
+    public function confirmBatch(ProductImportBatch $batch, ?string $userId): bool
+    {
+        if ($batch->state !== ProductImportBatch::STATE_PREVIEWED || ! $this->startConfirm($batch)) {
+            return false;
+        }
+
+        $this->activityService->record(
+            ImpexActivity::DIRECTION_IMPORT,
+            $batch->type === ProductImportBatch::TYPE_BUNDLE ? 'Import Produk Bundle' : 'Import Produk',
+            $userId,
+            null,
+            'product_import_batch',
+            $batch->id,
+        );
+
+        ConfirmProductImportJob::dispatch($batch->id);
+
+        return true;
+    }
+
+    public function paginateBatches(): LengthAwarePaginator
+    {
+        return $this->repository->paginateBatches();
+    }
+
+    public function findBatch(string $batch): ?ProductImportBatch
+    {
+        return $this->repository->find($batch);
+    }
+
+    public function paginateRows(ProductImportBatch $batch): LengthAwarePaginator
+    {
+        return $this->repository->paginateRows($batch);
+    }
+
+    public function paginateErrors(ProductImportBatch $batch): LengthAwarePaginator
+    {
+        return $this->repository->paginateErrors($batch);
     }
 
     public function markPreviewing(ProductImportBatch $batch): void

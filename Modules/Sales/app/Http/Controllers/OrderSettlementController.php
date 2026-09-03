@@ -7,14 +7,14 @@ use Illuminate\Http\JsonResponse;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Sales\Exports\SettlementReportExport;
 use Modules\Sales\Http\Resources\SalesOrderResource;
-use Modules\Sales\Repositories\OrderSettlementRepository;
+use Modules\Sales\Services\OrderSettlementService;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Order Settlements', description: 'Settlement marketplace per-pesanan (read-only)')]
 class OrderSettlementController extends Controller
 {
     public function __construct(
-        protected OrderSettlementRepository $repository,
+        protected OrderSettlementService $settlementService,
     ) {}
 
     #[OA\Get(
@@ -37,7 +37,7 @@ class OrderSettlementController extends Controller
     )]
     public function index(): JsonResponse
     {
-        $orders = $this->repository->getPaginated();
+        $orders = $this->settlementService->paginate();
 
         $orders->getCollection()->transform(fn ($order) => new SalesOrderResource($order));
 
@@ -54,7 +54,7 @@ class OrderSettlementController extends Controller
     public function summary(): JsonResponse
     {
         return $this->successResponse(
-            $this->repository->summary(),
+            $this->settlementService->summary(),
             'Ringkasan settlement berhasil diambil',
         );
     }
@@ -68,7 +68,7 @@ class OrderSettlementController extends Controller
     )]
     public function export()
     {
-        $orders = $this->repository->query()->get();
+        $orders = $this->settlementService->allForExport();
 
         $filename = 'laporan-settlement-' . now()->format('Ymd') . '.xlsx';
 

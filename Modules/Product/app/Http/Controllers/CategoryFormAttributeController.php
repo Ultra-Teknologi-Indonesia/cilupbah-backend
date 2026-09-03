@@ -7,7 +7,6 @@ use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Product\Http\Resources\AttributeResource;
-use Modules\Product\Repositories\CategoryAttributeRepository;
 use Modules\Product\Services\CategoryFormAttributeService;
 
 class CategoryFormAttributeController extends Controller
@@ -15,7 +14,6 @@ class CategoryFormAttributeController extends Controller
     use ApiResponse;
 
     public function __construct(
-        private CategoryAttributeRepository $repository,
         private CategoryFormAttributeService $service,
     ) {}
 
@@ -23,23 +21,23 @@ class CategoryFormAttributeController extends Controller
     {
         $categoryId = (int) $categoryId;
 
-        if (! $this->repository->exists($categoryId)) {
+        if (! $this->service->categoryExists($categoryId)) {
             return $this->errorResponse('Kategori tidak ditemukan', 404);
         }
 
-        if (! $this->repository->isLeaf($categoryId)) {
+        if (! $this->service->categoryIsLeaf($categoryId)) {
             return $this->errorResponse('Pilih kategori paling spesifik (kategori tanpa sub-kategori).', 422);
         }
 
         return $this->successResponse(
-            $this->repository->formAttributes($categoryId),
+            $this->service->formAttributes($categoryId),
             'Atribut form kategori berhasil diambil.'
         );
     }
 
     public function store(Request $request, int $categoryId): JsonResponse
     {
-        if (! $this->repository->exists($categoryId)) {
+        if (! $this->service->categoryExists($categoryId)) {
             return $this->errorResponse('Kategori tidak ditemukan', 404);
         }
 
@@ -55,7 +53,7 @@ class CategoryFormAttributeController extends Controller
 
     public function destroy(int $categoryId, int $attributeId): JsonResponse
     {
-        if (! $this->repository->exists($categoryId)) {
+        if (! $this->service->categoryExists($categoryId)) {
             return $this->errorResponse('Kategori tidak ditemukan', 404);
         }
 

@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryTransfer;
+use Modules\Inventory\Models\ImpexActivity;
+use Modules\Inventory\Services\ImpexActivityService;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Modules\Warehouse\Models\Location;
@@ -26,7 +28,54 @@ class TransferOutImportService
 
     public function __construct(
         protected InventoryService $inventoryService,
+        protected ImpexActivityService $activityService,
     ) {}
+
+    public function confirmWithActivity(string $token, string $createdBy, ?string $userId = null): array
+    {
+        $activity = $this->activityService->record(
+            ImpexActivity::DIRECTION_IMPORT,
+            'Import Transfer Keluar',
+            $userId,
+        );
+
+        try {
+            $result = $this->confirm($token, $createdBy);
+
+            if ($result['failed'] > 0) {
+                $this->activityService->addDetails($activity, array_map(
+                    static function (string $error): array {
+                        $ref = trim(Str::before($error, ':'));
+                        $description = trim(Str::after($error, ':')) ?: $error;
+
+                        return [
+                            'reference_id' => $ref ?: 'Error',
+                            'description' => $description,
+                        ];
+                    },
+                    $result['errors'],
+                ));
+
+                if ($result['created'] === 0) {
+                    $this->activityService->markFailed($activity, implode('; ', $result['errors']));
+                } else {
+                    $this->activityService->markSuccess($activity);
+                    $this->activityService->setMessage(
+                        $activity,
+                        "{$result['created']} transfer dibuat, {$result['failed']} gagal.",
+                    );
+                }
+            } else {
+                $this->activityService->markSuccess($activity);
+            }
+
+            return $result;
+        } catch (\Throwable $e) {
+            $this->activityService->markFailed($activity, $e->getMessage());
+
+            throw $e;
+        }
+    }
 
     public function preview(UploadedFile $file): array
     {

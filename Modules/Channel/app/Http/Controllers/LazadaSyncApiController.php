@@ -5,8 +5,7 @@ namespace Modules\Channel\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
-use Modules\Channel\Jobs\ProcessLazadaFulfillmentJob;
-use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Channel\Services\ChannelService;
 use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Services\LazadaProductService;
 use OpenApi\Attributes as OA;
@@ -18,7 +17,7 @@ class LazadaSyncApiController extends Controller
 
     public function __construct(
         protected LazadaOrderService $orderService,
-        protected ChannelShopRepository $shopRepository,
+        protected ChannelService $channelService,
     ) {}
 
     public function pushProduct(Request $request, LazadaProductService $productService)
@@ -157,33 +156,12 @@ class LazadaSyncApiController extends Controller
     )]
     public function pullOrdersAll()
     {
-        $shops = $this->shopRepository->getShopsByChannelCode('lazada')
-            ->filter(fn ($shop) => $shop->is_active && $shop->access_token);
-
-        $totalCount = 0;
-        $results = [];
-
-        foreach ($shops as $shop) {
-            try {
-                $count = $this->orderService->pullOrders($shop->shop_id);
-                $totalCount += $count;
-                $this->shopRepository->markOrderSyncOk($shop->id);
-                $results[] = [
-                    'shop_id' => $shop->shop_id,
-                    'shop_name' => $shop->shop_name,
-                    'status' => 'success',
-                    'pulled_count' => $count,
-                ];
-            } catch (\Exception $e) {
-                $this->shopRepository->markOrderSyncProblem($shop->id, $e->getMessage());
-                $results[] = [
-                    'shop_id' => $shop->shop_id,
-                    'shop_name' => $shop->shop_name,
-                    'status' => 'failed',
-                    'error' => $e->getMessage(),
-                ];
-            }
-        }
+        $summary = $this->channelService->syncOrdersForAllStores(
+            'lazada',
+            fn (string $shopId): int => $this->orderService->pullOrders($shopId),
+        );
+        $totalCount = $summary['total'];
+        $results = $summary['stores'];
 
         return $this->successResponse(
             ['total_pulled' => $totalCount, 'shops' => $results],
@@ -273,14 +251,7 @@ class LazadaSyncApiController extends Controller
             'package_id' => 'nullable|string',
         ]);
 
-        ProcessLazadaFulfillmentJob::dispatch(
-            $validated['shop_id'],
-            $validated['order_id'],
-            $validated['shipping_provider_id'],
-            $validated['delivery_type'] ?? 'dropship',
-            $validated['tracking_number'] ?? null,
-            $validated['package_id'] ?? null,
-        )->afterCommit();
+        $this->orderService->queueFulfillment($validated);
 
         return $this->successResponse(['order_id' => $validated['order_id']], 'Fulfillment order dijadwalkan diproses.');
     }

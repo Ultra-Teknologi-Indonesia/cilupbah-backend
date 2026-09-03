@@ -4,6 +4,7 @@ namespace Modules\Sales\Repositories;
 
 use App\Support\WarehouseAccess;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -573,8 +574,7 @@ class SalesOrderRepository
     public function bulkDeleteCancelled(array $ids): int
     {
         $query = SalesOrder::whereIn('id', $ids)
-            ->where('is_canceled', true)
-            ;
+            ->where('is_canceled', true);
         WarehouseAccess::apply($query, 'location_id');
 
         return $query->delete();
@@ -601,11 +601,26 @@ class SalesOrderRepository
                 'items.channelMapping:id,product_id,external_product_id',
                 'items.channelMapping.product:id',
                 'items.channelMapping.product.media:id,product_id,url,is_primary',
-            ])
-            ;
+            ]);
         WarehouseAccess::apply($query, 'sales_orders.location_id');
 
         return $query->find($id);
+    }
+
+    public function findAccessibleById(int|string $id): ?SalesOrder
+    {
+        $query = SalesOrder::whereKey($id);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->first();
+    }
+
+    public function findAccessibleByIds(array $ids)
+    {
+        $query = SalesOrder::whereIn('id', $ids);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->get();
     }
 
     public function findOrFail(string $id): SalesOrder
@@ -630,6 +645,16 @@ class SalesOrderRepository
         WarehouseAccess::apply($query, 'location_id');
 
         return $query->first();
+    }
+
+    public function getForBulkInvoice(array $ids)
+    {
+        $query = SalesOrder::with(['items.product.product', 'invoices', 'channelShop'])
+            ->whereIn('id', $ids)
+            ->orderBy('created_at');
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->get();
     }
 
     public function findForBreakdown(string $id): ?SalesOrder

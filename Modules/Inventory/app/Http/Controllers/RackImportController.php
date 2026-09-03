@@ -3,19 +3,13 @@
 namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Support\WarehouseAccess;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Inventory\Exports\RackImportErrorExport;
 use Modules\Inventory\Http\Resources\RackImportBatchResource;
 use Modules\Inventory\Http\Resources\RackImportRowResource;
-use Modules\Inventory\Jobs\ConfirmRackImportJob;
-use Modules\Inventory\Jobs\PreviewRackImportJob;
-use Modules\Inventory\Models\ImpexActivity;
 use Modules\Inventory\Models\RackImportBatch;
-use Modules\Inventory\Repositories\RackImportBatchRepository;
-use Modules\Inventory\Services\ImpexActivityService;
 use Modules\Inventory\Services\RackImport\RackImportBatchService;
 
 class RackImportController extends Controller
@@ -24,8 +18,6 @@ class RackImportController extends Controller
 
     public function __construct(
         private RackImportBatchService $batchService,
-        private RackImportBatchRepository $repository,
-        private ImpexActivityService $activityService,
     ) {}
 
     public function upload(Request $request)
@@ -39,7 +31,7 @@ class RackImportController extends Controller
             $request->user()?->id,
         );
 
-        PreviewRackImportJob::dispatch($batch->id);
+        $this->batchService->queuePreview($batch);
 
         return $this->successResponse(
             new RackImportBatchResource($batch),
@@ -50,7 +42,7 @@ class RackImportController extends Controller
 
     public function batches()
     {
-        $paginator = $this->repository->paginateBatches();
+        $paginator = $this->batchService->paginateBatches();
         $paginator->through(fn (RackImportBatch $b) => new RackImportBatchResource($b));
 
         return $this->successPaginatedResponse($paginator, 'Daftar batch import alokasi rak');
@@ -58,7 +50,7 @@ class RackImportController extends Controller
 
     public function show(string $batch)
     {
-        $model = $this->repository->find($batch);
+        $model = $this->batchService->findBatch($batch);
         if (! $model) {
             return $this->errorResponse('Batch tidak ditemukan', 404);
         }
@@ -68,12 +60,12 @@ class RackImportController extends Controller
 
     public function rows(string $batch)
     {
-        $model = $this->repository->find($batch);
+        $model = $this->batchService->findBatch($batch);
         if (! $model) {
             return $this->errorResponse('Batch tidak ditemukan', 404);
         }
 
-        $paginator = $this->repository->paginateRows($model);
+        $paginator = $this->batchService->paginateRows($model);
         $paginator->through(fn ($row) => new RackImportRowResource($row));
 
         return $this->successPaginatedResponse($paginator, 'Daftar baris import');
@@ -81,47 +73,14 @@ class RackImportController extends Controller
 
     public function confirm(Request $request, string $batch)
     {
-        $model = $this->repository->find($batch);
+        $model = $this->batchService->findBatch($batch);
         if (! $model) {
             return $this->errorResponse('Batch tidak ditemukan', 404);
         }
 
-        $allowedLocationIds = WarehouseAccess::allowedIds();
-        if ($allowedLocationIds !== null && $model->rows()
-            ->whereNotNull('location_id')
-            ->whereNotIn('location_id', $allowedLocationIds)
-            ->exists()) {
-            return $this->errorResponse(
-                'Batch berisi lokasi yang berada di luar kewenangan Anda.',
-                403,
-                null,
-                'Aksi tidak dapat diproses',
-            );
-        }
-
-        if ($model->state !== RackImportBatch::STATE_PREVIEWED) {
-            return $this->errorResponse(
-                'Batch belum siap diterapkan.',
-                422,
-                ['detail' => "Status saat ini: {$model->state}."],
-                'Aksi tidak dapat diproses',
-            );
-        }
-
-        if (! $this->batchService->startConfirm($model)) {
+        if (! $this->batchService->confirmBatch($model, $request->user()?->id)) {
             return $this->errorResponse('Batch sedang atau sudah diproses.', 422, null, 'Aksi tidak dapat diproses');
         }
-
-        $this->activityService->record(
-            ImpexActivity::DIRECTION_IMPORT,
-            'Import Alokasi Rak',
-            $request->user()?->id,
-            null,
-            'rack_import_batch',
-            $model->id,
-        );
-
-        ConfirmRackImportJob::dispatch($model->id);
 
         return $this->successResponse(
             new RackImportBatchResource($model->fresh()),
@@ -132,7 +91,7 @@ class RackImportController extends Controller
 
     public function downloadErrors(string $batch)
     {
-        $model = $this->repository->find($batch);
+        $model = $this->batchService->findBatch($batch);
         if (! $model) {
             return $this->errorResponse('Batch tidak ditemukan', 404);
         }

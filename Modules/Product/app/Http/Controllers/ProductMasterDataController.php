@@ -6,9 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Modules\Finance\Http\Resources\AccountLookupResource;
-use Modules\Finance\Repositories\AccountRepository;
+use Modules\Finance\Services\AccountService;
 use Modules\Tax\Http\Resources\TaxLookupResource;
-use Modules\Tax\Repositories\TaxRepository;
+use Modules\Tax\Services\TaxService;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Products')]
@@ -17,14 +17,14 @@ class ProductMasterDataController extends Controller
     use ApiResponse;
 
     public function __construct(
-        private readonly AccountRepository $accounts,
-        private readonly TaxRepository $taxes,
+        private readonly AccountService $accountService,
+        private readonly TaxService $taxService,
     ) {}
 
     private function taxList(): JsonResponse
     {
         return $this->successResponse(
-            TaxLookupResource::collection($this->taxes->getActiveLookup())->resolve(),
+            TaxLookupResource::collection($this->taxService->activeLookup())->resolve(),
             'Daftar pajak berhasil diambil'
         );
     }
@@ -32,7 +32,7 @@ class ProductMasterDataController extends Controller
     private function accountList(string $type): JsonResponse
     {
         return $this->successResponse(
-            AccountLookupResource::collection($this->accounts->getActiveLookup($type))->resolve(),
+            AccountLookupResource::collection($this->accountService->activeLookup($type))->resolve(),
             'Daftar akun berhasil diambil'
         );
     }

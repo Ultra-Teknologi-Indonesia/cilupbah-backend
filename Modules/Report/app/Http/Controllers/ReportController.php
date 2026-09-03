@@ -68,6 +68,15 @@ class ReportController extends Controller
     public function __construct(
         protected ReportService $reportService,
         protected PdfRenderer $pdfRenderer,
+        protected OrderPerformanceReportService $orderPerformanceReportService,
+        protected PutawayPerformanceReportService $putawayPerformanceReportService,
+        protected PutawayListReportService $putawayListReportService,
+        protected ShipmentByCourierReportService $shipmentByCourierReportService,
+        protected SalesListReportService $salesListReportService,
+        protected SalesProductReportService $salesProductReportService,
+        protected SalesReturnReportService $salesReturnReportService,
+        protected RincianPendapatanReportService $rincianPendapatanReportService,
+        protected CustomerListReportService $customerListReportService,
     ) {}
 
     private function reportResponse(array $payload, ?string $message = null): JsonResponse
@@ -792,7 +801,7 @@ class ReportController extends Controller
     {
         $validated = $request->validated();
 
-        $report = app(OrderPerformanceReportService::class)->sectioned(
+        $report = $this->orderPerformanceReportService->sectioned(
             $validated['jenis'],
             $validated['mode'] === 'detail',
             $validated,
@@ -820,7 +829,7 @@ class ReportController extends Controller
     {
         $validated = $request->validated();
 
-        $report = app(PutawayPerformanceReportService::class)
+        $report = $this->putawayPerformanceReportService
             ->sectioned($validated['mode'] === 'detail', $validated);
 
         $filename = sprintf(
@@ -844,7 +853,7 @@ class ReportController extends Controller
     {
         $validated = $request->validated();
 
-        $report = app(PutawayListReportService::class)->sectioned(
+        $report = $this->putawayListReportService->sectioned(
             $validated['date'],
             $validated['location_id'],
             $validated['putaway_ids'] ?? [],
@@ -866,7 +875,7 @@ class ReportController extends Controller
     {
         $validated = $request->validated();
 
-        $report = app(ShipmentByCourierReportService::class)
+        $report = $this->shipmentByCourierReportService
             ->sectioned($validated['mode'] === 'detail', $validated);
 
         $filename = sprintf(
@@ -919,7 +928,7 @@ class ReportController extends Controller
     {
         $validated = $request->validated();
 
-        $query = app(SalesListReportService::class)->query($validated);
+        $query = $this->salesListReportService->query($validated);
 
         $filename = sprintf(
             'Daftar-Penjualan_%s_%s.xlsx',
@@ -946,7 +955,7 @@ class ReportController extends Controller
     {
         $validated = $request->validated();
 
-        $result = app(SalesProductReportService::class)
+        $result = $this->salesProductReportService
             ->skuOptions($validated['search'] ?? null, $validated['per_page'] ?? 20);
 
         return $this->successResponse($result['data'], 'Opsi SKU berhasil diambil.', 200, $result['meta']);
@@ -969,7 +978,7 @@ class ReportController extends Controller
     {
         $validated = $request->validated();
 
-        $query = app(SalesProductReportService::class)->query($validated);
+        $query = $this->salesProductReportService->query($validated);
 
         $filename = sprintf(
             'Daftar-Penjualan-Produk_%s_%s.xlsx',
@@ -996,7 +1005,7 @@ class ReportController extends Controller
     {
         $validated = $request->validated();
 
-        $query = app(SalesReturnReportService::class)->query($validated);
+        $query = $this->salesReturnReportService->query($validated);
 
         $filename = sprintf(
             'Daftar-Retur-Penjualan_%s_%s.xlsx',
@@ -1025,7 +1034,7 @@ class ReportController extends Controller
         $validated = $request->validated();
 
         $mode = $validated['jenis'] ?? RincianPendapatanReportService::MODE_RINCIAN;
-        $query = app(RincianPendapatanReportService::class)->query($mode, $validated);
+        $query = $this->rincianPendapatanReportService->query($mode, $validated);
 
         $export = $mode === RincianPendapatanReportService::MODE_PER_BARANG
             ? new RincianPendapatanPerBarangExport($query)
@@ -1056,7 +1065,7 @@ class ReportController extends Controller
     {
         $validated = $request->validated();
 
-        $query = app(CustomerListReportService::class)->query($validated);
+        $query = $this->customerListReportService->query($validated);
 
         $filename = sprintf(
             'Daftar-Pelanggan_%s_%s.xlsx',

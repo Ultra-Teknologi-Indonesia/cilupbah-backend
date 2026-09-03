@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Exceptions\ChannelCancelException;
 use Modules\Channel\Exceptions\ChannelLabelUnsupportedException;
 use Modules\Channel\Exceptions\TokenExpiredException;
+use Modules\Channel\Jobs\ProcessLazadaFulfillmentJob;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Sales\Jobs\RespondBuyerCancellationJob;
 use Modules\Sales\Services\SalesOrderService;
@@ -20,6 +21,18 @@ class LazadaOrderService
         protected ChannelShopRepository $shopRepository,
         protected LazadaAuthService $authService,
     ) {}
+
+    public function queueFulfillment(array $data): void
+    {
+        ProcessLazadaFulfillmentJob::dispatch(
+            (string) $data['shop_id'],
+            (string) $data['order_id'],
+            (string) $data['shipping_provider_id'],
+            (string) ($data['delivery_type'] ?? 'dropship'),
+            $data['tracking_number'] ?? null,
+            $data['package_id'] ?? null,
+        )->afterCommit();
+    }
 
     public function pullOrders(string $shopId, ?string $updatedAfter = null, ?string $updatedBefore = null): int
     {

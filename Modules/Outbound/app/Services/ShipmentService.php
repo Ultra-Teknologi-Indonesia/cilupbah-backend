@@ -15,6 +15,7 @@ use Modules\Outbound\Exceptions\OutboundValidationException;
 use Modules\Outbound\Exceptions\ScanRejectedException;
 use Modules\Outbound\Jobs\ProcessShipmentHandOverJob;
 use Modules\Outbound\Jobs\ProcessShipmentPickupJob;
+use Modules\Outbound\Jobs\RefreshInstantTrackingJob;
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\Shipment;
 use Modules\Outbound\Models\ShipmentOrder;
@@ -66,6 +67,25 @@ class ShipmentService
     public function getOrdersPaginated(string $id, int $limit = 20)
     {
         return $this->shipmentRepository->getOrdersPaginated($id, $limit);
+    }
+
+    public function getForBulkManifestPdf(array $orderIds)
+    {
+        return $this->shipmentRepository->getForBulkManifestPdf($orderIds);
+    }
+
+    public function getTrackingEvents(string $shipmentId)
+    {
+        return $this->shipmentRepository->getTrackingEvents($shipmentId);
+    }
+
+    public function refreshTracking(string $shipmentId): void
+    {
+        try {
+            RefreshInstantTrackingJob::dispatchSync($shipmentId);
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
     }
 
     public function create(array $data): Shipment

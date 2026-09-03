@@ -4,6 +4,7 @@ namespace Modules\Product\Services;
 
 use App\Support\FriendlyError;
 use DomainException;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Channel\Models\ChannelShop;
@@ -79,6 +80,30 @@ class ProductChannelDraftService
         ];
     }
 
+    public function paginate(): LengthAwarePaginator
+    {
+        return $this->draftRepository->paginate();
+    }
+
+    public function productExists(string $productId): bool
+    {
+        return $this->isUuid($productId) && $this->productRepository->findWithRelations($productId) !== null;
+    }
+
+    public function draftsForProduct(string $productId)
+    {
+        return $this->draftRepository->forProduct($productId);
+    }
+
+    public function findDraftForProduct(string $productId, string $draftId): ?ProductChannelDraft
+    {
+        if (! $this->isUuid($productId) || ! $this->isUuid($draftId)) {
+            return null;
+        }
+
+        return $this->draftRepository->findForProduct($productId, $draftId);
+    }
+
     private function resolveChannelCategoryForProduct($product, ChannelShop $shop): ?object
     {
         $draft = $this->draftRepository->latestDraftForProductShop($product->id, $shop->id);
@@ -133,7 +158,7 @@ class ProductChannelDraftService
                 'status' => $data['status'] ?? ProductChannelDraft::STATUS_DRAFT,
                 'created_by' => $userId,
             ], fn ($value) => $value !== null)
-        );
+        )->fresh('channelShop');
     }
 
     public function updateDraft(ProductChannelDraft $draft, array $data): ProductChannelDraft
@@ -146,6 +171,13 @@ class ProductChannelDraftService
     public function deleteDraft(ProductChannelDraft $draft): void
     {
         $draft->delete();
+    }
+
+    private function isUuid(string $value): bool
+    {
+        $normalized = str_replace('-', '', $value);
+
+        return strlen($normalized) === 32 && ctype_xdigit($normalized);
     }
 
     public function uploadDraft(string $draftId): ProductSyncLog

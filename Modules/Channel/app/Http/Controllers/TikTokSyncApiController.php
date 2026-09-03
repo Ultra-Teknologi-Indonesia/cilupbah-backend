@@ -4,53 +4,40 @@ namespace Modules\Channel\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Artisan;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Channel\Services\TikTokProductService;
-use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Channel\Services\ChannelService;
 use Modules\Product\Services\CategoryAttributeSyncService;
+use Modules\Product\Services\ProductChannelValidationService;
 use App\Traits\ApiResponse;
 
 class TikTokSyncApiController extends Controller
 {
     use ApiResponse;
 
-    protected ChannelShopRepository $shopRepository;
+    protected ChannelService $channelService;
 
-    public function __construct(ChannelShopRepository $shopRepository)
+    public function __construct(
+        ChannelService $channelService,
+        private readonly CategoryAttributeSyncService $categoryAttributeSyncService,
+        private readonly ProductChannelValidationService $validationService,
+    )
     {
-        $this->shopRepository = $shopRepository;
+        $this->channelService = $channelService;
     }
 
     public function pullOrdersAll(TikTokOrderService $orderService)
     {
         try {
-            $shops = $this->shopRepository->getShopsByChannelCode('tiktok')
-                ->filter(fn ($shop) => $shop->is_active && $shop->access_token);
-            $totalCount = 0;
-            $results = [];
-
-            foreach ($shops as $shop) {
-                try {
-                    $count = $orderService->pullOrders($shop->shop_id);
-                    $totalCount += $count;
-                    $this->shopRepository->markOrderSyncOk($shop->id);
-                    $results[] = [
-                        'shop_id' => $shop->shop_id,
-                        'shop_name' => $shop->shop_name,
-                        'status' => 'success',
-                        'pulled_count' => $count
-                    ];
-                } catch (\Exception $e) {
-                    $this->shopRepository->markOrderSyncProblem($shop->id, $e->getMessage());
-                    $results[] = [
-                        'shop_id' => $shop->shop_id,
-                        'shop_name' => $shop->shop_name,
-                        'status' => 'error',
-                        'message' => \Modules\Channel\Support\UploadErrorPresenter::fromMessage('tiktok', $e->getMessage())['reason']
-                    ];
-                }
-            }
+            $summary = $this->channelService->syncOrdersForAllStores(
+                'tiktok',
+                fn (string $shopId): int => $orderService->pullOrders($shopId),
+            );
+            $totalCount = $summary['total'];
+            $results = collect($summary['stores'])->map(fn (array $store): array => $store['status'] === 'success'
+                ? [...$store, 'pulled_count' => $store['pulled_count'] ?? $store['result'] ?? 0]
+                : [...$store, 'status' => 'error', 'message' => \Modules\Channel\Support\UploadErrorPresenter::fromMessage('tiktok', $store['error'] ?? '')['reason']]
+            )->all();
 
             return $this->successResponse([
                 'total_pulled' => $totalCount,
@@ -250,27 +237,13 @@ class TikTokSyncApiController extends Controller
     public function pullProductsAll(TikTokProductService $productService)
     {
         try {
-            $shops = $this->shopRepository->getShopsByChannelCode('tiktok')
-                ->filter(fn ($shop) => $shop->is_active && $shop->access_token);
-            $results = [];
-
-            foreach ($shops as $shop) {
-                try {
-                    $productService->pullProducts($shop->shop_id);
-                    $results[] = [
-                        'shop_id' => $shop->shop_id,
-                        'shop_name' => $shop->shop_name,
-                        'status' => 'success'
-                    ];
-                } catch (\Exception $e) {
-                    $results[] = [
-                        'shop_id' => $shop->shop_id,
-                        'shop_name' => $shop->shop_name,
-                        'status' => 'error',
-                        'message' => \Modules\Channel\Support\UploadErrorPresenter::fromMessage('tiktok', $e->getMessage())['reason']
-                    ];
-                }
-            }
+            $results = collect($this->channelService->runForAllActiveStores(
+                'tiktok',
+                fn (string $shopId): mixed => $productService->pullProducts($shopId),
+            ))->map(fn (array $store): array => $store['status'] === 'success'
+                ? [...$store, 'result' => null]
+                : [...$store, 'status' => 'error', 'message' => \Modules\Channel\Support\UploadErrorPresenter::fromMessage('tiktok', $store['error'] ?? '')['reason']]
+            )->all();
 
             return $this->successResponse([
                 'details' => $results
@@ -354,8 +327,8 @@ class TikTokSyncApiController extends Controller
             if (! empty($validated['category_id'])) {
                 $count = $productService->syncCategoryAttributes($validated['shop_id'], $validated['category_id']);
 
-                app(CategoryAttributeSyncService::class)->materializeAllMapped();
-                Artisan::queue('products:recompute-validation', ['--queue' => true]);
+                $this->categoryAttributeSyncService->materializeAllMapped();
+                $this->validationService->queueRecomputeForMappedProducts();
 
                 return $this->successResponse(
                     ['synced' => $count, 'category_id' => $validated['category_id']],
@@ -365,8 +338,8 @@ class TikTokSyncApiController extends Controller
 
             $results = $productService->syncAllMappedCategoryAttributes($validated['shop_id']);
 
-            app(CategoryAttributeSyncService::class)->materializeAllMapped();
-            Artisan::queue('products:recompute-validation', ['--queue' => true]);
+            $this->categoryAttributeSyncService->materializeAllMapped();
+            $this->validationService->queueRecomputeForMappedProducts();
         } catch (\Throwable $e) {
             return $this->errorResponse(
                 'Gagal sinkron atribut TikTok.',

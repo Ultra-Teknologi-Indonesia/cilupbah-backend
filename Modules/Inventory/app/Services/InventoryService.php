@@ -67,6 +67,66 @@ class InventoryService
         return $this->inventoryRepository->getByLocation($locationId);
     }
 
+    public function getItemsToStock(int $limit)
+    {
+        return $this->inventoryRepository->getItemsToStock($limit);
+    }
+
+    public function getItemsOnStock(int $limit)
+    {
+        return $this->inventoryRepository->getItemsOnStock($limit);
+    }
+
+    public function getStockProducts(int $limit)
+    {
+        return $this->inventoryRepository->getStockProducts($limit);
+    }
+
+    public function getPurchaseOrderItems(int $limit)
+    {
+        return $this->inventoryRepository->getPurchaseOrderItems($limit);
+    }
+
+    public function getStockByItemIds(array $itemIds)
+    {
+        return $this->inventoryRepository->getStockByItemIds($itemIds);
+    }
+
+    public function getOutOfStockInOrder(int $limit)
+    {
+        return $this->inventoryRepository->getOutOfStockInOrder($limit);
+    }
+
+    public function getBatchNumbers(string $itemId)
+    {
+        return $this->inventoryRepository->getBatchNumbers($itemId);
+    }
+
+    public function getAvailableToSell(string $locationId, int $limit)
+    {
+        return $this->inventoryRepository->getAvailableToSell($locationId, $limit);
+    }
+
+    public function getSalesReturnItems(int $limit)
+    {
+        return $this->inventoryRepository->getSalesReturnItems($limit);
+    }
+
+    public function getItemsByBill(string $documentId)
+    {
+        return $this->inventoryRepository->getItemsByBill($documentId);
+    }
+
+    public function getItemsByInvoice(string $invoiceId)
+    {
+        return $this->inventoryRepository->getItemsByInvoice($invoiceId);
+    }
+
+    public function getAggregatedStocksByIds(array $itemIds)
+    {
+        return $this->inventoryRepository->getAggregatedStocksByIds($itemIds);
+    }
+
     public function getStockItemDetail(string $itemId): Product|ProductVariant
     {
         return $this->inventoryRepository->findVariantWithStockDetail($itemId);

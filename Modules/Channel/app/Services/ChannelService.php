@@ -2,8 +2,10 @@
 
 namespace Modules\Channel\Services;
 
+use Closure;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Modules\Channel\Jobs\ResyncShopStockJob;
+use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Repositories\ChannelRepository;
 use Modules\Channel\Repositories\ChannelShopRepository;
@@ -30,6 +32,84 @@ class ChannelService
     public function getConnectedStores()
     {
         return $this->channelShopRepository->getPaginatedShops();
+    }
+
+    public function findConnectedStoreByUrl(string $url)
+    {
+        return $this->channelShopRepository->findConnectedByStoreUrl($url);
+    }
+
+    public function getPaginatedStores(string $channel)
+    {
+        return $this->channelShopRepository->getPaginatedShops($channel);
+    }
+
+    public function syncOrdersForAllStores(string $channel, Closure $pullOrders): array
+    {
+        $total = 0;
+        $stores = [];
+
+        foreach ($this->channelShopRepository->getShopsByChannelCode($channel) as $shop) {
+            if (! $shop->is_active || ! $shop->access_token) {
+                continue;
+            }
+
+            try {
+                $count = (int) $pullOrders($shop->shop_id);
+                $total += $count;
+                $this->channelShopRepository->markOrderSyncOk($shop->id);
+                $stores[] = [
+                    'shop_id' => $shop->shop_id,
+                    'shop_name' => $shop->shop_name,
+                    'status' => 'success',
+                    'pulled_count' => $count,
+                ];
+            } catch (\Throwable $e) {
+                $this->channelShopRepository->markOrderSyncProblem($shop->id, $e->getMessage());
+                $stores[] = [
+                    'shop_id' => $shop->shop_id,
+                    'shop_name' => $shop->shop_name,
+                    'status' => 'failed',
+                    'error' => $e->getMessage(),
+                ];
+            }
+        }
+
+        return ['total' => $total, 'stores' => $stores];
+    }
+
+    public function runForAllActiveStores(string $channel, Closure $operation): array
+    {
+        $stores = [];
+
+        foreach ($this->channelShopRepository->getShopsByChannelCode($channel) as $shop) {
+            if (! $shop->is_active || ! $shop->access_token) {
+                continue;
+            }
+
+            try {
+                $stores[] = [
+                    'shop_id' => $shop->shop_id,
+                    'shop_name' => $shop->shop_name,
+                    'status' => 'success',
+                    'result' => $operation($shop->shop_id),
+                ];
+            } catch (\Throwable $e) {
+                $stores[] = [
+                    'shop_id' => $shop->shop_id,
+                    'shop_name' => $shop->shop_name,
+                    'status' => 'failed',
+                    'error' => $e->getMessage(),
+                ];
+            }
+        }
+
+        return $stores;
+    }
+
+    public function queueProductPush(string $productId, string $channelShopId): void
+    {
+        SyncProductToChannelJob::dispatch($productId, $channelShopId, 'push');
     }
 
     public function getStockAllocationStores()

@@ -10,6 +10,21 @@ class CategoryFormAttributeService
 {
     public function __construct(private CategoryAttributeRepository $repository) {}
 
+    public function categoryExists(int $categoryId): bool
+    {
+        return $this->repository->exists($categoryId);
+    }
+
+    public function categoryIsLeaf(int $categoryId): bool
+    {
+        return $this->repository->isLeaf($categoryId);
+    }
+
+    public function formAttributes(int $categoryId): array
+    {
+        return $this->repository->formAttributes($categoryId);
+    }
+
     public function createAttribute(int $categoryId, array $data): Attribute
     {
         return DB::transaction(function () use ($categoryId, $data) {

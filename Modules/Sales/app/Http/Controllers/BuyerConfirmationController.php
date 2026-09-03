@@ -7,7 +7,6 @@ use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
 use Modules\Sales\Http\Requests\DecideBuyerConfirmationRequest;
 use Modules\Sales\Http\Resources\OrderBuyerConfirmationResource;
-use Modules\Sales\Repositories\BuyerConfirmationRepository;
 use Modules\Sales\Services\BuyerConfirmationService;
 use OpenApi\Attributes as OA;
 
@@ -17,7 +16,6 @@ class BuyerConfirmationController extends Controller
 
     public function __construct(
         protected BuyerConfirmationService $service,
-        protected BuyerConfirmationRepository $repository,
     ) {}
 
     #[OA\Get(
@@ -32,7 +30,7 @@ class BuyerConfirmationController extends Controller
     )]
     public function index(Request $request)
     {
-        $paginator = $this->repository->paginate((string) $request->query('state', 'awaiting'));
+        $paginator = $this->service->paginate((string) $request->query('state', 'awaiting'));
 
         $paginator->getCollection()->transform(
             fn ($confirmation) => new OrderBuyerConfirmationResource($confirmation),
@@ -51,7 +49,7 @@ class BuyerConfirmationController extends Controller
     public function forOrder(string $id)
     {
         return $this->successResponse(
-            OrderBuyerConfirmationResource::collection($this->repository->forOrder($id)),
+            OrderBuyerConfirmationResource::collection($this->service->forOrder($id)),
             'Riwayat konfirmasi pembeli berhasil diambil',
         );
     }

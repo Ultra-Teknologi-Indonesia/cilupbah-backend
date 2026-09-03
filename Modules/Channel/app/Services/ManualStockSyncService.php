@@ -2,11 +2,16 @@
 
 namespace Modules\Channel\Services;
 
+use Modules\Channel\Jobs\ManualStockResyncAllJob;
 use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Product\Models\ProductChannelMapping;
 
 class ManualStockSyncService
 {
+    public function queueAll(array $filters = []): void
+    {
+        ManualStockResyncAllJob::dispatch($filters);
+    }
 
     public function syncProducts(array $productIds, ?string $channelShopId = null): array
     {

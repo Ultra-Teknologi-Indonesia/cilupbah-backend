@@ -6,8 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Modules\Channel\Jobs\ProcessLazadaWebhook;
-use Modules\Channel\Repositories\ChannelWebhookInboxRepository;
+use Modules\Channel\Services\ChannelWebhookService;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Lazada', description: 'Integrasi OAuth Lazada')]
@@ -16,7 +15,7 @@ class LazadaWebhookController extends Controller
     use ApiResponse;
 
     public function __construct(
-        protected ChannelWebhookInboxRepository $inbox,
+        protected ChannelWebhookService $webhookService,
     ) {}
 
     #[OA\Post(
@@ -57,7 +56,7 @@ class LazadaWebhookController extends Controller
             return $this->successResponse(['received' => true, 'duplicate' => true], 'OK');
         }
 
-        ProcessLazadaWebhook::dispatch($payload);
+        $this->webhookService->dispatchLazada($payload);
 
         return $this->successResponse(['received' => true], 'OK');
     }
@@ -79,10 +78,10 @@ class LazadaWebhookController extends Controller
 
     protected function isFirstDelivery(array $payload): bool
     {
-        return $this->inbox->recordFirstDelivery(
+        return $this->webhookService->recordFirstDelivery(
             'lazada',
             isset($payload['seller_id']) ? (string) $payload['seller_id'] : null,
-            ProcessLazadaWebhook::idempotencyKey($payload),
+            \Modules\Channel\Jobs\ProcessLazadaWebhook::idempotencyKey($payload),
             isset($payload['message_type']) ? (string) $payload['message_type'] : null,
             $payload,
         ) !== null;

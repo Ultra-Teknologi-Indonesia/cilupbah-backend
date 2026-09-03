@@ -4,7 +4,6 @@ namespace Modules\Sales\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Services\PdfRenderer;
-use App\Support\WarehouseAccess;
 use App\Traits\ApiResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
@@ -870,30 +869,22 @@ class SalesOrderController extends Controller
     public function bulkCancelManual(BulkCancelManualOrderRequest $request)
     {
         $data = $request->validated();
-        $ordersQuery = SalesOrder::whereIn('id', $data['order_ids']);
-        WarehouseAccess::apply($ordersQuery, 'location_id');
-        $orders = $ordersQuery->get();
+        $result = $this->orderService->bulkCancelManual(
+            $data['order_ids'],
+            $data['reason'] ?? 'Dibatalkan massal',
+            Auth::id(),
+        );
 
-        foreach ($orders as $order) {
-            if ($order->source && ! in_array(strtolower($order->source), ['manual', 'offline'])) {
-                return $this->errorResponse("Pesanan {$order->salesorder_no} bukan pesanan manual dan tidak dapat dibatalkan di sini", 422);
-            }
+        if (! $result['ok']) {
+            return $this->errorResponse($result['message'], 422);
         }
 
-        $actorId = Auth::id();
-        foreach ($orders as $order) {
-            $this->orderService->cancelLocally($order->id, $data['reason'] ?? 'Dibatalkan massal', $actorId);
-        }
-
-        return $this->successResponse(null, count($orders).' pesanan berhasil dibatalkan');
+        return $this->successResponse(null, $result['count'].' pesanan berhasil dibatalkan');
     }
 
     private function findAccessibleOrderForError(string $id): ?SalesOrder
     {
-        $query = SalesOrder::whereKey($id);
-        WarehouseAccess::apply($query, 'location_id');
-
-        return $query->first();
+        return $this->orderService->findAccessibleOrderForError($id);
     }
 
     #[OA\Get(

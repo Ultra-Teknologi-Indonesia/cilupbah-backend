@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Modules\Product\Http\Resources\ProductMonitorResource;
 use Modules\Product\Http\Resources\ShopProductMonitorResource;
 use Modules\Product\Services\ChannelMonitorService;
+use Modules\Channel\Services\ChannelReconcileService;
 use OpenApi\Attributes as OA;
 
 class ChannelMonitorController extends Controller
@@ -17,12 +18,12 @@ class ChannelMonitorController extends Controller
 
     public function __construct(
         protected ChannelMonitorService $monitorService,
+        protected ChannelReconcileService $reconcileService,
     ) {}
 
     public function refresh(Request $request): JsonResponse
     {
-        $result = app(\Modules\Channel\Services\ChannelReconcileService::class)
-            ->reconcileAllActive($request->user()?->id);
+        $result = $this->reconcileService->reconcileAllActive($request->user()?->id);
 
         return $this->successResponse($result, 'Penyegaran data channel diantrekan', 202);
     }

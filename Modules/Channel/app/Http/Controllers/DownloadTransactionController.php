@@ -10,14 +10,13 @@ use Illuminate\Http\Request;
 use Modules\Channel\Http\Resources\DownloadFailuresResource;
 use Modules\Channel\Http\Resources\DownloadTransactionResource;
 use Modules\Channel\Models\DownloadTransaction;
-use Modules\Channel\Repositories\DownloadTransactionRepository;
-use Modules\Channel\Services\DownloadFailureService;
+use Modules\Channel\Services\DownloadTransactionService;
 
 class DownloadTransactionController extends Controller
 {
     use ApiResponse;
 
-    public function __construct(private DownloadTransactionRepository $repository) {}
+    public function __construct(private DownloadTransactionService $service) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -26,7 +25,7 @@ class DownloadTransactionController extends Controller
             'page' => 'nullable|integer|min:1',
         ]);
 
-        $paginator = $this->repository->paginate();
+        $paginator = $this->service->paginate();
 
         $paginator->setCollection(
             $paginator->getCollection()->map(
@@ -45,12 +44,12 @@ class DownloadTransactionController extends Controller
         ]);
 
         try {
-            $transaction = $this->repository->find($id);
+            $transaction = $this->service->find($id);
         } catch (ModelNotFoundException) {
             return $this->errorResponse('Transaksi download tidak ditemukan', 404);
         }
 
-        $products = $this->repository->paginateShopProducts($transaction->channel_shop_id);
+        $products = $this->service->paginateShopProducts($transaction->channel_shop_id);
 
         $items = $products->getCollection()->map(function ($product) {
             $variant = $product->relationLoaded('variants') ? $product->variants->first() : null;
@@ -86,16 +85,16 @@ class DownloadTransactionController extends Controller
         ]);
     }
 
-    public function failures(Request $request, string $id, DownloadFailureService $service): JsonResponse
+    public function failures(Request $request, string $id): JsonResponse
     {
         try {
-            $transaction = $this->repository->find($id);
+            $transaction = $this->service->find($id);
         } catch (ModelNotFoundException) {
             return $this->errorResponse('Transaksi download tidak ditemukan', 404);
         }
 
         return $this->successResponse(
-            (new DownloadFailuresResource($service->report($transaction)))->resolve($request),
+            (new DownloadFailuresResource($this->service->failures($transaction)))->resolve($request),
             'Get download failures success',
         );
     }

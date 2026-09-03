@@ -6,19 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
 use Maatwebsite\Excel\Facades\Excel;
-use Modules\Inventory\Models\ImpexActivity;
-use Modules\Inventory\Services\ImpexActivityService;
 use Modules\Product\Exports\BundleTemplateExport;
 use Modules\Product\Exports\ImportErrorReportExport;
 use Modules\Product\Exports\ProductTemplateExport;
 use Modules\Product\Http\Resources\ProductImportBatchResource;
 use Modules\Product\Http\Resources\ProductImportErrorResource;
 use Modules\Product\Http\Resources\ProductImportRowResource;
-use Modules\Product\Jobs\ConfirmProductImportJob;
-use Modules\Product\Jobs\PreviewProductImportJob;
 use Modules\Product\Models\ProductImportBatch;
 use Modules\Product\Models\ProductImportRow;
-use Modules\Product\Repositories\ProductImportBatchRepository;
 use Modules\Product\Services\ImportBatchService;
 
 class ProductImportController extends Controller
@@ -27,8 +22,6 @@ class ProductImportController extends Controller
 
     public function __construct(
         private ImportBatchService $batchService,
-        private ImpexActivityService $activityService,
-        private ProductImportBatchRepository $batchRepository,
     ) {}
 
     public function importSingle(Request $request)
@@ -53,7 +46,7 @@ class ProductImportController extends Controller
             $request->user()?->id
         );
 
-        PreviewProductImportJob::dispatch($batch->id);
+        $this->batchService->queuePreview($batch);
 
         return $this->successResponse(
             new ProductImportBatchResource($batch),
@@ -64,7 +57,7 @@ class ProductImportController extends Controller
 
     public function batches(Request $request)
     {
-        $paginator = $this->batchRepository->paginateBatches();
+        $paginator = $this->batchService->paginateBatches();
         $paginator->through(fn (ProductImportBatch $batch) => new ProductImportBatchResource($batch));
 
         return $this->successPaginatedResponse($paginator, 'Daftar batch import');
@@ -72,7 +65,7 @@ class ProductImportController extends Controller
 
     public function show(string $batch)
     {
-        $model = $this->batchRepository->find($batch);
+        $model = $this->batchService->findBatch($batch);
         if (! $model) {
             return $this->errorResponse('Batch tidak ditemukan', 404);
         }
@@ -82,12 +75,12 @@ class ProductImportController extends Controller
 
     public function rows(Request $request, string $batch)
     {
-        $model = $this->batchRepository->find($batch);
+        $model = $this->batchService->findBatch($batch);
         if (! $model) {
             return $this->errorResponse('Batch tidak ditemukan', 404);
         }
 
-        $paginator = $this->batchRepository->paginateRows($model);
+        $paginator = $this->batchService->paginateRows($model);
         $paginator->through(fn (ProductImportRow $row) => new ProductImportRowResource($row));
 
         return $this->successPaginatedResponse($paginator, 'Daftar baris import');
@@ -95,34 +88,14 @@ class ProductImportController extends Controller
 
     public function confirm(Request $request, string $batch)
     {
-        $model = $this->batchRepository->find($batch);
+        $model = $this->batchService->findBatch($batch);
         if (! $model) {
             return $this->errorResponse('Batch tidak ditemukan', 404);
         }
 
-        if ($model->state !== ProductImportBatch::STATE_PREVIEWED) {
-            return $this->errorResponse(
-                'Batch belum siap diterapkan.',
-                422,
-                ['detail' => "Status saat ini: {$model->state}."],
-                'Aksi tidak dapat diproses',
-            );
-        }
-
-        if (! $this->batchService->startConfirm($model)) {
+        if (! $this->batchService->confirmBatch($model, $request->user()?->id)) {
             return $this->errorResponse('Batch sedang atau sudah diproses.', 422, null, 'Aksi tidak dapat diproses');
         }
-
-        $this->activityService->record(
-            ImpexActivity::DIRECTION_IMPORT,
-            $model->type === ProductImportBatch::TYPE_BUNDLE ? 'Import Produk Bundle' : 'Import Produk',
-            $request->user()?->id,
-            null,
-            'product_import_batch',
-            $model->id,
-        );
-
-        ConfirmProductImportJob::dispatch($model->id);
 
         return $this->successResponse(
             new ProductImportBatchResource($model->fresh()),
@@ -133,12 +106,12 @@ class ProductImportController extends Controller
 
     public function errors(Request $request, string $batch)
     {
-        $model = $this->batchRepository->find($batch);
+        $model = $this->batchService->findBatch($batch);
         if (! $model) {
             return $this->errorResponse('Batch tidak ditemukan', 404);
         }
 
-        $paginator = $this->batchRepository->paginateErrors($model);
+        $paginator = $this->batchService->paginateErrors($model);
         $paginator->through(fn ($error) => new ProductImportErrorResource($error));
 
         return $this->successPaginatedResponse($paginator, 'Daftar error batch import');
@@ -146,7 +119,7 @@ class ProductImportController extends Controller
 
     public function downloadErrors(string $batch)
     {
-        $model = $this->batchRepository->find($batch);
+        $model = $this->batchService->findBatch($batch);
         if (! $model) {
             return $this->errorResponse('Batch tidak ditemukan', 404);
         }

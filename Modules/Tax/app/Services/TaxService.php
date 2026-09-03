@@ -3,6 +3,7 @@
 namespace Modules\Tax\Services;
 
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Collection;
 use Modules\Tax\Models\Tax;
 use Modules\Tax\Repositories\TaxRepository;
 
@@ -16,6 +17,11 @@ class TaxService
     public function list(): LengthAwarePaginator
     {
         return $this->repository->paginate();
+    }
+
+    public function activeLookup(): Collection
+    {
+        return $this->repository->getActiveLookup();
     }
 
     public function find(int $id): ?Tax

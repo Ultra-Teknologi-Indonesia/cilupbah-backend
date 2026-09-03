@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Sales\Services\SalesReturnSettlementService;
+use Modules\Sales\Services\SalesReturnSettingService;
 use Modules\Sales\Http\Resources\SalesReturnSettlementResource;
 use Modules\Sales\Http\Resources\SalesReturnSettlementInvoiceResource;
 use Modules\Sales\Http\Resources\SalesReturnSettlementRefundResource;
@@ -16,6 +17,7 @@ class SalesReturnSettlementController extends Controller
 {
     public function __construct(
         protected SalesReturnSettlementService $service,
+        protected SalesReturnSettingService $settings,
     ) {}
 
     #[OA\Get(
@@ -273,7 +275,7 @@ class SalesReturnSettlementController extends Controller
             'refund_number'  => 'required|string|max:50',
             'amount'         => 'required|numeric|min:0.01',
             'refund_method'  => ['required', 'string', 'max:100', \Illuminate\Validation\Rule::in(
-                app(\Modules\Sales\Services\SalesReturnSettingService::class)->allowedRefundMethods()
+                $this->settings->allowedRefundMethods()
             )],
             'refund_date'    => 'required|date',
             'notes'          => 'nullable|string',

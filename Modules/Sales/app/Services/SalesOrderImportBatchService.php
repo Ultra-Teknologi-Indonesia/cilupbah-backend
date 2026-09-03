@@ -3,15 +3,25 @@
 namespace Modules\Sales\Services;
 
 use Illuminate\Http\UploadedFile;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Modules\Inventory\Models\ImpexActivity;
+use Modules\Inventory\Services\ImpexActivityService;
+use Modules\Sales\Jobs\ProcessSalesOrderImportJob;
 use Modules\Sales\Models\SalesOrderImportBatch;
 use Modules\Sales\Models\SalesOrderImportError;
+use Modules\Sales\Repositories\SalesOrderImportBatchRepository;
 
 class SalesOrderImportBatchService
 {
     public const DISK = 's3';
     public const DIR = 'imports/sales-orders';
+
+    public function __construct(
+        private readonly SalesOrderImportBatchRepository $repository,
+        private readonly ImpexActivityService $activityService,
+    ) {}
 
     public static function disk(): string
     {
@@ -37,6 +47,35 @@ class SalesOrderImportBatchService
             'stored_path' => $path,
             'state' => SalesOrderImportBatch::STATE_QUEUED,
         ]);
+    }
+
+    public function queueImport(SalesOrderImportBatch $batch, ?string $userId): void
+    {
+        $this->activityService->record(
+            ImpexActivity::DIRECTION_IMPORT,
+            'Import Pesanan',
+            $userId,
+            null,
+            'sales_order_import_batch',
+            $batch->id,
+        );
+
+        ProcessSalesOrderImportJob::dispatch($batch->id);
+    }
+
+    public function paginate(?string $state, int $perPage): LengthAwarePaginator
+    {
+        return $this->repository->paginate($state, $perPage);
+    }
+
+    public function findBatch(string $batch): ?SalesOrderImportBatch
+    {
+        return $this->repository->find($batch);
+    }
+
+    public function paginateErrors(SalesOrderImportBatch $batch, int $perPage): LengthAwarePaginator
+    {
+        return $this->repository->paginateErrors($batch, $perPage);
     }
 
     public function markProcessing(SalesOrderImportBatch $batch): void

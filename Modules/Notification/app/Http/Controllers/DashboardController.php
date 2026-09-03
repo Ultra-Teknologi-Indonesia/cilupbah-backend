@@ -6,18 +6,18 @@ use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Modules\Notification\Repositories\NotificationRepository;
+use Modules\Notification\Services\NotificationService;
 
 class DashboardController extends Controller
 {
     use ApiResponse;
 
     public function __construct(
-        protected NotificationRepository $notifications
+        protected NotificationService $notificationService
     ) {}
 
     public function taskCounts(Request $request): JsonResponse
     {
-        return $this->successResponse($this->notifications->taskCounts());
+        return $this->successResponse($this->notificationService->taskCounts());
     }
 }

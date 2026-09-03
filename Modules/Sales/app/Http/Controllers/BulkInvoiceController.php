@@ -4,17 +4,16 @@ namespace Modules\Sales\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
-use Modules\Sales\Models\SalesOrder;
-use setasign\Fpdi\Fpdi;
-use setasign\Fpdi\PdfParser\StreamReader;
-use Throwable;
+use Modules\Sales\Services\BulkInvoiceService;
 
 class BulkInvoiceController extends Controller
 {
     use ApiResponse;
+
+    public function __construct(
+        private readonly BulkInvoiceService $bulkInvoiceService,
+    ) {}
 
     public function bulkPdf(Request $req)
     {
@@ -23,62 +22,23 @@ class BulkInvoiceController extends Controller
             'order_ids.*' => 'string|uuid',
         ]);
 
-        $orders = SalesOrder::with(['items.product.product', 'invoices', 'channelShop'])
-            ->whereIn('id', $data['order_ids'])
-            ->orderBy('created_at')
-            ->get();
+        $result = $this->bulkInvoiceService->render($data['order_ids']);
 
-        if ($orders->isEmpty()) {
+        if ($result === null) {
             return $this->errorResponse('Tidak ada pesanan ditemukan.', 404);
         }
 
-        $pdf = new Fpdi();
-        $rendered = 0;
-
-        foreach ($orders as $order) {
-            try {
-                $order->shipping = (object) [
-                    'full_name' => $order->shipping_full_name,
-                    'phone' => $order->shipping_phone,
-                    'address' => $order->shipping_address,
-                    'city' => $order->shipping_city,
-                    'province' => $order->shipping_province,
-                    'post_code' => $order->shipping_post_code,
-                ];
-
-                $bytes = Pdf::loadView('sales::pdf.invoice', ['order' => $order])
-                    ->setPaper('a4', 'portrait')
-                    ->output();
-
-                $pageCount = $pdf->setSourceFile(StreamReader::createByString($bytes));
-                for ($p = 1; $p <= $pageCount; $p++) {
-                    $tpl = $pdf->importPage($p);
-                    $size = $pdf->getTemplateSize($tpl);
-                    $pdf->AddPage($size['orientation'], [$size['width'], $size['height']]);
-                    $pdf->useTemplate($tpl);
-                }
-
-                $rendered++;
-            } catch (Throwable $e) {
-                Log::warning('Bulk invoice render failed for order', [
-                    'order_id' => $order->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
-
-        if ($rendered === 0) {
+        if ($result['rendered'] === 0) {
             return $this->errorResponse('Gagal me-render faktur.', 500);
         }
 
-        $blob = $pdf->Output('S');
-        $filename = 'Faktur-Bulk-' . now()->format('Ymd-His') . '.pdf';
+        $filename = 'Faktur-Bulk-'.now()->format('Ymd-His').'.pdf';
 
-        return response($blob, 200, [
+        return response($result['content'], 200, [
             'Content-Type' => 'application/pdf',
             'Content-Disposition' => "inline; filename=\"{$filename}\"",
-            'X-Rendered-Count' => (string) $rendered,
-            'X-Total-Count' => (string) $orders->count(),
+            'X-Rendered-Count' => (string) $result['rendered'],
+            'X-Total-Count' => (string) $result['total'],
         ]);
     }
 }

@@ -6,14 +6,14 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use App\Traits\ApiResponse;
-use Modules\Channel\Repositories\ChannelWebhookInboxRepository;
+use Modules\Channel\Services\ChannelWebhookService;
 
 class TikTokWebhookController extends Controller
 {
     use ApiResponse;
 
     public function __construct(
-        protected ChannelWebhookInboxRepository $inbox,
+        protected ChannelWebhookService $webhookService,
     ) {}
 
     public function handle(Request $request)
@@ -62,7 +62,7 @@ class TikTokWebhookController extends Controller
 
         $payload = $request->all();
 
-        $recorded = $this->inbox->recordFirstDelivery(
+        $recorded = $this->webhookService->recordFirstDelivery(
             'tiktok',
             isset($payload['shop_id']) ? (string) $payload['shop_id'] : null,
             \Modules\Channel\Jobs\ProcessTikTokWebhook::idempotencyKey($payload),
@@ -74,8 +74,7 @@ class TikTokWebhookController extends Controller
             return $this->successResponse(['code' => 0, 'duplicate' => true], 'Duplicate webhook delivery ignored');
         }
 
-        \Modules\Channel\Jobs\ProcessTikTokWebhook::dispatch($payload)
-            ->onQueue(\Modules\Channel\Jobs\ProcessTikTokWebhook::resolveQueueName($payload));
+        $this->webhookService->dispatchTikTok($payload);
 
         return $this->successResponse(['code' => 0], 'Success');
     }

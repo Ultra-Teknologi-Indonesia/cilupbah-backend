@@ -25,6 +25,8 @@ use Modules\Outbound\Models\PicklistItem;
 use Modules\Outbound\Models\ShipmentOrder;
 use Modules\Outbound\Repositories\OutboundFulfillmentRepository;
 use Modules\Outbound\Services\Logistics\LogisticsGateway;
+use Modules\Outbound\Jobs\RunProcessOrdersCsvExportJob;
+use Modules\Report\Models\ExportJob;
 use Modules\Sales\Models\SalesOrder as Order;
 use Modules\Sales\Services\SalesOrderService;
 
@@ -39,6 +41,24 @@ class OutboundFulfillmentService
         protected LogisticsGateway $logisticsGateway,
         protected ChannelWarehousePolicy $channelWarehousePolicy,
     ) {}
+
+    public function queueProcessOrdersExport(User $user, array $filters): ExportJob
+    {
+        $job = ExportJob::create([
+            'user_id' => $user->id,
+            'type' => 'outbound-orders-csv',
+            'params' => [
+                'scope' => 'active-process-step',
+                'stage' => $filters['stage'],
+                'sub' => $filters['sub'],
+            ],
+            'status' => ExportJob::STATUS_QUEUED,
+        ]);
+
+        RunProcessOrdersCsvExportJob::dispatch($job->id);
+
+        return $job;
+    }
 
     public function resolveDriverCallOrderIds(array $orderIds, array $shipmentIds): array
     {
@@ -204,6 +224,11 @@ class OutboundFulfillmentService
         ProcessBulkReadyToShipJob::dispatch($batch->id);
 
         return $batch;
+    }
+
+    public function findBulkRtsBatch(string $batchId): ?BulkRtsBatch
+    {
+        return BulkRtsBatch::with('items')->find($batchId);
     }
 
     public function retryPickup(array $orderIds): array

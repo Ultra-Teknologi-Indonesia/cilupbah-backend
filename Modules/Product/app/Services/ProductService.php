@@ -25,6 +25,7 @@ use Modules\Product\Models\ProductBundleItem;
 use Modules\Product\Models\ProductDeleteAudit;
 use Modules\Product\Models\ProductMedia;
 use Modules\Product\Models\ProductVariant;
+use Modules\Product\Models\ProductSyncLog;
 use Modules\Product\Repositories\ProductRepository;
 use Modules\Product\Repositories\ProductWriteRepository;
 use Modules\Product\Support\ChannelSku;
@@ -108,6 +109,140 @@ class ProductService
     public function getPricesByIds(array $ids): Collection
     {
         return $this->repository->getByIdsWithVariants($ids);
+    }
+
+    public function findProduct(string $id, array $with = []): ?Product
+    {
+        $normalizedId = str_replace('-', '', $id);
+        if (strlen($normalizedId) !== 32 || ! ctype_xdigit($normalizedId)) {
+            return null;
+        }
+
+        return $this->repository->findWithRelations($id, $with);
+    }
+
+    public function paginateIndex(?string $status = null): LengthAwarePaginator
+    {
+        return $this->repository->paginateIndex($status);
+    }
+
+    public function paginateUploadable(string $channelShopId): LengthAwarePaginator
+    {
+        return $this->repository->paginateUploadable($channelShopId);
+    }
+
+    public function paginateVariants(string $productId): LengthAwarePaginator
+    {
+        return $this->repository->paginateVariants($productId);
+    }
+
+    public function paginateListedVariants(string $productId): LengthAwarePaginator
+    {
+        return $this->repository->paginateListedVariants($productId);
+    }
+
+    public function paginatePriceBook(string $productId): LengthAwarePaginator
+    {
+        return $this->repository->paginatePriceBook($productId);
+    }
+
+    public function unlinkChannelMapping(string $productId, string $mappingId): void
+    {
+        DB::transaction(function () use ($productId, $mappingId): void {
+            $mapping = $this->repository->findChannelMappingForProduct($productId, $mappingId);
+
+            if (! $mapping) {
+                throw new DomainException('Tautan channel tidak ditemukan.');
+            }
+
+            if ($mapping->sync_status === 'syncing') {
+                throw new \RuntimeException(
+                    'Tidak dapat menghapus tautan saat proses sinkronisasi sedang berjalan.',
+                    409,
+                );
+            }
+
+            $shopId = $mapping->channel_shop_id;
+            $this->repository->deleteChannelMapping($mapping);
+
+            ProductSyncLog::record([
+                'product_id' => $productId,
+                'channel_shop_id' => $shopId,
+                'action' => ProductSyncLog::ACTION_UNLINK,
+                'status' => ProductSyncLog::STATUS_SUCCESS,
+            ]);
+        });
+    }
+
+    public function unlinkVariantChannelMapping(string $productId, string $variantMappingId): void
+    {
+        DB::transaction(function () use ($productId, $variantMappingId): void {
+            $variantMapping = $this->repository->findVariantChannelMappingForProduct($productId, $variantMappingId);
+
+            if (! $variantMapping) {
+                throw new DomainException('Tautan varian channel tidak ditemukan.');
+            }
+
+            $parentMappingId = (string) $variantMapping->product_channel_mapping_id;
+            $this->repository->deleteVariantChannelMapping($variantMapping);
+
+            if ($this->repository->countVariantChannelMappings($parentMappingId) === 0) {
+                $parentMapping = $this->repository->findChannelMapping((string) $parentMappingId);
+                if ($parentMapping) {
+                    $this->repository->deleteChannelMapping($parentMapping);
+                }
+            }
+        });
+    }
+
+    public function bulkUnlinkChannelMappings(string $productId, array $variantMappingIds): int
+    {
+        return DB::transaction(function () use ($productId, $variantMappingIds): int {
+            $variantMappings = $this->repository->findVariantChannelMappingsForProduct($productId, $variantMappingIds);
+            $parentMappingIds = $variantMappings->pluck('product_channel_mapping_id')->unique()->values();
+
+            foreach ($variantMappings as $variantMapping) {
+                $this->repository->deleteVariantChannelMapping($variantMapping);
+            }
+
+            foreach ($parentMappingIds as $parentMappingId) {
+                if ($this->repository->countVariantChannelMappings((string) $parentMappingId) !== 0) {
+                    continue;
+                }
+
+                $parentMapping = $this->repository->findChannelMapping((string) $parentMappingId);
+                if ($parentMapping) {
+                    $this->repository->deleteChannelMapping($parentMapping);
+                }
+            }
+
+            return $variantMappings->count();
+        });
+    }
+
+    public function resyncChannelMapping(string $productId, string $mappingId): void
+    {
+        DB::transaction(function () use ($productId, $mappingId): void {
+            $mapping = $this->repository->findChannelMappingForProduct($productId, $mappingId);
+
+            if (! $mapping) {
+                throw new DomainException('Tautan channel tidak ditemukan.');
+            }
+
+            $this->repository->markChannelMappingSyncing($mapping);
+            SyncProductToChannelJob::dispatch(
+                $productId,
+                $mapping->channel_shop_id,
+                'sync_price_stock',
+            )->afterCommit();
+
+            ProductSyncLog::record([
+                'product_id' => $productId,
+                'channel_shop_id' => $mapping->channel_shop_id,
+                'action' => ProductSyncLog::ACTION_SYNC_STOCK,
+                'status' => ProductSyncLog::STATUS_PENDING,
+            ]);
+        });
     }
 
     public function createOrUpdateBundle(array $data): Product

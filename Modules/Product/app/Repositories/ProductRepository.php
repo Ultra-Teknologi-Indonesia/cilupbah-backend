@@ -12,6 +12,7 @@ use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductBundleItem;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductVariant;
+use Modules\Product\Models\ProductVariantChannelMapping;
 use Modules\Product\Models\ProductWholesalePrice;
 use Modules\Product\Support\TechnicalSku;
 use Modules\Sales\Models\SalesOrderItem;
@@ -343,6 +344,57 @@ class ProductRepository
     public function findWithRelations(string $id, array $with = []): ?Product
     {
         return Product::with($with)->find($id);
+    }
+
+    public function findChannelMappingForProduct(string $productId, string $mappingId): ?ProductChannelMapping
+    {
+        return ProductChannelMapping::query()
+            ->whereKey($mappingId)
+            ->where('product_id', $productId)
+            ->first();
+    }
+
+    public function findChannelMapping(string $mappingId): ?ProductChannelMapping
+    {
+        return ProductChannelMapping::query()->find($mappingId);
+    }
+
+    public function findVariantChannelMappingForProduct(string $productId, string $variantMappingId): ?ProductVariantChannelMapping
+    {
+        return ProductVariantChannelMapping::query()
+            ->whereKey($variantMappingId)
+            ->whereHas('variant', fn ($query) => $query->where('product_id', $productId))
+            ->first();
+    }
+
+    public function findVariantChannelMappingsForProduct(string $productId, array $variantMappingIds): Collection
+    {
+        return ProductVariantChannelMapping::query()
+            ->whereIn('id', $variantMappingIds)
+            ->whereHas('variant', fn ($query) => $query->where('product_id', $productId))
+            ->get();
+    }
+
+    public function countVariantChannelMappings(string $parentMappingId): int
+    {
+        return ProductVariantChannelMapping::query()
+            ->where('product_channel_mapping_id', $parentMappingId)
+            ->count();
+    }
+
+    public function deleteChannelMapping(ProductChannelMapping $mapping): void
+    {
+        $mapping->delete();
+    }
+
+    public function deleteVariantChannelMapping(ProductVariantChannelMapping $mapping): void
+    {
+        $mapping->delete();
+    }
+
+    public function markChannelMappingSyncing(ProductChannelMapping $mapping): void
+    {
+        $mapping->markAsSyncing();
     }
 
     public function getPaginatedProductsByChannel(string $channelShopId, int $limit = 20, ?string $syncStatus = null): LengthAwarePaginator

@@ -5,7 +5,7 @@ namespace Modules\Channel\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Modules\Channel\Http\Resources\ChannelShopResource;
-use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Channel\Services\ChannelService;
 use Modules\Channel\Services\WooCommerceAuthService;
 use OpenApi\Attributes as OA;
 
@@ -16,7 +16,7 @@ class WooCommerceStoreController extends Controller
 
     public function __construct(
         protected WooCommerceAuthService $authService,
-        protected ChannelShopRepository $shopRepository,
+        protected ChannelService $channelService,
     ) {}
 
     #[OA\Get(
@@ -30,7 +30,7 @@ class WooCommerceStoreController extends Controller
     {
         try {
             return $this->successPaginatedResponse(
-                ChannelShopResource::collection($this->shopRepository->getPaginatedShops('woocommerce')),
+                ChannelShopResource::collection($this->channelService->getPaginatedStores('woocommerce')),
                 'Daftar toko WooCommerce berhasil diambil'
             );
         } catch (\Exception $e) {

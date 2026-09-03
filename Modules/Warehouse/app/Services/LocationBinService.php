@@ -52,6 +52,16 @@ class LocationBinService
         return $this->binRepository->getDefaultBin($locationId);
     }
 
+    public function getLocation(string $locationId): ?Location
+    {
+        return $this->locationRepository->find($locationId);
+    }
+
+    public function sampleFinalCodes(string $locationId, int $limit = 3): array
+    {
+        return $this->binRepository->sampleFinalCodes($locationId, $limit);
+    }
+
     public function create(array $data): LocationBin
     {
         $data['bin_final_code'] = $this->generateFinalCode($data);

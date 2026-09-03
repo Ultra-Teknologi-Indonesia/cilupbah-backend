@@ -145,6 +145,11 @@ class SalesOrderService
         return $this->orderRepository->getShippingProviders($params);
     }
 
+    public function getStatusHistory(string $salesOrderId, int $perPage)
+    {
+        return $this->orderRepository->paginateStatusHistory($salesOrderId, $perPage);
+    }
+
     public function getTabCounts(): array
     {
 
@@ -196,6 +201,32 @@ class SalesOrderService
     public function bulkDeleteCancelled(array $ids): int
     {
         return $this->orderRepository->bulkDeleteCancelled($ids);
+    }
+
+    public function bulkCancelManual(array $orderIds, string $reason, ?string $actorId = null): array
+    {
+        $orders = $this->orderRepository->findAccessibleByIds($orderIds);
+
+        foreach ($orders as $order) {
+            if ($order->source && ! in_array(strtolower($order->source), ['manual', 'offline'], true)) {
+                return [
+                    'ok' => false,
+                    'message' => "Pesanan {$order->salesorder_no} bukan pesanan manual dan tidak dapat dibatalkan di sini",
+                    'count' => 0,
+                ];
+            }
+        }
+
+        foreach ($orders as $order) {
+            $this->cancelLocally($order->id, $reason, $actorId);
+        }
+
+        return ['ok' => true, 'message' => null, 'count' => count($orders)];
+    }
+
+    public function findAccessibleOrderForError(string $id): ?SalesOrder
+    {
+        return $this->orderRepository->findAccessibleById($id);
     }
 
     public function moveToReadyToProcess(array $orderIds, $actor = null): array

@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Modules\Channel\Jobs\ManualStockResyncAllJob;
 use Modules\Channel\Services\ManualStockSyncService;
 use OpenApi\Attributes as OA;
 
@@ -58,7 +57,7 @@ class ProductStockSyncController extends Controller
 
         if ($data['mode'] === 'all') {
             try {
-                ManualStockResyncAllJob::dispatch($data['filters'] ?? []);
+                $this->service->queueAll($data['filters'] ?? []);
             } catch (\Throwable $e) {
                 return $this->errorResponse(
                     'Gagal memulai sinkronisasi stok massal.',

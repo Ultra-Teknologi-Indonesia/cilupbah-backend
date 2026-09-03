@@ -150,4 +150,11 @@ class ImpexActivityService
             ]);
         }
     }
+
+    public function setMessage(ImpexActivity $activity, string $message): ImpexActivity
+    {
+        $activity->update(['error_message' => $message]);
+
+        return $activity;
+    }
 }
