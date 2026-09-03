@@ -307,7 +307,7 @@ class InventoryMovementRepository
                 });
 
                 $clean->orWhere(function ($q) use ($finalBinScope) {
-                    $q->whereIn('source', ['PICKING', 'PICKING_REVERSAL'])
+                    $q->whereIn('source', ['PICKING', 'PICKING_REVERSAL', 'PACKING', 'PACKING_REVERSAL'])
                         ->where($finalBinScope);
                 });
 

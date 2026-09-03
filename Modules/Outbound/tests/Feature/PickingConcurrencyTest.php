@@ -212,7 +212,7 @@ class PickingConcurrencyTest extends TestCase
         ]);
 
         $this->assertSame(7, $this->qtyPicked($s['item_id']), 'Kedua pick harus terakumulasi, bukan saling menimpa.');
-        $this->assertSame(3, $this->onHand($s['item_variant_id']), 'Stok harus turun persis 7.');
+        $this->assertSame(10, $this->onHand($s['item_variant_id']), 'on_hand tidak boleh turun saat picking.');
 
         $this->assertSame(
             $this->allocatedTotal($s['item_id']),
@@ -261,7 +261,7 @@ class PickingConcurrencyTest extends TestCase
         ]);
 
         $this->assertSame(6, $this->qtyPicked($s['item_id']));
-        $this->assertSame(4, $this->onHand($s['item_variant_id']));
+        $this->assertSame(10, $this->onHand($s['item_variant_id']));
     }
 
     public function test_negative_correction_returns_stock_and_lowers_qty_picked(): void
@@ -273,7 +273,7 @@ class PickingConcurrencyTest extends TestCase
             'qty_delta' => 5,
             'bin_code' => 'L1-B1-K1-R1',
         ]);
-        $this->assertSame(5, $this->onHand($s['item_variant_id']));
+        $this->assertSame(10, $this->onHand($s['item_variant_id']));
 
         $service->pickItem($s['picklist_id'], $s['item_id'], [
             'qty_picked' => 2,
@@ -281,7 +281,7 @@ class PickingConcurrencyTest extends TestCase
         ]);
 
         $this->assertSame(2, $this->qtyPicked($s['item_id']));
-        $this->assertSame(8, $this->onHand($s['item_variant_id']), 'Koreksi turun harus mengembalikan 3 unit ke rak.');
+        $this->assertSame(10, $this->onHand($s['item_variant_id']), 'Koreksi picking belum mengubah stok fisik.');
     }
 
     public function test_items_listing_exposes_who_picked_last(): void

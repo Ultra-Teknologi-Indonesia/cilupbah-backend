@@ -2,9 +2,10 @@
 
 namespace Modules\Outbound\Models;
 
+use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use App\Traits\HasUuid7;
+use Modules\Warehouse\Models\LocationBin;
 
 class PicklistItemAllocation extends Model
 {
@@ -16,6 +17,7 @@ class PicklistItemAllocation extends Model
         'picklist_item_id',
         'bin_id',
         'qty',
+        'physical_committed_qty',
         'picked_at',
         'picked_by',
         'movement_id',
@@ -24,6 +26,7 @@ class PicklistItemAllocation extends Model
     protected $casts = [
         'picked_at' => 'datetime',
         'qty' => 'integer',
+        'physical_committed_qty' => 'integer',
     ];
 
     public function picklistItem(): BelongsTo
@@ -33,6 +36,6 @@ class PicklistItemAllocation extends Model
 
     public function bin(): BelongsTo
     {
-        return $this->belongsTo(\Modules\Warehouse\Models\LocationBin::class, 'bin_id');
+        return $this->belongsTo(LocationBin::class, 'bin_id');
     }
 }

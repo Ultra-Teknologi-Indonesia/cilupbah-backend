@@ -7,10 +7,21 @@ use Modules\Inventory\Console\Commands\AuditStockTransactionIntegrity;
 use Modules\Inventory\Console\Commands\AutoDetectStockReplenishment;
 use Modules\Inventory\Console\Commands\BackfillInboundMovementSource;
 use Modules\Inventory\Console\Commands\BackfillOrderAllocations;
-use Modules\Inventory\Console\Commands\BackfillReversalVisibility;
 use Modules\Inventory\Console\Commands\BackfillRackImportPutaway;
+use Modules\Inventory\Console\Commands\BackfillReversalVisibility;
 use Modules\Inventory\Console\Commands\BackfillTransitInbounds;
 use Modules\Inventory\Console\Commands\CleanupDraftTransitStock;
+use Modules\Inventory\Console\Commands\CutoverImportStockCommand;
+use Modules\Inventory\Console\Commands\CutoverOrderAuditCommand;
+use Modules\Inventory\Console\Commands\CutoverPauseCommand;
+use Modules\Inventory\Console\Commands\CutoverPreflightCommand;
+use Modules\Inventory\Console\Commands\CutoverRebuildReservationCommand;
+use Modules\Inventory\Console\Commands\CutoverReplayOrdersCommand;
+use Modules\Inventory\Console\Commands\CutoverResetCommand;
+use Modules\Inventory\Console\Commands\CutoverResumeCommand;
+use Modules\Inventory\Console\Commands\CutoverSkuAuditCommand;
+use Modules\Inventory\Console\Commands\CutoverStockAuditCommand;
+use Modules\Inventory\Console\Commands\CutoverVerifyCommand;
 use Modules\Inventory\Console\Commands\ImportBaselineStock;
 use Modules\Inventory\Console\Commands\PurgeReversalMovements;
 use Modules\Inventory\Console\Commands\RebuildAverageCost;
@@ -49,6 +60,17 @@ class InventoryServiceProvider extends ModuleServiceProvider
         ValidateBaselineImport::class,
         ImportBaselineStock::class,
         ResetStock::class,
+        CutoverPreflightCommand::class,
+        CutoverSkuAuditCommand::class,
+        CutoverStockAuditCommand::class,
+        CutoverOrderAuditCommand::class,
+        CutoverPauseCommand::class,
+        CutoverResetCommand::class,
+        CutoverImportStockCommand::class,
+        CutoverRebuildReservationCommand::class,
+        CutoverResumeCommand::class,
+        CutoverReplayOrdersCommand::class,
+        CutoverVerifyCommand::class,
     ];
 
     protected array $providers = [

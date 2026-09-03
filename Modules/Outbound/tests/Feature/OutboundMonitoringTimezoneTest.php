@@ -56,10 +56,10 @@ final class OutboundMonitoringTimezoneTest extends TestCase
             app(SalesOrderRepository::class)->getTabCounts()['ready-to-process'],
             $result['summary']['ready_to_process'],
         );
-        $this->assertSame(1, $result['summary']['pending_from_two_days_ago']);
-        $this->assertSame(2, $result['periods'][0]['ready_to_process']);
-        $this->assertSame(1, $result['periods'][1]['ready_to_process']);
-        $this->assertSame(1, $result['periods'][2]['ready_to_process']);
+        $this->assertSame(0, $result['summary']['pending_from_two_days_ago']);
+        $this->assertSame(1, $result['periods'][0]['ready_to_process']);
+        $this->assertSame(0, $result['periods'][1]['ready_to_process']);
+        $this->assertSame(0, $result['periods'][2]['ready_to_process']);
     }
 
     private function seedOrder(string $orderNo, string $transactionDate, ?string $handedToWarehouseAt = '2026-08-26 10:00:00'): void

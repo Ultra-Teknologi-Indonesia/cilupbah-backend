@@ -140,7 +140,7 @@ class StockService
         $this->restoreSingle($sku, $itemId, $locationId, $qty, $transactionNumber);
     }
 
-    public function restoreToBin(string $sku, string $itemId, string $locationId, ?string $binId, int $qty, string $transactionNumber, string $source = 'ORDER_RESTORE_CANCEL'): void
+    public function restoreToBin(string $sku, string $itemId, string $locationId, ?string $binId, int $qty, string $transactionNumber, string $source = 'ORDER_RESTORE_CANCEL', ?string $createdBy = null, ?string $referenceNumber = null): void
     {
         if ($binId !== null) {
             $this->inboundBinPolicy->assertConsumable($locationId, $binId, 'pengembalian stok');
@@ -152,8 +152,8 @@ class StockService
             return;
         }
 
-        $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $binId, $qty, $transactionNumber, $source) {
-            DB::transaction(function () use ($itemId, $locationId, $binId, $qty, $transactionNumber, $source) {
+        $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $binId, $qty, $transactionNumber, $source, $createdBy, $referenceNumber) {
+            DB::transaction(function () use ($itemId, $locationId, $binId, $qty, $transactionNumber, $source, $createdBy, $referenceNumber) {
                 $binRow = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, $binId);
                 $binRow->on_hand = ((int) $binRow->on_hand) + $qty;
                 $this->inventoryRepository->updateStock($binRow);
@@ -164,10 +164,11 @@ class StockService
                     'bin_id' => $binId,
                     'transaction_number' => $transactionNumber,
                     'source' => $source,
+                    'reference_number' => $referenceNumber,
                     'qty' => $qty,
                     'balance' => $binRow->on_hand,
                     'transaction_date' => now(),
-                    'created_by' => 'system',
+                    'created_by' => $createdBy ?: 'system',
                 ]);
             });
         });
@@ -183,6 +184,7 @@ class StockService
         string $source,
         ?string $createdBy = null,
         ?\DateTimeInterface $transactionDate = null,
+        ?string $referenceNumber = null,
     ): void {
         if ($qty <= 0) {
             return;
@@ -190,8 +192,8 @@ class StockService
 
         $this->inboundBinPolicy->assertConsumable($locationId, $binId, 'pemotongan stok');
 
-        $this->withStockLock($itemId, $locationId, function () use ($sku, $itemId, $locationId, $binId, $qty, $transactionNumber, $source, $createdBy, $transactionDate) {
-            DB::transaction(function () use ($sku, $itemId, $locationId, $binId, $qty, $transactionNumber, $source, $createdBy, $transactionDate) {
+        $this->withStockLock($itemId, $locationId, function () use ($sku, $itemId, $locationId, $binId, $qty, $transactionNumber, $source, $createdBy, $transactionDate, $referenceNumber) {
+            DB::transaction(function () use ($sku, $itemId, $locationId, $binId, $qty, $transactionNumber, $source, $createdBy, $transactionDate, $referenceNumber) {
                 $binRow = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, $binId);
                 $onHand = (int) $binRow->on_hand;
 
@@ -209,6 +211,7 @@ class StockService
                     'bin_id' => $binId,
                     'transaction_number' => $transactionNumber,
                     'source' => $source,
+                    'reference_number' => $referenceNumber,
                     'qty' => -$qty,
                     'balance' => $binRow->on_hand,
                     'transaction_date' => $transactionDate ?: now(),

@@ -9,7 +9,6 @@ use Modules\Inventory\Models\StockAdjustment;
 use Modules\Inventory\Models\StockAdjustmentItem;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Repositories\InventoryRepository;
-use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Reader\IReadFilter;
 use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
 
@@ -57,12 +56,12 @@ class ImportBaselineStock extends Command
         $modeStr = $isCommit ? '<fg=red;options=bold>COMMIT (MENULIS KE DB)</>' : '<fg=yellow;options=bold>DRY-RUN (SIMULASI AMAN)</>';
 
         $this->line('===============================================================');
-        $this->line("  IMPOR BASELINE STOK JUBELIO — CILUPBAH SUPERAPP");
+        $this->line('  IMPOR BASELINE STOK JUBELIO — CILUPBAH SUPERAPP');
         $this->line('===============================================================');
         $this->line("Mode          : {$modeStr}");
         $this->line("Lokasi Tujuan : {$location->location_name} ({$location->location_code})");
         $this->line("File Sumber   : {$path}");
-        $this->line("Zero Missing  : " . ($zeroMissing ? 'AKTIF (stok lama yang tidak ada di file akan dinolkan)' : 'NON-AKTIF'));
+        $this->line('Zero Missing  : '.($zeroMissing ? 'AKTIF (stok lama yang tidak ada di file akan dinolkan)' : 'NON-AKTIF'));
         $this->newLine();
 
         $rows = $this->readRows($path);
@@ -80,10 +79,16 @@ class ImportBaselineStock extends Command
 
         $this->renderSummary($inspection, (int) $this->option('limit'));
 
+        if ($isCommit && (int) $inspection['blocking'] > 0) {
+            $this->error('COMMIT dibatalkan karena masih ada baris bermasalah, tidak ada baris valid yang diterapkan sebagian. Perbaiki file lalu jalankan dry-run kembali.');
+
+            return self::FAILURE;
+        }
+
         $zeroedItems = [];
         if ($isCommit) {
             $this->newLine();
-            $this->info("Memulai eksekusi penulisan stok ke database...");
+            $this->info('Memulai eksekusi penulisan stok ke database...');
 
             $executionResult = $this->executeCommit(
                 $inspection['valid_rows'],
@@ -94,11 +99,11 @@ class ImportBaselineStock extends Command
             );
 
             $zeroedItems = $executionResult['zeroed_items'] ?? [];
-            $this->info("Eksekusi database selesai!");
-            $this->line(sprintf("  · Penyesuaian Dibuat : %s item", number_format($executionResult['applied_count'])));
-            $this->line(sprintf("  · Dokumen Baseline   : %s", $executionResult['adjustment_no']));
+            $this->info('Eksekusi database selesai!');
+            $this->line(sprintf('  · Penyesuaian Dibuat : %s item', number_format($executionResult['applied_count'])));
+            $this->line(sprintf('  · Dokumen Baseline   : %s', $executionResult['adjustment_no']));
             if ($zeroMissing) {
-                $this->line(sprintf("  · Stok Dinolkan      : %s item", number_format(count($zeroedItems))));
+                $this->line(sprintf('  · Stok Dinolkan      : %s item', number_format(count($zeroedItems))));
             }
         }
 
@@ -112,7 +117,7 @@ class ImportBaselineStock extends Command
 
         $this->newLine();
         $this->line('===============================================================');
-        $this->info("LAPORAN LENGKAP TELAH DIBUAT");
+        $this->info('LAPORAN LENGKAP TELAH DIBUAT');
         $this->line("File Path : {$reportInfo['file_path']}");
         $this->line("Download  : <fg=cyan;options=bold>{$reportInfo['download_url']}</>");
         $this->line('===============================================================');
@@ -174,7 +179,7 @@ class ImportBaselineStock extends Command
             return $this->readCsvRows($path);
         }
 
-        $reader = new XlsxReader();
+        $reader = new XlsxReader;
         $reader->setReadDataOnly(true);
 
         $sheetNames = method_exists($reader, 'listWorksheetNames') ? $reader->listWorksheetNames($path) : [];
@@ -274,6 +279,7 @@ class ImportBaselineStock extends Command
         $header = fgetcsv($handle);
         if ($header === false) {
             fclose($handle);
+
             return [];
         }
 
@@ -393,7 +399,7 @@ class ImportBaselineStock extends Command
                     ->whereIn('item_id', $chunk)
                     ->get(['item_id', 'bin_id', 'on_hand']);
                 foreach ($invRows as $inv) {
-                    $key = $inv->item_id . ':' . ($inv->bin_id ?? 'null');
+                    $key = $inv->item_id.':'.($inv->bin_id ?? 'null');
                     $currentStockMap[$key] = (float) $inv->on_hand;
                 }
             }
@@ -417,7 +423,7 @@ class ImportBaselineStock extends Command
                 $alternatives = $lowerIndex[mb_strtolower($sku)] ?? [];
 
                 if ($alternatives !== []) {
-                    $notes = 'SKU beda huruf besar/kecil (di sistem: ' . implode(', ', $alternatives) . ')';
+                    $notes = 'SKU beda huruf besar/kecil (di sistem: '.implode(', ', $alternatives).')';
                     $problems['sku_beda_huruf'][] = $row + ['catatan' => $notes];
                     $status = 'DITOLAK_SKU_CASE';
                 } else {
@@ -448,7 +454,7 @@ class ImportBaselineStock extends Command
                 $blocked = true;
             } elseif (! isset($binsHere[$bin])) {
                 if (isset($binsElsewhere[$bin])) {
-                    $notes = 'Kode rak milik gudang lain: ' . $binsElsewhere[$bin];
+                    $notes = 'Kode rak milik gudang lain: '.$binsElsewhere[$bin];
                     $problems['rak_gudang_lain'][] = $row + ['catatan' => $notes];
                     $status = 'DITOLAK_RAK_GUDANG_LAIN';
                 } else {
@@ -472,7 +478,7 @@ class ImportBaselineStock extends Command
             }
 
             $variantId = isset($variants[$sku]) ? $variants[$sku]->id : null;
-            $pairKey = $variantId . ':' . ($resolvedBinId ?? 'null');
+            $pairKey = $variantId.':'.($resolvedBinId ?? 'null');
             $curOnHand = (float) ($currentStockMap[$pairKey] ?? 0.0);
             $targetOnHand = (float) $row['qty'];
             $delta = $targetOnHand - $curOnHand;
@@ -586,11 +592,11 @@ class ImportBaselineStock extends Command
     {
         $this->table(['Ringkasan', 'Nilai'], [
             ['Total Baris di File', number_format($report['total_rows'])],
-            ['Total Qty di File', number_format($report['total_qty']) . ' pcs'],
+            ['Total Qty di File', number_format($report['total_qty']).' pcs'],
             ['Baris Valid (Lolos)', number_format($report['ok_rows'])],
-            ['Qty yang Siap Masuk', number_format($report['ok_qty']) . ' pcs'],
+            ['Qty yang Siap Masuk', number_format($report['ok_qty']).' pcs'],
             ['Baris Bermasalah / Ditolak', number_format($report['blocking'])],
-            ['Qty yang Ditolak', number_format($report['lost_qty']) . ' pcs'],
+            ['Qty yang Ditolak', number_format($report['lost_qty']).' pcs'],
         ]);
 
         if (! empty($report['valid_rows'])) {
@@ -604,9 +610,9 @@ class ImportBaselineStock extends Command
                     $i['row'],
                     $i['sku'],
                     $i['bin'] ?: '(Rak Default/Inbound)',
-                    number_format($i['current_on_hand']) . ' pcs',
-                    number_format($i['target_on_hand']) . ' pcs',
-                    ($i['delta'] > 0 ? '+' : '') . number_format($i['delta']) . ' pcs',
+                    number_format($i['current_on_hand']).' pcs',
+                    number_format($i['target_on_hand']).' pcs',
+                    ($i['delta'] > 0 ? '+' : '').number_format($i['delta']).' pcs',
                     '<fg=green;options=bold>VALID (SIAP)</>',
                 ])->all(),
             );
@@ -658,14 +664,14 @@ class ImportBaselineStock extends Command
         bool $zeroMissing,
     ): array {
         $timestamp = date('YmdHis');
-        $adjustmentNo = 'ADJ-BASELINE-' . $location->location_code . '-' . $timestamp;
+        $adjustmentNo = 'ADJ-BASELINE-'.$location->location_code.'-'.$timestamp;
 
         $adjustment = StockAdjustment::create([
             'adjustment_no' => $adjustmentNo,
             'transaction_date' => now(),
             'location_id' => $location->id,
             'is_beginning_balance' => true,
-            'notes' => 'Import Baseline Stok Jubelio ' . $sourceFilename,
+            'notes' => 'Import Baseline Stok Jubelio '.$sourceFilename,
             'created_by' => 'baseline-migrator',
         ]);
 
@@ -679,7 +685,7 @@ class ImportBaselineStock extends Command
                     $binId = $row['bin_id'];
                     $actualQty = (float) $row['qty'];
 
-                    $pairKey = $itemId . ':' . ($binId ?? 'null');
+                    $pairKey = $itemId.':'.($binId ?? 'null');
                     $seenPairs[$pairKey] = true;
 
                     $inventory = $this->inventoryRepository->findOrCreateForUpdate(
@@ -734,7 +740,7 @@ class ImportBaselineStock extends Command
                 ->get(['id', 'item_id', 'bin_id', 'on_hand', 'avg_cost']);
 
             foreach ($existingInventories as $inv) {
-                $pairKey = $inv->item_id . ':' . ($inv->bin_id ?? 'null');
+                $pairKey = $inv->item_id.':'.($inv->bin_id ?? 'null');
                 if (! isset($seenPairs[$pairKey])) {
                     $systemQty = (float) $inv->on_hand;
                     $diff = -$systemQty;
@@ -838,11 +844,11 @@ class ImportBaselineStock extends Command
             foreach ($zeroedItems as $z) {
                 fputcsv($handle, [
                     '—',
-                    'ITEM_ID: ' . $z['item_id'],
-                    'BIN_ID: ' . ($z['bin_id'] ?? 'default'),
+                    'ITEM_ID: '.$z['item_id'],
+                    'BIN_ID: '.($z['bin_id'] ?? 'default'),
                     '0',
                     'ZEROED_MISSING',
-                    'Dinolkan dari sisa stok lama ' . $z['qty_sebelumnya'] . ' pcs',
+                    'Dinolkan dari sisa stok lama '.$z['qty_sebelumnya'].' pcs',
                 ]);
             }
         }

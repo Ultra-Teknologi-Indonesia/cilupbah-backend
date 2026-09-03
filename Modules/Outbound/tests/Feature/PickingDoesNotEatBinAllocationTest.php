@@ -170,7 +170,13 @@ class PickingDoesNotEatBinAllocationTest extends TestCase
             ->where('bin_id', $binId)
             ->first();
 
-        $this->assertSame(8, (int) $bin->on_hand, 'on_hand harus turun sebanyak qty yang di-pick');
+        $this->assertSame(10, (int) $bin->on_hand, 'on_hand baru turun saat packing selesai');
+
+        $this->assertSame(
+            0,
+            (int) DB::table('picklist_item_allocations')->where('picklist_item_id', $ids['item_id'])->value('physical_committed_qty'),
+            'Picking hanya mencatat alokasi, belum mengkomit stok fisik',
+        );
 
         $this->assertSame(
             3,

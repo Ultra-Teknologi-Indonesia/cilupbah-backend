@@ -15,8 +15,8 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Models\Inventory;
-use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Services\InventoryService;
+use Modules\Inventory\Support\StockSummary;
 use Modules\Notification\Events\TaskAssigned;
 use Modules\Outbound\Events\PicklistItemFailed;
 use Modules\Outbound\Exceptions\OutboundValidationException;
@@ -36,7 +36,6 @@ class PicklistService
 
     public function __construct(
         protected PicklistRepository $picklistRepository,
-        protected InventoryMovementRepository $movementRepository,
         protected InventoryService $inventoryService,
         protected ProductRepository $productRepository,
         protected ChannelWarehousePolicy $channelWarehousePolicy,
@@ -412,15 +411,14 @@ class PicklistService
                     'bin_id' => $bin->id,
                 ]);
             } elseif ($delta < 0) {
-                $this->inventoryService->reversePick([
-                    'item_id' => $item->item_id,
-                    'location_id' => $picklist->location_id,
-                    'bin_id' => $item->bin_id ?? $bin->id,
-                    'qty' => -$delta,
-                    'transaction_number' => $picklist->picklist_no.'-KOREKSI',
-                    'reference_number' => $this->orderReference($pickOrder),
-                    'created_by' => $userId,
-                ]);
+                $this->reversePickAllocations(
+                    $picklist,
+                    $item,
+                    -$delta,
+                    $userId,
+                    $this->orderReference($pickOrder),
+                    '-KOREKSI',
+                );
 
                 $this->picklistRepository->updateItem($itemId, [
                     'qty_picked' => $target,
@@ -557,15 +555,14 @@ class PicklistService
                     throw new OutboundValidationException('Baris ini tidak punya rak asal pick, tidak bisa dikoreksi.');
                 }
 
-                $this->inventoryService->reversePick([
-                    'item_id' => $item->item_id,
-                    'location_id' => $picklist->location_id,
-                    'bin_id' => $item->bin_id,
-                    'qty' => $qtyRev,
-                    'transaction_number' => $picklist->picklist_no.'-KOREKSI',
-                    'reference_number' => $this->orderReference($orderReferences->get($item->order_id)),
-                    'created_by' => (string) ($userId ?: 'system'),
-                ]);
+                $this->reversePickAllocations(
+                    $picklist,
+                    $item,
+                    $qtyRev,
+                    (string) ($userId ?: 'system'),
+                    $this->orderReference($orderReferences->get($item->order_id)),
+                    '-KOREKSI',
+                );
 
                 $this->picklistRepository->updateItem($itemId, [
                     'qty_picked' => max(0, (int) $item->qty_picked - $qtyRev),
@@ -683,9 +680,11 @@ class PicklistService
             throw new OutboundValidationException("SKU ini tidak ditemukan di rak {$bin->bin_final_code}. Silahkan pilih rak lain.");
         }
 
-        $available = (int) $inventory->on_hand;
+        $pickedNotPacked = StockSummary::pickedNotPackedByBin([$item->item_id]);
+        $pendingInBin = (int) ($pickedNotPacked[$item->item_id][$bin->id] ?? 0);
+        $available = max(0, (int) $inventory->on_hand - $pendingInBin);
 
-        if (! config('inventory.allow_negative_stock', true) && $available <= 0) {
+        if ($available <= 0) {
             throw new OutboundValidationException("Stok tidak cukup di rak {$bin->bin_final_code}. Tersedia: {$available}. Silahkan pilih rak lain.");
         }
 
@@ -703,13 +702,21 @@ class PicklistService
             ->orderByBinMovement('lifo')
             ->get();
 
+        $pickedNotPacked = StockSummary::pickedNotPackedByBin([$item->item_id]);
+
         return $rows
             ->filter(fn ($inv) => $inv->bin !== null)
-            ->map(fn ($inv) => [
-                'bin_id' => $inv->bin_id,
-                'bin_code' => $inv->bin->bin_final_code,
-                'on_hand' => (int) $inv->on_hand,
-            ]);
+            ->map(function ($inv) use ($pickedNotPacked, $item): array {
+                $pending = (int) ($pickedNotPacked[$item->item_id][$inv->bin_id] ?? 0);
+
+                return [
+                    'bin_id' => $inv->bin_id,
+                    'bin_code' => $inv->bin->bin_final_code,
+                    'on_hand' => max(0, (int) $inv->on_hand - $pending),
+                ];
+            })
+            ->filter(fn ($candidate) => $candidate['on_hand'] > 0)
+            ->values();
     }
 
     private function pickDefaultCandidate(Collection $candidates, int $remaining, ?string $hintActiveBinCode): array
@@ -916,25 +923,13 @@ class PicklistService
             throw new OutboundValidationException("SKU ini tidak ditemukan di rak {$bin->bin_final_code}. Silahkan pilih rak lain.");
         }
 
-        if ($inventory->on_hand < $qty) {
-            throw new OutboundValidationException("Stok tidak cukup di rak {$bin->bin_final_code}. Tersedia: {$inventory->on_hand}, dibutuhkan: {$qty}. Silahkan pilih rak lain.");
+        $pickedNotPacked = StockSummary::pickedNotPackedByBin([$item->item_id]);
+        $pendingInBin = (int) ($pickedNotPacked[$item->item_id][$bin->id] ?? 0);
+        $pickable = max(0, (int) $inventory->on_hand - $pendingInBin);
+
+        if ($pickable < $qty) {
+            throw new OutboundValidationException("Stok tidak cukup di rak {$bin->bin_final_code}. Tersedia: {$pickable}, dibutuhkan: {$qty}. Silahkan pilih rak lain.");
         }
-
-        $inventory->on_hand -= $qty;
-        $inventory->recalculateAvailable();
-        $inventory->save();
-
-        $movement = $this->movementRepository->create([
-            'item_id' => $item->item_id,
-            'location_id' => $picklist->location_id,
-            'bin_id' => $bin->id,
-            'transaction_number' => $picklist->picklist_no,
-            'source' => 'PICKING',
-            'qty' => -$qty,
-            'balance' => $inventory->on_hand,
-            'transaction_date' => now(),
-            'created_by' => $userId ?: 'system',
-        ]);
 
         PicklistItemAllocation::create([
             'picklist_item_id' => $item->id,
@@ -942,8 +937,94 @@ class PicklistService
             'qty' => $qty,
             'picked_at' => now(),
             'picked_by' => $userId ?: null,
-            'movement_id' => is_object($movement) ? ($movement->id ?? null) : null,
+            'physical_committed_qty' => 0,
+            'movement_id' => null,
         ]);
+    }
+
+    private function reversePickAllocations(
+        Picklist $picklist,
+        PicklistItem $item,
+        int $qty,
+        string $userId,
+        ?string $referenceNumber,
+        string $suffix,
+    ): void {
+        $hasPackedQty = DB::table('packlist_items as pli')
+            ->join('packlists as pl', 'pl.id', '=', 'pli.packlist_id')
+            ->where('pli.order_item_id', $item->order_item_id)
+            ->where('pli.qty_packed', '>', 0)
+            ->whereNotIn('pl.status', [Packlist::STATUS_CANCELLED])
+            ->exists();
+
+        if ($hasPackedQty) {
+            throw new OutboundValidationException(
+                "SKU {$item->sku} sudah dipacking sebagian, koreksi picking harus dilakukan melalui koreksi packing agar stok tetap konsisten."
+            );
+        }
+
+        $allocations = PicklistItemAllocation::query()
+            ->where('picklist_item_id', $item->id)
+            ->orderByDesc('picked_at')
+            ->orderByDesc('id')
+            ->lockForUpdate()
+            ->get();
+
+        if ($allocations->isEmpty()) {
+            if (empty($item->bin_id)) {
+                throw new OutboundValidationException('Baris ini tidak punya rak asal pick, tidak bisa dikembalikan.');
+            }
+
+            $this->inventoryService->reversePick([
+                'item_id' => $item->item_id,
+                'location_id' => $picklist->location_id,
+                'bin_id' => $item->bin_id,
+                'qty' => $qty,
+                'transaction_number' => $picklist->picklist_no.$suffix,
+                'reference_number' => $referenceNumber,
+                'created_by' => $userId ?: 'system',
+            ]);
+
+            return;
+        }
+
+        $remaining = $qty;
+        foreach ($allocations as $allocation) {
+            if ($remaining <= 0) {
+                break;
+            }
+
+            $reversedQty = min($remaining, (int) $allocation->qty);
+            $physicalQty = min($reversedQty, (int) $allocation->physical_committed_qty);
+
+            if ($physicalQty > 0) {
+                $this->inventoryService->reversePick([
+                    'item_id' => $item->item_id,
+                    'location_id' => $picklist->location_id,
+                    'bin_id' => $allocation->bin_id,
+                    'qty' => $physicalQty,
+                    'transaction_number' => $picklist->picklist_no.$suffix,
+                    'reference_number' => $referenceNumber,
+                    'created_by' => $userId ?: 'system',
+                ]);
+            }
+
+            $allocation->qty = (int) $allocation->qty - $reversedQty;
+            $allocation->physical_committed_qty = (int) $allocation->physical_committed_qty - $physicalQty;
+            if ($allocation->qty <= 0) {
+                $allocation->delete();
+            } else {
+                $allocation->save();
+            }
+
+            $remaining -= $reversedQty;
+        }
+
+        if ($remaining > 0) {
+            throw new OutboundValidationException(
+                "Riwayat alokasi picking untuk SKU {$item->sku} tidak lengkap, koreksi dibatalkan agar saldo tetap aman."
+            );
+        }
     }
 
     public function failPick(string $id, ?string $reason = null): Picklist
@@ -1120,19 +1201,14 @@ class PicklistService
                 continue;
             }
 
-            if (empty($item->bin_id)) {
-                throw new OutboundValidationException('Baris ini tidak punya rak asal pick, tidak bisa dikembalikan.');
-            }
-
-            $this->inventoryService->reversePick([
-                'item_id' => $item->item_id,
-                'location_id' => $picklist->location_id,
-                'bin_id' => $item->bin_id,
-                'qty' => (int) $item->qty_picked,
-                'transaction_number' => $picklist->picklist_no.'-HAPUS',
-                'reference_number' => $this->orderReference($order),
-                'created_by' => $userId ?: 'system',
-            ]);
+            $this->reversePickAllocations(
+                $picklist,
+                $item,
+                (int) $item->qty_picked,
+                $userId ?: 'system',
+                $this->orderReference($order),
+                '-HAPUS',
+            );
 
             $reversed = true;
         }

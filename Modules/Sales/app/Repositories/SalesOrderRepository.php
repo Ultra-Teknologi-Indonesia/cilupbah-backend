@@ -217,6 +217,16 @@ class SalesOrderRepository
         );
     }
 
+    public function monitoringOrdersQuery(?string $locationId = null): Builder
+    {
+        return $this->withLocation(
+            $this->scopeExcludeFailedDownload(
+                SalesOrder::query()->excludeShadow()
+            ),
+            $locationId,
+        );
+    }
+
     protected function visibleOrders(?string $locationId = null)
     {
         return $this->withLocation(

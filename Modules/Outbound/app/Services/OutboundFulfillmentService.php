@@ -5,6 +5,7 @@ namespace Modules\Outbound\Services;
 use App\Models\User;
 use App\Support\ChannelWarehousePolicy;
 use App\Support\WarehouseAccess;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -366,12 +367,12 @@ SQL;
         );
 
         $stageScopes = [
-            'ready_to_process' => fn () => $this->readyToProcess(),
-            'pick' => fn () => $this->onPicking(),
-            'pending' => fn () => $this->emptyStock(),
-            'pack' => fn () => $this->onPacking(),
-            'ready_to_ship' => fn () => $this->finishPack(),
-            'waiting_ship' => fn () => $this->readyToShipStage(),
+            'ready_to_process' => fn () => $this->orderService->readyToProcessQuery()->excludeShadow(),
+            'pick' => fn () => $this->monitoringStageQuery($this->onPicking()),
+            'pending' => fn () => $this->monitoringStageQuery($this->emptyStock()),
+            'pack' => fn () => $this->monitoringStageQuery($this->onPacking()),
+            'ready_to_ship' => fn () => $this->monitoringStageQuery($this->finishPack()),
+            'waiting_ship' => fn () => $this->monitoringStageQuery($this->readyToShipStage()),
         ];
 
         $periods = [];
@@ -403,7 +404,7 @@ SQL;
         $periodRows = array_values($periods);
         $summary = $this->monitoringSummary();
 
-        $summary['ready_to_process'] = $this->orderService->readyToProcessQuery()->count();
+        $summary['ready_to_process'] = $this->readyToProcessMonitoringQuery()->count();
 
         $summary['ready_to_process_today'] = $summary['ready_to_process'];
         $summary['pending_from_two_days_ago'] = (int) ($periodRows[2]['ready_to_process'] ?? 0);
@@ -421,30 +422,28 @@ SQL;
         $yesterdayStart = $todayStart->copy()->subDay();
         $yesterdaySameTime = $now->copy()->subDay();
 
-        $todayQuery = Order::whereBetween('transaction_date', $this->utcRange($todayStart, $now));
-        $yesterdayQuery = Order::whereBetween('transaction_date', $this->utcRange($yesterdayStart, $yesterdaySameTime));
-        WarehouseAccess::apply($todayQuery, 'sales_orders.location_id');
-        WarehouseAccess::apply($yesterdayQuery, 'sales_orders.location_id');
+        $todayQuery = $this->orderService->monitoringOrdersQuery()
+            ->whereBetween('sales_orders.transaction_date', $this->utcRange($todayStart, $now));
+        $yesterdayQuery = $this->orderService->monitoringOrdersQuery()
+            ->whereBetween('sales_orders.transaction_date', $this->utcRange($yesterdayStart, $yesterdaySameTime));
         $todayCount = $todayQuery->count();
         $yestCount = $yesterdayQuery->count();
 
-        $mtdQuery = Order::whereBetween('transaction_date', [
+        $mtdQuery = $this->orderService->monitoringOrdersQuery()->whereBetween('sales_orders.transaction_date', [
             $now->copy()->startOfMonth()->utc(),
             $now->copy()->utc(),
         ]);
-        WarehouseAccess::apply($mtdQuery, 'sales_orders.location_id');
         $mtdCount = $mtdQuery->count();
         $previousMonthSameTime = $now->copy()->subMonthNoOverflow();
-        $previousMonthQuery = Order::whereBetween('transaction_date', [
+        $previousMonthQuery = $this->orderService->monitoringOrdersQuery()->whereBetween('sales_orders.transaction_date', [
             $previousMonthSameTime->copy()->startOfMonth()->utc(),
             $previousMonthSameTime->copy()->utc(),
         ]);
-        WarehouseAccess::apply($previousMonthQuery, 'sales_orders.location_id');
         $prevMonthCount = $previousMonthQuery->count();
 
-        $readyToPick = $this->readyToProcess()->count();
-        $readyToPick2days = $this->readyToProcess()
-            ->where('transaction_date', '<', $todayStart->copy()->subDay()->utc())
+        $readyToPick = $this->readyToProcessMonitoringQuery()->count();
+        $readyToPick2days = $this->readyToProcessMonitoringQuery()
+            ->where('sales_orders.transaction_date', '<', $todayStart->copy()->subDay()->utc())
             ->count();
 
         $pickedToday = $this->pickedOrdersCount($todayStart, $now);
@@ -476,15 +475,33 @@ SQL;
     {
         $range = $this->utcRange($from, $to);
 
-        $query = Order::whereHas('picklistItems', function ($q) use ($range) {
-            $q->whereHas('picklist', function ($pq) use ($range) {
-                $pq->where('status', Picklist::STATUS_COMPLETED)
-                    ->whereBetween('completed_at', $range);
+        $query = $this->orderService->monitoringOrdersQuery()
+            ->whereHas('picklistItems', function ($q) use ($range) {
+                $q->whereHas('picklist', function ($pq) use ($range) {
+                    $pq->where('status', Picklist::STATUS_COMPLETED)
+                        ->whereBetween('completed_at', $range);
+                });
             });
-        });
-        WarehouseAccess::apply($query, 'sales_orders.location_id');
 
         return $query->count();
+    }
+
+    private function readyToProcessMonitoringQuery(): Builder
+    {
+        return $this->orderService->readyToProcessQuery()->excludeShadow();
+    }
+
+    private function monitoringStageQuery(Builder $query): Builder
+    {
+        $query->excludeShadow()
+            ->where(function ($q): void {
+                $q->whereNull('sales_orders.source')
+                    ->orWhereDoesntHave('items', fn ($itemQuery) => $itemQuery->whereNull('item_id'));
+            });
+
+        WarehouseAccess::apply($query, 'sales_orders.location_id');
+
+        return $query;
     }
 
     public function getPickers(?string $locationId, string $role): Collection

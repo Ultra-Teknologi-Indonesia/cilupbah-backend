@@ -4,6 +4,7 @@ namespace Modules\Outbound\Services;
 
 use App\Support\ChannelWarehousePolicy;
 use App\Support\WarehouseAccess;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Modules\Notification\Events\TaskAssigned;
 use Modules\Outbound\Exceptions\OutboundValidationException;
@@ -21,6 +22,7 @@ class PacklistService
         protected PacklistRepository $packlistRepository,
         protected ProductRepository $productRepository,
         protected ChannelWarehousePolicy $channelWarehousePolicy,
+        protected PacklistStockService $packlistStockService,
     ) {}
 
     public function getAllPaginated(int $limit = 10)
@@ -342,25 +344,32 @@ class PacklistService
 
     public function complete(string $id): Packlist
     {
-        $packlist = $this->packlistRepository->findById($id);
+        DB::transaction(function () use ($id): void {
+            $query = Packlist::query()->with('items')->lockForUpdate();
+            WarehouseAccess::apply($query, 'location_id');
+            $packlist = $query->find($id);
 
-        if (! $packlist) {
-            throw new \Exception('Packlist tidak ditemukan.');
-        }
+            if (! $packlist) {
+                throw new \Exception('Packlist tidak ditemukan.');
+            }
 
-        if (! in_array($packlist->status, [Packlist::STATUS_DRAFT, Packlist::STATUS_IN_PROGRESS])) {
-            throw new OutboundValidationException("Hanya packlist DRAFT/IN_PROGRESS yang bisa di-complete (saat ini: {$packlist->status}).");
-        }
+            if (! in_array($packlist->status, [Packlist::STATUS_DRAFT, Packlist::STATUS_IN_PROGRESS], true)) {
+                throw new OutboundValidationException("Hanya packlist DRAFT/IN_PROGRESS yang bisa di-complete (saat ini: {$packlist->status}).");
+            }
 
-        $unpacked = $packlist->items->filter(fn ($item) => $item->qty_packed < $item->qty_ordered);
-        if ($unpacked->isNotEmpty()) {
-            throw new OutboundValidationException("Masih ada {$unpacked->count()} item yang belum selesai di-pack.");
-        }
+            $unpacked = $packlist->items->filter(fn ($item) => $item->qty_packed < $item->qty_ordered);
+            if ($unpacked->isNotEmpty()) {
+                throw new OutboundValidationException("Masih ada {$unpacked->count()} item yang belum selesai di-pack.");
+            }
 
-        $this->packlistRepository->update($id, [
-            'status' => Packlist::STATUS_COMPLETED,
-            'completed_at' => now(),
-        ]);
+            $actor = (string) (Auth::id() ?? $packlist->packer_id ?? $packlist->created_by ?? 'system');
+            $this->packlistStockService->post($packlist, $packlist->items, $actor);
+
+            $packlist->forceFill([
+                'status' => Packlist::STATUS_COMPLETED,
+                'completed_at' => now(),
+            ])->save();
+        });
 
         ProcessPacklistCompleteJob::dispatch($id);
 
@@ -404,7 +413,9 @@ class PacklistService
     public function revert(string $id): void
     {
         DB::transaction(function () use ($id) {
-            $packlist = $this->packlistRepository->findById($id);
+            $query = Packlist::query()->with('items')->lockForUpdate();
+            WarehouseAccess::apply($query, 'location_id');
+            $packlist = $query->find($id);
 
             if (! $packlist) {
                 throw new \Exception('Packlist tidak ditemukan.');
@@ -429,6 +440,11 @@ class PacklistService
                     $order->update(['status' => 'picked']);
                 }
             }
+
+            $this->packlistStockService->reverse(
+                $packlist,
+                (string) (Auth::id() ?? $packlist->packer_id ?? $packlist->created_by ?? 'system'),
+            );
 
             $this->packlistRepository->delete($id);
         });

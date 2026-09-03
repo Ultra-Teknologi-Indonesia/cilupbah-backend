@@ -29,6 +29,8 @@ class InventoryMovementSourceMap
         'ORDER_COMPLETE_REVERSAL' => ['category' => 'FAKTUR', 'label' => 'Koreksi Faktur'],
         'PICKING' => ['category' => 'FAKTUR', 'label' => 'Barang di-pick'],
         'PICKING_REVERSAL' => ['category' => 'FAKTUR', 'label' => 'Koreksi Pick'],
+        'PACKING' => ['category' => 'FAKTUR', 'label' => 'Barang dipacking'],
+        'PACKING_REVERSAL' => ['category' => 'FAKTUR', 'label' => 'Koreksi Packing'],
 
         'ORDER' => ['category' => 'PESANAN', 'label' => 'Pesanan'],
         'ORDER_RESERVE' => ['category' => 'PESANAN', 'label' => 'Pesanan'],
@@ -94,6 +96,7 @@ class InventoryMovementSourceMap
         'TRANSIT_REVERT_IN',
         'PURCHASE_REVERSAL',
         'PICKING_REVERSAL',
+        'PACKING_REVERSAL',
         'ORDER_COMPLETE_REVERSAL',
     ];
 

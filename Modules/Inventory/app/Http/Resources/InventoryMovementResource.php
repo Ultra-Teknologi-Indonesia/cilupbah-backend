@@ -71,6 +71,9 @@ class InventoryMovementResource extends JsonResource
                 $sourceCategory = 'FAKTUR';
                 $sourceLabel = 'Faktur';
             }
+        } elseif (in_array($this->source, ['PACKING', 'PACKING_REVERSAL'], true)) {
+            $sourceCategory = 'FAKTUR';
+            $sourceLabel = $this->source === 'PACKING' ? 'Barang dipacking' : 'Koreksi Packing';
         }
 
         if (
@@ -147,12 +150,22 @@ class InventoryMovementResource extends JsonResource
             'ORDER_RESTORE_CANCEL',
             'ORDER_COMPLETE_REVERSAL',
             'PICKING_REVERSAL',
+            'PACKING_REVERSAL',
         ], true)) {
             return [
                 'type' => 'physical_restore',
                 'label' => 'Stok fisik dikembalikan',
                 'quantity_label' => 'fisik',
                 'description' => 'Barang dikembalikan ke stok fisik.',
+            ];
+        }
+
+        if ($source === 'PACKING') {
+            return [
+                'type' => 'physical_deduct',
+                'label' => 'Stok fisik dipotong',
+                'quantity_label' => 'fisik',
+                'description' => 'Stok fisik dipotong saat packing selesai.',
             ];
         }
 

@@ -33,6 +33,7 @@ use Modules\Outbound\Models\Shipment;
 use Modules\Outbound\Models\ShipmentOrder;
 use Modules\Outbound\Services\FulfillmentCleanupService;
 use Modules\Outbound\Services\OutboundFulfillmentService;
+use Modules\Outbound\Services\PacklistStockService;
 use Modules\Sales\Enums\BuyerCancellationSyncStatus;
 use Modules\Sales\Enums\OrderActivityAction;
 use Modules\Sales\Enums\OrderActivityEntity;
@@ -155,6 +156,11 @@ class SalesOrderService
     public function readyToProcessQuery(?string $locationId = null): Builder
     {
         return $this->orderRepository->readyToProcessQuery($locationId);
+    }
+
+    public function monitoringOrdersQuery(?string $locationId = null): Builder
+    {
+        return $this->orderRepository->monitoringOrdersQuery($locationId);
     }
 
     public function getOrderById($id)
@@ -2746,6 +2752,19 @@ class SalesOrderService
 
         $restored = $this->restoreDirectCompletionAllocations($order);
 
+        if (! $restored) {
+            $completedPacklists = Packlist::query()
+                ->where('order_id', $order->id)
+                ->where('status', Packlist::STATUS_COMPLETED)
+                ->lockForUpdate()
+                ->get();
+
+            foreach ($completedPacklists as $packlist) {
+                app(PacklistStockService::class)->reverse($packlist, (string) (Auth::id() ?: 'system'));
+                $restored = true;
+            }
+        }
+
         if (! $restored && in_array($canonical, [SalesOrderStatus::PICKED, SalesOrderStatus::PACKED], true)) {
             $restored = $this->restoreStockToOriginBins($order);
         }
@@ -2793,10 +2812,29 @@ class SalesOrderService
     {
         $locationId = $this->resolveLocationId($order);
 
-        $binAllocations = PicklistItem::where('order_id', $order->id)
-            ->whereNotNull('bin_id')
-            ->get(['item_id', 'sku', 'bin_id', 'qty_picked', 'qty_ordered'])
-            ->groupBy('item_id');
+        $hasAllocationRows = DB::table('picklist_item_allocations as pia')
+            ->join('picklist_items as pi', 'pi.id', '=', 'pia.picklist_item_id')
+            ->where('pi.order_id', $order->id)
+            ->exists();
+
+        $allocationRows = DB::table('picklist_item_allocations as pia')
+            ->join('picklist_items as pi', 'pi.id', '=', 'pia.picklist_item_id')
+            ->where('pi.order_id', $order->id)
+            ->where('pia.physical_committed_qty', '>', 0)
+            ->get([
+                'pia.id',
+                'pi.item_id',
+                'pi.sku',
+                'pia.bin_id',
+                DB::raw('pia.physical_committed_qty AS physical_qty'),
+            ]);
+
+        $binAllocations = $hasAllocationRows
+            ? $allocationRows->groupBy('item_id')
+            : PicklistItem::where('order_id', $order->id)
+                ->whereNotNull('bin_id')
+                ->get(['item_id', 'sku', 'bin_id', 'qty_picked', 'qty_ordered'])
+                ->groupBy('item_id');
 
         if ($binAllocations->isEmpty()) {
             return false;
@@ -2819,7 +2857,9 @@ class SalesOrderService
             }
 
             foreach ($rows as $row) {
-                $qty = (int) ($row->qty_picked ?: $row->qty_ordered);
+                $qty = isset($row->physical_qty)
+                    ? (int) $row->physical_qty
+                    : (int) ($row->qty_picked ?: $row->qty_ordered);
                 if ($qty <= 0) {
                     continue;
                 }
@@ -2837,6 +2877,12 @@ class SalesOrderService
                     $take,
                     $order->salesorder_no,
                 );
+
+                if (isset($row->id) && isset($row->physical_qty)) {
+                    DB::table('picklist_item_allocations')
+                        ->where('id', $row->id)
+                        ->update(['physical_committed_qty' => max(0, (int) $row->physical_qty - $take)]);
+                }
 
                 $remainingByItem[$itemId]['qty'] -= $take;
             }
