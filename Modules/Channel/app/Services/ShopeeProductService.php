@@ -613,7 +613,7 @@ class ShopeeProductService implements ChunkedDownloadable
         $matchedExisting = false;
         $variantIds = [];
         $internalData = $mapper->map($item, $shopId);
-        $insertedId = $productService->upsertFromChannel($internalData, $matchedExisting, $variantIds);
+        $insertedId = $productService->upsertFromChannel($internalData, $matchedExisting, $variantIds, true);
         if (! $insertedId) {
             return false;
         }

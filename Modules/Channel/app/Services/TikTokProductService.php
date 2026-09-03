@@ -380,7 +380,7 @@ class TikTokProductService
 
                     $detail       = $details[(string) ($item['id'] ?? '')] ?? $item;
                     $internalData = $mapper->map($detail, $shopId);
-                    $insertedId   = $productService->upsertFromChannel($internalData, $matchedExisting, $variantIds);
+                    $insertedId   = $productService->upsertFromChannel($internalData, $matchedExisting, $variantIds, true);
 
                     if ($insertedId) {
                         $attrs = [];
@@ -596,7 +596,7 @@ class TikTokProductService
 
         $insertedId = DB::transaction(function () use ($detail, $externalProductId, $shop, $shopId, $productService, $mapper, $attrs, &$matchedExisting, &$variantIds): ?string {
             $internalData = $mapper->map($detail, $shopId);
-            $productId = $productService->upsertFromChannel($internalData, $matchedExisting, $variantIds);
+            $productId = $productService->upsertFromChannel($internalData, $matchedExisting, $variantIds, true);
             if (! $productId) {
                 return null;
             }

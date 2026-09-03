@@ -175,17 +175,15 @@ class ChannelDownloadEmptySkuTest extends TestCase
         ]);
 
         $count = app(LazadaProductService::class)->pullProducts('LZ-EMPTY');
-        $this->assertEquals(1, $count);
+        $this->assertEquals(0, $count);
 
         $pcm = DB::table('product_channel_mappings')
             ->where('channel_shop_id', $shop->id)
             ->where('external_product_id', '555100')
             ->first();
-        $this->assertNotNull($pcm);
+        $this->assertNull($pcm);
 
-        $this->assertSame(0, DB::table('product_variant_channel_mappings')
-            ->where('product_channel_mapping_id', $pcm->id)
-            ->count(), 'Model tanpa SKU tidak boleh menghasilkan baris link');
+        $this->assertSame(0, DB::table('product_variant_channel_mappings')->count(), 'Model tanpa SKU tidak boleh menghasilkan baris link');
 
         $this->assertDatabaseHas('product_sync_logs', [
             'channel_shop_id' => $shop->id,
@@ -233,17 +231,14 @@ class ChannelDownloadEmptySkuTest extends TestCase
         ]);
 
         $count = app(ShopeeProductService::class)->pullProducts('SHP-EMPTY');
-        $this->assertEquals(1, $count);
+        $this->assertEquals(0, $count);
 
         $pcm = DB::table('product_channel_mappings')
             ->where('channel_shop_id', $shop->id)
             ->where('external_product_id', '555100')
             ->first();
-        $this->assertNotNull($pcm);
-
-        $this->assertSame(0, DB::table('product_variant_channel_mappings')
-            ->where('product_channel_mapping_id', $pcm->id)
-            ->count(), 'Model tanpa SKU tidak boleh menghasilkan baris link');
+        $this->assertNull($pcm);
+        $this->assertSame(0, DB::table('product_variant_channel_mappings')->count(), 'Model tanpa SKU tidak boleh menghasilkan baris link');
     }
 
     public function test_tiktok_download_mengabaikan_model_tanpa_sku(): void
@@ -272,17 +267,14 @@ class ChannelDownloadEmptySkuTest extends TestCase
         ]);
 
         $count = app(TikTokProductService::class)->pullProducts('TT-EMPTY');
-        $this->assertEquals(1, $count);
+        $this->assertEquals(0, $count);
 
         $pcm = DB::table('product_channel_mappings')
             ->where('channel_shop_id', $shop->id)
             ->where('external_product_id', 'TIKTOK-PROD-EMPTY')
             ->first();
-        $this->assertNotNull($pcm);
-
-        $this->assertSame(0, DB::table('product_variant_channel_mappings')
-            ->where('product_channel_mapping_id', $pcm->id)
-            ->count(), 'Model tanpa SKU tidak boleh menghasilkan baris link');
+        $this->assertNull($pcm);
+        $this->assertSame(0, DB::table('product_variant_channel_mappings')->count(), 'Model tanpa SKU tidak boleh menghasilkan baris link');
     }
 
     public function test_download_preserves_real_sku_when_mixed_with_empty(): void
@@ -363,13 +355,10 @@ class ChannelDownloadEmptySkuTest extends TestCase
         ]);
 
         $count = app(LazadaProductService::class)->pullProducts('LZ-MANY');
-        $this->assertEquals(1, $count);
+        $this->assertEquals(0, $count);
 
         $product = DB::table('products')->where('name', 'Produk 10 Variasi Tanpa SKU')->first();
-        $this->assertNotNull($product);
-
-        $variants = DB::table('product_variants')->where('product_id', $product->id)->whereNull('sku')->get();
-        $this->assertCount(1, $variants, 'Semua model tanpa SKU diabaikan; hanya satu varian penampung yang tersisa agar master tetap sah');
+        $this->assertNull($product);
 
         $this->assertSame(0, DB::table('product_variant_channel_mappings')->count(), 'Tidak ada model tanpa SKU yang boleh tertaut');
     }
@@ -586,7 +575,7 @@ class ChannelDownloadEmptySkuTest extends TestCase
             ], 200),
         ]);
 
-        $this->assertEquals(1, app(LazadaProductService::class)->pullProducts('LZ-DASH'));
+        $this->assertEquals(0, app(LazadaProductService::class)->pullProducts('LZ-DASH'));
 
         $this->assertSame(0, DB::table('product_variants')->where('sku', '-')->count());
         $this->assertSame(0, DB::table('product_variant_channel_mappings')->count());

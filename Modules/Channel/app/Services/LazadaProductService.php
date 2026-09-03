@@ -413,7 +413,7 @@ class LazadaProductService
                 $matchedExisting = false;
                 $variantIds = [];
                 $productService = app(\Modules\Product\Services\ProductService::class);
-                $productId = $productService->upsertFromChannel($internalData, $matchedExisting, $variantIds);
+                $productId = $productService->upsertFromChannel($internalData, $matchedExisting, $variantIds, true);
 
                 if (! $productId) {
                     return null;
@@ -664,7 +664,7 @@ class LazadaProductService
                         $matchedExisting = false;
                         $variantIds = [];
                         $internalData = $this->inboundMapper->map($item, $shopId);
-                        $insertedId = $productService->upsertFromChannel($internalData, $matchedExisting, $variantIds);
+                        $insertedId = $productService->upsertFromChannel($internalData, $matchedExisting, $variantIds, true);
 
                         if ($insertedId) {
                             $pcmId = $this->productRepository->upsertChannelMapping(

@@ -506,14 +506,30 @@ class ProductService
         }
     }
 
-    public function upsertFromChannel(array $data, ?bool &$matchedExisting = null, ?array &$variantIds = null)
+    public function upsertFromChannel(
+        array $data,
+        ?bool &$matchedExisting = null,
+        ?array &$variantIds = null,
+        bool $strictSku = false,
+    )
     {
         $data = ProductIngestSanitizer::sanitize($data);
-        $data['variants'] = $this->dropVariantsWithoutSku(
-            $data['variants'] ?? [],
-            isset($data['channel_external_product_id']) ? (string) $data['channel_external_product_id'] : null,
-        );
-        $data['variants'] = $this->makeDeletedChannelVariantSkusUnique($data);
+
+        $externalProductId = isset($data['channel_external_product_id'])
+            ? (string) $data['channel_external_product_id']
+            : null;
+
+        $data['variants'] = $strictSku
+            ? $this->onlyValidChannelVariants($data['variants'] ?? [], $externalProductId)
+            : $this->dropVariantsWithoutSku($data['variants'] ?? [], $externalProductId);
+
+        if ($strictSku && $data['variants'] === []) {
+            throw new DomainException(
+                'Produk channel dilewati karena tidak memiliki SKU penjual yang valid.'
+                .($externalProductId ? " Listing {$externalProductId}." : '')
+            );
+        }
+
         $variantIds = [];
         $productId = $this->resolveExistingProductFromChannel($data);
 
@@ -524,6 +540,8 @@ class ProductService
         }
 
         $matchedExisting = false;
+
+        $data['variants'] = $this->makeDeletedChannelVariantSkusUnique($data, $strictSku);
 
         $productId = $this->createProduct($data, $variantIds, false);
         $this->queueExternalMediaMirroring($productId);
@@ -551,7 +569,30 @@ class ProductService
         return $placeholder;
     }
 
-    private function makeDeletedChannelVariantSkusUnique(array $data): array
+    private function onlyValidChannelVariants(array $variants, ?string $externalProductId): array
+    {
+        $valid = [];
+        $seen = [];
+
+        foreach ($variants as $variant) {
+            if (! is_array($variant)) {
+                continue;
+            }
+
+            $sku = ChannelSku::normalize($variant['sku'] ?? null, $externalProductId);
+            if ($sku === null || isset($seen[$sku])) {
+                continue;
+            }
+
+            $variant['sku'] = $sku;
+            $seen[$sku] = true;
+            $valid[] = $variant;
+        }
+
+        return $valid;
+    }
+
+    private function makeDeletedChannelVariantSkusUnique(array $data, bool $strictSku = false): array
     {
         $externalProductId = trim((string) ($data['channel_external_product_id'] ?? ''));
         if ($externalProductId === '') {
@@ -581,6 +622,14 @@ class ProductService
 
         if ($blocked->isEmpty()) {
             return $data['variants'] ?? [];
+        }
+
+        if ($strictSku) {
+            throw new DomainException(
+                'SKU channel sudah dipakai oleh varian aktif di master yang terhapus: '
+                .$blocked->keys()->implode(', ')
+                .'. Pulihkan atau rapikan master lama terlebih dahulu.'
+            );
         }
 
         foreach ($data['variants'] as &$variant) {

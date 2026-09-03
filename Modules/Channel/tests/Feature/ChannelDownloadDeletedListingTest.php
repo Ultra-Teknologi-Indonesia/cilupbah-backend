@@ -118,4 +118,65 @@ class ChannelDownloadDeletedListingTest extends TestCase
             ProductVariant::where('product_id', $newId)->value('sku'),
         );
     }
+
+    public function test_strict_channel_download_does_not_create_a_placeholder_variant(): void
+    {
+        $before = Product::count();
+
+        try {
+            app(ProductService::class)->upsertFromChannel([
+                'name' => 'Tanpa SKU dari Channel',
+                'channel_external_product_id' => 'REMOTE-NO-SKU',
+                'channel_shop_id_external' => 'SHOP-DELETED-LISTING',
+                'variants' => [[
+                    'sku' => null,
+                    'sell_price' => 10000,
+                ]],
+            ], $matched, $variantIds, true);
+
+            $this->fail('Strict channel download harus menolak listing tanpa SKU valid.');
+        } catch (\DomainException $exception) {
+            $this->assertStringContainsString('tidak memiliki SKU penjual yang valid', $exception->getMessage());
+        }
+
+        $this->assertSame($before, Product::count());
+    }
+
+    public function test_strict_channel_download_keeps_the_original_sku_on_a_deleted_parent_conflict(): void
+    {
+        $category = Category::create(['name' => 'Strict SKU Category']);
+        $old = Product::create([
+            'category_id' => $category->id,
+            'name' => 'Master Lama Strict',
+            'status' => Product::STATUS_MASTER,
+            'is_active' => true,
+        ]);
+        ProductVariant::create([
+            'product_id' => $old->id,
+            'sku' => 'STRICT-CONFLICT-SKU',
+            'sell_price' => 10000,
+            'is_active' => true,
+        ]);
+        $old->delete();
+
+        try {
+            app(ProductService::class)->upsertFromChannel([
+                'name' => 'Produk Strict Baru',
+                'channel_external_product_id' => 'REMOTE-STRICT-CONFLICT',
+                'channel_shop_id_external' => 'SHOP-STRICT-CONFLICT',
+                'variants' => [[
+                    'sku' => 'STRICT-CONFLICT-SKU',
+                    'sell_price' => 12000,
+                ]],
+            ], $matched, $variantIds, true);
+
+            $this->fail('Strict channel download harus menolak konflik SKU pada master terhapus.');
+        } catch (\DomainException $exception) {
+            $this->assertStringContainsString('master yang terhapus', $exception->getMessage());
+        }
+
+        $this->assertDatabaseMissing('product_variants', [
+            'sku' => 'STRICT-CONFLICT-SKU-REIMPORT',
+        ]);
+    }
 }
