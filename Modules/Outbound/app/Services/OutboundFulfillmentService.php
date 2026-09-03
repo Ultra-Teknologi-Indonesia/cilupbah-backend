@@ -399,7 +399,9 @@ SQL;
         $periodRows = array_values($periods);
         $summary = $this->monitoringSummary();
 
-        $summary['ready_to_process_today'] = (int) ($periodRows[0]['ready_to_process'] ?? 0);
+        $summary['ready_to_process'] = $this->orderService->readyToProcessQuery()->count();
+
+        $summary['ready_to_process_today'] = $summary['ready_to_process'];
         $summary['pending_from_two_days_ago'] = (int) ($periodRows[2]['ready_to_process'] ?? 0);
 
         return [

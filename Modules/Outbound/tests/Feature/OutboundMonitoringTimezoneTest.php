@@ -8,6 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Modules\Outbound\Services\OutboundFulfillmentService;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Repositories\SalesOrderRepository;
 use Tests\TestCase;
 
 final class OutboundMonitoringTimezoneTest extends TestCase
@@ -37,28 +38,38 @@ final class OutboundMonitoringTimezoneTest extends TestCase
         $this->seedOrder('two-days-ago', '2026-08-24 10:00:00');
         $this->seedOrder('previous-month-in-range', '2026-07-26 14:00:00');
         $this->seedOrder('previous-month-after-same-time', '2026-07-26 15:00:00');
+        $this->seedOrder('sales-ready-only', '2026-08-26 12:00:00', null);
 
         $result = app(OutboundFulfillmentService::class)->getMonitoring();
 
-        $this->assertSame(2, $result['summary']['today']);
+        $this->assertSame(3, $result['summary']['today']);
         $this->assertSame(1, $result['summary']['yest']);
-        $this->assertSame(4, $result['summary']['mtd']);
+        $this->assertSame(5, $result['summary']['mtd']);
         $this->assertSame(1, $result['summary']['prev_month']);
-        $this->assertSame(2, $result['summary']['ready_to_process_today']);
+        $this->assertSame(1, $result['summary']['ready_to_process']);
+        $this->assertSame(1, $result['summary']['ready_to_process_today']);
+        $this->assertSame(
+            app(SalesOrderRepository::class)->readyToProcessQuery()->count(),
+            $result['summary']['ready_to_process'],
+        );
+        $this->assertSame(
+            app(SalesOrderRepository::class)->getTabCounts()['ready-to-process'],
+            $result['summary']['ready_to_process'],
+        );
         $this->assertSame(1, $result['summary']['pending_from_two_days_ago']);
         $this->assertSame(2, $result['periods'][0]['ready_to_process']);
         $this->assertSame(1, $result['periods'][1]['ready_to_process']);
         $this->assertSame(1, $result['periods'][2]['ready_to_process']);
     }
 
-    private function seedOrder(string $orderNo, string $transactionDate): void
+    private function seedOrder(string $orderNo, string $transactionDate, ?string $handedToWarehouseAt = '2026-08-26 10:00:00'): void
     {
         SalesOrder::factory()->create([
             'salesorder_no' => 'TEST-'.$orderNo,
             'channel_order_no' => 'CHANNEL-'.$orderNo,
             'transaction_date' => $transactionDate,
             'status' => 'reserved',
-            'handed_to_warehouse_at' => '2026-08-26 10:00:00',
+            'handed_to_warehouse_at' => $handedToWarehouseAt,
         ]);
     }
 }

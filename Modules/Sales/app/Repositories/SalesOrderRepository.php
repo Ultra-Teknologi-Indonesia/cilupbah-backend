@@ -160,13 +160,7 @@ class SalesOrderRepository
                 'all' => $this->withLocation($this->scopeExcludeFailedDownload(SalesOrder::query()), $locationId)->count(),
                 'unpaid' => $this->visibleOrders($locationId)->where('status', 'pending')->where('is_paid', false)->count(),
                 'failed' => $this->withLocation($this->scopeFailedDownload(SalesOrder::query()), $locationId)->count(),
-                'ready-to-process' => $this->excludeChannelCancelPending(
-                    $this->visibleOrders($locationId)->where('status', 'reserved')
-                        ->whereNull('pick_failed_at')
-                        ->whereDoesntHave('picklistItems')
-                        ->whereDoesntHave('items', $this->unmappedItemsConstraint())
-                        ->whereDoesntHave('items', $emptyStockItemConstraint)
-                )->count(),
+                'ready-to-process' => $this->readyToProcessQuery($locationId)->count(),
                 'empty-stock' => $this->visibleOrders($locationId)->where('status', 'reserved')
                     ->whereNull('pick_failed_at')
                     ->whereHas('items', $emptyStockItemConstraint)
@@ -204,6 +198,19 @@ class SalesOrderRepository
                 'returned' => $this->visibleOrders($locationId)->whereHas('returns')->count(),
             ];
         });
+    }
+
+    public function readyToProcessQuery(?string $locationId = null): Builder
+    {
+        $emptyStockItemConstraint = fn ($q) => $q->whereRaw(SalesOrder::shortfallItemWhereRaw());
+
+        return $this->excludeChannelCancelPending(
+            $this->visibleOrders($locationId)->where('status', 'reserved')
+                ->whereNull('pick_failed_at')
+                ->whereDoesntHave('picklistItems')
+                ->whereDoesntHave('items', $this->unmappedItemsConstraint())
+                ->whereDoesntHave('items', $emptyStockItemConstraint)
+        );
     }
 
     protected function visibleOrders(?string $locationId = null)

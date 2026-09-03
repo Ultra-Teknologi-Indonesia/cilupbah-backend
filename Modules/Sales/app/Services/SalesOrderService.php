@@ -6,6 +6,7 @@ use App\Exceptions\UserFacingException;
 use App\Models\User;
 use App\Support\ChannelWarehousePolicy;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
@@ -148,6 +149,11 @@ class SalesOrderService
         $cacheKey = 'sales:tab-counts:u:'.(auth()->id() ?? 'guest');
 
         return Cache::remember($cacheKey, now()->addSeconds(30), fn () => $this->orderRepository->getTabCounts());
+    }
+
+    public function readyToProcessQuery(?string $locationId = null): Builder
+    {
+        return $this->orderRepository->readyToProcessQuery($locationId);
     }
 
     public function getOrderById($id)
