@@ -5,6 +5,7 @@ namespace Modules\Sales\Services;
 use App\Exceptions\UserFacingException;
 use App\Models\User;
 use App\Support\ChannelWarehousePolicy;
+use App\Support\WarehouseAccess;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\UploadedFile;
@@ -308,7 +309,7 @@ class SalesOrderService
 
     public function acceptCancelRequest(string $orderId, bool $auto = false, ?string $reason = null): SalesOrder
     {
-        $order = SalesOrder::findOrFail($orderId);
+        $order = $this->findAccessibleOrderOrFail($orderId);
 
         if (! $order->cancel_requested_at) {
             throw new \InvalidArgumentException('Pesanan ini tidak memiliki permintaan pembatalan.');
@@ -417,7 +418,7 @@ class SalesOrderService
 
     public function rejectCancelRequest(string $orderId, ?string $reason = null, bool $auto = false): SalesOrder
     {
-        $order = SalesOrder::findOrFail($orderId);
+        $order = $this->findAccessibleOrderOrFail($orderId);
 
         if (! $order->cancel_requested_at) {
             throw new \InvalidArgumentException('Pesanan ini tidak memiliki permintaan pembatalan.');
@@ -452,7 +453,7 @@ class SalesOrderService
 
     public function retryBuyerCancellationSync(string $orderId): SalesOrder
     {
-        $order = SalesOrder::findOrFail($orderId);
+        $order = $this->findAccessibleOrderOrFail($orderId);
         $decision = (string) $order->buyer_cancel_sync_decision;
 
         if (! in_array($decision, [RespondBuyerCancellationJob::ACCEPT, RespondBuyerCancellationJob::REJECT], true)) {
@@ -533,7 +534,7 @@ class SalesOrderService
 
     public function autoResolveCancelRequest(string $orderId): SalesOrder
     {
-        $order = SalesOrder::findOrFail($orderId);
+        $order = $this->findAccessibleOrderOrFail($orderId);
 
         if (! $order->cancel_requested_at || $order->cancel_accepted_at || $order->status === 'cancelled') {
             return $order;
@@ -559,7 +560,7 @@ class SalesOrderService
 
     public function requestChannelCancel(string $orderId, string $reason): SalesOrder
     {
-        $order = SalesOrder::findOrFail($orderId);
+        $order = $this->findAccessibleOrderOrFail($orderId);
         $source = strtolower((string) $order->source);
 
         if (! in_array($source, ['tiktok', 'shopee', 'lazada'], true)) {
@@ -603,7 +604,7 @@ class SalesOrderService
 
     public function releaseChannelCancel(string $orderId): SalesOrder
     {
-        $order = SalesOrder::findOrFail($orderId);
+        $order = $this->findAccessibleOrderOrFail($orderId);
 
         if ($order->status === 'cancelled' || $order->is_canceled) {
             throw new UserFacingException('Sudah dibatalkan', 'Pesanan sudah dibatalkan, tidak bisa dilanjutkan.');
@@ -695,7 +696,7 @@ class SalesOrderService
 
     public function cancelReasonsForOrderId(string $orderId): array
     {
-        return $this->cancelReasonsForOrder(SalesOrder::findOrFail($orderId));
+        return $this->cancelReasonsForOrder($this->findAccessibleOrderOrFail($orderId));
     }
 
     private function refreshChannelStatusRaw(SalesOrder $order): void
@@ -778,7 +779,7 @@ class SalesOrderService
 
     public function saveAirwaybill(array $data): SalesOrder
     {
-        $order = SalesOrder::findOrFail($data['order_id']);
+        $order = $this->findAccessibleOrderOrFail($data['order_id']);
         $order->update([
             'tracking_number' => $data['tracking_number'],
             'shipping_provider' => $data['shipping_provider'] ?? $order->shipping_provider,
@@ -789,7 +790,7 @@ class SalesOrderService
 
     public function saveReceivedDate(array $data): SalesOrder
     {
-        $order = SalesOrder::findOrFail($data['order_id']);
+        $order = $this->findAccessibleOrderOrFail($data['order_id']);
         $order->update(['received_date' => $data['received_date'] ?? now()]);
 
         return $order->fresh();
@@ -797,7 +798,7 @@ class SalesOrderService
 
     public function saveCourierPickup(string $id, array $data): SalesOrder
     {
-        $order = SalesOrder::findOrFail($id);
+        $order = $this->findAccessibleOrderOrFail($id);
         $order->update([
             'courier_name' => $data['courier_name'] ?? null,
             'courier_phone' => $data['courier_phone'] ?? null,
@@ -811,7 +812,7 @@ class SalesOrderService
 
     public function replaceCourierIdPhoto(string $id, UploadedFile $photo): SalesOrder
     {
-        $order = SalesOrder::findOrFail($id);
+        $order = $this->findAccessibleOrderOrFail($id);
         $order->clearMediaCollection('courier_id');
         $order->addMedia($photo)->toMediaCollection('courier_id');
         $order->update([
@@ -824,7 +825,7 @@ class SalesOrderService
 
     public function deleteCourierIdPhoto(string $id): SalesOrder
     {
-        $order = SalesOrder::findOrFail($id);
+        $order = $this->findAccessibleOrderOrFail($id);
         $order->clearMediaCollection('courier_id');
 
         return $order->fresh();
@@ -832,7 +833,7 @@ class SalesOrderService
 
     public function setAsPaid(array $data): SalesOrder
     {
-        $order = SalesOrder::findOrFail($data['order_id']);
+        $order = $this->findAccessibleOrderOrFail($data['order_id']);
         $order->update([
             'is_paid' => true,
             'paid_time' => $data['paid_time'] ?? now(),
@@ -1965,7 +1966,9 @@ class SalesOrderService
         $wasUnmapped = $this->hasUnmappedItems($order->loadMissing('items'));
 
         $mutated = DB::transaction(function () use ($order, $orderItemId, $variantId) {
-            $lockedOrder = SalesOrder::whereKey($order->id)->lockForUpdate()->firstOrFail();
+            $lockedOrderQuery = SalesOrder::whereKey($order->id);
+            WarehouseAccess::apply($lockedOrderQuery, 'location_id');
+            $lockedOrder = $lockedOrderQuery->lockForUpdate()->firstOrFail();
 
             $item = $lockedOrder->items()->whereKey($orderItemId)->lockForUpdate()->firstOrFail();
 
@@ -2401,7 +2404,7 @@ class SalesOrderService
 
     public function updateOrderFinance(string $orderId, array $finance): ?SalesOrder
     {
-        $order = SalesOrder::find($orderId);
+        $order = $this->findAccessibleOrder($orderId);
 
         if (! $order) {
             return null;
@@ -2906,7 +2909,7 @@ class SalesOrderService
 
     public function markContacted(string $orderId, ?string $channel = null, ?string $note = null): SalesOrder
     {
-        $order = SalesOrder::findOrFail($orderId);
+        $order = $this->findAccessibleOrderOrFail($orderId);
         $this->assertContactChannel($channel);
 
         $order->update([
@@ -2949,7 +2952,7 @@ class SalesOrderService
             throw new \InvalidArgumentException('Keputusan pembeli tidak valid.');
         }
 
-        $order = SalesOrder::findOrFail($orderId);
+        $order = $this->findAccessibleOrderOrFail($orderId);
 
         $updates = [
             'customer_decision' => $decision,
@@ -2973,7 +2976,9 @@ class SalesOrderService
     public function updateOrderItem(string $orderId, string $itemId, array $data): SalesOrder
     {
         return DB::transaction(function () use ($orderId, $itemId, $data) {
-            $order = SalesOrder::with('items')->findOrFail($orderId);
+            $orderQuery = SalesOrder::with('items')->whereKey($orderId);
+            WarehouseAccess::apply($orderQuery, 'location_id');
+            $order = $orderQuery->firstOrFail();
             $this->assertEditableInternally($order);
 
             $item = $order->items->firstWhere('id', $itemId);
@@ -3077,7 +3082,33 @@ class SalesOrderService
 
     public function isEmptyStock(SalesOrder $order): bool
     {
-        return SalesOrder::whereKey($order->getKey())->hasStockShortfall()->exists();
+        $query = SalesOrder::whereKey($order->getKey());
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->hasStockShortfall()->exists();
+    }
+
+    private function findAccessibleOrder(?string $id): ?SalesOrder
+    {
+        if ($id === null || $id === '') {
+            return null;
+        }
+
+        $query = SalesOrder::whereKey($id);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->first();
+    }
+
+    private function findAccessibleOrderOrFail(string $id): SalesOrder
+    {
+        $order = $this->findAccessibleOrder($id);
+
+        if (! $order) {
+            abort(404, 'Pesanan tidak ditemukan.');
+        }
+
+        return $order;
     }
 
     private function assertEditableInternally(SalesOrder $order): void

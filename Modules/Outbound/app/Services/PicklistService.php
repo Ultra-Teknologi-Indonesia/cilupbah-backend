@@ -60,7 +60,9 @@ class PicklistService
         ?string $newPickerId = null,
     ): Picklist {
         return DB::transaction(function () use ($picklistId, $actorId, $reason, $reasonNote, $newPickerId) {
-            $picklist = Picklist::lockForUpdate()->findOrFail($picklistId);
+            $query = Picklist::lockForUpdate();
+            WarehouseAccess::apply($query, 'location_id');
+            $picklist = $query->findOrFail($picklistId);
             $previousPicker = $picklist->picker_id;
             $isSelf = $previousPicker !== null && (string) $previousPicker === $actorId;
             $action = $isSelf ? AssignmentActionEnum::SELF_UNASSIGN : AssignmentActionEnum::UNASSIGN;
@@ -95,7 +97,9 @@ class PicklistService
         ?string $newPickerId = null,
     ): Picklist {
         return DB::transaction(function () use ($picklistId, $actorId, $reasonNote, $newPickerId) {
-            $picklist = Picklist::lockForUpdate()->with('items')->findOrFail($picklistId);
+            $query = Picklist::lockForUpdate()->with('items');
+            WarehouseAccess::apply($query, 'location_id');
+            $picklist = $query->findOrFail($picklistId);
             $previousPicker = $picklist->picker_id;
 
             foreach ($picklist->items as $item) {
@@ -442,10 +446,11 @@ class PicklistService
     private function autoCompleteIfResolved(string $picklistId): void
     {
         DB::transaction(function () use ($picklistId): void {
-            $picklist = Picklist::query()
+            $query = Picklist::query()
                 ->with('items')
-                ->lockForUpdate()
-                ->find($picklistId);
+                ->lockForUpdate();
+            WarehouseAccess::apply($query, 'location_id');
+            $picklist = $query->find($picklistId);
 
             if (! $picklist || ! in_array($picklist->status, [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS], true)) {
                 return;
@@ -1007,7 +1012,9 @@ class PicklistService
             $this->assertOrderNotProgressedBeyondPicking($orderId);
             $reversed = $this->reverseAndDetachOrderFromPicklist($picklist, $orderId, $userId);
 
-            $order = Order::find($orderId);
+            $orderQuery = Order::whereKey($orderId);
+            WarehouseAccess::apply($orderQuery, 'location_id');
+            $order = $orderQuery->first();
             if ($order) {
 
                 $order->update([
@@ -1054,7 +1061,9 @@ class PicklistService
 
     private function assertOrderNotProgressedBeyondPicking(string $orderId): void
     {
-        $order = Order::find($orderId);
+        $orderQuery = Order::whereKey($orderId);
+        WarehouseAccess::apply($orderQuery, 'location_id');
+        $order = $orderQuery->first();
 
         if (! $order) {
             return;

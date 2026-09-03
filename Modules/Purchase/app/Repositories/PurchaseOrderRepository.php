@@ -2,6 +2,7 @@
 
 namespace Modules\Purchase\Repositories;
 
+use App\Support\WarehouseAccess;
 use Modules\Purchase\Models\PurchaseOrder;
 use Modules\Purchase\Models\PurchaseOrderActivity;
 use Modules\Purchase\Models\PurchaseOrderItem;
@@ -18,7 +19,7 @@ class PurchaseOrderRepository
 {
     public function getAllPaginated(int $limit = 10)
     {
-        return QueryBuilder::for(PurchaseOrder::class)
+        $query = QueryBuilder::for(PurchaseOrder::class)
             ->with(['contact:id,name,code', 'location:id,location_name', 'bills:id,purchase_order_id,bill_number', 'items:id,purchase_order_id,qty,received_qty'])
             ->allowedFilters(
                 AllowedFilter::exact('status'),
@@ -29,14 +30,16 @@ class PurchaseOrderRepository
             )
             ->allowedSearch('po_number')
             ->allowedSorts('po_number', 'order_date', 'total_amount', 'created_at')
-            ->defaultSort('-created_at')
-            ->paginate($limit)
+            ->defaultSort('-created_at');
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->paginate($limit)
             ->appends(request()->query());
     }
 
     public function getReceivable(int $limit = 10)
     {
-        return QueryBuilder::for(PurchaseOrder::class)
+        $query = QueryBuilder::for(PurchaseOrder::class)
             ->receivable()
             ->with([
                 'contact:id,name,code',
@@ -53,23 +56,28 @@ class PurchaseOrderRepository
             )
             ->allowedSearch('po_number')
             ->allowedSorts('po_number', 'order_date', 'created_at')
-            ->defaultSort('-created_at')
-            ->paginate($limit)
+            ->defaultSort('-created_at');
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->paginate($limit)
             ->appends(request()->query());
     }
 
     public function paginateActivities(string $purchaseOrderId, int $perPage)
     {
-        return PurchaseOrderActivity::where('purchase_order_id', $purchaseOrderId)
+        $query = PurchaseOrderActivity::where('purchase_order_id', $purchaseOrderId)
             ->orderByDesc('created_at')
-            ->orderByDesc('id')
-            ->cursorPaginate($perPage);
+            ->orderByDesc('id');
+        $query->whereHas('purchaseOrder', fn ($po) => WarehouseAccess::apply($po, 'location_id'));
+
+        return $query->cursorPaginate($perPage);
     }
 
     public function findById(string $id): ?PurchaseOrder
     {
-        $po = PurchaseOrder::with(['contact', 'location', 'bills:id,purchase_order_id,bill_number', 'items.variant.product', 'items.variant.media', 'items.variant.product.media', 'items.variant.options'])
-            ->find($id);
+        $query = PurchaseOrder::with(['contact', 'location', 'bills:id,purchase_order_id,bill_number', 'items.variant.product', 'items.variant.media', 'items.variant.product.media', 'items.variant.options']);
+        WarehouseAccess::apply($query, 'location_id');
+        $po = $query->find($id);
 
         if ($po) {
             $this->attachQcSummary($po);
@@ -87,6 +95,7 @@ class PurchaseOrderRepository
             ->leftJoin('product_variants', 'purchase_order_items.item_id', '=', 'product_variants.id')
             ->leftJoin('products', 'products.id', '=', 'product_variants.product_id')
             ->with(['variant.product:id,name', 'variant.media', 'variant.product.media', 'variant.options']);
+        $base->whereHas('purchaseOrder', fn ($po) => WarehouseAccess::apply($po, 'location_id'));
 
         $result = QueryBuilder::for($base)
             ->allowedSearch('product_variants.sku', 'products.name')
@@ -170,9 +179,10 @@ class PurchaseOrderRepository
 
     public function findByIdForUpdate(string $id): ?PurchaseOrder
     {
-        return PurchaseOrder::with('items')
-            ->lockForUpdate()
-            ->find($id);
+        $query = PurchaseOrder::with('items')->lockForUpdate();
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->find($id);
     }
 
     public function create(array $data): PurchaseOrder
@@ -187,9 +197,11 @@ class PurchaseOrderRepository
 
     public function lockItems(string $poId): Collection
     {
-        return PurchaseOrderItem::where('purchase_order_id', $poId)
-            ->lockForUpdate()
-            ->get()
+        $query = PurchaseOrderItem::where('purchase_order_id', $poId)
+            ->lockForUpdate();
+        $query->whereHas('purchaseOrder', fn ($po) => WarehouseAccess::apply($po, 'location_id'));
+
+        return $query->get()
             ->keyBy('id');
     }
 
@@ -260,7 +272,9 @@ class PurchaseOrderRepository
 
     public function updateItemReceivedQty(string $itemId, int $addQty): void
     {
-        PurchaseOrderItem::where('id', $itemId)
+        $query = PurchaseOrderItem::where('id', $itemId);
+        $query->whereHas('purchaseOrder', fn ($po) => WarehouseAccess::apply($po, 'location_id'));
+        $query
             ->increment('received_qty', $addQty);
     }
 

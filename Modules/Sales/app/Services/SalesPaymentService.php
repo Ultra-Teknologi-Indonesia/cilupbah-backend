@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Services;
 
+use App\Support\WarehouseAccess;
 use Illuminate\Support\Facades\DB;
 use Modules\Sales\Exceptions\PaymentExceedsInvoiceException;
 use Modules\Sales\Models\SalesInvoice;
@@ -28,7 +29,9 @@ class SalesPaymentService
     {
         return DB::transaction(function () use ($data) {
 
-            $invoice = SalesInvoice::lockForUpdate()->findOrFail($data['sales_invoice_id']);
+            $invoiceQuery = SalesInvoice::whereKey($data['sales_invoice_id']);
+            WarehouseAccess::apply($invoiceQuery, 'location_id');
+            $invoice = $invoiceQuery->lockForUpdate()->firstOrFail();
 
             $remaining = (float) $invoice->total_amount - (float) $invoice->paid_amount;
 
@@ -51,8 +54,12 @@ class SalesPaymentService
     public function delete(string $id): void
     {
         DB::transaction(function () use ($id) {
-            $payment = SalesPayment::findOrFail($id);
-            $invoice = SalesInvoice::lockForUpdate()->findOrFail($payment->sales_invoice_id);
+            $payment = SalesPayment::whereKey($id)
+                ->whereHas('invoice', fn ($query) => WarehouseAccess::apply($query, 'location_id'))
+                ->firstOrFail();
+            $invoiceQuery = SalesInvoice::whereKey($payment->sales_invoice_id);
+            WarehouseAccess::apply($invoiceQuery, 'location_id');
+            $invoice = $invoiceQuery->lockForUpdate()->firstOrFail();
 
             $invoice->paid_amount = max(0, (float) $invoice->paid_amount - (float) $payment->amount);
             $invoice->status = $this->resolveInvoiceStatus($invoice);

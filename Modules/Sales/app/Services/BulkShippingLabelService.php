@@ -3,6 +3,7 @@
 namespace Modules\Sales\Services;
 
 use App\Models\User;
+use App\Support\WarehouseAccess;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -97,7 +98,9 @@ class BulkShippingLabelService
                 'skipped_count' => 0,
             ]);
 
-            $orders = SalesOrder::whereIn('id', $orderIds)
+            $ordersQuery = SalesOrder::whereIn('id', $orderIds);
+            WarehouseAccess::apply($ordersQuery, 'location_id');
+            $orders = $ordersQuery
                 ->get()
                 ->keyBy('id');
 

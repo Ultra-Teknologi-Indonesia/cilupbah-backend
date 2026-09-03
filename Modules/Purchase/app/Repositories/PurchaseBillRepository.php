@@ -2,6 +2,7 @@
 
 namespace Modules\Purchase\Repositories;
 
+use App\Support\WarehouseAccess;
 use Modules\Purchase\Models\PurchaseBill;
 use Modules\Purchase\Models\PurchaseBillItem;
 use Spatie\QueryBuilder\QueryBuilder;
@@ -12,7 +13,7 @@ class PurchaseBillRepository
 {
     public function getAllPaginated(int $limit = 10)
     {
-        return QueryBuilder::for(PurchaseBill::class)
+        $query = QueryBuilder::for(PurchaseBill::class)
             ->with(['contact:id,name,code', 'location:id,location_name', 'purchaseOrder:id,po_number'])
             ->allowedFilters(
                 AllowedFilter::exact('status'),
@@ -23,20 +24,27 @@ class PurchaseBillRepository
             )
             ->allowedSearch('bill_number')
             ->allowedSorts('bill_number', 'bill_date', 'due_date', 'total_amount', 'created_at')
-            ->defaultSort('-created_at')
-            ->paginate($limit)
+            ->defaultSort('-created_at');
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->paginate($limit)
             ->appends(request()->query());
     }
 
     public function findById(string $id): ?PurchaseBill
     {
-        return PurchaseBill::with(['contact', 'location', 'purchaseOrder', 'items.variant.product:id,name', 'payments'])
-            ->find($id);
+        $query = PurchaseBill::with(['contact', 'location', 'purchaseOrder', 'items.variant.product:id,name', 'payments']);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->find($id);
     }
 
     public function findByIdForUpdate(string $id): ?PurchaseBill
     {
-        return PurchaseBill::lockForUpdate()->find($id);
+        $query = PurchaseBill::lockForUpdate();
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->find($id);
     }
 
     public function create(array $data): PurchaseBill
@@ -62,7 +70,7 @@ class PurchaseBillRepository
 
     public function getUnpaid(int $limit = 10)
     {
-        return QueryBuilder::for(PurchaseBill::class)
+        $query = QueryBuilder::for(PurchaseBill::class)
             ->whereIn('status', [PurchaseBill::STATUS_OPEN, PurchaseBill::STATUS_PARTIAL])
             ->whereColumn('paid_amount', '<', 'total_amount')
             ->with(['contact:id,name,code', 'location:id,location_name'])
@@ -71,27 +79,31 @@ class PurchaseBillRepository
             )
             ->allowedSearch('bill_number')
             ->allowedSorts('bill_date', 'due_date', 'total_amount', 'created_at')
-            ->defaultSort('-created_at')
-            ->paginate($limit)
+            ->defaultSort('-created_at');
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->paginate($limit)
             ->appends(request()->query());
     }
 
     public function getOverdue(int $limit = 10)
     {
-        return QueryBuilder::for(PurchaseBill::class)
+        $query = QueryBuilder::for(PurchaseBill::class)
             ->whereIn('status', [PurchaseBill::STATUS_OPEN, PurchaseBill::STATUS_PARTIAL])
             ->whereColumn('paid_amount', '<', 'total_amount')
             ->where('due_date', '<', now()->toDateString())
             ->with(['contact:id,name,code', 'location:id,location_name'])
             ->allowedSorts('due_date', 'total_amount', 'created_at')
-            ->defaultSort('due_date')
-            ->paginate($limit)
+            ->defaultSort('due_date');
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->paginate($limit)
             ->appends(request()->query());
     }
 
     public function getForReturn(int $limit = 10)
     {
-        return QueryBuilder::for(PurchaseBill::class)
+        $query = QueryBuilder::for(PurchaseBill::class)
             ->whereIn('status', [PurchaseBill::STATUS_OPEN, PurchaseBill::STATUS_PAID])
             ->with(['contact:id,name,code'])
             ->select('id', 'bill_number', 'contact_id', 'total_amount', 'bill_date')
@@ -99,8 +111,10 @@ class PurchaseBillRepository
                 AllowedFilter::exact('contact_id'),
             )
             ->allowedSearch('bill_number')
-            ->defaultSort('-created_at')
-            ->paginate($limit)
+            ->defaultSort('-created_at');
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->paginate($limit)
             ->appends(request()->query());
     }
 

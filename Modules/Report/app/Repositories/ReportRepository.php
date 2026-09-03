@@ -475,7 +475,7 @@ class ReportRepository
     {
         $from = ($filters['from'] ?? null) ? $filters['from'].' 00:00:00' : null;
         $to = ($filters['to'] ?? null) ? $filters['to'].' 23:59:59.999999' : null;
-        $locationIds = $filters['location_ids'] ?? [];
+        $locationIds = WarehouseAccess::constrain(empty($filters['location_ids']) ? null : $filters['location_ids']);
 
         $items = DB::table('putaway_items')
             ->select('putaway_id')
@@ -503,7 +503,7 @@ class ReportRepository
         )
             ->when($from, fn ($q, $v) => $q->where('tanggal_raw', '>=', $v))
             ->when($to, fn ($q, $v) => $q->where('tanggal_raw', '<=', $v))
-            ->when(! empty($locationIds), fn ($q) => $q->whereIn('location_id', $locationIds))
+            ->when($locationIds !== null, fn ($q) => $q->whereIn('location_id', $locationIds))
             ->orderBy('lokasi')
             ->orderBy('grup')
             ->orderByDesc('tanggal_raw')
@@ -555,6 +555,8 @@ class ReportRepository
 
     public function putawayLookup(string $date, string $locationId): \Illuminate\Support\Collection
     {
+        WarehouseAccess::assert($locationId);
+
         return DB::table('putaways')
             ->where('location_id', $locationId)
             ->whereRaw('DATE(COALESCE(started_at, created_at)) = ?', [$date])
@@ -566,7 +568,7 @@ class ReportRepository
     {
         $from = ($filters['from'] ?? null) ? $filters['from'].' 00:00:00' : null;
         $to = ($filters['to'] ?? null) ? $filters['to'].' 23:59:59.999999' : null;
-        $locationIds = $filters['location_ids'] ?? [];
+        $locationIds = WarehouseAccess::constrain(empty($filters['location_ids']) ? null : $filters['location_ids']);
         $providerExpression = "NULLIF(BTRIM(s.courier_name), '')";
         $trackingExpression = "COALESCE(NULLIF(BTRIM(shso.tracking_number), ''), NULLIF(BTRIM(so.tracking_number), ''))";
 
@@ -590,7 +592,7 @@ class ReportRepository
                 ->whereNull('soi.item_id'))
             ->when($from, fn ($qb, $v) => $qb->whereDate('s.created_at', '>=', $v))
             ->when($to, fn ($qb, $v) => $qb->whereDate('s.created_at', '<=', $v))
-            ->when(! empty($locationIds), fn ($qb) => $qb->whereIn('s.location_id', $locationIds))
+            ->when($locationIds !== null, fn ($qb) => $qb->whereIn('s.location_id', $locationIds))
             ->select([
                 's.created_at as tanggal',
                 'so.salesorder_no as no_pesanan',
@@ -615,14 +617,16 @@ class ReportRepository
 
     public function pickListLookup(?string $search, int $perPage = 20): Collection
     {
-        return Picklist::query()
+        $query = Picklist::query()
             ->select('id', 'picklist_no')
             ->with(['items:id,picklist_id,order_id', 'items.order:id,salesorder_no'])
             ->whereNotIn('status', [Picklist::STATUS_DRAFT, Picklist::STATUS_CANCELLED])
             ->when($search, fn ($q, $v) => $q->where('picklist_no', 'ilike', "%{$v}%"))
             ->orderByDesc('created_at')
-            ->limit($perPage)
-            ->get();
+            ->limit($perPage);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->get();
     }
 
     public function pickListRowsQuery(array $filters): Builder
@@ -630,7 +634,7 @@ class ReportRepository
         $from = $filters['from'] ?? null;
         $to = $filters['to'] ?? null;
 
-        return DB::table('picklist_items as pi')
+        $query = DB::table('picklist_items as pi')
             ->join('picklists as p', 'p.id', '=', 'pi.picklist_id')
             ->leftJoin('sales_orders as so', 'so.id', '=', 'pi.order_id')
             ->leftJoin('users as u', 'u.id', '=', 'p.picker_id')
@@ -639,6 +643,7 @@ class ReportRepository
             ->leftJoin('locations as l', 'l.id', '=', 'p.location_id')
             ->leftJoin('channel_shops as cs', 'cs.shop_id', '=', 'so.channel_shop_id')
             ->leftJoin('channels as ch', 'ch.id', '=', 'cs.channel_id')
+            ->tap(fn ($q) => WarehouseAccess::apply($q, 'p.location_id'))
             ->whereNotIn('p.status', [Picklist::STATUS_DRAFT, Picklist::STATUS_CANCELLED])
             ->when($from, fn ($q, $v) => $q->where('p.created_at', '>=', $v.' 00:00:00'))
             ->when($to, fn ($q, $v) => $q->where('p.created_at', '<=', $v.' 23:59:59.999999'))
@@ -658,6 +663,8 @@ class ReportRepository
             ->orderBy('p.created_at')
             ->orderBy('p.picklist_no')
             ->orderBy('pi.sku');
+
+        return $query;
     }
 
     public function pickListDetailQuery(string $picklistId, ?array $orderIds = null): Builder
@@ -719,6 +726,14 @@ class ReportRepository
             ])
             ->selectRaw('COALESCE(t.shipped_at, t.created_at) AS tanggal')
             ->selectRaw($qtyColumn.' AS qty');
+
+        $allowed = WarehouseAccess::allowedIds();
+        if ($allowed !== null) {
+            $query->where(function ($q) use ($allowed) {
+                $q->whereIn('t.source_location_id', $allowed)
+                    ->orWhereIn('t.destination_location_id', $allowed);
+            });
+        }
 
         if ($isMasuk) {
             $query->where('t.status', InventoryTransfer::STATUS_RECEIVED)

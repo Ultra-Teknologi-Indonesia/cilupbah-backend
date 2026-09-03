@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Repositories;
 
+use App\Support\WarehouseAccess;
 use Illuminate\Support\Facades\DB;
 use Modules\Sales\Models\SalesInvoice;
 use Modules\Sales\Models\SalesInvoiceItem;
@@ -12,7 +13,7 @@ class SalesInvoiceRepository
 {
     public function getAllPaginated(int $limit = 10)
     {
-        return QueryBuilder::for(SalesInvoice::class)
+        $query = QueryBuilder::for(SalesInvoice::class)
             ->with(['order:id,salesorder_no', 'location:id,location_name', 'items'])
             ->allowedFilters(
                 AllowedFilter::exact('status'),
@@ -21,19 +22,25 @@ class SalesInvoiceRepository
             )
             ->allowedSearch('invoice_number', 'customer_name')
             ->allowedSorts('invoice_number', 'invoice_date', 'due_date', 'total_amount', 'created_at')
-            ->defaultSort('-created_at')
-            ->paginate($limit)
+            ->defaultSort('-created_at');
+        WarehouseAccess::apply($query, 'sales_invoices.location_id');
+
+        return $query->paginate($limit)
             ->appends(request()->query());
     }
 
     public function findById(string $id): ?SalesInvoice
     {
-        return SalesInvoice::with(['order', 'location', 'items.product:id,sku,product_id', 'payments'])
-            ->find($id);
+        $query = SalesInvoice::with(['order', 'location', 'items.product:id,sku,product_id', 'payments']);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->find($id);
     }
 
     public function create(array $data): SalesInvoice
     {
+        WarehouseAccess::assert($data['location_id'] ?? null);
+
         return SalesInvoice::create($data);
     }
 
@@ -44,7 +51,7 @@ class SalesInvoiceRepository
 
     public function getUnpaid(int $limit = 10)
     {
-        return QueryBuilder::for(SalesInvoice::class)
+        $query = QueryBuilder::for(SalesInvoice::class)
             ->whereIn('status', [SalesInvoice::STATUS_DRAFT, SalesInvoice::STATUS_OPEN])
             ->whereColumn('paid_amount', '<', 'total_amount')
             ->with(['order:id,salesorder_no', 'location:id,location_name'])
@@ -53,14 +60,16 @@ class SalesInvoiceRepository
             )
             ->allowedSearch('invoice_number', 'customer_name')
             ->allowedSorts('due_date', 'total_amount', 'created_at')
-            ->defaultSort('due_date')
-            ->paginate($limit)
+            ->defaultSort('due_date');
+        WarehouseAccess::apply($query, 'sales_invoices.location_id');
+
+        return $query->paginate($limit)
             ->appends(request()->query());
     }
 
     public function getOverdue(int $limit = 10)
     {
-        return QueryBuilder::for(SalesInvoice::class)
+        $query = QueryBuilder::for(SalesInvoice::class)
             ->where('due_date', '<', now()->toDateString())
             ->whereIn('status', [SalesInvoice::STATUS_DRAFT, SalesInvoice::STATUS_OPEN])
             ->with(['order:id,salesorder_no', 'location:id,location_name'])
@@ -69,14 +78,16 @@ class SalesInvoiceRepository
             )
             ->allowedSearch('invoice_number', 'customer_name')
             ->allowedSorts('due_date', 'total_amount')
-            ->defaultSort('due_date')
-            ->paginate($limit)
+            ->defaultSort('due_date');
+        WarehouseAccess::apply($query, 'sales_invoices.location_id');
+
+        return $query->paginate($limit)
             ->appends(request()->query());
     }
 
     public function getSummary()
     {
-        return DB::table('sales_invoices')
+        $query = DB::table('sales_invoices')
             ->join('locations', 'sales_invoices.location_id', '=', 'locations.id')
             ->select(
                 'locations.id as location_id',
@@ -87,18 +98,22 @@ class SalesInvoiceRepository
                 DB::raw('SUM(total_amount - paid_amount) as total_outstanding'),
             )
             ->groupBy('locations.id', 'locations.location_name')
-            ->orderBy('locations.location_name')
-            ->get();
+            ->orderBy('locations.location_name');
+        WarehouseAccess::apply($query, 'sales_invoices.location_id');
+
+        return $query->get();
     }
 
     public function getForReturnWms(string $contactId, int $limit = 10)
     {
-        return QueryBuilder::for(SalesInvoice::class)
+        $query = QueryBuilder::for(SalesInvoice::class)
             ->where('customer_name', $contactId)
             ->whereNot('status', SalesInvoice::STATUS_CANCELLED)
             ->select('id', 'invoice_number', 'order_id', 'customer_name', 'total_amount', 'paid_amount', 'status')
-            ->defaultSort('-created_at')
-            ->paginate($limit)
+            ->defaultSort('-created_at');
+        WarehouseAccess::apply($query, 'sales_invoices.location_id');
+
+        return $query->paginate($limit)
             ->appends(request()->query());
     }
 

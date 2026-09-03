@@ -674,7 +674,9 @@ class InboundService
             $item->refresh();
 
             $notPutAway = $fromThisItem - min($fromThisItem, (int) $item->putaway_qty);
-            $inbound = Inbound::find($item->inbound_id);
+            $inboundQuery = Inbound::whereKey($item->inbound_id);
+            WarehouseAccess::apply($inboundQuery, 'location_id');
+            $inbound = $inboundQuery->first();
             $defaultBin = $inbound ? $this->binService->getDefaultBin($inbound->location_id) : null;
 
             if ($notPutAway > 0 && $defaultBin && $inbound) {
@@ -2062,7 +2064,9 @@ class InboundService
 
     public function downloadBarcodes(string $id)
     {
-        $inbound = Inbound::with(['items.variant.product'])->findOrFail($id);
+        $inboundQuery = Inbound::with(['items.variant.product'])->whereKey($id);
+        WarehouseAccess::apply($inboundQuery, 'location_id');
+        $inbound = $inboundQuery->firstOrFail();
 
         $pages = [];
         foreach ($inbound->items as $item) {

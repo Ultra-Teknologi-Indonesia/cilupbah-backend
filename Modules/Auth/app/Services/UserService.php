@@ -2,8 +2,10 @@
 
 namespace Modules\Auth\Services;
 
+use App\Models\Permission;
 use App\Models\User;
-use Modules\Auth\Support\PermissionCatalog;
+use App\Models\UserPermissionDenial;
+use App\Support\WarehouseAccess;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\QueryException;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -14,12 +16,13 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Auth\Exports\UsersExport;
-use Modules\Auth\Http\Resources\UserLookupResource;
 use Modules\Auth\Repositories\PermissionRepository;
 use Modules\Auth\Repositories\UserHistoryRepository;
 use Modules\Auth\Repositories\UserLocationRepository;
 use Modules\Auth\Repositories\UserRepository;
+use Modules\Auth\Support\PermissionCatalog;
 use Modules\Notification\Services\NotificationDispatcher;
+use Ramsey\Uuid\Uuid;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
@@ -37,8 +40,33 @@ class UserService
 
     public function attachProfileContext(User $user): User
     {
+        $this->applyProfileContext(
+            $user,
+            $this->userLocationRepository->getLocationTree($user->id),
+        );
 
-        $user->setProfileContext('location_tree', $this->userLocationRepository->getLocationTree($user->id));
+        return $user;
+    }
+
+    public function attachProfileContexts(SupportCollection $users): SupportCollection
+    {
+        $locationTrees = $this->userLocationRepository->getLocationTrees(
+            $users->pluck('id')->map(static fn (string|int $id): string => (string) $id)->all(),
+        );
+
+        $users->each(function (User $user) use ($locationTrees): void {
+            $this->applyProfileContext(
+                $user,
+                $locationTrees[(string) $user->id] ?? collect(),
+            );
+        });
+
+        return $users;
+    }
+
+    private function applyProfileContext(User $user, SupportCollection $locationTree): void
+    {
+        $user->setProfileContext('location_tree', $locationTree);
 
         if ($user->hasRole('owner')) {
             $user->setProfileContext(
@@ -46,8 +74,6 @@ class UserService
                 $this->allPermissionNames ??= $this->permissionRepository->allNames()
             );
         }
-
-        return $user;
     }
 
     public function getPaginatedUsers(): LengthAwarePaginator
@@ -80,12 +106,14 @@ class UserService
     {
         return Excel::download(
             new UsersExport($this->userRepository->getExportUsersQuery()),
-            'users_export_' . now()->format('Ymd_His') . '.xlsx'
+            'users_export_'.now()->format('Ymd_His').'.xlsx'
         );
     }
 
     public function createUser(array $data): User
     {
+        $this->assertActorMayAssignLocations($data, creating: true);
+
         $user = DB::transaction(function () use ($data) {
             $user = $this->userRepository->create([
                 'name' => $data['name'],
@@ -99,9 +127,7 @@ class UserService
             $user->assignRole($data['roles']);
 
             if (array_key_exists('permissions', $data)) {
-                $user->syncPermissions(
-                    PermissionCatalog::withViewPrerequisites($data['permissions'] ?? []),
-                );
+                $this->syncEffectivePermissions($user, $data['permissions'] ?? []);
             }
 
             if (array_key_exists('location_ids', $data)) {
@@ -135,7 +161,8 @@ class UserService
     public function updateUser(string $id, array $data): User
     {
         return DB::transaction(function () use ($id, $data) {
-            $user = $this->userRepository->findById($id);
+            $user = $this->userRepository->findByIdForUpdate($id);
+            $this->assertActorMayAssignLocations($data);
 
             $updateData = [
                 'name' => $data['name'],
@@ -157,9 +184,7 @@ class UserService
             $user->syncRoles($data['roles']);
 
             if (array_key_exists('permissions', $data)) {
-                $user->syncPermissions(
-                    PermissionCatalog::withViewPrerequisites($data['permissions'] ?? []),
-                );
+                $this->syncEffectivePermissions($user, $data['permissions'] ?? []);
             }
 
             if (array_key_exists('location_ids', $data)) {
@@ -179,15 +204,13 @@ class UserService
     public function syncPermissions(string $id, array $permissionNames): User
     {
         return DB::transaction(function () use ($id, $permissionNames) {
-            $user = $this->userRepository->findById($id);
+            $user = $this->userRepository->findByIdForUpdate($id);
 
             if ($user->hasRole('owner')) {
                 throw new HttpException(403, 'Hak akses owner tidak dapat diubah (owner punya akses penuh).');
             }
 
-            $user->syncPermissions(
-                PermissionCatalog::withViewPrerequisites($permissionNames),
-            );
+            $this->syncEffectivePermissions($user, $permissionNames);
 
             $this->historyRepository->createHistory([
                 'actor_id' => Auth::id(),
@@ -195,8 +218,167 @@ class UserService
                 'action' => 'updated',
             ]);
 
-            return $user->load('permissions');
+            return $user->load([
+                'roles.permissions',
+                'permissions',
+                'permissionDenials.permission',
+            ]);
         });
+    }
+
+    private function syncEffectivePermissions(User $user, array $permissionNames): void
+    {
+        if ($user->hasRole('owner')) {
+            throw new HttpException(403, 'Hak akses owner tidak dapat diubah (owner punya akses penuh).');
+        }
+
+        $permissionNames = collect(PermissionCatalog::withViewPrerequisites($permissionNames))
+            ->map(static fn (string $name): string => trim($name))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $user->load('roles.permissions');
+
+        $rolePermissionNames = $user->roles
+            ->flatMap(static fn ($role) => $role->permissions->pluck('name'))
+            ->unique()
+            ->values();
+
+        $this->assertActorMayGrantPermissions($permissionNames, $rolePermissionNames);
+
+        $directPermissionNames = $permissionNames
+            ->diff($rolePermissionNames)
+            ->values();
+        $deniedPermissionNames = $rolePermissionNames
+            ->diff($permissionNames)
+            ->values();
+
+        $user->syncPermissions($directPermissionNames->all());
+
+        UserPermissionDenial::query()
+            ->where('user_id', $user->id)
+            ->delete();
+
+        if ($deniedPermissionNames->isNotEmpty()) {
+            $permissionIds = Permission::query()
+                ->whereIn('name', $deniedPermissionNames->all())
+                ->pluck('id', 'name');
+
+            if ($permissionIds->count() !== $deniedPermissionNames->count()) {
+                throw new HttpException(422, 'Sebagian hak akses tidak dapat diproses. Silakan muat ulang daftar hak akses.');
+            }
+
+            $timestamp = now();
+
+            $rows = $deniedPermissionNames
+                ->map(fn (string $name): array => [
+                    'id' => Uuid::uuid7()->toString(),
+                    'user_id' => $user->id,
+                    'permission_id' => $permissionIds[$name],
+                    'created_at' => $timestamp,
+                    'updated_at' => $timestamp,
+                ])
+                ->all();
+
+            UserPermissionDenial::query()->insert($rows);
+        }
+
+        $user->forgetDeniedPermissionNamesCache();
+
+        Log::info('Permission efektif pengguna disinkronkan', [
+            'target_user_id' => $user->id,
+            'actor_id' => Auth::id(),
+            'roles' => $user->roles->pluck('name')->values()->all(),
+            'permissions' => $permissionNames->all(),
+            'direct_permission_count' => $directPermissionNames->count(),
+            'denied_permission_count' => $deniedPermissionNames->count(),
+        ]);
+    }
+
+    private function assertActorMayGrantPermissions(
+        SupportCollection $requested,
+        SupportCollection $rolePermissions,
+    ): void {
+        $actor = Auth::user();
+
+        if (! $actor || $actor->hasRole('owner')) {
+            return;
+        }
+
+        $newGrants = $requested->diff($rolePermissions);
+        if ($newGrants->isEmpty()) {
+            return;
+        }
+
+        $actorPermissions = $actor->effectivePermissionNames();
+        $notManageable = $newGrants->diff($actorPermissions);
+
+        if ($notManageable->isNotEmpty()) {
+            throw new HttpException(
+                403,
+                'Anda hanya dapat memberikan hak akses yang Anda miliki sendiri.',
+            );
+        }
+    }
+
+    private function assertActorMayAssignLocations(array $data, bool $creating = false): void
+    {
+        $allowed = WarehouseAccess::allowedIds();
+
+        if ($allowed === null) {
+            return;
+        }
+
+        if (array_key_exists('warehouse_id', $data)
+            && $data['warehouse_id'] !== null
+            && ! in_array((string) $data['warehouse_id'], $allowed, true)) {
+            throw new HttpException(
+                403,
+                'Anda hanya dapat menggunakan gudang yang menjadi kewenangan Anda.',
+            );
+        }
+
+        if (! array_key_exists('location_ids', $data)) {
+            if ($creating) {
+                throw new HttpException(
+                    403,
+                    'User dengan akses terbatas harus memiliki minimal satu gudang yang ditugaskan.',
+                );
+            }
+
+            return;
+        }
+
+        $locationIds = collect($data['location_ids'] ?? [])
+            ->map(static fn (mixed $id): string => (string) $id)
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($locationIds === []) {
+            throw new HttpException(
+                403,
+                'User dengan akses terbatas harus memiliki minimal satu gudang yang ditugaskan.',
+            );
+        }
+
+        if (array_diff($locationIds, $allowed) !== []) {
+            throw new HttpException(
+                403,
+                'Anda hanya dapat menugaskan gudang yang menjadi kewenangan Anda.',
+            );
+        }
+
+        if (array_key_exists('warehouse_id', $data)
+            && $data['warehouse_id'] !== null
+            && ! in_array((string) $data['warehouse_id'], $locationIds, true)) {
+            throw new HttpException(
+                422,
+                'Gudang default harus termasuk gudang yang ditugaskan.',
+            );
+        }
     }
 
     public function deleteUser(string $id): void

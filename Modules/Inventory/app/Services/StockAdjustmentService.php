@@ -2,6 +2,7 @@
 
 namespace Modules\Inventory\Services;
 
+use App\Support\WarehouseAccess;
 use Modules\Inventory\Repositories\StockAdjustmentRepository;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
@@ -57,6 +58,7 @@ class StockAdjustmentService
 
     public function create(array $data): StockAdjustment
     {
+        WarehouseAccess::assert($data['location_id'] ?? null);
         $this->assertBinsBelongToLocation($data['items'] ?? [], $data['location_id']);
 
         app(\Modules\Product\Services\BundleGuardService::class)->assertNotBundle(
@@ -122,7 +124,9 @@ class StockAdjustmentService
 
     public function update(string $id, array $data): StockAdjustment
     {
-        $adjustment = StockAdjustment::with('items')->find($id);
+        $adjustmentQuery = StockAdjustment::with('items')->whereKey($id);
+        WarehouseAccess::apply($adjustmentQuery, 'location_id');
+        $adjustment = $adjustmentQuery->first();
 
         if (!$adjustment) {
             throw new \Exception('Dokumen adjustment tidak ditemukan.');
@@ -225,7 +229,9 @@ class StockAdjustmentService
 
     public function delete(string $id): bool
     {
-        $adjustment = StockAdjustment::withTrashed()->with('items')->find($id);
+        $adjustmentQuery = StockAdjustment::withTrashed()->with('items')->whereKey($id);
+        WarehouseAccess::apply($adjustmentQuery, 'location_id');
+        $adjustment = $adjustmentQuery->first();
 
         if (!$adjustment) {
             throw new \Exception('Dokumen adjustment tidak ditemukan.');

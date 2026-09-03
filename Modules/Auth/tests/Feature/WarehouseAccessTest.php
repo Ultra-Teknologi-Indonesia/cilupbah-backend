@@ -9,7 +9,9 @@ use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Modules\Warehouse\Models\Location;
+use Modules\Auth\Services\UserService;
 use Tests\TestCase;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class WarehouseAccessTest extends TestCase
 {
@@ -86,6 +88,21 @@ class WarehouseAccessTest extends TestCase
 
         $this->expectException(AuthorizationException::class);
         WarehouseAccess::assert($this->pusat->id);
+    }
+
+    public function test_operational_assert_allows_internal_transit_for_restricted_user(): void
+    {
+        $transit = Location::firstOrCreate(
+            ['location_code' => Location::SYSTEM_TRANSIT_CODE],
+            ['location_name' => 'Transit Sistem', 'is_warehouse' => false, 'is_active' => true],
+        );
+
+        Auth::setUser($this->member([$this->kecil->id]));
+
+        WarehouseAccess::assertOperational($transit->id);
+
+        $this->expectException(AuthorizationException::class);
+        WarehouseAccess::assertOperational($this->pusat->id);
     }
 
     public function test_constrain_intersects_with_allowed(): void
@@ -176,5 +193,46 @@ class WarehouseAccessTest extends TestCase
         ])->assertStatus(200);
 
         $this->assertNull($user->fresh()->allowedLocationIds());
+    }
+
+    public function test_restricted_actor_cannot_create_user_outside_assigned_warehouses(): void
+    {
+        Auth::setUser($this->member([$this->kecil->id]));
+
+        try {
+            app(UserService::class)->createUser([
+                'name' => 'Pusat Staff',
+                'email' => 'pusat.staff@example.com',
+                'password' => 'StrongP@ss1',
+                'roles' => ['picker'],
+                'warehouse_id' => $this->pusat->id,
+                'location_ids' => [$this->pusat->id],
+            ]);
+            $this->fail('Expected a restricted actor to be blocked from assigning another warehouse.');
+        } catch (HttpException $exception) {
+            $this->assertSame(403, $exception->getStatusCode());
+        }
+
+        $this->assertDatabaseMissing('users', ['email' => 'pusat.staff@example.com']);
+    }
+
+    public function test_restricted_actor_cannot_clear_a_users_warehouse_assignment(): void
+    {
+        $target = $this->member([$this->kecil->id]);
+        Auth::setUser($this->member([$this->kecil->id]));
+
+        try {
+            app(UserService::class)->updateUser($target->id, [
+                'name' => $target->name,
+                'email' => $target->email,
+                'roles' => ['picker'],
+                'location_ids' => [],
+            ]);
+            $this->fail('Expected a restricted actor to be blocked from clearing a warehouse assignment.');
+        } catch (HttpException $exception) {
+            $this->assertSame(403, $exception->getStatusCode());
+        }
+
+        $this->assertEqualsCanonicalizing([$this->kecil->id], $target->fresh()->allowedLocationIds());
     }
 }

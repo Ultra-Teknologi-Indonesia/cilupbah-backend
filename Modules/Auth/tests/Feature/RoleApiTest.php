@@ -4,6 +4,7 @@ namespace Modules\Auth\Tests\Feature;
 
 use App\Models\Role;
 use App\Models\User;
+use Database\Seeders\RbacPermissionSeeder;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -19,6 +20,7 @@ class RoleApiTest extends TestCase
     {
         parent::setUp();
         $this->seed(RoleSeeder::class);
+        $this->seed(RbacPermissionSeeder::class);
 
         $this->owner = User::factory()->create();
         $this->owner->assignRole('owner');
@@ -37,11 +39,12 @@ class RoleApiTest extends TestCase
         $role = Role::where('name', 'picker')->first();
         $role->givePermissionTo('view-user');
 
-        $this->actingAs($this->owner, 'sanctum')
+        $response = $this->actingAs($this->owner, 'sanctum')
             ->getJson("/api/v1/roles/{$role->id}")
             ->assertStatus(200)
-            ->assertJsonPath('data.name', 'picker')
-            ->assertJsonPath('data.permissions.0', 'view-user');
+            ->assertJsonPath('data.name', 'picker');
+
+        $this->assertContains('view-user', $response->json('data.permissions'));
     }
 
     public function test_show_with_non_uuid_id_returns_404_not_500(): void
@@ -54,7 +57,7 @@ class RoleApiTest extends TestCase
     public function test_show_with_unknown_uuid_returns_404(): void
     {
         $this->actingAs($this->owner, 'sanctum')
-            ->getJson('/api/v1/roles/' . Str::uuid())
+            ->getJson('/api/v1/roles/'.Str::uuid())
             ->assertStatus(404);
     }
 

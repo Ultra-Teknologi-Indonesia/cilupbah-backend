@@ -3,6 +3,7 @@
 namespace Modules\Outbound\Repositories;
 
 use App\Models\User;
+use App\Support\WarehouseAccess;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 
@@ -17,16 +18,23 @@ class WmsRepository
 
     public function findLocation(string $locationId): ?Location
     {
-        return Location::find($locationId);
+        $query = Location::whereKey($locationId);
+        WarehouseAccess::apply($query, 'id');
+
+        return $query->first();
     }
 
     public function findBin(string $binId): ?LocationBin
     {
-        return LocationBin::find($binId);
+        return LocationBin::whereKey($binId)
+            ->whereHas('location', fn ($location) => WarehouseAccess::apply($location, 'id'))
+            ->first();
     }
 
     public function findBinInLocation(string $binId, string $locationId): ?LocationBin
     {
+        WarehouseAccess::assert($locationId);
+
         return LocationBin::where('id', $binId)
             ->where('location_id', $locationId)
             ->first();

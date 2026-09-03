@@ -117,7 +117,7 @@ class InventoryTransferRepository
 
     public function findById(string $id): ?InventoryTransfer
     {
-        $transfer = InventoryTransfer::with([
+        $query = InventoryTransfer::with([
             'sourceLocation',
             'destinationLocation',
             'items.product:id,sku,product_id',
@@ -127,7 +127,15 @@ class InventoryTransferRepository
             'items.product.options',
             'items.sourceBin:id,bin_final_code',
             'items.destinationBin:id,bin_final_code',
-        ])->find($id);
+        ]);
+        $allowedLocationIds = WarehouseAccess::allowedIds();
+        if ($allowedLocationIds !== null) {
+            $query->where(function ($q) use ($allowedLocationIds) {
+                $q->whereIn('source_location_id', $allowedLocationIds)
+                    ->orWhereIn('destination_location_id', $allowedLocationIds);
+            });
+        }
+        $transfer = $query->find($id);
 
         if ($transfer && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $transfer->created_by)) {
             $user = User::find($transfer->created_by);
@@ -141,9 +149,16 @@ class InventoryTransferRepository
 
     public function findByIdForUpdate(string $id): ?InventoryTransfer
     {
-        return InventoryTransfer::with('items')
-            ->lockForUpdate()
-            ->find($id);
+        $query = InventoryTransfer::with('items')->lockForUpdate();
+        $allowedLocationIds = WarehouseAccess::allowedIds();
+        if ($allowedLocationIds !== null) {
+            $query->where(function ($q) use ($allowedLocationIds) {
+                $q->whereIn('source_location_id', $allowedLocationIds)
+                    ->orWhereIn('destination_location_id', $allowedLocationIds);
+            });
+        }
+
+        return $query->find($id);
     }
 
     public function create(array $data): InventoryTransfer
@@ -163,13 +178,31 @@ class InventoryTransferRepository
 
     public function updateItemReceivedQty(string $itemId, int $addQty): void
     {
-        InventoryTransferItem::where('id', $itemId)
+        $query = InventoryTransferItem::where('id', $itemId);
+        $query->whereHas('transfer', function ($transfer) {
+            $allowed = WarehouseAccess::allowedIds();
+            if ($allowed !== null) {
+                $transfer->where(function ($q) use ($allowed) {
+                    $q->whereIn('source_location_id', $allowed)
+                        ->orWhereIn('destination_location_id', $allowed);
+                });
+            }
+        });
+        $query
             ->increment('received_qty', $addQty);
     }
 
     public function delete(string $id): bool
     {
-        $transfer = InventoryTransfer::find($id);
+        $query = InventoryTransfer::whereKey($id);
+        $allowedLocationIds = WarehouseAccess::allowedIds();
+        if ($allowedLocationIds !== null) {
+            $query->where(function ($q) use ($allowedLocationIds) {
+                $q->whereIn('source_location_id', $allowedLocationIds)
+                    ->orWhereIn('destination_location_id', $allowedLocationIds);
+            });
+        }
+        $transfer = $query->first();
 
         return $transfer?->delete() ?? false;
     }

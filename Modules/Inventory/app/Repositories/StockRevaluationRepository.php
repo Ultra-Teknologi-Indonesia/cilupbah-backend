@@ -2,6 +2,7 @@
 
 namespace Modules\Inventory\Repositories;
 
+use App\Support\WarehouseAccess;
 use Modules\Inventory\Models\StockRevaluation;
 use Modules\Inventory\Models\StockRevaluationItem;
 use Spatie\QueryBuilder\QueryBuilder;
@@ -11,7 +12,7 @@ class StockRevaluationRepository
 {
     public function getAllPaginated(int $limit = 10)
     {
-        return QueryBuilder::for(StockRevaluation::class)
+        $query = QueryBuilder::for(StockRevaluation::class)
             ->with(['location:id,location_name,location_code'])
             ->allowedSearch('revaluation_no')
             ->allowedFilters(
@@ -21,25 +22,33 @@ class StockRevaluationRepository
                 AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('created_at', '<=', $value)),
             )
             ->allowedSorts('created_at', 'revaluation_no', 'approved_at')
-            ->defaultSort('-created_at')
+            ->defaultSort('-created_at');
+
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query
             ->paginate(request('per_page', $limit))
             ->appends(request()->query());
     }
 
     public function findById(string $id): ?StockRevaluation
     {
-        return StockRevaluation::with([
+        $query = StockRevaluation::with([
             'items.product:id,sku,product_id',
             'items.bin:id,bin_final_code',
             'location:id,location_name,location_code',
-        ])->find($id);
+        ]);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->find($id);
     }
 
     public function findByIdForUpdate(string $id): ?StockRevaluation
     {
-        return StockRevaluation::with('items')
-            ->lockForUpdate()
-            ->find($id);
+        $query = StockRevaluation::with('items')->lockForUpdate();
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->find($id);
     }
 
     public function create(array $data): StockRevaluation

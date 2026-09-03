@@ -2,6 +2,7 @@
 
 namespace Modules\Warehouse\Services;
 
+use App\Support\WarehouseAccess;
 use DomainException;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\SkuRackAssignment;
@@ -15,12 +16,14 @@ class SkuHomeBinGuard
 
     public function assertSkuFitsBin(string $locationId, string $itemId, string $targetBinId): void
     {
-        $location = Location::find($locationId);
+        WarehouseAccess::assert($locationId);
+
+        $location = Location::whereKey($locationId)->first();
         if (! $location || ! $location->enforcesStrictBinSku()) {
             return;
         }
 
-        if (! $this->isGuardedTargetBin($targetBinId)) {
+        if (! $this->isGuardedTargetBin($locationId, $targetBinId)) {
             return;
         }
 
@@ -35,7 +38,9 @@ class SkuHomeBinGuard
         $productName = $variant?->product?->name ?? '';
 
         $homeCode = $homeBin?->bin_final_code ?? '-';
-        $targetCode = LocationBin::find($targetBinId)?->bin_final_code ?? '-';
+        $targetCode = LocationBin::whereKey($targetBinId)
+            ->where('location_id', $locationId)
+            ->value('bin_final_code') ?? '-';
 
         throw new DomainException(sprintf(
             'SKU %s (%s) sudah menempati rak %s, jadi tidak bisa ditempatkan ke rak %s. Tempatkan ke rak %s.',
@@ -49,21 +54,25 @@ class SkuHomeBinGuard
 
     public function isTargetBinAllowed(string $locationId, string $itemId, string $targetBinId): bool
     {
-        $location = Location::find($locationId);
+        WarehouseAccess::assert($locationId);
+
+        $location = Location::whereKey($locationId)->first();
         if (! $location || ! $location->enforcesStrictBinSku()) {
             return true;
         }
 
-        if (! $this->isGuardedTargetBin($targetBinId)) {
+        if (! $this->isGuardedTargetBin($locationId, $targetBinId)) {
             return true;
         }
 
         return $this->firstConflictingInventory($locationId, $itemId, $targetBinId) === null;
     }
 
-    protected function isGuardedTargetBin(string $targetBinId): bool
+    protected function isGuardedTargetBin(string $locationId, string $targetBinId): bool
     {
-        $bin = LocationBin::find($targetBinId);
+        $bin = LocationBin::whereKey($targetBinId)
+            ->where('location_id', $locationId)
+            ->first();
 
         if (! $bin) {
             return false;
@@ -76,6 +85,8 @@ class SkuHomeBinGuard
 
     public function currentHomeBinId(string $locationId, string $itemId): ?string
     {
+        WarehouseAccess::assert($locationId);
+
         $stockHome = Inventory::query()
             ->where('location_id', $locationId)
             ->where('item_id', $itemId)
@@ -100,6 +111,8 @@ class SkuHomeBinGuard
 
     public function assignedBinId(string $locationId, string $itemId): ?string
     {
+        WarehouseAccess::assert($locationId);
+
         return SkuRackAssignment::query()
             ->where('location_id', $locationId)
             ->where('item_id', $itemId)

@@ -2,6 +2,7 @@
 
 namespace Modules\Outbound\Repositories;
 
+use App\Support\WarehouseAccess;
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\PacklistItem;
 use Modules\Sales\Models\SalesOrder;
@@ -14,7 +15,7 @@ class PacklistRepository
 {
     public function getAllPaginated(int $limit = 10)
     {
-        return QueryBuilder::for(Packlist::class)
+        $query = QueryBuilder::for(Packlist::class)
             ->with(['location:id,location_name,location_code', 'packer:id,name,email', 'order:id,salesorder_no,customer_name,shipping_provider,shipping_type,channel_instant,resolved_shipment_type'])
             ->allowedFilters(
                 AllowedFilter::callback('status', function ($query, $value) {
@@ -74,14 +75,16 @@ class PacklistRepository
                     $descending ? 'desc' : 'asc',
                 )),
             )
-            ->defaultSort('-created_at')
-            ->paginate($limit)
+            ->defaultSort('-created_at');
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->paginate($limit)
             ->appends(request()->query());
     }
 
     public function findById(string $id): ?Packlist
     {
-        return Packlist::with([
+        $query = Packlist::with([
             'items.product:id,sku,product_id',
             'items.product.media:id,variant_id,product_id,url,is_primary,sort_order',
             'items.product.product:id,name',
@@ -94,14 +97,20 @@ class PacklistRepository
             'location:id,location_name,location_code',
             'packer:id,name,email',
             'order:id,salesorder_no,customer_name,shipping_provider,shipping_type,channel_instant,resolved_shipment_type',
-        ])->find($id);
+        ]);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->find($id);
     }
 
     public function findByOrderId(string $orderId): ?Packlist
     {
-        return Packlist::where('order_id', $orderId)
+        $query = Packlist::where('order_id', $orderId)
             ->whereNotIn('status', [Packlist::STATUS_CANCELLED])
-            ->first();
+            ;
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->first();
     }
 
     public function create(array $data): Packlist
@@ -116,27 +125,38 @@ class PacklistRepository
 
     public function updateItem(string $itemId, array $data): bool
     {
-        return PacklistItem::where('id', $itemId)->update($data) > 0;
+        $query = PacklistItem::where('id', $itemId);
+        $query->whereHas('packlist', fn ($packlist) => WarehouseAccess::apply($packlist, 'location_id'));
+
+        return $query->update($data) > 0;
     }
 
     public function update(string $id, array $data): bool
     {
-        return Packlist::where('id', $id)->update($data) > 0;
+        $query = Packlist::where('id', $id);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->update($data) > 0;
     }
 
     public function delete(string $id): bool
     {
-        return Packlist::where('id', $id)->delete() > 0;
+        $query = Packlist::where('id', $id);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->delete() > 0;
     }
 
     public function getItemsPaginated(string $packlistId, int $limit = 10)
     {
-        return QueryBuilder::for(PacklistItem::class)
+        $query = QueryBuilder::for(PacklistItem::class)
             ->where('packlist_id', $packlistId)
             ->with(['product:id,sku,product_id', 'orderItem:id,sku,description'])
             ->allowedSorts('created_at', 'sku')
-            ->defaultSort('created_at')
-            ->paginate($limit)
+            ->defaultSort('created_at');
+        $query->whereHas('packlist', fn ($packlist) => WarehouseAccess::apply($packlist, 'location_id'));
+
+        return $query->paginate($limit)
             ->appends(request()->query());
     }
 

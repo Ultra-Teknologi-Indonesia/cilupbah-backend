@@ -3,6 +3,7 @@
 namespace Modules\Inventory\Repositories;
 
 use App\Exceptions\UserFacingException;
+use App\Support\WarehouseAccess;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -22,6 +23,8 @@ class InventoryMovementRepository
 {
     public function getByItem(string $itemId, string $locationId): Collection
     {
+        WarehouseAccess::assertOperational($locationId);
+
         return InventoryMovement::where('item_id', $itemId)
             ->where('location_id', $locationId)
             ->orderByDesc('transaction_date')
@@ -31,6 +34,8 @@ class InventoryMovementRepository
 
     public function reservationLedgerExists(string $transactionNumber, string $itemId, string $locationId): bool
     {
+        WarehouseAccess::assertOperational($locationId);
+
         return InventoryMovement::where('transaction_number', $transactionNumber)
             ->where('item_id', $itemId)
             ->where('location_id', $locationId)
@@ -40,6 +45,8 @@ class InventoryMovementRepository
 
     public function movementExists(string $transactionNumber, string $itemId, string $locationId, ?string $binId, string $source): bool
     {
+        WarehouseAccess::assertOperational($locationId);
+
         return InventoryMovement::where('transaction_number', $transactionNumber)
             ->where('item_id', $itemId)
             ->where('location_id', $locationId)
@@ -54,6 +61,8 @@ class InventoryMovementRepository
 
     public function findMovement(string $transactionNumber, string $itemId, string $locationId, ?string $binId, string $source): ?InventoryMovement
     {
+        WarehouseAccess::assertOperational($locationId);
+
         return InventoryMovement::where('transaction_number', $transactionNumber)
             ->where('item_id', $itemId)
             ->where('location_id', $locationId)
@@ -68,13 +77,17 @@ class InventoryMovementRepository
 
     public function getByTransactionNumber(string $transactionNumber): Collection
     {
-        return InventoryMovement::where('transaction_number', $transactionNumber)
+        $query = InventoryMovement::where('transaction_number', $transactionNumber)
             ->with(['product', 'location', 'bin'])
-            ->get();
+            ;
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->get();
     }
 
     public function create(array $data): InventoryMovement
     {
+        WarehouseAccess::assertOperational(isset($data['location_id']) ? (string) $data['location_id'] : null);
         $this->assertConsumptiveMovementBin($data);
 
         if (in_array($data['source'] ?? null, InventoryMovementSourceMap::UNRECORDED_REVERSAL_SOURCES, true)) {
@@ -243,6 +256,7 @@ class InventoryMovementRepository
 
         $view = strtolower((string) $get('view', 'all'));
         $baseQuery = InventoryMovement::query()->where('qty', '!=', 0);
+        WarehouseAccess::apply($baseQuery, 'inventory_movements.location_id');
         if (is_array($get('allowed_location_ids'))) {
             $baseQuery->whereIn('inventory_movements.location_id', $get('allowed_location_ids'));
         }
@@ -465,6 +479,7 @@ SQL;
         $balanceQuery = InventoryMovement::query()
             ->leftJoin('location_bins as balance_bins', 'balance_bins.id', '=', 'inventory_movements.bin_id')
             ->where('inventory_movements.qty', '!=', 0);
+        WarehouseAccess::apply($balanceQuery, 'inventory_movements.location_id');
         if (is_array($get('allowed_location_ids'))) {
             $balanceQuery->whereIn('inventory_movements.location_id', $get('allowed_location_ids'));
         }
@@ -497,6 +512,7 @@ SQL;
         if (is_array($get('allowed_location_ids'))) {
             $currentStockQuery->whereIn('current_inventory.location_id', $get('allowed_location_ids'));
         }
+        WarehouseAccess::apply($currentStockQuery, 'current_inventory.location_id');
 
         if ($hasLocationFilter) {
             $currentStockQuery

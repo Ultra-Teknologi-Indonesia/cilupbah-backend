@@ -3,6 +3,7 @@
 namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Support\WarehouseAccess;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
 use Maatwebsite\Excel\Facades\Excel;
@@ -83,6 +84,19 @@ class RackImportController extends Controller
         $model = $this->repository->find($batch);
         if (! $model) {
             return $this->errorResponse('Batch tidak ditemukan', 404);
+        }
+
+        $allowedLocationIds = WarehouseAccess::allowedIds();
+        if ($allowedLocationIds !== null && $model->rows()
+            ->whereNotNull('location_id')
+            ->whereNotIn('location_id', $allowedLocationIds)
+            ->exists()) {
+            return $this->errorResponse(
+                'Batch berisi lokasi yang berada di luar kewenangan Anda.',
+                403,
+                null,
+                'Aksi tidak dapat diproses',
+            );
         }
 
         if ($model->state !== RackImportBatch::STATE_PREVIEWED) {

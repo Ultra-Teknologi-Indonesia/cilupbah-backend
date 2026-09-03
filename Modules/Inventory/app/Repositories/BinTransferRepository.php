@@ -50,7 +50,7 @@ class BinTransferRepository
 
     public function findTransfer(string $id): ?BinTransfer
     {
-        return BinTransfer::with([
+        $query = BinTransfer::with([
             'location:id,location_name,location_code',
             'items.product',
             'items.product.product:id,name',
@@ -60,7 +60,10 @@ class BinTransferRepository
             'items.destinationBin:id,bin_final_code,location_id',
             'receipts' => fn ($q) => $q->orderByDesc('received_at'),
             'receipts.items.destinationBin:id,bin_final_code,location_id',
-        ])->find($id);
+        ]);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->find($id);
     }
 
     public function paginateReceipts(array $filters = [], int $perPage = 10)
@@ -91,6 +94,8 @@ class BinTransferRepository
             $query->whereDate('bin_transfer_receipts.received_at', '<=', $filters['date_to']);
         }
 
+        WarehouseAccess::apply($query, 'bin_transfer_receipts.location_id');
+
         return $query->orderByDesc('bin_transfer_receipts.received_at')
             ->paginate($perPage)
             ->appends(request()->query());
@@ -98,12 +103,15 @@ class BinTransferRepository
 
     public function findReceipt(string $id): ?BinTransferReceipt
     {
-        return BinTransferReceipt::with([
+        $query = BinTransferReceipt::with([
             'location:id,location_name,location_code',
             'binTransfer:id,transfer_number,transfer_date,location_id',
             'items.destinationBin:id,bin_final_code,location_id',
             'items.transferItem.product',
             'items.transferItem.product.product:id,name',
-        ])->find($id);
+        ]);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->find($id);
     }
 }

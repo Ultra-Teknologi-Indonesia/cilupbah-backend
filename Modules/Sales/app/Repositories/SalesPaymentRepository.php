@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Repositories;
 
+use App\Support\WarehouseAccess;
 use Illuminate\Support\Facades\DB;
 use Modules\Sales\Models\SalesPayment;
 use Spatie\QueryBuilder\QueryBuilder;
@@ -11,7 +12,7 @@ class SalesPaymentRepository
 {
     public function getAllPaginated(int $limit = 10)
     {
-        return QueryBuilder::for(SalesPayment::class)
+        $query = QueryBuilder::for(SalesPayment::class)
             ->with(['invoice:id,invoice_number,order_id,total_amount,paid_amount,status'])
             ->allowedFilters(
                 AllowedFilter::exact('sales_invoice_id'),
@@ -19,24 +20,36 @@ class SalesPaymentRepository
             )
             ->allowedSearch('payment_number', 'reference_no')
             ->allowedSorts('payment_number', 'payment_date', 'amount', 'created_at')
-            ->defaultSort('-created_at')
-            ->paginate($limit)
+            ->defaultSort('-created_at');
+        $query->whereHas('invoice', fn ($invoice) => WarehouseAccess::apply($invoice, 'location_id'));
+
+        return $query->paginate($limit)
             ->appends(request()->query());
     }
 
     public function findById(string $id): ?SalesPayment
     {
-        return SalesPayment::with(['invoice'])->find($id);
+        return SalesPayment::with(['invoice'])
+            ->whereHas('invoice', fn ($query) => WarehouseAccess::apply($query, 'location_id'))
+            ->find($id);
     }
 
     public function create(array $data): SalesPayment
     {
+        $invoiceQuery = \Modules\Sales\Models\SalesInvoice::whereKey($data['sales_invoice_id']);
+        WarehouseAccess::apply($invoiceQuery, 'location_id');
+        if (! $invoiceQuery->exists()) {
+            throw new \Illuminate\Database\Eloquent\ModelNotFoundException('Invoice tidak ditemukan.');
+        }
+
         return SalesPayment::create($data);
     }
 
     public function delete(string $id): bool
     {
-        return SalesPayment::where('id', $id)->delete() > 0;
+        return SalesPayment::whereKey($id)
+            ->whereHas('invoice', fn ($invoice) => WarehouseAccess::apply($invoice, 'location_id'))
+            ->delete() > 0;
     }
 
     public function generatePaymentNo(): string

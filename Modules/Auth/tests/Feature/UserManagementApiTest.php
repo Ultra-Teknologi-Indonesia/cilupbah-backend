@@ -3,8 +3,10 @@
 namespace Modules\Auth\Tests\Feature;
 
 use App\Models\User;
+use Database\Seeders\RbacPermissionSeeder;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Warehouse\Models\Location;
 use Tests\TestCase;
@@ -19,6 +21,7 @@ class UserManagementApiTest extends TestCase
     {
         parent::setUp();
         $this->seed(RoleSeeder::class);
+        $this->seed(RbacPermissionSeeder::class);
 
         $this->owner = User::factory()->create();
         $this->owner->assignRole('owner');
@@ -61,6 +64,38 @@ class UserManagementApiTest extends TestCase
             ->assertJsonPath('data.0.id', $target->id)
             ->assertJsonPath('data.0.locations.0.location_id', $location->id)
             ->assertJsonPath('data.0.locations.0.location_name', 'Gudang Kecil');
+    }
+
+    public function test_user_list_loads_location_and_zone_context_in_bulk(): void
+    {
+        $location = Location::factory()->create();
+        $users = User::factory()->count(5)->create();
+
+        foreach ($users as $user) {
+            $user->assignRole('picker');
+            $user->syncLocations([$location->id]);
+        }
+
+        DB::enableQueryLog();
+        DB::flushQueryLog();
+
+        $this->actingAs($this->owner, 'sanctum')
+            ->getJson('/api/v1/users?per_page=100')
+            ->assertStatus(200)
+            ->assertJsonCount(6, 'data');
+
+        $queries = collect(DB::getQueryLog());
+
+        $this->assertSame(
+            1,
+            $queries->filter(fn (array $query): bool => str_contains($query['query'], 'user_locations'))->count(),
+            'Relasi lokasi harus dimuat dalam satu query untuk seluruh halaman.',
+        );
+        $this->assertSame(
+            1,
+            $queries->filter(fn (array $query): bool => str_contains($query['query'], 'user_location_zones'))->count(),
+            'Relasi zona harus dimuat dalam satu query untuk seluruh halaman.',
+        );
     }
 
     public function test_systemsetting_users_lookup_accessible_without_view_user_permission(): void
@@ -118,7 +153,7 @@ class UserManagementApiTest extends TestCase
     public function test_show_with_unknown_uuid_returns_404(): void
     {
         $this->actingAs($this->owner, 'sanctum')
-            ->getJson('/api/v1/users/' . Str::uuid())
+            ->getJson('/api/v1/users/'.Str::uuid())
             ->assertStatus(404);
     }
 

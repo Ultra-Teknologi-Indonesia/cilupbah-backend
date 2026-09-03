@@ -4,6 +4,7 @@ namespace Modules\Sales\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Services\PdfRenderer;
+use App\Support\WarehouseAccess;
 use App\Traits\ApiResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
@@ -695,7 +696,7 @@ class SalesOrderController extends Controller
                 throw $e;
             }
 
-            $order = SalesOrder::find($id);
+            $order = $this->findAccessibleOrderForError($id);
 
             return $this->errorResponse(
                 'Pembatalan lokal sudah diproses, tetapi keputusan belum berhasil dikirim ke channel. Silakan coba kirim ulang.',
@@ -736,7 +737,7 @@ class SalesOrderController extends Controller
                 throw $e;
             }
 
-            $order = SalesOrder::find($id);
+            $order = $this->findAccessibleOrderForError($id);
 
             return $this->errorResponse(
                 'Penolakan lokal sudah diproses, tetapi keputusan belum berhasil dikirim ke channel. Silakan coba kirim ulang.',
@@ -763,7 +764,7 @@ class SalesOrderController extends Controller
                 throw $e;
             }
 
-            $order = SalesOrder::find($id);
+            $order = $this->findAccessibleOrderForError($id);
 
             return $this->errorResponse(
                 'Keputusan belum berhasil dikirim ulang ke channel.',
@@ -835,7 +836,7 @@ class SalesOrderController extends Controller
     )]
     public function cancelManual(string $id, CancelManualOrderRequest $request)
     {
-        $order = SalesOrder::findOrFail($id);
+        $order = $this->orderService->findOrderOrFail($id);
 
         if ($order->source && ! in_array(strtolower($order->source), ['manual', 'offline'])) {
             return $this->errorResponse('Hanya pesanan manual yang dapat dibatalkan melalui rute ini', 422);
@@ -869,7 +870,9 @@ class SalesOrderController extends Controller
     public function bulkCancelManual(BulkCancelManualOrderRequest $request)
     {
         $data = $request->validated();
-        $orders = SalesOrder::whereIn('id', $data['order_ids'])->get();
+        $ordersQuery = SalesOrder::whereIn('id', $data['order_ids']);
+        WarehouseAccess::apply($ordersQuery, 'location_id');
+        $orders = $ordersQuery->get();
 
         foreach ($orders as $order) {
             if ($order->source && ! in_array(strtolower($order->source), ['manual', 'offline'])) {
@@ -883,6 +886,14 @@ class SalesOrderController extends Controller
         }
 
         return $this->successResponse(null, count($orders).' pesanan berhasil dibatalkan');
+    }
+
+    private function findAccessibleOrderForError(string $id): ?SalesOrder
+    {
+        $query = SalesOrder::whereKey($id);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->first();
     }
 
     #[OA\Get(

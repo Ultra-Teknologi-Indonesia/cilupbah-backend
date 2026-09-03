@@ -2,6 +2,7 @@
 
 namespace Modules\Inventory\Exports;
 
+use App\Support\WarehouseAccess;
 use Illuminate\Database\Eloquent\Builder;
 use Maatwebsite\Excel\Concerns\FromQuery;
 use Maatwebsite\Excel\Concerns\WithHeadings;
@@ -15,10 +16,12 @@ class RackImportErrorExport implements FromQuery, WithHeadings, WithMapping
 
     public function query(): Builder
     {
-        return RackImportRow::query()
+        $query = RackImportRow::query()
             ->where('batch_id', $this->batch->id)
-            ->whereIn('status', [RackImportBatch::STATUS_ERROR, RackImportBatch::STATUS_MANUAL_MOVE])
-            ->orderBy('row_no');
+            ->whereIn('status', [RackImportBatch::STATUS_ERROR, RackImportBatch::STATUS_MANUAL_MOVE]);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->orderBy('row_no');
     }
 
     public function headings(): array

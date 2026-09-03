@@ -2,6 +2,7 @@
 
 namespace Modules\Warehouse\Services;
 
+use App\Support\WarehouseAccess;
 use DomainException;
 use Modules\Inventory\Models\Inventory;
 use Modules\Warehouse\Models\LocationBin;
@@ -11,7 +12,9 @@ class BinOccupancyGuard
 {
     public function assertBinFitsSku(string $binId, string $itemId): void
     {
-        $bin = LocationBin::find($binId);
+        $binQuery = LocationBin::whereKey($binId);
+        WarehouseAccess::apply($binQuery, 'location_id');
+        $bin = $binQuery->first();
 
         if (! $this->isGuardedBin($bin)) {
             return;
@@ -37,7 +40,9 @@ class BinOccupancyGuard
 
     public function isBinFreeFor(string $binId, string $itemId): bool
     {
-        $bin = LocationBin::find($binId);
+        $binQuery = LocationBin::whereKey($binId);
+        WarehouseAccess::apply($binQuery, 'location_id');
+        $bin = $binQuery->first();
 
         if (! $this->isGuardedBin($bin)) {
             return true;
@@ -48,7 +53,10 @@ class BinOccupancyGuard
 
     public function currentOccupantItemId(string $binId): ?string
     {
-        return Inventory::where('bin_id', $binId)
+        $query = Inventory::where('bin_id', $binId);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query
             ->where(function ($w) {
                 $w->where('on_hand', '>', 0)->orWhere('on_order', '>', 0);
             })
@@ -73,19 +81,24 @@ class BinOccupancyGuard
             return false;
         }
 
-        $location = Location::find($bin->location_id);
+        $locationQuery = Location::whereKey($bin->location_id);
+        WarehouseAccess::apply($locationQuery, 'id');
+        $location = $locationQuery->first();
 
         return $location !== null && $location->enforcesStrictBinSku();
     }
 
     protected function firstConflictingInventory(string $binId, string $itemId): ?Inventory
     {
-        return Inventory::with('product.product')
+        $query = Inventory::with('product.product')
             ->where('bin_id', $binId)
             ->where('item_id', '!=', $itemId)
             ->where(function ($w) {
                 $w->where('on_hand', '>', 0)->orWhere('on_order', '>', 0);
             })
-            ->first();
+            ;
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->first();
     }
 }

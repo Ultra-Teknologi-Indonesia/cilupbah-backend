@@ -51,7 +51,11 @@ class UserRepository
     protected function baseQuery(): QueryBuilder
     {
         return QueryBuilder::for(User::class)
-            ->with(['roles', 'permissions'])
+            ->with([
+                'roles.permissions',
+                'permissions',
+                'permissionDenials.permission',
+            ])
             ->allowedSearch('name', 'email')
             ->allowedFilters(
                 AllowedFilter::callback('role', function (Builder $query, $value) {
@@ -72,9 +76,21 @@ class UserRepository
         return User::findOrFail($id);
     }
 
+    public function findByIdForUpdate(string $id): User
+    {
+        return User::query()
+            ->whereKey($id)
+            ->lockForUpdate()
+            ->firstOrFail();
+    }
+
     public function findByIdWithRelations(string $id): User
     {
-        return User::with(['roles', 'permissions'])->findOrFail($id);
+        return User::with([
+            'roles.permissions',
+            'permissions',
+            'permissionDenials.permission',
+        ])->findOrFail($id);
     }
 
     public function findByIds(array $ids): Collection

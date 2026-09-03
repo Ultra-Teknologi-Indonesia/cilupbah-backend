@@ -3,6 +3,7 @@
 namespace Modules\Warehouse\Services;
 
 use App\Support\FriendlyError;
+use App\Support\WarehouseAccess;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -27,6 +28,8 @@ class BinQrPrintService
 
     public function binsQueryForPrint(string $locationId, ?array $binIds = null)
     {
+        WarehouseAccess::assert($locationId);
+
         $query = LocationBin::where('location_id', $locationId)
             ->whereNotNull('bin_final_code')
             ->where('bin_final_code', '!=', '');
@@ -49,7 +52,9 @@ class BinQrPrintService
 
     public function createJob(string $locationId, array $opts = []): QrPrintJob
     {
-        $location = Location::find($locationId);
+        $locationQuery = Location::whereKey($locationId);
+        WarehouseAccess::apply($locationQuery, 'id');
+        $location = $locationQuery->first();
         if (! $location) {
             throw new ModelNotFoundException('Lokasi tidak ditemukan.');
         }
@@ -83,7 +88,9 @@ class BinQrPrintService
 
     public function getJobStatus(string $jobId): array
     {
-        $job = QrPrintJob::findOrFail($jobId);
+        $jobQuery = QrPrintJob::query()->whereKey($jobId);
+        WarehouseAccess::apply($jobQuery, 'location_id');
+        $job = $jobQuery->firstOrFail();
 
         return [
             'id' => $job->id,
@@ -106,7 +113,9 @@ class BinQrPrintService
 
     public function downloadJobPdf(string $jobId): StreamedResponse
     {
-        $job = QrPrintJob::findOrFail($jobId);
+        $jobQuery = QrPrintJob::query()->whereKey($jobId);
+        WarehouseAccess::apply($jobQuery, 'location_id');
+        $job = $jobQuery->firstOrFail();
 
         if ($job->status !== QrPrintJob::STATUS_READY || ! $job->file_path) {
             abort(425, 'PDF belum siap.');

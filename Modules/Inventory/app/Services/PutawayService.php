@@ -348,7 +348,9 @@ class PutawayService
             );
         }
 
-        if (! Putaway::query()->whereKey($putawayId)->exists()) {
+        $putawayQuery = Putaway::query()->whereKey($putawayId);
+        WarehouseAccess::apply($putawayQuery, 'location_id');
+        if (! $putawayQuery->exists()) {
             throw new UserFacingException(
                 title: 'Putaway tidak ditemukan',
                 message: 'Dokumen putaway yang sedang dibuka tidak ditemukan.',
@@ -797,7 +799,9 @@ class PutawayService
         ?string $newAssigneeId = null,
     ): Putaway {
         return DB::transaction(function () use ($putawayId, $actorId, $reason, $reasonNote, $newAssigneeId) {
-            $putaway = Putaway::lockForUpdate()->findOrFail($putawayId);
+            $putawayQuery = Putaway::whereKey($putawayId);
+            WarehouseAccess::apply($putawayQuery, 'location_id');
+            $putaway = $putawayQuery->lockForUpdate()->firstOrFail();
             $previousAssignee = $putaway->assigned_to;
             $isSelf = $previousAssignee !== null && (string) $previousAssignee === $actorId;
             $action = $isSelf ? AssignmentActionEnum::SELF_UNASSIGN : AssignmentActionEnum::UNASSIGN;
@@ -832,7 +836,9 @@ class PutawayService
         ?string $newAssigneeId = null,
     ): Putaway {
         return DB::transaction(function () use ($putawayId, $actorId, $reasonNote, $newAssigneeId) {
-            $putaway = Putaway::lockForUpdate()->findOrFail($putawayId);
+            $putawayQuery = Putaway::whereKey($putawayId);
+            WarehouseAccess::apply($putawayQuery, 'location_id');
+            $putaway = $putawayQuery->lockForUpdate()->firstOrFail();
             $previousAssignee = $putaway->assigned_to;
 
             $this->resetAllPlacements($putaway, $actorId);
@@ -1115,7 +1121,9 @@ class PutawayService
                 ]);
             }
 
-            Putaway::where('id', $putawayId)->update(['updated_version_at' => now()]);
+            $putawayUpdateQuery = Putaway::whereKey($putawayId);
+            WarehouseAccess::apply($putawayUpdateQuery, 'location_id');
+            $putawayUpdateQuery->update(['updated_version_at' => now()]);
 
             return $this->putawayRepository->findById($putawayId);
         });

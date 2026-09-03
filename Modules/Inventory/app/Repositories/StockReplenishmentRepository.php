@@ -2,6 +2,7 @@
 
 namespace Modules\Inventory\Repositories;
 
+use App\Support\WarehouseAccess;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -41,29 +42,51 @@ class StockReplenishmentRepository
             $query->where('status', $status);
         }
 
+        $allowed = WarehouseAccess::allowedIds();
+        if ($allowed !== null) {
+            $query->where(function ($q) use ($allowed) {
+                $q->whereIn('from_location_id', $allowed)
+                    ->orWhereIn('to_location_id', $allowed);
+            });
+        }
+
         return $query->paginate($perPage)
             ->appends(request()->query());
     }
 
     public function pendingCount(): int
     {
-        return StockReplenishmentRequest::where('status', StockReplenishmentRequest::STATUS_PENDING)->count();
+        $query = StockReplenishmentRequest::where('status', StockReplenishmentRequest::STATUS_PENDING);
+        $allowed = WarehouseAccess::allowedIds();
+        if ($allowed !== null) {
+            $query->where(function ($q) use ($allowed) {
+                $q->whereIn('from_location_id', $allowed)
+                    ->orWhereIn('to_location_id', $allowed);
+            });
+        }
+
+        return $query->count();
     }
 
     public function findDetail(string $id): ?StockReplenishmentRequest
     {
-        return StockReplenishmentRequest::with(self::DETAIL_RELATIONS)
+        $query = StockReplenishmentRequest::with(self::DETAIL_RELATIONS)
             ->withCount('items')
             ->withSum('items', 'qty')
-            ->find($id);
+            ;
+        $this->applyLocationScope($query);
+
+        return $query->find($id);
     }
 
     public function findDetailOrFail(string $id): StockReplenishmentRequest
     {
-        return StockReplenishmentRequest::with(self::DETAIL_RELATIONS)
+        $query = StockReplenishmentRequest::with(self::DETAIL_RELATIONS)
             ->withCount('items')
-            ->withSum('items', 'qty')
-            ->findOrFail($id);
+            ->withSum('items', 'qty');
+        $this->applyLocationScope($query);
+
+        return $query->findOrFail($id);
     }
 
     public function paginateItems(
@@ -73,9 +96,13 @@ class StockReplenishmentRepository
         ?string $shopId = null,
         int $perPage = 20,
     ): LengthAwarePaginator {
-        $toLocationId = StockReplenishmentRequest::query()
-            ->whereKey($requestId)
-            ->value('to_location_id');
+        $request = StockReplenishmentRequest::query()->whereKey($requestId);
+        $this->applyLocationScope($request);
+        $request = $request->first();
+        if (! $request) {
+            abort(404);
+        }
+        $toLocationId = $request->to_location_id;
 
         $query = StockReplenishmentRequestItem::query()
             ->where('stock_replenishment_request_items.request_id', $requestId)
@@ -126,14 +153,20 @@ class StockReplenishmentRepository
             ->orderBy('stock_replenishment_request_items.sku')
             ->orderBy('stock_replenishment_request_items.id');
 
+        $query->whereHas('request', fn ($request) => $this->applyLocationScope($request));
+
         return $query->paginate($perPage)->appends(request()->query());
     }
 
     public function itemFilterOptions(string $requestId): array
     {
-        $toLocationId = StockReplenishmentRequest::query()
-            ->whereKey($requestId)
-            ->value('to_location_id');
+        $request = StockReplenishmentRequest::query()->whereKey($requestId);
+        $this->applyLocationScope($request);
+        $request = $request->first();
+        if (! $request) {
+            abort(404);
+        }
+        $toLocationId = $request->to_location_id;
 
         $source = DB::table('stock_replenishment_request_items as ri')
             ->join('sales_order_items as soi', 'soi.item_id', '=', 'ri.item_id')
@@ -169,17 +202,26 @@ class StockReplenishmentRepository
 
     public function findWithItems(string $id): StockReplenishmentRequest
     {
-        return StockReplenishmentRequest::with('items')->findOrFail($id);
+        $query = StockReplenishmentRequest::with('items');
+        $this->applyLocationScope($query);
+
+        return $query->findOrFail($id);
     }
 
     public function findOrFail(string $id): StockReplenishmentRequest
     {
-        return StockReplenishmentRequest::findOrFail($id);
+        $query = StockReplenishmentRequest::query();
+        $this->applyLocationScope($query);
+
+        return $query->findOrFail($id);
     }
 
     public function lockForUpdate(string $id): StockReplenishmentRequest
     {
-        return StockReplenishmentRequest::lockForUpdate()->findOrFail($id);
+        $query = StockReplenishmentRequest::lockForUpdate();
+        $this->applyLocationScope($query);
+
+        return $query->findOrFail($id);
     }
 
     public function create(array $data): StockReplenishmentRequest
@@ -194,11 +236,16 @@ class StockReplenishmentRepository
 
     public function resolveLocationId(string $locationCode): ?string
     {
-        return DB::table('locations')->where('location_code', $locationCode)->value('id');
+        $query = DB::table('locations')->where('location_code', $locationCode);
+        WarehouseAccess::apply($query, 'id');
+
+        return $query->value('id');
     }
 
     public function demandForLocation(string $kecilId, ?array $itemIds = null): Collection
     {
+        WarehouseAccess::assert($kecilId);
+
         $direct = DB::table('sales_order_items as i')
             ->join('sales_orders as o', 'o.id', '=', 'i.order_id')
             ->join('product_variants as v', 'v.id', '=', 'i.item_id')
@@ -250,6 +297,8 @@ class StockReplenishmentRepository
 
     public function availabilityForItems(array $itemIds, string $kecilId): Collection
     {
+        WarehouseAccess::assert($kecilId);
+
         return DB::table('inventories as i')
             ->leftJoin('location_bins as b', 'b.id', '=', 'i.bin_id')
             ->whereIn('i.item_id', $itemIds)
@@ -264,6 +313,8 @@ class StockReplenishmentRepository
 
     public function acceptedCoverageForItems(array $itemIds, string $kecilId): Collection
     {
+        WarehouseAccess::assert($kecilId);
+
         return DB::table('stock_replenishment_request_items as ri')
             ->join('stock_replenishment_requests as r', 'r.id', '=', 'ri.request_id')
             ->where('r.status', StockReplenishmentRequest::STATUS_ACCEPTED)
@@ -312,6 +363,9 @@ class StockReplenishmentRepository
 
     public function pendingForRouteForUpdate(string $fromLocationId, string $toLocationId): Collection
     {
+        WarehouseAccess::assert($fromLocationId);
+        WarehouseAccess::assert($toLocationId);
+
         return StockReplenishmentRequest::query()
             ->where('from_location_id', $fromLocationId)
             ->where('to_location_id', $toLocationId)
@@ -320,4 +374,16 @@ class StockReplenishmentRepository
             ->lockForUpdate()
             ->get();
     }
+
+    private function applyLocationScope($query): void
+    {
+        $allowed = WarehouseAccess::allowedIds();
+        if ($allowed !== null) {
+            $query->where(function ($q) use ($allowed) {
+                $q->whereIn('from_location_id', $allowed)
+                    ->orWhereIn('to_location_id', $allowed);
+            });
+        }
+    }
+
 }

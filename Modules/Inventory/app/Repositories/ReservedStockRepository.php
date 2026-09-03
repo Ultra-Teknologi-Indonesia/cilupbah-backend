@@ -2,6 +2,7 @@
 
 namespace Modules\Inventory\Repositories;
 
+use App\Support\WarehouseAccess;
 use Modules\Inventory\Models\ReservedStock;
 use Modules\Inventory\Models\ReservedStockItem;
 use Spatie\QueryBuilder\QueryBuilder;
@@ -12,7 +13,7 @@ class ReservedStockRepository
 {
     public function getAllPaginated(int $limit = 10)
     {
-        return QueryBuilder::for(ReservedStock::class)
+        $query = QueryBuilder::for(ReservedStock::class)
             ->with(['location:id,location_name', 'items'])
             ->allowedSearch('reserved_stock_no')
             ->allowedFilters(
@@ -23,20 +24,29 @@ class ReservedStockRepository
                 AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('start_date', '<=', $value)),
             )
             ->allowedSorts('start_date', 'end_date', 'created_at', 'reserved_stock_no', 'status')
-            ->defaultSort('-created_at')
+            ->defaultSort('-created_at');
+
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query
             ->paginate(request('per_page', $limit))
             ->appends(request()->query());
     }
 
     public function findById(string $id): ?ReservedStock
     {
-        return ReservedStock::with(['items.product:id,sku,product_id', 'items.bin:id,bin_final_code', 'location:id,location_name'])
-            ->find($id);
+        $query = ReservedStock::with(['items.product:id,sku,product_id', 'items.bin:id,bin_final_code', 'location:id,location_name']);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->find($id);
     }
 
     public function findByIdForUpdate(string $id): ?ReservedStock
     {
-        return ReservedStock::lockForUpdate()->find($id);
+        $query = ReservedStock::lockForUpdate();
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->find($id);
     }
 
     public function create(array $data): ReservedStock
@@ -51,15 +61,21 @@ class ReservedStockRepository
 
     public function getExpired(): Collection
     {
-        return ReservedStock::where('status', ReservedStock::STATUS_ACTIVE)
+        $query = ReservedStock::where('status', ReservedStock::STATUS_ACTIVE)
             ->where('end_date', '<', now())
-            ->with('items')
-            ->get();
+            ->with('items');
+
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->get();
     }
 
     public function deactivate(string $id): bool
     {
-        return ReservedStock::where('id', $id)->update([
+        $query = ReservedStock::where('id', $id);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->update([
             'status' => ReservedStock::STATUS_EXPIRED,
             'is_active' => false,
         ]);

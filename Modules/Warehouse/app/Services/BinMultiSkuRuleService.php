@@ -2,6 +2,7 @@
 
 namespace Modules\Warehouse\Services;
 
+use App\Support\WarehouseAccess;
 use Illuminate\Support\Collection;
 use Modules\Warehouse\Models\BinMultiSkuRule;
 use Modules\Warehouse\Models\Location;
@@ -11,11 +12,16 @@ class BinMultiSkuRuleService
 {
     public function findLocation(string $locationId): ?Location
     {
-        return Location::find($locationId);
+        $query = Location::whereKey($locationId);
+        WarehouseAccess::apply($query, 'id');
+
+        return $query->first();
     }
 
     public function rulesWithMatchCount(string $locationId): Collection
     {
+        WarehouseAccess::assert($locationId);
+
         return BinMultiSkuRule::where('location_id', $locationId)
             ->orderBy('pattern')
             ->get()
@@ -26,11 +32,15 @@ class BinMultiSkuRuleService
 
     public function findRule(string $locationId, string $ruleId): ?BinMultiSkuRule
     {
+        WarehouseAccess::assert($locationId);
+
         return BinMultiSkuRule::where('location_id', $locationId)->find($ruleId);
     }
 
     public function createRule(string $locationId, array $data): BinMultiSkuRule
     {
+        WarehouseAccess::assert($locationId);
+
         $data['pattern'] = trim($data['pattern']);
         $data['location_id'] = $locationId;
 
@@ -42,6 +52,8 @@ class BinMultiSkuRuleService
 
     public function updateRule(BinMultiSkuRule $rule, array $data): BinMultiSkuRule
     {
+        WarehouseAccess::assert((string) $rule->location_id);
+
         if (array_key_exists('pattern', $data)) {
             $data['pattern'] = trim($data['pattern']);
         }
@@ -54,6 +66,8 @@ class BinMultiSkuRuleService
 
     public function deleteRule(BinMultiSkuRule $rule): void
     {
+        WarehouseAccess::assert((string) $rule->location_id);
+
         $rule->delete();
     }
 

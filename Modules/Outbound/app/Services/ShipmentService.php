@@ -109,15 +109,20 @@ class ShipmentService
             throw new \Exception("Order hanya bisa ditambah ke shipment SCHEDULED (saat ini: {$shipment->status}).");
         }
 
-        $orders = Order::whereIn('id', $orderIds)
+        $ordersQuery = Order::whereIn('id', $orderIds)
             ->where('status', 'packed')
             ->where('is_canceled', false)
             ->whereNull('cancel_requested_at')
-            ->get();
+            ->where('location_id', $shipment->location_id);
+        WarehouseAccess::apply($ordersQuery, 'location_id');
+        $orders = $ordersQuery->get();
 
         if ($orders->count() !== count($orderIds)) {
             $rejectedIds = array_values(array_diff($orderIds, $orders->pluck('id')->all()));
-            $rejected = Order::whereIn('id', $rejectedIds)
+            $rejectedQuery = Order::whereIn('id', $rejectedIds)
+                ->where('location_id', $shipment->location_id);
+            WarehouseAccess::apply($rejectedQuery, 'location_id');
+            $rejected = $rejectedQuery
                 ->pluck('salesorder_no')
                 ->implode(', ');
 
@@ -146,10 +151,11 @@ class ShipmentService
         $this->assertOrdersCompatibleWithShipment($shipment, $orders);
 
         $addedOrderIds = DB::transaction(function () use ($shipment, $orders): array {
-            $lockedShipment = Shipment::query()
+            $shipmentQuery = Shipment::query()
                 ->whereKey($shipment->id)
-                ->lockForUpdate()
-                ->first();
+                ->lockForUpdate();
+            WarehouseAccess::apply($shipmentQuery, 'location_id');
+            $lockedShipment = $shipmentQuery->first();
 
             if (! $lockedShipment || $lockedShipment->status !== Shipment::STATUS_SCHEDULED) {
                 throw new OutboundValidationException('Pengiriman sudah tidak tersedia untuk dijadwalkan.');
@@ -157,6 +163,7 @@ class ShipmentService
 
             $lockedOrders = Order::query()
                 ->whereIn('id', $orders->pluck('id')->all())
+                ->where('location_id', $lockedShipment->location_id)
                 ->lockForUpdate()
                 ->get();
 
@@ -358,10 +365,9 @@ class ShipmentService
         }
 
         $shipment = DB::transaction(function () use ($id): Shipment {
-            $shipment = Shipment::with('orders.order')
-                ->whereKey($id)
-                ->lockForUpdate()
-                ->first();
+            $shipmentQuery = Shipment::with('orders.order')->whereKey($id);
+            WarehouseAccess::apply($shipmentQuery, 'location_id');
+            $shipment = $shipmentQuery->lockForUpdate()->first();
 
             if (! $shipment) {
                 throw new \Exception('Shipment tidak ditemukan.');
@@ -413,7 +419,9 @@ class ShipmentService
 
     public function scanShipment(string $barcode): ?Shipment
     {
-        $shipment = Shipment::where('shipment_no', $barcode)->first();
+        $shipmentQuery = Shipment::where('shipment_no', $barcode);
+        WarehouseAccess::apply($shipmentQuery, 'location_id');
+        $shipment = $shipmentQuery->first();
 
         if (! $shipment) {
             $shipmentOrder = ShipmentOrder::where('tracking_number', $barcode)->first();
@@ -433,6 +441,7 @@ class ShipmentService
     {
         $shipmentOrder = ShipmentOrder::where('shipment_id', $shipmentId)
             ->where('order_id', $orderId)
+            ->whereHas('shipment', fn ($query) => WarehouseAccess::apply($query, 'location_id'))
             ->first();
 
         if (! $shipmentOrder) {
@@ -453,6 +462,7 @@ class ShipmentService
     {
         $shipmentOrder = ShipmentOrder::where('shipment_id', $shipmentId)
             ->where('order_id', $orderId)
+            ->whereHas('shipment', fn ($query) => WarehouseAccess::apply($query, 'location_id'))
             ->first();
 
         if (! $shipmentOrder) {
@@ -507,7 +517,9 @@ class ShipmentService
         $barcode = trim($barcode);
 
         $result = DB::transaction(function () use ($shipmentId, $barcode): ShipmentScanResult {
-            $shipment = Shipment::query()->lockForUpdate()->find($shipmentId);
+            $shipmentQuery = Shipment::query()->lockForUpdate();
+            WarehouseAccess::apply($shipmentQuery, 'location_id');
+            $shipment = $shipmentQuery->find($shipmentId);
 
             if (! $shipment) {
                 throw new \Exception('Shipment tidak ditemukan.');
@@ -519,6 +531,7 @@ class ShipmentService
 
             $order = Order::query()
                 ->where('status', 'packed')
+                ->where('location_id', $shipment->location_id)
                 ->where(function ($q) use ($barcode) {
                     $q->where('salesorder_no', $barcode)
                         ->orWhere('tracking_number', $barcode);

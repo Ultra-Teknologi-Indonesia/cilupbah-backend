@@ -13,7 +13,7 @@ class ProfileResource extends JsonResource
 
         $permissions = $isOwner
             ? ($this->all_permission_names ?? collect())
-            : $this->getAllPermissions()->pluck('name');
+            : $this->effectivePermissionNames();
 
         return [
             'id' => $this->id,
@@ -22,9 +22,6 @@ class ProfileResource extends JsonResource
             'roles' => $this->roles->pluck('name'),
             'permissions' => $permissions,
 
-            'direct_permissions' => $isOwner
-                ? []
-                : $this->getDirectPermissions()->pluck('name'),
             'nik' => $this->nik,
             'phone' => $this->phone,
             'warehouse_id' => $this->warehouse_id,

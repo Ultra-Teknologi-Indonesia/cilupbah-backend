@@ -34,17 +34,19 @@ class UserController extends Controller
         parameters: [
             new OA\Parameter(name: 'filter[role]', in: 'query', description: 'Filter by exact role name', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'filter[warehouse_id]', in: 'query', description: 'Filter by exact warehouse ID', required: false, schema: new OA\Schema(type: 'string')),
-            new OA\Parameter(name: 'search', in: 'query', description: 'Search by name or email', required: false, schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'search', in: 'query', description: 'Search by name or email', required: false, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(response: 200, description: 'List of users retrieved successfully'),
-            new OA\Response(response: 401, description: 'Unauthenticated')
+            new OA\Response(response: 401, description: 'Unauthenticated'),
         ]
     )]
     public function index(): JsonResponse
     {
-        $users = $this->userService->getPaginatedUsers()
-            ->through(fn ($user) => $this->userService->attachProfileContext($user));
+        $users = $this->userService->getPaginatedUsers();
+        $users->setCollection(
+            $this->userService->attachProfileContexts($users->getCollection()),
+        );
 
         return $this->successPaginatedResponse(
             ProfileResource::collection($users)
@@ -60,11 +62,11 @@ class UserController extends Controller
             new OA\Parameter(name: 'q', in: 'query', description: 'Search name or email', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'role', in: 'query', description: 'Filter by role (e.g. putaway, picker, courier)', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'page', in: 'query', description: 'Page number', required: false, schema: new OA\Schema(type: 'integer', default: 1)),
-            new OA\Parameter(name: 'per_page', in: 'query', description: 'Items per page', required: false, schema: new OA\Schema(type: 'integer', default: 50))
+            new OA\Parameter(name: 'per_page', in: 'query', description: 'Items per page', required: false, schema: new OA\Schema(type: 'integer', default: 50)),
         ],
         responses: [
             new OA\Response(response: 200, description: 'User lookup retrieved successfully'),
-            new OA\Response(response: 401, description: 'Unauthenticated')
+            new OA\Response(response: 401, description: 'Unauthenticated'),
         ]
     )]
     public function lookup(Request $request): JsonResponse
@@ -96,11 +98,11 @@ class UserController extends Controller
         parameters: [
             new OA\Parameter(name: 'filter[role]', in: 'query', description: 'Filter by exact role name', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'filter[warehouse_id]', in: 'query', description: 'Filter by exact warehouse ID', required: false, schema: new OA\Schema(type: 'string')),
-            new OA\Parameter(name: 'search', in: 'query', description: 'Search by name or email', required: false, schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'search', in: 'query', description: 'Search by name or email', required: false, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(response: 200, description: 'Excel file generated'),
-            new OA\Response(response: 401, description: 'Unauthenticated')
+            new OA\Response(response: 401, description: 'Unauthenticated'),
         ]
     )]
     public function export(): BinaryFileResponse
@@ -120,12 +122,12 @@ class UserController extends Controller
                 required: true,
                 description: 'User ID',
                 schema: new OA\Schema(type: 'string', example: '019ea2afad1d733eafb905816d10590e')
-            )
+            ),
         ],
         responses: [
             new OA\Response(response: 200, description: 'User detail retrieved successfully'),
             new OA\Response(response: 404, description: 'User not found'),
-            new OA\Response(response: 403, description: 'Forbidden access')
+            new OA\Response(response: 403, description: 'Forbidden access'),
         ]
     )]
     public function show(string $id): JsonResponse
@@ -153,6 +155,7 @@ class UserController extends Controller
                     new OA\Property(property: 'password', type: 'string', format: 'password', example: 'StrongP@ssw0rd!'),
                     new OA\Property(property: 'password_confirmation', type: 'string', format: 'password', example: 'StrongP@ssw0rd!'),
                     new OA\Property(property: 'roles', type: 'array', items: new OA\Items(type: 'string', example: 'picker')),
+                    new OA\Property(property: 'permissions', type: 'array', description: 'Daftar hak akses akhir pengguna; backend menghitung override terhadap role.', items: new OA\Items(type: 'string', example: 'view-pesanan')),
                     new OA\Property(property: 'nik', type: 'string', nullable: true, example: '3201012345678901'),
                     new OA\Property(property: 'warehouse_id', type: 'string', nullable: true, example: '019ea2afad1d733eafb905816d10590e'),
                 ]
@@ -171,13 +174,13 @@ class UserController extends Controller
                             new OA\Property(property: 'name', type: 'string', example: 'John Doe'),
                             new OA\Property(property: 'email', type: 'string', example: 'john@example.com'),
                             new OA\Property(property: 'roles', type: 'array', items: new OA\Items(type: 'string', example: 'picker')),
-                            new OA\Property(property: 'permissions', type: 'array', items: new OA\Items(type: 'string'))
-                        ])
+                            new OA\Property(property: 'permissions', type: 'array', items: new OA\Items(type: 'string')),
+                        ]),
                     ]
                 )
             ),
             new OA\Response(response: 422, description: 'Validation error'),
-            new OA\Response(response: 403, description: 'Forbidden access')
+            new OA\Response(response: 403, description: 'Forbidden access'),
         ]
     )]
     public function store(StoreUserRequest $request): JsonResponse
@@ -203,7 +206,7 @@ class UserController extends Controller
                 required: true,
                 description: 'User ID',
                 schema: new OA\Schema(type: 'string', example: '019ea2afad1d733eafb905816d10590e')
-            )
+            ),
         ],
         requestBody: new OA\RequestBody(
             required: true,
@@ -215,6 +218,7 @@ class UserController extends Controller
                     new OA\Property(property: 'password', type: 'string', format: 'password', nullable: true, example: 'NewStrongP@ssw0rd!'),
                     new OA\Property(property: 'password_confirmation', type: 'string', format: 'password', nullable: true, example: 'NewStrongP@ssw0rd!'),
                     new OA\Property(property: 'roles', type: 'array', items: new OA\Items(type: 'string', example: 'checker')),
+                    new OA\Property(property: 'permissions', type: 'array', description: 'Daftar hak akses akhir pengguna; backend menghitung override terhadap role.', items: new OA\Items(type: 'string', example: 'view-pesanan')),
                     new OA\Property(property: 'nik', type: 'string', nullable: true, example: '3201012345678901'),
                     new OA\Property(property: 'warehouse_id', type: 'string', nullable: true, example: '019ea2afad1d733eafb905816d10590e'),
                 ]
@@ -233,14 +237,14 @@ class UserController extends Controller
                             new OA\Property(property: 'name', type: 'string', example: 'John Doe Updated'),
                             new OA\Property(property: 'email', type: 'string', example: 'john.updated@example.com'),
                             new OA\Property(property: 'roles', type: 'array', items: new OA\Items(type: 'string', example: 'checker')),
-                            new OA\Property(property: 'permissions', type: 'array', items: new OA\Items(type: 'string'))
-                        ])
+                            new OA\Property(property: 'permissions', type: 'array', items: new OA\Items(type: 'string')),
+                        ]),
                     ]
                 )
             ),
             new OA\Response(response: 404, description: 'User not found'),
             new OA\Response(response: 422, description: 'Validation error'),
-            new OA\Response(response: 403, description: 'Forbidden access')
+            new OA\Response(response: 403, description: 'Forbidden access'),
         ]
     )]
     public function update(UpdateUserRequest $request, string $id): JsonResponse
@@ -255,12 +259,26 @@ class UserController extends Controller
 
     #[OA\Put(
         path: '/api/v1/users/{id}/permissions',
-        summary: 'Sync direct (per-user override) permissions',
+        summary: 'Sync final effective permissions for a user',
         security: [['bearerAuth' => []]],
         tags: ['Users'],
         parameters: [
             new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
         ],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['permissions'],
+                properties: [
+                    new OA\Property(
+                        property: 'permissions',
+                        type: 'array',
+                        description: 'Daftar hak akses akhir pengguna.',
+                        items: new OA\Items(type: 'string', example: 'view-pesanan'),
+                    ),
+                ],
+            ),
+        ),
         responses: [
             new OA\Response(response: 200, description: 'User permissions synced successfully'),
             new OA\Response(response: 403, description: 'Forbidden access'),
@@ -289,13 +307,13 @@ class UserController extends Controller
                 required: true,
                 description: 'User ID',
                 schema: new OA\Schema(type: 'string', example: '019ea2afad1d733eafb905816d10590e')
-            )
+            ),
         ],
         responses: [
             new OA\Response(response: 200, description: 'User deleted successfully'),
             new OA\Response(response: 404, description: 'User not found'),
             new OA\Response(response: 422, description: 'Cannot delete own account'),
-            new OA\Response(response: 403, description: 'Forbidden access')
+            new OA\Response(response: 403, description: 'Forbidden access'),
         ]
     )]
     public function destroy(string $id): JsonResponse
@@ -317,7 +335,7 @@ class UserController extends Controller
                 required: true,
                 description: 'User ID',
                 schema: new OA\Schema(type: 'string', example: '019ea2afad1d733eafb905816d10590e')
-            )
+            ),
         ],
         responses: [
             new OA\Response(
@@ -336,19 +354,19 @@ class UserController extends Controller
                                     new OA\Property(property: 'actor', type: 'object', nullable: true, properties: [
                                         new OA\Property(property: 'id', type: 'string'),
                                         new OA\Property(property: 'name', type: 'string'),
-                                        new OA\Property(property: 'email', type: 'string')
+                                        new OA\Property(property: 'email', type: 'string'),
                                     ]),
                                     new OA\Property(property: 'target_user_id', type: 'string'),
                                     new OA\Property(property: 'action', type: 'string', example: 'updated'),
                                     new OA\Property(property: 'message', type: 'string', example: 'Admin membuat akun ini.'),
-                                    new OA\Property(property: 'created_at', type: 'string', format: 'date-time')
+                                    new OA\Property(property: 'created_at', type: 'string', format: 'date-time'),
                                 ]
                             )
-                        )
+                        ),
                     ]
                 )
             ),
-            new OA\Response(response: 404, description: 'User not found')
+            new OA\Response(response: 404, description: 'User not found'),
         ]
     )]
     public function loginHistory(string $id): JsonResponse
@@ -381,7 +399,7 @@ class UserController extends Controller
                 required: true,
                 description: 'User ID',
                 schema: new OA\Schema(type: 'string', example: '019ea2afad1d733eafb905816d10590e')
-            )
+            ),
         ],
         responses: [
             new OA\Response(
@@ -390,12 +408,12 @@ class UserController extends Controller
                 content: new OA\JsonContent(
                     properties: [
                         new OA\Property(property: 'status', type: 'string', example: 'success'),
-                        new OA\Property(property: 'message', type: 'string', example: 'Sesi pengguna berhasil diputus.')
+                        new OA\Property(property: 'message', type: 'string', example: 'Sesi pengguna berhasil diputus.'),
                     ]
                 )
             ),
             new OA\Response(response: 404, description: 'User not found'),
-            new OA\Response(response: 403, description: 'Forbidden access')
+            new OA\Response(response: 403, description: 'Forbidden access'),
         ]
     )]
     public function forceLogout(string $id): JsonResponse
@@ -426,12 +444,12 @@ class UserController extends Controller
                 content: new OA\JsonContent(
                     properties: [
                         new OA\Property(property: 'status', type: 'string', example: 'success'),
-                        new OA\Property(property: 'message', type: 'string', example: 'Sesi pengguna yang dipilih berhasil diputus.')
+                        new OA\Property(property: 'message', type: 'string', example: 'Sesi pengguna yang dipilih berhasil diputus.'),
                     ]
                 )
             ),
             new OA\Response(response: 422, description: 'Validation error'),
-            new OA\Response(response: 403, description: 'Forbidden access')
+            new OA\Response(response: 403, description: 'Forbidden access'),
         ]
     )]
     public function bulkForceLogout(Request $request): JsonResponse

@@ -47,7 +47,9 @@ class SalesOrderRepository
 
     public function paginateStatusHistory(string $salesOrderId, int $perPage)
     {
-        SalesOrder::findOrFail($salesOrderId);
+        $orderQuery = SalesOrder::whereKey($salesOrderId);
+        WarehouseAccess::apply($orderQuery, 'location_id');
+        $orderQuery->firstOrFail();
 
         return SalesOrderStatusHistory::query()
             ->with('order:id,salesorder_no')
@@ -131,6 +133,8 @@ class SalesOrderRepository
                 $query->where(fn ($q) => $this->applyShippingProviderFilter($q, $couriers));
             }
         }
+
+        WarehouseAccess::apply($query, 'sales_orders.location_id');
 
         return $query
             ->paginate(request('per_page', 20))
@@ -476,33 +480,37 @@ class SalesOrderRepository
 
     public function getCancelledOrders(int $limit = 10)
     {
-        return QueryBuilder::for(SalesOrder::class)
+        $query = QueryBuilder::for(SalesOrder::class)
             ->where('is_canceled', true)
             ->allowedFilters(
                 AllowedFilter::exact('source')
             )
             ->allowedSearch(...SalesOrder::SEARCH_COLUMNS)
             ->allowedSorts('created_at', 'transaction_date', 'grand_total')
-            ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->defaultSort('-created_at');
+        WarehouseAccess::apply($query, 'sales_orders.location_id');
+
+        return $query->paginate($limit);
     }
 
     public function getCompletedOrders(int $limit = 10)
     {
-        return QueryBuilder::for(SalesOrder::class)
+        $query = QueryBuilder::for(SalesOrder::class)
             ->where('status', 'shipped')
             ->allowedFilters(
                 AllowedFilter::exact('source')
             )
             ->allowedSearch(...SalesOrder::SEARCH_COLUMNS)
             ->allowedSorts('created_at', 'transaction_date', 'grand_total')
-            ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->defaultSort('-created_at');
+        WarehouseAccess::apply($query, 'sales_orders.location_id');
+
+        return $query->paginate($limit);
     }
 
     public function getFailedOrders(int $limit = 10)
     {
-        return QueryBuilder::for(SalesOrder::class)
+        $query = QueryBuilder::for(SalesOrder::class)
             ->where('is_canceled', true)
             ->whereNotNull('cancel_request_reason')
             ->allowedFilters(
@@ -510,13 +518,15 @@ class SalesOrderRepository
             )
             ->allowedSearch(...SalesOrder::SEARCH_COLUMNS)
             ->allowedSorts('created_at', 'transaction_date')
-            ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->defaultSort('-created_at');
+        WarehouseAccess::apply($query, 'sales_orders.location_id');
+
+        return $query->paginate($limit);
     }
 
     public function getReturnedOrders(int $limit = 10)
     {
-        return QueryBuilder::for(SalesOrder::class)
+        $query = QueryBuilder::for(SalesOrder::class)
             ->whereHas('returns')
             ->with('items')
             ->allowedFilters(
@@ -525,13 +535,15 @@ class SalesOrderRepository
             )
             ->allowedSearch(...SalesOrder::SEARCH_COLUMNS)
             ->allowedSorts('created_at', 'transaction_date')
-            ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->defaultSort('-created_at');
+        WarehouseAccess::apply($query, 'sales_orders.location_id');
+
+        return $query->paginate($limit);
     }
 
     public function getUnfulfilledOrders(int $limit = 10)
     {
-        return QueryBuilder::for(SalesOrder::class)
+        $query = QueryBuilder::for(SalesOrder::class)
             ->whereDoesntHave('packlist')
             ->whereDoesntHave('picklistItems')
             ->whereNotIn('status', ['shipped', 'cancelled'])
@@ -542,15 +554,20 @@ class SalesOrderRepository
             )
             ->allowedSearch(...SalesOrder::SEARCH_COLUMNS)
             ->allowedSorts('created_at', 'transaction_date')
-            ->defaultSort('-created_at')
-            ->paginate($limit);
+            ->defaultSort('-created_at');
+        WarehouseAccess::apply($query, 'sales_orders.location_id');
+
+        return $query->paginate($limit);
     }
 
     public function bulkDeleteCancelled(array $ids): int
     {
-        return SalesOrder::whereIn('id', $ids)
+        $query = SalesOrder::whereIn('id', $ids)
             ->where('is_canceled', true)
-            ->delete();
+            ;
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->delete();
     }
 
     public function getOrderById(int|string $id): ?SalesOrder
@@ -559,7 +576,7 @@ class SalesOrderRepository
             return null;
         }
 
-        return QueryBuilder::for(SalesOrder::class)
+        $query = QueryBuilder::for(SalesOrder::class)
             ->withStockShortfallFlag()
             ->allowedIncludes('items')
             ->with([
@@ -575,27 +592,42 @@ class SalesOrderRepository
                 'items.channelMapping.product:id',
                 'items.channelMapping.product.media:id,product_id,url,is_primary',
             ])
-            ->find($id);
+            ;
+        WarehouseAccess::apply($query, 'sales_orders.location_id');
+
+        return $query->find($id);
     }
 
     public function findOrFail(string $id): SalesOrder
     {
-        return SalesOrder::findOrFail($id);
+        $query = SalesOrder::whereKey($id);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->firstOrFail();
     }
 
     public function findWithItemsOrFail(string $id): SalesOrder
     {
-        return SalesOrder::with('items')->findOrFail($id);
+        $query = SalesOrder::with('items')->whereKey($id);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->firstOrFail();
     }
 
     public function findForInvoice(string $id): ?SalesOrder
     {
-        return SalesOrder::with(['items.product.product', 'invoices', 'channelShop'])->find($id);
+        $query = SalesOrder::with(['items.product.product', 'invoices', 'channelShop'])->whereKey($id);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->first();
     }
 
     public function findForBreakdown(string $id): ?SalesOrder
     {
-        return SalesOrder::with(['items', 'returns.settlement', 'invoices'])->find($id);
+        $query = SalesOrder::with(['items', 'returns.settlement', 'invoices'])->whereKey($id);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->first();
     }
 
     public function getOrdersForTikTokPlatformBackfill(?string $orderReference, ?string $shopId, int $limit): Builder
@@ -1104,6 +1136,7 @@ class SalesOrderRepository
     public function getShippingProviders(array $params = []): array
     {
         $query = SalesOrder::query()->excludeShadow();
+        WarehouseAccess::apply($query, 'location_id');
 
         $tab = $params['tab'] ?? request('tab');
         $sub = $params['sub'] ?? request('sub');

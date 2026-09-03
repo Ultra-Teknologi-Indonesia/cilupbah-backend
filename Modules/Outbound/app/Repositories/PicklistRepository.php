@@ -2,6 +2,7 @@
 
 namespace Modules\Outbound\Repositories;
 
+use App\Support\WarehouseAccess;
 use Modules\Inventory\Models\Inventory;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
@@ -16,7 +17,7 @@ class PicklistRepository
 
     public function getForBulkPdf(array $orderIds): Collection
     {
-        return Picklist::with([
+        $query = Picklist::with([
                 'items.product:id,product_id,sku',
                 'items.product.product:id,name',
                 'items.product.options:id,variant_id,attribute_id,value',
@@ -29,12 +30,16 @@ class PicklistRepository
                 'picker:id,name,email',
             ])
             ->whereHas('items', fn ($q) => $q->whereIn('order_id', $orderIds))
-            ->orderBy('created_at')
-            ->get();
+            ->orderBy('created_at');
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->get();
     }
 
     public function recommendedBinStocks(array $itemIds, string $locationId): Collection
     {
+        WarehouseAccess::assert($locationId);
+
         return Inventory::query()
             ->whereIn('item_id', $itemIds)
             ->where('location_id', $locationId)
@@ -113,7 +118,7 @@ class PicklistRepository
 
     public function findById(string $id): ?Picklist
     {
-        return Picklist::with([
+        $query = Picklist::with([
             'items.product:id,sku,product_id,barcode',
             'items.product.product:id,name',
             'items.product.media:id,variant_id,product_id,url,is_primary,sort_order,media_type',
@@ -125,7 +130,10 @@ class PicklistRepository
             'location:id,location_name,location_code',
             'picker:id,name,email',
             'creator:id,name',
-            ])->find($id);
+            ]);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->find($id);
     }
 
     public function findAccessibleHeader(string $id): ?Picklist
@@ -149,17 +157,26 @@ class PicklistRepository
 
     public function updateItem(string $itemId, array $data): bool
     {
-        return PicklistItem::where('id', $itemId)->update($data) > 0;
+        $query = PicklistItem::where('id', $itemId);
+        $query->whereHas('picklist', fn ($picklist) => WarehouseAccess::apply($picklist, 'location_id'));
+
+        return $query->update($data) > 0;
     }
 
     public function update(string $id, array $data): bool
     {
-        return Picklist::where('id', $id)->update($data) > 0;
+        $query = Picklist::where('id', $id);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->update($data) > 0;
     }
 
     public function delete(string $id): bool
     {
-        return Picklist::where('id', $id)->delete() > 0;
+        $query = Picklist::where('id', $id);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->delete() > 0;
     }
 
     public function getItemsPaginated(string $picklistId, int $limit = 10)
@@ -194,6 +211,8 @@ class PicklistRepository
                 'order.shipmentOrders:id,order_id,shipment_id',
                 'order.shipmentOrders.shipment:id,shipment_no',
             ]);
+
+        $query->whereHas('picklist', fn ($picklist) => WarehouseAccess::apply($picklist, 'location_id'));
 
         return QueryBuilder::for($query)
             ->allowedFilters(

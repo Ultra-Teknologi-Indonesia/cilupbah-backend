@@ -2,6 +2,7 @@
 
 namespace Modules\Purchase\Services;
 
+use App\Support\WarehouseAccess;
 use Modules\Purchase\Repositories\PurchaseBillRepository;
 use Modules\Purchase\Models\PurchaseBill;
 use Modules\Inventory\Repositories\InventoryRepository;
@@ -29,6 +30,8 @@ class PurchaseBillService
 
     public function create(array $data): PurchaseBill
     {
+        WarehouseAccess::assert($data['location_id'] ?? null);
+
         return DB::transaction(function () use ($data) {
             $data['bill_number'] = $data['bill_number'] ?? $this->billRepository->generateBillNo();
             $data['status'] = PurchaseBill::STATUS_OPEN;

@@ -34,7 +34,7 @@ class StockOpnameRepository
 
     public function findById(string $id): ?StockOpname
     {
-        return StockOpname::with([
+        $query = StockOpname::with([
             'items.product:id,sku,product_id',
             'items.product.product:id,name',
             'items.product.media',
@@ -42,7 +42,10 @@ class StockOpnameRepository
             'items.bin:id,bin_final_code,floor_code,row_code,column_code',
             'location:id,location_name,location_code',
             'zone:id,zone_code,zone_name',
-        ])->find($id);
+        ]);
+        \App\Support\WarehouseAccess::apply($query, 'location_id');
+
+        return $query->find($id);
     }
 
     public function create(array $data): StockOpname
@@ -62,7 +65,10 @@ class StockOpnameRepository
 
     public function updateStatus(string $id, string $status, array $extra = []): bool
     {
-        return StockOpname::where('id', $id)->update(array_merge(['status' => $status], $extra)) > 0;
+        $query = StockOpname::where('id', $id);
+        \App\Support\WarehouseAccess::apply($query, 'location_id');
+
+        return $query->update(array_merge(['status' => $status], $extra)) > 0;
     }
 
     public function updateItem(string $itemId, array $data): bool
@@ -72,7 +78,10 @@ class StockOpnameRepository
 
     public function delete(string $id): bool
     {
-        return StockOpname::where('id', $id)->delete() > 0;
+        $query = StockOpname::where('id', $id);
+        \App\Support\WarehouseAccess::apply($query, 'location_id');
+
+        return $query->delete() > 0;
     }
 
     public function generateOpnameNo(): string

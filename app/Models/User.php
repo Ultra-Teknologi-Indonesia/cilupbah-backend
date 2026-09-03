@@ -2,27 +2,34 @@
 
 namespace App\Models;
 
-use Database\Factories\UserFactory;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
-use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Notifications\Notifiable;
-use Laravel\Sanctum\HasApiTokens;
-use Modules\Warehouse\Models\Location;
-use Spatie\Permission\Traits\HasRoles;
 use App\Services\UploadService;
 use App\Traits\HasUuid7;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Collection;
+use Laravel\Sanctum\HasApiTokens;
+use Modules\Warehouse\Models\Location;
+use Ramsey\Uuid\Uuid;
+use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable
 {
-
-    use HasApiTokens, HasFactory, Notifiable, HasRoles, HasUuid7;
+    use HasApiTokens, HasFactory, HasRoles, HasUuid7, Notifiable {
+        hasPermissionTo as protected hasPermissionToViaSpatie;
+    }
 
     protected $keyType = 'string';
+
     public $incrementing = false;
 
     protected ?array $allowedLocationIdsCache = null;
+
     protected bool $allowedLocationIdsResolved = false;
+
+    protected ?array $deniedPermissionNamesCache = null;
 
     protected $fillable = [
         'name',
@@ -81,6 +88,66 @@ class User extends Authenticatable
             ->withTimestamps();
     }
 
+    public function permissionDenials(): HasMany
+    {
+        return $this->hasMany(UserPermissionDenial::class);
+    }
+
+    public function hasPermissionTo($permission, ?string $guardName = null): bool
+    {
+        $resolvedPermission = $this->filterPermission($permission, $guardName);
+
+        if ($this->hasDeniedPermissionName($resolvedPermission->name)) {
+            return false;
+        }
+
+        return $this->hasPermissionToViaSpatie($resolvedPermission, $guardName);
+    }
+
+    public function effectivePermissionNames(): Collection
+    {
+        $this->loadMissing([
+            'roles.permissions',
+            'permissions',
+            'permissionDenials.permission',
+        ]);
+
+        $denied = array_flip($this->deniedPermissionNames());
+
+        return $this->getAllPermissions()
+            ->pluck('name')
+            ->reject(static fn (string $name): bool => isset($denied[$name]))
+            ->unique()
+            ->sort()
+            ->values();
+    }
+
+    public function deniedPermissionNames(): array
+    {
+        if ($this->deniedPermissionNamesCache !== null) {
+            return $this->deniedPermissionNamesCache;
+        }
+
+        $this->loadMissing('permissionDenials.permission');
+
+        return $this->deniedPermissionNamesCache = $this->permissionDenials
+            ->pluck('permission.name')
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    public function hasDeniedPermissionName(string $permissionName): bool
+    {
+        return in_array($permissionName, $this->deniedPermissionNames(), true);
+    }
+
+    public function forgetDeniedPermissionNamesCache(): void
+    {
+        $this->deniedPermissionNamesCache = null;
+        $this->unsetRelation('permissionDenials');
+    }
+
     public function allowedLocationIds(): ?array
     {
         if ($this->allowedLocationIdsResolved) {
@@ -110,7 +177,7 @@ class User extends Authenticatable
 
         $payload = [];
         foreach (array_values(array_unique($locationIds)) as $id) {
-            $payload[$id] = ['id' => \Ramsey\Uuid\Uuid::uuid7()->toString()];
+            $payload[$id] = ['id' => Uuid::uuid7()->toString()];
         }
 
         if ($payload !== []) {

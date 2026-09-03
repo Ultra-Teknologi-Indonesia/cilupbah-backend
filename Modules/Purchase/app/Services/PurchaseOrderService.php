@@ -2,6 +2,7 @@
 
 namespace Modules\Purchase\Services;
 
+use App\Support\WarehouseAccess;
 use Modules\Purchase\Repositories\PurchaseOrderRepository;
 use Modules\Purchase\Enums\PurchaseActivityAction;
 use Modules\Purchase\Models\PurchaseOrder;
@@ -30,8 +31,10 @@ class PurchaseOrderService
 
     public function downloadPdf(string $id)
     {
-        $po = PurchaseOrder::with(['contact:id,name', 'location:id,location_name', 'items.variant:id,sku,product_id', 'items.variant.product:id,name'])
-            ->findOrFail($id);
+        $poQuery = PurchaseOrder::with(['contact:id,name', 'location:id,location_name', 'items.variant:id,sku,product_id', 'items.variant.product:id,name'])
+            ->whereKey($id);
+        WarehouseAccess::apply($poQuery, 'location_id');
+        $po = $poQuery->firstOrFail();
 
         $company = $this->companyProfile->forPdf();
 
@@ -65,6 +68,8 @@ class PurchaseOrderService
 
     public function create(array $data): PurchaseOrder
     {
+        WarehouseAccess::assert($data['location_id'] ?? null);
+
         return DB::transaction(function () use ($data) {
             $data['po_number'] = $data['po_number'] ?? $this->poRepository->generatePoNumber();
             $data['status'] = PurchaseOrder::STATUS_OPEN;

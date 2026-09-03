@@ -2,6 +2,7 @@
 
 namespace Modules\Inventory\Repositories;
 
+use App\Support\WarehouseAccess;
 use Modules\Inventory\Models\StockAdjustment;
 use Modules\Inventory\Models\StockAdjustmentItem;
 use Spatie\QueryBuilder\QueryBuilder;
@@ -12,7 +13,7 @@ class StockAdjustmentRepository
 {
     public function getAllPaginated(int $limit = 10)
     {
-        return QueryBuilder::for(StockAdjustment::class)
+        $query = QueryBuilder::for(StockAdjustment::class)
             ->excludeInboundQtyCorrections()
             ->select([
                 'id',
@@ -34,14 +35,18 @@ class StockAdjustmentRepository
                 AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('transaction_date', '<=', $value)),
             )
             ->allowedSorts('transaction_date', 'created_at', 'adjustment_no', 'created_by', 'id')
-            ->defaultSort('-transaction_date')
+            ->defaultSort('-transaction_date');
+
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query
             ->paginate(request('per_page', $limit))
             ->appends(request()->query());
     }
 
     public function getQueryForExport(Request $request): \Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Query\Builder
     {
-        return StockAdjustmentItem::query()
+        $query = StockAdjustmentItem::query()
             ->join('stock_adjustments', 'stock_adjustment_items.stock_adjustment_id', '=', 'stock_adjustments.id')
             ->join('product_variants', 'stock_adjustment_items.item_id', '=', 'product_variants.id')
             ->join('products', 'product_variants.product_id', '=', 'products.id')
@@ -85,17 +90,26 @@ class StockAdjustmentRepository
             ])
             ->orderBy('stock_adjustments.transaction_date', 'desc')
             ->orderBy('stock_adjustments.adjustment_no', 'desc');
+
+        WarehouseAccess::apply($query, 'stock_adjustments.location_id');
+
+        return $query;
     }
 
     public function findById(string $id): ?StockAdjustment
     {
-        return StockAdjustment::with(['location:id,location_name'])
-            ->find($id);
+        $query = StockAdjustment::with(['location:id,location_name']);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->find($id);
     }
 
     public function findByIdForUpdate(string $id): ?StockAdjustment
     {
-        return StockAdjustment::lockForUpdate()->find($id);
+        $query = StockAdjustment::lockForUpdate();
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->find($id);
     }
 
     public function create(array $data): StockAdjustment
@@ -110,12 +124,14 @@ class StockAdjustmentRepository
 
     public function delete(string $id): void
     {
-        StockAdjustment::where('id', $id)->delete();
+        $query = StockAdjustment::where('id', $id);
+        WarehouseAccess::apply($query, 'location_id');
+        $query->delete();
     }
 
     public function getItemsPaginated(string $adjustmentId, int $limit = 10)
     {
-        return QueryBuilder::for(StockAdjustmentItem::class)
+        $query = QueryBuilder::for(StockAdjustmentItem::class)
             ->where('stock_adjustment_id', $adjustmentId)
             ->with([
                 'product:id,sku,product_id',
@@ -126,31 +142,43 @@ class StockAdjustmentRepository
             ])
             ->allowedSearch('notes')
             ->allowedSorts('created_at')
-            ->defaultSort('-created_at')
+            ->defaultSort('-created_at');
+
+        $query->whereHas('stockAdjustment', function ($adjustment) {
+            WarehouseAccess::apply($adjustment, 'location_id');
+        });
+
+        return $query
             ->paginate(request('per_page', $limit))
             ->appends(request()->query());
     }
 
     public function findForPdf(string $id): ?StockAdjustment
     {
-        return StockAdjustment::with([
+        $query = StockAdjustment::with([
             'items.product.product',
             'items.bin',
             'location',
-        ])->find($id);
+        ]);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->find($id);
     }
 
     public function getManyForPdf(array $ids)
     {
-        return StockAdjustment::with([
+        $query = StockAdjustment::with([
             'items.product.product',
             'items.bin',
             'location',
         ])
             ->whereIn('id', $ids)
             ->orderBy('transaction_date')
-            ->orderBy('adjustment_no')
-            ->get();
+            ->orderBy('adjustment_no');
+
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->get();
     }
 
     public function generateAdjustmentNo(): string

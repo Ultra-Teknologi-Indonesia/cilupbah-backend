@@ -117,7 +117,7 @@ class InboundRepository
 
     public function findById(string $id): ?Inbound
     {
-        $inbound = Inbound::with([
+        $query = Inbound::with([
             'location',
             'items' => fn ($q) => $q->select('inbound_items.*')->withReceiptStats(),
             'items.receipts.bin',
@@ -129,7 +129,9 @@ class InboundRepository
             'directPutaways:id,source_id,status,notes,created_at',
             'assignee:id,name',
             'assignedByUser:id,name',
-        ])->find($id);
+        ]);
+        WarehouseAccess::apply($query, 'location_id');
+        $inbound = $query->find($id);
 
         if ($inbound) {
             $inbound->received_total = (int) $inbound->items->sum('received_total');
@@ -161,14 +163,19 @@ class InboundRepository
 
     public function findByIdForUpdate(string $id): ?Inbound
     {
-        return Inbound::where('id', $id)->lockForUpdate()->with('items')->first();
+        $query = Inbound::where('id', $id)->lockForUpdate()->with('items');
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->first();
     }
 
     public function findBySource(string $sourceType, string $sourceId): ?Inbound
     {
-        return Inbound::where('source_type', $sourceType)
-            ->where('source_id', $sourceId)
-            ->first();
+        $query = Inbound::where('source_type', $sourceType)
+            ->where('source_id', $sourceId);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->first();
     }
 
     public function create(array $data): Inbound
@@ -190,7 +197,9 @@ class InboundRepository
 
     public function updateItemReceivedQty(string $itemId, int $addedQty): bool
     {
-        $item = InboundItem::where('id', $itemId)->lockForUpdate()->first();
+        $query = InboundItem::where('id', $itemId)->lockForUpdate();
+        $query->whereHas('inbound', fn ($inbound) => WarehouseAccess::apply($inbound, 'location_id'));
+        $item = $query->first();
         if ($item) {
             $item->received_qty += $addedQty;
 
@@ -202,7 +211,9 @@ class InboundRepository
 
     public function updateItemRejectedQty(string $itemId, int $addedQty): bool
     {
-        $item = InboundItem::where('id', $itemId)->lockForUpdate()->first();
+        $query = InboundItem::where('id', $itemId)->lockForUpdate();
+        $query->whereHas('inbound', fn ($inbound) => WarehouseAccess::apply($inbound, 'location_id'));
+        $item = $query->first();
         if ($item) {
             $item->rejected_qty = ($item->rejected_qty ?? 0) + $addedQty;
 
@@ -214,7 +225,9 @@ class InboundRepository
 
     public function updateItemPutawayQty(string $itemId, int $addedQty): bool
     {
-        $item = InboundItem::where('id', $itemId)->lockForUpdate()->first();
+        $query = InboundItem::where('id', $itemId)->lockForUpdate();
+        $query->whereHas('inbound', fn ($inbound) => WarehouseAccess::apply($inbound, 'location_id'));
+        $item = $query->first();
         if ($item) {
             $item->putaway_qty += $addedQty;
 
@@ -226,7 +239,9 @@ class InboundRepository
 
     public function updateItemDiscrepancy(string $itemId, int $discrepancyQty, ?string $note): bool
     {
-        $item = InboundItem::findOrFail($itemId);
+        $query = InboundItem::whereKey($itemId);
+        $query->whereHas('inbound', fn ($inbound) => WarehouseAccess::apply($inbound, 'location_id'));
+        $item = $query->firstOrFail();
         $item->discrepancy_qty = $discrepancyQty;
         $item->discrepancy_note = $note;
 
@@ -235,7 +250,9 @@ class InboundRepository
 
     public function updateItemDiscrepancyNote(string $itemId, ?string $note): bool
     {
-        $item = InboundItem::findOrFail($itemId);
+        $query = InboundItem::whereKey($itemId);
+        $query->whereHas('inbound', fn ($inbound) => WarehouseAccess::apply($inbound, 'location_id'));
+        $item = $query->firstOrFail();
         $item->discrepancy_note = $note;
 
         return $item->save();
@@ -262,6 +279,8 @@ class InboundRepository
                 'variant.options',
                 'receipts.bin',
             ]);
+
+        $base->whereHas('inbound', fn ($inbound) => WarehouseAccess::apply($inbound, 'location_id'));
 
         return QueryBuilder::for($base)
             ->allowedSearch('product_variants.sku', 'products.name')
@@ -310,6 +329,8 @@ class InboundRepository
                 'bin:id,bin_final_code',
             ]);
 
+        $base->whereHas('inboundItem.inbound', fn ($inbound) => WarehouseAccess::apply($inbound, 'location_id'));
+
         return QueryBuilder::for($base)
             ->allowedFilters(
                 AllowedFilter::exact('received_by_user_id', 'inbound_receipts.received_by_user_id'),
@@ -330,7 +351,7 @@ class InboundRepository
 
     public function getReceivedItemsPaginated(int $limit = 10)
     {
-        return QueryBuilder::for(InboundReceipt::class)
+        $query = QueryBuilder::for(InboundReceipt::class)
             ->with(['inboundItem.inbound.location', 'inboundItem.variant:id,sku', 'bin'])
             ->allowedFilters(
                 AllowedFilter::exact('bin_id'),
@@ -338,6 +359,11 @@ class InboundRepository
                 AllowedFilter::exact('inboundItem.item_id'),
             )
             ->allowedSorts('received_date', 'created_at')
+            ->defaultSort('-received_date');
+
+        $query->whereHas('inboundItem.inbound', fn ($inbound) => WarehouseAccess::apply($inbound, 'location_id'));
+
+        return $query
             ->defaultSort('-received_date')
             ->paginate($limit)
             ->appends(request()->query());
@@ -345,24 +371,30 @@ class InboundRepository
 
     public function getItemsPendingPutaway(string $inboundId)
     {
-        return InboundItem::where('inbound_id', $inboundId)
+        $query = InboundItem::where('inbound_id', $inboundId)
             ->whereColumn('putaway_qty', '<', 'received_qty')
-            ->with('variant:id,sku')
-            ->get();
+            ->with('variant:id,sku');
+        $query->whereHas('inbound', fn ($inbound) => WarehouseAccess::apply($inbound, 'location_id'));
+
+        return $query->get();
     }
 
     public function findItemByUuid(string $uuid): ?InboundItem
     {
-        return InboundItem::with(['inbound.location', 'variant:id,sku,product_id'])
-            ->find($uuid);
+        $query = InboundItem::with(['inbound.location', 'variant:id,sku,product_id']);
+        $query->whereHas('inbound', fn ($inbound) => WarehouseAccess::apply($inbound, 'location_id'));
+
+        return $query->find($uuid);
     }
 
     public function findItemByUuidForUpdate(string $uuid): ?InboundItem
     {
-        return InboundItem::where('id', $uuid)
+        $query = InboundItem::where('id', $uuid)
             ->lockForUpdate()
-            ->with('inbound.items')
-            ->first();
+            ->with('inbound.items');
+        $query->whereHas('inbound', fn ($inbound) => WarehouseAccess::apply($inbound, 'location_id'));
+
+        return $query->first();
     }
 
     public function createAssignment(array $data): InboundAssignment

@@ -44,6 +44,9 @@ class OutboundFulfillmentService
         if (! empty($shipmentIds)) {
             $fromShipments = ShipmentOrder::query()
                 ->whereIn('shipment_id', $shipmentIds)
+                ->whereHas('shipment', function ($query): void {
+                    WarehouseAccess::apply($query, 'location_id');
+                })
                 ->pluck('order_id')
                 ->all();
             $orderIds = array_merge($orderIds, $fromShipments);
@@ -56,6 +59,7 @@ class OutboundFulfillmentService
     {
         $orders = Order::query()
             ->whereIn('id', $orderIds)
+            ->tap(fn ($query) => WarehouseAccess::apply($query, 'location_id'))
             ->get(['id', 'source', 'driver_call_status', 'channel_shop_id', 'salesorder_no']);
 
         $blocked = [];
@@ -291,7 +295,7 @@ class OutboundFulfillmentService
 
     private function stageQuery(string $stage)
     {
-        return match ($stage) {
+        $query = match ($stage) {
             'ready-to-process' => $this->readyToProcess(),
             'ready-to-pick' => $this->readyToPick(),
             'on-picking' => $this->onPicking(),
@@ -305,13 +309,15 @@ class OutboundFulfillmentService
             'request-cancel' => $this->pendingCancelRequests(),
             default => throw new \Exception("Stage '{$stage}' tidak dikenal."),
         };
+
+        WarehouseAccess::apply($query, 'sales_orders.location_id');
+
+        return $query;
     }
 
     public function getCourierOptionsByStage(string $stage): array
     {
         $query = $this->stageQuery($stage);
-
-        WarehouseAccess::apply($query, 'sales_orders.location_id');
 
         return $query->reorder()
             ->whereNotNull('shipping_provider')
@@ -333,8 +339,6 @@ class OutboundFulfillmentService
             'finish-pack' => ['packer_name', 'picklist_ref', 'invoice_ref'],
             default => ['invoice_ref'],
         };
-
-        WarehouseAccess::apply($query, 'sales_orders.location_id');
 
         return $this->fulfillmentRepository->paginateStage($query, $limit, $extraSelects);
     }
@@ -417,18 +421,26 @@ SQL;
         $yesterdayStart = $todayStart->copy()->subDay();
         $yesterdaySameTime = $now->copy()->subDay();
 
-        $todayCount = Order::whereBetween('transaction_date', $this->utcRange($todayStart, $now))->count();
-        $yestCount = Order::whereBetween('transaction_date', $this->utcRange($yesterdayStart, $yesterdaySameTime))->count();
+        $todayQuery = Order::whereBetween('transaction_date', $this->utcRange($todayStart, $now));
+        $yesterdayQuery = Order::whereBetween('transaction_date', $this->utcRange($yesterdayStart, $yesterdaySameTime));
+        WarehouseAccess::apply($todayQuery, 'sales_orders.location_id');
+        WarehouseAccess::apply($yesterdayQuery, 'sales_orders.location_id');
+        $todayCount = $todayQuery->count();
+        $yestCount = $yesterdayQuery->count();
 
-        $mtdCount = Order::whereBetween('transaction_date', [
+        $mtdQuery = Order::whereBetween('transaction_date', [
             $now->copy()->startOfMonth()->utc(),
             $now->copy()->utc(),
-        ])->count();
+        ]);
+        WarehouseAccess::apply($mtdQuery, 'sales_orders.location_id');
+        $mtdCount = $mtdQuery->count();
         $previousMonthSameTime = $now->copy()->subMonthNoOverflow();
-        $prevMonthCount = Order::whereBetween('transaction_date', [
+        $previousMonthQuery = Order::whereBetween('transaction_date', [
             $previousMonthSameTime->copy()->startOfMonth()->utc(),
             $previousMonthSameTime->copy()->utc(),
-        ])->count();
+        ]);
+        WarehouseAccess::apply($previousMonthQuery, 'sales_orders.location_id');
+        $prevMonthCount = $previousMonthQuery->count();
 
         $readyToPick = $this->readyToProcess()->count();
         $readyToPick2days = $this->readyToProcess()
@@ -464,12 +476,15 @@ SQL;
     {
         $range = $this->utcRange($from, $to);
 
-        return Order::whereHas('picklistItems', function ($q) use ($range) {
+        $query = Order::whereHas('picklistItems', function ($q) use ($range) {
             $q->whereHas('picklist', function ($pq) use ($range) {
                 $pq->where('status', Picklist::STATUS_COMPLETED)
                     ->whereBetween('completed_at', $range);
             });
-        })->count();
+        });
+        WarehouseAccess::apply($query, 'sales_orders.location_id');
+
+        return $query->count();
     }
 
     public function getPickers(?string $locationId, string $role): Collection
@@ -481,7 +496,9 @@ SQL;
     {
         WarehouseAccess::assert($locationId);
 
-        $order = Order::find($orderId);
+        $orderQuery = Order::whereKey($orderId);
+        WarehouseAccess::apply($orderQuery, 'location_id');
+        $order = $orderQuery->first();
 
         if (! $order) {
             throw new \Exception('Order tidak ditemukan.');
@@ -496,22 +513,29 @@ SQL;
 
     public function findOrderByNo(string $orderNo): ?Order
     {
-        return Order::where('salesorder_no', $orderNo)
-            ->orWhere('channel_order_no', $orderNo)
-            ->orWhere('tracking_number', $orderNo)
+        $query = Order::where(function ($query) use ($orderNo): void {
+                $query->where('salesorder_no', $orderNo)
+                    ->orWhere('channel_order_no', $orderNo)
+                    ->orWhere('tracking_number', $orderNo);
+            })
             ->with([
                 'items.product:id,sku,product_id',
                 'items.product.product:id,name',
                 'location:id,location_name,location_code',
             ])
-            ->first();
+            ;
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->first();
     }
 
     public function moveToReadyToPick(string $orderId, string $locationId, string $movedBy): Order
     {
         WarehouseAccess::assert($locationId);
 
-        $order = Order::find($orderId);
+        $orderQuery = Order::whereKey($orderId);
+        WarehouseAccess::apply($orderQuery, 'location_id');
+        $order = $orderQuery->first();
 
         if (! $order) {
             throw new \Exception('Order tidak ditemukan.');
@@ -562,7 +586,9 @@ SQL;
 
     public function moveToReadyToProcess(string $orderId): Order
     {
-        $order = Order::find($orderId);
+        $orderQuery = Order::whereKey($orderId);
+        WarehouseAccess::apply($orderQuery, 'location_id');
+        $order = $orderQuery->first();
 
         if (! $order) {
             throw new \Exception('Order tidak ditemukan.');
@@ -592,7 +618,9 @@ SQL;
 
     public function requestCancelOrder(string $orderId, ?string $reason = null, ?string $requestedBy = null): Order
     {
-        $order = Order::find($orderId);
+        $orderQuery = Order::whereKey($orderId);
+        WarehouseAccess::apply($orderQuery, 'location_id');
+        $order = $orderQuery->first();
 
         if (! $order) {
             throw new \Exception('Order tidak ditemukan.');
@@ -703,7 +731,9 @@ SQL;
 
     public function deleteOrderFromFulfillment(string $orderId, ?string $reason, ?string $removedBy): void
     {
-        $order = Order::findOrFail($orderId);
+        $orderQuery = Order::whereKey($orderId);
+        WarehouseAccess::apply($orderQuery, 'location_id');
+        $order = $orderQuery->firstOrFail();
 
         if ($order->status === 'shipped') {
             throw new \Exception('Pesanan sudah dikirim — tidak bisa dihapus.');
@@ -802,7 +832,10 @@ SQL;
             return collect();
         }
 
-        return Order::whereIn('id', $orderIds)->get()->keyBy('id');
+        $query = Order::whereIn('id', $orderIds);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->get()->keyBy('id');
     }
 
     private function logRemoval(string $orderId, string $stage, string $removedBy, ?string $reason, bool $reversedStock): void

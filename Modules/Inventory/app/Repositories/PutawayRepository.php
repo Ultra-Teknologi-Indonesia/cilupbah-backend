@@ -4,6 +4,7 @@ namespace Modules\Inventory\Repositories;
 
 use App\Models\User;
 use App\Support\SearchExpression;
+use App\Support\WarehouseAccess;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\Putaway;
@@ -18,6 +19,8 @@ class PutawayRepository
 {
     public function getPutawayBins(string $locationId, ?string $search = null): Collection
     {
+        WarehouseAccess::assert($locationId);
+
         $query = LocationBin::where('location_id', $locationId)
             ->where('is_inbound', false)
             ->orderBy('bin_final_code');
@@ -29,6 +32,8 @@ class PutawayRepository
 
     public function currentQtyByBin(string $locationId, array $binIds): Collection
     {
+        WarehouseAccess::assert($locationId);
+
         return Inventory::where('location_id', $locationId)
             ->where('on_hand', '>', 0)
             ->whereNotNull('bin_id')
@@ -41,6 +46,8 @@ class PutawayRepository
 
     public function lookupPutawayBin(string $locationId, string $code): ?LocationBin
     {
+        WarehouseAccess::assert($locationId);
+
         return LocationBin::where('location_id', $locationId)
             ->where('is_inbound', false)
             ->where('bin_final_code', $code)
@@ -49,6 +56,8 @@ class PutawayRepository
 
     public function sumOnHandForBin(string $binId, string $locationId): int
     {
+        WarehouseAccess::assert($locationId);
+
         return (int) Inventory::where('bin_id', $binId)
             ->where('location_id', $locationId)
             ->sum('on_hand');
@@ -185,20 +194,28 @@ class PutawayRepository
 
     public function findById(string $id): ?Putaway
     {
-        return Putaway::with($this->detailRelations())->find($id);
+        $query = Putaway::with($this->detailRelations());
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->find($id);
     }
 
     public function getManyWithDetails(array $ids)
     {
-        return Putaway::with($this->detailRelations())
+        $query = Putaway::with($this->detailRelations())
             ->whereIn('id', $ids)
-            ->orderBy('putaway_no')
-            ->get();
+            ->orderBy('putaway_no');
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->get();
     }
 
     public function findByIdForUpdate(string $id): ?Putaway
     {
-        return Putaway::lockForUpdate()->find($id);
+        $query = Putaway::lockForUpdate();
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->find($id);
     }
 
     public function create(array $data): Putaway
@@ -213,12 +230,15 @@ class PutawayRepository
 
     public function updateStatus(string $id, string $status, array $extra = []): bool
     {
-        return Putaway::where('id', $id)->update(array_merge(['status' => $status], $extra));
+        $query = Putaway::where('id', $id);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->update(array_merge(['status' => $status], $extra));
     }
 
     public function getItemsPaginated(string $putawayId, int $limit = 10)
     {
-        return QueryBuilder::for(PutawayItem::where('putaway_id', $putawayId))
+        $query = QueryBuilder::for(PutawayItem::where('putaway_id', $putawayId))
             ->with([
                 'product:id,sku,product_id,barcode',
                 'product.product:id,name',
@@ -230,26 +250,34 @@ class PutawayRepository
                 'placements.bin:id,bin_final_code',
             ])
             ->allowedSorts('created_at')
-            ->defaultSort('created_at')
+            ->defaultSort('created_at');
+
+        $query->whereHas('putaway', fn ($putaway) => WarehouseAccess::apply($putaway, 'location_id'));
+
+        return $query
             ->paginate(request('per_page', $limit))
             ->appends(request()->query());
     }
 
     public function findItemForUpdate(string $putawayId, string $itemId): ?PutawayItem
     {
-        return PutawayItem::where('putaway_id', $putawayId)
+        $query = PutawayItem::where('putaway_id', $putawayId)
             ->where('id', $itemId)
-            ->lockForUpdate()
-            ->first();
+            ->lockForUpdate();
+        $query->whereHas('putaway', fn ($putaway) => WarehouseAccess::apply($putaway, 'location_id'));
+
+        return $query->first();
     }
 
     public function getByAssignee(int $assigneeId, int $limit = 10)
     {
-        return Putaway::where('assigned_to', $assigneeId)
+        $query = Putaway::where('assigned_to', $assigneeId)
             ->whereIn('status', [Putaway::STATUS_NOT_STARTED, Putaway::STATUS_IN_PROGRESS])
             ->with(['location:id,location_name'])
-            ->orderByDesc('created_at')
-            ->paginate(request('per_page', $limit))
+            ->orderByDesc('created_at');
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->paginate(request('per_page', $limit))
             ->appends(request()->query());
     }
 

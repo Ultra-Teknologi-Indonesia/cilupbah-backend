@@ -603,6 +603,8 @@ class InventoryService
 
     public function createBinTransferDraft(array $data): BinTransfer
     {
+        WarehouseAccess::assert($data['location_id'] ?? null);
+
         $items = $this->normalizeBinTransferItems($data);
 
         if (empty($items)) {
@@ -688,7 +690,7 @@ class InventoryService
         $variantIds = [];
 
         $result = DB::transaction(function () use ($id, $printedBy, &$variantIds) {
-            $header = BinTransfer::where('id', $id)->lockForUpdate()->first();
+            $header = $this->lockAccessibleBinTransfer($id);
 
             if (! $header) {
                 throw new \Exception('Transfer internal tidak ditemukan.');
@@ -806,7 +808,7 @@ class InventoryService
         $variantIds = [];
 
         $result = DB::transaction(function () use ($id, $actor, &$variantIds) {
-            $header = BinTransfer::where('id', $id)->lockForUpdate()->first();
+            $header = $this->lockAccessibleBinTransfer($id);
 
             if (! $header) {
                 throw new \Exception('Transfer internal tidak ditemukan.');
@@ -917,7 +919,7 @@ class InventoryService
         $variantIds = [];
 
         $result = DB::transaction(function () use ($id, $data, &$variantIds) {
-            $header = BinTransfer::where('id', $id)->lockForUpdate()->first();
+            $header = $this->lockAccessibleBinTransfer($id);
 
             if (! $header) {
                 throw new \Exception('Transfer internal tidak ditemukan.');
@@ -1095,12 +1097,14 @@ class InventoryService
 
         DB::transaction(function () use ($id, $actor, &$variantIds) {
 
-            $receipt = BinTransferReceipt::where('id', $id)->lockForUpdate()->first();
+            $receiptQuery = BinTransferReceipt::query()->whereKey($id);
+            WarehouseAccess::apply($receiptQuery, 'location_id');
+            $receipt = $receiptQuery->lockForUpdate()->first();
             if (! $receipt) {
                 throw new \Exception('Penerimaan transfer tidak ditemukan.');
             }
 
-            $header = BinTransfer::where('id', $receipt->bin_transfer_id)->lockForUpdate()->first();
+            $header = $this->lockAccessibleBinTransfer($receipt->bin_transfer_id);
             if (! $header) {
                 throw new \Exception('Transfer internal asal tidak ditemukan.');
             }
@@ -1202,7 +1206,7 @@ class InventoryService
         }
 
         return DB::transaction(function () use ($binTransferId, $items, $userId) {
-            $header = BinTransfer::where('id', $binTransferId)->lockForUpdate()->first();
+            $header = $this->lockAccessibleBinTransfer($binTransferId);
 
             if (! $header) {
                 throw new \Exception('Dokumen Pindah Bin tidak ditemukan.');
@@ -1320,7 +1324,7 @@ class InventoryService
     public function deleteBinTransferDraft(string $id): void
     {
         DB::transaction(function () use ($id) {
-            $transfer = BinTransfer::where('id', $id)->lockForUpdate()->first();
+            $transfer = $this->lockAccessibleBinTransfer($id);
             if (! $transfer) {
                 throw new \Exception('Transfer internal tidak ditemukan.');
             }
@@ -1335,7 +1339,9 @@ class InventoryService
 
     public function updateBinTransferMetadata(string $id, array $data): BinTransfer
     {
-        $transfer = BinTransfer::find($id);
+        $transferQuery = BinTransfer::query()->whereKey($id);
+        WarehouseAccess::apply($transferQuery, 'location_id');
+        $transfer = $transferQuery->first();
         if (! $transfer) {
             throw new \Exception('Transfer internal tidak ditemukan.');
         }
@@ -1348,6 +1354,14 @@ class InventoryService
         $transfer->update($updatable);
 
         return $transfer->fresh(['items', 'location']);
+    }
+
+    private function lockAccessibleBinTransfer(string $id): ?BinTransfer
+    {
+        $query = BinTransfer::query()->whereKey($id);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->lockForUpdate()->first();
     }
 
     public function getStockItems(int $limit = 10)
@@ -1375,18 +1389,19 @@ class InventoryService
 
     public function getActiveLocations(): array
     {
-        return Cache::remember('inventory_active_locations_list', 60, function () {
-            return Location::where('is_active', true)
-                ->where('location_code', '!=', Location::SYSTEM_TRANSIT_CODE)
-                ->select('id', 'location_name')
-                ->get()
-                ->map(fn ($loc) => [
-                    'location_id' => $loc->id,
-                    'location_name' => $loc->location_name,
-                ])
-                ->values()
-                ->toArray();
-        });
+        $query = Location::where('is_active', true)
+            ->where('location_code', '!=', Location::SYSTEM_TRANSIT_CODE)
+            ->select('id', 'location_name');
+
+        WarehouseAccess::apply($query, 'id');
+
+        return $query->get()
+            ->map(fn ($loc) => [
+                'location_id' => $loc->id,
+                'location_name' => $loc->location_name,
+            ])
+            ->values()
+            ->toArray();
     }
 
     public function getAllPaginated(int $limit = 10)
@@ -1401,6 +1416,9 @@ class InventoryService
 
     public function transferOut(array $data): InventoryTransfer
     {
+        WarehouseAccess::assert($data['source_location_id'] ?? null);
+        WarehouseAccess::assert($data['destination_location_id'] ?? null);
+
         app(BundleGuardService::class)
             ->assertNotBundle(array_column($data['items'] ?? [], 'item_id'), 'transfer stok');
 
@@ -2330,6 +2348,9 @@ class InventoryService
 
     public function createDraft(array $data): InventoryTransfer
     {
+        WarehouseAccess::assert($data['source_location_id'] ?? null);
+        WarehouseAccess::assert($data['destination_location_id'] ?? null);
+
         $manualNumber = isset($data['transfer_number']) ? trim((string) $data['transfer_number']) : '';
 
         if ($manualNumber !== '' && InventoryTransfer::where('transfer_number', $manualNumber)->exists()) {
@@ -2510,11 +2531,16 @@ class InventoryService
             $updateData['transfer_number'] = $data['transfer_number'];
         }
         if (array_key_exists('source_location_id', $data)) {
+            WarehouseAccess::assert($data['source_location_id']);
             $updateData['source_location_id'] = $data['source_location_id'];
         }
         if (array_key_exists('destination_location_id', $data)) {
+            WarehouseAccess::assert($data['destination_location_id']);
             $updateData['destination_location_id'] = $data['destination_location_id'];
         }
+
+        WarehouseAccess::assert($updateData['source_location_id'] ?? $transfer->source_location_id);
+        WarehouseAccess::assert($updateData['destination_location_id'] ?? $transfer->destination_location_id);
         if (array_key_exists('notes', $data)) {
             $updateData['notes'] = $data['notes'];
         }

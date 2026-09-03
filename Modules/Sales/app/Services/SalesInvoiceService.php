@@ -3,6 +3,7 @@
 namespace Modules\Sales\Services;
 
 use App\Support\ChannelWarehousePolicy;
+use App\Support\WarehouseAccess;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Sales\Events\SalesInvoiceFinalized;
@@ -32,7 +33,9 @@ class SalesInvoiceService
     {
         return DB::transaction(function () use ($data) {
             if (! empty($data['order_id'])) {
-                $order = SalesOrder::query()->findOrFail($data['order_id']);
+                $orderQuery = SalesOrder::query()->whereKey($data['order_id']);
+                WarehouseAccess::apply($orderQuery, 'location_id');
+                $order = $orderQuery->firstOrFail();
                 $this->channelWarehousePolicy->assertOrderAndTargetLocation(
                     $order->source,
                     $order->location_id,
@@ -44,9 +47,12 @@ class SalesInvoiceService
             $items = $data['items'] ?? [];
             unset($data['items']);
 
-            $existing = ! empty($data['invoice_number'])
-                ? SalesInvoice::where('invoice_number', $data['invoice_number'])->first()
-                : null;
+            $existing = null;
+            if (! empty($data['invoice_number'])) {
+                $existingQuery = SalesInvoice::where('invoice_number', $data['invoice_number']);
+                WarehouseAccess::apply($existingQuery, 'location_id');
+                $existing = $existingQuery->first();
+            }
 
             if ($existing) {
 
@@ -96,12 +102,15 @@ class SalesInvoiceService
     public function createFromOrder(array $data): SalesInvoice
     {
         return DB::transaction(function () use ($data) {
-            $order = SalesOrder::with('items')->findOrFail($data['order_id']);
+            $orderQuery = SalesOrder::with('items')->whereKey($data['order_id']);
+            WarehouseAccess::apply($orderQuery, 'location_id');
+            $order = $orderQuery->firstOrFail();
 
-            $existing = SalesInvoice::where('order_id', $order->id)
+            $existingQuery = SalesInvoice::where('order_id', $order->id)
                 ->where('status', '!=', SalesInvoice::STATUS_CANCELLED)
-                ->with('items')
-                ->first();
+                ->with('items');
+            WarehouseAccess::apply($existingQuery, 'location_id');
+            $existing = $existingQuery->first();
 
             if ($existing) {
                 return $existing;

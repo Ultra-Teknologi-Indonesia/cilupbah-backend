@@ -2,6 +2,7 @@
 
 namespace Modules\Outbound\Services;
 
+use App\Support\WarehouseAccess;
 use Modules\Outbound\Repositories\PreManifestCancelRepository;
 use Modules\Sales\Models\SalesOrder as Order;
 
@@ -23,7 +24,9 @@ class PreManifestCancelService
 
     public function dismiss(string $orderId, string $actorId): Order
     {
-        $order = Order::findOrFail($orderId);
+        $query = Order::whereKey($orderId);
+        WarehouseAccess::apply($query, 'location_id');
+        $order = $query->firstOrFail();
 
         if ($order->status !== 'cancelled') {
             throw new \Exception("Order tidak dalam status 'cancelled', tidak bisa di-dismiss.");
@@ -44,7 +47,9 @@ class PreManifestCancelService
 
     public function undismiss(string $orderId): Order
     {
-        $order = Order::findOrFail($orderId);
+        $query = Order::whereKey($orderId);
+        WarehouseAccess::apply($query, 'location_id');
+        $order = $query->firstOrFail();
 
         $order->cancel_dismissed_at = null;
         $order->cancel_dismissed_by = null;

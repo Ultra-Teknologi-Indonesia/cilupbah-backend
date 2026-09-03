@@ -40,10 +40,11 @@ class PacklistService
 
     public function scanOrder(string $orderNo, ?string $packerId = null, ?string $createdBy = null): ?Packlist
     {
-        $order = Order::where('salesorder_no', $orderNo)
+        $orderQuery = Order::where('salesorder_no', $orderNo)
             ->orWhere('channel_order_no', $orderNo)
-            ->orWhere('tracking_number', $orderNo)
-            ->first();
+            ->orWhere('tracking_number', $orderNo);
+        WarehouseAccess::apply($orderQuery, 'location_id');
+        $order = $orderQuery->first();
 
         if (! $order) {
             return null;
@@ -99,7 +100,9 @@ class PacklistService
         WarehouseAccess::assert($data['location_id'] ?? null);
 
         return DB::transaction(function () use ($data) {
-            $order = Order::with('items')->find($data['order_id']);
+            $orderQuery = Order::with('items')->whereKey($data['order_id']);
+            WarehouseAccess::apply($orderQuery, 'location_id');
+            $order = $orderQuery->first();
 
             if (! $order) {
                 throw new \Exception('Order tidak ditemukan.');
@@ -244,7 +247,9 @@ class PacklistService
             throw new \Exception("Packlist tidak bisa di-pack (status saat ini: {$packlist->status}).");
         }
 
-        $packOrder = Order::find($packlist->order_id);
+        $packOrderQuery = Order::whereKey($packlist->order_id);
+        WarehouseAccess::apply($packOrderQuery, 'location_id');
+        $packOrder = $packOrderQuery->first();
         if ($packOrder && $packOrder->is_canceled) {
             throw new \Exception("Pesanan {$packOrder->salesorder_no} sudah DIBATALKAN — tidak bisa dipacking.");
         }
@@ -321,9 +326,10 @@ class PacklistService
 
     public function verifyBarcode(string $packlistId, string $barcode): array
     {
-        $item = PacklistItem::where('packlist_id', $packlistId)
+        $itemQuery = PacklistItem::where('packlist_id', $packlistId)
             ->where('sku', $barcode)
-            ->first();
+            ->whereHas('packlist', fn ($query) => WarehouseAccess::apply($query, 'location_id'));
+        $item = $itemQuery->first();
 
         if (! $item) {
             throw new OutboundValidationException("Barcode/SKU '{$barcode}' tidak ditemukan dalam packlist ini.");
@@ -404,7 +410,9 @@ class PacklistService
                 throw new \Exception('Packlist tidak ditemukan.');
             }
 
-            $order = Order::find($packlist->order_id);
+            $orderQuery = Order::whereKey($packlist->order_id);
+            WarehouseAccess::apply($orderQuery, 'location_id');
+            $order = $orderQuery->first();
 
             if ($order) {
                 if ($order->status === 'shipped') {

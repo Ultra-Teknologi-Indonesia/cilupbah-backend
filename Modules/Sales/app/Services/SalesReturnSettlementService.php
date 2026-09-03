@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Services;
 
+use App\Support\WarehouseAccess;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 use Modules\Sales\Models\SalesReturn;
@@ -29,7 +30,9 @@ class SalesReturnSettlementService
     public function create(array $data): SalesReturnSettlement
     {
         return DB::transaction(function () use ($data) {
-            $return = SalesReturn::findOrFail($data['return_id']);
+            $returnQuery = SalesReturn::whereKey($data['return_id']);
+            WarehouseAccess::apply($returnQuery, 'location_id');
+            $return = $returnQuery->firstOrFail();
 
             if ($return->status !== SalesReturn::STATUS_COMPLETED) {
                 throw new \InvalidArgumentException("Return harus berstatus COMPLETED sebelum membuat settlement.");
@@ -50,7 +53,10 @@ class SalesReturnSettlementService
     public function confirm(string $id): SalesReturnSettlement
     {
         return DB::transaction(function () use ($id) {
-            $settlement = SalesReturnSettlement::lockForUpdate()->findOrFail($id);
+            $settlement = SalesReturnSettlement::whereKey($id)
+                ->whereHas('salesReturn', fn ($query) => WarehouseAccess::apply($query, 'location_id'))
+                ->lockForUpdate()
+                ->firstOrFail();
 
             if ($settlement->status !== SalesReturnSettlement::STATUS_DRAFT) {
                 throw new \InvalidArgumentException("Settlement harus berstatus DRAFT untuk dikonfirmasi.");
@@ -69,7 +75,10 @@ class SalesReturnSettlementService
     public function complete(string $id): SalesReturnSettlement
     {
         return DB::transaction(function () use ($id) {
-            $settlement = SalesReturnSettlement::lockForUpdate()->findOrFail($id);
+            $settlement = SalesReturnSettlement::whereKey($id)
+                ->whereHas('salesReturn', fn ($query) => WarehouseAccess::apply($query, 'location_id'))
+                ->lockForUpdate()
+                ->firstOrFail();
 
             if ($settlement->status !== SalesReturnSettlement::STATUS_CONFIRMED) {
                 throw new \InvalidArgumentException("Settlement harus berstatus CONFIRMED untuk di-complete.");
@@ -83,7 +92,9 @@ class SalesReturnSettlementService
 
     public function delete(string $id): bool
     {
-        $settlement = SalesReturnSettlement::findOrFail($id);
+        $settlement = SalesReturnSettlement::whereKey($id)
+            ->whereHas('salesReturn', fn ($query) => WarehouseAccess::apply($query, 'location_id'))
+            ->firstOrFail();
 
         if ($settlement->status !== SalesReturnSettlement::STATUS_DRAFT) {
             throw new \InvalidArgumentException("Hanya settlement berstatus DRAFT yang bisa dihapus.");
@@ -116,7 +127,9 @@ class SalesReturnSettlementService
     public function deleteInvoice(string $id): bool
     {
         return DB::transaction(function () use ($id) {
-            $invoice = SalesReturnSettlementInvoice::findOrFail($id);
+            $invoice = SalesReturnSettlementInvoice::whereKey($id)
+                ->whereHas('settlement.salesReturn', fn ($query) => WarehouseAccess::apply($query, 'location_id'))
+                ->firstOrFail();
             $settlementId = $invoice->settlement_id;
             $invoice->delete();
 
@@ -130,7 +143,10 @@ class SalesReturnSettlementService
     {
 
         DB::transaction(function () use ($settlementId) {
-            $settlement = SalesReturnSettlement::lockForUpdate()->findOrFail($settlementId);
+            $settlement = SalesReturnSettlement::whereKey($settlementId)
+                ->whereHas('salesReturn', fn ($query) => WarehouseAccess::apply($query, 'location_id'))
+                ->lockForUpdate()
+                ->firstOrFail();
             $settlement->total_amount = (float) $settlement->invoices()->sum('amount')
                 + (float) $settlement->refunds()->sum('amount');
             $settlement->save();
@@ -163,7 +179,9 @@ class SalesReturnSettlementService
     public function deleteRefund(string $id): bool
     {
         return DB::transaction(function () use ($id) {
-            $refund = SalesReturnSettlementRefund::find($id);
+            $refund = SalesReturnSettlementRefund::whereKey($id)
+                ->whereHas('settlement.salesReturn', fn ($query) => WarehouseAccess::apply($query, 'location_id'))
+                ->first();
             if (! $refund) {
                 return false;
             }

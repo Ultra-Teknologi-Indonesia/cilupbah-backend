@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Repositories;
 
+use App\Support\WarehouseAccess;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Modules\Sales\Models\SalesReturn;
@@ -28,6 +29,8 @@ class SalesReturnRepository
 
     private function withOrderJoin(QueryBuilder $query): QueryBuilder
     {
+        WarehouseAccess::apply($query, 'sales_returns.location_id');
+
         return $query
             ->leftJoin('sales_orders', 'sales_orders.id', '=', 'sales_returns.order_id')
             ->select('sales_returns.*')
@@ -119,7 +122,7 @@ class SalesReturnRepository
 
     public function getReportPaginated(array $filters, int $limit = 10)
     {
-        return QueryBuilder::for(SalesReturn::class)
+        $query = QueryBuilder::for(SalesReturn::class)
             ->with([
                 'order:id,salesorder_no,channel_order_no,customer_name',
                 'location:id,location_name',
@@ -133,8 +136,10 @@ class SalesReturnRepository
             ->when(! empty($filters['source']), fn ($q) => $q->where('source', $filters['source']))
             ->when(! empty($filters['reason_category']), fn ($q) => $q->where('reason_category', $filters['reason_category']))
             ->when(! empty($filters['marketplace_decision']), fn ($q) => $q->where('marketplace_decision', $filters['marketplace_decision']))
-            ->orderByDesc('created_at')
-            ->paginate($limit)
+            ->orderByDesc('created_at');
+        WarehouseAccess::apply($query, 'sales_returns.location_id');
+
+        return $query->paginate($limit)
             ->appends(request()->query());
     }
 
@@ -169,19 +174,26 @@ class SalesReturnRepository
 
     public function findById(string $id): ?SalesReturn
     {
-        return SalesReturn::with(['order', 'location', 'items.product:id,sku,product_id', 'items.product.product:id,name'])
-            ->find($id);
+        $query = SalesReturn::with(['order', 'location', 'items.product:id,sku,product_id', 'items.product.product:id,name']);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->find($id);
     }
 
     public function findByIdForUpdate(string $id): ?SalesReturn
     {
-        return SalesReturn::with('items')
+        $query = SalesReturn::with('items')
             ->lockForUpdate()
-            ->find($id);
+            ;
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->find($id);
     }
 
     public function create(array $data): SalesReturn
     {
+        WarehouseAccess::assert($data['location_id'] ?? null);
+
         return SalesReturn::create($data);
     }
 
@@ -194,9 +206,12 @@ class SalesReturnRepository
 
     public function existsMarketplaceForOrder(string $orderId): bool
     {
-        return SalesReturn::where('order_id', $orderId)
+        $query = SalesReturn::where('order_id', $orderId)
             ->where('source', SalesReturn::SOURCE_MARKETPLACE)
-            ->exists();
+            ;
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->exists();
     }
 
     public function createItem(array $data): SalesReturnItem
@@ -216,7 +231,7 @@ class SalesReturnRepository
 
     public function getUnpaidReturns(int $limit = 10)
     {
-        return QueryBuilder::for(SalesReturn::class)
+        $query = QueryBuilder::for(SalesReturn::class)
             ->where('status', SalesReturn::STATUS_COMPLETED)
             ->whereDoesntHave('settlement', function ($q) {
                 $q->where('status', 'COMPLETED');
@@ -226,42 +241,50 @@ class SalesReturnRepository
                 AllowedFilter::exact('source'),
             )
             ->allowedSearch('return_number', 'customer_name', 'return_tracking_number')
-            ->defaultSort('-created_at')
-            ->paginate($limit)
+            ->defaultSort('-created_at');
+        WarehouseAccess::apply($query, 'sales_returns.location_id');
+
+        return $query->paginate($limit)
             ->appends(request()->query());
     }
 
     public function getAllReturnItems(int $limit = 10)
     {
-        return QueryBuilder::for(SalesReturnItem::class)
+        $query = QueryBuilder::for(SalesReturnItem::class)
             ->with(['salesReturn:id,return_number,status', 'product:id,sku,product_id'])
             ->allowedFilters(
                 AllowedFilter::exact('sales_return_id'),
                 AllowedFilter::exact('condition'),
             )
             ->allowedSorts('created_at')
-            ->defaultSort('-created_at')
-            ->paginate($limit)
+            ->defaultSort('-created_at');
+        $query->whereHas('salesReturn', fn ($return) => WarehouseAccess::apply($return, 'location_id'));
+
+        return $query->paginate($limit)
             ->appends(request()->query());
     }
 
     public function getRejectedReturnItems(int $limit = 10)
     {
-        return QueryBuilder::for(SalesReturnItem::class)
+        $query = QueryBuilder::for(SalesReturnItem::class)
             ->whereHas('salesReturn', fn ($q) => $q->where('status', SalesReturn::STATUS_REJECTED))
             ->with(['salesReturn:id,return_number,status', 'product:id,sku,product_id'])
-            ->defaultSort('-created_at')
-            ->paginate($limit)
+            ->defaultSort('-created_at');
+        $query->whereHas('salesReturn', fn ($return) => WarehouseAccess::apply($return, 'location_id'));
+
+        return $query->paginate($limit)
             ->appends(request()->query());
     }
 
     public function getResolvedReturnItems(int $limit = 10)
     {
-        return QueryBuilder::for(SalesReturnItem::class)
+        $query = QueryBuilder::for(SalesReturnItem::class)
             ->whereHas('salesReturn', fn ($q) => $q->where('status', SalesReturn::STATUS_COMPLETED))
             ->with(['salesReturn:id,return_number,status', 'product:id,sku,product_id'])
-            ->defaultSort('-created_at')
-            ->paginate($limit)
+            ->defaultSort('-created_at');
+        $query->whereHas('salesReturn', fn ($return) => WarehouseAccess::apply($return, 'location_id'));
+
+        return $query->paginate($limit)
             ->appends(request()->query());
     }
 }

@@ -2,6 +2,7 @@
 
 namespace Modules\Report\Services;
 
+use App\Support\WarehouseAccess;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -17,6 +18,8 @@ class PutawayListReportService
 
     public function lookup(string $date, string $locationId): array
     {
+        WarehouseAccess::assert($locationId);
+
         return $this->repository->putawayLookup($date, $locationId)
             ->map(fn ($p) => ['value' => $p->id, 'label' => $p->putaway_no])
             ->all();
@@ -34,6 +37,8 @@ class PutawayListReportService
 
     public function pdfPayload(string $date, string $locationId, array $putawayIds = []): array
     {
+        WarehouseAccess::assert($locationId);
+
         ini_set('memory_limit', '1024M');
         set_time_limit(300);
 
@@ -51,6 +56,8 @@ class PutawayListReportService
 
     public function sectioned(string $date, string $locationId, array $putawayIds = []): SectionedReport
     {
+        WarehouseAccess::assert($locationId);
+
         ini_set('memory_limit', '1024M');
         set_time_limit(300);
 

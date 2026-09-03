@@ -83,7 +83,7 @@ class RbacCatalogTest extends TestCase
     public function test_non_owner_without_permission_is_forbidden_then_allowed(): void
     {
         $user = User::factory()->create();
-        $user->assignRole('picker'); 
+        $user->assignRole('picker');
 
         $this->actingAs($user, 'sanctum')
             ->getJson('/api/v1/users')
@@ -178,5 +178,59 @@ class RbacCatalogTest extends TestCase
             $target->hasDirectPermission('view-produk'),
             'view-produk harus otomatis ditambahkan saat memberi delete-produk.'
         );
+    }
+
+    public function test_user_permission_response_contains_final_effective_permissions_only(): void
+    {
+        $target = User::factory()->create();
+        $target->assignRole('checker');
+
+        $finalPermissions = $target->effectivePermissionNames()
+            ->reject(fn (string $permission): bool => str_ends_with($permission, '-picking'))
+            ->values()
+            ->all();
+
+        $response = $this->actingAs($this->owner, 'sanctum')
+            ->putJson("/api/v1/users/{$target->id}/permissions", [
+                'permissions' => $finalPermissions,
+            ])
+            ->assertOk()
+            ->assertJsonMissingPath('data.direct_permissions')
+            ->assertJsonMissingPath('data.denied_permissions');
+
+        $responsePermissions = $response->json('data.permissions');
+
+        $this->assertNotContains('view-picking', $responsePermissions);
+        $this->assertFalse($target->fresh()->hasPermissionTo('view-picking'));
+        $this->assertDatabaseHas('user_permission_denials', [
+            'user_id' => $target->id,
+            'permission_id' => Permission::where('name', 'view-picking')->value('id'),
+        ]);
+
+        $this->actingAs($target->fresh(), 'sanctum')
+            ->getJson('/api/v1/outbound/picklists')
+            ->assertForbidden();
+    }
+
+    public function test_user_permission_override_does_not_change_another_user_with_same_role(): void
+    {
+        $target = User::factory()->create();
+        $target->assignRole('checker');
+        $peer = User::factory()->create();
+        $peer->assignRole('checker');
+
+        $finalPermissions = $target->effectivePermissionNames()
+            ->reject(fn (string $permission): bool => str_ends_with($permission, '-picking'))
+            ->values()
+            ->all();
+
+        $this->actingAs($this->owner, 'sanctum')
+            ->putJson("/api/v1/users/{$target->id}/permissions", [
+                'permissions' => $finalPermissions,
+            ])
+            ->assertOk();
+
+        $this->assertFalse($target->fresh()->hasPermissionTo('view-picking'));
+        $this->assertTrue($peer->fresh()->hasPermissionTo('view-picking'));
     }
 }
