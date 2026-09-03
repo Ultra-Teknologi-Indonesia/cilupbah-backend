@@ -1374,7 +1374,6 @@ class PutawayService
     public function loadForPdf(Putaway $putaway): Putaway
     {
         $putaway->load(['inbound', 'sources:id,reference_number,transaction_number', 'location']);
-        $this->attachRecommendedBins($putaway);
 
         return $putaway;
     }

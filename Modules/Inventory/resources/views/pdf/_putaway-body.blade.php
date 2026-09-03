@@ -3,14 +3,11 @@
     /** @var string $sourceLabel */
     $items = collect($putaway->items ?? []);
     $locationName = optional($putaway->location)->location_name ?? '-';
-    $isStrictBin = optional($putaway->location)->enforcesStrictBinSku() ?? false;
     $companyName = config('app.company_name', 'PT ULTRA TEKNOLOGI INDONESIA');
     $inboundNumber = optional($putaway->inbound)->transaction_number
         ?? ($putaway->sources ?? collect())->pluck('transaction_number')->filter()->implode(', ')
         ?: '-';
-    $receivedDate = optional($putaway->inbound)->once_received_at
-        ?? optional($putaway->inbound)->expected_date
-        ?? $putaway->created_at;
+    $putawayDate = $putaway->completed_at ?? $putaway->created_at;
 @endphp
 <table class="header">
     <tr>
@@ -26,14 +23,14 @@
 
 <table class="info-grid">
     <tr>
-        <td class="label">No Putaway</td>
+        <td class="label">No. Putaway</td>
         <td class="value">{{ $putaway->putaway_no }}</td>
         <td class="label">No. Penerimaan</td>
         <td class="value">{{ $inboundNumber }}</td>
     </tr>
     <tr>
-        <td class="label">Tgl. Penerimaan</td>
-        <td class="value">{{ $receivedDate ? \Carbon\Carbon::parse($receivedDate)->format('d M Y') : '-' }}</td>
+        <td class="label">Tgl. Putaway</td>
+        <td class="value">{{ $putawayDate ? \Carbon\Carbon::parse($putawayDate)->format('d M Y') : '-' }}</td>
         <td class="label">Status</td>
         <td class="value">{{ $putaway->status ?? '-' }}</td>
     </tr>
@@ -51,10 +48,9 @@
             <th class="col-no">No</th>
             <th class="col-sku">SKU</th>
             <th>Nama Produk</th>
-            <th class="col-qty">Qty</th>
-            <th class="col-date">Tgl. Penerimaan</th>
-            <th class="col-source">Sumber</th>
-            <th class="col-rak">{{ $isStrictBin ? 'Rak Tetap' : 'Rekomendasi Rak' }}</th>
+            <th class="col-qty">Qty<br>Ditetapkan</th>
+            <th class="col-qty">Qty<br>Ditempatkan</th>
+            <th class="col-qty">Qty<br>Sisa</th>
             <th class="col-rak">Kode Rak</th>
         </tr>
     </thead>
@@ -63,34 +59,31 @@
             @php
                 $sku = optional($item->product)->sku ?? '-';
                 $productName = optional(optional($item->product)->product)->name ?? optional($item->product)->name ?? '-';
-                $sourceRef = $sourceLabel ?: '-';
                 $placedBins = collect($item->placements ?? [])->map(fn($p) => [
-                    'code' => optional($p->bin)->bin_final_code ?? '-',
+                    'code' => optional($p->bin)->bin_final_code ?? optional($p->bin)->bin_code ?? '-',
                     'qty' => (int) $p->qty,
                 ])->all();
-                $recommendedBins = $item->recommended_bins ?? [];
-                $receivedAt = $receivedDate ? \Carbon\Carbon::parse($receivedDate)->format('d M Y') : '-';
+                if (count($placedBins) === 0 && $item->destinationBin) {
+                    $placedBins[] = [
+                        'code' => $item->destinationBin->bin_final_code ?? $item->destinationBin->bin_code ?? '-',
+                        'qty' => (int) $item->putaway_qty,
+                    ];
+                }
+                $assignedQty = (int) $item->qty;
+                $placedQty = (int) $item->putaway_qty;
+                $remainingQty = max(0, $assignedQty - $placedQty);
             @endphp
             <tr>
                 <td class="center mono">{{ $i + 1 }}</td>
                 <td class="barang-sku">{{ $sku }}</td>
                 <td>{{ $productName }}</td>
-                <td class="num mono">{{ (int) $item->qty }}</td>
-                <td class="center">{{ $receivedAt }}</td>
-                <td class="center">{{ $sourceRef }}</td>
-                <td class="rak-bin" style="font-size: 9px;">
-                    @if(count($recommendedBins) > 0)
-                        @foreach($recommendedBins as $rec)
-                            <div class="rec-line">{{ $rec['code'] }}</div>
-                        @endforeach
-                    @else
-                        -
-                    @endif
-                </td>
+                <td class="num mono">{{ $assignedQty }}</td>
+                <td class="num mono">{{ $placedQty }}</td>
+                <td class="num mono">{{ $remainingQty }}</td>
                 <td class="rak-bin" style="font-size: 9px;">
                     @if(count($placedBins) > 0)
                         @foreach($placedBins as $placed)
-                            <div class="rec-line">{{ $placed['code'] }}</div>
+                            <div class="rak-line">{{ $placed['code'] }} ({{ $placed['qty'] }})</div>
                         @endforeach
                     @else
                         -
@@ -99,7 +92,7 @@
             </tr>
         @empty
             <tr>
-                <td colspan="8" class="center" style="padding: 18px;">Tidak ada item.</td>
+                <td colspan="7" class="center" style="padding: 18px;">Tidak ada item.</td>
             </tr>
         @endforelse
     </tbody>

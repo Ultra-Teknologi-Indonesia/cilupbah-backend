@@ -27,24 +27,10 @@
         font-weight: 700;
         margin-top: 4px;
     }
-    .info-grid {
-        width: 100%;
-        border-collapse: collapse;
-        margin: 10px 0 14px;
-    }
-    .info-grid td {
-        padding: 3px 0;
-        font-size: 10px;
-        vertical-align: top;
-    }
-    .info-grid .label {
-        color: #555;
-        width: 110px;
-    }
-    .info-grid .value {
-        font-weight: 700;
-        padding-right: 18px;
-    }
+    .info-grid { width: 100%; border-collapse: collapse; margin: 10px 0 14px; }
+    .info-grid td { padding: 3px 0; font-size: 10px; vertical-align: top; }
+    .info-grid .label { color: #555; width: 110px; }
+    .info-grid .value { font-weight: 700; padding-right: 18px; }
     table.items {
         width: 100%;
         border-collapse: collapse;
@@ -73,12 +59,10 @@
     .center { text-align: center; }
     .num { text-align: right; }
     .col-no { width: 24px; }
-    .col-sku { width: 140px; }
-    .col-qty { width: 40px; }
-    .col-date { width: 72px; }
-    .col-source { width: 72px; }
-    .col-rak { width: 90px; }
-    .rec-line { margin-bottom: 1px; }
+    .col-sku { width: 92px; }
+    .col-qty { width: 54px; }
+    .col-rak { width: 98px; }
+    .rak-line { margin-bottom: 1px; }
     .barang-sku {
         font-family: DejaVu Sans Mono, monospace;
         font-weight: 700;
