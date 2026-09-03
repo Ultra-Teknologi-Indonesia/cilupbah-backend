@@ -105,6 +105,8 @@ class KronologiBalancePartitionTest extends TestCase
 
         $this->assertCount(1, $data);
         $this->assertSame('260831ORDER001', $data[0]['reference_number']);
+        $this->assertSame('physical_restore', $data[0]['stock_effect']['type']);
+        $this->assertSame('fisik', $data[0]['stock_effect']['quantity_label']);
     }
 
     public function test_saldo_merefleksikan_total_stok_available(): void
@@ -877,6 +879,12 @@ class KronologiBalancePartitionTest extends TestCase
         $this->assertSame('ORDER_RELEASE', $row['source']);
         $this->assertSame('PESANAN_BATAL', $row['source_category']);
         $this->assertSame('Pesanan Batal', $row['source_label']);
+        $this->assertSame('reservation_release', $row['stock_effect']['type']);
+        $this->assertSame('tersedia', $row['stock_effect']['quantity_label']);
+        $this->assertSame(
+            'Cadangan pesanan dilepas. Stok fisik tidak berubah.',
+            $row['stock_effect']['description'],
+        );
         $this->assertSame(1, $row['qty'], 'Qty harus positif (+1) untuk pemulihan stok');
         $this->assertSame('in', $row['direction']);
     }

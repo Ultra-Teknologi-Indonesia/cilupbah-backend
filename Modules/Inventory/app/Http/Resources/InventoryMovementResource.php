@@ -83,6 +83,8 @@ class InventoryMovementResource extends JsonResource
                 : 'Picking historis';
         }
 
+        $stockEffect = $this->stockEffect($this->source);
+
         return [
             'id' => $this->id,
             'item_id' => $this->item_id,
@@ -107,6 +109,7 @@ class InventoryMovementResource extends JsonResource
             'source' => $this->source,
             'source_category' => $sourceCategory,
             'source_label' => $sourceLabel,
+            'stock_effect' => $stockEffect,
             'workflow' => $workflow,
             'is_variance' => InventoryMovementSourceMap::isVariance($this->source),
             'direction' => $direction,
@@ -126,5 +129,38 @@ class InventoryMovementResource extends JsonResource
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];
+    }
+
+    /**
+     * Explain the stock dimension affected by a movement without changing its
+     * quantity or running balance. This is intentionally derived from the
+     * immutable source vocabulary so history reads remain side-effect free.
+     */
+    private function stockEffect(string $source): ?array
+    {
+        if ($source === 'ORDER_RELEASE') {
+            return [
+                'type' => 'reservation_release',
+                'label' => 'Cadangan dilepas',
+                'quantity_label' => 'tersedia',
+                'description' => 'Cadangan pesanan dilepas. Stok fisik tidak berubah.',
+            ];
+        }
+
+        if (in_array($source, [
+            'ORDER_RESTORE',
+            'ORDER_RESTORE_CANCEL',
+            'ORDER_COMPLETE_REVERSAL',
+            'PICKING_REVERSAL',
+        ], true)) {
+            return [
+                'type' => 'physical_restore',
+                'label' => 'Stok fisik dikembalikan',
+                'quantity_label' => 'fisik',
+                'description' => 'Barang dikembalikan ke stok fisik.',
+            ];
+        }
+
+        return null;
     }
 }
