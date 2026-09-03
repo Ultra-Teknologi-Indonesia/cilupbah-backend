@@ -34,7 +34,7 @@ trait ApiResponse
         return $this->successResponse($paginator->items(), $message, $code, $meta, $title);
     }
 
-    public function errorResponse(string $message, int $code = 400, $errors = null, ?string $title = null, ?string $errorCode = null): JsonResponse
+    public function errorResponse(string $message, int $code = 400, $errors = null, ?string $title = null, ?string $errorCode = null, ?string $requestId = null): JsonResponse
     {
         $response = [
             'status' => 'error',
@@ -48,6 +48,10 @@ trait ApiResponse
 
         if ($errorCode !== null) {
             $response['code'] = $errorCode;
+        }
+
+        if ($requestId !== null) {
+            $response['request_id'] = $requestId;
         }
 
         return response()->json($response, $code);

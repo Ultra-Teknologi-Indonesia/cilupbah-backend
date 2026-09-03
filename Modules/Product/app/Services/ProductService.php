@@ -2,11 +2,14 @@
 
 namespace Modules\Product\Services;
 
+use App\Models\User;
+use App\Services\UploadService;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Channel\Models\ChannelShop;
@@ -14,20 +17,23 @@ use Modules\Channel\Services\ChannelListingValidator;
 use Modules\Finance\Support\AccountMappingKey;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Support\StockSummary;
+use Modules\Product\Exceptions\ProductDeletionBlockedException;
 use Modules\Product\Jobs\MirrorProductMediaJob;
-use Modules\Product\Models\Product;
-use Modules\Product\Models\ProductVariant;
-use Modules\Product\Support\ChannelSku;
-use Modules\Product\Support\ProductIngestSanitizer;
-use Modules\Product\Models\ProductMedia;
 use Modules\Product\Models\Attribute;
+use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductBundleItem;
+use Modules\Product\Models\ProductDeleteAudit;
+use Modules\Product\Models\ProductMedia;
+use Modules\Product\Models\ProductVariant;
 use Modules\Product\Repositories\ProductRepository;
 use Modules\Product\Repositories\ProductWriteRepository;
+use Modules\Product\Support\ChannelSku;
 use Modules\Product\Support\InternalMediaUrl;
+use Modules\Product\Support\ProductIngestSanitizer;
+use Ramsey\Uuid\Uuid;
 
 class ProductService
 {
-
     private const DETAIL_RELATIONS = [
         'variants.channelMappings.channelMapping',
         'variants.inventories',
@@ -39,10 +45,9 @@ class ProductService
     public function __construct(
         private readonly ProductRepository $repository,
         private readonly ProductWriteRepository $writeRepository,
-        private readonly \App\Services\UploadService $uploadService,
+        private readonly UploadService $uploadService,
         private readonly MediaCleanupService $mediaCleanup,
-    ) {
-    }
+    ) {}
 
     private function buildMediaRow(array $m, string $productId, ?string $variantId): array
     {
@@ -149,78 +154,221 @@ class ProductService
             );
         }
 
-        if (\Modules\Product\Models\ProductVariant::where('product_id', $productId)->count() > 1) {
+        if (ProductVariant::where('product_id', $productId)->count() > 1) {
             throw new DomainException(
                 'Produk dengan lebih dari satu varian tidak dapat diubah menjadi bundle (bundle harus satu varian).'
             );
         }
     }
 
-    public function deleteProduct(Product $product): void
+    public function deleteProduct(Product $product, ?string $actorId = null, ?string $requestId = null): void
     {
-        $variantIds = $product->variants()->pluck('id');
-        $stockOnHand = $variantIds->isEmpty()
-            ? 0
-            : (int) Inventory::whereIn('item_id', $variantIds)->sum('on_hand');
+        $result = $this->bulkDelete([$product->id], $actorId, $requestId);
 
-        if ($stockOnHand > 0) {
-            throw new DomainException(
-                "Produk masih memiliki stok ({$stockOnHand} unit). Hanya produk dead stock (stok habis) yang dapat dihapus. Gunakan Arsip untuk menonaktifkan produk yang masih bergerak."
-            );
+        if ($result['failed'] > 0) {
+            throw new DomainException($result['errors'][0] ?? 'Produk tidak dapat dihapus.');
         }
-
-        $bundleProductIds = \Modules\Product\Models\ProductBundleItem::whereIn('component_variant_id', $variantIds)
-            ->distinct()
-            ->pluck('bundle_product_id');
-
-        if ($bundleProductIds->isNotEmpty()) {
-            $bundleSkus = Product::whereIn('id', $bundleProductIds)->pluck('sku')->implode(', ');
-            throw new DomainException(
-                "Produk ini dipakai sebagai komponen bundle ({$bundleSkus}). Lepaskan dari bundle terkait sebelum menghapus."
-            );
-        }
-
-        $mediaUuids = $this->mediaCleanup->collectByProduct($product->id);
-
-        DB::transaction(function () use ($product, $variantIds) {
-            DB::table('product_media')
-                ->where('product_id', $product->id)
-                ->orWhereIn('variant_id', $variantIds->all())
-                ->delete();
-
-            $mappingIds = DB::table('product_channel_mappings')->where('product_id', $product->id)->pluck('id');
-            if ($mappingIds->isNotEmpty()) {
-                DB::table('product_variant_channel_mappings')->whereIn('product_channel_mapping_id', $mappingIds)->delete();
-                DB::table('product_channel_mappings')->where('product_id', $product->id)->delete();
-            }
-
-            $product->variants()->delete();
-            $product->delete();
-        });
-
-        $this->mediaCleanup->pruneOrphans($mediaUuids);
     }
 
-    public function bulkDelete(array $ids): array
+    public function bulkDelete(array $ids, ?string $actorId = null, ?string $requestId = null): array
     {
-        $success = 0;
-        $errors = [];
+        $ids = array_values(array_unique(array_map(static fn ($id): string => (string) $id, $ids)));
+        $batchId = (string) Str::uuid();
+        $actor = $actorId
+            ? User::query()->find($actorId, ['id', 'name', 'email'])
+            : null;
+        $requestedProducts = Product::withTrashed()
+            ->whereIn('id', $ids)
+            ->get(['id', 'name', 'sku', 'deleted_at'])
+            ->map(static fn (Product $product): array => [
+                'id' => (string) $product->id,
+                'name' => (string) $product->name,
+                'sku' => $product->sku,
+                'deleted_at' => $product->deleted_at?->toISOString(),
+            ])
+            ->values()
+            ->all();
 
-        foreach ($ids as $id) {
-            $product = Product::find($id);
-            if (!$product) {
-                $errors[] = "Produk {$id} tidak ditemukan";
-                continue;
-            }
+        $audit = ProductDeleteAudit::create([
+            'batch_id' => $batchId,
+            'actor_id' => $actor?->id,
+            'actor_name' => $actor?->name,
+            'actor_email' => $actor?->email,
+            'request_id' => $requestId,
+            'status' => ProductDeleteAudit::STATUS_PENDING,
+            'requested_count' => count($ids),
+            'product_snapshots' => $requestedProducts,
+            'media_cleanup_status' => ProductDeleteAudit::MEDIA_CLEANUP_PENDING,
+        ]);
+
+        $mediaUuids = [];
+
+        try {
+            DB::transaction(function () use ($ids, $audit, &$mediaUuids): void {
+                $products = Product::query()
+                    ->whereIn('id', $ids)
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get();
+
+                if ($products->count() !== count($ids)) {
+                    $foundIds = $products->pluck('id')->map(static fn ($id): string => (string) $id)->all();
+                    $missingIds = array_values(array_diff($ids, $foundIds));
+                    throw new DomainException('Produk tidak ditemukan atau sudah dihapus: '.implode(', ', $missingIds));
+                }
+
+                $blockers = [];
+                $productVariants = [];
+
+                foreach ($products as $product) {
+                    $variantIds = $product->variants()->pluck('id');
+                    $productVariants[(string) $product->id] = $variantIds;
+
+                    $stockOnHand = $variantIds->isEmpty()
+                        ? 0
+                        : (int) Inventory::whereIn('item_id', $variantIds)->sum('on_hand');
+
+                    if ($stockOnHand > 0) {
+                        $blockers[(string) $product->id] =
+                            "{$product->name}: masih memiliki stok ({$stockOnHand} unit). Gunakan Arsip untuk menonaktifkan produk yang masih bergerak.";
+
+                        continue;
+                    }
+
+                    $bundleProductIds = ProductBundleItem::whereIn('component_variant_id', $variantIds)
+                        ->distinct()
+                        ->pluck('bundle_product_id');
+
+                    if ($bundleProductIds->isNotEmpty()) {
+                        $bundleSkus = Product::whereIn('id', $bundleProductIds)->pluck('sku')->filter()->implode(', ');
+                        $blockers[(string) $product->id] =
+                            "{$product->name}: dipakai sebagai komponen bundle ({$bundleSkus}). Lepaskan dari bundle terkait sebelum menghapus.";
+                    }
+                }
+
+                if ($blockers !== []) {
+                    throw new ProductDeletionBlockedException($blockers);
+                }
+
+                foreach ($products as $product) {
+                    $variantIds = $productVariants[(string) $product->id];
+                    $mediaUuids = array_merge($mediaUuids, $this->mediaCleanup->collectByProduct((string) $product->id));
+
+                    DB::table('product_media')
+                        ->where('product_id', $product->id)
+                        ->orWhereIn('variant_id', $variantIds->all())
+                        ->delete();
+
+                    $mappingIds = DB::table('product_channel_mappings')
+                        ->where('product_id', $product->id)
+                        ->pluck('id');
+
+                    if ($mappingIds->isNotEmpty()) {
+                        DB::table('product_variant_channel_mappings')
+                            ->whereIn('product_channel_mapping_id', $mappingIds)
+                            ->delete();
+                        DB::table('product_channel_mappings')
+                            ->where('product_id', $product->id)
+                            ->delete();
+                    }
+
+                    $product->variants()->delete();
+                    $product->delete();
+                }
+
+                $audit->update([
+                    'status' => ProductDeleteAudit::STATUS_SUCCEEDED,
+                    'media_cleanup_status' => ProductDeleteAudit::MEDIA_CLEANUP_PENDING,
+                    'completed_at' => now(),
+                ]);
+            }, 3);
+
             try {
-                $this->deleteProduct($product);
-                $success++;
-            } catch (DomainException $e) {
-                $errors[] = "{$product->name}: {$e->getMessage()}";
+                $this->mediaCleanup->pruneOrphans(array_values(array_unique($mediaUuids)));
+                $this->markMediaCleanup($audit, ProductDeleteAudit::MEDIA_CLEANUP_SUCCEEDED);
+            } catch (\Throwable $e) {
+                $this->markMediaCleanup(
+                    $audit,
+                    ProductDeleteAudit::MEDIA_CLEANUP_FAILED,
+                    $e->getMessage(),
+                );
+                Log::warning('Product media cleanup failed after product deletion', [
+                    'batch_id' => $batchId,
+                    'request_id' => $requestId,
+                    'media_count' => count($mediaUuids),
+                    'exception' => $e,
+                ]);
             }
-        }
 
-        return ['success' => $success, 'failed' => count($errors), 'errors' => $errors];
+            return [
+                'success' => count($ids),
+                'failed' => 0,
+                'errors' => [],
+                'batch_id' => $batchId,
+            ];
+        } catch (ProductDeletionBlockedException $e) {
+            $this->markDeleteAuditFailed($audit, ProductDeleteAudit::STATUS_BLOCKED, 'BUSINESS_RULE', $e->blockers());
+
+            return [
+                'success' => 0,
+                'failed' => count($ids),
+                'errors' => array_values($e->blockers()),
+                'batch_id' => $batchId,
+            ];
+        } catch (DomainException $e) {
+            $this->markDeleteAuditFailed($audit, ProductDeleteAudit::STATUS_BLOCKED, 'NOT_FOUND', [$e->getMessage()]);
+
+            return [
+                'success' => 0,
+                'failed' => count($ids),
+                'errors' => [$e->getMessage()],
+                'batch_id' => $batchId,
+            ];
+        } catch (\Throwable $e) {
+            $this->markDeleteAuditFailed($audit, ProductDeleteAudit::STATUS_FAILED, 'UNEXPECTED_ERROR', [$e->getMessage()]);
+            Log::error('Product bulk deletion failed', [
+                'batch_id' => $batchId,
+                'request_id' => $requestId,
+                'actor_id' => $actorId,
+                'product_ids' => $ids,
+                'exception' => $e,
+            ]);
+
+            throw $e;
+        }
+    }
+
+    private function markDeleteAuditFailed(ProductDeleteAudit $audit, string $status, string $code, array $messages): void
+    {
+        try {
+            $audit->update([
+                'status' => $status,
+                'failure_code' => $code,
+                'failure_message' => Str::limit(implode('; ', $messages), 4000),
+                'completed_at' => now(),
+            ]);
+        } catch (\Throwable $auditException) {
+            Log::error('Product delete audit could not be updated', [
+                'batch_id' => $audit->batch_id,
+                'exception' => $auditException,
+            ]);
+        }
+    }
+
+    private function markMediaCleanup(ProductDeleteAudit $audit, string $status, ?string $error = null): void
+    {
+        try {
+            $audit->update([
+                'media_cleanup_status' => $status,
+                'media_cleanup_error' => $error !== null ? Str::limit($error, 2000) : null,
+            ]);
+        } catch (\Throwable $auditException) {
+            Log::error('Product media cleanup audit could not be updated', [
+                'batch_id' => $audit->batch_id,
+                'media_cleanup_status' => $status,
+                'exception' => $auditException,
+            ]);
+        }
     }
 
     public function upsertFromChannel(array $data, ?bool &$matchedExisting = null, ?array &$variantIds = null)
@@ -306,12 +454,12 @@ class ProductService
                 continue;
             }
 
-            $base = $sku . '-REIMPORT-' . substr(sha1($externalProductId . ':' . $sku), 0, 8);
+            $base = $sku.'-REIMPORT-'.substr(sha1($externalProductId.':'.$sku), 0, 8);
             $candidate = $base;
             $suffix = 2;
 
             while (DB::table('product_variants')->where('sku', $candidate)->exists()) {
-                $candidate = $base . '-' . $suffix++;
+                $candidate = $base.'-'.$suffix++;
             }
 
             $variant['sku'] = $candidate;
@@ -341,7 +489,7 @@ class ProductService
                 'min_stock', 'safe_stock', 'weight', 'length', 'width', 'height',
             ]);
 
-            $variantId = \Ramsey\Uuid\Uuid::uuid7()->toString();
+            $variantId = Uuid::uuid7()->toString();
             $this->writeRepository->insertVariantRow(array_merge($variantData, [
                 'id' => $variantId,
                 'product_id' => $productId,
@@ -525,7 +673,7 @@ class ProductService
                 $productData['sku'] = null;
             }
 
-            if (empty($productData['sku']) && !empty($data['variants']) && count($data['variants']) === 1 && !empty($data['variants'][0]['sku'])) {
+            if (empty($productData['sku']) && ! empty($data['variants']) && count($data['variants']) === 1 && ! empty($data['variants'][0]['sku'])) {
                 $productData['sku'] = trim((string) $data['variants'][0]['sku']);
             }
 
@@ -544,14 +692,14 @@ class ProductService
                 }
             }
 
-            if (!empty($productData)) {
+            if (! empty($productData)) {
                 $this->writeRepository->updateProductRow($productId, $productData);
             }
 
             if (array_key_exists('media', $data)) {
                 $this->writeRepository->deleteProductLevelMedia($productId);
 
-                if (!empty($data['media'])) {
+                if (! empty($data['media'])) {
                     $this->writeRepository->insertMedia(array_map(
                         fn ($m) => $this->buildMediaRow($m, $productId, null),
                         $data['media']
@@ -562,9 +710,11 @@ class ProductService
             if (array_key_exists('variation_types', $data)) {
 
                 $this->syncVariantStructure($productId, $data);
-            } elseif (!empty($data['variants'])) {
+            } elseif (! empty($data['variants'])) {
                 foreach ($data['variants'] as $variant) {
-                    if (empty($variant['sku'])) continue;
+                    if (empty($variant['sku'])) {
+                        continue;
+                    }
 
                     $variantData = Arr::only($variant, [
                         'sell_price', 'buy_price', 'barcode', 'is_active',
@@ -576,7 +726,7 @@ class ProductService
                             unset($variantData[$dim]);
                         }
                     }
-                    if (!empty($variant['sales_tax_id'])) {
+                    if (! empty($variant['sales_tax_id'])) {
                         $variantData['tax_rate'] = $this->taxRate($variant['sales_tax_id']);
                     }
                     $variantData['updated_at'] = now();
@@ -588,7 +738,7 @@ class ProductService
                         $variantId = $existingVariant->id;
                     } else {
                         $this->writeRepository->insertVariantRow(array_merge($variantData, [
-                            'id' => \Ramsey\Uuid\Uuid::uuid7()->toString(),
+                            'id' => Uuid::uuid7()->toString(),
                             'product_id' => $productId,
                             'sku' => $variant['sku'],
                             'created_at' => now(),
@@ -599,7 +749,7 @@ class ProductService
                     if (array_key_exists('media', $variant)) {
                         $this->writeRepository->deleteVariantMedia($variantId);
 
-                        if (!empty($variant['media'])) {
+                        if (! empty($variant['media'])) {
                             $this->writeRepository->insertMedia(array_map(
                                 fn ($m) => $this->buildMediaRow($m, $productId, $variantId),
                                 $variant['media']
@@ -609,7 +759,7 @@ class ProductService
 
                     if (array_key_exists('unlimited_shop_ids', $variant)) {
                         $this->writeRepository->deleteUnlimitedShops($variantId);
-                        if (!empty($variant['unlimited_shop_ids'])) {
+                        if (! empty($variant['unlimited_shop_ids'])) {
                             $this->writeRepository->syncUnlimitedShops($variantId, $variant['unlimited_shop_ids']);
                         }
                     }
@@ -652,8 +802,8 @@ class ProductService
 
         $optRows = $this->writeRepository->variantOptionsFor($activeVariants->pluck('id')->all());
 
-        $setByVariant = [];   
-        $existingValues = []; 
+        $setByVariant = [];
+        $existingValues = [];
         foreach ($optRows as $o) {
             $setByVariant[$o->variant_id][(int) $o->attribute_id] = (string) $o->value;
             $existingValues[(int) $o->attribute_id][$this->normalizeOptionValue((string) $o->value)] = (string) $o->value;
@@ -677,14 +827,20 @@ class ProductService
 
         $keyOfOpts = function (array $opts): string {
             $p = [];
-            foreach ($opts as $o) { $p[(int) $o['attribute_id']] = $this->normalizeOptionValue((string) $o['value']); }
+            foreach ($opts as $o) {
+                $p[(int) $o['attribute_id']] = $this->normalizeOptionValue((string) $o['value']);
+            }
             ksort($p);
+
             return implode('|', array_map(static fn ($k, $v) => "{$k}:{$v}", array_keys($p), $p));
         };
         $keyOfSet = function (array $set): string {
             $p = [];
-            foreach ($set as $a => $v) { $p[(int) $a] = $this->normalizeOptionValue((string) $v); }
+            foreach ($set as $a => $v) {
+                $p[(int) $a] = $this->normalizeOptionValue((string) $v);
+            }
             ksort($p);
+
             return implode('|', array_map(static fn ($k, $v) => "{$k}:{$v}", array_keys($p), $p));
         };
 
@@ -704,7 +860,7 @@ class ProductService
 
         $foreignSkus = $this->writeRepository->skusUsedByOtherProducts($productId, $payloadSkus);
         if ($foreignSkus) {
-            throw new DomainException('SKU varian sudah digunakan produk lain: ' . implode(', ', $foreignSkus));
+            throw new DomainException('SKU varian sudah digunakan produk lain: '.implode(', ', $foreignSkus));
         }
 
         $toSupersede = [];
@@ -728,7 +884,7 @@ class ProductService
             }
             if ($blocked) {
                 throw new DomainException(
-                    'Opsi varian tidak bisa dihapus karena varian berikut masih punya stok: ' . implode(', ', $blocked)
+                    'Opsi varian tidak bisa dihapus karena varian berikut masih punya stok: '.implode(', ', $blocked)
                 );
             }
             foreach ($toSupersede as $av) {
@@ -749,11 +905,12 @@ class ProductService
                     $this->writeRepository->updateVariantRow($variantId, $upd);
                 }
                 $this->syncVariantMediaFromPayload($productId, $variantId, $v);
+
                 continue;
             }
 
             $price = $v['sell_price'] ?? $this->ancestorPrice($opts, $activeVariants, $setByVariant);
-            $variantId = \Ramsey\Uuid\Uuid::uuid7()->toString();
+            $variantId = Uuid::uuid7()->toString();
             $this->writeRepository->insertVariantRow(array_merge(
                 $this->variantUpdatableFields($v),
                 [
@@ -837,16 +994,25 @@ class ProductService
     private function ancestorPrice(array $opts, $activeVariants, array $setByVariant): ?float
     {
         $combo = [];
-        foreach ($opts as $o) { $combo[(int) $o['attribute_id']] = $this->normalizeOptionValue((string) $o['value']); }
+        foreach ($opts as $o) {
+            $combo[(int) $o['attribute_id']] = $this->normalizeOptionValue((string) $o['value']);
+        }
 
         foreach ($activeVariants as $av) {
             $set = $setByVariant[$av->id] ?? [];
-            if (empty($set)) { continue; }
+            if (empty($set)) {
+                continue;
+            }
             $subset = true;
             foreach ($set as $a => $val) {
-                if (($combo[(int) $a] ?? null) !== $this->normalizeOptionValue((string) $val)) { $subset = false; break; }
+                if (($combo[(int) $a] ?? null) !== $this->normalizeOptionValue((string) $val)) {
+                    $subset = false;
+                    break;
+                }
             }
-            if ($subset) { return (float) $av->sell_price; }
+            if ($subset) {
+                return (float) $av->sell_price;
+            }
         }
 
         return null;
@@ -855,7 +1021,9 @@ class ProductService
     private function syncSpecifications(string $productId, array $specs): void
     {
         $this->writeRepository->deleteSpecifications($productId);
-        if (empty($specs)) { return; }
+        if (empty($specs)) {
+            return;
+        }
 
         $this->writeRepository->insertSpecifications(array_map(static fn ($s) => [
             'product_id' => $productId,
@@ -933,7 +1101,7 @@ class ProductService
 
             $combo = collect($options)
                 ->sortBy('attribute_id')
-                ->map(fn ($o) => $o['attribute_id'] . ':' . $this->normalizeOptionValue((string) $o['value']))
+                ->map(fn ($o) => $o['attribute_id'].':'.$this->normalizeOptionValue((string) $o['value']))
                 ->implode('|');
 
             if ($combo !== '' && isset($seenCombos[$combo])) {
@@ -952,7 +1120,7 @@ class ProductService
         $catAttrs = $this->writeRepository->categoryAttributesForValidation($categoryId);
 
         if ($catAttrs->isEmpty()) {
-            return; 
+            return;
         }
 
         foreach ($data['variation_types'] ?? [] as $vt) {
@@ -998,11 +1166,15 @@ class ProductService
         $nameToId = [];
 
         foreach ($data['variation_types'] ?? [] as $i => $vt) {
-            if (!empty($vt['attribute_id'])) continue;
+            if (! empty($vt['attribute_id'])) {
+                continue;
+            }
             $name = $vt['name'] ?? null;
-            if (!$name) continue;
+            if (! $name) {
+                continue;
+            }
 
-            if (!isset($nameToId[$name])) {
+            if (! isset($nameToId[$name])) {
                 $attr = Attribute::create(['name' => $name, 'type' => 'sales']);
                 $nameToId[$name] = $attr->id;
             }
@@ -1011,11 +1183,15 @@ class ProductService
 
         foreach ($data['variants'] ?? [] as $vi => $variant) {
             foreach ($variant['options'] ?? [] as $oi => $opt) {
-                if (!empty($opt['attribute_id'])) continue;
+                if (! empty($opt['attribute_id'])) {
+                    continue;
+                }
                 $name = $opt['name'] ?? null;
-                if (!$name) continue;
+                if (! $name) {
+                    continue;
+                }
 
-                if (!isset($nameToId[$name])) {
+                if (! isset($nameToId[$name])) {
                     $attr = Attribute::create(['name' => $name, 'type' => 'sales']);
                     $nameToId[$name] = $attr->id;
                 }
@@ -1028,8 +1204,7 @@ class ProductService
         array $data,
         ?array &$variantIds = null,
         bool $deriveParentSkuFromSingleVariant = true,
-    )
-    {
+    ) {
         $this->resolveCustomAttributes($data);
         $this->assertVariationConstraints($data);
         $this->assertCategoryAttributes($data['category_id'] ?? null, $data, true);
@@ -1051,9 +1226,9 @@ class ProductService
 
             if ($deriveParentSkuFromSingleVariant
                 && empty($productData['sku'])
-                && !empty($data['variants'])
+                && ! empty($data['variants'])
                 && count($data['variants']) === 1
-                && !empty($data['variants'][0]['sku'])) {
+                && ! empty($data['variants'][0]['sku'])) {
                 $productData['sku'] = trim((string) $data['variants'][0]['sku']);
             }
 
@@ -1071,14 +1246,14 @@ class ProductService
             $productData['inventory_account_id'] = $this->resolveAccountId($data['inventory_account_id'] ?? null, AccountMappingKey::INVENTORY);
             $productData['cogs_account_id'] = $this->resolveAccountId($data['cogs_account_id'] ?? null, AccountMappingKey::COGS);
 
-            $productId = \Ramsey\Uuid\Uuid::uuid7()->toString();
+            $productId = Uuid::uuid7()->toString();
             $this->writeRepository->insertProductRow(array_merge($productData, [
                 'id' => $productId,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]));
 
-            if (!empty($data['specifications'])) {
+            if (! empty($data['specifications'])) {
                 $specs = array_map(function ($spec) use ($productId) {
                     return [
                         'product_id' => $productId,
@@ -1092,7 +1267,7 @@ class ProductService
                 $this->writeRepository->insertSpecifications($specs);
             }
 
-            if (!empty($data['media'])) {
+            if (! empty($data['media'])) {
                 $media = array_map(
                     fn ($m) => $this->buildMediaRow($m, $productId, null),
                     $data['media']
@@ -1100,7 +1275,7 @@ class ProductService
                 $this->writeRepository->insertMedia($media);
             }
 
-            if (!empty($data['variation_types'])) {
+            if (! empty($data['variation_types'])) {
                 $varTypes = array_map(function ($vt) use ($productId) {
                     return [
                         'product_id' => $productId,
@@ -1113,7 +1288,7 @@ class ProductService
                 $this->writeRepository->insertVariationTypes($varTypes);
             }
 
-            if (!empty($data['variants'])) {
+            if (! empty($data['variants'])) {
                 foreach ($data['variants'] as $variant) {
                     $variantData = Arr::only($variant, [
                         'sku', 'barcode', 'buy_price', 'sell_price', 'is_active',
@@ -1127,11 +1302,11 @@ class ProductService
                         }
                     }
 
-                    if (!empty($variant['sales_tax_id'])) {
+                    if (! empty($variant['sales_tax_id'])) {
                         $variantData['tax_rate'] = $this->taxRate($variant['sales_tax_id']);
                     }
 
-                    $variantId = \Ramsey\Uuid\Uuid::uuid7()->toString();
+                    $variantId = Uuid::uuid7()->toString();
                     $variantIds[] = $variantId;
                     $this->writeRepository->insertVariantRow(array_merge($variantData, [
                         'id' => $variantId,
@@ -1140,11 +1315,11 @@ class ProductService
                         'updated_at' => now(),
                     ]));
 
-                    if (!empty($variant['unlimited_shop_ids'])) {
+                    if (! empty($variant['unlimited_shop_ids'])) {
                         $this->writeRepository->syncUnlimitedShops($variantId, $variant['unlimited_shop_ids']);
                     }
 
-                    if (!empty($variant['options'])) {
+                    if (! empty($variant['options'])) {
                         $options = array_map(function ($opt) use ($variantId) {
                             return [
                                 'variant_id' => $variantId,
@@ -1157,7 +1332,7 @@ class ProductService
                         $this->writeRepository->insertVariantOptions($options);
                     }
 
-                    if (!empty($variant['media'])) {
+                    if (! empty($variant['media'])) {
                         $vMedia = array_map(
                             fn ($m) => $this->buildMediaRow($m, $productId, $variantId),
                             $variant['media']
@@ -1165,7 +1340,7 @@ class ProductService
                         $this->writeRepository->insertMedia($vMedia);
                     }
 
-                    if (!empty($variant['wholesale_prices'])) {
+                    if (! empty($variant['wholesale_prices'])) {
                         $wholesales = array_map(function ($wp) use ($variantId) {
                             return [
                                 'variant_id' => $variantId,

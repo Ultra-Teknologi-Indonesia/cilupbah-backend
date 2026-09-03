@@ -3,24 +3,31 @@
 namespace Modules\Product\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
+use App\Traits\ApiResponse;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Product\Http\Requests\CreateProductRequest;
 use Modules\Product\Http\Requests\ItemIdsRequest;
 use Modules\Product\Http\Requests\StoreBundleRequest;
 use Modules\Product\Http\Requests\UpdateProductRequest;
-use Modules\Product\Http\Resources\ProductPriceResource;
 use Modules\Product\Http\Resources\ProductChannelListingResource;
 use Modules\Product\Http\Resources\ProductPriceBookResource;
+use Modules\Product\Http\Resources\ProductPriceResource;
 use Modules\Product\Http\Resources\ProductResource;
 use Modules\Product\Http\Resources\ProductStockResource;
 use Modules\Product\Http\Resources\ProductVariantRowResource;
 use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductChannelMapping;
+use Modules\Product\Models\ProductSyncLog;
+use Modules\Product\Models\ProductVariantChannelMapping;
 use Modules\Product\Repositories\ProductRepository;
-use Modules\Product\Services\ProductService;
 use Modules\Product\Services\ProductLifecycleService;
+use Modules\Product\Services\ProductService;
 use OpenApi\Attributes as OA;
-use App\Traits\ApiResponse;
 
 class ProductController extends Controller
 {
@@ -53,7 +60,9 @@ class ProductController extends Controller
     ];
 
     protected ProductService $productService;
+
     protected ProductLifecycleService $lifecycleService;
+
     protected ProductRepository $productRepository;
 
     public function __construct(
@@ -76,7 +85,7 @@ class ProductController extends Controller
             new OA\Parameter(name: 'filter[is_active]', in: 'query', required: false, description: 'Filter aktif/tidak aktif (true/false/1/0)', schema: new OA\Schema(type: 'boolean')),
             new OA\Parameter(name: 'status', in: 'query', required: false, description: 'Filter status lifecycle: download | in_review | master | archived', schema: new OA\Schema(type: 'string', enum: ['download', 'in_review', 'master', 'archived'])),
             new OA\Parameter(name: 'search', in: 'query', required: false, description: 'Cari berdasarkan nama produk dengan PostgreSQL Full-Text Search', schema: new OA\Schema(type: 'string')),
-            new OA\Parameter(name: 'sort', in: 'query', required: false, description: 'Sort field (e.g. name, -created_at)', schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'sort', in: 'query', required: false, description: 'Sort field (e.g. name, -created_at)', schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(
@@ -86,18 +95,18 @@ class ProductController extends Controller
                     properties: [
                         new OA\Property(property: 'status', type: 'string', example: 'success'),
                         new OA\Property(property: 'data', type: 'array', items: new OA\Items(type: 'object')),
-                        new OA\Property(property: 'meta', type: 'object')
+                        new OA\Property(property: 'meta', type: 'object'),
                     ]
                 )
-            )
+            ),
         ]
     )]
     public function index(Request $request): JsonResponse
     {
         $status = $request->query('status');
-        if ($status !== null && !in_array($status, Product::STATUSES, true)) {
+        if ($status !== null && ! in_array($status, Product::STATUSES, true)) {
             return $this->errorResponse('Status tidak valid', 422, [
-                'status' => ['Nilai harus salah satu dari: ' . implode(', ', Product::STATUSES)],
+                'status' => ['Nilai harus salah satu dari: '.implode(', ', Product::STATUSES)],
             ]);
         }
 
@@ -118,7 +127,7 @@ class ProductController extends Controller
         ],
         responses: [
             new OA\Response(response: 200, description: 'Success'),
-            new OA\Response(response: 422, description: 'Toko tidak ditemukan / shop_id kosong')
+            new OA\Response(response: 422, description: 'Toko tidak ditemukan / shop_id kosong'),
         ]
     )]
     public function uploadable(Request $request): JsonResponse
@@ -129,7 +138,7 @@ class ProductController extends Controller
         ]);
 
         $channelShopId = $this->productService->resolveChannelShopId($request->query('shop_id'));
-        if (!$channelShopId) {
+        if (! $channelShopId) {
             return $this->errorResponse('Toko tidak ditemukan atau tidak aktif', 422);
         }
 
@@ -142,12 +151,13 @@ class ProductController extends Controller
     {
         try {
             $productId = $this->productService->createProduct($request->validated());
+
             return $this->successResponse([
-                'product_id' => $productId
+                'product_id' => $productId,
             ], 'Product created successfully', 201);
         } catch (\DomainException $e) {
             return $this->errorResponse($e->getMessage(), 422, null, 'Gagal menyimpan produk');
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (QueryException $e) {
             return $this->errorResponse(
                 $this->humanizeDbError($e),
                 422,
@@ -162,17 +172,17 @@ class ProductController extends Controller
         summary: 'Get product detail',
         tags: ['Products'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(response: 200, description: 'Get product detail success'),
-            new OA\Response(response: 404, description: 'Product not found')
+            new OA\Response(response: 404, description: 'Product not found'),
         ]
     )]
     public function show($id): JsonResponse
     {
         $product = $this->findProduct($id, self::DETAIL_RELATIONS);
-        if (!$product) {
+        if (! $product) {
             return $this->errorResponse('Produk tidak ditemukan', 404);
         }
 
@@ -184,17 +194,17 @@ class ProductController extends Controller
         summary: 'Update product',
         tags: ['Products'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(response: 200, description: 'Product updated'),
-            new OA\Response(response: 404, description: 'Product not found')
+            new OA\Response(response: 404, description: 'Product not found'),
         ]
     )]
     public function update(UpdateProductRequest $request, $id): JsonResponse
     {
         $product = $this->findProduct($id);
-        if (!$product) {
+        if (! $product) {
             return $this->errorResponse('Produk tidak ditemukan', 404);
         }
 
@@ -202,7 +212,7 @@ class ProductController extends Controller
             $this->productService->updateProduct($id, $request->validated());
         } catch (\DomainException $e) {
             return $this->errorResponse($e->getMessage(), 422, null, 'Gagal memperbarui produk');
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (QueryException $e) {
             return $this->errorResponse($this->humanizeDbError($e), 422, null, 'Gagal memperbarui produk');
         }
 
@@ -212,21 +222,34 @@ class ProductController extends Controller
         );
     }
 
-    public function destroy($id): JsonResponse
+    public function destroy(Request $request, $id): JsonResponse
     {
         $product = $this->findProduct($id);
-        if (!$product) {
+        if (! $product) {
             return $this->errorResponse('Produk tidak ditemukan', 404);
         }
 
+        $requestId = (string) Str::uuid();
+
         try {
-            $this->productService->deleteProduct($product);
+            $this->productService->deleteProduct($product, $request->user()?->id, $requestId);
         } catch (\DomainException $e) {
             return $this->errorResponse(
                 'Gagal menghapus.',
                 422,
                 ['detail' => $e->getMessage()],
                 'Aksi tidak dapat diproses',
+            );
+        } catch (\Throwable $e) {
+            report($e);
+
+            return $this->errorResponse(
+                'Produk tidak dapat dihapus karena terjadi kendala. Tidak ada perubahan pada produk.',
+                500,
+                null,
+                'Penghapusan produk gagal',
+                'PRODUCT_DELETE_FAILED',
+                $requestId,
             );
         }
 
@@ -241,7 +264,7 @@ class ProductController extends Controller
         responses: [
             new OA\Response(response: 200, description: 'Product approved'),
             new OA\Response(response: 422, description: 'Invalid state / validation'),
-            new OA\Response(response: 404, description: 'Product not found')
+            new OA\Response(response: 404, description: 'Product not found'),
         ]
     )]
     public function approve(Request $request, $id): JsonResponse
@@ -255,12 +278,12 @@ class ProductController extends Controller
         tags: ['Products'],
         parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))],
         requestBody: new OA\RequestBody(required: false, content: new OA\JsonContent(properties: [
-            new OA\Property(property: 'reason', type: 'string', nullable: true)
+            new OA\Property(property: 'reason', type: 'string', nullable: true),
         ])),
         responses: [
             new OA\Response(response: 200, description: 'Product archived'),
             new OA\Response(response: 422, description: 'Invalid state'),
-            new OA\Response(response: 404, description: 'Product not found')
+            new OA\Response(response: 404, description: 'Product not found'),
         ]
     )]
     public function archive(Request $request, $id): JsonResponse
@@ -282,7 +305,7 @@ class ProductController extends Controller
         responses: [
             new OA\Response(response: 200, description: 'Product restored'),
             new OA\Response(response: 422, description: 'Invalid state'),
-            new OA\Response(response: 404, description: 'Product not found')
+            new OA\Response(response: 404, description: 'Product not found'),
         ]
     )]
     public function restore(Request $request, $id): JsonResponse
@@ -323,18 +346,51 @@ class ProductController extends Controller
     {
         $validated = $request->validate([
             'ids' => 'required|array|min:1|max:50',
-            'ids.*' => 'uuid|exists:products,id',
+            'ids.*' => 'required|uuid|distinct|exists:products,id',
         ]);
 
-        $result = $this->productService->bulkDelete($validated['ids']);
+        $requestId = (string) Str::uuid();
 
-        return $this->successResponse($result, "{$result['success']} produk berhasil dihapus");
+        try {
+            $result = $this->productService->bulkDelete(
+                array_values(array_unique($validated['ids'])),
+                $request->user()?->id,
+                $requestId,
+            );
+        } catch (\Throwable $e) {
+            report($e);
+
+            return $this->errorResponse(
+                'Produk tidak dapat dihapus karena terjadi kendala. Tidak ada produk yang dihapus.',
+                500,
+                null,
+                'Penghapusan produk gagal',
+                'PRODUCT_BULK_DELETE_FAILED',
+                $requestId,
+            );
+        }
+
+        if ($result['failed'] > 0) {
+            return $this->errorResponse(
+                'Tidak ada produk yang dihapus karena ada produk yang belum memenuhi syarat.',
+                422,
+                [
+                    'items' => $result['errors'],
+                    'batch_id' => [$result['batch_id']],
+                ],
+                'Penghapusan produk tidak dapat diproses',
+                'PRODUCT_BULK_DELETE_BLOCKED',
+                $requestId,
+            );
+        }
+
+        return $this->successResponse($result, "{$result['success']} produk berhasil dihapus", 200, null, 'Produk berhasil dihapus');
     }
 
     private function runLifecycle($id, callable $action, string $message): JsonResponse
     {
         $product = $this->findProduct($id);
-        if (!$product) {
+        if (! $product) {
             return $this->errorResponse('Produk tidak ditemukan', 404);
         }
 
@@ -350,7 +406,7 @@ class ProductController extends Controller
         );
     }
 
-    private function humanizeDbError(\Illuminate\Database\QueryException $e): string
+    private function humanizeDbError(QueryException $e): string
     {
         $sqlState = $e->errorInfo[0] ?? null;
         $detail = (string) ($e->errorInfo[2] ?? $e->getMessage());
@@ -371,9 +427,9 @@ class ProductController extends Controller
             return 'Data yang dipilih tidak valid atau sudah tidak tersedia (mis. kategori/atribut). Muat ulang halaman lalu coba lagi.';
         }
 
-        \Illuminate\Support\Facades\Log::error('Product save DB error', [
+        Log::error('Product save DB error', [
             'sql_state' => $sqlState,
-            'detail'    => $detail,
+            'detail' => $detail,
         ]);
 
         return 'Terjadi kendala saat menyimpan produk. Periksa kembali isian Anda lalu coba lagi.';
@@ -566,7 +622,7 @@ class ProductController extends Controller
             return $this->errorResponse('Produk tidak ditemukan', 404);
         }
 
-        $mapping = \Modules\Product\Models\ProductChannelMapping::where('id', $mappingId)
+        $mapping = ProductChannelMapping::where('id', $mappingId)
             ->where('product_id', $product->id)
             ->first();
 
@@ -581,11 +637,11 @@ class ProductController extends Controller
         $shopId = $mapping->channel_shop_id;
         $mapping->delete();
 
-        \Modules\Product\Models\ProductSyncLog::record([
+        ProductSyncLog::record([
             'product_id' => $product->id,
             'channel_shop_id' => $shopId,
-            'action' => \Modules\Product\Models\ProductSyncLog::ACTION_UNLINK,
-            'status' => \Modules\Product\Models\ProductSyncLog::STATUS_SUCCESS,
+            'action' => ProductSyncLog::ACTION_UNLINK,
+            'status' => ProductSyncLog::STATUS_SUCCESS,
         ]);
 
         return $this->successResponse(['success' => true], 'Tautan channel berhasil dihapus.');
@@ -611,7 +667,7 @@ class ProductController extends Controller
             return $this->errorResponse('Produk tidak ditemukan', 404);
         }
 
-        $variantMapping = \Modules\Product\Models\ProductVariantChannelMapping::where('id', $variantMappingId)
+        $variantMapping = ProductVariantChannelMapping::where('id', $variantMappingId)
             ->whereHas('variant', function ($q) use ($product) {
                 $q->where('product_id', $product->id);
             })
@@ -624,9 +680,9 @@ class ProductController extends Controller
         $parentMappingId = $variantMapping->product_channel_mapping_id;
         $variantMapping->delete();
 
-        $remaining = \Modules\Product\Models\ProductVariantChannelMapping::where('product_channel_mapping_id', $parentMappingId)->count();
+        $remaining = ProductVariantChannelMapping::where('product_channel_mapping_id', $parentMappingId)->count();
         if ($remaining === 0) {
-            \Modules\Product\Models\ProductChannelMapping::where('id', $parentMappingId)->delete();
+            ProductChannelMapping::where('id', $parentMappingId)->delete();
         }
 
         return $this->successResponse(['success' => true], 'Tautan varian channel berhasil dihapus.');
@@ -664,12 +720,12 @@ class ProductController extends Controller
 
         $request->validate([
             'variant_mapping_ids' => 'required|array',
-            'variant_mapping_ids.*' => 'string|exists:product_variant_channel_mappings,id'
+            'variant_mapping_ids.*' => 'string|exists:product_variant_channel_mappings,id',
         ]);
 
         $variantMappingIds = $request->input('variant_mapping_ids');
 
-        $variantMappings = \Modules\Product\Models\ProductVariantChannelMapping::whereIn('id', $variantMappingIds)
+        $variantMappings = ProductVariantChannelMapping::whereIn('id', $variantMappingIds)
             ->whereHas('variant', function ($q) use ($product) {
                 $q->where('product_id', $product->id);
             })
@@ -683,9 +739,9 @@ class ProductController extends Controller
         }
 
         foreach ($parentMappingIds->unique() as $parentMappingId) {
-            $remaining = \Modules\Product\Models\ProductVariantChannelMapping::where('product_channel_mapping_id', $parentMappingId)->count();
+            $remaining = ProductVariantChannelMapping::where('product_channel_mapping_id', $parentMappingId)->count();
             if ($remaining === 0) {
-                \Modules\Product\Models\ProductChannelMapping::where('id', $parentMappingId)->delete();
+                ProductChannelMapping::where('id', $parentMappingId)->delete();
             }
         }
 
@@ -712,7 +768,7 @@ class ProductController extends Controller
             return $this->errorResponse('Produk tidak ditemukan', 404);
         }
 
-        $mapping = \Modules\Product\Models\ProductChannelMapping::where('id', $mappingId)
+        $mapping = ProductChannelMapping::where('id', $mappingId)
             ->where('product_id', $product->id)
             ->first();
 
@@ -721,13 +777,13 @@ class ProductController extends Controller
         }
 
         $mapping->markAsSyncing();
-        \Modules\Channel\Jobs\SyncProductToChannelJob::dispatch($product->id, $mapping->channel_shop_id, 'sync_price_stock');
+        SyncProductToChannelJob::dispatch($product->id, $mapping->channel_shop_id, 'sync_price_stock');
 
-        \Modules\Product\Models\ProductSyncLog::record([
+        ProductSyncLog::record([
             'product_id' => $product->id,
             'channel_shop_id' => $mapping->channel_shop_id,
-            'action' => \Modules\Product\Models\ProductSyncLog::ACTION_SYNC_STOCK,
-            'status' => \Modules\Product\Models\ProductSyncLog::STATUS_PENDING,
+            'action' => ProductSyncLog::ACTION_SYNC_STOCK,
+            'status' => ProductSyncLog::STATUS_PENDING,
         ]);
 
         return $this->successResponse(['success' => true], 'Sinkronisasi channel berhasil dijadwalkan.');
@@ -736,7 +792,7 @@ class ProductController extends Controller
     private function findProduct($id, array $with = []): ?Product
     {
         $normalizedId = str_replace('-', '', (string) $id);
-        if (strlen($normalizedId) !== 32 || !ctype_xdigit($normalizedId)) {
+        if (strlen($normalizedId) !== 32 || ! ctype_xdigit($normalizedId)) {
             return null;
         }
 
