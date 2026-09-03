@@ -1,11 +1,24 @@
 <?php
 
+use App\Exceptions\UserFacingException;
+use App\Http\Middleware\DevOnly;
+use App\Http\Middleware\NormalizePaginationParameters;
+use App\Http\Middleware\RejectNonAccessToken;
+use App\Http\Middleware\ResilientThrottleRequests;
+use App\Http\Middleware\ResolveClientChannel;
+use App\Support\DatabaseAvailability;
+use App\Support\ErrorReporter;
+use App\Traits\ApiResponse;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Auth\AuthenticationException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-use Sentry\Laravel\Integration;
-use App\Exceptions\UserFacingException;
-use App\Support\DatabaseAvailability;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
+use Modules\Outbound\Exceptions\OutboundValidationException;
 use Modules\Sales\Exceptions\CannotDeleteActiveOrderException;
 use Modules\Sales\Exceptions\DuplicateOrderException;
 use Modules\Sales\Exceptions\InsufficientStockException;
@@ -14,7 +27,12 @@ use Modules\Sales\Exceptions\InvalidStatusTransitionException;
 use Modules\Sales\Exceptions\LocationNotConfiguredException;
 use Modules\Sales\Exceptions\PaymentExceedsInvoiceException;
 use Modules\Sales\Exceptions\ProductNotMappableException;
-use Modules\Outbound\Exceptions\OutboundValidationException;
+use Sentry\Laravel\Integration;
+use Spatie\Permission\Middleware\PermissionMiddleware;
+use Spatie\Permission\Middleware\RoleMiddleware;
+use Spatie\Permission\Middleware\RoleOrPermissionMiddleware;
+use Symfony\Component\HttpKernel\Exception\HttpException;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -36,28 +54,28 @@ return Application::configure(basePath: dirname(__DIR__))
                 '::1',
             ]);
         $middleware->alias([
-            'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
-            'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
-            'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
-            'dev.only' => \App\Http\Middleware\DevOnly::class,
-            'client.channel' => \App\Http\Middleware\ResolveClientChannel::class,
+            'role' => RoleMiddleware::class,
+            'permission' => PermissionMiddleware::class,
+            'role_or_permission' => RoleOrPermissionMiddleware::class,
+            'dev.only' => DevOnly::class,
+            'client.channel' => ResolveClientChannel::class,
 
-            'throttle' => \App\Http\Middleware\ResilientThrottleRequests::class,
+            'throttle' => ResilientThrottleRequests::class,
         ]);
 
         $middleware->api(
             prepend: [
-                \App\Http\Middleware\ResolveClientChannel::class,
-                \App\Http\Middleware\RejectNonAccessToken::class,
+                ResolveClientChannel::class,
+                RejectNonAccessToken::class,
             ],
             append: [
-
+                NormalizePaginationParameters::class,
                 'throttle:api',
             ],
         );
 
         $middleware->redirectGuestsTo(
-            fn (\Illuminate\Http\Request $request): ?string => $request->is('api/*')
+            fn (Request $request): ?string => $request->is('api/*')
                 ? null
                 : route('login'),
         );
@@ -65,16 +83,19 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withExceptions(function (Exceptions $exceptions): void {
         Integration::handles($exceptions);
 
-        $exceptions->shouldRenderJsonWhen(function (\Illuminate\Http\Request $request, \Throwable $e) {
+        $exceptions->shouldRenderJsonWhen(function (Request $request, Throwable $e) {
             return $request->is('api/*');
         });
 
-        $exceptions->render(function (\Throwable $e, \Illuminate\Http\Request $request) {
+        $exceptions->render(function (Throwable $e, Request $request) {
             if ($request->is('api/*')) {
-                $responder = new class { use \App\Traits\ApiResponse; };
+                $responder = new class
+                {
+                    use ApiResponse;
+                };
 
                 if (DatabaseAvailability::isTransient($e)) {
-                    \Illuminate\Support\Facades\Log::warning('API unavailable because database connectivity is temporarily limited.', [
+                    Log::warning('API unavailable because database connectivity is temporarily limited.', [
                         'exception' => class_basename($e),
                         'path' => $request->path(),
                         'method' => $request->method(),
@@ -113,23 +134,23 @@ return Application::configure(basePath: dirname(__DIR__))
                     return $responder->errorResponse($e->getMessage(), 422, null, 'Aksi tidak dapat diproses');
                 }
 
-                if ($e instanceof \Illuminate\Validation\ValidationException) {
+                if ($e instanceof ValidationException) {
                     $errors = $e->errors();
                     $firstField = array_key_first($errors);
-                    $firstMessage = $firstField && !empty($errors[$firstField])
+                    $firstMessage = $firstField && ! empty($errors[$firstField])
                         ? (is_array($errors[$firstField]) ? $errors[$firstField][0] : $errors[$firstField])
                         : 'Mohon periksa kembali data yang Anda masukkan.';
 
-                    \App\Support\ErrorReporter::captureThrottled(
+                    ErrorReporter::captureThrottled(
                         $e,
-                        'validation:' . ($request->route()?->getName() ?: $request->path()) . ':' . (string) $firstField,
+                        'validation:'.($request->route()?->getName() ?: $request->path()).':'.(string) $firstField,
                         ['http_status' => 422, 'error_kind' => 'validation'],
                     );
 
                     return $responder->errorResponse($firstMessage, 422, $errors, 'Data belum lengkap');
                 }
 
-                if ($e instanceof \Illuminate\Auth\AuthenticationException) {
+                if ($e instanceof AuthenticationException) {
                     return $responder->errorResponse(
                         'Silakan masuk kembali untuk melanjutkan.',
                         401,
@@ -138,7 +159,7 @@ return Application::configure(basePath: dirname(__DIR__))
                     );
                 }
 
-                if ($e instanceof \Illuminate\Auth\Access\AuthorizationException) {
+                if ($e instanceof AuthorizationException) {
                     return $responder->errorResponse(
                         $e->getMessage() ?: 'Anda tidak memiliki izin untuk melakukan aksi ini.',
                         403,
@@ -147,8 +168,8 @@ return Application::configure(basePath: dirname(__DIR__))
                     );
                 }
 
-                if ($e instanceof \Symfony\Component\HttpKernel\Exception\NotFoundHttpException ||
-                    $e instanceof \Illuminate\Database\Eloquent\ModelNotFoundException) {
+                if ($e instanceof NotFoundHttpException ||
+                    $e instanceof ModelNotFoundException) {
                     return $responder->errorResponse(
                         'Data yang Anda cari tidak dapat ditemukan',
                         404,
@@ -157,7 +178,7 @@ return Application::configure(basePath: dirname(__DIR__))
                     );
                 }
 
-                if ($e instanceof \Symfony\Component\HttpKernel\Exception\HttpException) {
+                if ($e instanceof HttpException) {
                     $status = $e->getStatusCode();
 
                     if ($status === 503) {
@@ -171,9 +192,9 @@ return Application::configure(basePath: dirname(__DIR__))
                     }
 
                     if ($status === 422) {
-                        \App\Support\ErrorReporter::captureThrottled(
+                        ErrorReporter::captureThrottled(
                             $e,
-                            'http422:' . $request->path(),
+                            'http422:'.$request->path(),
                             ['http_status' => 422, 'error_kind' => 'http'],
                         );
                     }
@@ -195,7 +216,7 @@ return Application::configure(basePath: dirname(__DIR__))
                     );
                 }
 
-                \Illuminate\Support\Facades\Log::error($e->getMessage(), [
+                Log::error($e->getMessage(), [
                     'exception' => $e,
                     'path' => $request->path(),
                     'method' => $request->method(),
@@ -209,7 +230,7 @@ return Application::configure(basePath: dirname(__DIR__))
                     $exposeDetail ? [
                         'error' => $e->getMessage(),
                         'exception' => class_basename($e),
-                        'file' => $e->getFile() . ':' . $e->getLine(),
+                        'file' => $e->getFile().':'.$e->getLine(),
                     ] : null,
                     'Terjadi kesalahan server',
                 );

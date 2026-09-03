@@ -88,7 +88,7 @@ class ShipmentController extends Controller
 
         $data->through(fn ($shipment) => new ShipmentResource($shipment));
 
-        return $this->successResponse($data);
+        return $this->successPaginatedResponse($data);
     }
 
     #[OA\Post(
@@ -158,7 +158,7 @@ class ShipmentController extends Controller
 
         $data->through(fn ($shipment) => new ShipmentResource($shipment));
 
-        return $this->successResponse($data);
+        return $this->successPaginatedResponse($data);
     }
 
     #[OA\Get(
@@ -180,19 +180,9 @@ class ShipmentController extends Controller
         $limit = (int) $request->query('per_page', $request->query('limit', 10));
         $paginator = $this->shipmentService->getCompleted($type, $courierIds, $limit);
 
-        $items = collect($paginator->items())
-            ->map(fn ($so) => (new CompletedShipmentOrderResource($so))->toArray($request))
-            ->all();
-
-        return $this->successResponse([
-            'data' => $items,
-            'meta' => [
-                'current_page' => $paginator->currentPage(),
-                'per_page' => $paginator->perPage(),
-                'last_page' => $paginator->lastPage(),
-                'total' => $paginator->total(),
-            ],
-        ]);
+        return $this->successPaginatedResponse(
+            CompletedShipmentOrderResource::collection($paginator),
+        );
     }
 
     #[OA\Get(
@@ -214,7 +204,7 @@ class ShipmentController extends Controller
 
         $data->through(fn ($shipment) => new ShipmentResource($shipment));
 
-        return $this->successResponse($data);
+        return $this->successPaginatedResponse($data);
     }
 
     #[OA\Post(
@@ -318,7 +308,7 @@ class ShipmentController extends Controller
         $limit = (int) $request->query('per_page', $request->query('limit', 20));
         $data = $this->shipmentService->getOrdersPaginated($id, $limit);
 
-        return $this->successResponse($data);
+        return $this->successPaginatedResponse($data);
     }
 
     #[OA\Post(

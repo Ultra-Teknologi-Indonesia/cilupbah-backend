@@ -70,6 +70,29 @@ class ReportController extends Controller
         protected PdfRenderer $pdfRenderer,
     ) {}
 
+    private function reportResponse(array $payload, ?string $message = null): JsonResponse
+    {
+        $meta = array_filter([
+            'report_type' => $payload['report_type'] ?? null,
+            'generated_at' => $payload['generated_at'] ?? null,
+        ], static fn (mixed $value): bool => $value !== null);
+
+        if (isset($payload['pagination']) && is_array($payload['pagination'])) {
+            $meta = [...$meta, ...$payload['pagination']];
+        }
+
+        if (isset($payload['period']) && is_array($payload['period'])) {
+            $meta['period'] = $payload['period'];
+        }
+
+        return $this->successResponse(
+            $payload['data'] ?? [],
+            $message,
+            200,
+            $meta !== [] ? $meta : null,
+        );
+    }
+
     private function queueExport(ExportManager $exports, string $type, array $params): JsonResponse
     {
         $job = $exports->queue(request()->user(), $type, $params);
@@ -141,7 +164,7 @@ class ReportController extends Controller
     {
         $data = $this->reportService->putawayReport($request->all());
 
-        return $this->successResponse($data, 'Putaway report berhasil diambil.');
+        return $this->reportResponse($data, 'Putaway report berhasil diambil.');
     }
 
     #[OA\Get(
@@ -165,7 +188,7 @@ class ReportController extends Controller
     {
         $data = $this->reportService->receiveBillReport($request->all());
 
-        return $this->successResponse($data, 'Receive bill report berhasil diambil.');
+        return $this->reportResponse($data, 'Receive bill report berhasil diambil.');
     }
 
     #[OA\Get(
@@ -189,7 +212,7 @@ class ReportController extends Controller
     {
         $data = $this->reportService->adjustmentReport($request->all());
 
-        return $this->successResponse($data, 'Stock adjustment report berhasil diambil.');
+        return $this->reportResponse($data, 'Stock adjustment report berhasil diambil.');
     }
 
     #[OA\Get(
@@ -213,7 +236,7 @@ class ReportController extends Controller
     {
         $data = $this->reportService->stockOpnameReport($request->all());
 
-        return $this->successResponse($data, 'Stock opname report berhasil diambil.');
+        return $this->reportResponse($data, 'Stock opname report berhasil diambil.');
     }
 
     #[OA\Get(
@@ -238,7 +261,7 @@ class ReportController extends Controller
     {
         $data = $this->reportService->purchaseOrderReport($request->all());
 
-        return $this->successResponse($data, 'Purchase order report berhasil diambil.');
+        return $this->reportResponse($data, 'Purchase order report berhasil diambil.');
     }
 
     #[OA\Get(
@@ -261,7 +284,7 @@ class ReportController extends Controller
     {
         $data = $this->reportService->invoiceReport($request->all());
 
-        return $this->successResponse($data, 'Invoice report berhasil diambil.');
+        return $this->reportResponse($data, 'Invoice report berhasil diambil.');
     }
 
     #[OA\Get(
@@ -285,7 +308,7 @@ class ReportController extends Controller
     {
         $data = $this->reportService->consignReport($request->all());
 
-        return $this->successResponse($data, 'Consignment bill report berhasil diambil.');
+        return $this->reportResponse($data, 'Consignment bill report berhasil diambil.');
     }
 
     #[OA\Get(
@@ -307,7 +330,7 @@ class ReportController extends Controller
     {
         $data = $this->reportService->itemReceiveNotPlaceReport($request->all());
 
-        return $this->successResponse($data, 'Item receive not placed report berhasil diambil.');
+        return $this->reportResponse($data, 'Item receive not placed report berhasil diambil.');
     }
 
     #[OA\Get(
@@ -331,7 +354,7 @@ class ReportController extends Controller
     {
         $data = $this->reportService->pickListReport($request->all());
 
-        return $this->successResponse($data, 'Picklist report berhasil diambil.');
+        return $this->reportResponse($data, 'Picklist report berhasil diambil.');
     }
 
     #[OA\Get(
@@ -356,7 +379,7 @@ class ReportController extends Controller
     {
         $data = $this->reportService->shippingManifestReport($request->all());
 
-        return $this->successResponse($data, 'Shipping manifest report berhasil diambil.');
+        return $this->reportResponse($data, 'Shipping manifest report berhasil diambil.');
     }
 
     #[OA\Get(
@@ -396,7 +419,7 @@ class ReportController extends Controller
             $request->input('location_id'),
         );
 
-        return $this->successResponse($data, 'Laporan HPP berhasil diambil.');
+        return $this->reportResponse($data, 'Laporan HPP berhasil diambil.');
     }
 
     #[OA\Post(

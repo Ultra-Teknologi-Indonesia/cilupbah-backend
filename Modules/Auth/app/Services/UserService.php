@@ -92,7 +92,6 @@ class UserService
 
         return [
             'data' => $users,
-            'totalCount' => $total,
             'meta' => [
                 'current_page' => $page,
                 'per_page' => $perPage,

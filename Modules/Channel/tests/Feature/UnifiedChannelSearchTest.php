@@ -413,4 +413,37 @@ class UnifiedChannelSearchTest extends TestCase
         $this->assertSame('SHP-WHITE-11', $results[0]['seller_sku']);
         $this->assertSame(['SHP-BLACK-11', 'SHP-WHITE-11'], $results[0]['seller_skus']);
     }
+
+    public function test_shopee_name_search_does_not_hydrate_unrelated_variant_lists(): void
+    {
+        Http::fake([
+            '*/api/v2/product/get_item_list*' => Http::response([
+                'error' => '',
+                'response' => [
+                    'item' => [['item_id' => 301, 'item_status' => 'NORMAL']],
+                    'has_next_page' => false,
+                    'next_offset' => 0,
+                ],
+            ], 200),
+            '*/api/v2/product/get_item_base_info*' => Http::response([
+                'error' => '',
+                'response' => [
+                    'item_list' => [[
+                        'item_id' => 301,
+                        'item_name' => 'Tempered Glass Screen Protector iPhone Foldable',
+                        'item_sku' => '',
+                        'has_model' => true,
+                        'image' => ['image_url_list' => ['https://img.shopee/301.jpg']],
+                    ]],
+                ],
+            ], 200),
+        ]);
+
+        $results = app(\Modules\Channel\Services\ShopeeProductService::class)
+            ->searchProducts('SP-SHOP-1', 'Tempered Glass Screen Protector', 3, 20);
+
+        $this->assertCount(1, $results);
+        $this->assertSame('301', $results[0]['external_product_id']);
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'get_model_list'));
+    }
 }

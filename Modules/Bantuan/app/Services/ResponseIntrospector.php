@@ -10,7 +10,6 @@ use Throwable;
 
 class ResponseIntrospector
 {
-
     public function forMethod(ReflectionMethod $method, string $httpMethod, ?string $actionName = null): array
     {
         $body = $this->methodSource($method);
@@ -19,8 +18,11 @@ class ResponseIntrospector
         if (! $resourceClass) {
 
             $actionEx = $this->actionExample($actionName, $body);
-            if ($actionEx) return $actionEx + ['resource_class' => null];
+            if ($actionEx) {
+                return $actionEx + ['resource_class' => null];
+            }
             $default = $this->defaultWrapper($httpMethod);
+
             return $default + ['resource_class' => null];
         }
 
@@ -33,25 +35,27 @@ class ResponseIntrospector
         if ($isCollection) {
             return [
                 'schema' => [
-                    'success' => 'boolean',
+                    'status' => 'string',
+                    'title' => 'string|null',
                     'message' => 'string',
-                    'data'    => [$schema],
-                    'meta'    => [
+                    'data' => [$schema],
+                    'meta' => [
                         'current_page' => 'integer',
-                        'per_page'     => 'integer',
-                        'total'        => 'integer',
-                        'last_page'    => 'integer',
+                        'per_page' => 'integer',
+                        'total' => 'integer',
+                        'last_page' => 'integer',
                     ],
                 ],
                 'example' => [
-                    'success' => true,
+                    'status' => 'success',
+                    'title' => null,
                     'message' => 'Berhasil.',
-                    'data'    => [$example],
-                    'meta'    => [
+                    'data' => [$example],
+                    'meta' => [
                         'current_page' => 1,
-                        'per_page'     => 10,
-                        'total'        => 1,
-                        'last_page'    => 1,
+                        'per_page' => 10,
+                        'total' => 1,
+                        'last_page' => 1,
                     ],
                 ],
                 'resource_class' => $resourceClass,
@@ -60,14 +64,16 @@ class ResponseIntrospector
 
         return [
             'schema' => [
-                'success' => 'boolean',
+                'status' => 'string',
+                'title' => 'string|null',
                 'message' => 'string',
-                'data'    => $schema,
+                'data' => $schema,
             ],
             'example' => [
-                'success' => true,
+                'status' => 'success',
+                'title' => null,
                 'message' => 'Berhasil.',
-                'data'    => $example,
+                'data' => $example,
             ],
             'resource_class' => $resourceClass,
         ];
@@ -82,35 +88,38 @@ class ResponseIntrospector
         }
 
         $actionMap = [
-            'cancel'     => 'Berhasil membatalkan.',
-            'restore'    => 'Berhasil memulihkan.',
-            'archive'    => 'Berhasil mengarsipkan.',
-            'activate'   => 'Berhasil mengaktifkan.',
+            'cancel' => 'Berhasil membatalkan.',
+            'restore' => 'Berhasil memulihkan.',
+            'archive' => 'Berhasil mengarsipkan.',
+            'activate' => 'Berhasil mengaktifkan.',
             'deactivate' => 'Berhasil menonaktifkan.',
-            'approve'    => 'Berhasil menyetujui.',
-            'reject'     => 'Berhasil menolak.',
-            'submit'     => 'Berhasil mengajukan.',
-            'revert'     => 'Berhasil me-revert.',
-            'export'     => 'Ekspor sedang diproses. Cek di Aktivitas Impex.',
-            'import'     => 'Impor sedang diproses. Cek di Aktivitas Impex.',
-            'sync'       => 'Sinkronisasi selesai.',
-            'assign'     => 'Berhasil meng-assign.',
-            'unassign'   => 'Berhasil melepas assignment.',
-            'ship'       => 'Berhasil mengirim.',
-            'receive'    => 'Berhasil menerima.',
-            'putaway'    => 'Berhasil menempatkan.',
-            'pick'       => 'Berhasil pick.',
-            'pack'       => 'Berhasil pack.',
-            'print'      => 'PDF berhasil dibuat.',
-            'destroy'    => 'Berhasil dihapus.',
-            'delete'     => 'Berhasil dihapus.',
+            'approve' => 'Berhasil menyetujui.',
+            'reject' => 'Berhasil menolak.',
+            'submit' => 'Berhasil mengajukan.',
+            'revert' => 'Berhasil me-revert.',
+            'export' => 'Ekspor sedang diproses. Cek di Aktivitas Impex.',
+            'import' => 'Impor sedang diproses. Cek di Aktivitas Impex.',
+            'sync' => 'Sinkronisasi selesai.',
+            'assign' => 'Berhasil meng-assign.',
+            'unassign' => 'Berhasil melepas assignment.',
+            'ship' => 'Berhasil mengirim.',
+            'receive' => 'Berhasil menerima.',
+            'putaway' => 'Berhasil menempatkan.',
+            'pick' => 'Berhasil pick.',
+            'pack' => 'Berhasil pack.',
+            'print' => 'PDF berhasil dibuat.',
+            'destroy' => 'Berhasil dihapus.',
+            'delete' => 'Berhasil dihapus.',
         ];
 
         $matched = null;
         if ($action) {
             $lower = strtolower($action);
             foreach ($actionMap as $k => $v) {
-                if (str_contains($lower, $k)) { $matched = $v; break; }
+                if (str_contains($lower, $k)) {
+                    $matched = $v;
+                    break;
+                }
             }
         }
         $finalMessage = $message ?? $matched;
@@ -118,33 +127,39 @@ class ResponseIntrospector
         if ($finalMessage) {
             return [
                 'schema' => [
-                    'success' => 'boolean',
+                    'status' => 'string',
+                    'title' => 'string|null',
                     'message' => 'string',
-                    'data'    => 'object|null',
+                    'data' => 'object|null',
                 ],
                 'example' => [
-                    'success' => true,
+                    'status' => 'success',
+                    'title' => null,
                     'message' => $finalMessage,
-                    'data'    => new \stdClass(),
+                    'data' => new \stdClass,
                 ],
             ];
         }
+
         return null;
     }
 
     private function defaultWrapper(string $httpMethod): array
     {
         $isEmpty = $httpMethod === 'DELETE';
+
         return [
             'schema' => [
-                'success' => 'boolean',
+                'status' => 'string',
+                'title' => 'string|null',
                 'message' => 'string',
-                'data'    => $isEmpty ? 'null' : 'mixed',
+                'data' => $isEmpty ? 'null' : 'mixed',
             ],
             'example' => [
-                'success' => true,
+                'status' => 'success',
+                'title' => null,
                 'message' => 'Berhasil.',
-                'data'    => $isEmpty ? null : new \stdClass(),
+                'data' => $isEmpty ? null : new \stdClass,
             ],
         ];
     }
@@ -152,18 +167,26 @@ class ResponseIntrospector
     private function shortName(string $fqcn): string
     {
         $parts = explode('\\', $fqcn);
+
         return end($parts) ?: $fqcn;
     }
 
     private function methodSource(ReflectionMethod $method): ?string
     {
         $file = $method->getFileName();
-        if (! $file || ! is_readable($file)) return null;
+        if (! $file || ! is_readable($file)) {
+            return null;
+        }
         $start = $method->getStartLine();
-        $end   = $method->getEndLine();
-        if (! $start || ! $end) return null;
+        $end = $method->getEndLine();
+        if (! $start || ! $end) {
+            return null;
+        }
         $lines = @file($file);
-        if (! $lines) return null;
+        if (! $lines) {
+            return null;
+        }
+
         return implode('', array_slice($lines, $start - 1, $end - $start + 1));
     }
 
@@ -172,9 +195,13 @@ class ResponseIntrospector
 
         $shortNames = [];
         if (preg_match_all('/(?:new\s+|\b)([A-Z]\w*Resource)\b/', $body, $m)) {
-            foreach ($m[1] as $n) $shortNames[$n] = true;
+            foreach ($m[1] as $n) {
+                $shortNames[$n] = true;
+            }
         }
-        if (! $shortNames) return null;
+        if (! $shortNames) {
+            return null;
+        }
 
         $useMap = $this->parseUseStatements($method->getFileName() ?? '');
         foreach (array_keys($shortNames) as $short) {
@@ -186,57 +213,72 @@ class ResponseIntrospector
         $ns = $method->getDeclaringClass()->getNamespaceName();
         foreach (array_keys($shortNames) as $short) {
             $candidates = [
-                $ns . '\\' . $short,
+                $ns.'\\'.$short,
 
-                str_replace('\\Controllers', '\\Resources', $ns) . '\\' . $short,
+                str_replace('\\Controllers', '\\Resources', $ns).'\\'.$short,
             ];
             foreach ($candidates as $c) {
-                if (class_exists($c)) return $c;
+                if (class_exists($c)) {
+                    return $c;
+                }
             }
         }
+
         return null;
     }
 
     private function parseUseStatements(string $file): array
     {
-        if (! $file || ! is_readable($file)) return [];
+        if (! $file || ! is_readable($file)) {
+            return [];
+        }
         $src = @file_get_contents($file);
-        if (! $src) return [];
+        if (! $src) {
+            return [];
+        }
         $out = [];
         if (preg_match_all('/^use\s+([\\\\\w]+)(?:\s+as\s+(\w+))?\s*;/m', $src, $m, PREG_SET_ORDER)) {
             foreach ($m as $row) {
-                $fqcn  = ltrim($row[1], '\\');
+                $fqcn = ltrim($row[1], '\\');
                 $alias = $row[2] ?? '';
                 $short = $alias ?: (str_contains($fqcn, '\\') ? substr($fqcn, strrpos($fqcn, '\\') + 1) : $fqcn);
                 $out[$short] = $fqcn;
             }
         }
+
         return $out;
     }
 
     private function extractFromResource(string $resourceClass, array $oaByProperty): array
     {
-        $schema  = [];
+        $schema = [];
         $example = [];
         try {
             $ref = new ReflectionClass($resourceClass);
-            if (! $ref->hasMethod('toArray')) return [[], []];
+            if (! $ref->hasMethod('toArray')) {
+                return [[], []];
+            }
             $method = $ref->getMethod('toArray');
-            $src    = $this->methodSource($method);
-            if (! $src) return [[], []];
+            $src = $this->methodSource($method);
+            if (! $src) {
+                return [[], []];
+            }
 
             if (preg_match_all('/[\'"]([a-zA-Z_][\w]*)[\'"]\s*=>/', $src, $m)) {
                 foreach ($m[1] as $key) {
-                    if (isset($schema[$key])) continue;
+                    if (isset($schema[$key])) {
+                        continue;
+                    }
                     $oa = $oaByProperty[$key] ?? null;
                     $type = $oa['type'] ?? 'mixed';
-                    $schema[$key]  = $type;
+                    $schema[$key] = $type;
                     $example[$key] = $oa['example'] ?? $this->exampleForType($type, $key);
                 }
             }
         } catch (Throwable $e) {
             return [[], []];
         }
+
         return [$schema, $example];
     }
 
@@ -246,14 +288,15 @@ class ResponseIntrospector
         if (str_ends_with($field, '_id') || $field === 'id') {
             return '019ea2afad1d733eafb905816d10590e';
         }
+
         return match ($t) {
-            'integer', 'int'     => 1,
+            'integer', 'int' => 1,
             'number', 'double', 'float' => 0,
-            'boolean', 'bool'    => false,
-            'array'              => [],
-            'object'             => new \stdClass(),
-            'null'               => null,
-            default              => 'string',
+            'boolean', 'bool' => false,
+            'array' => [],
+            'object' => new \stdClass,
+            'null' => null,
+            default => 'string',
         };
     }
 
@@ -273,21 +316,25 @@ class ResponseIntrospector
         } catch (Throwable $e) {
 
         }
+
         return $out;
     }
 
     private function readOaProperty(mixed $prop): ?array
     {
         try {
-            $name    = property_exists($prop, 'property') ? $prop->property : null;
-            $type    = property_exists($prop, 'type') ? ($prop->type ?? 'string') : 'string';
+            $name = property_exists($prop, 'property') ? $prop->property : null;
+            $type = property_exists($prop, 'type') ? ($prop->type ?? 'string') : 'string';
             $example = property_exists($prop, 'example') ? $prop->example : null;
             $nullable = property_exists($prop, 'nullable') ? (bool) $prop->nullable : false;
-            if (! is_string($name) || $name === '') return null;
+            if (! is_string($name) || $name === '') {
+                return null;
+            }
+
             return [
-                'name'     => $name,
-                'type'     => is_string($type) ? $type : 'mixed',
-                'example'  => $example,
+                'name' => $name,
+                'type' => is_string($type) ? $type : 'mixed',
+                'example' => $example,
                 'nullable' => $nullable,
             ];
         } catch (Throwable $e) {

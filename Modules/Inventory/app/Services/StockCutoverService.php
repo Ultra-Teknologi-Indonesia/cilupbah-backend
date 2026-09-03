@@ -383,7 +383,10 @@ final class StockCutoverService
     public function previewReservations(string $runId): array
     {
         $run = $this->getRun($runId);
-        $this->assertApplyAllowed($run, 'REBUILD-RESERVATION', ['RESET_APPLIED', 'STOCK_IMPORTED', 'RESERVATIONS_REBUILT']);
+        $this->assertApplyAllowed($run, 'REBUILD-RESERVATION', [
+            'PREFLIGHT', 'SKU_AUDITED', 'STOCK_AUDITED', 'ORDERS_AUDITED', 'PAUSED',
+            'RESET_APPLIED', 'STOCK_IMPORTED', 'RESERVATIONS_REBUILT',
+        ]);
         $items = DB::table('sales_orders as so')
             ->join('sales_order_items as soi', 'soi.order_id', '=', 'so.id')
             ->whereIn('so.location_id', $run['location_ids'])
@@ -693,13 +696,33 @@ final class StockCutoverService
 
     private function saveReport(string $runId, string $status, array $report): void
     {
-        $run = DB::table('stock_cutover_runs')->where('id', $runId)->first(['report']);
+        $run = DB::table('stock_cutover_runs')->where('id', $runId)->first(['report', 'status']);
         $existing = $run ? $this->decodeJson($run->report) : [];
+        $currentStatus = (string) ($run->status ?? '');
+        $status = $this->statusRank($status) >= $this->statusRank($currentStatus) ? $status : $currentStatus;
         DB::table('stock_cutover_runs')->where('id', $runId)->update([
             'status' => $status,
             'report' => json_encode(array_replace_recursive($existing, $report), JSON_THROW_ON_ERROR),
             'updated_at' => now(),
         ]);
+    }
+
+    private function statusRank(string $status): int
+    {
+        return match ($status) {
+            'PREFLIGHT' => 10,
+            'SKU_AUDITED' => 20,
+            'STOCK_AUDITED' => 30,
+            'ORDERS_AUDITED' => 40,
+            'PAUSED' => 50,
+            'RESET_APPLIED' => 60,
+            'STOCK_IMPORTED' => 70,
+            'RESERVATIONS_REBUILT' => 80,
+            'VERIFY_FAILED', 'VERIFIED' => 90,
+            'RESUMED' => 100,
+            'REPLAYED' => 110,
+            default => 0,
+        };
     }
 
     private function decodeJson(mixed $value): array

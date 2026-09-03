@@ -38,10 +38,14 @@ php artisan cutover:stock-audit /secure/cutover/kecil.xlsx --location=WH-KECIL -
 php artisan cutover:order-audit --run-id=<run_id>
 php artisan cutover:reset --run-id=<run_id>
 php artisan cutover:pause --run-id=<run_id>
+php artisan cutover:import-stock /secure/cutover/pusat.xlsx --location=WH-PUSAT --run-id=<run_id> --zero-missing
+php artisan cutover:import-stock /secure/cutover/kecil.xlsx --location=WH-KECIL --run-id=<run_id> --zero-missing
 php artisan cutover:rebuild-reservation --run-id=<run_id>
 php artisan cutover:resume --run-id=<run_id>
 php artisan cutover:replay-orders --run-id=<run_id> --limit=50
 ```
+
+`cutover:verify` dijalankan setelah reset, import, dan rebuild reservation benar-benar diterapkan, karena command ini memeriksa kondisi akhir cutover.
 
 Jika seluruh audit tidak memiliki blocking issue, hentikan channel dan apply reset:
 

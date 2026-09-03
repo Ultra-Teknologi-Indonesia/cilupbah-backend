@@ -6,15 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Traits\AutoScopeMobileToAuth;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Modules\Outbound\Http\Resources\PacklistResource;
-use Modules\Outbound\Services\PacklistService;
+use Modules\Outbound\Http\Requests\AssignPackerRequest;
 use Modules\Outbound\Http\Requests\CreatePacklistRequest;
 use Modules\Outbound\Http\Requests\PackItemRequest;
-use Modules\Outbound\Http\Requests\AssignPackerRequest;
 use Modules\Outbound\Http\Requests\ScanPacklistOrderRequest;
 use Modules\Outbound\Http\Requests\UnpackItemRequest;
 use Modules\Outbound\Http\Requests\UnpackItemsRequest;
 use Modules\Outbound\Http\Requests\VerifyPacklistBarcodeRequest;
+use Modules\Outbound\Http\Resources\PacklistResource;
+use Modules\Outbound\Services\PacklistService;
 use OpenApi\Attributes as OA;
 use Throwable;
 
@@ -86,7 +86,7 @@ class PacklistController extends Controller
             auth()->user()?->email,
         );
 
-        if (!$packlist) {
+        if (! $packlist) {
             return $this->errorResponse('Pesanan tidak ditemukan atau belum siap packing.', 404);
         }
 
@@ -101,7 +101,7 @@ class PacklistController extends Controller
 
         $data->through(fn ($packlist) => new PacklistResource($packlist));
 
-        return $this->successResponse($data);
+        return $this->successPaginatedResponse($data);
     }
 
     #[OA\Post(
@@ -154,7 +154,7 @@ class PacklistController extends Controller
     {
         $packlist = $this->packlistService->getById($id);
 
-        if (!$packlist) {
+        if (! $packlist) {
             return $this->errorResponse('Packlist tidak ditemukan.', 404);
         }
 
@@ -179,7 +179,7 @@ class PacklistController extends Controller
         $limit = (int) $request->query('per_page', $request->query('limit', 10));
         $data = $this->packlistService->getItems($id, $limit);
 
-        return $this->successResponse($data);
+        return $this->successPaginatedResponse($data);
     }
 
     #[OA\Post(

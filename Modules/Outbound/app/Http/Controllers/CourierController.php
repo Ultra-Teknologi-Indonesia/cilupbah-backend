@@ -5,10 +5,10 @@ namespace Modules\Outbound\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Modules\Outbound\Http\Resources\CourierResource;
-use Modules\Outbound\Services\CourierService;
 use Modules\Outbound\Http\Requests\CreateCourierRequest;
 use Modules\Outbound\Http\Requests\UpdateCourierRequest;
+use Modules\Outbound\Http\Resources\CourierResource;
+use Modules\Outbound\Services\CourierService;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Outbound - Couriers', description: 'API Endpoints for Courier management')]
@@ -70,7 +70,7 @@ class CourierController extends Controller
 
         $data->through(fn ($courier) => new CourierResource($courier));
 
-        return $this->successResponse($data);
+        return $this->successPaginatedResponse($data);
     }
 
     public function index(Request $request): JsonResponse
@@ -80,7 +80,7 @@ class CourierController extends Controller
 
         $data->through(fn ($courier) => new CourierResource($courier));
 
-        return $this->successResponse($data);
+        return $this->successPaginatedResponse($data);
     }
 
     #[OA\Get(
@@ -147,7 +147,7 @@ class CourierController extends Controller
     {
         $courier = $this->courierService->getById($id);
 
-        if (!$courier) {
+        if (! $courier) {
             return $this->errorResponse('Courier tidak ditemukan.', 404);
         }
 

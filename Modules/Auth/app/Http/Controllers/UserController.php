@@ -81,13 +81,12 @@ class UserController extends Controller
             $role
         );
 
-        return response()->json([
-            'status' => 'success',
-            'message' => 'User lookup retrieved successfully',
-            'data' => UserLookupResource::collection($result['data']),
-            'totalCount' => $result['totalCount'] ?? count($result['data']),
-            'meta' => $result['meta'],
-        ]);
+        return $this->successResponse(
+            UserLookupResource::collection($result['data']),
+            'User lookup retrieved successfully',
+            200,
+            $result['meta'],
+        );
     }
 
     #[OA\Get(

@@ -3,12 +3,14 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Bus\Batch;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Concurrency;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Contracts\ChunkedDownloadable;
 use Modules\Channel\Jobs\DownloadProductsJob;
+use Modules\Channel\Jobs\DownloadSingleProductJob;
 use Modules\Channel\Jobs\ProcessDownloadChunkJob;
 use Modules\Channel\Models\DownloadTransaction;
 use Modules\Channel\Models\ChannelShop;
@@ -119,9 +121,9 @@ class ChannelDownloadService
         }
 
         $results = match ($ch) {
-            'tiktok' => app(TikTokProductService::class)->searchProducts($shopId, $query, (int) config('channel.search_remote_timeout_seconds', 8)),
-            'lazada' => app(LazadaProductService::class)->searchProducts($shopId, $query, (int) config('channel.search_remote_timeout_seconds', 8)),
-            'woocommerce' => app(WooCommerceProductService::class)->searchProducts($shopId, $query, (int) config('channel.search_remote_timeout_seconds', 8)),
+            'tiktok' => app(TikTokProductService::class)->searchProducts($shopId, $query, (int) config('channel.search_remote_timeout_seconds', 8), $limit),
+            'lazada' => app(LazadaProductService::class)->searchProducts($shopId, $query, (int) config('channel.search_remote_timeout_seconds', 8), $limit),
+            'woocommerce' => app(WooCommerceProductService::class)->searchProducts($shopId, $query, (int) config('channel.search_remote_timeout_seconds', 8), $limit),
             default => [],
         };
 
@@ -135,6 +137,12 @@ class ChannelDownloadService
     public function searchUnifiedProducts(string $query, array $shopIds = [], int $limitPerShop = 20): array
     {
         $query = trim($query);
+        $limitPerShop = max(1, min(50, $limitPerShop));
+        $shopIds = array_slice(
+            array_values(array_unique(array_filter(array_map('strval', $shopIds)))),
+            0,
+            100,
+        );
 
         $shopQuery = ChannelShop::with('channel')
             ->whereNull('disconnected_at')
@@ -427,11 +435,11 @@ class ChannelDownloadService
     {
         return match ($channel) {
             'shopee' => trim($query) !== ''
-                ? app(ShopeeProductService::class)->searchProducts($shopId, $query, (int) config('channel.search_remote_timeout_seconds', 8))
+                ? app(ShopeeProductService::class)->searchProducts($shopId, $query, (int) config('channel.search_remote_timeout_seconds', 8), $limit)
                 : (app(ShopeeProductService::class)->searchProductsPaged($shopId, $query, 0, $limit, (int) config('channel.search_remote_timeout_seconds', 8))['items'] ?? []),
-            'tiktok' => app(TikTokProductService::class)->searchProducts($shopId, $query, (int) config('channel.search_remote_timeout_seconds', 8)),
-            'lazada' => app(LazadaProductService::class)->searchProducts($shopId, $query, (int) config('channel.search_remote_timeout_seconds', 8)),
-            'woocommerce' => app(WooCommerceProductService::class)->searchProducts($shopId, $query, (int) config('channel.search_remote_timeout_seconds', 8)),
+            'tiktok' => app(TikTokProductService::class)->searchProducts($shopId, $query, (int) config('channel.search_remote_timeout_seconds', 8), $limit),
+            'lazada' => app(LazadaProductService::class)->searchProducts($shopId, $query, (int) config('channel.search_remote_timeout_seconds', 8), $limit),
+            'woocommerce' => app(WooCommerceProductService::class)->searchProducts($shopId, $query, (int) config('channel.search_remote_timeout_seconds', 8), $limit),
             default => [],
         };
     }
@@ -441,22 +449,50 @@ class ChannelDownloadService
         $this->assertSupported($channel);
         $channelShopId = $this->requireChannelShopId($shopId, $channel);
 
-        $transaction = DownloadTransaction::create([
-            'channel_shop_id' => $channelShopId,
-            'executed_by' => $executedBy,
-            'state' => DownloadTransaction::STATE_DOWNLOADING,
-            'all_product' => 1,
-        ]);
+        $active = DownloadTransaction::query()
+            ->where('channel_shop_id', $channelShopId)
+            ->where('external_product_id', $externalProductId)
+            ->whereIn('state', [DownloadTransaction::STATE_QUEUED, DownloadTransaction::STATE_DOWNLOADING])
+            ->latest('created_at')
+            ->first();
 
-        try {
-            $this->downloadProduct($channel, $shopId, $externalProductId);
-        } catch (\Throwable $e) {
-            $transaction->markFailed($e->getMessage());
-
-            throw $e;
+        if ($active) {
+            return $active;
         }
 
-        $transaction->markDone(1, 0);
+        try {
+            $transaction = DownloadTransaction::create([
+                'channel_shop_id' => $channelShopId,
+                'external_product_id' => $externalProductId,
+                'executed_by' => $executedBy,
+                'state' => DownloadTransaction::STATE_QUEUED,
+                'all_product' => 1,
+            ]);
+        } catch (QueryException $e) {
+            if ($e->getCode() !== '23505') {
+                throw $e;
+            }
+
+            $transaction = DownloadTransaction::query()
+                ->where('channel_shop_id', $channelShopId)
+                ->where('external_product_id', $externalProductId)
+                ->whereIn('state', [DownloadTransaction::STATE_QUEUED, DownloadTransaction::STATE_DOWNLOADING])
+                ->latest('created_at')
+                ->first();
+
+            if (! $transaction) {
+                throw $e;
+            }
+
+            return $transaction;
+        }
+
+        DownloadSingleProductJob::dispatch(
+            $transaction->id,
+            $channel,
+            $shopId,
+            $externalProductId,
+        )->afterCommit();
 
         return $transaction;
     }

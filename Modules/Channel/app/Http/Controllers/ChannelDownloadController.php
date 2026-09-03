@@ -32,11 +32,11 @@ class ChannelDownloadController extends Controller
     #[OA\RequestBody(required: true, content: new OA\JsonContent(properties: [
         new OA\Property(property: "shop_id", type: "string")
     ]))]
-    #[OA\Response(response: 200, description: "Download berhasil")]
+    #[OA\Response(response: 202, description: "Download diantrekan")]
     #[OA\Response(response: 422, description: "Channel tidak didukung / shop_id kosong")]
     public function download(Request $request, string $channel): JsonResponse
     {
-        $data = $request->validate(['shop_id' => 'required|string']);
+        $data = $request->validate(['shop_id' => 'required|string|max:255']);
 
         try {
             $transaction = $this->downloadService->download($channel, $data['shop_id'], $request->user()?->id);
@@ -72,12 +72,12 @@ class ChannelDownloadController extends Controller
     #[OA\RequestBody(required: true, content: new OA\JsonContent(properties: [
         new OA\Property(property: "shop_ids", type: "array", items: new OA\Items(type: "string"))
     ]))]
-    #[OA\Response(response: 200, description: "Proses download massal selesai")]
+    #[OA\Response(response: 202, description: "Download massal diantrekan")]
     public function downloadBulk(Request $request, string $channel): JsonResponse
     {
         $data = $request->validate([
-            'shop_ids' => 'required|array|min:1',
-            'shop_ids.*' => 'string',
+            'shop_ids' => 'required|array|min:1|max:100',
+            'shop_ids.*' => 'string|max:255',
         ]);
 
         try {
@@ -117,7 +117,7 @@ class ChannelDownloadController extends Controller
     {
         $data = $request->validate([
             'shop_id' => 'required|string',
-            'q' => 'nullable|string',
+            'q' => 'nullable|string|max:200',
             'offset' => 'nullable|integer|min:0',
             'limit' => 'nullable|integer|min:1|max:50',
         ]);
@@ -159,15 +159,22 @@ class ChannelDownloadController extends Controller
         new OA\Property(property: "shop_id", type: "string"),
         new OA\Property(property: "external_product_id", type: "string"),
     ]))]
+    #[OA\Response(response: 202, description: "Download produk diantrekan")]
+    #[OA\Response(response: 422, description: "Channel, toko, atau external product id tidak valid")]
     public function downloadProduct(Request $request, string $channel): JsonResponse
     {
         $data = $request->validate([
-            'shop_id' => 'required|string',
-            'external_product_id' => 'required|string',
+            'shop_id' => 'required|string|max:255',
+            'external_product_id' => 'required|string|max:255',
         ]);
 
         try {
-            $this->downloadService->downloadProductManual($channel, $data['shop_id'], $data['external_product_id'], $request->user()?->id);
+            $transaction = $this->downloadService->downloadProductManual(
+                $channel,
+                $data['shop_id'],
+                $data['external_product_id'],
+                $request->user()?->id,
+            );
         } catch (\RuntimeException $e) {
             return $this->errorResponse(
                 'Gagal mengunduh produk.',
@@ -184,7 +191,11 @@ class ChannelDownloadController extends Controller
             );
         }
 
-        return $this->successResponse(null, 'Produk berhasil diunduh dari channel');
+        return $this->successResponse(
+            new DownloadTransactionResource($transaction->load('channelShop.channel')),
+            'Download produk diantrekan',
+            202,
+        );
     }
 
     #[OA\Post(
@@ -195,9 +206,9 @@ class ChannelDownloadController extends Controller
     public function searchUnified(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'q' => 'nullable|string',
-            'shop_ids' => 'nullable|array',
-            'shop_ids.*' => 'string',
+            'q' => 'nullable|string|max:200',
+            'shop_ids' => 'nullable|array|max:100',
+            'shop_ids.*' => 'string|max:255',
             'limit_per_shop' => 'nullable|integer|min:1|max:50',
         ]);
 

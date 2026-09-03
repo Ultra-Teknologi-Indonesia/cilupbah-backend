@@ -452,7 +452,7 @@ class LazadaProductService
         return true;
     }
 
-    public function searchProducts(string $shopId, string $query, ?int $timeoutSeconds = null): array
+    public function searchProducts(string $shopId, string $query, ?int $timeoutSeconds = null, int $limit = 20): array
     {
         $shop = $this->shopRepository->findByShopId($shopId);
         if (! $shop || ! $shop->access_token) {
@@ -462,7 +462,8 @@ class LazadaProductService
         $needle  = trim(mb_strtolower($query));
         $results = [];
         $seen    = [];
-        $limit   = self::SEARCH_PAGE_LIMIT;
+        $targetLimit = max(1, min(50, $limit));
+        $pageLimit = min(self::SEARCH_PAGE_LIMIT, $targetLimit);
         $searchTimeout = max(1, $timeoutSeconds ?? (int) config('channel.search_remote_timeout_seconds', 10));
         $searchAttempts = max(1, (int) config('channel.search_remote_attempts', 2));
 
@@ -473,7 +474,7 @@ class LazadaProductService
 
             do {
 
-                $params = ['filter' => $filter, 'offset' => $offset, 'limit' => $limit];
+                $params = ['filter' => $filter, 'offset' => $offset, 'limit' => $pageLimit];
                 if ($needle !== '') {
                     $params['search'] = $query;
                 }
@@ -534,18 +535,22 @@ class LazadaProductService
                         'shop_name'           => $shop->shop_name ?? null,
                         'channel_code'        => 'lazada',
                     ];
+
+                    if (count($results) >= $targetLimit) {
+                        break 2;
+                    }
                 }
 
-                $offset += $limit;
+                $offset += $pageLimit;
                 $pages++;
-            } while (count($products) === $limit && $pages < 5 && count($results) < 200);
+            } while (count($products) === $pageLimit && $pages < 5 && count($results) < $targetLimit);
 
-            if (count($results) >= 200) {
+            if (count($results) >= $targetLimit) {
                 break;
             }
         }
 
-        return $results;
+        return array_slice($results, 0, $targetLimit);
     }
 
     protected function sellerSkus(array $item): array

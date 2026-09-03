@@ -456,7 +456,7 @@ class TikTokProductService
         return $count;
     }
 
-    public function searchProducts(string $shopId, string $query, ?int $timeoutSeconds = null): array
+    public function searchProducts(string $shopId, string $query, ?int $timeoutSeconds = null, int $limit = 20): array
     {
         $shop = $this->shopRepository->findByShopId($shopId);
         if (!$shop || !$shop->access_token) {
@@ -466,6 +466,7 @@ class TikTokProductService
         $accessToken = $shop->access_token;
         $shopCipher  = $shop->shop_cipher ?? '';
         $needle      = trim(mb_strtolower($query));
+        $limit       = max(1, $limit);
         $timeoutSeconds ??= max(1, (int) config('channel.search_remote_timeout_seconds', 8));
 
         $results   = [];
@@ -518,11 +519,15 @@ class TikTokProductService
                 ];
             }
 
+            if (count($results) >= $limit) {
+                break;
+            }
+
             $pageToken = $res['data']['next_page_token'] ?? null;
             $pages++;
         } while ($pageToken && $pages < 5 && count($results) < 200);
 
-        return $results;
+        return array_slice($results, 0, $limit);
     }
 
     public function fetchLiveProduct(string $shopId, string $externalProductId): ?array

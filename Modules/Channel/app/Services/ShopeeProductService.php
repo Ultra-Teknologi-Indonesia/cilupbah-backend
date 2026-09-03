@@ -392,7 +392,7 @@ class ShopeeProductService implements ChunkedDownloadable
         return true;
     }
 
-    public function searchProducts(string $shopId, string $query, ?int $timeoutSeconds = null): array
+    public function searchProducts(string $shopId, string $query, ?int $timeoutSeconds = null, int $limit = 20): array
     {
         $shop = $this->requireShop($shopId);
         $needle = trim(mb_strtolower($query));
@@ -401,13 +401,14 @@ class ShopeeProductService implements ChunkedDownloadable
         $offset = 0;
         $pageSize = 50;
         $pages = 0;
+        $limit = max(1, $limit);
         $timeoutSeconds ??= max(1, (int) config('channel.search_remote_timeout_seconds', 8));
 
         do {
             $list = $this->fetchItemList($shop, $offset, $pageSize, $timeoutSeconds);
             $itemIds = $this->extractItemIds($list);
             $baseItems = $this->fetchBaseInfo($shop, $itemIds, $timeoutSeconds);
-            $modelLists = $needle !== ''
+            $modelLists = $this->shouldHydrateVariantModels($needle)
                 ? $this->fetchSearchModelLists($shop, $baseItems, $needle, $timeoutSeconds)
                 : [];
 
@@ -416,9 +417,9 @@ class ShopeeProductService implements ChunkedDownloadable
             $hasNext = (bool) ($list['has_next_page'] ?? false);
             $offset = (int) ($list['next_offset'] ?? ($offset + $pageSize));
             $pages++;
-        } while ($hasNext && $pages < 5 && count($results) < 200);
+        } while ($hasNext && $pages < 5 && count($results) < $limit);
 
-        return $results;
+        return array_slice($results, 0, $limit);
     }
 
     public function searchProductsPaged(string $shopId, string $query, int $offset, int $limit, ?int $timeoutSeconds = null): array
@@ -431,7 +432,7 @@ class ShopeeProductService implements ChunkedDownloadable
         $list = $this->fetchItemList($shop, $offset, $pageSize, $timeoutSeconds);
         $itemIds = $this->extractItemIds($list);
         $baseItems = $this->fetchBaseInfo($shop, $itemIds, $timeoutSeconds);
-        $modelLists = $needle !== ''
+        $modelLists = $this->shouldHydrateVariantModels($needle)
             ? $this->fetchSearchModelLists($shop, $baseItems, $needle, $timeoutSeconds)
             : [];
 
@@ -446,6 +447,15 @@ class ShopeeProductService implements ChunkedDownloadable
     protected function fetchItemList(object $shop, int $offset, int $pageSize, ?int $timeoutSeconds = null): array
     {
         return $this->fetchItemListByStatus($shop, $offset, $pageSize, 'NORMAL', $timeoutSeconds);
+    }
+
+    protected function shouldHydrateVariantModels(string $needle): bool
+    {
+        if ($needle === '' || preg_match('/\s/', $needle) === 1) {
+            return false;
+        }
+
+        return strpbrk($needle, '-_/') !== false || preg_match('/\d/', $needle) === 1;
     }
 
     protected function fetchBaseInfo(object $shop, array $itemIds, ?int $timeoutSeconds = null): array

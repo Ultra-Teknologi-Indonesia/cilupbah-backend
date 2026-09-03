@@ -99,12 +99,13 @@ class WooCommerceProductService
         return true;
     }
 
-    public function searchProducts(string $shopId, string $query, ?int $timeoutSeconds = null): array
+    public function searchProducts(string $shopId, string $query, ?int $timeoutSeconds = null, int $limit = 20): array
     {
         $shop = $this->requireShop($shopId);
 
         $timeoutSeconds ??= max(1, (int) config('channel.search_remote_timeout_seconds', 8));
-        $products = $this->client->get($shop, 'products', ['search' => $query, 'per_page' => 50, 'status' => 'publish'], $timeoutSeconds);
+        $limit = max(1, min(50, $limit));
+        $products = $this->client->get($shop, 'products', ['search' => $query, 'per_page' => $limit, 'status' => 'publish'], $timeoutSeconds);
 
         $results = [];
         foreach ($products as $item) {
@@ -126,7 +127,7 @@ class WooCommerceProductService
             ];
         }
 
-        return $results;
+        return array_slice($results, 0, $limit);
     }
 
     public function reconcileChannelData(string $shopId): int

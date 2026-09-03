@@ -111,7 +111,7 @@ class UserManagementApiTest extends TestCase
             ->assertStatus(200)
             ->assertJsonStructure([
                 'data' => [['user_id', 'email', 'last_login', 'is_owner']],
-                'totalCount',
+                'meta' => ['total'],
             ]);
     }
 
@@ -124,7 +124,7 @@ class UserManagementApiTest extends TestCase
         $res = $this->actingAs($this->owner, 'sanctum')
             ->getJson('/api/v1/systemsetting/users?q=owner-unik')
             ->assertStatus(200)
-            ->assertJsonPath('totalCount', 1);
+            ->assertJsonPath('meta.total', 1);
 
         $this->assertSame('owner-unik@example.com', $res->json('data.0.email'));
         $this->assertTrue($res->json('data.0.is_owner'));

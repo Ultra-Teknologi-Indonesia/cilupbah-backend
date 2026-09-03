@@ -6,7 +6,9 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Modules\Channel\Jobs\DownloadSingleProductJob;
 use Modules\Channel\Jobs\DownloadProductsJob;
+use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Models\DownloadTransaction;
 use Modules\Channel\Services\ChannelDownloadService;
@@ -29,7 +31,14 @@ class ChannelDownloadTest extends TestCase
 
         DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Belum Dikategorikan', 'is_active' => true]);
 
+        $tiktok = Channel::create([
+            'code' => 'tiktok',
+            'name' => 'TikTok Shop',
+            'is_active' => true,
+        ]);
+
         ChannelShop::create([
+            'channel_id' => $tiktok->id,
             'shop_id' => 'SHOP-DL-1',
             'access_token' => 'access-token',
             'is_active' => true,
@@ -84,13 +93,40 @@ class ChannelDownloadTest extends TestCase
         Queue::assertPushed(DownloadProductsJob::class);
     }
 
+    public function test_single_product_download_is_queued_without_remote_request_and_is_deduplicated(): void
+    {
+        Queue::fake();
+        Http::fake();
+
+        $payload = [
+            'shop_id' => 'SHOP-DL-1',
+            'external_product_id' => 'TIKTOK-PROD-ASYNC-1',
+        ];
+
+        $first = $this->postJson('/api/v1/tiktok/download-product', $payload)
+            ->assertStatus(202)
+            ->assertJsonPath('data.state', 'queued');
+
+        $second = $this->postJson('/api/v1/tiktok/download-product', $payload)
+            ->assertStatus(202)
+            ->assertJsonPath('data.state', 'queued');
+
+        $this->assertSame(
+            $first->json('data.trx_id'),
+            $second->json('data.trx_id'),
+        );
+        $this->assertDatabaseCount('download_transactions', 1);
+        Queue::assertPushed(DownloadSingleProductJob::class, 1);
+        Http::assertNothingSent();
+    }
+
     public function test_pull_creates_products_with_download_status()
     {
         app(ChannelDownloadService::class)->pull('tiktok', 'SHOP-DL-1');
 
         $this->assertDatabaseHas('products', [
             'name' => 'Downloaded Phone',
-            'status' => 'download',
+            'status' => 'master',
         ]);
 
         $shop = ChannelShop::where('shop_id', 'SHOP-DL-1')->first();
@@ -140,6 +176,7 @@ class ChannelDownloadTest extends TestCase
         Queue::fake();
 
         ChannelShop::create([
+            'channel_id' => Channel::where('code', 'tiktok')->value('id'),
             'shop_id' => 'SHOP-DL-2',
             'access_token' => 'access-token-2',
             'is_active' => true,

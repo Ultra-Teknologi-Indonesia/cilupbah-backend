@@ -21,16 +21,8 @@ class SalesOrderActivityController extends Controller
 
         $paginator = $this->repository->paginateStatusHistory($id, $perPage);
 
-        return $this->successResponse(
-            SalesOrderActivityResource::collection($paginator->items()),
-            null,
-            200,
-            [
-                'next_cursor' => $paginator->nextCursor()?->encode(),
-                'prev_cursor' => $paginator->previousCursor()?->encode(),
-                'per_page'    => $perPage,
-                'has_more'    => $paginator->hasMorePages(),
-            ],
+        return $this->successCursorPaginatedResponse(
+            SalesOrderActivityResource::collection($paginator),
         );
     }
 }

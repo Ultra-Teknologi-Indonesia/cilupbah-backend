@@ -2,10 +2,19 @@
 
 namespace Modules\Warehouse\Tests\Feature;
 
-use Tests\TestCase;
 use App\Models\User;
-use Modules\Warehouse\Models\Location;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Modules\Product\Models\Category;
+use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductVariant;
+use Modules\Region\Models\City;
+use Modules\Region\Models\District;
+use Modules\Region\Models\Province;
+use Modules\Region\Models\Village;
+use Modules\Warehouse\Models\Location;
+use Tests\TestCase;
 
 class LocationApiTest extends TestCase
 {
@@ -26,7 +35,18 @@ class LocationApiTest extends TestCase
         $response = $this->actingAs($this->user, 'sanctum')->getJson('/api/v1/locations');
 
         $response->assertStatus(200)
-                 ->assertJsonStructure(['status', 'message', 'data', 'meta']);
+            ->assertJsonStructure(['status', 'message', 'data', 'meta']);
+    }
+
+    public function test_limit_alias_uses_the_canonical_per_page_meta(): void
+    {
+        Location::factory()->count(3)->create();
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/locations?limit=1')
+            ->assertOk()
+            ->assertJsonPath('meta.per_page', 1)
+            ->assertJsonCount(1, 'data');
     }
 
     public function test_can_create_location_with_layout(): void
@@ -59,7 +79,7 @@ class LocationApiTest extends TestCase
         $locationId = $response->json('data.id');
         $this->assertDatabaseHas('location_bins', [
             'location_id' => $locationId,
-            'is_inbound' => true
+            'is_inbound' => true,
         ]);
     }
 
@@ -75,15 +95,15 @@ class LocationApiTest extends TestCase
         $response = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/locations', $payload);
 
         $response->assertStatus(422)
-                 ->assertJsonValidationErrors(['village_id']);
+            ->assertJsonValidationErrors(['village_id']);
     }
 
     private function createVillage(): string
     {
-        \Modules\Region\Models\Province::create(['id' => '32', 'nama' => 'Jawa Barat']);
-        \Modules\Region\Models\City::create(['id' => '3273', 'province_id' => '32', 'nama' => 'Bandung']);
-        \Modules\Region\Models\District::create(['id' => '327301', 'city_id' => '3273', 'nama' => 'Coblong']);
-        \Modules\Region\Models\Village::create(['id' => '3273011001', 'district_id' => '327301', 'nama' => 'Dago']);
+        Province::create(['id' => '32', 'nama' => 'Jawa Barat']);
+        City::create(['id' => '3273', 'province_id' => '32', 'nama' => 'Bandung']);
+        District::create(['id' => '327301', 'city_id' => '3273', 'nama' => 'Coblong']);
+        Village::create(['id' => '3273011001', 'district_id' => '327301', 'nama' => 'Dago']);
 
         return '3273011001';
     }
@@ -98,7 +118,7 @@ class LocationApiTest extends TestCase
         $response = $this->actingAs($this->user, 'sanctum')->postJson('/api/v1/locations', $payload);
 
         $response->assertStatus(422)
-                 ->assertJsonValidationErrors(['location_name']);
+            ->assertJsonValidationErrors(['location_name']);
     }
 
     public function test_create_requires_phone_and_email(): void
@@ -148,7 +168,7 @@ class LocationApiTest extends TestCase
         $response = $this->actingAs($this->user, 'sanctum')->getJson("/api/v1/locations/{$location->id}");
 
         $response->assertStatus(200)
-                 ->assertJsonPath('data.id', $location->id);
+            ->assertJsonPath('data.id', $location->id);
     }
 
     public function test_can_update_location(): void
@@ -164,7 +184,7 @@ class LocationApiTest extends TestCase
         $response->assertStatus(200);
         $this->assertDatabaseHas('locations', [
             'id' => $location->id,
-            'location_name' => 'Updated Name'
+            'location_name' => 'Updated Name',
         ]);
     }
 
@@ -240,13 +260,13 @@ class LocationApiTest extends TestCase
         $location = Location::factory()->create();
 
         $payload = [
-            'default_warehouse_user' => 'not-an-email', 
+            'default_warehouse_user' => 'not-an-email',
         ];
 
         $response = $this->actingAs($this->user, 'sanctum')->putJson("/api/v1/locations/{$location->id}", $payload);
 
         $response->assertStatus(422)
-                 ->assertJsonValidationErrors(['default_warehouse_user']);
+            ->assertJsonValidationErrors(['default_warehouse_user']);
     }
 
     public function test_can_delete_location(): void
@@ -264,22 +284,22 @@ class LocationApiTest extends TestCase
     {
         $location = Location::factory()->create();
 
-        $category = \Modules\Product\Models\Category::create(['name' => 'Test Category', 'is_active' => true]);
-        $product = \Modules\Product\Models\Product::create([
+        $category = Category::create(['name' => 'Test Category', 'is_active' => true]);
+        $product = Product::create([
             'category_id' => $category->id,
             'name' => 'Test Product',
             'status' => 'master',
             'is_active' => true,
         ]);
-        $variant = \Modules\Product\Models\ProductVariant::create([
+        $variant = ProductVariant::create([
             'product_id' => $product->id,
             'sku' => 'TEST-SKU-INV',
             'sell_price' => 1000,
             'is_active' => true,
         ]);
 
-        \Illuminate\Support\Facades\DB::table('inventories')->insert([
-            'id' => \Illuminate\Support\Str::orderedUuid()->toString(),
+        DB::table('inventories')->insert([
+            'id' => Str::orderedUuid()->toString(),
             'location_id' => $location->id,
             'item_id' => $variant->id,
             'bin_id' => null,
@@ -295,7 +315,7 @@ class LocationApiTest extends TestCase
         $response = $this->actingAs($this->user, 'sanctum')->deleteJson("/api/v1/locations/{$location->id}");
 
         $response->assertStatus(422)
-                 ->assertJsonPath('message', 'Lokasi tidak dapat dihapus karena masih memiliki data stok.');
+            ->assertJsonPath('message', 'Lokasi tidak dapat dihapus karena masih memiliki data stok.');
 
         $this->assertDatabaseHas('locations', ['id' => $location->id]);
     }

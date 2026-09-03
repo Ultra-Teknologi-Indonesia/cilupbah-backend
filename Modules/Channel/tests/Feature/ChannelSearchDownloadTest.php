@@ -6,9 +6,12 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Jobs\DownloadSingleProductJob;
 use Modules\Channel\Services\LazadaProductService;
+use Modules\Channel\Services\ChannelDownloadService;
 use Modules\Channel\Services\TikTokProductService;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
@@ -218,6 +221,7 @@ class ChannelSearchDownloadTest extends TestCase
     public function test_download_product_creates_master_status_product(): void
     {
         Category::create(['name' => 'Root', 'is_active' => true]);
+        Queue::fake();
 
         Http::fake([
             'api.lazada.co.id/rest/product/item/get*' => Http::response([
@@ -230,7 +234,12 @@ class ChannelSearchDownloadTest extends TestCase
                 'shop_id' => 'LZ-100',
                 'external_product_id' => '555100',
             ])
-            ->assertStatus(200);
+            ->assertStatus(202)
+            ->assertJsonPath('data.state', 'queued');
+
+        $transaction = \Modules\Channel\Models\DownloadTransaction::query()->latest('created_at')->firstOrFail();
+        (new DownloadSingleProductJob($transaction->id, 'lazada', 'LZ-100', '555100'))
+            ->handle(app(ChannelDownloadService::class));
 
         $variant = DB::table('product_variants')->where('sku', 'SKU-RUN-42')->first();
         $this->assertNotNull($variant);
@@ -248,6 +257,7 @@ class ChannelSearchDownloadTest extends TestCase
     public function test_single_download_links_every_lazada_variant_to_the_listing(): void
     {
         Category::create(['name' => 'Root', 'is_active' => true]);
+        Queue::fake();
 
         $item = $this->lazadaItem();
         $item['skus'][] = [
@@ -270,7 +280,11 @@ class ChannelSearchDownloadTest extends TestCase
                 'shop_id' => 'LZ-100',
                 'external_product_id' => '555100',
             ])
-            ->assertStatus(200);
+            ->assertStatus(202);
+
+        $transaction = \Modules\Channel\Models\DownloadTransaction::query()->latest('created_at')->firstOrFail();
+        (new DownloadSingleProductJob($transaction->id, 'lazada', 'LZ-100', '555100'))
+            ->handle(app(ChannelDownloadService::class));
 
         $pcm = DB::table('product_channel_mappings')
             ->where('channel_shop_id', $this->lazadaShop->id)
@@ -327,6 +341,7 @@ class ChannelSearchDownloadTest extends TestCase
     public function test_download_product_records_download_transaction_history(): void
     {
         Category::create(['name' => 'Root', 'is_active' => true]);
+        Queue::fake();
 
         Http::fake([
             'api.lazada.co.id/rest/product/item/get*' => Http::response([
@@ -339,18 +354,22 @@ class ChannelSearchDownloadTest extends TestCase
                 'shop_id' => 'LZ-100',
                 'external_product_id' => '555100',
             ])
-            ->assertStatus(200);
+            ->assertStatus(202)
+            ->assertJsonPath('data.state', 'queued');
 
         $this->assertDatabaseHas('download_transactions', [
             'channel_shop_id' => $this->lazadaShop->id,
             'executed_by' => $this->user->id,
-            'state' => 'done',
-            'total_downloaded' => 1,
+            'state' => 'queued',
+            'external_product_id' => '555100',
         ]);
+
+        \Illuminate\Support\Facades\Queue::assertPushed(DownloadSingleProductJob::class);
     }
 
     public function test_download_product_not_found_records_failed_transaction(): void
     {
+        Queue::fake();
         Http::fake([
             'api.lazada.co.id/rest/product/item/get*' => Http::response(['code' => '0', 'data' => []], 200),
         ]);
@@ -360,7 +379,15 @@ class ChannelSearchDownloadTest extends TestCase
                 'shop_id' => 'LZ-100',
                 'external_product_id' => 'NON-EXISTENT',
             ])
-            ->assertStatus(422);
+            ->assertStatus(202);
+
+        $transaction = \Modules\Channel\Models\DownloadTransaction::query()->latest('created_at')->firstOrFail();
+        $job = new DownloadSingleProductJob($transaction->id, 'lazada', 'LZ-100', 'NON-EXISTENT');
+        try {
+            $job->handle(app(ChannelDownloadService::class));
+        } catch (\Throwable $e) {
+            $job->failed($e);
+        }
 
         $this->assertDatabaseHas('download_transactions', [
             'channel_shop_id' => $this->lazadaShop->id,
@@ -370,6 +397,7 @@ class ChannelSearchDownloadTest extends TestCase
 
     public function test_single_download_skips_non_active_lazada_product(): void
     {
+        Queue::fake();
         $inactive = $this->lazadaItem();
         $inactive['status'] = 'inactive';
 
@@ -384,7 +412,15 @@ class ChannelSearchDownloadTest extends TestCase
                 'shop_id' => 'LZ-100',
                 'external_product_id' => '555100',
             ])
-            ->assertStatus(422);
+            ->assertStatus(202);
+
+        $transaction = \Modules\Channel\Models\DownloadTransaction::query()->latest('created_at')->firstOrFail();
+        $job = new DownloadSingleProductJob($transaction->id, 'lazada', 'LZ-100', '555100');
+        try {
+            $job->handle(app(ChannelDownloadService::class));
+        } catch (\Throwable $e) {
+            $job->failed($e);
+        }
 
         $this->assertDatabaseMissing('product_channel_mappings', [
             'channel_shop_id' => $this->lazadaShop->id,
@@ -407,6 +443,7 @@ class ChannelSearchDownloadTest extends TestCase
 
     public function test_download_product_not_found_returns_422(): void
     {
+        Queue::fake();
         Http::fake([
             'api.lazada.co.id/rest/product/item/get*' => Http::response(['code' => '0', 'data' => []], 200),
         ]);
@@ -416,6 +453,7 @@ class ChannelSearchDownloadTest extends TestCase
                 'shop_id' => 'LZ-100',
                 'external_product_id' => 'NON-EXISTENT',
             ])
-            ->assertStatus(422);
+            ->assertStatus(202)
+            ->assertJsonPath('data.state', 'queued');
     }
 }

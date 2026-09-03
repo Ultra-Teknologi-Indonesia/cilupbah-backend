@@ -19,6 +19,7 @@ class DownloadTransaction extends Model
     protected $fillable = [
         'trx_no',
         'channel_shop_id',
+        'external_product_id',
         'executed_by',
         'state',
         'all_product',

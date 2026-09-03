@@ -26,15 +26,10 @@ class StockReplenishmentController extends Controller
 
         $paginator = $this->service->list($status, $perPage);
 
-        return $this->successResponse([
-            'items' => StockReplenishmentResource::collection($paginator->items()),
-            'meta' => [
-                'current_page' => $paginator->currentPage(),
-                'last_page' => $paginator->lastPage(),
-                'per_page' => $paginator->perPage(),
-                'total' => $paginator->total(),
-            ],
-        ], 'Daftar permintaan pengisian stok');
+        return $this->successPaginatedResponse(
+            StockReplenishmentResource::collection($paginator),
+            'Daftar permintaan pengisian stok',
+        );
     }
 
     public function pendingCount(): JsonResponse
