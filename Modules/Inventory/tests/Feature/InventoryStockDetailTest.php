@@ -69,6 +69,14 @@ class InventoryStockDetailTest extends TestCase
         ]);
     }
 
+    public function test_inventory_list_resolves_warehouse_access_without_server_error(): void
+    {
+        $response = $this->getJson('/api/v1/inventory?per_page=1');
+
+        $response->assertOk()
+            ->assertJsonPath('status', 'success');
+    }
+
     public function test_it_returns_all_allocated_bins_including_zero_on_hand_stock(): void
     {
         Inventory::create([
