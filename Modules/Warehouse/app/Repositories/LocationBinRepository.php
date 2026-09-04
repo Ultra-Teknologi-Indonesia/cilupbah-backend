@@ -2,10 +2,10 @@
 
 namespace Modules\Warehouse\Repositories;
 
-use Modules\Warehouse\Models\LocationBin;
-use Modules\Inventory\Models\Inventory;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Collection;
+use Modules\Inventory\Models\Inventory;
+use Modules\Warehouse\Models\LocationBin;
 use Ramsey\Uuid\Uuid;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
@@ -32,7 +32,8 @@ class LocationBinRepository
                 'column_code',
                 'bin_code',
                 'category',
-                'productVariants.sku'
+                'productVariants.sku',
+                'assignedProductVariants.sku'
             )
             ->allowedFilters(
                 AllowedFilter::exact('is_inbound'),
@@ -64,7 +65,8 @@ class LocationBinRepository
                 'column_code',
                 'bin_code',
                 'category',
-                'productVariants.sku'
+                'productVariants.sku',
+                'assignedProductVariants.sku'
             )
             ->allowedFilters(
                 AllowedFilter::exact('is_inbound'),

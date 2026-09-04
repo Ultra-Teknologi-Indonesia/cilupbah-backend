@@ -3,13 +3,15 @@
 namespace Modules\Warehouse\Models;
 
 use App\Traits\HasUuid7;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Models\SkuRackAssignment;
 use Modules\Product\Models\ProductVariant;
+use Modules\Warehouse\Database\Factories\LocationBinFactory;
 
 class LocationBin extends Model
 {
@@ -17,7 +19,7 @@ class LocationBin extends Model
 
     protected static function newFactory()
     {
-        return \Modules\Warehouse\Database\Factories\LocationBinFactory::new();
+        return LocationBinFactory::new();
     }
 
     protected $fillable = [
@@ -72,14 +74,23 @@ class LocationBin extends Model
             'id',
             'id',
             'item_id'
-        )->where(function ($q) {
-            $q->where('inventories.on_hand', '>', 0)
-                ->orWhere('inventories.on_order', '>', 0);
-        });
+        );
+    }
+
+    public function assignedProductVariants(): HasManyThrough
+    {
+        return $this->hasManyThrough(
+            ProductVariant::class,
+            SkuRackAssignment::class,
+            'bin_id',
+            'id',
+            'id',
+            'item_id'
+        );
     }
 
     public function skuRackAssignments(): HasMany
     {
-        return $this->hasMany(\Modules\Inventory\Models\SkuRackAssignment::class, 'bin_id');
+        return $this->hasMany(SkuRackAssignment::class, 'bin_id');
     }
 }

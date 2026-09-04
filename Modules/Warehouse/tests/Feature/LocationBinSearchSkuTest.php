@@ -2,12 +2,12 @@
 
 namespace Modules\Warehouse\Tests\Feature;
 
-use Tests\TestCase;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Models\SkuRackAssignment;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
@@ -15,6 +15,7 @@ use Modules\Warehouse\Http\Resources\LocationBinResource;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 use Modules\Warehouse\Repositories\LocationBinRepository;
+use Tests\TestCase;
 
 class LocationBinSearchSkuTest extends TestCase
 {
@@ -28,11 +29,11 @@ class LocationBinSearchSkuTest extends TestCase
 
     private function makeVariant(string $sku, string $productName): ProductVariant
     {
-        $category = Category::create(['name' => 'Kategori ' . Str::random(4)]);
+        $category = Category::create(['name' => 'Kategori '.Str::random(4)]);
         $product = Product::create([
             'category_id' => $category->id,
             'name' => $productName,
-            'sku' => 'PROD-' . Str::random(6),
+            'sku' => 'PROD-'.Str::random(6),
             'status' => 'master',
         ]);
 
@@ -127,6 +128,48 @@ class LocationBinSearchSkuTest extends TestCase
 
         $this->assertContains('RAK-X1', $codes);
         $this->assertNotContains('RAK-Y1', $codes);
+    }
+
+    public function test_search_by_sku_finds_zero_stock_inventory(): void
+    {
+        $loc = Location::factory()->create();
+        $bin = LocationBin::factory()->create([
+            'location_id' => $loc->id,
+            'is_inbound' => false,
+            'is_stock_acknowledged' => true,
+            'bin_final_code' => 'RAK-ZERO',
+        ]);
+
+        $variant = $this->makeVariant('GSH-BL-IP-17-AIR', 'Glitter Shield Air');
+        $this->placeStock($loc, $bin, $variant, 0);
+
+        $paginator = $this->withSearch('GSH-BL-IP-17-AIR', fn () => app(LocationBinRepository::class)
+            ->findByLocationPaginated($loc->id));
+
+        $this->assertContains('RAK-ZERO', $paginator->getCollection()->pluck('bin_final_code')->all());
+    }
+
+    public function test_search_by_sku_finds_rack_assignment_when_stock_is_zero(): void
+    {
+        $loc = Location::factory()->create();
+        $bin = LocationBin::factory()->create([
+            'location_id' => $loc->id,
+            'is_inbound' => false,
+            'is_stock_acknowledged' => true,
+            'bin_final_code' => 'RAK-ASSIGNED-ZERO',
+        ]);
+
+        $variant = $this->makeVariant('GSH-BL-IP-17-AIR-ASSIGNED', 'Glitter Shield Assigned');
+        SkuRackAssignment::create([
+            'location_id' => $loc->id,
+            'item_id' => $variant->id,
+            'bin_id' => $bin->id,
+        ]);
+
+        $paginator = $this->withSearch('GSH-BL-IP-17-AIR-ASSIGNED', fn () => app(LocationBinRepository::class)
+            ->findByLocationPaginated($loc->id));
+
+        $this->assertContains('RAK-ASSIGNED-ZERO', $paginator->getCollection()->pluck('bin_final_code')->all());
     }
 
     public function test_resource_exposes_skus_summary(): void
