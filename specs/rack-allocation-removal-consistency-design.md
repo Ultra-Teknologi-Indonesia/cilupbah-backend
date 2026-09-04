@@ -17,7 +17,7 @@
 ### Backend
 
 - Keep `sku_rack_assignments` as the source of explicit zero-stock rack allocations.
-- Return placed inventory rows from `getByItem` only when they have a non-zero balance (`on_hand != 0` or `on_order != 0`), preserving visibility of anomalous negative balances for investigation.
+- Return placed inventory rows from `getByItem` only when they have a non-zero physical balance (`on_hand != 0`), while explicit `sku_rack_assignments` continue to represent zero-stock allocations.
 - Do not delete `inventories` rows or movement history; zero rows may still be retained for ledger integrity and future stock writes.
 - Continue merging explicit `sku_rack_assignments` into the response as zero-valued allocation rows.
 

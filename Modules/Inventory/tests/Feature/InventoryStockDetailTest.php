@@ -103,14 +103,14 @@ class InventoryStockDetailTest extends TestCase
         $response->assertJsonPath('data.1.on_hand', 0);
     }
 
-    public function test_it_does_not_return_orphaned_zero_balance_inventory_as_allocation(): void
+    public function test_it_does_not_return_orphaned_non_physical_inventory_as_allocation(): void
     {
         Inventory::create([
             'item_id' => $this->variant->id,
             'location_id' => $this->location->id,
             'bin_id' => $this->emptyBin->id,
             'on_hand' => 0,
-            'on_order' => 0,
+            'on_order' => 1,
             'available' => 0,
         ]);
 
