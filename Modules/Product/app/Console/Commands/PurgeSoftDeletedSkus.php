@@ -35,8 +35,22 @@ class PurgeSoftDeletedSkus extends Command
         'sales_invoice_items' => 'item_id',
         'sales_return_items' => 'item_id',
         'order_bin_allocations' => 'item_id',
+        'order_buyer_confirmations' => 'item_id',
+        'inbound_items' => 'item_id',
+        'stock_replenishment_request_items' => 'item_id',
+        'inbound_backfill_reconciliations' => 'item_id',
+        'sku_rack_assignments' => 'item_id',
+        'rack_import_rows' => 'item_id',
         'warranties' => 'product_variant_id',
         'product_bundles' => 'bundle_variant_id',
+        'product_bundle_items' => 'component_variant_id',
+    ];
+
+    /** @var array<string, string|list<string>> */
+    private const PRODUCT_REFERENCES = [
+        'purchase_order_items' => 'item_id',
+        'sales_return_items' => 'item_id',
+        'product_bundle_items' => 'bundle_product_id',
     ];
 
     public function handle(): int
@@ -48,6 +62,12 @@ class PurgeSoftDeletedSkus extends Command
         $deleted = 0;
         $blockedBy = [];
         $sample = [];
+        $masterSample = [];
+        $mastersScanned = 0;
+        $mastersDeletable = 0;
+        $mastersBlocked = 0;
+        $mastersDeleted = 0;
+        $mastersBlockedBy = [];
         $references = array_filter(
             self::REFERENCES,
             fn ($column, $table) => Schema::hasTable($table),
@@ -106,16 +126,40 @@ class PurgeSoftDeletedSkus extends Command
             );
         }
 
+        $this->processEmptyDeletedMasters(
+            $dryRun,
+            $mastersScanned,
+            $mastersDeletable,
+            $mastersBlocked,
+            $mastersDeleted,
+            $mastersBlockedBy,
+            $masterSample,
+        );
+
         if ($sample !== []) {
             $this->table(['id', 'sku', 'master', 'status'], $sample);
+        }
+
+        if ($masterSample !== []) {
+            $this->table(['id', 'master', 'status'], $masterSample);
         }
 
         $this->line('sku soft-delete diperiksa: '.$scanned);
         $this->line('kandidat tanpa referensi: '.$deletable);
         $this->line('dilewati karena masih direferensikan: '.$blocked);
 
+        $this->line('master soft-delete kosong diperiksa: '.$mastersScanned);
+        $this->line('master kandidat tanpa referensi: '.$mastersDeletable);
+        $this->line('master dilewati karena masih direferensikan: '.$mastersBlocked);
+
         if ($blockedBy !== []) {
             $this->line('referensi penghambat: '.collect($blockedBy)
+                ->map(fn ($count, $table) => $table.'='.$count)
+                ->implode(', '));
+        }
+
+        if ($mastersBlockedBy !== []) {
+            $this->line('referensi penghambat master: '.collect($mastersBlockedBy)
                 ->map(fn ($count, $table) => $table.'='.$count)
                 ->implode(', '));
         }
@@ -124,9 +168,84 @@ class PurgeSoftDeletedSkus extends Command
             $this->info('DRY-RUN selesai. Tidak ada perubahan data.');
         } else {
             $this->info('sku dihapus permanen: '.$deleted);
+            $this->info('master dihapus permanen: '.$mastersDeleted);
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @param  array<string, int>  $blockedBy
+     * @param  list<array{id: string, master: string, status: string}>  $sample
+     */
+    private function processEmptyDeletedMasters(
+        bool $dryRun,
+        int &$scanned,
+        int &$deletable,
+        int &$blocked,
+        int &$deleted,
+        array &$blockedBy,
+        array &$sample,
+    ): void {
+        $productReferences = array_filter(
+            self::PRODUCT_REFERENCES,
+            fn ($column, $table) => Schema::hasTable($table),
+            ARRAY_FILTER_USE_BOTH,
+        );
+
+        $query = DB::table('products as p')
+            ->whereNotNull('p.deleted_at')
+            ->whereNotExists(function ($subquery) {
+                $subquery->selectRaw('1')
+                    ->from('product_variants as pv')
+                    ->whereColumn('pv.product_id', 'p.id');
+            })
+            ->when($this->option('product'), fn ($q, $id) => $q->where('p.id', (string) $id))
+            ->select(['p.id', 'p.name'])
+            ->orderBy('p.id');
+
+        foreach ($query->cursor() as $row) {
+            $scanned++;
+            $rowReferences = [];
+
+            foreach ($productReferences as $table => $column) {
+                if (DB::table($table)->where($column, $row->id)->exists()) {
+                    $rowReferences[] = $table;
+                }
+            }
+
+            if ($rowReferences !== []) {
+                $blocked++;
+                foreach ($rowReferences as $reference) {
+                    $blockedBy[$reference] = ($blockedBy[$reference] ?? 0) + 1;
+                }
+                if (count($sample) < 20) {
+                    $sample[] = [
+                        'id' => $row->id,
+                        'master' => mb_strimwidth((string) $row->name, 0, 65, '…'),
+                        'status' => 'dilewati: '.implode(', ', $rowReferences),
+                    ];
+                }
+
+                continue;
+            }
+
+            $deletable++;
+            if (count($sample) < 20) {
+                $sample[] = [
+                    'id' => $row->id,
+                    'master' => mb_strimwidth((string) $row->name, 0, 65, '…'),
+                    'status' => 'aman dihapus',
+                ];
+            }
+
+            if (! $dryRun) {
+                $deleted += DB::table('products')
+                    ->where('id', $row->id)
+                    ->whereNotNull('deleted_at')
+                    ->delete();
+            }
+        }
     }
 
     /**

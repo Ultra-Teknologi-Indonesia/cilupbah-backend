@@ -30,6 +30,7 @@ class PurgeSoftDeletedSkusTest extends TestCase
             ->assertSuccessful();
 
         $this->assertDatabaseMissing('product_variants', ['id' => $variant->id]);
+        $this->assertDatabaseMissing('products', ['id' => $variant->product_id]);
     }
 
     private function makeDeletedVariant(string $sku): ProductVariant
