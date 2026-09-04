@@ -4,8 +4,8 @@ metadata:
   name: cilupbah-export-worker
   namespace: cilupbah
   labels:
-    # Selector ini sudah tersimpan di Deployment production dan immutable.
-    app: cilupbah-sheet-export-worker
+    # Harus konsisten dengan selector Deployment production yang sudah ada.
+    app: cilupbah-export-worker
     component: cilupbah-export-worker
 spec:
   replicas: 1
@@ -13,11 +13,11 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: cilupbah-sheet-export-worker
+      app: cilupbah-export-worker
   template:
     metadata:
       labels:
-        app: cilupbah-sheet-export-worker
+        app: cilupbah-export-worker
         component: cilupbah-export-worker
     spec:
       terminationGracePeriodSeconds: 960
