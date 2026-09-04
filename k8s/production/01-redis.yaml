@@ -8,7 +8,9 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 5Gi
+      # PVC production saat ini statically provisioned 1Gi dan tidak dapat
+      # di-resize melalui kubectl apply. Upgrade kapasitas dilakukan terpisah.
+      storage: 1Gi
 ---
 apiVersion: apps/v1
 kind: Deployment

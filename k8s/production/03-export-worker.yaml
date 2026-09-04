@@ -4,7 +4,9 @@ metadata:
   name: cilupbah-export-worker
   namespace: cilupbah
   labels:
-    app: cilupbah-export-worker
+    # Selector ini sudah tersimpan di Deployment production dan immutable.
+    app: cilupbah-sheet-export-worker
+    component: cilupbah-export-worker
 spec:
   replicas: 1
   strategy:
@@ -15,7 +17,8 @@ spec:
   template:
     metadata:
       labels:
-        app: cilupbah-export-worker
+        app: cilupbah-sheet-export-worker
+        component: cilupbah-export-worker
     spec:
       terminationGracePeriodSeconds: 960
       imagePullSecrets:

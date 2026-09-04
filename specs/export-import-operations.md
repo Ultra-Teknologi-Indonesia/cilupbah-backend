@@ -44,7 +44,7 @@ Use the following read-only checks after deployment:
 ```sh
 kubectl get pods -n cilupbah
 kubectl top pod -n cilupbah
-kubectl logs -n cilupbah -l app=cilupbah-export-worker --since=30m
+kubectl logs -n cilupbah -l component=cilupbah-export-worker --since=30m
 kubectl logs -n cilupbah -l app=cilupbah-pdf-export-worker --since=30m
 kubectl logs -n cilupbah -l app=cilupbah-import-worker --since=30m
 ```
