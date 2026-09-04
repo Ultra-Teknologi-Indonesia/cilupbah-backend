@@ -77,7 +77,7 @@ final class ProductCatalogCsvExport implements FromQuery, WithCustomChunkSize, W
             $row->image_3 ?? '',
             $row->image_4 ?? '',
             $row->image_5 ?? '',
-            (int) ($row->stock ?? 0),
+            $this->numberOrZero($row->stock),
         ];
     }
 

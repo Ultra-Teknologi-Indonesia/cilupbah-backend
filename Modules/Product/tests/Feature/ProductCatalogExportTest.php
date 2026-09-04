@@ -100,6 +100,39 @@ class ProductCatalogExportTest extends TestCase
         $this->assertSame(0, (int) $rows[0]->stock);
     }
 
+    public function test_catalog_map_converts_empty_numeric_values_to_zero(): void
+    {
+        $row = (object) [
+            'item_id' => 'item-id',
+            'item_group_id' => 'group-id',
+            'name' => 'Produk',
+            'sku' => '',
+            'category_name' => '',
+            'variation' => '',
+            'description' => '',
+            'package_weight' => null,
+            'package_width' => '',
+            'package_height' => null,
+            'package_length' => '',
+            'sell_price' => null,
+            'image_1' => '',
+            'image_2' => null,
+            'image_3' => '',
+            'image_4' => null,
+            'image_5' => '',
+            'stock' => null,
+        ];
+
+        $mapped = (new ProductCatalogCsvExport)->map($row);
+
+        foreach ([7, 8, 9, 10, 11, 17] as $index) {
+            $this->assertSame(0, $mapped[$index]);
+        }
+
+        $this->assertSame('', $mapped[3]);
+        $this->assertSame('', $mapped[12]);
+    }
+
     public function test_catalog_query_exports_bundle_components_without_technical_sku(): void
     {
         $category = Category::create(['name' => 'Bundle Test', 'is_active' => true]);
