@@ -189,8 +189,8 @@ class ImportBaselineStock extends Command
             $reader->setLoadSheetsOnly(self::TEMPLATE_SHEET);
         }
 
-        $columns = $isTemplate ? ['A', 'B', 'C', 'D'] : ['A', 'D', 'H', 'I'];
-        $lastColumn = $isTemplate ? 'D' : 'I';
+        $columns = $isTemplate ? ['A', 'B', 'C', 'D'] : ['A', 'D', 'H', 'I', 'J'];
+        $lastColumn = $isTemplate ? 'D' : 'J';
         $totalRows = $this->countRows($reader, $path, $isTemplate);
 
         $rows = [];
@@ -234,7 +234,7 @@ class ImportBaselineStock extends Command
                         : (int) ($raw[8] ?? 0);
                 }
 
-                if ($sku === '' || $qty <= 0) {
+                if ($sku === '' || $qty < 0) {
                     continue;
                 }
 
@@ -310,7 +310,7 @@ class ImportBaselineStock extends Command
                     : (int) ($raw[$onHandIdx] ?? 0);
             }
 
-            if ($sku === '' || $qty <= 0) {
+            if ($sku === '' || $qty < 0) {
                 continue;
             }
 

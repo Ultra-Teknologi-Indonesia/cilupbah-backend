@@ -116,10 +116,46 @@ class DownloadProgressTest extends TestCase
 
         $item = $response->json('data.products.0');
         $this->assertSame('Downloaded Liquid Case', $item['item_name']);
-        $this->assertSame('LSM-A', $item['item_code']);
+        $this->assertNull($item['item_code']);
         $this->assertSame('EXT-PRD-1', $item['channel_group_id']);
         $this->assertSame('https://img/case.jpg', $item['img_url']);
         $this->assertFalse($item['is_master']);
+    }
+
+    public function test_detail_uses_master_sku_for_item_code(): void
+    {
+        $trx = DownloadTransaction::create([
+            'channel_shop_id' => $this->shop->id,
+            'state' => 'done',
+            'all_product' => 1,
+            'total_downloaded' => 1,
+            'progress_percent' => 100,
+        ]);
+
+        $product = Product::create([
+            'name' => 'Master With Code',
+            'sku' => 'MASTER-CODE-1',
+            'category_id' => 1,
+            'status' => Product::STATUS_MASTER,
+            'is_active' => true,
+        ]);
+        ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => 'VARIANT-CODE-1',
+            'sell_price' => 1000,
+            'is_active' => true,
+        ]);
+        ProductChannelMapping::create([
+            'product_id' => $product->id,
+            'channel_shop_id' => $this->shop->id,
+            'external_product_id' => 'EXT-MASTER-CODE',
+            'sync_status' => 'synced',
+        ]);
+
+        $item = $this->getJson("/api/v1/download-transactions/{$trx->id}")
+            ->json('data.products.0');
+
+        $this->assertSame('MASTER-CODE-1', $item['item_code']);
     }
 
     public function test_detail_marks_master_by_status_and_filters_by_it()

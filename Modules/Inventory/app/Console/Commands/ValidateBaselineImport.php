@@ -112,8 +112,8 @@ class ValidateBaselineImport extends Command
             $reader->setLoadSheetsOnly(self::TEMPLATE_SHEET);
         }
 
-        $columns = $isTemplate ? ['A', 'B', 'C', 'D'] : ['A', 'D', 'H', 'I'];
-        $lastColumn = $isTemplate ? 'D' : 'I';
+        $columns = $isTemplate ? ['A', 'B', 'C', 'D'] : ['A', 'D', 'H', 'I', 'J'];
+        $lastColumn = $isTemplate ? 'D' : 'J';
         $totalRows = $this->countRows($reader, $path, $isTemplate);
 
         $rows = [];
@@ -152,10 +152,12 @@ class ValidateBaselineImport extends Command
                     $sku = trim((string) ($raw[0] ?? ''));
                     $fileLocation = trim((string) ($raw[3] ?? '')) ?: null;
                     $bin = trim((string) ($raw[7] ?? ''));
-                    $qty = (int) ($raw[8] ?? 0);
+                    $qty = isset($raw[9]) && $raw[9] !== '' && $raw[9] !== null
+                        ? (int) $raw[9]
+                        : (int) ($raw[8] ?? 0);
                 }
 
-                if ($sku === '' || $qty <= 0) {
+                if ($sku === '' || $qty < 0) {
                     continue;
                 }
 

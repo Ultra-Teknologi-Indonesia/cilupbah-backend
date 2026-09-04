@@ -52,7 +52,6 @@ class DownloadTransactionController extends Controller
         $products = $this->service->paginateShopProducts($transaction->channel_shop_id);
 
         $items = $products->getCollection()->map(function ($product) {
-            $variant = $product->relationLoaded('variants') ? $product->variants->first() : null;
             $mapping = $product->relationLoaded('channelMappings') ? $product->channelMappings->first() : null;
             $isMaster = $product->status === \Modules\Product\Models\Product::STATUS_MASTER;
             $thumbnail = $product->relationLoaded('media')
@@ -62,7 +61,8 @@ class DownloadTransactionController extends Controller
             return [
                 'item_id' => $product->id,
                 'item_name' => $product->name,
-                'item_code' => $variant->sku ?? null,
+
+                'item_code' => $product->sku ?? null,
                 'img_url' => $thumbnail,
                 'channel_group_id' => $mapping->external_product_id ?? null,
                 'status' => $product->status,

@@ -11,6 +11,7 @@ final class CutoverPreflightCommand extends CutoverCommandSupport
         {--locations= : Allowlist kode gudang dipisah koma, ALL tidak diizinkan}
         {--sku-manifest= : File manifest SKU dari tim gudang}
         {--stock-file=* : File baseline stok, boleh diulang per gudang}
+        {--order-file=* : CSV daftar pesanan yang wajib dipertahankan}
         {--run-id= : Gunakan run_id yang sudah ada}
         {--apply : Tidak digunakan, preflight selalu read-only terhadap data bisnis}';
 
@@ -25,7 +26,11 @@ final class CutoverPreflightCommand extends CutoverCommandSupport
                 $created = $this->cutover()->createRun(
                     (string) $this->option('cutoff'),
                     $codes,
-                    array_merge([(string) $this->option('sku-manifest')], (array) $this->option('stock-file')),
+                    array_merge(
+                        [(string) $this->option('sku-manifest')],
+                        (array) $this->option('stock-file'),
+                        (array) $this->option('order-file'),
+                    ),
                 );
                 $runId = $created['run_id'];
                 $this->info("run_id dibuat: {$runId}");

@@ -57,11 +57,11 @@ class ImportBaselineStockTest extends TestCase
                 '1',
                 $r['bin'],
                 $r['qty'],
-                $r['qty'],
+                $r['qty_actual'] ?? $r['qty'],
             ];
         }
 
-        $sheet->fromArray($data, null, 'A2');
+        $sheet->fromArray($data, null, 'A2', true);
 
         $tempFile = tempnam(sys_get_temp_dir(), 'baseline_test_') . '.xlsx';
         $writer = new Xlsx($spreadsheet);
@@ -163,7 +163,7 @@ class ImportBaselineStockTest extends TestCase
         ]);
 
         $excelPath = $this->createSampleExcel([
-            ['sku' => 'SKU-001', 'bin' => 'GK-01-A1', 'qty' => 75],
+            ['sku' => 'SKU-001', 'bin' => 'GK-01-A1', 'qty' => 99, 'qty_actual' => 75],
         ]);
 
         $this->artisan('inventory:import-baseline', [
@@ -185,6 +185,72 @@ class ImportBaselineStockTest extends TestCase
 
         $this->assertSame(1, StockAdjustment::where('is_beginning_balance', true)->count());
         $this->assertSame(1, InventoryMovement::where('source', 'ADJUSTMENT')->where('item_id', $variant->id)->count());
+    }
+
+    public function test_commit_qty_aktual_nol_menjadi_nilai_akhir_stok(): void
+    {
+        $location = Location::firstOrCreate(
+            ['location_code' => 'WH-KECIL'],
+            [
+                'location_name' => 'Gudang Kecil',
+                'location_type' => 'warehouse',
+                'is_warehouse'  => true,
+                'is_active'     => true,
+            ]
+        );
+
+        $bin = LocationBin::firstOrCreate(
+            ['location_id' => $location->id, 'bin_final_code' => 'GK-01-A1'],
+            [
+                'bin_code' => 'GK-01-A1',
+                'is_active' => true,
+            ]
+        );
+
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'General', 'is_active' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $product = Product::create([
+            'category_id' => $categoryId,
+            'name' => 'Zero Item', 'sku' => 'SKU-ZERO', 'is_active' => true,
+        ]);
+
+        $variant = ProductVariant::create([
+            'product_id' => $product->id, 'sku' => 'SKU-ZERO',
+            'sell_price' => 50000, 'is_active' => true,
+        ]);
+
+        Inventory::create([
+            'item_id' => $variant->id,
+            'location_id' => $location->id,
+            'bin_id' => $bin->id,
+            'batch_no' => '',
+            'serial_no' => '',
+            'on_hand' => 40,
+            'on_order' => 0,
+            'available' => 40,
+            'avg_cost' => 1000,
+        ]);
+
+        $excelPath = $this->createSampleExcel([
+            ['sku' => 'SKU-ZERO', 'bin' => 'GK-01-A1', 'qty' => 40, 'qty_actual' => 0],
+        ]);
+
+        $this->artisan('inventory:import-baseline', [
+            'file' => $excelPath,
+            '--location' => 'WH-KECIL',
+            '--commit' => true,
+        ])->assertExitCode(0);
+
+        $inventory = Inventory::where('item_id', $variant->id)
+            ->where('location_id', $location->id)
+            ->where('bin_id', $bin->id)
+            ->first();
+
+        $this->assertNotNull($inventory);
+        $this->assertEquals(0, (int) $inventory->on_hand);
     }
 
     public function test_zero_missing_menolkan_stok_lama_yang_tidak_ada_di_file(): void

@@ -61,7 +61,6 @@ class DownloadTransactionRepository
             ])
             ->whereHas('channelMappings', fn ($query) => $query->where('channel_shop_id', $channelShopId))
             ->with([
-                'variants:id,product_id,sku',
                 'media',
                 'channelMappings' => fn ($query) => $query->where('channel_shop_id', $channelShopId),
             ])

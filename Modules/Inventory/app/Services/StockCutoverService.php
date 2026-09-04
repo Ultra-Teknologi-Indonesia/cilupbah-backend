@@ -16,6 +16,7 @@ use Modules\Channel\Jobs\ProcessShopeeWebhook;
 use Modules\Channel\Jobs\ProcessTikTokWebhook;
 use Modules\Channel\Jobs\ProcessWooCommerceWebhook;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Reader\IReadFilter;
 use Throwable;
 
 final class StockCutoverService
@@ -180,57 +181,121 @@ final class StockCutoverService
             throw new \RuntimeException("lokasi '{$locationCode}' tidak terdaftar pada run_id {$runId}.");
         }
 
-        $rows = $this->readStockRows($filePath);
         $issues = [];
         $pairs = [];
         $total = 0;
+        $rowCount = 0;
+        $blocking = 0;
+        $variantCache = [];
+        $binCache = [];
 
-        foreach ($rows as $row) {
-            $sku = trim((string) $row['sku']);
-            $bin = trim((string) $row['bin']);
-            $qty = (int) $row['qty'];
-            $key = mb_strtolower($sku).'|'.mb_strtolower($bin);
-            $total += $qty;
-
-            if ($sku === '' || $bin === '' || $qty < 0) {
-                $issues[] = ['row' => $row['row'], 'reason' => 'sku_rak_wajib_dan_qty_tidak_boleh_negatif'];
-
-                continue;
+        $recordIssue = static function (array $issue) use (&$issues, &$blocking): void {
+            $blocking++;
+            if (count($issues) < 200) {
+                $issues[] = $issue;
             }
-            if (isset($pairs[$key])) {
-                $issues[] = ['row' => $row['row'], 'reason' => 'duplikat_sku_rak', 'sku' => $sku, 'bin' => $bin];
+        };
 
-                continue;
-            }
-            $pairs[$key] = true;
+        $processBatch = function (array $batch) use (&$variantCache, &$binCache, &$pairs, &$total, &$rowCount, $location, $recordIssue): void {
+            $missingSkus = [];
+            $missingBins = [];
 
-            $variant = DB::table('product_variants')->whereRaw('LOWER(sku) = ?', [mb_strtolower($sku)])->first(['id', 'sku', 'is_active']);
-            if (! $variant) {
-                $issues[] = ['row' => $row['row'], 'reason' => 'sku_tidak_ditemukan', 'sku' => $sku];
-
-                continue;
-            }
-            if (! (bool) $variant->is_active) {
-                $issues[] = ['row' => $row['row'], 'reason' => 'sku_tidak_aktif', 'sku' => $sku];
+            foreach ($batch as $row) {
+                $skuKey = mb_strtolower(trim((string) $row['sku']));
+                $binKey = mb_strtolower(trim((string) $row['bin']));
+                if ($skuKey !== '' && ! array_key_exists($skuKey, $variantCache)) {
+                    $missingSkus[$skuKey] = true;
+                }
+                if ($binKey !== '' && ! array_key_exists($binKey, $binCache)) {
+                    $missingBins[$binKey] = true;
+                }
             }
 
-            $binRow = DB::table('location_bins')->where('location_id', $location->id)->whereRaw('LOWER(bin_final_code) = ?', [mb_strtolower($bin)])->first(['id', 'is_inbound']);
-            if (! $binRow) {
-                $issues[] = ['row' => $row['row'], 'reason' => 'rak_tidak_ditemukan_di_gudang', 'sku' => $sku, 'bin' => $bin];
-            } elseif ((bool) $binRow->is_inbound) {
-                $issues[] = ['row' => $row['row'], 'reason' => 'rak_inbound_tidak_boleh_menjadi_stok_awal', 'sku' => $sku, 'bin' => $bin];
+            if ($missingSkus !== []) {
+                $variants = DB::table('product_variants')
+                    ->whereIn(DB::raw('LOWER(sku)'), array_keys($missingSkus))
+                    ->get(['id', 'sku', 'is_active']);
+                foreach ($variants as $variant) {
+                    $variantCache[mb_strtolower(trim((string) $variant->sku))] = $variant;
+                }
+                foreach (array_keys($missingSkus) as $skuKey) {
+                    $variantCache[$skuKey] ??= null;
+                }
             }
+
+            if ($missingBins !== []) {
+                $bins = DB::table('location_bins')
+                    ->where('location_id', $location->id)
+                    ->whereIn(DB::raw('LOWER(bin_final_code)'), array_keys($missingBins))
+                    ->get(['id', 'bin_final_code', 'is_inbound']);
+                foreach ($bins as $bin) {
+                    $binCache[mb_strtolower(trim((string) $bin->bin_final_code))] = $bin;
+                }
+                foreach (array_keys($missingBins) as $binKey) {
+                    $binCache[$binKey] ??= null;
+                }
+            }
+
+            foreach ($batch as $row) {
+                $rowCount++;
+                $sku = trim((string) $row['sku']);
+                $bin = trim((string) $row['bin']);
+                $qty = (int) $row['qty'];
+                $total += $qty;
+                $key = mb_strtolower($sku).'|'.mb_strtolower($bin);
+
+                if ($sku === '' || $bin === '' || $qty < 0) {
+                    $recordIssue(['row' => $row['row'], 'reason' => 'sku_rak_wajib_dan_qty_tidak_boleh_negatif']);
+
+                    continue;
+                }
+                if (isset($pairs[$key])) {
+                    $recordIssue(['row' => $row['row'], 'reason' => 'duplikat_sku_rak', 'sku' => $sku, 'bin' => $bin]);
+
+                    continue;
+                }
+                $pairs[$key] = true;
+
+                $variant = $variantCache[mb_strtolower($sku)] ?? null;
+                if (! $variant) {
+                    $recordIssue(['row' => $row['row'], 'reason' => 'sku_tidak_ditemukan', 'sku' => $sku]);
+
+                    continue;
+                }
+                if (! (bool) $variant->is_active) {
+                    $recordIssue(['row' => $row['row'], 'reason' => 'sku_tidak_aktif', 'sku' => $sku]);
+                }
+
+                $binRow = $binCache[mb_strtolower($bin)] ?? null;
+                if (! $binRow) {
+                    $recordIssue(['row' => $row['row'], 'reason' => 'rak_tidak_ditemukan_di_gudang', 'sku' => $sku, 'bin' => $bin]);
+                } elseif ((bool) $binRow->is_inbound) {
+                    $recordIssue(['row' => $row['row'], 'reason' => 'rak_inbound_tidak_boleh_menjadi_stok_awal', 'sku' => $sku, 'bin' => $bin]);
+                }
+            }
+        };
+
+        $batch = [];
+        foreach ($this->readStockRows($filePath) as $row) {
+            $batch[] = $row;
+            if (count($batch) >= 2000) {
+                $processBatch($batch);
+                $batch = [];
+            }
+        }
+        if ($batch !== []) {
+            $processBatch($batch);
         }
 
         $report = [
             'file_path' => $filePath,
             'sha256' => hash_file('sha256', $filePath),
             'location_code' => $locationCode,
-            'row_count' => count($rows),
+            'row_count' => $rowCount,
             'sku_rack_count' => count($pairs),
             'total_qty' => $total,
-            'issues' => array_slice($issues, 0, 200),
-            'blocking' => count($issues),
+            'issues' => $issues,
+            'blocking' => $blocking,
         ];
 
         $currentStatus = DB::table('stock_cutover_runs')->where('id', $runId)->value('status');
@@ -282,9 +347,157 @@ final class StockCutoverService
         return ['location_code' => $locationCode, 'exit_code' => $exitCode, 'audit' => $audit];
     }
 
-    public function auditOrders(string $runId): array
+    public function auditOrders(string $runId, array $orderFiles = []): array
     {
         $run = $this->getRun($runId);
+        if ($orderFiles !== []) {
+            $references = $this->readOrderReferences($orderFiles);
+            $referenceKeys = array_keys($references);
+            $lookupToReference = [];
+            foreach ($referenceKeys as $reference) {
+                foreach ($this->orderReferenceVariants($reference) as $lookup) {
+                    $lookupToReference[$lookup] = $reference;
+                }
+            }
+
+            $internalByReference = [];
+            $outsideScope = [];
+            foreach (array_chunk(array_keys($lookupToReference), 500) as $chunk) {
+                $orders = DB::table('sales_orders')
+                    ->where(function ($query) use ($chunk): void {
+                        $query->whereIn('salesorder_no', $chunk)->orWhereIn('channel_order_no', $chunk);
+                    })
+                    ->get(['id', 'salesorder_no', 'channel_order_no', 'status', 'is_canceled', 'location_id']);
+
+                foreach ($orders as $order) {
+                    $reference = null;
+                    foreach ([$order->salesorder_no, $order->channel_order_no] as $value) {
+                        if ($value !== null && isset($lookupToReference[(string) $value])) {
+                            $reference = $lookupToReference[(string) $value];
+                            break;
+                        }
+                    }
+                    if ($reference === null) {
+                        continue;
+                    }
+                    $internalByReference[$reference][] = $order;
+                    if (! in_array((string) $order->location_id, $run['location_ids'], true)) {
+                        $outsideScope[$reference] = true;
+                    }
+                }
+            }
+
+            $queueByReference = [];
+            $queueEventIds = [];
+            if (Schema::hasTable('channel_webhook_inbox')) {
+                DB::table('channel_webhook_inbox')
+                    ->orderBy('id')
+                    ->chunk(2000, function ($records) use (&$queueByReference, &$queueEventIds, $lookupToReference): void {
+                        foreach ($records as $record) {
+                            if (! in_array(strtolower((string) $record->status), ['received', 'failed'], true)) {
+                                continue;
+                            }
+                            $payload = is_array($record->payload)
+                                ? $record->payload
+                                : (json_decode((string) $record->payload, true) ?: []);
+                            foreach ($this->webhookOrderReferences($payload) as $candidate) {
+                                $reference = $lookupToReference[$candidate] ?? null;
+                                if ($reference === null) {
+                                    continue;
+                                }
+                                $queueByReference[$reference][] = [
+                                    'id' => (string) $record->id,
+                                    'status' => (string) $record->status,
+                                    'received_at' => (string) $record->received_at,
+                                ];
+                                $queueEventIds[(string) $record->id] = true;
+                                break;
+                            }
+                        }
+                    });
+            }
+
+            $missing = [];
+            $ambiguous = [];
+            $fileLocationMismatch = [];
+            $internalIds = [];
+            $matchedLocationIds = collect($internalByReference)
+                ->flatten(1)
+                ->pluck('location_id')
+                ->filter()
+                ->unique()
+                ->values();
+            $locationNames = $matchedLocationIds->isEmpty()
+                ? collect()
+                : DB::table('locations')
+                    ->whereIn('id', $matchedLocationIds->all())
+                    ->pluck('location_name', 'id');
+            foreach ($references as $reference => $meta) {
+                $matches = $internalByReference[$reference] ?? [];
+                if (count($matches) > 1) {
+                    $ambiguous[$reference] = count($matches);
+                }
+                if ($matches === [] && ! isset($queueByReference[$reference])) {
+                    $missing[] = $reference;
+                }
+                foreach ($matches as $match) {
+                    $internalIds[(string) $match->id] = true;
+                    if (($meta['location'] ?? '') !== '' && $match->location_id !== null) {
+                        $locationName = $locationNames->get($match->location_id);
+                        if ($locationName !== null && strcasecmp(trim((string) $locationName), trim((string) $meta['location'])) !== 0) {
+                            $fileLocationMismatch[$reference] = [
+                                'file' => $meta['location'],
+                                'internal' => $locationName,
+                            ];
+                        }
+                    }
+                }
+            }
+
+            $newerInternalIds = DB::table('sales_orders')
+                ->whereIn('location_id', $run['location_ids'])
+                ->where(function ($query) use ($run): void {
+                    $query->where('created_at', '>=', $run['cutoff_at']->utc())
+                        ->orWhere('transaction_date', '>=', $run['cutoff_at']->utc());
+                })
+                ->pluck('id')
+                ->map(fn ($id): string => (string) $id)
+                ->all();
+
+            $statusCounts = [];
+            foreach ($internalByReference as $matches) {
+                foreach ($matches as $match) {
+                    $status = strtolower((string) $match->status);
+                    $statusCounts[$status] = ($statusCounts[$status] ?? 0) + 1;
+                }
+            }
+
+            $report = [
+                'mode' => 'WHITELIST_PLUS_NEWER',
+                'order_files' => array_values(array_map(fn (string $file): array => [
+                    'path' => $file,
+                    'sha256' => hash_file('sha256', $file),
+                ], $orderFiles)),
+                'file_order_count' => count($references),
+                'internal_found_count' => count($internalByReference),
+                'queue_found_count' => count($queueByReference),
+                'missing_from_internal_and_queue' => $missing,
+                'ambiguous_internal_matches' => $ambiguous,
+                'outside_cutover_location' => array_keys($outsideScope),
+                'file_location_mismatch' => $fileLocationMismatch,
+                'internal_status_counts' => $statusCounts,
+                'newer_internal_order_count' => count($newerInternalIds),
+                'whitelist_internal_order_ids' => array_keys($internalIds),
+                'whitelist_queue_event_ids' => array_keys($queueEventIds),
+                'newer_internal_order_ids' => $newerInternalIds,
+                'blocking' => count($missing) + count($ambiguous) + count($outsideScope) + count($fileLocationMismatch),
+                'rule' => 'order dari file harus ada di sales_orders atau channel_webhook_inbox, order lebih baru dari cutoff ikut dipertahankan.',
+            ];
+            $this->saveReport($runId, 'ORDERS_AUDITED', ['order_audit' => $report]);
+
+            return $report;
+        }
+
         $base = DB::table('sales_orders')->whereIn('location_id', $run['location_ids']);
         $terminal = (clone $base)->where(function ($query): void {
             $query->whereIn('status', self::TERMINAL_STATUSES)->orWhere('is_canceled', true);
@@ -318,6 +531,24 @@ final class StockCutoverService
         $activeKeep = (clone $orders)->whereNotIn('status', self::TERMINAL_STATUSES)->where(function ($query): void {
             $query->where('is_canceled', false)->orWhereNull('is_canceled');
         })->count();
+        $orderAudit = $run['report']['order_audit'] ?? [];
+        $whitelistPreview = null;
+        if (($orderAudit['mode'] ?? null) === 'WHITELIST_PLUS_NEWER') {
+            $whitelisted = collect($orderAudit['whitelist_internal_order_ids'] ?? [])->map(fn ($id): string => (string) $id);
+            $newer = (clone $orders)
+                ->where(function ($query) use ($run): void {
+                    $query->where('created_at', '>=', $run['cutoff_at']->utc())
+                        ->orWhere('transaction_date', '>=', $run['cutoff_at']->utc());
+                })
+                ->pluck('id')
+                ->map(fn ($id): string => (string) $id);
+            $keepIds = $whitelisted->merge($newer)->unique()->values();
+            $whitelistPreview = [
+                'orders_to_keep_from_file_or_newer' => $keepIds->count(),
+                'orders_to_delete_not_in_file_and_not_newer' => max(0, $allOrders - $keepIds->count()),
+                'queue_events_to_preserve' => count($orderAudit['whitelist_queue_event_ids'] ?? []),
+            ];
+        }
 
         return [
             'cutoff_at' => $run['cutoff_at']->toIso8601String(),
@@ -327,6 +558,7 @@ final class StockCutoverService
             'terminal_orders_to_delete' => $terminal,
             'active_orders_to_keep_and_normalize' => $activeKeep,
             'other_orders_preserved_without_reactivation' => max(0, $allOrders - $terminal - $activeKeep),
+            'whitelist_policy_preview' => $whitelistPreview,
             'webhooks_before_cutoff_to_delete' => Schema::hasTable('channel_webhook_inbox')
                 ? DB::table('channel_webhook_inbox')->where('received_at', '<', $run['cutoff_at']->utc())->count()
                 : 0,
@@ -338,10 +570,24 @@ final class StockCutoverService
     {
         $run = $this->getRun($runId);
         $this->assertApplyAllowed($run, 'RESET-STOCK-DATA', ['PAUSED']);
+        $orderAudit = $run['report']['order_audit'] ?? [];
+        if (($orderAudit['mode'] ?? null) === 'WHITELIST_PLUS_NEWER' && (int) ($orderAudit['blocking'] ?? 0) > 0) {
+            throw new \RuntimeException('reset dibatalkan karena audit whitelist order masih memiliki blocking issue.');
+        }
+        $stockAudits = $run['report']['stock_audits'] ?? [];
+        foreach ($stockAudits as $locationCode => $stockAudit) {
+            if ((int) ($stockAudit['blocking'] ?? 0) > 0) {
+                throw new \RuntimeException("reset dibatalkan karena audit stok {$locationCode} masih memiliki blocking issue.");
+            }
+        }
+        if (isset($run['report']['sku_audit']) && (int) ($run['report']['sku_audit']['blocking'] ?? 0) > 0) {
+            throw new \RuntimeException('reset dibatalkan karena audit SKU masih memiliki blocking issue.');
+        }
         $counts = [];
         $terminalOrderIds = [];
+        $deletedOrderIds = [];
 
-        DB::transaction(function () use ($run, $purgeFinance, &$counts, &$terminalOrderIds): void {
+        DB::transaction(function () use ($run, $purgeFinance, $orderAudit, &$counts, &$terminalOrderIds, &$deletedOrderIds): void {
             $locationIds = $run['location_ids'];
             $this->pauseChannels();
 
@@ -354,18 +600,41 @@ final class StockCutoverService
                 ->where('updated_at', '<', $run['cutoff_at']->utc())
                 ->pluck('id')->all();
 
+            $whitelistMode = ($orderAudit['mode'] ?? null) === 'WHITELIST_PLUS_NEWER';
+            if ($whitelistMode) {
+                $newerOrderIds = DB::table('sales_orders')
+                    ->whereIn('location_id', $locationIds)
+                    ->where(function ($query) use ($run): void {
+                        $query->where('created_at', '>=', $run['cutoff_at']->utc())
+                            ->orWhere('transaction_date', '>=', $run['cutoff_at']->utc());
+                    })
+                    ->pluck('id')
+                    ->all();
+                $keepOrderIds = array_values(array_unique(array_merge(
+                    $orderAudit['whitelist_internal_order_ids'] ?? [],
+                    $newerOrderIds,
+                )));
+                $deletedOrderIds = array_values(array_diff($orderIds, $keepOrderIds));
+            } else {
+                $deletedOrderIds = $terminalOrderIds;
+                $keepOrderIds = array_values(array_diff($orderIds, $terminalOrderIds));
+            }
+
             $this->deleteOperationalDocuments($locationIds, $orderIds, $counts);
             $this->deleteOrderStateHistory($orderIds, $counts);
             $this->deleteReplenishmentRequests($locationIds, $counts);
             $this->deleteInventoryTransfers($locationIds, $counts);
             $this->deleteStockHistory($locationIds, $counts);
-            $this->deleteWebhookHistory($run['cutoff_at'], $counts);
+            $this->deleteWebhookHistory(
+                $run['cutoff_at'],
+                $counts,
+                $whitelistMode ? ($orderAudit['whitelist_queue_event_ids'] ?? []) : [],
+            );
 
-            if ($terminalOrderIds !== []) {
-                $this->deleteOrderHistory($terminalOrderIds, $purgeFinance, $counts);
+            if ($deletedOrderIds !== []) {
+                $this->deleteOrderHistory($deletedOrderIds, $purgeFinance, $counts);
             }
 
-            $keepOrderIds = array_values(array_diff($orderIds, $terminalOrderIds));
             if ($keepOrderIds !== []) {
                 $this->resetKeptOrders($keepOrderIds);
             }
@@ -377,7 +646,12 @@ final class StockCutoverService
             ]);
         });
 
-        return ['deleted' => $counts, 'terminal_order_count' => count($terminalOrderIds ?? [])];
+        return [
+            'deleted' => $counts,
+            'terminal_order_count' => count(array_intersect($terminalOrderIds ?? [], $deletedOrderIds ?? [])),
+            'order_count_deleted' => count($deletedOrderIds),
+            'order_policy' => ($orderAudit['mode'] ?? null) === 'WHITELIST_PLUS_NEWER' ? 'whitelist_plus_newer' : 'terminal_before_cutoff',
+        ];
     }
 
     public function previewReservations(string $runId): array
@@ -407,7 +681,7 @@ final class StockCutoverService
     public function rebuildReservations(string $runId): array
     {
         $run = $this->getRun($runId);
-        $this->assertApplyAllowed($run, 'REBUILD-RESERVATION', ['RESET_APPLIED', 'STOCK_IMPORTED', 'RESERVATIONS_REBUILT']);
+        $this->assertApplyAllowed($run, 'REBUILD-RESERVATION', ['RESET_APPLIED', 'STOCK_IMPORTED', 'RESERVATIONS_REBUILT', 'RESUMED', 'REPLAYED']);
         $applied = 0;
         $skipped = 0;
 
@@ -510,8 +784,14 @@ final class StockCutoverService
         if (! $dryRun) {
             $this->assertApplyAllowed($run, 'REPLAY-ORDERS', ['RESUMED', 'REPLAYED']);
         }
+        $preservedQueueIds = $run['report']['order_audit']['whitelist_queue_event_ids'] ?? [];
         $query = DB::table('channel_webhook_inbox')
-            ->where('received_at', '>=', $run['cutoff_at']->utc())
+            ->where(function ($builder) use ($run, $preservedQueueIds): void {
+                $builder->where('received_at', '>=', $run['cutoff_at']->utc());
+                if ($preservedQueueIds !== []) {
+                    $builder->orWhereIn('id', $preservedQueueIds);
+                }
+            })
             ->whereIn('status', ['RECEIVED', 'FAILED', 'received', 'failed'])
             ->orderBy('received_at')
             ->limit(max(1, $limit));
@@ -774,25 +1054,230 @@ final class StockCutoverService
         return $result;
     }
 
-    private function readStockRows(string $path): array
+    private function readOrderReferences(array $files): array
+    {
+        $result = [];
+        foreach ($files as $file) {
+            if (! is_string($file) || ! is_readable($file)) {
+                throw new \RuntimeException("file order tidak dapat dibaca: {$file}");
+            }
+            $handle = fopen($file, 'rb');
+            if ($handle === false) {
+                throw new \RuntimeException("file order tidak dapat dibuka: {$file}");
+            }
+
+            $header = fgetcsv($handle, 0, ',', '"', '\\');
+            if ($header === false) {
+                fclose($handle);
+                throw new \RuntimeException("file order kosong: {$file}");
+            }
+            $columns = array_map(fn ($value): string => $this->normalizeHeader((string) $value), $header);
+            $referenceIndex = null;
+            foreach (['salesorder_no', 'channel_order_no', 'nomor', 'no_pesanan', 'no_order', 'order_no'] as $candidate) {
+                $referenceIndex = array_search($candidate, $columns, true);
+                if ($referenceIndex !== false) {
+                    break;
+                }
+            }
+            if ($referenceIndex === null || $referenceIndex === false) {
+                fclose($handle);
+                throw new \RuntimeException("file order {$file} wajib memiliki kolom salesorder_no, channel_order_no, atau Nomor.");
+            }
+            $locationIndex = null;
+            foreach (['location_name', 'lokasi', 'lokasi_gudang', 'warehouse'] as $candidate) {
+                $found = array_search($candidate, $columns, true);
+                if ($found !== false) {
+                    $locationIndex = $found;
+                    break;
+                }
+            }
+
+            $rowNo = 1;
+            while (($values = fgetcsv($handle, 0, ',', '"', '\\')) !== false) {
+                $rowNo++;
+                $reference = trim((string) ($values[$referenceIndex] ?? ''));
+                if ($reference === '') {
+                    continue;
+                }
+                $result[$reference] ??= [
+                    'reference' => $reference,
+                    'location' => $locationIndex === null ? '' : trim((string) ($values[$locationIndex] ?? '')),
+                    'sources' => [],
+                    'first_row' => $rowNo,
+                ];
+                $result[$reference]['sources'][] = basename($file);
+            }
+            fclose($handle);
+        }
+
+        if ($result === []) {
+            throw new \RuntimeException('seluruh file order tidak memiliki nomor pesanan.');
+        }
+
+        return $result;
+    }
+
+    private function orderReferenceVariants(string $reference): array
+    {
+        $reference = trim($reference);
+        $variants = [$reference];
+        if (preg_match('/^(SP|LZ)-(.+)$/i', $reference, $matches)) {
+            $variants[] = $matches[2];
+        }
+        if (preg_match('/^(TT|TP)-(.+?)(?:-\d+)?$/i', $reference, $matches)) {
+            $variants[] = $matches[2];
+        }
+
+        return array_values(array_unique(array_filter($variants)));
+    }
+
+    private function webhookOrderReferences(array $payload): array
+    {
+        $candidates = [];
+        $containers = [$payload, $payload['data'] ?? null, $payload['order'] ?? null, $payload['data']['order'] ?? null];
+        foreach ($containers as $container) {
+            if (! is_array($container)) {
+                continue;
+            }
+            foreach (['order_sn', 'ordersn', 'order_id', 'orderId', 'salesorder_no', 'channel_order_no'] as $key) {
+                if (isset($container[$key]) && trim((string) $container[$key]) !== '') {
+                    $candidates[] = trim((string) $container[$key]);
+                }
+            }
+        }
+
+        $result = [];
+        foreach ($candidates as $candidate) {
+            $result = array_merge($result, $this->orderReferenceVariants($candidate));
+        }
+
+        return array_values(array_unique($result));
+    }
+
+    private function readStockRows(string $path): \Generator
     {
         if (! is_file($path)) {
             throw new \RuntimeException("file stok tidak ditemukan: {$path}");
         }
-        $rows = $this->readTabular($path);
-        $result = [];
-        foreach ($rows as $rowNo => $row) {
-            $sku = trim((string) ($row['sku'] ?? $row[0] ?? ''));
-            $bin = trim((string) ($row['bin'] ?? $row['rack'] ?? $row['no_rak'] ?? $row['kode_rak'] ?? $row['kode_rak_final'] ?? $row[1] ?? ''));
-            $qtyValue = $row['qty_actual'] ?? $row['qty_aktual'] ?? $row['qty_on_hand'] ?? $row['qty_on_hand_jubelio'] ?? $row['qty'] ?? $row[2] ?? 0;
-            $qty = is_numeric($qtyValue) ? (int) $qtyValue : -1;
-            if ($sku === '' && $bin === '' && $qty === 0) {
-                continue;
+        $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        if (in_array($extension, ['csv', 'txt'], true)) {
+            $handle = fopen($path, 'rb');
+            if ($handle === false) {
+                throw new \RuntimeException('file tabular tidak dapat dibuka.');
             }
-            $result[] = ['row' => (int) ($row['row'] ?? $rowNo + 2), 'sku' => $sku, 'bin' => $bin, 'qty' => $qty];
+
+            $first = fgetcsv($handle);
+            $header = array_map(fn ($value): string => $this->normalizeHeader((string) $value), $first ?: []);
+            $hasHeader = in_array('sku', $header, true) || in_array('qty_actual', $header, true) || in_array('qty_aktual', $header, true);
+            $rowNo = 1;
+            if (! $hasHeader) {
+                rewind($handle);
+                $rowNo = 0;
+            }
+
+            while (($values = fgetcsv($handle)) !== false) {
+                $rowNo++;
+                if ($values === [null] || $values === []) {
+                    continue;
+                }
+                $row = $hasHeader
+                    ? array_combine($header, array_slice(array_pad($values, count($header), null), 0, count($header)))
+                    : $values;
+                $normalized = $this->normalizeStockRow($row, $rowNo);
+                if ($normalized !== null) {
+                    yield $normalized;
+                }
+            }
+            fclose($handle);
+
+            return;
         }
 
-        return $result;
+        $reader = IOFactory::createReader('Xlsx');
+        $reader->setReadDataOnly(true);
+        $sheetNames = method_exists($reader, 'listWorksheetNames') ? $reader->listWorksheetNames($path) : [];
+        if (in_array('Pengisian Data', $sheetNames, true)) {
+            $reader->setLoadSheetsOnly('Pengisian Data');
+        }
+
+        $sheetInfo = collect($reader->listWorksheetInfo($path))->first(
+            fn (array $info): bool => ! in_array('Pengisian Data', $sheetNames, true) || ($info['worksheetName'] ?? null) === 'Pengisian Data'
+        );
+        $lastColumn = (string) ($sheetInfo['lastColumnLetter'] ?? 'J');
+        $totalRows = (int) ($sheetInfo['totalRows'] ?? 0);
+
+        $reader->setReadFilter($this->stockChunkFilter($lastColumn, 1, 1));
+        $spreadsheet = $reader->load($path);
+        $headerRows = $spreadsheet->getActiveSheet()->rangeToArray("A1:{$lastColumn}1", null, true, false, false);
+        $header = array_map(fn ($value): string => $this->normalizeHeader((string) $value), $headerRows[0] ?? []);
+        $spreadsheet->disconnectWorksheets();
+        unset($spreadsheet, $headerRows);
+
+        $hasHeader = in_array('sku', $header, true) || in_array('qty_actual', $header, true) || in_array('qty_aktual', $header, true);
+        $start = $hasHeader ? 2 : 1;
+        $chunkSize = 2000;
+
+        while ($start <= max($totalRows, $start)) {
+            if ($totalRows > 0 && $start > $totalRows) {
+                break;
+            }
+            $end = $totalRows > 0 ? min($start + $chunkSize - 1, $totalRows) : $start + $chunkSize - 1;
+            $reader->setReadFilter($this->stockChunkFilter($lastColumn, $start, $end));
+            $spreadsheet = $reader->load($path);
+            $slice = $spreadsheet->getActiveSheet()->rangeToArray("A{$start}:{$lastColumn}{$end}", null, true, false, false);
+            $seen = 0;
+
+            foreach ($slice as $offset => $raw) {
+                $rowNo = $start + $offset;
+                if (array_filter($raw, fn ($value): bool => $value !== null && $value !== '') !== []) {
+                    $seen++;
+                }
+                $row = $hasHeader
+                    ? array_combine($header, array_slice(array_pad($raw, count($header), null), 0, count($header)))
+                    : $raw;
+                $normalized = $this->normalizeStockRow($row, $rowNo);
+                if ($normalized !== null) {
+                    yield $normalized;
+                }
+            }
+
+            $spreadsheet->disconnectWorksheets();
+            unset($spreadsheet, $slice);
+            if ($seen === 0) {
+                break;
+            }
+            $start = $end + 1;
+        }
+    }
+
+    private function normalizeStockRow(array $row, int $rowNo): ?array
+    {
+        $sku = trim((string) ($row['sku'] ?? $row[0] ?? ''));
+        $bin = trim((string) ($row['bin'] ?? $row['rack'] ?? $row['no_rak'] ?? $row['kode_rak'] ?? $row['kode_rak_final'] ?? $row[1] ?? ''));
+        $qtyValue = $row['qty_actual'] ?? $row['qty_aktual'] ?? $row['qty_on_hand'] ?? $row['qty_on_hand_jubelio'] ?? $row['qty'] ?? $row[2] ?? 0;
+        $qty = is_numeric($qtyValue) ? (int) $qtyValue : -1;
+        if ($sku === '' && $bin === '' && $qty === 0) {
+            return null;
+        }
+
+        return ['row' => $rowNo, 'sku' => $sku, 'bin' => $bin, 'qty' => $qty];
+    }
+
+    private function stockChunkFilter(string $lastColumn, int $startRow, int $endRow): IReadFilter
+    {
+        return new class($lastColumn, $startRow, $endRow) implements IReadFilter
+        {
+            public function __construct(
+                private string $lastColumn,
+                private int $startRow,
+                private int $endRow,
+            ) {}
+
+            public function readCell($columnAddress, $row, $worksheetName = ''): bool
+            {
+                return $row >= $this->startRow && $row <= $this->endRow;
+            }
+        };
     }
 
     private function readTabular(string $path): array
@@ -1003,10 +1488,14 @@ final class StockCutoverService
         }
     }
 
-    private function deleteWebhookHistory(CarbonImmutable $cutoff, array &$counts): void
+    private function deleteWebhookHistory(CarbonImmutable $cutoff, array &$counts, array $preserveIds = []): void
     {
         if (Schema::hasTable('channel_webhook_inbox')) {
-            $counts['channel_webhook_inbox'] = DB::table('channel_webhook_inbox')->where('received_at', '<', $cutoff->utc())->delete();
+            $query = DB::table('channel_webhook_inbox')->where('received_at', '<', $cutoff->utc());
+            if ($preserveIds !== []) {
+                $query->whereNotIn('id', $preserveIds);
+            }
+            $counts['channel_webhook_inbox'] = $query->delete();
         }
     }
 
