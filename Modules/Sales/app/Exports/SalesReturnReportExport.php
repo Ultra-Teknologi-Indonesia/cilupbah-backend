@@ -2,8 +2,9 @@
 
 namespace Modules\Sales\Exports;
 
-use Illuminate\Support\Collection;
-use Maatwebsite\Excel\Concerns\FromCollection;
+use Illuminate\Database\Eloquent\Builder;
+use Maatwebsite\Excel\Concerns\FromQuery;
+use Maatwebsite\Excel\Concerns\WithChunkReading;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
@@ -11,7 +12,7 @@ use Maatwebsite\Excel\Concerns\WithStyles;
 use Modules\Sales\Models\SalesReturn;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-class SalesReturnReportExport implements FromCollection, WithHeadings, WithMapping, WithStyles, ShouldAutoSize
+class SalesReturnReportExport implements FromQuery, WithChunkReading, WithHeadings, WithMapping, WithStyles, ShouldAutoSize
 {
     public function __construct(
         private readonly ?string $dateFrom,
@@ -24,7 +25,7 @@ class SalesReturnReportExport implements FromCollection, WithHeadings, WithMappi
         private readonly ?string $marketplaceDecision = null,
     ) {}
 
-    public function collection(): Collection
+    public function query(): Builder
     {
         $q = SalesReturn::query()
             ->with([
@@ -58,7 +59,12 @@ class SalesReturnReportExport implements FromCollection, WithHeadings, WithMappi
             $q->where('marketplace_decision', $this->marketplaceDecision);
         }
 
-        return $q->orderByDesc('created_at')->get();
+        return $q->orderByDesc('created_at');
+    }
+
+    public function chunkSize(): int
+    {
+        return 500;
     }
 
     public function headings(): array

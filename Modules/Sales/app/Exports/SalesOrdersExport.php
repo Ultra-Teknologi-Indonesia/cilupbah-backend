@@ -2,8 +2,10 @@
 
 namespace Modules\Sales\Exports;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
-use Maatwebsite\Excel\Concerns\FromCollection;
+use Maatwebsite\Excel\Concerns\FromQuery;
+use Maatwebsite\Excel\Concerns\WithChunkReading;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
@@ -11,7 +13,7 @@ use Maatwebsite\Excel\Concerns\WithStyles;
 use Modules\Sales\Models\SalesOrder;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-class SalesOrdersExport implements FromCollection, WithHeadings, WithMapping, WithStyles, ShouldAutoSize
+class SalesOrdersExport implements FromQuery, WithChunkReading, WithHeadings, WithMapping, WithStyles, ShouldAutoSize
 {
     public function __construct(
         private readonly ?string $tab,
@@ -23,7 +25,7 @@ class SalesOrdersExport implements FromCollection, WithHeadings, WithMapping, Wi
         private readonly ?string $locationId,
     ) {}
 
-    public function collection(): Collection
+    public function query(): Builder
     {
         $query = SalesOrder::query()
             ->with([
@@ -63,7 +65,17 @@ class SalesOrdersExport implements FromCollection, WithHeadings, WithMapping, Wi
             });
         }
 
-        return $query->orderByDesc('transaction_date')->orderByDesc('created_at')->get();
+        return $query->orderByDesc('transaction_date')->orderByDesc('created_at');
+    }
+
+    public function chunkSize(): int
+    {
+        return 500;
+    }
+
+    public function collection(): Collection
+    {
+        return $this->query()->get();
     }
 
     public function headings(): array

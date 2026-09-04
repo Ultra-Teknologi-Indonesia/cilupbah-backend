@@ -25,7 +25,7 @@ class InventorySyncSettingService
         $shopIds = $this->scopedShopIds($filters);
 
         return ProductVariant::query()
-            ->whereHas('product')
+            ->whereHas('product', fn ($query) => $query->whereNull('deleted_at'))
             ->with([
                 'product:id,name,is_bundle',
                 'options.attribute:id,name',

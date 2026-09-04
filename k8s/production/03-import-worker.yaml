@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cilupbah-import-worker
+  namespace: cilupbah
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: cilupbah-import-worker
+  template:
+    metadata:
+      labels:
+        app: cilupbah-import-worker
+    spec:
+      imagePullSecrets:
+        - name: ghcr-creds
+      terminationGracePeriodSeconds: 1860
+      containers:
+        - name: import-worker
+          image: ghcr.io/ultra-teknologi-indonesia/cilupbah:v1.0.0
+          command:
+            - php
+            - artisan
+            - queue:work
+            - redis-long
+            - --queue=imports
+            - --sleep=3
+            - --tries=1
+            - --timeout=1800
+            - --memory=1024
+            - --max-jobs=1
+            - --max-time=1740
+          envFrom:
+            - secretRef:
+                name: cilupbah-env
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "kill -0 1"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "kill -0 1"]
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "1536Mi"
+              cpu: "1000m"

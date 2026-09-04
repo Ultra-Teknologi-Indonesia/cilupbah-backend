@@ -8,12 +8,7 @@ use App\Traits\ApiResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Maatwebsite\Excel\Facades\Excel;
-use Modules\Inventory\Models\ImpexActivity;
-use Modules\Inventory\Services\ImpexActivityService;
 use Modules\Sales\Enums\BuyerCancellationSyncStatus;
-use Modules\Sales\Exports\CancelledOrdersExport;
-use Modules\Sales\Exports\SalesOrdersExport;
 use Modules\Sales\Http\Requests\AcceptOrderCancelRequest;
 use Modules\Sales\Http\Requests\BulkCancelManualOrderRequest;
 use Modules\Sales\Http\Requests\BulkMarkContactedRequest;
@@ -43,6 +38,7 @@ use Modules\Sales\Http\Resources\ShippingLabelResource;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderDriverCallService;
 use Modules\Sales\Services\SalesOrderService;
+use Modules\Report\Services\ExportManager;
 use Modules\Sales\Support\OrderPdfPresenter;
 use OpenApi\Attributes as OA;
 
@@ -107,8 +103,8 @@ class SalesOrderController extends Controller
 
     public function __construct(
         protected SalesOrderService $orderService,
-        protected ImpexActivityService $activityService,
         protected PdfRenderer $pdf,
+        protected ExportManager $exportManager,
     ) {}
 
     #[OA\Get(
@@ -306,55 +302,28 @@ class SalesOrderController extends Controller
     {
         $validated = $request->validated();
 
-        $export = new SalesOrdersExport(
-            tab: $validated['tab'] ?? null,
-            dateFrom: $validated['date_from'] ?? null,
-            dateTo: $validated['date_to'] ?? null,
-            source: $validated['source'] ?? null,
-            search: $validated['search'] ?? null,
-            storeId: $validated['store_id'] ?? null,
-            locationId: $validated['location_id'] ?? null,
+        $job = $this->exportManager->queue($request->user(), 'sales-orders', $validated);
+
+        return $this->successResponse(
+            ['export_id' => $job->id, 'status' => $job->status],
+            'Export pesanan sedang diproses.',
+            202,
         );
 
-        $filename = sprintf(
-            'pesanan-%s-%s.xlsx',
-            $validated['tab'] ?? 'semua',
-            now()->format('Ymd-His'),
-        );
-
-        $this->activityService->recordCompleted(
-            ImpexActivity::DIRECTION_EXPORT,
-            'Export Pesanan',
-            $request->user()?->id,
-        );
-
-        return Excel::download($export, $filename);
     }
 
     public function exportCancelled(ExportCancelledOrdersRequest $request)
     {
         $validated = $request->validated();
 
-        $export = new CancelledOrdersExport(
-            dateFrom: $validated['date_from'] ?? null,
-            dateTo: $validated['date_to'] ?? null,
-            postPackOnly: (bool) ($validated['post_pack_only'] ?? false),
-            source: $validated['source'] ?? null,
+        $job = $this->exportManager->queue($request->user(), 'cancelled-orders', $validated);
+
+        return $this->successResponse(
+            ['export_id' => $job->id, 'status' => $job->status],
+            'Export pesanan batal sedang diproses.',
+            202,
         );
 
-        $filename = sprintf(
-            'cancel-orders-%s-%s.xlsx',
-            $validated['date_from'] ?? 'all',
-            $validated['date_to'] ?? now()->format('Y-m-d'),
-        );
-
-        $this->activityService->recordCompleted(
-            ImpexActivity::DIRECTION_EXPORT,
-            'Export Pesanan Dibatalkan',
-            $request->user()?->id,
-        );
-
-        return Excel::download($export, $filename);
     }
 
     #[OA\Get(

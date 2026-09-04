@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryMovement;
+use Modules\Inventory\Models\SkuRackAssignment;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Modules\Report\Exports\InventoryStockReportExport;
@@ -281,6 +282,61 @@ final class InventoryStockExportTest extends TestCase
         $this->assertSame(4, (int) $historical->qty);
         $this->assertSame(1000.0, (float) $historical->buy_price);
         $this->assertSame(4000.0, (float) $historical->inventory_value);
+    }
+
+    public function test_rack_query_includes_explicit_zero_stock_assignment(): void
+    {
+        $location = Location::factory()->create([
+            'location_code' => 'WH-REPORT-ZERO',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+        $bin = LocationBin::create([
+            'location_id' => $location->id,
+            'floor_code' => 'F1',
+            'row_code' => 'R1',
+            'column_code' => 'C1',
+            'bin_code' => 'B1',
+            'bin_final_code' => 'F1-R1-C1-B1',
+            'is_inbound' => false,
+        ]);
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'Laporan Rak Zero Test',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $product = Product::create([
+            'category_id' => $categoryId,
+            'name' => 'Produk Rak Zero',
+            'status' => 'master',
+            'is_bundle' => false,
+            'is_active' => true,
+        ]);
+        $variant = ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => 'REPORT-RACK-ZERO',
+            'buy_price' => 10,
+            'sell_price' => 20,
+            'min_stock' => 1,
+        ]);
+        SkuRackAssignment::create([
+            'location_id' => $location->id,
+            'item_id' => $variant->id,
+            'bin_id' => $bin->id,
+        ]);
+
+        $rows = app(InventoryStockReportService::class)->rackQuery([
+            'location_id' => $location->id,
+            'item_ids' => [$variant->id],
+            'only_with_stock' => false,
+        ])->get();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('REPORT-RACK-ZERO', $rows->first()->sku);
+        $this->assertSame($bin->bin_final_code, $rows->first()->bin_final_code);
+        $this->assertSame(0, (int) $rows->first()->qty_on_hand);
+        $this->assertSame(0, (int) $rows->first()->qty_actual);
     }
 
     public function test_current_and_rack_queries_exclude_soft_deleted_catalog_rows(): void

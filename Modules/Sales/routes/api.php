@@ -71,6 +71,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::middleware('role_or_permission:owner|export-retur-penjualan')->group(function () {
         Route::get('sales/returns/channel-online/export', [SalesReturnController::class, 'exportChannelOnline'])->name('sales.returns.channel-online.export');
         Route::get('sales/returns/report/export', [SalesReturnController::class, 'reportExport'])->name('sales.returns.report.export');
+        Route::get('sales/returns/report/export/async', [SalesReturnController::class, 'reportExportAsync'])->name('sales.returns.report.export.async');
     });
     Route::middleware('role_or_permission:owner|view-retur-penjualan')->group(function () {
         Route::get('sales/returns/report', [SalesReturnController::class, 'report'])->name('sales.returns.report');
@@ -131,6 +132,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
         Route::get('sales/settlements/summary', [OrderSettlementController::class, 'summary'])->name('sales.settlements.summary');
         Route::get('sales/settlements/export', [OrderSettlementController::class, 'export'])->name('sales.settlements.export');
+        Route::get('sales/settlements/export/async', [OrderSettlementController::class, 'exportAsync'])->name('sales.settlements.export.async');
         Route::get('sales/settlements', [OrderSettlementController::class, 'index'])->name('sales.settlements.index');
 
         Route::get('sales/settlements/{id}', [SalesSettlementController::class, 'show'])->whereUuid('id')->name('sales.settlements.show');
@@ -195,6 +197,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::middleware('role_or_permission:owner|export-pesanan')->group(function () {
         Route::get('sales/orders/export', [SalesOrderController::class, 'export'])->name('sales.orders.export');
+        Route::get('sales/orders/export/async', [SalesOrderController::class, 'export'])->name('sales.orders.export.async');
     });
 
     Route::middleware('role_or_permission:owner|import-pesanan')->group(function () {
@@ -211,6 +214,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     });
     Route::middleware('role_or_permission:owner|export-pesanan')->group(function () {
         Route::get('sales/orders/cancelled/export', [SalesOrderController::class, 'exportCancelled'])->name('sales.orders.cancelled.export');
+        Route::get('sales/orders/cancelled/export/async', [SalesOrderController::class, 'exportCancelled'])->name('sales.orders.cancelled.export.async');
     });
     Route::middleware('role_or_permission:owner|view-pesanan')->group(function () {
         Route::get('sales/buyer-confirmations', [BuyerConfirmationController::class, 'index'])->name('sales.buyer-confirmations.index');
@@ -256,6 +260,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::middleware('role_or_permission:owner|view-pesanan')->group(function () {
         Route::get('sales/{id}/activities', [SalesOrderActivityController::class, 'index'])->whereUuid('id')->name('sales.orders.activities');
         Route::get('sales/{id}/invoice', [SalesOrderController::class, 'invoice'])->whereUuid('id')->name('sales.orders.invoice');
+        Route::post('sales/invoices/bulk-pdf/async', [\Modules\Sales\Http\Controllers\BulkInvoiceController::class, 'bulkPdfAsync'])->name('sales.invoices.bulk-pdf-async');
         Route::post('sales/invoices/bulk-pdf', [\Modules\Sales\Http\Controllers\BulkInvoiceController::class, 'bulkPdf'])->name('sales.invoices.bulk-pdf');
         Route::get('sales/{id}/breakdown', [SalesOrderController::class, 'breakdown'])->whereUuid('id')->name('sales.orders.breakdown');
     });

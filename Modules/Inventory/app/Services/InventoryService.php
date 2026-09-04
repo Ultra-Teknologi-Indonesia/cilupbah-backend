@@ -2186,6 +2186,11 @@ class InventoryService
         return $this->transferRepository->findById($id);
     }
 
+    public function assertTransfersAccessible(array $ids): void
+    {
+        $this->transferRepository->assertManyAccessible($ids);
+    }
+
     public function bulkDeleteOrRevertTransfers(array $ids, string $actor): array
     {
         $deleted = 0;

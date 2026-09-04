@@ -65,6 +65,11 @@ class StockAdjustmentService
         return $this->adjustmentRepository->getManyForPdf($ids);
     }
 
+    public function assertAdjustmentsAccessible(array $ids): void
+    {
+        $this->adjustmentRepository->assertManyAccessible($ids);
+    }
+
     public function create(array $data): StockAdjustment
     {
         WarehouseAccess::assert($data['location_id'] ?? null);

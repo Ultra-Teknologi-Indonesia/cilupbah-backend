@@ -76,6 +76,94 @@ class ProductVariantsBulkTest extends TestCase
         $this->assertSoftDeleted('product_variants', ['sku' => 'IP-GREEN']);
     }
 
+    public function test_soft_delete_removes_the_variant_rack_assignment(): void
+    {
+        $variant = ProductVariant::where('sku', 'IP-GREEN')->firstOrFail();
+
+        DB::table('sku_rack_assignments')->insert([
+            'id' => (string) Uuid::uuid7(),
+            'location_id' => (string) Uuid::uuid7(),
+            'item_id' => $variant->id,
+            'bin_id' => (string) Uuid::uuid7(),
+            'assigned_by' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $variant->delete();
+
+        $this->assertDatabaseMissing('sku_rack_assignments', [
+            'item_id' => $variant->id,
+        ]);
+    }
+
+    public function test_direct_soft_delete_update_removes_the_variant_rack_assignment(): void
+    {
+        $variant = ProductVariant::where('sku', 'IP-GREEN')->firstOrFail();
+
+        DB::table('sku_rack_assignments')->insert([
+            'id' => (string) Uuid::uuid7(),
+            'location_id' => (string) Uuid::uuid7(),
+            'item_id' => $variant->id,
+            'bin_id' => (string) Uuid::uuid7(),
+            'assigned_by' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('product_variants')
+            ->where('id', $variant->id)
+            ->update(['deleted_at' => now(), 'updated_at' => now()]);
+
+        $this->assertDatabaseMissing('sku_rack_assignments', [
+            'item_id' => $variant->id,
+        ]);
+    }
+
+    public function test_soft_delete_product_removes_all_variant_rack_assignments(): void
+    {
+        $variant = ProductVariant::where('sku', 'IP-GREEN')->firstOrFail();
+
+        DB::table('sku_rack_assignments')->insert([
+            'id' => (string) Uuid::uuid7(),
+            'location_id' => (string) Uuid::uuid7(),
+            'item_id' => $variant->id,
+            'bin_id' => (string) Uuid::uuid7(),
+            'assigned_by' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->product->delete();
+
+        $this->assertDatabaseMissing('sku_rack_assignments', [
+            'item_id' => $variant->id,
+        ]);
+    }
+
+    public function test_direct_soft_delete_product_update_removes_variant_rack_assignments(): void
+    {
+        $variant = ProductVariant::where('sku', 'IP-GREEN')->firstOrFail();
+
+        DB::table('sku_rack_assignments')->insert([
+            'id' => (string) Uuid::uuid7(),
+            'location_id' => (string) Uuid::uuid7(),
+            'item_id' => $variant->id,
+            'bin_id' => (string) Uuid::uuid7(),
+            'assigned_by' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('products')
+            ->where('id', $this->product->id)
+            ->update(['deleted_at' => now(), 'updated_at' => now()]);
+
+        $this->assertDatabaseMissing('sku_rack_assignments', [
+            'item_id' => $variant->id,
+        ]);
+    }
+
     public function test_delete_skips_variant_with_stock(): void
     {
         $this->giveStock('IP-BLUE', 5);

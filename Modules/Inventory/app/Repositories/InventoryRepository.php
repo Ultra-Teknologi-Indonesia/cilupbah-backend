@@ -13,6 +13,7 @@ use Modules\Channel\Models\ChannelShop;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\SkuRackAssignment;
 use Modules\Inventory\Services\PurchaseCostService;
+use Modules\Inventory\Services\RackAssignmentCleanupService;
 use Modules\Inventory\Support\InventoryOnHandGuard;
 use Modules\Inventory\Support\StockSummary;
 use Modules\Product\Models\Product;
@@ -53,6 +54,17 @@ class InventoryRepository
         return $this->transitLocationId;
     }
 
+    private function activeVariantScope($query, bool $excludeTechnical = false): void
+    {
+        $query
+            ->whereNull('deleted_at')
+            ->whereHas('product', fn ($productQuery) => $productQuery->whereNull('deleted_at'));
+
+        if ($excludeTechnical) {
+            TechnicalSku::exclude($query);
+        }
+    }
+
     private function applyStockSourceScope($query, ?string $locationId)
     {
         $allowed = WarehouseAccess::allowedIds();
@@ -78,6 +90,7 @@ class InventoryRepository
         WarehouseAccess::assert($locationId);
 
         return Inventory::where('location_id', $locationId)
+            ->whereHas('product', fn ($q) => $this->activeVariantScope($q))
             ->with(['product', 'bin'])
             ->get();
     }
@@ -86,6 +99,7 @@ class InventoryRepository
     {
         $inventories = Inventory::where('item_id', $itemId)
             ->tap(fn ($query) => WarehouseAccess::apply($query, 'location_id'))
+            ->whereHas('product', fn ($q) => $this->activeVariantScope($q))
             ->placed()
             ->where('on_hand', '<>', 0)
             ->with([
@@ -277,6 +291,7 @@ class InventoryRepository
 
         return Inventory::where('item_id', $itemId)
             ->where('location_id', $locationId)
+            ->whereHas('product', fn ($q) => $this->activeVariantScope($q))
             ->where('on_hand', '>', 0)
             ->orderByRaw('expired_date IS NULL, expired_date')
             ->lockForUpdate()
@@ -287,7 +302,7 @@ class InventoryRepository
     {
         $query = QueryBuilder::for(Inventory::class)
             ->with(['product:id,sku,product_id', 'location:id,location_name', 'bin:id,bin_final_code'])
-            ->whereHas('product', fn ($q) => TechnicalSku::exclude($q))
+            ->whereHas('product', fn ($q) => $this->activeVariantScope($q, true))
             ->allowedFilters(
                 AllowedFilter::exact('item_id'),
                 AllowedFilter::exact('location_id'),
@@ -306,7 +321,7 @@ class InventoryRepository
     public function getStockByItemIds(array $itemIds)
     {
         $query = Inventory::whereIn('item_id', $itemIds)
-            ->whereHas('product', fn ($q) => TechnicalSku::exclude($q))
+            ->whereHas('product', fn ($q) => $this->activeVariantScope($q, true))
             ->with(['product:id,sku,product_id', 'location:id,location_name', 'bin:id,bin_final_code'])
             ->select('id', 'item_id', 'location_id', 'bin_id', 'batch_no', 'serial_no', 'on_hand', 'on_order', 'available');
 
@@ -328,9 +343,11 @@ class InventoryRepository
         $query = DB::table('product_variants')
             ->whereIn('product_variants.id', $orderItemsQuery)
             ->tap(fn ($q) => TechnicalSku::exclude($q, 'product_variants.sku'))
+            ->whereNull('product_variants.deleted_at')
             ->leftJoin('inventories', 'inventories.item_id', '=', 'product_variants.id')
             ->leftJoin('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
             ->join('products', 'products.id', '=', 'product_variants.product_id')
+            ->whereNull('products.deleted_at')
             ->groupBy('product_variants.id', 'product_variants.sku', 'products.name')
             ->havingRaw(StockSummary::availableSql().' <= 0')
             ->select(
@@ -793,7 +810,7 @@ class InventoryRepository
             ->placed()
             ->where('on_hand', '>', 0)
             ->whereIn('item_id', $sellableItemIds)
-            ->whereHas('product', fn ($q) => TechnicalSku::exclude($q))
+            ->whereHas('product', fn ($q) => $this->activeVariantScope($q, true))
             ->with(['product:id,sku,product_id,barcode', 'product.product:id,name', 'bin:id,bin_final_code'])
             ->select('id', 'item_id', 'location_id', 'bin_id', 'batch_no', 'serial_no', 'on_hand', 'on_order', 'available')
             ->orderBy('item_id')
@@ -853,6 +870,7 @@ class InventoryRepository
         return QueryBuilder::for(ProductVariant::class)
             ->select('product_variants.id', 'product_variants.sku', 'product_variants.product_id')
             ->tap(fn ($q) => TechnicalSku::exclude($q, 'product_variants.sku'))
+            ->whereHas('product', fn ($q) => $q->whereNull('deleted_at'))
             ->with(['product:id,name'])
             ->allowedFilters(
                 AllowedFilter::partial('sku'),
@@ -868,7 +886,7 @@ class InventoryRepository
 
         $query = QueryBuilder::for(Inventory::class)
             ->with(['product:id,sku,product_id,barcode', 'product.product:id,name', 'bin:id,bin_final_code'])
-            ->whereHas('product', fn ($q) => TechnicalSku::exclude($q))
+            ->whereHas('product', fn ($q) => $this->activeVariantScope($q, true))
             ->allowedFilters(
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::partial('sku', 'product.sku'),
@@ -895,7 +913,7 @@ class InventoryRepository
             ->selectRaw(StockSummary::availableSql().' as total_available')
             ->groupBy('inventories.item_id')
             ->with(['product:id,sku,product_id'])
-            ->whereHas('product', fn ($q) => TechnicalSku::exclude($q))
+            ->whereHas('product', fn ($q) => $this->activeVariantScope($q, true))
             ->allowedFilters(
                 AllowedFilter::exact('item_id', 'inventories.item_id'),
             )
@@ -1016,7 +1034,7 @@ class InventoryRepository
                 DB::raw(StockSummary::availableSql().' as total_available'))
             ->whereIn('inventories.item_id', $ids)
             ->groupBy('inventories.item_id', 'inventories.location_id')
-            ->whereHas('product', fn ($q) => TechnicalSku::exclude($q))
+            ->whereHas('product', fn ($q) => $this->activeVariantScope($q, true))
             ->with(['product:id,sku,product_id', 'location:id,location_name,location_code,is_small_warehouse']);
         WarehouseAccess::apply($query, 'inventories.location_id');
 
@@ -1034,6 +1052,8 @@ class InventoryRepository
 
     public function deleteVariants(array $ids): int
     {
+        app(RackAssignmentCleanupService::class)->removeForVariants($ids);
+
         return ProductVariant::whereIn('id', $ids)->delete();
     }
 
@@ -1140,7 +1160,7 @@ class InventoryRepository
     {
         $query = Inventory::where('bin_id', $binId)
             ->where('on_hand', '>', 0)
-            ->whereHas('product', fn ($q) => TechnicalSku::exclude($q))
+            ->whereHas('product', fn ($q) => $this->activeVariantScope($q, true))
             ->with([
                 'product:id,sku,product_id',
                 'product.product:id,name',

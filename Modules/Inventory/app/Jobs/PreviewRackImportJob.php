@@ -25,13 +25,16 @@ class PreviewRackImportJob implements ShouldQueue
 
     public function __construct(public string $batchId)
     {
-        $this->onQueue(config('queue.names.product'));
+        $this->onConnection(config('queue.default') === 'sync' ? 'sync' : config('queue.routing.imports.connection', 'redis-long'));
+        $this->onQueue(config('queue.routing.imports.queue', 'imports'));
     }
 
     public function handle(
         RackImportBatchService $batches,
         RackImportFileReader $reader,
     ): void {
+        ini_set('memory_limit', (string) config('queue.routing.imports.memory_limit', '1024M'));
+        set_time_limit((int) config('queue.routing.imports.timeout', 1800));
         $batch = RackImportBatch::find($this->batchId);
         if (! $batch || $batch->state !== RackImportBatch::STATE_QUEUED) {
             return;

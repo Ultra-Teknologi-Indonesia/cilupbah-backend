@@ -8,6 +8,7 @@ use Maatwebsite\Excel\Facades\Excel;
 use Modules\Sales\Exports\SettlementReportExport;
 use Modules\Sales\Http\Resources\SalesOrderResource;
 use Modules\Sales\Services\OrderSettlementService;
+use Modules\Report\Services\ExportManager;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Order Settlements', description: 'Settlement marketplace per-pesanan (read-only)')]
@@ -73,5 +74,28 @@ class OrderSettlementController extends Controller
         $filename = 'laporan-settlement-' . now()->format('Ymd') . '.xlsx';
 
         return Excel::download(new SettlementReportExport($orders), $filename);
+    }
+
+    public function exportAsync(Request $request, ExportManager $exports): JsonResponse
+    {
+        $filters = $request->validate([
+            'search' => ['nullable', 'string', 'max:255'],
+            'filter' => ['nullable', 'array'],
+            'filter.channel' => ['nullable', 'string', 'max:30'],
+            'filter.channel_shop_id' => ['nullable', 'string', 'max:100'],
+            'filter.is_settled' => ['nullable', 'boolean'],
+            'filter.date_from' => ['nullable', 'date'],
+            'filter.date_to' => ['nullable', 'date', 'after_or_equal:filter.date_from'],
+            'filter.settled_from' => ['nullable', 'date'],
+            'filter.settled_to' => ['nullable', 'date', 'after_or_equal:filter.settled_from'],
+        ]);
+
+        $job = $exports->queue($request->user(), 'settlement', $filters);
+
+        return $this->successResponse(
+            ['export_id' => $job->id, 'status' => $job->status],
+            null,
+            202,
+        );
     }
 }

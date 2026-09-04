@@ -3,6 +3,7 @@
 namespace Modules\Outbound\Repositories;
 
 use App\Support\WarehouseAccess;
+use App\Exceptions\UserFacingException;
 use Modules\Inventory\Models\Inventory;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
@@ -34,6 +35,19 @@ class PicklistRepository
         WarehouseAccess::apply($query, 'location_id');
 
         return $query->get();
+    }
+
+    public function assertOrdersAccessibleForBulkPdf(array $orderIds): void
+    {
+        foreach (array_chunk($orderIds, 1000) as $chunk) {
+            $query = Picklist::query()->whereHas('items', fn ($q) => $q->whereIn('order_id', $chunk));
+            WarehouseAccess::apply($query, 'location_id');
+            if ($query->exists()) {
+                return;
+            }
+        }
+
+        throw new UserFacingException('Data tidak ditemukan', 'Tidak ada picklist yang dapat diakses untuk pesanan yang dipilih.', 404);
     }
 
     public function recommendedBinStocks(array $itemIds, string $locationId): Collection

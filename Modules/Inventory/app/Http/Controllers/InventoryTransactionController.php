@@ -13,6 +13,7 @@ use Modules\Inventory\Http\Requests\AdjustStockRequest;
 use Modules\Inventory\Http\Requests\ApproveTransferRequest;
 use Modules\Inventory\Http\Requests\BinTransferRequest;
 use Modules\Inventory\Http\Requests\BulkDeleteTransferRequest;
+use Modules\Inventory\Http\Requests\BulkPdfTransferAsyncRequest;
 use Modules\Inventory\Http\Requests\BulkPdfTransferRequest;
 use Modules\Inventory\Http\Requests\CancelTransferRequest;
 use Modules\Inventory\Http\Requests\CreateTransferDraftRequest;
@@ -33,6 +34,7 @@ use Modules\Inventory\Http\Resources\BinTransferReceiptResource;
 use Modules\Inventory\Http\Resources\BinTransferResource;
 use Modules\Inventory\Http\Resources\InventoryTransferResource;
 use Modules\Inventory\Services\InventoryService;
+use Modules\Report\Services\ExportManager;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Inventory Transactions', description: 'API Endpoints for Inventory Transactions')]
@@ -478,6 +480,41 @@ class InventoryTransactionController extends Controller
                 'Aksi tidak dapat diproses',
             );
         }
+    }
+
+    #[OA\Post(
+        path: '/api/v1/inventory/transfers/bulk/pdf/async',
+        summary: 'Menyiapkan Surat Jalan bulk secara asynchronous',
+        security: [['bearerAuth' => []]],
+        tags: ['Inventory Transactions'],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            required: ['ids'],
+            properties: [
+                new OA\Property(
+                    property: 'ids',
+                    type: 'array',
+                    minItems: 1,
+                    items: new OA\Items(type: 'string', format: 'uuid'),
+                ),
+            ],
+        )),
+        responses: [
+            new OA\Response(response: 202, description: 'Export masuk antrean'),
+            new OA\Response(response: 404, description: 'Sebagian dokumen tidak ditemukan atau tidak dapat diakses'),
+            new OA\Response(response: 422, description: 'Validation Error'),
+        ],
+    )]
+    public function bulkPdfTransferAsync(BulkPdfTransferAsyncRequest $request, ExportManager $exports): JsonResponse
+    {
+        $ids = $request->validated()['ids'];
+        $this->inventoryService->assertTransfersAccessible($ids);
+        $job = $exports->queue($request->user(), 'transfer-out-bulk-pdf', ['ids' => $ids]);
+
+        return $this->successResponse([
+            'export_id' => $job->id,
+            'status' => $job->status,
+            'total' => count($ids),
+        ], null, 202);
     }
 
     #[OA\Get(

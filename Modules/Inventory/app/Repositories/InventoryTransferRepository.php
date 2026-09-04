@@ -2,6 +2,7 @@
 
 namespace Modules\Inventory\Repositories;
 
+use App\Exceptions\UserFacingException;
 use App\Models\User;
 use App\Support\WarehouseAccess;
 use Carbon\CarbonImmutable;
@@ -145,6 +146,38 @@ class InventoryTransferRepository
         }
 
         return $transfer;
+    }
+
+    public function assertManyAccessible(array $ids): void
+    {
+        $query = InventoryTransfer::query()->whereIn('id', $ids);
+        $allowedLocationIds = WarehouseAccess::allowedIds();
+
+        if ($allowedLocationIds !== null) {
+            $query->where(function ($q) use ($allowedLocationIds): void {
+                $q->whereIn('source_location_id', $allowedLocationIds)
+                    ->orWhereIn('destination_location_id', $allowedLocationIds);
+            });
+        }
+
+        $foundIds = [];
+        foreach (array_chunk($ids, 1000) as $idChunk) {
+            $foundIds = array_merge(
+                $foundIds,
+                (clone $query)->whereIn('id', $idChunk)->pluck('id')
+                    ->map(static fn ($id): string => (string) $id)
+                    ->all(),
+            );
+        }
+        $missingIds = array_values(array_diff($ids, $foundIds));
+
+        if ($missingIds !== []) {
+            throw new UserFacingException(
+                'Data tidak ditemukan',
+                'Sebagian dokumen tidak ditemukan atau tidak dapat diakses: '.implode(', ', $missingIds),
+                404,
+            );
+        }
     }
 
     public function findByIdForUpdate(string $id): ?InventoryTransfer

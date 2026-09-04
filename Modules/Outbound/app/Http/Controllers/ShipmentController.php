@@ -13,6 +13,7 @@ use Modules\Outbound\Exceptions\ScanRejectedException;
 use Modules\Outbound\Exports\ShipmentManifestExport;
 use Modules\Outbound\Http\Requests\AddShipmentOrdersRequest;
 use Modules\Outbound\Http\Requests\BulkManifestPdfRequest;
+use Modules\Outbound\Http\Requests\BulkManifestPdfAsyncRequest;
 use Modules\Outbound\Http\Requests\CreateShipmentRequest;
 use Modules\Outbound\Http\Requests\DriverCallRequest;
 use Modules\Outbound\Http\Requests\RemoveShipmentOrdersRequest;
@@ -26,6 +27,7 @@ use Modules\Outbound\Http\Resources\CompletedShipmentOrderResource;
 use Modules\Outbound\Http\Resources\ShipmentOrderResource;
 use Modules\Outbound\Http\Resources\ShipmentResource;
 use Modules\Outbound\Services\ShipmentService;
+use Modules\Report\Services\ExportManager;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Outbound - Shipment', description: 'API Endpoints for Shipment management')]
@@ -57,6 +59,7 @@ class ShipmentController extends Controller
         protected ShipmentService $shipmentService,
         protected QrCodeGenerator $qrCodeGenerator,
         protected PdfRenderer $pdfRenderer,
+        protected ExportManager $exportManager,
     ) {}
 
     #[OA\Get(
@@ -670,6 +673,19 @@ class ShipmentController extends Controller
                 'Aksi tidak dapat diproses',
             );
         }
+    }
+
+    public function bulkManifestPdfAsync(BulkManifestPdfAsyncRequest $request): JsonResponse
+    {
+        $orderIds = $request->validated()['order_ids'];
+        $this->shipmentService->assertOrdersAccessibleForBulkManifest($orderIds);
+        $job = $this->exportManager->queue($request->user(), 'manifest-bulk-pdf', ['order_ids' => $orderIds]);
+
+        return $this->successResponse([
+            'export_id' => $job->id,
+            'status' => $job->status,
+            'total' => count($orderIds),
+        ], 'PDF manifest sedang diproses.', 202);
     }
 
     #[OA\Post(

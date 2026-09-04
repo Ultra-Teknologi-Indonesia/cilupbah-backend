@@ -4,6 +4,7 @@ namespace Modules\Product\Observers;
 
 use Illuminate\Support\Facades\Cache;
 use Modules\Channel\Jobs\SyncStockToChannelsJob;
+use Modules\Inventory\Services\RackAssignmentCleanupService;
 use Modules\Product\Models\ProductVariant;
 
 class ProductVariantObserver
@@ -25,5 +26,11 @@ class ProductVariantObserver
         Cache::put($debounceKey, true, 5);
 
         SyncStockToChannelsJob::dispatch((string) $variant->id)->afterCommit();
+    }
+
+    public function deleted(ProductVariant $variant): void
+    {
+        app(RackAssignmentCleanupService::class)
+            ->removeForVariants([(string) $variant->id]);
     }
 }

@@ -3,6 +3,7 @@
 namespace Modules\Inventory\Repositories;
 
 use App\Support\WarehouseAccess;
+use App\Exceptions\UserFacingException;
 use Modules\Inventory\Models\StockAdjustment;
 use Modules\Inventory\Models\StockAdjustmentItem;
 use Spatie\QueryBuilder\QueryBuilder;
@@ -179,6 +180,22 @@ class StockAdjustmentRepository
         WarehouseAccess::apply($query, 'location_id');
 
         return $query->get();
+    }
+
+    public function assertManyAccessible(array $ids): void
+    {
+        $query = StockAdjustment::query();
+        WarehouseAccess::apply($query, 'location_id');
+        $foundIds = [];
+
+        foreach (array_chunk($ids, 1000) as $chunk) {
+            $foundIds = array_merge($foundIds, (clone $query)->whereIn('id', $chunk)->pluck('id')->map(fn ($id) => (string) $id)->all());
+        }
+
+        $missing = array_values(array_diff($ids, $foundIds));
+        if ($missing !== []) {
+            throw new UserFacingException('Data tidak ditemukan', 'Sebagian penyesuaian tidak ditemukan atau tidak dapat diakses: '.implode(', ', $missing), 404);
+        }
     }
 
     public function generateAdjustmentNo(): string

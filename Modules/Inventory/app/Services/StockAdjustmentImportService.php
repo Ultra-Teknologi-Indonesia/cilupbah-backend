@@ -44,6 +44,7 @@ class StockAdjustmentImportService
 
         $skus = collect($rows)->pluck('item_code')->filter()->map(fn ($s) => trim((string) $s))->unique()->values()->all();
         $variants = ProductVariant::whereIn('sku', $skus)
+            ->whereHas('product', fn ($query) => $query->whereNull('deleted_at'))
             ->get(['id', 'sku', 'product_id'])
             ->keyBy(fn ($v) => strtolower($v->sku));
 
@@ -191,14 +192,6 @@ class StockAdjustmentImportService
                 }
             }
 
-            if ($calculation->resultsInNegativeStock()) {
-                $warnings[] = [
-                    'row' => $rowNo,
-                    'field' => $mode === StockAdjustmentRule::MODE_DELTA ? 'delta_qty' : 'final_qty',
-                    'warning' => "[SKU: {$sku}] Penyesuaian diizinkan oleh policy, tetapi hasil stok menjadi minus ({$calculation->actualQty}).",
-                ];
-            }
-
             $noteText = trim((string) ($row['notes'] ?? ''));
 
             if (isset($variant->is_active) && ! $variant->is_active) {
@@ -315,7 +308,7 @@ class StockAdjustmentImportService
             '2. Setiap baris mewakili 1 item + 1 rak.',
             '3. WAJIB isi salah satu: delta_qty ATAU final_qty (tidak boleh keduanya).',
             '4. Kolom bin_final_code boleh dikosongkan — sistem otomatis pakai rak utama.',
-            '5. Aturan delta/final sama dengan penyesuaian manual; hasil minus mengikuti policy stok.',
+            '5. Hasil stok tidak boleh minus; baris yang menghasilkan stok minus akan ditolak.',
             '6. Baca sheet "Tata Cara Pengisian" untuk detail tiap kolom.',
             '',
             'Legenda:',
@@ -335,7 +328,7 @@ class StockAdjustmentImportService
             ['Nama Kolom', 'Wajib', 'Tipe', 'Contoh', 'Keterangan'],
             ['item_code', 'Ya', 'Text', 'SKU-12345', 'SKU varian yang mau disesuaikan'],
             ['bin_final_code', 'Opsional', 'Text', 'L1-B1-K1-R2', 'Kosongkan → sistem pakai rak utama otomatis'],
-            ['delta_qty', 'Salah satu', 'Integer (+/-)', '10 atau -5', 'Selisih tambah/kurang dari on_hand sekarang; mengikuti policy stok minus yang sama dengan manual'],
+            ['delta_qty', 'Salah satu', 'Integer (+/-)', '10 atau -5', 'Selisih tambah/kurang dari on_hand sekarang; hasil akhirnya tidak boleh minus'],
             ['final_qty', 'Salah satu', 'Integer ≥0', '100', 'Stok akhir absolut (menimpa on_hand)'],
             ['hpp', 'Opsional', 'Decimal', '2000', 'Harga pokok baru. Delta positif → weighted-avg recalc'],
             ['notes', 'Opsional', 'Text', 'Opname 2026-01', 'Alasan per baris'],

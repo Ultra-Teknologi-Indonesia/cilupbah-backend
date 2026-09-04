@@ -22,6 +22,8 @@ class ExportJob extends Model
         'type',
         'params',
         'status',
+        'queue_connection',
+        'queue_name',
         'file_disk',
         'file_path',
         'file_name',

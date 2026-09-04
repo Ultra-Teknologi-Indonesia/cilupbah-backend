@@ -130,6 +130,7 @@ class RackAllocationClassifier
         $skus = array_values($skus);
 
         $variants = ProductVariant::whereIn('sku', $skus)
+            ->whereHas('product', fn ($query) => $query->whereNull('deleted_at'))
             ->get(['id', 'sku', 'product_id'])
             ->keyBy(fn ($v) => mb_strtolower((string) $v->sku));
 
@@ -186,7 +187,11 @@ class RackAllocationClassifier
         if (! empty($itemIds) || ! empty($binIds)) {
             SkuRackAssignment::query()
                 ->join('location_bins', 'location_bins.id', '=', 'sku_rack_assignments.bin_id')
+                ->join('product_variants', 'product_variants.id', '=', 'sku_rack_assignments.item_id')
+                ->join('products', 'products.id', '=', 'product_variants.product_id')
                 ->whereIn('sku_rack_assignments.location_id', $locationIds)
+                ->whereNull('product_variants.deleted_at')
+                ->whereNull('products.deleted_at')
                 ->where(function ($w) use ($itemIds, $binIds) {
                     $w->whereIn('sku_rack_assignments.item_id', $itemIds)
                         ->orWhereIn('sku_rack_assignments.bin_id', $binIds);

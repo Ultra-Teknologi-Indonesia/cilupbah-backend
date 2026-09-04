@@ -404,6 +404,11 @@ class ReportService
         );
     }
 
+    public function negativeStockQuery(array $filters): \Illuminate\Database\Query\Builder
+    {
+        return $this->repository->negativeStockHistoryQuery($filters);
+    }
+
     public function shipmentListQuery(array $filters): \Illuminate\Database\Query\Builder
     {
         return $this->repository->shipmentListQuery($filters);
@@ -571,6 +576,11 @@ class ReportService
             ->get()
             ->map(fn ($row) => $this->formatTransferRow($row, $isMasuk))
             ->all();
+    }
+
+    public function transferQuery(array $filters): \Illuminate\Database\Query\Builder
+    {
+        return $this->repository->transferQuery($filters);
     }
 
     private function formatTransferRow(object $row, bool $isMasuk): array

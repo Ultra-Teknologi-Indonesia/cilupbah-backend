@@ -87,7 +87,12 @@ final class StockCutoverService
             'database_driver' => DB::getDriverName(),
             'application_environment' => app()->environment(),
             'locations' => DB::table('locations')->whereIn('id', $locationIds)->count(),
-            'active_sku_count' => DB::table('product_variants')->where('is_active', true)->count(),
+            'active_sku_count' => DB::table('product_variants as pv')
+                ->join('products as p', 'p.id', '=', 'pv.product_id')
+                ->where('pv.is_active', true)
+                ->whereNull('pv.deleted_at')
+                ->whereNull('p.deleted_at')
+                ->count(),
             'orders_without_location' => Schema::hasColumn('sales_orders', 'location_id')
                 ? DB::table('sales_orders')->whereNull('location_id')->count()
                 : null,
@@ -125,9 +130,12 @@ final class StockCutoverService
     {
         $manifest = $this->readSkuManifest($manifestPath);
         $manifestSkus = array_keys($manifest);
-        $master = DB::table('product_variants')
-            ->whereIn(DB::raw('LOWER(sku)'), array_map('strtolower', $manifestSkus))
-            ->get(['id', 'sku', 'is_active']);
+        $master = DB::table('product_variants as pv')
+            ->join('products as p', 'p.id', '=', 'pv.product_id')
+            ->whereIn(DB::raw('LOWER(pv.sku)'), array_map('strtolower', $manifestSkus))
+            ->whereNull('pv.deleted_at')
+            ->whereNull('p.deleted_at')
+            ->get(['pv.id', 'pv.sku', 'pv.is_active']);
         $masterBySku = $master->keyBy(fn (object $row): string => mb_strtolower(trim((string) $row->sku)));
 
         $missingMaster = [];
@@ -141,7 +149,14 @@ final class StockCutoverService
             }
         }
 
-        $masterSkus = DB::table('product_variants')->where('is_active', true)->pluck('sku')->map(fn ($sku): string => mb_strtolower(trim((string) $sku)))->all();
+        $masterSkus = DB::table('product_variants as pv')
+            ->join('products as p', 'p.id', '=', 'pv.product_id')
+            ->where('pv.is_active', true)
+            ->whereNull('pv.deleted_at')
+            ->whereNull('p.deleted_at')
+            ->pluck('pv.sku')
+            ->map(fn ($sku): string => mb_strtolower(trim((string) $sku)))
+            ->all();
         $missingManifest = array_values(array_diff($masterSkus, array_map('mb_strtolower', $manifestSkus)));
         $assignmentIssues = [];
         if (Schema::hasTable('sku_rack_assignments')) {
@@ -150,6 +165,13 @@ final class StockCutoverService
                 ->join('location_bins as lb', 'lb.id', '=', 'sra.bin_id')
                 ->whereIn('sra.location_id', $locationIds)
                 ->whereColumn('lb.location_id', 'sra.location_id')
+                ->whereNull('pv.deleted_at')
+                ->whereNotExists(function ($query): void {
+                    $query->selectRaw('1')
+                        ->from('products as p')
+                        ->whereColumn('p.id', 'pv.product_id')
+                        ->whereNotNull('p.deleted_at');
+                })
                 ->pluck('pv.sku')
                 ->map(fn ($sku): string => mb_strtolower(trim((string) $sku)))
                 ->all();

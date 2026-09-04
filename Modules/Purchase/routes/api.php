@@ -37,6 +37,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('purchase/orders/progress', [PurchaseOrderController::class, 'receivable'])->name('purchase.orders.progress');
         Route::get('purchase/orders/export/list', [PurchaseOrderImportExportController::class, 'exportList'])->name('purchase.orders.export.list');
         Route::get('purchase/orders/export/detail', [PurchaseOrderImportExportController::class, 'exportDetail'])->name('purchase.orders.export.detail');
+        Route::get('purchase/orders/export/list/async', [PurchaseOrderImportExportController::class, 'exportListAsync'])->name('purchase.orders.export.list.async');
+        Route::get('purchase/orders/export/detail/async', [PurchaseOrderImportExportController::class, 'exportDetailAsync'])->name('purchase.orders.export.detail.async');
         Route::get('purchase/orders', [PurchaseOrderController::class, 'index'])->name('purchase.orders.index');
         Route::get('purchase/orders/{id}', [PurchaseOrderController::class, 'show'])->name('purchase.orders.show');
         Route::get('purchase/orders/{id}/items', [PurchaseOrderController::class, 'items'])->name('purchase.orders.items');

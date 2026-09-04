@@ -2,7 +2,9 @@
 
 namespace Modules\Inventory\Tests\Unit;
 
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Modules\Inventory\Http\Requests\BulkPdfTransferAsyncRequest;
 use Modules\Inventory\Http\Requests\BulkPdfTransferRequest;
 use Tests\TestCase;
 
@@ -37,5 +39,18 @@ class BulkPdfTransferRequestTest extends TestCase
         $this->expectException(ValidationException::class);
 
         $request->validateResolved();
+    }
+
+    public function test_async_request_accepts_more_than_fifty_ids(): void
+    {
+        $request = BulkPdfTransferAsyncRequest::create('/', 'POST', [
+            'ids' => array_map(static fn (): string => (string) Str::uuid(), range(1, 59)),
+        ]);
+        $request->setContainer($this->app);
+        $request->setRedirector($this->app['redirect']);
+
+        $request->validateResolved();
+
+        $this->assertCount(59, $request->validated('ids'));
     }
 }

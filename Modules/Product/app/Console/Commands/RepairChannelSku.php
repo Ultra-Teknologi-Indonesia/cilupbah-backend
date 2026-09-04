@@ -4,6 +4,7 @@ namespace Modules\Product\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Modules\Inventory\Services\RackAssignmentCleanupService;
 use Modules\Product\Services\ChannelSkuHealth;
 
 class RepairChannelSku extends Command
@@ -153,6 +154,8 @@ class RepairChannelSku extends Command
                     ->delete();
 
                 DB::table('variant_options')->whereIn('variant_id', $chunk)->delete();
+
+                app(RackAssignmentCleanupService::class)->removeForVariants($chunk);
 
                 DB::table('product_variants')
                     ->whereIn('id', $chunk)

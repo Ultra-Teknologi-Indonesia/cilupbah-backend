@@ -74,6 +74,11 @@ class ShipmentService
         return $this->shipmentRepository->getForBulkManifestPdf($orderIds);
     }
 
+    public function assertOrdersAccessibleForBulkManifest(array $orderIds): void
+    {
+        $this->shipmentRepository->assertOrdersAccessibleForBulkManifest($orderIds);
+    }
+
     public function getTrackingEvents(string $shipmentId)
     {
         return $this->shipmentRepository->getTrackingEvents($shipmentId);

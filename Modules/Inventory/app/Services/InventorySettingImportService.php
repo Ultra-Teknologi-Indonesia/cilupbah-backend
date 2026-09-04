@@ -71,6 +71,7 @@ class InventorySettingImportService
             ->filter()->unique()->values()->all();
 
         $variants = ProductVariant::whereIn('sku', $skus)
+            ->whereHas('product', fn ($query) => $query->whereNull('deleted_at'))
             ->get(['id', 'sku', 'product_id', $column])
             ->keyBy(fn ($v) => strtolower($v->sku));
 
@@ -159,7 +160,10 @@ class InventorySettingImportService
     protected function previewRack(array $rows): array
     {
         $skus = collect($rows)->map(fn ($r) => trim((string) $this->pick($r, self::SKU_ALIASES)))->filter()->unique()->values()->all();
-        $variants = ProductVariant::whereIn('sku', $skus)->get(['id', 'sku', 'product_id'])->keyBy(fn ($v) => strtolower($v->sku));
+        $variants = ProductVariant::whereIn('sku', $skus)
+            ->whereHas('product', fn ($query) => $query->whereNull('deleted_at'))
+            ->get(['id', 'sku', 'product_id'])
+            ->keyBy(fn ($v) => strtolower($v->sku));
         $names = Product::whereIn('id', $variants->pluck('product_id')->filter()->unique())->pluck('name', 'id');
 
         $locations = Location::all(['id', 'location_name', 'location_code']);

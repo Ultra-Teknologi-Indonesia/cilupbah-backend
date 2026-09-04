@@ -60,6 +60,10 @@ class BinOccupancyGuard
             ->where(function ($w) {
                 $w->where('on_hand', '>', 0)->orWhere('on_order', '>', 0);
             })
+            ->whereHas('product', function ($variantQuery): void {
+                $variantQuery->whereNull('deleted_at')
+                    ->whereHas('product', fn ($productQuery) => $productQuery->whereNull('deleted_at'));
+            })
             ->value('item_id');
     }
 
@@ -95,6 +99,10 @@ class BinOccupancyGuard
             ->where('item_id', '!=', $itemId)
             ->where(function ($w) {
                 $w->where('on_hand', '>', 0)->orWhere('on_order', '>', 0);
+            })
+            ->whereHas('product', function ($variantQuery): void {
+                $variantQuery->whereNull('deleted_at')
+                    ->whereHas('product', fn ($productQuery) => $productQuery->whereNull('deleted_at'));
             })
             ;
         WarehouseAccess::apply($query, 'location_id');

@@ -3,7 +3,9 @@
 namespace Modules\Product\Observers;
 
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Modules\Channel\Jobs\SyncProductToChannelJob;
+use Modules\Inventory\Services\RackAssignmentCleanupService;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
 
@@ -53,5 +55,15 @@ class ProductObserver
         foreach ($mappings as $mapping) {
             SyncProductToChannelJob::dispatch($product->id, $mapping->channel_shop_id, 'update');
         }
+    }
+
+    public function deleted(Product $product): void
+    {
+        $variantIds = DB::table('product_variants')
+            ->where('product_id', $product->id)
+            ->pluck('id')
+            ->all();
+
+        app(RackAssignmentCleanupService::class)->removeForVariants($variantIds);
     }
 }

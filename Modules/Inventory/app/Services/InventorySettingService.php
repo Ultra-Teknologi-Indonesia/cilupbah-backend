@@ -15,6 +15,7 @@ class InventorySettingService
         $query = TechnicalSku::exclude(ProductVariant::query(), 'product_variants.sku')
             ->join('products', 'products.id', '=', 'product_variants.product_id')
             ->where('products.is_stored', true)
+            ->whereNull('products.deleted_at')
             ->select('product_variants.*')
             ->selectRaw('products.name as product_name')
             ->selectRaw('products.purchase_lead_time as purchase_lead_time')

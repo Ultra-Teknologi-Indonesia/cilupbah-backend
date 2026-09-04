@@ -15,6 +15,7 @@ use Illuminate\Http\Request;
 use Modules\Inventory\Http\Requests\AssignPutawayStaffRequest;
 use Modules\Inventory\Http\Requests\BulkDestroyPutawayRequest;
 use Modules\Inventory\Http\Requests\BulkPdfPutawayRequest;
+use Modules\Inventory\Http\Requests\BulkPdfPutawayAsyncRequest;
 use Modules\Inventory\Http\Requests\DeletePlacementRequest;
 use Modules\Inventory\Http\Requests\DeletePlacementsRequest;
 use Modules\Inventory\Http\Requests\ListPutawayBinsRequest;
@@ -27,6 +28,7 @@ use Modules\Inventory\Http\Requests\UnassignPutawayRequest;
 use Modules\Inventory\Models\Putaway;
 use Modules\Inventory\Services\PutawayPdfPresenter;
 use Modules\Inventory\Services\PutawayService;
+use Modules\Report\Services\ExportManager;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Putaway', description: 'API Endpoints for Standalone Putaway')]
@@ -39,6 +41,7 @@ class PutawayController extends Controller
         protected PutawayService $putawayService,
         protected PutawayPdfPresenter $pdfPresenter,
         protected PdfRenderer $pdfRenderer,
+        protected ExportManager $exportManager,
     ) {}
 
     #[OA\Get(
@@ -785,6 +788,22 @@ class PutawayController extends Controller
                 'Aksi tidak dapat diproses',
             );
         }
+    }
+
+    public function bulkPdfAsync(BulkPdfPutawayAsyncRequest $request): JsonResponse
+    {
+        $ids = $request->validated()['ids'];
+        $this->putawayService->assertPutawaysAccessible($ids);
+        $job = $this->exportManager->queue($request->user(), 'putaway-bulk-pdf', [
+            'ids' => $ids,
+            'printed_by' => ActorName::fromUser($request->user(), '-'),
+        ]);
+
+        return $this->successResponse([
+            'export_id' => $job->id,
+            'status' => $job->status,
+            'total' => count($ids),
+        ], 'PDF putaway sedang diproses.', 202);
     }
 
     #[OA\Delete(

@@ -363,8 +363,12 @@ class PutawayService
             ->with('product:id,sku')
             ->where('putaway_id', $putawayId)
             ->whereHas('product', function ($query) use ($normalized): void {
-                $query->whereRaw('LOWER(product_variants.sku) = ?', [strtolower($normalized)])
-                    ->orWhereRaw('CAST(product_variants.id AS TEXT) = ?', [strtolower($normalized)]);
+                $query->whereNull('deleted_at')
+                    ->whereHas('product', fn ($productQuery) => $productQuery->whereNull('deleted_at'))
+                    ->where(function ($skuQuery) use ($normalized): void {
+                        $skuQuery->whereRaw('LOWER(product_variants.sku) = ?', [strtolower($normalized)])
+                            ->orWhereRaw('CAST(product_variants.id AS TEXT) = ?', [strtolower($normalized)]);
+                    });
             })
             ->orderByRaw('CASE WHEN putaway_qty < qty THEN 0 ELSE 1 END')
             ->orderBy('id')
@@ -1321,6 +1325,11 @@ class PutawayService
     public function getManyForPdf(array $ids)
     {
         return $this->putawayRepository->getManyWithDetails($ids);
+    }
+
+    public function assertPutawaysAccessible(array $ids): void
+    {
+        $this->putawayRepository->assertManyAccessible($ids);
     }
 
     public function getManyForPdfOrFail(array $ids)

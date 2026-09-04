@@ -15,7 +15,6 @@ class PurgeSoftDeletedSkus extends Command
 
     protected $description = 'Pratinjau dan hapus permanen sku varian dari master yang sudah soft-delete';
 
-    /** @var array<string, string> */
     private const REFERENCES = [
         'product_variant_channel_mappings' => 'variant_id',
         'sales_order_items' => 'item_id',
@@ -46,7 +45,6 @@ class PurgeSoftDeletedSkus extends Command
         'product_bundle_items' => 'component_variant_id',
     ];
 
-    /** @var array<string, string|list<string>> */
     private const PRODUCT_REFERENCES = [
         'purchase_order_items' => 'item_id',
         'sales_return_items' => 'item_id',
@@ -174,10 +172,6 @@ class PurgeSoftDeletedSkus extends Command
         return self::SUCCESS;
     }
 
-    /**
-     * @param  array<string, int>  $blockedBy
-     * @param  list<array{id: string, master: string, status: string}>  $sample
-     */
     private function processEmptyDeletedMasters(
         bool $dryRun,
         int &$scanned,
@@ -248,12 +242,6 @@ class PurgeSoftDeletedSkus extends Command
         }
     }
 
-    /**
-     * @param  list<object>  $rows
-     * @param  array<string, string>  $references
-     * @param  array<string, int>  $blockedBy
-     * @param  list<array{id: string, sku: string, master: string, status: string}>  $sample
-     */
     private function processBatch(
         array $rows,
         array $references,

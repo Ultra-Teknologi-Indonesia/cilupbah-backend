@@ -8,7 +8,7 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 1Gi
+      storage: 5Gi
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -30,20 +30,22 @@ spec:
       containers:
         - name: redis
           image: redis:7-alpine
-          # Hard-cap memory agar Redis TIDAK PERNAH melebihi 768 MB.
-          # allkeys-lru = evict key terlama saat mendekati batas, bukan crash.
-          # Container limit 1Gi memberi 256 MB headroom untuk fragmentation.
-          # Save dimatikan (--save "") agar Redis TIDAK PERNAH melakukan background fork/snapshot RDB.
+          # Redis ini menyimpan queue dan metadata Horizon. Queue tidak boleh dievict.
+          # Headroom antara maxmemory dan cgroup limit diperlukan untuk allocator/AOF.
           command:
             - redis-server
             - --maxmemory
-            - "768mb"
+            - "1280mb"
             - --maxmemory-policy
-            - allkeys-lru
-            - --save
-            - ""
+            - noeviction
             - --appendonly
-            - "no"
+            - "yes"
+            - --appendfsync
+            - everysec
+            - --auto-aof-rewrite-percentage
+            - "100"
+            - --auto-aof-rewrite-min-size
+            - 64mb
             - --dir
             - /data
           ports:
@@ -53,10 +55,10 @@ spec:
               mountPath: /data
           resources:
             requests:
-              memory: "128Mi"
+              memory: "1Gi"
               cpu: "100m"
             limits:
-              memory: "1Gi"
+              memory: "2Gi"
               cpu: "500m"
           livenessProbe:
             exec:

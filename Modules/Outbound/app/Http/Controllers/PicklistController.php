@@ -14,6 +14,7 @@ use Modules\Outbound\Http\Requests\CreatePicklistRequest;
 use Modules\Outbound\Http\Requests\PickItemRequest;
 use Modules\Outbound\Http\Requests\FailPickItemRequest;
 use Modules\Outbound\Http\Requests\BulkPicklistPdfRequest;
+use Modules\Outbound\Http\Requests\BulkPicklistPdfAsyncRequest;
 use Modules\Outbound\Http\Requests\PicklistPdfRequest;
 use Modules\Outbound\Http\Requests\ResetPicklistAssignmentRequest;
 use Modules\Outbound\Http\Requests\ScanForPickRequest;
@@ -312,6 +313,19 @@ class PicklistController extends Controller
                 'Aksi tidak dapat diproses',
             );
         }
+    }
+
+    public function bulkPdfAsync(BulkPicklistPdfAsyncRequest $request): JsonResponse
+    {
+        $orderIds = $request->validated()['order_ids'];
+        $this->picklistService->assertOrdersAccessibleForBulkPdf($orderIds);
+        $job = $this->exportManager->queue($request->user(), 'picklist-bulk-pdf', ['order_ids' => $orderIds]);
+
+        return $this->successResponse([
+            'export_id' => $job->id,
+            'status' => $job->status,
+            'total' => count($orderIds),
+        ], 'PDF picklist sedang diproses.', 202);
     }
 
     #[OA\Post(

@@ -11,7 +11,7 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: cilupbah-export-worker
+      app: cilupbah-sheet-export-worker
   template:
     metadata:
       labels:
@@ -28,21 +28,35 @@ spec:
             - artisan
             - queue:work
             - redis-long
-            - --queue=exports
+            - --queue=exports-sheet
             - --sleep=3
             - --tries=2
-            - --backoff=10
-            - --timeout=960
-            - --memory=1536
+            - --backoff=30
+            - --timeout=780
+            - --memory=768
             - --max-jobs=1
-            - --max-time=900
+            - --max-time=720
           envFrom:
             - secretRef:
                 name: cilupbah-env
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "kill -0 1"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "kill -0 1"]
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
           resources:
             requests:
               memory: "512Mi"
               cpu: "250m"
             limits:
-              memory: "2Gi"
-              cpu: "1500m"
+              memory: "1Gi"
+              cpu: "1000m"

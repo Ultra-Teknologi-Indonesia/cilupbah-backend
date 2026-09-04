@@ -1259,4 +1259,9 @@ class PicklistService
 
         return $picklists;
     }
+
+    public function assertOrdersAccessibleForBulkPdf(array $orderIds): void
+    {
+        $this->picklistRepository->assertOrdersAccessibleForBulkPdf($orderIds);
+    }
 }

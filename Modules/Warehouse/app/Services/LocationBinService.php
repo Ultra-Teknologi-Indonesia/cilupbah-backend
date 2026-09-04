@@ -19,6 +19,7 @@ use Modules\Inventory\Services\StockAdjustmentService;
 use Modules\Product\Models\ProductVariant;
 use Modules\Product\Support\TechnicalSku;
 use Modules\Warehouse\Models\LocationBin;
+use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationZone;
 use Modules\Warehouse\Repositories\LocationBinRepository;
 use Modules\Warehouse\Repositories\LocationRepository;
@@ -297,7 +298,8 @@ class LocationBinService
             $isGuarded = ! $bin->is_inbound && $bin->is_stock_acknowledged && ! app(BinMultiSkuRuleService::class)->allowsMultiSku($bin);
         }
 
-        $query = TechnicalSku::exclude(ProductVariant::with(['media', 'product:id,name', 'product.media']));
+        $query = TechnicalSku::exclude(ProductVariant::with(['media', 'product:id,name', 'product.media']))
+            ->whereHas('product', fn ($productQuery) => $productQuery->whereNull('deleted_at'));
 
         if ($search) {
             $query->where(function ($q) use ($search) {
@@ -431,6 +433,15 @@ class LocationBinService
 
     public function assignSkuToBin(string $locationId, string $binId, string $itemId, string $userId): array
     {
+        $active = ProductVariant::query()
+            ->whereKey($itemId)
+            ->whereHas('product', fn ($query) => $query->whereNull('deleted_at'))
+            ->exists();
+
+        if (! $active) {
+            throw new \DomainException('SKU tidak aktif atau master produknya sudah dihapus.');
+        }
+
         $location = $this->locationRepository->find($locationId);
         if (! $location) {
             throw new ModelNotFoundException('Lokasi tidak ditemukan.');

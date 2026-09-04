@@ -2,9 +2,9 @@
 
 namespace Modules\Inventory\Exports;
 
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Maatwebsite\Excel\Concerns\FromCollection;
+use Maatwebsite\Excel\Concerns\FromQuery;
+use Maatwebsite\Excel\Concerns\WithChunkReading;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
@@ -12,19 +12,22 @@ use Maatwebsite\Excel\Concerns\WithStyles;
 use Modules\Product\Support\TechnicalSku;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-class RackAllocationExport implements FromCollection, ShouldAutoSize, WithHeadings, WithMapping, WithStyles
+class RackAllocationExport implements FromQuery, WithChunkReading, ShouldAutoSize, WithHeadings, WithMapping, WithStyles
 {
     public function __construct(
         private readonly ?string $locationId = null,
         private readonly ?string $search = null,
     ) {}
 
-    public function collection(): Collection
+    public function query()
     {
         $query = TechnicalSku::exclude(DB::table('sku_rack_assignments')
             ->join('location_bins', 'location_bins.id', '=', 'sku_rack_assignments.bin_id')
             ->join('locations', 'locations.id', '=', 'sku_rack_assignments.location_id')
             ->join('product_variants', 'product_variants.id', '=', 'sku_rack_assignments.item_id')
+            ->join('products', 'products.id', '=', 'product_variants.product_id')
+            ->whereNull('product_variants.deleted_at')
+            ->whereNull('products.deleted_at')
             ->when($this->locationId, fn ($q) => $q->where('sku_rack_assignments.location_id', $this->locationId))
             ->when($this->search, function ($q) {
                 $s = '%'.$this->search.'%';
@@ -41,7 +44,12 @@ class RackAllocationExport implements FromCollection, ShouldAutoSize, WithHeadin
                 'location_bins.bin_final_code as bin_final_code',
             ]), 'product_variants.sku');
 
-        return collect($query->get());
+        return $query;
+    }
+
+    public function chunkSize(): int
+    {
+        return 500;
     }
 
     public function headings(): array

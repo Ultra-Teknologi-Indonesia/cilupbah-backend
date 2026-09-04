@@ -240,6 +240,30 @@ class RackImportJobsTest extends TestCase
         $svc->assign($loc->id, $rak->id, $b->id, $this->user->id);
     }
 
+    public function test_soft_deleted_variant_no_longer_blocks_a_rack_assignment(): void
+    {
+        $loc = $this->kecil();
+        $rak = $this->bin($loc, 'O-A1-K1-X2');
+        $old = $this->variant();
+        $new = $this->variant();
+
+        SkuRackAssignment::create([
+            'location_id' => $loc->id,
+            'item_id' => $old->id,
+            'bin_id' => $rak->id,
+            'assigned_by' => $this->user->id,
+        ]);
+        $old->delete();
+
+        app(RackAssignmentService::class)->assign($loc->id, $rak->id, $new->id, $this->user->id);
+
+        $this->assertDatabaseHas('sku_rack_assignments', [
+            'location_id' => $loc->id,
+            'item_id' => $new->id,
+            'bin_id' => $rak->id,
+        ]);
+    }
+
     public function test_start_confirm_is_atomic(): void
     {
         $batch = RackImportBatch::create([

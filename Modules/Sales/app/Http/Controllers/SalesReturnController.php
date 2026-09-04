@@ -20,6 +20,7 @@ use Modules\Sales\Services\SalesReturnChannelActionService;
 use Modules\Sales\Services\SalesReturnDetailSyncService;
 use Modules\Sales\Services\SalesReturnService;
 use Modules\Sales\Services\SalesReturnTrackingSyncService;
+use Modules\Report\Services\ExportManager;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Sales Returns', description: 'API Endpoints for Sales Returns')]
@@ -547,6 +548,17 @@ class SalesReturnController extends Controller
         );
 
         return Excel::download($export, $filename);
+    }
+
+    public function reportExportAsync(SalesReturnReportRequest $request, ExportManager $exports): JsonResponse
+    {
+        $job = $exports->queue($request->user(), 'sales-return-detail', $request->validated());
+
+        return $this->successResponse(
+            ['export_id' => $job->id, 'status' => $job->status],
+            null,
+            202,
+        );
     }
 
     public function exportChannelOnline(ExportReturnChannelOnlineRequest $request)

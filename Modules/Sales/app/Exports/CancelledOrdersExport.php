@@ -2,8 +2,10 @@
 
 namespace Modules\Sales\Exports;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
-use Maatwebsite\Excel\Concerns\FromCollection;
+use Maatwebsite\Excel\Concerns\FromQuery;
+use Maatwebsite\Excel\Concerns\WithChunkReading;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
@@ -12,7 +14,7 @@ use Modules\Outbound\Models\PicklistItem;
 use Modules\Sales\Models\SalesOrder;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-class CancelledOrdersExport implements FromCollection, WithHeadings, WithMapping, WithStyles, ShouldAutoSize
+class CancelledOrdersExport implements FromQuery, WithChunkReading, WithHeadings, WithMapping, WithStyles, ShouldAutoSize
 {
     public function __construct(
         private readonly ?string $dateFrom,
@@ -21,10 +23,19 @@ class CancelledOrdersExport implements FromCollection, WithHeadings, WithMapping
         private readonly ?string $source,
     ) {}
 
-    public function collection(): Collection
+    public function query(): Builder
     {
+        $binsByOrder = PicklistItem::query()
+            ->leftJoin('location_bins', 'location_bins.id', '=', 'picklist_items.bin_id')
+            ->whereNotNull('picklist_items.bin_id')
+            ->select('picklist_items.order_id')
+            ->selectRaw("STRING_AGG(CONCAT(picklist_items.sku, '×', COALESCE(NULLIF(picklist_items.qty_picked, 0), picklist_items.qty_ordered), '@', COALESCE(location_bins.bin_final_code, '-')), ' | ' ORDER BY picklist_items.sku) AS bin_asal_list")
+            ->groupBy('picklist_items.order_id');
+
         $query = SalesOrder::query()
             ->with(['items' => fn ($q) => $q->select('id', 'order_id', 'sku', 'description', 'qty_in_base')])
+            ->leftJoinSub($binsByOrder, 'pick_bins', 'pick_bins.order_id', '=', 'sales_orders.id')
+            ->select('sales_orders.*', 'pick_bins.bin_asal_list')
             ->where(function ($q) {
                 $q->where('is_canceled', true)
                     ->orWhereNotNull('cancel_requested_at');
@@ -52,32 +63,18 @@ class CancelledOrdersExport implements FromCollection, WithHeadings, WithMapping
             $query->where('source', $this->source);
         }
 
-        $orders = $query->orderByDesc('cancel_accepted_at')
-            ->orderByDesc('cancel_requested_at')
-            ->get();
+        return $query->orderByDesc('cancel_accepted_at')
+            ->orderByDesc('cancel_requested_at');
+    }
 
-        $orderIds = $orders->pluck('id')->all();
+    public function chunkSize(): int
+    {
+        return 500;
+    }
 
-        $binsByOrder = [];
-        if (! empty($orderIds)) {
-            $rows = PicklistItem::query()
-                ->whereIn('order_id', $orderIds)
-                ->whereNotNull('bin_id')
-                ->with('bin:id,bin_final_code')
-                ->get(['id', 'order_id', 'sku', 'qty_picked', 'qty_ordered', 'bin_id']);
-
-            foreach ($rows as $row) {
-                $bin = optional($row->bin)->bin_final_code ?? '-';
-                $qty = $row->qty_picked ?: $row->qty_ordered;
-                $binsByOrder[$row->order_id][] = "{$row->sku}×{$qty}@{$bin}";
-            }
-        }
-
-        return $orders->map(function (SalesOrder $order) use ($binsByOrder) {
-            $order->setAttribute('bin_asal_list', implode(' | ', $binsByOrder[$order->id] ?? []));
-
-            return $order;
-        });
+    public function collection(): Collection
+    {
+        return $this->query()->get();
     }
 
     public function headings(): array

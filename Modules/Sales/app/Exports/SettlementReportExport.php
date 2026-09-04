@@ -2,23 +2,43 @@
 
 namespace Modules\Sales\Exports;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
-use Maatwebsite\Excel\Concerns\FromCollection;
+use Maatwebsite\Excel\Concerns\FromQuery;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
+use Maatwebsite\Excel\Concerns\WithChunkReading;
 use Maatwebsite\Excel\Concerns\WithStyles;
+use Modules\Sales\Models\SalesOrder;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-class SettlementReportExport implements FromCollection, WithHeadings, WithMapping, WithStyles, ShouldAutoSize
+class SettlementReportExport implements FromQuery, WithChunkReading, WithHeadings, WithMapping, WithStyles, ShouldAutoSize
 {
     public function __construct(
-        private readonly Collection $orders,
+        private readonly Builder|Collection $orders,
     ) {}
 
-    public function collection(): Collection
+    public function query(): Builder
     {
-        return $this->orders;
+        if ($this->orders instanceof Builder) {
+            return $this->orders;
+        }
+
+        return SalesOrder::query()
+            ->whereKey($this->orders->pluck('id')->all())
+            ->with([
+                'feeLines',
+                'shop:shop_id,shop_name,channel_id',
+                'shop.channel:id,code,name',
+            ])
+            ->orderByDesc('transaction_date')
+            ->orderByDesc('id');
+    }
+
+    public function chunkSize(): int
+    {
+        return 500;
     }
 
     public function headings(): array

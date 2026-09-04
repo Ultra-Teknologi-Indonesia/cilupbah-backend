@@ -28,7 +28,12 @@ final class InventoryStockReportService
     {
         $variantName = $this->variantNameSql();
 
-        $query = DB::table('inventories as i')
+        $inventoryQuery = DB::table('inventories as i')
+            ->leftJoin('sku_rack_assignments as a', function ($join): void {
+                $join->on('a.item_id', '=', 'i.item_id')
+                    ->on('a.location_id', '=', 'i.location_id')
+                    ->on('a.bin_id', '=', 'i.bin_id');
+            })
             ->join('product_variants as pv', 'pv.id', '=', 'i.item_id')
             ->join('products as p', 'p.id', '=', 'pv.product_id')
             ->join('locations as l', 'l.id', '=', 'i.location_id')
@@ -44,6 +49,11 @@ final class InventoryStockReportService
             ->whereNull('p.deleted_at')
             ->whereNotNull('b.id')
             ->where('b.is_inbound', false)
+            ->where(function (Builder $query): void {
+                $query
+                    ->where('i.on_hand', '<>', 0)
+                    ->orWhereNotNull('a.id');
+            })
             ->when($filters['item_ids'], fn (Builder $q, array $ids) => $q->whereIn('i.item_id', $ids))
             ->select([
                 'i.item_id',
@@ -68,12 +78,54 @@ final class InventoryStockReportService
                 'b.row_code',
                 'b.column_code',
                 'b.bin_final_code',
-            ])
-            ->when($filters['only_with_stock'], fn (Builder $q) => $q->havingRaw(StockSummary::placedOnHandSql('i', 'b').' > 0'))
-            ->orderBy('pv.sku')
-            ->orderByRaw('COALESCE(b.bin_final_code, \'Tidak ada rak\')');
+            ]);
 
-        $this->applyWarehouseAccess($query, 'i.location_id');
+        $this->applyWarehouseAccess($inventoryQuery, 'i.location_id');
+
+        $assignmentQuery = DB::table('sku_rack_assignments as a')
+            ->leftJoin('inventories as i', function ($join): void {
+                $join->on('i.item_id', '=', 'a.item_id')
+                    ->on('i.location_id', '=', 'a.location_id')
+                    ->on('i.bin_id', '=', 'a.bin_id');
+            })
+            ->join('product_variants as pv', 'pv.id', '=', 'a.item_id')
+            ->join('products as p', 'p.id', '=', 'pv.product_id')
+            ->join('locations as l', 'l.id', '=', 'a.location_id')
+            ->join('location_bins as b', function ($join): void {
+                $join->on('b.id', '=', 'a.bin_id')
+                    ->on('b.location_id', '=', 'a.location_id');
+            })
+            ->whereNull('i.id')
+            ->where('a.location_id', $filters['location_id'])
+            ->where('l.is_active', true)
+            ->where('l.is_warehouse', true)
+            ->where('l.location_code', '!=', Location::SYSTEM_TRANSIT_CODE)
+            ->whereNull('pv.deleted_at')
+            ->whereNull('p.deleted_at')
+            ->where('b.is_inbound', false)
+            ->when($filters['item_ids'], fn (Builder $q, array $ids) => $q->whereIn('a.item_id', $ids))
+            ->select([
+                'a.item_id',
+                'pv.sku',
+                'p.name as product_name',
+                DB::raw($variantName.' as variant_name'),
+                'l.location_name',
+                'b.floor_code',
+                'b.row_code',
+                'b.column_code',
+                'b.bin_final_code',
+            ])
+            ->selectRaw('0 as qty_on_hand')
+            ->selectRaw('0 as qty_actual');
+
+        $this->applyWarehouseAccess($assignmentQuery, 'a.location_id');
+
+        $query = DB::query()
+            ->fromSub($inventoryQuery->unionAll($assignmentQuery), 'rack_rows')
+            ->select('*')
+            ->when($filters['only_with_stock'], fn (Builder $q) => $q->where('qty_on_hand', '>', 0))
+            ->orderBy('sku')
+            ->orderByRaw('COALESCE(bin_final_code, \'Tidak ada rak\')');
 
         return $query;
     }

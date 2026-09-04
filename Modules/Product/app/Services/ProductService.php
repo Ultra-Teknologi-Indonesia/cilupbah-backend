@@ -16,6 +16,7 @@ use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\ChannelListingValidator;
 use Modules\Finance\Support\AccountMappingKey;
 use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Services\RackAssignmentCleanupService;
 use Modules\Inventory\Support\StockSummary;
 use Modules\Product\Exceptions\ProductDeletionBlockedException;
 use Modules\Product\Jobs\MirrorProductMediaJob;
@@ -406,6 +407,9 @@ class ProductService
                             ->where('product_id', $product->id)
                             ->delete();
                     }
+
+                    app(RackAssignmentCleanupService::class)
+                        ->removeForVariants($variantIds->all());
 
                     $product->variants()->delete();
                     $product->delete();

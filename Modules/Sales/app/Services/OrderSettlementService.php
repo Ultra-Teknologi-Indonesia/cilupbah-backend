@@ -6,6 +6,7 @@ namespace Modules\Sales\Services;
 
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
+use Illuminate\Database\Eloquent\Builder;
 use Modules\Sales\Repositories\OrderSettlementRepository;
 
 final class OrderSettlementService
@@ -27,5 +28,10 @@ final class OrderSettlementService
     public function allForExport(): Collection
     {
         return $this->repository->query()->get();
+    }
+
+    public function queryForExport(array $filters = []): Builder
+    {
+        return $this->repository->exportQuery($filters);
     }
 }

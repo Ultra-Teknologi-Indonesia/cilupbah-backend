@@ -14,7 +14,7 @@ return [
 
     'files' => storage_path('framework/sessions'),
 
-    'connection' => env('SESSION_CONNECTION'),
+    'connection' => env('SESSION_CONNECTION', 'cache'),
 
     'table' => env('SESSION_TABLE', 'sessions'),
 

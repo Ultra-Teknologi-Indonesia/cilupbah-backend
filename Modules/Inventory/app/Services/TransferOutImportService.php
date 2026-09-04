@@ -397,6 +397,7 @@ class TransferOutImportService
         $skus = array_values(array_unique($skus));
 
         $variants = ProductVariant::whereIn('sku', $skus)
+            ->whereHas('product', fn ($query) => $query->whereNull('deleted_at'))
             ->get(['id', 'sku', 'product_id'])
             ->keyBy(fn ($v) => strtolower($v->sku));
 

@@ -12,7 +12,9 @@ use Modules\Inventory\Exports\StockAdjustmentExport;
 use Modules\Inventory\Services\StockAdjustmentService;
 use Modules\Inventory\Http\Requests\StoreStockAdjustmentRequest;
 use Modules\Inventory\Http\Requests\UpdateStockAdjustmentRequest;
+use Modules\Inventory\Http\Requests\BulkPdfStockAdjustmentAsyncRequest;
 use Modules\Inventory\Http\Resources\StockAdjustmentResource;
+use Modules\Report\Services\ExportManager;
 use OpenApi\Attributes as OA;
 use Throwable;
 
@@ -20,7 +22,8 @@ use Throwable;
 class StockAdjustmentController extends Controller
 {
     public function __construct(
-        protected StockAdjustmentService $adjustmentService
+        protected StockAdjustmentService $adjustmentService,
+        protected ExportManager $exportManager,
     ) {}
 
     #[OA\Get(
@@ -333,6 +336,19 @@ class StockAdjustmentController extends Controller
         }
     }
 
+    public function bulkPdfAsync(BulkPdfStockAdjustmentAsyncRequest $request): JsonResponse
+    {
+        $ids = $request->validated()['ids'];
+        $this->adjustmentService->assertAdjustmentsAccessible($ids);
+        $job = $this->exportManager->queue($request->user(), 'stock-adjustment-bulk-pdf', ['ids' => $ids]);
+
+        return $this->successResponse([
+            'export_id' => $job->id,
+            'status' => $job->status,
+            'total' => count($ids),
+        ], 'PDF penyesuaian stok sedang diproses.', 202);
+    }
+
     #[OA\Post(
         path: '/api/v1/inventory/adjustments/documents/bulk/delete',
         summary: 'Hapus banyak dokumen penyesuaian sekaligus (soft delete)',
@@ -385,5 +401,21 @@ class StockAdjustmentController extends Controller
         $filename = 'koreksi-stok-' . now()->format('Ymd') . '.xlsx';
 
         return Excel::download(new StockAdjustmentExport($query), $filename);
+    }
+
+    public function exportXlsxAsync(Request $request): JsonResponse
+    {
+        $job = $this->exportManager->queue($request->user(), 'stock-adjustment', [
+            'search' => $request->query('search'),
+            'location_id' => data_get($request->query(), 'filter.location_id'),
+            'date_from' => data_get($request->query(), 'filter.date_from'),
+            'date_to' => data_get($request->query(), 'filter.date_to'),
+        ]);
+
+        return $this->successResponse(
+            ['export_id' => $job->id, 'status' => $job->status],
+            'Export koreksi stok sedang diproses.',
+            202,
+        );
     }
 }

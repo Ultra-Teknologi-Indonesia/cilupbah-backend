@@ -11,6 +11,7 @@ use Modules\Purchase\Http\Resources\PurchaseOrderImportConfirmResource;
 use Modules\Purchase\Http\Resources\PurchaseOrderImportPreviewResource;
 use Modules\Purchase\Services\PurchaseOrderExportService;
 use Modules\Purchase\Services\PurchaseOrderImportService;
+use Modules\Report\Services\ExportManager;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx as XlsxWriter;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -97,6 +98,28 @@ class PurchaseOrderImportExportController extends Controller
         return $this->exportService->streamDetail(
             $request->validated(),
             $request->user()?->id
+        );
+    }
+
+    public function exportListAsync(ExportPurchaseOrderRequest $request, ExportManager $exports): JsonResponse
+    {
+        $job = $exports->queue($request->user(), 'purchase-order-list', $request->validated());
+
+        return $this->successResponse(
+            ['export_id' => $job->id, 'status' => $job->status],
+            null,
+            202,
+        );
+    }
+
+    public function exportDetailAsync(ExportPurchaseOrderRequest $request, ExportManager $exports): JsonResponse
+    {
+        $job = $exports->queue($request->user(), 'purchase-order-detail', $request->validated());
+
+        return $this->successResponse(
+            ['export_id' => $job->id, 'status' => $job->status],
+            null,
+            202,
         );
     }
 }

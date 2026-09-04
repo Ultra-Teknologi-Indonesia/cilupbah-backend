@@ -4,6 +4,7 @@ namespace Modules\Product\Repositories;
 
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Modules\Inventory\Services\RackAssignmentCleanupService;
 use Modules\Product\Models\ProductVariant;
 use Ramsey\Uuid\Uuid;
 
@@ -204,6 +205,8 @@ class ProductWriteRepository
 
     public function supersedeVariant(string $variantId): void
     {
+        app(RackAssignmentCleanupService::class)->removeForVariants([$variantId]);
+
         DB::table('product_variants')->where('id', $variantId)
             ->update(['is_active' => false, 'superseded_at' => now(), 'deleted_at' => now(), 'updated_at' => now()]);
     }
@@ -215,11 +218,18 @@ class ProductWriteRepository
             return;
         }
 
-        DB::table('product_variants')
+        $variantIds = DB::table('product_variants')
             ->where('product_id', $productId)
             ->where('is_active', false)
             ->whereNull('deleted_at')
             ->whereIn('sku', $skus)
+            ->pluck('id')
+            ->all();
+
+        app(RackAssignmentCleanupService::class)->removeForVariants($variantIds);
+
+        DB::table('product_variants')
+            ->whereIn('id', $variantIds)
             ->update(['deleted_at' => now(), 'updated_at' => now()]);
     }
 
@@ -344,6 +354,8 @@ class ProductWriteRepository
 
     public function deleteVariants(array $ids): void
     {
+        app(RackAssignmentCleanupService::class)->removeForVariants($ids);
+
         ProductVariant::whereIn('id', $ids)->delete();
     }
 }

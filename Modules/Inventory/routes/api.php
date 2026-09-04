@@ -108,6 +108,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::middleware('role_or_permission:owner|view-pengaturan-persediaan')->group(function () {
             Route::get('products', [InventorySettingController::class, 'products'])->name('inventory.settings.products');
             Route::get('export/rack-allocation', [InventorySettingController::class, 'exportRackAllocation'])->name('inventory.settings.export.rack');
+            Route::get('export/rack-allocation/async', [InventorySettingController::class, 'exportRackAllocationAsync'])->name('inventory.settings.export.rack.async');
             Route::get('import/template/{type}', [InventorySettingController::class, 'importTemplate'])->name('inventory.settings.import.template');
 
             Route::get('rack-import/batches', [RackImportController::class, 'batches'])->name('inventory.settings.rack-import.batches');
@@ -182,9 +183,11 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
             Route::put('/{id}', [StockAdjustmentController::class, 'update'])->name('inventory.adjustments.documents.update');
         });
         Route::middleware('role_or_permission:owner|export-penyesuaian-stok')->group(function () {
+            Route::post('/bulk/pdf/async', [StockAdjustmentController::class, 'bulkPdfAsync'])->name('inventory.adjustments.documents.bulkPdfAsync');
             Route::post('/bulk/pdf', [StockAdjustmentController::class, 'bulkPdf'])->name('inventory.adjustments.documents.bulkPdf');
             Route::get('/{id}/pdf', [StockAdjustmentController::class, 'pdf'])->name('inventory.adjustments.documents.pdf');
             Route::get('/export/xlsx', [StockAdjustmentController::class, 'exportXlsx'])->name('inventory.adjustments.documents.exportXlsx');
+            Route::get('/export/xlsx/async', [StockAdjustmentController::class, 'exportXlsxAsync'])->name('inventory.adjustments.documents.exportXlsxAsync');
         });
         Route::middleware('role_or_permission:owner|delete-penyesuaian-stok')->group(function () {
             Route::post('/bulk/delete', [StockAdjustmentController::class, 'bulkDelete'])->name('inventory.adjustments.documents.bulkDelete');
@@ -251,6 +254,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::delete('inventory/transfers/{id}', [InventoryTransactionController::class, 'transferDestroy'])->name('inventory.transfers.destroy');
     });
     Route::middleware('role_or_permission:owner|export-barang-keluar')->group(function () {
+        Route::post('inventory/transfers/bulk/pdf/async', [InventoryTransactionController::class, 'bulkPdfTransferAsync'])->name('inventory.transfers.bulkPdfAsync');
         Route::post('inventory/transfers/bulk/pdf', [InventoryTransactionController::class, 'bulkPdfTransfer'])->name('inventory.transfers.bulkPdf');
         Route::get('inventory/transfers/{id}/pdf', [InventoryTransactionController::class, 'transferPdf'])->name('inventory.transfers.pdf');
         Route::get('inventory/transfer/delivery', [InventoryTransactionController::class, 'transferDelivery'])->name('inventory.transfer.delivery');
@@ -329,6 +333,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('/completed', [PutawayController::class, 'completed'])->middleware('role_or_permission:owner|view-penempatan')->name('putaway.completed');
         Route::get('/bins', [PutawayController::class, 'listBins'])->name('putaway.listBins')->middleware('role_or_permission:owner|view-penempatan');
         Route::get('/bins/lookup', [PutawayController::class, 'lookupBin'])->name('putaway.lookupBin')->middleware('role_or_permission:owner|view-penempatan');
+        Route::post('/bulk/pdf/async', [PutawayController::class, 'bulkPdfAsync'])->middleware('role_or_permission:owner|export-penempatan')->name('putaway.bulkPdfAsync');
         Route::post('/bulk/pdf', [PutawayController::class, 'bulkPdf'])->middleware('role_or_permission:owner|export-penempatan')->name('putaway.bulkPdf');
         Route::delete('/bulk', [PutawayController::class, 'bulkDestroy'])->middleware('role_or_permission:owner|delete-penempatan')->name('putaway.bulkDestroy');
         Route::get('/{id}/pdf', [PutawayController::class, 'pdf'])->middleware('role_or_permission:owner|export-penempatan')->name('putaway.pdf');

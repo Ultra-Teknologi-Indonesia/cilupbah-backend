@@ -49,6 +49,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('reports/wms/putaway-performance/export/async', [ReportController::class, 'putawayPerformanceExportAsync'])->name('reports.wms.putaway-performance.export.async');
         Route::get('reports/wms/putaway-list/export/async', [ReportController::class, 'putawayListExportAsync'])->name('reports.wms.putaway-list.export.async');
         Route::get('reports/wms/shipment-by-courier/export/async', [ReportController::class, 'shipmentByCourierExportAsync'])->name('reports.wms.shipment-by-courier.export.async');
+        Route::get('reports/wms/pick-list/export/async', [ReportController::class, 'pickListExportAsync'])->name('reports.wms.pick-list.export.async');
         Route::post('reports/wms/pick-list/xlsx/async', [ReportController::class, 'pickListDetailExcelAsync'])->name('reports.wms.pick-list.xlsx.async');
     });
     Route::middleware('role_or_permission:owner|view-laporan-hpp')->group(function () {
@@ -61,6 +62,11 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('reports/sales/return/export', [ReportController::class, 'salesReturnExport'])->name('reports.sales.return.export');
         Route::get('reports/sales/income/export', [ReportController::class, 'rincianPendapatanExport'])->name('reports.sales.income.export');
         Route::get('reports/sales/customer/export', [ReportController::class, 'customerListExport'])->name('reports.sales.customer.export');
+        Route::get('reports/sales/list/export/async', [ReportController::class, 'salesListExportAsync'])->name('reports.sales.list.export.async');
+        Route::get('reports/sales/product/export/async', [ReportController::class, 'salesProductExportAsync'])->name('reports.sales.product.export.async');
+        Route::get('reports/sales/return/export/async', [ReportController::class, 'salesReturnExportAsync'])->name('reports.sales.return.export.async');
+        Route::get('reports/sales/income/export/async', [ReportController::class, 'rincianPendapatanExportAsync'])->name('reports.sales.income.export.async');
+        Route::get('reports/sales/customer/export/async', [ReportController::class, 'customerListExportAsync'])->name('reports.sales.customer.export.async');
     });
     Route::middleware('role_or_permission:owner|export-laporan-persediaan')->group(function () {
         Route::post('reports/barcode/pdf', [ReportController::class, 'barcodePdf'])->name('reports.barcode.pdf');

@@ -12,6 +12,7 @@ use Modules\Inventory\Models\ImpexActivity;
 use Modules\Inventory\Services\ImpexActivityService;
 use Modules\Inventory\Services\InventorySettingImportService;
 use Modules\Inventory\Services\InventorySettingService;
+use Modules\Report\Services\ExportManager;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx as XlsxWriter;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -21,6 +22,7 @@ class InventorySettingController extends Controller
         protected InventorySettingService $service,
         protected InventorySettingImportService $importService,
         protected ImpexActivityService $activityService,
+        protected ExportManager $exportManager,
     ) {}
 
     public function products(Request $request): JsonResponse
@@ -72,6 +74,20 @@ class InventorySettingController extends Controller
                 is_string($search) ? $search : null,
             ),
             $filename,
+        );
+    }
+
+    public function exportRackAllocationAsync(Request $request): JsonResponse
+    {
+        $job = $this->exportManager->queue($request->user(), 'rack-allocation', [
+            'location_id' => is_string($request->query('location_id')) ? $request->query('location_id') : null,
+            'search' => is_string($request->query('search')) ? $request->query('search') : null,
+        ]);
+
+        return $this->successResponse(
+            ['export_id' => $job->id, 'status' => $job->status],
+            'Export alokasi rak sedang diproses.',
+            202,
         );
     }
 

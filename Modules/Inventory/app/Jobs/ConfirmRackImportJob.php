@@ -26,11 +26,14 @@ class ConfirmRackImportJob implements ShouldQueue
 
     public function __construct(public string $batchId)
     {
-        $this->onQueue(config('queue.names.product'));
+        $this->onConnection(config('queue.default') === 'sync' ? 'sync' : config('queue.routing.imports.connection', 'redis-long'));
+        $this->onQueue(config('queue.routing.imports.queue', 'imports'));
     }
 
     public function handle(RackImportBatchService $batches, ImpexActivityService $activities): void
     {
+        ini_set('memory_limit', (string) config('queue.routing.imports.memory_limit', '1024M'));
+        set_time_limit((int) config('queue.routing.imports.timeout', 1800));
         $batch = RackImportBatch::find($this->batchId);
         if (! $batch || $batch->state !== RackImportBatch::STATE_CONFIRMING) {
             return;
@@ -83,7 +86,8 @@ class ConfirmRackImportJob implements ShouldQueue
                         $acts->markFailed($activity, "Sebagian/seluruh baris gagal: {$final->success_rows}/{$final->place_rows} berhasil.");
                     }
                 })
-                ->onQueue(config('queue.names.product'))
+                ->onConnection(config('queue.default') === 'sync' ? 'sync' : config('queue.routing.imports.connection', 'redis-long'))
+                ->onQueue(config('queue.routing.imports.queue', 'imports'))
                 ->dispatch();
         } catch (\Throwable $e) {
             Log::error("ConfirmRackImportJob failed for batch {$batch->id}: " . $e->getMessage());

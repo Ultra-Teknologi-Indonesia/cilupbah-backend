@@ -3,6 +3,7 @@
 namespace Modules\Sales\Repositories;
 
 use Modules\Sales\Models\SalesOrder;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
 
@@ -43,6 +44,55 @@ class OrderSettlementRepository
             ])
             ->allowedSorts('transaction_date', 'settled_at', 'settlement_amount', 'gross_amount', 'created_at')
             ->defaultSort('-transaction_date');
+    }
+
+    public function exportQuery(array $filters = []): EloquentBuilder
+    {
+        $filters = is_array($filters['filter'] ?? null) ? $filters['filter'] : $filters;
+
+        $query = SalesOrder::query()
+            ->whereIn('source', self::MARKETPLACE_SOURCES)
+            ->where('is_canceled', false)
+            ->whereHas('items')
+            ->whereDoesntHave('items', fn ($q) => $q->whereNull('item_id'))
+            ->with([
+                'feeLines',
+                'shop:shop_id,shop_name,channel_id',
+                'shop.channel:id,code,name',
+            ])
+            ->orderByDesc('transaction_date')
+            ->orderByDesc('id');
+
+        $search = trim((string) ($filters['search'] ?? ''));
+        if ($search !== '') {
+            $query->where('salesorder_no', 'ilike', '%'.$search.'%');
+        }
+        if (! empty($filters['channel'])) {
+            $query->where('source', $filters['channel']);
+        }
+        if (! empty($filters['channel_shop_id'])) {
+            $query->where('channel_shop_id', $filters['channel_shop_id']);
+        }
+        if (! empty($filters['store_id'])) {
+            $query->where('channel_shop_id', $filters['store_id']);
+        }
+        if (array_key_exists('is_settled', $filters) && $filters['is_settled'] !== null && $filters['is_settled'] !== '') {
+            $query->where('is_settled', filter_var($filters['is_settled'], FILTER_VALIDATE_BOOLEAN));
+        }
+        if (! empty($filters['date_from'])) {
+            $query->whereDate('transaction_date', '>=', $filters['date_from']);
+        }
+        if (! empty($filters['date_to'])) {
+            $query->whereDate('transaction_date', '<=', $filters['date_to']);
+        }
+        if (! empty($filters['settled_from'])) {
+            $query->whereDate('settled_at', '>=', $filters['settled_from']);
+        }
+        if (! empty($filters['settled_to'])) {
+            $query->whereDate('settled_at', '<=', $filters['settled_to']);
+        }
+
+        return $query;
     }
 
     public function getPaginated()

@@ -94,7 +94,7 @@ return [
         'stock_critical' => env('QUEUE_NAME_STOCK_CRITICAL', 'stock-critical'),
         'stock_default' => env('QUEUE_NAME_STOCK_DEFAULT', 'stock-default'),
         'tracking' => env('QUEUE_NAME_TRACKING', 'tracking'),
-        'imports' => env('QUEUE_NAME_IMPORTS', 'product'),
+        'imports' => env('QUEUE_NAME_IMPORTS', 'imports'),
         'sales' => env('QUEUE_NAME_SALES', 'orders'),
 
         'channel_sync' => env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync'),
@@ -129,13 +129,17 @@ return [
         'failed_jobs' => env('QUEUE_NAME_FAILED_JOBS', 'failed-jobs'),
         'product' => env('QUEUE_NAME_PRODUCT', 'product'),
         'downloads' => env('QUEUE_NAME_DOWNLOADS', 'downloads'),
-        'exports' => env('QUEUE_NAME_EXPORTS', 'exports'),
+        'exports' => env('QUEUE_NAME_EXPORTS', 'exports-sheet'),
+        'exports_pdf' => env('QUEUE_NAME_EXPORTS_PDF', 'exports-pdf'),
+        'exports_sheet' => env('QUEUE_NAME_EXPORTS_SHEET', 'exports-sheet'),
         'catalog_exports' => env('QUEUE_NAME_CATALOG_EXPORTS', 'catalog-exports'),
     ],
 
     'dedicated_queues' => [
-        env('QUEUE_NAME_EXPORTS', 'exports'),
+        env('QUEUE_NAME_EXPORTS_PDF', 'exports-pdf'),
+        env('QUEUE_NAME_EXPORTS_SHEET', 'exports-sheet'),
         env('QUEUE_NAME_CATALOG_EXPORTS', 'catalog-exports'),
+        env('QUEUE_NAME_IMPORTS', 'imports'),
     ],
 
     'routing' => [
@@ -162,6 +166,13 @@ return [
             'connection' => env('QUEUE_QR_LABELS_CONNECTION', 'redis-long'),
             'queue' => env('QUEUE_NAME_QR_LABELS', 'qr-labels'),
             'memory_limit' => env('QUEUE_QR_LABELS_MEMORY_LIMIT', '512M'),
+        ],
+
+        'imports' => [
+            'connection' => env('IMPORT_QUEUE_CONNECTION', 'redis-long'),
+            'queue' => env('QUEUE_NAME_IMPORTS', 'imports'),
+            'memory_limit' => env('IMPORT_MEMORY_LIMIT', '1024M'),
+            'timeout' => (int) env('IMPORT_TIMEOUT', 1800),
         ],
     ],
 

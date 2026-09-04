@@ -144,6 +144,36 @@ class ReportController extends Controller
         return $this->queueExport($exports, 'picklist-detail-photo', $request->validated());
     }
 
+    public function pickListExportAsync(PickListExportRequest $request, ExportManager $exports): JsonResponse
+    {
+        return $this->queueExport($exports, 'picklist-list', $request->validated());
+    }
+
+    public function salesListExportAsync(SalesListExportRequest $request, ExportManager $exports): JsonResponse
+    {
+        return $this->queueExport($exports, 'sales-list', $request->validated());
+    }
+
+    public function salesProductExportAsync(SalesProductExportRequest $request, ExportManager $exports): JsonResponse
+    {
+        return $this->queueExport($exports, 'sales-product', $request->validated());
+    }
+
+    public function salesReturnExportAsync(SalesReturnExportRequest $request, ExportManager $exports): JsonResponse
+    {
+        return $this->queueExport($exports, 'sales-return', $request->validated());
+    }
+
+    public function rincianPendapatanExportAsync(RincianPendapatanExportRequest $request, ExportManager $exports): JsonResponse
+    {
+        return $this->queueExport($exports, 'sales-income', $request->validated());
+    }
+
+    public function customerListExportAsync(CustomerListExportRequest $request, ExportManager $exports): JsonResponse
+    {
+        return $this->queueExport($exports, 'customer-list', $request->validated());
+    }
+
     public function inventoryStockExportAsync(InventoryStockExportRequest $request, ExportManager $exports): JsonResponse
     {
         $filters = $request->normalized();
@@ -629,9 +659,6 @@ class ReportController extends Controller
     )]
     public function shipmentListExport(ShipmentListExportRequest $request)
     {
-
-        ini_set('memory_limit', '-1');
-        set_time_limit(0);
 
         $validated = $request->validated();
 

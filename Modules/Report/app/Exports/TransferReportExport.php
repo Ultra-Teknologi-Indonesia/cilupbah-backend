@@ -3,8 +3,8 @@
 namespace Modules\Report\Exports;
 
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Collection;
-use Maatwebsite\Excel\Concerns\FromCollection;
+use Maatwebsite\Excel\Concerns\FromQuery;
+use Maatwebsite\Excel\Concerns\WithChunkReading;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithColumnFormatting;
 use Maatwebsite\Excel\Concerns\WithHeadings;
@@ -15,7 +15,7 @@ use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-class TransferReportExport implements FromCollection, WithHeadings, WithMapping, WithStyles, WithColumnFormatting, ShouldAutoSize
+class TransferReportExport implements FromQuery, WithChunkReading, WithHeadings, WithMapping, WithStyles, WithColumnFormatting, ShouldAutoSize
 {
     private const DATE_FORMAT = 'dd/mm/yyyy hh:mm';
 
@@ -28,9 +28,14 @@ class TransferReportExport implements FromCollection, WithHeadings, WithMapping,
         $this->isMasuk = ($filters['jenis'] ?? 'keluar') === 'masuk';
     }
 
-    public function collection(): Collection
+    public function query()
     {
-        return collect($this->reportService->transferReportRows($this->filters));
+        return $this->reportService->transferQuery($this->filters);
+    }
+
+    public function chunkSize(): int
+    {
+        return 500;
     }
 
     public function headings(): array
@@ -64,32 +69,30 @@ class TransferReportExport implements FromCollection, WithHeadings, WithMapping,
 
     public function map($row): array
     {
-        $r = (array) $row;
-
         if ($this->isMasuk) {
             return [
-                $r['no_terima'] ?? null,
-                $this->toDate($r['tanggal'] ?? null),
-                $this->toDate($r['tanggal_terima'] ?? null),
-                $r['no_transfer_asal'] ?? null,
-                $r['lokasi_asal'] ?? null,
-                $r['lokasi_tujuan'] ?? null,
-                $r['sku'] ?? null,
-                $r['nama_barang'] ?? null,
-                $r['qty'] ?? 0,
-                $r['catatan'] ?? null,
+                $row->receive_number,
+                $this->toDate($row->tanggal),
+                $this->toDate($row->received_at),
+                $row->transfer_number,
+                $row->location_source,
+                $row->location_destination,
+                $row->sku,
+                $row->product_name,
+                $row->qty ?? 0,
+                $row->item_notes ?: ($row->transfer_notes ?: null),
             ];
         }
 
         return [
-            $r['no_transfer'] ?? null,
-            $this->toDate($r['tanggal'] ?? null),
-            $r['lokasi_asal'] ?? null,
-            $r['lokasi_tujuan'] ?? null,
-            $r['sku'] ?? null,
-            $r['nama_barang'] ?? null,
-            $r['qty'] ?? 0,
-            $r['catatan'] ?? null,
+            $row->transfer_number,
+            $this->toDate($row->tanggal),
+            $row->location_source,
+            $row->location_destination,
+            $row->sku,
+            $row->product_name,
+            $row->qty ?? 0,
+            $row->item_notes ?: ($row->transfer_notes ?: null),
         ];
     }
 

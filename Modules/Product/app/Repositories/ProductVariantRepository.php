@@ -13,6 +13,7 @@ class ProductVariantRepository
     public function paginate(): LengthAwarePaginator
     {
         return QueryBuilder::for(ProductVariant::class)
+            ->whereHas('product', fn ($query) => $query->whereNull('deleted_at'))
             ->with(['product:id,name,sku'])
             ->allowedFilters(
                 AllowedFilter::partial('sku'),
@@ -27,7 +28,9 @@ class ProductVariantRepository
 
     public function findById(string $id): ?ProductVariant
     {
-        return ProductVariant::find($id);
+        return ProductVariant::query()
+            ->whereHas('product', fn ($query) => $query->whereNull('deleted_at'))
+            ->find($id);
     }
 
     public function delete(ProductVariant $variant): void

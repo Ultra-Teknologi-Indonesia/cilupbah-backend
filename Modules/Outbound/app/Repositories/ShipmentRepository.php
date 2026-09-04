@@ -3,6 +3,7 @@
 namespace Modules\Outbound\Repositories;
 
 use App\Support\WarehouseAccess;
+use App\Exceptions\UserFacingException;
 use Modules\Outbound\Models\Shipment;
 use Modules\Outbound\Models\ShipmentOrder;
 use Modules\Outbound\Models\ShipmentTrackingEvent;
@@ -232,6 +233,23 @@ class ShipmentRepository
         WarehouseAccess::apply($query, 'location_id');
 
         return $query->get();
+    }
+
+    public function assertOrdersAccessibleForBulkManifest(array $orderIds): void
+    {
+        foreach (array_chunk($orderIds, 1000) as $chunk) {
+            $query = Shipment::query()
+                ->join('shipment_orders', 'shipment_orders.shipment_id', '=', 'shipments.id')
+                ->whereIn('shipment_orders.order_id', $chunk)
+                ->select('shipment_orders.order_id');
+            WarehouseAccess::apply($query, 'shipments.location_id');
+
+            if ($query->exists()) {
+                return;
+            }
+        }
+
+        throw new UserFacingException('Data tidak ditemukan', 'Tidak ada shipment yang dapat diakses untuk pesanan yang dipilih.', 404);
     }
 
     public function findById(string $id): ?Shipment

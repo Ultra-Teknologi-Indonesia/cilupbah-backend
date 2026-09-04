@@ -45,6 +45,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::get('picklists/{id}/items', [PicklistController::class, 'items'])->name('outbound.picklists.items')->middleware('role_or_permission:owner|view-picking');
     Route::get('picklists/{id}/pdf', [PicklistController::class, 'pdf'])->name('outbound.picklists.pdf')->middleware('role_or_permission:owner|export-picking');
     Route::get('picklists/{id}/xlsx', [PicklistController::class, 'excel'])->name('outbound.picklists.xlsx')->middleware('role_or_permission:owner|export-picking');
+    Route::post('picklists/documents/bulk/pdf/async', [PicklistController::class, 'bulkPdfAsync'])->name('outbound.picklists.bulk-pdf-async')->middleware('role_or_permission:owner|export-picking');
     Route::post('picklists/documents/bulk/pdf', [PicklistController::class, 'bulkPdf'])->name('outbound.picklists.bulk-pdf')->middleware('role_or_permission:owner|export-picking');
     Route::post('picklists/{id}/assign-picker', [PicklistController::class, 'assignPicker'])->name('outbound.picklists.assign-picker')->middleware('role_or_permission:owner|edit-picking');
 
@@ -103,6 +104,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::post('shipments/{id}/update-handover-qty', [ShipmentController::class, 'updateHandoverQty'])->name('outbound.shipments.update-handover-qty')->middleware('role_or_permission:owner|edit-pengiriman');
     Route::get('shipments/{id}/manifest-pdf', [ShipmentController::class, 'manifestPdf'])->name('outbound.shipments.manifest-pdf')->middleware('role_or_permission:owner|export-pengiriman');
     Route::get('shipments/{id}/manifest-excel', [ShipmentController::class, 'manifestExcel'])->name('outbound.shipments.manifest-excel')->middleware('role_or_permission:owner|export-pengiriman');
+    Route::post('shipments/documents/bulk/manifest-pdf/async', [ShipmentController::class, 'bulkManifestPdfAsync'])->name('outbound.shipments.bulk-manifest-pdf-async')->middleware('role_or_permission:owner|export-pengiriman');
     Route::post('shipments/documents/bulk/manifest-pdf', [ShipmentController::class, 'bulkManifestPdf'])->name('outbound.shipments.bulk-manifest-pdf')->middleware('role_or_permission:owner|export-pengiriman');
     Route::post('shipments/{id}/cancel', [ShipmentController::class, 'cancel'])->name('outbound.shipments.cancel')->middleware('role_or_permission:owner|edit-pengiriman');
     Route::delete('shipments/{id}', [ShipmentController::class, 'destroy'])->name('outbound.shipments.destroy')->middleware('role_or_permission:owner|delete-pengiriman');

@@ -25,7 +25,8 @@ class ConfirmProductImportJob implements ShouldQueue
 
     public function __construct(public readonly string $batchId)
     {
-        $this->onQueue(config('queue.names.imports', 'product'));
+        $this->onConnection(config('queue.default') === 'sync' ? 'sync' : config('queue.routing.imports.connection', 'redis-long'));
+        $this->onQueue(config('queue.routing.imports.queue', 'imports'));
     }
 
     public function handle(
@@ -33,6 +34,8 @@ class ConfirmProductImportJob implements ShouldQueue
         ProductImportService $productService,
         ImpexActivityService $activities,
     ): void {
+        ini_set('memory_limit', (string) config('queue.routing.imports.memory_limit', '1024M'));
+        set_time_limit((int) config('queue.routing.imports.timeout', 1800));
 
         $batch = ProductImportBatch::find($this->batchId);
         if (! $batch || in_array($batch->state, [
