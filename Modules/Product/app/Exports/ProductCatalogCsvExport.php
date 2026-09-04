@@ -29,15 +29,13 @@ final class ProductCatalogCsvExport implements FromQuery, WithCustomChunkSize, W
 
         return DB::query()
             ->fromSub($normal->unionAll($bundle), 'catalog_rows')
-            ->orderBy('item_group_id')
-            ->orderBy('item_id');
+            ->orderBy('name')
+            ->orderBy('sku');
     }
 
     public function headings(): array
     {
         return [
-            'Item ID',
-            'Item Group ID',
             'Name',
             'SKU',
             'Category Name',
@@ -60,8 +58,6 @@ final class ProductCatalogCsvExport implements FromQuery, WithCustomChunkSize, W
     public function map($row): array
     {
         return [
-            $row->item_id,
-            $row->item_group_id,
             $row->name ?? '',
             $row->sku ?? '',
             $row->category_name ?? '',
@@ -112,10 +108,12 @@ final class ProductCatalogCsvExport implements FromQuery, WithCustomChunkSize, W
             })
             ->where('p.is_bundle', false)
             ->whereNull('v.deleted_at')
+            ->whereNotNull('v.sku')
+            ->whereRaw("TRIM(v.sku) <> ''")
             ->where(function ($scope) {
                 TechnicalSku::exclude($scope, 'v.sku');
             })
-            ->select($this->columns('v.id', 'v.sku'))
+            ->select($this->columns('v.sku'))
             ->selectRaw('v.sell_price')
             ->selectRaw('p.weight as package_weight')
             ->selectRaw('p.width as package_width')
@@ -144,10 +142,12 @@ final class ProductCatalogCsvExport implements FromQuery, WithCustomChunkSize, W
             ->join('product_variants as v', 'v.id', '=', 'bi.component_variant_id')
             ->where('p.is_bundle', true)
             ->whereNull('v.deleted_at')
+            ->whereNotNull('v.sku')
+            ->whereRaw("TRIM(v.sku) <> ''")
             ->where(function ($scope) {
                 TechnicalSku::exclude($scope, 'v.sku');
             })
-            ->select($this->columns('v.id', 'v.sku'))
+            ->select($this->columns('v.sku'))
             ->selectRaw('v.sell_price')
             ->selectRaw('p.weight as package_weight')
             ->selectRaw('p.width as package_width')
@@ -264,11 +264,9 @@ final class ProductCatalogCsvExport implements FromQuery, WithCustomChunkSize, W
         return $query;
     }
 
-    private function columns(string $itemId, string $sku): array
+    private function columns(string $sku): array
     {
         return [
-            DB::raw("{$itemId} as item_id"),
-            'p.id as item_group_id',
             DB::raw($this->hasRepresentativeColumn()
                 ? 'COALESCE(rep_merge.master_name, p.name) as name'
                 : 'p.name'),
@@ -280,13 +278,18 @@ final class ProductCatalogCsvExport implements FromQuery, WithCustomChunkSize, W
 
     private function joinVariantData(Builder $query): void
     {
+        $exportableVariantIds = $this->exportableVariantIds();
+        $exportableProductIds = $this->exportableProductIds();
+
         $options = DB::table('variant_options as vo')
+            ->whereIn('vo.variant_id', $exportableVariantIds)
             ->groupBy('vo.variant_id')
             ->select('vo.variant_id')
             ->selectRaw("STRING_AGG(vo.value, ', ' ORDER BY vo.id) as variation");
 
         $stock = DB::table('inventories as si')
             ->leftJoin('location_bins as sb', 'sb.id', '=', 'si.bin_id')
+            ->whereIn('si.item_id', $exportableVariantIds)
             ->groupBy('si.item_id')
             ->select('si.item_id')
             ->selectRaw(
@@ -296,6 +299,7 @@ final class ProductCatalogCsvExport implements FromQuery, WithCustomChunkSize, W
         $variantImages = DB::table('product_media as vm')
             ->where('vm.media_type', 'image')
             ->whereNotNull('vm.variant_id')
+            ->whereIn('vm.variant_id', $exportableVariantIds)
             ->groupBy('vm.variant_id')
             ->select('vm.variant_id')
             ->selectRaw('ARRAY_AGG(vm.url ORDER BY vm.is_primary DESC, vm.sort_order ASC, vm.id ASC) as urls');
@@ -303,6 +307,7 @@ final class ProductCatalogCsvExport implements FromQuery, WithCustomChunkSize, W
         $productImages = DB::table('product_media as pm')
             ->where('pm.media_type', 'image')
             ->whereNull('pm.variant_id')
+            ->whereIn('pm.product_id', $exportableProductIds)
             ->groupBy('pm.product_id')
             ->select('pm.product_id')
             ->selectRaw('ARRAY_AGG(pm.url ORDER BY pm.is_primary DESC, pm.sort_order ASC, pm.id ASC) as urls');
@@ -321,6 +326,22 @@ final class ProductCatalogCsvExport implements FromQuery, WithCustomChunkSize, W
                 DB::raw('COALESCE(catalog_variant_images.urls[5], catalog_product_images.urls[5]) as image_5'),
                 DB::raw('COALESCE(catalog_stock.stock, 0) as stock'),
             ]);
+    }
+
+    private function exportableVariantIds(): Builder
+    {
+        return DB::table('product_variants as scope_v')
+            ->join('products as scope_p', 'scope_p.id', '=', 'scope_v.product_id')
+            ->whereNull('scope_v.deleted_at')
+            ->whereNull('scope_p.deleted_at')
+            ->select('scope_v.id');
+    }
+
+    private function exportableProductIds(): Builder
+    {
+        return DB::table('products as scope_p')
+            ->whereNull('scope_p.deleted_at')
+            ->select('scope_p.id');
     }
 
     private function categoryIdsWithDescendants(array $values): array

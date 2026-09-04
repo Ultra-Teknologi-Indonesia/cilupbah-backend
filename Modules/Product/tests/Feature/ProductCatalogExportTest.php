@@ -68,9 +68,11 @@ class ProductCatalogExportTest extends TestCase
     {
         $headings = (new ProductCatalogCsvExport)->headings();
 
-        $this->assertCount(18, $headings);
-        $this->assertSame('Stock', $headings[17]);
-        $this->assertSame('Item ID', $headings[0]);
+        $this->assertCount(16, $headings);
+        $this->assertSame('Stock', $headings[15]);
+        $this->assertSame('Name', $headings[0]);
+        $this->assertNotContains('Item ID', $headings);
+        $this->assertNotContains('Item Group ID', $headings);
     }
 
     public function test_catalog_query_streams_a_variant_and_emits_zero_stock(): void
@@ -91,20 +93,41 @@ class ProductCatalogExportTest extends TestCase
 
         $rows = (new ProductCatalogCsvExport(['status' => Product::STATUS_MASTER]))
             ->query()
-            ->where('item_id', $variant->id)
+            ->where('sku', $variant->sku)
             ->get();
 
         $this->assertCount(1, $rows);
-        $this->assertSame($product->id, $rows[0]->item_group_id);
         $this->assertSame('CATALOG-TEST-001', $rows[0]->sku);
         $this->assertSame(0, (int) $rows[0]->stock);
+    }
+
+    public function test_catalog_query_excludes_active_variant_without_sku(): void
+    {
+        $category = Category::create(['name' => 'Catalog Empty SKU Test', 'is_active' => true]);
+        $product = Product::create([
+            'category_id' => $category->id,
+            'name' => 'Produk Catalog Tanpa SKU',
+            'status' => Product::STATUS_MASTER,
+            'is_bundle' => false,
+        ]);
+
+        ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => null,
+            'is_active' => true,
+        ]);
+
+        $rows = (new ProductCatalogCsvExport(['status' => Product::STATUS_MASTER]))
+            ->query()
+            ->where('name', $product->name)
+            ->get();
+
+        $this->assertCount(0, $rows);
     }
 
     public function test_catalog_map_converts_empty_numeric_values_to_zero(): void
     {
         $row = (object) [
-            'item_id' => 'item-id',
-            'item_group_id' => 'group-id',
             'name' => 'Produk',
             'sku' => '',
             'category_name' => '',
@@ -125,12 +148,12 @@ class ProductCatalogExportTest extends TestCase
 
         $mapped = (new ProductCatalogCsvExport)->map($row);
 
-        foreach ([7, 8, 9, 10, 11, 17] as $index) {
+        foreach ([5, 6, 7, 8, 9, 15] as $index) {
             $this->assertSame(0, $mapped[$index]);
         }
 
-        $this->assertSame('', $mapped[3]);
-        $this->assertSame('', $mapped[12]);
+        $this->assertSame('', $mapped[1]);
+        $this->assertSame('', $mapped[10]);
     }
 
     public function test_catalog_query_exports_bundle_components_without_technical_sku(): void
@@ -165,7 +188,6 @@ class ProductCatalogExportTest extends TestCase
         ]))->query()->get();
 
         $this->assertCount(1, $rows);
-        $this->assertSame($bundle->id, $rows[0]->item_group_id);
         $this->assertSame('COMPONENT-001', $rows[0]->sku);
     }
 }
