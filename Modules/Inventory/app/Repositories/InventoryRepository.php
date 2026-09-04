@@ -87,6 +87,11 @@ class InventoryRepository
         $inventories = Inventory::where('item_id', $itemId)
             ->tap(fn ($query) => WarehouseAccess::apply($query, 'location_id'))
             ->placed()
+            ->where(function ($query) {
+                $query
+                    ->where('on_hand', '<>', 0)
+                    ->orWhere('on_order', '<>', 0);
+            })
             ->with([
                 'location:id,location_name',
                 'bin:id,bin_final_code,floor_code,row_code,column_code,zone_id,location_id',

@@ -103,6 +103,23 @@ class InventoryStockDetailTest extends TestCase
         $response->assertJsonPath('data.1.on_hand', 0);
     }
 
+    public function test_it_does_not_return_orphaned_zero_balance_inventory_as_allocation(): void
+    {
+        Inventory::create([
+            'item_id' => $this->variant->id,
+            'location_id' => $this->location->id,
+            'bin_id' => $this->emptyBin->id,
+            'on_hand' => 0,
+            'on_order' => 0,
+            'available' => 0,
+        ]);
+
+        $response = $this->getJson("/api/v1/inventory/stocks/{$this->variant->id}");
+
+        $response->assertOk();
+        $response->assertJsonCount(0, 'data');
+    }
+
     public function test_it_returns_stock_items_by_bin_code(): void
     {
         $this->createLegacyNegativeInventory([
