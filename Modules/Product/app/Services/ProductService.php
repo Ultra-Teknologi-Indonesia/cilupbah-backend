@@ -24,8 +24,8 @@ use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductBundleItem;
 use Modules\Product\Models\ProductDeleteAudit;
 use Modules\Product\Models\ProductMedia;
-use Modules\Product\Models\ProductVariant;
 use Modules\Product\Models\ProductSyncLog;
+use Modules\Product\Models\ProductVariant;
 use Modules\Product\Repositories\ProductRepository;
 use Modules\Product\Repositories\ProductWriteRepository;
 use Modules\Product\Support\ChannelSku;
@@ -511,19 +511,16 @@ class ProductService
         ?bool &$matchedExisting = null,
         ?array &$variantIds = null,
         bool $strictSku = false,
-    )
-    {
+    ) {
         $data = ProductIngestSanitizer::sanitize($data);
 
         $externalProductId = isset($data['channel_external_product_id'])
             ? (string) $data['channel_external_product_id']
             : null;
 
-        $data['variants'] = $strictSku
-            ? $this->onlyValidChannelVariants($data['variants'] ?? [], $externalProductId)
-            : $this->dropVariantsWithoutSku($data['variants'] ?? [], $externalProductId);
+        $data['variants'] = $this->onlyValidChannelVariants($data['variants'] ?? [], $externalProductId);
 
-        if ($strictSku && $data['variants'] === []) {
+        if ($data['variants'] === []) {
             throw new DomainException(
                 'Produk channel dilewati karena tidak memiliki SKU penjual yang valid.'
                 .($externalProductId ? " Listing {$externalProductId}." : '')
@@ -541,32 +538,10 @@ class ProductService
 
         $matchedExisting = false;
 
-        $data['variants'] = $this->makeDeletedChannelVariantSkusUnique($data, $strictSku);
-
         $productId = $this->createProduct($data, $variantIds, false);
         $this->queueExternalMediaMirroring($productId);
 
         return $productId;
-    }
-
-    private function dropVariantsWithoutSku(array $variants, ?string $externalProductId = null): array
-    {
-        $withSku = array_values(array_filter(
-            $variants,
-            fn ($v) => ! ChannelSku::isPlaceholder($v['sku'] ?? null, $externalProductId)
-        ));
-
-        if ($withSku) {
-            return $withSku;
-        }
-
-        $placeholder = array_slice(array_values($variants), 0, 1);
-
-        if ($placeholder && is_array($placeholder[0])) {
-            $placeholder[0]['sku'] = null;
-        }
-
-        return $placeholder;
     }
 
     private function onlyValidChannelVariants(array $variants, ?string $externalProductId): array
@@ -590,67 +565,6 @@ class ProductService
         }
 
         return $valid;
-    }
-
-    private function makeDeletedChannelVariantSkusUnique(array $data, bool $strictSku = false): array
-    {
-        $externalProductId = trim((string) ($data['channel_external_product_id'] ?? ''));
-        if ($externalProductId === '') {
-            return $data['variants'] ?? [];
-        }
-
-        $skus = collect($data['variants'] ?? [])
-            ->pluck('sku')
-            ->filter(fn ($sku) => is_string($sku) && trim($sku) !== '')
-            ->map(fn ($sku) => trim($sku))
-            ->unique()
-            ->values()
-            ->all();
-
-        if ($skus === []) {
-            return $data['variants'] ?? [];
-        }
-
-        $blocked = DB::table('product_variants as pv')
-            ->join('products as p', 'p.id', '=', 'pv.product_id')
-            ->whereIn('pv.sku', $skus)
-            ->whereNull('pv.deleted_at')
-            ->whereNotNull('p.deleted_at')
-            ->pluck('pv.sku')
-            ->map(fn ($sku) => (string) $sku)
-            ->flip();
-
-        if ($blocked->isEmpty()) {
-            return $data['variants'] ?? [];
-        }
-
-        if ($strictSku) {
-            throw new DomainException(
-                'SKU channel sudah dipakai oleh varian aktif di master yang terhapus: '
-                .$blocked->keys()->implode(', ')
-                .'. Pulihkan atau rapikan master lama terlebih dahulu.'
-            );
-        }
-
-        foreach ($data['variants'] as &$variant) {
-            $sku = trim((string) ($variant['sku'] ?? ''));
-            if (! isset($blocked[$sku])) {
-                continue;
-            }
-
-            $base = $sku.'-REIMPORT-'.substr(sha1($externalProductId.':'.$sku), 0, 8);
-            $candidate = $base;
-            $suffix = 2;
-
-            while (DB::table('product_variants')->where('sku', $candidate)->exists()) {
-                $candidate = $base.'-'.$suffix++;
-            }
-
-            $variant['sku'] = $candidate;
-        }
-        unset($variant);
-
-        return $data['variants'];
     }
 
     public function addVariantFromChannel(string $productId, array $variant): ?string

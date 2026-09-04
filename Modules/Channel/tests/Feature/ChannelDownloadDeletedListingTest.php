@@ -76,7 +76,7 @@ class ChannelDownloadDeletedListingTest extends TestCase
             ->assertJsonPath('data.0.already_downloaded', false);
     }
 
-    public function test_new_download_does_not_reuse_a_soft_deleted_parent_with_a_live_variant(): void
+    public function test_new_download_reuses_the_original_sku_when_the_old_parent_is_soft_deleted(): void
     {
         $category = Category::create(['name' => 'New Import Category']);
         $old = Product::create([
@@ -94,6 +94,9 @@ class ChannelDownloadDeletedListingTest extends TestCase
             'is_active' => true,
         ]);
         $old->delete();
+        ProductVariant::withTrashed()
+            ->where('product_id', $old->id)
+            ->forceDelete();
 
         $newId = app(ProductService::class)->upsertFromChannel([
             'name' => 'Produk Di-download Ulang',
@@ -113,7 +116,7 @@ class ChannelDownloadDeletedListingTest extends TestCase
         $this->assertNotSame($old->id, $newId);
         $this->assertNotNull(Product::find($newId));
         $this->assertTrue(Product::withTrashed()->findOrFail($old->id)->trashed());
-        $this->assertNotSame(
+        $this->assertSame(
             'REIMPORT-VARIANT',
             ProductVariant::where('product_id', $newId)->value('sku'),
         );
@@ -142,7 +145,7 @@ class ChannelDownloadDeletedListingTest extends TestCase
         $this->assertSame($before, Product::count());
     }
 
-    public function test_strict_channel_download_keeps_the_original_sku_on_a_deleted_parent_conflict(): void
+    public function test_channel_download_keeps_the_original_sku_on_a_deleted_parent_conflict(): void
     {
         $category = Category::create(['name' => 'Strict SKU Category']);
         $old = Product::create([
@@ -158,23 +161,27 @@ class ChannelDownloadDeletedListingTest extends TestCase
             'is_active' => true,
         ]);
         $old->delete();
+        ProductVariant::withTrashed()
+            ->where('product_id', $old->id)
+            ->forceDelete();
 
-        try {
-            app(ProductService::class)->upsertFromChannel([
-                'name' => 'Produk Strict Baru',
-                'channel_external_product_id' => 'REMOTE-STRICT-CONFLICT',
-                'channel_shop_id_external' => 'SHOP-STRICT-CONFLICT',
-                'variants' => [[
-                    'sku' => 'STRICT-CONFLICT-SKU',
-                    'sell_price' => 12000,
-                ]],
-            ], $matched, $variantIds, true);
+        $newId = app(ProductService::class)->upsertFromChannel([
+            'name' => 'Produk Strict Baru',
+            'category_id' => $category->id,
+            'channel_external_product_id' => 'REMOTE-STRICT-CONFLICT',
+            'channel_shop_id_external' => 'SHOP-STRICT-CONFLICT',
+            'variants' => [[
+                'sku' => 'STRICT-CONFLICT-SKU',
+                'sell_price' => 12000,
+            ]],
+        ], $matched, $variantIds, true);
 
-            $this->fail('Strict channel download harus menolak konflik SKU pada master terhapus.');
-        } catch (\DomainException $exception) {
-            $this->assertStringContainsString('master yang terhapus', $exception->getMessage());
-        }
-
+        $this->assertFalse($matched);
+        $this->assertNotSame($old->id, $newId);
+        $this->assertSame(
+            'STRICT-CONFLICT-SKU',
+            ProductVariant::where('product_id', $newId)->value('sku'),
+        );
         $this->assertDatabaseMissing('product_variants', [
             'sku' => 'STRICT-CONFLICT-SKU-REIMPORT',
         ]);

@@ -2,19 +2,19 @@
 
 namespace Modules\Product\Providers;
 
-use Nwidart\Modules\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
 use Modules\Product\Console\Commands\BackfillProductSkus;
 use Modules\Product\Console\Commands\MergeMasterProducts;
 use Modules\Product\Console\Commands\PruneUploadHistories;
+use Modules\Product\Console\Commands\PurgeSoftDeletedSkus;
 use Modules\Product\Console\Commands\RecomputeChannelValidation;
 use Modules\Product\Console\Commands\RemirrorProductImages;
 use Modules\Product\Console\Commands\RepairChannelSku;
 use Modules\Product\Jobs\PruneUploadHistoriesJob;
+use Nwidart\Modules\Support\ModuleServiceProvider;
 
 class ProductServiceProvider extends ModuleServiceProvider
 {
-
     protected string $name = 'Product';
 
     protected string $nameLower = 'product';
@@ -26,6 +26,7 @@ class ProductServiceProvider extends ModuleServiceProvider
         MergeMasterProducts::class,
         RepairChannelSku::class,
         BackfillProductSkus::class,
+        PurgeSoftDeletedSkus::class,
     ];
 
     protected array $providers = [
@@ -35,7 +36,7 @@ class ProductServiceProvider extends ModuleServiceProvider
 
     protected function configureSchedules(Schedule $schedule): void
     {
-        $schedule->job(new PruneUploadHistoriesJob())->daily();
+        $schedule->job(new PruneUploadHistoriesJob)->daily();
 
         $schedule->command('products:recompute-validation --queue')
             ->hourly()
