@@ -4,7 +4,6 @@ namespace Modules\Sales\Repositories;
 
 use App\Support\WarehouseAccess;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -221,8 +220,10 @@ class SalesOrderRepository
     public function monitoringOrdersQuery(?string $locationId = null): Builder
     {
         return $this->withLocation(
-            $this->scopeExcludeFailedDownload(
-                SalesOrder::query()->excludeShadow()
+            $this->scopeExcludeMonitoringExcludedOrders(
+                $this->scopeExcludeFailedDownload(
+                    SalesOrder::query()->excludeShadow()
+                )
             ),
             $locationId,
         );
@@ -271,6 +272,18 @@ class SalesOrderRepository
             ->whereNull('source')
             ->orWhereDoesntHave('items', $this->unmappedItemsConstraint())
         );
+    }
+
+    protected function scopeExcludeMonitoringExcludedOrders($query)
+    {
+        return $query
+            ->where('status', '!=', 'cancelled')
+            ->where('is_canceled', false)
+            ->where(fn ($q) => $q
+                ->where('status', '!=', 'pending')
+                ->orWhere('is_paid', true)
+            )
+            ->whereDoesntHave('returns');
     }
 
     protected function applyTabScope($query, string $tab, ?string $sub = null)
