@@ -16,7 +16,7 @@ class PacklistRepository
     public function getAllPaginated(int $limit = 10)
     {
         $query = QueryBuilder::for(Packlist::class)
-            ->with(['location:id,location_name,location_code', 'packer:id,name,email', 'order:id,salesorder_no,customer_name,shipping_provider,shipping_type,channel_instant,resolved_shipment_type'])
+            ->with(['location:id,location_name,location_code', 'packer:id,name,email', 'order:id,salesorder_no,customer_name,transaction_date,shipping_provider,shipping_type,channel_instant,resolved_shipment_type'])
             ->allowedFilters(
                 AllowedFilter::callback('status', function ($query, $value) {
                     $statuses = is_array($value) ? $value : explode(',', $value);
@@ -71,6 +71,12 @@ class PacklistRepository
                 AllowedSort::callback('customer_name', fn ($query, bool $descending) => $query->orderBy(
                     SalesOrder::query()
                         ->select('customer_name')
+                        ->whereColumn('sales_orders.id', 'packlists.order_id'),
+                    $descending ? 'desc' : 'asc',
+                )),
+                AllowedSort::callback('transaction_date', fn ($query, bool $descending) => $query->orderBy(
+                    SalesOrder::query()
+                        ->select('transaction_date')
                         ->whereColumn('sales_orders.id', 'packlists.order_id'),
                     $descending ? 'desc' : 'asc',
                 )),

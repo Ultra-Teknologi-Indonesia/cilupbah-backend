@@ -43,6 +43,7 @@ class PreManifestCancelRepository
                 'tracking_number',
                 'cancel_reason',
                 'cancel_accepted_at',
+                'transaction_date',
                 'location_id',
             )
             ->defaultSort('-cancel_accepted_at')

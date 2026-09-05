@@ -213,7 +213,7 @@ class ShipmentRepository
             ->join('sales_orders', 'sales_orders.id', '=', 'shipment_orders.order_id')
             ->select('shipment_orders.*')
             ->with([
-                'order:id,salesorder_no,customer_name,status,grand_total,shipping_provider,shipping_type,channel_instant,resolved_shipment_type,tracking_number,source,channel_order_no,order_weight_gram',
+                'order:id,salesorder_no,customer_name,status,grand_total,shipping_provider,shipping_type,channel_instant,resolved_shipment_type,tracking_number,source,channel_order_no,order_weight_gram,transaction_date',
                 'packlist:id,packlist_no',
             ]);
         $query->whereHas('shipment', fn ($shipment) => WarehouseAccess::apply($shipment, 'location_id'));

@@ -53,7 +53,7 @@ class OutboundFulfillmentController extends Controller
             );
         }
 
-        return $this->successResponse($data);
+        return $this->successPaginatedResponse($data);
     }
 
     #[OA\Post(
