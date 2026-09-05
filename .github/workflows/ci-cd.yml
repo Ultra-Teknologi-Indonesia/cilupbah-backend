@@ -200,6 +200,7 @@ jobs:
             # container miliknya walaupun path checkout di VPS berubah.
             COMPOSE_PROJECT=cilupbah-staging
             COMPOSE_FILE=docker-compose.staging.yml
+            export CILUPBAH_IMAGE_TAG="${{ needs.build.outputs.version_tag }}"
 
             # 3. Bersihkan container staging lama yang dibuat oleh project
             # berbeda/manual. `--remove-orphans` hanya membersihkan orphan
@@ -222,8 +223,24 @@ jobs:
               fi
             done
 
-            # 4. Pull Docker image terbaru dari GHCR
-            docker compose -p "$COMPOSE_PROJECT" -f "$COMPOSE_FILE" pull
+            # 4. Pull image versi build yang tepat dari GHCR.
+            # Retry menangani gangguan transient saat containerd mengekstrak layer.
+            pull_image() {
+              attempt=1
+              while [ "$attempt" -le 3 ]; do
+                if docker compose -p "$COMPOSE_PROJECT" -f "$COMPOSE_FILE" pull; then
+                  return 0
+                fi
+                if [ "$attempt" -lt 3 ]; then
+                  echo "Pull image gagal (percobaan $attempt/3), retry dalam $((attempt * 15)) detik..."
+                  sleep $((attempt * 15))
+                fi
+                attempt=$((attempt + 1))
+              done
+              echo "Pull image gagal setelah 3 percobaan."
+              return 1
+            }
+            pull_image
 
             # 5. Restart container dengan image baru
             docker compose -p "$COMPOSE_PROJECT" -f "$COMPOSE_FILE" up -d --remove-orphans

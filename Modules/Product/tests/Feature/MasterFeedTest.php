@@ -21,6 +21,7 @@ class MasterFeedTest extends TestCase
     use RefreshDatabase;
 
     private Product $master;
+
     private Attribute $warna;
 
     protected function setUp(): void
@@ -374,5 +375,81 @@ class MasterFeedTest extends TestCase
 
         $variantItem = collect($item['variants'])->firstWhere('item_id', $variant->id);
         $this->assertSame('https://cdn.example.com/variant-merah.jpg', $variantItem['thumbnail']);
+    }
+
+    public function test_bundle_thumbnail_uses_matching_component_variant_image_before_bundle_product_image(): void
+    {
+        $component = $this->master->variants()->firstOrFail();
+
+        ProductMedia::create([
+            'product_id' => $this->master->id,
+            'variant_id' => $component->id,
+            'media_type' => 'image',
+            'url' => 'https://cdn.example.com/channel-variant.jpg',
+            'is_primary' => true,
+            'sort_order' => 0,
+        ]);
+
+        $bundle = Product::create([
+            'name' => 'Paket Rhombic Merah',
+            'sku' => $component->sku,
+            'category_id' => 1,
+            'status' => Product::STATUS_MASTER,
+            'is_active' => true,
+            'is_bundle' => true,
+        ]);
+
+        $bundle->bundleItems()->create([
+            'component_variant_id' => $component->id,
+            'qty' => 1,
+        ]);
+
+        ProductMedia::create([
+            'product_id' => $bundle->id,
+            'media_type' => 'image',
+            'url' => 'https://cdn.example.com/bundle-main.jpg',
+            'is_primary' => true,
+            'sort_order' => 0,
+        ]);
+
+        $item = $this->getJson('/api/v1/products/master?filter[type]=bundle')
+            ->assertOk()
+            ->json('data.0');
+
+        $this->assertSame('https://cdn.example.com/channel-variant.jpg', $item['thumbnail']);
+        $this->assertSame('https://cdn.example.com/channel-variant.jpg', $item['variants'][0]['thumbnail']);
+    }
+
+    public function test_bundle_thumbnail_is_empty_when_no_component_variant_image_exists(): void
+    {
+        $component = $this->master->variants()->firstOrFail();
+
+        $bundle = Product::create([
+            'name' => 'Paket Rhombic Tanpa Foto Varian',
+            'sku' => $component->sku,
+            'category_id' => 1,
+            'status' => Product::STATUS_MASTER,
+            'is_active' => true,
+            'is_bundle' => true,
+        ]);
+
+        $bundle->bundleItems()->create([
+            'component_variant_id' => $component->id,
+            'qty' => 1,
+        ]);
+
+        ProductMedia::create([
+            'product_id' => $bundle->id,
+            'media_type' => 'image',
+            'url' => 'https://cdn.example.com/bundle-main-must-not-appear.jpg',
+            'is_primary' => true,
+            'sort_order' => 0,
+        ]);
+
+        $item = $this->getJson('/api/v1/products/master?filter[type]=bundle')
+            ->assertOk()
+            ->json('data.0');
+
+        $this->assertNull($item['thumbnail']);
     }
 }

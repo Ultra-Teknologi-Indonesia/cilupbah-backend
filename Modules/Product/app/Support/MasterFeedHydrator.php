@@ -79,7 +79,10 @@ class MasterFeedHydrator
         $rawBundleItems = TechnicalSku::exclude(DB::table('product_bundle_items')
             ->join('product_variants', 'product_variants.id', '=', 'product_bundle_items.component_variant_id')
             ->whereIn('product_bundle_items.bundle_product_id', $allProductIds)
-            ->whereNull('product_variants.deleted_at'), 'product_variants.sku')
+            ->whereNull('product_variants.deleted_at')
+            ->orderBy('product_bundle_items.bundle_product_id')
+            ->orderBy('product_bundle_items.created_at')
+            ->orderBy('product_bundle_items.id'), 'product_variants.sku')
             ->get([
                 'product_bundle_items.bundle_product_id',
                 'product_bundle_items.component_variant_id',
@@ -119,7 +122,13 @@ class MasterFeedHydrator
         $variantThumbnails = [];
 
         $rawMedia = DB::table('product_media')
-            ->whereIn('product_id', $allProductIds)
+            ->where(function ($query) use ($allProductIds, $allLookupVariantIds): void {
+                $query->whereIn('product_id', $allProductIds);
+
+                if ($allLookupVariantIds !== []) {
+                    $query->orWhereIn('variant_id', $allLookupVariantIds);
+                }
+            })
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get(['id', 'product_id', 'variant_id', 'url', 'is_primary', 'sort_order']);
@@ -326,20 +335,39 @@ class MasterFeedHydrator
                 ];
             }
 
-            $thumbnail = $primaryThumbnailByProduct[$product->id] ?? null;
-            if (! $thumbnail && $isMerged) {
-                foreach ($memberIds as $mid) {
-                    if (isset($primaryThumbnailByProduct[$mid])) {
-                        $thumbnail = $primaryThumbnailByProduct[$mid];
-                        break;
+            $thumbnail = null;
+            if ($isBundle) {
+                $matchingComponent = collect($variantItems)->first(
+                    fn (array $item): bool => $item['item_code'] === $product->sku && ! empty($item['thumbnail'])
+                );
+                $thumbnail = $matchingComponent['thumbnail'] ?? null;
+
+                if (! $thumbnail) {
+                    foreach ($variantItems as $item) {
+                        if (! empty($item['thumbnail'])) {
+                            $thumbnail = $item['thumbnail'];
+                            break;
+                        }
                     }
                 }
             }
-            if (! $thumbnail && ! empty($variantItems)) {
-                foreach ($variantItems as $vi) {
-                    if (! empty($vi['thumbnail'])) {
-                        $thumbnail = $vi['thumbnail'];
-                        break;
+
+            if (! $isBundle) {
+                $thumbnail = $primaryThumbnailByProduct[$product->id] ?? null;
+                if (! $thumbnail && $isMerged) {
+                    foreach ($memberIds as $mid) {
+                        if (isset($primaryThumbnailByProduct[$mid])) {
+                            $thumbnail = $primaryThumbnailByProduct[$mid];
+                            break;
+                        }
+                    }
+                }
+                if (! $thumbnail && ! empty($variantItems)) {
+                    foreach ($variantItems as $vi) {
+                        if (! empty($vi['thumbnail'])) {
+                            $thumbnail = $vi['thumbnail'];
+                            break;
+                        }
                     }
                 }
             }

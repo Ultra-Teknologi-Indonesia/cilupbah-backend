@@ -7,17 +7,25 @@ namespace Modules\Report\Exports;
 use Illuminate\Database\Query\Builder;
 use Maatwebsite\Excel\Concerns\FromQuery;
 use Maatwebsite\Excel\Concerns\WithColumnWidths;
+use Maatwebsite\Excel\Concerns\WithCustomValueBinder;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
 use Maatwebsite\Excel\Concerns\WithStrictNullComparison;
 use Maatwebsite\Excel\Concerns\WithStyles;
 use Maatwebsite\Excel\Concerns\WithTitle;
+use Maatwebsite\Excel\DefaultValueBinder;
 use Modules\Report\Services\InventoryStockReportService;
+use PhpOffice\PhpSpreadsheet\Cell\Cell;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-final class InventoryStockReportExport implements FromQuery, WithColumnWidths, WithHeadings, WithMapping, WithStrictNullComparison, WithStyles, WithTitle
+final class InventoryStockReportExport extends DefaultValueBinder implements FromQuery, WithColumnWidths, WithCustomValueBinder, WithHeadings, WithMapping, WithStrictNullComparison, WithStyles, WithTitle
 {
+    /** @var list<string> */
+    private const RACK_TEXT_COLUMNS = ['A', 'E', 'F', 'G', 'H'];
+
     public function __construct(
         private readonly InventoryStockReportService $service,
         private readonly array $filters,
@@ -48,14 +56,14 @@ final class InventoryStockReportExport implements FromQuery, WithColumnWidths, W
     {
         if ($this->filters['report_type'] === 'by_rack') {
             return [
-                $row->sku,
+                $this->codeValue($row->sku),
                 $row->product_name,
                 $row->variant_name,
                 $row->location_name,
-                $row->floor_code ?? '-',
-                $row->row_code ?? '-',
-                $row->column_code ?? '-',
-                $row->bin_final_code ?? 'Tidak ada rak',
+                $this->codeValue($row->floor_code),
+                $this->codeValue($row->row_code),
+                $this->codeValue($row->column_code),
+                $this->codeValue($row->bin_final_code, 'Tidak ada rak'),
                 (int) $row->qty_on_hand,
                 (int) $row->qty_actual,
             ];
@@ -79,6 +87,18 @@ final class InventoryStockReportExport implements FromQuery, WithColumnWidths, W
         ];
     }
 
+    public function bindValue(Cell $cell, $value): bool
+    {
+        if ($this->filters['report_type'] === 'by_rack'
+            && in_array($cell->getColumn(), self::RACK_TEXT_COLUMNS, true)) {
+            $cell->setValueExplicit((string) $value, DataType::TYPE_STRING);
+
+            return true;
+        }
+
+        return parent::bindValue($cell, $value);
+    }
+
     public function columnWidths(): array
     {
         if ($this->filters['report_type'] === 'by_rack') {
@@ -96,6 +116,10 @@ final class InventoryStockReportExport implements FromQuery, WithColumnWidths, W
 
         if ($this->filters['report_type'] === 'by_rack') {
             $sheet->getStyle('I:J')->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_NUMBER);
+            $sheet->getStyle('A:A')->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_TEXT);
+            $sheet->getStyle('E:H')->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_TEXT);
+            $sheet->getStyle('A:A')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
+            $sheet->getStyle('E:H')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
         } else {
             $sheet->getStyle('F:F')->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_NUMBER_00);
             $sheet->getStyle('G:G')->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_NUMBER_00);
@@ -104,5 +128,10 @@ final class InventoryStockReportExport implements FromQuery, WithColumnWidths, W
         }
 
         return [1 => ['font' => ['bold' => true]]];
+    }
+
+    private function codeValue(mixed $value, string $fallback = '-'): string
+    {
+        return $value === null || $value === '' ? $fallback : (string) $value;
     }
 }

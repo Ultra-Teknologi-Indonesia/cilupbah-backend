@@ -21,8 +21,11 @@ use Modules\Report\Jobs\RunExportJob;
 use Modules\Report\Services\InventoryStockReportService;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
-use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 use Tests\TestCase;
 
 final class InventoryStockExportTest extends TestCase
@@ -178,6 +181,40 @@ final class InventoryStockExportTest extends TestCase
         } finally {
             @unlink($path);
         }
+    }
+
+    public function test_rack_export_keeps_numeric_code_columns_as_left_aligned_text(): void
+    {
+        $export = new InventoryStockReportExport(app(InventoryStockReportService::class), [
+            'report_type' => 'by_rack',
+        ]);
+        $sheet = (new Spreadsheet)->getActiveSheet();
+
+        $mapped = $export->map((object) [
+            'sku' => '123456',
+            'product_name' => 'Produk Kode Numerik',
+            'variant_name' => 'Varian',
+            'location_name' => 'Gudang Kecil',
+            'floor_code' => '1',
+            'row_code' => '14',
+            'column_code' => '2',
+            'bin_final_code' => '1-14-2-B1',
+            'qty_on_hand' => 0,
+            'qty_actual' => 0,
+        ]);
+
+        foreach ($mapped as $index => $value) {
+            $sheet->getCellByColumnAndRow($index + 1, 2)->setValue($value);
+        }
+
+        $export->bindValue($sheet->getCell('F2'), '14');
+        $export->styles($sheet);
+
+        self::assertSame('14', $sheet->getCell('F2')->getValue());
+        self::assertSame(DataType::TYPE_STRING, $sheet->getCell('F2')->getDataType());
+        self::assertSame(Alignment::HORIZONTAL_LEFT, $sheet->getStyle('F2')->getAlignment()->getHorizontal());
+        self::assertSame(NumberFormat::FORMAT_TEXT, $sheet->getStyle('F2')->getNumberFormat()->getFormatCode());
+        self::assertSame('14', $mapped[5]);
     }
 
     public function test_system_operational_warehouse_is_allowed_for_rack_export(): void
