@@ -8,7 +8,6 @@ use Modules\Product\Support\ChannelSku;
 
 class ChannelSkuHealth
 {
-
     private const HITUNG_MODEL = "count(DISTINCT COALESCE(psl.payload->>'external_sku_id', psl.id::text))";
 
     public function masterSkuTurunanVarian(?string $productId = null): Collection
@@ -59,14 +58,54 @@ class ChannelSkuHealth
 
     public function listingTerpecah(?Collection $shopIds = null): int
     {
-        return DB::table('product_channel_mappings')
-            ->select('channel_shop_id', 'external_product_id')
-            ->when($shopIds, fn ($q) => $q->whereIn('channel_shop_id', $shopIds->all()))
-            ->whereNotNull('external_product_id')
-            ->groupBy('channel_shop_id', 'external_product_id')
-            ->havingRaw('count(DISTINCT product_id) > 1')
-            ->get()
+        return $this->multiMasterListingDetails($shopIds)
+            ->where('valid_bundle_split', false)
             ->count();
+    }
+
+    public function multiMasterListingDetails(?Collection $shopIds = null): Collection
+    {
+        $rows = DB::table('product_channel_mappings as pcm')
+            ->join('products as p', 'p.id', '=', 'pcm.product_id')
+            ->leftJoin('product_variant_channel_mappings as pvcm', 'pvcm.product_channel_mapping_id', '=', 'pcm.id')
+            ->when($shopIds, fn ($q) => $q->whereIn('pcm.channel_shop_id', $shopIds->all()))
+            ->whereNotNull('pcm.external_product_id')
+            ->select([
+                'pcm.id as pcm_id',
+                'pcm.channel_shop_id',
+                'pcm.external_product_id',
+                'pcm.product_id',
+                'p.is_bundle',
+                'p.sku as master_sku',
+                'pvcm.channel_seller_sku',
+            ])
+            ->get();
+
+        return $rows
+            ->groupBy(fn ($row) => $row->channel_shop_id.'|'.$row->external_product_id)
+            ->filter(fn (Collection $listing) => $listing->pluck('product_id')->unique()->count() > 1)
+            ->map(function (Collection $listing) {
+                $byMapping = $listing->groupBy('pcm_id');
+                $validBundleSplit = $byMapping->every(function (Collection $mapping) {
+                    $first = $mapping->first();
+                    $sellerSkus = $mapping->pluck('channel_seller_sku')->filter()->unique();
+
+                    return (bool) $first->is_bundle
+                        && filled($first->master_sku)
+                        && $sellerSkus->isNotEmpty()
+                        && $sellerSkus->every(fn ($sku) => $sku === $first->master_sku);
+                });
+
+                $first = $listing->first();
+
+                return (object) [
+                    'channel_shop_id' => $first->channel_shop_id,
+                    'external_product_id' => $first->external_product_id,
+                    'jml_master' => $listing->pluck('product_id')->unique()->count(),
+                    'valid_bundle_split' => $validBundleSplit,
+                ];
+            })
+            ->values();
     }
 
     public function modelTanpaSku(int $jam = 24, ?string $channel = null): Collection
@@ -85,7 +124,7 @@ class ChannelSkuHealth
             ->whereRaw("psl.payload->>'external_product_id' IS NOT NULL")
             ->groupBy('c.code', 'cs.shop_name', 'cs.shop_id')
             ->groupByRaw("psl.payload->>'external_product_id'")
-            ->selectRaw("c.code AS channel, cs.shop_name, cs.shop_id, psl.payload->>'external_product_id' AS listing, " . self::HITUNG_MODEL . " AS jml, max(pcm.channel_url) AS url")
+            ->selectRaw("c.code AS channel, cs.shop_name, cs.shop_id, psl.payload->>'external_product_id' AS listing, ".self::HITUNG_MODEL.' AS jml, max(pcm.channel_url) AS url')
             ->orderByDesc(DB::raw(self::HITUNG_MODEL))
             ->get();
     }

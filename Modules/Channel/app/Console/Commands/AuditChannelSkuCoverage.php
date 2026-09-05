@@ -5,6 +5,7 @@ namespace Modules\Channel\Console\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Product\Services\ChannelSkuHealth;
 use Symfony\Component\Process\Exception\ProcessTimedOutException;
 use Symfony\Component\Process\Process;
 
@@ -18,6 +19,11 @@ class AuditChannelSkuCoverage extends Command
 
     protected $description = 'Audit apakah semua SKU varian aktif di channel sudah berada di satu master per listing';
 
+    public function __construct(private ChannelSkuHealth $skuHealth)
+    {
+        parent::__construct();
+    }
+
     public function handle(): int
     {
         $shops = $this->resolveShops();
@@ -28,7 +34,7 @@ class AuditChannelSkuCoverage extends Command
             return self::FAILURE;
         }
 
-        $this->line('Toko dalam cakupan: ' . $shops->count());
+        $this->line('Toko dalam cakupan: '.$shops->count());
 
         if ($this->option('apply')) {
             $this->tarikUlang($shops);
@@ -83,44 +89,44 @@ class AuditChannelSkuCoverage extends Command
             try {
                 $proses->run(fn ($jenis, $keluaran) => $this->output->write($keluaran));
             } catch (ProcessTimedOutException) {
-                $this->error('  gagal: melewati batas waktu ' . $this->option('timeout') . ' detik');
+                $this->error('  gagal: melewati batas waktu '.$this->option('timeout').' detik');
 
                 continue;
             }
 
             if (! $proses->isSuccessful()) {
-                $this->error('  gagal: keluar dengan kode ' . $proses->getExitCode());
+                $this->error('  gagal: keluar dengan kode '.$proses->getExitCode());
             }
         }
     }
 
     private function laporkanListingTerpecah($shops): void
     {
-        $rows = DB::table('product_channel_mappings')
-            ->select('channel_shop_id', 'external_product_id')
-            ->selectRaw('count(DISTINCT product_id) AS jml_master')
-            ->whereIn('channel_shop_id', $shops->pluck('id'))
-            ->whereNotNull('external_product_id')
-            ->groupBy('channel_shop_id', 'external_product_id')
-            ->havingRaw('count(DISTINCT product_id) > 1')
-            ->get();
+        $rows = $this->skuHealth->multiMasterListingDetails($shops->pluck('id'));
+        $validBundles = $rows->where('valid_bundle_split', true)->values();
+        $invalid = $rows->where('valid_bundle_split', false)->values();
 
-        $this->line('== Listing yang mendarat di lebih dari satu master: ' . $rows->count());
+        $this->line('== Listing bundle yang sah dibagi ke beberapa master: '.$validBundles->count());
+        if ($validBundles->isNotEmpty()) {
+            $this->info('   Setiap SKU penjual cocok dengan SKU bundle masing-masing; ini memang diperlukan agar stok bundle tersinkron.');
+        }
 
-        if ($rows->isEmpty()) {
-            $this->info('   Bersih — setiap listing hanya punya satu master.');
+        $this->line('== Listing yang bermasalah di lebih dari satu master: '.$invalid->count());
+
+        if ($invalid->isEmpty()) {
+            $this->info('   Bersih — setiap listing non-bundle hanya punya satu master.');
 
             return;
         }
 
         $namaToko = $shops->pluck('shop_name', 'id');
 
-        foreach ($rows->take(30) as $row) {
+        foreach ($invalid->take(30) as $row) {
             $this->line("   {$namaToko[$row->channel_shop_id]} / item {$row->external_product_id} → {$row->jml_master} master");
         }
 
-        if ($rows->count() > 30) {
-            $this->line('   ... dan ' . ($rows->count() - 30) . ' lainnya (dipotong di 30)');
+        if ($invalid->count() > 30) {
+            $this->line('   ... dan '.($invalid->count() - 30).' lainnya (dipotong di 30)');
         }
     }
 
@@ -146,7 +152,7 @@ class AuditChannelSkuCoverage extends Command
         }
 
         foreach ($rows as $row) {
-            $this->line('   ' . str_pad((string) $row->jml, 6) . $row->error_message);
+            $this->line('   '.str_pad((string) $row->jml, 6).$row->error_message);
         }
     }
 
@@ -161,7 +167,7 @@ class AuditChannelSkuCoverage extends Command
             ->distinct()
             ->count('product_variants.id');
 
-        $this->line('== Varian tanpa SKU yang masih tertaut ke channel: ' . $jml);
+        $this->line('== Varian tanpa SKU yang masih tertaut ke channel: '.$jml);
 
         if ($jml === 0) {
             $this->info('   Bersih — tidak ada varian kosong yang tertaut.');

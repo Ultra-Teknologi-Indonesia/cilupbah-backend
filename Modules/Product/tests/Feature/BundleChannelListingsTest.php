@@ -2,7 +2,6 @@
 
 namespace Modules\Product\Tests\Feature;
 
-use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Modules\Channel\Models\Channel;
@@ -10,6 +9,7 @@ use Modules\Channel\Models\ChannelShop;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
+use Modules\Product\Repositories\ProductRepository;
 use Ramsey\Uuid\Uuid;
 use Tests\TestCase;
 
@@ -18,9 +18,13 @@ class BundleChannelListingsTest extends TestCase
     use RefreshDatabase;
 
     private Product $bundleProduct;
+
     private ProductVariant $compVariant1;
+
     private ProductVariant $compVariant2;
+
     private ChannelShop $shopShopee;
+
     private ChannelShop $shopLazada;
 
     protected function setUp(): void
@@ -159,6 +163,40 @@ class BundleChannelListingsTest extends TestCase
 
         $res->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.sku', 'STANDING-IP-11')
+            ->assertJsonPath('data.0.listings.0.channel_code', 'shopee');
+    }
+
+    public function test_bundle_channel_listings_prefers_its_own_bundle_sku_mapping(): void
+    {
+        $this->bundleProduct->update(['sku' => 'BUNDLE-CASE-STANDING']);
+        $technicalVariant = app(ProductRepository::class)->ensureActiveBundleVariant($this->bundleProduct);
+
+        $mappingId = Uuid::uuid7()->toString();
+        DB::table('product_channel_mappings')->insert([
+            'id' => $mappingId,
+            'product_id' => $this->bundleProduct->id,
+            'channel_shop_id' => $this->shopShopee->id,
+            'external_product_id' => 'EXT-BUNDLE-1',
+            'sync_status' => 'synced',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('product_variant_channel_mappings')->insert([
+            'id' => Uuid::uuid7()->toString(),
+            'product_channel_mapping_id' => $mappingId,
+            'variant_id' => $technicalVariant->id,
+            'external_sku_id' => 'MODEL-BUNDLE-1',
+            'channel_seller_sku' => 'BUNDLE-CASE-STANDING',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $res = $this->getJson("/api/v1/products/{$this->bundleProduct->id}/channel-listings")
+            ->assertOk();
+
+        $res->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.sku', 'BUNDLE-CASE-STANDING')
+            ->assertJsonPath('data.0.listings.0.external_product_id', 'EXT-BUNDLE-1')
             ->assertJsonPath('data.0.listings.0.channel_code', 'shopee');
     }
 

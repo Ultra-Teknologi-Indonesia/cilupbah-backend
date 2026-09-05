@@ -5,6 +5,7 @@ namespace Modules\Product\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Modules\Product\Support\ChannelUrlBuilder;
+use Modules\Product\Support\TechnicalSku;
 
 class ProductChannelListingResource extends JsonResource
 {
@@ -50,10 +51,19 @@ class ProductChannelListingResource extends JsonResource
 
         return [
             'variant_id' => $this->id,
-            'sku' => $this->sku,
+            'sku' => $this->displaySku(),
             'options' => $this->whenLoaded('options', fn () => $this->options
                 ->map(fn ($o) => ['attribute_id' => $o->attribute_id, 'value' => $o->value])->values()),
             'listings' => $listings,
         ];
+    }
+
+    private function displaySku(): ?string
+    {
+        if (TechnicalSku::isTechnical($this->sku) && $this->relationLoaded('product')) {
+            return $this->product?->sku ?? $this->sku;
+        }
+
+        return $this->sku;
     }
 }

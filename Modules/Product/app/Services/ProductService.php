@@ -709,6 +709,16 @@ class ProductService
 
     private function resolveExistingProductFromChannel(array $data): ?string
     {
+        $channelSkus = array_values(array_unique(array_filter(array_map(
+            static fn ($variant): string => trim((string) (is_array($variant) ? ($variant['sku'] ?? '') : '')),
+            $data['variants'] ?? [],
+        ), static fn (string $sku): bool => $sku !== '')));
+
+        $bundleProductIds = $this->writeRepository->activeBundleProductIdsBySkus($channelSkus);
+        if ($channelSkus !== [] && count($bundleProductIds) === count($channelSkus)) {
+            return (string) reset($bundleProductIds);
+        }
+
         $externalProductId = $data['channel_external_product_id'] ?? null;
         $externalShopId = $data['channel_shop_id_external'] ?? null;
 

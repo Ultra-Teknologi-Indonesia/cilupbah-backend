@@ -5,10 +5,12 @@ namespace Modules\Channel\Support;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Repositories\ChannelProductRepository;
+use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductSyncLog;
-use Modules\Product\Support\ChannelSku;
+use Modules\Product\Repositories\ProductRepository;
 use Modules\Product\Services\MasterProductMerger;
 use Modules\Product\Services\ProductService;
+use Modules\Product\Support\ChannelSku;
 
 class ChannelModelLinker
 {
@@ -16,6 +18,7 @@ class ChannelModelLinker
         protected ChannelProductRepository $repository,
         protected ProductService $productService,
         protected MasterProductMerger $merger,
+        protected ProductRepository $productRepository,
     ) {}
 
     public function link(
@@ -26,9 +29,148 @@ class ChannelModelLinker
         string $defaultProductId,
         string $defaultPcmId
     ): void {
+        $bundleVariants = $this->bundleVariantsBySku($models, $externalProductId);
+        $bundleModels = [];
+        $regularModels = [];
+
+        foreach ($models as $model) {
+            $sku = ChannelSku::normalize($model['sku'] ?? null, $externalProductId);
+
+            if ($sku !== null && isset($bundleVariants[$sku])) {
+                $bundleModels[(string) $bundleVariants[$sku]->product_id][] = $model;
+
+                continue;
+            }
+
+            $regularModels[] = $model;
+        }
+
+        $keepPcmIds = $this->linkBundleModels(
+            $shop,
+            $shopId,
+            $externalProductId,
+            $bundleModels,
+            $bundleVariants,
+        );
+
+        $regularPcmId = $this->linkRegularModels(
+            $shop,
+            $shopId,
+            $externalProductId,
+            $regularModels,
+            $defaultProductId,
+            $defaultPcmId,
+        );
+
+        if ($regularPcmId !== null) {
+            $keepPcmIds[] = $regularPcmId;
+        }
+
+        $this->dropStaleListingMappings($shop, $externalProductId, $keepPcmIds);
+    }
+
+    protected function bundleVariantsBySku(array $models, string $externalProductId): array
+    {
+        $skus = array_values(array_unique(array_filter(array_map(
+            fn ($model) => is_array($model)
+                ? ChannelSku::normalize($model['sku'] ?? null, $externalProductId)
+                : null,
+            $models,
+        ))));
+
+        if ($skus === []) {
+            return [];
+        }
+
+        $bundles = Product::query()
+            ->where('is_bundle', true)
+            ->where('is_active', true)
+            ->whereIn('sku', $skus)
+            ->get(['id', 'sku']);
+
+        $resolved = [];
+        foreach ($bundles as $bundle) {
+            $variant = $this->productRepository->ensureActiveBundleVariant($bundle);
+            $resolved[(string) $bundle->sku] = (object) [
+                'id' => (string) $variant->id,
+                'product_id' => (string) $bundle->id,
+            ];
+        }
+
+        return $resolved;
+    }
+
+    protected function linkBundleModels(
+        object $shop,
+        string $shopId,
+        string $externalProductId,
+        array $bundleModels,
+        array $bundleVariants,
+    ): array {
+        $pcmIds = [];
+
+        foreach ($bundleModels as $productId => $models) {
+            $pcmId = $this->repository->upsertChannelMapping(
+                $productId,
+                $shopId,
+                $externalProductId,
+                'synced',
+                null,
+                false,
+            );
+
+            DB::table('product_variant_channel_mappings')
+                ->where('product_channel_mapping_id', $pcmId)
+                ->delete();
+
+            foreach ($models as $model) {
+                $sku = ChannelSku::normalize($model['sku'] ?? null, $externalProductId);
+                $bundleVariant = $sku !== null ? ($bundleVariants[$sku] ?? null) : null;
+
+                if ($sku === null || $bundleVariant === null) {
+                    $this->logSkipped(
+                        $shop,
+                        $productId,
+                        $externalProductId,
+                        $model,
+                        ChannelSku::reason($model['sku'] ?? null, $externalProductId),
+                    );
+
+                    continue;
+                }
+
+                $this->repository->upsertVariantChannelMapping(
+                    $pcmId,
+                    (string) $bundleVariant->id,
+                    isset($model['external_sku_id']) ? (string) $model['external_sku_id'] : null,
+                    $sku,
+                    $model['price'] ?? null,
+                    $model['sales_attribute_id'] ?? null,
+                    $model['sales_attribute_name'] ?? null,
+                );
+            }
+
+            $pcmIds[] = $pcmId;
+        }
+
+        return $pcmIds;
+    }
+
+    protected function linkRegularModels(
+        object $shop,
+        string $shopId,
+        string $externalProductId,
+        array $models,
+        string $defaultProductId,
+        string $defaultPcmId,
+    ): ?string {
+        if ($models === []) {
+            return null;
+        }
+
         $known = $this->repository->variantsBySkus(array_values(array_filter(array_map(
             fn ($m) => ChannelSku::normalize($m['sku'] ?? null, $externalProductId),
-            $models
+            $models,
         ))));
 
         $productId = $this->consolidate($shop, $externalProductId, $known, $defaultProductId);
@@ -46,7 +188,7 @@ class ChannelModelLinker
                     $productId,
                     $externalProductId,
                     $model,
-                    ChannelSku::reason($model['sku'] ?? null, $externalProductId)
+                    ChannelSku::reason($model['sku'] ?? null, $externalProductId),
                 );
 
                 continue;
@@ -74,7 +216,7 @@ class ChannelModelLinker
                 );
 
                 if (! $variantId) {
-                    $this->logSkipped($shop, $productId, $externalProductId, $model, 'Varian baru gagal dibuat untuk SKU ' . $sku);
+                    $this->logSkipped($shop, $productId, $externalProductId, $model, 'Varian baru gagal dibuat untuk SKU '.$sku);
 
                     continue;
                 }
@@ -93,7 +235,7 @@ class ChannelModelLinker
             );
         }
 
-        $this->dropStaleListingMappings($shop, $externalProductId, $pcmId);
+        return $pcmId;
     }
 
     protected function consolidate(object $shop, string $externalProductId, array &$known, string $defaultProductId): string
@@ -153,12 +295,18 @@ class ChannelModelLinker
         return $winner;
     }
 
-    protected function dropStaleListingMappings(object $shop, string $externalProductId, string $keepPcmId): void
+    protected function dropStaleListingMappings(object $shop, string $externalProductId, array $keepPcmIds): void
     {
+        $keepPcmIds = array_values(array_unique(array_filter($keepPcmIds)));
+
+        if ($keepPcmIds === []) {
+            return;
+        }
+
         $stale = DB::table('product_channel_mappings')
             ->where('channel_shop_id', $shop->id)
             ->where('external_product_id', $externalProductId)
-            ->where('id', '!=', $keepPcmId)
+            ->whereNotIn('id', $keepPcmIds)
             ->pluck('id')
             ->all();
 

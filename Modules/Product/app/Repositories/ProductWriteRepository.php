@@ -47,6 +47,27 @@ class ProductWriteRepository
         return DB::table('products')->where('sku', $sku)->whereNull('deleted_at')->value('id');
     }
 
+    public function activeBundleProductIdsBySkus(array $skus): array
+    {
+        $skus = array_values(array_filter(array_unique(array_map(
+            static fn ($sku): string => trim((string) $sku),
+            $skus,
+        )), static fn (string $sku): bool => $sku !== ''));
+
+        if ($skus === []) {
+            return [];
+        }
+
+        return DB::table('products')
+            ->where('is_bundle', true)
+            ->where('is_active', true)
+            ->whereNull('deleted_at')
+            ->whereIn('sku', $skus)
+            ->pluck('id', 'sku')
+            ->map(static fn ($id): string => (string) $id)
+            ->all();
+    }
+
     public function productIdByVariantSku(string $sku): ?string
     {
         return DB::table('product_variants as pv')

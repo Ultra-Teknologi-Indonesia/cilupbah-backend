@@ -97,34 +97,6 @@ class ProductRepository
 
     public function ensureActiveBundleVariant(Product $product, string|int|float|null $sellPrice = null): ProductVariant
     {
-        $activeVariant = $product->variants()
-            ->where('is_active', true)
-            ->first();
-
-        if ($activeVariant) {
-            if ($sellPrice !== null) {
-                $activeVariant->update(['sell_price' => $sellPrice]);
-            }
-
-            return $activeVariant;
-        }
-
-        $existingVariant = $product->variants()
-            ->where('is_internal', true)
-            ->whereNull('deleted_at')
-            ->orderBy('created_at')
-            ->first();
-
-        if ($existingVariant) {
-            $updates = ['is_active' => true];
-            if ($sellPrice !== null) {
-                $updates['sell_price'] = $sellPrice;
-            }
-            $existingVariant->update($updates);
-
-            return $existingVariant->refresh();
-        }
-
         $technicalSku = '__bundle__'.$product->id;
 
         $existingTechnicalVariant = ProductVariant::withTrashed()
@@ -297,22 +269,40 @@ class ProductRepository
         $search = request('search');
 
         $isBundle = Product::where('id', $productId)->value('is_bundle');
+        $directBundleVariantId = null;
 
-        $baseQuery = TechnicalSku::exclude(ProductVariant::query());
+        if ($isBundle) {
+            $directBundleVariantId = TechnicalSku::whereTechnical(
+                ProductVariant::query()->where('product_id', $productId)
+            )
+                ->whereHas('channelMappings.channelMapping')
+                ->value('id');
+        }
+
+        $baseQuery = ProductVariant::query();
+
+        if (! $isBundle || ! $directBundleVariantId) {
+            TechnicalSku::exclude($baseQuery);
+        }
         AllowedSearch::apply($baseQuery, ['sku', 'options.value']);
 
         $query = QueryBuilder::for($baseQuery);
 
         if ($isBundle) {
-            $componentVariantIds = ProductBundleItem::where('bundle_product_id', $productId)
-                ->pluck('component_variant_id');
-            $query->whereIn('id', $componentVariantIds);
+            if ($directBundleVariantId) {
+                $query->whereKey($directBundleVariantId);
+            } else {
+
+                $componentVariantIds = ProductBundleItem::where('bundle_product_id', $productId)
+                    ->pluck('component_variant_id');
+                $query->whereIn('id', $componentVariantIds);
+            }
         } else {
             $query->where('product_id', $productId);
         }
 
         return $query
-            ->with(['options', 'channelMappings.channelMapping.channelShop.channel'])
+            ->with(['product:id,sku,is_bundle', 'options', 'channelMappings.channelMapping.channelShop.channel'])
             ->allowedFilters(
                 AllowedFilter::callback('channel', fn ($q, $v) => $q->whereHas(
                     'channelMappings.channelMapping.channelShop.channel',
