@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Notification\Services;
 
-use IlluminateContracts\Pagination\LengthAwarePaginator;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
 use Modules\Notification\Models\DeviceToken;
 use Modules\Notification\Models\Notification;

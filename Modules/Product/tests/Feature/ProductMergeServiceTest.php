@@ -27,13 +27,19 @@ class ProductMergeServiceTest extends TestCase
         return app(ProductMergeService::class);
     }
 
-    private function makeProduct(string $name, array $skus = [], string $status = Product::STATUS_MASTER): Product
+    private function makeProduct(
+        string $name,
+        array $skus = [],
+        string $status = Product::STATUS_MASTER,
+        bool $isBundle = false,
+    ): Product
     {
         $p = Product::create([
             'name' => $name,
             'category_id' => 1,
             'status' => $status,
             'is_active' => true,
+            'is_bundle' => $isBundle,
         ]);
         foreach ($skus as $sku) {
             ProductVariant::create([
@@ -104,6 +110,17 @@ class ProductMergeServiceTest extends TestCase
     {
         $this->makeProduct('Solo A', ['AAA-1']);
         $this->makeProduct('Solo B', ['BBB-1']);
+
+        $result = $this->service()->autoMergeAll();
+
+        $this->assertSame(0, $result['merged']);
+        $this->assertSame(0, ProductMerge::count());
+    }
+
+    public function test_auto_merge_skips_bundles_even_when_they_match(): void
+    {
+        $this->makeProduct('CASE + STANDING + PATCH IPHONE', ['STANDING-IP-14'], Product::STATUS_MASTER, true);
+        $this->makeProduct('CASE + STANDING + PATCH IPHONE', ['STANDING-IP-15'], Product::STATUS_MASTER, true);
 
         $result = $this->service()->autoMergeAll();
 

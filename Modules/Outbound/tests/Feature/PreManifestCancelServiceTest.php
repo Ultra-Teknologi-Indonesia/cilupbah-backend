@@ -8,6 +8,7 @@ use Illuminate\Support\Str;
 use Modules\Outbound\Services\PreManifestCancelService;
 use Modules\Outbound\Services\ShipmentService;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Models\SalesOrderStatusHistory;
 use Tests\TestCase;
 
 class PreManifestCancelServiceTest extends TestCase
@@ -72,6 +73,15 @@ class PreManifestCancelServiceTest extends TestCase
         $first = SalesOrder::find($orderId);
         $this->assertNotNull($first->cancel_dismissed_at);
         $this->assertSame('user-a@company.test', $first->cancel_dismissed_by);
+        $this->assertDatabaseHas('sales_order_status_histories', [
+            'salesorder_id' => $orderId,
+            'action' => 'FIELD_CHANGED',
+            'actor_email' => 'user-a@company.test',
+        ]);
+        $this->assertSame(
+            1,
+            SalesOrderStatusHistory::where('salesorder_id', $orderId)->count(),
+        );
 
         $service->dismiss($orderId, 'user-b@company.test');
         $second = SalesOrder::find($orderId);
@@ -80,6 +90,12 @@ class PreManifestCancelServiceTest extends TestCase
             $second->cancel_dismissed_at->toDateTimeString(),
         );
         $this->assertSame('user-a@company.test', $second->cancel_dismissed_by);
+
+        $service->undismiss($orderId);
+        $this->assertSame(
+            2,
+            SalesOrderStatusHistory::where('salesorder_id', $orderId)->count(),
+        );
     }
 
     public function test_dismiss_rejects_non_cancelled_order(): void

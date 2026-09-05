@@ -27,7 +27,7 @@ class ProductMergeRepository
     {
         return Product::query()
             ->where('status', Product::STATUS_MASTER)
-            ->select(['id', 'name', 'sku'])
+            ->select(['id', 'name', 'sku', 'is_bundle'])
             ->with(['variants:id,product_id,sku'])
             ->lazy();
     }

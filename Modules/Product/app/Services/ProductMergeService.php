@@ -335,9 +335,14 @@ class ProductMergeService
             'id' => $p->id,
             'name' => $p->name,
             'sku' => $this->representativeSku($p),
+            'is_bundle' => (bool) $p->is_bundle,
         ])->all();
 
         $groupKey = function (array $p) use ($patternGroups): ?string {
+            if ($p['is_bundle']) {
+                return null;
+            }
+
             $lower = strtolower(trim((string) $p['name']));
             foreach ($patternGroups as $i => $pats) {
                 foreach ($pats as $pat) {
