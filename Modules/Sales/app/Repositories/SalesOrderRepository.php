@@ -299,8 +299,8 @@ class SalesOrderRepository
                     ->whereDoesntHave('items', $this->unmappedItemsConstraint())
                     ->whereDoesntHave('items', fn ($q) => $q->whereRaw(SalesOrder::shortfallItemWhereRaw()))
             ),
-            'in-transit' => $query->where('status', 'shipped')->whereNull('received_date'),
-            'completed' => $query->where('status', 'shipped')->whereNotNull('received_date'),
+            'in-transit' => $this->applyInTransitTabScope($query),
+            'completed' => $this->applyCompletedTabScope($query),
             'empty-stock' => $this->applyEmptyStockSubScope($query, $sub),
             'failed-pick' => $query->where('status', 'reserved')
                 ->whereNotNull('pick_failed_at'),
@@ -411,8 +411,8 @@ class SalesOrderRepository
             'open' => $query->whereIn('status', ['pending', 'reserved', 'picked', 'packed']),
             'unpaid' => $query->where('status', 'pending')->where('is_paid', false),
             'cancel-requested' => $query->whereNotNull('cancel_requested_at')->where('status', '!=', 'cancelled'),
-            'completed' => $query->where('status', 'shipped')->whereNotNull('received_date'),
-            'in-transit' => $query->where('status', 'shipped')->whereNull('received_date'),
+            'completed' => $this->applyCompletedTabScope($query),
+            'in-transit' => $this->applyInTransitTabScope($query),
 
             'ready-to-process' => $query->where('status', 'reserved')
                 ->whereNull('pick_failed_at')
@@ -465,6 +465,32 @@ class SalesOrderRepository
                 ->whereHas('items', fn ($q) => $q->where('qty_in_base', '>', 1)),
             default => $query,
         };
+    }
+
+    protected function applyCompletedTabScope($query)
+    {
+        return $query
+            ->where('status', 'shipped')
+            ->where(function ($q) {
+                $q->whereNotNull('received_date')
+                    ->orWhereIn('channel_status', [
+                        'TO_CONFIRM_RECEIVE',
+                        'DELIVERED',
+                        'COMPLETED',
+                    ]);
+            });
+    }
+
+    protected function applyInTransitTabScope($query)
+    {
+        return $query
+            ->where('status', 'shipped')
+            ->whereNull('received_date')
+            ->whereNotIn('channel_status', [
+                'TO_CONFIRM_RECEIVE',
+                'DELIVERED',
+                'COMPLETED',
+            ]);
     }
 
     protected function applyShadowFilter($query, $value)
@@ -820,6 +846,7 @@ class SalesOrderRepository
             'channel_buyer_id' => $orderData['channel_buyer_id'] ?? null,
             'customer_name' => $orderData['customer_name'],
             'transaction_date' => $orderData['transaction_date'],
+            'received_date' => $orderData['received_date'] ?? ($existing->received_date ?? null),
             'sub_total' => SalesOrderDataNormalizer::money($orderData['sub_total'] ?? null),
             'total_disc' => SalesOrderDataNormalizer::money($orderData['total_disc'] ?? null),
 

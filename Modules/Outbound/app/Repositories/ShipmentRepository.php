@@ -125,6 +125,15 @@ class ShipmentRepository
                     $q->whereIn('courier_code', $normalizedCourierCodes);
                 }
             })
+            ->whereHas('order', function ($q) {
+                $q->where('status', 'shipped')
+                    ->whereNull('received_date')
+                    ->whereNotIn('channel_status', [
+                        'TO_CONFIRM_RECEIVE',
+                        'DELIVERED',
+                        'COMPLETED',
+                    ]);
+            })
             ->with([
                 'shipment:id,shipment_no,shipment_date,shipment_type,status,handed_over_at,courier_code,courier_name,location_id',
                 'shipment.location:id,location_name,location_code',

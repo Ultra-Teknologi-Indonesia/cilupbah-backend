@@ -63,6 +63,12 @@ use Modules\Warehouse\Models\Location;
 
 class SalesOrderService
 {
+    private const CHANNEL_COMPLETED_STATUSES = [
+        'TO_CONFIRM_RECEIVE',
+        'DELIVERED',
+        'COMPLETED',
+    ];
+
     private const ALLOWED_TRANSITIONS = [
         'pending' => ['reserved', 'cancelled'],
         'reserved' => ['picked', 'cancelled'],
@@ -2160,6 +2166,8 @@ class SalesOrderService
             $finalStatus = $this->resolveInternalStatus($previousStatus, $mappedStatus);
             $orderData['status'] = $finalStatus;
 
+            $this->applyChannelReceivedDate($orderData, $existing, $channelStatus);
+
             if ($finalStatus === 'cancelled' && ($existing->channel_cancel_status ?? null) === 'pending') {
                 $orderData['channel_cancel_status'] = 'accepted';
                 $orderData['channel_cancel_error'] = null;
@@ -2554,6 +2562,22 @@ class SalesOrderService
             'CANCELLED' => 'cancelled',
             default => 'pending',
         };
+    }
+
+    private function isChannelCompletedStatus(?string $channelStatus): bool
+    {
+        return in_array(strtoupper(trim((string) $channelStatus)), self::CHANNEL_COMPLETED_STATUSES, true);
+    }
+
+    private function applyChannelReceivedDate(array &$orderData, ?object $existing, string $channelStatus): void
+    {
+        if (! $this->isChannelCompletedStatus($channelStatus) || ! empty($existing?->received_date)) {
+            return;
+        }
+
+        $orderData['received_date'] = $orderData['channel_received_at']
+            ?? $orderData['channel_updated_at']
+            ?? now();
     }
 
     private const STATUS_RANK = [

@@ -229,6 +229,26 @@ class ChannelStockShipTransitionTest extends TestCase
         $this->assertSame(0, $this->movements('ORDER_SHIP'));
     }
 
+    public function test_terminal_channel_status_sets_received_date_without_observer(): void
+    {
+        foreach (['TO_CONFIRM_RECEIVE', 'COMPLETED'] as $index => $channelStatus) {
+            $data = $this->orderData('LZ-RECEIVED-'.$index, $channelStatus);
+            $receivedAt = now()->subMinutes($index + 1);
+            $data['channel_updated_at'] = $receivedAt;
+
+            $this->service->upsertFromChannel($data);
+
+            $order = DB::table('sales_orders')
+                ->where('salesorder_no', 'LZ-RECEIVED-'.$index)
+                ->first(['status', 'channel_status', 'received_date']);
+
+            $this->assertSame('shipped', $order->status);
+            $this->assertSame($channelStatus, $order->channel_status);
+            $this->assertNotNull($order->received_date);
+            $this->assertEquals($receivedAt->format('Y-m-d H:i:s'), $order->received_date);
+        }
+    }
+
     public function test_reserved_to_cancelled_still_releases_reserved(): void
     {
         $this->service->upsertFromChannel($this->orderData('LZ-SHIP-4', 'AWAITING_SHIPMENT'));
