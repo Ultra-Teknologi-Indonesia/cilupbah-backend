@@ -9,13 +9,14 @@ use Maatwebsite\Excel\Concerns\FromQuery;
 use Maatwebsite\Excel\Concerns\WithColumnWidths;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
+use Maatwebsite\Excel\Concerns\WithStrictNullComparison;
 use Maatwebsite\Excel\Concerns\WithStyles;
 use Maatwebsite\Excel\Concerns\WithTitle;
 use Modules\Report\Services\InventoryStockReportService;
 use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-final class InventoryStockReportExport implements FromQuery, WithColumnWidths, WithHeadings, WithMapping, WithStyles, WithTitle
+final class InventoryStockReportExport implements FromQuery, WithColumnWidths, WithHeadings, WithMapping, WithStrictNullComparison, WithStyles, WithTitle
 {
     public function __construct(
         private readonly InventoryStockReportService $service,

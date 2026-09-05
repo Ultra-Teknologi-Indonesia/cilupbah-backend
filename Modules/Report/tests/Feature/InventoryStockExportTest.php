@@ -10,6 +10,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use Maatwebsite\Excel\Facades\Excel;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Models\SkuRackAssignment;
@@ -21,6 +22,7 @@ use Modules\Report\Services\InventoryStockReportService;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use Tests\TestCase;
 
 final class InventoryStockExportTest extends TestCase
@@ -112,6 +114,70 @@ final class InventoryStockExportTest extends TestCase
         $this->assertSame(0, $mapped[8]);
         $this->assertSame(0, $mapped[9]);
         $this->assertTrue($sheet->getSheetView()->getShowZeros());
+    }
+
+    public function test_rack_export_serializes_zero_quantity_cells_as_numeric_zero(): void
+    {
+        $location = Location::factory()->create([
+            'location_code' => 'WH-REPORT-SERIALIZE-ZERO',
+            'location_name' => 'Pusat',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+        $bin = LocationBin::create([
+            'location_id' => $location->id,
+            'floor_code' => 'F1',
+            'row_code' => 'R1',
+            'column_code' => 'C1',
+            'bin_code' => 'B1',
+            'bin_final_code' => 'F1-R1-C1-B1',
+            'is_inbound' => false,
+        ]);
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'Laporan Rak Serialize Zero',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $product = Product::create([
+            'category_id' => $categoryId,
+            'name' => 'Produk Serialize Zero',
+            'status' => 'master',
+            'is_bundle' => false,
+            'is_active' => true,
+        ]);
+        $variant = ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => 'REPORT-SERIALIZE-ZERO',
+            'buy_price' => 10,
+            'sell_price' => 20,
+            'min_stock' => 1,
+        ]);
+        SkuRackAssignment::create([
+            'location_id' => $location->id,
+            'item_id' => $variant->id,
+            'bin_id' => $bin->id,
+        ]);
+
+        $export = new InventoryStockReportExport(app(InventoryStockReportService::class), [
+            'report_type' => 'by_rack',
+            'location_id' => $location->id,
+            'item_ids' => [$variant->id],
+            'only_with_stock' => false,
+        ]);
+        $path = tempnam(sys_get_temp_dir(), 'inventory-stock-export-');
+
+        self::assertNotFalse($path);
+
+        try {
+            file_put_contents($path, Excel::raw($export, \Maatwebsite\Excel\Excel::XLSX));
+            $sheet = IOFactory::load($path)->getActiveSheet();
+
+            self::assertSame(0, $sheet->getCell('I2')->getValue());
+            self::assertSame(0, $sheet->getCell('J2')->getValue());
+        } finally {
+            @unlink($path);
+        }
     }
 
     public function test_system_operational_warehouse_is_allowed_for_rack_export(): void
