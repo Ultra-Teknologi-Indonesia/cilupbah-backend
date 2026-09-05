@@ -10,16 +10,18 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Maatwebsite\Excel\Facades\Excel;
-use Modules\Inventory\Services\TransferBulkPdfExportService;
 use Modules\Inventory\Services\PutawayBulkPdfExportService;
 use Modules\Inventory\Services\StockAdjustmentBulkPdfExportService;
-use Modules\Outbound\Services\PicklistBulkPdfExportService;
+use Modules\Inventory\Services\TransferBulkPdfExportService;
 use Modules\Outbound\Services\ManifestBulkPdfExportService;
-use Modules\Sales\Services\BulkInvoiceService;
+use Modules\Outbound\Services\PicklistBulkPdfExportService;
 use Modules\Outbound\Services\PicklistPdfExportService;
+use Modules\Product\Exports\ProductCatalogCsvExport;
+use Modules\Product\Services\ProductCatalogCsvWriter;
 use Modules\Report\Models\ExportJob;
 use Modules\Report\Services\ExportManager;
 use Modules\Report\Services\MonitorStockReportService;
+use Modules\Sales\Services\BulkInvoiceService;
 use Throwable;
 
 class RunExportJob implements ShouldQueue
@@ -81,6 +83,7 @@ class RunExportJob implements ShouldQueue
             ? 'pdf'
             : (in_array($job->type, $csvTypes, true) ? 'csv' : 'xlsx');
         $path = "exports/{$job->id}.{$extension}";
+        $exportedRows = null;
 
         Log::info('export.started', [
             'export_id' => $job->id,
@@ -90,14 +93,21 @@ class RunExportJob implements ShouldQueue
             'memory_limit' => ini_get('memory_limit'),
         ]);
 
-        if (in_array($job->type, $pdfTypes, true)) {
+        $streamedCsv = $job->type === 'product-catalog-csv';
+
+        if (in_array($job->type, $pdfTypes, true) || $streamedCsv) {
             $temporaryPath = tempnam(sys_get_temp_dir(), 'cilupbah-export-');
             if ($temporaryPath === false) {
-                throw new \RuntimeException('Tidak dapat membuat berkas sementara untuk export PDF.');
+                throw new \RuntimeException('Tidak dapat membuat berkas sementara untuk export.');
             }
 
             try {
-                if ($job->type === 'monitor-stock-pdf') {
+                if ($streamedCsv) {
+                    $exportedRows = app(ProductCatalogCsvWriter::class)->write(
+                        new ProductCatalogCsvExport($params),
+                        $temporaryPath,
+                    );
+                } elseif ($job->type === 'monitor-stock-pdf') {
                     app(MonitorStockReportService::class)->writePdf($params, $temporaryPath);
                 } elseif ($job->type === 'picklist-pdf') {
                     app(PicklistPdfExportService::class)
@@ -122,7 +132,7 @@ class RunExportJob implements ShouldQueue
                 }
                 $stream = fopen($temporaryPath, 'rb');
                 if ($stream === false) {
-                    throw new \RuntimeException('Tidak dapat membaca hasil export PDF.');
+                    throw new \RuntimeException('Tidak dapat membaca hasil export.');
                 }
 
                 try {
@@ -158,6 +168,7 @@ class RunExportJob implements ShouldQueue
             'export_id' => $job->id,
             'type' => $job->type,
             'duration_seconds' => $job->finished_at?->diffInSeconds($job->started_at),
+            'rows' => $exportedRows ?? null,
             'peak_memory_bytes' => memory_get_peak_usage(true),
         ]);
     }

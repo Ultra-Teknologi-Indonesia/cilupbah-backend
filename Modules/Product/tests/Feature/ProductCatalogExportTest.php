@@ -5,13 +5,16 @@ namespace Modules\Product\Tests\Feature;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Storage;
 use Modules\Product\Exports\ProductCatalogCsvExport;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductBundleItem;
 use Modules\Product\Models\ProductVariant;
+use Modules\Product\Services\ProductCatalogCsvWriter;
 use Modules\Report\Jobs\RunExportJob;
 use Modules\Report\Models\ExportJob;
+use Modules\Report\Services\ExportManager;
 use Tests\TestCase;
 
 class ProductCatalogExportTest extends TestCase
@@ -123,6 +126,78 @@ class ProductCatalogExportTest extends TestCase
             ->get();
 
         $this->assertCount(0, $rows);
+    }
+
+    public function test_catalog_writer_keeps_all_business_columns_when_streaming(): void
+    {
+        $category = Category::create(['name' => 'Catalog Writer Test', 'is_active' => true]);
+        $product = Product::create([
+            'category_id' => $category->id,
+            'name' => 'Produk Catalog Writer',
+            'status' => Product::STATUS_MASTER,
+            'is_bundle' => false,
+        ]);
+        $variant = ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => 'CATALOG-WRITER-001',
+            'sell_price' => 15000,
+            'is_active' => true,
+        ]);
+        $path = tempnam(sys_get_temp_dir(), 'catalog-test-');
+
+        $this->assertNotFalse($path);
+
+        try {
+            $rows = (new ProductCatalogCsvWriter)->write(
+                new ProductCatalogCsvExport(['status' => Product::STATUS_MASTER]),
+                $path,
+            );
+            $csv = file($path, FILE_IGNORE_NEW_LINES);
+
+            $this->assertSame(1, $rows);
+            $this->assertCount(2, $csv);
+            $this->assertCount(16, str_getcsv($csv[0]));
+            $this->assertSame($variant->sku, str_getcsv($csv[1])[1]);
+            $this->assertSame('0', str_getcsv($csv[1])[15]);
+        } finally {
+            @unlink($path);
+        }
+    }
+
+    public function test_catalog_worker_stores_the_streamed_csv_and_marks_job_ready(): void
+    {
+        Storage::fake('documents');
+
+        $category = Category::create(['name' => 'Catalog Worker Test', 'is_active' => true]);
+        $product = Product::create([
+            'category_id' => $category->id,
+            'name' => 'Produk Catalog Worker',
+            'status' => Product::STATUS_MASTER,
+            'is_bundle' => false,
+        ]);
+        ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => 'CATALOG-WORKER-001',
+            'is_active' => true,
+        ]);
+        $job = ExportJob::create([
+            'user_id' => $this->user->id,
+            'type' => 'product-catalog-csv',
+            'params' => ['status' => Product::STATUS_MASTER],
+            'status' => ExportJob::STATUS_QUEUED,
+        ]);
+
+        (new RunExportJob($job->id))->handle(app(ExportManager::class));
+
+        $job->refresh();
+
+        $this->assertSame(ExportJob::STATUS_READY, $job->status);
+        $this->assertSame("exports/{$job->id}.csv", $job->file_path);
+        Storage::disk('documents')->assertExists($job->file_path);
+        $csv = Storage::disk('documents')->get($job->file_path);
+
+        $this->assertCount(16, str_getcsv(strtok($csv, "\r\n")));
+        $this->assertStringContainsString('CATALOG-WORKER-001', $csv);
     }
 
     public function test_catalog_map_converts_empty_numeric_values_to_zero(): void
