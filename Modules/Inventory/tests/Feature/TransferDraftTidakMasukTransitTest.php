@@ -439,6 +439,8 @@ class TransferDraftTidakMasukTransitTest extends TestCase
                 'Stok fisik di rak asal tidak mencukupi',
                 $exception->getMessage(),
             );
+            $this->assertStringContainsString('SKU-TRF', $exception->getMessage());
+            $this->assertStringContainsString('SRC-R1', $exception->getMessage());
         }
 
         $this->assertSame(20, (int) $this->sourceStock()->on_hand);

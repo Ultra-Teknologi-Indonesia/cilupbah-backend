@@ -790,7 +790,12 @@ class InventoryService
                     );
                 }
 
-                $this->assertPhysicalSourceAvailable($source, $qty);
+                $this->assertPhysicalSourceAvailable(
+                    $source,
+                    $qty,
+                    $item->item_id,
+                    $item->source_bin_id,
+                );
 
                 $unitCost = (float) ($source->avg_cost ?? 0);
 
@@ -1531,7 +1536,12 @@ class InventoryService
                     );
                 }
 
-                $this->assertTransferSourceAvailable($sourceInventory, (int) $itemData['qty']);
+                $this->assertTransferSourceAvailable(
+                    $sourceInventory,
+                    (int) $itemData['qty'],
+                    $itemData['item_id'],
+                    $itemData['source_bin_id'] ?? null,
+                );
 
                 $sourceInventory->on_hand -= $itemData['qty'];
                 $this->inventoryRepository->updateStock($sourceInventory);
@@ -1903,7 +1913,12 @@ class InventoryService
                     throw new \Exception("Stok tidak ditemukan untuk item {$item->item_id}.");
                 }
 
-                $this->assertTransferSourceAvailable($sourceInventory, (int) $item->qty);
+                $this->assertTransferSourceAvailable(
+                    $sourceInventory,
+                    (int) $item->qty,
+                    $item->item_id,
+                    $item->source_bin_id,
+                );
                 $sourceInventory->on_hand -= $item->qty;
                 $this->inventoryRepository->updateStock($sourceInventory);
 
@@ -2523,7 +2538,12 @@ class InventoryService
                     throw new \Exception("Stok tidak ditemukan untuk item {$item->item_id}.");
                 }
 
-                $this->assertTransferSourceAvailable($sourceInventory, (int) $item->qty);
+                $this->assertTransferSourceAvailable(
+                    $sourceInventory,
+                    (int) $item->qty,
+                    $item->item_id,
+                    $item->source_bin_id,
+                );
                 $sourceInventory->on_hand -= $item->qty;
                 $this->inventoryRepository->updateStock($sourceInventory);
 
@@ -2772,25 +2792,51 @@ class InventoryService
         );
     }
 
-    private function assertTransferSourceAvailable(Inventory $sourceInventory, int $qty): void
+    private function assertTransferSourceAvailable(
+        Inventory $sourceInventory,
+        int $qty,
+        ?string $itemId = null,
+        ?string $binId = null,
+    ): void
     {
-        $this->assertPhysicalSourceAvailable($sourceInventory, $qty);
+        $this->assertPhysicalSourceAvailable($sourceInventory, $qty, $itemId, $binId);
 
         if (! config('inventory.allow_negative_stock', true)
             && (int) $sourceInventory->available < $qty) {
+            $label = $this->transferSourceLabel($itemId, $binId);
             throw new \Exception(
-                "Stok tersedia tidak mencukupi untuk transfer (tersedia: {$sourceInventory->available}, diminta: {$qty})."
+                "Stok tersedia tidak mencukupi untuk {$label} (tersedia: {$sourceInventory->available}, diminta: {$qty})."
             );
         }
     }
 
-    private function assertPhysicalSourceAvailable(Inventory $sourceInventory, int $qty): void
+    private function assertPhysicalSourceAvailable(
+        Inventory $sourceInventory,
+        int $qty,
+        ?string $itemId = null,
+        ?string $binId = null,
+    ): void
     {
         if ((int) $sourceInventory->on_hand < $qty) {
+            $label = $this->transferSourceLabel($itemId, $binId);
             throw new \Exception(
-                "Stok fisik di rak asal tidak mencukupi (tersedia: {$sourceInventory->on_hand}, diminta: {$qty})."
+                "Stok fisik di rak asal tidak mencukupi untuk {$label} (tersedia: {$sourceInventory->on_hand}, diminta: {$qty})."
             );
         }
+    }
+
+    private function transferSourceLabel(?string $itemId, ?string $binId): string
+    {
+        $sku = $itemId
+            ? ProductVariant::query()->whereKey($itemId)->value('sku')
+            : null;
+        $binCode = $binId
+            ? LocationBin::query()->whereKey($binId)->value('bin_final_code')
+            : null;
+
+        $itemLabel = $sku ? "SKU {$sku}" : "item {$itemId}";
+
+        return $binCode ? "{$itemLabel} di rak {$binCode}" : $itemLabel;
     }
 
     private function assertNoUnreconciledPhysicalMovementsBeforeShipment(InventoryTransfer $transfer): void
