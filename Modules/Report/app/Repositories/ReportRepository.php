@@ -20,6 +20,7 @@ use Modules\Outbound\Models\Shipment;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductVariant;
 use Modules\Product\Models\ProductVariantChannelMapping;
+use Modules\Product\Support\TechnicalSku;
 use Modules\Purchase\Models\PurchaseOrder;
 use Modules\Report\Support\OrderPerformanceSpec;
 use Modules\Sales\Models\SalesInvoice;
