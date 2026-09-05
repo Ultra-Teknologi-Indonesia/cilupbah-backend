@@ -6,10 +6,14 @@ use Illuminate\Support\Facades\DB;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Modules\Product\Repositories\ProductImportRepository;
+use Modules\Product\Repositories\ProductRepository;
 
 class ProductImportService
 {
-    public function __construct(private ProductImportRepository $repository) {}
+    public function __construct(
+        private ProductImportRepository $repository,
+        private ProductRepository $productRepository,
+    ) {}
 
     public function processSingleProductRow(array $row)
     {
@@ -58,9 +62,11 @@ class ProductImportService
     public function processBundleRow(array $row)
     {
         DB::transaction(function () use ($row) {
-            $bundleSku = $row['item_code'];
-            $componentSku = $row['sku_composition'];
+            $bundleSku = trim((string) ($row['item_code'] ?? ''));
+            $componentSku = trim((string) ($row['sku_composition'] ?? ''));
             $qty = (int) ($row['qty'] ?? 1);
+
+            $this->assertBundleRowSemantics($row);
 
             if ($bundleSku === $componentSku) {
                 throw new \Exception("SKU komponen ({$componentSku}) tidak boleh sama dengan SKU bundle.");
@@ -70,16 +76,25 @@ class ProductImportService
                 throw new \Exception("Jumlah komponen minimal 1.");
             }
 
-            $bundleVariant = $this->repository->findVariantBySku($bundleSku);
+            $bundleProduct = $this->repository->findActiveBundleBySku($bundleSku);
             $componentVariant = $this->repository->findVariantBySku($componentSku);
 
-            if (! $bundleVariant) {
+            if (! $bundleProduct) {
+                $existingProduct = $this->repository->findActiveProductBySku($bundleSku);
+                if ($existingProduct) {
+                    throw new \Exception(
+                        "SKU bundle {$bundleSku} sudah dipakai produk non-bundle {$existingProduct->name}. "
+                        .'Gunakan SKU bundle yang benar.'
+                    );
+                }
+
                 $bundleName = $row['bundle_name'] ?? $row['item_group_name'] ?? $row['name'] ?? null;
                 if (! $bundleName) {
                     throw new \Exception("SKU bundle {$bundleSku} belum ada di master produk. Isi kolom 'bundle_name' untuk membuat produk bundle baru secara otomatis.");
                 }
 
                 $categoryId = $this->resolveCategory($row['item_category_id'] ?? null, $row['category'] ?? '');
+                $bundleName = trim((string) $bundleName);
                 $productId = $this->repository->upsertProductByName($bundleName, [
                     'category_id' => $categoryId,
                     'sku' => $bundleSku,
@@ -90,13 +105,7 @@ class ProductImportService
                     'is_active' => true,
                 ]);
 
-                $bundleVariant = $this->repository->upsertVariantBySku($bundleSku, [
-                    'product_id' => $productId,
-                    'sku' => $bundleSku,
-                    'barcode' => $row['barcode'] ?? null,
-                    'sell_price' => $row['sell_price'] ?? 0,
-                    'is_active' => true,
-                ]);
+                $bundleProduct = Product::query()->findOrFail($productId);
             }
 
             if (! $componentVariant) {
@@ -111,14 +120,17 @@ class ProductImportService
                 throw new \Exception("Varian komponen {$componentSku} tidak aktif.");
             }
 
-            $bundleProductId = $bundleVariant instanceof ProductVariant
-                ? $bundleVariant->product_id
-                : ($productId ?? ProductVariant::where('sku', $bundleSku)->value('product_id'));
+            $bundleProductId = (string) $bundleProduct->id;
 
-            Product::where('id', $bundleProductId)->update([
+            $bundleProduct->update([
                 'is_bundle' => true,
                 'sku' => $bundleSku,
             ]);
+
+            $this->productRepository->ensureActiveBundleVariant(
+                $bundleProduct->refresh(),
+                $row['sell_price'] ?? null,
+            );
 
             $this->repository->upsertBundleItem($bundleProductId, $componentVariant->id, $qty);
         });
@@ -133,8 +145,8 @@ class ProductImportService
 
     public function validateBundleRow(array $row): void
     {
-        $bundleSku = $row['item_code'] ?? null;
-        $componentSku = $row['sku_composition'] ?? null;
+        $bundleSku = trim((string) ($row['item_code'] ?? ''));
+        $componentSku = trim((string) ($row['sku_composition'] ?? ''));
         $qty = (int) ($row['qty'] ?? 1);
 
         if (! $bundleSku) {
@@ -153,10 +165,20 @@ class ProductImportService
             throw new \Exception("Jumlah komponen minimal 1.");
         }
 
-        $bundleVariant = $this->repository->findVariantBySku($bundleSku);
+        $this->assertBundleRowSemantics($row);
+
+        $bundleProduct = $this->repository->findActiveBundleBySku($bundleSku);
         $componentVariant = $this->repository->findVariantBySku($componentSku);
 
-        if (! $bundleVariant) {
+        if (! $bundleProduct) {
+            $existingProduct = $this->repository->findActiveProductBySku($bundleSku);
+            if ($existingProduct) {
+                throw new \Exception(
+                    "SKU bundle {$bundleSku} sudah dipakai produk non-bundle {$existingProduct->name}. "
+                    .'Gunakan SKU bundle yang benar.'
+                );
+            }
+
             $bundleName = $row['bundle_name'] ?? $row['item_group_name'] ?? $row['name'] ?? null;
             if (! $bundleName) {
                 throw new \Exception("SKU bundle {$bundleSku} belum ada di master produk. Isi kolom 'bundle_name' untuk membuat produk bundle baru secara otomatis.");
@@ -173,6 +195,36 @@ class ProductImportService
 
         if (! $componentVariant->is_active) {
             throw new \Exception("Varian komponen {$componentSku} tidak aktif.");
+        }
+    }
+
+    private function assertBundleRowSemantics(array $row): void
+    {
+        $bundleSku = trim((string) ($row['item_code'] ?? ''));
+        $bundleName = trim((string) ($row['bundle_name'] ?? $row['item_group_name'] ?? $row['name'] ?? ''));
+
+        if ($bundleSku === '' || $bundleName === '') {
+            return;
+        }
+
+        $nameIsKnownSku = Product::withTrashed()
+            ->whereRaw('LOWER(sku) = LOWER(?)', [$bundleName])
+            ->exists()
+            || ProductVariant::withTrashed()
+                ->whereRaw('LOWER(sku) = LOWER(?)', [$bundleName])
+                ->exists();
+
+        $skuIsKnownName = Product::withTrashed()
+            ->whereRaw('LOWER(name) = LOWER(?)', [$bundleSku])
+            ->exists();
+
+        $skuLooksLikeName = preg_match('/[\s+]/u', $bundleSku) === 1;
+        $nameLooksLikeSku = preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]*$/', $bundleName) === 1;
+
+        if (($nameIsKnownSku && $skuIsKnownName) || ($skuLooksLikeName && $nameLooksLikeSku)) {
+            throw new \Exception(
+                'Kolom import bundle tertukar: item_code harus berisi SKU bundle, sedangkan bundle_name harus berisi nama bundle.'
+            );
         }
     }
 

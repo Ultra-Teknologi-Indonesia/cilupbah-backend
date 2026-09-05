@@ -126,6 +126,40 @@ class OutboundFulfillmentController extends Controller
         return $this->successResponse($data);
     }
 
+    #[OA\Get(
+        path: '/api/v1/outbound/orders/counts',
+        summary: 'Get all fulfillment board counts',
+        description: 'Returns the count badges for Picking, Packing, and Shipping in one warehouse-scoped request.',
+        security: [['bearerAuth' => []]],
+        tags: ['Outbound - Fulfillment'],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Fulfillment board counts',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'status', type: 'string', example: 'success'),
+                        new OA\Property(
+                            property: 'data',
+                            type: 'object',
+                            example: [
+                                'picking' => ['belum' => 12, 'diproses' => 3, 'selesai' => 8],
+                                'packing' => ['belum' => 8, 'diproses' => 2, 'selesai' => 5],
+                                'shipping' => ['siap-kirim' => 5, 'jadwal' => 4, 'batal' => 1],
+                            ],
+                        ),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, description: 'Unauthenticated'),
+            new OA\Response(response: 403, description: 'Missing view permission'),
+        ],
+    )]
+    public function counts(): JsonResponse
+    {
+        return $this->successResponse($this->fulfillmentService->getBoardCounts());
+    }
+
     #[OA\Post(
         path: '/api/v1/outbound/orders/change-location',
         summary: 'Change order fulfillment location',

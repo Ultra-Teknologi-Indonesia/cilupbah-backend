@@ -542,7 +542,23 @@ class ProductService
 
         $matchedExisting = false;
 
-        $productId = $this->createProduct($data, $variantIds, false);
+        $bundleProductIds = $this->writeRepository->activeBundleProductIdsBySkus(
+            array_map(
+                static fn (array $variant): string => trim((string) ($variant['sku'] ?? '')),
+                $data['variants'],
+            ),
+        );
+        $bundleSkus = array_fill_keys(array_keys($bundleProductIds), true);
+        $regularVariants = array_values(array_filter(
+            $data['variants'],
+            static fn (array $variant): bool => ! isset($bundleSkus[trim((string) ($variant['sku'] ?? ''))]),
+        ));
+        $createData = $data;
+        if ($regularVariants !== [] && count($regularVariants) !== count($data['variants'])) {
+            $createData['variants'] = $regularVariants;
+        }
+
+        $productId = $this->createProduct($createData, $variantIds, false);
         $this->queueExternalMediaMirroring($productId);
 
         return $productId;
@@ -728,7 +744,7 @@ class ProductService
                 (string) $externalProductId
             );
 
-            if ($productId) {
+            if ($productId && ! Product::query()->whereKey($productId)->value('is_bundle')) {
                 return $productId;
             }
         }

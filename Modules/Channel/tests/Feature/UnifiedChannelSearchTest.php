@@ -149,6 +149,66 @@ class UnifiedChannelSearchTest extends TestCase
         $this->assertSame('download', $tiktokItem['download_action']);
     }
 
+    public function test_unified_search_allows_resync_for_bundle_only_listing(): void
+    {
+        Http::fake([
+            '*/product/202309/products/search*' => Http::response([
+                'code' => 0,
+                'message' => 'success',
+                'data' => [
+                    'products' => [[
+                        'id' => 'tt-bundle-listing',
+                        'title' => 'Bundle dari Marketplace',
+                        'skus' => [['id' => 'tt-bundle-sku', 'seller_sku' => 'BUNDLE-CASE-11']],
+                        'main_images' => [],
+                        'status' => 'ACTIVATE',
+                    ]],
+                ],
+            ], 200),
+        ]);
+
+        $category = Category::create(['name' => 'Bundle Search Category']);
+        $bundle = Product::create([
+            'category_id' => $category->id,
+            'name' => 'Bundle Internal',
+            'sku' => 'BUNDLE-CASE-11',
+            'status' => Product::STATUS_MASTER,
+            'is_bundle' => true,
+            'is_active' => true,
+        ]);
+        $technical = app(\Modules\Product\Repositories\ProductRepository::class)
+            ->ensureActiveBundleVariant($bundle);
+        $mapping = ProductChannelMapping::create([
+            'product_id' => $bundle->id,
+            'channel_shop_id' => $this->tiktokShop->id,
+            'external_product_id' => 'tt-bundle-listing',
+            'sync_status' => ProductChannelMapping::STATUS_SYNCED,
+        ]);
+        DB::table('product_variant_channel_mappings')->insert([
+            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'product_channel_mapping_id' => $mapping->id,
+            'variant_id' => $technical->id,
+            'channel_seller_sku' => 'BUNDLE-CASE-11',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->actingAs($this->user)
+            ->postJson('/api/v1/channel/download/search', [
+                'q' => 'BUNDLE-CASE-11',
+                'shop_ids' => [$this->tiktokShop->shop_id],
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.0.download_action', 'sync_bundle')
+            ->assertJsonPath('data.0.master_status', 'bundle')
+            ->assertJsonPath('data.0.already_downloaded', false)
+            ->assertJsonPath('data.0.has_bundle_mapping', true)
+            ->assertJsonPath('data.0.has_regular_mapping', false)
+            ->assertJsonPath('data.0.bundle_mapping_count', 1);
+        $this->assertNull($response->json('data.0.master_product_id'));
+    }
+
     public function test_unified_search_can_filter_by_specific_shop_ids(): void
     {
         Http::fake([

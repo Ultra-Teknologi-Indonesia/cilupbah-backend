@@ -133,6 +133,35 @@ class BundleChannelSkuLinkerTest extends TestCase
         $this->assertSame(0, app(ChannelSkuHealth::class)->listingTerpecah());
     }
 
+    public function test_mixed_listing_creates_regular_master_without_copying_bundle_skus(): void
+    {
+        $bundle = $this->makeBundle('BUNDLE-MIXED-A');
+        $category = Category::firstOrCreate(['name' => 'Bundle Test']);
+        $matchedExisting = false;
+        $variantIds = [];
+
+        $regularProductId = app(ProductService::class)->upsertFromChannel([
+            'name' => 'Nama Listing Marketplace',
+            'category_id' => $category->id,
+            'variants' => [
+                ['sku' => 'BUNDLE-MIXED-A'],
+                ['sku' => 'REGULAR-MIXED-A'],
+            ],
+        ], $matchedExisting, $variantIds, true);
+
+        $this->assertFalse($matchedExisting);
+        $this->assertNotSame($bundle->id, $regularProductId);
+        $this->assertSame('Nama Listing Marketplace', Product::findOrFail($regularProductId)->name);
+        $this->assertDatabaseHas('product_variants', [
+            'product_id' => $regularProductId,
+            'sku' => 'REGULAR-MIXED-A',
+        ]);
+        $this->assertDatabaseMissing('product_variants', [
+            'product_id' => $regularProductId,
+            'sku' => 'BUNDLE-MIXED-A',
+        ]);
+    }
+
     private function makeBundle(string $sku): Product
     {
         $category = Category::firstOrCreate(['name' => 'Bundle Test']);

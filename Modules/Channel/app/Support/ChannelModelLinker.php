@@ -207,6 +207,7 @@ class ChannelModelLinker
             } elseif (! empty($model['fallback_variant_id']) && DB::table('product_variants')
                 ->where('id', $model['fallback_variant_id'])
                 ->where('product_id', $productId)
+                ->where('sku', $sku)
                 ->exists()) {
                 $variantId = (string) $model['fallback_variant_id'];
             } else {

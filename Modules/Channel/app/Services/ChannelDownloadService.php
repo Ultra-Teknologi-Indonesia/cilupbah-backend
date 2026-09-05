@@ -4,6 +4,7 @@ namespace Modules\Channel\Services;
 
 use Illuminate\Bus\Batch;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Concurrency;
@@ -222,19 +223,19 @@ class ChannelDownloadService
 
         $existingMappings = ProductChannelMapping::with(['product' => fn ($query) => $query
                 ->withTrashed()
-                ->select('id', 'name', 'sku', 'deleted_at')])
+                ->select('id', 'name', 'sku', 'is_bundle', 'is_active', 'deleted_at')])
             ->whereIn('channel_shop_id', $shops->pluck('id'))
             ->whereIn('external_product_id', $allExtIds)
             ->whereHas('product', fn ($query) => $query->withTrashed())
             ->get()
-            ->keyBy(fn ($m) => $m->channel_shop_id . ':' . $m->external_product_id);
+            ->groupBy(fn ($m) => $m->channel_shop_id . ':' . $m->external_product_id);
 
         foreach ($allItems as &$it) {
             $dbShopId = $shopIdMap[$it['shop_id']] ?? null;
             $mappingKey = $dbShopId ? ($dbShopId . ':' . ($it['external_product_id'] ?? '')) : null;
-            $mapping = $mappingKey ? $existingMappings->get($mappingKey) : null;
+            $mappings = $mappingKey ? $existingMappings->get($mappingKey, collect()) : collect();
 
-            $it = $this->decorateDownloadStatus($it, $mapping);
+            $it = $this->decorateDownloadStatus($it, $mappings);
         }
         unset($it);
 
@@ -274,7 +275,7 @@ class ChannelDownloadService
 
         $channelShopId = $this->channelShopRepository->getIdByShopId($shopId);
 
-        $downloaded = [];
+        $downloaded = collect();
         if ($channelShopId) {
             $ids = array_values(array_filter(array_map(
                 fn ($r) => isset($r['external_product_id']) ? (string) $r['external_product_id'] : null,
@@ -284,19 +285,19 @@ class ChannelDownloadService
             if (! empty($ids)) {
                 $downloaded = ProductChannelMapping::with(['product' => fn ($query) => $query
                         ->withTrashed()
-                        ->select('id', 'name', 'sku', 'deleted_at')])
+                        ->select('id', 'name', 'sku', 'is_bundle', 'is_active', 'deleted_at')])
                     ->where('channel_shop_id', $channelShopId)
                     ->whereIn('external_product_id', $ids)
                     ->whereHas('product', fn ($query) => $query->withTrashed())
                     ->get()
-                    ->keyBy(fn ($mapping) => (string) $mapping->external_product_id);
+                    ->groupBy(fn ($mapping) => (string) $mapping->external_product_id);
             }
         }
 
         $flagged = array_map(function ($r) use ($downloaded) {
-            $mapping = $downloaded[(string) ($r['external_product_id'] ?? '')] ?? null;
+            $mappings = $downloaded->get((string) ($r['external_product_id'] ?? ''), collect());
 
-            return $this->decorateDownloadStatus($r, $mapping);
+            return $this->decorateDownloadStatus($r, $mappings);
         }, $results);
 
         usort(
@@ -307,25 +308,46 @@ class ChannelDownloadService
         return $flagged;
     }
 
-    protected function decorateDownloadStatus(array $item, ?ProductChannelMapping $mapping): array
+    protected function decorateDownloadStatus(array $item, Collection $mappings): array
     {
-        $isDeleted = $mapping?->product?->trashed() ?? false;
-        $isUsableMapping = $mapping
-            && ! $isDeleted
-            && ! in_array($mapping->sync_status, [
-                ProductChannelMapping::STATUS_FAILED,
-                ProductChannelMapping::STATUS_DEACTIVATED,
-            ], true);
+        $usableMappings = $mappings->filter(function (ProductChannelMapping $mapping): bool {
+            return $mapping->product
+                && ! $mapping->product->trashed()
+                && $mapping->product->is_active
+                && ! in_array($mapping->sync_status, [
+                    ProductChannelMapping::STATUS_FAILED,
+                    ProductChannelMapping::STATUS_DEACTIVATED,
+                ], true);
+        });
+        $regularMapping = $usableMappings->first(
+            fn (ProductChannelMapping $mapping): bool => ! $mapping->product->is_bundle
+        );
+        $bundleMappings = $usableMappings->filter(
+            fn (ProductChannelMapping $mapping): bool => (bool) $mapping->product->is_bundle
+        );
+        $deletedMapping = $mappings->first(
+            fn (ProductChannelMapping $mapping): bool => $mapping->product?->trashed()
+        );
 
-        $action = $isUsableMapping ? 'none' : 'download';
+        $hasRegularMapping = $regularMapping !== null;
+        $hasBundleMapping = $bundleMappings->isNotEmpty();
+        $action = $hasRegularMapping
+            ? 'none'
+            : ($hasBundleMapping ? 'sync_bundle' : 'download');
 
         $item['download_action'] = $action;
-        $item['master_status'] = $isDeleted ? 'deleted' : ($isUsableMapping ? 'active' : 'missing');
-        $item['already_downloaded'] = $action === 'none';
-        $item['mapping_status'] = $mapping?->sync_status;
-        $item['master_product_id'] = $mapping?->product_id;
-        $item['master_product_name'] = $mapping?->product?->name;
-        $item['master_product_sku'] = $mapping?->product?->sku;
+        $item['master_status'] = $deletedMapping && ! $hasBundleMapping && ! $hasRegularMapping
+            ? 'deleted'
+            : ($hasBundleMapping && ! $hasRegularMapping ? 'bundle' : ($hasRegularMapping ? 'active' : 'missing'));
+        $item['already_downloaded'] = $hasRegularMapping;
+        $item['mapping_status'] = $regularMapping?->sync_status ?? $bundleMappings->first()?->sync_status;
+        $item['master_product_id'] = $regularMapping?->product_id;
+        $item['master_product_name'] = $regularMapping?->product?->name;
+        $item['master_product_sku'] = $regularMapping?->product?->sku;
+        $item['bundle_mapping_count'] = $bundleMappings->count();
+        $item['regular_mapping_count'] = $hasRegularMapping ? 1 : 0;
+        $item['has_bundle_mapping'] = $hasBundleMapping;
+        $item['has_regular_mapping'] = $hasRegularMapping;
 
         return $item;
     }

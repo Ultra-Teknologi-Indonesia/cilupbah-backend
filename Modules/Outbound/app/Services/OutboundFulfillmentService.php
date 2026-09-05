@@ -23,6 +23,7 @@ use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
 use Modules\Outbound\Models\ShipmentOrder;
+use Modules\Outbound\Models\Shipment;
 use Modules\Outbound\Repositories\OutboundFulfillmentRepository;
 use Modules\Outbound\Services\Logistics\LogisticsGateway;
 use Modules\Outbound\Jobs\RunProcessOrdersCsvExportJob;
@@ -367,6 +368,72 @@ class OutboundFulfillmentService
         };
 
         return $this->fulfillmentRepository->paginateStage($query, $limit, $extraSelects);
+    }
+
+    public function getBoardCounts(): array
+    {
+        $finishPick = $this->stageQuery('finish-pick')->count();
+        $finishPack = $this->stageQuery('finish-pack')->count();
+
+        return [
+            'picking' => [
+                'belum' => $this->stageQuery('ready-to-process')->count(),
+                'diproses' => $this->countPicklistsInProgress(),
+                'selesai' => $finishPick,
+            ],
+            'packing' => [
+                'belum' => $finishPick,
+                'diproses' => $this->countPacklistsInProgress(),
+                'selesai' => $finishPack,
+            ],
+            'shipping' => [
+                'siap-kirim' => $finishPack,
+                'jadwal' => $this->countScheduledShipments(),
+                'batal' => $this->countPreManifestCancellations(),
+            ],
+        ];
+    }
+
+    private function countPicklistsInProgress(): int
+    {
+        $query = Picklist::query()
+            ->whereIn('status', [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS]);
+
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->count();
+    }
+
+    private function countPacklistsInProgress(): int
+    {
+        $query = Packlist::query()
+            ->whereIn('status', [Packlist::STATUS_DRAFT, Packlist::STATUS_IN_PROGRESS]);
+
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->count();
+    }
+
+    private function countScheduledShipments(): int
+    {
+        $query = Shipment::query()->where('status', Shipment::STATUS_SCHEDULED);
+
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->count();
+    }
+
+    private function countPreManifestCancellations(): int
+    {
+        $query = Order::query()
+            ->where('status', 'cancelled')
+            ->whereNotNull('handed_to_warehouse_at')
+            ->whereNull('cancel_dismissed_at')
+            ->whereDoesntHave('shipmentOrders');
+
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->count();
     }
 
     public function getMonitoring(): array

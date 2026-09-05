@@ -26,6 +26,25 @@ class ProductImportRepository
         return ProductVariant::where('sku', $sku)->first();
     }
 
+    public function findActiveBundleBySku(string $sku): ?Product
+    {
+        return Product::query()
+            ->where('sku', trim($sku))
+            ->where('is_bundle', true)
+            ->where('is_active', true)
+            ->whereNull('deleted_at')
+            ->first();
+    }
+
+    public function findActiveProductBySku(string $sku): ?Product
+    {
+        return Product::query()
+            ->where('sku', trim($sku))
+            ->where('is_active', true)
+            ->whereNull('deleted_at')
+            ->first();
+    }
+
     public function upsertBundleItem(string $bundleProductId, string $componentVariantId, $qty): void
     {
         ProductBundleItem::updateOrCreate(

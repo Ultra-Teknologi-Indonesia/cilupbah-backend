@@ -30,6 +30,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::get('pickers', [OutboundFulfillmentController::class, 'pickers'])->name('outbound.pickers.index')->middleware('role_or_permission:owner|view-picking|view-packing');
 
     Route::get('orders/monitoring', [OutboundFulfillmentController::class, 'monitoring'])->name('outbound.orders.monitoring')->middleware('role_or_permission:owner|view-pesanan');
+    Route::get('orders/counts', [OutboundFulfillmentController::class, 'counts'])->name('outbound.orders.counts')->middleware('role_or_permission:owner|view-pesanan');
     Route::get('orders/{stage}/courier-options', [OutboundFulfillmentController::class, 'courierOptionsByStage'])->name('outbound.orders.courier-options')->middleware('role_or_permission:owner|view-pesanan');
     Route::get('orders/{stage}', [OutboundFulfillmentController::class, 'ordersByStage'])->name('outbound.orders.stage')->middleware('role_or_permission:owner|view-pesanan');
     Route::delete('orders/{orderId}', [OutboundFulfillmentController::class, 'destroyOrder'])->name('outbound.orders.destroy')->middleware('role_or_permission:owner|delete-pesanan');

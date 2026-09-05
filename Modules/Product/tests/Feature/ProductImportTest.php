@@ -117,7 +117,7 @@ class ProductImportTest extends TestCase
         DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Cat']);
 
         $cat = \Modules\Product\Models\Category::firstOrCreate(['name' => 'General']);
-        $bundle = Product::create(['name' => 'Paket Hemat', 'category_id' => $cat->id, 'status' => Product::STATUS_MASTER, 'is_active' => true]);
+        $bundle = Product::create(['name' => 'Paket Hemat', 'category_id' => $cat->id, 'sku' => 'BUNDLE-A', 'status' => Product::STATUS_MASTER, 'is_bundle' => true, 'is_active' => true]);
         $bundleVariant = ProductVariant::create(['product_id' => $bundle->id, 'sku' => 'BUNDLE-A', 'sell_price' => 100000, 'is_active' => true]);
 
         $comp = Product::create(['name' => 'Komponen', 'category_id' => $cat->id, 'status' => Product::STATUS_MASTER, 'is_active' => true]);
@@ -183,10 +183,99 @@ class ProductImportTest extends TestCase
             'sku' => 'NEW-BUNDLE-SKU',
             'is_bundle' => true,
         ]);
+        $createdBundle = Product::where('sku', 'NEW-BUNDLE-SKU')->firstOrFail();
         $this->assertDatabaseHas('product_variants', [
-            'sku' => 'NEW-BUNDLE-SKU',
+            'product_id' => $createdBundle->id,
+            'sku' => '__bundle__'.$createdBundle->id,
             'sell_price' => 50000,
+            'is_internal' => true,
         ]);
+    }
+
+    public function test_import_bundle_reuses_existing_bundle_by_product_sku(): void
+    {
+        $cat = \Modules\Product\Models\Category::firstOrCreate(['name' => 'General']);
+        $bundle = Product::create([
+            'name' => 'Bundle Lama',
+            'category_id' => $cat->id,
+            'sku' => 'EXISTING-BUNDLE',
+            'is_bundle' => true,
+            'is_active' => true,
+            'status' => Product::STATUS_MASTER,
+        ]);
+        $component = Product::create([
+            'name' => 'Komponen Lama',
+            'category_id' => $cat->id,
+            'is_bundle' => false,
+            'status' => Product::STATUS_MASTER,
+        ]);
+        $componentVariant = ProductVariant::create([
+            'product_id' => $component->id,
+            'sku' => 'EXISTING-COMPONENT',
+            'is_active' => true,
+        ]);
+        $before = Product::count();
+
+        $file = $this->makeUpload(
+            ['item_code', 'bundle_name', 'sku_composition', 'qty'],
+            [['EXISTING-BUNDLE', 'Nama Baru Tidak Menggandakan', 'EXISTING-COMPONENT', 1]],
+        );
+
+        $batchId = $this->postJson('/api/v1/products/import/bundle', ['file' => $file])
+            ->assertStatus(202)
+            ->json('data.id');
+        $this->postJson("/api/v1/products/import/batches/{$batchId}/confirm")
+            ->assertStatus(202);
+
+        $this->assertSame($before, Product::count());
+        $this->assertSame(1, Product::where('sku', 'EXISTING-BUNDLE')->whereNull('deleted_at')->count());
+        $this->assertDatabaseHas('product_bundle_items', [
+            'bundle_product_id' => $bundle->id,
+            'component_variant_id' => $componentVariant->id,
+            'qty' => 1,
+        ]);
+        $this->assertDatabaseHas('product_variants', [
+            'product_id' => $bundle->id,
+            'sku' => '__bundle__'.$bundle->id,
+            'is_internal' => true,
+        ]);
+    }
+
+    public function test_import_bundle_rejects_swapped_bundle_name_and_sku_columns(): void
+    {
+        $cat = \Modules\Product\Models\Category::firstOrCreate(['name' => 'General']);
+        $component = Product::create([
+            'name' => 'Komponen Tertukar',
+            'category_id' => $cat->id,
+            'is_bundle' => false,
+            'status' => Product::STATUS_MASTER,
+        ]);
+        ProductVariant::create([
+            'product_id' => $component->id,
+            'sku' => 'COMPONENT-SWAP',
+            'is_active' => true,
+        ]);
+
+        $file = $this->makeUpload(
+            ['item_code', 'bundle_name', 'sku_composition', 'qty'],
+            [['CASE + STANDING + PATCH 4 IPHONE 15', 'STANDING-PATCH-4-IP-15', 'COMPONENT-SWAP', 1]],
+        );
+
+        $batchId = $this->postJson('/api/v1/products/import/bundle', ['file' => $file])
+            ->assertStatus(202)
+            ->json('data.id');
+        $batch = ProductImportBatch::findOrFail($batchId);
+
+        $this->assertSame(0, $batch->success_rows);
+        $this->assertSame(1, $batch->failed_rows);
+        $this->assertDatabaseHas('product_import_rows', [
+            'import_batch_id' => $batchId,
+            'status' => 'invalid',
+        ]);
+        $this->assertStringContainsString(
+            'Kolom import bundle tertukar',
+            (string) ProductImportBatch::findOrFail($batchId)->rows()->firstOrFail()->message,
+        );
     }
 
     public function test_import_bundle_rejects_bundle_in_bundle_and_same_sku(): void

@@ -23,7 +23,7 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 final class InventoryStockReportExport extends DefaultValueBinder implements FromQuery, WithColumnWidths, WithCustomValueBinder, WithHeadings, WithMapping, WithStrictNullComparison, WithStyles, WithTitle
 {
-    /** @var list<string> */
+
     private const RACK_TEXT_COLUMNS = ['A', 'E', 'F', 'G', 'H'];
 
     public function __construct(
