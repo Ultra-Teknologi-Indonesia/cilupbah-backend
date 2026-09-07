@@ -6,6 +6,7 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductMerge;
 use Modules\Product\Repositories\MasterFeedRepository;
+use Modules\Product\Support\MasterFeedHydrator;
 
 class MasterFeedService
 {
@@ -20,7 +21,7 @@ class MasterFeedService
 
         $this->applyPageMergeGrouping($paginator);
 
-        return \Modules\Product\Support\MasterFeedHydrator::hydrate($paginator);
+        return MasterFeedHydrator::hydrate($paginator);
     }
 
     public function paginateDownloaded(?string $updatedSince = null): LengthAwarePaginator
@@ -31,6 +32,12 @@ class MasterFeedService
     public function find(string $id): Product
     {
         $product = $this->repository->find($id, Product::STATUS_MASTER);
+        if ($product->is_bundle) {
+            $this->markSolo($product);
+
+            return $product;
+        }
+
         $hasRepCol = MasterFeedRepository::hasRepresentativeColumn();
 
         $mergeQuery = ProductMerge::query()->where('product_id', $product->id);
@@ -80,7 +87,10 @@ class MasterFeedService
             return;
         }
 
-        $productIds = $collection->pluck('id')->all();
+        $productIds = $collection
+            ->reject(fn (Product $product): bool => $product->is_bundle)
+            ->pluck('id')
+            ->all();
         $hasRepCol = MasterFeedRepository::hasRepresentativeColumn();
 
         $repMergesQuery = ProductMerge::query()->whereIn('product_id', $productIds);
@@ -125,7 +135,7 @@ class MasterFeedService
         $siblings = $this->repository->loadSiblings(array_values(array_unique($siblingIds)));
 
         foreach ($collection as $product) {
-            if (! isset($repToMaster[$product->id])) {
+            if ($product->is_bundle || ! isset($repToMaster[$product->id])) {
                 $this->markSolo($product);
 
                 continue;

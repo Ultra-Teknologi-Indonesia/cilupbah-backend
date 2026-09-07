@@ -33,8 +33,7 @@ class MasterFeedRepository
         ?string $status = null,
         ?string $updatedSince = null,
         bool $excludeBundles = false,
-    ): LengthAwarePaginator
-    {
+    ): LengthAwarePaginator {
         $status = $status ?? Product::STATUS_MASTER;
         $hasRepCol = self::hasRepresentativeColumn();
 
@@ -44,19 +43,25 @@ class MasterFeedRepository
             ->when($updatedSince, fn ($q) => $q->where('updated_at', '>=', $updatedSince));
 
         if ($hasRepCol) {
-            $query->whereNotExists(function ($sub) {
-                $sub->select(DB::raw(1))
-                    ->from('product_merges')
-                    ->whereColumn('product_merges.product_id', 'products.id')
-                    ->where('product_merges.is_representative', false);
+            $query->where(function (Builder $scope): void {
+                $scope->where('is_bundle', true)
+                    ->orWhereNotExists(function ($sub) {
+                        $sub->select(DB::raw(1))
+                            ->from('product_merges')
+                            ->whereColumn('product_merges.product_id', 'products.id')
+                            ->where('product_merges.is_representative', false);
+                    });
             });
         } else {
-            $query->whereNotExists(function ($sub) {
-                $sub->select(DB::raw(1))
-                    ->from('product_merges as pm1')
-                    ->join('product_merges as pm2', 'pm1.master_name', '=', 'pm2.master_name')
-                    ->whereColumn('pm1.product_id', 'products.id')
-                    ->whereRaw('pm2.product_id < pm1.product_id');
+            $query->where(function (Builder $scope): void {
+                $scope->where('is_bundle', true)
+                    ->orWhereNotExists(function ($sub) {
+                        $sub->select(DB::raw(1))
+                            ->from('product_merges as pm1')
+                            ->join('product_merges as pm2', 'pm1.master_name', '=', 'pm2.master_name')
+                            ->whereColumn('pm1.product_id', 'products.id')
+                            ->whereRaw('pm2.product_id < pm1.product_id');
+                    });
             });
         }
 
@@ -97,6 +102,7 @@ class MasterFeedRepository
         if ($hasRepCol) {
             $matchingNonRepProductIds = Product::query()
                 ->where('status', $status)
+                ->where('is_bundle', false)
                 ->when($updatedSince, fn ($q) => $q->where('updated_at', '>=', $updatedSince))
                 ->whereExists(function ($sub) {
                     $sub->select(DB::raw(1))

@@ -10,6 +10,7 @@ use Modules\Product\Exports\ProductCatalogCsvExport;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductBundleItem;
+use Modules\Product\Models\ProductMerge;
 use Modules\Product\Models\ProductVariant;
 use Modules\Product\Services\ProductCatalogCsvWriter;
 use Modules\Report\Jobs\RunExportJob;
@@ -264,5 +265,80 @@ class ProductCatalogExportTest extends TestCase
 
         $this->assertCount(1, $rows);
         $this->assertSame('COMPONENT-001', $rows[0]->sku);
+    }
+
+    public function test_catalog_export_keeps_each_bundle_name_and_components_when_bundles_are_merged_for_master_display(): void
+    {
+        $category = Category::create(['name' => 'Merged Bundle Export Test', 'is_active' => true]);
+
+        $componentOneProduct = Product::create([
+            'category_id' => $category->id,
+            'name' => 'Komponen Satu',
+            'status' => Product::STATUS_MASTER,
+        ]);
+        $componentOne = ProductVariant::create([
+            'product_id' => $componentOneProduct->id,
+            'sku' => 'MERGED-BUNDLE-COMPONENT-ONE',
+            'is_active' => true,
+        ]);
+
+        $componentTwoProduct = Product::create([
+            'category_id' => $category->id,
+            'name' => 'Komponen Dua',
+            'status' => Product::STATUS_MASTER,
+        ]);
+        $componentTwo = ProductVariant::create([
+            'product_id' => $componentTwoProduct->id,
+            'sku' => 'MERGED-BUNDLE-COMPONENT-TWO',
+            'is_active' => true,
+        ]);
+
+        $firstBundle = Product::create([
+            'category_id' => $category->id,
+            'name' => 'Bundle iPhone 14',
+            'status' => Product::STATUS_MASTER,
+            'is_bundle' => true,
+        ]);
+        $secondBundle = Product::create([
+            'category_id' => $category->id,
+            'name' => 'Bundle iPhone 15',
+            'status' => Product::STATUS_MASTER,
+            'is_bundle' => true,
+        ]);
+
+        ProductBundleItem::create([
+            'bundle_product_id' => $firstBundle->id,
+            'component_variant_id' => $componentOne->id,
+            'qty' => 1,
+        ]);
+        ProductBundleItem::create([
+            'bundle_product_id' => $secondBundle->id,
+            'component_variant_id' => $componentTwo->id,
+            'qty' => 1,
+        ]);
+
+        ProductMerge::create([
+            'product_id' => $firstBundle->id,
+            'master_name' => 'Nama Grup Virtual',
+        ]);
+        ProductMerge::create([
+            'product_id' => $secondBundle->id,
+            'master_name' => 'Nama Grup Virtual',
+        ]);
+
+        $rows = (new ProductCatalogCsvExport([
+            'status' => Product::STATUS_MASTER,
+            'type' => 'bundle',
+            'search' => 'Bundle iPhone',
+        ]))->query()->orderBy('name')->get();
+
+        $this->assertCount(2, $rows);
+        $this->assertSame([
+            ['name' => 'Bundle iPhone 14', 'sku' => 'MERGED-BUNDLE-COMPONENT-ONE'],
+            ['name' => 'Bundle iPhone 15', 'sku' => 'MERGED-BUNDLE-COMPONENT-TWO'],
+        ], $rows->map(fn ($row) => [
+            'name' => $row->name,
+            'sku' => $row->sku,
+        ])->all());
     }
 }

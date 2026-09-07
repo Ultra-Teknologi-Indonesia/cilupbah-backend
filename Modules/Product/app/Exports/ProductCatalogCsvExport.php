@@ -127,18 +127,9 @@ final class ProductCatalogCsvExport implements FromQuery, WithCustomChunkSize, W
 
     private function bundleVariantQuery(): Builder
     {
-        $query = $this->baseQuery()
-            ->join('product_bundle_items as bi', function (JoinClause $join): void {
-                $join->on('bi.bundle_product_id', '=', 'p.id');
-                if ($this->hasRepresentativeColumn()) {
-                    $join->orWhereExists(function ($sub): void {
-                        $sub->select(DB::raw(1))
-                            ->from('product_merges as member_merge')
-                            ->whereColumn('member_merge.product_id', 'bi.bundle_product_id')
-                            ->whereColumn('member_merge.master_name', 'rep_merge.master_name');
-                    });
-                }
-            })
+
+        $query = $this->baseQuery(false)
+            ->join('product_bundle_items as bi', 'bi.bundle_product_id', '=', 'p.id')
             ->join('product_variants as v', 'v.id', '=', 'bi.component_variant_id')
             ->where('p.is_bundle', true)
             ->whereNull('v.deleted_at')
@@ -147,7 +138,7 @@ final class ProductCatalogCsvExport implements FromQuery, WithCustomChunkSize, W
             ->where(function ($scope) {
                 TechnicalSku::exclude($scope, 'v.sku');
             })
-            ->select($this->columns('v.sku'))
+            ->select($this->columns('v.sku', false))
             ->selectRaw('v.sell_price')
             ->selectRaw('p.weight as package_weight')
             ->selectRaw('p.width as package_width')
@@ -156,17 +147,17 @@ final class ProductCatalogCsvExport implements FromQuery, WithCustomChunkSize, W
 
         $this->joinVariantData($query);
 
-        return $this->applyFilters($query, true);
+        return $this->applyFilters($query, true, false);
     }
 
-    private function baseQuery(): Builder
+    private function baseQuery(bool $applyMergeGrouping = true): Builder
     {
         $query = DB::table('products as p')
             ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
             ->where('p.status', $this->filters['status'] ?? 'master')
             ->whereNull('p.deleted_at');
 
-        if ($this->hasRepresentativeColumn()) {
+        if ($applyMergeGrouping && $this->hasRepresentativeColumn()) {
             $query->leftJoin('product_merges as rep_merge', function (JoinClause $join): void {
                 $join->on('rep_merge.product_id', '=', 'p.id')
                     ->where('rep_merge.is_representative', true);
@@ -177,7 +168,7 @@ final class ProductCatalogCsvExport implements FromQuery, WithCustomChunkSize, W
                     ->whereColumn('product_merges.product_id', 'p.id')
                     ->where('product_merges.is_representative', false);
             });
-        } else {
+        } elseif ($applyMergeGrouping) {
             $query->whereNotExists(function ($sub) {
                 $sub->select(DB::raw(1))
                     ->from('product_merges as pm1')
@@ -199,14 +190,14 @@ final class ProductCatalogCsvExport implements FromQuery, WithCustomChunkSize, W
         return $this->hasRepresentativeColumn ??= MasterFeedRepository::hasRepresentativeColumn();
     }
 
-    private function applyFilters(Builder $query, bool $bundle): Builder
+    private function applyFilters(Builder $query, bool $bundle, bool $usesMergeGrouping = true): Builder
     {
         $search = trim((string) ($this->filters['search'] ?? ''));
         if ($search !== '') {
             $like = "%{$search}%";
-            $query->where(function ($scope) use ($like, $bundle) {
+            $query->where(function ($scope) use ($like, $bundle, $usesMergeGrouping) {
                 $scope->whereRaw(
-                    $this->hasRepresentativeColumn()
+                    $usesMergeGrouping && $this->hasRepresentativeColumn()
                         ? 'COALESCE(rep_merge.master_name, p.name) ILIKE ?'
                         : 'p.name ILIKE ?',
                     [$like],
@@ -264,10 +255,10 @@ final class ProductCatalogCsvExport implements FromQuery, WithCustomChunkSize, W
         return $query;
     }
 
-    private function columns(string $sku): array
+    private function columns(string $sku, bool $usesMergeGrouping = true): array
     {
         return [
-            DB::raw($this->hasRepresentativeColumn()
+            DB::raw($usesMergeGrouping && $this->hasRepresentativeColumn()
                 ? 'COALESCE(rep_merge.master_name, p.name) as name'
                 : 'p.name'),
             DB::raw("{$sku} as sku"),

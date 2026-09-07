@@ -10,6 +10,7 @@ use Modules\Product\Models\Attribute;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductMedia;
+use Modules\Product\Models\ProductMerge;
 use Modules\Product\Models\ProductVariant;
 use Modules\Product\Models\ProductVariantChannelMapping;
 use Modules\Product\Models\ProductVariationType;
@@ -400,5 +401,32 @@ class MasterFeedTest extends TestCase
             ->json('data.0');
 
         $this->assertNull($item['thumbnail']);
+    }
+
+    public function test_bundles_ignore_legacy_master_merge_names_in_the_master_list(): void
+    {
+        $firstBundle = $this->makeMasterProduct('CASE + STANDING + PATCH 1 IPHONE 14', ['is_bundle' => true], 10000);
+        $secondBundle = $this->makeMasterProduct('CASE + STANDING + PATCH 2 IPHONE 14', ['is_bundle' => true], 10000);
+
+        ProductMerge::create([
+            'product_id' => $firstBundle->id,
+            'master_name' => 'CASE + STANDING + PATCH IPHONE',
+        ]);
+        ProductMerge::create([
+            'product_id' => $secondBundle->id,
+            'master_name' => 'CASE + STANDING + PATCH IPHONE',
+        ]);
+
+        $items = $this->getJson('/api/v1/products/master?filter[type]=bundle&search=CASE%20%2B%20STANDING%20%2B%20PATCH')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertCount(2, $items);
+        $this->assertEqualsCanonicalizing([
+            'CASE + STANDING + PATCH 1 IPHONE 14',
+            'CASE + STANDING + PATCH 2 IPHONE 14',
+        ], collect($items)->pluck('item_name')->all());
+        $this->assertFalse((bool) $items[0]['is_merged']);
+        $this->assertNull($items[0]['master_name']);
     }
 }
