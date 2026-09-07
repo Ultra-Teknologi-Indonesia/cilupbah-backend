@@ -563,6 +563,14 @@ SQL;
         $isPick = "inventory_movements.source IN ('PICKING', 'PICKING_REVERSAL')";
         $pickOrder = fn (string $column) => "(CASE WHEN {$isPick} THEN (SELECT {$column} {$pickOrderScope} ORDER BY so.salesorder_no LIMIT 1) END)";
 
+        if (! filled($queryRequest->query('sort'))) {
+            $baseQuery
+                ->orderByDesc('inventory_movements.transaction_date')
+                ->orderByRaw("{$workflowPhaseSql} DESC")
+                ->orderByDesc('inventory_movements.transaction_number')
+                ->orderByDesc('inventory_movements.id');
+        }
+
         $qb = QueryBuilder::for($baseQuery, $queryRequest)
             ->joinSub($balanceQuery, 'movement_balances', function ($join) {
                 $join->on('movement_balances.id', '=', 'inventory_movements.id');
@@ -819,8 +827,7 @@ SQL;
                         ->orderBy('inventory_movements.transaction_number', $direction)
                         ->orderBy('inventory_movements.id', $direction);
                 }),
-            )
-            ->defaultSort('-transaction_date');
+            );
 
         return $qb;
     }
