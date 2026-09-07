@@ -13,6 +13,7 @@ use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Repositories\ProductWriteRepository;
 use Modules\Product\Services\ProductService;
+use Modules\Product\Services\ChannelProductService;
 use Tests\TestCase;
 
 class RedownloadDeletedProductTest extends TestCase
@@ -113,5 +114,31 @@ class RedownloadDeletedProductTest extends TestCase
         $this->assertNotNull($newProduct);
         $this->assertNull($newProduct->deleted_at);
         $this->assertEquals('CHARGER-20W', $newProduct->sku);
+    }
+
+    public function test_channel_product_delete_soft_deletes_variants_together_with_product(): void
+    {
+        $category = Category::create(['name' => 'Aksesoris Delete']);
+        $productService = app(ProductService::class);
+        $productId = $productService->createProduct([
+            'name' => 'Produk channel untuk dihapus',
+            'sku' => 'CHANNEL-DELETE-PARENT',
+            'category_id' => $category->id,
+            'variants' => [
+                ['sku' => 'CHANNEL-DELETE-VARIANT', 'sell_price' => 10000],
+            ],
+        ], $variantIds);
+
+        ProductChannelMapping::create([
+            'product_id' => $productId,
+            'channel_shop_id' => $this->shop->id,
+            'external_product_id' => 'EXT-DELETE-1',
+            'sync_status' => 'synced',
+        ]);
+
+        app(ChannelProductService::class)->deleteProduct('EXT-DELETE-1', $this->shop->shop_id);
+
+        $this->assertSoftDeleted('products', ['id' => $productId]);
+        $this->assertSoftDeleted('product_variants', ['id' => $variantIds[0]]);
     }
 }

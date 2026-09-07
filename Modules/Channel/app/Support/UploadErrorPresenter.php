@@ -13,6 +13,7 @@ class UploadErrorPresenter
     public const FATAL = 'fatal';
 
     protected const KEYWORDS = [
+        [['sku channel', 'duplicate key', 'product_variants_sku_unique'], 'SKU produk sudah digunakan', 'Hubungkan listing ke master yang benar atau selesaikan produk lama yang memakai SKU tersebut, lalu coba download lagi.'],
         [['kurir', 'logistik', 'pengiriman', 'sls'], 'Pengaturan pengiriman bermasalah', 'Aktifkan minimal satu kurir dan pastikan berat serta dimensi produk terisi, lalu upload ulang.'],
         [['gambar', 'foto', 'image'], 'Gambar produk bermasalah', 'Tambahkan atau ganti gambar produk ke format JPG/PNG, lalu upload ulang.'],
         [['kategori'], 'Kategori belum sesuai', 'Atur kategori channel untuk produk ini, lalu upload ulang.'],
@@ -119,7 +120,7 @@ class UploadErrorPresenter
             }
         }
 
-        $userFixable = ['wajib', 'tidak sesuai', 'tidak valid', 'melebihi batas', 'minimal', 'maksimal', 'belum lengkap', 'kurang dari', 'terlalu', 'diperlukan', 'gambar', 'kategori', 'atribut', 'varian', 'berat', 'dimensi', 'harga', 'merek', 'deskripsi'];
+        $userFixable = ['wajib', 'tidak sesuai', 'tidak valid', 'melebihi batas', 'minimal', 'maksimal', 'belum lengkap', 'kurang dari', 'terlalu', 'diperlukan', 'sku channel', 'duplicate key', 'product_variants_sku_unique', 'gambar', 'kategori', 'atribut', 'varian', 'berat', 'dimensi', 'harga', 'merek', 'deskripsi'];
         foreach ($userFixable as $needle) {
             if (str_contains($lower, $needle)) {
                 return self::USER_FIXABLE;

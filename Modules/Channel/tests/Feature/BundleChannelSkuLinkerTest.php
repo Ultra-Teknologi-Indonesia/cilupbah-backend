@@ -10,6 +10,7 @@ use Modules\Channel\Repositories\ChannelProductRepository;
 use Modules\Channel\Support\ChannelModelLinker;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
+use Modules\Product\Exceptions\ChannelSkuConflictException;
 use Modules\Product\Repositories\ProductRepository;
 use Modules\Product\Services\ChannelSkuHealth;
 use Modules\Product\Services\ProductService;
@@ -159,6 +160,48 @@ class BundleChannelSkuLinkerTest extends TestCase
         $this->assertDatabaseMissing('product_variants', [
             'product_id' => $regularProductId,
             'sku' => 'BUNDLE-MIXED-A',
+        ]);
+    }
+
+    public function test_download_rejects_active_sku_left_under_deleted_product_before_insert(): void
+    {
+        $category = Category::firstOrCreate(['name' => 'Bundle Test']);
+        $productService = app(ProductService::class);
+
+        $legacyProductId = $productService->createProduct([
+            'name' => 'Produk lama yang sudah dihapus',
+            'sku' => 'LEGACY-PARENT-SKU',
+            'category_id' => $category->id,
+            'variants' => [
+                ['sku' => 'C-CBCTLG1', 'sell_price' => 10000],
+            ],
+        ], $legacyVariantIds);
+
+        DB::table('products')->where('id', $legacyProductId)->update([
+            'deleted_at' => now(),
+        ]);
+
+        try {
+            $productService->upsertFromChannel([
+                'name' => 'Listing elektronik dari channel',
+                'sku' => 'NEW-ELECTRONIC-LISTING',
+                'category_id' => $category->id,
+                'variants' => [
+                    ['sku' => 'C-CBCTLG1', 'sell_price' => 10000],
+                ],
+            ], $matchedExisting, $newVariantIds, true);
+
+            $this->fail('Download seharusnya ditolak karena SKU masih aktif pada produk lama.');
+        } catch (ChannelSkuConflictException $e) {
+            $this->assertStringContainsString('C-CBCTLG1', $e->getMessage());
+            $this->assertStringContainsString('sudah dihapus', $e->getMessage());
+        }
+
+        $this->assertSame(1, Product::withTrashed()->count());
+        $this->assertDatabaseHas('product_variants', [
+            'id' => $legacyVariantIds[0],
+            'sku' => 'C-CBCTLG1',
+            'deleted_at' => null,
         ]);
     }
 

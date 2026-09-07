@@ -19,6 +19,7 @@ use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Services\RackAssignmentCleanupService;
 use Modules\Inventory\Support\StockSummary;
 use Modules\Product\Exceptions\ProductDeletionBlockedException;
+use Modules\Product\Exceptions\ChannelSkuConflictException;
 use Modules\Product\Jobs\MirrorProductMediaJob;
 use Modules\Product\Models\Attribute;
 use Modules\Product\Models\Product;
@@ -558,7 +559,38 @@ class ProductService
             $createData['variants'] = $regularVariants;
         }
 
-        $productId = $this->createProduct($createData, $variantIds, false);
+        $skuConflicts = $this->writeRepository->activeVariantSkuConflicts(
+            array_map(
+                static fn (array $variant): string => trim((string) ($variant['sku'] ?? '')),
+                $createData['variants'] ?? [],
+            ),
+        );
+
+        if ($skuConflicts->isNotEmpty()) {
+            throw new ChannelSkuConflictException($skuConflicts);
+        }
+
+        try {
+            $productId = $this->createProduct($createData, $variantIds, false);
+        } catch (\Illuminate\Database\QueryException $e) {
+
+            if (! in_array((string) $e->getCode(), ['23505', '23000'], true)) {
+                throw $e;
+            }
+
+            $skuConflicts = $this->writeRepository->activeVariantSkuConflicts(
+                array_map(
+                    static fn (array $variant): string => trim((string) ($variant['sku'] ?? '')),
+                    $createData['variants'] ?? [],
+                ),
+            );
+
+            if ($skuConflicts->isNotEmpty()) {
+                throw new ChannelSkuConflictException($skuConflicts, previous: $e);
+            }
+
+            throw $e;
+        }
         $this->queueExternalMediaMirroring($productId);
 
         return $productId;

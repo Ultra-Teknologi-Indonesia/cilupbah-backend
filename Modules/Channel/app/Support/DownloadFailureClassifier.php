@@ -17,6 +17,8 @@ class DownloadFailureClassifier
         $m = mb_strtolower($message);
 
         return match (true) {
+            str_contains($m, 'sku channel sudah digunakan')
+                => 'SKU channel sudah terhubung ke master lain',
             str_contains($m, 'products_sku_unique'), str_contains($m, 'product_variants_sku_unique')
                 => 'SKU duplikat atau kosong (produk tanpa SKU bertabrakan)',
             str_contains($m, 'duplicate key'), str_contains($m, '23505')

@@ -12,10 +12,12 @@ use Illuminate\Pagination\LengthAwarePaginator;
 class ChannelProductService
 {
     protected ProductRepository $productRepo;
+    protected ProductService $productService;
 
-    public function __construct(ProductRepository $productRepo)
+    public function __construct(ProductRepository $productRepo, ProductService $productService)
     {
         $this->productRepo = $productRepo;
+        $this->productService = $productService;
     }
 
     public function getChannelProducts(string $shopId, int $limit = 20, ?string $syncStatus = null): LengthAwarePaginator
@@ -83,7 +85,7 @@ class ChannelProductService
 
         $product = $this->productRepo->findByExternalId($externalId, $channelShopId);
 
-        $product->delete();
+        $this->productService->deleteProduct($product);
     }
 
     public function activateProduct(string $externalId, string $shopId): void

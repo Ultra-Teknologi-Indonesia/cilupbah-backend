@@ -107,6 +107,34 @@ class ProductWriteRepository
             ->value('product_variants.product_id');
     }
 
+    public function activeVariantSkuConflicts(array $skus): Collection
+    {
+        $skus = array_values(array_filter(array_unique(array_map(
+            static fn ($sku): string => trim((string) $sku),
+            $skus,
+        )), static fn (string $sku): bool => $sku !== ''));
+
+        if ($skus === []) {
+            return collect();
+        }
+
+        return DB::table('product_variants as pv')
+            ->join('products as p', 'p.id', '=', 'pv.product_id')
+            ->whereIn('pv.sku', $skus)
+            ->whereNull('pv.deleted_at')
+            ->orderBy('pv.sku')
+            ->select([
+                'pv.id as variant_id',
+                'pv.sku',
+                'pv.product_id',
+                'p.name as product_name',
+                'p.sku as product_sku',
+                'p.deleted_at as product_deleted_at',
+                'p.is_bundle',
+            ])
+            ->get();
+    }
+
     public function productCategoryId(string $productId)
     {
         return DB::table('products')->where('id', $productId)->value('category_id');
