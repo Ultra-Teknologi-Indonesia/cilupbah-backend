@@ -105,7 +105,7 @@ class BinQrPrintService
             'error_message' => empty($job->error_message) ? null : FriendlyError::generic($job->error_message, 'Gagal membuat PDF label rak. Coba lagi.'),
             'started_at' => optional($job->started_at)->toIso8601String(),
             'completed_at' => optional($job->completed_at)->toIso8601String(),
-            'download_url' => $job->status === QrPrintJob::STATUS_READY
+            'download_url' => $job->status === QrPrintJob::STATUS_READY && $job->file_path
                 ? route('api.warehouse.qr-jobs.download', ['id' => $job->id])
                 : null,
         ];
@@ -118,7 +118,9 @@ class BinQrPrintService
         $job = $jobQuery->firstOrFail();
 
         if ($job->status !== QrPrintJob::STATUS_READY || ! $job->file_path) {
-            abort(425, 'PDF belum siap.');
+            abort($job->status === QrPrintJob::STATUS_READY ? 410 : 425, $job->status === QrPrintJob::STATUS_READY
+                ? 'File PDF QR rak sudah kedaluwarsa. Silakan buat ulang.'
+                : 'PDF belum siap.');
         }
 
         $disk = Storage::disk(self::STORAGE_DISK);
@@ -138,7 +140,7 @@ class BinQrPrintService
         return self::STORAGE_DIR.'/'.$jobId.'.pdf';
     }
 
-    public function cleanupOldJobs(int $hours = 24): int
+    public function cleanupOldJobs(int $hours = 168): int
     {
         $threshold = now()->subHours($hours);
         $jobs = QrPrintJob::where('completed_at', '<', $threshold)
@@ -148,10 +150,16 @@ class BinQrPrintService
         $disk = Storage::disk(self::STORAGE_DISK);
         $count = 0;
         foreach ($jobs as $job) {
+            try {
+                if ($disk->exists($job->file_path) && ! $disk->delete($job->file_path)) {
+                    throw new \RuntimeException("Tidak dapat menghapus file {$job->file_path}.");
+                }
+            } catch (\Throwable $exception) {
+                report($exception);
 
-            if ($disk->exists($job->file_path)) {
-                $disk->delete($job->file_path);
+                continue;
             }
+
             $job->update(['file_path' => null]);
             $count++;
         }

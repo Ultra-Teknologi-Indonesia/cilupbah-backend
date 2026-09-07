@@ -2,6 +2,7 @@
 
 namespace Modules\Report\Models;
 
+use App\Models\User;
 use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -11,8 +12,11 @@ class ExportJob extends Model
     use HasUuid7;
 
     public const STATUS_QUEUED = 'queued';
+
     public const STATUS_PROCESSING = 'processing';
+
     public const STATUS_READY = 'ready';
+
     public const STATUS_FAILED = 'failed';
 
     protected $table = 'export_jobs';
@@ -27,6 +31,7 @@ class ExportJob extends Model
         'file_disk',
         'file_path',
         'file_name',
+        'file_purged_at',
         'error',
         'started_at',
         'finished_at',
@@ -36,11 +41,12 @@ class ExportJob extends Model
         'params' => 'array',
         'started_at' => 'datetime',
         'finished_at' => 'datetime',
+        'file_purged_at' => 'datetime',
     ];
 
     public function user(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\User::class);
+        return $this->belongsTo(User::class);
     }
 
     public function isReady(): bool

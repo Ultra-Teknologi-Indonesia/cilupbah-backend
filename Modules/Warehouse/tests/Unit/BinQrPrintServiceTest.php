@@ -47,4 +47,35 @@ class BinQrPrintServiceTest extends TestCase
 
         $this->assertSame($expectedResponse, $response);
     }
+
+    public function test_cleanup_command_removes_expired_qr_pdf_but_keeps_job_history(): void
+    {
+        Storage::fake('s3');
+        config()->set('file-retention.export_hours', 24);
+
+        $jobId = '74d53dd9-56bd-439b-a8e1-501479d34929';
+        $path = BinQrPrintService::storagePathFor($jobId);
+
+        QrPrintJob::create([
+            'id' => $jobId,
+            'location_id' => '019f9932-eda5-7055-b4e8-e9909d1df3d4',
+            'status' => QrPrintJob::STATUS_READY,
+            'paper' => 'thermal_50x40',
+            'total_bins' => 1,
+            'processed_bins' => 1,
+            'file_path' => $path,
+            'completed_at' => now()->subHours(25),
+        ]);
+        Storage::disk('s3')->put($path, '%PDF-');
+
+        $this->artisan('warehouse:cleanup-qr-print-files')
+            ->assertSuccessful();
+
+        Storage::disk('s3')->assertMissing($path);
+        $this->assertDatabaseHas('qr_print_jobs', [
+            'id' => $jobId,
+            'status' => QrPrintJob::STATUS_READY,
+            'file_path' => null,
+        ]);
+    }
 }

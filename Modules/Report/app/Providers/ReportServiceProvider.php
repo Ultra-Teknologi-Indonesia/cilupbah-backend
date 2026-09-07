@@ -8,7 +8,6 @@ use Nwidart\Modules\Support\ModuleServiceProvider;
 
 class ReportServiceProvider extends ModuleServiceProvider
 {
-
     protected string $name = 'Report';
 
     protected string $nameLower = 'report';
@@ -26,8 +25,8 @@ class ReportServiceProvider extends ModuleServiceProvider
     {
         $schedule->command('reports:cleanup-export-jobs')
             ->daily()
+            ->onOneServer()
             ->withoutOverlapping()
             ->runInBackground();
     }
-
 }

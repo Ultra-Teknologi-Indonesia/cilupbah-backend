@@ -2,19 +2,20 @@
 
 namespace Modules\Sales\Tests\Feature;
 
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Modules\Sales\Models\BulkShippingLabelBatch;
-use App\Models\User;
 use Tests\TestCase;
 
 class CleanupBulkLabelBatchesCommandTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_deletes_batches_older_than_threshold(): void
+    public function test_it_purges_expired_files_without_deleting_batch_history(): void
     {
         Storage::fake('documents');
+        config()->set('file-retention.export_hours', 24);
 
         $user = User::factory()->create();
 
@@ -28,7 +29,7 @@ class CleanupBulkLabelBatchesCommandTest extends TestCase
         ]);
         Storage::disk('documents')->put('bulk-labels/old.pdf', '%PDF-');
 
-        $oldBatch->update(['created_at' => now()->subHours(25)]);
+        $oldBatch->update(['finished_at' => now()->subHours(25)]);
 
         $freshBatch = BulkShippingLabelBatch::create([
             'user_id' => $user->id,
@@ -43,7 +44,11 @@ class CleanupBulkLabelBatchesCommandTest extends TestCase
         $this->artisan('sales:cleanup-bulk-label-batches')
             ->assertSuccessful();
 
-        $this->assertDatabaseMissing('bulk_shipping_label_batches', ['id' => $oldBatch->id]);
+        $this->assertDatabaseHas('bulk_shipping_label_batches', [
+            'id' => $oldBatch->id,
+            'merged_pdf_path' => null,
+        ]);
+        $this->assertNotNull($oldBatch->fresh()->file_purged_at);
         $this->assertDatabaseHas('bulk_shipping_label_batches', ['id' => $freshBatch->id]);
         Storage::disk('documents')->assertMissing('bulk-labels/old.pdf');
         Storage::disk('documents')->assertExists('bulk-labels/fresh.pdf');

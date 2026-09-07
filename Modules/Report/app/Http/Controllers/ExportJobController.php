@@ -23,7 +23,8 @@ class ExportJobController extends Controller
     public function download(Request $request, string $export): StreamedResponse
     {
         $job = $this->exports->findOwnedOrFail($export, $request->user()->id);
-        abort_unless($job->isReady() && $job->file_path, 404);
+        abort_if($job->file_purged_at !== null || ! $job->file_path, 410, 'File hasil export sudah kedaluwarsa. Silakan buat export baru.');
+        abort_unless($job->isReady(), 404);
 
         $disk = Storage::disk($job->file_disk ?? 'local');
         abort_unless($disk->exists($job->file_path), 404);

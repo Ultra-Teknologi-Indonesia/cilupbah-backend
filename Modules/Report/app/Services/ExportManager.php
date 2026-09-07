@@ -5,35 +5,37 @@ namespace Modules\Report\Services;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Modules\Inventory\Exports\RackAllocationExport;
+use Modules\Inventory\Exports\StockAdjustmentExport;
+use Modules\Inventory\Services\StockAdjustmentService;
 use Modules\Product\Exports\ProductCatalogCsvExport;
+use Modules\Purchase\Exports\PurchaseOrderDetailExport;
+use Modules\Purchase\Exports\PurchaseOrderListExport;
+use Modules\Purchase\Repositories\PurchaseOrderExportRepository;
+use Modules\Report\Exports\CustomerListExport;
 use Modules\Report\Exports\InventoryStockReportExport;
 use Modules\Report\Exports\NegativeStockReportExport;
 use Modules\Report\Exports\PicklistDetailExport;
 use Modules\Report\Exports\PicklistDetailPhotoExport;
 use Modules\Report\Exports\PickListReportExport;
-use Modules\Report\Exports\SectionedReportExport;
-use Modules\Report\Exports\ShipmentListReportExport;
-use Modules\Report\Exports\TransferReportExport;
-use Modules\Inventory\Exports\RackAllocationExport;
-use Modules\Inventory\Exports\StockAdjustmentExport;
+use Modules\Report\Exports\RincianPendapatanExport;
+use Modules\Report\Exports\RincianPendapatanPerBarangExport;
 use Modules\Report\Exports\SalesListPesananExport;
 use Modules\Report\Exports\SalesProductExport;
 use Modules\Report\Exports\SalesReturnExport;
-use Modules\Report\Exports\RincianPendapatanExport;
-use Modules\Report\Exports\RincianPendapatanPerBarangExport;
-use Modules\Report\Exports\CustomerListExport;
+use Modules\Report\Exports\SectionedReportExport;
+use Modules\Report\Exports\ShipmentListReportExport;
+use Modules\Report\Exports\TransferReportExport;
 use Modules\Report\Jobs\RunExportJob;
 use Modules\Report\Models\ExportJob;
 use Modules\Sales\Exports\CancelledOrdersExport;
 use Modules\Sales\Exports\SalesOrdersExport;
 use Modules\Sales\Exports\SalesReturnReportExport;
 use Modules\Sales\Exports\SettlementReportExport;
-use Modules\Purchase\Exports\PurchaseOrderDetailExport;
-use Modules\Purchase\Exports\PurchaseOrderListExport;
+use Modules\Sales\Services\OrderSettlementService;
 
 class ExportManager
 {
-
     public const PDF_TYPES = [
         'monitor-stock-pdf',
         'picklist-pdf',
@@ -113,7 +115,7 @@ class ExportManager
     public function statusPayload(ExportJob $job): array
     {
         $downloadUrl = null;
-        if ($job->isReady()) {
+        if ($job->isReady() && $job->file_path && $job->file_purged_at === null) {
             $downloadUrl = Route::has('api.reports.exports.download')
                 ? route('api.reports.exports.download', $job->id)
                 : (Route::has('reports.exports.download')
@@ -127,6 +129,8 @@ class ExportManager
             'status' => $job->status,
             'queue' => $job->queue_name,
             'file_name' => $job->file_name,
+            'file_available' => $job->file_path !== null && $job->file_purged_at === null,
+            'file_purged_at' => $job->file_purged_at?->toIso8601String(),
             'error' => $job->isFailed()
                 ? 'Gagal membuat berkas export. Coba lagi atau persempit rentang data.'
                 : null,
@@ -231,7 +235,7 @@ class ExportManager
             ),
 
             'stock-adjustment' => new StockAdjustmentExport(
-                app(\Modules\Inventory\Services\StockAdjustmentService::class)->getQueryForExport(
+                app(StockAdjustmentService::class)->getQueryForExport(
                     Request::create('/', 'GET', [
                         'search' => $params['search'] ?? null,
                         'filter' => [
@@ -296,23 +300,22 @@ class ExportManager
             ),
 
             'settlement' => new SettlementReportExport(
-                app(\Modules\Sales\Services\OrderSettlementService::class)
+                app(OrderSettlementService::class)
                     ->queryForExport($params),
             ),
 
             'purchase-order-list' => new PurchaseOrderListExport(
-                app(\Modules\Purchase\Repositories\PurchaseOrderExportRepository::class)
+                app(PurchaseOrderExportRepository::class)
                     ->getListQuery($params),
             ),
 
             'purchase-order-detail' => new PurchaseOrderDetailExport(
-                app(\Modules\Purchase\Repositories\PurchaseOrderExportRepository::class)
+                app(PurchaseOrderExportRepository::class)
                     ->getDetailQuery($params),
             ),
 
             'putaway-bulk-pdf', 'stock-adjustment-bulk-pdf', 'picklist-bulk-pdf',
-            'manifest-bulk-pdf', 'invoice-bulk-pdf'
-                => throw new \LogicException('PDF bulk diproses langsung oleh worker.'),
+            'manifest-bulk-pdf', 'invoice-bulk-pdf' => throw new \LogicException('PDF bulk diproses langsung oleh worker.'),
         };
     }
 

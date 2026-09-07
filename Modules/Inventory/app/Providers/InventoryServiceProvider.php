@@ -11,6 +11,7 @@ use Modules\Inventory\Console\Commands\BackfillRackImportPutaway;
 use Modules\Inventory\Console\Commands\BackfillReversalVisibility;
 use Modules\Inventory\Console\Commands\BackfillTransitInbounds;
 use Modules\Inventory\Console\Commands\CleanupDraftTransitStock;
+use Modules\Inventory\Console\Commands\CleanupImportFilesCommand;
 use Modules\Inventory\Console\Commands\CutoverImportStockCommand;
 use Modules\Inventory\Console\Commands\CutoverOrderAuditCommand;
 use Modules\Inventory\Console\Commands\CutoverPauseCommand;
@@ -55,6 +56,7 @@ class InventoryServiceProvider extends ModuleServiceProvider
         ReconcileInboundBackfillConsumption::class,
         BackfillInboundMovementSource::class,
         CleanupDraftTransitStock::class,
+        CleanupImportFilesCommand::class,
         PurgeReversalMovements::class,
         RepairOrphanTransferHistory::class,
         ValidateBaselineImport::class,
@@ -100,6 +102,12 @@ class InventoryServiceProvider extends ModuleServiceProvider
             ->hourly()
             ->withoutOverlapping()
             ->onOneServer()
+            ->runInBackground();
+
+        $schedule->command('imports:cleanup-files')
+            ->daily()
+            ->onOneServer()
+            ->withoutOverlapping()
             ->runInBackground();
     }
 }

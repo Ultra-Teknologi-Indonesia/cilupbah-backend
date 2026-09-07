@@ -81,6 +81,8 @@ class BulkShippingLabelController extends Controller
             'retryable_count' => $retryable,
             'started_at' => $batch->started_at,
             'finished_at' => $batch->finished_at,
+            'file_available' => $batch->merged_pdf_path !== null && $batch->file_purged_at === null,
+            'file_purged_at' => $batch->file_purged_at,
             'items' => $batch->items->map(function ($i) {
                 $order = $i->order;
 
@@ -110,7 +112,7 @@ class BulkShippingLabelController extends Controller
 
     private function resolvePdfUrl(BulkShippingLabelBatch $batch): ?string
     {
-        if ($batch->status !== BulkShippingLabelBatch::STATUS_READY || empty($batch->merged_pdf_path)) {
+        if ($batch->status !== BulkShippingLabelBatch::STATUS_READY || empty($batch->merged_pdf_path) || $batch->file_purged_at !== null) {
             return null;
         }
 

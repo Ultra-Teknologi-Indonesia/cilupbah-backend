@@ -2,18 +2,20 @@
 
 namespace Modules\Sales\Models;
 
+use App\Models\User;
 use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use App\Models\User;
 
 class BulkShippingLabelBatch extends Model
 {
     use HasUuid7;
 
     public const STATUS_PROCESSING = 'processing';
+
     public const STATUS_READY = 'ready';
+
     public const STATUS_FAILED = 'failed';
 
     protected $fillable = [
@@ -26,6 +28,7 @@ class BulkShippingLabelBatch extends Model
         'skipped_count',
         'merged_pdf_path',
         'merged_pdf_bytes',
+        'file_purged_at',
         'started_at',
         'finished_at',
         'created_at',
@@ -40,6 +43,7 @@ class BulkShippingLabelBatch extends Model
         'merged_pdf_bytes' => 'integer',
         'started_at' => 'datetime',
         'finished_at' => 'datetime',
+        'file_purged_at' => 'datetime',
     ];
 
     public function items(): HasMany

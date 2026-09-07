@@ -6,6 +6,7 @@ use Carbon\Carbon;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Modules\Inventory\Models\ImpexActivity;
@@ -85,14 +86,6 @@ class PurchaseOrderImportService
         $disk = self::disk();
         $storedFilename = sprintf('%s_%s.%s', date('Ymd_His'), Str::random(8), $file->getClientOriginalExtension());
         $storedPath = $file->storeAs(self::STORAGE_DIR . '/' . date('Y-m'), $storedFilename, $disk);
-
-        $storage = Storage::disk($disk);
-        $fileUrl = null;
-        try {
-            $fileUrl = method_exists($storage, 'url') ? $storage->url($storedPath) : null;
-        } catch (\Throwable) {
-            $fileUrl = null;
-        }
 
         $activity = $this->impexActivityService->record(
             ImpexActivity::DIRECTION_IMPORT,
@@ -360,7 +353,8 @@ class PurchaseOrderImportService
             'payloads'         => $payloads,
             'summary'          => $summary,
             'impex_activity_id'=> $activity->id,
-            'file_url'         => $fileUrl,
+            'stored_path'      => $storedPath,
+            'stored_disk'      => $disk,
         ], now()->addMinutes(self::CACHE_TTL_MINUTES));
 
         return [
@@ -390,6 +384,8 @@ class PurchaseOrderImportService
             throw new \Exception('Proses import untuk data ini sedang berjalan. Harap tunggu hingga selesai.');
         }
 
+        $preview = null;
+
         try {
             $preview = $this->getPreview($token);
 
@@ -400,7 +396,6 @@ class PurchaseOrderImportService
             $this->forgetPreview($token);
 
             $activityId = $preview['impex_activity_id'] ?? null;
-            $fileUrl = $preview['file_url'] ?? null;
             $activity = $activityId ? ImpexActivity::find($activityId) : null;
 
             $payloads = $preview['payloads'] ?? [];
@@ -440,7 +435,7 @@ class PurchaseOrderImportService
                 if ($failed > 0 && $created === 0) {
                     $this->impexActivityService->markFailed($activity, implode('; ', $errors));
                 } else {
-                    $this->impexActivityService->markSuccess($activity, $fileUrl);
+                    $this->impexActivityService->markSuccess($activity);
                 }
             }
 
@@ -451,7 +446,30 @@ class PurchaseOrderImportService
                 'errors'     => $errors,
             ];
         } finally {
+            if (is_array($preview)) {
+                $this->deleteStoredPreviewFile($preview);
+            }
             $lock->release();
+        }
+    }
+
+    private function deleteStoredPreviewFile(array $preview): void
+    {
+        $path = $preview['stored_path'] ?? null;
+        $diskName = $preview['stored_disk'] ?? self::disk();
+
+        if (! is_string($path) || $path === '' || ! is_string($diskName) || $diskName === '') {
+            return;
+        }
+
+        try {
+            Storage::disk($diskName)->delete($path);
+        } catch (\Throwable $exception) {
+            Log::warning('purchase-order-import.source-file-cleanup-failed', [
+                'disk' => $diskName,
+                'path' => $path,
+                'error' => $exception->getMessage(),
+            ]);
         }
     }
 
