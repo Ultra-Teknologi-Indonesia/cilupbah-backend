@@ -6,6 +6,7 @@ use App\Http\Middleware\NormalizePaginationParameters;
 use App\Http\Middleware\RejectNonAccessToken;
 use App\Http\Middleware\ResilientThrottleRequests;
 use App\Http\Middleware\ResolveClientChannel;
+use App\Http\Middleware\StockCutoverConsoleToken;
 use App\Support\DatabaseAvailability;
 use App\Support\ErrorReporter;
 use App\Traits\ApiResponse;
@@ -59,6 +60,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission' => PermissionMiddleware::class,
             'role_or_permission' => RoleOrPermissionMiddleware::class,
             'dev.only' => DevOnly::class,
+            'stock-cutover-console' => StockCutoverConsoleToken::class,
             'client.channel' => ResolveClientChannel::class,
 
             'throttle' => ResilientThrottleRequests::class,
