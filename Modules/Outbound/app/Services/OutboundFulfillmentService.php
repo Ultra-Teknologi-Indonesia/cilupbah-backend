@@ -355,7 +355,12 @@ class OutboundFulfillmentService
             ->all();
     }
 
-    public function getOrdersByStage(string $stage, int $limit = 10, ?string $locationId = null)
+    public function getOrdersByStage(
+        string $stage,
+        int $limit = 10,
+        ?string $locationId = null,
+        bool $latestFirst = false,
+    )
     {
         $query = $this->stageQuery($stage);
 
@@ -367,7 +372,7 @@ class OutboundFulfillmentService
             default => ['invoice_ref'],
         };
 
-        return $this->fulfillmentRepository->paginateStage($query, $limit, $extraSelects);
+        return $this->fulfillmentRepository->paginateStage($query, $limit, $extraSelects, $latestFirst);
     }
 
     public function getBoardCounts(): array

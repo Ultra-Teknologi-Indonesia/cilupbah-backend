@@ -15,7 +15,7 @@ use Tests\TestCase;
 
 final class DashboardOperationalContractTest extends TestCase
 {
-    public function test_summary_contains_only_operational_metrics(): void
+    public function test_summary_contains_operational_metrics_and_safe_integration_overview(): void
     {
         $dashboardRepository = $this->createMock(DashboardRepository::class);
         $dashboardRepository
@@ -33,6 +33,22 @@ final class DashboardOperationalContractTest extends TestCase
             ->method('unprocessedReturnsCount')
             ->with(null)
             ->willReturn(2);
+        $dashboardRepository
+            ->expects($this->once())
+            ->method('integrationOverview')
+            ->willReturn([
+                'total' => 3,
+                'healthy' => 2,
+                'attention' => 1,
+                'inactive' => 0,
+                'stores' => [[
+                    'id' => 'shop-1',
+                    'shop_name' => 'Toko Utama',
+                    'channel' => ['code' => 'shopee', 'name' => 'Shopee'],
+                    'status' => 'normal',
+                    'last_synced_at' => '2026-09-02T10:00:00+00:00',
+                ]],
+            ]);
 
         $salesOrderRepository = $this->createMock(SalesOrderRepository::class);
         $salesOrderRepository
@@ -70,6 +86,8 @@ final class DashboardOperationalContractTest extends TestCase
         $this->assertSame(3, $summary['ready_to_process']);
         $this->assertSame(6, $summary['stock_habis']);
         $this->assertSame(2, $summary['returns_pending']);
+        $this->assertSame(3, $summary['integration']['total']);
+        $this->assertSame('normal', $summary['integration']['stores'][0]['status']);
         $this->assertArrayNotHasKey('revenue', $summary);
         $this->assertArrayNotHasKey('stock_value', $summary);
         $this->assertArrayNotHasKey('returns_refund', $summary);
@@ -81,7 +99,7 @@ final class DashboardOperationalContractTest extends TestCase
         $fulfillmentService
             ->expects($this->once())
             ->method('getOrdersByStage')
-            ->with('ready-to-process', 10, null)
+            ->with('ready-to-process', 10, null, true)
             ->willReturn(new LaravelPaginator([
                 (object) [
                     'id' => 'order-1',

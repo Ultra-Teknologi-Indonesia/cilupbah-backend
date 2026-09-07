@@ -53,7 +53,12 @@ class OutboundFulfillmentRepository
             ->get(['id', 'name', 'email']);
     }
 
-    public function paginateStage(Builder $query, int $limit = 10, array $extraSelects = [])
+    public function paginateStage(
+        Builder $query,
+        int $limit = 10,
+        array $extraSelects = [],
+        bool $latestFirst = false,
+    )
     {
         if (in_array('picker_name', $extraSelects, true)) {
             $query->addSelect([
@@ -119,6 +124,8 @@ class OutboundFulfillmentRepository
         if (filled(request()->query('sort'))) {
 
             $query->reorder();
+        } elseif ($latestFirst) {
+            $query->reorder()->orderByDesc('sales_orders.created_at');
         } else {
             $query->orderByRaw("CASE WHEN channel_instant IS TRUE
                 OR (channel_instant IS NULL

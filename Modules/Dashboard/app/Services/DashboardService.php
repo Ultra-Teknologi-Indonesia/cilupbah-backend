@@ -71,6 +71,7 @@ class DashboardService
             'stock_habis' => (int) ($stockSummary['habis'] ?? 0),
             'stock_menipis' => (int) ($stockSummary['menipis'] ?? 0),
             'returns_pending' => $returnsPending,
+            'integration' => $this->dashboardRepository->integrationOverview(),
         ];
     }
 
@@ -86,7 +87,12 @@ class DashboardService
         $stage = self::QUEUE_STAGE_MAP[$queue]
             ?? throw new \InvalidArgumentException("Queue '{$queue}' tidak dikenal.");
 
-        $paginator = $this->fulfillmentService->getOrdersByStage($stage, $perPage, $locationId);
+        $paginator = $this->fulfillmentService->getOrdersByStage(
+            $stage,
+            $perPage,
+            $locationId,
+            latestFirst: true,
+        );
 
         $paginator->getCollection()->transform(fn ($order) => [
             'id' => $order->id,

@@ -4,6 +4,8 @@ namespace Modules\Dashboard\Repositories;
 
 use App\Support\WarehouseAccess;
 use Illuminate\Support\Facades\DB;
+use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Support\ChannelTokenStatus;
 use Modules\Inventory\Services\PurchaseCostService;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesReturn;
@@ -36,6 +38,72 @@ class DashboardRepository
                 ->groupBy('source')
                 ->pluck('total', 'source'),
             'data_starts_at' => $this->orderDataStartsAt($locationId),
+        ];
+    }
+
+    public function integrationOverview(): array
+    {
+        $stores = ChannelShop::query()
+            ->with('channel:id,code,name')
+            ->whereNull('disconnected_at')
+            ->orderBy('shop_name')
+            ->get([
+                'id',
+                'channel_id',
+                'shop_name',
+                'is_active',
+                'access_token',
+                'consumer_key',
+                'refresh_token_expires_at',
+                'integration_status',
+                'last_synced_at',
+            ])
+            ->map(function (ChannelShop $shop): array {
+                $status = ! $shop->is_active
+                    ? 'inactive'
+                    : ChannelTokenStatus::integration($shop)['status'];
+
+                return [
+                    'id' => $shop->id,
+                    'shop_name' => $shop->shop_name,
+                    'channel' => [
+                        'code' => $shop->channel?->code,
+                        'name' => $shop->channel?->name,
+                    ],
+                    'status' => $status,
+                    'last_synced_at' => $shop->last_synced_at?->toISOString(),
+                ];
+            });
+
+        $severity = [
+            'error' => 0,
+            'warning' => 1,
+            'inactive' => 2,
+            'normal' => 3,
+        ];
+
+        return [
+            'total' => $stores->count(),
+            'healthy' => $stores->where('status', 'normal')->count(),
+            'attention' => $stores->whereIn('status', ['warning', 'error'])->count(),
+            'inactive' => $stores->where('status', 'inactive')->count(),
+            'stores' => $stores
+                ->sort(function (array $left, array $right) use ($severity): int {
+                    $statusComparison = ($severity[$left['status']] ?? PHP_INT_MAX)
+                        <=> ($severity[$right['status']] ?? PHP_INT_MAX);
+
+                    if ($statusComparison !== 0) {
+                        return $statusComparison;
+                    }
+
+                    return strcmp(
+                        $right['last_synced_at'] ?? '',
+                        $left['last_synced_at'] ?? '',
+                    );
+                })
+                ->take(5)
+                ->values()
+                ->all(),
         ];
     }
 
