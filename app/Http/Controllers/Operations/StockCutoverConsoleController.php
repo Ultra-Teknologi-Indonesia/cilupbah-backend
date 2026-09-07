@@ -124,16 +124,17 @@ final class StockCutoverConsoleController extends Controller
 
     public function downloadCsv(string $token, StockCutoverConsoleJob $job, string $location)
     {
-        if (! array_key_exists($location, self::LOCATIONS)) {
+        if (! array_key_exists($location, self::LOCATIONS) || $job->report_disk === null) {
             abort(404);
         }
 
         $path = "stock-cutover-console/{$job->id}/{$location}-report.csv";
-        if (! Storage::disk('local')->exists($path)) {
+        $disk = Storage::disk($job->report_disk);
+        if (! $disk->exists($path)) {
             abort(404);
         }
 
-        return Storage::disk('local')->download(
+        return $disk->download(
             $path,
             "stock-cutover-{$job->id}-{$location}.csv",
             ['Content-Type' => 'text/csv; charset=UTF-8']

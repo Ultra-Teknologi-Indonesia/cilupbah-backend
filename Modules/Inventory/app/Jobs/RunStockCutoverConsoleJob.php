@@ -49,15 +49,22 @@ final class RunStockCutoverConsoleJob implements ShouldQueue
             'error' => null,
         ]);
 
+        $workingDirectory = "stock-cutover-console-tmp/{$job->id}";
+
         try {
             $results = [];
             $isApply = $job->type === 'apply';
             $hasBlocking = false;
-            Storage::disk('local')->makeDirectory("stock-cutover-console/{$job->id}");
+            $reportDiskName = (string) config(
+                'operations.stock_cutover_console.report_disk',
+                config('operations.stock_cutover_console.upload_disk', 's3'),
+            );
+            $localDisk = Storage::disk('local');
+            $localDisk->makeDirectory($workingDirectory);
 
             foreach (($job->files ?? []) as $locationCode => $file) {
-                $path = Storage::disk((string) $file['disk'])->path((string) $file['path']);
-                $reportExport = Storage::disk('local')->path("stock-cutover-console/{$job->id}/{$locationCode}-report.csv");
+                $path = $this->materializeSourceFile($file, $workingDirectory, (string) $locationCode);
+                $reportExport = $localDisk->path("{$workingDirectory}/{$locationCode}-report.csv");
                 $arguments = [
                     'file' => $path,
                     '--location' => (string) $locationCode,
@@ -78,10 +85,12 @@ final class RunStockCutoverConsoleJob implements ShouldQueue
                 $output = Artisan::output();
                 $blocking = str_contains($output, 'Terdapat ')
                     || str_contains($output, 'baris bermasalah');
+                $reportPath = "stock-cutover-console/{$job->id}/{$locationCode}-report.csv";
+                $this->storeTemporaryReport($reportDiskName, $reportPath, $reportExport);
                 $results[$locationCode] = [
                     'exit_code' => $exitCode,
                     'blocking' => $blocking,
-                    'report_csv' => "stock-cutover-console/{$job->id}/{$locationCode}-report.csv",
+                    'report_csv' => $reportPath,
                     'output' => $output,
                     'source_sha256' => hash_file('sha256', $path),
                 ];
@@ -93,7 +102,7 @@ final class RunStockCutoverConsoleJob implements ShouldQueue
             }
 
             $reportPath = "stock-cutover-console/{$job->id}/report.json";
-            Storage::disk('local')->put($reportPath, json_encode([
+            Storage::disk($reportDiskName)->put($reportPath, json_encode([
                 'mode' => $isApply ? 'APPLY' : 'DRY_RUN',
                 'stock_source' => 'Qty Aktual',
                 'zero_missing' => true,
@@ -105,7 +114,7 @@ final class RunStockCutoverConsoleJob implements ShouldQueue
             $job->update([
                 'status' => StockCutoverConsoleJob::STATUS_READY,
                 'report' => ['blocking' => $hasBlocking, 'results' => $results],
-                'report_disk' => 'local',
+                'report_disk' => $reportDiskName,
                 'report_path' => $reportPath,
                 'finished_at' => now(),
             ]);
@@ -117,6 +126,73 @@ final class RunStockCutoverConsoleJob implements ShouldQueue
             ]);
 
             throw $exception;
+        } finally {
+            Storage::disk('local')->deleteDirectory($workingDirectory);
+        }
+    }
+
+    /**
+     * Excel readers require a local seekable file. R2 is therefore streamed to a
+     * short-lived worker directory and removed in the finally block above.
+     *
+     * @param  array{disk: string, path: string, sha256?: string}  $file
+     */
+    private function materializeSourceFile(array $file, string $workingDirectory, string $locationCode): string
+    {
+        $diskName = (string) ($file['disk'] ?? '');
+        $sourcePath = (string) ($file['path'] ?? '');
+
+        if ($diskName === '' || $sourcePath === '') {
+            throw new \RuntimeException("File sumber {$locationCode} tidak lengkap.");
+        }
+
+        $sourceDisk = Storage::disk($diskName);
+        if (! $sourceDisk->exists($sourcePath)) {
+            throw new \RuntimeException("File sumber {$locationCode} tidak ditemukan di penyimpanan.");
+        }
+
+        $localPath = Storage::disk('local')->path("{$workingDirectory}/{$locationCode}-source.xlsx");
+        $input = $sourceDisk->readStream($sourcePath);
+        $output = fopen($localPath, 'wb');
+
+        if (! is_resource($input) || $output === false) {
+            if (is_resource($input)) {
+                fclose($input);
+            }
+
+            throw new \RuntimeException("File sumber {$locationCode} tidak dapat disiapkan untuk diproses.");
+        }
+
+        try {
+            if (stream_copy_to_stream($input, $output) === false) {
+                throw new \RuntimeException("File sumber {$locationCode} gagal disalin untuk diproses.");
+            }
+        } finally {
+            fclose($input);
+            fclose($output);
+        }
+
+        $expectedHash = (string) ($file['sha256'] ?? '');
+        if ($expectedHash !== '' && ! hash_equals($expectedHash, (string) hash_file('sha256', $localPath))) {
+            throw new \RuntimeException("Integritas file sumber {$locationCode} tidak cocok; proses dibatalkan.");
+        }
+
+        return $localPath;
+    }
+
+    private function storeTemporaryReport(string $diskName, string $destination, string $localPath): void
+    {
+        $stream = fopen($localPath, 'rb');
+        if ($stream === false) {
+            throw new \RuntimeException('Laporan CSV tidak dapat dibaca untuk disimpan.');
+        }
+
+        try {
+            if (! Storage::disk($diskName)->writeStream($destination, $stream)) {
+                throw new \RuntimeException('Laporan CSV tidak dapat disimpan ke object storage.');
+            }
+        } finally {
+            fclose($stream);
         }
     }
 }

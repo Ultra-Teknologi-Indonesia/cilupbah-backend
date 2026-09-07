@@ -8,7 +8,10 @@ return [
         'token' => env('STOCK_CUTOVER_CONSOLE_TOKEN'),
         'queue_connection' => env('STOCK_CUTOVER_CONSOLE_QUEUE_CONNECTION', 'redis-long'),
         'queue' => env('STOCK_CUTOVER_CONSOLE_QUEUE', 'stock-cutover'),
-        'upload_disk' => env('STOCK_CUTOVER_CONSOLE_DISK', 'local'),
+        // Input and generated reports are persisted privately in object storage.
+        // Workers materialize a source file locally only for the duration of parsing it.
+        'upload_disk' => env('STOCK_CUTOVER_CONSOLE_DISK', 's3'),
+        'report_disk' => env('STOCK_CUTOVER_CONSOLE_REPORT_DISK', env('STOCK_CUTOVER_CONSOLE_DISK', 's3')),
         'max_upload_kilobytes' => (int) env('STOCK_CUTOVER_CONSOLE_MAX_UPLOAD_KB', 10240),
     ],
 ];
