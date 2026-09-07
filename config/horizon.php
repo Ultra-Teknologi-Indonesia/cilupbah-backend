@@ -86,8 +86,7 @@ return [
             'timeout' => 60,
             'nice' => 0,
         ],
-        // Queue transaksi dengan karakteristik sama digabung agar tidak
-        // mempertahankan tiga worker PHP saat sistem sedang idle.
+
         'supervisor-order-operations' => [
             'connection' => 'redis',
             'queue' => ['orders', 'fulfillment', 'stock-sync'],
@@ -114,8 +113,7 @@ return [
             'memory' => 128,
             'nice' => 0,
         ],
-        // Keempat antrean di bawah memiliki timeout dan retry yang sama. Satu
-        // pool autoscale menjaga respons webhook tanpa empat worker idle.
+
         'supervisor-channel-operations' => [
             'connection' => 'redis',
             'queue' => [

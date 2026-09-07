@@ -88,7 +88,7 @@ class InventoryServiceProvider extends ModuleServiceProvider
             ->onOneServer();
 
         $schedule->command('replenishment:auto-detect')
-            // Tidak berbarengan dengan audit per jam dan job channel pada menit 00/30.
+
             ->cron('7,37 * * * *')
             ->withoutOverlapping()
             ->onOneServer()

@@ -1,10 +1,7 @@
 <?php
 
 return [
-    /*
-     * Pembersihan dilakukan secara bertahap oleh CronJob terpisah. Nilai per
-     * proses dibatasi agar tidak mengambil lock panjang pada tabel operasional.
-     */
+
     'batch_size' => max(100, (int) env('OPERATIONAL_RETENTION_BATCH_SIZE', 500)),
     'max_rows_per_resource' => max(100, (int) env('OPERATIONAL_RETENTION_MAX_ROWS_PER_RESOURCE', 5000)),
 

@@ -67,9 +67,6 @@ final class CleanupImportFilesCommand extends Command
         return self::SUCCESS;
     }
 
-    /**
-     * @return array<int, array{label: string, disk: string, directory: string}>
-     */
     private function targets(): array
     {
         return [

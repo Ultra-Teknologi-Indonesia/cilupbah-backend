@@ -48,7 +48,7 @@ class SalesServiceProvider extends ModuleServiceProvider
     protected function configureSchedules(Schedule $schedule): void
     {
         $schedule->command('sales:cleanup-bulk-label-batches')
-            // Hindari lonjakan proses background bersamaan di awal jam.
+
             ->hourlyAt(23)
             ->withoutOverlapping()
             ->runInBackground();

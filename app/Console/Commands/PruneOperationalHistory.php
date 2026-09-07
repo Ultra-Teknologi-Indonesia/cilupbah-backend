@@ -70,10 +70,6 @@ final class PruneOperationalHistory extends Command
         return self::SUCCESS;
     }
 
-    /**
-     * @param  null|callable(Builder): Builder  $constrain
-     * @return array{rows: int, limited: bool}
-     */
     private function prune(
         string $table,
         string $dateColumn,
@@ -122,7 +118,6 @@ final class PruneOperationalHistory extends Command
                 break;
             }
 
-            // Satu batch kecil = lock pendek; transaksi penjualan tetap mendapat prioritas.
             $deleted += DB::table($table)->whereIn('id', $ids)->delete();
         }
 
