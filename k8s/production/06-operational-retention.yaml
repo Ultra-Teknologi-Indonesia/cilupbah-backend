@@ -1,0 +1,40 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cilupbah-operational-retention
+  namespace: cilupbah
+spec:
+  # UTC: 20:45 = 03:45 WIB, setelah backup database pukul 02:30 WIB.
+  schedule: "45 20 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 3600
+      template:
+        spec:
+          restartPolicy: Never
+          imagePullSecrets:
+            - name: ghcr-creds
+          containers:
+            - name: operational-retention
+              image: ghcr.io/ultra-teknologi-indonesia/cilupbah:v1.0.0
+              command: ["sh", "-ec"]
+              args:
+                - |
+                  # Saat rollout, manifest CronJob diterapkan sebelum migrasi.
+                  # Lewati satu jadwal bila indeks retensi belum tersedia.
+                  php artisan tinker --no-ansi --execute='exit(\Illuminate\Support\Facades\DB::table("migrations")->where("migration", "2026_09_07_100000_add_operational_retention_indexes")->exists() ? 0 : 1);' || exit 0
+                  exec php artisan operations:prune-history
+              envFrom:
+                - secretRef:
+                    name: cilupbah-env
+              resources:
+                requests:
+                  memory: "128Mi"
+                  cpu: "100m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"

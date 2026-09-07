@@ -88,7 +88,8 @@ class InventoryServiceProvider extends ModuleServiceProvider
             ->onOneServer();
 
         $schedule->command('replenishment:auto-detect')
-            ->everyThirtyMinutes()
+            // Tidak berbarengan dengan audit per jam dan job channel pada menit 00/30.
+            ->cron('7,37 * * * *')
             ->withoutOverlapping()
             ->onOneServer()
             ->runInBackground();
@@ -99,7 +100,7 @@ class InventoryServiceProvider extends ModuleServiceProvider
             ->runInBackground();
 
         $schedule->command('inventory:audit-transaction-integrity --since=2 --fail-on-issue')
-            ->hourly()
+            ->hourlyAt(17)
             ->withoutOverlapping()
             ->onOneServer()
             ->runInBackground();

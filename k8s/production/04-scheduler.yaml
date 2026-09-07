@@ -28,10 +28,10 @@ spec:
           # 13 Agu 2026) dan menyebabkan token channel kedaluwarsa tanpa sempat di-refresh.
           resources:
             requests:
-              memory: "256Mi"
-              cpu: "50m"
+              memory: "512Mi"
+              cpu: "100m"
             limits:
-              memory: "1280Mi"
+              memory: "1536Mi"
               cpu: "500m"
           # Deteksi scheduler yang hang (hidup tapi berhenti menjadwalkan):
           # task 'scheduler-heartbeat' (routes/console.php) menyentuh file ini

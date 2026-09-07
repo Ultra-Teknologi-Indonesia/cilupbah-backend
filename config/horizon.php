@@ -74,7 +74,7 @@ return [
     'defaults' => [
         'supervisor-default' => [
             'connection' => 'redis',
-            'queue' => ['default', 'notifications', env('WEBHOOK_QUEUE', 'webhooks')],
+            'queue' => ['default', 'notifications', env('WEBHOOK_QUEUE', 'webhooks'), 'failed-jobs'],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',
             'minProcesses' => 1,
@@ -86,9 +86,11 @@ return [
             'timeout' => 60,
             'nice' => 0,
         ],
-        'supervisor-orders' => [
+        // Queue transaksi dengan karakteristik sama digabung agar tidak
+        // mempertahankan tiga worker PHP saat sistem sedang idle.
+        'supervisor-order-operations' => [
             'connection' => 'redis',
-            'queue' => ['orders'],
+            'queue' => ['orders', 'fulfillment', 'stock-sync'],
             'balance' => 'auto',
             'minProcesses' => 1,
             'maxProcesses' => 4,
@@ -97,32 +99,6 @@ return [
             'tries' => 3,
             'backoff' => [5, 15, 30],
             'memory' => 256,
-            'nice' => 0,
-        ],
-        'supervisor-fulfillment' => [
-            'connection' => 'redis',
-            'queue' => ['fulfillment'],
-            'balance' => 'auto',
-            'minProcesses' => 1,
-            'maxProcesses' => 2,
-            'maxJobs' => 500,
-            'timeout' => 60,
-            'tries' => 3,
-            'backoff' => [5, 15, 30],
-            'memory' => 128,
-            'nice' => 0,
-        ],
-        'supervisor-stock-sync' => [
-            'connection' => 'redis',
-            'queue' => ['stock-sync'],
-            'balance' => 'auto',
-            'minProcesses' => 1,
-            'maxProcesses' => 2,
-            'maxJobs' => 500,
-            'timeout' => 60,
-            'tries' => 3,
-            'backoff' => [5, 15, 30],
-            'memory' => 128,
             'nice' => 0,
         ],
         'supervisor-channel-sync' => [
@@ -138,31 +114,24 @@ return [
             'memory' => 128,
             'nice' => 0,
         ],
-        'supervisor-channel-cancellation' => [
+        // Keempat antrean di bawah memiliki timeout dan retry yang sama. Satu
+        // pool autoscale menjaga respons webhook tanpa empat worker idle.
+        'supervisor-channel-operations' => [
             'connection' => 'redis',
-            'queue' => [env('QUEUE_NAME_CHANNEL_CANCELLATION', 'channel-cancellation')],
-            'balance' => 'simple',
+            'queue' => [
+                env('QUEUE_NAME_CHANNEL_CANCELLATION', 'channel-cancellation'),
+                env('QUEUE_NAME_CHANNEL_STOCK', 'channel-stock'),
+                env('QUEUE_NAME_CHANNEL_FINANCE', 'channel-finance'),
+                env('QUEUE_NAME_CHANNEL_FULFILLMENT', 'channel-fulfillment'),
+            ],
+            'balance' => 'auto',
             'minProcesses' => 1,
-            'maxProcesses' => 1,
-            'maxJobs' => 100,
+            'maxProcesses' => 3,
+            'maxJobs' => 250,
             'maxTime' => 1800,
             'timeout' => 60,
             'tries' => 3,
-            'backoff' => [5, 15, 30],
-            'memory' => 128,
-            'nice' => 0,
-        ],
-        'supervisor-channel-stock' => [
-            'connection' => 'redis',
-            'queue' => [env('QUEUE_NAME_CHANNEL_STOCK', 'channel-stock')],
-            'balance' => 'simple',
-            'minProcesses' => 1,
-            'maxProcesses' => 1,
-            'maxJobs' => 100,
-            'maxTime' => 1800,
-            'timeout' => 60,
-            'tries' => 3,
-            'backoff' => [5, 15, 30],
+            'backoff' => [10, 30, 60],
             'memory' => 128,
             'nice' => 0,
         ],
@@ -180,20 +149,6 @@ return [
             'memory' => 256,
             'nice' => 0,
         ],
-        'supervisor-channel-finance' => [
-            'connection' => 'redis',
-            'queue' => [env('QUEUE_NAME_CHANNEL_FINANCE', 'channel-finance')],
-            'balance' => 'simple',
-            'minProcesses' => 1,
-            'maxProcesses' => 1,
-            'maxJobs' => 250,
-            'maxTime' => 1800,
-            'timeout' => 60,
-            'tries' => 3,
-            'backoff' => [15, 60, 180],
-            'memory' => 128,
-            'nice' => 0,
-        ],
         'supervisor-channel-after-sales' => [
             'connection' => config('queue.routing.channel_after_sales.connection', 'redis-long'),
             'queue' => [config('queue.routing.channel_after_sales.queue', 'channel-after-sales')],
@@ -206,32 +161,6 @@ return [
             'tries' => 5,
             'backoff' => [30, 120, 300, 600, 1200],
             'memory' => 256,
-            'nice' => 0,
-        ],
-        'supervisor-channel-fulfillment' => [
-            'connection' => 'redis',
-            'queue' => [env('QUEUE_NAME_CHANNEL_FULFILLMENT', 'channel-fulfillment')],
-            'balance' => 'simple',
-            'minProcesses' => 1,
-            'maxProcesses' => 1,
-            'maxJobs' => 100,
-            'maxTime' => 1800,
-            'timeout' => 60,
-            'tries' => 3,
-            'backoff' => [10, 30, 60],
-            'memory' => 128,
-            'nice' => 0,
-        ],
-        'supervisor-failed-jobs' => [
-            'connection' => 'redis',
-            'queue' => ['failed-jobs'],
-            'balance' => 'auto',
-            'minProcesses' => 1,
-            'maxProcesses' => 2,
-            'maxJobs' => 500,
-            'timeout' => 60,
-            'tries' => 1,
-            'memory' => 128,
             'nice' => 0,
         ],
         'supervisor-stock' => [
@@ -367,25 +296,17 @@ return [
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
-            'supervisor-orders' => [
+            'supervisor-order-operations' => [
                 'minProcesses' => 1,
-                'maxProcesses' => 3,
-            ],
-            'supervisor-fulfillment' => [
-                'minProcesses' => 1,
-                'maxProcesses' => 2,
-            ],
-            'supervisor-stock-sync' => [
-                'minProcesses' => 1,
-                'maxProcesses' => 2,
+                'maxProcesses' => 4,
             ],
             'supervisor-channel-sync' => [
                 'minProcesses' => 1,
                 'maxProcesses' => 2,
             ],
-            'supervisor-failed-jobs' => [
+            'supervisor-channel-operations' => [
                 'minProcesses' => 1,
-                'maxProcesses' => 2,
+                'maxProcesses' => 3,
             ],
             'supervisor-stock' => [
                 'minProcesses' => 1,
@@ -436,15 +357,7 @@ return [
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 5,
             ],
-            'supervisor-orders' => [
-                'minProcesses' => 1,
-                'maxProcesses' => 2,
-            ],
-            'supervisor-fulfillment' => [
-                'minProcesses' => 1,
-                'maxProcesses' => 1,
-            ],
-            'supervisor-stock-sync' => [
+            'supervisor-order-operations' => [
                 'minProcesses' => 1,
                 'maxProcesses' => 1,
             ],
@@ -452,7 +365,7 @@ return [
                 'minProcesses' => 1,
                 'maxProcesses' => 1,
             ],
-            'supervisor-failed-jobs' => [
+            'supervisor-channel-operations' => [
                 'minProcesses' => 1,
                 'maxProcesses' => 1,
             ],
@@ -494,25 +407,17 @@ return [
             'supervisor-default' => [
                 'maxProcesses' => 3,
             ],
-            'supervisor-orders' => [
+            'supervisor-order-operations' => [
                 'minProcesses' => 1,
                 'maxProcesses' => 3,
-            ],
-            'supervisor-fulfillment' => [
-                'minProcesses' => 1,
-                'maxProcesses' => 2,
-            ],
-            'supervisor-stock-sync' => [
-                'minProcesses' => 1,
-                'maxProcesses' => 2,
             ],
             'supervisor-channel-sync' => [
                 'minProcesses' => 1,
                 'maxProcesses' => 2,
             ],
-            'supervisor-failed-jobs' => [
+            'supervisor-channel-operations' => [
                 'minProcesses' => 1,
-                'maxProcesses' => 1,
+                'maxProcesses' => 2,
             ],
             'supervisor-stock' => [
                 'minProcesses' => 1,
