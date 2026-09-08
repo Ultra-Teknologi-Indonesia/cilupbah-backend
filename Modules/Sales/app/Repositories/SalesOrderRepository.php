@@ -789,11 +789,23 @@ class SalesOrderRepository
     public function upsertOrderBySalesOrderNo(string $salesOrderNo, array $orderData): ?SalesOrder
     {
         $channelOrderNo = $orderData['channel_order_no'] ?? null;
-        $existing = DB::table('sales_orders')
-            ->where('salesorder_no', $salesOrderNo)
-            ->when($channelOrderNo, fn ($q) => $q->orWhere('channel_order_no', $channelOrderNo))
-            ->lockForUpdate()
-            ->first();
+        $source = strtolower(trim((string) ($orderData['source'] ?? '')));
+        $channelShopId = $orderData['channel_shop_id'] ?? null;
+        $existingQuery = DB::table('sales_orders');
+
+        if ($source && $channelShopId && $channelOrderNo) {
+            $existingQuery
+                ->where('source', $source)
+                ->where('channel_shop_id', $channelShopId)
+                ->where(function ($query) use ($salesOrderNo, $channelOrderNo) {
+                    $query->where('salesorder_no', $salesOrderNo)
+                        ->orWhere('channel_order_no', $channelOrderNo);
+                });
+        } else {
+            $existingQuery->where('salesorder_no', $salesOrderNo);
+        }
+
+        $existing = $existingQuery->lockForUpdate()->first();
 
         $shippingProvider = $orderData['shipping_provider'] ?? ($existing->shipping_provider ?? null);
         $courierMapper = app(CourierMappingService::class);
@@ -809,7 +821,7 @@ class SalesOrderRepository
         }
         $channelInstant = array_key_exists('channel_instant', $orderData) ? $orderData['channel_instant'] : null;
         $source = strtolower(trim((string) ($orderData['source'] ?? ($existing->source ?? ''))));
-        $isChannelOrder = in_array($source, ['shopee', 'tiktok', 'lazada'], true);
+        $isChannelOrder = in_array($source, ['shopee', 'tiktok', 'lazada', 'woocommerce'], true);
         $resolvedShipmentType = $existing->resolved_shipment_type ?? null;
         if ($shippingProvider) {
             if ($channelInstant !== null || ! $isChannelOrder) {

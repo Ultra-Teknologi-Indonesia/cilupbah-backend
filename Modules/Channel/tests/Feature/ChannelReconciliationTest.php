@@ -11,6 +11,7 @@ use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\ChannelReconciliationService;
 use Modules\Channel\Services\ShopeeOrderService;
+use Modules\Channel\Services\WooCommerceOrderService;
 use Modules\Sales\Jobs\ProcessChannelReturnJob;
 use Modules\Sales\Models\SalesReturn;
 use Tests\TestCase;
@@ -47,6 +48,7 @@ class ChannelReconciliationTest extends TestCase
             'channel_order_no' => $channelOrderNo,
             'customer_name' => 'Budi',
             'source' => 'shopee',
+            'channel_shop_id' => 'SH-REC',
             'location_id' => $locationId,
             'status' => 'shipped',
             'created_at' => now(), 'updated_at' => now(),
@@ -107,6 +109,34 @@ class ChannelReconciliationTest extends TestCase
         Queue::assertPushed(ProcessChannelReturnJob::class, 1);
         Queue::assertPushed(ProcessChannelReturnJob::class, fn ($job) => ($job->payload['channel_return_id'] ?? null) === 'RSN-NEW'
             && ($job->payload['source'] ?? null) === 'shopee');
+    }
+
+    public function test_audit_includes_woocommerce_orders(): void
+    {
+        $channel = Channel::create(['code' => 'woocommerce', 'name' => 'WooCommerce', 'is_active' => true]);
+        ChannelShop::create([
+            'channel_id' => $channel->id,
+            'shop_id' => 'WC-REC',
+            'shop_name' => 'WooCommerce REC',
+            'access_token' => 'tok',
+            'refresh_token' => 'ref',
+            'is_active' => true,
+        ]);
+
+        $woocommerce = Mockery::mock(WooCommerceOrderService::class);
+        $woocommerce->shouldReceive('listRecentOrderIds')
+            ->once()
+            ->with('WC-REC', Mockery::type('int'))
+            ->andReturn(['WC-ORDER-1']);
+        $this->app->instance(WooCommerceOrderService::class, $woocommerce);
+
+        $report = app(ChannelReconciliationService::class)->auditOrders(2);
+
+        self::assertCount(1, $report);
+        self::assertSame('woocommerce', $report[0]['channel']);
+        self::assertSame(1, $report[0]['channel_count']);
+        self::assertSame(1, $report[0]['missing_count']);
+        self::assertSame(['WC-ORDER-1'], $report[0]['missing']);
     }
 
     public function test_command_skips_return_discovery_when_paused(): void

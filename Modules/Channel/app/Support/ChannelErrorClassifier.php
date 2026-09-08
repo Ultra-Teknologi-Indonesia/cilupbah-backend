@@ -3,6 +3,7 @@
 namespace Modules\Channel\Support;
 
 use Modules\Channel\Exceptions\ShopeeApiException;
+use Modules\Channel\Exceptions\ChannelOrderNotAvailableException;
 use Modules\Channel\Exceptions\TikTokApiException;
 use Modules\Channel\Exceptions\TokenExpiredException;
 
@@ -30,6 +31,10 @@ class ChannelErrorClassifier
 
     public static function isRetryable(string $channelCode, \Throwable $e): bool
     {
+        if ($e instanceof ChannelOrderNotAvailableException) {
+            return true;
+        }
+
         if ($e instanceof TokenExpiredException) {
             return false;
         }

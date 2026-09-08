@@ -95,6 +95,52 @@ class SyncOrderItemsTest extends TestCase
         ];
     }
 
+    public function test_channel_order_identity_is_scoped_to_channel_and_shop(): void
+    {
+        $payload = static function (string $salesOrderNo, string $shopId): array {
+            return [
+                'salesorder_no' => $salesOrderNo,
+                'channel_order_no' => 'ORDER-SAME',
+                'channel_shop_id' => $shopId,
+                'customer_name' => 'Buyer Test',
+                'transaction_date' => now(),
+                'sub_total' => 30000,
+                'total_disc' => 0,
+                'total_tax' => 0,
+                'shipping_cost' => 0,
+                'insurance_cost' => 0,
+                'grand_total' => 30000,
+                'shipping_full_name' => null,
+                'shipping_phone' => null,
+                'shipping_address' => null,
+                'shipping_city' => null,
+                'shipping_province' => null,
+                'shipping_post_code' => null,
+                'shipping_country' => null,
+                'channel_status' => 'UNPAID',
+                'status' => 'pending',
+                'is_paid' => false,
+                'payment_method' => null,
+                'source' => 'shopee',
+            ];
+        };
+
+        $first = $this->repository->upsertOrderBySalesOrderNo('SHOP-A-ORDER-SAME', $payload('SHOP-A-ORDER-SAME', 'SHOP-A'));
+        $second = $this->repository->upsertOrderBySalesOrderNo('SHOP-B-ORDER-SAME', $payload('SHOP-B-ORDER-SAME', 'SHOP-B'));
+        $same = $this->repository->upsertOrderBySalesOrderNo('SHOP-A-ORDER-RENAMED', $payload('SHOP-A-ORDER-RENAMED', 'SHOP-A'));
+
+        $this->assertNotNull($first);
+        $this->assertNotNull($second);
+        $this->assertNotNull($same);
+        $this->assertNotSame($first->id, $second->id);
+        $this->assertSame($first->id, $same->id);
+        $this->assertSame(2,
+            \Modules\Sales\Models\SalesOrder::query()
+                ->where('channel_order_no', 'ORDER-SAME')
+                ->count(),
+        );
+    }
+
     protected function createPicklistReferencing(string $orderId, string $orderItemId, string $variantId, string $sku): void
     {
         $locationId = Str::uuid()->toString();

@@ -151,6 +151,11 @@ class TikTokOrderService
         $res = $this->client->request('GET', '/order/202309/orders', $queries, [], $shop->access_token);
 
         if (! isset($res['data']['orders']) || empty($res['data']['orders'])) {
+            Log::warning('TikTok: order detail kosong setelah webhook/reconcile pull.', [
+                'shop_id' => $shopId,
+                'order_id' => $orderId,
+            ]);
+
             return 0;
         }
 
@@ -163,21 +168,26 @@ class TikTokOrderService
                 $this->dumpInstantPayloadForResearch($item, $shopId);
                 $internalData = $this->mapper->map($item, $shopId);
                 $internalData = $this->enrichTrackingFromPackages($internalData, $item, $shopCipher, $accessToken);
-                $orderId = $this->orderService->upsertFromChannel($internalData);
-                if ($orderId) {
+                $localOrderId = $this->orderService->upsertFromChannel($internalData);
+                if (! $localOrderId) {
+                    throw new \RuntimeException("TikTok order {$item['id']} tidak menghasilkan ID lokal setelah upsert.");
+                }
+
+                if ($localOrderId) {
                     try {
                         $statement = $this->getOrderStatement($shopId, (string) $item['id']);
                         if (! empty($statement)) {
                             $finance = app(\Modules\Channel\Services\TikTokStatementMapper::class)->map($statement);
-                            $this->orderService->updateOrderFinance($orderId, $finance);
+                            $this->orderService->updateOrderFinance($localOrderId, $finance);
                         }
                     } catch (\Throwable $e) {
 
                     }
                 }
                 $count++;
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 Log::error("Failed to pull specific order {$item['id']}: " . $e->getMessage());
+                throw $e;
             }
         }
 

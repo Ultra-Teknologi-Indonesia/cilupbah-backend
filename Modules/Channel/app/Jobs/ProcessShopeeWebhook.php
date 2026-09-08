@@ -15,6 +15,7 @@ use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Services\ChannelDownloadService;
 use Modules\Channel\Services\ChannelWebhookAuditService;
 use Modules\Channel\Services\ShopeeOrderService;
+use Modules\Channel\Support\ChannelOrderPullGuard;
 use Modules\Product\Models\ProductChannelMapping;
 
 class ProcessShopeeWebhook implements ShouldQueue
@@ -114,21 +115,26 @@ class ProcessShopeeWebhook implements ShouldQueue
             return;
         }
 
-        match ($code) {
-            self::PUSH_SHOP_DEAUTHORIZED => $this->handleDeauthorized($shopId),
-            self::PUSH_ORDER_STATUS,
-            self::PUSH_TRACKING_NO,
-            self::PUSH_SHIPPING_DOC,
-            self::PUSH_BOOKING_STATUS,
-            self::PUSH_BOOKING_TRACKING_NO,
-            self::PUSH_BOOKING_SHIPPING_DOC,
-            self::PUSH_PACKAGE_FULFILLMENT,
-            self::PUSH_COURIER_DELIVERY_BINDING => $this->handleOrderEventOrSkip($orderService, $shopId, $data),
-            self::PUSH_RETURN_UPDATE => $this->handleReturnEvent($orderService, $shopId, $data),
-            self::PUSH_RESERVED_STOCK_CHANGE,
-            self::PUSH_ITEM_PRICE_UPDATE => $this->logItemEvent($downloadService, $shopId, $data),
-            default => Log::info("Shopee webhook code {$code} belum ditangani — diabaikan.", ['shop_id' => $shopId]),
-        };
+        try {
+            match ($code) {
+                self::PUSH_SHOP_DEAUTHORIZED => $this->handleDeauthorized($shopId),
+                self::PUSH_ORDER_STATUS,
+                self::PUSH_TRACKING_NO,
+                self::PUSH_SHIPPING_DOC,
+                self::PUSH_BOOKING_STATUS,
+                self::PUSH_BOOKING_TRACKING_NO,
+                self::PUSH_BOOKING_SHIPPING_DOC,
+                self::PUSH_PACKAGE_FULFILLMENT,
+                self::PUSH_COURIER_DELIVERY_BINDING => $this->handleOrderEventOrSkip($orderService, $shopId, $data),
+                self::PUSH_RETURN_UPDATE => $this->handleReturnEvent($orderService, $shopId, $data),
+                self::PUSH_RESERVED_STOCK_CHANGE,
+                self::PUSH_ITEM_PRICE_UPDATE => $this->logItemEvent($downloadService, $shopId, $data),
+                default => Log::info("Shopee webhook code {$code} belum ditangani — diabaikan.", ['shop_id' => $shopId]),
+            };
+        } catch (\Throwable $e) {
+            Cache::forget($idempotencyKey);
+            throw $e;
+        }
 
         if (! $this->orderIntakeSkipped && in_array($code, [
             self::PUSH_TRACKING_NO,
@@ -258,7 +264,17 @@ class ProcessShopeeWebhook implements ShouldQueue
         }
 
         Cache::put($recentKey, true, 15);
-        $orderService->pullOrderById($shopId, $orderSn);
+        try {
+            ChannelOrderPullGuard::requirePersisted(
+                'shopee',
+                $shopId,
+                $orderSn,
+                $orderService->pullOrderById($shopId, $orderSn),
+            );
+        } catch (\Throwable $e) {
+            Cache::forget($recentKey);
+            throw $e;
+        }
 
         $this->recordDeliveredEventIfApplicable($orderSn, $data);
     }
@@ -319,7 +335,12 @@ class ProcessShopeeWebhook implements ShouldQueue
             return;
         }
 
-        $orderService->pullOrderById($shopId, $orderSn);
+        ChannelOrderPullGuard::requirePersisted(
+            'shopee',
+            $shopId,
+            $orderSn,
+            $orderService->pullOrderById($shopId, $orderSn),
+        );
 
         \Modules\Sales\Jobs\ProcessChannelReturnJob::dispatch([
             'source'            => 'shopee',

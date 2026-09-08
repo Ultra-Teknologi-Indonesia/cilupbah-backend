@@ -16,6 +16,7 @@ use Modules\Channel\Services\TikTokAuthService;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Channel\Services\ChannelWebhookAuditService;
 use Modules\Channel\Services\WebhookProductHandler;
+use Modules\Channel\Support\ChannelOrderPullGuard;
 
 class ProcessTikTokWebhook implements ShouldQueue
 {
@@ -241,7 +242,17 @@ class ProcessTikTokWebhook implements ShouldQueue
         }
 
         Cache::put($recentKey, true, 15);
-        $orderService->pullOrderById($shopId, $orderId);
+        try {
+            ChannelOrderPullGuard::requirePersisted(
+                'tiktok',
+                $shopId,
+                $orderId,
+                $orderService->pullOrderById($shopId, $orderId),
+            );
+        } catch (\Throwable $e) {
+            Cache::forget($recentKey);
+            throw $e;
+        }
         $this->recordTikTokTrackingEvent($orderId, $data);
     }
 
@@ -261,7 +272,12 @@ class ProcessTikTokWebhook implements ShouldQueue
         }
 
         foreach (array_keys($orderIds) as $orderId) {
-            $orderService->pullOrderById($shopId, $orderId);
+            ChannelOrderPullGuard::requirePersisted(
+                'tiktok',
+                $shopId,
+                $orderId,
+                $orderService->pullOrderById($shopId, $orderId),
+            );
 
             $localId = \Modules\Sales\Models\SalesOrder::query()
                 ->where('source', 'tiktok')
@@ -282,7 +298,12 @@ class ProcessTikTokWebhook implements ShouldQueue
             return;
         }
 
-        $orderService->pullOrderById($shopId, $orderId);
+        ChannelOrderPullGuard::requirePersisted(
+            'tiktok',
+            $shopId,
+            $orderId,
+            $orderService->pullOrderById($shopId, $orderId),
+        );
 
         $cancelStatus = (string) ($data['cancel_status'] ?? '');
 
@@ -306,7 +327,12 @@ class ProcessTikTokWebhook implements ShouldQueue
             return;
         }
 
-        $orderService->pullOrderById($shopId, $orderId);
+        ChannelOrderPullGuard::requirePersisted(
+            'tiktok',
+            $shopId,
+            $orderId,
+            $orderService->pullOrderById($shopId, $orderId),
+        );
         Log::info("TikTok reverse/return: order {$orderId} resynced.", [
             'shop_id' => $shopId,
             'return_status' => $data['return_status'] ?? null,
@@ -341,7 +367,12 @@ class ProcessTikTokWebhook implements ShouldQueue
             return;
         }
 
-        $orderService->pullOrderById($shopId, $orderId);
+        ChannelOrderPullGuard::requirePersisted(
+            'tiktok',
+            $shopId,
+            $orderId,
+            $orderService->pullOrderById($shopId, $orderId),
+        );
 
         $this->createChannelReturn(
             $shopId,

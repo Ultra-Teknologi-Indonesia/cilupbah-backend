@@ -746,8 +746,15 @@ class SalesOrderService
     {
         try {
             if (strtolower((string) $order->source) === 'tiktok') {
-                app(TikTokOrderService::class)
-                    ->pullOrderById($order->channel_shop_id, $order->salesorder_no);
+                $pulled = app(TikTokOrderService::class)
+                    ->pullOrderById($order->channel_shop_id, $order->channel_order_no);
+
+                \Modules\Channel\Support\ChannelOrderPullGuard::requirePersisted(
+                    'tiktok',
+                    (string) $order->channel_shop_id,
+                    (string) $order->channel_order_no,
+                    $pulled,
+                );
             }
         } catch (\Throwable $e) {
             Log::warning('requestChannelCancel: gagal refresh status mentah TikTok: '.$e->getMessage());
@@ -2127,11 +2134,22 @@ class SalesOrderService
             DB::beginTransaction();
 
             $channelOrderNo = $orderData['channel_order_no'] ?? null;
-            $existing = DB::table('sales_orders')
-                ->where('salesorder_no', $orderData['salesorder_no'])
-                ->when($channelOrderNo, fn ($q) => $q->orWhere('channel_order_no', $channelOrderNo))
-                ->lockForUpdate()
-                ->first();
+            $channelShopId = $orderData['channel_shop_id'] ?? null;
+            $existingQuery = DB::table('sales_orders');
+
+            if ($source && $channelShopId && $channelOrderNo) {
+                $existingQuery
+                    ->where('source', $source)
+                    ->where('channel_shop_id', $channelShopId)
+                    ->where(function ($query) use ($orderData, $channelOrderNo) {
+                        $query->where('salesorder_no', $orderData['salesorder_no'])
+                            ->orWhere('channel_order_no', $channelOrderNo);
+                    });
+            } else {
+                $existingQuery->where('salesorder_no', $orderData['salesorder_no']);
+            }
+
+            $existing = $existingQuery->lockForUpdate()->first();
 
             $wasNewOrder = $existing === null;
             $previousStatus = $existing?->status;

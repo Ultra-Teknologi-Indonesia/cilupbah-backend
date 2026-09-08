@@ -47,6 +47,23 @@ class WooCommerceOrderService
         return $count;
     }
 
+    public function listRecentOrderIds(string $shopId, ?int $updatedAfter = null): array
+    {
+        $shop = $this->requireShop($shopId);
+        $after = Carbon::createFromTimestamp($updatedAfter ?: now()->subDays(2)->timestamp);
+
+        $orders = $this->client->paginate($shop, 'orders', [
+            'after' => $after->toIso8601String(),
+            'orderby' => 'modified',
+            'order' => 'asc',
+        ]);
+
+        return array_values(array_filter(array_map(
+            static fn (array $order): string => (string) ($order['id'] ?? ''),
+            $orders,
+        )));
+    }
+
     public function pullOrderById(string $shopId, string $orderId): int
     {
         $shop = $this->requireShop($shopId);

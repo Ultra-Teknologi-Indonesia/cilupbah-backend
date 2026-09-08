@@ -18,6 +18,7 @@ use Modules\Channel\Services\ChannelWebhookAuditService;
 use Modules\Channel\Services\LazadaAuthService;
 use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Support\ChannelOrderIntakeGate;
+use Modules\Channel\Support\ChannelOrderPullGuard;
 use Modules\Channel\Support\WebhookFailureHandler;
 use Modules\Outbound\Jobs\RefreshInstantTrackingJob;
 use Modules\Outbound\Models\Shipment;
@@ -130,14 +131,19 @@ class ProcessLazadaWebhook implements ShouldQueue
             return;
         }
 
-        match ($messageType) {
-            self::MSG_ORDER => $this->handleOrderEvent($orderService, $sellerId, $data),
-            self::MSG_PRODUCT, self::MSG_PRODUCT_ALT, self::MSG_PRODUCT_CREATE, self::MSG_PRODUCT_EDIT, self::MSG_PRODUCT_DELETE => $this->handleProductEvent($downloadService, $sellerId, $data),
-            self::MSG_REVERSE => $this->handleReverseEvent($orderService, $sellerId, $data),
-            self::MSG_FULFILLMENT => $this->handleFulfillmentEvent($orderService, $sellerId, $data),
-            self::MSG_SELLER_STATUS => $this->handleSellerStatus($sellerId, $data),
-            default => $this->handleUnknown($orderService, $sellerId, $data, $messageType),
-        };
+        try {
+            match ($messageType) {
+                self::MSG_ORDER => $this->handleOrderEvent($orderService, $sellerId, $data),
+                self::MSG_PRODUCT, self::MSG_PRODUCT_ALT, self::MSG_PRODUCT_CREATE, self::MSG_PRODUCT_EDIT, self::MSG_PRODUCT_DELETE => $this->handleProductEvent($downloadService, $sellerId, $data),
+                self::MSG_REVERSE => $this->handleReverseEvent($orderService, $sellerId, $data),
+                self::MSG_FULFILLMENT => $this->handleFulfillmentEvent($orderService, $sellerId, $data),
+                self::MSG_SELLER_STATUS => $this->handleSellerStatus($sellerId, $data),
+                default => $this->handleUnknown($orderService, $sellerId, $data, $messageType),
+            };
+        } catch (\Throwable $e) {
+            Cache::forget($idempotencyKey);
+            throw $e;
+        }
 
         if (! $this->orderIntakeSkipped && $webhookAudit) {
             $webhookAudit->recordFromInbox('lazada', self::idempotencyKey($this->payload), $this->payload);
@@ -228,7 +234,17 @@ class ProcessLazadaWebhook implements ShouldQueue
             $recentKey = "lazada_pulled_recent:{$sellerId}:{$orderId}";
             if (! Cache::has($recentKey)) {
                 Cache::put($recentKey, true, 15);
-                $orderService->pullOrderById($sellerId, $orderId);
+                try {
+                    ChannelOrderPullGuard::requirePersisted(
+                        'lazada',
+                        $sellerId,
+                        $orderId,
+                        $orderService->pullOrderById($sellerId, $orderId),
+                    );
+                } catch (\Throwable $e) {
+                    Cache::forget($recentKey);
+                    throw $e;
+                }
             }
         }
 
@@ -264,14 +280,17 @@ class ProcessLazadaWebhook implements ShouldQueue
         Cache::put($recentKey, true, 15);
 
         try {
-            $orderService->pullOrderById($sellerId, $orderId);
-            $this->recordLazadaTrackingEvent($orderId, $data);
+            ChannelOrderPullGuard::requirePersisted(
+                'lazada',
+                $sellerId,
+                $orderId,
+                $orderService->pullOrderById($sellerId, $orderId),
+            );
         } catch (\Throwable $e) {
-            Log::warning('Gagal memproses Lazada order webhook: '.$e->getMessage(), [
-                'seller_id' => $sellerId,
-                'order_id' => $orderId,
-            ]);
+            Cache::forget($recentKey);
+            throw $e;
         }
+        $this->recordLazadaTrackingEvent($orderId, $data);
     }
 
     protected function recordLazadaTrackingEvent(string $orderId, array $data): void

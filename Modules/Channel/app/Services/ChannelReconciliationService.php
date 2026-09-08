@@ -15,11 +15,12 @@ class ChannelReconciliationService
         private ShopeeOrderService $shopee,
         private TikTokOrderService $tiktok,
         private LazadaOrderService $lazada,
+        private WooCommerceOrderService $woocommerce,
         private ChannelShopRepository $shops,
         private SalesReturnRepository $returns,
     ) {}
 
-    private const CHANNELS = ['shopee', 'tiktok', 'lazada'];
+    private const CHANNELS = ['shopee', 'tiktok', 'lazada', 'woocommerce'];
 
     public function auditOrders(int $days = 2): array
     {
@@ -35,6 +36,7 @@ class ChannelReconciliationService
 
                     $localIds = SalesOrder::query()
                         ->where('source', $code)
+                        ->where('channel_shop_id', (string) $shop->shop_id)
                         ->whereIn('channel_order_no', $channelIds)
                         ->pluck('channel_order_no')
                         ->all();
@@ -71,6 +73,7 @@ class ChannelReconciliationService
             'shopee' => $this->shopee,
             'tiktok' => $this->tiktok,
             'lazada' => $this->lazada,
+            'woocommerce' => $this->woocommerce,
             default => null,
         };
 
@@ -154,6 +157,7 @@ class ChannelReconciliationService
             'shopee' => $this->shopee->listRecentOrderIds($shopId, now()->subDays($days)->timestamp),
             'tiktok' => $this->tiktok->listRecentOrderIds($shopId),
             'lazada' => $this->lazada->listRecentOrderIds($shopId, now()->subDays($days)->toIso8601String()),
+            'woocommerce' => $this->woocommerce->listRecentOrderIds($shopId, now()->subDays($days)->timestamp),
             default => null,
         };
     }

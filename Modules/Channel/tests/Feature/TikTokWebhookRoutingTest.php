@@ -3,7 +3,9 @@
 namespace Modules\Channel\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Mockery;
+use Modules\Channel\Exceptions\ChannelOrderNotAvailableException;
 use Modules\Channel\Jobs\ProcessTikTokWebhook;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
@@ -40,7 +42,7 @@ class TikTokWebhookRoutingTest extends TestCase
     public function test_type_1_order_status_pulls_order(): void
     {
         $order = Mockery::mock(TikTokOrderService::class);
-        $order->shouldReceive('pullOrderById')->once()->with('TT1', 'O-1');
+        $order->shouldReceive('pullOrderById')->once()->with('TT1', 'O-1')->andReturn(1);
 
         $this->process(
             ['type' => 1, 'shop_id' => 'TT1', 'tts_notification_id' => 'n1',
@@ -52,8 +54,8 @@ class TikTokWebhookRoutingTest extends TestCase
     public function test_type_4_package_update_pulls_each_order(): void
     {
         $order = Mockery::mock(TikTokOrderService::class);
-        $order->shouldReceive('pullOrderById')->once()->with('TT1', '152523');
-        $order->shouldReceive('pullOrderById')->once()->with('TT1', '532123');
+        $order->shouldReceive('pullOrderById')->once()->with('TT1', '152523')->andReturn(1);
+        $order->shouldReceive('pullOrderById')->once()->with('TT1', '532123')->andReturn(1);
 
         $this->process(
             ['type' => 4, 'shop_id' => 'TT1', 'tts_notification_id' => 'n4',
@@ -68,7 +70,7 @@ class TikTokWebhookRoutingTest extends TestCase
     {
 
         $order = Mockery::mock(TikTokOrderService::class);
-        $order->shouldReceive('pullOrderById')->once()->with('TT1', 'O-11');
+        $order->shouldReceive('pullOrderById')->once()->with('TT1', 'O-11')->andReturn(1);
 
         $this->process(
             ['type' => 11, 'shop_id' => 'TT1', 'tts_notification_id' => 'n11',
@@ -82,7 +84,7 @@ class TikTokWebhookRoutingTest extends TestCase
     {
 
         $order = Mockery::mock(TikTokOrderService::class);
-        $order->shouldReceive('pullOrderById')->once()->with('TT1', 'O-2');
+        $order->shouldReceive('pullOrderById')->once()->with('TT1', 'O-2')->andReturn(1);
 
         $this->process(
             ['type' => 2, 'shop_id' => 'TT1', 'tts_notification_id' => 'n2',
@@ -94,7 +96,7 @@ class TikTokWebhookRoutingTest extends TestCase
     public function test_type_12_return_status_repulls_order(): void
     {
         $order = Mockery::mock(TikTokOrderService::class);
-        $order->shouldReceive('pullOrderById')->once()->with('TT1', 'O-12');
+        $order->shouldReceive('pullOrderById')->once()->with('TT1', 'O-12')->andReturn(1);
 
         $this->process(
             ['type' => 12, 'shop_id' => 'TT1', 'tts_notification_id' => 'n12',
@@ -107,7 +109,7 @@ class TikTokWebhookRoutingTest extends TestCase
     public function test_type_67_refund_success_pulls_main_order(): void
     {
         $order = Mockery::mock(TikTokOrderService::class);
-        $order->shouldReceive('pullOrderById')->once()->with('TT1', '789456123');
+        $order->shouldReceive('pullOrderById')->once()->with('TT1', '789456123')->andReturn(1);
 
         $this->process(
             ['type' => 67, 'shop_id' => 'TT1', 'tts_notification_id' => 'n67',
@@ -197,12 +199,37 @@ class TikTokWebhookRoutingTest extends TestCase
     public function test_duplicate_notification_id_is_processed_once(): void
     {
         $order = Mockery::mock(TikTokOrderService::class);
-        $order->shouldReceive('pullOrderById')->once()->with('TT1', 'O-1');
+        $order->shouldReceive('pullOrderById')->once()->with('TT1', 'O-1')->andReturn(1);
 
         $payload = ['type' => 1, 'shop_id' => 'TT1', 'tts_notification_id' => 'dup-1',
             'data' => ['order_id' => 'O-1', 'order_status' => 'UNPAID']];
 
         $this->process($payload, $order);
         $this->process($payload, $order); 
+    }
+
+    public function test_empty_order_pull_throws_and_releases_idempotency_for_retry(): void
+    {
+        $order = Mockery::mock(TikTokOrderService::class);
+        $order->shouldReceive('pullOrderById')
+            ->once()
+            ->with('TT1', 'O-EMPTY')
+            ->andReturn(0);
+
+        $payload = [
+            'type' => 1,
+            'shop_id' => 'TT1',
+            'tts_notification_id' => 'empty-order-retry',
+            'data' => ['order_id' => 'O-EMPTY', 'order_status' => 'UNPAID'],
+        ];
+
+        $this->expectException(ChannelOrderNotAvailableException::class);
+
+        try {
+            $this->process($payload, $order);
+        } finally {
+            self::assertFalse(Cache::has(ProcessTikTokWebhook::idempotencyKey($payload)));
+            self::assertFalse(Cache::has('tiktok_pulled_recent:TT1:O-EMPTY'));
+        }
     }
 }

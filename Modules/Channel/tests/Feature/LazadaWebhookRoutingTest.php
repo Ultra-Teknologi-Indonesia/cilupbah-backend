@@ -79,7 +79,7 @@ class LazadaWebhookRoutingTest extends TestCase
     public function test_reverse_message_repulls_order(): void
     {
         $order = Mockery::mock(LazadaOrderService::class);
-        $order->shouldReceive('pullOrderById')->once()->with('LZ1', 'RO-1');
+        $order->shouldReceive('pullOrderById')->once()->with('LZ1', 'RO-1')->andReturn(1);
 
         $this->process(
             ['seller_id' => 'LZ1', 'message_type' => 99, 'data' => ['reverse_order_id' => 'RO-1']],
@@ -132,7 +132,7 @@ class LazadaWebhookRoutingTest extends TestCase
     public function test_explicit_reverse_type_10_repulls_order(): void
     {
         $order = Mockery::mock(LazadaOrderService::class);
-        $order->shouldReceive('pullOrderById')->once()->with('LZ1', 'TO-1');
+        $order->shouldReceive('pullOrderById')->once()->with('LZ1', 'TO-1')->andReturn(1);
 
         $this->process(
             ['seller_id' => 'LZ1', 'message_type' => 10, 'data' => ['trade_order_id' => 'TO-1', 'reverse_order_id' => 'RO-9', 'reverse_status' => 'RTM_INIT']],
@@ -145,7 +145,7 @@ class LazadaWebhookRoutingTest extends TestCase
     public function test_fulfillment_type_14_delivered_repulls_order(): void
     {
         $order = Mockery::mock(LazadaOrderService::class);
-        $order->shouldReceive('pullOrderById')->once()->with('LZ1', 'TO-14');
+        $order->shouldReceive('pullOrderById')->once()->with('LZ1', 'TO-14')->andReturn(1);
 
         $this->process(
             ['seller_id' => 'LZ1', 'message_type' => 14, 'data' => ['trade_order_id' => 'TO-14', 'status' => 'DELIVERED']],

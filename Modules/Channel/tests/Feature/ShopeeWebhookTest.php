@@ -167,7 +167,7 @@ class ShopeeWebhookTest extends TestCase
         Queue::fake();
 
         $orderService = Mockery::mock(ShopeeOrderService::class);
-        $orderService->shouldReceive('pullOrderById')->once()->with('778899', '2606SHOPEE01');
+        $orderService->shouldReceive('pullOrderById')->once()->with('778899', '2606SHOPEE01')->andReturn(1);
 
         (new ProcessShopeeWebhook($this->orderPayload([
             'code' => 29,

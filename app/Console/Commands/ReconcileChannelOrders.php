@@ -13,7 +13,7 @@ class ReconcileChannelOrders extends Command
         {--days=2 : Bandingkan order channel dalam N hari terakhir}
         {--backfill-limit=50 : Maksimum order hilang yang ditarik ulang per toko}';
 
-    protected $description = 'Audit order channel vs lokal, tarik ulang order yang belum masuk, dan discovery retur Shopee yang belum tercatat.';
+    protected $description = 'Audit order semua channel vs lokal, tarik ulang order yang belum masuk, dan discovery retur Shopee yang belum tercatat.';
 
     public function handle(ChannelReconciliationService $reconciliation, ChannelSyncSettingService $sync): int
     {

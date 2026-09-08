@@ -14,6 +14,7 @@ use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Services\ChannelDownloadService;
 use Modules\Channel\Services\ChannelWebhookAuditService;
 use Modules\Channel\Services\WooCommerceOrderService;
+use Modules\Channel\Support\ChannelOrderPullGuard;
 
 class ProcessWooCommerceWebhook implements ShouldQueue
 {
@@ -70,13 +71,18 @@ class ProcessWooCommerceWebhook implements ShouldQueue
 
         $resource = strtok($this->topic, '.');
 
-        match ($resource) {
-            'order' => $this->handleOrderEvent($orderService),
-            'product' => $this->handleProductEvent($downloadService),
-            default => Log::info("WooCommerce webhook topic '{$this->topic}' belum ditangani — diabaikan.", [
-                'shop_id' => $this->shopId,
-            ]),
-        };
+        try {
+            match ($resource) {
+                'order' => $this->handleOrderEvent($orderService),
+                'product' => $this->handleProductEvent($downloadService),
+                default => Log::info("WooCommerce webhook topic '{$this->topic}' belum ditangani — diabaikan.", [
+                    'shop_id' => $this->shopId,
+                ]),
+            };
+        } catch (\Throwable $e) {
+            Cache::forget($idempotencyKey);
+            throw $e;
+        }
 
         $eventKey = self::idempotencyKey($this->shopId, $this->topic, $this->payload);
 
@@ -105,7 +111,12 @@ class ProcessWooCommerceWebhook implements ShouldQueue
             return;
         }
 
-        $orderService->pullOrderById($this->shopId, $this->resourceId);
+        ChannelOrderPullGuard::requirePersisted(
+            'woocommerce',
+            $this->shopId,
+            $this->resourceId,
+            $orderService->pullOrderById($this->shopId, $this->resourceId),
+        );
 
         if ($this->topic === 'order.deleted') {
             return;
