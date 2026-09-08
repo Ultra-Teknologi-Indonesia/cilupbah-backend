@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Jobs\SyncStockToChannelsJob;
 use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Support\InventoryMovementSourceMap;
@@ -185,15 +186,15 @@ class StockService
         ?string $createdBy = null,
         ?\DateTimeInterface $transactionDate = null,
         ?string $referenceNumber = null,
-    ): void {
+    ): ?InventoryMovement {
         if ($qty <= 0) {
-            return;
+            return null;
         }
 
         $this->inboundBinPolicy->assertConsumable($locationId, $binId, 'pemotongan stok');
 
-        $this->withStockLock($itemId, $locationId, function () use ($sku, $itemId, $locationId, $binId, $qty, $transactionNumber, $source, $createdBy, $transactionDate, $referenceNumber) {
-            DB::transaction(function () use ($sku, $itemId, $locationId, $binId, $qty, $transactionNumber, $source, $createdBy, $transactionDate, $referenceNumber) {
+        return $this->withStockLock($itemId, $locationId, function () use ($sku, $itemId, $locationId, $binId, $qty, $transactionNumber, $source, $createdBy, $transactionDate, $referenceNumber) {
+            return DB::transaction(function () use ($sku, $itemId, $locationId, $binId, $qty, $transactionNumber, $source, $createdBy, $transactionDate, $referenceNumber) {
                 $binRow = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, $binId);
                 $onHand = (int) $binRow->on_hand;
 
@@ -205,7 +206,7 @@ class StockService
                 $binRow->recalculateAvailable();
                 $this->inventoryRepository->updateStock($binRow);
 
-                $this->movementRepository->create([
+                return $this->movementRepository->create([
                     'item_id' => $itemId,
                     'location_id' => $locationId,
                     'bin_id' => $binId,

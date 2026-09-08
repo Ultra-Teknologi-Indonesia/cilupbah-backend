@@ -78,8 +78,7 @@ class InventoryMovementRepository
     public function getByTransactionNumber(string $transactionNumber): Collection
     {
         $query = InventoryMovement::where('transaction_number', $transactionNumber)
-            ->with(['product', 'location', 'bin'])
-            ;
+            ->with(['product', 'location', 'bin']);
         WarehouseAccess::apply($query, 'location_id');
 
         return $query->get();
@@ -307,7 +306,7 @@ class InventoryMovementRepository
                 });
 
                 $clean->orWhere(function ($q) use ($finalBinScope) {
-                    $q->whereIn('source', ['PICKING', 'PICKING_REVERSAL', 'PACKING', 'PACKING_REVERSAL'])
+                    $q->whereIn('source', ['INVOICE', 'PICKING', 'PICKING_REVERSAL', 'PACKING', 'PACKING_REVERSAL'])
                         ->where($finalBinScope);
                 });
 

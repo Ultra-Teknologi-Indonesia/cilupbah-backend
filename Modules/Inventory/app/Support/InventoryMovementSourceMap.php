@@ -4,7 +4,6 @@ namespace Modules\Inventory\Support;
 
 class InventoryMovementSourceMap
 {
-
     public const HIDDEN_SOURCES = [];
 
     public const SOURCES = [
@@ -151,7 +150,6 @@ class InventoryMovementSourceMap
     ];
 
     public const CLEAN_HIDDEN_SOURCES = [
-        'INVOICE',
         'ORDER_PICK',
         'ORDER_SHIP',
         ...self::NON_PHYSICAL_SOURCES,

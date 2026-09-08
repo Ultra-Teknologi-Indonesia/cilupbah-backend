@@ -3,7 +3,6 @@
 namespace Modules\Outbound\Services;
 
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
 use Modules\Sales\Events\OrderNeedsBuyerConfirmation;
@@ -15,6 +14,7 @@ class OrderReleaseService
     public function __construct(
         protected OrderService $orderService,
         protected SalesInvoiceService $invoiceService,
+        protected PicklistInvoiceStockService $picklistInvoiceStockService,
     ) {}
 
     public function releaseIfComplete(Picklist $picklist, string $orderId): bool
@@ -30,7 +30,7 @@ class OrderReleaseService
 
         $order = $items->first()->order;
 
-        if (! $order || $order->status !== 'reserved') {
+        if (! $order || ! in_array($order->status, ['reserved', 'picked'], true)) {
             return false;
         }
 
@@ -98,21 +98,18 @@ class OrderReleaseService
             return true;
         }
 
-        $this->orderService->updateOrder($order, ['status' => 'picked'], $picklist->picker);
-
-        try {
-            $actorId = $picklist->picker_id ? (string) $picklist->picker_id : (auth()->id() ? (string) auth()->id() : 'system');
-            $this->invoiceService->createFromOrder([
-                'order_id' => (string) $order->id,
-                'location_id' => (string) $order->location_id,
-                'created_by' => $actorId,
-            ]);
-        } catch (\Throwable $e) {
-            Log::warning('Gagal auto-generate SalesInvoice untuk order selesai pick: '.$e->getMessage(), [
-                'order_id' => $order->id,
-                'picklist_id' => $picklist->id,
-            ]);
+        if ($order->status === 'reserved') {
+            $order = $this->orderService->updateOrder($order, ['status' => 'picked'], $picklist->picker);
         }
+
+        $actorId = $picklist->picker_id ? (string) $picklist->picker_id : (auth()->id() ? (string) auth()->id() : 'system');
+        $invoice = $this->invoiceService->createFromOrder([
+            'order_id' => (string) $order->id,
+            'location_id' => (string) $order->location_id,
+            'created_by' => $actorId,
+        ]);
+
+        $this->picklistInvoiceStockService->post($picklist, $order, $invoice, $actorId);
 
         return true;
     }

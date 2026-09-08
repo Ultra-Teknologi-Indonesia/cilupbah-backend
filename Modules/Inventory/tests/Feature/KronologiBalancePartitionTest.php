@@ -488,6 +488,26 @@ class KronologiBalancePartitionTest extends TestCase
         $this->assertContains('ADJUSTMENT', $allSources);
     }
 
+    public function test_clean_menampilkan_faktur_fisik_dari_finish_pick(): void
+    {
+        $this->movement('INVOICE', -1, 9, 1, $this->finalBinId, '260908FVW9SR6S');
+
+        request()->merge([
+            'filter' => ['item_id' => $this->itemId, 'location_id' => $this->locationId],
+            'view' => 'clean',
+            'per_page' => 50,
+        ]);
+
+        $rows = collect(InventoryMovementResource::collection(
+            app(InventoryMovementRepository::class)->getHistoryPaginated(50)
+        )->response()->getData(true)['data']);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('INVOICE', $rows->first()['source']);
+        $this->assertSame('Faktur', $rows->first()['source_label']);
+        $this->assertSame('260908FVW9SR6S', $rows->first()['reference_number']);
+    }
+
     public function test_clean_menampilkan_picking_fisik_dan_backfill_dengan_label_historis(): void
     {
         DB::table('inventories')->insert([

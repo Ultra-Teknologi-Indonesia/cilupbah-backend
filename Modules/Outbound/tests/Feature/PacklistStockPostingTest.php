@@ -17,7 +17,7 @@ class PacklistStockPostingTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_completed_packlist_posts_physical_stock_once_and_revert_reopens_it(): void
+    public function test_completed_packlist_does_not_post_stock_that_was_posted_at_finish_pick(): void
     {
         Queue::fake();
 
@@ -28,10 +28,9 @@ class PacklistStockPostingTest extends TestCase
 
         $this->assertSame(Packlist::STATUS_COMPLETED, $packlist->status);
         $this->assertSame(3, (int) DB::table('inventories')->where('bin_id', $binId)->value('on_hand'));
-        $this->assertDatabaseHas('inventory_movements', [
+        $this->assertDatabaseMissing('inventory_movements', [
             'transaction_number' => $packlist->packlist_no,
             'source' => 'PACKING',
-            'qty' => -2,
         ]);
         $this->assertSame(2, (int) DB::table('picklist_item_allocations')->value('physical_committed_qty'));
 
@@ -41,7 +40,7 @@ class PacklistStockPostingTest extends TestCase
         $this->assertSame(3, (int) DB::table('inventories')->where('bin_id', $binId)->value('on_hand'));
     }
 
-    public function test_reverting_completed_packlist_restores_stock_and_commitment(): void
+    public function test_reverting_completed_packlist_keeps_finish_pick_stock_posting(): void
     {
         Queue::fake();
 
@@ -52,27 +51,26 @@ class PacklistStockPostingTest extends TestCase
 
         app(PacklistService::class)->revert($packlistId);
 
-        $this->assertSame(5, (int) DB::table('inventories')->where('bin_id', $binId)->value('on_hand'));
-        $this->assertSame(0, (int) DB::table('picklist_item_allocations')->value('physical_committed_qty'));
-        $this->assertDatabaseHas('inventory_movements', [
+        $this->assertSame(3, (int) DB::table('inventories')->where('bin_id', $binId)->value('on_hand'));
+        $this->assertSame(2, (int) DB::table('picklist_item_allocations')->value('physical_committed_qty'));
+        $this->assertDatabaseMissing('inventory_movements', [
             'source' => 'PACKING_REVERSAL',
-            'qty' => 2,
         ]);
         $this->assertDatabaseMissing('packlists', ['id' => $packlistId]);
     }
 
-    public function test_packing_is_atomic_when_physical_stock_is_no_longer_sufficient(): void
+    public function test_packing_requires_physical_commitment_from_finish_pick(): void
     {
         Queue::fake();
 
-        [$userId, $locationId, $binId, $itemId, $orderId, $orderItemId, $packlistId] = $this->seedScenario(onHand: 1);
+        [$userId, $locationId, $binId, $itemId, $orderId, $orderItemId, $packlistId] = $this->seedScenario(onHand: 1, physicalCommittedQty: 0);
         $this->actingAs(User::findOrFail($userId));
 
         try {
             app(PacklistService::class)->complete($packlistId);
-            $this->fail('Packing harus ditolak saat stok fisik tidak cukup.');
+            $this->fail('Packing harus ditolak bila Finish Pick belum membuat mutasi faktur.');
         } catch (OutboundValidationException $exception) {
-            $this->assertStringContainsString('tidak cukup', strtolower($exception->getMessage()));
+            $this->assertStringContainsString('faktur', strtolower($exception->getMessage()));
         }
 
         $this->assertSame(1, (int) DB::table('inventories')->where('bin_id', $binId)->value('on_hand'));
@@ -83,7 +81,7 @@ class PacklistStockPostingTest extends TestCase
         $this->assertDatabaseMissing('inventory_movements', ['source' => 'PACKING']);
     }
 
-    private function seedScenario(int $onHand = 5): array
+    private function seedScenario(int $onHand = 3, int $physicalCommittedQty = 2): array
     {
         $userId = Str::uuid()->toString();
         DB::table('users')->insert([
@@ -203,7 +201,7 @@ class PacklistStockPostingTest extends TestCase
             'picklist_item_id' => $pickItemId,
             'bin_id' => $binId,
             'qty' => 2,
-            'physical_committed_qty' => 0,
+            'physical_committed_qty' => $physicalCommittedQty,
             'picked_at' => now(),
             'picked_by' => $userId,
             'created_at' => now(),

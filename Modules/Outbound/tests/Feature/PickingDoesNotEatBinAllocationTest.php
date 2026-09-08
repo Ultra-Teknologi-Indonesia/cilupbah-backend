@@ -2,6 +2,8 @@
 
 namespace Modules\Outbound\Tests\Feature;
 
+use App\Models\Role;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -21,13 +23,13 @@ class PickingDoesNotEatBinAllocationTest extends TestCase
         DB::table('users')->insert([
             'id' => $id,
             'name' => 'Tester',
-            'email' => 'tester+' . substr($id, 0, 6) . '@example.test',
+            'email' => 'tester+'.substr($id, 0, 6).'@example.test',
             'password' => bcrypt('secret'),
             'created_at' => now(), 'updated_at' => now(),
         ]);
 
-        \App\Models\User::find($id)->assignRole(
-            \App\Models\Role::firstOrCreate(['name' => 'owner', 'guard_name' => 'web'])
+        User::find($id)->assignRole(
+            Role::firstOrCreate(['name' => 'owner', 'guard_name' => 'web'])
         );
 
         return $id;
@@ -38,13 +40,14 @@ class PickingDoesNotEatBinAllocationTest extends TestCase
         $id = Str::uuid()->toString();
         DB::table('locations')->insert([
             'id' => $id,
-            'location_code' => 'LOC-' . substr($id, 0, 6),
+            'location_code' => 'LOC-'.substr($id, 0, 6),
             'location_name' => 'Gudang Alokasi Bin',
             'location_type' => 'WAREHOUSE',
             'is_warehouse' => true,
             'is_active' => true,
             'created_at' => now(), 'updated_at' => now(),
         ]);
+
         return $id;
     }
 
@@ -58,6 +61,7 @@ class PickingDoesNotEatBinAllocationTest extends TestCase
             'is_inbound' => false,
             'created_at' => now(), 'updated_at' => now(),
         ]);
+
         return $id;
     }
 
@@ -67,7 +71,7 @@ class PickingDoesNotEatBinAllocationTest extends TestCase
         $productId = Str::uuid()->toString();
         DB::table('products')->insert([
             'id' => $productId,
-            'name' => 'Prod-' . $sku,
+            'name' => 'Prod-'.$sku,
             'category_id' => 1,
             'created_at' => now(), 'updated_at' => now(),
         ]);
@@ -78,6 +82,7 @@ class PickingDoesNotEatBinAllocationTest extends TestCase
             'sku' => $sku,
             'created_at' => now(), 'updated_at' => now(),
         ]);
+
         return $variantId;
     }
 
@@ -100,7 +105,7 @@ class PickingDoesNotEatBinAllocationTest extends TestCase
         $picklistId = Str::uuid()->toString();
         DB::table('picklists')->insert([
             'id' => $picklistId,
-            'picklist_no' => 'PICK-' . substr($picklistId, 0, 6),
+            'picklist_no' => 'PICK-'.substr($picklistId, 0, 6),
             'location_id' => $locationId,
             'status' => Picklist::STATUS_IN_PROGRESS,
             'created_by' => $userId,
@@ -110,7 +115,7 @@ class PickingDoesNotEatBinAllocationTest extends TestCase
         $orderId = Str::uuid()->toString();
         DB::table('sales_orders')->insert([
             'id' => $orderId,
-            'salesorder_no' => 'SO-' . substr($orderId, 0, 6),
+            'salesorder_no' => 'SO-'.substr($orderId, 0, 6),
             'customer_name' => 'Buyer',
             'location_id' => $locationId,
             'status' => 'reserved',
@@ -143,26 +148,26 @@ class PickingDoesNotEatBinAllocationTest extends TestCase
         return ['picklist_id' => $picklistId, 'item_id' => $itemPkId];
     }
 
-    public function test_picking_tidak_memakan_alokasi_on_order_milik_bin(): void
+    public function test_finish_pick_memotong_stok_rak_dan_melepas_reservasi_order(): void
     {
         Queue::fake();
 
-        $userId     = $this->seedUser();
+        $userId = $this->seedUser();
         $locationId = $this->seedLocation();
-        $binId      = $this->seedBin($locationId, 'RACK-ALLOC-1');
-        $variantId  = $this->seedProductVariant('SKU-ALLOC-1');
+        $binId = $this->seedBin($locationId, 'RACK-ALLOC-1');
+        $variantId = $this->seedProductVariant('SKU-ALLOC-1');
 
         $this->seedInventory($variantId, $locationId, $binId, onHand: 10, onOrder: 3);
 
         $ids = $this->seedPicklistWithItem($locationId, $variantId, 'SKU-ALLOC-1', 2, $userId);
-        $this->actingAs(\App\Models\User::find($userId), 'sanctum');
+        $this->actingAs(User::find($userId), 'sanctum');
 
         $onOrderSebelum = app(InventoryRepository::class)
             ->sumOnOrderAtLocation($variantId, $locationId);
 
         app(PicklistService::class)->pickItem($ids['picklist_id'], $ids['item_id'], [
             'qty_picked' => 2,
-            'bin_code'   => 'RACK-ALLOC-1',
+            'bin_code' => 'RACK-ALLOC-1',
         ]);
 
         $bin = DB::table('inventories')
@@ -170,24 +175,30 @@ class PickingDoesNotEatBinAllocationTest extends TestCase
             ->where('bin_id', $binId)
             ->first();
 
-        $this->assertSame(10, (int) $bin->on_hand, 'on_hand baru turun saat packing selesai');
+        $this->assertSame(8, (int) $bin->on_hand, 'Finish Pick memotong stok fisik dari rak asal');
 
         $this->assertSame(
-            0,
+            2,
             (int) DB::table('picklist_item_allocations')->where('picklist_item_id', $ids['item_id'])->value('physical_committed_qty'),
-            'Picking hanya mencatat alokasi, belum mengkomit stok fisik',
+            'Finish Pick mengkomit stok fisik tepat satu kali',
         );
 
         $this->assertSame(
             3,
             (int) $bin->on_order,
-            'picking TIDAK boleh menyentuh on_order milik bin -- itu alokasi Reserved Stock'
+            'Finish Pick tidak mengubah reservasi milik pesanan lain pada rak yang sama'
         );
 
         $this->assertSame(
             $onOrderSebelum,
             app(InventoryRepository::class)->sumOnOrderAtLocation($variantId, $locationId),
-            'total on_order lokasi harus utuh; pelepasan alokasi pesanan adalah tugas StockService di baris agregat'
+            'reservasi yang tidak memiliki ledger pesanan tidak boleh ikut diubah'
         );
+
+        $this->assertDatabaseHas('inventory_movements', [
+            'source' => 'INVOICE',
+            'qty' => -2,
+            'bin_id' => $binId,
+        ]);
     }
 }

@@ -9,7 +9,6 @@ use Modules\Outbound\Exceptions\OutboundValidationException;
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\PacklistItem;
 use Modules\Outbound\Models\PicklistItemAllocation;
-use Modules\Sales\Exceptions\InsufficientStockException;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\StockService;
 
@@ -21,11 +20,6 @@ class PacklistStockService
 
     public function post(Packlist $packlist, Collection $packItems, string $actor): void
     {
-        $order = SalesOrder::query()
-            ->select(['id', 'salesorder_no', 'channel_order_no', 'no_ref'])
-            ->find($packlist->order_id);
-        $reference = $this->orderReference($order);
-
         foreach ($packItems as $packItem) {
             $qtyToPack = (int) $packItem->qty_packed;
             if ($qtyToPack <= 0) {
@@ -41,51 +35,10 @@ class PacklistStockService
                 );
             }
 
-            $remaining = $qtyToPack;
-            foreach ($allocations as $allocation) {
-                if ($remaining <= 0) {
-                    break;
-                }
-
-                $covered = min($remaining, (int) $allocation->qty);
-                $committed = min($covered, (int) $allocation->physical_committed_qty);
-                $toPost = $covered - $committed;
-
-                if ($toPost > 0) {
-                    $bin = $allocation->bin;
-                    if (! $bin) {
-                        throw new OutboundValidationException(
-                            "Rak untuk SKU {$packItem->sku} tidak ditemukan, packing dibatalkan agar stok tetap konsisten."
-                        );
-                    }
-
-                    try {
-                        $this->stockService->consumeFromBin(
-                            (string) $packItem->sku,
-                            (string) $packItem->item_id,
-                            (string) $packlist->location_id,
-                            (string) $allocation->bin_id,
-                            $toPost,
-                            (string) $packlist->packlist_no,
-                            'PACKING',
-                            $actor ?: 'system',
-                            null,
-                            $reference,
-                        );
-                    } catch (InsufficientStockException $exception) {
-                        throw new OutboundValidationException($exception->getMessage(), 422, $exception);
-                    }
-
-                    $allocation->physical_committed_qty = (int) $allocation->physical_committed_qty + $toPost;
-                    $allocation->save();
-                }
-
-                $remaining -= $covered;
-            }
-
-            if ($remaining > 0) {
+            $physicalCommittedQty = (int) $allocations->sum('physical_committed_qty');
+            if ($physicalCommittedQty < $qtyToPack) {
                 throw new OutboundValidationException(
-                    "Stok untuk SKU {$packItem->sku} belum memiliki alokasi pick yang lengkap."
+                    "Stok untuk SKU {$packItem->sku} belum tercatat sebagai faktur saat Finish Pick. Packing dihentikan agar stok tidak dipotong dua kali atau tanpa jejak rak."
                 );
             }
         }

@@ -5,8 +5,11 @@ namespace Modules\Outbound\Tests\Feature;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
+use Modules\Outbound\Models\PicklistItemAllocation;
+use Modules\Outbound\Services\OrderReleaseService;
 use Modules\Outbound\Services\PicklistService;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
@@ -14,6 +17,8 @@ use Modules\Product\Models\ProductVariant;
 use Modules\Sales\Models\SalesInvoice;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderItem;
+use Modules\Sales\Services\SalesOrderService;
+use Modules\Sales\Services\StockService;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 use Tests\TestCase;
@@ -23,11 +28,18 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
     use RefreshDatabase;
 
     private User $user;
+
     private Location $location;
+
     private LocationBin $bin;
+
     private ProductVariant $variant;
+
     private SalesOrder $order;
+
     private Picklist $picklist;
+
+    private PicklistItem $pickItem;
 
     protected function setUp(): void
     {
@@ -61,6 +73,18 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
             'price' => 65000,
         ]);
 
+        DB::table('inventories')->insert([
+            'id' => Str::uuid()->toString(),
+            'item_id' => $this->variant->id,
+            'location_id' => $this->location->id,
+            'bin_id' => $this->bin->id,
+            'on_hand' => 1,
+            'on_order' => 0,
+            'available' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
         $this->order = SalesOrder::create([
             'salesorder_no' => 'TT-585665956600644834',
             'channel_order_no' => '585665956600644834',
@@ -68,7 +92,7 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
             'location_id' => $this->location->id,
             'status' => 'reserved',
             'is_paid' => true,
-            'source' => 'tiktok',
+            'source' => null,
             'sub_total' => 65000,
             'grand_total' => 65000,
         ]);
@@ -92,7 +116,7 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
             'started_at' => now(),
         ]);
 
-        PicklistItem::create([
+        $this->pickItem = PicklistItem::create([
             'picklist_id' => $this->picklist->id,
             'order_id' => $this->order->id,
             'order_item_id' => $orderItem->id,
@@ -101,6 +125,23 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
             'qty_ordered' => 1,
             'qty_picked' => 1,
             'item_status' => PicklistItem::STATUS_COMPLETED,
+        ]);
+
+        app(StockService::class)->reserve(
+            $this->variant->sku,
+            (string) $this->variant->id,
+            (string) $this->location->id,
+            1,
+            $this->order->salesorder_no,
+        );
+
+        PicklistItemAllocation::create([
+            'picklist_item_id' => $this->pickItem->id,
+            'bin_id' => $this->bin->id,
+            'qty' => 1,
+            'physical_committed_qty' => 0,
+            'picked_at' => now(),
+            'picked_by' => $this->user->id,
         ]);
     }
 
@@ -124,6 +165,27 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
         $this->assertStringStartsWith('INV-', $invoice->invoice_number);
         $this->assertSame('n***ng a***ni', $invoice->customer_name);
         $this->assertEquals(65000, $invoice->total_amount);
+        $this->assertSame(0, (int) DB::table('inventories')->where('bin_id', $this->bin->id)->value('on_hand'));
+        $this->assertSame(0, (int) DB::table('inventories')->where('bin_id', $this->bin->id)->value('on_order'));
+        $this->assertSame(1, (int) PicklistItemAllocation::query()
+            ->where('picklist_item_id', $this->pickItem->id)
+            ->value('physical_committed_qty'));
+        $this->assertDatabaseHas('inventory_movements', [
+            'transaction_number' => $invoice->invoice_number,
+            'reference_number' => $this->order->channel_order_no,
+            'source' => 'INVOICE',
+            'qty' => -1,
+            'bin_id' => $this->bin->id,
+        ]);
+
+        app(OrderReleaseService::class)->releaseIfComplete(
+            $this->picklist->fresh(),
+            (string) $this->order->id,
+        );
+
+        $this->assertSame(1, SalesInvoice::query()->where('order_id', $this->order->id)->count());
+        $this->assertSame(1, DB::table('inventory_movements')->where('source', 'INVOICE')->count());
+        $this->assertSame(0, (int) DB::table('inventories')->where('bin_id', $this->bin->id)->value('on_hand'));
 
         $pdfRes = $this->get("/api/v1/sales/{$this->order->id}/invoice");
         $pdfRes->assertOk()
@@ -150,25 +212,48 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
         $this->assertIsArray($response->json('data'));
     }
 
+    public function test_cancelling_after_finish_pick_restores_the_same_origin_bin_once(): void
+    {
+        $this->actingAs($this->user);
+
+        $this->postJson("/api/v1/outbound/picklists/{$this->picklist->id}/complete")
+            ->assertOk();
+
+        $invoice = SalesInvoice::query()->where('order_id', $this->order->id)->firstOrFail();
+        app(SalesOrderService::class)->cancelLocally(
+            (string) $this->order->id,
+            'Pengujian batal sebelum paket diserahkan ke kurir',
+            (string) $this->user->id,
+        );
+
+        $this->assertSame(1, (int) DB::table('inventories')->where('bin_id', $this->bin->id)->value('on_hand'));
+        $this->assertSame(0, (int) DB::table('inventories')->where('bin_id', $this->bin->id)->value('on_order'));
+        $this->assertSame(0, (int) PicklistItemAllocation::query()
+            ->where('picklist_item_id', $this->pickItem->id)
+            ->value('physical_committed_qty'));
+        $this->assertDatabaseHas('inventory_movements', [
+            'transaction_number' => $invoice->invoice_number,
+            'source' => 'INVOICE',
+            'qty' => -1,
+            'bin_id' => $this->bin->id,
+        ]);
+        $this->assertDatabaseHas('inventory_movements', [
+            'transaction_number' => $this->order->salesorder_no,
+            'source' => 'ORDER_RESTORE_CANCEL',
+            'qty' => 1,
+            'bin_id' => $this->bin->id,
+        ]);
+    }
+
     public function test_last_picked_item_automatically_completes_picklist(): void
     {
-        $this->order->update(['source' => null]);
         $item = $this->picklist->items()->firstOrFail();
+        PicklistItemAllocation::query()
+            ->where('picklist_item_id', $item->id)
+            ->delete();
         $item->update([
             'qty_picked' => 0,
             'item_status' => null,
-        ]);
-
-        DB::table('inventories')->insert([
-            'id' => \Illuminate\Support\Str::uuid()->toString(),
-            'item_id' => $this->variant->id,
-            'location_id' => $this->location->id,
-            'bin_id' => $this->bin->id,
-            'on_hand' => 1,
-            'on_order' => 0,
-            'available' => 1,
-            'created_at' => now(),
-            'updated_at' => now(),
         ]);
 
         app(PicklistService::class)->pickItem($this->picklist->id, $item->id, [
