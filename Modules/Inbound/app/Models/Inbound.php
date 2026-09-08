@@ -69,6 +69,11 @@ class Inbound extends Model
         'updated_version_at' => 'datetime',
     ];
 
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
     public function assignee(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_to');

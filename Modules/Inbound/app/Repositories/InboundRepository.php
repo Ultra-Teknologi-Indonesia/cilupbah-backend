@@ -37,7 +37,7 @@ class InboundRepository
                 AllowedFilter::callback('date_from', fn ($query, $value) => $query->whereDate('created_at', '>=', $value)),
                 AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('created_at', '<=', $value)),
             )
-            ->allowedSearch('transaction_number', 'reference_number')
+            ->allowedSearch('transaction_number', 'reference_number', 'created_by', 'creator.name')
             ->allowedSorts('expected_date', 'created_at', 'transaction_number', 'reference_number', 'status', 'type')
             ->defaultSort('-expected_date')
 
