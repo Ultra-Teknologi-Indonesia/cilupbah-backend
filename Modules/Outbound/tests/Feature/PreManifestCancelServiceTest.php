@@ -5,6 +5,7 @@ namespace Modules\Outbound\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Services\PreManifestCancelService;
 use Modules\Outbound\Services\ShipmentService;
 use Modules\Sales\Models\SalesOrder;
@@ -15,27 +16,36 @@ class PreManifestCancelServiceTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config()->set('session.driver', 'array');
+        config()->set('session.connection', null);
+    }
+
     private function seedLocation(): string
     {
         $id = Str::uuid()->toString();
         DB::table('locations')->insert([
             'id' => $id,
-            'location_code' => 'LOC-PM-' . substr($id, 0, 6),
+            'location_code' => 'LOC-PM-'.substr($id, 0, 6),
             'location_name' => 'Gudang PM',
             'location_type' => 'WAREHOUSE',
             'is_warehouse' => true,
             'is_active' => true,
             'created_at' => now(), 'updated_at' => now(),
         ]);
+
         return $id;
     }
 
-    private function seedOrder(string $status, string $locationId, array $overrides = []): string
+    private function seedOrder(string $status, string $locationId, array $overrides = [], bool $completedPacking = true): string
     {
         $orderId = Str::uuid()->toString();
         DB::table('sales_orders')->insert(array_merge([
             'id' => $orderId,
-            'salesorder_no' => 'SO-PM-' . substr($orderId, 0, 6),
+            'salesorder_no' => 'SO-PM-'.substr($orderId, 0, 6),
             'customer_name' => 'Buyer',
             'source' => null,
             'location_id' => $locationId,
@@ -44,6 +54,21 @@ class PreManifestCancelServiceTest extends TestCase
             'handed_to_warehouse_at' => now(),
             'created_at' => now(), 'updated_at' => now(),
         ], $overrides));
+
+        if ($completedPacking) {
+            DB::table('packlists')->insert([
+                'id' => Str::uuid()->toString(),
+                'packlist_no' => 'PK-PM-'.substr($orderId, 0, 6),
+                'location_id' => $locationId,
+                'order_id' => $orderId,
+                'status' => Packlist::STATUS_COMPLETED,
+                'completed_at' => now(),
+                'package_count' => 1,
+                'created_by' => 'system',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
 
         return $orderId;
     }
@@ -55,6 +80,7 @@ class PreManifestCancelServiceTest extends TestCase
         $this->seedOrder('cancelled', $loc);
         $this->seedOrder('cancelled', $loc, ['cancel_dismissed_at' => now(), 'cancel_dismissed_by' => 'u1']);
         $this->seedOrder('cancelled', $loc, ['handed_to_warehouse_at' => null]);
+        $this->seedOrder('cancelled', $loc, [], false);
         $this->seedOrder('packed', $loc);
 
         $service = app(PreManifestCancelService::class);
@@ -116,6 +142,15 @@ class PreManifestCancelServiceTest extends TestCase
         app(PreManifestCancelService::class)->dismiss($orderId, 'system');
     }
 
+    public function test_dismiss_rejects_cancel_before_packing_is_completed(): void
+    {
+        $loc = $this->seedLocation();
+        $orderId = $this->seedOrder('cancelled', $loc, [], false);
+
+        $this->expectException(\Exception::class);
+        app(PreManifestCancelService::class)->dismiss($orderId, 'system');
+    }
+
     public function test_undismiss_clears_dismiss_state(): void
     {
         $loc = $this->seedLocation();
@@ -139,7 +174,7 @@ class PreManifestCancelServiceTest extends TestCase
         $shipmentId = Str::uuid()->toString();
         DB::table('shipments')->insert([
             'id' => $shipmentId,
-            'shipment_no' => 'SHP-PM-' . substr($shipmentId, 0, 6),
+            'shipment_no' => 'SHP-PM-'.substr($shipmentId, 0, 6),
             'location_id' => $loc,
             'shipment_type' => 'REGULAR',
             'shipment_date' => now()->toDateString(),

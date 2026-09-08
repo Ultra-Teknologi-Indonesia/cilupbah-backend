@@ -11,7 +11,6 @@ use Modules\Sales\Models\SalesOrder;
 
 final class ProcessOrderStatusResolver
 {
-
     public function resolve(SalesOrder $order): ?array
     {
         return match ($order->status) {
@@ -127,15 +126,8 @@ final class ProcessOrderStatusResolver
             ];
         }
 
-        if ($order->packlist?->status === Packlist::STATUS_COMPLETED
-            && $order->shipmentOrders->isEmpty()) {
-            return [
-                'stage' => 'Packing',
-                'sub_status' => 'Selesai',
-            ];
-        }
-
         if ($order->handed_to_warehouse_at !== null
+            && $order->packlist?->status === Packlist::STATUS_COMPLETED
             && $order->cancel_dismissed_at === null
             && $order->shipmentOrders->isEmpty()) {
             return [

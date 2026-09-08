@@ -4,6 +4,7 @@ namespace Modules\Outbound\Services;
 
 use App\Support\WarehouseAccess;
 use Illuminate\Support\Facades\DB;
+use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Repositories\PreManifestCancelRepository;
 use Modules\Sales\Enums\OrderActivityAction;
 use Modules\Sales\Models\SalesOrder as Order;
@@ -37,8 +38,10 @@ class PreManifestCancelService
                 throw new \Exception("Order tidak dalam status 'cancelled', tidak bisa di-dismiss.");
             }
 
-            if (empty($order->handed_to_warehouse_at)) {
-                throw new \Exception('Order belum sampai tahap pasca-packing, tidak relevan untuk di-dismiss.');
+            if (empty($order->handed_to_warehouse_at)
+                || $order->packlist?->status !== Packlist::STATUS_COMPLETED
+                || $order->shipmentOrders()->exists()) {
+                throw new \Exception('Order bukan cancel setelah selesai packing sebelum manifest.');
             }
 
             if (empty($order->cancel_dismissed_at)) {

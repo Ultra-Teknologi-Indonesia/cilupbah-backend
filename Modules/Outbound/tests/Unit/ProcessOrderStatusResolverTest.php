@@ -90,9 +90,12 @@ final class ProcessOrderStatusResolverTest extends TestCase
         $this->assertSame('Jadwal Pengiriman', $this->resolver->resolve($order)['sub_status']);
     }
 
-    public function test_cancelled_order_with_completed_packlist_is_packing_complete(): void
+    public function test_cancelled_order_with_completed_packlist_is_pre_manifest_cancellation(): void
     {
-        $order = $this->order(['status' => 'cancelled']);
+        $order = $this->order([
+            'status' => 'cancelled',
+            'handed_to_warehouse_at' => now(),
+        ]);
         $order->setRelation(
             'packlist',
             (new Packlist)->setAttribute('status', Packlist::STATUS_COMPLETED),
@@ -100,9 +103,24 @@ final class ProcessOrderStatusResolverTest extends TestCase
         $order->setRelation('shipmentOrders', new Collection);
 
         $this->assertSame([
-            'stage' => 'Packing',
-            'sub_status' => 'Selesai',
+            'stage' => 'Shipping',
+            'sub_status' => 'Batal Pra-Manifest',
         ], $this->resolver->resolve($order));
+    }
+
+    public function test_cancelled_order_before_packing_is_not_pre_manifest_cancellation(): void
+    {
+        $order = $this->order([
+            'status' => 'cancelled',
+            'handed_to_warehouse_at' => now(),
+        ]);
+        $order->setRelation(
+            'packlist',
+            (new Packlist)->setAttribute('status', Packlist::STATUS_IN_PROGRESS),
+        );
+        $order->setRelation('shipmentOrders', new Collection);
+
+        $this->assertNull($this->resolver->resolve($order));
     }
 
     public function test_cancelled_order_with_scheduled_shipment_is_shipping_schedule(): void

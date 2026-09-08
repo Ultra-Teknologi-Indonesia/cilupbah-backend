@@ -38,8 +38,8 @@ class PreManifestCancelController extends Controller
     public function index(Request $request): JsonResponse
     {
         $filters = [
-            'q'           => $request->input('filter.q'),
-            'source'      => $request->input('filter.source'),
+            'q' => $request->input('filter.q'),
+            'source' => $request->input('filter.source'),
             'location_id' => $request->input('filter.location_id'),
         ];
 
@@ -142,19 +142,20 @@ class PreManifestCancelController extends Controller
     {
         $validated = $request->validate([
             'date_from' => 'nullable|date',
-            'date_to'   => 'nullable|date|after_or_equal:date_from',
-            'source'    => 'nullable|string|max:50',
+            'date_to' => 'nullable|date|after_or_equal:date_from',
+            'source' => 'nullable|string|max:50',
         ]);
 
         $today = now()->toDateString();
         $dateFrom = $validated['date_from'] ?? $today;
-        $dateTo   = $validated['date_to']   ?? $today;
+        $dateTo = $validated['date_to'] ?? $today;
 
         $export = new CancelledOrdersExport(
-            dateFrom:     $dateFrom,
-            dateTo:       $dateTo,
+            dateFrom: $dateFrom,
+            dateTo: $dateTo,
             postPackOnly: true,
-            source:       $validated['source'] ?? null,
+            source: $validated['source'] ?? null,
+            preManifestOnly: true,
         );
 
         $filename = sprintf('cancel-pasca-packing-%s-%s.xlsx', $dateFrom, $dateTo);

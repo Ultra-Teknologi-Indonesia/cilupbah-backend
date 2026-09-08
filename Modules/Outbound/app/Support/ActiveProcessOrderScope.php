@@ -11,7 +11,6 @@ use Modules\Outbound\Models\Shipment;
 
 final class ActiveProcessOrderScope
 {
-
     private const ALLOWED_SUB_STATUSES = [
         'picking' => ['belum', 'diproses', 'selesai'],
         'packing' => ['belum', 'diproses', 'selesai'],
@@ -121,16 +120,7 @@ final class ActiveProcessOrderScope
                     ->whereIn('status', [Packlist::STATUS_DRAFT, Packlist::STATUS_IN_PROGRESS])),
 
             'packing:selesai', 'shipping:siap-kirim' => $query
-                ->where(function (Builder $order): void {
-                    $order->where('sales_orders.status', 'packed')
-                        ->orWhere(function (Builder $cancelled): void {
-                            $cancelled
-                                ->where('sales_orders.status', 'cancelled')
-                                ->whereNull('sales_orders.cancel_dismissed_at')
-                                ->whereHas('packlist', fn (Builder $packlist): Builder => $packlist
-                                    ->where('status', Packlist::STATUS_COMPLETED));
-                        });
-                })
+                ->where('sales_orders.status', 'packed')
                 ->whereDoesntHave('shipmentOrders'),
 
             'shipping:jadwal' => $query
@@ -142,6 +132,8 @@ final class ActiveProcessOrderScope
                 ->where('sales_orders.status', 'cancelled')
                 ->whereNotNull('sales_orders.handed_to_warehouse_at')
                 ->whereNull('sales_orders.cancel_dismissed_at')
+                ->whereHas('packlist', fn (Builder $packlist): Builder => $packlist
+                    ->where('status', Packlist::STATUS_COMPLETED))
                 ->whereDoesntHave('shipmentOrders'),
 
             default => throw new \InvalidArgumentException('Stage atau sub-status export tidak valid.'),

@@ -5,22 +5,24 @@ namespace Modules\Sales\Exports;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromQuery;
-use Maatwebsite\Excel\Concerns\WithChunkReading;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
+use Maatwebsite\Excel\Concerns\WithChunkReading;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
 use Maatwebsite\Excel\Concerns\WithStyles;
+use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\PicklistItem;
 use Modules\Sales\Models\SalesOrder;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-class CancelledOrdersExport implements FromQuery, WithChunkReading, WithHeadings, WithMapping, WithStyles, ShouldAutoSize
+class CancelledOrdersExport implements FromQuery, ShouldAutoSize, WithChunkReading, WithHeadings, WithMapping, WithStyles
 {
     public function __construct(
         private readonly ?string $dateFrom,
         private readonly ?string $dateTo,
         private readonly bool $postPackOnly,
         private readonly ?string $source,
+        private readonly bool $preManifestOnly = false,
     ) {}
 
     public function query(): Builder
@@ -43,6 +45,14 @@ class CancelledOrdersExport implements FromQuery, WithChunkReading, WithHeadings
 
         if ($this->postPackOnly) {
             $query->whereNotNull('handed_to_warehouse_at');
+        }
+
+        if ($this->preManifestOnly) {
+            $query->where('status', 'cancelled')
+                ->whereNull('cancel_dismissed_at')
+                ->whereDoesntHave('shipmentOrders')
+                ->whereHas('packlist', fn (Builder $packlist): Builder => $packlist
+                    ->where('status', Packlist::STATUS_COMPLETED));
         }
 
         if ($this->dateFrom) {

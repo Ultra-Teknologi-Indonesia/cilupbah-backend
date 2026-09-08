@@ -6,6 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Maatwebsite\Excel\Facades\Excel;
+use Modules\Outbound\Models\Packlist;
 use Modules\Sales\Exports\CancelledOrdersExport;
 use Tests\TestCase;
 
@@ -18,7 +19,7 @@ class ExportCancelledOrdersTest extends TestCase
         $orderId = Str::uuid()->toString();
         DB::table('sales_orders')->insert([
             'id' => $orderId,
-            'salesorder_no' => 'SO-CAN-' . substr($orderId, 0, 4),
+            'salesorder_no' => 'SO-CAN-'.substr($orderId, 0, 4),
             'customer_name' => 'A',
             'source' => 'shopee',
             'status' => 'cancelled',
@@ -40,6 +41,40 @@ class ExportCancelledOrdersTest extends TestCase
         ]);
 
         return $orderId;
+    }
+
+    private function seedLocation(): string
+    {
+        $locationId = Str::uuid()->toString();
+
+        DB::table('locations')->insert([
+            'id' => $locationId,
+            'location_code' => 'LOC-CAN-'.substr($locationId, 0, 6),
+            'location_name' => 'Gudang Cancel',
+            'location_type' => 'WAREHOUSE',
+            'is_warehouse' => true,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $locationId;
+    }
+
+    private function seedPacklist(string $orderId, string $locationId, string $status): void
+    {
+        DB::table('packlists')->insert([
+            'id' => Str::uuid()->toString(),
+            'packlist_no' => 'PK-CAN-'.substr($orderId, 0, 6),
+            'location_id' => $locationId,
+            'order_id' => $orderId,
+            'status' => $status,
+            'completed_at' => $status === Packlist::STATUS_COMPLETED ? now() : null,
+            'package_count' => 1,
+            'created_by' => 'system',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     public function test_export_returns_only_post_pack_when_flag_set(): void
@@ -80,5 +115,25 @@ class ExportCancelledOrdersTest extends TestCase
 
         $this->assertCount(1, $rows);
         $this->assertSame('shopee', $rows->first()->source);
+    }
+
+    public function test_pre_manifest_export_returns_only_cancelled_orders_with_completed_packing(): void
+    {
+        $locationId = $this->seedLocation();
+        $completedId = $this->seedCancelled(true);
+        $inProgressId = $this->seedCancelled(true);
+        $dismissedId = $this->seedCancelled(true);
+
+        $this->seedPacklist($completedId, $locationId, Packlist::STATUS_COMPLETED);
+        $this->seedPacklist($inProgressId, $locationId, Packlist::STATUS_IN_PROGRESS);
+        $this->seedPacklist($dismissedId, $locationId, Packlist::STATUS_COMPLETED);
+        DB::table('sales_orders')->where('id', $dismissedId)->update([
+            'cancel_dismissed_at' => now(),
+        ]);
+
+        $rows = (new CancelledOrdersExport(null, null, true, null, true))->collection();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame($completedId, $rows->first()->id);
     }
 }

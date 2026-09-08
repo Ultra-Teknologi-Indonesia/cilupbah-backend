@@ -3,19 +3,20 @@
 namespace Modules\Outbound\Repositories;
 
 use Illuminate\Database\Eloquent\Builder;
+use Modules\Outbound\Models\Packlist;
 use Modules\Sales\Models\SalesOrder as Order;
-use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
 
 class PreManifestCancelRepository
 {
-
     public function baseQuery(): Builder
     {
         return Order::query()
             ->where('status', 'cancelled')
             ->whereNotNull('handed_to_warehouse_at')
             ->whereNull('cancel_dismissed_at')
+            ->whereHas('packlist', fn (Builder $packlist): Builder => $packlist
+                ->where('status', Packlist::STATUS_COMPLETED))
             ->whereDoesntHave('shipmentOrders');
     }
 
