@@ -27,6 +27,7 @@ ENV COMPOSER_ALLOW_SUPERUSER=1
 RUN apt-get update && apt-get install -y \
     git \
     curl \
+    procps \
     unzip \
     zip \
     nginx \
