@@ -2,6 +2,7 @@
 
 namespace Modules\Outbound\Services;
 
+use App\Exceptions\UserFacingException;
 use App\Support\ChannelWarehousePolicy;
 use App\Support\WarehouseAccess;
 use Illuminate\Support\Facades\Auth;
@@ -14,6 +15,7 @@ use Modules\Outbound\Models\PacklistItem;
 use Modules\Outbound\Models\ShipmentOrder;
 use Modules\Outbound\Repositories\PacklistRepository;
 use Modules\Product\Repositories\ProductRepository;
+use Modules\Sales\Enums\SalesOrderStatus;
 use Modules\Sales\Models\SalesOrder as Order;
 
 class PacklistService
@@ -70,6 +72,22 @@ class PacklistService
         }
 
         if (! $packlist) {
+            $hasCompletedPacklist = Packlist::where('order_id', $order->id)
+                ->where('status', Packlist::STATUS_COMPLETED)
+                ->exists();
+            $orderStatus = SalesOrderStatus::tryFrom((string) $order->status)?->canonical();
+
+            if ($hasCompletedPacklist || in_array($orderStatus, [
+                SalesOrderStatus::PACKED,
+                SalesOrderStatus::SHIPPED,
+            ], true)) {
+                throw new UserFacingException(
+                    title: 'Pesanan Sudah Pernah Dipacking',
+                    message: "Pesanan {$order->salesorder_no} sudah pernah dipacking dan tidak dapat diproses kembali.",
+                    status: 409,
+                );
+            }
+
             return null;
         }
 

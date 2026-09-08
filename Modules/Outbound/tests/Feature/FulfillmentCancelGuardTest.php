@@ -2,6 +2,7 @@
 
 namespace Modules\Outbound\Tests\Feature;
 
+use App\Exceptions\UserFacingException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -42,5 +43,16 @@ class FulfillmentCancelGuardTest extends TestCase
     {
 
         $this->assertNull(app(PacklistService::class)->scanOrder('SO-DOES-NOT-EXIST'));
+    }
+
+    public function test_packing_scan_identifies_order_that_was_already_packed(): void
+    {
+        $orderId = $this->seedOrder('packed', false);
+        $no = DB::table('sales_orders')->where('id', $orderId)->value('salesorder_no');
+
+        $this->expectException(UserFacingException::class);
+        $this->expectExceptionMessage('sudah pernah dipacking');
+
+        app(PacklistService::class)->scanOrder($no);
     }
 }
