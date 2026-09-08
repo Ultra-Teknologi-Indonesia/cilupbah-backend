@@ -256,4 +256,28 @@ class ShopeeOrderSyncTest extends TestCase
 
         $this->assertNotNull(SalesOrder::where('salesorder_no', 'SP-2606SHOPEE01')->first());
     }
+
+    public function test_single_pull_reports_failure_when_order_cannot_be_persisted(): void
+    {
+        Http::fake([
+            'partner.shopeemobile.com/api/v2/order/get_order_detail*' => Http::response([
+                'response' => ['order_list' => [$this->orderDetail([
+                    'item_list' => [[
+                        'item_id' => 555100,
+                        'item_name' => 'SKU belum diunduh',
+                        'model_sku' => 'SKU-MISSING',
+                        'model_quantity_purchased' => 1,
+                        'model_discounted_price' => 60000,
+                    ]],
+                ])]],
+            ], 200),
+        ]);
+
+        $count = app(ShopeeOrderService::class)->pullOrderById('778899', '2606SHOPEE01');
+
+        $this->assertSame(0, $count);
+        $this->assertDatabaseMissing('sales_orders', [
+            'salesorder_no' => 'SP-2606SHOPEE01',
+        ]);
+    }
 }

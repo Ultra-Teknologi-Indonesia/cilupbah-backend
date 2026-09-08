@@ -167,4 +167,31 @@ class OrderIngestionSafetyNetTest extends TestCase
         $this->assertSame(1, $hasil['failed']);
         $this->assertSame(['ORD-2'], $hasil['failed_ids']);
     }
+
+    public function test_manual_refresh_pulls_existing_orders_to_update_their_status(): void
+    {
+        Queue::fake();
+        $this->makeShop();
+
+        $this->mock(ChannelReconciliationService::class, function (MockInterface $mock) {
+            $mock->shouldReceive('auditOrders')->once()->andReturn([]);
+            $mock->shouldReceive('refreshRecentOrders')
+                ->once()
+                ->with(2, 10)
+                ->andReturn([[
+                    'channel' => 'shopee',
+                    'shop_id' => '778899',
+                    'checked' => 10,
+                    'pulled' => 10,
+                    'failed' => 0,
+                    'failed_ids' => [],
+                ]]);
+            $mock->shouldReceive('discoverShopeeReturns')->once()->andReturn([]);
+        });
+
+        $this->artisan('channel:reconcile-orders', [
+            '--days' => 2,
+            '--refresh-existing-limit' => 10,
+        ])->assertSuccessful();
+    }
 }

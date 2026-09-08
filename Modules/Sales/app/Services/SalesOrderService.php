@@ -1691,7 +1691,14 @@ class SalesOrderService
             $name = $actor['name'] ?? null;
             $id = $actor['id'] ?? null;
         } else {
-            $authUser = auth()->user();
+            $authUser = null;
+
+            try {
+                $authUser = auth()->user();
+            } catch (\Throwable) {
+
+            }
+
             $email = $authUser?->email;
             $name = $authUser?->name;
             $id = $authUser?->id;
@@ -2285,11 +2292,14 @@ class SalesOrderService
                 }
             }
 
+            $stockAllocation = $finalStatus === 'reserved' ? 'reserved' : 'not_required';
+
             if ($existing === null) {
                 $this->logStatusHistory($order, 'CREATED', [
                     'to' => $order->status,
                     'source' => $order->source,
                     'channel_status' => $channelStatus,
+                    'stock_allocation' => $stockAllocation,
                 ]);
             } else {
                 $this->logChannelStatusHistoryIfChanged(
@@ -2299,7 +2309,9 @@ class SalesOrderService
                 );
             }
 
-            $stockMutated = $this->reconcileStockTransition($order, $previousStatus, $finalStatus);
+            $stockMutated = $this->isPendingChannelCancellation($orderData, $finalStatus)
+                ? false
+                : $this->reconcileStockTransition($order, $previousStatus, $finalStatus);
 
             if ($finalStatus === 'cancelled') {
 
@@ -2626,6 +2638,18 @@ class SalesOrderService
         return $newRank > $currentRank ? $newStatus : $currentStatus;
     }
 
+    private function isPendingChannelCancellation(array $orderData, string $finalStatus): bool
+    {
+        if ($finalStatus === 'cancelled') {
+            return false;
+        }
+
+        $channelStatus = strtoupper(trim((string) ($orderData['channel_status'] ?? '')));
+
+        return in_array($channelStatus, ['IN_CANCEL', 'TO_RETURN'], true)
+            || ! empty($orderData['cancel_requested_at']);
+    }
+
     private function reconcileStockTransition(SalesOrder $order, ?string $previousStatus, string $finalStatus): bool
     {
         if ($finalStatus === 'cancelled') {
@@ -2633,10 +2657,13 @@ class SalesOrderService
         }
 
         if ($previousStatus === null) {
-
-            $this->reserveStockForOrder($order, false);
-
             $toRank = $this->statusRank($finalStatus, 0);
+            $hasReservableItems = $order->items->contains(fn ($item) => (bool) $item->item_id);
+
+            if ($hasReservableItems) {
+                $this->reserveStockForOrder($order, false);
+            }
+
             for ($rank = 2; $rank <= $toRank; $rank++) {
                 match ($rank) {
                     2 => $this->pickStockForOrder($order),
@@ -2644,7 +2671,7 @@ class SalesOrderService
                 };
             }
 
-            return true;
+            return $hasReservableItems;
         }
 
         if ($previousStatus === 'cancelled') {
@@ -2652,10 +2679,10 @@ class SalesOrderService
         }
 
         $fromRank = $this->statusRank($previousStatus, 0);
-        if ($previousStatus === 'pending') {
-            $fromRank = 1;
-        }
 
+        if ($previousStatus === 'pending') {
+            $fromRank = self::STATUS_RANK['reserved'];
+        }
         $toRank = $this->statusRank($finalStatus);
 
         if ($toRank <= $fromRank) {

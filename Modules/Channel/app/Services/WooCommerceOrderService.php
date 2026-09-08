@@ -37,7 +37,15 @@ class WooCommerceOrderService
 
             try {
                 $internal = $this->mapper->map($order, $shopId);
-                $this->orderService->upsertFromChannel($internal);
+                $localOrderId = $this->orderService->upsertFromChannel($internal);
+                if (! $localOrderId) {
+                    Log::warning("WooCommerce: order {$orderId} tidak tersimpan secara lokal setelah pull.", [
+                        'shop_id' => $shopId,
+                    ]);
+
+                    continue;
+                }
+
                 $count++;
             } catch (\Throwable $e) {
                 Log::error("WooCommerce: gagal upsert order {$orderId}: " . $e->getMessage());
@@ -81,7 +89,14 @@ class WooCommerceOrderService
         }
 
         $internal = $this->mapper->map($order, $shopId);
-        $this->orderService->upsertFromChannel($internal);
+        $localOrderId = $this->orderService->upsertFromChannel($internal);
+        if (! $localOrderId) {
+            Log::warning("WooCommerce: order {$orderId} tidak tersimpan secara lokal setelah pull.", [
+                'shop_id' => $shopId,
+            ]);
+
+            return 0;
+        }
 
         return 1;
     }

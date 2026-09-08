@@ -17,8 +17,7 @@ return [
     'pdf_queue' => env('QUEUE_NAME_EXPORTS_PDF', 'exports-pdf'),
     'pdf_memory_limit' => env('EXPORT_PDF_MEMORY_LIMIT', '1536M'),
     'pdf_timeout' => max(120, (int) env('EXPORT_PDF_TIMEOUT', 900)),
-    // DomPDF holds the whole document in memory. Excel is the safe option for
-    // larger datasets; this cap is enforced before HTML/PDF rendering starts.
+
     'pdf_max_rows' => max(1, (int) env('EXPORT_PDF_MAX_ROWS', 1000)),
     'sheet_connection' => env('EXPORT_SHEET_QUEUE_CONNECTION'),
     'sheet_queue' => env('QUEUE_NAME_EXPORTS_SHEET', env('QUEUE_NAME_EXPORTS', 'exports-sheet')),

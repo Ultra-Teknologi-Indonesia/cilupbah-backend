@@ -89,7 +89,7 @@ class StockService
                 $targetInv = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, $targetBinId);
                 $targetInv->on_order = ((int) $targetInv->on_order) + $qty;
                 $targetInv->recalculateAvailable();
-                $this->inventoryRepository->updateStock($targetInv);
+                $this->inventoryRepository->updateReservation($targetInv);
 
                 $totalOnOrder = $this->inventoryRepository->sumOnOrderAtLocation($itemId, $locationId);
                 $this->recordAllocation($itemId, $locationId, $qty, $transactionNumber, 'ORDER_RESERVE', $totalOnOrder, $targetBinId);

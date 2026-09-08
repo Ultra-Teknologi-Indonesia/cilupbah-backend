@@ -814,7 +814,7 @@ final class StockCutoverService
                     $builder->orWhereIn('id', $preservedQueueIds);
                 }
             })
-            ->whereIn('status', ['RECEIVED', 'FAILED', 'received', 'failed'])
+            ->whereIn('status', ['RECEIVED', 'FAILED', 'SKIPPED', 'received', 'failed', 'skipped'])
             ->orderBy('received_at')
             ->limit(max(1, $limit));
         $records = $query->get();

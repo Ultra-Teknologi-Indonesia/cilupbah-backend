@@ -38,7 +38,7 @@ use Modules\Sales\Services\OrderSettlementService;
 
 class ExportManager
 {
-    /** @var array<string, string> PDF export type => query-backed XLSX source type */
+
     public const TABULAR_PDF_TYPES = [
         'negative-stock-pdf' => 'negative-stock',
         'transfer-pdf' => 'transfer',

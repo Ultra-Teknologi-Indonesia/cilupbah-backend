@@ -109,11 +109,6 @@ class ReportController extends Controller
         return $this->successResponse(['export_id' => $job->id, 'status' => $job->status], null, 202);
     }
 
-    /**
-     * All tabular reports use the same opt-in format switch.  The request
-     * still goes through its report-specific FormRequest; `format` only
-     * selects the queued renderer and can never alter filters or access.
-     */
     private function queueTabularExport(ExportManager $exports, string $type, array $params, Request $request): JsonResponse
     {
         $format = $request->input('format', 'excel');

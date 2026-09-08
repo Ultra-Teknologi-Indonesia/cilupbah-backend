@@ -104,6 +104,54 @@ class ChannelReconciliationService
         return ['pulled' => $pulled, 'failed' => count($failedIds), 'failed_ids' => $failedIds];
     }
 
+    public function refreshRecentOrders(int $days, int $limitPerShop): array
+    {
+        if ($limitPerShop <= 0) {
+            return [];
+        }
+
+        $report = [];
+
+        foreach (self::CHANNELS as $code) {
+            foreach ($this->shops->getShopsByChannelCode($code) as $shop) {
+                try {
+                    $orderIds = $this->channelOrderIds($code, (string) $shop->shop_id, $days);
+                    if ($orderIds === null || $orderIds === []) {
+                        continue;
+                    }
+
+                    $result = $this->pullMissingOrders(
+                        $code,
+                        (string) $shop->shop_id,
+                        $orderIds,
+                        $limitPerShop,
+                    );
+
+                    $report[] = [
+                        'channel' => $code,
+                        'shop_id' => (string) $shop->shop_id,
+                        'checked' => min(count($orderIds), $limitPerShop),
+                        ...$result,
+                    ];
+                } catch (\Throwable $e) {
+                    Log::warning("Reconcile refresh status gagal untuk {$code} {$shop->shop_id}: " . $e->getMessage());
+
+                    $report[] = [
+                        'channel' => $code,
+                        'shop_id' => (string) $shop->shop_id,
+                        'checked' => 0,
+                        'pulled' => 0,
+                        'failed' => 1,
+                        'failed_ids' => [],
+                        'error' => $e->getMessage(),
+                    ];
+                }
+            }
+        }
+
+        return $report;
+    }
+
     public function discoverShopeeReturns(int $maxPages = 10, int $pageSize = 50): array
     {
         $stats = [];

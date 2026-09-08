@@ -47,7 +47,15 @@ class ShopeeOrderService
 
                 try {
                     $internal = $this->mapper->map($order, $shopId, $shippingChannelTypes);
-                    $this->orderService->upsertFromChannel($internal);
+                    $localOrderId = $this->orderService->upsertFromChannel($internal);
+                    if (! $localOrderId) {
+                        Log::warning("Shopee: order {$orderSn} tidak tersimpan secara lokal setelah pull.", [
+                            'shop_id' => $shopId,
+                        ]);
+
+                        continue;
+                    }
+
                     $count++;
                 } catch (\Throwable $e) {
                     Log::error("Shopee: gagal upsert order {$orderSn}: ".$e->getMessage());
@@ -55,7 +63,7 @@ class ShopeeOrderService
             }
         }
 
-        if ($count > 0 || ! empty($orderSns)) {
+        if ($count > 0) {
             $this->shopRepository->markIntegrationHealthy($shop->id);
             $this->shopRepository->markOrderSyncOk($shop->id);
         }
@@ -77,16 +85,22 @@ class ShopeeOrderService
         $internal = $this->mapper->map($order, $shopId, $this->shippingChannelTypes($shopId));
         $orderId = $this->orderService->upsertFromChannel($internal);
 
-        if ($orderId) {
-            try {
-                $escrowRaw = $this->getEscrowDetail($shopId, $orderSn);
-                if (! empty($escrowRaw)) {
-                    $finance = app(ShopeeEscrowMapper::class)->map($escrowRaw);
-                    $this->orderService->updateOrderFinance($orderId, $finance);
-                }
-            } catch (\Throwable $e) {
+        if (! $orderId) {
+            Log::warning("Shopee: order {$orderSn} tidak tersimpan secara lokal setelah pull.", [
+                'shop_id' => $shopId,
+            ]);
 
+            return 0;
+        }
+
+        try {
+            $escrowRaw = $this->getEscrowDetail($shopId, $orderSn);
+            if (! empty($escrowRaw)) {
+                $finance = app(ShopeeEscrowMapper::class)->map($escrowRaw);
+                $this->orderService->updateOrderFinance($orderId, $finance);
             }
+        } catch (\Throwable $e) {
+
         }
 
         $this->shopRepository->markIntegrationHealthy($shop->id);

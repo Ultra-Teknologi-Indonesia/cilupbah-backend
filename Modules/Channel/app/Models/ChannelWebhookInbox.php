@@ -55,10 +55,6 @@ class ChannelWebhookInbox extends Model
         ]);
     }
 
-    /**
-     * Mark a queue dispatch failure without losing the durable inbox record.
-     * The row remains RECEIVED so the scheduler can retry it with backoff.
-     */
     public static function markDispatchFailedByKey(string $eventKey, string $message): void
     {
         DB::transaction(function () use ($eventKey, $message): void {
@@ -82,10 +78,6 @@ class ChannelWebhookInbox extends Model
         });
     }
 
-    /**
-     * Keep a successfully dispatched event eligible for recovery if the
-     * worker dies before marking the inbox row processed.
-     */
     public static function markDispatchQueuedByKey(string $eventKey): void
     {
         static::query()

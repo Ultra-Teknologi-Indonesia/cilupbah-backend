@@ -212,6 +212,15 @@ class InventoryRepository
         return $inventory->save();
     }
 
+    public function updateReservation(Inventory $inventory): bool
+    {
+        WarehouseAccess::assertOperational($inventory->location_id ? (string) $inventory->location_id : null);
+
+        $inventory->recalculateAvailable();
+
+        return $inventory->save();
+    }
+
     public function getTotalAvailableByItem(string $itemId): int
     {
 

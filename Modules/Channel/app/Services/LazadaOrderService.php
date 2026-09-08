@@ -76,7 +76,15 @@ class LazadaOrderService
 
                 try {
                     $internal = $this->mapper->map($order, $itemsByOrder[$orderId] ?? [], $shopId);
-                    $this->orderService->upsertFromChannel($internal);
+                    $localOrderId = $this->orderService->upsertFromChannel($internal);
+                    if (! $localOrderId) {
+                        Log::warning("Lazada: order {$orderId} tidak tersimpan secara lokal setelah pull.", [
+                            'shop_id' => $shopId,
+                        ]);
+
+                        continue;
+                    }
+
                     $count++;
                 } catch (\Throwable $e) {
                     Log::error("Lazada: gagal upsert order {$orderId}: ".$e->getMessage());
@@ -139,7 +147,14 @@ class LazadaOrderService
         $itemsByOrder = $this->fetchItemsForOrders($shop, [$orderId]);
 
         $internal = $this->mapper->map($order, $itemsByOrder[$orderId] ?? [], $shopId);
-        $this->orderService->upsertFromChannel($internal);
+        $localOrderId = $this->orderService->upsertFromChannel($internal);
+        if (! $localOrderId) {
+            Log::warning("Lazada: order {$orderId} tidak tersimpan secara lokal setelah pull.", [
+                'shop_id' => $shopId,
+            ]);
+
+            return 0;
+        }
 
         return 1;
     }

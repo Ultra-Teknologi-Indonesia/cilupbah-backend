@@ -4,7 +4,10 @@ namespace Modules\Sales\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use Modules\Sales\Jobs\SyncStockJob;
+use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderService;
 use Tests\TestCase;
 
@@ -15,10 +18,12 @@ class ChannelStockReconcileTest extends TestCase
     protected SalesOrderService $service;
     protected string $variantId;
     protected string $locationId;
+    protected string $binId;
 
     protected function setUp(): void
     {
         parent::setUp();
+        Queue::fake();
         $this->service = app(SalesOrderService::class);
 
         $categoryId = DB::table('categories')->insertGetId([
@@ -90,6 +95,11 @@ class ChannelStockReconcileTest extends TestCase
 
         if ($existing) {
             $this->locationId = $existing;
+            DB::table('locations')->where('id', $this->locationId)->update([
+                'is_warehouse' => true,
+                'is_small_warehouse' => true,
+                'is_active' => true,
+            ]);
         } else {
             $this->locationId = Str::uuid()->toString();
             DB::table('locations')->insert([
@@ -98,17 +108,28 @@ class ChannelStockReconcileTest extends TestCase
                 'location_name' => 'Gudang Kecil',
                 'location_type' => 'WAREHOUSE',
                 'is_warehouse' => true,
+                'is_small_warehouse' => true,
                 'is_active' => true,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
         }
 
+        $this->binId = Str::uuid()->toString();
+        DB::table('location_bins')->insert([
+            'id' => $this->binId,
+            'location_id' => $this->locationId,
+            'bin_final_code' => 'O-RECON-01',
+            'is_inbound' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
         DB::table('inventories')->insert([
             'id' => Str::uuid()->toString(),
             'item_id' => $this->variantId,
             'location_id' => $this->locationId,
-            'bin_id' => null,
+            'bin_id' => $this->binId,
             'on_hand' => 10,
             'on_order' => 0,
             'available' => 10,
@@ -117,7 +138,7 @@ class ChannelStockReconcileTest extends TestCase
         ]);
     }
 
-    protected function orderData(string $orderNo, string $channelStatus): array
+    protected function orderData(string $orderNo, string $channelStatus, bool $isPaid = true): array
     {
         return [
             'salesorder_no' => $orderNo,
@@ -139,7 +160,7 @@ class ChannelStockReconcileTest extends TestCase
             'shipping_country' => null,
             'channel_status' => $channelStatus,
             'status' => 'pending',
-            'is_paid' => true,
+            'is_paid' => $isPaid,
             'payment_method' => null,
             'source' => 'lazada',
             'items' => [[
@@ -164,6 +185,14 @@ class ChannelStockReconcileTest extends TestCase
             ->first();
     }
 
+    protected function totalOnOrder(): int
+    {
+        return (int) DB::table('inventories')
+            ->where('item_id', $this->variantId)
+            ->where('location_id', $this->locationId)
+            ->sum('on_order');
+    }
+
     protected function movements(string $source): int
     {
         return DB::table('inventory_movements')
@@ -175,13 +204,13 @@ class ChannelStockReconcileTest extends TestCase
     public function test_channel_collection_status_does_not_fake_local_packing_or_release_reservation(): void
     {
         $this->service->upsertFromChannel($this->orderData('LZ-RC-1', 'AWAITING_SHIPMENT'));
-        $this->assertSame(2, $this->inventory()->on_order);
+        $this->assertSame(2, $this->totalOnOrder());
         $this->assertSame(10, $this->inventory()->on_hand);
 
         $this->service->upsertFromChannel($this->orderData('LZ-RC-1', 'AWAITING_COLLECTION'));
 
         $inv = $this->inventory();
-        $this->assertSame(2, $inv->on_order, 'status marketplace tidak boleh melepas reservasi WMS');
+        $this->assertSame(2, $this->totalOnOrder(), 'status marketplace tidak boleh melepas reservasi WMS');
         $this->assertSame(
             10,
             $inv->on_hand,
@@ -192,7 +221,7 @@ class ChannelStockReconcileTest extends TestCase
         $this->service->upsertFromChannel($this->orderData('LZ-RC-1', 'COMPLETED'));
 
         $inv = $this->inventory();
-        $this->assertSame(0, $inv->on_order);
+        $this->assertSame(0, $this->totalOnOrder());
         $this->assertSame(10, $inv->on_hand, 'shipped bukan gerakan stok');
 
         $this->assertSame(1, $this->movements('ORDER_RESERVE'), 'alokasi tepat sekali');
@@ -201,21 +230,21 @@ class ChannelStockReconcileTest extends TestCase
         $this->assertSame(0, $this->movements('ORDER_SHIP'), 'ORDER_SHIP sudah tidak ditulis: pengiriman bukan gerakan stok');
     }
 
-    public function test_pending_then_channel_collection_keeps_reservation_until_local_fulfillment(): void
+    public function test_pending_channel_order_reserves_until_it_is_cancelled_or_fulfilled(): void
     {
-        $this->service->upsertFromChannel($this->orderData('LZ-RC-2', 'UNPAID'));
+        $this->service->upsertFromChannel($this->orderData('LZ-RC-2', 'UNPAID', false));
         $this->assertSame(10, $this->inventory()->on_hand);
         $this->assertSame(
             2,
-            $this->inventory()->on_order,
-            'order channel dialokasikan begitu masuk, tanpa menunggu pembayaran'
+            $this->totalOnOrder(),
+            'Order channel aktif harus menahan stok agar tidak oversell.',
         );
 
         $this->service->upsertFromChannel($this->orderData('LZ-RC-2', 'AWAITING_COLLECTION'));
 
         $inv = $this->inventory();
         $this->assertSame(10, $inv->on_hand, 'fisik baru berkurang saat picking');
-        $this->assertSame(2, $inv->on_order);
+        $this->assertSame(2, $this->totalOnOrder());
         $this->assertSame(1, $this->movements('ORDER_RESERVE'));
         $this->assertSame(0, $this->movements('ORDER_RELEASE'));
     }
@@ -272,21 +301,24 @@ class ChannelStockReconcileTest extends TestCase
         $this->assertSame('reserved', $order->status);
     }
 
-    public function test_channel_reservation_allows_oversell(): void
+    public function test_channel_order_with_stock_shortfall_is_saved_in_empty_stock_without_reservation(): void
     {
         DB::table('inventories')
             ->where('item_id', $this->variantId)
-            ->update(['on_hand' => 1, 'on_order' => 0, 'available' => 1]);
+            ->update(['on_hand' => 0, 'on_order' => 0, 'available' => 0]);
 
-        $this->service->upsertFromChannel($this->orderData('LZ-RC-3', 'AWAITING_SHIPMENT'));
+        $orderId = $this->service->upsertFromChannel($this->orderData('LZ-RC-3', 'AWAITING_SHIPMENT'));
 
         $inv = $this->inventory();
-        $this->assertSame(2, $inv->on_order, 'order channel tetap di-reserve walau stok kurang');
+        $this->assertNotNull($orderId);
+        $this->assertSame(2, $this->totalOnOrder(), 'Stok Kosong tetap menahan kuota order marketplace.');
+        $this->assertSame(0, (int) $inv->on_hand, 'Order channel tidak mengubah stok fisik.');
+        $this->assertSame(-2, (int) $inv->available);
+        $this->assertSame(1, $this->movements('ORDER_RESERVE'));
 
-        $this->assertSame(
-            -1,
-            (int) $inv->on_hand - (int) $inv->on_order,
-            'available efektif boleh minus untuk order yang sudah committed di marketplace'
-        );
+        $order = SalesOrder::findOrFail($orderId);
+        $this->assertSame('reserved', $order->status);
+        $this->assertTrue($order->hasStockShortfall());
+        Queue::assertPushed(SyncStockJob::class);
     }
 }

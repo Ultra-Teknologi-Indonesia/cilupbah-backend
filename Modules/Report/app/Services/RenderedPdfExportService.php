@@ -8,7 +8,6 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use RuntimeException;
 use Modules\Report\Repositories\ReportRepository;
 
-/** Writes the existing layout-specific report PDFs from the isolated PDF worker. */
 final class RenderedPdfExportService
 {
     public function write(string $type, array $params, string $targetPath): void

@@ -11,7 +11,8 @@ class ReconcileChannelOrders extends Command
 {
     protected $signature = 'channel:reconcile-orders
         {--days=2 : Bandingkan order channel dalam N hari terakhir}
-        {--backfill-limit=50 : Maksimum order hilang yang ditarik ulang per toko}';
+        {--backfill-limit=50 : Maksimum order hilang yang ditarik ulang per toko}
+        {--refresh-existing-limit=0 : Maksimum order terbaru per toko yang ditarik ulang untuk menyamakan status; 0 berarti nonaktif}';
 
     protected $description = 'Audit order semua channel vs lokal, tarik ulang order yang belum masuk, dan discovery retur Shopee yang belum tercatat.';
 
@@ -19,6 +20,7 @@ class ReconcileChannelOrders extends Command
     {
         $days = (int) $this->option('days');
         $backfillLimit = (int) $this->option('backfill-limit');
+        $refreshExistingLimit = (int) $this->option('refresh-existing-limit');
         $paused = $sync->isPaused();
 
         foreach ($reconciliation->auditOrders($days) as $row) {
@@ -42,6 +44,24 @@ class ReconcileChannelOrders extends Command
             $this->info('Sinkronisasi channel dijeda — backfill order & discovery retur dilewati.');
 
             return self::SUCCESS;
+        }
+
+        if ($refreshExistingLimit > 0) {
+            foreach ($reconciliation->refreshRecentOrders($days, $refreshExistingLimit) as $row) {
+                $this->info("REFRESH {$row['channel']} {$row['shop_id']}: diperiksa={$row['checked']} diperbarui={$row['pulled']} gagal={$row['failed']}");
+
+                if (($row['failed'] ?? 0) > 0) {
+                    AdminAlertJob::dispatch(
+                        "Refresh status pesanan {$row['channel']} gagal",
+                        "{$row['failed']} pesanan gagal ditarik ulang saat refresh status manual.",
+                        [
+                            'channel' => $row['channel'],
+                            'shop_id' => $row['shop_id'],
+                            'order_ids' => array_slice($row['failed_ids'] ?? [], 0, 20),
+                        ],
+                    );
+                }
+            }
         }
 
         foreach ($reconciliation->discoverShopeeReturns() as $stat) {

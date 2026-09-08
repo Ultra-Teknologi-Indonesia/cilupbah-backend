@@ -10,14 +10,6 @@ use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
 use RuntimeException;
 
-/**
- * Renders query-backed report exports as a deliberately bounded PDF.
- *
- * XLSX remains the unbounded analysis format. DomPDF has to retain the whole
- * document in memory, so this adapter fetches at most PDF_MAX_ROWS + 1 rows
- * and fails the queue job with an actionable message before rendering an
- * oversized document.
- */
 final class TabularPdfExportService
 {
     public function __construct(
@@ -59,7 +51,6 @@ final class TabularPdfExportService
         return count($rows);
     }
 
-    /** @return list<string> */
     private function normaliseRow(array $row): array
     {
         return array_map(static function (mixed $value): string {

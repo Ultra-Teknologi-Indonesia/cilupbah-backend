@@ -6,7 +6,10 @@ namespace Modules\Inventory\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use Modules\Channel\Enums\WebhookInboxStatus;
+use Modules\Channel\Jobs\ProcessTikTokWebhook;
 use Modules\Inventory\Services\StockCutoverService;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
@@ -17,6 +20,58 @@ use Tests\TestCase;
 final class StockCutoverCommandTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_replay_requeues_webhooks_skipped_during_cutover(): void
+    {
+        Queue::fake();
+
+        $location = Location::create([
+            'location_code' => 'WH-REPLAY',
+            'location_name' => 'Gudang Replay',
+            'location_type' => 'warehouse',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+        $runId = (string) Str::uuid();
+        DB::table('stock_cutover_runs')->insert([
+            'id' => $runId,
+            'cutoff_at' => now()->subMinute(),
+            'location_codes' => json_encode([$location->location_code], JSON_THROW_ON_ERROR),
+            'source_files' => json_encode([], JSON_THROW_ON_ERROR),
+            'report' => json_encode([], JSON_THROW_ON_ERROR),
+            'status' => 'RESUMED',
+            'created_by' => 'test',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('channel_webhook_inbox')->insert([
+            'id' => (string) Str::uuid(),
+            'channel' => 'tiktok',
+            'shop_id' => 'TT-CUTOVER',
+            'event_key' => 'tiktok_webhook:cutover-test',
+            'event_type' => '1',
+            'payload' => json_encode([
+                'type' => 1,
+                'shop_id' => 'TT-CUTOVER',
+                'data' => ['order_id' => 'ORDER-CUTOVER'],
+            ], JSON_THROW_ON_ERROR),
+            'status' => WebhookInboxStatus::SKIPPED->value,
+            'attempts' => 0,
+            'error' => 'Sinkron pesanan toko ini dimatikan — event tidak diproses.',
+            'received_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $result = app(StockCutoverService::class)->replayOrders($runId, 50, false);
+
+        self::assertSame(['replayed' => 1, 'failed' => 0], $result);
+        self::assertDatabaseHas('channel_webhook_inbox', [
+            'event_key' => 'tiktok_webhook:cutover-test',
+            'status' => WebhookInboxStatus::RECEIVED->value,
+        ]);
+        Queue::assertPushed(ProcessTikTokWebhook::class, 1);
+    }
 
     public function test_reset_keeps_master_sku_and_rack_and_removes_stock_history(): void
     {
