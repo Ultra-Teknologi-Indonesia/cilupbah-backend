@@ -25,7 +25,7 @@ Schedule::command('channel:monitor-download-health')->everyFifteenMinutes()->wit
 Schedule::command('channel:pull-orders --hours=1')->everyTwoMinutes()->withoutOverlapping(5)->onOneServer();
 
 Schedule::command('channel:webhooks-replay --minutes=5 --limit=500')->everyFiveMinutes()->withoutOverlapping(10)->onOneServer();
-Schedule::command('webhook:replay-failed --limit=100')->everyFiveMinutes()->withoutOverlapping(5)->onOneServer();
+Schedule::command('channel:monitor-queue-health')->everyFiveMinutes()->withoutOverlapping(10)->onOneServer();
 
 Schedule::command('channel:evaluate-order-sync')->everyFifteenMinutes()->withoutOverlapping()->onOneServer();
 
@@ -42,7 +42,7 @@ Schedule::command('channel:reconcile-orders')->hourlyAt(30)->withoutOverlapping(
 Schedule::command('raise-products:auto-raise')->everyThirtyMinutes()->withoutOverlapping()->onOneServer();
 
 Schedule::command('horizon:snapshot')->everyFiveMinutes();
-Schedule::command('horizon:purge')->daily()->withoutOverlapping()->onOneServer();
+Schedule::command('horizon:purge')->hourly()->withoutOverlapping()->onOneServer();
 
 Schedule::job(new \Modules\Outbound\Jobs\RefreshInstantTrackingJob())
     ->everyThreeMinutes()

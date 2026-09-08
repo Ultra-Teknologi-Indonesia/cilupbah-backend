@@ -41,9 +41,9 @@ return [
         'recent' => 60,
         'pending' => 60,
         'completed' => 60,
-        'recent_failed' => 10080,
-        'failed' => 10080,
-        'monitored' => 10080,
+        'recent_failed' => 1440,
+        'failed' => 2880,
+        'monitored' => 1440,
     ],
 
     'silenced' => [
@@ -151,8 +151,8 @@ return [
             'connection' => config('queue.routing.channel_after_sales.connection', 'redis-long'),
             'queue' => [config('queue.routing.channel_after_sales.queue', 'channel-after-sales')],
             'balance' => 'simple',
-            'minProcesses' => 1,
-            'maxProcesses' => 1,
+            'minProcesses' => (int) env('HORIZON_AFTER_SALES_MIN_PROCESSES', 2),
+            'maxProcesses' => (int) env('HORIZON_AFTER_SALES_MAX_PROCESSES', 3),
             'maxJobs' => 100,
             'maxTime' => 1800,
             'timeout' => 150,

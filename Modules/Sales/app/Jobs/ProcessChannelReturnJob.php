@@ -3,14 +3,16 @@
 namespace Modules\Sales\Jobs;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Sales\Services\SalesReturnService;
 
-class ProcessChannelReturnJob implements ShouldQueue
+class ProcessChannelReturnJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -20,11 +22,25 @@ class ProcessChannelReturnJob implements ShouldQueue
 
     public int $timeout = 120;
 
+    public int $uniqueFor = 3600;
+
     public function __construct(
         public readonly array $payload,
     ) {
         $this->onConnection(config('queue.routing.channel_after_sales.connection', 'redis-long'))
             ->onQueue(config('queue.routing.channel_after_sales.queue', 'channel-after-sales'));
+    }
+
+    public function uniqueId(): string
+    {
+        return (string) ($this->payload['channel_return_id']
+            ?? $this->payload['return_id']
+            ?? sha1(json_encode($this->payload)));
+    }
+
+    public function middleware(): array
+    {
+        return [new RateLimited('channel_api')];
     }
 
     public function handle(SalesReturnService $service): void

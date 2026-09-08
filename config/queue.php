@@ -51,7 +51,7 @@ return [
 
         'redis-long' => [
             'driver' => 'redis',
-            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'connection' => env('REDIS_LONG_CONNECTION', 'long'),
             'queue' => env('REDIS_LONG_QUEUE', 'downloads'),
             'retry_after' => (int) env('REDIS_LONG_QUEUE_RETRY_AFTER', 1200),
             'block_for' => null,

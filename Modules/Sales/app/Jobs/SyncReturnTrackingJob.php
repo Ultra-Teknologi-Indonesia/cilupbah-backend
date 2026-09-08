@@ -3,15 +3,17 @@
 namespace Modules\Sales\Jobs;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Sales\Models\SalesReturn;
 use Modules\Sales\Services\SalesReturnTrackingSyncService;
 
-class SyncReturnTrackingJob implements ShouldQueue
+class SyncReturnTrackingJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -19,11 +21,23 @@ class SyncReturnTrackingJob implements ShouldQueue
 
     public array $backoff = [30, 120, 600];
 
+    public int $uniqueFor = 3600;
+
     public function __construct(
         public string $salesReturnId,
     ) {
         $this->onConnection(config('queue.routing.channel_after_sales.connection', 'redis-long'));
         $this->onQueue(config('queue.routing.channel_after_sales.queue', 'channel-after-sales'));
+    }
+
+    public function uniqueId(): string
+    {
+        return $this->salesReturnId;
+    }
+
+    public function middleware(): array
+    {
+        return [new RateLimited('channel_api')];
     }
 
     public function handle(SalesReturnTrackingSyncService $syncService): void

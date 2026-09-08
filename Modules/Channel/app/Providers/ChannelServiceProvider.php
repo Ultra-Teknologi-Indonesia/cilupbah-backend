@@ -2,6 +2,7 @@
 
 namespace Modules\Channel\Providers;
 
+use App\Console\Commands\ReplayWebhookInbox;
 use Modules\Channel\Console\Commands\AlertChannelReauth;
 use Modules\Channel\Console\Commands\AuditChannelProductActivity;
 use Modules\Channel\Console\Commands\AuditChannelSkuCoverage;
@@ -11,6 +12,7 @@ use Modules\Channel\Console\Commands\BackfillTikTokCommercePlatform;
 use Modules\Channel\Console\Commands\EvaluateOrderSyncHealth;
 use Modules\Channel\Console\Commands\MonitorChannelSkuHealth;
 use Modules\Channel\Console\Commands\MonitorDownloadHealth;
+use Modules\Channel\Console\Commands\MonitorRedisQueueHealth;
 use Modules\Channel\Console\Commands\MonitorShadowPullHealth;
 use Modules\Channel\Console\Commands\PullChannelShop;
 use Modules\Channel\Console\Commands\PullLiveOrdersCommand;
@@ -53,6 +55,7 @@ class ChannelServiceProvider extends ModuleServiceProvider
         EvaluateOrderSyncHealth::class,
         MonitorChannelSkuHealth::class,
         MonitorDownloadHealth::class,
+        MonitorRedisQueueHealth::class,
         PullChannelShop::class,
         ReapStaleDownloadTransactions::class,
         ReportMissingChannelSku::class,
@@ -70,6 +73,7 @@ class ChannelServiceProvider extends ModuleServiceProvider
         StockHandoverCommand::class,
         StockReconcileCommand::class,
         StockRollbackCommand::class,
+        ReplayWebhookInbox::class,
         \Modules\Channel\Console\Commands\ReplayFailedWebhooksCommand::class,
         \Modules\Channel\Console\Commands\CleanOrderCutoverCommand::class,
         \Modules\Channel\Console\Commands\MonitorLiveQueueCommand::class,

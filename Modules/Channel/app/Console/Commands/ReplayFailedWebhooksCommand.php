@@ -3,13 +3,9 @@
 namespace Modules\Channel\Console\Commands;
 
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Cache;
 use Modules\Channel\Enums\WebhookInboxStatus;
-use Modules\Channel\Jobs\ProcessLazadaWebhook;
-use Modules\Channel\Jobs\ProcessShopeeWebhook;
-use Modules\Channel\Jobs\ProcessTikTokWebhook;
-use Modules\Channel\Jobs\ProcessWooCommerceWebhook;
 use Modules\Channel\Models\ChannelWebhookInbox;
+use Modules\Channel\Services\ChannelWebhookService;
 
 class ReplayFailedWebhooksCommand extends Command
 {
@@ -21,7 +17,7 @@ class ReplayFailedWebhooksCommand extends Command
 
     protected $description = 'Replay failed webhook inbox records by re-dispatching them to their processing queues';
 
-    public function handle(): int
+    public function handle(ChannelWebhookService $webhookService): int
     {
         $channel = $this->option('channel');
         $eventType = $this->option('event-type');
@@ -51,20 +47,20 @@ class ReplayFailedWebhooksCommand extends Command
                 continue;
             }
 
-            Cache::forget($record->event_key);
+            \Illuminate\Support\Facades\Cache::forget($record->event_key);
 
             $record->update([
                 'status' => WebhookInboxStatus::RECEIVED,
                 'error' => null,
+                'next_attempt_at' => null,
             ]);
 
-            match (strtolower((string) $record->channel)) {
-                'shopee' => ProcessShopeeWebhook::dispatch($payload),
-                'tiktok' => ProcessTikTokWebhook::dispatch($payload),
-                'lazada' => ProcessLazadaWebhook::dispatch($payload),
-                'woocommerce' => ProcessWooCommerceWebhook::dispatch($payload),
-                default => null,
-            };
+            if (! $webhookService->dispatchInbox($record->fresh())) {
+                $this->warn("Dispatch gagal, akan dicoba ulang dengan backoff: {$record->event_key}");
+                continue;
+            }
+
+            ChannelWebhookInbox::markReplayAttemptByKey((string) $record->event_key);
 
             $this->line("• Replayed [{$record->channel}] key: {$record->event_key}");
             $replayed++;

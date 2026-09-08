@@ -136,6 +136,19 @@ return [
             'backoff_cap' => env('REDIS_BACKOFF_CAP', 1000),
         ],
 
+        'long' => [
+            'url' => env('REDIS_LONG_URL'),
+            'host' => env('REDIS_LONG_HOST', env('REDIS_QUEUE_HOST', env('REDIS_HOST', '127.0.0.1'))),
+            'username' => env('REDIS_LONG_USERNAME', env('REDIS_QUEUE_USERNAME', env('REDIS_USERNAME'))),
+            'password' => env('REDIS_LONG_PASSWORD', env('REDIS_QUEUE_PASSWORD', env('REDIS_PASSWORD'))),
+            'port' => (int) env('REDIS_LONG_PORT', env('REDIS_QUEUE_PORT', env('REDIS_PORT', 6379))),
+            'database' => env('REDIS_LONG_DB', '0'),
+            'max_retries' => env('REDIS_MAX_RETRIES', 3),
+            'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
+            'backoff_base' => env('REDIS_BACKOFF_BASE', 100),
+            'backoff_cap' => env('REDIS_BACKOFF_CAP', 1000),
+        ],
+
     ],
 
 ];

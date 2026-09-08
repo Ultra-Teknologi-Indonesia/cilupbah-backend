@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Modules\Channel\Services;
 
+use Closure;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Repositories\ChannelWebhookInboxRepository;
 use Modules\Channel\Jobs\ProcessLazadaWebhook;
@@ -57,29 +60,87 @@ final class ChannelWebhookService
         );
     }
 
-    public function dispatchLazada(array $payload): void
+    public function dispatchLazada(array $payload): bool
     {
-        ProcessLazadaWebhook::dispatch($payload);
-    }
-
-    public function dispatchShopee(array $payload): void
-    {
-        ProcessShopeeWebhook::dispatch($payload);
-    }
-
-    public function dispatchTikTok(array $payload): void
-    {
-        ProcessTikTokWebhook::dispatch($payload)
-            ->onQueue(ProcessTikTokWebhook::resolveQueueName($payload));
-    }
-
-    public function dispatchWooCommerce(string $shopId, string $topic, array $payload): void
-    {
-        ProcessWooCommerceWebhook::dispatch(
-            $shopId,
-            $topic,
-            (string) $payload['id'],
-            $payload,
+        return $this->dispatchSafely(
+            'lazada',
+            ProcessLazadaWebhook::idempotencyKey($payload),
+            fn (): mixed => ProcessLazadaWebhook::dispatch($payload),
         );
+    }
+
+    public function dispatchShopee(array $payload): bool
+    {
+        return $this->dispatchSafely(
+            'shopee',
+            ProcessShopeeWebhook::idempotencyKey($payload),
+            fn (): mixed => ProcessShopeeWebhook::dispatch($payload),
+        );
+    }
+
+    public function dispatchTikTok(array $payload): bool
+    {
+        return $this->dispatchSafely(
+            'tiktok',
+            ProcessTikTokWebhook::idempotencyKey($payload),
+            fn (): mixed => ProcessTikTokWebhook::dispatch($payload)
+                ->onQueue(ProcessTikTokWebhook::resolveQueueName($payload)),
+        );
+    }
+
+    public function dispatchWooCommerce(string $shopId, string $topic, array $payload): bool
+    {
+        return $this->dispatchSafely(
+            'woocommerce',
+            ProcessWooCommerceWebhook::idempotencyKey($shopId, $topic, $payload),
+            fn (): mixed => ProcessWooCommerceWebhook::dispatch(
+                $shopId,
+                $topic,
+                (string) $payload['id'],
+                $payload,
+            ),
+        );
+    }
+
+    public function dispatchInbox(ChannelWebhookInbox $row): bool
+    {
+        $payload = (array) $row->payload;
+        Cache::forget((string) $row->event_key);
+
+        return match (strtolower((string) $row->channel)) {
+            'lazada' => $this->dispatchLazada($payload),
+            'shopee' => $this->dispatchShopee($payload),
+            'tiktok' => $this->dispatchTikTok($payload),
+            'woocommerce' => $this->dispatchWooCommerce(
+                (string) $row->shop_id,
+                (string) $row->event_type,
+                $payload,
+            ),
+            default => false,
+        };
+    }
+
+    private function dispatchSafely(string $channel, string $eventKey, Closure $dispatch): bool
+    {
+        try {
+            $dispatch();
+            ChannelWebhookInbox::markDispatchQueuedByKey($eventKey);
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::error('Webhook queue dispatch gagal; event disimpan untuk retry database', [
+                'channel' => $channel,
+                'event_key' => $eventKey,
+                'exception' => $e::class,
+                'error' => $e->getMessage(),
+            ]);
+
+            ChannelWebhookInbox::markDispatchFailedByKey(
+                $eventKey,
+                'Queue dispatch gagal dan akan dicoba ulang: '.$e->getMessage(),
+            );
+
+            return false;
+        }
     }
 }

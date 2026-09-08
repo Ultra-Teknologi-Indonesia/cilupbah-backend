@@ -4,6 +4,7 @@ namespace Modules\Channel\Models;
 
 use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 use Modules\Channel\Enums\WebhookInboxStatus;
 
 class ChannelWebhookInbox extends Model
@@ -23,6 +24,7 @@ class ChannelWebhookInbox extends Model
         'error',
         'received_at',
         'processed_at',
+        'next_attempt_at',
     ];
 
     protected $casts = [
@@ -31,6 +33,7 @@ class ChannelWebhookInbox extends Model
         'attempts' => 'integer',
         'received_at' => 'datetime',
         'processed_at' => 'datetime',
+        'next_attempt_at' => 'datetime',
     ];
 
     public function markProcessed(): void
@@ -38,6 +41,7 @@ class ChannelWebhookInbox extends Model
         $this->update([
             'status' => WebhookInboxStatus::PROCESSED,
             'processed_at' => now(),
+            'next_attempt_at' => null,
         ]);
     }
 
@@ -47,7 +51,72 @@ class ChannelWebhookInbox extends Model
             'status' => WebhookInboxStatus::FAILED,
             'attempts' => $this->attempts + 1,
             'error' => mb_substr($message, 0, 2000),
+            'next_attempt_at' => null,
         ]);
+    }
+
+    /**
+     * Mark a queue dispatch failure without losing the durable inbox record.
+     * The row remains RECEIVED so the scheduler can retry it with backoff.
+     */
+    public static function markDispatchFailedByKey(string $eventKey, string $message): void
+    {
+        DB::transaction(function () use ($eventKey, $message): void {
+            $row = static::query()
+                ->where('event_key', $eventKey)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $row || $row->status !== WebhookInboxStatus::RECEIVED) {
+                return;
+            }
+
+            $attempts = (int) $row->attempts + 1;
+            $delaySeconds = min(3600, 30 * (2 ** min($attempts - 1, 7)));
+
+            $row->update([
+                'attempts' => $attempts,
+                'error' => mb_substr($message, 0, 2000),
+                'next_attempt_at' => now()->addSeconds($delaySeconds),
+            ]);
+        });
+    }
+
+    /**
+     * Keep a successfully dispatched event eligible for recovery if the
+     * worker dies before marking the inbox row processed.
+     */
+    public static function markDispatchQueuedByKey(string $eventKey): void
+    {
+        static::query()
+            ->where('event_key', $eventKey)
+            ->where('status', WebhookInboxStatus::RECEIVED)
+            ->update([
+                'error' => null,
+                'next_attempt_at' => now()->addMinutes(10),
+            ]);
+    }
+
+    public static function markReplayAttemptByKey(string $eventKey): void
+    {
+        DB::transaction(function () use ($eventKey): void {
+            $row = static::query()
+                ->where('event_key', $eventKey)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $row || $row->status !== WebhookInboxStatus::RECEIVED) {
+                return;
+            }
+
+            $attempts = (int) $row->attempts + 1;
+            $delaySeconds = min(3600, 30 * (2 ** min($attempts - 1, 7)));
+
+            $row->update([
+                'attempts' => $attempts,
+                'next_attempt_at' => now()->addSeconds($delaySeconds),
+            ]);
+        });
     }
 
     public static function markProcessedByKey(string $eventKey): void
@@ -57,6 +126,7 @@ class ChannelWebhookInbox extends Model
             ->update([
                 'status' => WebhookInboxStatus::PROCESSED,
                 'processed_at' => now(),
+                'next_attempt_at' => null,
             ]);
     }
 
@@ -68,6 +138,7 @@ class ChannelWebhookInbox extends Model
                 'status' => WebhookInboxStatus::SKIPPED,
                 'processed_at' => now(),
                 'error' => mb_substr($reason, 0, 2000),
+                'next_attempt_at' => null,
             ]);
     }
 
@@ -78,6 +149,7 @@ class ChannelWebhookInbox extends Model
             ->update([
                 'status' => WebhookInboxStatus::FAILED,
                 'error' => mb_substr($message, 0, 2000),
+                'next_attempt_at' => null,
             ]);
     }
 }
