@@ -21,6 +21,8 @@ use Modules\Product\Services\ProductCatalogCsvWriter;
 use Modules\Report\Models\ExportJob;
 use Modules\Report\Services\ExportManager;
 use Modules\Report\Services\MonitorStockReportService;
+use Modules\Report\Services\RenderedPdfExportService;
+use Modules\Report\Services\TabularPdfExportService;
 use Modules\Sales\Services\BulkInvoiceService;
 use Throwable;
 
@@ -129,6 +131,16 @@ class RunExportJob implements ShouldQueue
                     app(ManifestBulkPdfExportService::class)->write((array) ($params['order_ids'] ?? []), $temporaryPath);
                 } elseif ($job->type === 'invoice-bulk-pdf') {
                     app(BulkInvoiceService::class)->write((array) ($params['order_ids'] ?? []), $temporaryPath);
+                } elseif (in_array($job->type, [
+                    'order-performance-pdf', 'putaway-performance-pdf', 'putaway-list-pdf', 'shipment-by-courier-pdf', 'penyesuaian-stok-pdf',
+                ], true)) {
+                    app(RenderedPdfExportService::class)->write($job->type, $params, $temporaryPath);
+                } elseif ($manager->isTabularPdf($job->type)) {
+                    $exportedRows = app(TabularPdfExportService::class)->write(
+                        $job->type,
+                        $params,
+                        $temporaryPath,
+                    );
                 }
                 $stream = fopen($temporaryPath, 'rb');
                 if ($stream === false) {

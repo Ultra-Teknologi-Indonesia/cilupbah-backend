@@ -131,12 +131,6 @@ final class RunStockCutoverConsoleJob implements ShouldQueue
         }
     }
 
-    /**
-     * Excel readers require a local seekable file. R2 is therefore streamed to a
-     * short-lived worker directory and removed in the finally block above.
-     *
-     * @param  array{disk: string, path: string, sha256?: string}  $file
-     */
     private function materializeSourceFile(array $file, string $workingDirectory, string $locationCode): string
     {
         $diskName = (string) ($file['disk'] ?? '');

@@ -932,6 +932,35 @@ class ReportRepository
             ->get();
     }
 
+    public function penyesuaianStokLinesQuery(string $startDate, string $endDate, array $productIds, array $locationIds): Builder
+    {
+        return DB::table('stock_adjustment_items as sai')
+            ->join('stock_adjustments as sa', 'sa.id', '=', 'sai.stock_adjustment_id')
+            ->leftJoin('product_variants as pv', 'pv.id', '=', 'sai.item_id')
+            ->leftJoin('products as p', 'p.id', '=', 'pv.product_id')
+            ->whereNull('sa.deleted_at')
+            ->whereDate('sa.transaction_date', '>=', $startDate)
+            ->whereDate('sa.transaction_date', '<=', $endDate)
+            ->whereNotExists(fn (Builder $query) => $query
+                ->selectRaw('1')
+                ->from('inbound_receipts')
+                ->whereColumn('inbound_receipts.stock_adjustment_id', 'sa.id')
+                ->where('inbound_receipts.condition', 'ADJUSTMENT'))
+            ->when($productIds !== [], fn (Builder $query) => $query->whereIn('sai.item_id', $productIds))
+            ->when($locationIds !== [], fn (Builder $query) => $query->whereIn('sa.location_id', $locationIds))
+            ->orderBy('pv.sku')
+            ->orderBy('sa.transaction_date')
+            ->select([
+                'pv.sku',
+                'p.name as product_name',
+                'sa.transaction_date',
+                'sa.adjustment_no',
+                'sa.notes as adjustment_notes',
+                'sai.notes as item_notes',
+                'sai.difference_qty',
+            ]);
+    }
+
     public function lazadaOrder(string $orderId): SalesOrder
     {
         return SalesOrder::select([

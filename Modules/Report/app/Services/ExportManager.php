@@ -18,6 +18,7 @@ use Modules\Report\Exports\NegativeStockReportExport;
 use Modules\Report\Exports\PicklistDetailExport;
 use Modules\Report\Exports\PicklistDetailPhotoExport;
 use Modules\Report\Exports\PickListReportExport;
+use Modules\Report\Exports\PenyesuaianStokExport;
 use Modules\Report\Exports\RincianPendapatanExport;
 use Modules\Report\Exports\RincianPendapatanPerBarangExport;
 use Modules\Report\Exports\SalesListPesananExport;
@@ -28,6 +29,7 @@ use Modules\Report\Exports\ShipmentListReportExport;
 use Modules\Report\Exports\TransferReportExport;
 use Modules\Report\Jobs\RunExportJob;
 use Modules\Report\Models\ExportJob;
+use Modules\Report\Repositories\ReportRepository;
 use Modules\Sales\Exports\CancelledOrdersExport;
 use Modules\Sales\Exports\SalesOrdersExport;
 use Modules\Sales\Exports\SalesReturnReportExport;
@@ -36,15 +38,60 @@ use Modules\Sales\Services\OrderSettlementService;
 
 class ExportManager
 {
+    /** @var array<string, string> PDF export type => query-backed XLSX source type */
+    public const TABULAR_PDF_TYPES = [
+        'negative-stock-pdf' => 'negative-stock',
+        'transfer-pdf' => 'transfer',
+        'picklist-list-pdf' => 'picklist-list',
+        'shipment-list-pdf' => 'shipment-list',
+        'inventory-stock-pdf' => 'inventory-stock',
+        'inventory-rack-pdf' => 'inventory-rack',
+        'sales-list-pdf' => 'sales-list',
+        'sales-product-pdf' => 'sales-product',
+        'sales-return-pdf' => 'sales-return',
+        'sales-income-pdf' => 'sales-income',
+        'customer-list-pdf' => 'customer-list',
+        'sales-return-detail-pdf' => 'sales-return-detail',
+        'settlement-pdf' => 'settlement',
+        'purchase-order-list-pdf' => 'purchase-order-list',
+        'purchase-order-detail-pdf' => 'purchase-order-detail',
+        'rack-allocation-pdf' => 'rack-allocation',
+        'stock-adjustment-pdf' => 'stock-adjustment',
+        'stock-adjustment-report-pdf' => 'stock-adjustment-report',
+    ];
+
     public const PDF_TYPES = [
         'monitor-stock-pdf',
         'picklist-pdf',
         'transfer-out-bulk-pdf',
         'putaway-bulk-pdf',
         'stock-adjustment-bulk-pdf',
+        'penyesuaian-stok-pdf',
         'picklist-bulk-pdf',
         'manifest-bulk-pdf',
         'invoice-bulk-pdf',
+        'order-performance-pdf',
+        'putaway-performance-pdf',
+        'putaway-list-pdf',
+        'shipment-by-courier-pdf',
+        'negative-stock-pdf',
+        'transfer-pdf',
+        'picklist-list-pdf',
+        'shipment-list-pdf',
+        'inventory-stock-pdf',
+        'inventory-rack-pdf',
+        'sales-list-pdf',
+        'sales-product-pdf',
+        'sales-return-pdf',
+        'sales-income-pdf',
+        'customer-list-pdf',
+        'sales-return-detail-pdf',
+        'settlement-pdf',
+        'purchase-order-list-pdf',
+        'purchase-order-detail-pdf',
+        'rack-allocation-pdf',
+        'stock-adjustment-pdf',
+        'stock-adjustment-report-pdf',
     ];
 
     public const TYPES = [
@@ -77,12 +124,36 @@ class ExportManager
         'purchase-order-detail',
         'rack-allocation',
         'stock-adjustment',
+        'stock-adjustment-report',
         'transfer-out-bulk-pdf',
         'putaway-bulk-pdf',
         'stock-adjustment-bulk-pdf',
         'picklist-bulk-pdf',
         'manifest-bulk-pdf',
         'invoice-bulk-pdf',
+        'order-performance-pdf',
+        'putaway-performance-pdf',
+        'putaway-list-pdf',
+        'shipment-by-courier-pdf',
+        'negative-stock-pdf',
+        'transfer-pdf',
+        'picklist-list-pdf',
+        'shipment-list-pdf',
+        'inventory-stock-pdf',
+        'inventory-rack-pdf',
+        'sales-list-pdf',
+        'sales-product-pdf',
+        'sales-return-pdf',
+        'sales-income-pdf',
+        'customer-list-pdf',
+        'sales-return-detail-pdf',
+        'settlement-pdf',
+        'purchase-order-list-pdf',
+        'purchase-order-detail-pdf',
+        'rack-allocation-pdf',
+        'stock-adjustment-pdf',
+        'stock-adjustment-report-pdf',
+        'penyesuaian-stok-pdf',
     ];
 
     public function queue(User $user, string $type, array $params): ExportJob
@@ -132,7 +203,9 @@ class ExportManager
             'file_available' => $job->file_path !== null && $job->file_purged_at === null,
             'file_purged_at' => $job->file_purged_at?->toIso8601String(),
             'error' => $job->isFailed()
-                ? 'Gagal membuat berkas export. Coba lagi atau persempit rentang data.'
+                ? (str_starts_with((string) $job->error, 'PDF dibatasi')
+                    ? $job->error
+                    : 'Gagal membuat berkas export. Coba lagi atau persempit rentang data.')
                 : null,
             'download_url' => $downloadUrl,
         ];
@@ -247,6 +320,15 @@ class ExportManager
                 ),
             ),
 
+            'stock-adjustment-report' => new PenyesuaianStokExport(
+                app(ReportRepository::class)->penyesuaianStokLinesQuery(
+                    (string) $params['start_date'],
+                    (string) $params['end_date'],
+                    (array) ($params['product_ids'] ?? []),
+                    (array) ($params['location_ids'] ?? []),
+                ),
+            ),
+
             'monitor-stock-xlsx' => app(MonitorStockReportService::class)->export($params),
 
             'monitor-stock-pdf' => throw new \LogicException('PDF Monitor Stok diproses langsung oleh worker.'),
@@ -319,8 +401,52 @@ class ExportManager
         };
     }
 
+    public function isTabularPdf(string $type): bool
+    {
+        return array_key_exists($type, self::TABULAR_PDF_TYPES);
+    }
+
+    public function sourceTypeForTabularPdf(string $type): string
+    {
+        if (! $this->isTabularPdf($type)) {
+            throw new \InvalidArgumentException("Tipe PDF tabel tidak dikenal: {$type}");
+        }
+
+        return self::TABULAR_PDF_TYPES[$type];
+    }
+
+    public function labelFor(string $type): string
+    {
+        return match ($type) {
+            'negative-stock' => 'Riwayat Stok Minus',
+            'transfer' => 'Laporan Transfer Gudang',
+            'picklist-list' => 'Daftar Picklist',
+            'shipment-list' => 'Daftar Pengiriman',
+            'inventory-stock' => 'Laporan Persediaan Barang',
+            'inventory-rack' => 'Laporan Persediaan per Rak',
+            'sales-list' => 'Daftar Penjualan',
+            'sales-product' => 'Laporan Penjualan Produk',
+            'sales-return' => 'Laporan Retur Penjualan',
+            'sales-income' => 'Rincian Pendapatan',
+            'customer-list' => 'Daftar Pelanggan',
+            'sales-return-detail' => 'Rincian Retur',
+            'settlement' => 'Laporan Settlement',
+            'purchase-order-list' => 'Daftar Pesanan Pembelian',
+            'purchase-order-detail' => 'Rincian Pesanan Pembelian',
+            'rack-allocation' => 'Alokasi Rak',
+            'stock-adjustment' => 'Koreksi Stok',
+            default => 'Laporan',
+        };
+    }
+
     public function filename(string $type, array $params): string
     {
+        if ($this->isTabularPdf($type)) {
+            $sourceFilename = $this->filename($this->sourceTypeForTabularPdf($type), $params);
+
+            return (string) preg_replace('/\.(xlsx|csv)$/i', '.pdf', $sourceFilename);
+        }
+
         return match ($type) {
             'negative-stock' => sprintf(
                 'riwayat-stok-minus_%s_%s.xlsx',
@@ -343,6 +469,11 @@ class ExportManager
                 $params['to'] ?? '',
             ),
 
+            'order-performance-pdf' => sprintf(
+                'Laporan-Performa-%s-%s_%s_%s.pdf',
+                ucfirst($params['jenis'] ?? ''), ucfirst($params['mode'] ?? ''), $params['from'] ?? '', $params['to'] ?? '',
+            ),
+
             'putaway-performance' => sprintf(
                 'Laporan-Performa-Penempatan-%s_%s_%s.xlsx',
                 ucfirst($params['mode'] ?? ''),
@@ -350,16 +481,28 @@ class ExportManager
                 $params['to'] ?? '',
             ),
 
+            'putaway-performance-pdf' => sprintf(
+                'Laporan-Performa-Penempatan-%s_%s_%s.pdf',
+                ucfirst($params['mode'] ?? ''), $params['from'] ?? '', $params['to'] ?? '',
+            ),
+
             'putaway-list' => sprintf(
                 'Daftar-Penempatan-Barang_%s.xlsx',
                 $params['date'] ?? now()->format('Y-m-d'),
             ),
+
+            'putaway-list-pdf' => sprintf('Daftar-Penempatan-Barang_%s.pdf', $params['date'] ?? now()->format('Y-m-d')),
 
             'shipment-by-courier' => sprintf(
                 'Laporan-Pengiriman-Ekspedisi-%s_%s_%s.xlsx',
                 ucfirst($params['mode'] ?? ''),
                 $params['from'] ?? '',
                 $params['to'] ?? '',
+            ),
+
+            'shipment-by-courier-pdf' => sprintf(
+                'Laporan-Pengiriman-Ekspedisi-%s_%s_%s.pdf',
+                ucfirst($params['mode'] ?? ''), $params['from'] ?? '', $params['to'] ?? '',
             ),
 
             'shipment-list' => sprintf(
@@ -427,6 +570,15 @@ class ExportManager
             'purchase-order-detail' => 'purchase-orders-details-'.now()->format('Y-m-d-His').'.csv',
             'rack-allocation' => 'alokasi-rak-'.now()->format('Ymd-His').'.xlsx',
             'stock-adjustment' => 'koreksi-stok-'.now()->format('Ymd').'.xlsx',
+            'stock-adjustment-report' => sprintf(
+                'Daftar-Penyesuaian-Stok_%s_%s.xlsx',
+                $params['start_date'] ?? 'semua', $params['end_date'] ?? now()->format('Y-m-d'),
+            ),
+
+            'penyesuaian-stok-pdf' => sprintf(
+                'Daftar-Penyesuaian-Stok_%s_%s.pdf',
+                $params['start_date'] ?? 'semua', $params['end_date'] ?? now()->format('Y-m-d'),
+            ),
 
             'transfer-out-bulk-pdf' => 'Surat-Jalan-Bulk-'.now()->format('Y-m-d_His').'.pdf',
 

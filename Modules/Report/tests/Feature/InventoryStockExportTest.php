@@ -69,6 +69,24 @@ final class InventoryStockExportTest extends TestCase
         Queue::assertPushed(RunExportJob::class);
     }
 
+    public function test_stock_pdf_export_is_queued_on_the_isolated_pdf_worker(): void
+    {
+        Queue::fake();
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/reports/inventory/stock/export/async', [
+                'report_type' => 'by_location',
+                'format' => 'pdf',
+            ]);
+
+        $response->assertStatus(202)->assertJsonPath('data.status', 'queued');
+        $this->assertDatabaseHas('export_jobs', [
+            'type' => 'inventory-stock-pdf',
+            'queue_name' => config('exports.pdf_queue'),
+        ]);
+        Queue::assertPushed(RunExportJob::class);
+    }
+
     public function test_rack_export_rejects_transit_before_queueing(): void
     {
         Queue::fake();

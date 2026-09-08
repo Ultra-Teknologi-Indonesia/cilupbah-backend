@@ -109,34 +109,49 @@ class ReportController extends Controller
         return $this->successResponse(['export_id' => $job->id, 'status' => $job->status], null, 202);
     }
 
+    /**
+     * All tabular reports use the same opt-in format switch.  The request
+     * still goes through its report-specific FormRequest; `format` only
+     * selects the queued renderer and can never alter filters or access.
+     */
+    private function queueTabularExport(ExportManager $exports, string $type, array $params, Request $request): JsonResponse
+    {
+        $format = $request->input('format', 'excel');
+        if (! in_array($format, ['excel', 'pdf'], true)) {
+            abort(422, 'Format export harus PDF atau Excel.');
+        }
+
+        return $this->queueExport($exports, $format === 'pdf' ? "{$type}-pdf" : $type, $params);
+    }
+
     public function negativeStockExportAsync(NegativeStockExportRequest $request, ExportManager $exports): JsonResponse
     {
-        return $this->queueExport($exports, 'negative-stock', $request->validated());
+        return $this->queueTabularExport($exports, 'negative-stock', $request->validated(), $request);
     }
 
     public function transferExportAsync(TransferExportRequest $request, ExportManager $exports): JsonResponse
     {
-        return $this->queueExport($exports, 'transfer', $request->validated());
+        return $this->queueTabularExport($exports, 'transfer', $request->validated(), $request);
     }
 
     public function orderPerformanceExportAsync(OrderPerformanceExportRequest $request, ExportManager $exports): JsonResponse
     {
-        return $this->queueExport($exports, 'order-performance', $request->validated());
+        return $this->queueTabularExport($exports, 'order-performance', $request->validated(), $request);
     }
 
     public function putawayPerformanceExportAsync(PutawayPerformanceExportRequest $request, ExportManager $exports): JsonResponse
     {
-        return $this->queueExport($exports, 'putaway-performance', $request->validated());
+        return $this->queueTabularExport($exports, 'putaway-performance', $request->validated(), $request);
     }
 
     public function putawayListExportAsync(PutawayListExportRequest $request, ExportManager $exports): JsonResponse
     {
-        return $this->queueExport($exports, 'putaway-list', $request->validated());
+        return $this->queueTabularExport($exports, 'putaway-list', $request->validated(), $request);
     }
 
     public function shipmentByCourierExportAsync(ShipmentByCourierExportRequest $request, ExportManager $exports): JsonResponse
     {
-        return $this->queueExport($exports, 'shipment-by-courier', $request->validated());
+        return $this->queueTabularExport($exports, 'shipment-by-courier', $request->validated(), $request);
     }
 
     public function pickListDetailExcelAsync(PickListDetailExcelRequest $request, ExportManager $exports): JsonResponse
@@ -144,34 +159,39 @@ class ReportController extends Controller
         return $this->queueExport($exports, 'picklist-detail-photo', $request->validated());
     }
 
+    public function pickListDetailPdfAsync(PickListDetailPdfRequest $request, ExportManager $exports): JsonResponse
+    {
+        return $this->queueExport($exports, 'picklist-pdf', $request->validated());
+    }
+
     public function pickListExportAsync(PickListExportRequest $request, ExportManager $exports): JsonResponse
     {
-        return $this->queueExport($exports, 'picklist-list', $request->validated());
+        return $this->queueTabularExport($exports, 'picklist-list', $request->validated(), $request);
     }
 
     public function salesListExportAsync(SalesListExportRequest $request, ExportManager $exports): JsonResponse
     {
-        return $this->queueExport($exports, 'sales-list', $request->validated());
+        return $this->queueTabularExport($exports, 'sales-list', $request->validated(), $request);
     }
 
     public function salesProductExportAsync(SalesProductExportRequest $request, ExportManager $exports): JsonResponse
     {
-        return $this->queueExport($exports, 'sales-product', $request->validated());
+        return $this->queueTabularExport($exports, 'sales-product', $request->validated(), $request);
     }
 
     public function salesReturnExportAsync(SalesReturnExportRequest $request, ExportManager $exports): JsonResponse
     {
-        return $this->queueExport($exports, 'sales-return', $request->validated());
+        return $this->queueTabularExport($exports, 'sales-return', $request->validated(), $request);
     }
 
     public function rincianPendapatanExportAsync(RincianPendapatanExportRequest $request, ExportManager $exports): JsonResponse
     {
-        return $this->queueExport($exports, 'sales-income', $request->validated());
+        return $this->queueTabularExport($exports, 'sales-income', $request->validated(), $request);
     }
 
     public function customerListExportAsync(CustomerListExportRequest $request, ExportManager $exports): JsonResponse
     {
-        return $this->queueExport($exports, 'customer-list', $request->validated());
+        return $this->queueTabularExport($exports, 'customer-list', $request->validated(), $request);
     }
 
     public function inventoryStockExportAsync(InventoryStockExportRequest $request, ExportManager $exports): JsonResponse
@@ -179,7 +199,7 @@ class ReportController extends Controller
         $filters = $request->normalized();
         $type = $filters['report_type'] === 'by_rack' ? 'inventory-rack' : 'inventory-stock';
 
-        return $this->queueExport($exports, $type, $filters);
+        return $this->queueTabularExport($exports, $type, $filters, $request);
     }
 
     #[OA\Get(
@@ -514,6 +534,20 @@ class ReportController extends Controller
         );
     }
 
+    public function penyesuaianStokExportAsync(PenyesuaianStokPdfRequest $request, ExportManager $exports): JsonResponse
+    {
+        $format = $request->input('format', 'pdf');
+        if (! in_array($format, ['excel', 'pdf'], true)) {
+            abort(422, 'Format export harus PDF atau Excel.');
+        }
+
+        return $this->queueExport(
+            $exports,
+            $format === 'excel' ? 'stock-adjustment-report' : 'penyesuaian-stok-pdf',
+            $request->validated(),
+        );
+    }
+
     #[OA\Get(
         path: '/api/v1/reports/negative-stock',
         summary: 'Riwayat Stok Minus per SKU + Lokasi + Rak (dari inventory_movements.balance < 0)',
@@ -675,7 +709,7 @@ class ReportController extends Controller
 
     public function shipmentListExportAsync(ShipmentListExportRequest $request, ExportManager $exports): JsonResponse
     {
-        return $this->queueExport($exports, 'shipment-list', $request->validated());
+        return $this->queueTabularExport($exports, 'shipment-list', $request->validated(), $request);
     }
 
     #[OA\Get(

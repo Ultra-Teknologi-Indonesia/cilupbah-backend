@@ -51,6 +51,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('reports/wms/shipment-by-courier/export/async', [ReportController::class, 'shipmentByCourierExportAsync'])->name('reports.wms.shipment-by-courier.export.async');
         Route::get('reports/wms/pick-list/export/async', [ReportController::class, 'pickListExportAsync'])->name('reports.wms.pick-list.export.async');
         Route::post('reports/wms/pick-list/xlsx/async', [ReportController::class, 'pickListDetailExcelAsync'])->name('reports.wms.pick-list.xlsx.async');
+        Route::post('reports/wms/pick-list/pdf/async', [ReportController::class, 'pickListDetailPdfAsync'])->name('reports.wms.pick-list.pdf.async');
     });
     Route::middleware('role_or_permission:owner|view-laporan-hpp')->group(function () {
         Route::get('reports/hpp', [ReportController::class, 'hpp'])->name('reports.hpp');
@@ -71,6 +72,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::middleware('role_or_permission:owner|export-laporan-persediaan')->group(function () {
         Route::post('reports/barcode/pdf', [ReportController::class, 'barcodePdf'])->name('reports.barcode.pdf');
         Route::post('reports/penyesuaian-stok/pdf', [ReportController::class, 'penyesuaianStokPdf'])->name('reports.penyesuaian-stok.pdf');
+        Route::post('reports/penyesuaian-stok/export/async', [ReportController::class, 'penyesuaianStokExportAsync'])->name('reports.penyesuaian-stok.export.async');
         Route::post('reports/inventory/stock/export/async', [ReportController::class, 'inventoryStockExportAsync'])->name('reports.inventory.stock.export.async');
     });
 
