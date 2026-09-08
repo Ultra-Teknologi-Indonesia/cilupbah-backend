@@ -118,7 +118,7 @@ class OrderDirectCompletionTest extends TestCase
         );
     }
 
-    public function test_tanpa_alokasi_pembatalan_mengembalikan_ke_rak_yang_dipilih_sistem(): void
+    public function test_pembatalan_setelah_penyelesaian_langsung_tidak_mengembalikan_ke_rak_yang_dipilih_sistem(): void
     {
         $order = $this->seedOrder(qty: 4);
         $this->seedStock($this->binB, 9);
@@ -128,8 +128,13 @@ class OrderDirectCompletionTest extends TestCase
 
         app(SalesOrderService::class)->cancelLocally($order['order_id'], 'uji', $this->userId);
 
-        $this->assertSame(9, $this->onHand($this->binB));
-        $this->assertNotNull(OrderBinAllocation::where('order_id', $order['order_id'])->sole()->reversed_at);
+        $this->assertSame(5, $this->onHand($this->binB));
+        $this->assertNull(OrderBinAllocation::where('order_id', $order['order_id'])->sole()->reversed_at);
+        $this->assertDatabaseHas('sales_returns', [
+            'order_id' => $order['order_id'],
+            'status' => 'PENDING',
+            'reason_category' => 'CANCEL_SHIPPED',
+        ]);
     }
 
     public function test_menolak_saat_stok_gudang_kecil_kosong_dan_membuka_konfirmasi_pembeli(): void
@@ -186,7 +191,7 @@ class OrderDirectCompletionTest extends TestCase
         $this->assertSame(10, $this->onHand($this->binA));
     }
 
-    public function test_pembatalan_mengembalikan_stok_ke_rak_asal(): void
+    public function test_pembatalan_setelah_pesanan_dikirim_membuat_return_tanpa_mengembalikan_stok_ke_rak(): void
     {
         $order = $this->seedOrder(qty: 4);
         $this->seedStock($this->binA, 6);
@@ -200,11 +205,16 @@ class OrderDirectCompletionTest extends TestCase
 
         app(SalesOrderService::class)->cancelLocally($order['order_id'], 'uji batal', $this->userId);
 
-        $this->assertSame(6, $this->onHand($this->binA));
-        $this->assertNotNull(
+        $this->assertSame(2, $this->onHand($this->binA));
+        $this->assertNull(
             OrderBinAllocation::where('order_id', $order['order_id'])->sole()->reversed_at,
         );
-        $this->assertDatabaseHas('inventory_movements', [
+        $this->assertDatabaseHas('sales_returns', [
+            'order_id' => $order['order_id'],
+            'status' => 'PENDING',
+            'reason_category' => 'CANCEL_SHIPPED',
+        ]);
+        $this->assertDatabaseMissing('inventory_movements', [
             'item_id' => $this->variantId,
             'bin_id' => $this->binA,
             'source' => 'ORDER_COMPLETE_REVERSAL',

@@ -121,6 +121,36 @@ class SalesReturnFromChannelTest extends TestCase
         ]);
     }
 
+    public function test_channel_return_binds_to_existing_cancelled_shipped_return_without_duplicate(): void
+    {
+        [$orderId] = $this->seedOrder('shopee', 'SP-CANCELLED-SHIPPED-1');
+        $service = app(SalesReturnService::class);
+        $order = \Modules\Sales\Models\SalesOrder::findOrFail($orderId);
+
+        $created = $service->createFromCancelledShipped(
+            $order,
+            'Pesanan dibatalkan setelah diserahkan ke kurir',
+            'system:channel-cancel',
+        );
+
+        $bound = $service->createFromChannel([
+            'source' => 'shopee',
+            'channel_order_id' => 'SP-CANCELLED-SHIPPED-1',
+            'channel_return_id' => 'RETURN-CHANNEL-1',
+            'channel_shop_id' => 'shop-9',
+            'channel_status' => 'ACCEPTED',
+            'created_by' => 'system:shopee-webhook',
+        ]);
+
+        $this->assertNotNull($created);
+        $this->assertNotNull($bound);
+        $this->assertSame($created->id, $bound->id);
+        $this->assertSame(1, SalesReturn::where('order_id', $orderId)->count());
+        $this->assertSame(SalesReturn::SOURCE_MARKETPLACE, $bound->source);
+        $this->assertSame('shopee:RETURN-CHANNEL-1', $bound->channel_return_id);
+        $this->assertSame(SalesReturn::REASON_CATEGORY_CANCEL_SHIPPED, $bound->reason_category);
+    }
+
     public function test_skips_when_order_not_found(): void
     {
         $return = app(SalesReturnService::class)->createFromChannel([

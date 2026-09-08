@@ -27,6 +27,7 @@ use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Repositories\PutawayRepository;
 use Modules\Notification\Events\TaskAssigned;
 use Modules\Notification\Services\NotificationDispatcher;
+use Modules\Sales\Services\SalesReturnOrderActivityService;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 use Modules\Warehouse\Services\LocationBinService;
@@ -49,6 +50,7 @@ class PutawayService
         protected InventoryMovementRepository $movementRepository,
         protected InventoryService $inventoryService,
         protected NotificationDispatcher $notifications,
+        protected SalesReturnOrderActivityService $returnActivities,
     ) {}
 
     private function notifyPutawayCompleted(?Putaway $putaway): void
@@ -1076,7 +1078,10 @@ class PutawayService
                 'completed_at' => now(),
             ]);
 
-            return $this->putawayRepository->findById($id);
+            $completed = $this->putawayRepository->findById($id);
+            $this->returnActivities->putawayCompleted($completed);
+
+            return $completed;
         });
 
         $this->notifyPutawayCompleted($putaway);

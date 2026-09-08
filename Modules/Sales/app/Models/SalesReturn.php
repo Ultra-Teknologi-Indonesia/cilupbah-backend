@@ -2,15 +2,17 @@
 
 namespace Modules\Sales\Models;
 
+use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
-use Modules\Sales\Models\SalesOrder;
+use Illuminate\Support\Facades\Log;
+use Modules\Inbound\Models\Inbound;
+use Modules\Sales\Enums\DisputeOutcome;
 use Modules\Sales\Support\DisputeOutcomeNormalizer;
 use Modules\Warehouse\Models\Location;
-use App\Traits\HasUuid7;
 
 class SalesReturn extends Model
 {
@@ -96,7 +98,7 @@ class SalesReturn extends Model
                     return $legacyMap[$value];
                 }
 
-                $canonical = \Modules\Sales\Enums\DisputeOutcome::tryFrom((string) $value);
+                $canonical = DisputeOutcome::tryFrom((string) $value);
                 if ($canonical !== null) {
                     return $legacyMap[$canonical->value] ?? self::MP_DECISION_PENDING;
                 }
@@ -104,6 +106,7 @@ class SalesReturn extends Model
                     ? $this->order?->source
                     : ($this->attributes['source'] ?? null);
                 $normalized = DisputeOutcomeNormalizer::normalize($channel, (string) $value);
+
                 return $normalized
                     ? ($legacyMap[$normalized->value] ?? self::MP_DECISION_PENDING)
                     : self::MP_DECISION_PENDING;
@@ -125,6 +128,7 @@ class SalesReturn extends Model
                 }
 
                 $order = $this->relationLoaded('order') ? $this->order : null;
+
                 return $order?->source ? strtolower((string) $order->source) : null;
             },
         );
@@ -187,6 +191,7 @@ class SalesReturn extends Model
                 }
 
                 $fallback = $text !== '' ? $text : ($reason !== '' ? $reason : $code);
+
                 return $fallback === '' ? null : self::humanizeCode($fallback);
             },
         );
@@ -197,6 +202,7 @@ class SalesReturn extends Model
         return Attribute::make(
             get: function () {
                 $decision = strtoupper(trim((string) ($this->attributes['marketplace_decision'] ?? '')));
+
                 return self::MP_DECISION_LABELS[$decision] ?? [
                     'PENDING' => 'Menunggu Keputusan',
                     'REFUNDED' => 'Dana Dikembalikan',
@@ -248,13 +254,18 @@ class SalesReturn extends Model
         return ucfirst(strtolower(trim(str_replace(['_', '-'], ' ', $value))));
     }
 
-    const SOURCE_MANUAL      = 'manual';
+    const SOURCE_MANUAL = 'manual';
+
     const SOURCE_MARKETPLACE = 'marketplace';
 
-    const STATUS_PENDING   = 'PENDING';
-    const STATUS_ACCEPTED  = 'ACCEPTED';
-    const STATUS_REJECTED  = 'REJECTED';
+    const STATUS_PENDING = 'PENDING';
+
+    const STATUS_ACCEPTED = 'ACCEPTED';
+
+    const STATUS_REJECTED = 'REJECTED';
+
     const STATUS_COMPLETED = 'COMPLETED';
+
     const STATUS_CANCELLED = 'CANCELLED';
 
     const STATUSES = [
@@ -266,10 +277,14 @@ class SalesReturn extends Model
     ];
 
     const REASON_CATEGORY_FAILED_DELIVERY = 'FAILED_DELIVERY';
-    const REASON_CATEGORY_COMPLAINT       = 'COMPLAINT';
-    const REASON_CATEGORY_CANCEL_SHIPPED  = 'CANCEL_SHIPPED';
-    const REASON_CATEGORY_REMORSE         = 'REMORSE';
-    const REASON_CATEGORY_OTHER           = 'OTHER';
+
+    const REASON_CATEGORY_COMPLAINT = 'COMPLAINT';
+
+    const REASON_CATEGORY_CANCEL_SHIPPED = 'CANCEL_SHIPPED';
+
+    const REASON_CATEGORY_REMORSE = 'REMORSE';
+
+    const REASON_CATEGORY_OTHER = 'OTHER';
 
     const REASON_CATEGORIES = [
         self::REASON_CATEGORY_FAILED_DELIVERY,
@@ -281,29 +296,36 @@ class SalesReturn extends Model
 
     const REASON_CATEGORY_LABELS = [
         self::REASON_CATEGORY_FAILED_DELIVERY => 'Gagal Kirim',
-        self::REASON_CATEGORY_COMPLAINT       => 'Komplain Pembeli',
-        self::REASON_CATEGORY_CANCEL_SHIPPED  => 'Cancel Telanjur Kirim',
-        self::REASON_CATEGORY_REMORSE         => 'Berubah Pikiran',
-        self::REASON_CATEGORY_OTHER           => 'Lainnya',
+        self::REASON_CATEGORY_COMPLAINT => 'Komplain Pembeli',
+        self::REASON_CATEGORY_CANCEL_SHIPPED => 'Cancel Telanjur Kirim',
+        self::REASON_CATEGORY_REMORSE => 'Berubah Pikiran',
+        self::REASON_CATEGORY_OTHER => 'Lainnya',
     ];
 
-    const MP_DECISION_PENDING    = 'MP_PENDING';
-    const MP_DECISION_APPROVED   = 'MP_APPROVED';
-    const MP_DECISION_REJECTED   = 'MP_REJECTED';
-    const MP_DECISION_DISPUTE    = 'MP_DISPUTE';
-    const MP_DECISION_JUDGING    = 'MP_JUDGING';
-    const MP_DECISION_REFUNDED   = 'MP_REFUNDED';
-    const MP_DECISION_CLOSED     = 'MP_CLOSED';
+    const MP_DECISION_PENDING = 'MP_PENDING';
+
+    const MP_DECISION_APPROVED = 'MP_APPROVED';
+
+    const MP_DECISION_REJECTED = 'MP_REJECTED';
+
+    const MP_DECISION_DISPUTE = 'MP_DISPUTE';
+
+    const MP_DECISION_JUDGING = 'MP_JUDGING';
+
+    const MP_DECISION_REFUNDED = 'MP_REFUNDED';
+
+    const MP_DECISION_CLOSED = 'MP_CLOSED';
+
     const MP_DECISION_NOT_RETURN = 'MP_NOT_RETURN';
 
     const MP_DECISION_LABELS = [
-        self::MP_DECISION_PENDING    => 'Menunggu Keputusan',
-        self::MP_DECISION_APPROVED   => 'Disetujui Marketplace',
-        self::MP_DECISION_REJECTED   => 'Ditolak Marketplace',
-        self::MP_DECISION_DISPUTE    => 'Dalam Banding',
-        self::MP_DECISION_JUDGING    => 'Diarbitrase Marketplace',
-        self::MP_DECISION_REFUNDED   => 'Dana Dikembalikan',
-        self::MP_DECISION_CLOSED     => 'Ditutup',
+        self::MP_DECISION_PENDING => 'Menunggu Keputusan',
+        self::MP_DECISION_APPROVED => 'Disetujui Marketplace',
+        self::MP_DECISION_REJECTED => 'Ditolak Marketplace',
+        self::MP_DECISION_DISPUTE => 'Dalam Banding',
+        self::MP_DECISION_JUDGING => 'Diarbitrase Marketplace',
+        self::MP_DECISION_REFUNDED => 'Dana Dikembalikan',
+        self::MP_DECISION_CLOSED => 'Ditutup',
         self::MP_DECISION_NOT_RETURN => 'Bukan Retur',
     ];
 
@@ -321,73 +343,73 @@ class SalesReturn extends Model
     const MP_DECISION_MAP = [
 
         'shopee' => [
-            'PENDING'         => self::MP_DECISION_PENDING,
-            'REQUESTED'      => self::MP_DECISION_PENDING,
-            'ACCEPTED'       => self::MP_DECISION_APPROVED,
-            'PROCESSING'     => self::MP_DECISION_PENDING,
+            'PENDING' => self::MP_DECISION_PENDING,
+            'REQUESTED' => self::MP_DECISION_PENDING,
+            'ACCEPTED' => self::MP_DECISION_APPROVED,
+            'PROCESSING' => self::MP_DECISION_PENDING,
             'SELLER_DISPUTE' => self::MP_DECISION_DISPUTE,
-            'JUDGING'        => self::MP_DECISION_JUDGING,
-            'CANCELLED'      => self::MP_DECISION_CLOSED,
-            'CLOSED'         => self::MP_DECISION_CLOSED,
-            'EXPIRED'        => self::MP_DECISION_CLOSED,
-            'REFUNDED'       => self::MP_DECISION_REFUNDED,
-            'REJECTED'       => self::MP_DECISION_REJECTED,
+            'JUDGING' => self::MP_DECISION_JUDGING,
+            'CANCELLED' => self::MP_DECISION_CLOSED,
+            'CLOSED' => self::MP_DECISION_CLOSED,
+            'EXPIRED' => self::MP_DECISION_CLOSED,
+            'REFUNDED' => self::MP_DECISION_REFUNDED,
+            'REJECTED' => self::MP_DECISION_REJECTED,
         ],
 
         'tiktok' => [
-            'PENDING'                             => self::MP_DECISION_PENDING,
-            'RETURN_OR_REFUND_REQUEST_PENDING'  => self::MP_DECISION_PENDING,
-            'AWAITING_BUYER_SHIP'               => self::MP_DECISION_APPROVED,
-            'BUYER_SHIPPED_ITEM'                => self::MP_DECISION_APPROVED,
-            'REQUEST_SUCCESS'                   => self::MP_DECISION_APPROVED,
-            'REQUEST_REJECTED'                  => self::MP_DECISION_REJECTED,
-            'RETURN_OR_REFUND_REQUEST_REJECT'   => self::MP_DECISION_REJECTED,
-            'REFUND_OR_RETURN_REQUEST_REJECT'   => self::MP_DECISION_REJECTED,
-            'RECEIVE_REJECTED'                  => self::MP_DECISION_REJECTED,
-            'REJECT_RECEIVE_PACKAGE'            => self::MP_DECISION_REJECTED,
+            'PENDING' => self::MP_DECISION_PENDING,
+            'RETURN_OR_REFUND_REQUEST_PENDING' => self::MP_DECISION_PENDING,
+            'AWAITING_BUYER_SHIP' => self::MP_DECISION_APPROVED,
+            'BUYER_SHIPPED_ITEM' => self::MP_DECISION_APPROVED,
+            'REQUEST_SUCCESS' => self::MP_DECISION_APPROVED,
+            'REQUEST_REJECTED' => self::MP_DECISION_REJECTED,
+            'RETURN_OR_REFUND_REQUEST_REJECT' => self::MP_DECISION_REJECTED,
+            'REFUND_OR_RETURN_REQUEST_REJECT' => self::MP_DECISION_REJECTED,
+            'RECEIVE_REJECTED' => self::MP_DECISION_REJECTED,
+            'REJECT_RECEIVE_PACKAGE' => self::MP_DECISION_REJECTED,
             'RETURN_OR_REFUND_REQUEST_COMPLETE' => self::MP_DECISION_REFUNDED,
-            'RETURN_OR_REFUND_CANCEL'           => self::MP_DECISION_CLOSED,
-            'RETURN_OR_REFUND_REQUEST_CANCEL'   => self::MP_DECISION_CLOSED,
-            'REPLACEMENT_REQUEST_CANCEL'        => self::MP_DECISION_CLOSED,
-            'REPLACEMENT_REQUEST_REJECT'        => self::MP_DECISION_REJECTED,
+            'RETURN_OR_REFUND_CANCEL' => self::MP_DECISION_CLOSED,
+            'RETURN_OR_REFUND_REQUEST_CANCEL' => self::MP_DECISION_CLOSED,
+            'REPLACEMENT_REQUEST_CANCEL' => self::MP_DECISION_CLOSED,
+            'REPLACEMENT_REQUEST_REJECT' => self::MP_DECISION_REJECTED,
 
-            'PENDING_REQUEST_REVIEW'            => self::MP_DECISION_PENDING,
-            'REQUEST_REVIEW_COMPLETED'          => self::MP_DECISION_APPROVED,
-            'RMA_CREATED'                       => self::MP_DECISION_APPROVED,
-            'REFUND_SUCCESS'                    => self::MP_DECISION_REFUNDED,
+            'PENDING_REQUEST_REVIEW' => self::MP_DECISION_PENDING,
+            'REQUEST_REVIEW_COMPLETED' => self::MP_DECISION_APPROVED,
+            'RMA_CREATED' => self::MP_DECISION_APPROVED,
+            'REFUND_SUCCESS' => self::MP_DECISION_REFUNDED,
         ],
 
         'lazada' => [
 
-            'CANCEL_INIT'          => self::MP_DECISION_PENDING,
-            'CANCEL_SUCCESS'       => self::MP_DECISION_REFUNDED,
+            'CANCEL_INIT' => self::MP_DECISION_PENDING,
+            'CANCEL_SUCCESS' => self::MP_DECISION_REFUNDED,
             'CANCEL_REFUND_ISSUED' => self::MP_DECISION_REFUNDED,
 
-            'RTM_INIT'             => self::MP_DECISION_PENDING,
-            'RTM_CANCELED'         => self::MP_DECISION_CLOSED,
-            'RTM_SHIPPING_BACK'    => self::MP_DECISION_APPROVED,
-            'RTM_RECEIVE_ITEM'     => self::MP_DECISION_APPROVED,
+            'RTM_INIT' => self::MP_DECISION_PENDING,
+            'RTM_CANCELED' => self::MP_DECISION_CLOSED,
+            'RTM_SHIPPING_BACK' => self::MP_DECISION_APPROVED,
+            'RTM_RECEIVE_ITEM' => self::MP_DECISION_APPROVED,
 
-            'RTW_INIT'             => self::MP_DECISION_PENDING,
-            'RTW_CANCELED'         => self::MP_DECISION_CLOSED,
-            'RTW_SHIPPING_BACK'    => self::MP_DECISION_APPROVED,
-            'RTW_REJECT'           => self::MP_DECISION_REJECTED,
-            'RTW_REFUND_PENDING'   => self::MP_DECISION_REFUNDED,
+            'RTW_INIT' => self::MP_DECISION_PENDING,
+            'RTW_CANCELED' => self::MP_DECISION_CLOSED,
+            'RTW_SHIPPING_BACK' => self::MP_DECISION_APPROVED,
+            'RTW_REJECT' => self::MP_DECISION_REJECTED,
+            'RTW_REFUND_PENDING' => self::MP_DECISION_REFUNDED,
 
-            'REFUND_INIT'          => self::MP_DECISION_PENDING,
-            'REFUND_PENDING'       => self::MP_DECISION_APPROVED,
-            'REFUND_SUCCESS'       => self::MP_DECISION_REFUNDED,
-            'REFUND_REJECTED'      => self::MP_DECISION_REJECTED,
+            'REFUND_INIT' => self::MP_DECISION_PENDING,
+            'REFUND_PENDING' => self::MP_DECISION_APPROVED,
+            'REFUND_SUCCESS' => self::MP_DECISION_REFUNDED,
+            'REFUND_REJECTED' => self::MP_DECISION_REJECTED,
         ],
 
         'woocommerce' => [
-            'REFUNDED'   => self::MP_DECISION_REFUNDED,
-            'COMPLETED'  => self::MP_DECISION_REFUNDED,
+            'REFUNDED' => self::MP_DECISION_REFUNDED,
+            'COMPLETED' => self::MP_DECISION_REFUNDED,
             'PROCESSING' => self::MP_DECISION_APPROVED,
-            'ON-HOLD'    => self::MP_DECISION_PENDING,
-            'PENDING'    => self::MP_DECISION_PENDING,
-            'CANCELLED'  => self::MP_DECISION_CLOSED,
-            'FAILED'     => self::MP_DECISION_CLOSED,
+            'ON-HOLD' => self::MP_DECISION_PENDING,
+            'PENDING' => self::MP_DECISION_PENDING,
+            'CANCELLED' => self::MP_DECISION_CLOSED,
+            'FAILED' => self::MP_DECISION_CLOSED,
         ],
     ];
 
@@ -397,8 +419,8 @@ class SalesReturn extends Model
         $upperStatus = strtoupper(trim($rawStatus));
 
         if (! isset($map[$upperStatus])) {
-            \Illuminate\Support\Facades\Log::warning('Unmapped marketplace return status', [
-                'channel'    => $channel,
+            Log::warning('Unmapped marketplace return status', [
+                'channel' => $channel,
                 'raw_status' => $rawStatus,
             ]);
 
@@ -495,7 +517,7 @@ class SalesReturn extends Model
 
     public function inbounds(): HasMany
     {
-        return $this->hasMany(\Modules\Inbound\Models\Inbound::class, 'source_id')
-            ->where('source_type', 'SALES_RETURN');
+        return $this->hasMany(Inbound::class, 'source_id')
+            ->where('source_type', 'sales_return');
     }
 }

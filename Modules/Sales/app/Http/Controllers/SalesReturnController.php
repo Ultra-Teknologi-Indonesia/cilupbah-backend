@@ -3,9 +3,11 @@
 namespace Modules\Sales\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Support\ActorName;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Maatwebsite\Excel\Facades\Excel;
+use Modules\Report\Services\ExportManager;
 use Modules\Sales\Http\Requests\AcceptSalesReturnRequest;
 use Modules\Sales\Http\Requests\ChannelRejectSalesReturnRequest;
 use Modules\Sales\Http\Requests\CompleteSalesReturnRequest;
@@ -16,11 +18,11 @@ use Modules\Sales\Http\Requests\StoreSalesReturnRequest;
 use Modules\Sales\Http\Resources\SalesReturnAppealResource;
 use Modules\Sales\Http\Resources\SalesReturnReportResource;
 use Modules\Sales\Http\Resources\SalesReturnResource;
+use Modules\Sales\Models\SalesReturn;
 use Modules\Sales\Services\SalesReturnChannelActionService;
 use Modules\Sales\Services\SalesReturnDetailSyncService;
 use Modules\Sales\Services\SalesReturnService;
 use Modules\Sales\Services\SalesReturnTrackingSyncService;
-use Modules\Report\Services\ExportManager;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Sales Returns', description: 'API Endpoints for Sales Returns')]
@@ -114,7 +116,7 @@ class SalesReturnController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Returns'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(response: 200, description: 'Successful operation'),
@@ -174,7 +176,7 @@ class SalesReturnController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Returns'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
         ],
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
             required: ['processed_by'],
@@ -191,7 +193,11 @@ class SalesReturnController extends Controller
     {
         $return = $this->returnService->accept($id, $request->only('processed_by', 'items'));
 
-        return $this->successResponse(new SalesReturnResource($return), 'Return diterima, Inbound GRN dibuat');
+        $message = $return->reason_category === SalesReturn::REASON_CATEGORY_CANCEL_SHIPPED
+            ? 'Paket fisik dicatat tiba. Dokumen penerimaan dibuat; stok menunggu scan dan putaway.'
+            : 'Return diterima, Inbound GRN dibuat';
+
+        return $this->successResponse(new SalesReturnResource($return), $message);
     }
 
     #[OA\Post(
@@ -200,7 +206,7 @@ class SalesReturnController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Returns'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
         ],
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
             required: ['processed_by'],
@@ -227,7 +233,7 @@ class SalesReturnController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Sales Returns'],
         parameters: [
-            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
         ],
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
             required: ['processed_by'],
@@ -514,7 +520,7 @@ class SalesReturnController extends Controller
         $limit = (int) ($validated['per_page'] ?? 10);
         $rows = $this->returnService->getReportPaginated($validated, $limit);
 
-        \App\Support\ActorName::preload($rows->pluck('processed_by'));
+        ActorName::preload($rows->pluck('processed_by'));
 
         return $this->successPaginatedResponse(
             SalesReturnReportResource::collection($rows),

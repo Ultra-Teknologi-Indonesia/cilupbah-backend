@@ -96,7 +96,11 @@ class SalesReturnAutoUnlockPutawayTest extends TestCase
             ->first();
 
         $this->assertNotNull($inbound);
-        $this->assertContains($inbound->status, [Inbound::STATUS_RECEIVED, Inbound::STATUS_COMPLETED], 'Inbound retur harus langsung berstatus RECEIVED / COMPLETED');
+        $this->assertContains(
+            $inbound->status,
+            [Inbound::STATUS_PARTIAL, Inbound::STATUS_RECEIVED, Inbound::STATUS_COMPLETED],
+            'Inbound retur yang sudah discan harus dapat dibuatkan putaway.',
+        );
         $this->assertSame(2, (int) $inbound->items->first()->received_qty, 'Received qty harus terisi 2');
 
         $putawayService = app(PutawayService::class);

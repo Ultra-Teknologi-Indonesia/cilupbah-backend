@@ -6,9 +6,13 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use Modules\Inbound\Models\Inbound;
+use Modules\Sales\Exceptions\InvalidReturnStateException;
 use Modules\Sales\Jobs\SyncStockJob;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderService;
+use Modules\Sales\Services\SalesReturnService;
+use Modules\Warehouse\Models\Location;
 use Tests\TestCase;
 
 class ChannelStockReconcileTest extends TestCase
@@ -16,8 +20,11 @@ class ChannelStockReconcileTest extends TestCase
     use RefreshDatabase;
 
     protected SalesOrderService $service;
+
     protected string $variantId;
+
     protected string $locationId;
+
     protected string $binId;
 
     protected function setUp(): void
@@ -90,7 +97,7 @@ class ChannelStockReconcileTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $kecilCode = \Modules\Warehouse\Models\Location::SYSTEM_KECIL_CODE;
+        $kecilCode = Location::SYSTEM_KECIL_CODE;
         $existing = DB::table('locations')->where('location_code', $kecilCode)->value('id');
 
         if ($existing) {
@@ -215,7 +222,7 @@ class ChannelStockReconcileTest extends TestCase
             10,
             $inv->on_hand,
             'on_hand TIDAK turun di jalur channel: sejak 647876d1, pemotongan fisik hanya '
-            . 'terjadi saat picker men-scan rak (PicklistService::pickItem)'
+            .'terjadi saat picker men-scan rak (PicklistService::pickItem)'
         );
 
         $this->service->upsertFromChannel($this->orderData('LZ-RC-1', 'COMPLETED'));
@@ -247,6 +254,87 @@ class ChannelStockReconcileTest extends TestCase
         $this->assertSame(2, $this->totalOnOrder());
         $this->assertSame(1, $this->movements('ORDER_RESERVE'));
         $this->assertSame(0, $this->movements('ORDER_RELEASE'));
+    }
+
+    public function test_channel_cancellation_after_shipped_creates_return_without_restoring_physical_stock(): void
+    {
+        $this->service->upsertFromChannel($this->orderData('LZ-RC-RETURN-1', 'AWAITING_COLLECTION'));
+        $this->service->upsertFromChannel($this->orderData('LZ-RC-RETURN-1', 'COMPLETED'));
+        $this->service->upsertFromChannel($this->orderData('LZ-RC-RETURN-1', 'CANCELLED'));
+
+        $order = SalesOrder::query()->where('salesorder_no', 'LZ-RC-RETURN-1')->sole();
+
+        $this->assertSame('cancelled', $order->status);
+        $this->assertSame(10, (int) $this->inventory()->on_hand);
+        $this->assertSame(0, $this->totalOnOrder());
+        $this->assertDatabaseHas('sales_returns', [
+            'order_id' => $order->id,
+            'status' => 'PENDING',
+            'reason_category' => 'CANCEL_SHIPPED',
+        ]);
+        $this->assertDatabaseHas('sales_order_status_histories', [
+            'salesorder_id' => $order->id,
+            'action' => 'RETURN_CREATED',
+        ]);
+        $this->assertSame(0, $this->movements('ORDER_COMPLETE_REVERSAL'));
+
+        $this->service->upsertFromChannel($this->orderData('LZ-RC-RETURN-1', 'CANCELLED'));
+
+        $this->assertSame(1, DB::table('sales_returns')
+            ->where('order_id', $order->id)
+            ->where('reason_category', 'CANCEL_SHIPPED')
+            ->count());
+    }
+
+    public function test_cancelled_shipped_return_waits_for_physical_receipt_and_putaway(): void
+    {
+        $this->service->upsertFromChannel($this->orderData('LZ-RC-RETURN-RECEIVE-1', 'AWAITING_COLLECTION'));
+        $this->service->upsertFromChannel($this->orderData('LZ-RC-RETURN-RECEIVE-1', 'COMPLETED'));
+        $this->service->upsertFromChannel($this->orderData('LZ-RC-RETURN-RECEIVE-1', 'CANCELLED'));
+
+        $order = SalesOrder::query()->where('salesorder_no', 'LZ-RC-RETURN-RECEIVE-1')->sole();
+        $return = DB::table('sales_returns')
+            ->where('order_id', $order->id)
+            ->where('reason_category', 'CANCEL_SHIPPED')
+            ->firstOrFail();
+
+        app(SalesReturnService::class)->accept($return->id, ['processed_by' => 'warehouse_staff']);
+
+        $this->assertDatabaseHas('inbounds', [
+            'source_id' => $return->id,
+            'source_type' => 'sales_return',
+            'status' => Inbound::STATUS_DRAFT,
+        ]);
+        $this->assertDatabaseHas('sales_order_status_histories', [
+            'salesorder_id' => $order->id,
+            'action' => 'RETURN_ACCEPTED',
+        ]);
+        $this->assertDatabaseHas('sales_order_status_histories', [
+            'salesorder_id' => $order->id,
+            'action' => 'RETURN_INBOUND_CREATED',
+        ]);
+        $this->assertSame(0, $this->movements('SALES_RETURN'));
+        $this->assertSame(10, (int) $this->inventory()->on_hand);
+
+        $this->expectException(InvalidReturnStateException::class);
+        app(SalesReturnService::class)->complete($return->id, ['processed_by' => 'warehouse_staff']);
+    }
+
+    public function test_channel_cancellation_before_pickup_remains_pre_manifest_and_does_not_create_return(): void
+    {
+        $this->service->upsertFromChannel($this->orderData('LZ-RC-PRE-MANIFEST-1', 'AWAITING_COLLECTION'));
+        $this->service->upsertFromChannel($this->orderData('LZ-RC-PRE-MANIFEST-1', 'CANCELLED'));
+
+        $order = SalesOrder::query()->where('salesorder_no', 'LZ-RC-PRE-MANIFEST-1')->sole();
+
+        $this->assertSame('cancelled', $order->status);
+        $this->assertSame(10, (int) $this->inventory()->on_hand);
+        $this->assertSame(0, $this->totalOnOrder());
+        $this->assertDatabaseMissing('sales_returns', [
+            'order_id' => $order->id,
+            'reason_category' => 'CANCEL_SHIPPED',
+        ]);
+        $this->assertSame(1, $this->movements('ORDER_RELEASE'));
     }
 
     public function test_channel_collection_does_not_downgrade_real_local_wms_status(): void

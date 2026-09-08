@@ -19,6 +19,13 @@ enum OrderActivityAction: string
     case CHANNEL_STATUS = 'CHANNEL_STATUS';
     case RECEIVED_BY_BUYER = 'RECEIVED_BY_BUYER';
     case RETURN_DECISION = 'RETURN_DECISION';
+    case RETURN_CREATED = 'RETURN_CREATED';
+    case RETURN_ACCEPTED = 'RETURN_ACCEPTED';
+    case RETURN_REJECTED = 'RETURN_REJECTED';
+    case RETURN_INBOUND_CREATED = 'RETURN_INBOUND_CREATED';
+    case RETURN_RECEIVED = 'RETURN_RECEIVED';
+    case RETURN_PUTAWAY_COMPLETED = 'RETURN_PUTAWAY_COMPLETED';
+    case RETURN_COMPLETED = 'RETURN_COMPLETED';
     case FIELD_CHANGED = 'FIELD_CHANGED';
     case SHIPPED = 'SHIPPED';
     case COMPLETED = 'COMPLETED';
@@ -47,6 +54,13 @@ enum OrderActivityAction: string
             self::CHANNEL_STATUS => '910',
             self::RECEIVED_BY_BUYER => '913',
             self::RETURN_DECISION => '920',
+            self::RETURN_CREATED => '921',
+            self::RETURN_ACCEPTED => '922',
+            self::RETURN_REJECTED => '923',
+            self::RETURN_INBOUND_CREATED => '924',
+            self::RETURN_RECEIVED => '925',
+            self::RETURN_PUTAWAY_COMPLETED => '926',
+            self::RETURN_COMPLETED => '927',
             self::FIELD_CHANGED => '990',
             self::SHIPPED => '999',
             self::COMPLETED => '912',

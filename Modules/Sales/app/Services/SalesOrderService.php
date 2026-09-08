@@ -2704,7 +2704,7 @@ class SalesOrderService
     private function reconcileStockTransition(SalesOrder $order, ?string $previousStatus, string $finalStatus): bool
     {
         if ($finalStatus === 'cancelled') {
-            return $this->releaseStockForStatus($order, $previousStatus);
+            return $this->handleCancellationStockTransition($order, $previousStatus);
         }
 
         if ($previousStatus === null) {
@@ -2757,6 +2757,60 @@ class SalesOrderService
         return $mutated;
     }
 
+    private function requiresPhysicalReturn(SalesOrder $order, ?string $previousStatus): bool
+    {
+        if ($order->pickup_done_time !== null) {
+            return true;
+        }
+
+        if (in_array($previousStatus, ['shipped', 'completed', 'delivered'], true)) {
+            return true;
+        }
+
+        if (OrderBinAllocation::query()
+            ->where('order_id', $order->id)
+            ->whereNull('reversed_at')
+            ->exists()) {
+            return true;
+        }
+
+        if (DB::table('inventory_movements')
+            ->where('transaction_number', $order->salesorder_no)
+            ->where('source', 'ORDER_COMPLETE_OUT')
+            ->where('qty', '<', 0)
+            ->exists()) {
+            return true;
+        }
+
+        $shippedStatuses = [
+            'IN_TRANSIT',
+            'SHIPPED',
+            'TO_CONFIRM_RECEIVE',
+            'DELIVERED',
+            'COMPLETED',
+        ];
+
+        return SalesOrderStatusHistory::query()
+            ->where('salesorder_id', $order->id)
+            ->whereIn('action', ['SHIPPED', 'CHANNEL_STATUS'])
+            ->get(['action', 'metadata'])
+            ->contains(function (SalesOrderStatusHistory $history) use ($shippedStatuses): bool {
+                if ($history->action === 'SHIPPED') {
+                    return true;
+                }
+
+                $metadata = strtoupper((string) json_encode($history->metadata));
+
+                foreach ($shippedStatuses as $status) {
+                    if (str_contains($metadata, $status)) {
+                        return true;
+                    }
+                }
+
+                return false;
+            });
+    }
+
     private function validateTransition(string $from, string $to): void
     {
         $fromStatus = SalesOrderStatus::tryFrom($from);
@@ -2793,9 +2847,24 @@ class SalesOrderService
             'reserved' => $this->reserveStockForOrder($order),
             'picked' => $this->pickStockForOrder($order),
 
-            'cancelled' => $this->releaseStockForOrder($order),
+            'cancelled' => $this->handleCancellationStockTransition($order, $order->status),
             default => null,
         };
+    }
+
+    private function handleCancellationStockTransition(SalesOrder $order, ?string $previousStatus): bool
+    {
+        if ($this->requiresPhysicalReturn($order, $previousStatus)) {
+            app(SalesReturnService::class)->createFromCancelledShipped(
+                $order,
+                $order->cancel_reason,
+                'system:channel-cancel',
+            );
+
+            return $this->stockService->releaseReservationByTransaction($order->salesorder_no) > 0;
+        }
+
+        return $this->releaseStockForStatus($order, $previousStatus);
     }
 
     public function promoteFromShadow(SalesOrder $order): bool

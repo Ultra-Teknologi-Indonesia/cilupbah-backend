@@ -39,8 +39,8 @@ use Modules\Inventory\Models\PutawayItemSource;
 use Modules\Inventory\Models\PutawayPlacement;
 use Modules\Inventory\Models\PutawaySource;
 use Modules\Inventory\Repositories\InventoryRepository;
-use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Services\InventoryMovementReversalVisibilityService;
+use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Services\PurchaseCostService;
 use Modules\Inventory\Services\PutawayService;
 use Modules\Notification\Events\TaskAssigned;
@@ -49,6 +49,7 @@ use Modules\Product\Models\ProductVariant;
 use Modules\Purchase\Models\PurchaseOrder;
 use Modules\Purchase\Models\PurchaseOrderItem;
 use Modules\Purchase\Repositories\PurchaseOrderRepository;
+use Modules\Sales\Services\SalesReturnOrderActivityService;
 use Modules\Warehouse\Models\LocationBin;
 use Modules\Warehouse\Services\LocationBinService;
 
@@ -68,6 +69,7 @@ class InboundService
         protected InventoryRepository $inventoryRepository,
         protected PurchaseOrderRepository $purchaseOrderRepository,
         protected InventoryMovementReversalVisibilityService $movementReversalVisibility,
+        protected SalesReturnOrderActivityService $returnActivities,
     ) {}
 
     protected function unlockedOnceColumn(Model $doc): string
@@ -948,6 +950,7 @@ class InboundService
 
             $landedCostMap = $this->resolveLandedCostMap($inbound);
 
+            $receiptIds = [];
             foreach ($data['items'] as $receiptData) {
                 $inboundItem = $itemsDict->get($receiptData['inbound_item_id']);
                 if (! $inboundItem) {
@@ -970,6 +973,7 @@ class InboundService
                     'received_by_email' => $receivedByUser?->email,
                     'received_date' => now(),
                 ]);
+                $receiptIds[] = $receipt->id;
 
                 if ($isDamage) {
                     $this->inboundRepository->updateItemRejectedQty($inboundItem->id, $receiptData['qty']);
@@ -1018,6 +1022,12 @@ class InboundService
 
             $this->inboundRepository->updateStatus($inbound, Inbound::STATUS_PARTIAL);
             $inbound->forceFill(['updated_version_at' => now()])->save();
+
+            $this->returnActivities->inboundReceived(
+                $inbound,
+                $receiptIds,
+                $receivedByUserId ?? ($data['received_by'] ?? null),
+            );
 
             return $this->getById($inboundId);
         });

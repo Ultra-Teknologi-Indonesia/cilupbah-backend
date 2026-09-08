@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Services\InboundService;
 use Modules\Inventory\Models\ImpexActivity;
 use Modules\Inventory\Services\ImpexActivityService;
@@ -31,6 +32,7 @@ class SalesReturnService
         protected SalesReturnSettingService $settings,
         protected NotificationDispatcher $notifications,
         protected ImpexActivityService $activityService,
+        protected SalesReturnOrderActivityService $returnActivities,
     ) {}
 
     public function prepareExport(string $type, array $filters, $userId = null): array
@@ -133,7 +135,10 @@ class SalesReturnService
 
     public function create(array $data): SalesReturn
     {
-        $return = DB::transaction(function () use ($data) {
+        $shouldAutoAccept = (bool) ($data['auto_accept'] ?? true);
+        unset($data['auto_accept']);
+
+        $return = DB::transaction(function () use ($data, $shouldAutoAccept) {
             $data['return_number'] = $data['return_number'] ?? 'RET-'.now()->format('Ymd').'-'.Str::upper(Str::random(4));
             $data['status'] = SalesReturn::STATUS_PENDING;
             $data['source'] = $data['source'] ?? SalesReturn::SOURCE_MANUAL;
@@ -148,7 +153,9 @@ class SalesReturnService
 
             $return->load('items');
 
-            if ($this->settings->autoAccept()) {
+            $this->returnActivities->returnCreated($return, $data['created_by'] ?? null);
+
+            if ($shouldAutoAccept && $this->settings->autoAccept()) {
                 try {
                     $this->accept($return->id, ['processed_by' => $data['created_by']]);
                 } catch (\Throwable $e) {
@@ -188,6 +195,17 @@ class SalesReturnService
 
     public function createFromCancelledShipped(SalesOrder $order, ?string $reason, string $createdBy): ?SalesReturn
     {
+        $existing = SalesReturn::query()
+            ->where('order_id', $order->id)
+            ->where('reason_category', SalesReturn::REASON_CATEGORY_CANCEL_SHIPPED)
+            ->whereNotIn('status', [SalesReturn::STATUS_REJECTED, SalesReturn::STATUS_CANCELLED])
+            ->latest('created_at')
+            ->first();
+
+        if ($existing) {
+            return $existing;
+        }
+
         $locationId = $order->location_id ?? $this->settings->restockLocationId();
         if (! $locationId) {
             Log::warning('createFromCancelledShipped: lokasi restock tidak dapat ditentukan.', [
@@ -225,6 +243,8 @@ class SalesReturnService
             'reason' => $reason ?: 'Cancel diterima setelah paket dikirim',
             'reason_category' => SalesReturn::REASON_CATEGORY_CANCEL_SHIPPED,
             'created_by' => $createdBy,
+
+            'auto_accept' => false,
             'items' => $items,
         ]);
     }
@@ -272,6 +292,31 @@ class SalesReturnService
                 ->first();
 
             return $existing ? $this->applyChannelStatus($existing, $payload) : null;
+        }
+
+        if ($channelReturnId) {
+            $existingCancelledShipped = SalesReturn::query()
+                ->where('order_id', $order->id)
+                ->where('reason_category', SalesReturn::REASON_CATEGORY_CANCEL_SHIPPED)
+                ->whereNull('channel_return_id')
+                ->whereNotIn('status', [SalesReturn::STATUS_REJECTED, SalesReturn::STATUS_CANCELLED])
+                ->latest('created_at')
+                ->first();
+
+            if ($existingCancelledShipped) {
+                $existingCancelledShipped->update([
+                    'source' => SalesReturn::SOURCE_MARKETPLACE,
+                    'channel_return_id' => $channelReturnId,
+                    'channel_shop_id' => $payload['channel_shop_id'] ?? $existingCancelledShipped->channel_shop_id,
+                    'marketplace_decision' => $this->channelDecisionFromPayload($source, $payload)
+                        ?? SalesReturn::MP_DECISION_APPROVED,
+                    'marketplace_decision_at' => now(),
+                    'marketplace_raw_status' => $this->channelStatusFromPayload($payload),
+                    'detail_synced_at' => now(),
+                ]);
+
+                return $existingCancelledShipped->refresh();
+            }
         }
 
         $locationId = $order->location_id ?? $this->settings->restockLocationId();
@@ -438,6 +483,8 @@ class SalesReturnService
                 $inboundItems[] = ['item_id' => $vid, 'expected_qty' => $qty];
             }
 
+            $this->returnActivities->returnAccepted($return, $data['processed_by'] ?? null);
+
             if (! empty($inboundItems)) {
                 $inbound = $this->inboundService->receiveFromSalesReturn([
                     'location_id' => $this->settings->restockLocationId() ?? $return->location_id,
@@ -447,6 +494,12 @@ class SalesReturnService
                     'created_by' => $data['processed_by'],
                     'items' => $inboundItems,
                 ]);
+
+                $this->returnActivities->inboundCreated($return, $inbound, $data['processed_by'] ?? null);
+
+                if ($return->reason_category === SalesReturn::REASON_CATEGORY_CANCEL_SHIPPED) {
+                    return $this->getById($id);
+                }
 
                 $receiverId = auth()->id();
                 if (! $receiverId) {
@@ -516,6 +569,7 @@ class SalesReturnService
 
             $return->update(['notes' => $data['reason'] ?? $return->notes]);
             $this->returnRepository->updateStatus($return, SalesReturn::STATUS_REJECTED, $data['processed_by']);
+            $this->returnActivities->returnRejected($return, $data['processed_by'] ?? null, $data['reason'] ?? null);
 
             return $this->getById($id);
         });
@@ -558,10 +612,10 @@ class SalesReturnService
             ->where(function ($q) use ($dateFrom, $dateTo, $status) {
                 if ($status === 'unprocessed') {
                     $q->whereDate('created_at', '>=', $dateFrom)
-                      ->whereDate('created_at', '<=', $dateTo);
+                        ->whereDate('created_at', '<=', $dateTo);
                 } else {
                     $q->whereDate('processed_at', '>=', $dateFrom)
-                      ->whereDate('processed_at', '<=', $dateTo);
+                        ->whereDate('processed_at', '<=', $dateTo);
                 }
             })
             ->when($locationId, fn ($q) => $q->where('location_id', $locationId))
@@ -631,7 +685,27 @@ class SalesReturnService
                 throw new InvalidReturnStateException("Return berstatus {$return->status}, harus di-accept dulu sebelum complete.");
             }
 
+            if ($return->reason_category === SalesReturn::REASON_CATEGORY_CANCEL_SHIPPED) {
+                $hasCompletedInbound = $return->inbounds()
+                    ->where('status', Inbound::STATUS_COMPLETED)
+                    ->exists();
+
+                $hasOpenInbound = $return->inbounds()
+                    ->whereNotIn('status', [
+                        Inbound::STATUS_COMPLETED,
+                        Inbound::STATUS_CANCELLED,
+                    ])
+                    ->exists();
+
+                if (! $hasCompletedInbound || $hasOpenInbound) {
+                    throw new InvalidReturnStateException(
+                        'Retur belum dapat diselesaikan. Terima paket fisik dan selesaikan putaway terlebih dahulu.',
+                    );
+                }
+            }
+
             $this->returnRepository->updateStatus($return, SalesReturn::STATUS_COMPLETED, $data['processed_by']);
+            $this->returnActivities->returnCompleted($return, $data['processed_by'] ?? null);
 
             return $this->getById($id);
         });
