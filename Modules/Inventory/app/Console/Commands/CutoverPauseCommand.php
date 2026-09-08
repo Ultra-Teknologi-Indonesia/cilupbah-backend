@@ -8,10 +8,10 @@ final class CutoverPauseCommand extends CutoverCommandSupport
 {
     protected $signature = 'cutover:pause
         {--run-id= : run_id cutover}
-        {--apply : Matikan intake order, push stok, dan push fulfillment}
+        {--apply : Pertahankan sync order; matikan push stok dan push fulfillment}
         {--confirm= : Wajib PAUSE-CUTOVER saat apply}';
 
-    protected $description = 'Menghentikan pemrosesan channel sementara, webhook tetap tersimpan di inbox.';
+    protected $description = 'Menjaga sync order tetap hidup sambil memastikan push stok dan fulfillment tetap mati selama cutover.';
 
     public function handle(): int
     {
@@ -19,7 +19,7 @@ final class CutoverPauseCommand extends CutoverCommandSupport
             $apply = (bool) $this->option('apply');
             $this->confirmApply('PAUSE-CUTOVER');
             $count = $this->cutover()->pause($this->runId(), ! $apply);
-            $this->line(($apply ? 'channel dipause: ' : 'DRY-RUN channel yang akan dipause: ').$count);
+            $this->line(($apply ? 'channel diamankan: ' : 'DRY-RUN channel yang akan diamankan: ').$count);
 
             return self::SUCCESS;
         });

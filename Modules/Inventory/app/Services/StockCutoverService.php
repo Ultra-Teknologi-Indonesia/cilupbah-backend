@@ -889,11 +889,17 @@ final class StockCutoverService
         if (! Schema::hasTable('channel_shops')) {
             return 0;
         }
-        $count = DB::table('channel_shops')->where(function ($query): void {
-            $query->where('order_sync_enabled', true)->orWhere('stock_push_enabled', true)->orWhere('fulfillment_push_enabled', true);
-        })->count();
+        $count = DB::table('channel_shops')
+            ->where(function ($query): void {
+                $query->where('stock_push_enabled', true)->orWhere('fulfillment_push_enabled', true);
+            })
+            ->count();
         if (! $dryRun) {
-            DB::table('channel_shops')->update(['order_sync_enabled' => false, 'stock_push_enabled' => false, 'fulfillment_push_enabled' => false, 'updated_at' => now()]);
+            DB::table('channel_shops')->update([
+                'stock_push_enabled' => false,
+                'fulfillment_push_enabled' => false,
+                'updated_at' => now(),
+            ]);
             DB::table('stock_cutover_runs')->where('id', $run['run_id'])->update(['status' => 'PAUSED', 'updated_at' => now()]);
         }
 
@@ -909,9 +915,13 @@ final class StockCutoverService
         if (! Schema::hasTable('channel_shops')) {
             return 0;
         }
-        $count = DB::table('channel_shops')->where('order_sync_enabled', false)->count();
+        $count = DB::table('channel_shops')->count();
         if (! $dryRun) {
-            DB::table('channel_shops')->update(['order_sync_enabled' => true, 'stock_push_enabled' => false, 'fulfillment_push_enabled' => false, 'updated_at' => now()]);
+            DB::table('channel_shops')->update([
+                'stock_push_enabled' => false,
+                'fulfillment_push_enabled' => false,
+                'updated_at' => now(),
+            ]);
             DB::table('stock_cutover_runs')->where('id', $run['run_id'])->update(['status' => 'RESUMED', 'updated_at' => now()]);
         }
 
@@ -1363,7 +1373,11 @@ final class StockCutoverService
         if (! Schema::hasTable('channel_shops')) {
             return;
         }
-        DB::table('channel_shops')->update(['order_sync_enabled' => false, 'stock_push_enabled' => false, 'fulfillment_push_enabled' => false, 'updated_at' => now()]);
+        DB::table('channel_shops')->update([
+            'stock_push_enabled' => false,
+            'fulfillment_push_enabled' => false,
+            'updated_at' => now(),
+        ]);
     }
 
     private function deleteOperationalDocuments(array $locationIds, array $orderIds, array &$counts): void

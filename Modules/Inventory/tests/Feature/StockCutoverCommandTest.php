@@ -73,6 +73,50 @@ final class StockCutoverCommandTest extends TestCase
         Queue::assertPushed(ProcessTikTokWebhook::class, 1);
     }
 
+    public function test_pause_keeps_order_sync_running_while_disabling_stock_and_fulfillment_push(): void
+    {
+        $location = Location::create([
+            'location_code' => 'WH-PAUSE',
+            'location_name' => 'Gudang Pause',
+            'location_type' => 'warehouse',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+        DB::table('channel_shops')->insert([
+            'id' => (string) Str::uuid(),
+            'shop_id' => 'SHOP-CUTOVER-PAUSE',
+            'shop_name' => 'Toko Cutover',
+            'is_active' => true,
+            'order_sync_enabled' => true,
+            'stock_push_enabled' => true,
+            'fulfillment_push_enabled' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $runId = (string) Str::uuid();
+        DB::table('stock_cutover_runs')->insert([
+            'id' => $runId,
+            'cutoff_at' => now(),
+            'location_codes' => json_encode([$location->location_code], JSON_THROW_ON_ERROR),
+            'source_files' => json_encode([], JSON_THROW_ON_ERROR),
+            'report' => json_encode([], JSON_THROW_ON_ERROR),
+            'status' => 'ORDERS_AUDITED',
+            'created_by' => 'test',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $affected = app(StockCutoverService::class)->pause($runId, false);
+
+        self::assertSame(1, $affected);
+        self::assertDatabaseHas('channel_shops', [
+            'shop_id' => 'SHOP-CUTOVER-PAUSE',
+            'order_sync_enabled' => true,
+            'stock_push_enabled' => false,
+            'fulfillment_push_enabled' => false,
+        ]);
+    }
+
     public function test_reset_keeps_master_sku_and_rack_and_removes_stock_history(): void
     {
         $location = Location::create([
