@@ -2292,7 +2292,10 @@ class SalesOrderService
                 }
             }
 
-            $stockAllocation = $finalStatus === 'reserved' ? 'reserved' : 'not_required';
+            $deferStockTransition = $this->hasInvalidPhysicalStockForChannelOrder($order);
+            $stockAllocation = $deferStockTransition
+                ? 'deferred_invalid_on_hand'
+                : ($finalStatus === 'reserved' ? 'reserved' : 'not_required');
 
             if ($existing === null) {
                 $this->logStatusHistory($order, 'CREATED', [
@@ -2309,9 +2312,19 @@ class SalesOrderService
                 );
             }
 
-            $stockMutated = $this->isPendingChannelCancellation($orderData, $finalStatus)
+            $stockMutated = $deferStockTransition || $this->isPendingChannelCancellation($orderData, $finalStatus)
                 ? false
                 : $this->reconcileStockTransition($order, $previousStatus, $finalStatus);
+
+            if ($deferStockTransition) {
+                Log::warning('Channel order disimpan tanpa mutasi inventory karena on_hand fisik lama invalid', [
+                    'order_id' => $order->id,
+                    'salesorder_no' => $order->salesorder_no,
+                    'source' => $order->source,
+                    'channel_shop_id' => $order->channel_shop_id,
+                    'location_id' => $order->location_id,
+                ]);
+            }
 
             if ($finalStatus === 'cancelled') {
 
@@ -2648,6 +2661,44 @@ class SalesOrderService
 
         return in_array($channelStatus, ['IN_CANCEL', 'TO_RETURN'], true)
             || ! empty($orderData['cancel_requested_at']);
+    }
+
+    private function hasInvalidPhysicalStockForChannelOrder(SalesOrder $order): bool
+    {
+        if ($this->isManualSource($order->source) || ! $order->location_id) {
+            return false;
+        }
+
+        $itemIds = $order->items
+            ->pluck('item_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($itemIds->isEmpty()) {
+            return false;
+        }
+
+        $bundleProductIds = DB::table('product_variants')
+            ->whereIn('id', $itemIds->all())
+            ->pluck('product_id');
+
+        $componentIds = $bundleProductIds->isEmpty()
+            ? collect()
+            : DB::table('product_bundle_items')
+                ->whereIn('bundle_product_id', $bundleProductIds->all())
+                ->pluck('component_variant_id');
+
+        $allItemIds = $itemIds
+            ->merge($componentIds)
+            ->unique()
+            ->values();
+
+        return DB::table('inventories')
+            ->where('location_id', $order->location_id)
+            ->whereIn('item_id', $allItemIds->all())
+            ->where('on_hand', '<', 0)
+            ->exists();
     }
 
     private function reconcileStockTransition(SalesOrder $order, ?string $previousStatus, string $finalStatus): bool
