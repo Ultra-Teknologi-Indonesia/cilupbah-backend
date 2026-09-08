@@ -4,6 +4,7 @@ namespace Modules\Inventory\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Models\StockAdjustment;
@@ -18,7 +19,7 @@ class ResetStock extends Command
         {--dry-run : Simulasi tanpa mengubah database}
         {--force : Lewati konfirmasi keamanan}';
 
-    protected $description = 'Darurat / Rollback: Reset seluruh angka stok ke 0 dan opsi hapus riwayat mutasi.';
+    protected $description = 'Legacy: reset angka stok saja. Reset operasional penuh harus memakai cutover:reset agar dokumen dan relasi tidak tertinggal.';
 
     public function handle(): int
     {
@@ -29,6 +30,7 @@ class ResetStock extends Command
 
         if (empty($locationCode)) {
             $this->error('Parameter --location wajib diisi (contoh: --location=O, --location=WH-PUSAT, atau --location=ALL).');
+
             return self::FAILURE;
         }
 
@@ -39,6 +41,7 @@ class ResetStock extends Command
             $loc = Location::where('location_code', $locationCode)->first();
             if (! $loc) {
                 $this->error("Lokasi gudang dengan kode '{$locationCode}' tidak ditemukan.");
+
                 return self::FAILURE;
             }
             $locations->push($loc);
@@ -47,12 +50,18 @@ class ResetStock extends Command
         $locationIds = $locations->pluck('id')->all();
         $locationNames = $locations->pluck('location_name')->implode(', ');
 
+        if ($purgeHistory && $this->hasOperationalDocuments($locationIds)) {
+            $this->error('inventory:reset-stock menolak purge parsial karena dokumen operasional masih ada. Gunakan cutover:preflight, cutover:order-audit, cutover:pause, lalu cutover:reset.');
+
+            return self::FAILURE;
+        }
+
         $this->line('===============================================================');
         $this->line('  RESET STOK & PURGE RIWAYAT INVENTORI (EMERGENCY ROLLBACK)');
         $this->line('===============================================================');
-        $this->line("Mode           : " . ($isDryRun ? '<fg=yellow;options=bold>DRY-RUN (SIMULASI AMAN)</>' : '<fg=red;options=bold>EKSEKUSI NYATA (DATABASE MUTATION)</>'));
+        $this->line('Mode           : '.($isDryRun ? '<fg=yellow;options=bold>DRY-RUN (SIMULASI AMAN)</>' : '<fg=red;options=bold>EKSEKUSI NYATA (DATABASE MUTATION)</>'));
         $this->line("Target Gudang  : {$locationNames} ({$locationCode})");
-        $this->line("Purge History  : " . ($purgeHistory ? '<fg=red>YA (Hapus mutasi & dokumen penyesuaian)</>' : '<fg=green>TIDAK (Hanya nolkan saldo on_hand)</>'));
+        $this->line('Purge History  : '.($purgeHistory ? '<fg=red>YA (Hapus mutasi & dokumen penyesuaian)</>' : '<fg=green>TIDAK (Hanya nolkan saldo on_hand)</>'));
         $this->newLine();
 
         $inventoryCount = Inventory::whereIn('location_id', $locationIds)->count();
@@ -70,12 +79,14 @@ class ResetStock extends Command
         if (! $isDryRun && ! $isForce) {
             if (! $this->confirm("PERINGATAN: Aksi ini akan me-reset stok pada gudang [{$locationNames}]. Apakah Anda yakin ingin melanjutkan?", false)) {
                 $this->info('Operasi dibatalkan.');
+
                 return self::SUCCESS;
             }
         }
 
         if ($isDryRun) {
             $this->info('🔍 [DRY-RUN] Simulasi selesai. Tidak ada data yang diubah di database.');
+
             return self::SUCCESS;
         }
 
@@ -115,6 +126,26 @@ class ResetStock extends Command
         });
 
         $this->info('✅ Berhasil me-reset stok dan membersihkan riwayat inventori.');
+
         return self::SUCCESS;
+    }
+
+    private function hasOperationalDocuments(array $locationIds): bool
+    {
+        foreach ([
+            'inbounds', 'putaways', 'inventory_transfers', 'bin_transfers',
+            'picklists', 'packlists', 'shipments', 'sales_returns', 'sales_invoices',
+            'sales_orders',
+        ] as $table) {
+            if (! Schema::hasTable($table)) {
+                continue;
+            }
+
+            if (DB::table($table)->whereIn('location_id', $locationIds)->exists()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

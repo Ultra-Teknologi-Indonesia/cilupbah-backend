@@ -590,6 +590,10 @@ final class StockCutoverService
 
     public function reset(string $runId, bool $purgeFinance): array
     {
+        if (! $purgeFinance) {
+            throw new \RuntimeException('reset penuh harus menyertakan purge finance agar invoice dan relasi order tidak tertinggal.');
+        }
+
         $run = $this->getRun($runId);
         $this->assertApplyAllowed($run, 'RESET-STOCK-DATA', ['PAUSED']);
         $orderAudit = $run['report']['order_audit'] ?? [];
@@ -609,7 +613,7 @@ final class StockCutoverService
         $terminalOrderIds = [];
         $deletedOrderIds = [];
 
-        DB::transaction(function () use ($run, $purgeFinance, $orderAudit, &$counts, &$terminalOrderIds, &$deletedOrderIds): void {
+        DB::transaction(function () use ($run, $orderAudit, &$counts, &$terminalOrderIds, &$deletedOrderIds): void {
             $locationIds = $run['location_ids'];
             $this->pauseChannels();
 
@@ -644,6 +648,7 @@ final class StockCutoverService
 
             $this->deleteOperationalDocuments($locationIds, $orderIds, $counts);
             $this->deleteOrderStateHistory($orderIds, $counts);
+            $this->deleteFinanceDocuments($locationIds, $orderIds, $counts);
             $this->deleteReplenishmentRequests($locationIds, $counts);
             $this->deleteInventoryTransfers($locationIds, $counts);
             $this->deleteStockHistory($locationIds, $counts);
@@ -654,7 +659,7 @@ final class StockCutoverService
             );
 
             if ($deletedOrderIds !== []) {
-                $this->deleteOrderHistory($deletedOrderIds, $purgeFinance, $counts);
+                $this->deleteOrderHistory($deletedOrderIds, $counts);
             }
 
             if ($keepOrderIds !== []) {
@@ -1384,6 +1389,9 @@ final class StockCutoverService
         if (Schema::hasTable('order_bin_allocations') && $orderIds !== []) {
             $counts['order_bin_allocations'] = DB::table('order_bin_allocations')->whereIn('order_id', $orderIds)->delete();
         }
+        if (Schema::hasTable('fulfillment_removals') && $orderIds !== []) {
+            $counts['fulfillment_removals'] = DB::table('fulfillment_removals')->whereIn('order_id', $orderIds)->delete();
+        }
     }
 
     private function deleteOrderStateHistory(array $orderIds, array &$counts): void
@@ -1398,6 +1406,11 @@ final class StockCutoverService
         }
         if (Schema::hasTable('order_buyer_confirmations') && Schema::hasColumn('order_buyer_confirmations', 'order_id')) {
             $counts['order_buyer_confirmations'] = DB::table('order_buyer_confirmations')
+                ->whereIn('order_id', $orderIds)
+                ->delete();
+        }
+        if (Schema::hasTable('sales_order_fee_lines') && Schema::hasColumn('sales_order_fee_lines', 'order_id')) {
+            $counts['sales_order_fee_lines'] = DB::table('sales_order_fee_lines')
                 ->whereIn('order_id', $orderIds)
                 ->delete();
         }
@@ -1475,7 +1488,11 @@ final class StockCutoverService
         $childrenByParent = [
             'stock_adjustments' => [['stock_adjustment_items', 'stock_adjustment_id']],
             'reserved_stocks' => [['reserved_stock_items', 'reserved_stock_id']],
-            'putaways' => [['putaway_items', 'putaway_id'], ['putaway_sources', 'putaway_id']],
+            'putaways' => [
+                ['putaway_item_sources', 'putaway_item_id', 'putaway_items', 'putaway_id'],
+                ['putaway_items', 'putaway_id'],
+                ['putaway_sources', 'putaway_id'],
+            ],
             'stock_opnames' => [['stock_opname_items', 'stock_opname_id']],
             'stock_revaluations' => [['stock_revaluation_items', 'stock_revaluation_id']],
             'bin_transfers' => [['bin_transfer_items', 'bin_transfer_id'], ['bin_transfer_receipts', 'bin_transfer_id']],
@@ -1499,8 +1516,17 @@ final class StockCutoverService
             }
             $ids = DB::table($table)->whereIn('location_id', $locationIds)->pluck('id')->all();
             if ($ids !== []) {
-                foreach ($childrenByParent[$table] ?? [] as [$child, $column]) {
-                    $this->deleteByParent($child, $column, $ids, $counts);
+                foreach ($childrenByParent[$table] ?? [] as $childDefinition) {
+                    if (count($childDefinition) === 2) {
+                        [$child, $column] = $childDefinition;
+                        $this->deleteByParent($child, $column, $ids, $counts);
+
+                        continue;
+                    }
+
+                    [$child, $childColumn, $parentTable, $parentColumn] = $childDefinition;
+                    $parentIds = DB::table($parentTable)->whereIn($parentColumn, $ids)->pluck('id')->all();
+                    $this->deleteByParent($child, $childColumn, $parentIds, $counts);
                 }
                 $counts[$table] = DB::table($table)->whereIn('id', $ids)->delete();
             }
@@ -1521,7 +1547,74 @@ final class StockCutoverService
         }
     }
 
-    private function deleteOrderHistory(array $orderIds, bool $purgeFinance, array &$counts): void
+    private function deleteFinanceDocuments(array $locationIds, array $orderIds, array &$counts): void
+    {
+        if ($orderIds === []) {
+            return;
+        }
+
+        $returnIds = Schema::hasTable('sales_returns')
+            ? DB::table('sales_returns')->whereIn('location_id', $locationIds)->pluck('id')->all()
+            : [];
+        $settlementIds = Schema::hasTable('sales_return_settlements') && $returnIds !== []
+            ? DB::table('sales_return_settlements')->whereIn('return_id', $returnIds)->pluck('id')->all()
+            : [];
+        $invoiceIds = Schema::hasTable('sales_invoices')
+            ? DB::table('sales_invoices')
+                ->where(function ($query) use ($locationIds, $orderIds): void {
+                    $query->whereIn('location_id', $locationIds)->orWhereIn('order_id', $orderIds);
+                })
+                ->pluck('id')
+                ->all()
+            : [];
+
+        if (Schema::hasTable('sales_return_settlement_invoices') && ($settlementIds !== [] || $invoiceIds !== [])) {
+            $query = DB::table('sales_return_settlement_invoices');
+            $query->where(function ($builder) use ($settlementIds, $invoiceIds): void {
+                if ($settlementIds !== []) {
+                    $builder->whereIn('settlement_id', $settlementIds);
+                }
+                if ($invoiceIds !== []) {
+                    $method = $settlementIds === [] ? 'whereIn' : 'orWhereIn';
+                    $builder->{$method}('invoice_id', $invoiceIds);
+                }
+            });
+            $counts['sales_return_settlement_invoices'] = $query->delete();
+        }
+        if (Schema::hasTable('sales_return_settlement_refunds') && $settlementIds !== []) {
+            $counts['sales_return_settlement_refunds'] = DB::table('sales_return_settlement_refunds')
+                ->whereIn('settlement_id', $settlementIds)
+                ->delete();
+        }
+        if (Schema::hasTable('sales_return_settlements') && $settlementIds !== []) {
+            $counts['sales_return_settlements'] = DB::table('sales_return_settlements')
+                ->whereIn('id', $settlementIds)
+                ->delete();
+        }
+        if (Schema::hasTable('channel_settlement_adjustments')) {
+            $counts['channel_settlement_adjustments'] = DB::table('channel_settlement_adjustments')
+                ->whereIn('order_id', $orderIds)
+                ->delete();
+        }
+        if ($invoiceIds === []) {
+            return;
+        }
+        if (Schema::hasTable('sales_payments')) {
+            $counts['sales_payments'] = DB::table('sales_payments')
+                ->whereIn('sales_invoice_id', $invoiceIds)
+                ->delete();
+        }
+        if (Schema::hasTable('sales_invoice_items')) {
+            $counts['sales_invoice_items'] = DB::table('sales_invoice_items')
+                ->whereIn('sales_invoice_id', $invoiceIds)
+                ->delete();
+        }
+        if (Schema::hasTable('sales_invoices')) {
+            $counts['sales_invoices'] = DB::table('sales_invoices')->whereIn('id', $invoiceIds)->delete();
+        }
+    }
+
+    private function deleteOrderHistory(array $orderIds, array &$counts): void
     {
         if ($orderIds === []) {
             return;
@@ -1529,25 +1622,6 @@ final class StockCutoverService
         foreach (['sales_order_status_histories', 'order_buyer_confirmations', 'sales_return_items', 'sales_returns', 'warranties', 'bulk_shipping_label_items', 'shipment_orders', 'sales_order_items'] as $table) {
             if (Schema::hasTable($table) && Schema::hasColumn($table, 'order_id')) {
                 $counts[$table] = DB::table($table)->whereIn('order_id', $orderIds)->delete();
-            }
-        }
-        if ($purgeFinance) {
-            $invoiceIds = Schema::hasTable('sales_invoices') ? DB::table('sales_invoices')->whereIn('order_id', $orderIds)->pluck('id')->all() : [];
-            if ($invoiceIds !== []) {
-                if (Schema::hasTable('sales_payments')) {
-                    $counts['sales_payments'] = DB::table('sales_payments')->whereIn('sales_invoice_id', $invoiceIds)->delete();
-                }
-                if (Schema::hasTable('sales_invoice_items')) {
-                    $counts['sales_invoice_items'] = DB::table('sales_invoice_items')->whereIn('sales_invoice_id', $invoiceIds)->delete();
-                }
-                if (Schema::hasTable('sales_invoices')) {
-                    $counts['sales_invoices'] = DB::table('sales_invoices')->whereIn('id', $invoiceIds)->delete();
-                }
-            }
-            foreach (['channel_settlement_adjustments', 'sales_return_settlement_invoices', 'sales_return_settlement_refunds'] as $table) {
-                if (Schema::hasTable($table) && Schema::hasColumn($table, 'order_id')) {
-                    $counts[$table] = DB::table($table)->whereIn('order_id', $orderIds)->delete();
-                }
             }
         }
         if (Schema::hasTable('sales_orders')) {

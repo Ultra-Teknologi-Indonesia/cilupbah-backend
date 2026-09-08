@@ -25,6 +25,7 @@ class HorizonQueueCoverageTest extends TestCase
         $used = array_values(config('queue.names', []));
         $used[] = 'default';
         $used[] = config('webhook.queue', 'webhooks');
+        $used[] = config('operations.stock_cutover_console.queue', 'stock-cutover');
 
         foreach (array_unique($used) as $queue) {
             $this->assertContains(
@@ -77,5 +78,22 @@ class HorizonQueueCoverageTest extends TestCase
             $this->assertArrayHasKey($connection, $connections, "Supervisor {$name}: connection '{$connection}' tidak ada di config/queue.php.");
             $this->assertEquals('redis', $connections[$connection]['driver'] ?? null, "Supervisor {$name}: Horizon hanya bisa memproses driver redis.");
         }
+    }
+
+    public function test_stock_cutover_has_a_dedicated_low_concurrency_supervisor(): void
+    {
+        $supervisor = config('horizon.defaults.supervisor-stock-cutover');
+
+        $this->assertIsArray($supervisor);
+        $this->assertSame(
+            config('operations.stock_cutover_console.queue_connection', 'redis-long'),
+            $supervisor['connection'] ?? null,
+        );
+        $this->assertContains(
+            config('operations.stock_cutover_console.queue', 'stock-cutover'),
+            (array) ($supervisor['queue'] ?? []),
+        );
+        $this->assertSame(1, $supervisor['minProcesses'] ?? null);
+        $this->assertSame(1, $supervisor['maxProcesses'] ?? null);
     }
 }

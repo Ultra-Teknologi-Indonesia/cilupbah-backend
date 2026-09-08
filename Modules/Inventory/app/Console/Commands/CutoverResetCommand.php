@@ -8,11 +8,11 @@ final class CutoverResetCommand extends CutoverCommandSupport
 {
     protected $signature = 'cutover:reset
         {--run-id= : run_id hasil semua audit dry-run}
-        {--purge-finance : Hapus invoice, payment, dan relasi finance untuk order terminal yang dihapus}
+        {--purge-finance : Wajib; hapus invoice, payment, dan relasi finance untuk semua order di scope reset}
         {--apply : Terapkan penghapusan}
         {--confirm= : Wajib RESET-STOCK-DATA saat apply}';
 
-    protected $description = 'Menghapus history stok dan transaksi cutover secara atomik, dengan menjaga master SKU, gudang, user, dan rak.';
+    protected $description = 'Menghapus history stok dan dokumen operasional secara atomik, sambil menjaga master SKU, gudang, user, rak, serta order Excel/order yang lebih baru.';
 
     public function handle(): int
     {
@@ -20,7 +20,7 @@ final class CutoverResetCommand extends CutoverCommandSupport
             $apply = (bool) $this->option('apply');
             $this->confirmApply('RESET-STOCK-DATA');
             if ($apply && ! (bool) $this->option('purge-finance')) {
-                throw new \RuntimeException('scope reset ini mencakup order paid, gunakan --purge-finance secara eksplisit agar invoice/payment order terminal ikut dihapus.');
+                throw new \RuntimeException('gunakan --purge-finance agar invoice, payment, dan relasi finance semua order dalam scope ikut dibersihkan.');
             }
             $run = $this->cutover()->getRun($this->runId());
             if (! $apply) {

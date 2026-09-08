@@ -40,7 +40,12 @@ final class StockCutoverConsoleStorageTest extends TestCase
         self::assertSame('s3', $job->files['WH-PUSAT']['disk']);
         Storage::disk('s3')->assertExists("stock-cutover-console/{$job->id}/gudang_kecil.xlsx");
         Storage::disk('s3')->assertExists("stock-cutover-console/{$job->id}/pusat.xlsx");
-        Queue::assertPushed(RunStockCutoverConsoleJob::class, fn (RunStockCutoverConsoleJob $queued): bool => $queued->consoleJobId === $job->id);
+        Queue::assertPushed(
+            RunStockCutoverConsoleJob::class,
+            fn (RunStockCutoverConsoleJob $queued): bool => $queued->consoleJobId === $job->id
+                && $queued->connection === config('operations.stock_cutover_console.queue_connection', 'redis-long')
+                && $queued->queue === config('operations.stock_cutover_console.queue', 'stock-cutover'),
+        );
     }
 
     public function test_worker_reads_from_r2_and_returns_reports_to_r2_without_leaving_temporary_files(): void

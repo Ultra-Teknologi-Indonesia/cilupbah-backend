@@ -152,8 +152,8 @@ final class StockCutoverCommandTest extends TestCase
             'is_paid' => true,
             'is_canceled' => false,
             'location_id' => $location->id,
-            'updated_at' => now()->subDay(),
-            'created_at' => now()->subDay(),
+            'updated_at' => '2026-09-01 00:00:00',
+            'created_at' => '2026-09-01 00:00:00',
         ]);
         $orderItemId = (string) Str::uuid();
         DB::table('sales_order_items')->insert([
@@ -162,8 +162,8 @@ final class StockCutoverCommandTest extends TestCase
             'item_id' => $variant->id,
             'sku' => 'CUTOVER-001',
             'qty_in_base' => 1,
-            'created_at' => now()->subDay(),
-            'updated_at' => now()->subDay(),
+            'created_at' => '2026-09-01 00:00:00',
+            'updated_at' => '2026-09-01 00:00:00',
         ]);
         $invoiceId = (string) Str::uuid();
         DB::table('sales_invoices')->insert([
@@ -176,8 +176,8 @@ final class StockCutoverCommandTest extends TestCase
             'total_amount' => 1000,
             'paid_amount' => 1000,
             'created_by' => 'test',
-            'created_at' => now()->subDay(),
-            'updated_at' => now()->subDay(),
+            'created_at' => '2026-09-01 00:00:00',
+            'updated_at' => '2026-09-01 00:00:00',
         ]);
         DB::table('sales_payments')->insert([
             'id' => (string) Str::uuid(),
@@ -187,8 +187,8 @@ final class StockCutoverCommandTest extends TestCase
             'payment_date' => now()->toDateString(),
             'payment_method' => 'test',
             'created_by' => 'test',
-            'created_at' => now()->subDay(),
-            'updated_at' => now()->subDay(),
+            'created_at' => '2026-09-01 00:00:00',
+            'updated_at' => '2026-09-01 00:00:00',
         ]);
 
         $manifest = tempnam(sys_get_temp_dir(), 'cutover_manifest_').'.csv';
@@ -221,5 +221,82 @@ final class StockCutoverCommandTest extends TestCase
             @unlink($manifest);
             @unlink($stock);
         }
+    }
+
+    public function test_reset_keeps_whitelisted_and_newer_orders_but_removes_their_operational_finance_documents(): void
+    {
+        $location = Location::create([
+            'location_code' => 'WH-WHITELIST',
+            'location_name' => 'Gudang Whitelist',
+            'location_type' => 'warehouse',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+        $cutoffAt = '2026-09-08 09:00:00+00';
+        $keptOrderId = (string) Str::uuid();
+        $deletedOrderId = (string) Str::uuid();
+        $newerOrderId = (string) Str::uuid();
+
+        foreach ([
+            [$keptOrderId, 'CUTOVER-KEEP-001', '2026-09-08 08:59:00'],
+            [$deletedOrderId, 'CUTOVER-DELETE-001', '2026-09-08 08:59:00'],
+            [$newerOrderId, 'CUTOVER-NEWER-001', '2026-09-08 09:01:00'],
+        ] as [$id, $number, $createdAt]) {
+            DB::table('sales_orders')->insert([
+                'id' => $id,
+                'salesorder_no' => $number,
+                'status' => 'reserved',
+                'is_paid' => true,
+                'is_canceled' => false,
+                'location_id' => $location->id,
+                'transaction_date' => $createdAt,
+                'created_at' => $createdAt,
+                'updated_at' => $createdAt,
+            ]);
+        }
+
+        $invoiceId = (string) Str::uuid();
+        DB::table('sales_invoices')->insert([
+            'id' => $invoiceId,
+            'invoice_number' => 'CUTOVER-KEEP-INV-001',
+            'order_id' => $keptOrderId,
+            'location_id' => $location->id,
+            'status' => 'OPEN',
+            'invoice_date' => now()->toDateString(),
+            'total_amount' => 1000,
+            'paid_amount' => 0,
+            'created_by' => 'test',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $runId = (string) Str::uuid();
+        DB::table('stock_cutover_runs')->insert([
+            'id' => $runId,
+            'cutoff_at' => $cutoffAt,
+            'location_codes' => json_encode([$location->location_code], JSON_THROW_ON_ERROR),
+            'source_files' => json_encode([], JSON_THROW_ON_ERROR),
+            'report' => json_encode([
+                'order_audit' => [
+                    'mode' => 'WHITELIST_PLUS_NEWER',
+                    'blocking' => 0,
+                    'whitelist_internal_order_ids' => [$keptOrderId],
+                    'whitelist_queue_event_ids' => [],
+                ],
+            ], JSON_THROW_ON_ERROR),
+            'status' => 'PAUSED',
+            'created_by' => 'test',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $result = app(StockCutoverService::class)->reset($runId, true);
+
+        self::assertSame('whitelist_plus_newer', $result['order_policy']);
+        self::assertSame(1, $result['order_count_deleted']);
+        self::assertDatabaseHas('sales_orders', ['id' => $keptOrderId, 'status' => 'pending']);
+        self::assertDatabaseHas('sales_orders', ['id' => $newerOrderId, 'status' => 'pending']);
+        self::assertDatabaseMissing('sales_orders', ['id' => $deletedOrderId]);
+        self::assertDatabaseMissing('sales_invoices', ['id' => $invoiceId]);
     }
 }
