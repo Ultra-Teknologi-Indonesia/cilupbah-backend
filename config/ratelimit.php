@@ -23,4 +23,12 @@ return [
         'per_identity' => (int) env('RATE_LIMIT_HEAVY_PER_IDENTITY', 30),
     ],
 
+    'stock_cutover' => [
+        'page_per_minute' => (int) env('RATE_LIMIT_STOCK_CUTOVER_PAGE', 30),
+        'preview_per_minute' => (int) env('RATE_LIMIT_STOCK_CUTOVER_PREVIEW', 10),
+        'status_per_minute' => (int) env('RATE_LIMIT_STOCK_CUTOVER_STATUS', 180),
+        'apply_per_minute' => (int) env('RATE_LIMIT_STOCK_CUTOVER_APPLY', 10),
+        'report_per_minute' => (int) env('RATE_LIMIT_STOCK_CUTOVER_REPORT', 60),
+    ],
+
 ];

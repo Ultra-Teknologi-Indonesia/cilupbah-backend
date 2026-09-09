@@ -3,9 +3,9 @@
 namespace Modules\Sales\Console\Commands;
 
 use Illuminate\Console\Command;
-use Modules\Sales\Jobs\SyncOrderFinanceJob;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderFeeLine;
+use Modules\Sales\Services\FinanceSyncControlService;
 
 class BackfillSettlement extends Command
 {
@@ -43,24 +43,24 @@ class BackfillSettlement extends Command
             SalesOrderFeeLine::whereIn('order_id', $ids)->delete();
 
             SalesOrder::whereIn('id', $ids)->update([
-                'seller_voucher'         => null,
-                'platform_voucher'       => null,
-                'payment_voucher'        => null,
-                'commission_fee'         => null,
-                'service_fee'            => null,
-                'transaction_fee'        => null,
-                'affiliate_commission'   => null,
-                'order_processing_fee'   => null,
-                'seller_shipping_borne'  => null,
+                'seller_voucher' => null,
+                'platform_voucher' => null,
+                'payment_voucher' => null,
+                'commission_fee' => null,
+                'service_fee' => null,
+                'transaction_fee' => null,
+                'affiliate_commission' => null,
+                'order_processing_fee' => null,
+                'seller_shipping_borne' => null,
                 'platform_shipping_rebate' => null,
-                'settlement_amount'      => null,
-                'refund_total'           => null,
-                'gross_amount'           => null,
-                'finance_raw'            => null,
-                'channel_settlement_id'  => null,
-                'settled_at'             => null,
-                'is_settled'             => false,
-                'finance_synced_at'      => null,
+                'settlement_amount' => null,
+                'refund_total' => null,
+                'gross_amount' => null,
+                'finance_raw' => null,
+                'channel_settlement_id' => null,
+                'settled_at' => null,
+                'is_settled' => false,
+                'finance_synced_at' => null,
             ]);
         }
 
@@ -68,6 +68,7 @@ class BackfillSettlement extends Command
 
         if ($this->option('resync-canceled')) {
             $dispatched = 0;
+            $dispatcher = app(FinanceSyncControlService::class);
 
             SalesOrder::query()
                 ->whereIn('source', self::SOURCES)
@@ -75,12 +76,12 @@ class BackfillSettlement extends Command
                 ->whereNotNull('channel_shop_id')
                 ->whereNotNull('channel_order_no')
                 ->where(fn ($x) => $x->where('is_settled', true)->orWhereNotNull('settlement_amount'))
-                ->select('id')
-                ->chunkById(100, function ($orders) use (&$dispatched) {
+                ->select('*')
+                ->chunkById(100, function ($orders) use (&$dispatched, $dispatcher) {
                     foreach ($orders as $order) {
-                        $delaySeconds = (int) ($dispatched * 1.5);
-                        SyncOrderFinanceJob::dispatch($order->id, true)->delay(now()->addSeconds($delaySeconds));
-                        $dispatched++;
+                        if ($dispatcher->dispatch($order, true)) {
+                            $dispatched++;
+                        }
                     }
                 });
 

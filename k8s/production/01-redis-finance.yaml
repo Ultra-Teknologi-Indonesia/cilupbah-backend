@@ -1,0 +1,90 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cilupbah-redis-finance-data
+  namespace: cilupbah
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cilupbah-redis-finance
+  namespace: cilupbah
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: cilupbah-redis-finance
+  template:
+    metadata:
+      labels:
+        app: cilupbah-redis-finance
+    spec:
+      containers:
+        - name: redis-finance
+          image: redis:7-alpine
+          command:
+            - redis-server
+            - --maxmemory
+            - "1280mb"
+            - --maxmemory-policy
+            - noeviction
+            - --appendonly
+            - "yes"
+            - --appendfsync
+            - everysec
+            - --auto-aof-rewrite-percentage
+            - "100"
+            - --auto-aof-rewrite-min-size
+            - 64mb
+            - --dir
+            - /data
+          ports:
+            - containerPort: 6379
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "100m"
+            limits:
+              memory: "2Gi"
+              cpu: "500m"
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: cilupbah-redis-finance-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-finance
+  namespace: cilupbah
+spec:
+  selector:
+    app: cilupbah-redis-finance
+  ports:
+    - port: 6379
+      targetPort: 6379

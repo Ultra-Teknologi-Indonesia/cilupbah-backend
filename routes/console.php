@@ -3,6 +3,7 @@
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
+use Modules\Outbound\Jobs\RefreshInstantTrackingJob;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -30,6 +31,8 @@ Schedule::command('channel:monitor-queue-health')->everyFiveMinutes()->withoutOv
 Schedule::command('channel:evaluate-order-sync')->everyFifteenMinutes()->withoutOverlapping()->onOneServer();
 
 Schedule::command('orders:sync-finance')->dailyAt('03:00')->withoutOverlapping()->onOneServer();
+Schedule::command('orders:dispatch-due-finance')->everyMinute()->withoutOverlapping(2)->onOneServer()->runInBackground();
+Schedule::command('orders:finance-queue-health --json')->everyMinute()->withoutOverlapping(2)->onOneServer()->runInBackground();
 Schedule::command('settlements:sync')->dailyAt('03:30')->withoutOverlapping()->onOneServer();
 
 Schedule::command('returns:sync-tracking')->everyThirtyMinutes()->withoutOverlapping()->onOneServer();
@@ -44,7 +47,7 @@ Schedule::command('raise-products:auto-raise')->everyThirtyMinutes()->withoutOve
 Schedule::command('horizon:snapshot')->everyFiveMinutes();
 Schedule::command('horizon:purge')->hourly()->withoutOverlapping()->onOneServer();
 
-Schedule::job(new \Modules\Outbound\Jobs\RefreshInstantTrackingJob())
+Schedule::job(new RefreshInstantTrackingJob)
     ->everyThreeMinutes()
     ->withoutOverlapping()
     ->onOneServer();

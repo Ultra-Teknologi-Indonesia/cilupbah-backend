@@ -7,6 +7,8 @@ use Modules\Sales\Console\Commands\BackfillSettlement;
 use Modules\Sales\Console\Commands\BackfillShippedOrdersStockCommand;
 use Modules\Sales\Console\Commands\BackfillStatusHistory;
 use Modules\Sales\Console\Commands\CleanupBulkLabelBatchesCommand;
+use Modules\Sales\Console\Commands\DispatchDueFinanceSync;
+use Modules\Sales\Console\Commands\FinanceQueueHealth;
 use Modules\Sales\Console\Commands\PrepareShopeeLabelsBackfill;
 use Modules\Sales\Console\Commands\ReapStaleBulkLabelBatches;
 use Modules\Sales\Console\Commands\RelocateOrdersToKecil;
@@ -31,6 +33,8 @@ class SalesServiceProvider extends ModuleServiceProvider
 
     protected array $commands = [
         SyncOrderFinance::class,
+        DispatchDueFinanceSync::class,
+        FinanceQueueHealth::class,
         SyncSettlements::class,
         BackfillSettlement::class,
         BackfillShippedOrdersStockCommand::class,

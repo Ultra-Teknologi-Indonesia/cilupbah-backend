@@ -18,6 +18,8 @@ class MonitorRedisQueueHealth extends Command
     {
         $this->monitorRedis('default', 'queue');
         $this->monitorRedis('long', 'long_queue');
+        $this->monitorRedis('finance', 'finance_queue');
+        $this->monitorRedis('horizon', 'horizon');
 
         $stale = DB::table('channel_webhook_inbox')
             ->where('status', WebhookInboxStatus::RECEIVED->value)

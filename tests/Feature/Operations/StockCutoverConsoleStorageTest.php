@@ -98,4 +98,21 @@ final class StockCutoverConsoleStorageTest extends TestCase
         Storage::disk('local')->assertMissing("stock-cutover-console-tmp/{$id}/O-source.xlsx");
         Storage::disk('local')->assertMissing("stock-cutover-console-tmp/{$id}/O-report.csv");
     }
+
+    public function test_status_polling_is_not_limited_by_the_preview_rate_limit(): void
+    {
+        $token = str_repeat('b', 64);
+        config(['operations.stock_cutover_console.token' => $token]);
+
+        $job = StockCutoverConsoleJob::create([
+            'type' => 'preview',
+            'status' => StockCutoverConsoleJob::STATUS_PROCESSING,
+            'files' => [],
+        ]);
+
+        for ($attempt = 0; $attempt < 11; $attempt++) {
+            $this->get("/_ops/stock-cutover/{$token}/jobs/{$job->id}")
+                ->assertOk();
+        }
+    }
 }

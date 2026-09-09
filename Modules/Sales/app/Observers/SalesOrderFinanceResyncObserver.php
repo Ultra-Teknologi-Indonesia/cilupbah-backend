@@ -2,8 +2,8 @@
 
 namespace Modules\Sales\Observers;
 
-use Modules\Sales\Jobs\SyncOrderFinanceJob;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Services\FinanceSyncControlService;
 
 class SalesOrderFinanceResyncObserver
 {
@@ -20,6 +20,6 @@ class SalesOrderFinanceResyncObserver
             return;
         }
 
-        SyncOrderFinanceJob::dispatch($order->id, true)->afterCommit();
+        app(FinanceSyncControlService::class)->dispatch($order, true);
     }
 }

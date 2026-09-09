@@ -86,17 +86,50 @@ const reportData = document.getElementById('report-data');
 const applyCard = document.getElementById('apply-card');
 
 async function refresh() {
-    const response = await fetch(box.dataset.statusUrl, { credentials: 'same-origin', referrerPolicy: 'no-referrer' });
-    if (!response.ok) return;
-    const data = await response.json();
-    state.textContent = data.status;
-    error.textContent = data.error || '';
-    reportData.textContent = data.report ? JSON.stringify(data.report, null, 2) : 'Menunggu proses queue…';
-    if (data.download_ready) { report.classList.remove('hidden'); csvReports.classList.remove('hidden'); }
-    if (data.type === 'preview' && data.status === 'ready' && applyCard) applyCard.classList.remove('hidden');
-    if (!['queued', 'processing'].includes(data.status)) clearInterval(timer);
+    if (refresh.inFlight) return;
+    refresh.inFlight = true;
+
+    try {
+        const response = await fetch(box.dataset.statusUrl, { credentials: 'same-origin', referrerPolicy: 'no-referrer' });
+
+        if (response.status === 429) {
+            const retryAfter = Number(response.headers.get('Retry-After'));
+            refresh.delay = Math.min(Math.max((retryAfter || 15) * 1000, 5000), 60000);
+            error.textContent = `Status sedang dibatasi. Mencoba lagi dalam ${Math.ceil(refresh.delay / 1000)} detik.`;
+            refresh.timer = setTimeout(refresh, refresh.delay);
+            return;
+        }
+
+        if (!response.ok) {
+            refresh.delay = Math.min(refresh.delay * 2, 60000);
+            error.textContent = `Status sementara tidak dapat dibaca (${response.status}).`;
+            refresh.timer = setTimeout(refresh, refresh.delay);
+            return;
+        }
+
+        const data = await response.json();
+        state.textContent = data.status;
+        error.textContent = data.error || '';
+        reportData.textContent = data.report ? JSON.stringify(data.report, null, 2) : 'Menunggu proses queue…';
+        if (data.download_ready) { report.classList.remove('hidden'); csvReports.classList.remove('hidden'); }
+        if (data.type === 'preview' && data.status === 'ready' && applyCard) applyCard.classList.remove('hidden');
+
+        refresh.delay = 5000;
+        if (['queued', 'processing'].includes(data.status)) {
+            refresh.timer = setTimeout(refresh, refresh.delay);
+        }
+    } catch (exception) {
+        refresh.delay = Math.min(refresh.delay * 2, 60000);
+        error.textContent = 'Status sementara tidak dapat dibaca. Mencoba lagi otomatis.';
+        refresh.timer = setTimeout(refresh, refresh.delay);
+    } finally {
+        refresh.inFlight = false;
+    }
 }
-const timer = setInterval(refresh, 3000);
+
+refresh.delay = 5000;
+refresh.inFlight = false;
+refresh.timer = null;
 refresh();
 </script>
 @endif

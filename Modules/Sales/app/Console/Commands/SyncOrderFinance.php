@@ -3,8 +3,8 @@
 namespace Modules\Sales\Console\Commands;
 
 use Illuminate\Console\Command;
-use Modules\Sales\Jobs\SyncOrderFinanceJob;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Services\FinanceSyncControlService;
 
 class SyncOrderFinance extends Command
 {
@@ -34,11 +34,13 @@ class SyncOrderFinance extends Command
         }
 
         $count = 0;
-        $query->select('id')->chunkById(100, function ($orders) use (&$count, $force) {
+        $dispatcher = app(FinanceSyncControlService::class);
+
+        $query->select('*')->chunkById(100, function ($orders) use (&$count, $force, $dispatcher) {
             foreach ($orders as $order) {
-                $delaySeconds = (int) ($count * 1.5);
-                SyncOrderFinanceJob::dispatch($order->id, $force)->delay(now()->addSeconds($delaySeconds));
-                $count++;
+                if ($dispatcher->dispatch($order, $force)) {
+                    $count++;
+                }
             }
         });
 

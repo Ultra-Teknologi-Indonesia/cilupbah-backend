@@ -107,6 +107,39 @@ class AppServiceProvider extends ServiceProvider
             return \Illuminate\Cache\RateLimiting\Limit::perMinute((int) config('ratelimit.heavy.per_identity', 30))->by($key);
         });
 
+        $stockCutoverLimit = static function (\Illuminate\Http\Request $request, string $action, int $default): \Illuminate\Cache\RateLimiting\Limit {
+            $tokenFingerprint = substr(hash('sha256', (string) $request->route('token')), 0, 16);
+
+            return \Illuminate\Cache\RateLimiting\Limit::perMinute(
+                (int) config('ratelimit.stock_cutover.'.$action.'_per_minute', $default),
+            )->by('stock-cutover|'.$action.'|'.$request->ip().'|'.$tokenFingerprint);
+        };
+
+        \Illuminate\Support\Facades\RateLimiter::for(
+            'stock_cutover_page',
+            fn (\Illuminate\Http\Request $request): \Illuminate\Cache\RateLimiting\Limit => $stockCutoverLimit($request, 'page', 30),
+        );
+
+        \Illuminate\Support\Facades\RateLimiter::for(
+            'stock_cutover_preview',
+            fn (\Illuminate\Http\Request $request): \Illuminate\Cache\RateLimiting\Limit => $stockCutoverLimit($request, 'preview', 10),
+        );
+
+        \Illuminate\Support\Facades\RateLimiter::for(
+            'stock_cutover_status',
+            fn (\Illuminate\Http\Request $request): \Illuminate\Cache\RateLimiting\Limit => $stockCutoverLimit($request, 'status', 180),
+        );
+
+        \Illuminate\Support\Facades\RateLimiter::for(
+            'stock_cutover_apply',
+            fn (\Illuminate\Http\Request $request): \Illuminate\Cache\RateLimiting\Limit => $stockCutoverLimit($request, 'apply', 10),
+        );
+
+        \Illuminate\Support\Facades\RateLimiter::for(
+            'stock_cutover_report',
+            fn (\Illuminate\Http\Request $request): \Illuminate\Cache\RateLimiting\Limit => $stockCutoverLimit($request, 'report', 60),
+        );
+
         \Illuminate\Database\Eloquent\Builder::macro('allowedSearch', function (...$columns) {
             return \App\Support\AllowedSearch::apply($this, $columns);
         });

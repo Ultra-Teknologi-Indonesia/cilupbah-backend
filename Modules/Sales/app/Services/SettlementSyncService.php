@@ -11,14 +11,12 @@ use Modules\Channel\Services\ShopeeEscrowMapper;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Channel\Services\TikTokStatementMapper;
-use Modules\Sales\Jobs\SyncOrderFinanceJob;
 use Modules\Sales\Models\ChannelSettlement;
 use Modules\Sales\Models\ChannelSettlementAdjustment;
 use Modules\Sales\Models\SalesOrder;
 
 class SettlementSyncService
 {
-
     private const TIKTOK_ORDER_TYPES = ['ORDER', 'SETTLE', 'SETTLEMENT'];
 
     public function __construct(
@@ -64,7 +62,7 @@ class SettlementSyncService
             try {
                 $count += (int) $fn($shop);
             } catch (\Throwable $e) {
-                Log::warning("SettlementSync {$code} gagal untuk toko {$shop->shop_id}: " . $e->getMessage());
+                Log::warning("SettlementSync {$code} gagal untuk toko {$shop->shop_id}: ".$e->getMessage());
             }
         }
 
@@ -89,17 +87,17 @@ class SettlementSyncService
             $settlement = ChannelSettlement::updateOrCreate(
                 ['channel' => 'tiktok', 'shop_id' => $shopId, 'external_id' => $externalId],
                 [
-                    'type'                => 'STATEMENT',
+                    'type' => 'STATEMENT',
                     'external_payment_id' => $stmt['payment_id'] ?? null,
-                    'settled_at'          => $settledAt,
-                    'paid_at'             => $paidAt,
-                    'payment_status'      => $stmt['payment_status'] ?? null,
-                    'total_settlement'    => $this->toFloat($stmt['settlement_amount'] ?? null),
-                    'total_fee'           => $this->toFloat($stmt['fee_amount'] ?? null),
-                    'total_adjustment'    => $this->toFloat($stmt['adjustment_amount'] ?? null),
-                    'currency'            => $stmt['currency'] ?? 'IDR',
-                    'raw'                 => $stmt,
-                    'synced_at'           => now(),
+                    'settled_at' => $settledAt,
+                    'paid_at' => $paidAt,
+                    'payment_status' => $stmt['payment_status'] ?? null,
+                    'total_settlement' => $this->toFloat($stmt['settlement_amount'] ?? null),
+                    'total_fee' => $this->toFloat($stmt['fee_amount'] ?? null),
+                    'total_adjustment' => $this->toFloat($stmt['adjustment_amount'] ?? null),
+                    'currency' => $stmt['currency'] ?? 'IDR',
+                    'raw' => $stmt,
+                    'synced_at' => now(),
                 ],
             );
 
@@ -146,15 +144,15 @@ class SettlementSyncService
             ['channel' => 'tiktok', 'external_transaction_id' => (string) ($tx['id'] ?? uniqid('tt-', true))],
             [
                 'channel_settlement_id' => $settlement->id,
-                'shop_id'               => $shopId,
-                'type'                  => $type ?: 'OTHER_ADJUSTMENT',
-                'order_id'              => $matchedOrder?->id,
-                'channel_order_no'      => $orderId,
-                'amount'                => $this->toFloat($tx['settlement_amount'] ?? ($tx['adjustment_amount'] ?? 0)) ?? 0,
-                'reason'                => $tx['reason'] ?? ($tx['adjustment_reason'] ?? null),
-                'occurred_at'           => $this->fromTimestamp($tx['order_create_time'] ?? null) ?? $settledAt,
-                'currency'              => $tx['currency'] ?? 'IDR',
-                'raw'                   => $tx,
+                'shop_id' => $shopId,
+                'type' => $type ?: 'OTHER_ADJUSTMENT',
+                'order_id' => $matchedOrder?->id,
+                'channel_order_no' => $orderId,
+                'amount' => $this->toFloat($tx['settlement_amount'] ?? ($tx['adjustment_amount'] ?? 0)) ?? 0,
+                'reason' => $tx['reason'] ?? ($tx['adjustment_reason'] ?? null),
+                'occurred_at' => $this->fromTimestamp($tx['order_create_time'] ?? null) ?? $settledAt,
+                'currency' => $tx['currency'] ?? 'IDR',
+                'raw' => $tx,
             ],
         );
     }
@@ -196,14 +194,14 @@ class SettlementSyncService
             ChannelSettlement::updateOrCreate(
                 ['channel' => 'shopee', 'shop_id' => $shopId, 'external_id' => "escrow-{$date}"],
                 [
-                    'type'             => 'STATEMENT',
-                    'settled_at'       => $agg['settled_at'] ?? null,
-                    'period_start'     => $date === 'unknown' ? null : $date,
-                    'period_end'       => $date === 'unknown' ? null : $date,
+                    'type' => 'STATEMENT',
+                    'settled_at' => $agg['settled_at'] ?? null,
+                    'period_start' => $date === 'unknown' ? null : $date,
+                    'period_end' => $date === 'unknown' ? null : $date,
                     'total_settlement' => $agg['total'] ?? 0,
-                    'currency'         => 'IDR',
-                    'raw'              => ['release_date' => $date, 'payout_total' => $agg['total'] ?? 0],
-                    'synced_at'        => now(),
+                    'currency' => 'IDR',
+                    'raw' => ['release_date' => $date, 'payout_total' => $agg['total'] ?? 0],
+                    'synced_at' => now(),
                 ],
             );
         }
@@ -232,7 +230,7 @@ class SettlementSyncService
             $finance['settled_at'] = $settledAt;
             $this->orderService->updateOrderFinance($order->id, $finance);
         } catch (\Throwable $e) {
-            Log::warning("SettlementSync shopee escrow {$orderSn} gagal: " . $e->getMessage());
+            Log::warning("SettlementSync shopee escrow {$orderSn} gagal: ".$e->getMessage());
         }
     }
 
@@ -257,22 +255,22 @@ class SettlementSyncService
                 ChannelSettlement::updateOrCreate(
                     ['channel' => 'lazada', 'shop_id' => $shopId, 'external_id' => (string) $statementNo],
                     [
-                        'type'             => 'STATEMENT',
-                        'settled_at'       => $createdAt,
-                        'paid_at'          => $isPaid ? ($this->parseLazadaDate($stmt['updated_at'] ?? null) ?? $createdAt) : null,
-                        'payment_status'   => $isPaid ? 'PAID' : 'UNPAID',
+                        'type' => 'STATEMENT',
+                        'settled_at' => $createdAt,
+                        'paid_at' => $isPaid ? ($this->parseLazadaDate($stmt['updated_at'] ?? null) ?? $createdAt) : null,
+                        'payment_status' => $isPaid ? 'PAID' : 'UNPAID',
                         'total_settlement' => $payoutAmount,
-                        'total_fee'        => $this->toFloat($stmt['fees_total'] ?? null),
+                        'total_fee' => $this->toFloat($stmt['fees_total'] ?? null),
                         'total_adjustment' => $this->toFloat($stmt['refunds'] ?? null),
-                        'currency'         => $currency ?? 'IDR',
-                        'raw'              => $stmt,
-                        'synced_at'        => now(),
+                        'currency' => $currency ?? 'IDR',
+                        'raw' => $stmt,
+                        'synced_at' => now(),
                     ],
                 );
                 $count++;
             }
         } catch (\Throwable $e) {
-            Log::warning("SettlementSync lazada payout {$shopId} gagal: " . $e->getMessage());
+            Log::warning("SettlementSync lazada payout {$shopId} gagal: ".$e->getMessage());
         }
 
         SalesOrder::query()
@@ -285,8 +283,10 @@ class SettlementSyncService
             ->where(fn ($q) => $q->where('is_settled', false)->orWhereNull('settled_at'))
             ->select('id')
             ->chunkById(200, function ($orders) {
+                $dispatcher = app(FinanceSyncControlService::class);
+
                 foreach ($orders as $order) {
-                    SyncOrderFinanceJob::dispatch($order->id, true);
+                    $dispatcher->dispatch($order, true);
                 }
             });
 

@@ -58,6 +58,15 @@ return [
             'after_commit' => true,
         ],
 
+        'redis-finance' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_FINANCE_CONNECTION', 'finance'),
+            'queue' => env('REDIS_FINANCE_QUEUE', 'channel-finance'),
+            'retry_after' => (int) env('REDIS_FINANCE_QUEUE_RETRY_AFTER', 240),
+            'block_for' => null,
+            'after_commit' => true,
+        ],
+
         'deferred' => [
             'driver' => 'deferred',
         ],
@@ -152,6 +161,11 @@ return [
         'channel_after_sales' => [
             'connection' => env('QUEUE_CHANNEL_AFTER_SALES_CONNECTION', 'redis-long'),
             'queue' => env('QUEUE_NAME_CHANNEL_AFTER_SALES', 'channel-after-sales'),
+        ],
+
+        'channel_finance' => [
+            'connection' => env('QUEUE_CHANNEL_FINANCE_CONNECTION', 'redis-finance'),
+            'queue' => env('QUEUE_NAME_CHANNEL_FINANCE', 'channel-finance'),
         ],
 
         'labels' => [

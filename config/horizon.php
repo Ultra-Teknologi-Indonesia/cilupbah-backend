@@ -11,7 +11,7 @@ return [
 
     'path' => env('HORIZON_PATH', 'horizon'),
 
-    'use' => 'default',
+    'use' => env('HORIZON_REDIS_CONNECTION', 'default'),
 
     'prefix' => env(
         'HORIZON_PREFIX',
@@ -30,7 +30,8 @@ return [
         'redis:tracking' => 60,
         'redis:channel-cancellation' => 30,
         'redis:channel-stock' => 60,
-        'redis:channel-finance' => 120,
+        config('queue.routing.channel_finance.connection', 'redis-finance').':'
+            .config('queue.routing.channel_finance.queue', 'channel-finance') => 120,
         'redis:channel-fulfillment' => 60,
         'redis-long:channel-product' => 120,
         'redis-long:channel-after-sales' => 120,
@@ -120,7 +121,6 @@ return [
             'queue' => [
                 env('QUEUE_NAME_CHANNEL_CANCELLATION', 'channel-cancellation'),
                 env('QUEUE_NAME_CHANNEL_STOCK', 'channel-stock'),
-                env('QUEUE_NAME_CHANNEL_FINANCE', 'channel-finance'),
                 env('QUEUE_NAME_CHANNEL_FULFILLMENT', 'channel-fulfillment'),
             ],
             'balance' => 'auto',
@@ -133,6 +133,20 @@ return [
             'backoff' => [10, 30, 60],
             'memory' => 128,
             'nice' => 0,
+        ],
+        'supervisor-channel-finance' => [
+            'connection' => config('queue.routing.channel_finance.connection', 'redis-finance'),
+            'queue' => [config('queue.routing.channel_finance.queue', 'channel-finance')],
+            'balance' => 'simple',
+            'minProcesses' => (int) env('HORIZON_FINANCE_MIN_PROCESSES', 1),
+            'maxProcesses' => (int) env('HORIZON_FINANCE_MAX_PROCESSES', 2),
+            'maxJobs' => 100,
+            'maxTime' => 1800,
+            'timeout' => 240,
+            'tries' => 3,
+            'backoff' => [30, 120, 300],
+            'memory' => 256,
+            'nice' => 5,
         ],
         'supervisor-channel-product' => [
             'connection' => config('queue.routing.channel_product.connection', 'redis-long'),

@@ -6,8 +6,8 @@ use App\Exceptions\UserFacingException;
 use App\Models\User;
 use App\Support\ChannelWarehousePolicy;
 use App\Support\WarehouseAccess;
-use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
@@ -24,6 +24,7 @@ use Modules\Channel\Services\MarketplaceCancelReasonService;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\TikTokClient;
 use Modules\Channel\Services\TikTokOrderService;
+use Modules\Channel\Support\ChannelOrderPullGuard;
 use Modules\Inventory\Jobs\AutoDetectStockReplenishmentJob;
 use Modules\Notification\Services\NotificationDispatcher;
 use Modules\Outbound\Models\Packlist;
@@ -49,7 +50,6 @@ use Modules\Sales\Jobs\CancelChannelOrderJob;
 use Modules\Sales\Jobs\PrepareLazadaShippingLabelJob;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
 use Modules\Sales\Jobs\RespondBuyerCancellationJob;
-use Modules\Sales\Jobs\SyncOrderFinanceJob;
 use Modules\Sales\Jobs\SyncStockJob;
 use Modules\Sales\Models\OrderBinAllocation;
 use Modules\Sales\Models\SalesOrder;
@@ -134,6 +134,7 @@ class SalesOrderService
         protected StockService $stockService,
         protected NotificationDispatcher $notifications,
         protected ChannelWarehousePolicy $channelWarehousePolicy,
+        protected FinanceSyncControlService $financeSyncControl,
     ) {}
 
     private function orderLink(string $id): string
@@ -749,7 +750,7 @@ class SalesOrderService
                 $pulled = app(TikTokOrderService::class)
                     ->pullOrderById($order->channel_shop_id, $order->channel_order_no);
 
-                \Modules\Channel\Support\ChannelOrderPullGuard::requirePersisted(
+                ChannelOrderPullGuard::requirePersisted(
                     'tiktok',
                     (string) $order->channel_shop_id,
                     (string) $order->channel_order_no,
@@ -2400,15 +2401,7 @@ class SalesOrderService
                 || ! in_array(strtoupper((string) $order->channel_status), ['UNPAID', 'UNCONFIRMED'], true);
 
             if (! $order->is_settled && $order->source && $order->channel_shop_id && $isSettlementEligible) {
-                try {
-                    SyncOrderFinanceJob::dispatch($order->id)
-                        ->onQueue(config('queue.names.channel_finance'));
-                } catch (\Throwable $e) {
-                    Log::warning('Dispatch SyncOrderFinanceJob gagal setelah commit order', [
-                        'order_id' => $order->id,
-                        'error' => $e->getMessage(),
-                    ]);
-                }
+                $this->financeSyncControl->dispatch($order);
             }
 
             $this->stampOrderSyncHealthy($order);
@@ -2567,7 +2560,12 @@ class SalesOrderService
         }
 
         $settledAt = $finance['settled_at'] ?? $order->settled_at;
-        $update['is_settled'] = $settledAt !== null && ! $order->is_canceled;
+
+        $financeIsSettled = array_key_exists('is_settled', $finance)
+            ? (bool) $finance['is_settled']
+            : $settledAt !== null;
+
+        $update['is_settled'] = $financeIsSettled && ! $order->is_canceled;
 
         $update['finance_synced_at'] = now();
 
