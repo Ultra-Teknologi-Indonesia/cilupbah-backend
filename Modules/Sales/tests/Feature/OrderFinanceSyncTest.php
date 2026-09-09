@@ -293,6 +293,37 @@ class OrderFinanceSyncTest extends TestCase
         ]);
     }
 
+    public function test_max_attempts_dead_letter_preserves_the_original_failure(): void
+    {
+        $order = $this->makeOrder(['is_settled' => false]);
+        $control = app(FinanceSyncControlService::class);
+        $this->assertTrue($control->claim($order->id));
+
+        $rootCause = new \RuntimeException('TikTok API returned HTTP 429');
+        $control->markRetryable($order->id, $rootCause, 60);
+
+        $control->markDeadLetter(
+            $order->id,
+            new \Illuminate\Queue\MaxAttemptsExceededException('attempts exhausted'),
+            (string) \Illuminate\Support\Str::uuid(),
+            4,
+            ['stage' => 'job_failed'],
+        );
+
+        $this->assertSame('dead_letter', $control->state($order->id)->status);
+        $this->assertSame($rootCause->getMessage(), $control->state($order->id)->last_error);
+        $this->assertDatabaseHas('finance_sync_dead_letters', [
+            'order_id' => $order->id,
+            'reason' => $rootCause->getMessage(),
+        ]);
+
+        $context = DB::table('finance_sync_dead_letters')
+            ->where('order_id', $order->id)
+            ->value('context');
+
+        $this->assertTrue((bool) json_decode((string) $context, true)['root_cause_preserved']);
+    }
+
     public function test_sync_job_handles_tiktok_rate_limit_36009002_gracefully(): void
     {
         $order = $this->makeOrder([

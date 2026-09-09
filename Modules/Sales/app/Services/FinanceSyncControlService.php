@@ -265,11 +265,23 @@ final class FinanceSyncControlService
             return;
         }
 
+        $previousError = trim((string) ($current?->last_error ?? ''));
+        $isAttemptsExceeded = $exception instanceof \Illuminate\Queue\MaxAttemptsExceededException;
+        $rootCause = $isAttemptsExceeded && $previousError !== ''
+            ? $previousError
+            : $exception->getMessage();
+        $rootCause = $this->truncate($rootCause, 4000);
+        $context = array_merge($context, [
+            'terminal_exception_class' => $exception::class,
+            'terminal_exception_message' => $this->truncate($exception->getMessage(), 4000),
+            'root_cause_preserved' => $isAttemptsExceeded && $previousError !== '',
+        ]);
+
         $this->update($orderId, [
             'status' => 'dead_letter',
             'next_attempt_at' => null,
             'locked_at' => null,
-            'last_error' => $this->truncate($exception->getMessage()),
+            'last_error' => $this->truncate($rootCause),
         ]);
 
         if (! $this->deadLetterAvailable()) {
@@ -287,7 +299,7 @@ final class FinanceSyncControlService
             'channel_order_no' => $order?->channel_order_no,
             'exception_class' => $exception::class,
             'attempts' => max(0, $attempts),
-            'reason' => $this->truncate($exception->getMessage(), 4000),
+            'reason' => $rootCause,
             'context' => json_encode($context, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
             'failed_at' => now(),
             'created_at' => now(),
