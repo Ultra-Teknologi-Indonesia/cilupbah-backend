@@ -38,7 +38,7 @@ class ImportBaselineStockTest extends TestCase
 
     private function createSampleExcel(array $rows): string
     {
-        $spreadsheet = new Spreadsheet();
+        $spreadsheet = new Spreadsheet;
         $sheet = $spreadsheet->getActiveSheet();
 
         $sheet->fromArray([
@@ -63,7 +63,7 @@ class ImportBaselineStockTest extends TestCase
 
         $sheet->fromArray($data, null, 'A2', true);
 
-        $tempFile = tempnam(sys_get_temp_dir(), 'baseline_test_') . '.xlsx';
+        $tempFile = tempnam(sys_get_temp_dir(), 'baseline_test_').'.xlsx';
         $writer = new Xlsx($spreadsheet);
         $writer->save($tempFile);
 
@@ -79,8 +79,8 @@ class ImportBaselineStockTest extends TestCase
             [
                 'location_name' => 'Gudang Kecil',
                 'location_type' => 'warehouse',
-                'is_warehouse'  => true,
-                'is_active'     => true,
+                'is_warehouse' => true,
+                'is_active' => true,
             ]
         );
 
@@ -134,8 +134,8 @@ class ImportBaselineStockTest extends TestCase
             [
                 'location_name' => 'Gudang Kecil',
                 'location_type' => 'warehouse',
-                'is_warehouse'  => true,
-                'is_active'     => true,
+                'is_warehouse' => true,
+                'is_active' => true,
             ]
         );
 
@@ -194,8 +194,8 @@ class ImportBaselineStockTest extends TestCase
             [
                 'location_name' => 'Gudang Kecil',
                 'location_type' => 'warehouse',
-                'is_warehouse'  => true,
-                'is_active'     => true,
+                'is_warehouse' => true,
+                'is_active' => true,
             ]
         );
 
@@ -253,6 +253,81 @@ class ImportBaselineStockTest extends TestCase
         $this->assertEquals(0, (int) $inventory->on_hand);
     }
 
+    public function test_zero_qty_without_final_rack_does_not_block_or_create_empty_inventory(): void
+    {
+        Location::firstOrCreate(
+            ['location_code' => 'WH-KECIL'],
+            [
+                'location_name' => 'Gudang Kecil',
+                'location_type' => 'warehouse',
+                'is_warehouse' => true,
+                'is_active' => true,
+            ]
+        );
+
+        $excelPath = $this->createSampleExcel([
+            [
+                'sku' => 'SKU-TIDAK-ADA-RAK',
+                'bin' => 'Tidak ada rak',
+                'qty' => 0,
+                'qty_actual' => 0,
+            ],
+        ]);
+
+        $this->artisan('inventory:import-baseline', [
+            'file' => $excelPath,
+            '--location' => 'WH-KECIL',
+        ])
+            ->assertExitCode(0)
+            ->expectsOutputToContain('Baris Qty Aktual = 0')
+            ->expectsOutputToContain('LAPORAN LENGKAP TELAH DIBUAT');
+
+        $this->assertSame(0, Inventory::count());
+        $this->assertSame(0, InventoryMovement::count());
+    }
+
+    public function test_zero_qty_for_valid_empty_rack_does_not_create_empty_inventory_or_adjustment(): void
+    {
+        $location = Location::firstOrCreate(
+            ['location_code' => 'WH-KECIL'],
+            [
+                'location_name' => 'Gudang Kecil',
+                'location_type' => 'warehouse',
+                'is_warehouse' => true,
+                'is_active' => true,
+            ]
+        );
+
+        LocationBin::firstOrCreate(
+            ['location_id' => $location->id, 'bin_final_code' => 'GK-01-A1'],
+            [
+                'bin_code' => 'GK-01-A1',
+                'is_active' => true,
+            ]
+        );
+
+        $excelPath = $this->createSampleExcel([
+            [
+                'sku' => 'SKU-NOL-TANPA-STOK',
+                'bin' => 'GK-01-A1',
+                'qty' => 0,
+                'qty_actual' => 0,
+            ],
+        ]);
+
+        $this->artisan('inventory:import-baseline', [
+            'file' => $excelPath,
+            '--location' => 'WH-KECIL',
+            '--commit' => true,
+        ])
+            ->assertExitCode(0)
+            ->expectsOutputToContain('Tidak dibuat (stok sudah sama dengan file)');
+
+        $this->assertSame(0, StockAdjustment::count());
+        $this->assertSame(0, Inventory::count());
+        $this->assertSame(0, InventoryMovement::count());
+    }
+
     public function test_zero_missing_menolkan_stok_lama_yang_tidak_ada_di_file(): void
     {
         $location = Location::firstOrCreate(
@@ -260,8 +335,8 @@ class ImportBaselineStockTest extends TestCase
             [
                 'location_name' => 'Gudang Kecil',
                 'location_type' => 'warehouse',
-                'is_warehouse'  => true,
-                'is_active'     => true,
+                'is_warehouse' => true,
+                'is_active' => true,
             ]
         );
 

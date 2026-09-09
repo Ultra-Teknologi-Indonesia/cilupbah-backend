@@ -9,8 +9,6 @@ use Modules\Inventory\Models\StockAdjustment;
 use Modules\Inventory\Models\StockAdjustmentItem;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Repositories\InventoryRepository;
-use PhpOffice\PhpSpreadsheet\Reader\IReadFilter;
-use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
 
 class ImportBaselineStock extends Command
 {
@@ -64,18 +62,28 @@ class ImportBaselineStock extends Command
         $this->line('Zero Missing  : '.($zeroMissing ? 'AKTIF (stok lama yang tidak ada di file akan dinolkan)' : 'NON-AKTIF'));
         $this->newLine();
 
-        $rows = $this->readRows($path);
+        $source = $this->readRows($path, $location->id);
+        $rows = $source['rows'];
 
-        if ($rows === []) {
+        if ($source['source_rows'] === 0) {
             $this->error('Tidak ada baris berisi stok yang bisa dibaca dari file ini.');
 
             return self::FAILURE;
         }
 
-        $this->line(sprintf('Total baris ber-stok terbaca: %s', number_format(count($rows))));
+        $this->line(sprintf('Total baris sumber terbaca: %s', number_format($source['source_rows'])));
+        $this->line(sprintf('Baris Qty Aktual > 0: %s', number_format($source['positive_rows'])));
+        $this->line(sprintf('Baris Qty Aktual = 0 tanpa stok sistem: %s', number_format($source['zero_rows_skipped'])));
         $this->newLine();
 
         $inspection = $this->inspect($rows, $location->id);
+        $inspection = array_merge($inspection, [
+            'source_rows' => $source['source_rows'],
+            'positive_rows' => $source['positive_rows'],
+            'explicit_zero_rows' => $source['explicit_zero_rows'],
+            'zero_rows_retained' => $source['zero_rows_retained'],
+            'zero_rows_skipped' => $source['zero_rows_skipped'],
+        ]);
 
         $this->renderSummary($inspection, (int) $this->option('limit'));
 
@@ -101,7 +109,10 @@ class ImportBaselineStock extends Command
             $zeroedItems = $executionResult['zeroed_items'] ?? [];
             $this->info('Eksekusi database selesai!');
             $this->line(sprintf('  · Penyesuaian Dibuat : %s item', number_format($executionResult['applied_count'])));
-            $this->line(sprintf('  · Dokumen Baseline   : %s', $executionResult['adjustment_no']));
+            $this->line(sprintf(
+                '  · Dokumen Baseline   : %s',
+                $executionResult['adjustment_no'] ?? 'Tidak dibuat (stok sudah sama dengan file)',
+            ));
             if ($zeroMissing) {
                 $this->line(sprintf('  · Stok Dinolkan      : %s item', number_format(count($zeroedItems))));
             }
@@ -170,117 +181,247 @@ class ImportBaselineStock extends Command
         $this->table(['Kode', 'Nama Lokasi'], $rows);
     }
 
-    private function readRows(string $path): array
+    private function readRows(string $path, string $locationId): array
     {
-        @ini_set('memory_limit', '1024M');
+        @ini_set('memory_limit', '512M');
+
+        $existingPositivePairs = $this->existingPositivePairs($locationId);
 
         $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
         if ($ext === 'csv' || $ext === 'txt') {
-            return $this->readCsvRows($path);
+            return $this->readCsvRows($path, $existingPositivePairs);
         }
 
-        $reader = new XlsxReader;
-        $reader->setReadDataOnly(true);
+        return $this->readXlsxRows($path, $existingPositivePairs);
+    }
 
-        $sheetNames = method_exists($reader, 'listWorksheetNames') ? $reader->listWorksheetNames($path) : [];
-        $isTemplate = in_array(self::TEMPLATE_SHEET, $sheetNames, true);
-
-        if ($isTemplate) {
-            $reader->setLoadSheetsOnly(self::TEMPLATE_SHEET);
+    private function readXlsxRows(string $path, array $existingPositivePairs): array
+    {
+        $worksheet = $this->resolveXlsxWorksheet($path);
+        if ($worksheet === null) {
+            return $this->emptySourceStats() + ['rows' => []];
         }
 
-        $columns = $isTemplate ? ['A', 'B', 'C', 'D'] : ['A', 'D', 'H', 'I', 'J'];
-        $lastColumn = $isTemplate ? 'D' : 'J';
-        $totalRows = $this->countRows($reader, $path, $isTemplate);
-
+        $isTemplate = $worksheet['name'] === self::TEMPLATE_SHEET;
+        $sharedStrings = $this->readXlsxSharedStrings($path);
         $rows = [];
-        $chunkSize = 2500;
-        $hardCap = 2000000;
-        $start = 2;
+        $stats = $this->emptySourceStats();
+        $reader = new \XMLReader;
 
-        while ($start <= $hardCap) {
-            $end = $totalRows > 0 ? min($start + $chunkSize - 1, $totalRows) : $start + $chunkSize - 1;
+        if (! $reader->open($this->xlsxStreamUri($path, $worksheet['path']), null, LIBXML_NONET | LIBXML_COMPACT)) {
+            throw new \RuntimeException("File XLSX tidak dapat dibaca: {$path}");
+        }
 
-            if ($totalRows > 0 && $start > $totalRows) {
-                break;
-            }
-
-            $reader->setReadFilter($this->chunkFilter($columns, $start, $end));
-            $spreadsheet = $reader->load($path);
-
-            $slice = $spreadsheet->getActiveSheet()
-                ->rangeToArray("A{$start}:{$lastColumn}{$end}", null, true, false, false);
-
-            $seen = 0;
-
-            foreach ($slice as $offset => $raw) {
-                $rowNo = $start + $offset;
-
-                if (array_filter($raw, fn ($v) => $v !== null && $v !== '') !== []) {
-                    $seen++;
-                }
-
-                if ($isTemplate) {
-                    $sku = trim((string) ($raw[0] ?? ''));
-                    $bin = trim((string) ($raw[1] ?? ''));
-                    $qty = (int) ($raw[3] ?? 0);
-                    $fileLocation = null;
-                } else {
-                    $sku = trim((string) ($raw[0] ?? ''));
-                    $fileLocation = trim((string) ($raw[3] ?? '')) ?: null;
-                    $bin = trim((string) ($raw[7] ?? ''));
-                    $qty = isset($raw[9]) && $raw[9] !== '' && $raw[9] !== null
-                        ? (int) $raw[9]
-                        : (int) ($raw[8] ?? 0);
-                }
-
-                if ($sku === '' || $qty < 0) {
+        try {
+            $rowNo = 0;
+            while ($reader->read()) {
+                if ($reader->nodeType !== \XMLReader::ELEMENT || $reader->localName !== 'row') {
                     continue;
                 }
 
-                $rows[] = [
-                    'row' => $rowNo,
-                    'sku' => $sku,
-                    'bin' => $bin,
-                    'qty' => $qty,
-                    'file_location' => $fileLocation,
-                ];
+                $rowNo++;
+                if ($rowNo === 1) {
+                    continue;
+                }
+
+                $this->collectSourceRow(
+                    $this->extractXlsxRow($reader->readOuterXml(), $sharedStrings),
+                    $rowNo,
+                    $isTemplate,
+                    $existingPositivePairs,
+                    $rows,
+                    $stats,
+                );
             }
-
-            $spreadsheet->disconnectWorksheets();
-            unset($spreadsheet, $slice);
-
-            $this->line(sprintf(
-                '  dibaca baris %s–%s · %s baris ber-stok terkumpul',
-                number_format($start),
-                number_format($end),
-                number_format(count($rows)),
-            ));
-
-            if ($seen === 0) {
-                break;
-            }
-
-            $start = $end + 1;
+        } finally {
+            $reader->close();
         }
 
-        $this->newLine();
-
-        return $rows;
+        return $stats + ['rows' => $rows];
     }
 
-    private function readCsvRows(string $path): array
+    private function resolveXlsxWorksheet(string $path): ?array
+    {
+        $archive = new \ZipArchive;
+        if ($archive->open($path) !== true) {
+            throw new \RuntimeException("File XLSX tidak dapat dibuka: {$path}");
+        }
+
+        try {
+            $workbook = $this->parseXlsxXml($archive->getFromName('xl/workbook.xml'));
+            $relationships = $this->parseXlsxXml($archive->getFromName('xl/_rels/workbook.xml.rels'));
+
+            if ($workbook === null || $relationships === null) {
+                throw new \RuntimeException("Struktur workbook XLSX tidak valid: {$path}");
+            }
+
+            $workbookNamespaces = $workbook->getDocNamespaces(true);
+            $mainNamespace = $workbookNamespaces[''] ?? 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+            $relationshipNamespace = $workbookNamespaces['r'] ?? 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+            $workbook->registerXPathNamespace('xlsx', $mainNamespace);
+
+            $sheets = $workbook->xpath('//xlsx:sheets/xlsx:sheet') ?: [];
+            if ($sheets === []) {
+                return null;
+            }
+
+            $workbook->registerXPathNamespace('xlsx', $mainNamespace);
+            $activeView = ($workbook->xpath('//xlsx:bookViews/xlsx:workbookView') ?: [])[0] ?? null;
+            $activeIndex = max(0, (int) ($activeView['activeTab'] ?? 0));
+
+            $relationshipNamespaces = $relationships->getDocNamespaces(true);
+            $packageNamespace = $relationshipNamespaces[''] ?? 'http://schemas.openxmlformats.org/package/2006/relationships';
+            $relationships->registerXPathNamespace('rel', $packageNamespace);
+
+            $targets = [];
+            foreach ($relationships->xpath('//rel:Relationship') ?: [] as $relationship) {
+                $targets[(string) $relationship['Id']] = (string) $relationship['Target'];
+            }
+
+            $selected = null;
+            foreach ($sheets as $index => $sheet) {
+                if ((string) $sheet['name'] === self::TEMPLATE_SHEET) {
+                    $selected = $sheet;
+                    break;
+                }
+
+                if ($index === $activeIndex) {
+                    $selected ??= $sheet;
+                }
+            }
+            $selected ??= $sheets[0];
+
+            $relationAttributes = $selected->attributes($relationshipNamespace);
+            $relationId = (string) ($relationAttributes['id'] ?? '');
+            $target = $targets[$relationId] ?? null;
+
+            if (! is_string($target) || $target === '') {
+                throw new \RuntimeException("Worksheet XLSX tidak ditemukan: {$path}");
+            }
+
+            $normalizedTarget = ltrim($target, '/');
+            $worksheetPath = str_starts_with($normalizedTarget, 'xl/')
+                ? $normalizedTarget
+                : 'xl/'.$normalizedTarget;
+
+            if ($archive->locateName($worksheetPath) === false) {
+                throw new \RuntimeException("File worksheet XLSX tidak ditemukan: {$worksheetPath}");
+            }
+
+            return [
+                'name' => (string) $selected['name'],
+                'path' => $worksheetPath,
+            ];
+        } finally {
+            $archive->close();
+        }
+    }
+
+    private function parseXlsxXml(string|false $xml): ?\SimpleXMLElement
+    {
+        if (! is_string($xml) || $xml === '') {
+            return null;
+        }
+
+        return @simplexml_load_string($xml);
+    }
+
+    private function readXlsxSharedStrings(string $path): array
+    {
+        $reader = new \XMLReader;
+        if (! $reader->open($this->xlsxStreamUri($path, 'xl/sharedStrings.xml'), null, LIBXML_NONET | LIBXML_COMPACT)) {
+            return [];
+        }
+
+        $strings = [];
+        try {
+            while ($reader->read()) {
+                if ($reader->nodeType === \XMLReader::ELEMENT && $reader->localName === 'si') {
+                    $strings[] = html_entity_decode(
+                        strip_tags($reader->readOuterXml()),
+                        ENT_QUOTES | ENT_XML1,
+                        'UTF-8',
+                    );
+                }
+            }
+        } finally {
+            $reader->close();
+        }
+
+        return $strings;
+    }
+
+    private function extractXlsxRow(string $rowXml, array $sharedStrings): array
+    {
+        $values = [];
+        $ordinal = 0;
+
+        preg_match_all('/<c\\b([^>]*?)(?:\\/|>(.*?)<\\/c)>/s', $rowXml, $cells, PREG_SET_ORDER);
+
+        foreach ($cells as $cell) {
+            $index = $ordinal++;
+            if (preg_match('/\\br="([A-Z]+)\\d+"/', $cell[1], $coordinate)) {
+                $index = match ($coordinate[1]) {
+                    'A' => 0,
+                    'D' => 3,
+                    'H' => 7,
+                    'I' => 8,
+                    'J' => 9,
+                    default => -1,
+                };
+            }
+
+            if (! in_array($index, [0, 3, 7, 8, 9], true)) {
+                continue;
+            }
+
+            $values[$index] = $this->decodeXlsxCell(
+                $cell[1],
+                $cell[2] ?? '',
+                $sharedStrings,
+            );
+        }
+
+        return $values;
+    }
+
+    private function decodeXlsxCell(string $attributes, string $content, array $sharedStrings): ?string
+    {
+        preg_match('/\\bt="([^"]+)"/', $attributes, $type);
+        $cellType = $type[1] ?? null;
+
+        if (preg_match('/<v>(.*?)<\\/v>/s', $content, $value)) {
+            $rawValue = html_entity_decode($value[1], ENT_QUOTES | ENT_XML1, 'UTF-8');
+
+            return $cellType === 's'
+                ? ($sharedStrings[(int) $rawValue] ?? '')
+                : $rawValue;
+        }
+
+        if ($cellType === 'inlineStr' && preg_match('/<t[^>]*>(.*?)<\\/t>/s', $content, $value)) {
+            return html_entity_decode(strip_tags($value[1]), ENT_QUOTES | ENT_XML1, 'UTF-8');
+        }
+
+        return null;
+    }
+
+    private function xlsxStreamUri(string $path, string $entry): string
+    {
+        return "zip://{$path}#{$entry}";
+    }
+
+    private function readCsvRows(string $path, array $existingPositivePairs): array
     {
         $handle = fopen($path, 'r');
         if ($handle === false) {
-            return [];
+            return $this->emptySourceStats() + ['rows' => []];
         }
 
         $header = fgetcsv($handle);
         if ($header === false) {
             fclose($handle);
 
-            return [];
+            return $this->emptySourceStats() + ['rows' => []];
         }
 
         $headerMap = [];
@@ -290,79 +431,110 @@ class ImportBaselineStock extends Command
 
         $isTemplate = isset($headerMap['sku']) && isset($headerMap['kode rak']) && isset($headerMap['qty']);
         $rows = [];
+        $stats = $this->emptySourceStats();
         $rowNo = 1;
 
         while (($raw = fgetcsv($handle)) !== false) {
             $rowNo++;
-            if ($isTemplate) {
-                $sku = trim((string) ($raw[$headerMap['sku'] ?? 0] ?? ''));
-                $bin = trim((string) ($raw[$headerMap['kode rak'] ?? 1] ?? ''));
-                $qty = (int) ($raw[$headerMap['qty'] ?? 3] ?? 0);
-                $fileLocation = null;
-            } else {
-                $sku = trim((string) ($raw[$headerMap['sku'] ?? 0] ?? ''));
-                $fileLocation = trim((string) ($raw[$headerMap['lokasi'] ?? 3] ?? '')) ?: null;
-                $bin = trim((string) ($raw[$headerMap['no rak'] ?? 7] ?? ''));
-                $actualIdx = $headerMap['qty aktual'] ?? $headerMap['qty actual'] ?? null;
-                $onHandIdx = $headerMap['qty on hand'] ?? 8;
-                $qty = $actualIdx !== null && isset($raw[$actualIdx]) && $raw[$actualIdx] !== ''
-                    ? (int) $raw[$actualIdx]
-                    : (int) ($raw[$onHandIdx] ?? 0);
-            }
-
-            if ($sku === '' || $qty < 0) {
-                continue;
-            }
-
-            $rows[] = [
-                'row' => $rowNo,
-                'sku' => $sku,
-                'bin' => $bin,
-                'qty' => $qty,
-                'file_location' => $fileLocation,
-            ];
+            $this->collectSourceRow($raw, $rowNo, $isTemplate, $existingPositivePairs, $rows, $stats, $headerMap);
         }
 
         fclose($handle);
 
-        $this->line(sprintf('  dibaca %s baris ber-stok dari CSV', number_format(count($rows))));
+        $this->line(sprintf('  dibaca %s baris sumber dari CSV', number_format($stats['source_rows'])));
         $this->newLine();
 
-        return $rows;
+        return $stats + ['rows' => $rows];
     }
 
-    private function countRows(XlsxReader $reader, string $path, bool $isTemplate): int
+    private function emptySourceStats(): array
     {
-        if (! method_exists($reader, 'listWorksheetInfo')) {
-            return 0;
-        }
-
-        foreach ($reader->listWorksheetInfo($path) as $info) {
-            if (! $isTemplate || $info['worksheetName'] === self::TEMPLATE_SHEET) {
-                return (int) ($info['totalRows'] ?? 0);
-            }
-        }
-
-        return 0;
+        return [
+            'source_rows' => 0,
+            'positive_rows' => 0,
+            'explicit_zero_rows' => 0,
+            'zero_rows_retained' => 0,
+            'zero_rows_skipped' => 0,
+        ];
     }
 
-    private function chunkFilter(array $columns, int $startRow, int $endRow): IReadFilter
-    {
-        return new class($columns, $startRow, $endRow) implements IReadFilter
-        {
-            public function __construct(
-                private array $columns,
-                private int $startRow,
-                private int $endRow,
-            ) {}
+    private function collectSourceRow(
+        array $raw,
+        int $rowNo,
+        bool $isTemplate,
+        array $existingPositivePairs,
+        array &$rows,
+        array &$stats,
+        ?array $headerMap = null,
+    ): void {
+        $headerMap ??= [];
 
-            public function readCell($columnAddress, $row, $worksheetName = ''): bool
-            {
-                return $row >= $this->startRow
-                    && $row <= $this->endRow
-                    && in_array($columnAddress, $this->columns, true);
+        if ($isTemplate) {
+            $sku = trim((string) ($raw[$headerMap['sku'] ?? 0] ?? ''));
+            $bin = trim((string) ($raw[$headerMap['kode rak'] ?? 1] ?? ''));
+            $qty = (int) ($raw[$headerMap['qty'] ?? 3] ?? 0);
+            $fileLocation = null;
+        } else {
+            $sku = trim((string) ($raw[$headerMap['sku'] ?? 0] ?? ''));
+            $fileLocation = trim((string) ($raw[$headerMap['lokasi'] ?? 3] ?? '')) ?: null;
+            $bin = trim((string) ($raw[$headerMap['no rak'] ?? 7] ?? ''));
+            $actualIndex = $headerMap['qty aktual'] ?? $headerMap['qty actual'] ?? 9;
+            $onHandIndex = $headerMap['qty on hand'] ?? 8;
+            $qty = isset($raw[$actualIndex]) && $raw[$actualIndex] !== '' && $raw[$actualIndex] !== null
+                ? (int) $raw[$actualIndex]
+                : (int) ($raw[$onHandIndex] ?? 0);
+        }
+
+        if ($sku === '' || $qty < 0) {
+            return;
+        }
+
+        $stats['source_rows']++;
+        if ($qty > 0) {
+            $stats['positive_rows']++;
+        } else {
+            $stats['explicit_zero_rows']++;
+            if (! isset($existingPositivePairs[$this->stockPairKey($sku, $bin)])) {
+                $stats['zero_rows_skipped']++;
+
+                return;
             }
-        };
+
+            $stats['zero_rows_retained']++;
+        }
+
+        $rows[] = [
+            'row' => $rowNo,
+            'sku' => $sku,
+            'bin' => $bin,
+            'qty' => $qty,
+            'file_location' => $fileLocation,
+        ];
+    }
+
+    private function existingPositivePairs(string $locationId): array
+    {
+        $pairs = [];
+
+        DB::table('inventories as i')
+            ->join('product_variants as v', 'v.id', '=', 'i.item_id')
+            ->join('location_bins as b', 'b.id', '=', 'i.bin_id')
+            ->where('i.location_id', $locationId)
+            ->where('i.on_hand', '>', 0)
+            ->whereNotNull('b.bin_final_code')
+            ->orderBy('i.id')
+            ->select(['v.sku', 'b.bin_final_code'])
+            ->cursor()
+            ->each(function (object $row) use (&$pairs): void {
+                $pairs[$this->stockPairKey((string) $row->sku, (string) $row->bin_final_code)] = true;
+            });
+
+        return $pairs;
+    }
+
+    private function stockPairKey(string $sku, string $bin): string
+    {
+        return mb_strtolower(trim($sku))."\0".trim($bin);
     }
 
     private function inspect(array $rows, string $locationId): array
@@ -591,7 +763,12 @@ class ImportBaselineStock extends Command
     private function renderSummary(array $report, int $limit): void
     {
         $this->table(['Ringkasan', 'Nilai'], [
-            ['Total Baris di File', number_format($report['total_rows'])],
+            ['Total Baris di File', number_format($report['source_rows'] ?? $report['total_rows'])],
+            ['Baris Qty Aktual > 0', number_format($report['positive_rows'] ?? $report['total_rows'])],
+            ['Baris Qty Aktual = 0', number_format($report['explicit_zero_rows'] ?? 0)],
+            ['Baris Qty 0 yang Perlu Dinolkan', number_format($report['zero_rows_retained'] ?? 0)],
+            ['Baris Qty 0 Sudah Nol / Tidak Perlu Ditulis', number_format($report['zero_rows_skipped'] ?? 0)],
+            ['Baris yang Perlu Divalidasi', number_format($report['total_rows'])],
             ['Total Qty di File', number_format($report['total_qty']).' pcs'],
             ['Baris Valid (Lolos)', number_format($report['ok_rows'])],
             ['Qty yang Siap Masuk', number_format($report['ok_qty']).' pcs'],
@@ -663,6 +840,17 @@ class ImportBaselineStock extends Command
         int $chunkSize,
         bool $zeroMissing,
     ): array {
+        $hasStockChange = collect($validRows)
+            ->contains(fn (array $row): bool => (float) $row['delta'] !== 0.0);
+
+        if (! $hasStockChange && ! $zeroMissing) {
+            return [
+                'adjustment_no' => null,
+                'applied_count' => 0,
+                'zeroed_items' => [],
+            ];
+        }
+
         $timestamp = date('YmdHis');
         $adjustmentNo = 'ADJ-BASELINE-'.$location->location_code.'-'.$timestamp;
 
