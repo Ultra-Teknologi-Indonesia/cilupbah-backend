@@ -15,6 +15,15 @@ use Modules\Outbound\Support\FilterValues;
 
 class ShipmentRepository
 {
+    public function countScheduled(): int
+    {
+        $query = Shipment::query()->where('status', Shipment::STATUS_SCHEDULED);
+
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->count();
+    }
+
     public function getAllPaginated(int $limit = 10)
     {
         $query = QueryBuilder::for(Shipment::class)

@@ -11,13 +11,6 @@ use Modules\Sales\Models\SalesInvoice;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\StockService;
 
-/**
- * Posts the physical stock movement at Finish Pick.
- *
- * A completed allocation is the source of truth for the rack and quantity that
- * actually left shelving. physical_committed_qty makes a queue retry safe: a
- * previously posted allocation is never consumed for a second time.
- */
 class PicklistInvoiceStockService
 {
     public function __construct(

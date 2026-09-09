@@ -25,6 +25,8 @@ use Modules\Outbound\Models\PicklistItem;
 use Modules\Outbound\Models\ShipmentOrder;
 use Modules\Outbound\Models\Shipment;
 use Modules\Outbound\Repositories\OutboundFulfillmentRepository;
+use Modules\Outbound\Repositories\PreManifestCancelRepository;
+use Modules\Outbound\Repositories\ShipmentRepository;
 use Modules\Outbound\Services\Logistics\LogisticsGateway;
 use Modules\Outbound\Jobs\RunProcessOrdersCsvExportJob;
 use Modules\Report\Models\ExportJob;
@@ -39,6 +41,8 @@ class OutboundFulfillmentService
         protected SalesOrderService $orderService,
         protected ShopeeOrderService $shopeeOrderService,
         protected OutboundFulfillmentRepository $fulfillmentRepository,
+        protected PreManifestCancelRepository $preManifestCancelRepository,
+        protected ShipmentRepository $shipmentRepository,
         protected LogisticsGateway $logisticsGateway,
         protected ChannelWarehousePolicy $channelWarehousePolicy,
     ) {}
@@ -421,24 +425,12 @@ class OutboundFulfillmentService
 
     private function countScheduledShipments(): int
     {
-        $query = Shipment::query()->where('status', Shipment::STATUS_SCHEDULED);
-
-        WarehouseAccess::apply($query, 'location_id');
-
-        return $query->count();
+        return $this->shipmentRepository->countScheduled();
     }
 
     private function countPreManifestCancellations(): int
     {
-        $query = Order::query()
-            ->where('status', 'cancelled')
-            ->whereNotNull('handed_to_warehouse_at')
-            ->whereNull('cancel_dismissed_at')
-            ->whereDoesntHave('shipmentOrders');
-
-        WarehouseAccess::apply($query, 'location_id');
-
-        return $query->count();
+        return $this->preManifestCancelRepository->count();
     }
 
     public function getMonitoring(): array

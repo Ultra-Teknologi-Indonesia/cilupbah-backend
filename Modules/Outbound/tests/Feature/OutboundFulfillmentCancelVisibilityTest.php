@@ -165,4 +165,24 @@ class OutboundFulfillmentCancelVisibilityTest extends TestCase
 
         $this->assertFalse(collect($page->items())->pluck('id')->contains($orderId));
     }
+
+    public function test_board_pre_manifest_count_matches_the_visible_pre_manifest_list(): void
+    {
+        $locationId = $this->seedLocation();
+
+        $visibleOrderId = $this->seedOrder('cancelled', $locationId);
+        DB::table('sales_orders')->where('id', $visibleOrderId)->update([
+            'handed_to_warehouse_at' => now(),
+        ]);
+        $this->seedCompletedPacklist($visibleOrderId, $locationId);
+
+        $ineligibleOrderId = $this->seedOrder('cancelled', $locationId);
+        DB::table('sales_orders')->where('id', $ineligibleOrderId)->update([
+            'handed_to_warehouse_at' => now(),
+        ]);
+
+        $counts = app(OutboundFulfillmentService::class)->getBoardCounts();
+
+        $this->assertSame(1, $counts['shipping']['batal']);
+    }
 }

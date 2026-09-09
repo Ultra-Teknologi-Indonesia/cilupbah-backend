@@ -2,6 +2,7 @@
 
 namespace Modules\Outbound\Repositories;
 
+use App\Support\WarehouseAccess;
 use Illuminate\Database\Eloquent\Builder;
 use Modules\Outbound\Models\Packlist;
 use Modules\Sales\Models\SalesOrder as Order;
@@ -11,13 +12,17 @@ class PreManifestCancelRepository
 {
     public function baseQuery(): Builder
     {
-        return Order::query()
+        $query = Order::query()
             ->where('status', 'cancelled')
             ->whereNotNull('handed_to_warehouse_at')
             ->whereNull('cancel_dismissed_at')
             ->whereHas('packlist', fn (Builder $packlist): Builder => $packlist
                 ->where('status', Packlist::STATUS_COMPLETED))
             ->whereDoesntHave('shipmentOrders');
+
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query;
     }
 
     public function paginateList(array $filters = [], int $perPage = 10)

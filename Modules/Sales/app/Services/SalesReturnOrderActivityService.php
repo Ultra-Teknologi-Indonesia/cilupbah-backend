@@ -39,7 +39,6 @@ class SalesReturnOrderActivityService
         $this->record($return, OrderActivityAction::RETURN_INBOUND_CREATED, "return-inbound-created:{$inbound->id}", "Penerimaan {$inbound->transaction_number} dibuat untuk retur {$return->return_number}; stok belum tersedia sampai scan dan putaway selesai.", $actorId, $inbound->id, $inbound->transaction_number);
     }
 
-    /** @param list<string> $receiptIds */
     public function inboundReceived(Inbound $inbound, array $receiptIds, ?string $actorId): void
     {
         if ($inbound->source_type !== 'sales_return' || ! $inbound->source_id || $receiptIds === []) {
