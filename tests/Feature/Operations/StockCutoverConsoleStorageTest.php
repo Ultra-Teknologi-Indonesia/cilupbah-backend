@@ -115,4 +115,40 @@ final class StockCutoverConsoleStorageTest extends TestCase
                 ->assertOk();
         }
     }
+
+    public function test_report_downloads_work_with_the_token_middleware_for_streamed_responses(): void
+    {
+        $token = str_repeat('c', 64);
+        $id = (string) Str::uuid7();
+        $basePath = "stock-cutover-console/{$id}";
+
+        config([
+            'operations.stock_cutover_console.token' => $token,
+            'operations.stock_cutover_console.report_disk' => 's3',
+        ]);
+        Storage::fake('s3');
+        Storage::disk('s3')->put("{$basePath}/report.json", '{"status":"ready"}');
+        Storage::disk('s3')->put("{$basePath}/O-report.csv", "sku,qty\nTEST-001,1\n");
+
+        $job = StockCutoverConsoleJob::create([
+            'id' => $id,
+            'type' => 'preview',
+            'status' => StockCutoverConsoleJob::STATUS_READY,
+            'files' => [],
+            'report_disk' => 's3',
+            'report_path' => "{$basePath}/report.json",
+        ]);
+
+        $this->get("/_ops/stock-cutover/{$token}/jobs/{$job->id}/report")
+            ->assertOk()
+            ->assertHeader('Referrer-Policy', 'no-referrer')
+            ->assertHeader('X-Robots-Tag', 'noindex, nofollow, noarchive')
+            ->assertHeader('Content-Type', 'application/json');
+
+        $this->get("/_ops/stock-cutover/{$token}/jobs/{$job->id}/report/O")
+            ->assertOk()
+            ->assertHeader('Referrer-Policy', 'no-referrer')
+            ->assertHeader('X-Robots-Tag', 'noindex, nofollow, noarchive')
+            ->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
+    }
 }
