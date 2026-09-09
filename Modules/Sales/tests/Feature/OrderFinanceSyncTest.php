@@ -235,6 +235,32 @@ class OrderFinanceSyncTest extends TestCase
         $this->assertSame('queued', DB::table('finance_sync_states')->where('order_id', $order->id)->value('status'));
     }
 
+    public function test_due_finance_dispatch_recovers_stale_processing_state(): void
+    {
+        Queue::fake();
+        $order = $this->makeOrder(['is_settled' => false]);
+
+        DB::table('finance_sync_states')->insert([
+            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'order_id' => $order->id,
+            'status' => 'processing',
+            'attempts' => 1,
+            'locked_at' => now()->subMinutes(30),
+            'last_attempt_at' => now()->subMinutes(30),
+            'created_at' => now()->subMinutes(30),
+            'updated_at' => now()->subMinutes(30),
+        ]);
+
+        $this->artisan('orders:dispatch-due-finance', ['--limit' => 25])
+            ->assertSuccessful();
+
+        Queue::assertPushed(SyncOrderFinanceJob::class, 1);
+        $this->assertSame(
+            'queued',
+            DB::table('finance_sync_states')->where('order_id', $order->id)->value('status')
+        );
+    }
+
     public function test_succeeded_finance_state_is_not_redispatched_for_the_same_channel_version(): void
     {
         Queue::fake();

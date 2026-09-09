@@ -38,7 +38,7 @@ class DispatchDueFinanceSync extends Command
             ->whereNotNull('channel_shop_id')
             ->whereNotNull('channel_order_no')
             ->where('is_settled', false)
-            ->whereExists(function ($builder): void {
+            ->whereExists(function ($builder) use ($staleAt): void {
                 $builder->selectRaw('1')
                     ->from('finance_sync_states')
                     ->whereColumn('finance_sync_states.order_id', 'sales_orders.id')
