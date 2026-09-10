@@ -80,7 +80,7 @@ class ShopeeToInternalOrderMapper
             'actual_shipping_fee_confirmed' => ! empty($shopeeOrder['actual_shipping_fee_confirmed']),
             'insurance_cost' => 0,
             'grand_total' => $grandTotal,
-            'order_weight_gram' => isset($shopeeOrder['order_chargeable_weight_gram']) ? (int) $shopeeOrder['order_chargeable_weight_gram'] : null,
+            'order_weight_gram' => $this->resolveOrderWeightGram($shopeeOrder),
 
             'shipping_full_name' => $address['name'] ?? null,
             'shipping_phone' => $address['phone'] ?? null,
@@ -177,6 +177,30 @@ class ShopeeToInternalOrderMapper
         $val = $shopeeOrder['pickup_code'] ?? null;
 
         return is_string($val) && trim($val) !== '' ? trim($val) : null;
+    }
+
+    private function resolveOrderWeightGram(array $shopeeOrder): ?int
+    {
+        $chargeableWeight = $shopeeOrder['order_chargeable_weight_gram'] ?? null;
+        if (is_numeric($chargeableWeight) && (int) $chargeableWeight > 0) {
+            return (int) $chargeableWeight;
+        }
+
+        $itemWeightGram = 0.0;
+        foreach ($shopeeOrder['item_list'] ?? [] as $item) {
+            $weightKg = (float) ($item['weight'] ?? 0);
+            $quantity = max(1, (int) ($item['model_quantity_purchased'] ?? 1));
+
+            if ($weightKg > 0) {
+                $itemWeightGram += $weightKg * 1000 * $quantity;
+            }
+        }
+
+        if ($itemWeightGram > 0) {
+            return (int) round($itemWeightGram);
+        }
+
+        return is_numeric($chargeableWeight) ? max(0, (int) $chargeableWeight) : null;
     }
 
     protected function mapItems(array $itemList): array

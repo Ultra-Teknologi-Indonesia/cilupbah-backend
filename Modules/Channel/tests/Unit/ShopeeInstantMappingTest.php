@@ -52,6 +52,25 @@ class ShopeeInstantMappingTest extends TestCase
         $this->assertSame('90003', $mapped['delivery_option_id']);
     }
 
+    public function test_uses_item_weight_when_chargeable_order_weight_is_zero(): void
+    {
+        $mapper = new ShopeeToInternalOrderMapper;
+
+        $mapped = $mapper->map($this->order([
+            'order_chargeable_weight_gram' => 0,
+            'item_list' => [[
+                'item_id' => 1001,
+                'item_name' => 'Produk test',
+                'model_sku' => 'SKU-TEST',
+                'model_quantity_purchased' => 1,
+                'weight' => 0.055,
+                'model_original_price' => 10000,
+            ]],
+        ]), 'shop-1');
+
+        $this->assertSame(55, $mapped['order_weight_gram']);
+    }
+
     public function test_unknown_channel_category_is_not_assumed_to_be_regular(): void
     {
         $mapper = new ShopeeToInternalOrderMapper;
