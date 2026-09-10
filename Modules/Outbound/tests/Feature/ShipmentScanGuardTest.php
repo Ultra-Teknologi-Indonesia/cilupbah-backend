@@ -38,12 +38,12 @@ class ShipmentScanGuardTest extends TestCase
         return $id;
     }
 
-    private function seedShipment(string $locationId, string $courierName, string $shipmentType): string
+    private function seedShipment(string $locationId, string $courierName, string $shipmentType, ?string $shipmentNo = null): string
     {
         $id = Str::uuid()->toString();
         DB::table('shipments')->insert([
             'id' => $id,
-            'shipment_no' => 'SHP-SG-'.substr($id, 0, 6),
+            'shipment_no' => $shipmentNo ?? 'SHP-SG-'.substr($id, 0, 6),
             'location_id' => $locationId,
             'courier_name' => $courierName,
             'shipment_type' => $shipmentType,
@@ -221,6 +221,81 @@ class ShipmentScanGuardTest extends TestCase
             'shipment_id' => $shipmentId,
             'order_id' => $orderId,
         ]);
+    }
+
+    public function test_bulk_add_allows_shopee_instant_and_same_day_orders_in_one_shipment(): void
+    {
+        Bus::fake();
+        $loc = $this->seedLocation();
+        $shipmentId = $this->seedShipment($loc, 'SPX Instant', 'INSTANT');
+        [$instantOrderId] = $this->seedPackedOrder(
+            $loc,
+            'SPX Instant',
+            shippingType: 'INSTANT',
+            channelInstant: true,
+            source: 'shopee',
+        );
+        [$sameDayOrderId] = $this->seedPackedOrder(
+            $loc,
+            'SPX Sameday',
+            shippingType: 'SAME_DAY',
+            channelInstant: true,
+            source: 'shopee',
+        );
+
+        app(ShipmentService::class)->addOrders($shipmentId, [
+            $instantOrderId,
+            $sameDayOrderId,
+        ]);
+
+        $this->assertDatabaseCount('shipment_orders', 2);
+        $this->assertDatabaseHas('shipment_orders', [
+            'shipment_id' => $shipmentId,
+            'order_id' => $instantOrderId,
+        ]);
+        $this->assertDatabaseHas('shipment_orders', [
+            'shipment_id' => $shipmentId,
+            'order_id' => $sameDayOrderId,
+        ]);
+    }
+
+    public function test_create_rejects_duplicate_shipment_number_with_validation_message(): void
+    {
+        $loc = $this->seedLocation();
+        $shipmentNo = 'SHP-SG-DUPLICATE';
+        $this->seedShipment($loc, 'SPX', 'INSTANT', $shipmentNo);
+
+        $this->expectException(OutboundValidationException::class);
+        $this->expectExceptionMessage('Nomor pengiriman sudah digunakan.');
+
+        app(ShipmentService::class)->create([
+            'shipment_no' => $shipmentNo,
+            'location_id' => $loc,
+            'courier_name' => 'SPX',
+            'shipment_type' => 'INSTANT',
+            'shipment_date' => now()->toDateString(),
+            'created_by' => 'system:test',
+        ]);
+    }
+
+    public function test_create_api_returns_duplicate_shipment_number_validation_error(): void
+    {
+        $this->actingAs($this->createPrivilegedUser(), 'sanctum');
+        $loc = $this->seedLocation();
+        $shipmentNo = 'SHP-SG-API-DUPLICATE';
+        $this->seedShipment($loc, 'SPX', 'INSTANT', $shipmentNo);
+
+        $this->postJson('/api/v1/outbound/shipments', [
+            'shipment_no' => $shipmentNo,
+            'location_id' => $loc,
+            'courier_name' => 'SPX',
+            'shipment_type' => 'INSTANT',
+            'shipment_date' => now()->toDateString(),
+        ])
+            ->assertStatus(422)
+            ->assertJsonFragment([
+                'message' => 'Nomor pengiriman sudah digunakan. Gunakan nomor lain atau kosongkan agar dibuat otomatis.',
+            ]);
     }
 
     public function test_bulk_add_allows_a_packed_marketplace_regular_order_to_regular_shipment(): void

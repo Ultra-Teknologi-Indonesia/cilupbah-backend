@@ -5,6 +5,7 @@ namespace Modules\Outbound\Services;
 use App\Exceptions\UserFacingException;
 use App\Support\ChannelWarehousePolicy;
 use App\Support\WarehouseAccess;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -108,18 +109,39 @@ class ShipmentService
             ? ($this->courierMapper->resolveCode($courierName) ?: ($data['courier_code'] ?? null))
             : ($data['courier_code'] ?? null);
 
-        return $this->shipmentRepository->create([
-            'shipment_no' => $shipmentNo,
-            'location_id' => $locationId,
-            'courier_name' => $courierName,
-            'courier_code' => $courierCode,
-            'shipment_type' => $data['shipment_type'],
-            'shipment_date' => $data['shipment_date'],
-            'status' => Shipment::STATUS_SCHEDULED,
-            'notes' => $data['notes'] ?? null,
-            'created_by' => $data['created_by'],
-            'shipper_id' => $data['shipper_id'] ?? null,
-        ]);
+        try {
+            return $this->shipmentRepository->create([
+                'shipment_no' => $shipmentNo,
+                'location_id' => $locationId,
+                'courier_name' => $courierName,
+                'courier_code' => $courierCode,
+                'shipment_type' => $data['shipment_type'],
+                'shipment_date' => $data['shipment_date'],
+                'status' => Shipment::STATUS_SCHEDULED,
+                'notes' => $data['notes'] ?? null,
+                'created_by' => $data['created_by'],
+                'shipper_id' => $data['shipper_id'] ?? null,
+            ]);
+        } catch (QueryException $exception) {
+            if ($this->isShipmentNumberUniqueViolation($exception)) {
+                throw new OutboundValidationException(
+                    'Nomor pengiriman sudah digunakan. Gunakan nomor lain atau kosongkan agar dibuat otomatis.',
+                    422,
+                    $exception,
+                );
+            }
+
+            throw $exception;
+        }
+    }
+
+    private function isShipmentNumberUniqueViolation(QueryException $exception): bool
+    {
+        $message = strtolower($exception->getMessage());
+
+        return in_array((string) $exception->getCode(), ['23505', '23000'], true)
+            && str_contains($message, 'shipment')
+            && str_contains($message, 'shipment_no');
     }
 
     public function addOrders(string $shipmentId, array $orderIds, bool $internalOnly = false): Shipment
