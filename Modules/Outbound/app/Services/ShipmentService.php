@@ -581,7 +581,8 @@ class ShipmentService
                 ->where('location_id', $shipment->location_id)
                 ->where(function ($q) use ($barcode) {
                     $q->where('salesorder_no', $barcode)
-                        ->orWhere('tracking_number', $barcode);
+                        ->orWhere('tracking_number', $barcode)
+                        ->orWhere('channel_order_no', $barcode);
                 })
                 ->lockForUpdate()
                 ->first();

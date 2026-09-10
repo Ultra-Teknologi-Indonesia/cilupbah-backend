@@ -64,6 +64,7 @@ class ShipmentScanGuardTest extends TestCase
         ?string $cancelRequestedAt = null,
         ?bool $channelInstant = null,
         ?string $source = null,
+        ?string $channelOrderNo = null,
     ): array {
         $orderId = Str::uuid()->toString();
         $no = 'SO-SG-'.substr($orderId, 0, 6);
@@ -80,6 +81,7 @@ class ShipmentScanGuardTest extends TestCase
             'shipping_provider' => $provider,
             'shipping_type' => $shippingType,
             'channel_instant' => $channelInstant,
+            'channel_order_no' => $channelOrderNo,
             'created_at' => now(), 'updated_at' => now(),
         ]);
 
@@ -108,6 +110,29 @@ class ShipmentScanGuardTest extends TestCase
         [$orderId, $no] = $this->seedPackedOrder($loc, 'SPX Instant');
 
         app(ShipmentService::class)->scanAndAddOrder($shipmentId, $no);
+
+        $this->assertDatabaseHas('shipment_orders', [
+            'shipment_id' => $shipmentId,
+            'order_id' => $orderId,
+        ]);
+    }
+
+    public function test_allows_scan_by_shopee_channel_order_number_into_instant_shipment(): void
+    {
+        Bus::fake();
+        $loc = $this->seedLocation();
+        $shipmentId = $this->seedShipment($loc, 'SPX Instant', 'INSTANT');
+        $channelOrderNo = 'SHOPEE-CHANNEL-ORDER-1';
+        [$orderId] = $this->seedPackedOrder(
+            $loc,
+            'SPX Sameday',
+            shippingType: 'SAME_DAY',
+            channelInstant: true,
+            source: 'shopee',
+            channelOrderNo: $channelOrderNo,
+        );
+
+        app(ShipmentService::class)->scanAndAddOrder($shipmentId, $channelOrderNo);
 
         $this->assertDatabaseHas('shipment_orders', [
             'shipment_id' => $shipmentId,
