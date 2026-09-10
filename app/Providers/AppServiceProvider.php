@@ -39,9 +39,23 @@ class AppServiceProvider extends ServiceProvider
         });
 
         \Illuminate\Support\Facades\RateLimiter::for('channel_api', function (object $job) {
+            $payload = isset($job->payload) && is_array($job->payload)
+                ? $job->payload
+                : [];
+            $shopId = isset($job->channelShopId)
+                ? trim((string) $job->channelShopId)
+                : (isset($job->shopId)
+                    ? trim((string) $job->shopId)
+                    : trim((string) ($payload['channel_shop_id'] ?? $payload['shop_id'] ?? '')));
+            $channel = isset($job->channel)
+                ? trim((string) $job->channel)
+                : trim((string) ($payload['channel'] ?? $payload['source'] ?? 'channel'));
 
-            $shopId = property_exists($job, 'channelShopId') ? $job->channelShopId : 'default';
-            return \Illuminate\Cache\RateLimiting\Limit::perSecond(8)->by($shopId);
+            $scope = $shopId !== '' ? $channel.'|'.$shopId : $channel.'|'.get_class($job);
+
+            return \Illuminate\Cache\RateLimiting\Limit::perSecond(
+                (int) config('ratelimit.channel_api_per_second', 8),
+            )->by('channel-api|'.$scope);
         });
 
         \Illuminate\Support\Facades\RateLimiter::for('webhook_download', function (object $job) {

@@ -30,16 +30,14 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 3;
+    public int $tries = 12;
 
     public int $timeout = 300;
 
-    public array $backoff = [30, 120, 300];
+    public array $backoff = [60, 300, 900, 1800];
 
-    /**
-     * Coalesce bursts of the same desired-state update without holding a lock
-     * while the external marketplace request is executing.
-     */
+    public int $maxExceptions = 5;
+
     public int $uniqueFor = 900;
 
     public string $productId;
@@ -118,8 +116,6 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
             ? 'stock:'.$this->action
             : 'catalog:'.$this->action;
 
-        // Explicit upload requests keep their own identity so that a user
-        // initiated upload log is never coalesced with another upload.
         $requestId = $this->uploadLogId ?: $this->draftId;
 
         return implode(':', array_filter([
@@ -135,7 +131,7 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
     public function middleware(): array
     {
         return [
-            new RateLimited('channel_api'),
+            (new RateLimited('channel_api'))->releaseAfter(5),
             (new WithoutOverlapping("product_sync:{$this->productId}:{$this->channelShopId}"))->releaseAfter(60),
         ];
     }

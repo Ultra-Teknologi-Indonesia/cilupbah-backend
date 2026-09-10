@@ -221,12 +221,6 @@ class ChannelShopRepository
         });
     }
 
-    /**
-     * Record a failed scheduled pull without discarding its durable window.
-     *
-     * The lease token makes this idempotent: a later Laravel `failed()` hook
-     * cannot double-count a failure already handled by the job itself.
-     */
     public function markScheduledOrderPullFailed(string $id, string $leaseToken, ?string $message): bool
     {
         $result = DB::transaction(function () use ($id, $leaseToken, $message): ?array {

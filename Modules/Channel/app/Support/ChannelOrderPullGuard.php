@@ -24,11 +24,6 @@ final class ChannelOrderPullGuard
         throw new ChannelOrderNotAvailableException($channel, $shopId, $orderId);
     }
 
-    /**
-     * Coalesce status webhooks for the same order during the short marketplace
-     * update window. A local existence check prevents a missing order from
-     * being silently skipped when the first pull did not persist anything.
-     */
     public static function pullOnce(
         string $channel,
         string $shopId,

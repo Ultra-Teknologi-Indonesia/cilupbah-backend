@@ -8,12 +8,6 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Carbon;
 use Modules\Channel\Models\ChannelShop;
 
-/**
- * Durable per-store lease for scheduled order pulls.
- *
- * This deliberately uses PostgreSQL, not the cache. The order inbox/database
- * remains available for safe recovery even if CoreDNS or Redis cache is down.
- */
 final class ChannelOrderPullLeaseService
 {
     public function acquire(

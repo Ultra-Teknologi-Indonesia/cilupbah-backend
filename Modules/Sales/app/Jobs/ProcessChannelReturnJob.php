@@ -8,6 +8,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\RateLimited;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Sales\Services\SalesReturnService;
@@ -19,6 +20,8 @@ class ProcessChannelReturnJob implements ShouldBeUnique, ShouldQueue
     public int $tries = 5;
 
     public array $backoff = [30, 120, 300, 600, 1200];
+
+    public int $maxExceptions = 5;
 
     public int $timeout = 120;
 
@@ -40,7 +43,12 @@ class ProcessChannelReturnJob implements ShouldBeUnique, ShouldQueue
 
     public function middleware(): array
     {
-        return [new RateLimited('channel_api')];
+        return [
+            (new RateLimited('channel_api'))->releaseAfter(5),
+            (new WithoutOverlapping('channel-return:'.$this->uniqueId()))
+                ->releaseAfter(30)
+                ->expireAfter(1800),
+        ];
     }
 
     public function handle(SalesReturnService $service): void
@@ -48,8 +56,16 @@ class ProcessChannelReturnJob implements ShouldBeUnique, ShouldQueue
         $salesReturn = $service->createFromChannel($this->payload);
 
         if ($salesReturn) {
-            SyncReturnTrackingJob::dispatch((string) $salesReturn->id);
-            SyncReturnDetailJob::dispatch((string) $salesReturn->id);
+            SyncReturnTrackingJob::dispatch(
+                (string) $salesReturn->id,
+                $salesReturn->channel_shop_id ? (string) $salesReturn->channel_shop_id : null,
+                $salesReturn->source ? (string) $salesReturn->source : null,
+            );
+            SyncReturnDetailJob::dispatch(
+                (string) $salesReturn->id,
+                $salesReturn->channel_shop_id ? (string) $salesReturn->channel_shop_id : null,
+                $salesReturn->source ? (string) $salesReturn->source : null,
+            );
         }
     }
 

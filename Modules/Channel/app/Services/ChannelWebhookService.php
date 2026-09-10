@@ -106,9 +106,6 @@ final class ChannelWebhookService
     {
         $payload = (array) $row->payload;
 
-        // Cache dipakai untuk idempotensi worker, tetapi inbox database adalah
-        // source of truth. Kegagalan cache tidak boleh menjatuhkan seluruh batch
-        // replay; event ditunda aman melalui retry database.
         try {
             Cache::forget((string) $row->event_key);
         } catch (\Throwable $e) {

@@ -626,7 +626,12 @@ class TikTokOrderService
 
     public function fetchReturnTracking(string $shopId, ?string $returnId, ?string $orderId = null): array
     {
-        $empty = ['tracking_number' => null, 'carrier' => null, 'shipped_at' => null];
+        $empty = [
+            'tracking_number' => null,
+            'carrier' => null,
+            'shipped_at' => null,
+            '_request_succeeded' => false,
+        ];
 
         try {
             $shop = $this->shopRepository->findByShopId($shopId);
@@ -673,11 +678,12 @@ class TikTokOrderService
                 'tracking_number' => $tracking ? (string) $tracking : null,
                 'carrier'         => $carrier ? (string) $carrier : null,
                 'shipped_at'      => $shippedAt,
+                '_request_succeeded' => true,
             ];
         } catch (\Throwable $e) {
             Log::warning("TikTok: gagal ambil resi retur (return_id={$returnId}): " . $e->getMessage());
 
-            return $empty;
+            return $empty + ['_failure_reason' => $e->getMessage()];
         }
     }
 

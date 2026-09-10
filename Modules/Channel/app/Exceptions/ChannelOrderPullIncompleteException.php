@@ -6,9 +6,7 @@ namespace Modules\Channel\Exceptions;
 
 final class ChannelOrderPullIncompleteException extends \RuntimeException
 {
-    /**
-     * @param array<int, string> $orderReferences
-     */
+
     public static function forOrders(string $channel, string $shopId, array $orderReferences): self
     {
         $references = array_values(array_unique(array_filter($orderReferences)));

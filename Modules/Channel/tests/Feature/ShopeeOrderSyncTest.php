@@ -171,8 +171,7 @@ class ShopeeOrderSyncTest extends TestCase
                 ],
             ], 200),
             'partner.shopeemobile.com/api/v2/order/get_order_detail*' => Http::response([
-                // API detail response is incomplete: the second requested ID
-                // is intentionally absent and must never advance the cursor.
+
                 'response' => ['order_list' => [$this->orderDetail()]],
             ], 200),
         ]);

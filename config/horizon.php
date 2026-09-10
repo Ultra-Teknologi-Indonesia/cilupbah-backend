@@ -164,8 +164,7 @@ return [
             'tries' => 3,
             'backoff' => [30, 120, 300],
             'memory' => 256,
-            // Product/catalog sync tidak boleh mengalahkan order dan webhook
-            // saat node berada di bawah tekanan CPU.
+
             'nice' => 10,
         ],
         'supervisor-channel-after-sales' => [
@@ -203,8 +202,7 @@ return [
                 config('queue.routing.stock_default.queue', 'stock-default'),
             ],
             'balance' => 'simple',
-            // Satu worker menjaga stock-critical tetap prioritas tanpa
-            // menambah lonjakan CPU pada node produksi.
+
             'minProcesses' => max(1, (int) env('HORIZON_STOCK_MIN_PROCESSES', 1)),
             'maxProcesses' => max(
                 1,

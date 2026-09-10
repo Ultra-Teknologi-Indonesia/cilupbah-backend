@@ -25,8 +25,6 @@ final class PullChannelOrdersJob implements ShouldQueue
 
     public int $tries = 1;
 
-    // A bounded worker is safer than permitting a single shop to hold CPU/DB
-    // indefinitely. The durable cursor remains unchanged on failure.
     public int $timeout = 55;
 
     public function __construct(

@@ -23,6 +23,8 @@ return [
         'per_identity' => (int) env('RATE_LIMIT_HEAVY_PER_IDENTITY', 30),
     ],
 
+    'channel_api_per_second' => (int) env('RATE_LIMIT_CHANNEL_API_PER_SECOND', 8),
+
     'stock_cutover' => [
         'page_per_minute' => (int) env('RATE_LIMIT_STOCK_CUTOVER_PAGE', 30),
         'preview_per_minute' => (int) env('RATE_LIMIT_STOCK_CUTOVER_PREVIEW', 10),

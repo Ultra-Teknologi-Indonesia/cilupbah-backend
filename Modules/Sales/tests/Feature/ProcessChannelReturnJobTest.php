@@ -23,6 +23,8 @@ class ProcessChannelReturnJobTest extends TestCase
 
         $return = new SalesReturn();
         $return->id = 'ret-uuid-1';
+        $return->channel_shop_id = 'shop-1';
+        $return->source = SalesReturn::SOURCE_MARKETPLACE;
 
         $service = Mockery::mock(SalesReturnService::class);
         $service->shouldReceive('createFromChannel')->once()->andReturn($return);
@@ -33,8 +35,16 @@ class ProcessChannelReturnJobTest extends TestCase
             'channel_return_id' => 'RET-1',
         ]))->handle($service);
 
-        Queue::assertPushed(SyncReturnTrackingJob::class, fn ($j) => $j->salesReturnId === 'ret-uuid-1');
-        Queue::assertPushed(SyncReturnDetailJob::class, fn ($j) => $j->salesReturnId === 'ret-uuid-1');
+        Queue::assertPushed(SyncReturnTrackingJob::class, fn ($j) =>
+            $j->salesReturnId === 'ret-uuid-1'
+            && $j->channelShopId === 'shop-1'
+            && $j->channel === SalesReturn::SOURCE_MARKETPLACE
+        );
+        Queue::assertPushed(SyncReturnDetailJob::class, fn ($j) =>
+            $j->salesReturnId === 'ret-uuid-1'
+            && $j->channelShopId === 'shop-1'
+            && $j->channel === SalesReturn::SOURCE_MARKETPLACE
+        );
     }
 
     public function test_no_followup_jobs_when_creation_is_skipped(): void

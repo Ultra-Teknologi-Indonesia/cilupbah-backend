@@ -18,6 +18,18 @@ class SalesReturn extends Model
 {
     use HasUuid7;
 
+    public const TRACKING_SYNC_PENDING = 'pending';
+
+    public const TRACKING_SYNC_IN_PROGRESS = 'in_progress';
+
+    public const TRACKING_SYNC_SUCCEEDED = 'succeeded';
+
+    public const TRACKING_SYNC_NO_TRACKING = 'no_tracking';
+
+    public const TRACKING_SYNC_FAILED = 'failed';
+
+    public const TRACKING_SYNC_BLOCKED = 'blocked';
+
     protected $fillable = [
         'return_number',
         'order_id',
@@ -29,6 +41,9 @@ class SalesReturn extends Model
         'return_carrier',
         'return_shipped_at',
         'tracking_synced_at',
+        'tracking_sync_status',
+        'tracking_sync_attempted_at',
+        'tracking_sync_last_error',
         'customer_name',
         'customer_contact',
         'status',
@@ -54,6 +69,7 @@ class SalesReturn extends Model
         'processed_at' => 'datetime',
         'return_shipped_at' => 'datetime',
         'tracking_synced_at' => 'datetime',
+        'tracking_sync_attempted_at' => 'datetime',
         'marketplace_decision_at' => 'datetime',
         'detail_synced_at' => 'datetime',
         'refund_amount' => 'decimal:2',

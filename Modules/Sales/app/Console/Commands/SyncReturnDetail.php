@@ -12,6 +12,7 @@ class SyncReturnDetail extends Command
     protected $signature = 'returns:sync-detail
         {--days=30 : Hanya retur yang dibuat dalam N hari terakhir}
         {--stale=30 : Sync ulang bila terakhir dicoba > N menit lalu}
+        {--limit=200 : Maksimal retur yang diantrikan dalam satu siklus}
         {--force : Sync ulang walau baru saja disinkronkan}';
 
     protected $description = 'Tarik keputusan marketplace, alasan, refund, selisih ongkir, dan riwayat banding untuk retur channel online yang belum final';
@@ -20,6 +21,7 @@ class SyncReturnDetail extends Command
     {
         $days = (int) $this->option('days');
         $staleMinutes = (int) $this->option('stale');
+        $limit = max(1, min(1000, (int) $this->option('limit')));
         $force = (bool) $this->option('force');
 
         $query = SalesReturn::query()
@@ -39,12 +41,19 @@ class SyncReturnDetail extends Command
         }
 
         $count = 0;
-        $query->select('id')->chunkById(200, function ($returns) use (&$count) {
-            foreach ($returns as $return) {
-                SyncReturnDetailJob::dispatch((string) $return->id);
+        $query
+            ->select(['id', 'channel_shop_id'])
+            ->orderByRaw('detail_synced_at asc nulls first')
+            ->limit($limit)
+            ->get()
+            ->each(function (SalesReturn $return) use (&$count): void {
+                SyncReturnDetailJob::dispatch(
+                    (string) $return->id,
+                    $return->channel_shop_id ? (string) $return->channel_shop_id : null,
+                    null,
+                );
                 $count++;
-            }
-        });
+            });
 
         $this->info("Dispatched {$count} retur untuk sync detail marketplace.");
 

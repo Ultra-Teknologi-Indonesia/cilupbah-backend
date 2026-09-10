@@ -75,8 +75,6 @@ class ShopeeOrderService
                 }
             }
 
-            // Shopee may return a partial detail response. Treat an omitted
-            // requested order as incomplete, never as a successful pull.
             $failedOrderSns = array_merge(
                 $failedOrderSns,
                 array_values(array_diff($chunk, $returnedOrderSns)),
@@ -302,7 +300,12 @@ class ShopeeOrderService
 
     public function fetchReturnTracking(string $shopId, ?string $returnSn, ?string $orderSn = null): array
     {
-        $empty = ['tracking_number' => null, 'carrier' => null, 'shipped_at' => null];
+        $empty = [
+            'tracking_number' => null,
+            'carrier' => null,
+            'shipped_at' => null,
+            '_request_succeeded' => false,
+        ];
 
         try {
             $shop = $this->requireShop($shopId);
@@ -341,11 +344,12 @@ class ShopeeOrderService
                 'tracking_number' => $tracking ? (string) $tracking : null,
                 'carrier' => $carrier ? (string) $carrier : null,
                 'shipped_at' => $shippedAt,
+                '_request_succeeded' => true,
             ];
         } catch (\Throwable $e) {
             Log::warning("Shopee: gagal ambil resi retur (return_sn={$returnSn}): ".$e->getMessage());
 
-            return $empty;
+            return $empty + ['_failure_reason' => $e->getMessage()];
         }
     }
 

@@ -103,8 +103,6 @@ class PullLiveOrdersCommandTest extends TestCase
         $this->assertNotNull($this->liveShop->fresh()->order_pull_lease_token);
         $this->assertNotNull($this->liveShop->fresh()->order_pull_locked_until);
 
-        // Satu toko tidak dapat diantrikan dua kali saat pull sebelumnya belum
-        // selesai, bahkan bila cache scheduler sedang tidak tersedia.
         $this->artisan('channel:pull-orders', ['--queue' => true])->assertSuccessful();
         Queue::assertPushed(PullChannelOrdersJob::class, 1);
     }
@@ -154,7 +152,7 @@ class PullLiveOrdersCommandTest extends TestCase
             ))->handle($leases, app(ChannelShopRepository::class));
             $this->fail('Job seharusnya gagal saat channel timeout.');
         } catch (\RuntimeException) {
-            // Expected: command returns a controlled non-zero result.
+
         }
 
         $shop = $this->liveShop->fresh();
@@ -193,7 +191,7 @@ class PullLiveOrdersCommandTest extends TestCase
             ))->handle($leases, app(ChannelShopRepository::class));
             $this->fail('Job seharusnya gagal saat ada order yang belum lengkap.');
         } catch (\RuntimeException) {
-            // Expected: cursor must not advance until every order is complete.
+
         }
 
         $shop = $this->liveShop->fresh();

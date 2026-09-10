@@ -106,20 +106,12 @@ class ChannelWebhookInbox extends Model
             $attempts = (int) $row->attempts + 1;
             $row->update([
                 'attempts' => $attempts,
-                // Job baru saja berhasil diantrikan. Jangan replay ulang saat
-                // job normal masih memiliki kesempatan untuk berjalan.
+
                 'next_attempt_at' => now()->addMinutes(10),
             ]);
         });
     }
 
-    /**
-     * Claim a small replay batch atomically. A crashed scheduler leaves the rows
-     * eligible again after the lease expires; concurrent schedulers cannot claim
-     * the same event because PostgreSQL skips locked rows.
-     *
-     * @return Collection<int, static>
-     */
     public static function claimReplayBatch(
         \DateTimeInterface $threshold,
         int $maxAttempts,

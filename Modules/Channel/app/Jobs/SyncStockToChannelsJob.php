@@ -22,10 +22,6 @@ class SyncStockToChannelsJob implements ShouldBeUniqueUntilProcessing, ShouldQue
 
     public ?string $excludeChannelShopId;
 
-    /**
-     * Collapse repeated inventory events for the same variant while the job
-     * is waiting; the latest stock is resolved when the job starts.
-     */
     public int $uniqueFor = 300;
 
     public function __construct(string $variantId, ?string $excludeChannelShopId = null)

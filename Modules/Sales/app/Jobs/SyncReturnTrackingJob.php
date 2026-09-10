@@ -8,8 +8,10 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\RateLimited;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Modules\Sales\Models\SalesReturn;
 use Modules\Sales\Services\SalesReturnTrackingSyncService;
 
@@ -17,14 +19,18 @@ class SyncReturnTrackingJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 3;
+    public int $tries = 12;
 
-    public array $backoff = [30, 120, 600];
+    public array $backoff = [60, 300, 900, 1800];
+
+    public int $maxExceptions = 5;
 
     public int $uniqueFor = 3600;
 
     public function __construct(
         public string $salesReturnId,
+        public readonly ?string $channelShopId = null,
+        public readonly ?string $channel = null,
     ) {
         $this->onConnection(config('queue.routing.channel_after_sales.connection', 'redis-long'));
         $this->onQueue(config('queue.routing.channel_after_sales.queue', 'channel-after-sales'));
@@ -37,7 +43,12 @@ class SyncReturnTrackingJob implements ShouldBeUnique, ShouldQueue
 
     public function middleware(): array
     {
-        return [new RateLimited('channel_api')];
+        return [
+            (new RateLimited('channel_api'))->releaseAfter(5),
+            (new WithoutOverlapping('sales-return-tracking:'.$this->salesReturnId))
+                ->releaseAfter(30)
+                ->expireAfter(1800),
+        ];
     }
 
     public function handle(SalesReturnTrackingSyncService $syncService): void
@@ -53,6 +64,20 @@ class SyncReturnTrackingJob implements ShouldBeUnique, ShouldQueue
 
     public function failed(\Throwable $e): void
     {
-        Log::warning('SyncReturnTrackingJob gagal: '.$e->getMessage(), ['sales_return_id' => $this->salesReturnId]);
+        SalesReturn::query()
+            ->whereKey($this->salesReturnId)
+            ->update([
+                'tracking_sync_status' => SalesReturn::TRACKING_SYNC_FAILED,
+                'tracking_sync_attempted_at' => now(),
+                'tracking_sync_last_error' => Str::limit($e->getMessage(), 2000),
+            ]);
+
+        Log::error('SyncReturnTrackingJob gagal permanen.', [
+            'sales_return_id' => $this->salesReturnId,
+            'channel_shop_id' => $this->channelShopId,
+            'channel' => $this->channel,
+            'exception' => get_class($e),
+            'error' => $e->getMessage(),
+        ]);
     }
 }
