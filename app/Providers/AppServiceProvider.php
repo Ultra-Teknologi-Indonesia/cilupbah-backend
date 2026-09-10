@@ -154,6 +154,21 @@ class AppServiceProvider extends ServiceProvider
             fn (\Illuminate\Http\Request $request): \Illuminate\Cache\RateLimiting\Limit => $stockCutoverLimit($request, 'report', 60),
         );
 
+        $orderCutoverLimit = static function (\Illuminate\Http\Request $request, string $action, int $default): \Illuminate\Cache\RateLimiting\Limit {
+            $tokenFingerprint = substr(hash('sha256', (string) $request->route('token')), 0, 16);
+
+            return \Illuminate\Cache\RateLimiting\Limit::perMinute(
+                (int) config('ratelimit.order_cutover.'.$action.'_per_minute', $default),
+            )->by('order-cutover|'.$action.'|'.$request->ip().'|'.$tokenFingerprint);
+        };
+
+        foreach (['page' => 30, 'preview' => 10, 'status' => 180, 'apply' => 10, 'report' => 60] as $action => $default) {
+            \Illuminate\Support\Facades\RateLimiter::for(
+                'order_cutover_'.$action,
+                fn (\Illuminate\Http\Request $request): \Illuminate\Cache\RateLimiting\Limit => $orderCutoverLimit($request, $action, $default),
+            );
+        }
+
         \Illuminate\Database\Eloquent\Builder::macro('allowedSearch', function (...$columns) {
             return \App\Support\AllowedSearch::apply($this, $columns);
         });

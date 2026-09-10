@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Dev\TrackingController;
 use App\Http\Controllers\Operations\StockCutoverConsoleController;
+use App\Http\Controllers\Operations\OrderCutoverConsoleController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -33,6 +34,28 @@ Route::prefix('/_ops/stock-cutover/{token}')
         Route::get('/jobs/{job}/report/{location}', [StockCutoverConsoleController::class, 'downloadCsv'])
             ->middleware('throttle:stock_cutover_report')
             ->name('report.csv');
+    });
+
+Route::prefix('/_ops/order-cutover/{token}')
+    ->middleware(['stock-cutover-console'])
+    ->where(['token' => '[A-Za-z0-9_-]{48,128}'])
+    ->name('operations.order-cutover.')
+    ->group(function (): void {
+        Route::get('/', [OrderCutoverConsoleController::class, 'index'])
+            ->middleware('throttle:order_cutover_page')
+            ->name('index');
+        Route::post('/preview', [OrderCutoverConsoleController::class, 'preview'])
+            ->middleware('throttle:order_cutover_preview')
+            ->name('preview');
+        Route::get('/jobs/{job}', [OrderCutoverConsoleController::class, 'status'])
+            ->middleware('throttle:order_cutover_status')
+            ->name('status');
+        Route::post('/jobs/{job}/apply', [OrderCutoverConsoleController::class, 'apply'])
+            ->middleware('throttle:order_cutover_apply')
+            ->name('apply');
+        Route::get('/jobs/{job}/report', [OrderCutoverConsoleController::class, 'download'])
+            ->middleware('throttle:order_cutover_report')
+            ->name('report');
     });
 
 Route::prefix('dev/tracking')->middleware('dev.only')->name('dev.tracking.')->group(function () {

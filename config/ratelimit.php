@@ -33,4 +33,12 @@ return [
         'report_per_minute' => (int) env('RATE_LIMIT_STOCK_CUTOVER_REPORT', 60),
     ],
 
+    'order_cutover' => [
+        'page_per_minute' => (int) env('RATE_LIMIT_ORDER_CUTOVER_PAGE', 30),
+        'preview_per_minute' => (int) env('RATE_LIMIT_ORDER_CUTOVER_PREVIEW', 10),
+        'status_per_minute' => (int) env('RATE_LIMIT_ORDER_CUTOVER_STATUS', 180),
+        'apply_per_minute' => (int) env('RATE_LIMIT_ORDER_CUTOVER_APPLY', 10),
+        'report_per_minute' => (int) env('RATE_LIMIT_ORDER_CUTOVER_REPORT', 60),
+    ],
+
 ];

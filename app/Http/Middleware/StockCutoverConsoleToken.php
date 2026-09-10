@@ -12,7 +12,11 @@ final class StockCutoverConsoleToken
 {
     public function handle(Request $request, Closure $next): Response
     {
-        $expected = (string) config('operations.stock_cutover_console.token', '');
+        $routeName = (string) ($request->route()?->getName() ?? '');
+        $configPrefix = str_starts_with($routeName, 'operations.order-cutover.')
+            ? 'operations.order_cutover_console'
+            : 'operations.stock_cutover_console';
+        $expected = (string) config($configPrefix.'.token', '');
         $provided = (string) $request->route('token', '');
 
         if ($expected === '' || $provided === '' || ! hash_equals($expected, $provided)) {

@@ -40,6 +40,7 @@ return [
         'redis-long:channel-product' => 120,
         'redis-long:channel-after-sales' => 120,
         'redis-long:stock-cutover' => 300,
+        'redis-long:order-cutover' => 300,
         'redis-long:qr-labels' => 300,
     ],
 
@@ -184,6 +185,20 @@ return [
         'supervisor-stock-cutover' => [
             'connection' => config('operations.stock_cutover_console.queue_connection', 'redis-long'),
             'queue' => [config('operations.stock_cutover_console.queue', 'stock-cutover')],
+            'balance' => 'simple',
+            'minProcesses' => 1,
+            'maxProcesses' => 1,
+            'maxJobs' => 1,
+            'maxTime' => 1800,
+            'timeout' => 1800,
+            'tries' => 1,
+            'backoff' => [60, 300, 900],
+            'memory' => 1024,
+            'nice' => 10,
+        ],
+        'supervisor-order-cutover' => [
+            'connection' => config('operations.order_cutover_console.queue_connection', 'redis-long'),
+            'queue' => [config('operations.order_cutover_console.queue', 'order-cutover')],
             'balance' => 'simple',
             'minProcesses' => 1,
             'maxProcesses' => 1,
@@ -375,6 +390,10 @@ return [
                 'minProcesses' => 1,
                 'maxProcesses' => 1,
             ],
+            'supervisor-order-cutover' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 1,
+            ],
             'supervisor-stock' => [
                 'minProcesses' => 1,
                 'maxProcesses' => 1,
@@ -447,6 +466,10 @@ return [
                 'minProcesses' => 1,
                 'maxProcesses' => 1,
             ],
+            'supervisor-order-cutover' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 1,
+            ],
             'supervisor-stock' => [
                 'minProcesses' => 1,
                 'maxProcesses' => 1,
@@ -498,6 +521,10 @@ return [
                 'maxProcesses' => 2,
             ],
             'supervisor-stock-cutover' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 1,
+            ],
+            'supervisor-order-cutover' => [
                 'minProcesses' => 1,
                 'maxProcesses' => 1,
             ],

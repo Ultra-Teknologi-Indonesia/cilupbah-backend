@@ -26,6 +26,7 @@ class HorizonQueueCoverageTest extends TestCase
         $used[] = 'default';
         $used[] = config('webhook.queue', 'webhooks');
         $used[] = config('operations.stock_cutover_console.queue', 'stock-cutover');
+        $used[] = config('operations.order_cutover_console.queue', 'order-cutover');
 
         foreach (array_unique($used) as $queue) {
             $this->assertContains(
