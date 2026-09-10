@@ -29,6 +29,8 @@ use Modules\Warehouse\Models\Location;
 
 class ShipmentService
 {
+    private const MANIFESTABLE_ORDER_STATUSES = ['packed', 'shipped'];
+
     public function __construct(
         protected ShipmentRepository $shipmentRepository,
         protected CourierMappingService $courierMapper,
@@ -157,7 +159,7 @@ class ShipmentService
         }
 
         $ordersQuery = Order::whereIn('id', $orderIds)
-            ->where('status', 'packed')
+            ->whereIn('status', self::MANIFESTABLE_ORDER_STATUSES)
             ->where('is_canceled', false)
             ->whereNull('cancel_requested_at')
             ->where('location_id', $shipment->location_id);
@@ -175,8 +177,8 @@ class ShipmentService
 
             throw new \Exception(
                 $rejected !== ''
-                    ? "Order berikut dibatalkan atau bukan status 'packed' dan tidak bisa dimanifestkan: {$rejected}"
-                    : "Sebagian order tidak ditemukan atau bukan status 'packed'."
+                    ? "Order berikut dibatalkan atau bukan status packed/shipped dan tidak bisa dimanifestkan: {$rejected}"
+                    : 'Sebagian order tidak ditemukan atau bukan status packed/shipped.'
             );
         }
 
@@ -215,7 +217,7 @@ class ShipmentService
                 ->get();
 
             $invalidOrder = $lockedOrders->first(
-                fn (Order $order): bool => $order->status !== 'packed'
+                fn (Order $order): bool => ! in_array($order->status, self::MANIFESTABLE_ORDER_STATUSES, true)
                     || $order->is_canceled
                     || $order->cancel_requested_at !== null,
             );
@@ -225,7 +227,7 @@ class ShipmentService
 
                 throw new OutboundValidationException(
                     $invalidOrderNumber
-                        ? "Pesanan {$invalidOrderNumber} sudah tidak berstatus packed atau telah dibatalkan."
+                        ? "Pesanan {$invalidOrderNumber} sudah tidak berstatus packed/shipped atau telah dibatalkan."
                         : 'Sebagian pesanan sudah tidak tersedia untuk dijadwalkan.'
                 );
             }
@@ -289,8 +291,13 @@ class ShipmentService
             return $addedOrderIds;
         });
 
-        if ($addedOrderIds !== []) {
-            ProcessShipmentPickupJob::dispatch($shipmentId, $addedOrderIds);
+        $pickupOrderIds = array_values(array_intersect(
+            $addedOrderIds,
+            $orders->where('status', 'packed')->pluck('id')->all(),
+        ));
+
+        if ($pickupOrderIds !== []) {
+            ProcessShipmentPickupJob::dispatch($shipmentId, $pickupOrderIds);
         }
 
         return $this->shipmentRepository->findById($shipmentId);
@@ -628,11 +635,11 @@ class ShipmentService
                 );
             }
 
-            if ($order->status !== 'packed') {
+            if (! in_array($order->status, self::MANIFESTABLE_ORDER_STATUSES, true)) {
                 throw new ScanRejectedException(
-                    'not_packed',
+                    'invalid_status',
                     "Pesanan '{$barcode}' berstatus '{$order->status}' dan tidak dapat dimasukkan ke pengiriman. "
-                        ."Hanya pesanan dengan status 'packed' yang dapat dipindai."
+                        .'Hanya pesanan dengan status packed atau shipped yang dapat dipindai.'
                 );
             }
 
@@ -700,7 +707,7 @@ class ShipmentService
             );
         }, 3);
 
-        if (! $result->alreadyAdded) {
+        if (! $result->alreadyAdded && $result->shipmentOrder->order?->status === 'packed') {
             ProcessShipmentPickupJob::dispatch($shipmentId, [$result->shipmentOrder->order_id]);
         }
 

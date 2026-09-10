@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Outbound\Exceptions\OutboundValidationException;
 use Modules\Outbound\Exceptions\ScanRejectedException;
+use Modules\Outbound\Jobs\ProcessShipmentPickupJob;
 use Modules\Outbound\Services\ShipmentService;
 use Modules\Warehouse\Models\Location;
 use Tests\TestCase;
@@ -141,12 +142,14 @@ class ShipmentScanGuardTest extends TestCase
         ]);
     }
 
-    public function test_scan_explains_when_order_is_not_packed(): void
+    public function test_allows_shipped_order_once_and_rejects_it_from_another_shipment(): void
     {
+        Bus::fake();
         $loc = $this->seedLocation();
         $shipmentId = $this->seedShipment($loc, 'SPX Instant', 'INSTANT');
+        $otherShipmentId = $this->seedShipment($loc, 'SPX Instant', 'INSTANT');
         $channelOrderNo = 'SHOPEE-CHANNEL-ORDER-SHIPPED';
-        [, $orderNo] = $this->seedPackedOrder(
+        [$orderId] = $this->seedPackedOrder(
             $loc,
             'SPX Sameday',
             shippingType: 'SAME_DAY',
@@ -156,14 +159,23 @@ class ShipmentScanGuardTest extends TestCase
             status: 'shipped',
         );
 
+        $service = app(ShipmentService::class);
+        $service->scanAndAddOrder($shipmentId, $channelOrderNo);
+
+        $this->assertDatabaseHas('shipment_orders', [
+            'shipment_id' => $shipmentId,
+            'order_id' => $orderId,
+        ]);
+        Bus::assertNotDispatched(ProcessShipmentPickupJob::class);
+
         try {
-            app(ShipmentService::class)->scanAndAddOrder($shipmentId, $channelOrderNo);
-            $this->fail('Expected ScanRejectedException for a non-packed order.');
+            $service->scanAndAddOrder($otherShipmentId, $channelOrderNo);
+            $this->fail('Expected ScanRejectedException for a duplicate order.');
         } catch (ScanRejectedException $e) {
-            $this->assertSame('not_packed', $e->reason);
-            $this->assertStringContainsString("berstatus 'shipped'", $e->getMessage());
-            $this->assertStringNotContainsString($orderNo, $e->getMessage());
+            $this->assertSame('duplicate', $e->reason);
         }
+
+        $this->assertDatabaseCount('shipment_orders', 1);
     }
 
     public function test_allows_scan_for_gtl_and_goto_logistics(): void
@@ -364,7 +376,28 @@ class ShipmentScanGuardTest extends TestCase
         ]);
     }
 
-    public function test_bulk_add_rejects_a_marketplace_regular_order_until_packed(): void
+    public function test_bulk_add_allows_shipped_order_without_reprocessing_pickup(): void
+    {
+        Bus::fake();
+        $loc = $this->seedLocation();
+        $shipmentId = $this->seedShipment($loc, 'SPX Hemat', 'REGULAR');
+        [$orderId] = $this->seedPackedOrder(
+            $loc,
+            'SPX Hemat',
+            source: 'shopee',
+            status: 'shipped',
+        );
+
+        app(ShipmentService::class)->addOrders($shipmentId, [$orderId]);
+
+        $this->assertDatabaseHas('shipment_orders', [
+            'shipment_id' => $shipmentId,
+            'order_id' => $orderId,
+        ]);
+        Bus::assertNotDispatched(ProcessShipmentPickupJob::class);
+    }
+
+    public function test_bulk_add_rejects_a_marketplace_regular_order_until_manifestable(): void
     {
         $loc = $this->seedLocation();
         $shipmentId = $this->seedShipment($loc, 'SPX Hemat', 'REGULAR');
@@ -373,7 +406,7 @@ class ShipmentScanGuardTest extends TestCase
 
         $this->expectException(\Exception::class);
         $this->expectExceptionMessage(
-            "Order berikut dibatalkan atau bukan status 'packed' dan tidak bisa dimanifestkan: {$orderNo}"
+            "Order berikut dibatalkan atau bukan status packed/shipped dan tidak bisa dimanifestkan: {$orderNo}"
         );
 
         app(ShipmentService::class)->addOrders($shipmentId, [$orderId]);

@@ -37,7 +37,9 @@ class ProcessShipmentPickupJob implements ShouldQueue
         $pending = $shipment->orders
             ->filter(fn ($so) => !$so->pickup_status || $so->pickup_status === 'pending')
             ->filter(fn ($so) => empty($this->orderIds) || in_array($so->order_id, $this->orderIds))
-            ->filter(fn ($so) => $so->order && in_array(strtolower((string) $so->order->source), ['shopee', 'tiktok', 'lazada']));
+            ->filter(fn ($so) => $so->order
+                && $so->order->status === 'packed'
+                && in_array(strtolower((string) $so->order->source), ['shopee', 'tiktok', 'lazada']));
 
         if ($pending->isEmpty()) {
             return;
