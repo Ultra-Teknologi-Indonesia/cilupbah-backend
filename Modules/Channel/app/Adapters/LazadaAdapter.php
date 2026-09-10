@@ -13,6 +13,7 @@ use Modules\Channel\Services\LazadaClient;
 use Modules\Channel\Services\LazadaImageUploader;
 use Modules\Channel\Services\LazadaProductMapper;
 use Modules\Channel\Services\LazadaToInternalProductMapper;
+use Modules\Channel\Support\ChannelVariantMappingResolver;
 use Modules\Product\Models\Product;
 
 class LazadaAdapter implements MarketplaceAdapterInterface
@@ -148,9 +149,7 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         $skuPayloads = [];
 
         foreach ($product->variants as $variant) {
-            $mapping = $variant->channelMappings()->whereHas('channelMapping', function ($q) use ($shop) {
-                $q->where('channel_shop_id', $shop->id);
-            })->first();
+            $mapping = ChannelVariantMappingResolver::forShop($variant, $shop);
 
             if (! $mapping || ! $mapping->sync_enabled || empty($variant->sku)) {
                 continue;
@@ -192,9 +191,7 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         $skuPayloads = [];
 
         foreach ($product->variants as $variant) {
-            $mapping = $variant->channelMappings()->whereHas('channelMapping', function ($q) use ($shop) {
-                $q->where('channel_shop_id', $shop->id);
-            })->first();
+            $mapping = ChannelVariantMappingResolver::forShop($variant, $shop);
 
             if (! $mapping || ! $mapping->sync_enabled || empty($variant->sku)) {
                 continue;

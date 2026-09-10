@@ -153,6 +153,18 @@ return [
 
     'routing' => [
 
+        // Real-time stock changes must not wait behind catalog or bulk jobs.
+        'stock_critical' => [
+            'connection' => env('QUEUE_STOCK_CRITICAL_CONNECTION', 'redis'),
+            'queue' => env('QUEUE_NAME_STOCK_CRITICAL', 'stock-critical'),
+        ],
+
+        // Manual/full resync is intentionally lower priority than real-time stock.
+        'stock_default' => [
+            'connection' => env('QUEUE_STOCK_DEFAULT_CONNECTION', 'redis'),
+            'queue' => env('QUEUE_NAME_STOCK_DEFAULT', 'stock-default'),
+        ],
+
         'channel_product' => [
             'connection' => env('QUEUE_CHANNEL_PRODUCT_CONNECTION', 'redis-long'),
             'queue' => env('QUEUE_NAME_CHANNEL_PRODUCT', 'channel-product'),

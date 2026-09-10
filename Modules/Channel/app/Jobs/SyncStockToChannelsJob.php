@@ -3,6 +3,7 @@
 namespace Modules\Channel\Jobs;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -13,7 +14,7 @@ use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductVariant;
 use Modules\Product\Repositories\ProductRepository;
 
-class SyncStockToChannelsJob implements ShouldQueue
+class SyncStockToChannelsJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -21,22 +22,39 @@ class SyncStockToChannelsJob implements ShouldQueue
 
     public ?string $excludeChannelShopId;
 
+    /**
+     * Collapse repeated inventory events for the same variant while the job
+     * is waiting; the latest stock is resolved when the job starts.
+     */
+    public int $uniqueFor = 300;
+
     public function __construct(string $variantId, ?string $excludeChannelShopId = null)
     {
         $this->variantId = $variantId;
         $this->excludeChannelShopId = $excludeChannelShopId;
-        $this->onQueue(config('queue.names.channel_stock'));
+        $this->onConnection(config('queue.routing.stock_critical.connection', 'redis'))
+            ->onQueue(config('queue.routing.stock_critical.queue', 'stock-critical'));
+    }
+
+    public function uniqueId(): string
+    {
+        return implode(':', [
+            'variant-stock',
+            $this->variantId,
+            $this->excludeChannelShopId ?? '*',
+        ]);
     }
 
     public function handle(ProductRepository $productRepository): void
     {
-        $variant = ProductVariant::with('product.channelMappings')->find($this->variantId);
+        $variant = ProductVariant::with('product.channelMappings.variantMappings')->find($this->variantId);
 
         if (! $variant || ! $variant->product) {
             return;
         }
 
-        $this->dispatchForProduct($variant->product);
+        $dispatched = [];
+        $this->dispatchForProduct($variant->product, $dispatched);
 
         $bundleIds = $productRepository->bundleProductIdsUsingComponent($this->variantId);
 
@@ -44,10 +62,10 @@ class SyncStockToChannelsJob implements ShouldQueue
             return;
         }
 
-        Product::with('channelMappings')
+        Product::with('channelMappings.variantMappings')
             ->whereIn('id', $bundleIds)
             ->get()
-            ->each(fn (Product $bundle) => $this->dispatchForProduct($bundle));
+            ->each(fn (Product $bundle) => $this->dispatchForProduct($bundle, $dispatched));
 
         $siblingVariantIds = ProductBundleItem::whereIn('bundle_product_id', $bundleIds)
             ->where('component_variant_id', '!=', $this->variantId)
@@ -56,19 +74,25 @@ class SyncStockToChannelsJob implements ShouldQueue
             ->all();
 
         if (! empty($siblingVariantIds)) {
-            ProductVariant::with('product.channelMappings')
+            ProductVariant::with('product.channelMappings.variantMappings')
                 ->whereIn('id', $siblingVariantIds)
                 ->get()
                 ->pluck('product')
                 ->filter()
                 ->unique('id')
-                ->each(fn (Product $prod) => $this->dispatchForProduct($prod));
+                ->each(fn (Product $prod) => $this->dispatchForProduct($prod, $dispatched));
         }
     }
 
-    private function dispatchForProduct(Product $product): void
+    private function dispatchForProduct(Product $product, array &$dispatched): void
     {
         foreach ($product->channelMappings as $mapping) {
+            $dispatchKey = "{$product->id}:{$mapping->channel_shop_id}";
+
+            if (isset($dispatched[$dispatchKey])) {
+                continue;
+            }
+
             if ($this->excludeChannelShopId !== null && $mapping->channel_shop_id === $this->excludeChannelShopId) {
                 continue;
             }
@@ -77,9 +101,15 @@ class SyncStockToChannelsJob implements ShouldQueue
                 continue;
             }
 
+            if (blank($mapping->external_product_id)) {
+                continue;
+            }
+
             if ($this->listingSyncFullyDisabled($mapping)) {
                 continue;
             }
+
+            $dispatched[$dispatchKey] = true;
 
             SyncProductToChannelJob::dispatch(
                 $product->id,
@@ -91,7 +121,9 @@ class SyncStockToChannelsJob implements ShouldQueue
 
     private function listingSyncFullyDisabled(ProductChannelMapping $mapping): bool
     {
-        $variantMappings = $mapping->variantMappings()->get(['sync_enabled']);
+        $variantMappings = $mapping->relationLoaded('variantMappings')
+            ? $mapping->variantMappings
+            : $mapping->variantMappings()->get(['sync_enabled']);
 
         return $variantMappings->isNotEmpty()
             && $variantMappings->every(fn ($vm) => ! $vm->sync_enabled);

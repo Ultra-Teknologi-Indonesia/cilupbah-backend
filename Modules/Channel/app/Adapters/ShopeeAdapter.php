@@ -11,6 +11,7 @@ use Modules\Channel\Services\ShopeeClient;
 use Modules\Channel\Services\ShopeeMediaUploader;
 use Modules\Channel\Services\ShopeeProductMapper;
 use Modules\Channel\Services\ShopeeToInternalProductMapper;
+use Modules\Channel\Support\ChannelVariantMappingResolver;
 use Modules\Product\Models\Product;
 
 class ShopeeAdapter implements MarketplaceAdapterInterface
@@ -167,9 +168,7 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         $stockList = [];
 
         foreach ($product->variants as $variant) {
-            $mapping = $variant->channelMappings()->whereHas('channelMapping', function ($q) use ($shop) {
-                $q->where('channel_shop_id', $shop->id);
-            })->first();
+            $mapping = ChannelVariantMappingResolver::forShop($variant, $shop);
 
             if (! $mapping || ! $mapping->sync_enabled) {
                 continue;
@@ -225,9 +224,7 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         $stockList = [];
 
         foreach ($product->variants as $variant) {
-            $mapping = $variant->channelMappings()->whereHas('channelMapping', function ($q) use ($shop) {
-                $q->where('channel_shop_id', $shop->id);
-            })->first();
+            $mapping = ChannelVariantMappingResolver::forShop($variant, $shop);
 
             if (! $mapping || ! $mapping->sync_enabled) {
                 continue;

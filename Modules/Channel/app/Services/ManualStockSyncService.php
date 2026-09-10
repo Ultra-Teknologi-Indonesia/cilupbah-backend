@@ -29,15 +29,25 @@ class ManualStockSyncService
             }
 
             foreach ($mappings as $mapping) {
+                if (blank($mapping->external_product_id)) {
+                    $skipped++;
+                    continue;
+                }
+
                 if ($this->listingSyncFullyDisabled($mapping)) {
                     $skipped++;
+
                     continue;
                 }
 
                 SyncProductToChannelJob::dispatch(
                     $mapping->product_id,
                     $mapping->channel_shop_id,
-                    'sync_stock'
+                    'sync_stock',
+                    null,
+                    null,
+                    null,
+                    'bulk',
                 );
 
                 $queued++;
@@ -59,19 +69,24 @@ class ManualStockSyncService
         ProductChannelMapping::query()
             ->where('sync_status', '!=', ProductChannelMapping::STATUS_DEACTIVATED)
             ->when(
-                !empty($filters['channel_shop_id']),
+                ! empty($filters['channel_shop_id']),
                 fn ($q) => $q->where('channel_shop_id', $filters['channel_shop_id'])
             )
             ->when(
-                !empty($filters['channel_shop_ids']),
+                ! empty($filters['channel_shop_ids']),
                 fn ($q) => $q->whereIn('channel_shop_id', $filters['channel_shop_ids'])
             )
             ->when(
-                !empty($filters['product_ids']),
+                ! empty($filters['product_ids']),
                 fn ($q) => $q->whereIn('product_id', $filters['product_ids'])
             )
+            ->with('variantMappings')
             ->chunkById(500, function ($mappings) use (&$queued) {
                 foreach ($mappings as $mapping) {
+                    if (blank($mapping->external_product_id)) {
+                        continue;
+                    }
+
                     if ($this->listingSyncFullyDisabled($mapping)) {
                         continue;
                     }
@@ -79,7 +94,11 @@ class ManualStockSyncService
                     SyncProductToChannelJob::dispatch(
                         $mapping->product_id,
                         $mapping->channel_shop_id,
-                        'sync_stock'
+                        'sync_stock',
+                        null,
+                        null,
+                        null,
+                        'bulk',
                     );
 
                     $queued++;
@@ -94,6 +113,7 @@ class ManualStockSyncService
         return ProductChannelMapping::query()
             ->where('product_id', $productId)
             ->where('sync_status', '!=', ProductChannelMapping::STATUS_DEACTIVATED)
+            ->with('variantMappings')
             ->when(
                 $channelShopId !== null,
                 fn ($q) => $q->where('channel_shop_id', $channelShopId)
@@ -103,7 +123,9 @@ class ManualStockSyncService
 
     public function listingSyncFullyDisabled(ProductChannelMapping $mapping): bool
     {
-        $variantMappings = $mapping->variantMappings()->get(['sync_enabled']);
+        $variantMappings = $mapping->relationLoaded('variantMappings')
+            ? $mapping->variantMappings
+            : $mapping->variantMappings()->get(['sync_enabled']);
 
         return $variantMappings->isNotEmpty()
             && $variantMappings->every(fn ($vm) => ! $vm->sync_enabled);

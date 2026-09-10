@@ -30,6 +30,10 @@ return [
         'redis:tracking' => 60,
         'redis:channel-cancellation' => 30,
         'redis:channel-stock' => 60,
+        config('queue.routing.stock_critical.connection', 'redis').':'
+            .config('queue.routing.stock_critical.queue', 'stock-critical') => 30,
+        config('queue.routing.stock_default.connection', 'redis').':'
+            .config('queue.routing.stock_default.queue', 'stock-default') => 120,
         config('queue.routing.channel_finance.connection', 'redis-finance').':'
             .config('queue.routing.channel_finance.queue', 'channel-finance') => 120,
         'redis:channel-fulfillment' => 60,
@@ -193,11 +197,20 @@ return [
             'nice' => 10,
         ],
         'supervisor-stock' => [
-            'connection' => 'redis',
-            'queue' => [env('QUEUE_NAME_STOCK_CRITICAL', 'stock-critical'), env('QUEUE_NAME_STOCK_DEFAULT', 'stock-default')],
+            'connection' => config('queue.routing.stock_critical.connection', 'redis'),
+            'queue' => [
+                config('queue.routing.stock_critical.queue', 'stock-critical'),
+                config('queue.routing.stock_default.queue', 'stock-default'),
+            ],
             'balance' => 'simple',
-            'minProcesses' => 1,
-            'maxProcesses' => 2,
+            // Satu worker menjaga stock-critical tetap prioritas tanpa
+            // menambah lonjakan CPU pada node produksi.
+            'minProcesses' => max(1, (int) env('HORIZON_STOCK_MIN_PROCESSES', 1)),
+            'maxProcesses' => max(
+                1,
+                (int) env('HORIZON_STOCK_MAX_PROCESSES', 1),
+                (int) env('HORIZON_STOCK_MIN_PROCESSES', 1),
+            ),
             'maxJobs' => 500,
             'timeout' => 60,
             'tries' => 3,

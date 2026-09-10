@@ -3,6 +3,7 @@
 namespace Modules\Channel\Jobs;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -25,7 +26,7 @@ use Modules\Product\Models\ProductChannelDraft;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductSyncLog;
 
-class SyncProductToChannelJob implements ShouldQueue
+class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -34,6 +35,12 @@ class SyncProductToChannelJob implements ShouldQueue
     public int $timeout = 300;
 
     public array $backoff = [30, 120, 300];
+
+    /**
+     * Coalesce bursts of the same desired-state update without holding a lock
+     * while the external marketplace request is executing.
+     */
+    public int $uniqueFor = 900;
 
     public string $productId;
 
@@ -46,6 +53,8 @@ class SyncProductToChannelJob implements ShouldQueue
     public ?string $draftId;
 
     public ?string $uploadLogId;
+
+    public string $queueTier = 'critical';
 
     protected string $channelCodeResolved = '';
 
@@ -74,6 +83,7 @@ class SyncProductToChannelJob implements ShouldQueue
         ?array $attributeMapping = null,
         ?string $draftId = null,
         ?string $uploadLogId = null,
+        string $queueTier = 'critical',
     ) {
         $this->productId = $productId;
         $this->channelShopId = $channelShopId;
@@ -81,9 +91,45 @@ class SyncProductToChannelJob implements ShouldQueue
         $this->attributeMapping = $attributeMapping;
         $this->draftId = $draftId;
         $this->uploadLogId = $uploadLogId;
+        $this->queueTier = $queueTier;
 
-        $this->onConnection(config('queue.routing.channel_product.connection', 'redis-long'))
-            ->onQueue(config('queue.routing.channel_product.queue', 'channel-product'));
+        $routing = self::isStockAction($action)
+            ? config(
+                $queueTier === 'bulk'
+                    ? 'queue.routing.stock_default'
+                    : 'queue.routing.stock_critical',
+                [
+                    'connection' => 'redis',
+                    'queue' => $queueTier === 'bulk' ? 'stock-default' : 'stock-critical',
+                ],
+            )
+            : config('queue.routing.channel_product', [
+                'connection' => 'redis-long',
+                'queue' => 'channel-product',
+            ]);
+
+        $this->onConnection($routing['connection'])
+            ->onQueue($routing['queue']);
+    }
+
+    public function uniqueId(): string
+    {
+        $axis = self::isStockAction($this->action)
+            ? 'stock:'.$this->action
+            : 'catalog:'.$this->action;
+
+        // Explicit upload requests keep their own identity so that a user
+        // initiated upload log is never coalesced with another upload.
+        $requestId = $this->uploadLogId ?: $this->draftId;
+
+        return implode(':', array_filter([
+            'product-sync',
+            $axis,
+            $this->productId,
+            $this->channelShopId,
+            $this->queueTier,
+            $requestId,
+        ], static fn ($value) => $value !== null && $value !== ''));
     }
 
     public function middleware(): array
@@ -107,7 +153,16 @@ class SyncProductToChannelJob implements ShouldQueue
             return;
         }
 
-        $product = Product::with(['variants.channelMappings.channelMapping'])->find($this->productId);
+        $product = self::isStockAction($this->action)
+            ? Product::with([
+                'variants',
+                'variants.channelMappings' => function ($query): void {
+                    $query->whereHas('channelMapping', function ($mappingQuery): void {
+                        $mappingQuery->where('channel_shop_id', $this->channelShopId);
+                    })->with('channelMapping');
+                },
+            ])->find($this->productId)
+            : Product::with(['variants.channelMappings.channelMapping'])->find($this->productId);
         $shop = ChannelShop::with('channel')->find($this->channelShopId);
 
         if (! $product || ! $shop) {
@@ -159,7 +214,7 @@ class SyncProductToChannelJob implements ShouldQueue
             return;
         }
 
-        $circuitKey = "circuit_breaker:{$channelCode}";
+        $circuitKey = $this->circuitBreakerKey($channelCode);
         if (Cache::has($circuitKey)) {
             Log::warning("Circuit breaker is open for {$channelCode}. Re-queuing job.", [
                 'product_id' => $this->productId,
@@ -176,6 +231,23 @@ class SyncProductToChannelJob implements ShouldQueue
 
         if ($this->action === 'delete' && ! $mapping->external_product_id) {
             $mapping->delete();
+
+            return;
+        }
+
+        if (self::isStockAction($this->action) && blank($mapping->external_product_id)) {
+            if ($mapping->sync_status === ProductChannelMapping::STATUS_SYNCING) {
+                $mapping->update([
+                    'sync_status' => ProductChannelMapping::STATUS_PENDING,
+                    'error_message' => null,
+                ]);
+            }
+
+            Log::notice('SyncProductToChannelJob skipped: listing belum terhubung ke channel.', [
+                'product_id' => $this->productId,
+                'channel_shop_id' => $this->channelShopId,
+                'action' => $this->action,
+            ]);
 
             return;
         }
@@ -230,8 +302,6 @@ class SyncProductToChannelJob implements ShouldQueue
                 case 'sync_price_stock':
                     if ($externalId) {
                         $result = $adapter->syncPriceAndStock($product, $shop, $externalId);
-                    } else {
-                        $result = $adapter->pushProduct($product, $shop);
                     }
                     break;
                 case 'sync_stock':
@@ -269,7 +339,11 @@ class SyncProductToChannelJob implements ShouldQueue
                     }
                 }
 
-                $this->refreshChannelValidation();
+                if (! self::isStockAction($this->action)) {
+                    $this->refreshChannelValidation();
+                }
+
+                $this->resetFailureState($channelCode);
             } else {
                 $message = $result['message'] ?? 'Gagal mengeksekusi aksi';
                 $this->lastActionableFailure = $message;
@@ -280,7 +354,6 @@ class SyncProductToChannelJob implements ShouldQueue
 
                 $mapping->markAsFailed($message);
                 $this->recordUploadResult(false, $message, $result);
-                $this->handleFailure($channelCode);
 
                 throw new \Exception($message);
             }
@@ -291,7 +364,9 @@ class SyncProductToChannelJob implements ShouldQueue
             if (! $this->uploadResultRecorded) {
                 $this->recordUploadResult(false, $e->getMessage());
             }
-            $this->refreshChannelValidation();
+            if (! self::isStockAction($this->action)) {
+                $this->refreshChannelValidation();
+            }
             $this->handleFailure($channelCode);
 
             throw $e;
@@ -392,7 +467,7 @@ class SyncProductToChannelJob implements ShouldQueue
 
     protected function handleFailure(string $channelCode): void
     {
-        $failKey = "circuit_fail_count:{$channelCode}";
+        $failKey = $this->circuitFailureKey($channelCode);
         $threshold = config('channel.circuit_breaker_threshold', 10);
 
         $count = (int) Cache::get($failKey, 0) + 1;
@@ -400,10 +475,26 @@ class SyncProductToChannelJob implements ShouldQueue
 
         if ($count >= $threshold) {
             $cooldownMinutes = config('channel.circuit_breaker_cooldown_minutes', 5);
-            Cache::put("circuit_breaker:{$channelCode}", true, now()->addMinutes($cooldownMinutes));
+            Cache::put($this->circuitBreakerKey($channelCode), true, now()->addMinutes($cooldownMinutes));
             Cache::forget($failKey);
-            Log::error("CIRCUIT BREAKER OPENED for {$channelCode} due to {$count} consecutive failures.");
+            Log::error("CIRCUIT BREAKER OPENED for {$channelCode}/{$this->channelShopId} due to {$count} consecutive failures.");
         }
+    }
+
+    protected function resetFailureState(string $channelCode): void
+    {
+        Cache::forget($this->circuitFailureKey($channelCode));
+        Cache::forget($this->circuitBreakerKey($channelCode));
+    }
+
+    protected function circuitFailureKey(string $channelCode): string
+    {
+        return "circuit_fail_count:{$channelCode}:{$this->channelShopId}";
+    }
+
+    protected function circuitBreakerKey(string $channelCode): string
+    {
+        return "circuit_breaker:{$channelCode}:{$this->channelShopId}";
     }
 
     protected function updateVariantMappings(ProductChannelMapping $mapping, Product $product, array $skus): void

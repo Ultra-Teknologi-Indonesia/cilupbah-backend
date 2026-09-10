@@ -16,7 +16,8 @@ class ManualStockResyncAllJob implements ShouldQueue
 
     public function __construct(public array $filters = [])
     {
-        $this->onQueue(config('queue.names.channel_stock'));
+        $this->onConnection(config('queue.routing.stock_default.connection', 'redis'))
+            ->onQueue(config('queue.routing.stock_default.queue', 'stock-default'));
     }
 
     public function handle(ManualStockSyncService $service): void

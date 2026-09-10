@@ -4,13 +4,17 @@ namespace Modules\Channel\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Modules\Channel\Adapters\AdapterFactory;
 use Modules\Channel\Enums\WebhookInboxStatus;
 use Modules\Channel\Jobs\ProcessShopeeWebhook;
 use Modules\Channel\Jobs\SyncProductToChannelJob;
+use Modules\Channel\Jobs\SyncStockToChannelsJob;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Models\ChannelWebhookInbox;
+use Modules\Channel\Services\ChannelDownloadService;
 use Modules\Channel\Services\ChannelService;
+use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Channel\Support\ChannelOrderIntakeGate;
 use Modules\Product\Models\Category;
@@ -41,15 +45,15 @@ class ChannelSyncAxesTest extends TestCase
         $channel = Channel::create(['code' => 'shopee', 'name' => 'Shopee', 'is_active' => true]);
 
         $this->shop = ChannelShop::create([
-            'channel_id'           => $channel->id,
-            'shop_id'              => self::SHOP_ID,
-            'shop_name'            => 'Shopee Utama',
-            'access_token'         => 'valid-token',
-            'refresh_token'        => 'refresh-token',
-            'token_expires_at'     => now()->addHours(4),
-            'is_active'            => true,
-            'order_sync_enabled'   => true,
-            'stock_push_enabled'   => true,
+            'channel_id' => $channel->id,
+            'shop_id' => self::SHOP_ID,
+            'shop_name' => 'Shopee Utama',
+            'access_token' => 'valid-token',
+            'refresh_token' => 'refresh-token',
+            'token_expires_at' => now()->addHours(4),
+            'is_active' => true,
+            'order_sync_enabled' => true,
+            'stock_push_enabled' => true,
             'catalog_push_enabled' => true,
             'catalog_pull_enabled' => true,
         ]);
@@ -57,33 +61,33 @@ class ChannelSyncAxesTest extends TestCase
 
     private function makeListedProduct(): Product
     {
-        $category = Category::create(['name' => 'C' . uniqid(), 'is_active' => true]);
+        $category = Category::create(['name' => 'C'.uniqid(), 'is_active' => true]);
         $product = Product::create([
             'category_id' => $category->id,
-            'name'        => 'Kaos Polos',
-            'status'      => 'master',
-            'is_active'   => true,
+            'name' => 'Kaos Polos',
+            'status' => 'master',
+            'is_active' => true,
         ]);
 
         $listing = ProductChannelMapping::create([
-            'product_id'       => $product->id,
-            'channel_shop_id'  => $this->shop->id,
+            'product_id' => $product->id,
+            'channel_shop_id' => $this->shop->id,
             'external_product_id' => '555001',
-            'sync_status'      => 'synced',
+            'sync_status' => 'synced',
         ]);
 
         $variant = ProductVariant::create([
             'product_id' => $product->id,
-            'sku'        => 'SKU-1',
+            'sku' => 'SKU-1',
             'sell_price' => 50000,
-            'is_active'  => true,
+            'is_active' => true,
         ]);
 
         ProductVariantChannelMapping::create([
             'product_channel_mapping_id' => $listing->id,
-            'variant_id'                 => $variant->id,
-            'external_sku_id'            => '111',
-            'sync_enabled'               => true,
+            'variant_id' => $variant->id,
+            'external_sku_id' => '111',
+            'sync_enabled' => true,
         ]);
 
         return $product->fresh(['variants']);
@@ -92,7 +96,7 @@ class ChannelSyncAxesTest extends TestCase
     private function runSync(string $action): void
     {
         (new SyncProductToChannelJob($this->productId ??= $this->makeListedProduct()->id, $this->shop->id, $action))
-            ->handle(app(\Modules\Channel\Adapters\AdapterFactory::class));
+            ->handle(app(AdapterFactory::class));
     }
 
     private ?string $productId = null;
@@ -115,6 +119,65 @@ class ChannelSyncAxesTest extends TestCase
         $this->runSync('sync_stock');
 
         Http::assertNothingSent();
+    }
+
+    public function test_stock_sync_does_not_turn_unlinked_listing_into_catalog_upload(): void
+    {
+        Http::fake();
+        $product = $this->makeListedProduct();
+
+        ProductChannelMapping::where('product_id', $product->id)
+            ->where('channel_shop_id', $this->shop->id)
+            ->update([
+                'external_product_id' => null,
+                'sync_status' => ProductChannelMapping::STATUS_SYNCING,
+            ]);
+
+        (new SyncProductToChannelJob($product->id, $this->shop->id, 'sync_price_stock'))
+            ->handle(app(AdapterFactory::class));
+
+        Http::assertNothingSent();
+        $this->assertDatabaseHas('product_channel_mappings', [
+            'product_id' => $product->id,
+            'channel_shop_id' => $this->shop->id,
+            'sync_status' => ProductChannelMapping::STATUS_PENDING,
+        ]);
+    }
+
+    public function test_stock_sync_uses_critical_queue_and_coalesces_duplicate_events(): void
+    {
+        $job = new SyncProductToChannelJob('product-1', self::SHOP_ID, 'sync_stock');
+
+        $this->assertSame(
+            config('queue.routing.stock_critical.connection'),
+            $job->connection,
+        );
+        $this->assertSame(
+            config('queue.routing.stock_critical.queue'),
+            $job->queue,
+        );
+        $this->assertSame(
+            'product-sync:stock:sync_stock:product-1:'.self::SHOP_ID.':critical',
+            $job->uniqueId(),
+        );
+
+        $bulkJob = new SyncProductToChannelJob(
+            'product-1',
+            self::SHOP_ID,
+            'sync_stock',
+            null,
+            null,
+            null,
+            'bulk',
+        );
+
+        $this->assertSame(config('queue.routing.stock_default.queue'), $bulkJob->queue);
+        $this->assertNotSame($job->uniqueId(), $bulkJob->uniqueId());
+
+        $variantJob = new SyncStockToChannelsJob('variant-1');
+
+        $this->assertSame(config('queue.routing.stock_critical.queue'), $variantJob->queue);
+        $this->assertSame('variant-stock:variant-1:*', $variantJob->uniqueId());
     }
 
     public function test_shadow_mode_silences_both_write_axes(): void
@@ -182,26 +245,26 @@ class ChannelSyncAxesTest extends TestCase
         $this->shop->forceFill(['order_sync_enabled' => false])->save();
 
         $payload = [
-            'shop_id'   => (int) self::SHOP_ID,
-            'code'      => 3,
+            'shop_id' => (int) self::SHOP_ID,
+            'code' => 3,
             'timestamp' => 1754000000,
-            'data'      => ['ordersn' => 'SO-XYZ-1', 'status' => 'READY_TO_SHIP'],
+            'data' => ['ordersn' => 'SO-XYZ-1', 'status' => 'READY_TO_SHIP'],
         ];
 
         $eventKey = ProcessShopeeWebhook::idempotencyKey($payload);
 
         ChannelWebhookInbox::create([
-            'channel'     => 'shopee',
-            'event_key'   => $eventKey,
-            'topic'       => '3',
-            'payload'     => $payload,
-            'status'      => WebhookInboxStatus::RECEIVED->value,
+            'channel' => 'shopee',
+            'event_key' => $eventKey,
+            'topic' => '3',
+            'payload' => $payload,
+            'status' => WebhookInboxStatus::RECEIVED->value,
             'received_at' => now(),
         ]);
 
         (new ProcessShopeeWebhook($payload))->handle(
-            app(\Modules\Channel\Services\ShopeeOrderService::class),
-            app(\Modules\Channel\Services\ChannelDownloadService::class),
+            app(ShopeeOrderService::class),
+            app(ChannelDownloadService::class),
         );
 
         $inbox = ChannelWebhookInbox::where('event_key', $eventKey)->first();

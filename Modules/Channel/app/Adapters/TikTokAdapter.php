@@ -12,6 +12,7 @@ use Modules\Channel\Services\TikTokImageUploader;
 use Modules\Channel\Services\TikTokProductMapper;
 use Modules\Channel\Services\TikTokProductService;
 use Modules\Channel\Services\TikTokToInternalProductMapper;
+use Modules\Channel\Support\ChannelVariantMappingResolver;
 use Modules\Product\Models\Product;
 
 class TikTokAdapter implements MarketplaceAdapterInterface
@@ -328,9 +329,7 @@ class TikTokAdapter implements MarketplaceAdapterInterface
         $priceSkus = [];
 
         foreach ($product->variants as $variant) {
-            $mapping = $variant->channelMappings()->whereHas('channelMapping', function($q) use($shop) {
-                $q->where('channel_shop_id', $shop->id);
-            })->first();
+            $mapping = ChannelVariantMappingResolver::forShop($variant, $shop);
 
             if ($mapping && $mapping->external_sku_id && $mapping->sync_enabled) {
                 $availableQty = (int) ($stockByVariant[$variant->id] ?? 0);
@@ -389,9 +388,7 @@ class TikTokAdapter implements MarketplaceAdapterInterface
         $inventorySkus = [];
 
         foreach ($product->variants as $variant) {
-            $mapping = $variant->channelMappings()->whereHas('channelMapping', function($q) use($shop) {
-                $q->where('channel_shop_id', $shop->id);
-            })->first();
+            $mapping = ChannelVariantMappingResolver::forShop($variant, $shop);
 
             if ($mapping && $mapping->external_sku_id && $mapping->sync_enabled) {
                 $availableQty = (int) ($stockByVariant[$variant->id] ?? 0);

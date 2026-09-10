@@ -9,6 +9,7 @@ use Modules\Channel\Services\ChannelStockResolver;
 use Modules\Channel\Services\WooCommerceClient;
 use Modules\Channel\Services\WooCommerceProductMapper;
 use Modules\Channel\Services\WooCommerceToInternalProductMapper;
+use Modules\Channel\Support\ChannelVariantMappingResolver;
 use Modules\Product\Models\Product;
 
 class WooCommerceAdapter implements MarketplaceAdapterInterface
@@ -131,9 +132,7 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
         $isVariable = $product->variants->count() > 1;
 
         foreach ($product->variants as $variant) {
-            $mapping = $variant->channelMappings()->whereHas('channelMapping', function ($q) use ($shop) {
-                $q->where('channel_shop_id', $shop->id);
-            })->first();
+            $mapping = ChannelVariantMappingResolver::forShop($variant, $shop);
 
             if (! $mapping || ! $mapping->sync_enabled || empty($variant->sku)) {
                 continue;
@@ -190,9 +189,7 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
         $isVariable = $product->variants->count() > 1;
 
         foreach ($product->variants as $variant) {
-            $mapping = $variant->channelMappings()->whereHas('channelMapping', function ($q) use ($shop) {
-                $q->where('channel_shop_id', $shop->id);
-            })->first();
+            $mapping = ChannelVariantMappingResolver::forShop($variant, $shop);
 
             if (! $mapping || ! $mapping->sync_enabled || empty($variant->sku)) {
                 continue;
