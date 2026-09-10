@@ -577,7 +577,6 @@ class ShipmentService
             }
 
             $order = Order::query()
-                ->where('status', 'packed')
                 ->where('location_id', $shipment->location_id)
                 ->where(function ($q) use ($barcode) {
                     $q->where('salesorder_no', $barcode)
@@ -590,7 +589,7 @@ class ShipmentService
             if (! $order) {
                 throw new ScanRejectedException(
                     'not_found',
-                    "Pesanan '{$barcode}' tidak ditemukan atau belum packed."
+                    "Pesanan '{$barcode}' tidak ditemukan pada lokasi pengiriman ini."
                 );
             }
 
@@ -626,6 +625,14 @@ class ShipmentService
                 throw new ScanRejectedException(
                     'order_cancel_requested',
                     "Pesanan {$order->salesorder_no} sedang MINTA BATAL (req cancel) — cek dulu sebelum dimanifestkan."
+                );
+            }
+
+            if ($order->status !== 'packed') {
+                throw new ScanRejectedException(
+                    'not_packed',
+                    "Pesanan '{$barcode}' berstatus '{$order->status}' dan tidak dapat dimasukkan ke pengiriman. "
+                        ."Hanya pesanan dengan status 'packed' yang dapat dipindai."
                 );
             }
 

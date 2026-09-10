@@ -65,6 +65,7 @@ class ShipmentScanGuardTest extends TestCase
         ?bool $channelInstant = null,
         ?string $source = null,
         ?string $channelOrderNo = null,
+        string $status = 'packed',
     ): array {
         $orderId = Str::uuid()->toString();
         $no = 'SO-SG-'.substr($orderId, 0, 6);
@@ -75,7 +76,7 @@ class ShipmentScanGuardTest extends TestCase
             'source' => $source,
             'is_manual' => $source === null,
             'location_id' => $locationId,
-            'status' => 'packed',
+            'status' => $status,
             'is_canceled' => $isCanceled,
             'cancel_requested_at' => $cancelRequestedAt,
             'shipping_provider' => $provider,
@@ -138,6 +139,31 @@ class ShipmentScanGuardTest extends TestCase
             'shipment_id' => $shipmentId,
             'order_id' => $orderId,
         ]);
+    }
+
+    public function test_scan_explains_when_order_is_not_packed(): void
+    {
+        $loc = $this->seedLocation();
+        $shipmentId = $this->seedShipment($loc, 'SPX Instant', 'INSTANT');
+        $channelOrderNo = 'SHOPEE-CHANNEL-ORDER-SHIPPED';
+        [, $orderNo] = $this->seedPackedOrder(
+            $loc,
+            'SPX Sameday',
+            shippingType: 'SAME_DAY',
+            channelInstant: true,
+            source: 'shopee',
+            channelOrderNo: $channelOrderNo,
+            status: 'shipped',
+        );
+
+        try {
+            app(ShipmentService::class)->scanAndAddOrder($shipmentId, $channelOrderNo);
+            $this->fail('Expected ScanRejectedException for a non-packed order.');
+        } catch (ScanRejectedException $e) {
+            $this->assertSame('not_packed', $e->reason);
+            $this->assertStringContainsString("berstatus 'shipped'", $e->getMessage());
+            $this->assertStringNotContainsString($orderNo, $e->getMessage());
+        }
     }
 
     public function test_allows_scan_for_gtl_and_goto_logistics(): void
