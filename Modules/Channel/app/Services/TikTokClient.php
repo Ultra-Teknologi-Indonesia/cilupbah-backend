@@ -115,6 +115,12 @@ class TikTokClient
     {
         $resolved = TikTokErrorCatalog::resolve($code, $message);
 
+        // HTTP 429 is transient even when the response carries an unknown code.
+        if ((int) ($logContext['http_status'] ?? 0) === 429) {
+            $resolved['category'] = TikTokErrorCatalog::RETRYABLE;
+            $resolved['message'] = 'Batas permintaan TikTok Shop tercapai. Sistem akan mencoba lagi otomatis.';
+        }
+
         Log::error('TikTok API Error', $logContext + ['category' => $resolved['category']]);
 
         if ($resolved['category'] === TikTokErrorCatalog::TOKEN) {
@@ -239,6 +245,14 @@ class TikTokClient
 
                 $data = $resp->json();
                 $code = isset($data['code']) ? (int) $data['code'] : null;
+
+                if ($resp->status() === 429 || in_array($code, [36009002, 12052109], true)) {
+                    throw new TikTokApiException(
+                        (string) ($code ?? 'http_429'),
+                        TikTokErrorCatalog::RETRYABLE,
+                        'Batas permintaan TikTok Shop tercapai. Sistem akan mencoba lagi otomatis.',
+                    );
+                }
 
                 if (in_array($code, [40100, 40102, 40103], true)) {
                     throw new TokenExpiredException($shopCipher, $data['message'] ?? 'Access token expired');

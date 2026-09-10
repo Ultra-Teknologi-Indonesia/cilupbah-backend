@@ -7,7 +7,6 @@ use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -21,6 +20,7 @@ use Modules\Channel\Services\WebhookProductHandler;
 use Modules\Channel\Support\ChannelOrderIntakeGate;
 use Modules\Channel\Support\ChannelOrderPullGuard;
 use Modules\Channel\Support\WebhookFailureHandler;
+use Modules\Channel\Support\WebhookRetryPolicy;
 use Modules\Outbound\Jobs\RefreshInstantTrackingJob;
 use Modules\Outbound\Models\Shipment;
 use Modules\Outbound\Models\ShipmentTrackingEvent;
@@ -32,8 +32,7 @@ use Modules\Sales\Services\SalesOrderService;
 class ProcessTikTokWebhook implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-
-    public int $tries = 3;
+    use WebhookRetryPolicy;
 
     public array $backoff = [10, 60, 300];
 
@@ -110,11 +109,6 @@ class ProcessTikTokWebhook implements ShouldBeUnique, ShouldQueue
             5, 15, 37, 50 => config('queue.names.tiktok_catalog', 'tiktok-catalog'),
             default => config('queue.names.tiktok_webhooks', 'tiktok-webhooks'),
         };
-    }
-
-    public function middleware(): array
-    {
-        return [new RateLimited('tiktok_api')];
     }
 
     public static function idempotencyKey(array $payload): string

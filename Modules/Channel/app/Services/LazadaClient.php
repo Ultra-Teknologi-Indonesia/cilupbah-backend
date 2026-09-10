@@ -14,6 +14,10 @@ class LazadaClient
 
     protected const TRANSIENT_MARKERS = [
         'api access frequency exceeds the limit',
+        'rate limit',
+        'too many request',
+        'too many requests',
+        '429',
         'rpc timeout',
         'servicetimeout',
         'service is currently unavailable',
@@ -113,7 +117,10 @@ class LazadaClient
             if ($response->failed()) {
                 $message = is_array($data) ? ($data['message'] ?? $response->body()) : $response->body();
 
-                if ($attempt < $attemptLimit && $this->isTransient((string) ($data['code'] ?? ''), (string) $message)) {
+                if ($attempt < $attemptLimit && (
+                    $response->status() === 429
+                    || $this->isTransient((string) ($data['code'] ?? ''), (string) $message)
+                )) {
                     Log::warning('Lazada API HTTP transien, retry', ['path' => $apiPath, 'attempt' => $attempt, 'status' => $response->status()]);
                     $this->backoff($attempt);
 

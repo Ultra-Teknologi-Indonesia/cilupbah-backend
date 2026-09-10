@@ -7,7 +7,6 @@ use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +20,7 @@ use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Support\ChannelOrderIntakeGate;
 use Modules\Channel\Support\ChannelOrderPullGuard;
 use Modules\Channel\Support\WebhookFailureHandler;
+use Modules\Channel\Support\WebhookRetryPolicy;
 use Modules\Outbound\Jobs\RefreshInstantTrackingJob;
 use Modules\Outbound\Models\Shipment;
 use Modules\Outbound\Models\ShipmentTrackingEvent;
@@ -33,8 +33,7 @@ use Modules\Sales\Services\SalesOrderService;
 class ProcessLazadaWebhook implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-
-    public int $tries = 3;
+    use WebhookRetryPolicy;
 
     public array $backoff = [10, 60, 300];
 
@@ -83,11 +82,6 @@ class ProcessLazadaWebhook implements ShouldBeUnique, ShouldQueue
             self::MSG_PRODUCT_DELETE => config('queue.names.lazada_catalog', 'lazada-catalog'),
             default => config('queue.names.lazada_webhooks', 'lazada-webhooks'),
         };
-    }
-
-    public function middleware(): array
-    {
-        return [new RateLimited('webhook_download')];
     }
 
     public static function idempotencyKey(array $payload): string

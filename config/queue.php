@@ -43,7 +43,8 @@ return [
             'driver' => 'redis',
             'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
             'queue' => env('REDIS_QUEUE', 'default'),
-            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 90),
+
+            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 180),
             'block_for' => null,
 
             'after_commit' => true,
@@ -143,6 +144,8 @@ return [
         'exports_sheet' => env('QUEUE_NAME_EXPORTS_SHEET', 'exports-sheet'),
         'catalog_exports' => env('QUEUE_NAME_CATALOG_EXPORTS', 'catalog-exports'),
     ],
+
+    'webhook_retry_window_hours' => (int) env('WEBHOOK_RETRY_WINDOW_HOURS', 24),
 
     'dedicated_queues' => [
         env('QUEUE_NAME_EXPORTS_PDF', 'exports-pdf'),

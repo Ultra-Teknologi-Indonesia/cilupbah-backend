@@ -2,6 +2,7 @@
 
 namespace Modules\Channel\Tests\Feature;
 
+use Carbon\Carbon;
 use Modules\Channel\Jobs\ProcessLazadaWebhook;
 use Modules\Channel\Jobs\ProcessShopeeWebhook;
 use Modules\Channel\Jobs\ProcessTikTokWebhook;
@@ -71,5 +72,23 @@ class WebhookQueueTieringTest extends TestCase
         $this->assertSame(ProcessTikTokWebhook::idempotencyKey($tiktok), (new ProcessTikTokWebhook($tiktok))->uniqueId());
         $this->assertSame(ProcessLazadaWebhook::idempotencyKey($lazada), (new ProcessLazadaWebhook($lazada))->uniqueId());
         $this->assertSame(ProcessWooCommerceWebhook::idempotencyKey('shop-1', 'order.updated', $woocommerce), (new ProcessWooCommerceWebhook('shop-1', 'order.updated', '1', $woocommerce))->uniqueId());
+    }
+
+    public function test_webhook_jobs_retry_until_a_deadline_instead_of_fixed_attempts(): void
+    {
+        $jobs = [
+            new ProcessShopeeWebhook([]),
+            new ProcessTikTokWebhook([]),
+            new ProcessLazadaWebhook([]),
+            new ProcessWooCommerceWebhook('shop-1', 'order.updated', '1', []),
+        ];
+
+        foreach ($jobs as $job) {
+            $this->assertSame(0, $job->tries);
+            $this->assertGreaterThanOrEqual(
+                Carbon::now()->addHours(23)->getTimestamp(),
+                $job->retryUntil()->getTimestamp(),
+            );
+        }
     }
 }

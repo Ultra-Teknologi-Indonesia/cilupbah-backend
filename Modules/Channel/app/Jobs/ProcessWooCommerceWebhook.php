@@ -7,7 +7,6 @@ use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -20,14 +19,14 @@ use Modules\Channel\Services\WooCommerceOrderService;
 use Modules\Channel\Support\ChannelOrderIntakeGate;
 use Modules\Channel\Support\ChannelOrderPullGuard;
 use Modules\Channel\Support\WebhookFailureHandler;
+use Modules\Channel\Support\WebhookRetryPolicy;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Sales\Jobs\ProcessChannelReturnJob;
 
 class ProcessWooCommerceWebhook implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-
-    public int $tries = 3;
+    use WebhookRetryPolicy;
 
     public array $backoff = [10, 60, 300];
 
@@ -42,11 +41,6 @@ class ProcessWooCommerceWebhook implements ShouldBeUnique, ShouldQueue
         public array $payload = [],
     ) {
         $this->onQueue(config('queue.names.webhook_downloads'));
-    }
-
-    public function middleware(): array
-    {
-        return [new RateLimited('webhook_download')];
     }
 
     public static function idempotencyKey(string $shopId, string $topic, array $payload): string

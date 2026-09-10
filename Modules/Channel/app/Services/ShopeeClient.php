@@ -177,6 +177,17 @@ class ShopeeClient
                     $this->raiseApiError($apiPath, $error, $data, $shopId, $response->status());
                 } catch (TokenExpiredException $e) {
                     throw $e;
+                } catch (ShopeeApiException $e) {
+                    // A pooled 429 must retry the event, not become a partial success.
+                    if ($e->isRetryable()) {
+                        throw $e;
+                    }
+
+                    Log::warning('Shopee pooled API request failed', [
+                        'path' => $apiPath,
+                        'request_key' => (string) $key,
+                        'error' => $e->getMessage(),
+                    ]);
                 } catch (\Throwable $e) {
                     Log::warning('Shopee pooled API request failed', [
                         'path' => $apiPath,
@@ -190,6 +201,14 @@ class ShopeeClient
             }
 
             if ($response->failed()) {
+                if ($response->status() === 429) {
+                    throw new ShopeeApiException(
+                        'http_429',
+                        ShopeeErrorCatalog::RETRYABLE,
+                        'Batas permintaan Shopee tercapai. Sistem akan mencoba lagi otomatis.',
+                    );
+                }
+
                 Log::warning('Shopee pooled API HTTP request failed', [
                     'path' => $apiPath,
                     'request_key' => (string) $key,
@@ -208,6 +227,12 @@ class ShopeeClient
     protected function raiseApiError(string $apiPath, string $error, array $data, string $shopId, ?int $httpStatus = null): void
     {
         $resolved = ShopeeErrorCatalog::resolve($error, $data['message'] ?? null, $this->extractErrorInfo($data));
+
+        // HTTP 429 is transient even when Shopee returns a new JSON error code.
+        if ($httpStatus === 429) {
+            $resolved['category'] = ShopeeErrorCatalog::RETRYABLE;
+            $resolved['message'] = 'Batas permintaan Shopee tercapai. Sistem akan mencoba lagi otomatis.';
+        }
 
         Log::error('Shopee API Error', [
             'path' => $apiPath,

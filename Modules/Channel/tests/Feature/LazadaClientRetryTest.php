@@ -28,7 +28,7 @@ class LazadaClientRetryTest extends TestCase
                 ->push(['code' => '0', 'data' => ['ok' => true]], 200),
         ]);
 
-        $result = (new LazadaClient())->request('GET', '/seller/get', [], 'tok');
+        $result = (new LazadaClient)->request('GET', '/seller/get', [], 'tok');
 
         $this->assertSame('0', $result['code']);
         $this->assertTrue($result['data']['ok']);
@@ -43,9 +43,23 @@ class LazadaClientRetryTest extends TestCase
                 ->push(['code' => '0', 'data' => ['products' => []]], 200),
         ]);
 
-        $result = (new LazadaClient())->request('GET', '/products/get', ['filter' => 'all'], 'tok');
+        $result = (new LazadaClient)->request('GET', '/products/get', ['filter' => 'all'], 'tok');
 
         $this->assertSame('0', $result['code']);
+        Http::assertSentCount(2);
+    }
+
+    public function test_retries_on_http_429_then_succeeds(): void
+    {
+        Http::fake([
+            'api.lazada.co.id/rest/*' => Http::sequence()
+                ->push(['message' => 'temporary throttling'], 429)
+                ->push(['code' => '0', 'data' => ['ok' => true]], 200),
+        ]);
+
+        $result = (new LazadaClient)->request('GET', '/seller/get', [], 'tok');
+
+        $this->assertTrue($result['data']['ok']);
         Http::assertSentCount(2);
     }
 
@@ -58,7 +72,7 @@ class LazadaClientRetryTest extends TestCase
         $this->expectException(\Exception::class);
 
         try {
-            (new LazadaClient())->request('GET', '/orders/get', [], 'tok');
+            (new LazadaClient)->request('GET', '/orders/get', [], 'tok');
         } finally {
             Http::assertSentCount(1);
         }
@@ -76,7 +90,7 @@ class LazadaClientRetryTest extends TestCase
         $this->expectException(\Exception::class);
 
         try {
-            (new LazadaClient())->request('GET', '/products/get', [], 'tok', 2, 1);
+            (new LazadaClient)->request('GET', '/products/get', [], 'tok', 2, 1);
         } finally {
             Http::assertSentCount(1);
         }
@@ -88,13 +102,13 @@ class LazadaClientRetryTest extends TestCase
             'api.lazada.co.id/rest/*' => function () {
                 throw new ConnectionException(
                     'cURL error 28: Operation timed out after 1000 milliseconds with 0 bytes received for '
-                    . 'https://api.lazada.co.id/rest/products/get?access_token=secret-token&sign=secret-sign'
+                    .'https://api.lazada.co.id/rest/products/get?access_token=secret-token&sign=secret-sign'
                 );
             },
         ]);
 
         try {
-            (new LazadaClient())->request('GET', '/products/get', [], 'secret-token', 1, 1);
+            (new LazadaClient)->request('GET', '/products/get', [], 'secret-token', 1, 1);
             $this->fail('Expected a Lazada connection exception.');
         } catch (\Exception $e) {
             $this->assertStringContainsString('request timeout setelah 1 detik', $e->getMessage());

@@ -4,6 +4,8 @@ namespace Modules\Channel\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Modules\Channel\Exceptions\ShopeeApiException;
+use Modules\Channel\Exceptions\TikTokApiException;
 use Modules\Channel\Exceptions\TokenExpiredException;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
@@ -90,6 +92,25 @@ class ChannelHttp403TokenMappingTest extends TestCase
         app(ShopeeOrderService::class)->getLogistics('778899');
     }
 
+    public function test_shopee_http_429_selalu_retryable(): void
+    {
+        $this->makeShopeeShop();
+
+        Http::fake([
+            'partner.shopeemobile.com/*' => Http::response([
+                'error' => 'new_rate_limit_code',
+                'message' => 'Too Many Requests',
+            ], 429),
+        ]);
+
+        try {
+            app(ShopeeOrderService::class)->getLogistics('778899');
+            $this->fail('Expected a retryable Shopee API exception.');
+        } catch (ShopeeApiException $e) {
+            $this->assertTrue($e->isRetryable());
+        }
+    }
+
     public function test_tiktok_401_kode_token_dipetakan_jadi_token_expired(): void
     {
         Http::fake([
@@ -101,7 +122,7 @@ class ChannelHttp403TokenMappingTest extends TestCase
 
         $this->expectException(TokenExpiredException::class);
 
-        (new TikTokClient())->request('GET', '/order/202309/orders', [], [], 'stale-token');
+        (new TikTokClient)->request('GET', '/order/202309/orders', [], [], 'stale-token');
     }
 
     public function test_tiktok_error_http_tanpa_kode_tetap_runtime_exception(): void
@@ -113,7 +134,24 @@ class ChannelHttp403TokenMappingTest extends TestCase
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('TikTok API HTTP Error [504]');
 
-        (new TikTokClient())->request('GET', '/order/202309/orders', [], [], 'stale-token');
+        (new TikTokClient)->request('GET', '/order/202309/orders', [], [], 'stale-token');
+    }
+
+    public function test_tiktok_http_429_selalu_retryable(): void
+    {
+        Http::fake([
+            'open-api.tiktokglobalshop.com/*' => Http::response([
+                'code' => 99999999,
+                'message' => 'Too Many Requests',
+            ], 429),
+        ]);
+
+        try {
+            (new TikTokClient)->request('GET', '/order/202309/orders', [], [], 'stale-token');
+            $this->fail('Expected a retryable TikTok API exception.');
+        } catch (TikTokApiException $e) {
+            $this->assertTrue($e->isRetryable());
+        }
     }
 
     public function test_lazada_403_kode_token_dipetakan_jadi_token_expired(): void
@@ -127,6 +165,6 @@ class ChannelHttp403TokenMappingTest extends TestCase
 
         $this->expectException(TokenExpiredException::class);
 
-        (new LazadaClient())->request('GET', '/seller/get', [], 'stale-token');
+        (new LazadaClient)->request('GET', '/seller/get', [], 'stale-token');
     }
 }

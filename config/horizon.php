@@ -266,10 +266,27 @@ return [
             'memory' => 128,
             'nice' => 5,
         ],
+
+        'supervisor-channel-webhook-orders' => [
+            'connection' => 'redis',
+            'queue' => [
+                config('queue.names.shopee_orders', 'shopee-orders'),
+                config('queue.names.tiktok_orders', 'tiktok-orders'),
+                config('queue.names.lazada_orders', 'lazada-orders'),
+            ],
+            'balance' => 'simple',
+            'minProcesses' => 1,
+            'maxProcesses' => 3,
+            'maxJobs' => 250,
+            'timeout' => 120,
+            'tries' => 3,
+            'backoff' => [10, 60, 300],
+            'memory' => 256,
+            'nice' => 0,
+        ],
         'supervisor-tiktok-webhooks' => [
             'connection' => 'redis',
             'queue' => [
-                env('QUEUE_NAME_TIKTOK_ORDERS', 'tiktok-orders'),
                 env('QUEUE_NAME_TIKTOK_PACKAGES', 'tiktok-packages'),
                 env('QUEUE_NAME_TIKTOK_WEBHOOKS', 'tiktok-webhooks'),
                 env('QUEUE_NAME_TIKTOK_AFTERSALES', 'tiktok-aftersales'),
@@ -289,7 +306,6 @@ return [
         'supervisor-shopee-webhooks' => [
             'connection' => 'redis',
             'queue' => [
-                env('QUEUE_NAME_SHOPEE_ORDERS', 'shopee-orders'),
                 env('QUEUE_NAME_SHOPEE_TRACKING', 'shopee-tracking'),
                 env('QUEUE_NAME_SHOPEE_WEBHOOKS', 'shopee-webhooks'),
                 env('QUEUE_NAME_SHOPEE_AFTERSALES', 'shopee-aftersales'),
@@ -310,7 +326,6 @@ return [
         'supervisor-lazada-webhooks' => [
             'connection' => 'redis',
             'queue' => [
-                env('QUEUE_NAME_LAZADA_ORDERS', 'lazada-orders'),
                 env('QUEUE_NAME_LAZADA_FULFILLMENT', 'lazada-fulfillment'),
                 env('QUEUE_NAME_LAZADA_WEBHOOKS', 'lazada-webhooks'),
                 env('QUEUE_NAME_LAZADA_AFTERSALES', 'lazada-aftersales'),
@@ -387,16 +402,23 @@ return [
                 'balanceCooldown' => 2,
                 'memory' => 256,
             ],
+            'supervisor-channel-webhook-orders' => [
+                'minProcesses' => 2,
+                'maxProcesses' => 4,
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 2,
+                'memory' => 256,
+            ],
             'supervisor-shopee-webhooks' => [
                 'minProcesses' => 1,
-                'maxProcesses' => 2,
+                'maxProcesses' => 3,
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 2,
                 'memory' => 256,
             ],
             'supervisor-lazada-webhooks' => [
                 'minProcesses' => 1,
-                'maxProcesses' => 1,
+                'maxProcesses' => 2,
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 2,
                 'memory' => 256,
