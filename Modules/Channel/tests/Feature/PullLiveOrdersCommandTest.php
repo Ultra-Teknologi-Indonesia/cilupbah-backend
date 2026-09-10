@@ -7,9 +7,11 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Exceptions\ChannelOrderPullIncompleteException;
 use Modules\Channel\Jobs\PullChannelOrdersJob;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Services\ChannelOrderPullLeaseService;
+use Modules\Channel\Services\ShopeeOrderService;
 use Tests\TestCase;
 
 class PullLiveOrdersCommandTest extends TestCase
@@ -111,21 +113,25 @@ class PullLiveOrdersCommandTest extends TestCase
     {
         $this->fakeEmptyOrderList();
         $leases = app(ChannelOrderPullLeaseService::class);
-        $token = $leases->acquire($this->liveShop, 300);
+        $from = now()->subMinutes(10);
+        $to = now();
+        $token = $leases->acquire($this->liveShop, 300, $from, $to);
 
         $this->assertNotNull($token);
 
         (new PullChannelOrdersJob(
             $this->liveShop->id,
             $token,
-            now()->subMinutes(10)->toIso8601String(),
-            now()->toIso8601String(),
+            $from->toIso8601String(),
+            $to->toIso8601String(),
         ))->handle($leases, app(ChannelShopRepository::class));
 
         $shop = $this->liveShop->fresh();
         $this->assertNull($shop->order_pull_lease_token);
         $this->assertNull($shop->order_pull_locked_until);
-        $this->assertNotNull($shop->last_order_synced_at);
+        $this->assertSame($to->timestamp, $shop->last_order_synced_at->timestamp);
+        $this->assertNull($shop->order_pull_window_from);
+        $this->assertNull($shop->order_pull_window_to);
     }
 
     public function test_leased_pull_job_releases_store_when_channel_times_out(): void
@@ -135,14 +141,16 @@ class PullLiveOrdersCommandTest extends TestCase
         ]);
 
         $leases = app(ChannelOrderPullLeaseService::class);
-        $token = $leases->acquire($this->liveShop, 300);
+        $from = now()->subMinutes(10);
+        $to = now();
+        $token = $leases->acquire($this->liveShop, 300, $from, $to);
 
         try {
             (new PullChannelOrdersJob(
                 $this->liveShop->id,
                 $token,
-                now()->subMinutes(10)->toIso8601String(),
-                now()->toIso8601String(),
+                $from->toIso8601String(),
+                $to->toIso8601String(),
             ))->handle($leases, app(ChannelShopRepository::class));
             $this->fail('Job seharusnya gagal saat channel timeout.');
         } catch (\RuntimeException) {
@@ -153,5 +161,48 @@ class PullLiveOrdersCommandTest extends TestCase
         $this->assertNull($shop->order_pull_lease_token);
         $this->assertNull($shop->order_pull_locked_until);
         $this->assertSame(ChannelShop::ORDER_SYNC_PROBLEM, $shop->order_sync_status);
+        $this->assertSame($from->timestamp, $shop->order_pull_window_from->timestamp);
+        $this->assertSame($to->timestamp, $shop->order_pull_window_to->timestamp);
+        $this->assertSame(1, $shop->order_pull_attempts);
+        $this->assertNotNull($shop->order_pull_next_attempt_at);
+    }
+
+    public function test_incomplete_store_pull_keeps_the_same_window_for_idempotent_retry(): void
+    {
+        $from = now()->subMinutes(10);
+        $to = now();
+        $leases = app(ChannelOrderPullLeaseService::class);
+        $token = $leases->acquire($this->liveShop, 300, $from, $to);
+
+        $this->mock(ShopeeOrderService::class, function ($mock): void {
+            $mock->shouldReceive('pullOrders')
+                ->once()
+                ->andThrow(ChannelOrderPullIncompleteException::forOrders(
+                    'shopee',
+                    $this->liveShop->shop_id,
+                    ['ORDER-YANG-GAGAL'],
+                ));
+        });
+
+        try {
+            (new PullChannelOrdersJob(
+                $this->liveShop->id,
+                $token,
+                $from->toIso8601String(),
+                $to->toIso8601String(),
+            ))->handle($leases, app(ChannelShopRepository::class));
+            $this->fail('Job seharusnya gagal saat ada order yang belum lengkap.');
+        } catch (\RuntimeException) {
+            // Expected: cursor must not advance until every order is complete.
+        }
+
+        $shop = $this->liveShop->fresh();
+        $this->assertNull($shop->last_order_synced_at);
+        $this->assertSame(ChannelShop::ORDER_SYNC_PROBLEM, $shop->order_sync_status);
+        $this->assertNull($shop->order_pull_lease_token);
+        $this->assertSame($from->timestamp, $shop->order_pull_window_from->timestamp);
+        $this->assertSame($to->timestamp, $shop->order_pull_window_to->timestamp);
+        $this->assertSame(1, $shop->order_pull_attempts);
+        $this->assertNotNull($shop->order_pull_next_attempt_at);
     }
 }

@@ -149,17 +149,28 @@ class PullLiveOrdersCommand extends Command
         $failed = 0;
 
         foreach ($shops as $shop) {
-            $windowStart = $explicitFrom
-                ?: ($shop->last_order_synced_at
-                    ? $shop->last_order_synced_at->copy()->subMinutes($overlapMinutes)
-                    : $windowEnd->copy()->subHours($hours));
+            $hasPendingWindow = ! $explicitFrom
+                && ! $explicitTo
+                && $shop->order_pull_window_from
+                && $shop->order_pull_window_to;
 
-            if ($windowStart->greaterThanOrEqualTo($windowEnd)) {
+            $windowStart = $explicitFrom
+                ?: ($hasPendingWindow
+                    ? $shop->order_pull_window_from->copy()
+                    : ($shop->last_order_synced_at
+                        ? $shop->last_order_synced_at->copy()->subMinutes($overlapMinutes)
+                        : $windowEnd->copy()->subHours($hours)));
+
+            $shopWindowEnd = $hasPendingWindow
+                ? $shop->order_pull_window_to->copy()
+                : $windowEnd;
+
+            if ($windowStart->greaterThanOrEqualTo($shopWindowEnd)) {
                 $rows[] = [$shop->shop_name, $shop->channel->code ?? 'unknown', '-', 'window tidak valid'];
                 continue;
             }
 
-            $token = $leases->acquire($shop, $leaseSeconds);
+            $token = $leases->acquire($shop, $leaseSeconds, $windowStart, $shopWindowEnd);
             if ($token === null) {
                 $rows[] = [$shop->shop_name, $shop->channel->code ?? 'unknown', '-', 'masih diproses'];
                 continue;
@@ -170,13 +181,13 @@ class PullLiveOrdersCommand extends Command
                     (string) $shop->id,
                     $token,
                     $windowStart->toIso8601String(),
-                    $windowEnd->toIso8601String(),
+                    $shopWindowEnd->toIso8601String(),
                 )->onQueue((string) config('queue.names.channel_sync', 'channel-sync'));
 
                 $rows[] = [$shop->shop_name, $shop->channel->code ?? 'unknown', '-', 'diantrikan'];
             } catch (\Throwable $e) {
+                $shopRepository->markScheduledOrderPullFailed((string) $shop->id, $token, $e->getMessage());
                 $leases->release((string) $shop->id, $token);
-                $shopRepository->markOrderSyncProblem((string) $shop->id, $e->getMessage());
                 report($e);
                 $rows[] = [$shop->shop_name, $shop->channel->code ?? 'unknown', '-', 'GAGAL enqueue: '.$e->getMessage()];
                 $failed++;

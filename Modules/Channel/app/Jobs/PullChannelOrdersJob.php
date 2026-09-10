@@ -57,7 +57,15 @@ final class PullChannelOrdersJob implements ShouldQueue
                 throw new \RuntimeException(trim(Artisan::output()) ?: 'Channel order pull gagal.');
             }
 
-            $shops->markOrderSyncOk($shop->id);
+            $completed = $shops->markScheduledOrderPullCompleted(
+                $shop->id,
+                $this->leaseToken,
+                Carbon::parse($this->to),
+            );
+
+            if (! $completed) {
+                throw new \RuntimeException('Lease pull order hilang sebelum cursor dapat disimpan.');
+            }
 
             Log::info('Scheduled channel order pull completed.', [
                 'channel_shop_id' => $shop->id,
@@ -66,7 +74,7 @@ final class PullChannelOrdersJob implements ShouldQueue
                 'to' => $this->to,
             ]);
         } catch (\Throwable $e) {
-            $shops->markOrderSyncProblem($shop->id, $e->getMessage());
+            $shops->markScheduledOrderPullFailed($shop->id, $this->leaseToken, $e->getMessage());
             throw $e;
         } finally {
             $leases->release($this->channelShopId, $this->leaseToken);
@@ -75,11 +83,15 @@ final class PullChannelOrdersJob implements ShouldQueue
 
     public function failed(\Throwable $e): void
     {
-        app(ChannelOrderPullLeaseService::class)->release($this->channelShopId, $this->leaseToken);
-
         $shop = ChannelShop::query()->find($this->channelShopId);
         if ($shop) {
-            app(ChannelShopRepository::class)->markOrderSyncProblem($shop->id, $e->getMessage());
+            app(ChannelShopRepository::class)->markScheduledOrderPullFailed(
+                $shop->id,
+                $this->leaseToken,
+                $e->getMessage(),
+            );
         }
+
+        app(ChannelOrderPullLeaseService::class)->release($this->channelShopId, $this->leaseToken);
     }
 }

@@ -5,6 +5,7 @@ namespace Modules\Channel\Services;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Exceptions\ChannelCancelException;
+use Modules\Channel\Exceptions\ChannelOrderPullIncompleteException;
 use Modules\Channel\Exceptions\TokenExpiredException;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Outbound\Support\ChannelInstantSignal;
@@ -40,10 +41,20 @@ class ShopeeOrderService
         }
 
         $count = 0;
+        $failedOrderSns = [];
         $shippingChannelTypes = $this->shippingChannelTypes($shopId);
         foreach (array_chunk($orderSns, 50) as $chunk) {
-            foreach ($this->fetchOrderDetails($shop, $chunk) as $order) {
+            $details = $this->fetchOrderDetails($shop, $chunk);
+            $returnedOrderSns = [];
+
+            foreach ($details as $order) {
                 $orderSn = (string) ($order['order_sn'] ?? '');
+                if ($orderSn === '') {
+                    $failedOrderSns[] = '(tanpa order_sn)';
+                    continue;
+                }
+
+                $returnedOrderSns[] = $orderSn;
 
                 try {
                     $internal = $this->mapper->map($order, $shopId, $shippingChannelTypes);
@@ -53,19 +64,27 @@ class ShopeeOrderService
                             'shop_id' => $shopId,
                         ]);
 
+                        $failedOrderSns[] = $orderSn;
                         continue;
                     }
 
                     $count++;
                 } catch (\Throwable $e) {
                     Log::error("Shopee: gagal upsert order {$orderSn}: ".$e->getMessage());
+                    $failedOrderSns[] = $orderSn;
                 }
             }
+
+            // Shopee may return a partial detail response. Treat an omitted
+            // requested order as incomplete, never as a successful pull.
+            $failedOrderSns = array_merge(
+                $failedOrderSns,
+                array_values(array_diff($chunk, $returnedOrderSns)),
+            );
         }
 
-        if ($count > 0) {
-            $this->shopRepository->markIntegrationHealthy($shop->id);
-            $this->shopRepository->markOrderSyncOk($shop->id);
+        if ($failedOrderSns !== []) {
+            throw ChannelOrderPullIncompleteException::forOrders('shopee', $shopId, $failedOrderSns);
         }
 
         return $count;

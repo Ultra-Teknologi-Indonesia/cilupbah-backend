@@ -180,6 +180,101 @@ class ChannelShopRepository
         ChannelShop::where('id', $id)->update($updates);
     }
 
+    public function markScheduledOrderPullCompleted(
+        string $id,
+        string $leaseToken,
+        \DateTimeInterface $pulledThrough,
+    ): bool
+    {
+        return DB::transaction(function () use ($id, $leaseToken, $pulledThrough): bool {
+            $shop = ChannelShop::query()
+                ->whereKey($id)
+                ->where('order_pull_lease_token', $leaseToken)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $shop) {
+                return false;
+            }
+
+            $updates = [
+                'order_sync_status' => ChannelShop::ORDER_SYNC_NORMAL,
+                'last_order_synced_at' => $pulledThrough,
+                'last_order_error' => null,
+                'last_order_error_at' => null,
+                'order_pull_lease_token' => null,
+                'order_pull_locked_until' => null,
+                'order_pull_window_from' => null,
+                'order_pull_window_to' => null,
+                'order_pull_attempts' => 0,
+                'order_pull_next_attempt_at' => null,
+            ];
+
+            if (! $shop->token_expires_at || $shop->token_expires_at->isFuture()) {
+                $updates['integration_status'] = 'normal';
+                $updates['last_error'] = null;
+            }
+
+            $shop->forceFill($updates)->save();
+
+            return true;
+        });
+    }
+
+    /**
+     * Record a failed scheduled pull without discarding its durable window.
+     *
+     * The lease token makes this idempotent: a later Laravel `failed()` hook
+     * cannot double-count a failure already handled by the job itself.
+     */
+    public function markScheduledOrderPullFailed(string $id, string $leaseToken, ?string $message): bool
+    {
+        $result = DB::transaction(function () use ($id, $leaseToken, $message): ?array {
+            $shop = ChannelShop::query()
+                ->whereKey($id)
+                ->where('order_pull_lease_token', $leaseToken)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $shop) {
+                return null;
+            }
+
+            $attempts = min(8, ((int) $shop->order_pull_attempts) + 1);
+            $delaySeconds = min(3600, 60 * (2 ** min(6, $attempts - 1)));
+            $friendly = $this->humanizeError($id, $message);
+
+            $shop->forceFill([
+                'order_sync_status' => ChannelShop::ORDER_SYNC_PROBLEM,
+                'last_order_error' => $friendly ? mb_substr($friendly, 0, 500) : null,
+                'last_order_error_at' => now(),
+                'order_pull_attempts' => $attempts,
+                'order_pull_next_attempt_at' => now()->addSeconds($delaySeconds),
+            ])->save();
+
+            return [
+                'notify' => $shop->getOriginal('order_sync_status') !== ChannelShop::ORDER_SYNC_PROBLEM,
+                'friendly' => $friendly,
+            ];
+        });
+
+        if ($result === null) {
+            return false;
+        }
+
+        if ($result['notify']) {
+            $this->notifyChannelDisconnected(
+                $id,
+                'order_sync_problem',
+                'Pesanan tidak masuk',
+                'Sinkronisasi pesanan dari marketplace bermasalah — pesanan mungkin tidak masuk.',
+                $result['friendly'],
+            );
+        }
+
+        return true;
+    }
+
     public function markOrderSyncProblem(string $id, ?string $message): void
     {
         $previousStatus = ChannelShop::where('id', $id)->value('order_sync_status');

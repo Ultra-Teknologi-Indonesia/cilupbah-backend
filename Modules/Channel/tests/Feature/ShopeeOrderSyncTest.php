@@ -6,6 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Modules\Channel\Jobs\ProcessShopeeWebhook;
+use Modules\Channel\Exceptions\ChannelOrderPullIncompleteException;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\ChannelDownloadService;
@@ -154,6 +155,30 @@ class ShopeeOrderSyncTest extends TestCase
         $this->assertEquals('shopee', $order->source);
         $this->assertEquals('2606SHOPEE01', $order->channel_order_no);
         $this->assertCount(1, $order->items);
+    }
+
+    public function test_pull_orders_fails_closed_when_shopee_omits_a_requested_detail(): void
+    {
+        Http::fake([
+            'partner.shopeemobile.com/api/v2/order/get_order_list*' => Http::response([
+                'response' => [
+                    'order_list' => [
+                        ['order_sn' => '2606SHOPEE01'],
+                        ['order_sn' => '2606SHOPEE02'],
+                    ],
+                    'more' => false,
+                    'next_cursor' => '',
+                ],
+            ], 200),
+            'partner.shopeemobile.com/api/v2/order/get_order_detail*' => Http::response([
+                // API detail response is incomplete: the second requested ID
+                // is intentionally absent and must never advance the cursor.
+                'response' => ['order_list' => [$this->orderDetail()]],
+            ], 200),
+        ]);
+
+        $this->expectException(ChannelOrderPullIncompleteException::class);
+        app(ShopeeOrderService::class)->pullOrders('778899');
     }
 
     public function test_shipping_channel_types_use_explicit_channel_categories_only(): void

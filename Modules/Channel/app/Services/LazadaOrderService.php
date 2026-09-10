@@ -5,6 +5,7 @@ namespace Modules\Channel\Services;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Exceptions\ChannelCancelException;
+use Modules\Channel\Exceptions\ChannelOrderPullIncompleteException;
 use Modules\Channel\Exceptions\ChannelLabelUnsupportedException;
 use Modules\Channel\Exceptions\TokenExpiredException;
 use Modules\Channel\Jobs\ProcessLazadaFulfillmentJob;
@@ -46,6 +47,7 @@ class LazadaOrderService
         $limit = 100;
         $offset = 0;
         $count = 0;
+        $failedOrderIds = [];
 
         $maxPages = 100;
 
@@ -64,7 +66,11 @@ class LazadaOrderService
 
             $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/orders/get', $params, $token));
 
-            $orders = $res['data']['orders'] ?? [];
+            if (! isset($res['data']['orders']) || ! is_array($res['data']['orders'])) {
+                throw new \RuntimeException('Lazada tidak mengembalikan daftar order yang valid.');
+            }
+
+            $orders = $res['data']['orders'];
             if (empty($orders)) {
                 break;
             }
@@ -75,6 +81,10 @@ class LazadaOrderService
                 $orderId = (string) ($order['order_id'] ?? '');
 
                 try {
+                    if ($orderId === '' || ! array_key_exists($orderId, $itemsByOrder)) {
+                        throw new \RuntimeException('Detail item order tidak lengkap.');
+                    }
+
                     $internal = $this->mapper->map($order, $itemsByOrder[$orderId] ?? [], $shopId);
                     $localOrderId = $this->orderService->upsertFromChannel($internal);
                     if (! $localOrderId) {
@@ -82,12 +92,14 @@ class LazadaOrderService
                             'shop_id' => $shopId,
                         ]);
 
+                        $failedOrderIds[] = $orderId;
                         continue;
                     }
 
                     $count++;
                 } catch (\Throwable $e) {
                     Log::error("Lazada: gagal upsert order {$orderId}: ".$e->getMessage());
+                    $failedOrderIds[] = $orderId;
                 }
             }
 
@@ -96,6 +108,14 @@ class LazadaOrderService
             }
 
             $offset += $limit;
+
+            if ($page === $maxPages - 1) {
+                throw ChannelOrderPullIncompleteException::pageLimitReached('lazada', $shopId, $maxPages);
+            }
+        }
+
+        if ($failedOrderIds !== []) {
+            throw ChannelOrderPullIncompleteException::forOrders('lazada', $shopId, $failedOrderIds);
         }
 
         return $count;

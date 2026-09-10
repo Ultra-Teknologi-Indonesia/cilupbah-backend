@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Str;
+use Illuminate\Support\Carbon;
 use Modules\Channel\Models\ChannelShop;
 
 /**
@@ -15,7 +16,12 @@ use Modules\Channel\Models\ChannelShop;
  */
 final class ChannelOrderPullLeaseService
 {
-    public function acquire(ChannelShop $shop, int $seconds): ?string
+    public function acquire(
+        ChannelShop $shop,
+        int $seconds,
+        Carbon $windowFrom,
+        Carbon $windowTo,
+    ): ?string
     {
         $token = (string) Str::uuid();
         $now = now();
@@ -29,9 +35,15 @@ final class ChannelOrderPullLeaseService
                 $query->whereNull('order_pull_locked_until')
                     ->orWhere('order_pull_locked_until', '<=', $now);
             })
+            ->where(function ($query) use ($now): void {
+                $query->whereNull('order_pull_next_attempt_at')
+                    ->orWhere('order_pull_next_attempt_at', '<=', $now);
+            })
             ->update([
                 'order_pull_lease_token' => $token,
                 'order_pull_locked_until' => $now->copy()->addSeconds($seconds),
+                'order_pull_window_from' => $windowFrom,
+                'order_pull_window_to' => $windowTo,
                 'updated_at' => $now,
             ]);
 

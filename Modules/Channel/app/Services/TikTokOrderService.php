@@ -3,6 +3,7 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\Log;
+use Modules\Channel\Exceptions\ChannelOrderPullIncompleteException;
 use Modules\Outbound\Support\ChannelInstantSignal;
 use Modules\Sales\Services\SalesOrderService as OrderService;
 use Modules\Channel\Repositories\ChannelShopRepository;
@@ -81,6 +82,7 @@ class TikTokOrderService
         $timeTo   = $updatedBefore ?: now()->timestamp;
 
         $count = 0;
+        $failedOrderIds = [];
         $nextPageToken = '';
         $page = 0;
 
@@ -103,8 +105,8 @@ class TikTokOrderService
 
             $res = $this->client->request('POST', '/order/202309/orders/search', $queries, $body, $accessToken);
 
-            if (! isset($res['data']['orders'])) {
-                break;
+            if (! isset($res['data']['orders']) || ! is_array($res['data']['orders'])) {
+                throw new \RuntimeException('TikTok tidak mengembalikan daftar order yang valid.');
             }
 
             foreach ($res['data']['orders'] as $item) {
@@ -112,10 +114,17 @@ class TikTokOrderService
                     $this->dumpInstantPayloadForResearch($item, $shopId);
                     $internalData = $this->mapper->map($item, $shopId);
                     $internalData = $this->enrichTrackingFromPackages($internalData, $item, $shopCipher, $accessToken);
-                    $this->orderService->upsertFromChannel($internalData);
+                    $localOrderId = $this->orderService->upsertFromChannel($internalData);
+                    if (! $localOrderId) {
+                        throw new \RuntimeException(sprintf(
+                            'TikTok order %s tidak menghasilkan ID lokal setelah upsert.',
+                            (string) ($item['id'] ?? 'unknown'),
+                        ));
+                    }
                     $count++;
                 } catch (\Exception $e) {
                     Log::error("Failed to pull order {$item['id']}: " . $e->getMessage());
+                    $failedOrderIds[] = (string) ($item['id'] ?? 'unknown');
                 }
             }
 
@@ -123,15 +132,13 @@ class TikTokOrderService
             $page++;
 
             if ($page >= self::MAX_PULL_PAGES && $nextPageToken !== '') {
-                Log::warning('TikTok: batas halaman tarik order tercapai, sisa halaman tidak ditarik.', [
-                    'shop_id'   => $shopId,
-                    'time_from' => $timeFrom,
-                    'time_to'   => $timeTo,
-                    'pages'     => $page,
-                ]);
-                break;
+                throw ChannelOrderPullIncompleteException::pageLimitReached('tiktok', $shopId, $page);
             }
         } while ($nextPageToken !== '');
+
+        if ($failedOrderIds !== []) {
+            throw ChannelOrderPullIncompleteException::forOrders('tiktok', $shopId, $failedOrderIds);
+        }
 
         return $count;
     }
