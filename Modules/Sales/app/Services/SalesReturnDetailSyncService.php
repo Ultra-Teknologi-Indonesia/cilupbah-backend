@@ -12,7 +12,6 @@ use Modules\Sales\Models\SalesReturnAppeal;
 
 class SalesReturnDetailSyncService
 {
-
     public const FINAL_DECISIONS = [
         SalesReturn::MP_DECISION_REFUNDED,
         SalesReturn::MP_DECISION_CLOSED,
@@ -149,13 +148,12 @@ class SalesReturnDetailSyncService
         ];
 
         try {
-            $escapedId = addcslashes($rawReturnId, '%_\\');
             $inboxes = DB::table('channel_webhook_inbox')
                 ->where('channel', $channel)
                 ->where('shop_id', $shopId)
-                ->whereRaw('payload::text ILIKE ?', ["%{$escapedId}%"])
+                ->where('channel_return_id', $rawReturnId)
                 ->orderByDesc('received_at')
-                ->limit(25)
+                ->limit(1)
                 ->get(['payload', 'received_at']);
 
             foreach ($inboxes as $inbox) {
@@ -267,7 +265,7 @@ class SalesReturnDetailSyncService
 
             return array_merge($empty, $result);
         } catch (\Throwable $e) {
-            Log::warning("Sync detail retur gagal ({$channel}): " . $e->getMessage());
+            Log::warning("Sync detail retur gagal ({$channel}): ".$e->getMessage());
 
             return $empty;
         }
@@ -283,7 +281,7 @@ class SalesReturnDetailSyncService
                 default => ['records' => []],
             };
         } catch (\Throwable $e) {
-            Log::warning("Sync riwayat banding retur gagal ({$channel}): " . $e->getMessage());
+            Log::warning("Sync riwayat banding retur gagal ({$channel}): ".$e->getMessage());
 
             return;
         }

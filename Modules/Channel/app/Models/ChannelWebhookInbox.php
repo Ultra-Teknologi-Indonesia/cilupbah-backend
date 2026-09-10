@@ -18,6 +18,7 @@ class ChannelWebhookInbox extends Model
         'shop_id',
         'event_key',
         'event_type',
+        'channel_return_id',
         'payload',
         'status',
         'attempts',

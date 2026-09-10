@@ -3,23 +3,28 @@
 namespace Modules\Channel\Providers;
 
 use App\Console\Commands\ReplayWebhookInbox;
+use Illuminate\Console\Scheduling\Schedule;
 use Modules\Channel\Console\Commands\AlertChannelReauth;
 use Modules\Channel\Console\Commands\AuditChannelProductActivity;
 use Modules\Channel\Console\Commands\AuditChannelSkuCoverage;
 use Modules\Channel\Console\Commands\BackfillDownloadHistory;
 use Modules\Channel\Console\Commands\BackfillShopeeShopNames;
 use Modules\Channel\Console\Commands\BackfillTikTokCommercePlatform;
+use Modules\Channel\Console\Commands\BackfillWebhookReturnReferences;
+use Modules\Channel\Console\Commands\CleanOrderCutoverCommand;
 use Modules\Channel\Console\Commands\EvaluateOrderSyncHealth;
 use Modules\Channel\Console\Commands\MonitorChannelSkuHealth;
 use Modules\Channel\Console\Commands\MonitorDownloadHealth;
+use Modules\Channel\Console\Commands\MonitorLiveQueueCommand;
 use Modules\Channel\Console\Commands\MonitorRedisQueueHealth;
 use Modules\Channel\Console\Commands\MonitorShadowPullHealth;
 use Modules\Channel\Console\Commands\PullChannelShop;
 use Modules\Channel\Console\Commands\PullLiveOrdersCommand;
 use Modules\Channel\Console\Commands\PullShadowOrdersCommand;
-use Modules\Channel\Console\Commands\ReportMissingChannelSku;
 use Modules\Channel\Console\Commands\ReapStaleDownloadTransactions;
 use Modules\Channel\Console\Commands\RepairStaleSyncErrors;
+use Modules\Channel\Console\Commands\ReplayFailedWebhooksCommand;
+use Modules\Channel\Console\Commands\ReportMissingChannelSku;
 use Modules\Channel\Console\Commands\ShadowOffCommand;
 use Modules\Channel\Console\Commands\ShadowPromoteCommand;
 use Modules\Channel\Console\Commands\ShadowPurgeCommand;
@@ -31,11 +36,9 @@ use Modules\Channel\Console\Commands\SyncTikTokAttributes;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Observers\ChannelShopObserver;
 use Nwidart\Modules\Support\ModuleServiceProvider;
-use Illuminate\Console\Scheduling\Schedule;
 
 class ChannelServiceProvider extends ModuleServiceProvider
 {
-
     protected string $name = 'Channel';
 
     protected string $nameLower = 'channel';
@@ -50,6 +53,7 @@ class ChannelServiceProvider extends ModuleServiceProvider
         AuditChannelProductActivity::class,
         AuditChannelSkuCoverage::class,
         BackfillDownloadHistory::class,
+        BackfillWebhookReturnReferences::class,
         BackfillShopeeShopNames::class,
         BackfillTikTokCommercePlatform::class,
         EvaluateOrderSyncHealth::class,
@@ -74,9 +78,9 @@ class ChannelServiceProvider extends ModuleServiceProvider
         StockReconcileCommand::class,
         StockRollbackCommand::class,
         ReplayWebhookInbox::class,
-        \Modules\Channel\Console\Commands\ReplayFailedWebhooksCommand::class,
-        \Modules\Channel\Console\Commands\CleanOrderCutoverCommand::class,
-        \Modules\Channel\Console\Commands\MonitorLiveQueueCommand::class,
+        ReplayFailedWebhooksCommand::class,
+        CleanOrderCutoverCommand::class,
+        MonitorLiveQueueCommand::class,
     ];
 
     public function boot(): void

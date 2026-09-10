@@ -4,6 +4,7 @@ namespace Modules\Channel\Repositories;
 
 use Modules\Channel\Enums\WebhookInboxStatus;
 use Modules\Channel\Models\ChannelWebhookInbox;
+use Modules\Channel\Support\ChannelWebhookReferenceExtractor;
 use Ramsey\Uuid\Uuid;
 
 class ChannelWebhookInboxRepository
@@ -24,6 +25,7 @@ class ChannelWebhookInboxRepository
             'shop_id' => $shopId,
             'event_key' => $eventKey,
             'event_type' => $eventType,
+            'channel_return_id' => ChannelWebhookReferenceExtractor::returnId($channel, $payload),
             'payload' => json_encode($payload),
             'status' => WebhookInboxStatus::RECEIVED->value,
             'attempts' => 0,
@@ -39,6 +41,7 @@ class ChannelWebhookInboxRepository
                 $existing->update([
                     'status' => WebhookInboxStatus::RECEIVED,
                     'attempts' => 0,
+                    'channel_return_id' => ChannelWebhookReferenceExtractor::returnId($channel, $payload),
                     'payload' => $payload,
                     'received_at' => $now,
                 ]);
