@@ -13,6 +13,7 @@ use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Modules\Inventory\Jobs\RunOrderCutoverConsoleJob;
 use Modules\Inventory\Models\OrderCutoverConsoleJob;
+use Modules\Inventory\Services\OrderCutoverService;
 
 final class OrderCutoverConsoleController extends Controller
 {
@@ -32,17 +33,13 @@ final class OrderCutoverConsoleController extends Controller
             'token' => $token,
             'job' => $job,
             'fileFields' => self::FILE_FIELDS,
-            'defaultLocation' => config('operations.order_cutover_console.default_location', 'O'),
         ]);
     }
 
-    public function preview(string $token, Request $request): RedirectResponse
+    public function preview(string $token, Request $request, OrderCutoverService $service): RedirectResponse
     {
         $max = (int) config('operations.order_cutover_console.max_upload_kilobytes', 10240);
-        $rules = [
-            'cutoff' => ['required', 'date_format:Y-m-d\\TH:i'],
-            'locations' => ['required', 'string', 'regex:/^[A-Za-z0-9,_-]+$/'],
-        ];
+        $rules = [];
         foreach (array_keys(self::FILE_FIELDS) as $field) {
             $rules[$field] = ['required', 'file', 'mimes:csv,txt', "max:{$max}"];
         }
@@ -50,6 +47,19 @@ final class OrderCutoverConsoleController extends Controller
         $id = (string) Str::uuid7();
         $diskName = (string) config('operations.order_cutover_console.upload_disk', 's3');
         $disk = Storage::disk($diskName);
+        $temporaryPaths = [];
+        $temporaryMeta = [];
+        foreach (self::FILE_FIELDS as $field => $label) {
+            $upload = $validated[$field];
+            $temporaryPath = $upload->getRealPath();
+            $temporaryPaths[] = $temporaryPath;
+            $temporaryMeta[$temporaryPath] = ['original_name' => $upload->getClientOriginalName()];
+        }
+        try {
+            $cutoff = $service->deriveCutoffFromFiles($temporaryPaths, $temporaryMeta);
+        } catch (\RuntimeException $exception) {
+            return back()->withInput()->withErrors(['csv' => $exception->getMessage()]);
+        }
         $files = [];
         foreach (self::FILE_FIELDS as $field => $label) {
             $upload = $validated[$field];
@@ -64,19 +74,15 @@ final class OrderCutoverConsoleController extends Controller
                 'sha256' => hash_file('sha256', $upload->getRealPath()),
             ];
         }
-        $locations = collect(explode(',', (string) $validated['locations']))
-            ->map(fn ($value): string => strtoupper(trim((string) $value)))
-            ->filter()
-            ->unique()
-            ->values()
-            ->all();
+        $locations = [strtoupper((string) config('operations.order_cutover_console.small_warehouse_location', 'O'))];
         $job = OrderCutoverConsoleJob::create([
             'id' => $id,
             'type' => 'preview',
             'status' => OrderCutoverConsoleJob::STATUS_QUEUED,
             'files' => $files,
             'location_codes' => $locations,
-            'cutoff_at' => \Carbon\CarbonImmutable::createFromFormat('Y-m-d\\TH:i', $validated['cutoff'], 'Asia/Jakarta')->utc(),
+
+            'cutoff_at' => $cutoff->setTimezone('Asia/Jakarta'),
         ]);
         RunOrderCutoverConsoleJob::dispatch($job->id);
 

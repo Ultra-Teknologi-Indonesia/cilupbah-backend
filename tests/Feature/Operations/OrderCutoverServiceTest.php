@@ -54,4 +54,57 @@ final class OrderCutoverServiceTest extends TestCase
         self::assertDatabaseHas('sales_orders', ['id' => $csvId]);
         self::assertDatabaseHas('sales_orders', ['id' => $newerId]);
     }
+
+    public function test_cutoff_uses_latest_timestamp_across_csv_files_with_gaps(): void
+    {
+        $first = UploadedFile::fake()->createWithContent(
+            'first.csv',
+            "Nomor,Tgl.Pesanan,Lokasi\nSO-OLD,29 Jul 2026 01:34,Gudang Kecil\nSO-MIDDLE,02 Aug 2026 08:00,Gudang Kecil\n",
+        );
+        $last = UploadedFile::fake()->createWithContent(
+            'last.csv',
+            "salesorder_no,transaction_date,location_name\nSO-LATEST,10 Sep 2026 22:30,Gudang Kecil\n",
+        );
+
+        $cutoff = app(OrderCutoverService::class)->deriveCutoffFromFiles([
+            $first->getRealPath(),
+            $last->getRealPath(),
+        ]);
+
+        self::assertSame('2026-09-10 15:30:00', $cutoff->toDateTimeString());
+    }
+
+    public function test_cutoff_rejects_order_rows_without_valid_timestamp(): void
+    {
+        $upload = UploadedFile::fake()->createWithContent(
+            'invalid.csv',
+            "Nomor,Tgl.Pesanan,Lokasi\nSO-MISSING,,Gudang Kecil\n",
+        );
+
+        $this->expectExceptionMessage('tidak memiliki tanggal/jam order');
+        app(OrderCutoverService::class)->deriveCutoffFromFiles([$upload->getRealPath()]);
+    }
+
+    public function test_cutoff_rejects_impossible_timestamp(): void
+    {
+        $upload = UploadedFile::fake()->createWithContent(
+            'invalid-date.csv',
+            "Nomor,Tgl.Pesanan,Lokasi\nSO-INVALID,31 Feb 2026 12:00,Gudang Kecil\n",
+        );
+
+        $this->expectExceptionMessage('tanggal/jam tidak valid');
+        app(OrderCutoverService::class)->deriveCutoffFromFiles([$upload->getRealPath()]);
+    }
+
+    public function test_cutoff_falls_back_to_created_date_when_transaction_date_is_empty(): void
+    {
+        $upload = UploadedFile::fake()->createWithContent(
+            'fallback.csv',
+            "salesorder_no,transaction_date,created_date,location_name\nSO-FALLBACK,,10 Sep 2026 22:30,Gudang Kecil\n",
+        );
+
+        $cutoff = app(OrderCutoverService::class)->deriveCutoffFromFiles([$upload->getRealPath()]);
+
+        self::assertSame('2026-09-10 15:30:00', $cutoff->toDateTimeString());
+    }
 }

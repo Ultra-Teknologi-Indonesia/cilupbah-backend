@@ -32,14 +32,13 @@ final class OrderCutoverConsoleStorageTest extends TestCase
             'no_internal_stock' => UploadedFile::fake()->createWithContent('stock.csv', $csv),
             'ready_to_process' => UploadedFile::fake()->createWithContent('ready.csv', $csv),
             'awaiting_payment' => UploadedFile::fake()->createWithContent('payment.csv', $csv),
-            'cutoff' => '2026-09-10T21:00',
-            'locations' => 'O',
         ]);
 
         $response->assertRedirect();
         $job = OrderCutoverConsoleJob::query()->sole();
         self::assertCount(4, $job->files);
         self::assertSame(['O'], $job->location_codes);
+        self::assertSame('2026-09-10 14:00:00', $job->cutoff_at->utc()->toDateTimeString());
         foreach ($job->files as $file) {
             Storage::disk('s3')->assertExists($file['path']);
         }

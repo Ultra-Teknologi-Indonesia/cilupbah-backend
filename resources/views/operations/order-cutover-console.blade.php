@@ -23,7 +23,7 @@
 <main>
     <section class="card">
         <h1>Order Cutover — CSV Whitelist</h1>
-        <p class="muted">Preview membaca empat CSV dan tidak mengubah database. Saat apply, hanya order yang cocok dengan CSV dan order yang lebih baru dari cutoff yang dipertahankan. Kandidat yang sudah diproses gudang atau memiliki relasi dokumen akan ditolak.</p>
+        <p class="muted">Preview membaca empat CSV dan tidak mengubah database. Cutoff dihitung otomatis dari tanggal dan jam order paling baru di seluruh CSV. Sistem mempertahankan order yang cocok dengan CSV dan order yang lebih baru dari cutoff, hanya untuk Gudang Kecil (kode O).</p>
     </section>
 
     @if ($errors->any())
@@ -43,10 +43,7 @@
                         </div>
                     @endforeach
                 </div>
-                <label>Cutoff (WIB)</label>
-                <input required type="datetime-local" name="cutoff" value="{{ old('cutoff') }}">
-                <label>Kode gudang (pisahkan koma)</label>
-                <input required type="text" name="locations" value="{{ old('locations', $defaultLocation) }}" placeholder="O">
+                <p class="muted">Cutoff dan gudang ditentukan otomatis. Timestamp CSV dibaca sebagai WIB; order tepat pada cutoff ikut dipertahankan.</p>
                 <button type="submit">Mulai dry-run</button>
             </form>
         </section>
@@ -54,6 +51,7 @@
         <section class="card" id="job-card" data-status-url="{{ route('operations.order-cutover.status', ['token' => $token, 'job' => $job->id]) }}">
             <h2>Job {{ $job->type }}</h2>
             <p>Status: <span class="state" id="status">{{ $job->status }}</span></p>
+            <p class="muted" id="cutoff-display"></p>
             <p class="error" id="error">{{ $job->error }}</p>
             <p><a id="report" class="{{ $job->report_path ? '' : 'hidden' }}" href="{{ route('operations.order-cutover.report', ['token' => $token, 'job' => $job->id]) }}">Download laporan JSON</a></p>
             <pre id="report-data">{{ $job->report ? json_encode($job->report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) : 'Menunggu proses queue…' }}</pre>
@@ -80,6 +78,7 @@
 <script>
 const box = document.getElementById('job-card');
 const state = document.getElementById('status');
+const cutoffDisplay = document.getElementById('cutoff-display');
 const error = document.getElementById('error');
 const report = document.getElementById('report');
 const reportData = document.getElementById('report-data');
@@ -93,6 +92,7 @@ async function refresh() {
         if (!response.ok) { refresh.delay = Math.min(refresh.delay * 2, 60000); error.textContent = `Status sementara tidak dapat dibaca (${response.status}).`; refresh.timer = setTimeout(refresh, refresh.delay); return; }
         const data = await response.json();
         state.textContent = data.status; error.textContent = data.error || '';
+        cutoffDisplay.textContent = data.report && data.report.cutoff_at_wib ? `Cutoff WIB: ${data.report.cutoff_at_wib}` : '';
         reportData.textContent = data.report ? JSON.stringify(data.report, null, 2) : 'Menunggu proses queue…';
         if (data.download_ready) report.classList.remove('hidden');
         if (data.type === 'preview' && data.status === 'ready' && data.report && Number(data.report.blocking || 0) === 0 && applyCard) applyCard.classList.remove('hidden');
