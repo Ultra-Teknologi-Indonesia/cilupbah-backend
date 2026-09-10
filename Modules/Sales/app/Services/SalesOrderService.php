@@ -2226,6 +2226,16 @@ class SalesOrderService
 
             $order->load('items');
 
+            if (
+                strtolower((string) $order->source) === 'shopee'
+                && (int) ($order->order_weight_gram ?? 0) <= 0
+            ) {
+                $fallbackWeightGram = $this->orderRepository->calculateOrderWeightGram($order->id);
+                if ($fallbackWeightGram > 0) {
+                    $order->update(['order_weight_gram' => $fallbackWeightGram]);
+                }
+            }
+
             if (! $this->isManualSource($order->source)) {
                 $channelLocationId = $this->resolveChannelOrderLocationId($order);
 

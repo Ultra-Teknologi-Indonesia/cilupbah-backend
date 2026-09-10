@@ -4,6 +4,7 @@ namespace Modules\Channel\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Modules\Channel\Jobs\ProcessShopeeWebhook;
 use Modules\Channel\Exceptions\ChannelOrderPullIncompleteException;
@@ -155,6 +156,75 @@ class ShopeeOrderSyncTest extends TestCase
         $this->assertEquals('shopee', $order->source);
         $this->assertEquals('2606SHOPEE01', $order->channel_order_no);
         $this->assertCount(1, $order->items);
+    }
+
+    public function test_pull_orders_falls_back_to_variant_weight_when_shopee_weight_is_zero(): void
+    {
+        DB::table('product_variants')->where('sku', 'SKU-TAS')->update(['weight' => 0.06]);
+
+        Http::fake([
+            'partner.shopeemobile.com/api/v2/order/get_order_list*' => Http::response([
+                'response' => [
+                    'order_list' => [['order_sn' => '2606SHOPEE-WEIGHT']],
+                    'more' => false,
+                    'next_cursor' => '',
+                ],
+            ], 200),
+            'partner.shopeemobile.com/api/v2/order/get_order_detail*' => Http::response([
+                'response' => [
+                    'order_list' => [$this->orderDetail([
+                        'order_sn' => '2606SHOPEE-WEIGHT',
+                        'order_chargeable_weight_gram' => 0,
+                    ])],
+                ],
+            ], 200),
+        ]);
+
+        app(ShopeeOrderService::class)->pullOrders('778899');
+
+        $order = SalesOrder::where('salesorder_no', 'SP-2606SHOPEE-WEIGHT')->first();
+        $this->assertNotNull($order);
+        $this->assertSame(120, (int) $order->order_weight_gram);
+    }
+
+    public function test_pull_orders_keeps_existing_positive_weight_when_shopee_weight_is_zero(): void
+    {
+        $orderSn = '2606SHOPEE-WEIGHT-PRESERVE';
+        $baseDetail = $this->orderDetail(['order_sn' => $orderSn]);
+
+        Http::fake([
+            'partner.shopeemobile.com/api/v2/order/get_order_list*' => Http::response([
+                'response' => [
+                    'order_list' => [['order_sn' => $orderSn]],
+                    'more' => false,
+                    'next_cursor' => '',
+                ],
+            ], 200),
+            'partner.shopeemobile.com/api/v2/order/get_order_detail*' => Http::response([
+                'response' => ['order_list' => [array_merge($baseDetail, ['order_chargeable_weight_gram' => 500])]],
+            ], 200),
+        ]);
+
+        app(ShopeeOrderService::class)->pullOrders('778899');
+
+        Http::fake([
+            'partner.shopeemobile.com/api/v2/order/get_order_list*' => Http::response([
+                'response' => [
+                    'order_list' => [['order_sn' => $orderSn]],
+                    'more' => false,
+                    'next_cursor' => '',
+                ],
+            ], 200),
+            'partner.shopeemobile.com/api/v2/order/get_order_detail*' => Http::response([
+                'response' => ['order_list' => [array_merge($baseDetail, ['order_chargeable_weight_gram' => 0])]],
+            ], 200),
+        ]);
+
+        app(ShopeeOrderService::class)->pullOrders('778899');
+
+        $order = SalesOrder::where('salesorder_no', 'SP-'.$orderSn)->first();
+        $this->assertNotNull($order);
+        $this->assertSame(500, (int) $order->order_weight_gram);
     }
 
     public function test_pull_orders_fails_closed_when_shopee_omits_a_requested_detail(): void

@@ -845,6 +845,15 @@ class SalesOrderRepository
             $canonicalChannelStatus = $existing->channel_status;
         }
 
+        $incomingOrderWeightGram = $orderData['order_weight_gram'] ?? null;
+        $orderWeightGram = $incomingOrderWeightGram;
+        if (
+            (int) $incomingOrderWeightGram <= 0
+            && (int) ($existing?->order_weight_gram ?? 0) > 0
+        ) {
+            $orderWeightGram = $existing->order_weight_gram;
+        }
+
         $orderRow = [
             'salesorder_no' => $orderData['salesorder_no'],
             'channel_order_no' => $orderData['channel_order_no'] ?? null,
@@ -886,7 +895,7 @@ class SalesOrderRepository
             'actual_shipping_fee_confirmed' => $orderData['actual_shipping_fee_confirmed'] ?? false,
             'insurance_cost' => SalesOrderDataNormalizer::money($orderData['insurance_cost'] ?? null),
             'grand_total' => SalesOrderDataNormalizer::money($orderData['grand_total'] ?? null),
-            'order_weight_gram' => $orderData['order_weight_gram'] ?? null,
+            'order_weight_gram' => $orderWeightGram,
             'shipping_full_name' => $orderData['shipping_full_name'] ?? null,
             'shipping_phone' => $orderData['shipping_phone'] ?? null,
             'shipping_address' => $orderData['shipping_address'] ?? null,
@@ -1068,6 +1077,17 @@ class SalesOrderRepository
         }
 
         $this->deleteUnreferencedLeftovers($orderId, $pools);
+    }
+
+    public function calculateOrderWeightGram(string $orderId): int
+    {
+        $weight = DB::table('sales_order_items as soi')
+            ->leftJoin('product_variants as pv', 'pv.id', '=', 'soi.item_id')
+            ->where('soi.order_id', $orderId)
+            ->selectRaw('COALESCE(SUM(COALESCE(pv.weight, 0) * 1000 * COALESCE(soi.qty_in_base, 1)), 0) AS weight_gram')
+            ->value('weight_gram');
+
+        return max(0, (int) round((float) $weight));
     }
 
     protected function itemKey(?string $sku, mixed $price): string
