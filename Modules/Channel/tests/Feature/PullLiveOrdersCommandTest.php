@@ -127,4 +127,31 @@ class PullLiveOrdersCommandTest extends TestCase
         $this->assertNull($shop->order_pull_locked_until);
         $this->assertNotNull($shop->last_order_synced_at);
     }
+
+    public function test_leased_pull_job_releases_store_when_channel_times_out(): void
+    {
+        Http::fake([
+            'partner.shopeemobile.com/api/v2/order/get_order_list*' => Http::failedConnection('channel timeout'),
+        ]);
+
+        $leases = app(ChannelOrderPullLeaseService::class);
+        $token = $leases->acquire($this->liveShop, 300);
+
+        try {
+            (new PullChannelOrdersJob(
+                $this->liveShop->id,
+                $token,
+                now()->subMinutes(10)->toIso8601String(),
+                now()->toIso8601String(),
+            ))->handle($leases, app(ChannelShopRepository::class));
+            $this->fail('Job seharusnya gagal saat channel timeout.');
+        } catch (\RuntimeException) {
+            // Expected: command returns a controlled non-zero result.
+        }
+
+        $shop = $this->liveShop->fresh();
+        $this->assertNull($shop->order_pull_lease_token);
+        $this->assertNull($shop->order_pull_locked_until);
+        $this->assertSame(ChannelShop::ORDER_SYNC_PROBLEM, $shop->order_sync_status);
+    }
 }
