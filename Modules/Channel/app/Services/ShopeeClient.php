@@ -178,7 +178,7 @@ class ShopeeClient
                 } catch (TokenExpiredException $e) {
                     throw $e;
                 } catch (ShopeeApiException $e) {
-                    // A pooled 429 must retry the event, not become a partial success.
+
                     if ($e->isRetryable()) {
                         throw $e;
                     }
@@ -228,7 +228,6 @@ class ShopeeClient
     {
         $resolved = ShopeeErrorCatalog::resolve($error, $data['message'] ?? null, $this->extractErrorInfo($data));
 
-        // HTTP 429 is transient even when Shopee returns a new JSON error code.
         if ($httpStatus === 429) {
             $resolved['category'] = ShopeeErrorCatalog::RETRYABLE;
             $resolved['message'] = 'Batas permintaan Shopee tercapai. Sistem akan mencoba lagi otomatis.';

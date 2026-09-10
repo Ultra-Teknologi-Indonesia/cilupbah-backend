@@ -47,8 +47,7 @@ Route::prefix('v1/tiktok')->group(function () {
 
     Route::post('webhook', [\Modules\Channel\Http\Controllers\TikTokWebhookController::class, 'handle'])
         ->name('tiktok.webhook')
-        // Signature validation and payload-size limits remain mandatory. The
-        // provider burst limit is enforced at ingress/WAF, not by client IP.
+
         ->middleware([\Modules\Channel\Http\Middleware\LimitWebhookPayloadSize::class]);
     Route::get('auth', [\Modules\Channel\Http\Controllers\TikTokAuthController::class, 'redirect'])->name('tiktok.auth');
     Route::get('callback', [\Modules\Channel\Http\Controllers\TikTokAuthController::class, 'callback'])->name('tiktok.callback');

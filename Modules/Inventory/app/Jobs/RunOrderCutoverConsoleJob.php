@@ -91,7 +91,6 @@ final class RunOrderCutoverConsoleJob implements ShouldQueue
         }
     }
 
-    /** @param array<string, mixed> $file */
     private function materializeSourceFile(array $file, string $workingDirectory): string
     {
         $diskName = (string) ($file['disk'] ?? '');

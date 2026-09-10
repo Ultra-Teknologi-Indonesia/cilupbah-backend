@@ -2226,11 +2226,6 @@ class SalesOrderService
 
             $order->load('items');
 
-            // Marketplace order APIs do not consistently provide a reliable
-            // chargeable weight (TikTok and Lazada omit it entirely). Once
-            // incoming items have been synced, derive the total from the
-            // mapped local product variants for every channel order that is
-            // missing a positive weight.
             if (
                 in_array(strtolower((string) $order->source), ['shopee', 'tiktok', 'lazada', 'woocommerce'], true)
                 && (int) ($order->order_weight_gram ?? 0) <= 0

@@ -115,7 +115,6 @@ class TikTokClient
     {
         $resolved = TikTokErrorCatalog::resolve($code, $message);
 
-        // HTTP 429 is transient even when the response carries an unknown code.
         if ((int) ($logContext['http_status'] ?? 0) === 429) {
             $resolved['category'] = TikTokErrorCatalog::RETRYABLE;
             $resolved['message'] = 'Batas permintaan TikTok Shop tercapai. Sistem akan mencoba lagi otomatis.';
