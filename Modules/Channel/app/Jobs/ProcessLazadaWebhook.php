@@ -3,6 +3,7 @@
 namespace Modules\Channel\Jobs;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -29,7 +30,7 @@ use Modules\Sales\Jobs\ProcessChannelReturnJob;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderService;
 
-class ProcessLazadaWebhook implements ShouldQueue
+class ProcessLazadaWebhook implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -38,6 +39,8 @@ class ProcessLazadaWebhook implements ShouldQueue
     public array $backoff = [10, 60, 300];
 
     public int $timeout = 120;
+
+    public int $uniqueFor = 86400;
 
     private const MSG_ORDER = 0;
 
@@ -98,6 +101,11 @@ class ProcessLazadaWebhook implements ShouldQueue
         ]));
     }
 
+    public function uniqueId(): string
+    {
+        return self::idempotencyKey($this->payload);
+    }
+
     public function handle(
         LazadaOrderService $orderService,
         ChannelDownloadService $downloadService,
@@ -113,7 +121,10 @@ class ProcessLazadaWebhook implements ShouldQueue
         $data = $this->payload['data'] ?? [];
 
         if ($sellerId === '') {
-            Log::warning('Lazada webhook tanpa seller_id — diabaikan.', ['payload' => $this->payload]);
+            Log::warning('Lazada webhook tanpa seller_id — diabaikan.', [
+                'message_type' => $messageType,
+                'event_key' => self::idempotencyKey($this->payload),
+            ]);
 
             return;
         }
@@ -231,21 +242,12 @@ class ProcessLazadaWebhook implements ShouldQueue
         $status = strtoupper((string) ($data['status'] ?? ''));
 
         if (in_array($status, ['READY_TO_SHIP', 'SHIPPED', 'DELIVERED', 'CANCELLED'], true)) {
-            $recentKey = "lazada_pulled_recent:{$sellerId}:{$orderId}";
-            if (! Cache::has($recentKey)) {
-                Cache::put($recentKey, true, 15);
-                try {
-                    ChannelOrderPullGuard::requirePersisted(
-                        'lazada',
-                        $sellerId,
-                        $orderId,
-                        $orderService->pullOrderById($sellerId, $orderId),
-                    );
-                } catch (\Throwable $e) {
-                    Cache::forget($recentKey);
-                    throw $e;
-                }
-            }
+            ChannelOrderPullGuard::pullOnce(
+                'lazada',
+                $sellerId,
+                $orderId,
+                fn (): int => $orderService->pullOrderById($sellerId, $orderId),
+            );
         }
 
         $this->recordLazadaTrackingEvent($orderId, $data);
@@ -269,27 +271,18 @@ class ProcessLazadaWebhook implements ShouldQueue
             return;
         }
 
-        $recentKey = "lazada_pulled_recent:{$sellerId}:{$orderId}";
-        if (Cache::has($recentKey)) {
+        if (! ChannelOrderPullGuard::pullOnce(
+            'lazada',
+            $sellerId,
+            $orderId,
+            fn (): int => $orderService->pullOrderById($sellerId, $orderId),
+        )) {
             Log::info("Lazada webhook {$orderId} di-debounce (sudah di-pull dalam 15 detik terakhir).");
             $this->recordLazadaTrackingEvent($orderId, $data);
 
             return;
         }
 
-        Cache::put($recentKey, true, 15);
-
-        try {
-            ChannelOrderPullGuard::requirePersisted(
-                'lazada',
-                $sellerId,
-                $orderId,
-                $orderService->pullOrderById($sellerId, $orderId),
-            );
-        } catch (\Throwable $e) {
-            Cache::forget($recentKey);
-            throw $e;
-        }
         $this->recordLazadaTrackingEvent($orderId, $data);
     }
 
@@ -363,23 +356,29 @@ class ProcessLazadaWebhook implements ShouldQueue
             return;
         }
 
-        try {
-            $downloadService->downloadProductDebounced('lazada', $sellerId, $itemId);
-        } catch (\Throwable $e) {
-            Log::warning('Lazada re-sync produk gagal: '.$e->getMessage(), ['item_id' => $itemId]);
-        }
-
         $shopUuid = DB::table('channel_shops')->where('shop_id', $sellerId)->value('id');
         if (! $shopUuid) {
             return;
         }
 
-        $mapping = ProductChannelMapping::where('channel_shop_id', $shopUuid)
+        $mapping = ProductChannelMapping::query()
+            ->where('channel_shop_id', $shopUuid)
             ->where('external_product_id', $itemId)
             ->first();
 
         if (! $mapping) {
+            Log::debug('Lazada product webhook diabaikan karena listing belum terhubung.', [
+                'shop_id' => $sellerId,
+                'item_id' => $itemId,
+            ]);
+
             return;
+        }
+
+        try {
+            $downloadService->downloadProductDebounced('lazada', $sellerId, $itemId);
+        } catch (\Throwable $e) {
+            Log::warning('Lazada re-sync produk gagal: '.$e->getMessage(), ['item_id' => $itemId]);
         }
 
         $status = strtolower((string) ($data['qc_status'] ?? $data['status'] ?? ''));

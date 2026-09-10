@@ -3,6 +3,7 @@
 namespace Modules\Channel\Jobs;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -12,56 +13,81 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Channel\Services\ChannelSyncSettingService;
+use Modules\Channel\Services\ChannelWebhookAuditService;
 use Modules\Channel\Services\TikTokAuthService;
 use Modules\Channel\Services\TikTokOrderService;
-use Modules\Channel\Services\ChannelWebhookAuditService;
 use Modules\Channel\Services\WebhookProductHandler;
+use Modules\Channel\Support\ChannelOrderIntakeGate;
 use Modules\Channel\Support\ChannelOrderPullGuard;
+use Modules\Channel\Support\WebhookFailureHandler;
+use Modules\Outbound\Jobs\RefreshInstantTrackingJob;
+use Modules\Outbound\Models\Shipment;
+use Modules\Outbound\Models\ShipmentTrackingEvent;
+use Modules\Sales\Jobs\PrepareTikTokShippingLabelJob;
+use Modules\Sales\Jobs\ProcessChannelReturnJob;
+use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Services\SalesOrderService;
 
-class ProcessTikTokWebhook implements ShouldQueue
+class ProcessTikTokWebhook implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
+
     public array $backoff = [10, 60, 300];
+
     public int $timeout = 120;
 
+    public int $uniqueFor = 86400;
+
     private const EVENT_ORDER = 'order';
+
     private const EVENT_PACKAGE = 'package';
+
     private const EVENT_CANCELLATION = 'cancellation';
+
     private const EVENT_REVERSE = 'reverse';
+
     private const EVENT_REFUND_SUCCESS = 'refund_success';
+
     private const EVENT_AFTERSALES = 'aftersales';
+
     private const EVENT_PRODUCT_STATUS = 'product_status';
+
     private const EVENT_PRODUCT_INFO = 'product_info';
+
     private const EVENT_DEAUTHORIZATION = 'seller_deauthorization';
+
     private const EVENT_AUTH_EXPIRATION = 'authorization_expiration';
+
     private const EVENT_IGNORED = 'ignored';
+
     private const EVENT_UNKNOWN = 'unknown';
 
     private const TYPE_MAP = [
-        1 => self::EVENT_ORDER,             
-        2 => self::EVENT_REVERSE,           
-        3 => self::EVENT_ORDER,             
-        4 => self::EVENT_PACKAGE,           
-        5 => self::EVENT_PRODUCT_STATUS,    
-        6 => self::EVENT_DEAUTHORIZATION,   
-        7 => self::EVENT_AUTH_EXPIRATION,   
-        11 => self::EVENT_CANCELLATION,     
-        12 => self::EVENT_REVERSE,          
-        15 => self::EVENT_PRODUCT_INFO,     
-        37 => self::EVENT_PRODUCT_STATUS,   
-        50 => self::EVENT_PRODUCT_INFO,     
-        64 => self::EVENT_AFTERSALES,       
-        67 => self::EVENT_REFUND_SUCCESS,   
+        1 => self::EVENT_ORDER,
+        2 => self::EVENT_REVERSE,
+        3 => self::EVENT_ORDER,
+        4 => self::EVENT_PACKAGE,
+        5 => self::EVENT_PRODUCT_STATUS,
+        6 => self::EVENT_DEAUTHORIZATION,
+        7 => self::EVENT_AUTH_EXPIRATION,
+        11 => self::EVENT_CANCELLATION,
+        12 => self::EVENT_REVERSE,
+        15 => self::EVENT_PRODUCT_INFO,
+        37 => self::EVENT_PRODUCT_STATUS,
+        50 => self::EVENT_PRODUCT_INFO,
+        64 => self::EVENT_AFTERSALES,
+        67 => self::EVENT_REFUND_SUCCESS,
 
-        27 => self::EVENT_IGNORED,          
-        36 => self::EVENT_IGNORED,          
-        42 => self::EVENT_IGNORED,          
-        46 => self::EVENT_IGNORED,          
-        51 => self::EVENT_IGNORED,          
-        62 => self::EVENT_IGNORED,          
-        66 => self::EVENT_IGNORED,          
+        27 => self::EVENT_IGNORED,
+        36 => self::EVENT_IGNORED,
+        42 => self::EVENT_IGNORED,
+        46 => self::EVENT_IGNORED,
+        51 => self::EVENT_IGNORED,
+        62 => self::EVENT_IGNORED,
+        66 => self::EVENT_IGNORED,
 
     ];
 
@@ -96,10 +122,15 @@ class ProcessTikTokWebhook implements ShouldQueue
         $notificationId = (string) ($payload['tts_notification_id'] ?? '');
 
         if ($notificationId !== '') {
-            return 'tiktok_webhook:nid:' . $notificationId;
+            return 'tiktok_webhook:nid:'.$notificationId;
         }
 
-        return 'tiktok_webhook:hash:' . md5(json_encode($payload));
+        return 'tiktok_webhook:hash:'.md5(json_encode($payload));
+    }
+
+    public function uniqueId(): string
+    {
+        return self::idempotencyKey($this->payload);
     }
 
     public function handle(
@@ -109,7 +140,7 @@ class ProcessTikTokWebhook implements ShouldQueue
         TikTokAuthService $authService,
         ?ChannelWebhookAuditService $webhookAudit = null,
     ): void {
-        if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
+        if (app(ChannelSyncSettingService::class)->isPaused()) {
             return;
         }
 
@@ -160,12 +191,12 @@ class ProcessTikTokWebhook implements ShouldQueue
                 ]),
             };
 
-        if (! $this->orderIntakeSkipped && $webhookAudit) {
-            $webhookAudit->recordFromInbox('tiktok', $idempotencyKey, $this->payload);
-        }
+            if (! $this->orderIntakeSkipped && $webhookAudit) {
+                $webhookAudit->recordFromInbox('tiktok', $idempotencyKey, $this->payload);
+            }
 
             if ($this->orderIntakeSkipped) {
-                ChannelWebhookInbox::markSkippedByKey($idempotencyKey, \Modules\Channel\Support\ChannelOrderIntakeGate::reason());
+                ChannelWebhookInbox::markSkippedByKey($idempotencyKey, ChannelOrderIntakeGate::reason());
             } else {
                 ChannelWebhookInbox::markProcessedByKey($idempotencyKey);
             }
@@ -218,7 +249,7 @@ class ProcessTikTokWebhook implements ShouldQueue
 
     protected function skipsOrderIntake(string $shopId): bool
     {
-        if (! \Modules\Channel\Support\ChannelOrderIntakeGate::blocksShop($shopId, 'tiktok')) {
+        if (! ChannelOrderIntakeGate::blocksShop($shopId, 'tiktok')) {
             return false;
         }
 
@@ -234,25 +265,18 @@ class ProcessTikTokWebhook implements ShouldQueue
             return;
         }
 
-        $recentKey = "tiktok_pulled_recent:{$shopId}:{$orderId}";
-        if (Cache::has($recentKey)) {
+        if (! ChannelOrderPullGuard::pullOnce(
+            'tiktok',
+            $shopId,
+            $orderId,
+            fn (): int => $orderService->pullOrderById($shopId, $orderId),
+        )) {
             Log::info("TikTok webhook {$orderId} di-debounce (sudah di-pull dalam 15 detik terakhir).");
             $this->recordTikTokTrackingEvent($orderId, $data);
+
             return;
         }
 
-        Cache::put($recentKey, true, 15);
-        try {
-            ChannelOrderPullGuard::requirePersisted(
-                'tiktok',
-                $shopId,
-                $orderId,
-                $orderService->pullOrderById($shopId, $orderId),
-            );
-        } catch (\Throwable $e) {
-            Cache::forget($recentKey);
-            throw $e;
-        }
         $this->recordTikTokTrackingEvent($orderId, $data);
     }
 
@@ -272,19 +296,19 @@ class ProcessTikTokWebhook implements ShouldQueue
         }
 
         foreach (array_keys($orderIds) as $orderId) {
-            ChannelOrderPullGuard::requirePersisted(
+            ChannelOrderPullGuard::pullOnce(
                 'tiktok',
                 $shopId,
                 $orderId,
-                $orderService->pullOrderById($shopId, $orderId),
+                fn (): int => $orderService->pullOrderById($shopId, $orderId),
             );
 
-            $localId = \Modules\Sales\Models\SalesOrder::query()
+            $localId = SalesOrder::query()
                 ->where('source', 'tiktok')
                 ->where('channel_order_no', (string) $orderId)
                 ->value('id');
             if ($localId) {
-                \Modules\Sales\Jobs\PrepareTikTokShippingLabelJob::dispatch((string) $localId);
+                PrepareTikTokShippingLabelJob::dispatch((string) $localId);
             }
         }
     }
@@ -298,17 +322,17 @@ class ProcessTikTokWebhook implements ShouldQueue
             return;
         }
 
-        ChannelOrderPullGuard::requirePersisted(
+        ChannelOrderPullGuard::pullOnce(
             'tiktok',
             $shopId,
             $orderId,
-            $orderService->pullOrderById($shopId, $orderId),
+            fn (): int => $orderService->pullOrderById($shopId, $orderId),
         );
 
         $cancelStatus = (string) ($data['cancel_status'] ?? '');
 
         if ($cancelStatus === 'CANCELLATION_REQUEST_CANCEL') {
-            app(\Modules\Sales\Services\SalesOrderService::class)
+            app(SalesOrderService::class)
                 ->markChannelCancelRejected($orderId, 'TikTok menolak permintaan pembatalan');
         }
 
@@ -327,11 +351,11 @@ class ProcessTikTokWebhook implements ShouldQueue
             return;
         }
 
-        ChannelOrderPullGuard::requirePersisted(
+        ChannelOrderPullGuard::pullOnce(
             'tiktok',
             $shopId,
             $orderId,
-            $orderService->pullOrderById($shopId, $orderId),
+            fn (): int => $orderService->pullOrderById($shopId, $orderId),
         );
         Log::info("TikTok reverse/return: order {$orderId} resynced.", [
             'shop_id' => $shopId,
@@ -367,18 +391,18 @@ class ProcessTikTokWebhook implements ShouldQueue
             return;
         }
 
-        ChannelOrderPullGuard::requirePersisted(
+        ChannelOrderPullGuard::pullOnce(
             'tiktok',
             $shopId,
             $orderId,
-            $orderService->pullOrderById($shopId, $orderId),
+            fn (): int => $orderService->pullOrderById($shopId, $orderId),
         );
 
         $this->createChannelReturn(
             $shopId,
             $orderId,
             null,
-            'Refund TikTok berhasil (RMA ' . ($data['rma_id'] ?? '-') . ')',
+            'Refund TikTok berhasil (RMA '.($data['rma_id'] ?? '-').')',
             'REFUND_SUCCESS',
         );
     }
@@ -396,14 +420,14 @@ class ProcessTikTokWebhook implements ShouldQueue
     protected function createChannelReturn(string $shopId, string $orderId, ?string $channelReturnId, string $reason, ?string $channelStatus = null): void
     {
 
-        \Modules\Sales\Jobs\ProcessChannelReturnJob::dispatch([
-            'source'            => 'tiktok',
-            'channel_order_id'  => $orderId,
+        ProcessChannelReturnJob::dispatch([
+            'source' => 'tiktok',
+            'channel_order_id' => $orderId,
             'channel_return_id' => $channelReturnId,
-            'channel_shop_id'   => $shopId,
-            'reason'            => $reason,
-            'channel_status'    => $channelStatus,
-            'created_by'        => 'system:tiktok-webhook',
+            'channel_shop_id' => $shopId,
+            'reason' => $reason,
+            'channel_status' => $channelStatus,
+            'created_by' => 'system:tiktok-webhook',
         ]);
     }
 
@@ -433,7 +457,7 @@ class ProcessTikTokWebhook implements ShouldQueue
             $authService->refreshStoreToken($uuid);
             Log::info('TikTok token diperbarui via upcoming-expiration webhook.', ['shop_id' => $shopId]);
         } catch (\Throwable $e) {
-            $shops->markIntegrationError($uuid, 'TikTok token akan kedaluwarsa & auto-refresh gagal: ' . $e->getMessage());
+            $shops->markIntegrationError($uuid, 'TikTok token akan kedaluwarsa & auto-refresh gagal: '.$e->getMessage());
             Log::warning('TikTok auto-refresh via expiry webhook gagal.', [
                 'shop_id' => $shopId,
                 'error' => $e->getMessage(),
@@ -453,7 +477,7 @@ class ProcessTikTokWebhook implements ShouldQueue
             return;
         }
 
-        $order = \Modules\Sales\Models\SalesOrder::query()
+        $order = SalesOrder::query()
             ->where('source', 'tiktok')
             ->where('channel_order_no', $orderId)
             ->first();
@@ -461,7 +485,7 @@ class ProcessTikTokWebhook implements ShouldQueue
             return;
         }
 
-        $shipment = \Modules\Outbound\Models\Shipment::query()
+        $shipment = Shipment::query()
             ->whereHas('orders', fn ($q) => $q->where('order_id', $order->id))
             ->latest('id')
             ->first();
@@ -470,13 +494,13 @@ class ProcessTikTokWebhook implements ShouldQueue
         }
 
         $eventType = match ($status) {
-            'AWAITING_COLLECTION' => \Modules\Outbound\Models\ShipmentTrackingEvent::EVENT_DRIVER_ASSIGNED,
-            'IN_TRANSIT' => \Modules\Outbound\Models\ShipmentTrackingEvent::EVENT_IN_TRANSIT,
-            'DELIVERED' => \Modules\Outbound\Models\ShipmentTrackingEvent::EVENT_DELIVERED,
-            default => 'tiktok_' . strtolower($status),
+            'AWAITING_COLLECTION' => ShipmentTrackingEvent::EVENT_DRIVER_ASSIGNED,
+            'IN_TRANSIT' => ShipmentTrackingEvent::EVENT_IN_TRANSIT,
+            'DELIVERED' => ShipmentTrackingEvent::EVENT_DELIVERED,
+            default => 'tiktok_'.strtolower($status),
         };
 
-        $exists = \Modules\Outbound\Models\ShipmentTrackingEvent::query()
+        $exists = ShipmentTrackingEvent::query()
             ->where('shipment_id', $shipment->id)
             ->where('source', 'tiktok')
             ->where('event_type', $eventType)
@@ -485,7 +509,7 @@ class ProcessTikTokWebhook implements ShouldQueue
             return;
         }
 
-        \Modules\Outbound\Models\ShipmentTrackingEvent::create([
+        ShipmentTrackingEvent::create([
             'shipment_id' => $shipment->id,
             'source' => 'tiktok',
             'event_type' => $eventType,
@@ -497,7 +521,7 @@ class ProcessTikTokWebhook implements ShouldQueue
             'received_at' => now(),
         ]);
 
-        \Modules\Outbound\Jobs\RefreshInstantTrackingJob::dispatch($shipment->id);
+        RefreshInstantTrackingJob::dispatch($shipment->id);
     }
 
     private function looksLikeAuthExpiration(array $data): bool
@@ -569,7 +593,7 @@ class ProcessTikTokWebhook implements ShouldQueue
     {
         Cache::forget(self::idempotencyKey($this->payload));
 
-        \Modules\Channel\Support\WebhookFailureHandler::record(
+        WebhookFailureHandler::record(
             'tiktok',
             self::idempotencyKey($this->payload),
             [

@@ -3,26 +3,37 @@
 namespace Modules\Channel\Jobs;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Services\ChannelDownloadService;
+use Modules\Channel\Services\ChannelSyncSettingService;
 use Modules\Channel\Services\ChannelWebhookAuditService;
 use Modules\Channel\Services\WooCommerceOrderService;
+use Modules\Channel\Support\ChannelOrderIntakeGate;
 use Modules\Channel\Support\ChannelOrderPullGuard;
+use Modules\Channel\Support\WebhookFailureHandler;
+use Modules\Product\Models\ProductChannelMapping;
+use Modules\Sales\Jobs\ProcessChannelReturnJob;
 
-class ProcessWooCommerceWebhook implements ShouldQueue
+class ProcessWooCommerceWebhook implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
+
     public array $backoff = [10, 60, 300];
+
     public int $timeout = 120;
+
+    public int $uniqueFor = 86400;
 
     public function __construct(
         public string $shopId,
@@ -40,7 +51,7 @@ class ProcessWooCommerceWebhook implements ShouldQueue
 
     public static function idempotencyKey(string $shopId, string $topic, array $payload): string
     {
-        return 'woocommerce:webhook:' . md5(json_encode([
+        return 'woocommerce:webhook:'.md5(json_encode([
             $shopId,
             $topic,
             $payload['id'] ?? '',
@@ -48,13 +59,17 @@ class ProcessWooCommerceWebhook implements ShouldQueue
         ]));
     }
 
+    public function uniqueId(): string
+    {
+        return self::idempotencyKey($this->shopId, $this->topic, $this->payload);
+    }
+
     public function handle(
         WooCommerceOrderService $orderService,
         ChannelDownloadService $downloadService,
         ?ChannelWebhookAuditService $webhookAudit = null,
-    ): void
-    {
-        if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
+    ): void {
+        if (app(ChannelSyncSettingService::class)->isPaused()) {
             return;
         }
 
@@ -93,7 +108,7 @@ class ProcessWooCommerceWebhook implements ShouldQueue
         }
 
         if ($this->orderIntakeSkipped) {
-            ChannelWebhookInbox::markSkippedByKey($eventKey, \Modules\Channel\Support\ChannelOrderIntakeGate::reason());
+            ChannelWebhookInbox::markSkippedByKey($eventKey, ChannelOrderIntakeGate::reason());
 
             return;
         }
@@ -105,17 +120,17 @@ class ProcessWooCommerceWebhook implements ShouldQueue
 
     protected function handleOrderEvent(WooCommerceOrderService $orderService): void
     {
-        if (\Modules\Channel\Support\ChannelOrderIntakeGate::blocksShop((string) $this->shopId, 'woocommerce')) {
+        if (ChannelOrderIntakeGate::blocksShop((string) $this->shopId, 'woocommerce')) {
             $this->orderIntakeSkipped = true;
 
             return;
         }
 
-        ChannelOrderPullGuard::requirePersisted(
+        ChannelOrderPullGuard::pullOnce(
             'woocommerce',
             $this->shopId,
             $this->resourceId,
-            $orderService->pullOrderById($this->shopId, $this->resourceId),
+            fn (): int => $orderService->pullOrderById($this->shopId, $this->resourceId),
         );
 
         if ($this->topic === 'order.deleted') {
@@ -138,7 +153,7 @@ class ProcessWooCommerceWebhook implements ShouldQueue
         $refundEntries = ! empty($refunds)
             ? $refunds
             : [[
-                'id' => 'full-' . $orderId,
+                'id' => 'full-'.$orderId,
                 'reason' => 'Order fully refunded',
                 'total' => $this->payload['total'] ?? 0,
             ]];
@@ -151,24 +166,40 @@ class ProcessWooCommerceWebhook implements ShouldQueue
 
             $reason = (string) ($refund['reason'] ?? '');
 
-            \Modules\Sales\Jobs\ProcessChannelReturnJob::dispatch([
-                'source'            => 'woocommerce',
-                'channel_order_id'  => $orderId,
+            ProcessChannelReturnJob::dispatch([
+                'source' => 'woocommerce',
+                'channel_order_id' => $orderId,
                 'channel_return_id' => $refundId,
-                'channel_shop_id'   => $this->shopId,
-                'reason'            => $reason !== '' ? $reason : 'Refund WooCommerce',
-                'channel_status'    => $status !== '' ? strtoupper($status) : 'REFUNDED',
-                'created_by'        => 'system:woocommerce-webhook',
+                'channel_shop_id' => $this->shopId,
+                'reason' => $reason !== '' ? $reason : 'Refund WooCommerce',
+                'channel_status' => $status !== '' ? strtoupper($status) : 'REFUNDED',
+                'created_by' => 'system:woocommerce-webhook',
             ]);
         }
     }
 
     protected function handleProductEvent(ChannelDownloadService $downloadService): void
     {
+        $channelShopId = DB::table('channel_shops')
+            ->where('shop_id', $this->shopId)
+            ->value('id');
+
+        if (! $channelShopId || ! ProductChannelMapping::query()
+            ->where('channel_shop_id', $channelShopId)
+            ->where('external_product_id', $this->resourceId)
+            ->exists()) {
+            Log::debug('WooCommerce product webhook diabaikan karena listing belum terhubung.', [
+                'shop_id' => $this->shopId,
+                'product_id' => $this->resourceId,
+            ]);
+
+            return;
+        }
+
         try {
             $downloadService->downloadProductDebounced('woocommerce', $this->shopId, $this->resourceId);
         } catch (\Throwable $e) {
-            Log::warning('WooCommerce re-sync produk gagal: ' . $e->getMessage(), [
+            Log::warning('WooCommerce re-sync produk gagal: '.$e->getMessage(), [
                 'shop_id' => $this->shopId,
                 'product_id' => $this->resourceId,
             ]);
@@ -179,7 +210,7 @@ class ProcessWooCommerceWebhook implements ShouldQueue
     {
         Cache::forget(self::idempotencyKey($this->shopId, $this->topic, $this->payload));
 
-        \Modules\Channel\Support\WebhookFailureHandler::record(
+        WebhookFailureHandler::record(
             'woocommerce',
             self::idempotencyKey($this->shopId, $this->topic, $this->payload),
             [

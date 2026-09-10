@@ -3,6 +3,7 @@
 namespace Modules\Channel\Jobs;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -13,32 +14,57 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Services\ChannelDownloadService;
+use Modules\Channel\Services\ChannelSyncSettingService;
 use Modules\Channel\Services\ChannelWebhookAuditService;
 use Modules\Channel\Services\ShopeeOrderService;
+use Modules\Channel\Support\ChannelOrderIntakeGate;
 use Modules\Channel\Support\ChannelOrderPullGuard;
+use Modules\Channel\Support\WebhookFailureHandler;
+use Modules\Outbound\Jobs\RefreshInstantTrackingJob;
+use Modules\Outbound\Models\Shipment;
+use Modules\Outbound\Models\ShipmentTrackingEvent;
 use Modules\Product\Models\ProductChannelMapping;
+use Modules\Sales\Jobs\ProcessChannelReturnJob;
+use Modules\Sales\Models\SalesOrder;
 
-class ProcessShopeeWebhook implements ShouldQueue
+class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
+
     public array $backoff = [10, 60, 300];
+
     public int $timeout = 120;
 
+    public int $uniqueFor = 86400;
+
     private const PUSH_SHOP_AUTHORIZED = 1;
+
     private const PUSH_SHOP_DEAUTHORIZED = 2;
+
     private const PUSH_ORDER_STATUS = 3;
+
     private const PUSH_TRACKING_NO = 4;
+
     private const PUSH_SHOPEE_UPDATES = 5;
+
     private const PUSH_RESERVED_STOCK_CHANGE = 8;
+
     private const PUSH_SHIPPING_DOC = 15;
+
     private const PUSH_ITEM_PRICE_UPDATE = 22;
+
     private const PUSH_BOOKING_STATUS = 23;
+
     private const PUSH_BOOKING_TRACKING_NO = 24;
+
     private const PUSH_BOOKING_SHIPPING_DOC = 25;
+
     private const PUSH_RETURN_UPDATE = 29;
+
     private const PUSH_PACKAGE_FULFILLMENT = 30;
+
     private const PUSH_COURIER_DELIVERY_BINDING = 37;
 
     public function __construct(
@@ -77,7 +103,7 @@ class ProcessShopeeWebhook implements ShouldQueue
     {
         $data = $payload['data'] ?? [];
 
-        return 'shopee:webhook:' . md5(json_encode([
+        return 'shopee:webhook:'.md5(json_encode([
             $payload['shop_id'] ?? '',
             $payload['code'] ?? '',
             $payload['timestamp'] ?? '',
@@ -86,15 +112,19 @@ class ProcessShopeeWebhook implements ShouldQueue
         ]));
     }
 
+    public function uniqueId(): string
+    {
+        return self::idempotencyKey($this->payload);
+    }
+
     protected bool $orderIntakeSkipped = false;
 
     public function handle(
         ShopeeOrderService $orderService,
         ChannelDownloadService $downloadService,
         ?ChannelWebhookAuditService $webhookAudit = null,
-    ): void
-    {
-        if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
+    ): void {
+        if (app(ChannelSyncSettingService::class)->isPaused()) {
             return;
         }
 
@@ -103,7 +133,10 @@ class ProcessShopeeWebhook implements ShouldQueue
         $data = $this->payload['data'] ?? [];
 
         if ($shopId === '') {
-            Log::warning('Shopee webhook tanpa shop_id — diabaikan.', ['payload' => $this->payload]);
+            Log::warning('Shopee webhook tanpa shop_id — diabaikan.', [
+                'code' => $code,
+                'event_key' => self::idempotencyKey($this->payload),
+            ]);
 
             return;
         }
@@ -152,7 +185,7 @@ class ProcessShopeeWebhook implements ShouldQueue
         }
 
         if ($this->orderIntakeSkipped) {
-            ChannelWebhookInbox::markSkippedByKey($eventKey, \Modules\Channel\Support\ChannelOrderIntakeGate::reason());
+            ChannelWebhookInbox::markSkippedByKey($eventKey, ChannelOrderIntakeGate::reason());
 
             return;
         }
@@ -162,7 +195,7 @@ class ProcessShopeeWebhook implements ShouldQueue
 
     protected function handleOrderEventOrSkip(ShopeeOrderService $orderService, string $shopId, array $data): void
     {
-        if (\Modules\Channel\Support\ChannelOrderIntakeGate::blocksShop($shopId, 'shopee')) {
+        if (ChannelOrderIntakeGate::blocksShop($shopId, 'shopee')) {
             $this->orderIntakeSkipped = true;
 
             return;
@@ -174,36 +207,44 @@ class ProcessShopeeWebhook implements ShouldQueue
     protected function recordShopeeTrackingEvent(string $shopId, int $code, array $data): void
     {
         $orderSn = (string) ($data['ordersn'] ?? $data['order_sn'] ?? '');
-        if ($orderSn === '') return;
+        if ($orderSn === '') {
+            return;
+        }
 
-        $order = \Modules\Sales\Models\SalesOrder::query()
+        $order = SalesOrder::query()
             ->where('source', 'shopee')
             ->where('channel_order_no', $orderSn)
             ->first();
-        if (! $order) return;
+        if (! $order) {
+            return;
+        }
 
-        $shipment = \Modules\Outbound\Models\Shipment::query()
+        $shipment = Shipment::query()
             ->whereHas('orders', fn ($q) => $q->where('order_id', $order->id))
             ->latest('id')
             ->first();
-        if (! $shipment) return;
+        if (! $shipment) {
+            return;
+        }
 
         $eventType = match ($code) {
             self::PUSH_TRACKING_NO,
-            self::PUSH_BOOKING_TRACKING_NO => \Modules\Outbound\Models\ShipmentTrackingEvent::EVENT_DRIVER_ASSIGNED,
-            self::PUSH_PACKAGE_FULFILLMENT => \Modules\Outbound\Models\ShipmentTrackingEvent::EVENT_PICKED_UP,
-            self::PUSH_COURIER_DELIVERY_BINDING => \Modules\Outbound\Models\ShipmentTrackingEvent::EVENT_DRIVER_ARRIVED,
-            default => 'shopee_event_' . $code,
+            self::PUSH_BOOKING_TRACKING_NO => ShipmentTrackingEvent::EVENT_DRIVER_ASSIGNED,
+            self::PUSH_PACKAGE_FULFILLMENT => ShipmentTrackingEvent::EVENT_PICKED_UP,
+            self::PUSH_COURIER_DELIVERY_BINDING => ShipmentTrackingEvent::EVENT_DRIVER_ARRIVED,
+            default => 'shopee_event_'.$code,
         };
 
-        $exists = \Modules\Outbound\Models\ShipmentTrackingEvent::query()
+        $exists = ShipmentTrackingEvent::query()
             ->where('shipment_id', $shipment->id)
             ->where('source', 'shopee')
             ->where('event_type', $eventType)
             ->exists();
-        if ($exists) return;
+        if ($exists) {
+            return;
+        }
 
-        \Modules\Outbound\Models\ShipmentTrackingEvent::create([
+        ShipmentTrackingEvent::create([
             'shipment_id' => $shipment->id,
             'source' => 'shopee',
             'event_type' => $eventType,
@@ -222,7 +263,7 @@ class ProcessShopeeWebhook implements ShouldQueue
                 ->update(['tracking_number' => $trackingNo]);
         }
 
-        \Modules\Outbound\Jobs\RefreshInstantTrackingJob::dispatch($shipment->id);
+        RefreshInstantTrackingJob::dispatch($shipment->id);
     }
 
     protected function handleDeauthorized(string $shopId): void
@@ -256,24 +297,16 @@ class ProcessShopeeWebhook implements ShouldQueue
             return;
         }
 
-        $recentKey = "shopee_pulled_recent:{$shopId}:{$orderSn}";
-        if (Cache::has($recentKey)) {
+        if (! ChannelOrderPullGuard::pullOnce(
+            'shopee',
+            $shopId,
+            $orderSn,
+            fn (): int => $orderService->pullOrderById($shopId, $orderSn),
+        )) {
             Log::info("Shopee webhook {$orderSn} di-debounce (sudah di-pull dalam 15 detik terakhir).");
             $this->recordDeliveredEventIfApplicable($orderSn, $data);
-            return;
-        }
 
-        Cache::put($recentKey, true, 15);
-        try {
-            ChannelOrderPullGuard::requirePersisted(
-                'shopee',
-                $shopId,
-                $orderSn,
-                $orderService->pullOrderById($shopId, $orderSn),
-            );
-        } catch (\Throwable $e) {
-            Cache::forget($recentKey);
-            throw $e;
+            return;
         }
 
         $this->recordDeliveredEventIfApplicable($orderSn, $data);
@@ -286,33 +319,41 @@ class ProcessShopeeWebhook implements ShouldQueue
             return;
         }
 
-        $order = \Modules\Sales\Models\SalesOrder::query()
+        $order = SalesOrder::query()
             ->where('source', 'shopee')
             ->where('channel_order_no', $orderSn)
             ->first();
-        if (! $order) return;
+        if (! $order) {
+            return;
+        }
 
-        $shipment = \Modules\Outbound\Models\Shipment::query()
+        $shipment = Shipment::query()
             ->whereHas('orders', fn ($q) => $q->where('order_id', $order->id))
             ->latest('id')
             ->first();
-        if (! $shipment) return;
+        if (! $shipment) {
+            return;
+        }
 
         $eventType = match ($status) {
-            'shipped' => \Modules\Outbound\Models\ShipmentTrackingEvent::EVENT_IN_TRANSIT,
-            'to_confirm_receive', 'completed' => \Modules\Outbound\Models\ShipmentTrackingEvent::EVENT_DELIVERED,
+            'shipped' => ShipmentTrackingEvent::EVENT_IN_TRANSIT,
+            'to_confirm_receive', 'completed' => ShipmentTrackingEvent::EVENT_DELIVERED,
             default => null,
         };
-        if (! $eventType) return;
+        if (! $eventType) {
+            return;
+        }
 
-        $exists = \Modules\Outbound\Models\ShipmentTrackingEvent::query()
+        $exists = ShipmentTrackingEvent::query()
             ->where('shipment_id', $shipment->id)
             ->where('source', 'shopee')
             ->where('event_type', $eventType)
             ->exists();
-        if ($exists) return;
+        if ($exists) {
+            return;
+        }
 
-        \Modules\Outbound\Models\ShipmentTrackingEvent::create([
+        ShipmentTrackingEvent::create([
             'shipment_id' => $shipment->id,
             'source' => 'shopee',
             'event_type' => $eventType,
@@ -335,21 +376,21 @@ class ProcessShopeeWebhook implements ShouldQueue
             return;
         }
 
-        ChannelOrderPullGuard::requirePersisted(
+        ChannelOrderPullGuard::pullOnce(
             'shopee',
             $shopId,
             $orderSn,
-            $orderService->pullOrderById($shopId, $orderSn),
+            fn (): int => $orderService->pullOrderById($shopId, $orderSn),
         );
 
-        \Modules\Sales\Jobs\ProcessChannelReturnJob::dispatch([
-            'source'            => 'shopee',
-            'channel_order_id'  => $orderSn,
+        ProcessChannelReturnJob::dispatch([
+            'source' => 'shopee',
+            'channel_order_id' => $orderSn,
             'channel_return_id' => $data['return_sn'] ?? $data['refund_id'] ?? null,
-            'channel_shop_id'   => $shopId,
-            'reason'            => $data['reason'] ?? 'Retur Shopee',
-            'channel_status'    => $data['status'] ?? $data['return_status'] ?? $data['refund_status'] ?? null,
-            'created_by'        => 'system:shopee-webhook',
+            'channel_shop_id' => $shopId,
+            'reason' => $data['reason'] ?? 'Retur Shopee',
+            'channel_status' => $data['status'] ?? $data['return_status'] ?? $data['refund_status'] ?? null,
+            'created_by' => 'system:shopee-webhook',
         ]);
     }
 
@@ -376,7 +417,7 @@ class ProcessShopeeWebhook implements ShouldQueue
         try {
             $downloadService->downloadProductDebounced('shopee', $shopId, $itemId);
         } catch (\Throwable $e) {
-            Log::warning('Shopee re-sync produk gagal: ' . $e->getMessage(), ['item_id' => $itemId]);
+            Log::warning('Shopee re-sync produk gagal: '.$e->getMessage(), ['item_id' => $itemId]);
         }
 
         $status = strtolower((string) ($data['status'] ?? ''));
@@ -384,7 +425,7 @@ class ProcessShopeeWebhook implements ShouldQueue
         if (in_array($status, ['normal', 'active'], true)) {
             $mapping->markApproved();
         } elseif ($status === 'banned') {
-            $mapping->markRejected('Shopee item banned: ' . ($data['ban_reason'] ?? $status));
+            $mapping->markRejected('Shopee item banned: '.($data['ban_reason'] ?? $status));
         } elseif (in_array($status, ['deleted', 'unlist'], true)) {
             $mapping->update([
                 'sync_status' => ProductChannelMapping::STATUS_DEACTIVATED,
@@ -398,7 +439,7 @@ class ProcessShopeeWebhook implements ShouldQueue
     {
         Cache::forget(self::idempotencyKey($this->payload));
 
-        \Modules\Channel\Support\WebhookFailureHandler::record(
+        WebhookFailureHandler::record(
             'shopee',
             self::idempotencyKey($this->payload),
             [

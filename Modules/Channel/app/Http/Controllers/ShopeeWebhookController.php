@@ -106,7 +106,7 @@ class ShopeeWebhookController extends Controller
         if ($provided === '' || empty($keys)) {
             Log::warning('Shopee push auth/key kosong', [
                 'has_auth' => $provided !== '',
-                'has_key' => !empty($keys),
+                'has_key' => ! empty($keys),
             ]);
 
             return false;
@@ -203,17 +203,13 @@ class ShopeeWebhookController extends Controller
                 'full_url' => $request->fullUrl(),
                 'ip' => $request->ip(),
                 'has_authorization' => $auth !== '',
-                'authorization_preview' => $auth !== '' ? substr($auth, 0, 20) . '...' : '(empty)',
+                'authorization_preview' => $auth !== '' ? substr($auth, 0, 20).'...' : '(empty)',
                 'content_type' => $request->header('Content-Type'),
                 'body_length' => strlen($rawBody),
-                'body_full' => $rawBody,
                 'body_preview' => substr($rawBody, 0, 200),
                 'resolved_push_url' => $this->resolvePushUrl($request),
                 'result' => $result,
-                'headers' => collect($request->headers->all())
-                    ->map(fn ($v) => implode(', ', $v))
-                    ->except(['cookie'])
-                    ->toArray(),
+                'header_names' => array_keys($request->headers->all()),
             ];
 
             $entries = array_slice($entries, -50);

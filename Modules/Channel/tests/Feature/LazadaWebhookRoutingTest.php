@@ -10,6 +10,9 @@ use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\ChannelDownloadService;
 use Modules\Channel\Services\LazadaAuthService;
 use Modules\Channel\Services\LazadaOrderService;
+use Modules\Product\Models\Category;
+use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductChannelMapping;
 use Tests\TestCase;
 
 class LazadaWebhookRoutingTest extends TestCase
@@ -19,6 +22,35 @@ class LazadaWebhookRoutingTest extends TestCase
     private function process(array $payload, $order, $download, $auth): void
     {
         (new ProcessLazadaWebhook($payload))->handle($order, $download, $auth);
+    }
+
+    private function mapListing(string $itemId): void
+    {
+        $channel = Channel::firstOrCreate(['code' => 'lazada'], ['name' => 'Lazada']);
+        $shop = ChannelShop::firstOrCreate(
+            ['shop_id' => 'LZ1'],
+            [
+                'channel_id' => $channel->id,
+                'shop_name' => 'Toko',
+                'access_token' => 'tok',
+                'refresh_token' => 'rt',
+                'is_active' => true,
+            ],
+        );
+        $category = Category::create(['name' => 'C-'.$itemId, 'is_active' => true]);
+        $product = Product::create([
+            'category_id' => $category->id,
+            'name' => 'P-'.$itemId,
+            'status' => 'master',
+            'is_active' => true,
+        ]);
+
+        ProductChannelMapping::create([
+            'product_id' => $product->id,
+            'channel_shop_id' => $shop->id,
+            'external_product_id' => $itemId,
+            'sync_status' => 'synced',
+        ]);
     }
 
     public function test_token_expiry_message_triggers_refresh(): void
@@ -42,6 +74,7 @@ class LazadaWebhookRoutingTest extends TestCase
 
     public function test_product_edit_type_4_repulls_product_not_token(): void
     {
+        $this->mapListing('IT-4');
 
         $download = Mockery::mock(ChannelDownloadService::class);
         $download->shouldReceive('downloadProductDebounced')->once()->with('lazada', 'LZ1', 'IT-4');
@@ -91,6 +124,8 @@ class LazadaWebhookRoutingTest extends TestCase
 
     public function test_product_edited_repulls_product(): void
     {
+        $this->mapListing('IT-1');
+
         $download = Mockery::mock(ChannelDownloadService::class);
         $download->shouldReceive('downloadProductDebounced')->once()->with('lazada', 'LZ1', 'IT-1');
 
@@ -104,6 +139,7 @@ class LazadaWebhookRoutingTest extends TestCase
 
     public function test_product_qc_only_still_repulls(): void
     {
+        $this->mapListing('IT-1');
 
         $download = Mockery::mock(ChannelDownloadService::class);
         $download->shouldReceive('downloadProductDebounced')->once()->with('lazada', 'LZ1', 'IT-1');
@@ -118,6 +154,8 @@ class LazadaWebhookRoutingTest extends TestCase
 
     public function test_product_create_type_3_repulls_product(): void
     {
+        $this->mapListing('IT-9');
+
         $download = Mockery::mock(ChannelDownloadService::class);
         $download->shouldReceive('downloadProductDebounced')->once()->with('lazada', 'LZ1', 'IT-9');
 

@@ -5,6 +5,7 @@ namespace Modules\Channel\Tests\Feature;
 use Modules\Channel\Jobs\ProcessLazadaWebhook;
 use Modules\Channel\Jobs\ProcessShopeeWebhook;
 use Modules\Channel\Jobs\ProcessTikTokWebhook;
+use Modules\Channel\Jobs\ProcessWooCommerceWebhook;
 use Tests\TestCase;
 
 class WebhookQueueTieringTest extends TestCase
@@ -57,5 +58,18 @@ class WebhookQueueTieringTest extends TestCase
         $this->assertSame('lazada-catalog', ProcessLazadaWebhook::resolveQueueName(['message_type' => 3]));
 
         $this->assertSame('lazada-webhooks', ProcessLazadaWebhook::resolveQueueName(['message_type' => 999]));
+    }
+
+    public function test_webhook_jobs_have_stable_unique_ids(): void
+    {
+        $shopee = ['shop_id' => 'shop-1', 'code' => 3, 'timestamp' => 100, 'data' => ['ordersn' => 'order-1']];
+        $tiktok = ['tts_notification_id' => 'notification-1', 'shop_id' => 'shop-1', 'type' => 1];
+        $lazada = ['seller_id' => 'seller-1', 'message_type' => 0, 'timestamp' => 100, 'data' => ['trade_order_id' => 'order-1']];
+        $woocommerce = ['id' => 1, 'date_modified' => '2026-09-10T00:00:00Z'];
+
+        $this->assertSame(ProcessShopeeWebhook::idempotencyKey($shopee), (new ProcessShopeeWebhook($shopee))->uniqueId());
+        $this->assertSame(ProcessTikTokWebhook::idempotencyKey($tiktok), (new ProcessTikTokWebhook($tiktok))->uniqueId());
+        $this->assertSame(ProcessLazadaWebhook::idempotencyKey($lazada), (new ProcessLazadaWebhook($lazada))->uniqueId());
+        $this->assertSame(ProcessWooCommerceWebhook::idempotencyKey('shop-1', 'order.updated', $woocommerce), (new ProcessWooCommerceWebhook('shop-1', 'order.updated', '1', $woocommerce))->uniqueId());
     }
 }

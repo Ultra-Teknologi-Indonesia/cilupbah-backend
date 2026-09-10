@@ -21,12 +21,24 @@ return new class extends Migration
                 .'ON channel_webhook_inbox (channel, shop_id, channel_return_id, received_at DESC) '
                 .'WHERE channel_return_id IS NOT NULL'
             );
+            DB::statement(
+                'CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_webhook_inbox_received_at_status '
+                .'ON channel_webhook_inbox (received_at) '
+                ."WHERE status = 'RECEIVED'"
+            );
+            DB::statement(
+                'CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_webhook_inbox_failed_created_at '
+                .'ON channel_webhook_inbox (created_at) '
+                ."WHERE status = 'FAILED'"
+            );
         } else {
             Schema::table('channel_webhook_inbox', function (Blueprint $table): void {
                 $table->index(
                     ['channel', 'shop_id', 'channel_return_id', 'received_at'],
                     'idx_webhook_inbox_return_reference',
                 );
+                $table->index(['received_at', 'status'], 'idx_webhook_inbox_received_at_status');
+                $table->index(['created_at', 'status'], 'idx_webhook_inbox_failed_created_at');
             });
         }
     }
@@ -35,9 +47,13 @@ return new class extends Migration
     {
         if (DB::connection()->getDriverName() === 'pgsql') {
             DB::statement('DROP INDEX CONCURRENTLY IF EXISTS idx_webhook_inbox_return_reference');
+            DB::statement('DROP INDEX CONCURRENTLY IF EXISTS idx_webhook_inbox_received_at_status');
+            DB::statement('DROP INDEX CONCURRENTLY IF EXISTS idx_webhook_inbox_failed_created_at');
         } else {
             Schema::table('channel_webhook_inbox', function (Blueprint $table): void {
                 $table->dropIndex('idx_webhook_inbox_return_reference');
+                $table->dropIndex('idx_webhook_inbox_received_at_status');
+                $table->dropIndex('idx_webhook_inbox_failed_created_at');
             });
         }
 
