@@ -221,6 +221,29 @@ class LazadaOrderOpsTest extends TestCase
             && ($request['refundAmount'] ?? null) === '100000');
     }
 
+    public function test_fetch_return_tracking_uses_the_lazada_reverse_return_detail_api(): void
+    {
+        Http::fake([
+            'api.lazada.co.id/rest/order/reverse/return/detail/list*' => Http::response([
+                'code' => '0',
+                'data' => [
+                    'reverse_status' => 'RTM_INIT',
+                    'return_tracking_number' => 'LZ-TRACK-001',
+                    'shipping_provider' => 'LEX ID',
+                    'ship_time' => '2026-09-10 10:00:00 +0700',
+                ],
+            ], 200),
+        ]);
+
+        $result = app(LazadaOrderService::class)->fetchReturnTracking('LZ-100', 'REV-900123');
+
+        $this->assertSame('LZ-TRACK-001', $result['tracking_number']);
+        $this->assertSame('LEX ID', $result['carrier']);
+        $this->assertTrue($result['_request_succeeded']);
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/order/reverse/return/detail/list')
+            && ($request['reverse_order_id'] ?? null) === 'REV-900123');
+    }
+
     public function test_cancel_reasons_returns_list(): void
     {
         Http::fake([

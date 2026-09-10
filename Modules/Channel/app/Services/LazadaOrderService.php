@@ -540,7 +540,7 @@ class LazadaOrderService
 
             $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request(
                 'GET',
-                '/reverse/order/detail/get',
+                '/order/reverse/return/detail/list',
                 ['reverse_order_id' => $reverseOrderId],
                 $token,
             ));
