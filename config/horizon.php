@@ -160,7 +160,9 @@ return [
             'tries' => 3,
             'backoff' => [30, 120, 300],
             'memory' => 256,
-            'nice' => 0,
+            // Product/catalog sync tidak boleh mengalahkan order dan webhook
+            // saat node berada di bawah tekanan CPU.
+            'nice' => 10,
         ],
         'supervisor-channel-after-sales' => [
             'connection' => config('queue.routing.channel_after_sales.connection', 'redis-long'),
@@ -325,15 +327,23 @@ return [
             ],
             'supervisor-order-operations' => [
                 'minProcesses' => 1,
-                'maxProcesses' => 4,
+                'maxProcesses' => 2,
             ],
             'supervisor-channel-sync' => [
                 'minProcesses' => 1,
-                'maxProcesses' => 2,
+                'maxProcesses' => 1,
             ],
             'supervisor-channel-operations' => [
                 'minProcesses' => 1,
-                'maxProcesses' => 3,
+                'maxProcesses' => 2,
+            ],
+            'supervisor-channel-finance' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 1,
+            ],
+            'supervisor-channel-after-sales' => [
+                'minProcesses' => 1,
+                'maxProcesses' => 1,
             ],
             'supervisor-stock-cutover' => [
                 'minProcesses' => 1,
@@ -341,15 +351,15 @@ return [
             ],
             'supervisor-stock' => [
                 'minProcesses' => 1,
-                'maxProcesses' => 2,
+                'maxProcesses' => 1,
             ],
             'supervisor-downloads' => [
                 'minProcesses' => 1,
-                'maxProcesses' => 2,
+                'maxProcesses' => 1,
             ],
             'supervisor-labels' => [
                 'minProcesses' => 1,
-                'maxProcesses' => 2,
+                'maxProcesses' => 1,
             ],
             'supervisor-qr-labels' => [
                 'minProcesses' => 1,
@@ -361,21 +371,21 @@ return [
             ],
             'supervisor-tiktok-webhooks' => [
                 'minProcesses' => 1,
-                'maxProcesses' => 4,
-                'balanceMaxShift' => 2,
+                'maxProcesses' => 2,
+                'balanceMaxShift' => 1,
                 'balanceCooldown' => 2,
                 'memory' => 256,
             ],
             'supervisor-shopee-webhooks' => [
                 'minProcesses' => 1,
-                'maxProcesses' => 4,
-                'balanceMaxShift' => 2,
+                'maxProcesses' => 2,
+                'balanceMaxShift' => 1,
                 'balanceCooldown' => 2,
                 'memory' => 256,
             ],
             'supervisor-lazada-webhooks' => [
                 'minProcesses' => 1,
-                'maxProcesses' => 2,
+                'maxProcesses' => 1,
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 2,
                 'memory' => 256,

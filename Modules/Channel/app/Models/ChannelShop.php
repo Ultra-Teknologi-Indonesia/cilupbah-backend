@@ -55,6 +55,8 @@ class ChannelShop extends Model
         'last_order_synced_at',
         'last_order_error',
         'last_order_error_at',
+        'order_pull_lease_token',
+        'order_pull_locked_until',
         'stock_source_mode',
         'stock_source_location_id',
     ];
@@ -83,6 +85,7 @@ class ChannelShop extends Model
         'last_synced_at' => 'datetime',
         'last_order_synced_at' => 'datetime',
         'last_order_error_at' => 'datetime',
+        'order_pull_locked_until' => 'datetime',
         'consumer_key' => 'encrypted',
         'consumer_secret' => 'encrypted',
         'webhook_secret' => 'encrypted',
@@ -96,6 +99,7 @@ class ChannelShop extends Model
         'consumer_key',
         'consumer_secret',
         'webhook_secret',
+        'order_pull_lease_token',
     ];
 
     public function channel(): BelongsTo

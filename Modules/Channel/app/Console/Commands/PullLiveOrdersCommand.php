@@ -5,9 +5,11 @@ namespace Modules\Channel\Console\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Modules\Channel\Jobs\PullChannelOrdersJob;
 use Modules\Channel\Exceptions\UnsupportedShadowChannelException;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Channel\Services\ChannelOrderPullLeaseService;
 use Modules\Channel\Services\ChannelSyncSettingService;
 use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Services\ShopeeOrderService;
@@ -20,6 +22,9 @@ class PullLiveOrdersCommand extends Command
         {--from= : Awal jendela tarik (waktu WIB, mis. "2026-08-01" atau "2026-08-01 07:00")}
         {--to= : Akhir jendela tarik (waktu WIB)}
         {--hours=24 : Rentang lookback dalam jam jika --from tidak diisi}
+        {--queue : Antrikan pull per toko ke worker terbatas}
+        {--overlap-minutes=5 : Overlap aman dari sinkronisasi terakhir saat --queue}
+        {--lease-seconds=300 : Durasi maksimum satu toko boleh memiliki pull aktif saat --queue}
         {--include-shadow : Sertakan juga toko berstatus shadow mode}
         {--dry-run : Jalankan jalur kode sebenarnya lalu rollback tanpa menyimpan}';
 
@@ -27,7 +32,10 @@ class PullLiveOrdersCommand extends Command
 
     private const TIMEZONE = 'Asia/Jakarta';
 
-    public function handle(ChannelShopRepository $shopRepository): int
+    public function handle(
+        ChannelShopRepository $shopRepository,
+        ChannelOrderPullLeaseService $leases,
+    ): int
     {
         $isDryRun = (bool) $this->option('dry-run');
         $explicitFrom = $this->parseOption('from');
@@ -51,6 +59,23 @@ class PullLiveOrdersCommand extends Command
 
         if ($isDryRun) {
             $this->warn('DRY RUN: perubahan akan di-rollback di akhir setiap toko.');
+        }
+
+        if ((bool) $this->option('queue')) {
+            if ($isDryRun) {
+                $this->error('--queue tidak dapat digabung dengan --dry-run.');
+
+                return self::FAILURE;
+            }
+
+            return $this->queueShopPulls(
+                $shops,
+                $shopRepository,
+                $leases,
+                $explicitFrom,
+                $explicitTo,
+                $hours,
+            );
         }
 
         $rows = [];
@@ -102,9 +127,65 @@ class PullLiveOrdersCommand extends Command
 
         return ChannelShop::with('channel')
             ->where('is_active', true)
+            ->where('order_sync_enabled', true)
+            ->whereNull('disconnected_at')
             ->when(! $includeShadow, fn ($q) => $q->where('is_shadow_mode', false))
             ->when($this->option('shop'), fn ($query, $shopId) => $query->where('shop_id', $shopId))
             ->get();
+    }
+
+    private function queueShopPulls(
+        \Illuminate\Support\Collection $shops,
+        ChannelShopRepository $shopRepository,
+        ChannelOrderPullLeaseService $leases,
+        ?Carbon $explicitFrom,
+        ?Carbon $explicitTo,
+        int $hours,
+    ): int {
+        $leaseSeconds = min(900, max(60, (int) $this->option('lease-seconds')));
+        $overlapMinutes = min(30, max(1, (int) $this->option('overlap-minutes')));
+        $windowEnd = $explicitTo ?: now();
+        $rows = [];
+        $failed = 0;
+
+        foreach ($shops as $shop) {
+            $windowStart = $explicitFrom
+                ?: ($shop->last_order_synced_at
+                    ? $shop->last_order_synced_at->copy()->subMinutes($overlapMinutes)
+                    : $windowEnd->copy()->subHours($hours));
+
+            if ($windowStart->greaterThanOrEqualTo($windowEnd)) {
+                $rows[] = [$shop->shop_name, $shop->channel->code ?? 'unknown', '-', 'window tidak valid'];
+                continue;
+            }
+
+            $token = $leases->acquire($shop, $leaseSeconds);
+            if ($token === null) {
+                $rows[] = [$shop->shop_name, $shop->channel->code ?? 'unknown', '-', 'masih diproses'];
+                continue;
+            }
+
+            try {
+                PullChannelOrdersJob::dispatch(
+                    (string) $shop->id,
+                    $token,
+                    $windowStart->toIso8601String(),
+                    $windowEnd->toIso8601String(),
+                )->onQueue((string) config('queue.names.channel_sync', 'channel-sync'));
+
+                $rows[] = [$shop->shop_name, $shop->channel->code ?? 'unknown', '-', 'diantrikan'];
+            } catch (\Throwable $e) {
+                $leases->release((string) $shop->id, $token);
+                $shopRepository->markOrderSyncProblem((string) $shop->id, $e->getMessage());
+                report($e);
+                $rows[] = [$shop->shop_name, $shop->channel->code ?? 'unknown', '-', 'GAGAL enqueue: '.$e->getMessage()];
+                $failed++;
+            }
+        }
+
+        $this->table(['Toko', 'Channel', 'Order', 'Status'], $rows);
+
+        return $failed === 0 ? self::SUCCESS : self::FAILURE;
     }
 
     private function pullWithinWindow(ChannelShop $shop, string $channelCode, Carbon $from, Carbon $to, bool $isDryRun): int

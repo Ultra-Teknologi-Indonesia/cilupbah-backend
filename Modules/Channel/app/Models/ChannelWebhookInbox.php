@@ -4,6 +4,7 @@ namespace Modules\Channel\Models;
 
 use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Modules\Channel\Enums\WebhookInboxStatus;
 
@@ -103,12 +104,54 @@ class ChannelWebhookInbox extends Model
             }
 
             $attempts = (int) $row->attempts + 1;
-            $delaySeconds = min(3600, 30 * (2 ** min($attempts - 1, 7)));
-
             $row->update([
                 'attempts' => $attempts,
-                'next_attempt_at' => now()->addSeconds($delaySeconds),
+                // Job baru saja berhasil diantrikan. Jangan replay ulang saat
+                // job normal masih memiliki kesempatan untuk berjalan.
+                'next_attempt_at' => now()->addMinutes(10),
             ]);
+        });
+    }
+
+    /**
+     * Claim a small replay batch atomically. A crashed scheduler leaves the rows
+     * eligible again after the lease expires; concurrent schedulers cannot claim
+     * the same event because PostgreSQL skips locked rows.
+     *
+     * @return Collection<int, static>
+     */
+    public static function claimReplayBatch(
+        \DateTimeInterface $threshold,
+        int $maxAttempts,
+        int $limit,
+        int $leaseSeconds = 600,
+    ): Collection {
+        return DB::transaction(function () use ($threshold, $maxAttempts, $limit, $leaseSeconds): Collection {
+            $rows = static::query()
+                ->where('status', WebhookInboxStatus::RECEIVED)
+                ->where('received_at', '<', $threshold)
+                ->where('attempts', '<', $maxAttempts)
+                ->where(function ($query): void {
+                    $query->whereNull('next_attempt_at')
+                        ->orWhere('next_attempt_at', '<=', now());
+                })
+                ->orderBy('received_at')
+                ->limit($limit)
+                ->lock('FOR UPDATE SKIP LOCKED')
+                ->get();
+
+            if ($rows->isEmpty()) {
+                return $rows;
+            }
+
+            static::query()
+                ->whereIn('id', $rows->pluck('id'))
+                ->update([
+                    'next_attempt_at' => now()->addSeconds($leaseSeconds),
+                    'updated_at' => now(),
+                ]);
+
+            return $rows;
         });
     }
 

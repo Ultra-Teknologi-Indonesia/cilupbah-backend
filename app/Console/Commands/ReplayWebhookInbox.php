@@ -11,7 +11,7 @@ use Modules\Channel\Services\ChannelWebhookService;
 
 class ReplayWebhookInbox extends Command
 {
-    protected $signature = 'channel:webhooks-replay {--minutes=15 : Event RECEIVED lebih tua dari N menit dianggap macet} {--limit=500 : Maksimum event yang di-dispatch ulang per run} {--max-attempts=5 : Berhenti dispatch ulang setelah N percobaan} {--max-memory-ratio=0.8 : Hentikan replay jika pemakaian Redis queue melewati rasio ini}';
+    protected $signature = 'channel:webhooks-replay {--minutes=15 : Event RECEIVED lebih tua dari N menit dianggap macet} {--limit=500 : Maksimum event yang di-dispatch ulang per run} {--max-seconds=30 : Batas waktu kerja command agar scheduler tidak tertahan} {--max-attempts=5 : Berhenti dispatch ulang setelah N percobaan} {--max-memory-ratio=0.8 : Hentikan replay jika pemakaian Redis queue melewati rasio ini}';
 
     protected $description = 'Dispatch ulang webhook masuk yang macet di status RECEIVED (safety net: job hilang/crash tanpa menandai inbox). Idempoten via jalur job normal.';
 
@@ -25,6 +25,8 @@ class ReplayWebhookInbox extends Command
 
         $threshold = now()->subMinutes((int) $this->option('minutes'));
         $maxAttempts = (int) $this->option('max-attempts');
+        $limit = min(500, max(1, (int) $this->option('limit')));
+        $deadline = microtime(true) + min(120, max(1, (int) $this->option('max-seconds')));
 
         if (! $this->queueMemoryIsSafe((float) $this->option('max-memory-ratio'))) {
             $this->warn('Replay dihentikan: Redis queue melewati batas aman atau tidak dapat menerima pekerjaan baru.');
@@ -32,52 +34,55 @@ class ReplayWebhookInbox extends Command
             return self::SUCCESS;
         }
 
-        $this->deadLetterExhausted($threshold, $maxAttempts);
-
-        $rows = ChannelWebhookInbox::query()
-            ->where('status', WebhookInboxStatus::RECEIVED)
-            ->where('received_at', '<', $threshold)
-            ->where('attempts', '<', $maxAttempts)
-            ->where(function ($query): void {
-                $query->whereNull('next_attempt_at')
-                    ->orWhere('next_attempt_at', '<=', now());
-            })
-            ->orderBy('received_at')
-            ->limit((int) $this->option('limit'))
-            ->get();
-
-        if ($rows->isEmpty()) {
-            $this->info('Tidak ada webhook masuk yang macet.');
-
-            return self::SUCCESS;
-        }
+        $this->deadLetterExhausted($threshold, $maxAttempts, min(100, $limit));
 
         $dispatched = 0;
-        foreach ($rows as $row) {
-            if (! in_array(strtolower((string) $row->channel), ['lazada', 'shopee', 'tiktok', 'woocommerce'], true)) {
-                $row->markFailed('Channel webhook tidak dikenal saat replay.');
-                continue;
+        $claimed = 0;
+        $batchSize = min(25, $limit);
+
+        while ($claimed < $limit && microtime(true) < $deadline) {
+            $rows = ChannelWebhookInbox::claimReplayBatch(
+                $threshold,
+                $maxAttempts,
+                min($batchSize, $limit - $claimed),
+            );
+
+            if ($rows->isEmpty()) {
+                break;
             }
 
-            if ($webhookService->dispatchInbox($row)) {
-                ChannelWebhookInbox::markReplayAttemptByKey((string) $row->event_key);
-                $dispatched++;
+            $claimed += $rows->count();
+
+            foreach ($rows as $row) {
+                if (microtime(true) >= $deadline) {
+                    break 2;
+                }
+
+                if (! in_array(strtolower((string) $row->channel), ['lazada', 'shopee', 'tiktok', 'woocommerce'], true)) {
+                    $row->markFailed('Channel webhook tidak dikenal saat replay.');
+                    continue;
+                }
+
+                if ($webhookService->dispatchInbox($row)) {
+                    ChannelWebhookInbox::markReplayAttemptByKey((string) $row->event_key);
+                    $dispatched++;
+                }
             }
         }
 
-        $this->info("Dispatch ulang {$dispatched} webhook masuk yang macet.");
+        $this->info("Claim {$claimed}, dispatch ulang {$dispatched} webhook masuk yang macet.");
 
         return self::SUCCESS;
     }
 
-    private function deadLetterExhausted(\Illuminate\Support\Carbon $threshold, int $maxAttempts): void
+    private function deadLetterExhausted(\Illuminate\Support\Carbon $threshold, int $maxAttempts, int $limit): void
     {
         $exhausted = ChannelWebhookInbox::query()
             ->where('status', WebhookInboxStatus::RECEIVED)
             ->where('received_at', '<', $threshold)
             ->where('attempts', '>=', $maxAttempts)
             ->orderBy('received_at')
-            ->limit(500)
+            ->limit($limit)
             ->get();
 
         foreach ($exhausted as $row) {

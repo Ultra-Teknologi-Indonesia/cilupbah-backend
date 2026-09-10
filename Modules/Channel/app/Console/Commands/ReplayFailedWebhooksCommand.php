@@ -47,8 +47,6 @@ class ReplayFailedWebhooksCommand extends Command
                 continue;
             }
 
-            \Illuminate\Support\Facades\Cache::forget($record->event_key);
-
             $record->update([
                 'status' => WebhookInboxStatus::RECEIVED,
                 'error' => null,

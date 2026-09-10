@@ -105,7 +105,27 @@ final class ChannelWebhookService
     public function dispatchInbox(ChannelWebhookInbox $row): bool
     {
         $payload = (array) $row->payload;
-        Cache::forget((string) $row->event_key);
+
+        // Cache dipakai untuk idempotensi worker, tetapi inbox database adalah
+        // source of truth. Kegagalan cache tidak boleh menjatuhkan seluruh batch
+        // replay; event ditunda aman melalui retry database.
+        try {
+            Cache::forget((string) $row->event_key);
+        } catch (\Throwable $e) {
+            Log::warning('Webhook replay ditunda karena cache idempotensi tidak tersedia', [
+                'channel' => $row->channel,
+                'event_key' => $row->event_key,
+                'exception' => $e::class,
+                'error' => $e->getMessage(),
+            ]);
+
+            ChannelWebhookInbox::markDispatchFailedByKey(
+                (string) $row->event_key,
+                'Cache idempotensi tidak tersedia dan akan dicoba ulang: '.$e->getMessage(),
+            );
+
+            return false;
+        }
 
         return match (strtolower((string) $row->channel)) {
             'lazada' => $this->dispatchLazada($payload),

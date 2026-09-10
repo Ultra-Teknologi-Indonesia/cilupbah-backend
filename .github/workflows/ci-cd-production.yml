@@ -106,6 +106,11 @@ jobs:
             echo "==> Mengupdate image tag di file YAML temporary..."
             sed -i "s|image: ghcr.io/ultra-teknologi-indonesia/cilupbah:.*|image: $IMAGE|g" "$K8S_DIR"/*.yaml
 
+            # Scheduler lama adalah Deployment schedule:work. CronJob baru
+            # memakai nama yang sama tetapi resource type berbeda, sehingga
+            # Deployment harus dihapus eksplisit agar tidak dua scheduler aktif.
+            kubectl delete deployment cilupbah-scheduler -n "$NAMESPACE" --ignore-not-found
+
             echo "==> Mengaplikasikan konfigurasi YAML ke Kubernetes..."
             kubectl apply -f "$K8S_DIR" -n "$NAMESPACE"
 

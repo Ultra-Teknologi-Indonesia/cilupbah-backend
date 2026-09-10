@@ -1,48 +1,42 @@
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: batch/v1
+kind: CronJob
 metadata:
   name: cilupbah-scheduler
   namespace: cilupbah
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: cilupbah-scheduler
-  template:
-    metadata:
-      labels:
-        app: cilupbah-scheduler
+  schedule: "* * * * *"
+  # This is the primary overlap guard. Unlike Laravel cache locks it continues
+  # to work when Redis cache or CoreDNS is impaired.
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 30
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
     spec:
-      imagePullSecrets:
-        - name: ghcr-creds
-      containers:
-        - name: scheduler
-          image: ghcr.io/ultra-teknologi-indonesia/cilupbah:v1.0.0
-          command: ["php", "artisan", "schedule:work"]
-          envFrom:
-            - secretRef:
-                name: cilupbah-env
-          # schedule:work menjalankan tiap task artisan sebagai sub-proses di cgroup yang sama,
-          # jadi satu command rakus memori meng-OOM seluruh container dan menelan semua task
-          # yang belum sempat jalan di menit itu. Pada 256Mi hal ini terjadi (exit 137,
-          # 13 Agu 2026) dan menyebabkan token channel kedaluwarsa tanpa sempat di-refresh.
-          resources:
-            requests:
-              memory: "512Mi"
-              cpu: "100m"
-            limits:
-              memory: "1536Mi"
-              cpu: "500m"
-          # Deteksi scheduler yang hang (hidup tapi berhenti menjadwalkan):
-          # task 'scheduler-heartbeat' (routes/console.php) menyentuh file ini
-          # tiap menit. Bila file lebih tua dari 180 dtk, probe gagal → restart.
-          livenessProbe:
-            exec:
-              command:
-                - sh
-                - -c
-                - test $(( $(date +%s) - $(stat -c %Y /var/www/html/storage/framework/scheduler-heartbeat 2>/dev/null || echo 0) )) -lt 180
-            initialDelaySeconds: 120
-            periodSeconds: 60
-            timeoutSeconds: 10
-            failureThreshold: 3
+      backoffLimit: 0
+      # A hung foreground scheduled command cannot grow indefinitely. Long
+      # operations must run in their dedicated bounded queue instead.
+      activeDeadlineSeconds: 900
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels:
+            app: cilupbah-scheduler
+        spec:
+          restartPolicy: Never
+          imagePullSecrets:
+            - name: ghcr-creds
+          containers:
+            - name: scheduler
+              image: ghcr.io/ultra-teknologi-indonesia/cilupbah:v1.0.0
+              command: ["php", "artisan", "schedule:run", "--no-interaction"]
+              envFrom:
+                - secretRef:
+                    name: cilupbah-env
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "100m"
+                limits:
+                  memory: "768Mi"
+                  cpu: "500m"

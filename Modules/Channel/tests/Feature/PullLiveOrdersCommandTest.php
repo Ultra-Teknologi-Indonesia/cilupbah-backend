@@ -4,8 +4,12 @@ namespace Modules\Channel\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Jobs\PullChannelOrdersJob;
+use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Channel\Services\ChannelOrderPullLeaseService;
 use Tests\TestCase;
 
 class PullLiveOrdersCommandTest extends TestCase
@@ -81,5 +85,46 @@ class PullLiveOrdersCommandTest extends TestCase
         $this->artisan('channel:pull-orders', ['--shop' => '445566', '--include-shadow' => true])
             ->assertSuccessful()
             ->expectsOutputToContain('Shadow Shopee Shop');
+    }
+
+    public function test_scheduled_pull_enqueues_one_leased_job_per_live_shop(): void
+    {
+        Queue::fake();
+
+        $this->artisan('channel:pull-orders', [
+            '--queue' => true,
+            '--hours' => 1,
+            '--overlap-minutes' => 5,
+        ])->assertSuccessful();
+
+        Queue::assertPushed(PullChannelOrdersJob::class, 1);
+        $this->assertNotNull($this->liveShop->fresh()->order_pull_lease_token);
+        $this->assertNotNull($this->liveShop->fresh()->order_pull_locked_until);
+
+        // Satu toko tidak dapat diantrikan dua kali saat pull sebelumnya belum
+        // selesai, bahkan bila cache scheduler sedang tidak tersedia.
+        $this->artisan('channel:pull-orders', ['--queue' => true])->assertSuccessful();
+        Queue::assertPushed(PullChannelOrdersJob::class, 1);
+    }
+
+    public function test_leased_pull_job_releases_store_after_success(): void
+    {
+        $this->fakeEmptyOrderList();
+        $leases = app(ChannelOrderPullLeaseService::class);
+        $token = $leases->acquire($this->liveShop, 300);
+
+        $this->assertNotNull($token);
+
+        (new PullChannelOrdersJob(
+            $this->liveShop->id,
+            $token,
+            now()->subMinutes(10)->toIso8601String(),
+            now()->toIso8601String(),
+        ))->handle($leases, app(ChannelShopRepository::class));
+
+        $shop = $this->liveShop->fresh();
+        $this->assertNull($shop->order_pull_lease_token);
+        $this->assertNull($shop->order_pull_locked_until);
+        $this->assertNotNull($shop->last_order_synced_at);
     }
 }

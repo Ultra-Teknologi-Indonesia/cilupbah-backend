@@ -1,0 +1,85 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Modules\Channel\Jobs;
+
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Log;
+use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Channel\Services\ChannelOrderPullLeaseService;
+
+final class PullChannelOrdersJob implements ShouldQueue
+{
+    use Dispatchable;
+    use InteractsWithQueue;
+    use Queueable;
+    use SerializesModels;
+
+    public int $tries = 1;
+
+    // A bounded worker is safer than permitting a single shop to hold CPU/DB
+    // indefinitely. The durable cursor remains unchanged on failure.
+    public int $timeout = 55;
+
+    public function __construct(
+        public readonly string $channelShopId,
+        public readonly string $leaseToken,
+        public readonly string $from,
+        public readonly string $to,
+    ) {}
+
+    public function handle(
+        ChannelOrderPullLeaseService $leases,
+        ChannelShopRepository $shops,
+    ): void {
+        $shop = ChannelShop::query()->find($this->channelShopId);
+
+        if (! $shop || ! $leases->owns($shop, $this->leaseToken)) {
+            return;
+        }
+
+        try {
+            $exitCode = Artisan::call('channel:pull-orders', [
+                '--shop' => $shop->shop_id,
+                '--from' => Carbon::parse($this->from)->toIso8601String(),
+                '--to' => Carbon::parse($this->to)->toIso8601String(),
+            ]);
+
+            if ($exitCode !== 0) {
+                throw new \RuntimeException(trim(Artisan::output()) ?: 'Channel order pull gagal.');
+            }
+
+            $shops->markOrderSyncOk($shop->id);
+
+            Log::info('Scheduled channel order pull completed.', [
+                'channel_shop_id' => $shop->id,
+                'shop_id' => $shop->shop_id,
+                'from' => $this->from,
+                'to' => $this->to,
+            ]);
+        } catch (\Throwable $e) {
+            $shops->markOrderSyncProblem($shop->id, $e->getMessage());
+            throw $e;
+        } finally {
+            $leases->release($this->channelShopId, $this->leaseToken);
+        }
+    }
+
+    public function failed(\Throwable $e): void
+    {
+        app(ChannelOrderPullLeaseService::class)->release($this->channelShopId, $this->leaseToken);
+
+        $shop = ChannelShop::query()->find($this->channelShopId);
+        if ($shop) {
+            app(ChannelShopRepository::class)->markOrderSyncProblem($shop->id, $e->getMessage());
+        }
+    }
+}

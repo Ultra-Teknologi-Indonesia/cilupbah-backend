@@ -23,16 +23,28 @@ Schedule::command('bulk-shipping-labels:reap-stale')->everyFiveMinutes()->withou
 
 Schedule::command('channel:monitor-download-health')->everyFifteenMinutes()->withoutOverlapping()->onOneServer();
 
-Schedule::command('channel:pull-orders --hours=1')->everyTwoMinutes()->withoutOverlapping(5)->onOneServer();
+// Scheduler hanya mengantrikan satu pull kecil per toko. Pengambilan order yang
+// melibatkan API marketplace berjalan di worker terbatas, bukan di proses scheduler.
+Schedule::command('channel:pull-orders --queue --hours=1 --overlap-minutes=5')
+    ->everyTwoMinutes()
+    ->withoutOverlapping(5)
+    ->onOneServer();
 
-Schedule::command('channel:webhooks-replay --minutes=5 --limit=500')->everyFiveMinutes()->withoutOverlapping(10)->onOneServer();
+// Replay dibatasi waktu dan ukuran batch agar safety-net webhook tidak dapat
+// mendominasi satu siklus scheduler saat inbox sedang menumpuk.
+Schedule::command('channel:webhooks-replay --minutes=5 --limit=100 --max-seconds=30')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(10)
+    ->onOneServer();
 Schedule::command('channel:monitor-queue-health')->everyFiveMinutes()->withoutOverlapping(10)->onOneServer();
 
 Schedule::command('channel:evaluate-order-sync')->everyFifteenMinutes()->withoutOverlapping()->onOneServer();
 
 Schedule::command('orders:sync-finance')->dailyAt('03:00')->withoutOverlapping()->onOneServer();
-Schedule::command('orders:dispatch-due-finance')->everyMinute()->withoutOverlapping(2)->onOneServer()->runInBackground();
-Schedule::command('orders:finance-queue-health --json')->everyMinute()->withoutOverlapping(2)->onOneServer()->runInBackground();
+// Kedua command ini biasanya singkat. Menjalankannya di foreground membuat
+// CronJob Forbid menjadi pagar overlap yang independen dari Redis cache.
+Schedule::command('orders:dispatch-due-finance')->everyMinute()->withoutOverlapping(2)->onOneServer();
+Schedule::command('orders:finance-queue-health --json')->everyMinute()->withoutOverlapping(2)->onOneServer();
 Schedule::command('settlements:sync')->dailyAt('03:30')->withoutOverlapping()->onOneServer();
 
 Schedule::command('returns:sync-tracking')->everyThirtyMinutes()->withoutOverlapping()->onOneServer();
