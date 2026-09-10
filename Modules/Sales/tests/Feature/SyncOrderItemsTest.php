@@ -21,7 +21,7 @@ class SyncOrderItemsTest extends TestCase
         $this->repository = app(SalesOrderRepository::class);
     }
 
-    protected function createVariant(string $sku): string
+    protected function createVariant(string $sku, float $weight = 0): string
     {
         $categoryId = DB::table('categories')->insertGetId([
             'name' => 'Kategori ' . $sku,
@@ -43,6 +43,7 @@ class SyncOrderItemsTest extends TestCase
             'id' => $variantId,
             'product_id' => $productId,
             'sku' => $sku,
+            'weight' => $weight,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -50,7 +51,7 @@ class SyncOrderItemsTest extends TestCase
         return $variantId;
     }
 
-    protected function createOrder(string $orderNo = 'LZ-1001'): string
+    protected function createOrder(string $orderNo = 'LZ-1001', string $source = 'lazada'): string
     {
         $order = $this->repository->upsertOrderBySalesOrderNo($orderNo, [
             'salesorder_no' => $orderNo,
@@ -74,7 +75,7 @@ class SyncOrderItemsTest extends TestCase
             'status' => 'pending',
             'is_paid' => false,
             'payment_method' => null,
-            'source' => 'lazada',
+            'source' => $source,
         ]);
 
         return $order->id;
@@ -311,5 +312,42 @@ class SyncOrderItemsTest extends TestCase
 
         $this->assertSame($orderId, $resultId);
         $this->assertDatabaseHas('sales_order_items', ['id' => $orderItem->id, 'order_id' => $orderId]);
+    }
+
+    public function test_channel_upsert_derives_weight_for_tiktok_order_from_variant_weight(): void
+    {
+        $this->createVariant('SKU-TIKTOK', 0.06);
+        $service = app(SalesOrderService::class);
+
+        $resultId = $service->upsertFromChannel([
+            'salesorder_no' => 'TT-WEIGHT-1',
+            'channel_order_no' => 'TT-CHANNEL-WEIGHT-1',
+            'channel_shop_id' => 'SHOP-TIKTOK',
+            'customer_name' => 'Buyer Test',
+            'transaction_date' => now(),
+            'sub_total' => 10000,
+            'total_disc' => 0,
+            'total_tax' => 0,
+            'shipping_cost' => 0,
+            'insurance_cost' => 0,
+            'grand_total' => 10000,
+            'shipping_full_name' => null,
+            'shipping_phone' => null,
+            'shipping_address' => null,
+            'shipping_city' => null,
+            'shipping_province' => null,
+            'shipping_post_code' => null,
+            'shipping_country' => null,
+            'channel_status' => 'UNPAID',
+            'status' => 'pending',
+            'is_paid' => false,
+            'payment_method' => null,
+            'source' => 'tiktok',
+            'order_weight_gram' => null,
+            'items' => [$this->item('SKU-TIKTOK', 2, 5000)],
+        ]);
+
+        $this->assertNotNull($resultId);
+        $this->assertSame(120, (int) DB::table('sales_orders')->where('id', $resultId)->value('order_weight_gram'));
     }
 }
