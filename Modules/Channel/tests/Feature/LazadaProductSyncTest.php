@@ -6,7 +6,9 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Modules\Channel\Adapters\LazadaAdapter;
+use Modules\Channel\Jobs\DownloadProductsJob;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\LazadaProductService;
@@ -16,6 +18,8 @@ use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductVariant;
+use Modules\Warehouse\Models\Location;
+use Modules\Warehouse\Models\LocationBin;
 use Tests\TestCase;
 
 class LazadaProductSyncTest extends TestCase
@@ -23,7 +27,9 @@ class LazadaProductSyncTest extends TestCase
     use RefreshDatabase;
 
     private User $user;
+
     private ChannelShop $shop;
+
     private Channel $lazada;
 
     protected function setUp(): void
@@ -53,7 +59,7 @@ class LazadaProductSyncTest extends TestCase
 
     private function makeProduct(string $sku = 'SKU-A', float $price = 50000): Product
     {
-        $category = Category::create(['name' => 'C' . uniqid(), 'is_active' => true]);
+        $category = Category::create(['name' => 'C'.uniqid(), 'is_active' => true]);
         $product = Product::create([
             'category_id' => $category->id, 'name' => 'Kaos Polos',
             'description' => 'Bahan katun', 'status' => 'master', 'is_active' => true,
@@ -140,13 +146,17 @@ class LazadaProductSyncTest extends TestCase
             'external_product_id' => '555001',
             'sync_status' => 'synced',
         ]);
-        $pcm->variantMappings()->create(['variant_id' => $variant->id, 'external_sku_id' => '777001']);
+        $pcm->variantMappings()->create([
+            'variant_id' => $variant->id,
+            'external_sku_id' => '777001',
+            'channel_seller_sku' => 'LAZADA-SKU-A',
+        ]);
 
-        $location = \Modules\Warehouse\Models\Location::firstOrCreate(
-            ['location_code' => \Modules\Warehouse\Models\Location::SYSTEM_KECIL_CODE],
-            \Modules\Warehouse\Models\Location::factory()->make()->toArray()
+        $location = Location::firstOrCreate(
+            ['location_code' => Location::SYSTEM_KECIL_CODE],
+            Location::factory()->make()->toArray()
         );
-        $bin = \Modules\Warehouse\Models\LocationBin::firstOrCreate(
+        $bin = LocationBin::firstOrCreate(
             ['location_id' => $location->id, 'bin_final_code' => 'RACK-A1'],
             ['floor_code' => '1', 'row_code' => 'A', 'column_code' => '1', 'bin_code' => 'A-1', 'is_inbound' => false]
         );
@@ -168,7 +178,7 @@ class LazadaProductSyncTest extends TestCase
             $payload = json_decode($query['payload'] ?? ($request['payload'] ?? ''), true);
             $sku = $payload['Request']['Product']['Skus']['Sku'][0] ?? [];
 
-            return ($sku['SellerSku'] ?? null) === 'SKU-A'
+            return ($sku['SellerSku'] ?? null) === 'LAZADA-SKU-A'
                 && ($sku['Quantity'] ?? null) === '7'
                 && ($sku['Price'] ?? null) === '75000.00';
         });
@@ -182,6 +192,60 @@ class LazadaProductSyncTest extends TestCase
 
         $this->assertFalse($result['success']);
         $this->assertStringContainsString('Tidak ada SKU', $result['message']);
+    }
+
+    public function test_stock_payload_uses_listing_seller_sku_only(): void
+    {
+        $product = $this->makeProduct('MASTER-SKU-A');
+        $variantA = $product->variants->firstOrFail();
+        $listingA = ProductChannelMapping::create([
+            'product_id' => $product->id,
+            'channel_shop_id' => $this->shop->id,
+            'external_product_id' => 'LZ-LISTING-A',
+            'sync_status' => 'synced',
+        ]);
+        $listingA->variantMappings()->create([
+            'variant_id' => $variantA->id,
+            'external_sku_id' => 'LZ-SKU-A',
+            'channel_seller_sku' => 'SELLER-SKU-A',
+        ]);
+        $variantB = ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => 'MASTER-SKU-B',
+            'sell_price' => 50000,
+            'is_active' => true,
+        ]);
+        $listingB = ProductChannelMapping::create([
+            'product_id' => $product->id,
+            'channel_shop_id' => $this->shop->id,
+            'external_product_id' => 'LZ-LISTING-B',
+            'sync_status' => 'synced',
+        ]);
+        $listingB->variantMappings()->create([
+            'variant_id' => $variantB->id,
+            'external_sku_id' => 'LZ-SKU-B',
+            'channel_seller_sku' => 'SELLER-SKU-B',
+        ]);
+
+        Http::fake([
+            'api.lazada.co.id/rest/product/price_quantity/update*' => Http::response(['code' => '0', 'data' => []], 200),
+        ]);
+
+        $result = app(LazadaAdapter::class)->syncStock(
+            $product,
+            $this->shop,
+            'LZ-LISTING-A',
+            $listingA,
+        );
+
+        $this->assertTrue($result['success']);
+        Http::assertSent(function ($request) {
+            parse_str(parse_url($request->url(), PHP_URL_QUERY) ?? '', $query);
+            $payload = json_decode($query['payload'] ?? ($request['payload'] ?? ''), true);
+            $skus = $payload['Request']['Product']['Skus']['Sku'] ?? [];
+
+            return array_column($skus, 'SellerSku') === ['SELLER-SKU-A'];
+        });
     }
 
     public function test_delete_product_uses_mapped_seller_skus(): void
@@ -288,7 +352,7 @@ class LazadaProductSyncTest extends TestCase
         $this->assertEquals('download', $internal['status']);
         $this->assertCount(1, $internal['variants']);
         $this->assertEquals('SKU-RUN-42', $internal['variants'][0]['sku']);
-        $this->assertEquals(199000.0, $internal['variants'][0]['sell_price']); 
+        $this->assertEquals(199000.0, $internal['variants'][0]['sell_price']);
         $this->assertCount(2, $internal['media']);
         $this->assertTrue($internal['media'][0]['is_primary']);
     }
@@ -396,12 +460,12 @@ class LazadaProductSyncTest extends TestCase
 
     public function test_generic_download_endpoint_accepts_lazada(): void
     {
-        \Illuminate\Support\Facades\Queue::fake();
+        Queue::fake();
 
         $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/v1/lazada/download', ['shop_id' => 'LZ-100'])
-            ->assertStatus(202); 
+            ->assertStatus(202);
 
-        \Illuminate\Support\Facades\Queue::assertPushed(\Modules\Channel\Jobs\DownloadProductsJob::class);
+        Queue::assertPushed(DownloadProductsJob::class);
     }
 }

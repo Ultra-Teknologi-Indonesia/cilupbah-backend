@@ -39,6 +39,7 @@ class ResyncShopStockJob implements ShouldQueue
                         null,
                         null,
                         'bulk',
+                        (string) $mapping->id,
                     );
                 }
             });

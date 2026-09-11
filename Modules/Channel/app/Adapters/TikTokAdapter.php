@@ -14,14 +14,20 @@ use Modules\Channel\Services\TikTokProductService;
 use Modules\Channel\Services\TikTokToInternalProductMapper;
 use Modules\Channel\Support\ChannelVariantMappingResolver;
 use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductChannelMapping;
 
 class TikTokAdapter implements MarketplaceAdapterInterface
 {
     protected TikTokClient $client;
+
     protected TikTokProductMapper $outboundMapper;
+
     protected TikTokToInternalProductMapper $inboundMapper;
+
     protected TikTokImageUploader $imageUploader;
+
     protected TikTokProductService $productService;
+
     protected ChannelStockResolver $stockResolver;
 
     public function __construct(
@@ -98,21 +104,22 @@ class TikTokAdapter implements MarketplaceAdapterInterface
             $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
             $res = $this->client->request('POST', '/product/202309/products', $queries, $payload, $shop->access_token);
 
-            if (!empty($res['data']['product_id'])) {
+            if (! empty($res['data']['product_id'])) {
                 return [
                     'success' => true,
                     'external_product_id' => (string) $res['data']['product_id'],
                     'message' => 'Produk berhasil didorong',
-                    'skus' => $res['data']['skus'] ?? []
+                    'skus' => $res['data']['skus'] ?? [],
                 ];
             }
 
             return [
                 'success' => false,
-                'message' => 'Gagal mendorong produk: ' . json_encode($res),
+                'message' => 'Gagal mendorong produk: '.json_encode($res),
             ];
         } catch (\Exception $e) {
-            Log::error("TikTok pushProduct error: " . $e->getMessage());
+            Log::error('TikTok pushProduct error: '.$e->getMessage());
+
             return [
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -166,10 +173,11 @@ class TikTokAdapter implements MarketplaceAdapterInterface
             return [
                 'success' => true,
                 'message' => 'Produk berhasil diperbarui',
-                'skus' => $res['data']['skus'] ?? []
+                'skus' => $res['data']['skus'] ?? [],
             ];
         } catch (\Exception $e) {
-            Log::error("TikTok updateProduct error: " . $e->getMessage());
+            Log::error('TikTok updateProduct error: '.$e->getMessage());
+
             return [
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -187,8 +195,8 @@ class TikTokAdapter implements MarketplaceAdapterInterface
             });
             if ($mapping) {
                 $stored[$variant->sku] = [
-                    'external_sku_id'      => $mapping->external_sku_id,
-                    'sales_attribute_id'   => $mapping->sales_attribute_id,
+                    'external_sku_id' => $mapping->external_sku_id,
+                    'sales_attribute_id' => $mapping->sales_attribute_id,
                     'sales_attribute_name' => $mapping->sales_attribute_name,
                 ];
             }
@@ -207,8 +215,8 @@ class TikTokAdapter implements MarketplaceAdapterInterface
                 }
                 $sale = $remoteSku['sales_attributes'][0] ?? null;
                 $stored[$sellerSku] = [
-                    'external_sku_id'      => $stored[$sellerSku]['external_sku_id'] ?? ($remoteSku['id'] ?? null),
-                    'sales_attribute_id'   => is_array($sale) ? ($sale['attribute_id'] ?? $sale['id'] ?? null) : null,
+                    'external_sku_id' => $stored[$sellerSku]['external_sku_id'] ?? ($remoteSku['id'] ?? null),
+                    'sales_attribute_id' => is_array($sale) ? ($sale['attribute_id'] ?? $sale['id'] ?? null) : null,
                     'sales_attribute_name' => is_array($sale) ? ($sale['attribute_name'] ?? $sale['name'] ?? null) : null,
                 ];
             }
@@ -223,18 +231,18 @@ class TikTokAdapter implements MarketplaceAdapterInterface
 
             $row['stock'] = $stockByVariant[$variant->id] ?? 0;
 
-            if (!empty($variantUriById[$variant->id])) {
+            if (! empty($variantUriById[$variant->id])) {
                 $row['image_uri'] = $variantUriById[$variant->id];
             }
 
-            if (!empty($meta['external_sku_id'])) {
+            if (! empty($meta['external_sku_id'])) {
                 $row['external_sku_id'] = $meta['external_sku_id'];
             }
-            if (!empty($meta['sales_attribute_id'])) {
+            if (! empty($meta['sales_attribute_id'])) {
                 $row['sales_attributes'] = [[
-                    'attribute_id'   => $meta['sales_attribute_id'],
+                    'attribute_id' => $meta['sales_attribute_id'],
                     'attribute_name' => $meta['sales_attribute_name'] ?? null,
-                    'custom_value'   => $variant->sku,
+                    'custom_value' => $variant->sku,
                 ]];
             }
 
@@ -255,7 +263,8 @@ class TikTokAdapter implements MarketplaceAdapterInterface
                 $shop->access_token
             );
         } catch (\Exception $e) {
-            Log::warning("TikTok getProductDetail error: " . $e->getMessage());
+            Log::warning('TikTok getProductDetail error: '.$e->getMessage());
+
             return null;
         }
     }
@@ -272,7 +281,8 @@ class TikTokAdapter implements MarketplaceAdapterInterface
                 'message' => 'Produk berhasil dihapus',
             ];
         } catch (\Exception $e) {
-            Log::error("TikTok deleteProduct error: " . $e->getMessage());
+            Log::error('TikTok deleteProduct error: '.$e->getMessage());
+
             return [
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -292,7 +302,8 @@ class TikTokAdapter implements MarketplaceAdapterInterface
                 'message' => 'Produk berhasil diaktifkan',
             ];
         } catch (\Exception $e) {
-            Log::error("TikTok activateProduct error: " . $e->getMessage());
+            Log::error('TikTok activateProduct error: '.$e->getMessage());
+
             return [
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -312,7 +323,8 @@ class TikTokAdapter implements MarketplaceAdapterInterface
                 'message' => 'Produk berhasil dinonaktifkan',
             ];
         } catch (\Exception $e) {
-            Log::error("TikTok deactivateProduct error: " . $e->getMessage());
+            Log::error('TikTok deactivateProduct error: '.$e->getMessage());
+
             return [
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -320,38 +332,53 @@ class TikTokAdapter implements MarketplaceAdapterInterface
         }
     }
 
-    public function syncPriceAndStock(Product $product, ChannelShop $shop, string $externalProductId): array
-    {
-        $product->loadMissing('variants');
-        $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
+    public function syncPriceAndStock(
+        Product $product,
+        ChannelShop $shop,
+        string $externalProductId,
+        ?ProductChannelMapping $listing = null,
+    ): array {
+        $listing = ChannelVariantMappingResolver::listing($product, $shop, $externalProductId, $listing);
+        if (! $listing) {
+            return ['success' => false, 'message' => 'Tidak ada SKU terhubung: listing TikTok tidak ditemukan atau tidak sesuai dengan produk.'];
+        }
+
+        $mappings = ChannelVariantMappingResolver::enabledForListing($listing);
+        $payloadError = ChannelVariantMappingResolver::stockPayloadError(
+            $mappings,
+            'external_sku_id',
+            'SKU ID TikTok',
+        );
+        if ($payloadError !== null) {
+            return ['success' => false, 'message' => $payloadError];
+        }
+
+        $stockByVariant = $this->stockResolver->availableByVariant($shop, $mappings->pluck('variant'));
 
         $inventorySkus = [];
         $priceSkus = [];
 
-        foreach ($product->variants as $variant) {
-            $mapping = ChannelVariantMappingResolver::forShop($variant, $shop);
+        foreach ($mappings as $mapping) {
+            $variant = $mapping->variant;
+            $availableQty = (int) ($stockByVariant[$variant->id] ?? 0);
 
-            if ($mapping && $mapping->external_sku_id && $mapping->sync_enabled) {
-                $availableQty = (int) ($stockByVariant[$variant->id] ?? 0);
+            $inventorySkus[] = [
+                'id' => $mapping->external_sku_id,
+                'inventory' => [
+                    [
+                        'warehouse_id' => $this->resolveTikTokWarehouseId($shop),
+                        'quantity' => max(0, $availableQty),
+                    ],
+                ],
+            ];
 
-                $inventorySkus[] = [
-                    'id' => $mapping->external_sku_id,
-                    'inventory' => [
-                        [
-                            'warehouse_id' => $this->resolveTikTokWarehouseId($shop),
-                            'quantity' => max(0, $availableQty),
-                        ]
-                    ]
-                ];
-
-                $priceSkus[] = [
-                    'id' => $mapping->external_sku_id,
-                    'price' => [
-                        'amount' => (string) $variant->sell_price,
-                        'currency' => 'IDR'
-                    ]
-                ];
-            }
+            $priceSkus[] = [
+                'id' => $mapping->external_sku_id,
+                'price' => [
+                    'amount' => (string) $variant->sell_price,
+                    'currency' => 'IDR',
+                ],
+            ];
         }
 
         if (empty($inventorySkus)) {
@@ -372,7 +399,8 @@ class TikTokAdapter implements MarketplaceAdapterInterface
                 'message' => 'Harga dan stok berhasil disinkronisasi',
             ];
         } catch (\Exception $e) {
-            Log::error("TikTok syncPriceAndStock error: " . $e->getMessage());
+            Log::error('TikTok syncPriceAndStock error: '.$e->getMessage());
+
             return [
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -380,29 +408,44 @@ class TikTokAdapter implements MarketplaceAdapterInterface
         }
     }
 
-    public function syncStock(Product $product, ChannelShop $shop, string $externalProductId): array
-    {
-        $product->loadMissing('variants');
-        $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
+    public function syncStock(
+        Product $product,
+        ChannelShop $shop,
+        string $externalProductId,
+        ?ProductChannelMapping $listing = null,
+    ): array {
+        $listing = ChannelVariantMappingResolver::listing($product, $shop, $externalProductId, $listing);
+        if (! $listing) {
+            return ['success' => false, 'message' => 'Tidak ada SKU terhubung: listing TikTok tidak ditemukan atau tidak sesuai dengan produk.'];
+        }
+
+        $mappings = ChannelVariantMappingResolver::enabledForListing($listing);
+        $payloadError = ChannelVariantMappingResolver::stockPayloadError(
+            $mappings,
+            'external_sku_id',
+            'SKU ID TikTok',
+        );
+        if ($payloadError !== null) {
+            return ['success' => false, 'message' => $payloadError];
+        }
+
+        $stockByVariant = $this->stockResolver->availableByVariant($shop, $mappings->pluck('variant'));
 
         $inventorySkus = [];
 
-        foreach ($product->variants as $variant) {
-            $mapping = ChannelVariantMappingResolver::forShop($variant, $shop);
+        foreach ($mappings as $mapping) {
+            $variant = $mapping->variant;
+            $availableQty = (int) ($stockByVariant[$variant->id] ?? 0);
 
-            if ($mapping && $mapping->external_sku_id && $mapping->sync_enabled) {
-                $availableQty = (int) ($stockByVariant[$variant->id] ?? 0);
-
-                $inventorySkus[] = [
-                    'id' => $mapping->external_sku_id,
-                    'inventory' => [
-                        [
-                            'warehouse_id' => $this->resolveTikTokWarehouseId($shop),
-                            'quantity' => max(0, $availableQty),
-                        ]
-                    ]
-                ];
-            }
+            $inventorySkus[] = [
+                'id' => $mapping->external_sku_id,
+                'inventory' => [
+                    [
+                        'warehouse_id' => $this->resolveTikTokWarehouseId($shop),
+                        'quantity' => max(0, $availableQty),
+                    ],
+                ],
+            ];
         }
 
         if (empty($inventorySkus)) {
@@ -420,7 +463,8 @@ class TikTokAdapter implements MarketplaceAdapterInterface
                 'message' => 'Stok berhasil disinkronisasi ke TikTok',
             ];
         } catch (\Exception $e) {
-            Log::error("TikTok syncStock error: " . $e->getMessage());
+            Log::error('TikTok syncStock error: '.$e->getMessage());
+
             return [
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -454,7 +498,7 @@ class TikTokAdapter implements MarketplaceAdapterInterface
             );
 
             $warehouses = $result['data']['warehouses'] ?? $result['warehouses'] ?? [];
-            if (!empty($warehouses)) {
+            if (! empty($warehouses)) {
                 foreach ($warehouses as $wh) {
                     if (($wh['warehouse_type'] ?? $wh['type'] ?? '') === 'SALES_WAREHOUSE') {
                         $resolved = (string) ($wh['warehouse_id'] ?? $wh['id'] ?? '');
@@ -466,17 +510,18 @@ class TikTokAdapter implements MarketplaceAdapterInterface
                 }
             }
         } catch (\Throwable $e) {
-            Log::error('TikTok resolveWarehouseId error: ' . $e->getMessage());
+            Log::error('TikTok resolveWarehouseId error: '.$e->getMessage());
         }
 
-        if (!empty($resolved)) {
+        if (! empty($resolved)) {
             DB::table('channel_warehouses')
                 ->where('store_id', $shop->shop_id)
                 ->update(['channel_location_id' => $resolved, 'channel_location_type' => 'SALES_WAREHOUSE']);
+
             return (string) $resolved;
         }
 
-        throw new \RuntimeException("Gagal mendapatkan daftar Warehouse dari toko TikTok ini.");
+        throw new \RuntimeException('Gagal mendapatkan daftar Warehouse dari toko TikTok ini.');
     }
 
     private function resolveTikTokWarehouseId(ChannelShop $shop): string

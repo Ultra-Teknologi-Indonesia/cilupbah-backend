@@ -14,7 +14,9 @@ use Modules\Channel\Services\LazadaImageUploader;
 use Modules\Channel\Services\LazadaProductMapper;
 use Modules\Channel\Services\LazadaToInternalProductMapper;
 use Modules\Channel\Support\ChannelVariantMappingResolver;
+use Modules\Channel\Support\UploadErrorPresenter;
 use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductChannelMapping;
 
 class LazadaAdapter implements MarketplaceAdapterInterface
 {
@@ -50,14 +52,14 @@ class LazadaAdapter implements MarketplaceAdapterInterface
                 ];
             }
 
-            return ['success' => false, 'message' => 'Gagal mendorong produk: ' . json_encode($res)];
+            return ['success' => false, 'message' => 'Gagal mendorong produk: '.json_encode($res)];
         } catch (\Exception $e) {
-            Log::error('Lazada pushProduct error: ' . $e->getMessage());
+            Log::error('Lazada pushProduct error: '.$e->getMessage());
 
             return [
                 'success' => false,
                 'message' => $e->getMessage(),
-                'error' => \Modules\Channel\Support\UploadErrorPresenter::fromThrowable('lazada', $e),
+                'error' => UploadErrorPresenter::fromThrowable('lazada', $e),
             ];
         }
     }
@@ -75,12 +77,12 @@ class LazadaAdapter implements MarketplaceAdapterInterface
                 'skus' => $this->normalizeSkus($res['data']['sku_list'] ?? []),
             ];
         } catch (\Exception $e) {
-            Log::error('Lazada updateProduct error: ' . $e->getMessage());
+            Log::error('Lazada updateProduct error: '.$e->getMessage());
 
             return [
                 'success' => false,
                 'message' => $e->getMessage(),
-                'error' => \Modules\Channel\Support\UploadErrorPresenter::fromThrowable('lazada', $e),
+                'error' => UploadErrorPresenter::fromThrowable('lazada', $e),
             ];
         }
     }
@@ -101,7 +103,7 @@ class LazadaAdapter implements MarketplaceAdapterInterface
 
             return ['success' => true, 'message' => 'Produk berhasil dihapus dari Lazada'];
         } catch (\Exception $e) {
-            Log::error('Lazada deleteProduct error: ' . $e->getMessage());
+            Log::error('Lazada deleteProduct error: '.$e->getMessage());
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
@@ -135,30 +137,44 @@ class LazadaAdapter implements MarketplaceAdapterInterface
 
             return ['success' => true, 'message' => $successMessage];
         } catch (\Exception $e) {
-            Log::error("Lazada setStatus({$status}) error: " . $e->getMessage());
+            Log::error("Lazada setStatus({$status}) error: ".$e->getMessage());
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 
-    public function syncPriceAndStock(Product $product, ChannelShop $shop, string $externalProductId): array
-    {
+    public function syncPriceAndStock(
+        Product $product,
+        ChannelShop $shop,
+        string $externalProductId,
+        ?ProductChannelMapping $listing = null,
+    ): array {
+        $listing = ChannelVariantMappingResolver::listing($product, $shop, $externalProductId, $listing);
+        if (! $listing) {
+            return ['success' => false, 'message' => 'Tidak ada SKU terhubung: listing Lazada tidak ditemukan atau tidak sesuai dengan produk.'];
+        }
 
-        $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
+        $mappings = ChannelVariantMappingResolver::enabledForListing($listing);
+        $payloadError = ChannelVariantMappingResolver::stockPayloadError(
+            $mappings,
+            'channel_seller_sku',
+            'Seller SKU Lazada',
+        );
+        if ($payloadError !== null) {
+            return ['success' => false, 'message' => $payloadError];
+        }
+
+        $stockByVariant = $this->stockResolver->availableByVariant($shop, $mappings->pluck('variant'));
 
         $skuPayloads = [];
 
-        foreach ($product->variants as $variant) {
-            $mapping = ChannelVariantMappingResolver::forShop($variant, $shop);
-
-            if (! $mapping || ! $mapping->sync_enabled || empty($variant->sku)) {
-                continue;
-            }
+        foreach ($mappings as $mapping) {
+            $variant = $mapping->variant;
 
             $availableQty = $stockByVariant[$variant->id] ?? 0;
 
             $skuPayloads[] = [
-                'SellerSku' => $variant->sku,
+                'SellerSku' => $mapping->channel_seller_sku,
                 'Price' => (string) $variant->sell_price,
                 'Quantity' => (string) max(0, $availableQty),
             ];
@@ -177,30 +193,44 @@ class LazadaAdapter implements MarketplaceAdapterInterface
 
             return ['success' => true, 'message' => 'Harga dan stok berhasil disinkronisasi ke Lazada'];
         } catch (\Exception $e) {
-            Log::error('Lazada syncPriceAndStock error: ' . $e->getMessage());
+            Log::error('Lazada syncPriceAndStock error: '.$e->getMessage());
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 
-    public function syncStock(Product $product, ChannelShop $shop, string $externalProductId): array
-    {
+    public function syncStock(
+        Product $product,
+        ChannelShop $shop,
+        string $externalProductId,
+        ?ProductChannelMapping $listing = null,
+    ): array {
+        $listing = ChannelVariantMappingResolver::listing($product, $shop, $externalProductId, $listing);
+        if (! $listing) {
+            return ['success' => false, 'message' => 'Tidak ada SKU terhubung: listing Lazada tidak ditemukan atau tidak sesuai dengan produk.'];
+        }
 
-        $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
+        $mappings = ChannelVariantMappingResolver::enabledForListing($listing);
+        $payloadError = ChannelVariantMappingResolver::stockPayloadError(
+            $mappings,
+            'channel_seller_sku',
+            'Seller SKU Lazada',
+        );
+        if ($payloadError !== null) {
+            return ['success' => false, 'message' => $payloadError];
+        }
+
+        $stockByVariant = $this->stockResolver->availableByVariant($shop, $mappings->pluck('variant'));
 
         $skuPayloads = [];
 
-        foreach ($product->variants as $variant) {
-            $mapping = ChannelVariantMappingResolver::forShop($variant, $shop);
-
-            if (! $mapping || ! $mapping->sync_enabled || empty($variant->sku)) {
-                continue;
-            }
+        foreach ($mappings as $mapping) {
+            $variant = $mapping->variant;
 
             $availableQty = $stockByVariant[$variant->id] ?? 0;
 
             $skuPayloads[] = [
-                'SellerSku' => $variant->sku,
+                'SellerSku' => $mapping->channel_seller_sku,
                 'Quantity' => (string) max(0, $availableQty),
             ];
         }
@@ -218,7 +248,7 @@ class LazadaAdapter implements MarketplaceAdapterInterface
 
             return ['success' => true, 'message' => 'Stok berhasil disinkronisasi ke Lazada'];
         } catch (\Exception $e) {
-            Log::error('Lazada syncStock error: ' . $e->getMessage());
+            Log::error('Lazada syncStock error: '.$e->getMessage());
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
@@ -241,7 +271,7 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         } catch (\Throwable $e) {
             if ($this->isVideoRelatedError($e) && isset($payload['Request']['Product']['Attributes']['video'])) {
                 unset($payload['Request']['Product']['Attributes']['video']);
-                Log::warning('Lazada: upload dengan video gagal, mencoba ulang tanpa video: ' . $e->getMessage());
+                Log::warning('Lazada: upload dengan video gagal, mencoba ulang tanpa video: '.$e->getMessage());
 
                 return $send($payload);
             }
@@ -462,8 +492,8 @@ class LazadaAdapter implements MarketplaceAdapterInterface
 
             if (! empty($missing)) {
                 throw new \RuntimeException(
-                    'Atribut wajib Lazada belum dipetakan/diisi: ' . implode(', ', $missing)
-                        . '. Lengkapi atribut tersebut pada produk sebelum mengunggah ke Lazada.'
+                    'Atribut wajib Lazada belum dipetakan/diisi: '.implode(', ', $missing)
+                        .'. Lengkapi atribut tersebut pada produk sebelum mengunggah ke Lazada.'
                 );
             }
         }

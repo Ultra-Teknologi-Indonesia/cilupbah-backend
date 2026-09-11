@@ -12,7 +12,10 @@ use Modules\Channel\Services\ShopeeMediaUploader;
 use Modules\Channel\Services\ShopeeProductMapper;
 use Modules\Channel\Services\ShopeeToInternalProductMapper;
 use Modules\Channel\Support\ChannelVariantMappingResolver;
+use Modules\Channel\Support\UploadErrorPresenter;
+use Modules\Channel\Support\WeightConverter;
 use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductChannelMapping;
 
 class ShopeeAdapter implements MarketplaceAdapterInterface
 {
@@ -55,14 +58,14 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
 
                         $skus = $this->normalizeSkus($initRes['response']['model_list'] ?? $initRes['response']['model'] ?? []);
                     } catch (\Throwable $e) {
-                        Log::warning("Gagal inisialisasi variasi Shopee (item_id: {$itemId}), melakukan rollback (delete_item): " . $e->getMessage());
+                        Log::warning("Gagal inisialisasi variasi Shopee (item_id: {$itemId}), melakukan rollback (delete_item): ".$e->getMessage());
                         try {
                             $this->deleteProduct($shop, (string) $itemId);
                         } catch (\Throwable $ex) {
-                            Log::error("Gagal rollback delete_item untuk item_id {$itemId}: " . $ex->getMessage());
+                            Log::error("Gagal rollback delete_item untuk item_id {$itemId}: ".$ex->getMessage());
                         }
 
-                        throw new \RuntimeException("Gagal membuat variasi produk di Shopee (produk dasar telah dibatalkan): " . $e->getMessage(), 0, $e);
+                        throw new \RuntimeException('Gagal membuat variasi produk di Shopee (produk dasar telah dibatalkan): '.$e->getMessage(), 0, $e);
                     }
                 }
 
@@ -78,14 +81,14 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
                 ];
             }
 
-            return ['success' => false, 'message' => 'Gagal mendorong produk: ' . json_encode($res)];
+            return ['success' => false, 'message' => 'Gagal mendorong produk: '.json_encode($res)];
         } catch (\Exception $e) {
-            Log::error('Shopee pushProduct error: ' . $e->getMessage());
+            Log::error('Shopee pushProduct error: '.$e->getMessage());
 
             return [
                 'success' => false,
                 'message' => $e->getMessage(),
-                'error' => \Modules\Channel\Support\UploadErrorPresenter::fromThrowable('shopee', $e),
+                'error' => UploadErrorPresenter::fromThrowable('shopee', $e),
             ];
         }
     }
@@ -105,12 +108,12 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
                 'skus' => $this->normalizeSkus($res['response']['model_list'] ?? []),
             ];
         } catch (\Exception $e) {
-            Log::error('Shopee updateProduct error: ' . $e->getMessage());
+            Log::error('Shopee updateProduct error: '.$e->getMessage());
 
             return [
                 'success' => false,
                 'message' => $e->getMessage(),
-                'error' => \Modules\Channel\Support\UploadErrorPresenter::fromThrowable('shopee', $e),
+                'error' => UploadErrorPresenter::fromThrowable('shopee', $e),
             ];
         }
     }
@@ -124,7 +127,7 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
 
             return ['success' => true, 'message' => 'Produk berhasil dihapus dari Shopee'];
         } catch (\Exception $e) {
-            Log::error('Shopee deleteProduct error: ' . $e->getMessage());
+            Log::error('Shopee deleteProduct error: '.$e->getMessage());
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
@@ -149,16 +152,35 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
 
             return ['success' => true, 'message' => $unlist ? 'Produk dinonaktifkan di Shopee' : 'Produk diaktifkan di Shopee'];
         } catch (\Exception $e) {
-            Log::error('Shopee unlist error: ' . $e->getMessage());
+            Log::error('Shopee unlist error: '.$e->getMessage());
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 
-    public function syncPriceAndStock(Product $product, ChannelShop $shop, string $externalProductId): array
-    {
-        $product->loadMissing('variants');
-        $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
+    public function syncPriceAndStock(
+        Product $product,
+        ChannelShop $shop,
+        string $externalProductId,
+        ?ProductChannelMapping $listing = null,
+    ): array {
+        $listing = ChannelVariantMappingResolver::listing($product, $shop, $externalProductId, $listing);
+        if (! $listing) {
+            return ['success' => false, 'message' => 'Tidak ada SKU terhubung: listing Shopee tidak ditemukan atau tidak sesuai dengan produk.'];
+        }
+
+        $mappings = ChannelVariantMappingResolver::enabledForListing($listing);
+        $payloadError = ChannelVariantMappingResolver::stockPayloadError(
+            $mappings,
+            'external_sku_id',
+            'Model ID Shopee',
+            true,
+        );
+        if ($payloadError !== null) {
+            return ['success' => false, 'message' => $payloadError];
+        }
+
+        $stockByVariant = $this->stockResolver->availableByVariant($shop, $mappings->pluck('variant'));
 
         $channelLocationId = DB::table('channel_warehouses')
             ->where('store_id', $shop->shop_id)
@@ -167,12 +189,8 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         $priceList = [];
         $stockList = [];
 
-        foreach ($product->variants as $variant) {
-            $mapping = ChannelVariantMappingResolver::forShop($variant, $shop);
-
-            if (! $mapping || ! $mapping->sync_enabled) {
-                continue;
-            }
+        foreach ($mappings as $mapping) {
+            $variant = $mapping->variant;
 
             $modelId = (int) ($mapping->external_sku_id ?? 0);
             $availableQty = max(0, (int) ($stockByVariant[$variant->id] ?? 0));
@@ -206,16 +224,35 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
 
             return ['success' => true, 'message' => 'Harga dan stok berhasil disinkronisasi ke Shopee'];
         } catch (\Exception $e) {
-            Log::error('Shopee syncPriceAndStock error: ' . $e->getMessage());
+            Log::error('Shopee syncPriceAndStock error: '.$e->getMessage());
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 
-    public function syncStock(Product $product, ChannelShop $shop, string $externalProductId): array
-    {
-        $product->loadMissing('variants');
-        $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
+    public function syncStock(
+        Product $product,
+        ChannelShop $shop,
+        string $externalProductId,
+        ?ProductChannelMapping $listing = null,
+    ): array {
+        $listing = ChannelVariantMappingResolver::listing($product, $shop, $externalProductId, $listing);
+        if (! $listing) {
+            return ['success' => false, 'message' => 'Tidak ada SKU terhubung: listing Shopee tidak ditemukan atau tidak sesuai dengan produk.'];
+        }
+
+        $mappings = ChannelVariantMappingResolver::enabledForListing($listing);
+        $payloadError = ChannelVariantMappingResolver::stockPayloadError(
+            $mappings,
+            'external_sku_id',
+            'Model ID Shopee',
+            true,
+        );
+        if ($payloadError !== null) {
+            return ['success' => false, 'message' => $payloadError];
+        }
+
+        $stockByVariant = $this->stockResolver->availableByVariant($shop, $mappings->pluck('variant'));
 
         $channelLocationId = DB::table('channel_warehouses')
             ->where('store_id', $shop->shop_id)
@@ -223,12 +260,8 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
 
         $stockList = [];
 
-        foreach ($product->variants as $variant) {
-            $mapping = ChannelVariantMappingResolver::forShop($variant, $shop);
-
-            if (! $mapping || ! $mapping->sync_enabled) {
-                continue;
-            }
+        foreach ($mappings as $mapping) {
+            $variant = $mapping->variant;
 
             $modelId = (int) ($mapping->external_sku_id ?? 0);
             $availableQty = max(0, (int) ($stockByVariant[$variant->id] ?? 0));
@@ -256,7 +289,7 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
 
             return ['success' => true, 'message' => 'Stok berhasil disinkronisasi ke Shopee'];
         } catch (\Exception $e) {
-            Log::error('Shopee syncStock error: ' . $e->getMessage());
+            Log::error('Shopee syncStock error: '.$e->getMessage());
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
@@ -365,12 +398,12 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
             $res = $this->client->request('GET', '/api/v2/logistics/get_channel_list', [], $shop->access_token, $shop->shop_id);
         } catch (\Throwable $e) {
             if (! app()->runningUnitTests()) {
-                throw new \RuntimeException('Gagal mengambil daftar logistik dari Shopee: ' . $e->getMessage(), 0, $e);
+                throw new \RuntimeException('Gagal mengambil daftar logistik dari Shopee: '.$e->getMessage(), 0, $e);
             }
             $res = [];
         }
 
-        $weightKg = (float) (\Modules\Channel\Support\WeightConverter::toKg($product->weight, $product->weight_unit) ?: 0);
+        $weightKg = (float) (WeightConverter::toKg($product->weight, $product->weight_unit) ?: 0);
         $length = (int) ($product->length ?? 0);
         $width = (int) ($product->width ?? 0);
         $height = (int) ($product->height ?? 0);
@@ -413,7 +446,7 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
                     'is_free' => false,
                 ];
 
-                if (($l['fee_type'] ?? '') === 'SIZE_SELECTION' && !empty($l['size_list'])) {
+                if (($l['fee_type'] ?? '') === 'SIZE_SELECTION' && ! empty($l['size_list'])) {
                     $logisticData['size_id'] = (int) $l['size_list'][0]['size_id'];
                 }
 
@@ -522,8 +555,8 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
 
             if (! empty($missing)) {
                 throw new \RuntimeException(
-                    'Atribut wajib Shopee belum dipetakan/diisi: ' . implode(', ', $missing)
-                        . '. Lengkapi atribut tersebut pada produk sebelum mengunggah ke Shopee.'
+                    'Atribut wajib Shopee belum dipetakan/diisi: '.implode(', ', $missing)
+                        .'. Lengkapi atribut tersebut pada produk sebelum mengunggah ke Shopee.'
                 );
             }
         }

@@ -11,6 +11,7 @@ use Modules\Channel\Services\WooCommerceProductMapper;
 use Modules\Channel\Services\WooCommerceToInternalProductMapper;
 use Modules\Channel\Support\ChannelVariantMappingResolver;
 use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductChannelMapping;
 
 class WooCommerceAdapter implements MarketplaceAdapterInterface
 {
@@ -37,10 +38,10 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
             $externalId = $res['id'] ?? null;
 
             if (! $externalId) {
-                return ['success' => false, 'message' => 'Gagal mendorong produk: ' . json_encode($res)];
+                return ['success' => false, 'message' => 'Gagal mendorong produk: '.json_encode($res)];
             }
         } catch (\Exception $e) {
-            Log::error('WooCommerce pushProduct error: ' . $e->getMessage());
+            Log::error('WooCommerce pushProduct error: '.$e->getMessage());
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
@@ -48,12 +49,12 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
         try {
             $skus = $this->syncVariations($shop, (string) $externalId, $variations, $res);
         } catch (\Exception $e) {
-            Log::error('WooCommerce pushProduct variations error: ' . $e->getMessage());
+            Log::error('WooCommerce pushProduct variations error: '.$e->getMessage());
 
             return [
                 'success' => false,
                 'external_product_id' => (string) $externalId,
-                'message' => 'Produk berhasil dibuat namun sinkronisasi variasi gagal: ' . $e->getMessage(),
+                'message' => 'Produk berhasil dibuat namun sinkronisasi variasi gagal: '.$e->getMessage(),
             ];
         }
 
@@ -80,7 +81,7 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
                 'skus' => $this->syncVariations($shop, $externalProductId, $variations, $res),
             ];
         } catch (\Exception $e) {
-            Log::error('WooCommerce updateProduct error: ' . $e->getMessage());
+            Log::error('WooCommerce updateProduct error: '.$e->getMessage());
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
@@ -93,7 +94,7 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
 
             return ['success' => true, 'message' => 'Produk berhasil dihapus dari WooCommerce'];
         } catch (\Exception $e) {
-            Log::error('WooCommerce deleteProduct error: ' . $e->getMessage());
+            Log::error('WooCommerce deleteProduct error: '.$e->getMessage());
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
@@ -116,27 +117,43 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
 
             return ['success' => true, 'message' => $successMessage];
         } catch (\Exception $e) {
-            Log::error("WooCommerce setStatus({$status}) error: " . $e->getMessage());
+            Log::error("WooCommerce setStatus({$status}) error: ".$e->getMessage());
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 
-    public function syncPriceAndStock(Product $product, ChannelShop $shop, string $externalProductId): array
-    {
-        $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
+    public function syncPriceAndStock(
+        Product $product,
+        ChannelShop $shop,
+        string $externalProductId,
+        ?ProductChannelMapping $listing = null,
+    ): array {
+        $listing = ChannelVariantMappingResolver::listing($product, $shop, $externalProductId, $listing);
+        if (! $listing) {
+            return ['success' => false, 'message' => 'Tidak ada SKU terhubung: listing WooCommerce tidak ditemukan atau tidak sesuai dengan produk.'];
+        }
+
+        $mappings = ChannelVariantMappingResolver::enabledForListing($listing);
+        $payloadError = ChannelVariantMappingResolver::stockPayloadError(
+            $mappings,
+            'external_sku_id',
+            'Variation ID WooCommerce',
+            true,
+        );
+        if ($payloadError !== null) {
+            return ['success' => false, 'message' => $payloadError];
+        }
+
+        $stockByVariant = $this->stockResolver->availableByVariant($shop, $mappings->pluck('variant'));
 
         $variationUpdates = [];
         $simplePayload = null;
 
-        $isVariable = $product->variants->count() > 1;
+        $isVariable = $mappings->count() > 1;
 
-        foreach ($product->variants as $variant) {
-            $mapping = ChannelVariantMappingResolver::forShop($variant, $shop);
-
-            if (! $mapping || ! $mapping->sync_enabled || empty($variant->sku)) {
-                continue;
-            }
+        foreach ($mappings as $mapping) {
+            $variant = $mapping->variant;
 
             $availableQty = max(0, (int) ($stockByVariant[$variant->id] ?? 0));
 
@@ -173,27 +190,43 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
 
             return ['success' => true, 'message' => 'Harga dan stok berhasil disinkronisasi ke WooCommerce'];
         } catch (\Exception $e) {
-            Log::error('WooCommerce syncPriceAndStock error: ' . $e->getMessage());
+            Log::error('WooCommerce syncPriceAndStock error: '.$e->getMessage());
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 
-    public function syncStock(Product $product, ChannelShop $shop, string $externalProductId): array
-    {
-        $stockByVariant = $this->stockResolver->availableByVariant($shop, $product->variants);
+    public function syncStock(
+        Product $product,
+        ChannelShop $shop,
+        string $externalProductId,
+        ?ProductChannelMapping $listing = null,
+    ): array {
+        $listing = ChannelVariantMappingResolver::listing($product, $shop, $externalProductId, $listing);
+        if (! $listing) {
+            return ['success' => false, 'message' => 'Tidak ada SKU terhubung: listing WooCommerce tidak ditemukan atau tidak sesuai dengan produk.'];
+        }
+
+        $mappings = ChannelVariantMappingResolver::enabledForListing($listing);
+        $payloadError = ChannelVariantMappingResolver::stockPayloadError(
+            $mappings,
+            'external_sku_id',
+            'Variation ID WooCommerce',
+            true,
+        );
+        if ($payloadError !== null) {
+            return ['success' => false, 'message' => $payloadError];
+        }
+
+        $stockByVariant = $this->stockResolver->availableByVariant($shop, $mappings->pluck('variant'));
 
         $variationUpdates = [];
         $simplePayload = null;
 
-        $isVariable = $product->variants->count() > 1;
+        $isVariable = $mappings->count() > 1;
 
-        foreach ($product->variants as $variant) {
-            $mapping = ChannelVariantMappingResolver::forShop($variant, $shop);
-
-            if (! $mapping || ! $mapping->sync_enabled || empty($variant->sku)) {
-                continue;
-            }
+        foreach ($mappings as $mapping) {
+            $variant = $mapping->variant;
 
             $availableQty = max(0, (int) ($stockByVariant[$variant->id] ?? 0));
 
@@ -228,7 +261,7 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
 
             return ['success' => true, 'message' => 'Stok berhasil disinkronisasi ke WooCommerce'];
         } catch (\Exception $e) {
-            Log::error('WooCommerce syncStock error: ' . $e->getMessage());
+            Log::error('WooCommerce syncStock error: '.$e->getMessage());
 
             return ['success' => false, 'message' => $e->getMessage()];
         }

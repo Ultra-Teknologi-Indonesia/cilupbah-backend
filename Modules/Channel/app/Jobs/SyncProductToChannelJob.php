@@ -54,6 +54,8 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
 
     public string $queueTier = 'critical';
 
+    public ?string $channelMappingId;
+
     protected string $channelCodeResolved = '';
 
     protected bool $uploadResultRecorded = false;
@@ -82,6 +84,7 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
         ?string $draftId = null,
         ?string $uploadLogId = null,
         string $queueTier = 'critical',
+        ?string $channelMappingId = null,
     ) {
         $this->productId = $productId;
         $this->channelShopId = $channelShopId;
@@ -90,6 +93,7 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
         $this->draftId = $draftId;
         $this->uploadLogId = $uploadLogId;
         $this->queueTier = $queueTier;
+        $this->channelMappingId = $channelMappingId;
 
         $routing = self::isStockAction($action)
             ? config(
@@ -117,12 +121,16 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
             : 'catalog:'.$this->action;
 
         $requestId = $this->uploadLogId ?: $this->draftId;
+        $listingScope = self::isStockAction($this->action)
+            ? $this->channelMappingId
+            : null;
 
         return implode(':', array_filter([
             'product-sync',
             $axis,
             $this->productId,
             $this->channelShopId,
+            $listingScope,
             $this->queueTier,
             $requestId,
         ], static fn ($value) => $value !== null && $value !== ''));
@@ -130,9 +138,13 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
 
     public function middleware(): array
     {
+        $listingScope = self::isStockAction($this->action)
+            ? ($this->channelMappingId ?: 'all-listings')
+            : 'catalog';
+
         return [
             (new RateLimited('channel_api'))->releaseAfter(5),
-            (new WithoutOverlapping("product_sync:{$this->productId}:{$this->channelShopId}"))->releaseAfter(60),
+            (new WithoutOverlapping("product_sync:{$this->productId}:{$this->channelShopId}:{$listingScope}"))->releaseAfter(60),
         ];
     }
 
@@ -150,14 +162,7 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
         }
 
         $product = self::isStockAction($this->action)
-            ? Product::with([
-                'variants',
-                'variants.channelMappings' => function ($query): void {
-                    $query->whereHas('channelMapping', function ($mappingQuery): void {
-                        $mappingQuery->where('channel_shop_id', $this->channelShopId);
-                    })->with('channelMapping');
-                },
-            ])->find($this->productId)
+            ? Product::find($this->productId)
             : Product::with(['variants.channelMappings.channelMapping'])->find($this->productId);
         $shop = ChannelShop::with('channel')->find($this->channelShopId);
 
@@ -186,6 +191,12 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
                 'axis' => self::isStockAction($this->action) ? 'stok' : 'katalog',
                 'is_shadow_mode' => (bool) $shop->is_shadow_mode,
             ]);
+
+            return;
+        }
+
+        if (self::isStockAction($this->action) && $this->channelMappingId === null) {
+            $this->fanOutStockSyncs();
 
             return;
         }
@@ -220,10 +231,28 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
             return;
         }
 
-        $mapping = ProductChannelMapping::firstOrCreate([
-            'product_id' => $this->productId,
-            'channel_shop_id' => $this->channelShopId,
-        ]);
+        $mapping = self::isStockAction($this->action)
+            ? ProductChannelMapping::query()
+                ->whereKey($this->channelMappingId)
+                ->where('product_id', $this->productId)
+                ->where('channel_shop_id', $this->channelShopId)
+                ->with('variantMappings.variant')
+                ->first()
+            : ProductChannelMapping::firstOrCreate([
+                'product_id' => $this->productId,
+                'channel_shop_id' => $this->channelShopId,
+            ]);
+
+        if (! $mapping) {
+            Log::warning('SyncProductToChannelJob skipped: listing stok tidak ditemukan atau tidak cocok.', [
+                'product_id' => $this->productId,
+                'channel_shop_id' => $this->channelShopId,
+                'channel_mapping_id' => $this->channelMappingId,
+                'action' => $this->action,
+            ]);
+
+            return;
+        }
 
         if ($this->action === 'delete' && ! $mapping->external_product_id) {
             $mapping->delete();
@@ -297,12 +326,12 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
                     break;
                 case 'sync_price_stock':
                     if ($externalId) {
-                        $result = $adapter->syncPriceAndStock($product, $shop, $externalId);
+                        $result = $adapter->syncPriceAndStock($product, $shop, $externalId, $mapping);
                     }
                     break;
                 case 'sync_stock':
                     if ($externalId) {
-                        $result = $adapter->syncStock($product, $shop, $externalId);
+                        $result = $adapter->syncStock($product, $shop, $externalId, $mapping);
                     }
                     break;
             }
@@ -401,6 +430,52 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
 
             return $shop;
         }
+    }
+
+    private function fanOutStockSyncs(): void
+    {
+        $dispatched = 0;
+
+        ProductChannelMapping::query()
+            ->where('product_id', $this->productId)
+            ->where('channel_shop_id', $this->channelShopId)
+            ->whereNull('external_product_id')
+            ->where('sync_status', ProductChannelMapping::STATUS_SYNCING)
+            ->update([
+                'sync_status' => ProductChannelMapping::STATUS_PENDING,
+                'error_message' => null,
+            ]);
+
+        ProductChannelMapping::query()
+            ->where('product_id', $this->productId)
+            ->where('channel_shop_id', $this->channelShopId)
+            ->where('sync_status', '!=', ProductChannelMapping::STATUS_DEACTIVATED)
+            ->whereNotNull('external_product_id')
+            ->where('external_product_id', '!=', '')
+            ->whereHas('variantMappings', fn ($query) => $query->where('sync_enabled', true))
+            ->select(['id', 'product_id', 'channel_shop_id'])
+            ->lazyById(100)
+            ->each(function (ProductChannelMapping $mapping) use (&$dispatched): void {
+                self::dispatch(
+                    (string) $mapping->product_id,
+                    (string) $mapping->channel_shop_id,
+                    $this->action,
+                    null,
+                    null,
+                    null,
+                    $this->queueTier,
+                    (string) $mapping->id,
+                );
+
+                $dispatched++;
+            });
+
+        Log::info('SyncProductToChannelJob fanned out stock sync per listing.', [
+            'product_id' => $this->productId,
+            'channel_shop_id' => $this->channelShopId,
+            'action' => $this->action,
+            'listings_dispatched' => $dispatched,
+        ]);
     }
 
     protected function refreshChannelValidation(): void
@@ -536,8 +611,16 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
             );
         }
 
+        if (self::isStockAction($this->action) && $this->channelMappingId === null) {
+            return;
+        }
+
         $mappings = ProductChannelMapping::where('product_id', $this->productId)
             ->where('channel_shop_id', $this->channelShopId)
+            ->when(
+                self::isStockAction($this->action),
+                fn ($query) => $query->whereKey($this->channelMappingId),
+            )
             ->get();
 
         foreach ($mappings as $mapping) {

@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Storage;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\ChannelLiveStockReader;
 use Modules\Channel\Services\ChannelStockResolver;
-use Modules\Product\Models\Product;
+use Modules\Channel\Support\ChannelVariantMappingResolver;
 use Modules\Product\Models\ProductChannelMapping;
 
 class StockReconcileCommand extends Command
@@ -70,6 +70,7 @@ class StockReconcileCommand extends Command
             ->where('channel_shop_id', $shop->id)
             ->whereNotNull('external_product_id')
             ->when($this->option('limit'), fn ($query, $limit) => $query->limit((int) $limit))
+            ->with('variantMappings.variant')
             ->get();
 
         $rows = [];
@@ -78,26 +79,20 @@ class StockReconcileCommand extends Command
         $unreadable = 0;
 
         foreach ($mappings as $mapping) {
-            $product = Product::with('variants.channelMappings.channelMapping')->find($mapping->product_id);
-
-            if (! $product) {
+            $variantMappings = ChannelVariantMappingResolver::enabledForListing($mapping);
+            if ($variantMappings->isEmpty()) {
                 continue;
             }
 
-            $wmsByVariant = $resolver->availableByVariant($shop, $product->variants);
+            $wmsByVariant = $resolver->availableByVariant($shop, $variantMappings->pluck('variant'));
             $liveBySku = $liveReader->read($channelCode, $shop->shop_id, (string) $mapping->external_product_id);
 
             if ($liveBySku === []) {
                 $unreadable++;
             }
 
-            foreach ($product->variants as $variant) {
-                $variantMapping = $variant->channelMappings
-                    ->firstWhere(fn ($vm) => (string) optional($vm->channelMapping)->channel_shop_id === (string) $shop->id);
-
-                if (! $variantMapping || ! $variantMapping->sync_enabled) {
-                    continue;
-                }
+            foreach ($variantMappings as $variantMapping) {
+                $variant = $variantMapping->variant;
 
                 $externalSkuId = (string) ($variantMapping->external_sku_id ?? '');
                 $wms = (int) ($wmsByVariant[$variant->id] ?? 0);
@@ -116,10 +111,10 @@ class StockReconcileCommand extends Command
                 }
 
                 $rows[] = [
-                    'sku'          => $variant->sku,
-                    'wms'          => $wms,
-                    'live'         => $live,
-                    'jubelio'      => $old,
+                    'sku' => $variant->sku,
+                    'wms' => $wms,
+                    'live' => $live,
+                    'jubelio' => $old,
                     'diff_vs_live' => $diff,
                 ];
             }
@@ -128,25 +123,25 @@ class StockReconcileCommand extends Command
         $checked = $matched + $mismatched;
 
         $this->renderShop($shop, $rows, [
-            'checked'     => $checked,
-            'matched'     => $matched,
-            'mismatched'  => $mismatched,
-            'unreadable'  => $unreadable,
-            'match_rate'  => $checked > 0 ? round($matched / $checked * 100, 2) : null,
+            'checked' => $checked,
+            'matched' => $matched,
+            'mismatched' => $mismatched,
+            'unreadable' => $unreadable,
+            'match_rate' => $checked > 0 ? round($matched / $checked * 100, 2) : null,
         ]);
 
         return [
-            'shop_id'            => $shop->shop_id,
-            'shop_name'          => $shop->shop_name,
-            'channel'            => $channelCode,
+            'shop_id' => $shop->shop_id,
+            'shop_name' => $shop->shop_name,
+            'channel' => $channelCode,
             'stock_push_enabled' => (bool) $shop->stock_push_enabled,
-            'stock_push_buffer'  => (int) $shop->stock_push_buffer,
-            'checked'            => $checked,
-            'matched'            => $matched,
-            'mismatched'         => $mismatched,
+            'stock_push_buffer' => (int) $shop->stock_push_buffer,
+            'checked' => $checked,
+            'matched' => $matched,
+            'mismatched' => $mismatched,
             'listing_unreadable' => $unreadable,
-            'match_rate'         => $checked > 0 ? round($matched / $checked * 100, 2) : null,
-            'rows'               => $rows,
+            'match_rate' => $checked > 0 ? round($matched / $checked * 100, 2) : null,
+            'rows' => $rows,
         ];
     }
 
@@ -162,7 +157,7 @@ class StockReconcileCommand extends Command
                 $summary['matched'],
                 $summary['mismatched'],
                 $summary['unreadable'],
-                $summary['match_rate'] === null ? '-' : $summary['match_rate'] . '%',
+                $summary['match_rate'] === null ? '-' : $summary['match_rate'].'%',
             ]],
         );
 
@@ -184,7 +179,7 @@ class StockReconcileCommand extends Command
         );
 
         if (count($rows) > count($preview)) {
-            $this->line('... ' . (count($rows) - count($preview)) . ' baris lagi, lihat file hasil.');
+            $this->line('... '.(count($rows) - count($preview)).' baris lagi, lihat file hasil.');
         }
     }
 
@@ -236,12 +231,12 @@ class StockReconcileCommand extends Command
 
     private function writeResults(array $results): string
     {
-        $path = $this->option('json') ?: 'stock-reconcile/' . now()->format('Ymd-His') . '.json';
+        $path = $this->option('json') ?: 'stock-reconcile/'.now()->format('Ymd-His').'.json';
 
         Storage::disk('local')->put($path, json_encode([
             'generated_at' => now()->toIso8601String(),
-            'tolerance'    => (int) $this->option('tolerance'),
-            'shops'        => $results,
+            'tolerance' => (int) $this->option('tolerance'),
+            'shops' => $results,
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
         return Storage::disk('local')->path($path);

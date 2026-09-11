@@ -31,6 +31,7 @@ class ManualStockSyncService
             foreach ($mappings as $mapping) {
                 if (blank($mapping->external_product_id)) {
                     $skipped++;
+
                     continue;
                 }
 
@@ -48,6 +49,7 @@ class ManualStockSyncService
                     null,
                     null,
                     'bulk',
+                    (string) $mapping->id,
                 );
 
                 $queued++;
@@ -99,6 +101,7 @@ class ManualStockSyncService
                         null,
                         null,
                         'bulk',
+                        (string) $mapping->id,
                     );
 
                     $queued++;
