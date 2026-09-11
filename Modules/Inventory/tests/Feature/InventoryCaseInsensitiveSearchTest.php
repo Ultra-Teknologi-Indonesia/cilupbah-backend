@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Inventory\Exports\RackAllocationExport;
 use Modules\Inventory\Models\BinTransfer;
+use Modules\Inventory\Models\Inventory;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
@@ -81,9 +82,53 @@ class InventoryCaseInsensitiveSearchTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $rows = (new RackAllocationExport(search: 'lsm'))->collection();
+        $rows = (new RackAllocationExport(search: 'lsm'))->query()->get();
 
         $this->assertCount(1, $rows);
         $this->assertSame('LSM-EXPORT-001', $rows->first()->item_code);
+    }
+
+    public function test_rack_allocation_export_includes_placed_inventory_without_assignment(): void
+    {
+        $location = Location::create([
+            'location_code' => 'WH-EXPORT-STOCK',
+            'location_name' => 'Gudang Export Stock',
+            'location_type' => 'warehouse',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+        $bin = LocationBin::create([
+            'location_id' => $location->id,
+            'bin_code' => 'A1',
+            'bin_final_code' => 'RAK-STOCK-001',
+            'is_inbound' => false,
+        ]);
+        $category = Category::create(['name' => 'Kategori Export Stock']);
+        $product = Product::create([
+            'category_id' => $category->id,
+            'name' => 'Produk Export Stock',
+            'status' => Product::STATUS_MASTER,
+            'is_active' => true,
+        ]);
+        $variant = ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => 'MAGSAFE-CLEAR-IP-15-PROMAX',
+            'is_active' => true,
+        ]);
+        Inventory::create([
+            'item_id' => $variant->id,
+            'location_id' => $location->id,
+            'bin_id' => $bin->id,
+            'on_hand' => 20,
+            'on_order' => 5,
+            'reserved' => 5,
+            'available' => 15,
+        ]);
+
+        $rows = (new RackAllocationExport(search: 'MAGSAFE-CLEAR-IP-15-PROMAX'))->query()->get();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('MAGSAFE-CLEAR-IP-15-PROMAX', $rows->first()->item_code);
+        $this->assertSame('RAK-STOCK-001', $rows->first()->bin_final_code);
     }
 }

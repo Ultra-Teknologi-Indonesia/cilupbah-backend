@@ -2675,14 +2675,6 @@ class SalesOrderService
             || ! empty($orderData['cancel_requested_at']);
     }
 
-    /**
-     * Determine whether this channel update can change an inventory allocation.
-     *
-     * Marketplace webhooks are frequently repeated or arrive with a status that
-     * is already represented locally. Those updates must remain idempotent and
-     * must not re-read or mutate inventory. A cancellation is still reconciled
-     * once so an existing reservation can be released.
-     */
     private function shouldReconcileChannelStock(?string $previousStatus, string $finalStatus): bool
     {
         if ($previousStatus === null) {
@@ -2699,8 +2691,6 @@ class SalesOrderService
 
         $fromRank = $this->statusRank($previousStatus, 0);
 
-        // Pending orders are treated as reserved for channel reconciliation,
-        // matching reconcileStockTransition() and preventing duplicate reserve.
         if ($previousStatus === 'pending') {
             $fromRank = self::STATUS_RANK['reserved'];
         }
