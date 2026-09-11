@@ -501,9 +501,22 @@ class ImportBaselineStock extends Command
         } else {
             $sku = trim((string) ($raw[$headerMap['sku'] ?? 0] ?? ''));
             $fileLocation = trim((string) ($raw[$headerMap['lokasi'] ?? 3] ?? '')) ?: null;
-            $bin = trim((string) ($raw[$headerMap['no rak'] ?? 7] ?? ''));
-            $actualIndex = $headerMap['qty aktual'] ?? $headerMap['qty actual'] ?? 9;
-            $onHandIndex = $headerMap['qty on hand'] ?? 8;
+            $binIndex = $headerMap['no rak']
+                ?? $headerMap['no_rak']
+                ?? $headerMap['kode rak']
+                ?? $headerMap['kode_rak']
+                ?? $headerMap['rak']
+                ?? 7;
+            $bin = trim((string) ($raw[$binIndex] ?? ''));
+            $actualIndex = $headerMap['qty aktual']
+                ?? $headerMap['qty actual']
+                ?? $headerMap['stok baru aktual']
+                ?? $headerMap['stok_baru_aktual']
+                ?? 9;
+            $onHandIndex = $headerMap['qty on hand']
+                ?? $headerMap['stok saat ini on_hand']
+                ?? $headerMap['stok_saat_ini_on_hand']
+                ?? 8;
             $qty = isset($raw[$actualIndex]) && $raw[$actualIndex] !== '' && $raw[$actualIndex] !== null
                 ? (int) $raw[$actualIndex]
                 : (int) ($raw[$onHandIndex] ?? 0);
@@ -583,7 +596,6 @@ class ImportBaselineStock extends Command
             'sku_hilang' => [],
             'sku_beda_huruf' => [],
             'sku_ganda' => [],
-            'sku_multi_rak' => [],
             'sku_nonaktif' => [],
             'rak_hilang' => [],
             'rak_gudang_lain' => [],
@@ -595,19 +607,6 @@ class ImportBaselineStock extends Command
         foreach ($variants as $sku => $variant) {
             $lowerIndex[mb_strtolower($sku)][] = $sku;
         }
-
-        $rackCodesBySku = [];
-        foreach ($rows as $row) {
-            $skuKey = mb_strtolower(trim((string) $row['sku']));
-            $binCode = strtoupper(trim((string) $row['bin']));
-            if ($skuKey !== '' && $binCode !== '') {
-                $rackCodesBySku[$skuKey][$binCode] = true;
-            }
-        }
-        $multiRackSkus = array_fill_keys(
-            array_keys(array_filter($rackCodesBySku, static fn (array $bins): bool => count($bins) > 1)),
-            true,
-        );
 
         $variantIds = array_filter(array_column(array_values($variants), 'id'));
         $currentStockMap = [];
@@ -716,13 +715,6 @@ class ImportBaselineStock extends Command
                 } else {
                     $resolvedBinId = $candidateBin->id;
                 }
-            }
-
-            if (! $blocked && isset($multiRackSkus[mb_strtolower($sku)])) {
-                $notes = 'SKU memiliki lebih dari satu rak berbeda di file; mapping rak ambigu.';
-                $problems['sku_multi_rak'][] = $row + ['catatan' => $notes];
-                $status = 'DITOLAK_SKU_MULTI_RAK';
-                $blocked = true;
             }
 
             $pairKey = $variantId.':'.($resolvedBinId ?? 'null');
@@ -890,7 +882,6 @@ class ImportBaselineStock extends Command
         $labels = [
             'sku_hilang' => 'SKU tidak terdaftar (baris DITOLAK)',
             'sku_beda_huruf' => 'SKU beda huruf besar/kecil (baris DITOLAK)',
-            'sku_multi_rak' => 'SKU memiliki lebih dari satu rak di file (baris DITOLAK)',
             'rak_hilang' => 'Kode rak belum ada di sistem (baris DITOLAK)',
             'rak_gudang_lain' => 'Kode rak milik gudang lain (baris DITOLAK)',
             'sku_ganda' => 'SKU dipakai lebih dari satu varian (peringatan)',
@@ -933,7 +924,7 @@ class ImportBaselineStock extends Command
         $hasStockChange = collect($validRows)
             ->contains(fn (array $row): bool => (float) $row['delta'] !== 0.0);
 
-        $assignmentRows = [];
+        $assignmentCandidates = [];
         $protectedItemIds = [];
         foreach ($allRows as $row) {
             if (($row['blocked'] ?? false) === true) {
@@ -945,12 +936,16 @@ class ImportBaselineStock extends Command
             }
 
             if (! empty($row['variant_id']) && ! empty($row['bin_id'])) {
-                $assignmentRows[(string) $row['variant_id']] = [
-                    'item_id' => (string) $row['variant_id'],
-                    'bin_id' => (string) $row['bin_id'],
-                ];
+                $itemId = (string) $row['variant_id'];
+                $binId = (string) $row['bin_id'];
+                $assignmentCandidates[$itemId][$binId] = max(
+                    (float) ($assignmentCandidates[$itemId][$binId] ?? 0),
+                    (float) ($row['qty'] ?? 0),
+                );
             }
         }
+
+        $assignmentRows = $this->selectRackAssignments($assignmentCandidates, (string) $location->id);
 
         if (! $hasStockChange && ! $zeroMissing && $assignmentRows === []) {
             return [
@@ -1051,8 +1046,6 @@ class ImportBaselineStock extends Command
                 ->select(['id', 'item_id', 'bin_id', 'on_hand', 'avg_cost'])
                 ->orderBy('id');
 
-            // Stream the cleanup in bounded chunks so a large warehouse does
-            // not load every stale inventory row into PHP memory at once.
             $existingInventories->chunkById($chunkSize, function ($chunk) use (
                 $adjustment,
                 $location,
@@ -1148,6 +1141,44 @@ class ImportBaselineStock extends Command
         }
 
         return $upserted;
+    }
+
+    /**
+     * Select one primary rack for each SKU while preserving every CSV rack in
+     * inventories. Existing assignments win when they still point to a CSV
+     * rack; otherwise the rack with the highest target quantity wins, with a
+     * stable bin-id tie breaker.
+     */
+    private function selectRackAssignments(array $candidates, string $locationId): array
+    {
+        if ($candidates === [] || ! Schema::hasTable('sku_rack_assignments')) {
+            return [];
+        }
+
+        $existing = DB::table('sku_rack_assignments')
+            ->where('location_id', $locationId)
+            ->whereIn('item_id', array_keys($candidates))
+            ->pluck('bin_id', 'item_id')
+            ->all();
+
+        $selected = [];
+        foreach ($candidates as $itemId => $bins) {
+            $existingBin = $existing[$itemId] ?? null;
+            if ($existingBin !== null && array_key_exists((string) $existingBin, $bins)) {
+                $selected[$itemId] = ['item_id' => $itemId, 'bin_id' => (string) $existingBin];
+
+                continue;
+            }
+
+            uksort($bins, static function (string $left, string $right) use ($bins): int {
+                $quantityOrder = $bins[$right] <=> $bins[$left];
+
+                return $quantityOrder !== 0 ? $quantityOrder : strcmp($left, $right);
+            });
+            $selected[$itemId] = ['item_id' => $itemId, 'bin_id' => (string) array_key_first($bins)];
+        }
+
+        return $selected;
     }
 
     private function generateReport(

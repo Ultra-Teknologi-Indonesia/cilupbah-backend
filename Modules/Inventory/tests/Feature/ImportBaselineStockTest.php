@@ -638,7 +638,7 @@ class ImportBaselineStockTest extends TestCase
         self::assertSame(40, (int) Inventory::where('item_id', $variant->id)->value('on_hand'));
     }
 
-    public function test_satu_sku_dengan_dua_rak_di_file_ditolak_untuk_mencegah_assignment_ambigu(): void
+    public function test_multi_rack_menyimpan_semua_inventory_dan_memilih_assignment_stabil(): void
     {
         $location = Location::create([
             'location_code' => 'WH-RACK-CONFLICT',
@@ -675,10 +675,63 @@ class ImportBaselineStockTest extends TestCase
         $this->artisan('inventory:import-baseline', [
             'file' => $excelPath,
             '--location' => 'WH-RACK-CONFLICT',
-        ])
-            ->assertExitCode(0)
-            ->expectsOutputToContain('SKU memiliki lebih dari satu rak di file');
+            '--commit' => true,
+        ])->assertExitCode(0);
 
-        self::assertSame(0, DB::table('sku_rack_assignments')->where('location_id', $location->id)->count());
+        $variantId = ProductVariant::where('sku', 'SKU-RACK-CONFLICT')->value('id');
+        self::assertSame(2, Inventory::where('item_id', $variantId)->where('location_id', $location->id)->count());
+        self::assertSame(1, DB::table('sku_rack_assignments')->where('location_id', $location->id)->count());
+        self::assertDatabaseHas('sku_rack_assignments', [
+            'location_id' => $location->id,
+            'item_id' => $variantId,
+            'bin_id' => LocationBin::where('location_id', $location->id)
+                ->where('bin_final_code', 'CONFLICT-B')
+                ->value('id'),
+        ]);
+    }
+
+    public function test_csv_laporan_stock_cutover_dapat_dibaca_tanpa_mengubah_qty_menjadi_nol(): void
+    {
+        $location = Location::create([
+            'location_code' => 'WH-RACK-REPORT',
+            'location_name' => 'Gudang Rack Report',
+            'location_type' => 'warehouse',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+        LocationBin::create([
+            'location_id' => $location->id,
+            'bin_final_code' => 'REPORT-RACK',
+            'bin_code' => 'REPORT-RACK',
+            'is_inbound' => false,
+        ]);
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'Rack Report', 'is_active' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $product = Product::create([
+            'category_id' => $categoryId,
+            'name' => 'Rack Report Item', 'sku' => 'SKU-RACK-REPORT', 'is_active' => true,
+        ]);
+        $variant = ProductVariant::create([
+            'product_id' => $product->id, 'sku' => 'SKU-RACK-REPORT', 'is_active' => true,
+        ]);
+        $binId = LocationBin::where('location_id', $location->id)->value('id');
+        $this->tempExcelPath = tempnam(sys_get_temp_dir(), 'baseline_report_').'.csv';
+        file_put_contents($this->tempExcelPath, implode(PHP_EOL, [
+            'no_baris,sku,kode_rak,stok_saat_ini_on_hand,stok_baru_aktual,selisih_delta,status,keterangan_alasan',
+            '1,SKU-RACK-REPORT,REPORT-RACK,0,17,17,VALID,Siap diimpor',
+        ]));
+
+        $this->artisan('inventory:import-baseline', [
+            'file' => $this->tempExcelPath,
+            '--location' => 'WH-RACK-REPORT',
+            '--commit' => true,
+        ])->assertExitCode(0);
+
+        self::assertSame(17, (int) Inventory::where('item_id', $variant->id)
+            ->where('location_id', $location->id)
+            ->where('bin_id', $binId)
+            ->value('on_hand'));
     }
 }

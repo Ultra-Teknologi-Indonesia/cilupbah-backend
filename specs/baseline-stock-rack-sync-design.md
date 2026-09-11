@@ -12,9 +12,10 @@
 - A valid zero-quantity row shall still create/update its rack assignment.
 - Invalid rows in partial mode shall not zero or remap the same SKU's existing
   inventory/assignment.
-- A SKU mapped to multiple different racks in one file shall be reported as a
-  blocking conflict because the assignment table supports one rack per
-  SKU/location.
+- A SKU may exist on multiple physical racks in one file. All inventory pairs
+  shall be preserved; the single assignment row shall retain an existing CSV
+  rack when possible, otherwise choose the highest-quantity rack with a
+  stable tie breaker.
 
 ## Architecture
 
@@ -44,8 +45,8 @@ summary remains the source for applied/zeroed/assignment counts and errors.
   interpolated into SQL.
 - Chunked transactions and idempotent upserts limit memory/lock duration and
   allow safe retry after worker interruption.
-- Conflicting duplicate SKU/rack mappings are rejected instead of choosing a
-  nondeterministic rack.
+- Multi-rack inventory is preserved, while the one primary assignment is chosen
+  deterministically so retries cannot move it randomly.
 
 ## Implementation plan
 
@@ -53,6 +54,7 @@ summary remains the source for applied/zeroed/assignment counts and errors.
 - [x] Synchronize validated rack assignments with bulk upserts.
 - [x] Preserve invalid SKU rows during partial zero-missing cleanup.
 - [x] Keep valid Qty 0 rows eligible for assignment synchronization.
-- [x] Add regression tests for mismatch repair, Qty 0, and partial invalid
-  protection. Historical negative cleanup uses the same zero-missing path and
-  is covered by the database invariant plus the non-zero cleanup predicate.
+- [x] Add regression tests for mismatch repair, Qty 0, multi-rack inventory,
+  and partial invalid protection. Historical negative cleanup uses the same
+  zero-missing path and is covered by the database invariant plus the non-zero
+  cleanup predicate.
