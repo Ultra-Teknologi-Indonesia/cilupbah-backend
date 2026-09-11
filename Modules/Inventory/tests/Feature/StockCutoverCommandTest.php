@@ -117,6 +117,35 @@ final class StockCutoverCommandTest extends TestCase
         ]);
     }
 
+    public function test_resolve_locations_allows_unlocked_system_warehouses_but_protects_locked_system_locations(): void
+    {
+        Location::create([
+            'location_code' => 'SYS-WAREHOUSE',
+            'location_name' => 'System Warehouse',
+            'location_type' => 'warehouse',
+            'is_warehouse' => true,
+            'is_active' => true,
+            'is_system' => true,
+            'is_locked' => false,
+        ]);
+        Location::create([
+            'location_code' => 'SYS-LOCKED',
+            'location_name' => 'System Locked',
+            'location_type' => 'warehouse',
+            'is_warehouse' => true,
+            'is_active' => true,
+            'is_system' => true,
+            'is_locked' => true,
+        ]);
+
+        $resolved = app(StockCutoverService::class)->resolveLocations(['SYS-WAREHOUSE']);
+
+        self::assertSame(['SYS-WAREHOUSE'], $resolved->pluck('location_code')->all());
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('SYS-LOCKED');
+        app(StockCutoverService::class)->resolveLocations(['SYS-LOCKED']);
+    }
+
     public function test_reset_keeps_master_sku_and_rack_and_removes_stock_history(): void
     {
         $location = Location::create([

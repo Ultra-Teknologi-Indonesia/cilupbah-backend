@@ -934,14 +934,31 @@ final class StockCutoverService
         if ($normalized->isEmpty()) {
             throw new \RuntimeException('--locations wajib berisi allowlist gudang, ALL tidak diizinkan.');
         }
-        $locations = DB::table('locations')
+        $query = DB::table('locations')
             ->whereIn('location_code', $normalized->all())
             ->where('is_warehouse', true)
-            ->where('is_active', true)
-            ->when(Schema::hasColumn('locations', 'is_system'), fn ($query) => $query->where(function ($q): void {
-                $q->where('is_system', false)->orWhereNull('is_system');
-            }))
-            ->get(['id', 'location_code', 'location_name']);
+            ->where('is_active', true);
+
+        // System warehouses (Pusat/Gudang Kecil) are valid cutover targets when
+        // they are not locked. Locked system locations (for example Transit)
+        // remain protected from destructive cutover operations.
+        if (Schema::hasColumn('locations', 'is_system')) {
+            if (Schema::hasColumn('locations', 'is_locked')) {
+                $query->where(function ($q): void {
+                    $q->where('is_system', false)
+                        ->orWhereNull('is_system')
+                        ->orWhere(function ($systemQuery): void {
+                            $systemQuery->where('is_system', true)->where('is_locked', false);
+                        });
+                });
+            } else {
+                $query->where(function ($q): void {
+                    $q->where('is_system', false)->orWhereNull('is_system');
+                });
+            }
+        }
+
+        $locations = $query->get(['id', 'location_code', 'location_name']);
         if ($locations->count() !== $normalized->count()) {
             $missing = $normalized->diff($locations->pluck('location_code'))->implode(', ');
             throw new \RuntimeException("gudang tidak ditemukan atau bukan gudang aktif: {$missing}");
