@@ -12,7 +12,6 @@ use Modules\Product\Models\ProductChannelValidation;
 
 class ProductChannelValidationService
 {
-
     public const IN_SCOPE_CHANNELS = ['tiktok', 'lazada', 'shopee'];
 
     private const ATTRIBUTE_ISSUE_CODES = [
@@ -41,11 +40,14 @@ class ProductChannelValidationService
             ->filter(fn ($m) => $m->channelShop !== null)
             ->groupBy(fn ($m) => $m->channelShop->channel_id);
 
-        $channels = Channel::query()
-            ->whereIn('id', $mappingsByChannel->keys()->all() ?: ['-'])
-            ->where('is_active', true)
-            ->whereIn('code', self::IN_SCOPE_CHANNELS)
-            ->get();
+        $channelIds = $mappingsByChannel->keys()->all();
+        $channels = $channelIds === []
+            ? collect()
+            : Channel::query()
+                ->whereIn('id', $channelIds)
+                ->where('is_active', true)
+                ->whereIn('code', self::IN_SCOPE_CHANNELS)
+                ->get();
 
         DB::transaction(function () use ($product, $channels, $mappingsByChannel) {
             $keep = [];
@@ -73,10 +75,14 @@ class ProductChannelValidationService
                 $keep[] = $channel->id;
             }
 
-            ProductChannelValidation::query()
-                ->where('product_id', $product->id)
-                ->whereNotIn('channel_id', $keep ?: ['-'])
-                ->delete();
+            $staleValidations = ProductChannelValidation::query()
+                ->where('product_id', $product->id);
+
+            if ($keep !== []) {
+                $staleValidations->whereNotIn('channel_id', $keep);
+            }
+
+            $staleValidations->delete();
         });
     }
 

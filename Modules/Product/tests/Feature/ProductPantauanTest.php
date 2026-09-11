@@ -6,12 +6,15 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Repositories\ChannelProductRepository;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
+use Modules\Product\Models\ProductChannelValidation;
 use Modules\Product\Models\ProductSyncLog;
 use Modules\Product\Models\ProductVariant;
 use Modules\Product\Models\ProductVariantChannelMapping;
 use Modules\Product\Models\VariantOption;
+use Modules\Product\Services\ProductChannelValidationService;
 use Tests\TestCase;
 
 class ProductPantauanTest extends TestCase
@@ -19,6 +22,7 @@ class ProductPantauanTest extends TestCase
     use RefreshDatabase;
 
     private ChannelShop $shopA;
+
     private ChannelShop $shopB;
 
     protected function setUp(): void
@@ -60,18 +64,27 @@ class ProductPantauanTest extends TestCase
 
     private function recompute(Product ...$products): void
     {
-        $service = app(\Modules\Product\Services\ProductChannelValidationService::class);
+        $service = app(ProductChannelValidationService::class);
         foreach ($products as $product) {
             $service->recompute($product);
         }
     }
 
+    public function test_recompute_without_channel_mappings_does_not_use_invalid_uuid_sentinel(): void
+    {
+        $product = $this->product('Produk Tanpa Mapping');
+
+        $this->recompute($product);
+
+        $this->assertSame(0, ProductChannelValidation::where('product_id', $product->id)->count());
+    }
+
     public function test_belum_upload_lists_products_not_uploaded_to_all_shops(): void
     {
-        $partial = $this->product('Produk Sebagian'); 
+        $partial = $this->product('Produk Sebagian');
         $this->mapTo($partial, $this->shopA, 'A-1');
 
-        $full = $this->product('Produk Lengkap'); 
+        $full = $this->product('Produk Lengkap');
         $this->mapTo($full, $this->shopA, 'F-1');
         $this->mapTo($full, $this->shopB, 'F-2');
 
@@ -141,7 +154,7 @@ class ProductPantauanTest extends TestCase
         $variant = ProductVariant::create(['product_id' => $product->id, 'sku' => 'MST-1', 'sell_price' => 50000, 'is_active' => true]);
         $mapping = $this->mapTo($product, $this->shopA, 'EXT-1');
 
-        app(\Modules\Channel\Repositories\ChannelProductRepository::class)
+        app(ChannelProductRepository::class)
             ->upsertVariantChannelMapping($mapping->id, $variant->id, 'CH-EXT-1', 'CHANNEL-SKU-X', 77000);
 
         $row = ProductVariantChannelMapping::where('variant_id', $variant->id)->first();
@@ -272,7 +285,7 @@ class ProductPantauanTest extends TestCase
     {
         $product = $this->product('Produk Atribut');
 
-        app(\Modules\Channel\Repositories\ChannelProductRepository::class)
+        app(ChannelProductRepository::class)
             ->upsertChannelMapping($product->id, 'SHOP-A', 'EXT-ATTR', 'synced', ['Warna' => 'Merah', 'Brand' => 'Acme']);
 
         $row = ProductChannelMapping::where('product_id', $product->id)->first();
