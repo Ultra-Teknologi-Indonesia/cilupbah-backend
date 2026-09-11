@@ -542,7 +542,7 @@ final class StockCutoverService
         return $report;
     }
 
-    public function previewReset(string $runId): array
+    public function previewReset(string $runId, bool $purgeAll = false): array
     {
         $run = $this->getRun($runId);
         $orders = DB::table('sales_orders')->whereIn('location_id', $run['location_ids']);
@@ -573,22 +573,25 @@ final class StockCutoverService
         }
 
         return [
+            'mode' => $purgeAll ? 'PURGE_ALL_OPERATIONAL_DATA' : 'CUTOVER_RESET',
             'cutoff_at' => $run['cutoff_at']->toIso8601String(),
             'locations' => $run['location_codes'],
             'stock_and_document_rows' => $this->tableCounts($run['location_ids']),
             'orders_total_in_scope' => $allOrders,
-            'terminal_orders_to_delete' => $terminal,
-            'active_orders_to_keep_and_normalize' => $activeKeep,
-            'other_orders_preserved_without_reactivation' => max(0, $allOrders - $terminal - $activeKeep),
+            'terminal_orders_to_delete' => $purgeAll ? $allOrders : $terminal,
+            'active_orders_to_keep_and_normalize' => $purgeAll ? 0 : $activeKeep,
+            'other_orders_preserved_without_reactivation' => $purgeAll ? 0 : max(0, $allOrders - $terminal - $activeKeep),
             'whitelist_policy_preview' => $whitelistPreview,
-            'webhooks_before_cutoff_to_delete' => Schema::hasTable('channel_webhook_inbox')
-                ? DB::table('channel_webhook_inbox')->where('received_at', '<', $run['cutoff_at']->utc())->count()
+            'webhooks_to_delete' => Schema::hasTable('channel_webhook_inbox')
+                ? ($purgeAll
+                    ? DB::table('channel_webhook_inbox')->count()
+                    : DB::table('channel_webhook_inbox')->where('received_at', '<', $run['cutoff_at']->utc())->count())
                 : 0,
             'finance_rows_delete_only_with_purge_finance' => true,
         ];
     }
 
-    public function reset(string $runId, bool $purgeFinance): array
+    public function reset(string $runId, bool $purgeFinance, bool $purgeAll = false): array
     {
         if (! $purgeFinance) {
             throw new \RuntimeException('reset penuh harus menyertakan purge finance agar invoice dan relasi order tidak tertinggal.');
@@ -597,7 +600,7 @@ final class StockCutoverService
         $run = $this->getRun($runId);
         $this->assertApplyAllowed($run, 'RESET-STOCK-DATA', ['PAUSED']);
         $orderAudit = $run['report']['order_audit'] ?? [];
-        if (($orderAudit['mode'] ?? null) === 'WHITELIST_PLUS_NEWER' && (int) ($orderAudit['blocking'] ?? 0) > 0) {
+        if (! $purgeAll && ($orderAudit['mode'] ?? null) === 'WHITELIST_PLUS_NEWER' && (int) ($orderAudit['blocking'] ?? 0) > 0) {
             throw new \RuntimeException('reset dibatalkan karena audit whitelist order masih memiliki blocking issue.');
         }
         $stockAudits = $run['report']['stock_audits'] ?? [];
@@ -613,7 +616,7 @@ final class StockCutoverService
         $terminalOrderIds = [];
         $deletedOrderIds = [];
 
-        DB::transaction(function () use ($run, $orderAudit, &$counts, &$terminalOrderIds, &$deletedOrderIds): void {
+        DB::transaction(function () use ($run, $orderAudit, $purgeAll, &$counts, &$terminalOrderIds, &$deletedOrderIds): void {
             $locationIds = $run['location_ids'];
             $this->pauseChannels();
 
@@ -626,8 +629,11 @@ final class StockCutoverService
                 ->where('updated_at', '<', $run['cutoff_at']->utc())
                 ->pluck('id')->all();
 
-            $whitelistMode = ($orderAudit['mode'] ?? null) === 'WHITELIST_PLUS_NEWER';
-            if ($whitelistMode) {
+            $whitelistMode = ! $purgeAll && ($orderAudit['mode'] ?? null) === 'WHITELIST_PLUS_NEWER';
+            if ($purgeAll) {
+                $deletedOrderIds = $orderIds;
+                $keepOrderIds = [];
+            } elseif ($whitelistMode) {
                 $newerOrderIds = DB::table('sales_orders')
                     ->whereIn('location_id', $locationIds)
                     ->where(function ($query) use ($run): void {
@@ -656,13 +662,14 @@ final class StockCutoverService
                 $run['cutoff_at'],
                 $counts,
                 $whitelistMode ? ($orderAudit['whitelist_queue_event_ids'] ?? []) : [],
+                $purgeAll,
             );
 
             if ($deletedOrderIds !== []) {
                 $this->deleteOrderHistory($deletedOrderIds, $counts);
             }
 
-            if ($keepOrderIds !== []) {
+            if (! $purgeAll && $keepOrderIds !== []) {
                 $this->resetKeptOrders($keepOrderIds);
             }
 
@@ -677,7 +684,9 @@ final class StockCutoverService
             'deleted' => $counts,
             'terminal_order_count' => count(array_intersect($terminalOrderIds ?? [], $deletedOrderIds ?? [])),
             'order_count_deleted' => count($deletedOrderIds),
-            'order_policy' => ($orderAudit['mode'] ?? null) === 'WHITELIST_PLUS_NEWER' ? 'whitelist_plus_newer' : 'terminal_before_cutoff',
+            'order_policy' => $purgeAll
+                ? 'purge_all_in_scope'
+                : (($orderAudit['mode'] ?? null) === 'WHITELIST_PLUS_NEWER' ? 'whitelist_plus_newer' : 'terminal_before_cutoff'),
         ];
     }
 
@@ -1567,11 +1576,14 @@ final class StockCutoverService
         }
     }
 
-    private function deleteWebhookHistory(CarbonImmutable $cutoff, array &$counts, array $preserveIds = []): void
+    private function deleteWebhookHistory(CarbonImmutable $cutoff, array &$counts, array $preserveIds = [], bool $purgeAll = false): void
     {
         if (Schema::hasTable('channel_webhook_inbox')) {
-            $query = DB::table('channel_webhook_inbox')->where('received_at', '<', $cutoff->utc());
-            if ($preserveIds !== []) {
+            $query = DB::table('channel_webhook_inbox');
+            if (! $purgeAll) {
+                $query->where('received_at', '<', $cutoff->utc());
+            }
+            if (! $purgeAll && $preserveIds !== []) {
                 $query->whereNotIn('id', $preserveIds);
             }
             $counts['channel_webhook_inbox'] = $query->delete();

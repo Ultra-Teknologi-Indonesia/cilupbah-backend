@@ -146,6 +146,66 @@ final class StockCutoverCommandTest extends TestCase
         app(StockCutoverService::class)->resolveLocations(['SYS-LOCKED']);
     }
 
+    public function test_full_purge_removes_active_orders_and_all_webhook_history_in_scope(): void
+    {
+        $location = Location::create([
+            'location_code' => 'WH-FULL-PURGE',
+            'location_name' => 'Gudang Full Purge',
+            'location_type' => 'warehouse',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+        $orderIds = [(string) Str::uuid(), (string) Str::uuid()];
+        foreach ($orderIds as $index => $orderId) {
+            DB::table('sales_orders')->insert([
+                'id' => $orderId,
+                'salesorder_no' => 'FULL-PURGE-'.$index,
+                'status' => $index === 0 ? 'pending' : 'shipped',
+                'is_paid' => true,
+                'is_canceled' => false,
+                'location_id' => $location->id,
+                'transaction_date' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+        DB::table('channel_webhook_inbox')->insert([
+            'id' => (string) Str::uuid(),
+            'channel' => 'shopee',
+            'shop_id' => 'FULL-PURGE-SHOP',
+            'event_key' => 'full-purge-event',
+            'event_type' => '1',
+            'payload' => json_encode(['data' => ['ordersn' => 'FULL-PURGE-0']], JSON_THROW_ON_ERROR),
+            'status' => WebhookInboxStatus::PROCESSED->value,
+            'attempts' => 1,
+            'error' => null,
+            'received_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $runId = (string) Str::uuid();
+        DB::table('stock_cutover_runs')->insert([
+            'id' => $runId,
+            'cutoff_at' => now()->subDay(),
+            'location_codes' => json_encode([$location->location_code], JSON_THROW_ON_ERROR),
+            'source_files' => json_encode([], JSON_THROW_ON_ERROR),
+            'report' => json_encode(['order_audit' => ['mode' => 'terminal_before_cutoff']], JSON_THROW_ON_ERROR),
+            'status' => 'PAUSED',
+            'created_by' => 'test',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $result = app(StockCutoverService::class)->reset($runId, true, true);
+
+        self::assertSame('purge_all_in_scope', $result['order_policy']);
+        self::assertSame(2, $result['order_count_deleted']);
+        self::assertDatabaseMissing('sales_orders', ['id' => $orderIds[0]]);
+        self::assertDatabaseMissing('sales_orders', ['id' => $orderIds[1]]);
+        self::assertDatabaseCount('channel_webhook_inbox', 0);
+    }
+
     public function test_reset_keeps_master_sku_and_rack_and_removes_stock_history(): void
     {
         $location = Location::create([
