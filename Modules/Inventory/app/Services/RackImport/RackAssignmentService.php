@@ -19,6 +19,16 @@ class RackAssignmentService
 
     public function assign(string $locationId, string $binId, string $itemId, ?string $userId): void
     {
+        $this->validate($locationId, $binId, $itemId);
+
+        SkuRackAssignment::updateOrCreate(
+            ['location_id' => $locationId, 'item_id' => $itemId],
+            ['bin_id' => $binId, 'assigned_by' => $userId],
+        );
+    }
+
+    public function validate(string $locationId, string $binId, string $itemId): void
+    {
         $active = ProductVariant::query()
             ->whereKey($itemId)
             ->whereHas('product', fn ($query) => $query->whereNull('deleted_at'))
@@ -33,11 +43,6 @@ class RackAssignmentService
         app(BinOccupancyGuard::class)->assertBinFitsSku($binId, $itemId);
 
         $this->assertBinNotPlannedForOther($locationId, $binId, $itemId);
-
-        SkuRackAssignment::updateOrCreate(
-            ['location_id' => $locationId, 'item_id' => $itemId],
-            ['bin_id' => $binId, 'assigned_by' => $userId],
-        );
     }
 
     private function assertBinNotPlannedForOther(string $locationId, string $binId, string $itemId): void

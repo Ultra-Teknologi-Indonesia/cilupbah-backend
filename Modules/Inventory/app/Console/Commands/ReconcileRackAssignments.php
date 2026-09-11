@@ -51,6 +51,7 @@ class ReconcileRackAssignments extends Command
             'already_aligned' => 0,
             'ready_create' => 0,
             'ready_update' => 0,
+            'preflight_rejected' => 0,
             'skipped_multiple_active_racks' => 0,
             'assignments_without_active_stock' => 0,
             'applied_created' => 0,
@@ -74,6 +75,7 @@ class ReconcileRackAssignments extends Command
                 $processed++;
                 $summary['scanned']++;
                 $plan = $this->plan($group);
+                $plan = $this->preflight($plan, $location->id, $rackAssignmentService);
                 $summary[$plan['status']]++;
                 $this->appendSample($samples, $plan);
 
@@ -306,6 +308,24 @@ class ReconcileRackAssignments extends Command
         ]);
     }
 
+    private function preflight(array $plan, string $locationId, RackAssignmentService $rackAssignmentService): array
+    {
+        if (! in_array($plan['status'], ['ready_create', 'ready_update'], true)) {
+            return $plan;
+        }
+
+        try {
+            $rackAssignmentService->validate($locationId, $plan['target_bin_id'], $plan['item_id']);
+
+            return $plan;
+        } catch (\Throwable $exception) {
+            return array_merge($plan, [
+                'status' => 'preflight_rejected',
+                'reason' => $exception->getMessage(),
+            ]);
+        }
+    }
+
     private function assignmentsWithoutActiveStockCount(string $locationId, string $sku): int
     {
         return DB::table('sku_rack_assignments as a')
@@ -341,6 +361,7 @@ class ReconcileRackAssignments extends Command
         if (count($samples) >= 20 || ! in_array($plan['status'], [
             'ready_create',
             'ready_update',
+            'preflight_rejected',
             'skipped_multiple_active_racks',
             'apply_failed',
         ], true)) {

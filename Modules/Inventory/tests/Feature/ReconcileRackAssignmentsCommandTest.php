@@ -105,6 +105,27 @@ class ReconcileRackAssignmentsCommandTest extends TestCase
         ]);
     }
 
+    public function test_apply_skips_candidate_when_target_rack_is_assigned_to_another_sku(): void
+    {
+        $location = $this->smallWarehouse();
+        $bin = $this->bin($location, 'O-A1-K1-X1');
+        $variant = $this->variant();
+        $otherVariant = $this->variant();
+        $this->stock($location, $bin, $variant);
+        $this->assignment($location, $bin, $otherVariant);
+
+        $this->artisan('inventory:reconcile-rack-assignments', [
+            '--location' => $location->id,
+            '--apply' => true,
+            '--confirm' => 'RECONCILE-RACK-ASSIGNMENTS',
+        ])->assertExitCode(0);
+
+        $this->assertDatabaseMissing('sku_rack_assignments', [
+            'location_id' => $location->id,
+            'item_id' => $variant->id,
+        ]);
+    }
+
     private function smallWarehouse(): Location
     {
         return Location::create([
