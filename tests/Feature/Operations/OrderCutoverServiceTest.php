@@ -96,6 +96,59 @@ final class OrderCutoverServiceTest extends TestCase
         self::assertDatabaseHas('sales_orders', ['id' => $processedId]);
     }
 
+    public function test_hard_cutoff_keeps_boundary_and_newer_orders_without_csv_whitelist(): void
+    {
+        $locationId = (string) Str::uuid();
+        $locationCode = 'CUT-'.Str::upper(Str::random(6));
+        DB::table('locations')->insert([
+            'id' => $locationId, 'location_code' => $locationCode, 'location_name' => 'Gudang Kecil',
+            'location_type' => 'warehouse', 'is_active' => true, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $oldId = (string) Str::uuid();
+        $boundaryId = (string) Str::uuid();
+        $newerId = (string) Str::uuid();
+        foreach ([
+            [$oldId, 'SO-OLD-HARD', '2026-09-11 14:59:59'],
+            [$boundaryId, 'SO-BOUNDARY-HARD', '2026-09-11 15:00:00'],
+            [$newerId, 'SO-NEWER-HARD', '2026-09-11 15:00:01'],
+        ] as [$id, $number, $created]) {
+            DB::table('sales_orders')->insert([
+                'id' => $id, 'salesorder_no' => $number, 'location_id' => $locationId,
+                'status' => 'pending', 'created_at' => $created, 'transaction_date' => $created, 'updated_at' => $created,
+            ]);
+        }
+
+        $service = app(OrderCutoverService::class);
+        $cutoff = CarbonImmutable::parse('2026-09-11 22:00:00', 'Asia/Jakarta');
+        $audit = $service->previewHardCutoff($cutoff, [$locationCode]);
+
+        self::assertSame('HARD_CUTOFF', $audit['mode']);
+        self::assertSame('2026-09-11 22:00:00', $audit['cutoff_at_wib']);
+        self::assertSame(1, $audit['orders_before_cutoff_to_delete']);
+        self::assertSame(2, $audit['orders_at_or_after_cutoff_kept']);
+        self::assertSame(0, $audit['blocking']);
+
+        $result = $service->applyHardCutoff($cutoff, [$locationCode]);
+
+        self::assertSame(1, $result['deleted_orders']);
+        self::assertDatabaseMissing('sales_orders', ['id' => $oldId]);
+        self::assertDatabaseHas('sales_orders', ['id' => $boundaryId]);
+        self::assertDatabaseHas('sales_orders', ['id' => $newerId]);
+    }
+
+    public function test_manual_cutoff_requires_exact_wib_datetime_local_format(): void
+    {
+        $service = app(OrderCutoverService::class);
+
+        self::assertSame(
+            '2026-09-11 15:00:00',
+            $service->parseManualCutoff('2026-09-11T22:00')->utc()->toDateTimeString(),
+        );
+
+        $this->expectExceptionMessage('format cutoff tidak valid');
+        $service->parseManualCutoff('2026-09-11 22:00');
+    }
+
     public function test_cutoff_uses_latest_timestamp_across_csv_files_with_gaps(): void
     {
         $first = UploadedFile::fake()->createWithContent(

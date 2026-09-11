@@ -22,8 +22,8 @@
 <body>
 <main>
     <section class="card">
-        <h1>Order Cutover — CSV Whitelist</h1>
-        <p class="muted">Preview membaca empat CSV dan tidak mengubah database. Cutoff dihitung otomatis dari tanggal dan jam order paling baru di seluruh CSV. Sistem mempertahankan order yang cocok dengan CSV dan order yang lebih baru dari cutoff, hanya untuk Gudang Kecil (kode O).</p>
+        <h1>Order Cutover — Hard Cutoff</h1>
+        <p class="muted">Preview ini tidak memakai whitelist CSV. Sistem membersihkan order sebelum cutoff dan mempertahankan order mulai cutoff, khusus order WMS Gudang Kecil (kode O).</p>
     </section>
 
     @if ($errors->any())
@@ -32,18 +32,12 @@
 
     @if (! $job)
         <section class="card">
-            <h2>1. Upload CSV dan dry-run</h2>
+            <h2>1. Tentukan cutoff dan dry-run</h2>
             <form method="post" action="{{ route('operations.order-cutover.preview', ['token' => $token]) }}" enctype="multipart/form-data">
                 @csrf
-                <div class="grid">
-                    @foreach ($fileFields as $field => $label)
-                        <div>
-                            <label>{{ $label }}</label>
-                            <input required type="file" name="{{ $field }}" accept=".csv,.txt">
-                        </div>
-                    @endforeach
-                </div>
-                <p class="muted">Cutoff dan gudang ditentukan otomatis. Timestamp CSV dibaca sebagai WIB; order tepat pada cutoff ikut dipertahankan.</p>
+                <label for="cutoff_at">Cutoff order (WIB)</label>
+                <input required id="cutoff_at" type="datetime-local" name="cutoff_at" step="60" value="{{ old('cutoff_at') }}">
+                <p class="muted">Order sebelum waktu ini akan menjadi kandidat pembersihan. Order tepat pada waktu cutoff dan sesudahnya dipertahankan. Contoh: 11 September 2026 pukul 23.00.</p>
                 <button type="submit">Mulai dry-run</button>
             </form>
         </section>
@@ -57,10 +51,10 @@
             <pre id="report-data">{{ $job->report ? json_encode($job->report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) : 'Menunggu proses queue…' }}</pre>
         </section>
 
-        @if ($job->type === 'preview')
+        @if (in_array($job->type, ['preview', 'hard_preview'], true))
             <section class="card warning {{ $job->status === 'ready' ? '' : 'hidden' }}" id="apply-card">
                 <h2>2. Apply order cutover</h2>
-                <p>Apply menghapus order kandidat yang tidak ada di CSV dan tidak lebih baru dari cutoff. Pastikan sinkronisasi order channel dan proses gudang sudah dihentikan.</p>
+                <p>Apply hard cutoff menghapus order sebelum cutoff dan mempertahankan order mulai cutoff. Pastikan sinkronisasi order channel dan proses gudang sudah dihentikan.</p>
                 <form method="post" action="{{ route('operations.order-cutover.apply', ['token' => $token, 'job' => $job->id]) }}">
                     @csrf
                     <label><input required type="checkbox" name="warehouse_stopped" value="1"> Proses gudang sudah berhenti.</label>
@@ -97,7 +91,7 @@ async function refresh() {
         cutoffDisplay.textContent = data.report && data.report.cutoff_at_wib ? `Cutoff WIB: ${data.report.cutoff_at_wib}` : '';
         reportData.textContent = data.report ? JSON.stringify(data.report, null, 2) : 'Menunggu proses queue…';
         if (data.download_ready) report.classList.remove('hidden');
-        if (data.type === 'preview' && data.status === 'ready' && applyCard) applyCard.classList.remove('hidden');
+        if (['preview', 'hard_preview'].includes(data.type) && data.status === 'ready' && applyCard) applyCard.classList.remove('hidden');
         refresh.delay = 5000;
         if (['queued', 'processing'].includes(data.status)) refresh.timer = setTimeout(refresh, refresh.delay);
     } catch (exception) { refresh.delay = Math.min(refresh.delay * 2, 60000); error.textContent = 'Status sementara tidak dapat dibaca. Mencoba lagi otomatis.'; refresh.timer = setTimeout(refresh, refresh.delay); }

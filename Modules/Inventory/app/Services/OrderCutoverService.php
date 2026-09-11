@@ -279,6 +279,170 @@ final class OrderCutoverService
         ];
     }
 
+    /**
+     * Preview a clean order boundary without carrying a CSV whitelist.
+     * Orders at or after the cutoff are retained; older orders are candidates
+     * for deletion after operational child rows have been cleaned.
+     */
+    public function previewHardCutoff(
+        CarbonImmutable $cutoff,
+        array $locationCodes,
+    ): array {
+        $locations = DB::table('locations')
+            ->whereIn('location_code', $locationCodes)
+            ->get(['id', 'location_code', 'location_name', 'is_active']);
+        $missingLocations = array_values(array_diff(
+            $locationCodes,
+            $locations->pluck('location_code')->map(fn ($value): string => strtoupper((string) $value))->all(),
+        ));
+        $locationIds = $locations->pluck('id')->map(fn ($id): string => (string) $id)->all();
+        $inactiveLocations = $locations
+            ->filter(fn ($location): bool => ! (bool) $location->is_active)
+            ->pluck('location_code')
+            ->map(fn ($code): string => (string) $code)
+            ->values()
+            ->all();
+
+        if ($locationIds === []) {
+            return [
+                'mode' => 'HARD_CUTOFF',
+                'cutoff_source' => 'manual_wib',
+                'cutoff_at' => $cutoff->utc()->toIso8601String(),
+                'cutoff_at_wib' => $cutoff->setTimezone(self::CSV_TIMEZONE)->toDateTimeString(),
+                'location_codes' => $locationCodes,
+                'missing_locations' => $missingLocations,
+                'blocking' => count($missingLocations) + 1,
+                'issues' => [['reason' => 'lokasi_tidak_ditemukan', 'locations' => $missingLocations]],
+            ];
+        }
+
+        $scope = DB::table('sales_orders')->whereIn('location_id', $locationIds);
+        $candidate = $this->candidateQuery($locationIds, $cutoff);
+        $statusCounts = (clone $candidate)
+            ->select('status')
+            ->selectRaw('COUNT(*) AS total')
+            ->groupBy('status')
+            ->pluck('total', 'status')
+            ->map(fn ($count): int => (int) $count)
+            ->all();
+        $processedQuery = (clone $candidate)->where(function (Builder $query): void {
+            $query->whereRaw("LOWER(COALESCE(sales_orders.status, '')) IN ('picked', 'packed', 'shipped', 'completed', 'delivered', 'ready-to-ship')");
+            if (Schema::hasColumn('sales_orders', 'handed_to_warehouse_at')) {
+                $query->orWhereNotNull('sales_orders.handed_to_warehouse_at');
+            }
+        });
+        $processedCount = $processedQuery->count();
+        $childCounts = $this->dependentCounts($candidate);
+        $issues = [];
+        if ($missingLocations !== []) {
+            $issues[] = ['reason' => 'lokasi_tidak_ditemukan', 'locations' => $missingLocations];
+        }
+        if ($inactiveLocations !== []) {
+            $issues[] = ['reason' => 'lokasi_tidak_aktif', 'locations' => $inactiveLocations];
+        }
+        if ($processedCount > 0) {
+            $issues[] = ['reason' => 'order_sebelum_cutoff_sudah_masuk_proses_gudang', 'count' => $processedCount];
+        }
+        foreach ($childCounts as $table => $count) {
+            if ($count > 0) {
+                $issues[] = ['reason' => 'order_sebelum_cutoff_memiliki_relasi_'.$table, 'count' => $count];
+            }
+        }
+
+        $totalCount = (clone $scope)->count();
+        $keepCount = (clone $scope)->where(function (Builder $query) use ($cutoff): void {
+            $query->where('created_at', '>=', $cutoff->utc())
+                ->orWhere('transaction_date', '>=', $cutoff->utc());
+        })->count();
+        $deleteCount = (clone $candidate)->count();
+
+        return [
+            'mode' => 'HARD_CUTOFF',
+            'cutoff_source' => 'manual_wib',
+            'cutoff_at' => $cutoff->utc()->toIso8601String(),
+            'cutoff_at_wib' => $cutoff->setTimezone(self::CSV_TIMEZONE)->toDateTimeString(),
+            'location_codes' => $locationCodes,
+            'locations' => $locations->map(fn ($row): array => [
+                'code' => (string) $row->location_code,
+                'name' => (string) $row->location_name,
+                'active' => (bool) $row->is_active,
+            ])->values()->all(),
+            'orders_in_scope' => $totalCount,
+            'orders_at_or_after_cutoff_kept' => $keepCount,
+            'orders_before_cutoff_to_delete' => $deleteCount,
+            'candidate_status_counts' => $statusCounts,
+            'dependent_rows_on_candidates' => $childCounts,
+            'issues' => $issues,
+            'blocking' => count($issues),
+            'rule' => 'order sebelum cutoff dibersihkan; order mulai cutoff dipertahankan; tidak ada whitelist CSV.',
+        ];
+    }
+
+    /**
+     * Apply the hard cutoff in bounded chunks. Partial mode only deletes
+     * candidates without warehouse processing or child relations.
+     */
+    public function applyHardCutoff(
+        CarbonImmutable $cutoff,
+        array $locationCodes,
+        bool $allowPartial = false,
+    ): array {
+        $audit = $this->previewHardCutoff($cutoff, $locationCodes);
+        if ((int) ($audit['blocking'] ?? 0) > 0 && ! $allowPartial) {
+            throw new RuntimeException('apply hard cutoff dibatalkan karena audit memiliki blocking issue.');
+        }
+
+        $locationIds = DB::table('locations')
+            ->whereIn('location_code', $locationCodes)
+            ->pluck('id')
+            ->map(fn ($id): string => (string) $id)
+            ->all();
+        $deleted = 0;
+
+        DB::transaction(function () use ($locationIds, $cutoff, $allowPartial, &$deleted): void {
+            $query = $this->candidateQuery($locationIds, $cutoff);
+            if ($allowPartial) {
+                $this->restrictToSafeCandidates($query);
+            }
+            $query->select('sales_orders.id')
+                ->orderBy('sales_orders.id')
+                ->chunkById(500, function ($rows) use (&$deleted): void {
+                    $ids = $rows->pluck('id')->all();
+                    if ($ids === []) {
+                        return;
+                    }
+                    $deleted += DB::table('sales_orders')->whereIn('id', $ids)->delete();
+                }, 'sales_orders.id', 'id');
+        }, 3);
+
+        return [
+            'mode' => $allowPartial ? 'HARD_CUTOFF_APPLY_PARTIAL' : 'HARD_CUTOFF_APPLY',
+            'cutoff_at' => $cutoff->utc()->toIso8601String(),
+            'cutoff_at_wib' => $cutoff->setTimezone(self::CSV_TIMEZONE)->toDateTimeString(),
+            'allow_partial' => $allowPartial,
+            'deleted_orders' => $deleted,
+            'audit' => $audit,
+            'applied_at' => now()->toIso8601String(),
+        ];
+    }
+
+    public function parseManualCutoff(string $value): CarbonImmutable
+    {
+        $value = trim($value);
+        try {
+            $parsed = CarbonImmutable::createFromFormat('!Y-m-d\\TH:i', $value, self::CSV_TIMEZONE);
+        } catch (\Throwable) {
+            throw new RuntimeException('format cutoff tidak valid; gunakan tanggal dan jam WIB.');
+        }
+        $errors = \DateTimeImmutable::getLastErrors();
+        $hasErrors = is_array($errors) && ($errors['warning_count'] > 0 || $errors['error_count'] > 0);
+        if ($parsed === false || $hasErrors || $parsed->format('Y-m-d\\TH:i') !== $value) {
+            throw new RuntimeException('format cutoff tidak valid; gunakan tanggal dan jam WIB.');
+        }
+
+        return $parsed->setTimezone(self::CSV_TIMEZONE);
+    }
+
     private function restrictToSafeCandidates(Builder $query): void
     {
         $query->where(function (Builder $safe): void {
@@ -505,17 +669,20 @@ final class OrderCutoverService
         return ['by_reference' => $byReference, 'ids' => array_keys($ids), 'ambiguous' => $ambiguous];
     }
 
-    private function candidateQuery(array $locationIds, CarbonImmutable $cutoff, array $lookupKeys): Builder
+    private function candidateQuery(array $locationIds, CarbonImmutable $cutoff, array $lookupKeys = []): Builder
     {
-        return DB::table('sales_orders')
-            ->whereIn('sales_orders.location_id', $locationIds)
-            ->where(function (Builder $notMatch) use ($lookupKeys): void {
+        $query = DB::table('sales_orders')->whereIn('sales_orders.location_id', $locationIds);
+        if ($lookupKeys !== []) {
+            $query->where(function (Builder $notMatch) use ($lookupKeys): void {
                 $notMatch->where(function (Builder $q) use ($lookupKeys): void {
                     $q->whereNull('sales_orders.salesorder_no')->orWhereNotIn('sales_orders.salesorder_no', $lookupKeys);
                 })->where(function (Builder $q) use ($lookupKeys): void {
                     $q->whereNull('sales_orders.channel_order_no')->orWhereNotIn('sales_orders.channel_order_no', $lookupKeys);
                 });
-            })
+            });
+        }
+
+        return $query
             ->where(function (Builder $query) use ($cutoff): void {
                 $query->where(function (Builder $old) use ($cutoff): void {
                     $old->where(function (Builder $q) use ($cutoff): void {

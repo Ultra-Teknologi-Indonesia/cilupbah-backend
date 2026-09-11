@@ -38,6 +38,34 @@ final class OrderCutoverConsoleController extends Controller
 
     public function preview(string $token, Request $request, OrderCutoverService $service): RedirectResponse
     {
+        // The current cutover flow is a hard boundary. Keep the legacy CSV
+        // branch for older API callers until they migrate to the UI flow.
+        $hasLegacyFiles = collect(array_keys(self::FILE_FIELDS))
+            ->contains(fn (string $field): bool => $request->hasFile($field));
+        if (! $hasLegacyFiles) {
+            $validated = $request->validate([
+                'cutoff_at' => ['required', 'date_format:Y-m-d\\TH:i'],
+            ]);
+            try {
+                $cutoff = $service->parseManualCutoff((string) $validated['cutoff_at']);
+            } catch (\RuntimeException $exception) {
+                return back()->withInput()->withErrors(['cutoff_at' => $exception->getMessage()]);
+            }
+
+            $id = (string) Str::uuid7();
+            $job = OrderCutoverConsoleJob::create([
+                'id' => $id,
+                'type' => 'hard_preview',
+                'status' => OrderCutoverConsoleJob::STATUS_QUEUED,
+                'files' => [],
+                'location_codes' => [strtoupper((string) config('operations.order_cutover_console.small_warehouse_location', 'O'))],
+                'cutoff_at' => $cutoff,
+            ]);
+            RunOrderCutoverConsoleJob::dispatch($job->id);
+
+            return redirect()->route('operations.order-cutover.index', ['token' => $token, 'job' => $job->id]);
+        }
+
         $max = (int) config('operations.order_cutover_console.max_upload_kilobytes', 10240);
         $rules = [];
         foreach (array_keys(self::FILE_FIELDS) as $field) {
@@ -112,14 +140,16 @@ final class OrderCutoverConsoleController extends Controller
             'allow_partial' => ['sometimes', 'boolean'],
         ]);
         $allowPartial = $request->boolean('allow_partial');
-        if ($job->type !== 'preview' || $job->status !== OrderCutoverConsoleJob::STATUS_READY) {
+        if (! in_array($job->type, ['preview', 'hard_preview'], true) || $job->status !== OrderCutoverConsoleJob::STATUS_READY) {
             return back()->withErrors(['apply' => 'Preview order cutover harus selesai terlebih dahulu.']);
         }
         if ((int) data_get($job->report, 'blocking', 1) > 0 && ! $allowPartial) {
             return back()->withErrors(['apply' => 'Preview masih memiliki blocking issue. Perbaiki data dan jalankan job baru.']);
         }
         $apply = OrderCutoverConsoleJob::create([
-            'type' => $allowPartial ? 'apply_partial' : 'apply',
+            'type' => $job->type === 'hard_preview'
+                ? ($allowPartial ? 'hard_apply_partial' : 'hard_apply')
+                : ($allowPartial ? 'apply_partial' : 'apply'),
             'status' => OrderCutoverConsoleJob::STATUS_QUEUED,
             'files' => $job->files,
             'location_codes' => $job->location_codes,

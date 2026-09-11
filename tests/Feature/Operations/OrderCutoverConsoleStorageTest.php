@@ -44,4 +44,26 @@ final class OrderCutoverConsoleStorageTest extends TestCase
         }
         Queue::assertPushed(RunOrderCutoverConsoleJob::class, fn (RunOrderCutoverConsoleJob $queued): bool => $queued->consoleJobId === $job->id);
     }
+
+    public function test_hard_cutoff_preview_uses_manual_wib_cutoff_without_csv_files(): void
+    {
+        $token = str_repeat('e', 64);
+        config([
+            'operations.order_cutover_console.token' => $token,
+            'operations.order_cutover_console.small_warehouse_location' => 'O',
+        ]);
+        Queue::fake();
+
+        $response = $this->post("/_ops/order-cutover/{$token}/preview", [
+            'cutoff_at' => '2026-09-11T23:00',
+        ]);
+
+        $response->assertRedirect();
+        $job = OrderCutoverConsoleJob::query()->sole();
+        self::assertSame('hard_preview', $job->type);
+        self::assertSame([], $job->files);
+        self::assertSame(['O'], $job->location_codes);
+        self::assertSame('2026-09-11 16:00:00', $job->cutoff_at->utc()->toDateTimeString());
+        Queue::assertPushed(RunOrderCutoverConsoleJob::class, fn (RunOrderCutoverConsoleJob $queued): bool => $queued->consoleJobId === $job->id);
+    }
 }

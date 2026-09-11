@@ -63,11 +63,15 @@ final class RunOrderCutoverConsoleJob implements ShouldQueue
 
             $cutoff = CarbonImmutable::parse($job->cutoff_at)->utc();
             $locationCodes = array_values(array_map('strval', $job->location_codes ?? []));
-            $isApply = in_array($job->type, ['apply', 'apply_partial'], true);
-            $allowPartial = $job->type === 'apply_partial';
-            $report = $isApply
-                ? $service->apply($paths, $cutoff, $locationCodes, $meta, $allowPartial)
-                : $service->preview($paths, $cutoff, $locationCodes, $meta);
+            $isHardCutoff = in_array($job->type, ['hard_preview', 'hard_apply', 'hard_apply_partial'], true);
+            $isApply = in_array($job->type, ['apply', 'apply_partial', 'hard_apply', 'hard_apply_partial'], true);
+            $allowPartial = in_array($job->type, ['apply_partial', 'hard_apply_partial'], true);
+            $report = match (true) {
+                $isHardCutoff && $isApply => $service->applyHardCutoff($cutoff, $locationCodes, $allowPartial),
+                $isHardCutoff => $service->previewHardCutoff($cutoff, $locationCodes),
+                $isApply => $service->apply($paths, $cutoff, $locationCodes, $meta, $allowPartial),
+                default => $service->preview($paths, $cutoff, $locationCodes, $meta),
+            };
 
             $reportDisk = (string) config(
                 'operations.order_cutover_console.report_disk',
