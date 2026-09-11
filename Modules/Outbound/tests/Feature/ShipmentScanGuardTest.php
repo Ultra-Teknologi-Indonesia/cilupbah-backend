@@ -341,6 +341,21 @@ class ShipmentScanGuardTest extends TestCase
         ]);
     }
 
+    public function test_create_normalizes_instant_courier_to_instant_shipment(): void
+    {
+        $loc = $this->seedLocation();
+
+        $shipment = app(ShipmentService::class)->create([
+            'location_id' => $loc,
+            'courier_name' => 'Gojek Instant',
+            'shipment_type' => 'REGULAR',
+            'shipment_date' => now()->toDateString(),
+            'created_by' => 'system:test',
+        ]);
+
+        $this->assertSame('INSTANT', $shipment->fresh()->shipment_type);
+    }
+
     public function test_create_api_returns_duplicate_shipment_number_validation_error(): void
     {
         $this->actingAs($this->createPrivilegedUser(), 'sanctum');

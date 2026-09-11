@@ -111,6 +111,12 @@ class ShipmentService
             ? ($this->courierMapper->resolveCode($courierName) ?: ($data['courier_code'] ?? null))
             : ($data['courier_code'] ?? null);
 
+        if ($courierName !== null
+            && in_array($this->courierMapper->resolveShipmentType($courierName), ['INSTANT', 'SAME_DAY'], true)
+            && ! in_array($data['shipment_type'] ?? null, ['INSTANT', 'SAME_DAY'], true)) {
+            $data['shipment_type'] = 'INSTANT';
+        }
+
         try {
             return $this->shipmentRepository->create([
                 'shipment_no' => $shipmentNo,
