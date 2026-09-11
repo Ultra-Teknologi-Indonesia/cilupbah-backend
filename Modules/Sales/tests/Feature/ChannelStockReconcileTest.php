@@ -409,4 +409,23 @@ class ChannelStockReconcileTest extends TestCase
         $this->assertTrue($order->hasStockShortfall());
         Queue::assertPushed(SyncStockJob::class);
     }
+
+    public function test_repeated_channel_update_is_accepted_without_duplicate_stock_mutation(): void
+    {
+        $this->service->upsertFromChannel($this->orderData('LZ-RC-IDEMPOTENT', 'AWAITING_SHIPMENT'));
+
+        DB::table('inventories')
+            ->where('item_id', $this->variantId)
+            ->update(['on_hand' => 0, 'available' => 0]);
+
+        $beforeOnOrder = $this->totalOnOrder();
+        $orderId = $this->service->upsertFromChannel($this->orderData('LZ-RC-IDEMPOTENT', 'PROCESSED'));
+
+        $this->assertNotNull($orderId);
+        $this->assertSame($beforeOnOrder, $this->totalOnOrder());
+        $this->assertSame(
+            'reserved',
+            DB::table('sales_orders')->where('salesorder_no', 'LZ-RC-IDEMPOTENT')->value('status'),
+        );
+    }
 }

@@ -367,11 +367,6 @@ final class OrderCutoverService
         return null;
     }
 
-    /**
-     * @param  array<int, string>  $columns
-     * @param  array<int, string>  $candidates
-     * @return array<int, int>
-     */
     private function findColumnIndexes(array $columns, array $candidates): array
     {
         $indexes = [];

@@ -2303,7 +2303,9 @@ class SalesOrderService
                 }
             }
 
-            $deferStockTransition = $this->hasInvalidPhysicalStockForChannelOrder($order);
+            $needsStockTransition = $this->shouldReconcileChannelStock($previousStatus, $finalStatus);
+            $deferStockTransition = $needsStockTransition
+                && $this->hasInvalidPhysicalStockForChannelOrder($order);
             $stockAllocation = $deferStockTransition
                 ? 'deferred_invalid_on_hand'
                 : ($finalStatus === 'reserved' ? 'reserved' : 'not_required');
@@ -2323,7 +2325,9 @@ class SalesOrderService
                 );
             }
 
-            $stockMutated = $deferStockTransition || $this->isPendingChannelCancellation($orderData, $finalStatus)
+            $stockMutated = ! $needsStockTransition
+                || $deferStockTransition
+                || $this->isPendingChannelCancellation($orderData, $finalStatus)
                 ? false
                 : $this->reconcileStockTransition($order, $previousStatus, $finalStatus);
 
@@ -2669,6 +2673,39 @@ class SalesOrderService
 
         return in_array($channelStatus, ['IN_CANCEL', 'TO_RETURN'], true)
             || ! empty($orderData['cancel_requested_at']);
+    }
+
+    /**
+     * Determine whether this channel update can change an inventory allocation.
+     *
+     * Marketplace webhooks are frequently repeated or arrive with a status that
+     * is already represented locally. Those updates must remain idempotent and
+     * must not re-read or mutate inventory. A cancellation is still reconciled
+     * once so an existing reservation can be released.
+     */
+    private function shouldReconcileChannelStock(?string $previousStatus, string $finalStatus): bool
+    {
+        if ($previousStatus === null) {
+            return true;
+        }
+
+        if ($finalStatus === 'cancelled') {
+            return $previousStatus !== 'cancelled';
+        }
+
+        if ($previousStatus === 'cancelled') {
+            return false;
+        }
+
+        $fromRank = $this->statusRank($previousStatus, 0);
+
+        // Pending orders are treated as reserved for channel reconciliation,
+        // matching reconcileStockTransition() and preventing duplicate reserve.
+        if ($previousStatus === 'pending') {
+            $fromRank = self::STATUS_RANK['reserved'];
+        }
+
+        return $this->statusRank($finalStatus) > $fromRank;
     }
 
     private function hasInvalidPhysicalStockForChannelOrder(SalesOrder $order): bool

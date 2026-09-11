@@ -555,9 +555,7 @@ class ImportBaselineStock extends Command
 
     private function inspect(array $rows, string $locationId, array $existingPositivePairs): array
     {
-        // Qty 0 hanya perlu memvalidasi rak. SKU master tidak perlu di-lookup
-        // kecuali pasangan SKU-rak tersebut memang masih memiliki stok lama
-        // yang akan dinolkan saat commit.
+
         $positiveSkus = array_values(array_unique(array_map(
             fn (array $row): string => $row['sku'],
             array_filter($rows, fn (array $row): bool => (int) $row['qty'] > 0),
@@ -713,8 +711,7 @@ class ImportBaselineStock extends Command
                 $blockedRows++;
                 $lostQty += $row['qty'];
             } elseif ($isZero && $existingPair === null) {
-                // Baris nol tanpa stok lama sudah dicek raknya, tetapi tidak
-                // boleh masuk valid_rows agar tidak membuat inventory kosong.
+
                 continue;
             } else {
                 $okRows++;
