@@ -29,6 +29,7 @@ use Modules\Inventory\Console\Commands\RebuildAverageCost;
 use Modules\Inventory\Console\Commands\ReconcileInboundBackfillConsumption;
 use Modules\Inventory\Console\Commands\ReconcileOnOrder;
 use Modules\Inventory\Console\Commands\ReconcileOrderAllocationLedger;
+use Modules\Inventory\Console\Commands\ReconcileRackAssignments;
 use Modules\Inventory\Console\Commands\ReconcileTransferOnOrder;
 use Modules\Inventory\Console\Commands\RepairOrphanTransferHistory;
 use Modules\Inventory\Console\Commands\ResetStock;
@@ -54,6 +55,7 @@ class InventoryServiceProvider extends ModuleServiceProvider
         ReconcileTransferOnOrder::class,
         ReconcileOrderAllocationLedger::class,
         ReconcileInboundBackfillConsumption::class,
+        ReconcileRackAssignments::class,
         BackfillInboundMovementSource::class,
         CleanupDraftTransitStock::class,
         CleanupImportFilesCommand::class,
