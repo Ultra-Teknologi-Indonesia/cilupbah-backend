@@ -140,6 +140,12 @@ class ImportBaselineStock extends Command
         $this->info('LAPORAN LENGKAP TELAH DIBUAT');
         $this->line("File Path : {$reportInfo['file_path']}");
         $this->line("Download  : <fg=cyan;options=bold>{$reportInfo['download_url']}</>");
+        if (($reportInfo['omitted_rows'] ?? 0) > 0) {
+            $this->line(sprintf(
+                'Detail non-actionable yang tidak ditulis ke CSV: %s baris (tetap tercatat di ringkasan).',
+                number_format($reportInfo['omitted_rows']),
+            ));
+        }
         $this->line('===============================================================');
 
         if (! $isCommit && $inspection['blocking'] > 0) {
@@ -1059,7 +1065,14 @@ class ImportBaselineStock extends Command
             'keterangan_alasan',
         ]);
 
+        $omittedRows = 0;
         foreach ($inspection['all_rows'] as $row) {
+            if ($this->shouldOmitReportRow($row)) {
+                $omittedRows++;
+
+                continue;
+            }
+
             fputcsv($handle, [
                 $row['row'],
                 $row['sku'],
@@ -1093,6 +1106,17 @@ class ImportBaselineStock extends Command
         return [
             'file_path' => $targetPath,
             'download_url' => $downloadUrl,
+            'omitted_rows' => $omittedRows,
         ];
+    }
+
+    private function shouldOmitReportRow(array $row): bool
+    {
+        if (($row['status'] ?? null) === 'ZERO_TANPA_STOK_SISTEM') {
+            return true;
+        }
+
+        return (int) ($row['qty'] ?? 0) === 0
+            && ($row['status'] ?? null) === 'DITOLAK_RAK_HILANG';
     }
 }

@@ -333,10 +333,12 @@ class ImportBaselineStockTest extends TestCase
                 'qty_actual' => 0,
             ],
         ]);
+        $this->tempReportPath = tempnam(sys_get_temp_dir(), 'baseline_report_test_').'.csv';
 
         $this->artisan('inventory:import-baseline', [
             'file' => $excelPath,
             '--location' => 'WH-KECIL',
+            '--export' => $this->tempReportPath,
         ])
             ->assertExitCode(0)
             ->expectsOutputToContain('Baris Qty Aktual = 0')
@@ -344,6 +346,9 @@ class ImportBaselineStockTest extends TestCase
 
         $this->assertSame(0, Inventory::count());
         $this->assertSame(0, InventoryMovement::count());
+        $report = file_get_contents($this->tempReportPath);
+        $this->assertIsString($report);
+        $this->assertStringNotContainsString('DITOLAK_RAK_HILANG', $report);
     }
 
     public function test_zero_qty_for_valid_empty_rack_does_not_create_empty_inventory_or_adjustment(): void
@@ -390,7 +395,7 @@ class ImportBaselineStockTest extends TestCase
         $this->assertSame(0, InventoryMovement::count());
         $report = file_get_contents($this->tempReportPath);
         $this->assertIsString($report);
-        $this->assertStringContainsString('ZERO_TANPA_STOK_SISTEM', $report);
+        $this->assertStringNotContainsString('ZERO_TANPA_STOK_SISTEM', $report);
         $this->assertStringNotContainsString('DITOLAK_SKU_HILANG', $report);
     }
 
