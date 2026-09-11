@@ -231,6 +231,19 @@ class MultiParticipantReceiveTest extends TestCase
         app(InboundService::class)->cancel($inbound->id, $this->staff['s1']->id);
     }
 
+    public function test_cancel_many_returns_transaction_number_for_each_failure(): void
+    {
+        $inbound = $this->makeInbound(100);
+        $this->receive($inbound, $this->staff['s1']->id, 30);
+
+        $result = app(InboundService::class)->cancelMany([$inbound->id], $this->staff['s1']->id);
+
+        $this->assertSame([], $result['cancelled']);
+        $this->assertCount(1, $result['failed']);
+        $this->assertSame($inbound->transaction_number, $result['failed'][0]['transaction_number']);
+        $this->assertStringContainsString('s1', strtolower($result['failed'][0]['message']) ?: '');
+    }
+
     public function test_admin_withdraw_participant_only_flips_status(): void
     {
 

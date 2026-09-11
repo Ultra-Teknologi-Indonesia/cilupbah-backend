@@ -1944,13 +1944,20 @@ class InboundService
     public function cancelMany(array $ids, ?string $userId = null): array
     {
         $result = ['cancelled' => [], 'failed' => []];
+        $transactionNumbers = Inbound::query()
+            ->whereIn('id', $ids)
+            ->pluck('transaction_number', 'id');
 
         foreach ($ids as $id) {
             try {
                 $this->cancel($id, $userId);
                 $result['cancelled'][] = $id;
             } catch (\Throwable $e) {
-                $result['failed'][] = ['id' => $id, 'message' => $e->getMessage()];
+                $result['failed'][] = [
+                    'id' => $id,
+                    'transaction_number' => $transactionNumbers->get($id),
+                    'message' => $e->getMessage(),
+                ];
             }
         }
 
