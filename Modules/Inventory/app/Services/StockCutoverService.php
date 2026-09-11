@@ -208,6 +208,7 @@ final class StockCutoverService
         $total = 0;
         $rowCount = 0;
         $blocking = 0;
+        $ignoredZeroRowsWithoutRack = 0;
         $variantCache = [];
         $binCache = [];
 
@@ -218,7 +219,7 @@ final class StockCutoverService
             }
         };
 
-        $processBatch = function (array $batch) use (&$variantCache, &$binCache, &$pairs, &$total, &$rowCount, $location, $recordIssue): void {
+        $processBatch = function (array $batch) use (&$variantCache, &$binCache, &$pairs, &$total, &$rowCount, &$ignoredZeroRowsWithoutRack, $location, $recordIssue): void {
             $missingSkus = [];
             $missingBins = [];
 
@@ -267,7 +268,17 @@ final class StockCutoverService
                 $key = mb_strtolower($sku).'|'.mb_strtolower($bin);
 
                 if ($sku === '' || $bin === '' || $qty < 0) {
+                    if ($qty === 0 && ($bin === '' || mb_strtolower($bin) === 'tidak ada rak')) {
+                        $ignoredZeroRowsWithoutRack++;
+
+                        continue;
+                    }
                     $recordIssue(['row' => $row['row'], 'reason' => 'sku_rak_wajib_dan_qty_tidak_boleh_negatif']);
+
+                    continue;
+                }
+                if ($qty === 0 && mb_strtolower($bin) === 'tidak ada rak') {
+                    $ignoredZeroRowsWithoutRack++;
 
                     continue;
                 }
@@ -316,6 +327,7 @@ final class StockCutoverService
             'row_count' => $rowCount,
             'sku_rack_count' => count($pairs),
             'total_qty' => $total,
+            'ignored_zero_rows_without_rack' => $ignoredZeroRowsWithoutRack,
             'issues' => $issues,
             'blocking' => $blocking,
         ];

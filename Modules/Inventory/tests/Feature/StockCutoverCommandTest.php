@@ -206,6 +206,30 @@ final class StockCutoverCommandTest extends TestCase
         self::assertDatabaseCount('channel_webhook_inbox', 0);
     }
 
+    public function test_stock_audit_ignores_zero_quantity_rows_without_a_rack(): void
+    {
+        $location = Location::create([
+            'location_code' => 'WH-STOCK-AUDIT',
+            'location_name' => 'Gudang Stock Audit',
+            'location_type' => 'warehouse',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+        $file = tempnam(sys_get_temp_dir(), 'cutover_stock_audit_').'.csv';
+        file_put_contents($file, "SKU,No Rak,Qty Aktual\nSKU-TIDAK-DIPAKAI,Tidak ada rak,0\n");
+
+        try {
+            $run = app(StockCutoverService::class)->createRun('2026-09-11 23:00:00', [$location->location_code], [$file]);
+            $report = app(StockCutoverService::class)->auditStock($run['run_id'], $file, $location->location_code);
+
+            self::assertSame(0, $report['blocking']);
+            self::assertSame(1, $report['ignored_zero_rows_without_rack']);
+            self::assertSame(0, $report['total_qty']);
+        } finally {
+            @unlink($file);
+        }
+    }
+
     public function test_reset_keeps_master_sku_and_rack_and_removes_stock_history(): void
     {
         $location = Location::create([
