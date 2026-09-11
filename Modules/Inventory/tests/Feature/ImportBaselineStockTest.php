@@ -22,6 +22,8 @@ class ImportBaselineStockTest extends TestCase
 
     private string $tempExcelPath;
 
+    private string $tempReportPath;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -32,6 +34,9 @@ class ImportBaselineStockTest extends TestCase
     {
         if (isset($this->tempExcelPath) && file_exists($this->tempExcelPath)) {
             @unlink($this->tempExcelPath);
+        }
+        if (isset($this->tempReportPath) && file_exists($this->tempReportPath)) {
+            @unlink($this->tempReportPath);
         }
         parent::tearDown();
     }
@@ -187,6 +192,61 @@ class ImportBaselineStockTest extends TestCase
         $this->assertSame(1, InventoryMovement::where('source', 'ADJUSTMENT')->where('item_id', $variant->id)->count());
     }
 
+    public function test_commit_partial_hanya_menerapkan_baris_valid(): void
+    {
+        $location = Location::firstOrCreate(
+            ['location_code' => 'WH-KECIL'],
+            [
+                'location_name' => 'Gudang Kecil',
+                'location_type' => 'warehouse',
+                'is_warehouse' => true,
+                'is_active' => true,
+            ]
+        );
+
+        $bin = LocationBin::firstOrCreate(
+            ['location_id' => $location->id, 'bin_final_code' => 'GK-01-A1'],
+            ['bin_code' => 'GK-01-A1', 'is_active' => true]
+        );
+
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'General', 'is_active' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $product = Product::create([
+            'category_id' => $categoryId,
+            'name' => 'Partial Item', 'sku' => 'SKU-PARTIAL', 'is_active' => true,
+        ]);
+        $variant = ProductVariant::create([
+            'product_id' => $product->id, 'sku' => 'SKU-PARTIAL',
+            'sell_price' => 50000, 'is_active' => true,
+        ]);
+
+        $excelPath = $this->createSampleExcel([
+            ['sku' => 'SKU-PARTIAL', 'bin' => 'GK-01-A1', 'qty' => 25],
+            ['sku' => 'SKU-TIDAK-ADA', 'bin' => 'GK-01-A1', 'qty' => 10],
+        ]);
+
+        $this->artisan('inventory:import-baseline', [
+            'file' => $excelPath,
+            '--location' => 'WH-KECIL',
+            '--commit' => true,
+            '--allow-partial' => true,
+        ])
+            ->assertExitCode(0)
+            ->expectsOutputToContain('Mode partial aktif')
+            ->expectsOutputToContain('Eksekusi database selesai!');
+
+        $inventory = Inventory::where('item_id', $variant->id)
+            ->where('location_id', $location->id)
+            ->where('bin_id', $bin->id)
+            ->first();
+
+        $this->assertNotNull($inventory);
+        $this->assertEquals(25, (int) $inventory->on_hand);
+        $this->assertSame(1, InventoryMovement::where('source', 'ADJUSTMENT')->count());
+    }
+
     public function test_commit_qty_aktual_nol_menjadi_nilai_akhir_stok(): void
     {
         $location = Location::firstOrCreate(
@@ -314,11 +374,13 @@ class ImportBaselineStockTest extends TestCase
                 'qty_actual' => 0,
             ],
         ]);
+        $this->tempReportPath = tempnam(sys_get_temp_dir(), 'baseline_report_test_').'.csv';
 
         $this->artisan('inventory:import-baseline', [
             'file' => $excelPath,
             '--location' => 'WH-KECIL',
             '--commit' => true,
+            '--export' => $this->tempReportPath,
         ])
             ->assertExitCode(0)
             ->expectsOutputToContain('Tidak dibuat (stok sudah sama dengan file)');
@@ -326,6 +388,10 @@ class ImportBaselineStockTest extends TestCase
         $this->assertSame(0, StockAdjustment::count());
         $this->assertSame(0, Inventory::count());
         $this->assertSame(0, InventoryMovement::count());
+        $report = file_get_contents($this->tempReportPath);
+        $this->assertIsString($report);
+        $this->assertStringContainsString('ZERO_TANPA_STOK_SISTEM', $report);
+        $this->assertStringNotContainsString('DITOLAK_SKU_HILANG', $report);
     }
 
     public function test_zero_missing_menolkan_stok_lama_yang_tidak_ada_di_file(): void

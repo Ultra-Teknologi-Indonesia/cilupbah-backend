@@ -86,19 +86,20 @@ final class StockCutoverConsoleController extends Controller
         $validated = $request->validate([
             'operations_stopped' => ['accepted'],
             'confirmation' => ['required', 'in:APPLY-STOK-AKTUAL'],
+            'allow_partial' => ['sometimes', 'boolean'],
         ]);
-        unset($validated);
+        $allowPartial = (bool) ($validated['allow_partial'] ?? false);
 
         if ($job->type !== 'preview' || $job->status !== StockCutoverConsoleJob::STATUS_READY) {
             return back()->withErrors(['apply' => 'Preview harus selesai terlebih dahulu.']);
         }
 
-        if ((bool) data_get($job->report, 'blocking', true)) {
+        if ((bool) data_get($job->report, 'blocking', true) && ! $allowPartial) {
             return back()->withErrors(['apply' => 'Preview masih memiliki baris bermasalah. Download laporan dan perbaiki file sebelum apply.']);
         }
 
         $apply = StockCutoverConsoleJob::create([
-            'type' => 'apply',
+            'type' => $allowPartial ? 'apply_partial' : 'apply',
             'status' => StockCutoverConsoleJob::STATUS_QUEUED,
             'source_job_id' => $job->id,
             'files' => $job->files,

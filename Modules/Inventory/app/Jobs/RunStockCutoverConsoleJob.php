@@ -53,7 +53,8 @@ final class RunStockCutoverConsoleJob implements ShouldQueue
 
         try {
             $results = [];
-            $isApply = $job->type === 'apply';
+            $isApply = in_array($job->type, ['apply', 'apply_partial'], true);
+            $allowPartial = $job->type === 'apply_partial';
             $hasBlocking = false;
             $reportDiskName = (string) config(
                 'operations.stock_cutover_console.report_disk',
@@ -71,11 +72,14 @@ final class RunStockCutoverConsoleJob implements ShouldQueue
                     '--zero-missing' => true,
                     '--export' => $reportExport,
                 ];
+                if ($allowPartial) {
+                    $arguments['--allow-partial'] = true;
+                }
 
                 if ($isApply) {
                     $previewExit = Artisan::call('inventory:import-baseline', $arguments);
                     $previewOutput = Artisan::output();
-                    if ($previewExit !== 0 || str_contains($previewOutput, 'Terdapat ') || str_contains($previewOutput, 'DITOLAK')) {
+                    if ($previewExit !== 0 || (! $allowPartial && (str_contains($previewOutput, 'Terdapat ') || str_contains($previewOutput, 'DITOLAK')))) {
                         throw new \RuntimeException("Apply {$locationCode} dibatalkan karena validasi ulang masih menemukan masalah.");
                     }
                     $arguments['--commit'] = true;
@@ -103,9 +107,10 @@ final class RunStockCutoverConsoleJob implements ShouldQueue
 
             $reportPath = "stock-cutover-console/{$job->id}/report.json";
             Storage::disk($reportDiskName)->put($reportPath, json_encode([
-                'mode' => $isApply ? 'APPLY' : 'DRY_RUN',
+                'mode' => $allowPartial ? 'APPLY_PARTIAL' : ($isApply ? 'APPLY' : 'DRY_RUN'),
                 'stock_source' => 'Qty Aktual',
                 'zero_missing' => true,
+                'allow_partial' => $allowPartial,
                 'blocking' => $hasBlocking,
                 'results' => $results,
                 'finished_at' => now()->toIso8601String(),
@@ -113,7 +118,11 @@ final class RunStockCutoverConsoleJob implements ShouldQueue
 
             $job->update([
                 'status' => StockCutoverConsoleJob::STATUS_READY,
-                'report' => ['blocking' => $hasBlocking, 'results' => $results],
+                'report' => [
+                    'blocking' => $hasBlocking,
+                    'allow_partial' => $allowPartial,
+                    'results' => $results,
+                ],
                 'report_disk' => $reportDiskName,
                 'report_path' => $reportPath,
                 'finished_at' => now(),

@@ -246,17 +246,21 @@ final class OrderCutoverService
         CarbonImmutable $cutoff,
         array $locationCodes,
         array $fileMeta = [],
+        bool $allowPartial = false,
     ): array {
         $audit = $this->preview($filePaths, $cutoff, $locationCodes, $fileMeta);
-        if ((int) ($audit['blocking'] ?? 0) > 0) {
+        if ((int) ($audit['blocking'] ?? 0) > 0 && ! $allowPartial) {
             throw new RuntimeException('apply order cutover dibatalkan karena audit memiliki blocking issue.');
         }
 
         $lookup = $this->referenceLookup($this->readReferences($filePaths, $fileMeta)['references']);
         $locations = DB::table('locations')->whereIn('location_code', $locationCodes)->pluck('id')->map(fn ($id): string => (string) $id)->all();
         $deleted = 0;
-        DB::transaction(function () use ($locations, $cutoff, $lookup, &$deleted): void {
+        DB::transaction(function () use ($locations, $cutoff, $lookup, $allowPartial, &$deleted): void {
             $query = $this->candidateQuery($locations, $cutoff, array_keys($lookup));
+            if ($allowPartial) {
+                $this->restrictToSafeCandidates($query);
+            }
             $query->select('sales_orders.id')->orderBy('sales_orders.id')->chunkById(500, function ($rows) use (&$deleted): void {
                 $ids = $rows->pluck('id')->all();
                 if ($ids === []) {
@@ -267,11 +271,34 @@ final class OrderCutoverService
         }, 3);
 
         return [
-            'mode' => 'APPLY',
+            'mode' => $allowPartial ? 'APPLY_PARTIAL' : 'APPLY',
+            'allow_partial' => $allowPartial,
             'deleted_orders' => $deleted,
             'audit' => $audit,
             'applied_at' => now()->toIso8601String(),
         ];
+    }
+
+    private function restrictToSafeCandidates(Builder $query): void
+    {
+        $query->where(function (Builder $safe): void {
+            $safe->whereRaw("LOWER(COALESCE(sales_orders.status, '')) NOT IN ('picked', 'packed', 'shipped', 'completed', 'delivered', 'ready-to-ship')");
+            if (Schema::hasColumn('sales_orders', 'handed_to_warehouse_at')) {
+                $safe->whereNull('sales_orders.handed_to_warehouse_at');
+            }
+        });
+
+        foreach (self::ORDER_CHILD_TABLES as $table) {
+            if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'order_id')) {
+                continue;
+            }
+
+            $query->whereNotExists(function (Builder $child) use ($table): void {
+                $child->selectRaw('1')
+                    ->from($table.' as child')
+                    ->whereColumn('child.order_id', 'sales_orders.id');
+            });
+        }
     }
 
     private function readReferences(array $files, array $fileMeta): array

@@ -16,6 +16,7 @@ class ImportBaselineStock extends Command
         {file : Path file Excel (ekspor Jubelio atau template impor penyesuaian stok)}
         {--location= : Kode lokasi tujuan, contoh O atau WH-PUSAT}
         {--commit : Terapkan perubahan ke database. Default: DRY-RUN simulasi}
+        {--allow-partial : Saat commit, terapkan baris valid dan lewati baris blocking yang gagal validasi}
         {--zero-missing : Nolkan stok SKU x Rak yang ada di sistem tetapi tidak ada di file}
         {--chunk=1000 : Ukuran batch transaksi database}
         {--export= : Custom path untuk file output CSV laporan}
@@ -49,6 +50,7 @@ class ImportBaselineStock extends Command
         }
 
         $isCommit = (bool) $this->option('commit');
+        $allowPartial = (bool) $this->option('allow-partial');
         $zeroMissing = (bool) $this->option('zero-missing');
         $chunkSize = max(100, (int) $this->option('chunk'));
         $modeStr = $isCommit ? '<fg=red;options=bold>COMMIT (MENULIS KE DB)</>' : '<fg=yellow;options=bold>DRY-RUN (SIMULASI AMAN)</>';
@@ -76,7 +78,7 @@ class ImportBaselineStock extends Command
         $this->line(sprintf('Baris Qty Aktual = 0 tanpa stok sistem: %s', number_format($source['zero_rows_skipped'])));
         $this->newLine();
 
-        $inspection = $this->inspect($rows, $location->id);
+        $inspection = $this->inspect($rows, $location->id, $source['existing_positive_pairs']);
         $inspection = array_merge($inspection, [
             'source_rows' => $source['source_rows'],
             'positive_rows' => $source['positive_rows'],
@@ -87,10 +89,17 @@ class ImportBaselineStock extends Command
 
         $this->renderSummary($inspection, (int) $this->option('limit'));
 
-        if ($isCommit && (int) $inspection['blocking'] > 0) {
+        if ($isCommit && (int) $inspection['blocking'] > 0 && ! $allowPartial) {
             $this->error('COMMIT dibatalkan karena masih ada baris bermasalah, tidak ada baris valid yang diterapkan sebagian. Perbaiki file lalu jalankan dry-run kembali.');
 
             return self::FAILURE;
+        }
+
+        if ($isCommit && $allowPartial && (int) $inspection['blocking'] > 0) {
+            $this->warn(sprintf(
+                'Mode partial aktif: %s baris bermasalah dilewati. Hanya baris valid yang akan diterapkan.',
+                number_format($inspection['blocking']),
+            ));
         }
 
         $zeroedItems = [];
@@ -188,11 +197,13 @@ class ImportBaselineStock extends Command
         $existingPositivePairs = $this->existingPositivePairs($locationId);
 
         $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-        if ($ext === 'csv' || $ext === 'txt') {
-            return $this->readCsvRows($path, $existingPositivePairs);
-        }
+        $source = ($ext === 'csv' || $ext === 'txt')
+            ? $this->readCsvRows($path, $existingPositivePairs)
+            : $this->readXlsxRows($path, $existingPositivePairs);
 
-        return $this->readXlsxRows($path, $existingPositivePairs);
+        $source['existing_positive_pairs'] = $existingPositivePairs;
+
+        return $source;
     }
 
     private function readXlsxRows(string $path, array $existingPositivePairs): array
@@ -496,11 +507,9 @@ class ImportBaselineStock extends Command
             $stats['explicit_zero_rows']++;
             if (! isset($existingPositivePairs[$this->stockPairKey($sku, $bin)])) {
                 $stats['zero_rows_skipped']++;
-
-                return;
+            } else {
+                $stats['zero_rows_retained']++;
             }
-
-            $stats['zero_rows_retained']++;
         }
 
         $rows[] = [
@@ -523,10 +532,17 @@ class ImportBaselineStock extends Command
             ->where('i.on_hand', '>', 0)
             ->whereNotNull('b.bin_final_code')
             ->orderBy('i.id')
-            ->select(['v.sku', 'b.bin_final_code'])
+            ->select(['i.item_id as variant_id', 'i.bin_id', 'i.on_hand', 'v.sku', 'b.bin_final_code'])
             ->cursor()
             ->each(function (object $row) use (&$pairs): void {
-                $pairs[$this->stockPairKey((string) $row->sku, (string) $row->bin_final_code)] = true;
+                $key = $this->stockPairKey((string) $row->sku, (string) $row->bin_final_code);
+                $pairs[$key] ??= [
+                    'variant_id' => $row->variant_id,
+                    'bin_id' => $row->bin_id,
+                    'sku' => $row->sku,
+                    'bin_final_code' => $row->bin_final_code,
+                    'on_hand' => $row->on_hand,
+                ];
             });
 
         return $pairs;
@@ -534,15 +550,21 @@ class ImportBaselineStock extends Command
 
     private function stockPairKey(string $sku, string $bin): string
     {
-        return mb_strtolower(trim($sku))."\0".trim($bin);
+        return mb_strtolower(trim($sku))."\0".mb_strtoupper(trim($bin));
     }
 
-    private function inspect(array $rows, string $locationId): array
+    private function inspect(array $rows, string $locationId, array $existingPositivePairs): array
     {
-        $skus = array_values(array_unique(array_column($rows, 'sku')));
+        // Qty 0 hanya perlu memvalidasi rak. SKU master tidak perlu di-lookup
+        // kecuali pasangan SKU-rak tersebut memang masih memiliki stok lama
+        // yang akan dinolkan saat commit.
+        $positiveSkus = array_values(array_unique(array_map(
+            fn (array $row): string => $row['sku'],
+            array_filter($rows, fn (array $row): bool => (int) $row['qty'] > 0),
+        )));
         $bins = array_values(array_filter(array_unique(array_column($rows, 'bin'))));
 
-        $variants = $this->lookupVariants($skus);
+        $variants = $this->lookupVariants($positiveSkus);
         $binsHere = $this->lookupBins($bins, $locationId);
         $binsElsewhere = $this->lookupBinsElsewhere($bins, $locationId, array_keys($binsHere));
 
@@ -583,38 +605,51 @@ class ImportBaselineStock extends Command
         $okQty = 0;
         $lostQty = 0;
         $blockedRows = 0;
+        $zeroRowsWithoutCurrentStock = 0;
 
         foreach ($rows as $row) {
             $sku = $row['sku'];
             $bin = $row['bin'];
+            $isZero = (int) $row['qty'] === 0;
+            $existingPair = $isZero
+                ? ($existingPositivePairs[$this->stockPairKey($sku, $bin)] ?? null)
+                : null;
             $blocked = false;
             $status = 'VALID';
             $notes = 'Siap diimpor';
+            $variantId = null;
+            $curOnHand = 0.0;
 
-            if (! isset($variants[$sku])) {
-                $alternatives = $lowerIndex[mb_strtolower($sku)] ?? [];
+            if (! $isZero) {
+                if (! isset($variants[$sku])) {
+                    $alternatives = $lowerIndex[mb_strtolower($sku)] ?? [];
 
-                if ($alternatives !== []) {
-                    $notes = 'SKU beda huruf besar/kecil (di sistem: '.implode(', ', $alternatives).')';
-                    $problems['sku_beda_huruf'][] = $row + ['catatan' => $notes];
-                    $status = 'DITOLAK_SKU_CASE';
+                    if ($alternatives !== []) {
+                        $notes = 'SKU beda huruf besar/kecil (di sistem: '.implode(', ', $alternatives).')';
+                        $problems['sku_beda_huruf'][] = $row + ['catatan' => $notes];
+                        $status = 'DITOLAK_SKU_CASE';
+                    } else {
+                        $notes = 'SKU tidak terdaftar di master produk';
+                        $problems['sku_hilang'][] = $row + ['catatan' => $notes];
+                        $status = 'DITOLAK_SKU_HILANG';
+                    }
+
+                    $blocked = true;
                 } else {
-                    $notes = 'SKU tidak terdaftar di master produk';
-                    $problems['sku_hilang'][] = $row + ['catatan' => $notes];
-                    $status = 'DITOLAK_SKU_HILANG';
-                }
+                    $variant = $variants[$sku];
+                    $variantId = $variant->id;
 
-                $blocked = true;
-            } else {
-                $variant = $variants[$sku];
+                    if ($variant->jumlah > 1) {
+                        $problems['sku_ganda'][] = $row + ['catatan' => "{$variant->jumlah} varian memakai SKU ini"];
+                    }
 
-                if ($variant->jumlah > 1) {
-                    $problems['sku_ganda'][] = $row + ['catatan' => "{$variant->jumlah} varian memakai SKU ini"];
+                    if ($variant->is_active === false) {
+                        $problems['sku_nonaktif'][] = $row + ['catatan' => 'varian berstatus non-aktif'];
+                    }
                 }
-
-                if ($variant->is_active === false) {
-                    $problems['sku_nonaktif'][] = $row + ['catatan' => 'varian berstatus non-aktif'];
-                }
+            } elseif ($existingPair !== null) {
+                $variantId = $existingPair['variant_id'];
+                $curOnHand = (float) $existingPair['on_hand'];
             }
 
             $resolvedBinId = null;
@@ -649,11 +684,18 @@ class ImportBaselineStock extends Command
                 }
             }
 
-            $variantId = isset($variants[$sku]) ? $variants[$sku]->id : null;
             $pairKey = $variantId.':'.($resolvedBinId ?? 'null');
-            $curOnHand = (float) ($currentStockMap[$pairKey] ?? 0.0);
+            if (! $isZero || $existingPair === null) {
+                $curOnHand = (float) ($currentStockMap[$pairKey] ?? 0.0);
+            }
             $targetOnHand = (float) $row['qty'];
             $delta = $targetOnHand - $curOnHand;
+
+            if ($isZero && ! $blocked && $existingPair === null) {
+                $status = 'ZERO_TANPA_STOK_SISTEM';
+                $notes = 'Rak valid; SKU tidak divalidasi karena Qty 0 dan tidak ada stok lama pada pasangan SKU-rak ini. Tidak ada perubahan yang perlu ditulis.';
+                $zeroRowsWithoutCurrentStock++;
+            }
 
             $evaluatedRow = $row + [
                 'status' => $status,
@@ -670,6 +712,10 @@ class ImportBaselineStock extends Command
             if ($blocked) {
                 $blockedRows++;
                 $lostQty += $row['qty'];
+            } elseif ($isZero && $existingPair === null) {
+                // Baris nol tanpa stok lama sudah dicek raknya, tetapi tidak
+                // boleh masuk valid_rows agar tidak membuat inventory kosong.
+                continue;
             } else {
                 $okRows++;
                 $okQty += $row['qty'];
@@ -687,6 +733,7 @@ class ImportBaselineStock extends Command
             'problems' => $problems,
             'valid_rows' => $validRows,
             'all_rows' => $allEvaluatedRows,
+            'zero_rows_without_current_stock' => $zeroRowsWithoutCurrentStock,
         ];
     }
 
@@ -767,7 +814,7 @@ class ImportBaselineStock extends Command
             ['Baris Qty Aktual > 0', number_format($report['positive_rows'] ?? $report['total_rows'])],
             ['Baris Qty Aktual = 0', number_format($report['explicit_zero_rows'] ?? 0)],
             ['Baris Qty 0 yang Perlu Dinolkan', number_format($report['zero_rows_retained'] ?? 0)],
-            ['Baris Qty 0 Sudah Nol / Tidak Perlu Ditulis', number_format($report['zero_rows_skipped'] ?? 0)],
+            ['Baris Qty 0 Hanya Cek Rak / Tidak Ditulis', number_format($report['zero_rows_without_current_stock'] ?? $report['zero_rows_skipped'] ?? 0)],
             ['Baris yang Perlu Divalidasi', number_format($report['total_rows'])],
             ['Total Qty di File', number_format($report['total_qty']).' pcs'],
             ['Baris Valid (Lolos)', number_format($report['ok_rows'])],

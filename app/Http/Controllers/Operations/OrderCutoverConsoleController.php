@@ -109,15 +109,17 @@ final class OrderCutoverConsoleController extends Controller
             'warehouse_stopped' => ['accepted'],
             'order_sync_paused' => ['accepted'],
             'confirmation' => ['required', 'in:APPLY-ORDER-CUTOVER'],
+            'allow_partial' => ['sometimes', 'boolean'],
         ]);
+        $allowPartial = $request->boolean('allow_partial');
         if ($job->type !== 'preview' || $job->status !== OrderCutoverConsoleJob::STATUS_READY) {
             return back()->withErrors(['apply' => 'Preview order cutover harus selesai terlebih dahulu.']);
         }
-        if ((int) data_get($job->report, 'blocking', 1) > 0) {
+        if ((int) data_get($job->report, 'blocking', 1) > 0 && ! $allowPartial) {
             return back()->withErrors(['apply' => 'Preview masih memiliki blocking issue. Perbaiki data dan jalankan job baru.']);
         }
         $apply = OrderCutoverConsoleJob::create([
-            'type' => 'apply',
+            'type' => $allowPartial ? 'apply_partial' : 'apply',
             'status' => OrderCutoverConsoleJob::STATUS_QUEUED,
             'files' => $job->files,
             'location_codes' => $job->location_codes,

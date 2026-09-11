@@ -23,7 +23,9 @@ final class RunOrderCutoverConsoleJob implements ShouldQueue
     use SerializesModels;
 
     public int $timeout = 1800;
+
     public int $tries = 1;
+
     public bool $failOnTimeout = true;
 
     public function __construct(public readonly string $consoleJobId)
@@ -61,8 +63,10 @@ final class RunOrderCutoverConsoleJob implements ShouldQueue
 
             $cutoff = CarbonImmutable::parse($job->cutoff_at)->utc();
             $locationCodes = array_values(array_map('strval', $job->location_codes ?? []));
-            $report = $job->type === 'apply'
-                ? $service->apply($paths, $cutoff, $locationCodes, $meta)
+            $isApply = in_array($job->type, ['apply', 'apply_partial'], true);
+            $allowPartial = $job->type === 'apply_partial';
+            $report = $isApply
+                ? $service->apply($paths, $cutoff, $locationCodes, $meta, $allowPartial)
                 : $service->preview($paths, $cutoff, $locationCodes, $meta);
 
             $reportDisk = (string) config(

@@ -55,6 +55,47 @@ final class OrderCutoverServiceTest extends TestCase
         self::assertDatabaseHas('sales_orders', ['id' => $newerId]);
     }
 
+    public function test_partial_apply_menghapus_hanya_kandidat_aman(): void
+    {
+        $locationId = (string) Str::uuid();
+        $locationCode = 'CUT-'.Str::upper(Str::random(6));
+        DB::table('locations')->insert([
+            'id' => $locationId, 'location_code' => $locationCode, 'location_name' => 'Gudang Kecil',
+            'location_type' => 'warehouse', 'is_active' => true, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $safeId = (string) Str::uuid();
+        $processedId = (string) Str::uuid();
+        foreach ([
+            [$safeId, 'SO-SAFE', 'pending'],
+            [$processedId, 'SO-PROCESSED', 'packed'],
+        ] as [$id, $number, $status]) {
+            DB::table('sales_orders')->insert([
+                'id' => $id, 'salesorder_no' => $number, 'location_id' => $locationId,
+                'status' => $status, 'created_at' => '2026-09-09 10:00:00', 'updated_at' => '2026-09-09 10:00:00',
+            ]);
+        }
+
+        $upload = UploadedFile::fake()->createWithContent(
+            'orders.csv',
+            "Nomor,Tgl.Pesanan,Lokasi\nSO-NOT-INTERNAL,10 Sep 2026 10:00,Gudang Kecil\n",
+        );
+        $service = app(OrderCutoverService::class);
+        $meta = [$upload->getRealPath() => ['category' => 'ready_to_process', 'original_name' => 'orders.csv']];
+        $result = $service->apply(
+            [$upload->getRealPath()],
+            CarbonImmutable::parse('2026-09-10 21:00:00', 'Asia/Jakarta'),
+            [$locationCode],
+            $meta,
+            true,
+        );
+
+        self::assertSame('APPLY_PARTIAL', $result['mode']);
+        self::assertSame(1, $result['deleted_orders']);
+        self::assertDatabaseMissing('sales_orders', ['id' => $safeId]);
+        self::assertDatabaseHas('sales_orders', ['id' => $processedId]);
+    }
+
     public function test_cutoff_uses_latest_timestamp_across_csv_files_with_gaps(): void
     {
         $first = UploadedFile::fake()->createWithContent(

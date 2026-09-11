@@ -64,6 +64,8 @@
                 <form method="post" action="{{ route('operations.stock-cutover.apply', ['token' => $token, 'job' => $job->id]) }}">
                     @csrf
                     <label><input required type="checkbox" name="operations_stopped" value="1"> Operasional gudang sudah berhenti.</label>
+                    <label><input type="checkbox" name="allow_partial" value="1"> Izinkan apply hanya baris valid (baris invalid dilewati)</label>
+                    <p class="muted">Tanpa opsi ini, satu baris invalid membatalkan seluruh apply. Gunakan mode partial hanya setelah laporan invalid ditinjau.</p>
                     <label>Ketik <code>APPLY-STOK-AKTUAL</code> untuk konfirmasi</label>
                     <input required type="text" name="confirmation" autocomplete="off">
                     <button class="danger" type="submit">Jalankan apply di background</button>

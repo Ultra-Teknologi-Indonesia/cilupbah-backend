@@ -58,13 +58,15 @@
         </section>
 
         @if ($job->type === 'preview')
-            <section class="card warning {{ $job->status === 'ready' && (int) data_get($job->report, 'blocking', 1) === 0 ? '' : 'hidden' }}" id="apply-card">
+            <section class="card warning {{ $job->status === 'ready' ? '' : 'hidden' }}" id="apply-card">
                 <h2>2. Apply order cutover</h2>
                 <p>Apply menghapus order kandidat yang tidak ada di CSV dan tidak lebih baru dari cutoff. Pastikan sinkronisasi order channel dan proses gudang sudah dihentikan.</p>
                 <form method="post" action="{{ route('operations.order-cutover.apply', ['token' => $token, 'job' => $job->id]) }}">
                     @csrf
                     <label><input required type="checkbox" name="warehouse_stopped" value="1"> Proses gudang sudah berhenti.</label>
                     <label><input required type="checkbox" name="order_sync_paused" value="1"> Sinkronisasi order channel sudah dihentikan.</label>
+                    <label><input type="checkbox" name="allow_partial" value="1"> Izinkan apply hanya kandidat aman (blocking dilewati)</label>
+                    <p class="muted">Tanpa opsi ini, satu blocking issue membatalkan seluruh apply. Mode partial hanya menghapus kandidat yang belum diproses dan tidak memiliki relasi child.</p>
                     <label>Ketik <code>APPLY-ORDER-CUTOVER</code> untuk konfirmasi</label>
                     <input required type="text" name="confirmation" autocomplete="off">
                     <button class="danger" type="submit">Jalankan apply di background</button>
@@ -95,7 +97,7 @@ async function refresh() {
         cutoffDisplay.textContent = data.report && data.report.cutoff_at_wib ? `Cutoff WIB: ${data.report.cutoff_at_wib}` : '';
         reportData.textContent = data.report ? JSON.stringify(data.report, null, 2) : 'Menunggu proses queue…';
         if (data.download_ready) report.classList.remove('hidden');
-        if (data.type === 'preview' && data.status === 'ready' && data.report && Number(data.report.blocking || 0) === 0 && applyCard) applyCard.classList.remove('hidden');
+        if (data.type === 'preview' && data.status === 'ready' && applyCard) applyCard.classList.remove('hidden');
         refresh.delay = 5000;
         if (['queued', 'processing'].includes(data.status)) refresh.timer = setTimeout(refresh, refresh.delay);
     } catch (exception) { refresh.delay = Math.min(refresh.delay * 2, 60000); error.textContent = 'Status sementara tidak dapat dibaca. Mencoba lagi otomatis.'; refresh.timer = setTimeout(refresh, refresh.delay); }

@@ -7,6 +7,7 @@ Dokumen ini adalah prosedur operasional untuk memindahkan angka stok dari Jubeli
 - gunakan kode gudang eksplisit, jangan menggunakan `ALL`, agar gudang transit atau system location tidak ikut terhapus;
 - file manifest SKU dari tim gudang wajib berisi seluruh SKU, termasuk SKU dengan qty 0;
 - file baseline memakai `qty aktual` sebagai `on_hand`, sedangkan `on_order` selalu dibangun ulang dari order aktif;
+- baris baseline dengan `qty aktual = 0` tetap diperiksa kode raknya secara batch, tetapi tidak melakukan lookup master SKU atau membuat inventory kosong; baris hanya menolkan pasangan SKU-rak yang memang masih memiliki stok lama;
 - timestamp cutoff ditulis dalam WIB, contoh `2026-09-03 18:00:00`;
 - order dengan status `shipped`, `completed`, `delivered`, atau `cancelled` dan `updated_at` sebelum cutoff dihapus;
 - order aktif lain tetap dipertahankan, histori picking/packing/shipping dibersihkan, lalu order dinormalisasi kembali ke `pending`, sedangkan order yang sudah dibatalkan tidak diaktifkan kembali;
@@ -15,6 +16,7 @@ Dokumen ini adalah prosedur operasional untuk memindahkan angka stok dari Jubeli
 - webhook tetap ditampung di `channel_webhook_inbox` saat pause, lalu diproses batch setelah resume;
 - history transfer antar gudang, inbound/putaway, picking, packing, shipping/manifest, backfill stok, replenishment request, opname, adjustment, dan movement reversal ikut dibersihkan untuk gudang yang dipilih;
 - push stok harus tetap mati sampai verifikasi selesai dan Jubelio tidak lagi menjadi writer stok.
+- mode partial hanya digunakan dengan persetujuan operator: centang opsi apply hanya baris valid untuk melewati baris blocking; default tetap all-or-nothing.
 
 ## urutan command
 
