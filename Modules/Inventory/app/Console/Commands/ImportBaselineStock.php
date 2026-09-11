@@ -11,6 +11,7 @@ use Modules\Inventory\Models\StockAdjustment;
 use Modules\Inventory\Models\StockAdjustmentItem;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Repositories\InventoryRepository;
+use Modules\Warehouse\Services\BinMultiSkuRuleService;
 
 class ImportBaselineStock extends Command
 {
@@ -31,6 +32,7 @@ class ImportBaselineStock extends Command
     public function __construct(
         protected InventoryRepository $inventoryRepository,
         protected InventoryMovementRepository $movementRepository,
+        protected BinMultiSkuRuleService $binMultiSkuRuleService,
     ) {
         parent::__construct();
     }
@@ -80,7 +82,12 @@ class ImportBaselineStock extends Command
         $this->line(sprintf('Baris Qty Aktual = 0 tanpa stok sistem: %s', number_format($source['zero_rows_skipped'])));
         $this->newLine();
 
-        $inspection = $this->inspect($rows, $location->id, $source['existing_positive_pairs']);
+        $inspection = $this->inspect(
+            $rows,
+            $location->id,
+            (bool) ($location->is_small_warehouse ?? false),
+            $source['existing_positive_pairs'],
+        );
         $inspection = array_merge($inspection, [
             'source_rows' => $source['source_rows'],
             'positive_rows' => $source['positive_rows'],
@@ -179,7 +186,7 @@ class ImportBaselineStock extends Command
 
         $location = DB::table('locations')
             ->where('location_code', $code)
-            ->first(['id', 'location_code', 'location_name']);
+            ->first(['id', 'location_code', 'location_name', 'is_small_warehouse']);
 
         if (! $location) {
             $this->error("Lokasi dengan kode '{$code}' tidak ditemukan.");
@@ -579,8 +586,12 @@ class ImportBaselineStock extends Command
         return mb_strtolower(trim($sku))."\0".mb_strtoupper(trim($bin));
     }
 
-    private function inspect(array $rows, string $locationId, array $existingPositivePairs): array
-    {
+    private function inspect(
+        array $rows,
+        string $locationId,
+        bool $strictBinSku,
+        array $existingPositivePairs,
+    ): array {
 
         $lookupSkus = array_values(array_unique(array_map(
             fn (array $row): string => $row['sku'],
@@ -601,11 +612,46 @@ class ImportBaselineStock extends Command
             'rak_gudang_lain' => [],
             'rak_kosong' => [],
             'rak_inbound' => [],
+            'rak_multi_sku' => [],
         ];
 
         $lowerIndex = [];
         foreach ($variants as $sku => $variant) {
             $lowerIndex[mb_strtolower($sku)][] = $sku;
+        }
+
+        $binCodeById = [];
+        foreach ($binsHere as $binCode => $bin) {
+            $binCodeById[(string) $bin->id] = (string) $binCode;
+        }
+
+        // Gudang kecil normally protects one-SKU racks, except for bins that
+        // match an explicitly configured multi-SKU pattern. Gudang Pusat is
+        // intentionally unrestricted because its inventory is M:M.
+        $csvItemsByBin = [];
+        if ($strictBinSku) {
+            foreach ($rows as $row) {
+                $variant = $variants[$row['sku']] ?? null;
+                if ($variant === null) {
+                    $alternatives = $lowerIndex[mb_strtolower($row['sku'])] ?? [];
+                    $variant = count($alternatives) === 1 ? ($variants[$alternatives[0]] ?? null) : null;
+                }
+                $bin = $binsHere[$row['bin']] ?? null;
+                if ($variant === null || $bin === null || $bin->is_inbound || strtoupper(trim((string) $bin->bin_final_code)) === 'DEFAULT') {
+                    continue;
+                }
+                $csvItemsByBin[(string) $bin->id][(string) $variant->id] = true;
+            }
+        }
+        $blockedMultiSkuBins = [];
+        foreach ($csvItemsByBin as $binId => $itemIds) {
+            if (count($itemIds) <= 1) {
+                continue;
+            }
+            $binCode = $binCodeById[$binId] ?? null;
+            if ($binCode !== null && ! $this->binMultiSkuRuleService->allowsMultiSkuCode($locationId, $binCode)) {
+                $blockedMultiSkuBins[$binId] = true;
+            }
         }
 
         $variantIds = array_filter(array_column(array_values($variants), 'id'));
@@ -715,6 +761,13 @@ class ImportBaselineStock extends Command
                 } else {
                     $resolvedBinId = $candidateBin->id;
                 }
+            }
+
+            if (! $blocked && $strictBinSku && isset($blockedMultiSkuBins[(string) $resolvedBinId])) {
+                $notes = 'Rak Gudang Kecil berisi lebih dari satu SKU dan tidak memiliki pattern multi-SKU.';
+                $problems['rak_multi_sku'][] = $row + ['catatan' => $notes];
+                $status = 'DITOLAK_RAK_MULTI_SKU';
+                $blocked = true;
             }
 
             $pairKey = $variantId.':'.($resolvedBinId ?? 'null');
@@ -888,6 +941,7 @@ class ImportBaselineStock extends Command
             'sku_nonaktif' => 'Varian non-aktif (peringatan)',
             'rak_kosong' => 'Kode rak kosong (baris DITOLAK)',
             'rak_inbound' => 'Rak inbound/DEFAULT (baris DITOLAK)',
+            'rak_multi_sku' => 'Rak Gudang Kecil tidak mengizinkan multi-SKU (baris DITOLAK)',
         ];
 
         foreach ($labels as $key => $label) {

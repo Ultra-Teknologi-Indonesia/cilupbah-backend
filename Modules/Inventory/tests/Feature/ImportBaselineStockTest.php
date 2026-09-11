@@ -11,6 +11,7 @@ use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Models\StockAdjustment;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
+use Modules\Warehouse\Models\BinMultiSkuRule;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -733,5 +734,60 @@ class ImportBaselineStockTest extends TestCase
             ->where('location_id', $location->id)
             ->where('bin_id', $binId)
             ->value('on_hand'));
+    }
+
+    public function test_gudang_kecil_mengikuti_pattern_multi_sku_rak(): void
+    {
+        $location = Location::create([
+            'location_code' => 'WH-RACK-RULE',
+            'location_name' => 'Gudang Rack Rule',
+            'location_type' => 'warehouse',
+            'is_warehouse' => true,
+            'is_small_warehouse' => true,
+            'is_active' => true,
+        ]);
+        LocationBin::create([
+            'location_id' => $location->id,
+            'bin_final_code' => 'SHARED-RACK',
+            'bin_code' => 'SHARED-RACK',
+            'is_inbound' => false,
+        ]);
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'Rack Rule', 'is_active' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        foreach (['SKU-RULE-A', 'SKU-RULE-B'] as $sku) {
+            $product = Product::create([
+                'category_id' => $categoryId,
+                'name' => $sku, 'sku' => $sku, 'is_active' => true,
+            ]);
+            ProductVariant::create([
+                'product_id' => $product->id, 'sku' => $sku, 'is_active' => true,
+            ]);
+        }
+        $excelPath = $this->createSampleExcel([
+            ['sku' => 'SKU-RULE-A', 'bin' => 'SHARED-RACK', 'qty' => 5],
+            ['sku' => 'SKU-RULE-B', 'bin' => 'SHARED-RACK', 'qty' => 7],
+        ]);
+
+        $this->artisan('inventory:import-baseline', [
+            'file' => $excelPath,
+            '--location' => 'WH-RACK-RULE',
+        ])->assertExitCode(0)->expectsOutputToContain('Rak Gudang Kecil tidak mengizinkan multi-SKU');
+
+        BinMultiSkuRule::create([
+            'location_id' => $location->id,
+            'pattern' => 'SHARED-*',
+            'is_active' => true,
+        ]);
+
+        $this->artisan('inventory:import-baseline', [
+            'file' => $excelPath,
+            '--location' => 'WH-RACK-RULE',
+            '--commit' => true,
+        ])->assertExitCode(0);
+
+        self::assertSame(2, DB::table('sku_rack_assignments')->where('location_id', $location->id)->count());
+        self::assertSame(2, Inventory::where('location_id', $location->id)->count());
     }
 }
