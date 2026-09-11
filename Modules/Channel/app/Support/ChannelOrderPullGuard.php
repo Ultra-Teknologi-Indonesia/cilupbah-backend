@@ -7,6 +7,7 @@ namespace Modules\Channel\Support;
 use Closure;
 use Illuminate\Support\Facades\Cache;
 use Modules\Channel\Exceptions\ChannelOrderNotAvailableException;
+use Modules\Channel\Jobs\RefreshChannelOrderJob;
 use Modules\Sales\Models\SalesOrder;
 
 final class ChannelOrderPullGuard
@@ -34,7 +35,7 @@ final class ChannelOrderPullGuard
         $channel = strtolower($channel);
         $key = "{$channel}_pulled_recent:{$shopId}:{$orderId}";
 
-        return Cache::lock($key.':lock', max(30, $seconds + 5))->block(10, function () use (
+        $pulled = Cache::lock($key.':lock', max(30, $seconds + 5))->block(10, function () use (
             $channel,
             $shopId,
             $orderId,
@@ -67,5 +68,13 @@ final class ChannelOrderPullGuard
                 throw $e;
             }
         });
+
+        if (! $pulled) {
+
+            RefreshChannelOrderJob::dispatch($channel, $shopId, $orderId)
+                ->delay(now()->addSeconds($seconds));
+        }
+
+        return $pulled;
     }
 }

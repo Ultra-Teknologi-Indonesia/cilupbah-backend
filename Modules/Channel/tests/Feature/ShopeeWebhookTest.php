@@ -3,10 +3,12 @@
 namespace Modules\Channel\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Mockery;
 use Modules\Channel\Helpers\ShopeeSignature;
 use Modules\Channel\Jobs\ProcessShopeeWebhook;
+use Modules\Channel\Jobs\RefreshChannelOrderJob;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\ChannelDownloadService;
@@ -14,6 +16,8 @@ use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
+use Modules\Sales\Jobs\ProcessChannelReturnJob;
+use Modules\Sales\Models\SalesOrder;
 use Tests\TestCase;
 
 class ShopeeWebhookTest extends TestCase
@@ -120,7 +124,7 @@ class ShopeeWebhookTest extends TestCase
         (new ProcessShopeeWebhook($this->orderPayload([
             'code' => 2,
             'data' => [],
-        ])))->handle(app(\Modules\Channel\Services\ShopeeOrderService::class), app(\Modules\Channel\Services\ChannelDownloadService::class));
+        ])))->handle(app(ShopeeOrderService::class), app(ChannelDownloadService::class));
 
         $this->assertDatabaseHas('channel_shops', [
             'shop_id' => '778899',
@@ -131,7 +135,7 @@ class ShopeeWebhookTest extends TestCase
 
     public function test_unknown_code_handled_gracefully(): void
     {
-        (new ProcessShopeeWebhook($this->orderPayload(['code' => 99, 'data' => []])))->handle(app(\Modules\Channel\Services\ShopeeOrderService::class), app(\Modules\Channel\Services\ChannelDownloadService::class));
+        (new ProcessShopeeWebhook($this->orderPayload(['code' => 99, 'data' => []])))->handle(app(ShopeeOrderService::class), app(ChannelDownloadService::class));
 
         $this->assertTrue(true);
     }
@@ -174,9 +178,46 @@ class ShopeeWebhookTest extends TestCase
             'data' => ['ordersn' => '2606SHOPEE01', 'return_sn' => 'RET-1', 'reason' => 'Barang rusak'],
         ])))->handle($orderService, app(ChannelDownloadService::class));
 
-        Queue::assertPushed(\Modules\Sales\Jobs\ProcessChannelReturnJob::class, fn ($job) => ($job->payload['source'] ?? null) === 'shopee'
+        Queue::assertPushed(ProcessChannelReturnJob::class, fn ($job) => ($job->payload['source'] ?? null) === 'shopee'
             && ($job->payload['channel_order_id'] ?? null) === '2606SHOPEE01'
             && ($job->payload['channel_return_id'] ?? null) === 'RET-1');
+    }
+
+    public function test_rapid_status_events_schedule_one_coalesced_latest_detail_refresh(): void
+    {
+        Queue::fake();
+        Cache::forget('shopee_pulled_recent:778899:RAPID-ORDER');
+
+        SalesOrder::factory()->create([
+            'source' => 'shopee',
+            'channel_order_no' => 'RAPID-ORDER',
+        ]);
+
+        $orderService = Mockery::mock(ShopeeOrderService::class);
+        $orderService->shouldReceive('pullOrderById')
+            ->once()
+            ->with('778899', 'RAPID-ORDER')
+            ->andReturn(1);
+
+        $first = $this->orderPayload([
+            'timestamp' => 1760000000,
+            'data' => ['ordersn' => 'RAPID-ORDER', 'status' => 'UNPAID'],
+        ]);
+        $second = $this->orderPayload([
+            'timestamp' => 1760000007,
+            'data' => ['ordersn' => 'RAPID-ORDER', 'status' => 'READY_TO_SHIP'],
+        ]);
+
+        (new ProcessShopeeWebhook($first))->handle($orderService, app(ChannelDownloadService::class));
+        (new ProcessShopeeWebhook($second))->handle($orderService, app(ChannelDownloadService::class));
+
+        Queue::assertPushed(RefreshChannelOrderJob::class, 1);
+        Queue::assertPushed(RefreshChannelOrderJob::class, function (RefreshChannelOrderJob $job): bool {
+            return $job->channel === 'shopee'
+                && $job->shopId === '778899'
+                && $job->orderId === 'RAPID-ORDER'
+                && $job->uniqueId() === 'shopee:778899:RAPID-ORDER';
+        });
     }
 
     public function test_configured_push_url_used_for_signature(): void
