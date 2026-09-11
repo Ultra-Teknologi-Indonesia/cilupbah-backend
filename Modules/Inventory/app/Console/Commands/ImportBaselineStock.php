@@ -4,7 +4,9 @@ namespace Modules\Inventory\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Modules\Inventory\Models\StockAdjustment;
 use Modules\Inventory\Models\StockAdjustmentItem;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
@@ -109,6 +111,7 @@ class ImportBaselineStock extends Command
 
             $executionResult = $this->executeCommit(
                 $inspection['valid_rows'],
+                $inspection['all_rows'],
                 $location,
                 basename($path),
                 $chunkSize,
@@ -125,6 +128,10 @@ class ImportBaselineStock extends Command
             if ($zeroMissing) {
                 $this->line(sprintf('  · Stok Dinolkan      : %s item', number_format(count($zeroedItems))));
             }
+            $this->line(sprintf(
+                '  · Rack Assignment    : %s item dibuat/diperbarui',
+                number_format((int) ($executionResult['rack_assignment_upserted'] ?? 0)),
+            ));
         }
 
         $reportInfo = $this->generateReport(
@@ -535,7 +542,7 @@ class ImportBaselineStock extends Command
             ->join('product_variants as v', 'v.id', '=', 'i.item_id')
             ->join('location_bins as b', 'b.id', '=', 'i.bin_id')
             ->where('i.location_id', $locationId)
-            ->where('i.on_hand', '>', 0)
+            ->where('i.on_hand', '<>', 0)
             ->whereNotNull('b.bin_final_code')
             ->orderBy('i.id')
             ->select(['i.item_id as variant_id', 'i.bin_id', 'i.on_hand', 'v.sku', 'b.bin_final_code'])
@@ -562,13 +569,13 @@ class ImportBaselineStock extends Command
     private function inspect(array $rows, string $locationId, array $existingPositivePairs): array
     {
 
-        $positiveSkus = array_values(array_unique(array_map(
+        $lookupSkus = array_values(array_unique(array_map(
             fn (array $row): string => $row['sku'],
-            array_filter($rows, fn (array $row): bool => (int) $row['qty'] > 0),
+            $rows,
         )));
         $bins = array_values(array_filter(array_unique(array_column($rows, 'bin'))));
 
-        $variants = $this->lookupVariants($positiveSkus);
+        $variants = $this->lookupVariants($lookupSkus);
         $binsHere = $this->lookupBins($bins, $locationId);
         $binsElsewhere = $this->lookupBinsElsewhere($bins, $locationId, array_keys($binsHere));
 
@@ -576,6 +583,7 @@ class ImportBaselineStock extends Command
             'sku_hilang' => [],
             'sku_beda_huruf' => [],
             'sku_ganda' => [],
+            'sku_multi_rak' => [],
             'sku_nonaktif' => [],
             'rak_hilang' => [],
             'rak_gudang_lain' => [],
@@ -587,6 +595,19 @@ class ImportBaselineStock extends Command
         foreach ($variants as $sku => $variant) {
             $lowerIndex[mb_strtolower($sku)][] = $sku;
         }
+
+        $rackCodesBySku = [];
+        foreach ($rows as $row) {
+            $skuKey = mb_strtolower(trim((string) $row['sku']));
+            $binCode = strtoupper(trim((string) $row['bin']));
+            if ($skuKey !== '' && $binCode !== '') {
+                $rackCodesBySku[$skuKey][$binCode] = true;
+            }
+        }
+        $multiRackSkus = array_fill_keys(
+            array_keys(array_filter($rackCodesBySku, static fn (array $bins): bool => count($bins) > 1)),
+            true,
+        );
 
         $variantIds = array_filter(array_column(array_values($variants), 'id'));
         $currentStockMap = [];
@@ -654,6 +675,15 @@ class ImportBaselineStock extends Command
             } elseif ($existingPair !== null) {
                 $variantId = $existingPair['variant_id'];
                 $curOnHand = (float) $existingPair['on_hand'];
+            } else {
+                $variant = $variants[$sku] ?? null;
+                if ($variant === null) {
+                    $alternatives = $lowerIndex[mb_strtolower($sku)] ?? [];
+                    if (count($alternatives) === 1) {
+                        $variant = $variants[$alternatives[0]] ?? null;
+                    }
+                }
+                $variantId = $variant?->id;
             }
 
             $resolvedBinId = null;
@@ -688,6 +718,13 @@ class ImportBaselineStock extends Command
                 }
             }
 
+            if (! $blocked && isset($multiRackSkus[mb_strtolower($sku)])) {
+                $notes = 'SKU memiliki lebih dari satu rak berbeda di file; mapping rak ambigu.';
+                $problems['sku_multi_rak'][] = $row + ['catatan' => $notes];
+                $status = 'DITOLAK_SKU_MULTI_RAK';
+                $blocked = true;
+            }
+
             $pairKey = $variantId.':'.($resolvedBinId ?? 'null');
             if (! $isZero || $existingPair === null) {
                 $curOnHand = (float) ($currentStockMap[$pairKey] ?? 0.0);
@@ -704,6 +741,7 @@ class ImportBaselineStock extends Command
             $evaluatedRow = $row + [
                 'status' => $status,
                 'catatan' => $notes,
+                'blocked' => $blocked,
                 'variant_id' => $variantId,
                 'bin_id' => $resolvedBinId,
                 'current_on_hand' => $curOnHand,
@@ -852,6 +890,7 @@ class ImportBaselineStock extends Command
         $labels = [
             'sku_hilang' => 'SKU tidak terdaftar (baris DITOLAK)',
             'sku_beda_huruf' => 'SKU beda huruf besar/kecil (baris DITOLAK)',
+            'sku_multi_rak' => 'SKU memiliki lebih dari satu rak di file (baris DITOLAK)',
             'rak_hilang' => 'Kode rak belum ada di sistem (baris DITOLAK)',
             'rak_gudang_lain' => 'Kode rak milik gudang lain (baris DITOLAK)',
             'sku_ganda' => 'SKU dipakai lebih dari satu varian (peringatan)',
@@ -885,6 +924,7 @@ class ImportBaselineStock extends Command
 
     private function executeCommit(
         array $validRows,
+        array $allRows,
         object $location,
         string $sourceFilename,
         int $chunkSize,
@@ -893,11 +933,40 @@ class ImportBaselineStock extends Command
         $hasStockChange = collect($validRows)
             ->contains(fn (array $row): bool => (float) $row['delta'] !== 0.0);
 
+        $assignmentRows = [];
+        $protectedItemIds = [];
+        foreach ($allRows as $row) {
+            if (($row['blocked'] ?? false) === true) {
+                if (! empty($row['variant_id'])) {
+                    $protectedItemIds[(string) $row['variant_id']] = true;
+                }
+
+                continue;
+            }
+
+            if (! empty($row['variant_id']) && ! empty($row['bin_id'])) {
+                $assignmentRows[(string) $row['variant_id']] = [
+                    'item_id' => (string) $row['variant_id'],
+                    'bin_id' => (string) $row['bin_id'],
+                ];
+            }
+        }
+
+        if (! $hasStockChange && ! $zeroMissing && $assignmentRows === []) {
+            return [
+                'adjustment_no' => null,
+                'applied_count' => 0,
+                'zeroed_items' => [],
+                'rack_assignment_upserted' => 0,
+            ];
+        }
+
         if (! $hasStockChange && ! $zeroMissing) {
             return [
                 'adjustment_no' => null,
                 'applied_count' => 0,
                 'zeroed_items' => [],
+                'rack_assignment_upserted' => $this->syncRackAssignments($assignmentRows, $location, $chunkSize),
             ];
         }
 
@@ -974,16 +1043,31 @@ class ImportBaselineStock extends Command
         if ($zeroMissing) {
             $existingInventories = DB::table('inventories')
                 ->where('location_id', $location->id)
-                ->where('on_hand', '>', 0)
-                ->get(['id', 'item_id', 'bin_id', 'on_hand', 'avg_cost']);
+                ->where('on_hand', '<>', 0)
+                ->when(
+                    $protectedItemIds !== [],
+                    fn ($query) => $query->whereNotIn('item_id', array_keys($protectedItemIds)),
+                )
+                ->select(['id', 'item_id', 'bin_id', 'on_hand', 'avg_cost'])
+                ->orderBy('id');
 
-            foreach ($existingInventories as $inv) {
-                $pairKey = $inv->item_id.':'.($inv->bin_id ?? 'null');
-                if (! isset($seenPairs[$pairKey])) {
-                    $systemQty = (float) $inv->on_hand;
-                    $diff = -$systemQty;
+            // Stream the cleanup in bounded chunks so a large warehouse does
+            // not load every stale inventory row into PHP memory at once.
+            $existingInventories->chunkById($chunkSize, function ($chunk) use (
+                $adjustment,
+                $location,
+                &$seenPairs,
+                &$zeroedItems,
+            ): void {
+                DB::transaction(function () use ($chunk, $adjustment, $location, &$seenPairs, &$zeroedItems): void {
+                    foreach ($chunk as $inv) {
+                        $pairKey = $inv->item_id.':'.($inv->bin_id ?? 'null');
+                        if (isset($seenPairs[$pairKey])) {
+                            continue;
+                        }
 
-                    DB::transaction(function () use ($inv, $adjustment, $location, $systemQty, $diff) {
+                        $systemQty = (float) $inv->on_hand;
+                        $diff = -$systemQty;
                         $inventory = $this->inventoryRepository->findOrCreateForUpdate(
                             $inv->item_id,
                             $location->id,
@@ -1017,22 +1101,53 @@ class ImportBaselineStock extends Command
                             'transaction_date' => now(),
                             'created_by' => 'baseline-migrator',
                         ]);
-                    });
 
-                    $zeroedItems[] = [
-                        'item_id' => $inv->item_id,
-                        'bin_id' => $inv->bin_id,
-                        'qty_sebelumnya' => $systemQty,
-                    ];
-                }
-            }
+                        $zeroedItems[] = [
+                            'item_id' => $inv->item_id,
+                            'bin_id' => $inv->bin_id,
+                            'qty_sebelumnya' => $systemQty,
+                        ];
+                    }
+                });
+            }, 'id', 'id');
         }
 
         return [
             'adjustment_no' => $adjustmentNo,
             'applied_count' => $appliedCount,
             'zeroed_items' => $zeroedItems,
+            'rack_assignment_upserted' => $this->syncRackAssignments($assignmentRows, $location, $chunkSize),
         ];
+    }
+
+    private function syncRackAssignments(array $assignmentRows, object $location, int $chunkSize): int
+    {
+        if ($assignmentRows === [] || ! Schema::hasTable('sku_rack_assignments')) {
+            return 0;
+        }
+
+        $upserted = 0;
+        foreach (array_chunk(array_values($assignmentRows), $chunkSize) as $chunk) {
+            $now = now();
+            $payload = array_map(static fn (array $row): array => [
+                'id' => (string) Str::uuid(),
+                'location_id' => (string) $location->id,
+                'item_id' => $row['item_id'],
+                'bin_id' => $row['bin_id'],
+                'assigned_by' => null,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ], $chunk);
+
+            DB::table('sku_rack_assignments')->upsert(
+                $payload,
+                ['location_id', 'item_id'],
+                ['bin_id', 'updated_at'],
+            );
+            $upserted += count($payload);
+        }
+
+        return $upserted;
     }
 
     private function generateReport(

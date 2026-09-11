@@ -5,6 +5,7 @@ namespace Modules\Inventory\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Models\StockAdjustment;
@@ -468,5 +469,216 @@ class ImportBaselineStockTest extends TestCase
 
         $inv2 = Inventory::where('item_id', $variant2->id)->where('bin_id', $bin2->id)->first();
         $this->assertEquals(0, (int) $inv2->on_hand);
+    }
+
+    public function test_commit_menyelaraskan_rack_assignment_dan_mengosongkan_pasangan_lama(): void
+    {
+        $location = Location::create([
+            'location_code' => 'WH-RACK-SYNC',
+            'location_name' => 'Gudang Rack Sync',
+            'location_type' => 'warehouse',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+        $oldBin = LocationBin::create([
+            'location_id' => $location->id,
+            'bin_final_code' => 'SYNC-OLD',
+            'bin_code' => 'SYNC-OLD',
+            'is_inbound' => false,
+        ]);
+        $newBin = LocationBin::create([
+            'location_id' => $location->id,
+            'bin_final_code' => 'SYNC-NEW',
+            'bin_code' => 'SYNC-NEW',
+            'is_inbound' => false,
+        ]);
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'Rack Sync', 'is_active' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $product = Product::create([
+            'category_id' => $categoryId,
+            'name' => 'Rack Sync Item', 'sku' => 'SKU-RACK-SYNC', 'is_active' => true,
+        ]);
+        $variant = ProductVariant::create([
+            'product_id' => $product->id, 'sku' => 'SKU-RACK-SYNC', 'is_active' => true,
+        ]);
+
+        DB::table('inventories')->insert([
+            'id' => (string) Str::uuid(),
+            'item_id' => $variant->id,
+            'location_id' => $location->id,
+            'bin_id' => $oldBin->id,
+            'batch_no' => '', 'serial_no' => '',
+            'on_hand' => 40, 'on_order' => 0, 'available' => 40, 'avg_cost' => 1000,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('sku_rack_assignments')->insert([
+            'id' => (string) Str::uuid(),
+            'location_id' => $location->id,
+            'item_id' => $variant->id,
+            'bin_id' => $oldBin->id,
+            'assigned_by' => null,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $excelPath = $this->createSampleExcel([
+            ['sku' => 'SKU-RACK-SYNC', 'bin' => 'SYNC-NEW', 'qty' => 12],
+        ]);
+
+        $this->artisan('inventory:import-baseline', [
+            'file' => $excelPath,
+            '--location' => 'WH-RACK-SYNC',
+            '--commit' => true,
+            '--zero-missing' => true,
+        ])->assertExitCode(0);
+
+        $oldInventory = Inventory::where('item_id', $variant->id)->where('bin_id', $oldBin->id)->first();
+        $newInventory = Inventory::where('item_id', $variant->id)->where('bin_id', $newBin->id)->first();
+        self::assertSame(0, (int) $oldInventory->on_hand);
+        self::assertSame(12, (int) $newInventory->on_hand);
+        self::assertDatabaseHas('sku_rack_assignments', [
+            'location_id' => $location->id,
+            'item_id' => $variant->id,
+            'bin_id' => $newBin->id,
+        ]);
+    }
+
+    public function test_qty_nol_tetap_membuat_rack_assignment_meski_inventory_belum_ada(): void
+    {
+        $location = Location::create([
+            'location_code' => 'WH-RACK-ZERO',
+            'location_name' => 'Gudang Rack Zero',
+            'location_type' => 'warehouse',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+        $bin = LocationBin::create([
+            'location_id' => $location->id,
+            'bin_final_code' => 'ZERO-RACK',
+            'bin_code' => 'ZERO-RACK',
+            'is_inbound' => false,
+        ]);
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'Rack Zero', 'is_active' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $product = Product::create([
+            'category_id' => $categoryId,
+            'name' => 'Rack Zero Item', 'sku' => 'SKU-RACK-ZERO', 'is_active' => true,
+        ]);
+        ProductVariant::create([
+            'product_id' => $product->id, 'sku' => 'SKU-RACK-ZERO', 'is_active' => true,
+        ]);
+
+        $excelPath = $this->createSampleExcel([
+            ['sku' => 'SKU-RACK-ZERO', 'bin' => 'ZERO-RACK', 'qty' => 0],
+        ]);
+
+        $this->artisan('inventory:import-baseline', [
+            'file' => $excelPath,
+            '--location' => 'WH-RACK-ZERO',
+            '--commit' => true,
+        ])->assertExitCode(0);
+
+        self::assertDatabaseHas('sku_rack_assignments', [
+            'location_id' => $location->id,
+            'item_id' => ProductVariant::where('sku', 'SKU-RACK-ZERO')->value('id'),
+            'bin_id' => $bin->id,
+        ]);
+        self::assertSame(0, Inventory::where('location_id', $location->id)->count());
+    }
+
+    public function test_partial_tidak_menolkan_sku_yang_barisnya_invalid(): void
+    {
+        $location = Location::create([
+            'location_code' => 'WH-RACK-PARTIAL',
+            'location_name' => 'Gudang Rack Partial',
+            'location_type' => 'warehouse',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+        $bin = LocationBin::create([
+            'location_id' => $location->id,
+            'bin_final_code' => 'PARTIAL-RACK',
+            'bin_code' => 'PARTIAL-RACK',
+            'is_inbound' => false,
+        ]);
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'Rack Partial', 'is_active' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $product = Product::create([
+            'category_id' => $categoryId,
+            'name' => 'Rack Partial Item', 'sku' => 'SKU-RACK-PARTIAL', 'is_active' => true,
+        ]);
+        $variant = ProductVariant::create([
+            'product_id' => $product->id, 'sku' => 'SKU-RACK-PARTIAL', 'is_active' => true,
+        ]);
+        Inventory::create([
+            'item_id' => $variant->id,
+            'location_id' => $location->id,
+            'bin_id' => $bin->id,
+            'batch_no' => '', 'serial_no' => '',
+            'on_hand' => 40, 'on_order' => 0, 'available' => 40, 'avg_cost' => 1000,
+        ]);
+
+        $excelPath = $this->createSampleExcel([
+            ['sku' => 'SKU-RACK-PARTIAL', 'bin' => 'MISSING-RACK', 'qty' => 10],
+        ]);
+
+        $this->artisan('inventory:import-baseline', [
+            'file' => $excelPath,
+            '--location' => 'WH-RACK-PARTIAL',
+            '--commit' => true,
+            '--allow-partial' => true,
+            '--zero-missing' => true,
+        ])->assertExitCode(0);
+
+        self::assertSame(40, (int) Inventory::where('item_id', $variant->id)->value('on_hand'));
+    }
+
+    public function test_satu_sku_dengan_dua_rak_di_file_ditolak_untuk_mencegah_assignment_ambigu(): void
+    {
+        $location = Location::create([
+            'location_code' => 'WH-RACK-CONFLICT',
+            'location_name' => 'Gudang Rack Conflict',
+            'location_type' => 'warehouse',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+        foreach (['CONFLICT-A', 'CONFLICT-B'] as $code) {
+            LocationBin::create([
+                'location_id' => $location->id,
+                'bin_final_code' => $code,
+                'bin_code' => $code,
+                'is_inbound' => false,
+            ]);
+        }
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'Rack Conflict', 'is_active' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $product = Product::create([
+            'category_id' => $categoryId,
+            'name' => 'Rack Conflict Item', 'sku' => 'SKU-RACK-CONFLICT', 'is_active' => true,
+        ]);
+        ProductVariant::create([
+            'product_id' => $product->id, 'sku' => 'SKU-RACK-CONFLICT', 'is_active' => true,
+        ]);
+
+        $excelPath = $this->createSampleExcel([
+            ['sku' => 'SKU-RACK-CONFLICT', 'bin' => 'CONFLICT-A', 'qty' => 10],
+            ['sku' => 'SKU-RACK-CONFLICT', 'bin' => 'CONFLICT-B', 'qty' => 20],
+        ]);
+
+        $this->artisan('inventory:import-baseline', [
+            'file' => $excelPath,
+            '--location' => 'WH-RACK-CONFLICT',
+        ])
+            ->assertExitCode(0)
+            ->expectsOutputToContain('SKU memiliki lebih dari satu rak di file');
+
+        self::assertSame(0, DB::table('sku_rack_assignments')->where('location_id', $location->id)->count());
     }
 }

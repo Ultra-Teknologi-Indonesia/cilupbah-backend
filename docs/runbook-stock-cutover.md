@@ -7,7 +7,9 @@ Dokumen ini adalah prosedur operasional untuk memindahkan angka stok dari Jubeli
 - gunakan kode gudang eksplisit, jangan menggunakan `ALL`, agar gudang transit atau system location tidak ikut terhapus;
 - file manifest SKU dari tim gudang wajib berisi seluruh SKU, termasuk SKU dengan qty 0;
 - file baseline memakai `qty aktual` sebagai `on_hand`, sedangkan `on_order` selalu dibangun ulang dari order aktif;
-- baris baseline dengan `qty aktual = 0` tetap diperiksa kode raknya secara batch, tetapi tidak melakukan lookup master SKU atau membuat inventory kosong; baris hanya menolkan pasangan SKU-rak yang memang masih memiliki stok lama;
+- baris baseline dengan `qty aktual = 0` tetap diperiksa kode raknya secara batch; baris tidak membuat inventory kosong, tetapi tetap menyimpan/memperbarui alamat `sku_rack_assignments` bila SKU dikenali;
+- `--zero-missing` menolkan semua pasangan inventory non-zero yang tidak ada di file, termasuk saldo negatif historis; baris invalid pada mode partial dilindungi agar tidak ikut dinolkan;
+- setiap baris SKU-rak yang valid menyelaraskan `sku_rack_assignments` secara idempoten; assignment lama yang tidak ada di file tidak dihapus agar alamat zero-stock tetap tersedia;
 - CSV laporan hanya memuat baris yang membutuhkan tindakan; `ZERO_TANPA_STOK_SISTEM` dan `DITOLAK_RAK_HILANG` untuk Qty 0 diringkas di output, sedangkan `DITOLAK_RAK_HILANG` dengan Qty > 0 tetap ditampilkan sebagai blocking;
 - timestamp cutoff ditulis dalam WIB, contoh `2026-09-03 18:00:00`;
 - order dengan status `shipped`, `completed`, `delivered`, atau `cancelled` dan `updated_at` sebelum cutoff dihapus;
