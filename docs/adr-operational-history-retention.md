@@ -10,9 +10,9 @@ CronJob yang terisolasi dari pod aplikasi dan scheduler:
 - `channel_webhook_inbox` berstatus `PROCESSED` atau `SKIPPED`: 30 hari;
 - webhook `FAILED` dan `RECEIVED`: tidak dibersihkan otomatis.
 
-Setiap proses hanya menghapus maksimal 5.000 baris per sumber data, dalam batch
-500 baris. Indeks dibuat secara `CONCURRENTLY`, sehingga pembuatannya tidak
-menahan transaksi aplikasi.
+CronJob berjalan setiap 15 menit dan setiap proses menghapus maksimal 10.000
+baris per sumber data, dalam batch 500 baris. Indeks dibuat secara
+`CONCURRENTLY`, sehingga pembuatannya tidak menahan transaksi aplikasi.
 
 ## Alasan
 

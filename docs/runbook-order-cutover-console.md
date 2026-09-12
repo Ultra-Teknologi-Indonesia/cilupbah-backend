@@ -13,4 +13,7 @@ Aturan apply bersifat whitelist-plus-newer: order yang cocok dengan `salesorder_
 
 Mode partial (`APPLY_PARTIAL`) bersifat opt-in dan hanya menghapus kandidat lama yang belum masuk proses gudang, belum memiliki `handed_to_warehouse_at`, serta tidak memiliki relasi child. Order yang terdeteksi berisiko dipertahankan dan dicantumkan di laporan.
 
-Queue default adalah `order-cutover` pada koneksi `redis-long`, dengan supervisor Horizon khusus satu worker. Jalankan migration dan restart Horizon setelah deploy.
+Queue `order-cutover` pada koneksi `redis-long` berbagi satu worker Horizon dengan
+`stock-cutover`. Keduanya sengaja diserialkan karena proses import dapat memakai
+memori besar; jangan menjalankan dua cutover console secara bersamaan. Jalankan
+migration dan restart Horizon setelah deploy.

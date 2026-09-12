@@ -5,10 +5,12 @@ namespace Modules\Channel\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Mockery;
+use Modules\Channel\Enums\WebhookInboxStatus;
 use Modules\Channel\Exceptions\ChannelOrderNotAvailableException;
 use Modules\Channel\Jobs\ProcessTikTokWebhook;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Services\TikTokAuthService;
 use Modules\Channel\Services\TikTokOrderService;
@@ -21,6 +23,10 @@ class TikTokWebhookRoutingTest extends TestCase
 
     private function process(array $payload, $order = null, $product = null, $shops = null, $auth = null): void
     {
+        if ($shops === null && ($payload['shop_id'] ?? null) === 'TT1' && ! ChannelShop::where('shop_id', 'TT1')->exists()) {
+            $this->makeShop();
+        }
+
         (new ProcessTikTokWebhook($payload))->handle(
             $order ?? Mockery::mock(TikTokOrderService::class),
             $product ?? Mockery::mock(WebhookProductHandler::class),
@@ -170,7 +176,7 @@ class TikTokWebhookRoutingTest extends TestCase
                 'data' => ['product_id' => 'P-27', 'current_inventory_status' => 'LOW_STOCK']],
         );
 
-        $this->assertTrue(true); 
+        $this->assertTrue(true);
     }
 
     public function test_fbt_seller_scoped_event_acknowledged_without_shop_id(): void
@@ -205,7 +211,7 @@ class TikTokWebhookRoutingTest extends TestCase
             'data' => ['order_id' => 'O-1', 'order_status' => 'UNPAID']];
 
         $this->process($payload, $order);
-        $this->process($payload, $order); 
+        $this->process($payload, $order);
     }
 
     public function test_empty_order_pull_throws_and_releases_idempotency_for_retry(): void
@@ -231,5 +237,32 @@ class TikTokWebhookRoutingTest extends TestCase
             self::assertFalse(Cache::has(ProcessTikTokWebhook::idempotencyKey($payload)));
             self::assertFalse(Cache::has('tiktok_pulled_recent:TT1:O-EMPTY'));
         }
+    }
+
+    public function test_webhook_for_an_unavailable_shop_is_skipped_without_order_pull(): void
+    {
+        $payload = [
+            'type' => 11,
+            'shop_id' => 'DISCONNECTED-SHOP',
+            'tts_notification_id' => 'unavailable-shop',
+            'data' => ['order_id' => 'O-UNAVAILABLE'],
+        ];
+
+        $record = ChannelWebhookInbox::create([
+            'channel' => 'tiktok',
+            'shop_id' => $payload['shop_id'],
+            'event_key' => ProcessTikTokWebhook::idempotencyKey($payload),
+            'event_type' => '11',
+            'payload' => $payload,
+            'status' => WebhookInboxStatus::RECEIVED,
+            'received_at' => now(),
+        ]);
+
+        $order = Mockery::mock(TikTokOrderService::class);
+        $order->shouldNotReceive('pullOrderById');
+
+        $this->process($payload, $order);
+
+        $this->assertSame(WebhookInboxStatus::SKIPPED, $record->fresh()->status);
     }
 }

@@ -50,6 +50,18 @@ return [
             'after_commit' => true,
         ],
 
+        // Scheduled channel pulls can need more than the default 180 seconds.
+        // Keep their visibility timeout isolated so ordinary operational queues
+        // recover quickly after a worker crash.
+        'redis-channel-sync' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'queue' => env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync'),
+            'retry_after' => (int) env('REDIS_CHANNEL_SYNC_RETRY_AFTER', 360),
+            'block_for' => null,
+            'after_commit' => true,
+        ],
+
         'redis-long' => [
             'driver' => 'redis',
             'connection' => env('REDIS_LONG_CONNECTION', 'long'),
@@ -179,6 +191,11 @@ return [
         'channel_finance' => [
             'connection' => env('QUEUE_CHANNEL_FINANCE_CONNECTION', 'redis-finance'),
             'queue' => env('QUEUE_NAME_CHANNEL_FINANCE', 'channel-finance'),
+        ],
+
+        'channel_sync' => [
+            'connection' => env('QUEUE_CHANNEL_SYNC_CONNECTION', 'redis-channel-sync'),
+            'queue' => env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync'),
         ],
 
         'labels' => [

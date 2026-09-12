@@ -4,8 +4,9 @@ metadata:
   name: cilupbah-operational-retention
   namespace: cilupbah
 spec:
-  # UTC: 20:45 = 03:45 WIB, setelah backup database pukul 02:30 WIB.
-  schedule: "45 20 * * *"
+  # Small, indexed batches prevent failed_jobs from growing into a multi-GB
+  # table while avoiding one large delete during business hours.
+  schedule: "*/15 * * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
@@ -27,7 +28,7 @@ spec:
                   # Saat rollout, manifest CronJob diterapkan sebelum migrasi.
                   # Lewati satu jadwal bila indeks retensi belum tersedia.
                   php artisan tinker --no-ansi --execute='exit(\Illuminate\Support\Facades\DB::table("migrations")->where("migration", "2026_09_07_100000_add_operational_retention_indexes")->exists() ? 0 : 1);' || exit 0
-                  exec php artisan operations:prune-history
+                  exec php artisan operations:prune-history --batch=500 --max-rows=10000
               envFrom:
                 - secretRef:
                     name: cilupbah-env

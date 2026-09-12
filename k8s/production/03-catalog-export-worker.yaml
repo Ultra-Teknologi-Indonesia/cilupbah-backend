@@ -25,13 +25,20 @@ spec:
           image: ghcr.io/ultra-teknologi-indonesia/cilupbah:v1.0.0
           command:
             - sh
-            - -lc
-            - >-
-              exec php artisan queue:work
-              "${CATALOG_EXPORT_QUEUE_CONNECTION:-redis-long}"
-              --queue="${QUEUE_NAME_CATALOG_EXPORTS:-catalog-exports}"
-              --sleep=3 --tries=2 --backoff=10 --timeout=660
-              --memory=512 --max-jobs=1 --max-time=600
+            - -c
+            - |
+              trap 'exit 0' INT TERM
+              while true; do
+                php artisan queue:work "${CATALOG_EXPORT_QUEUE_CONNECTION:-redis-long}" \
+                  --queue="${QUEUE_NAME_CATALOG_EXPORTS:-catalog-exports}" \
+                  --sleep=3 --tries=2 --backoff=10 --timeout=660 \
+                  --memory=512 --max-jobs=1 --max-time=600
+                exit_code=$?
+                if [ "$exit_code" -ne 0 ]; then
+                  exit "$exit_code"
+                fi
+                sleep 1
+              done
           envFrom:
             - secretRef:
                 name: cilupbah-env

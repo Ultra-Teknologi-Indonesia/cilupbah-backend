@@ -5,10 +5,10 @@ namespace Modules\Channel\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
-use Modules\Channel\Models\Channel;
-use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Exceptions\ChannelOrderPullIncompleteException;
 use Modules\Channel\Jobs\PullChannelOrdersJob;
+use Modules\Channel\Models\Channel;
+use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Services\ChannelOrderPullLeaseService;
 use Modules\Channel\Services\ShopeeOrderService;
@@ -19,6 +19,7 @@ class PullLiveOrdersCommandTest extends TestCase
     use RefreshDatabase;
 
     private ChannelShop $liveShop;
+
     private ChannelShop $shadowShop;
 
     protected function setUp(): void
@@ -99,7 +100,10 @@ class PullLiveOrdersCommandTest extends TestCase
             '--overlap-minutes' => 5,
         ])->assertSuccessful();
 
-        Queue::assertPushed(PullChannelOrdersJob::class, 1);
+        Queue::assertPushed(PullChannelOrdersJob::class, function (PullChannelOrdersJob $job): bool {
+            return $job->connection === config('queue.routing.channel_sync.connection')
+                && $job->queue === config('queue.names.channel_sync');
+        });
         $this->assertNotNull($this->liveShop->fresh()->order_pull_lease_token);
         $this->assertNotNull($this->liveShop->fresh()->order_pull_locked_until);
 

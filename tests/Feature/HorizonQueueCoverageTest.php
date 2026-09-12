@@ -81,9 +81,9 @@ class HorizonQueueCoverageTest extends TestCase
         }
     }
 
-    public function test_stock_cutover_has_a_dedicated_low_concurrency_supervisor(): void
+    public function test_cutover_queues_share_a_single_low_concurrency_supervisor(): void
     {
-        $supervisor = config('horizon.defaults.supervisor-stock-cutover');
+        $supervisor = config('horizon.defaults.supervisor-cutover');
 
         $this->assertIsArray($supervisor);
         $this->assertSame(
@@ -94,7 +94,92 @@ class HorizonQueueCoverageTest extends TestCase
             config('operations.stock_cutover_console.queue', 'stock-cutover'),
             (array) ($supervisor['queue'] ?? []),
         );
+        $this->assertContains(
+            config('operations.order_cutover_console.queue', 'order-cutover'),
+            (array) ($supervisor['queue'] ?? []),
+        );
+        $this->assertSame('off', $supervisor['balance'] ?? null);
         $this->assertSame(1, $supervisor['minProcesses'] ?? null);
         $this->assertSame(1, $supervisor['maxProcesses'] ?? null);
+    }
+
+    public function test_multi_queue_supervisors_use_a_bounded_shared_worker_pool(): void
+    {
+        foreach ([
+            'supervisor-default' => 1,
+            'supervisor-order-operations' => 2,
+            'supervisor-channel-sync' => 1,
+            'supervisor-channel-operations' => 1,
+            'supervisor-stock' => 1,
+            'supervisor-shopee-orders' => 1,
+            'supervisor-tiktok-orders' => 1,
+            'supervisor-lazada-orders' => 1,
+            'supervisor-tiktok-webhooks-operational' => 1,
+            'supervisor-tiktok-webhooks-background' => 1,
+            'supervisor-shopee-webhooks-operational' => 1,
+            'supervisor-shopee-webhooks-background' => 1,
+            'supervisor-lazada-webhooks-operational' => 1,
+            'supervisor-lazada-webhooks-background' => 1,
+        ] as $name => $workers) {
+            $supervisor = config("horizon.defaults.{$name}");
+
+            $this->assertSame('off', $supervisor['balance'] ?? null, "{$name} harus memakai pool bersama.");
+            $this->assertSame($workers, $supervisor['minProcesses'] ?? null, "{$name} min worker tidak sesuai.");
+            $this->assertSame($workers, $supervisor['maxProcesses'] ?? null, "{$name} max worker tidak sesuai.");
+        }
+    }
+
+    public function test_channel_orders_and_operational_webhooks_are_isolated_from_background_work(): void
+    {
+        $expectedQueues = [
+            'supervisor-shopee-orders' => [config('queue.names.shopee_orders', 'shopee-orders')],
+            'supervisor-tiktok-orders' => [config('queue.names.tiktok_orders', 'tiktok-orders')],
+            'supervisor-lazada-orders' => [config('queue.names.lazada_orders', 'lazada-orders')],
+            'supervisor-tiktok-webhooks-operational' => [
+                env('QUEUE_NAME_TIKTOK_PACKAGES', 'tiktok-packages'),
+                env('QUEUE_NAME_TIKTOK_WEBHOOKS', 'tiktok-webhooks'),
+            ],
+            'supervisor-tiktok-webhooks-background' => [
+                env('QUEUE_NAME_TIKTOK_AFTERSALES', 'tiktok-aftersales'),
+                env('QUEUE_NAME_TIKTOK_CATALOG', 'tiktok-catalog'),
+            ],
+            'supervisor-shopee-webhooks-operational' => [
+                env('QUEUE_NAME_SHOPEE_TRACKING', 'shopee-tracking'),
+                env('QUEUE_NAME_SHOPEE_WEBHOOKS', 'shopee-webhooks'),
+            ],
+            'supervisor-shopee-webhooks-background' => [
+                env('QUEUE_NAME_SHOPEE_AFTERSALES', 'shopee-aftersales'),
+                env('QUEUE_NAME_SHOPEE_CATALOG', 'shopee-catalog'),
+                env('QUEUE_NAME_WEBHOOK_DOWNLOADS', 'webhook-downloads'),
+            ],
+            'supervisor-lazada-webhooks-operational' => [
+                env('QUEUE_NAME_LAZADA_FULFILLMENT', 'lazada-fulfillment'),
+                env('QUEUE_NAME_LAZADA_WEBHOOKS', 'lazada-webhooks'),
+            ],
+            'supervisor-lazada-webhooks-background' => [
+                env('QUEUE_NAME_LAZADA_AFTERSALES', 'lazada-aftersales'),
+                env('QUEUE_NAME_LAZADA_CATALOG', 'lazada-catalog'),
+            ],
+        ];
+
+        foreach ($expectedQueues as $supervisor => $queues) {
+            $this->assertSame($queues, config("horizon.defaults.{$supervisor}.queue"));
+        }
+    }
+
+    public function test_production_worker_memory_ceiling_leaves_pod_headroom(): void
+    {
+        $production = array_replace_recursive(
+            config('horizon.defaults', []),
+            config('horizon.environments.production', []),
+        );
+
+        $workerMegabytes = collect($production)->sum(
+            fn (array $supervisor): int => (int) ($supervisor['maxProcesses'] ?? 0)
+                * (int) ($supervisor['memory'] ?? 0),
+        );
+        $withMasterMegabytes = $workerMegabytes + (int) config('horizon.memory_limit');
+
+        $this->assertLessThanOrEqual(5734, $withMasterMegabytes);
     }
 }

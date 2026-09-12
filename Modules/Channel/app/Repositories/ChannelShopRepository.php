@@ -3,11 +3,11 @@
 namespace Modules\Channel\Repositories;
 
 use Illuminate\Support\Facades\DB;
+use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Support\UploadErrorPresenter;
 use Modules\Notification\Services\NotificationDispatcher;
-
 use Spatie\QueryBuilder\QueryBuilder;
-use Spatie\QueryBuilder\AllowedFilter;
 
 class ChannelShopRepository
 {
@@ -78,6 +78,15 @@ class ChannelShopRepository
             ->first();
     }
 
+    public function findConnectedByShopIdAndChannelCode(string $shopId, string $channelCode): ?ChannelShop
+    {
+        return ChannelShop::query()
+            ->where('shop_id', $shopId)
+            ->whereNull('disconnected_at')
+            ->whereHas('channel', fn ($query) => $query->where('code', $channelCode))
+            ->first();
+    }
+
     public function findConnectedByStoreUrl(string $source): ?ChannelShop
     {
         if ($source === '') {
@@ -89,7 +98,7 @@ class ChannelShopRepository
         return ChannelShop::whereNull('disconnected_at')
             ->where(function ($q) use ($normalized) {
                 $q->where('store_url', $normalized)
-                    ->orWhere('store_url', $normalized . '/');
+                    ->orWhere('store_url', $normalized.'/');
             })
             ->first();
     }
@@ -131,14 +140,14 @@ class ChannelShopRepository
 
     public function getAllTikTokShops()
     {
-        $channelId = \Modules\Channel\Models\Channel::where('code', 'tiktok')->value('id');
+        $channelId = Channel::where('code', 'tiktok')->value('id');
 
         return ChannelShop::where('channel_id', $channelId)->orderBy('id', 'desc')->get();
     }
 
     public function getShopsByChannelCode(string $code)
     {
-        $channelId = \Modules\Channel\Models\Channel::where('code', $code)->value('id');
+        $channelId = Channel::where('code', $code)->value('id');
 
         return ChannelShop::where('channel_id', $channelId)
             ->whereNull('disconnected_at')
@@ -184,8 +193,7 @@ class ChannelShopRepository
         string $id,
         string $leaseToken,
         \DateTimeInterface $pulledThrough,
-    ): bool
-    {
+    ): bool {
         return DB::transaction(function () use ($id, $leaseToken, $pulledThrough): bool {
             $shop = ChannelShop::query()
                 ->whereKey($id)
@@ -297,12 +305,12 @@ class ChannelShopRepository
             return $message;
         }
 
-        $channelCode = (string) (\Illuminate\Support\Facades\DB::table('channel_shops')
+        $channelCode = (string) (DB::table('channel_shops')
             ->join('channels', 'channels.id', '=', 'channel_shops.channel_id')
             ->where('channel_shops.id', $id)
             ->value('channels.code') ?? '');
 
-        return \Modules\Channel\Support\UploadErrorPresenter::fromMessage($channelCode, $message)['reason'];
+        return UploadErrorPresenter::fromMessage($channelCode, $message)['reason'];
     }
 
     public function setOrderSyncStatus(string $id, string $status, ?string $note = null): void

@@ -27,18 +27,20 @@ spec:
         - name: export-worker
           image: ghcr.io/ultra-teknologi-indonesia/cilupbah:v1.0.0
           command:
-            - php
-            - artisan
-            - queue:work
-            - redis-long
-            - --queue=exports-sheet
-            - --sleep=3
-            - --tries=2
-            - --backoff=30
-            - --timeout=780
-            - --memory=768
-            - --max-jobs=1
-            - --max-time=720
+            - sh
+            - -c
+            - |
+              trap 'exit 0' INT TERM
+              while true; do
+                php artisan queue:work redis-long \
+                  --queue=exports-sheet --sleep=3 --tries=2 --backoff=30 \
+                  --timeout=780 --memory=768 --max-jobs=1 --max-time=720
+                exit_code=$?
+                if [ "$exit_code" -ne 0 ]; then
+                  exit "$exit_code"
+                fi
+                sleep 1
+              done
           envFrom:
             - secretRef:
                 name: cilupbah-env

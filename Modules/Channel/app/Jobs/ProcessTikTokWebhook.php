@@ -151,6 +151,13 @@ class ProcessTikTokWebhook implements ShouldBeUnique, ShouldQueue
             return;
         }
 
+        $shop = $shops->findConnectedByShopIdAndChannelCode($shopId, 'tiktok');
+        if (! $shop || ! $shop->is_active) {
+            $this->acknowledgeUnavailableShop($type, $shopId);
+
+            return;
+        }
+
         $idempotencyKey = self::idempotencyKey($this->payload);
 
         if (! Cache::add($idempotencyKey, true, now()->addHours(24))) {
@@ -568,6 +575,20 @@ class ProcessTikTokWebhook implements ShouldBeUnique, ShouldQueue
 
         Log::warning('TikTok Webhook tanpa shop_id — diabaikan.', [
             'type' => $type,
+            'tts_notification_id' => $this->payload['tts_notification_id'] ?? null,
+        ]);
+    }
+
+    private function acknowledgeUnavailableShop(int $type, string $shopId): void
+    {
+        ChannelWebhookInbox::markSkippedByKey(
+            self::idempotencyKey($this->payload),
+            'Webhook TikTok dilewati karena toko tidak terhubung atau nonaktif.',
+        );
+
+        Log::info('TikTok webhook untuk toko tidak terhubung/nonaktif — dilewati.', [
+            'type' => $type,
+            'shop_id' => $shopId,
             'tts_notification_id' => $this->payload['tts_notification_id'] ?? null,
         ]);
     }

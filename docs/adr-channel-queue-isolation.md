@@ -26,7 +26,12 @@ operasi pesanan.
 
 ## Perlindungan memori dan duplikasi
 
-- Worker baru memakai satu proses per fungsi dan didaur ulang berdasarkan jumlah job/waktu.
+- Queue yang memiliki tingkat prioritas sama dapat berbagi worker tetap dengan urutan queue
+  eksplisit; queue pesanan dan stok tetap memiliki kapasitas khusus. Worker didaur ulang
+  berdasarkan jumlah job/waktu agar penggunaan memori tidak menumpuk.
+- Order Shopee, TikTok, dan Lazada memiliki worker terpisah. Webhook operasional
+  (order/package/tracking/fulfillment) dipisahkan dari katalog dan after-sales agar
+  lonjakan pekerjaan background tidak menunda proses gudang.
 - Pekerjaan produk yang dapat memakan waktu memakai koneksi \`redis-long\` dengan \`retry_after\`
   lebih panjang daripada timeout job, sehingga tidak dikerjakan ganda oleh worker lain.
 - Resinkronisasi toko menggunakan \`chunkById(500)\` dan tidak mengambil seluruh daftar produk

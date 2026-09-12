@@ -3,6 +3,7 @@
 namespace Modules\Channel\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
@@ -41,9 +42,12 @@ class MonitorRedisQueueHealth extends Command
     private function monitorRedis(string $connection, string $kind): void
     {
         try {
-            $memory = Redis::connection($connection)->info('memory');
+            $redis = Redis::connection($connection);
+            $memory = $redis->info('memory');
+            $stats = $redis->info('stats');
             $used = (int) ($memory['used_memory'] ?? 0);
             $maximum = (int) ($memory['maxmemory'] ?? 0);
+            $evictedKeys = (int) ($stats['evicted_keys'] ?? 0);
 
             if ($maximum <= 0) {
                 return;
@@ -55,7 +59,12 @@ class MonitorRedisQueueHealth extends Command
                 'used_bytes' => $used,
                 'max_bytes' => $maximum,
                 'ratio' => round($ratio, 4),
+                'rss_bytes' => (int) ($memory['used_memory_rss'] ?? 0),
+                'fragmentation_ratio' => (float) ($memory['mem_fragmentation_ratio'] ?? 0),
+                'evicted_keys' => $evictedKeys,
             ];
+
+            $this->reportNewEvictions($connection, $kind, $evictedKeys, $context);
 
             if ($ratio >= 0.9) {
                 Log::critical('Redis memory above 90 percent', $context);
@@ -69,6 +78,33 @@ class MonitorRedisQueueHealth extends Command
                 'redis' => $kind,
                 'exception' => $e::class,
                 'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function reportNewEvictions(string $connection, string $kind, int $evictedKeys, array $context): void
+    {
+        $cacheKey = "queue-health:redis:{$connection}:evicted-keys";
+        $previous = Cache::get($cacheKey);
+
+        Cache::forever($cacheKey, $evictedKeys);
+
+        if ($previous === null) {
+            if ($evictedKeys > 0) {
+                Log::warning('Redis has historical evictions; establish capacity before the next spike', $context + [
+                    'redis' => $kind,
+                    'new_evictions' => 0,
+                ]);
+            }
+
+            return;
+        }
+
+        $previous = (int) $previous;
+        if ($evictedKeys > $previous) {
+            Log::critical('Redis evicted keys since the previous health check', $context + [
+                'redis' => $kind,
+                'new_evictions' => $evictedKeys - $previous,
             ]);
         }
     }

@@ -5,6 +5,10 @@ metadata:
   namespace: cilupbah
 spec:
   replicas: 1
+  # Never run two Horizon masters during a rollout: duplicate workers consume
+  # memory and can process the same operational backlog concurrently.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: cilupbah-horizon
@@ -21,10 +25,12 @@ spec:
           command: ["php", "artisan", "horizon"]
           resources:
             requests:
-              memory: "2Gi"
-              cpu: "300m"
+              memory: "4Gi"
+              cpu: "500m"
             limits:
-              memory: "5Gi"
+              # The worker plan is kept below 80% of this limit. The remaining
+              # headroom absorbs peak PHP/Redis client memory without OOMKills.
+              memory: "7Gi"
               cpu: "2000m"
           envFrom:
             - secretRef:

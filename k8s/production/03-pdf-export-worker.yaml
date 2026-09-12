@@ -22,18 +22,20 @@ spec:
         - name: pdf-export-worker
           image: ghcr.io/ultra-teknologi-indonesia/cilupbah:v1.0.0
           command:
-            - php
-            - artisan
-            - queue:work
-            - redis-long
-            - --queue=exports-pdf
-            - --sleep=3
-            - --tries=2
-            - --backoff=30
-            - --timeout=960
-            - --memory=1536
-            - --max-jobs=1
-            - --max-time=900
+            - sh
+            - -c
+            - |
+              trap 'exit 0' INT TERM
+              while true; do
+                php artisan queue:work redis-long \
+                  --queue=exports-pdf --sleep=3 --tries=2 --backoff=30 \
+                  --timeout=960 --memory=1536 --max-jobs=1 --max-time=900
+                exit_code=$?
+                if [ "$exit_code" -ne 0 ]; then
+                  exit "$exit_code"
+                fi
+                sleep 1
+              done
           envFrom:
             - secretRef:
                 name: cilupbah-env

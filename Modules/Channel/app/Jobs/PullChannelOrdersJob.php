@@ -25,14 +25,16 @@ final class PullChannelOrdersJob implements ShouldQueue
 
     public int $tries = 1;
 
-    public int $timeout = 55;
+    public int $timeout = 240;
 
     public function __construct(
         public readonly string $channelShopId,
         public readonly string $leaseToken,
         public readonly string $from,
         public readonly string $to,
-    ) {}
+    ) {
+        $this->onConnection(config('queue.routing.channel_sync.connection', 'redis-channel-sync'));
+    }
 
     public function handle(
         ChannelOrderPullLeaseService $leases,
