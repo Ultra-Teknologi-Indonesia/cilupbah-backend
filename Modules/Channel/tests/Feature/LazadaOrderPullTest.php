@@ -6,21 +6,27 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Tests\Support\SeedsCatalogVariant;
 use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Support\StockSummary;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Warehouse\Models\Location;
+use Modules\Warehouse\Models\LocationBin;
 use Tests\TestCase;
 
 class LazadaOrderPullTest extends TestCase
 {
     use RefreshDatabase;
-    use \Modules\Channel\Tests\Support\SeedsCatalogVariant;
+    use SeedsCatalogVariant;
 
     private User $user;
+
     private ChannelShop $shop;
 
     protected function setUp(): void
@@ -47,6 +53,28 @@ class LazadaOrderPullTest extends TestCase
             'refresh_token' => 'refresh-token',
             'token_expires_at' => now()->addDays(7),
             'is_active' => true,
+        ]);
+
+        $variantId = DB::table('product_variants')->where('sku', 'SKU-LZD-1')->value('id');
+        $productId = DB::table('product_variants')->where('id', $variantId)->value('product_id');
+        $mappingId = (string) Str::uuid();
+        DB::table('product_channel_mappings')->insert([
+            'id' => $mappingId,
+            'product_id' => $productId,
+            'channel_shop_id' => $this->shop->id,
+            'external_product_id' => 'LZ-P1',
+            'sync_status' => 'synced',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('product_variant_channel_mappings')->insert([
+            'id' => (string) Str::uuid(),
+            'product_channel_mapping_id' => $mappingId,
+            'variant_id' => $variantId,
+            'channel_seller_sku' => 'SKU-LZD-1',
+            'external_sku_id' => 'LZ-SKU-1',
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
     }
 
@@ -110,7 +138,7 @@ class LazadaOrderPullTest extends TestCase
         $order = SalesOrder::where('salesorder_no', 'LZ-900123')->first();
         $this->assertNotNull($order);
         $this->assertEquals('lazada', $order->source);
-        $this->assertEquals('pending', $order->status);          
+        $this->assertEquals('pending', $order->status);
         $this->assertEquals('Budi Santoso', $order->customer_name);
         $this->assertEquals(150000.0, (float) $order->grand_total);
 
@@ -136,7 +164,7 @@ class LazadaOrderPullTest extends TestCase
         $category = Category::create(['name' => 'C', 'is_active' => true]);
         $product = Product::create(['category_id' => $category->id, 'name' => 'Kaos', 'status' => 'master', 'is_active' => true]);
         $variant = ProductVariant::firstOrCreate(['sku' => 'SKU-LZD-1'], ['product_id' => $product->id, 'sell_price' => 70000, 'is_active' => true]);
-        $location = \Modules\Warehouse\Models\Location::where('location_code', \Modules\Warehouse\Models\Location::SYSTEM_KECIL_CODE)->firstOrFail();
+        $location = Location::where('location_code', Location::SYSTEM_KECIL_CODE)->firstOrFail();
         DB::table('channel_warehouses')->insert([
             'channel_id' => $this->shop->channel_id,
             'store_id' => 'LZ-100',
@@ -146,7 +174,7 @@ class LazadaOrderPullTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $bin = \Modules\Warehouse\Models\LocationBin::firstOrCreate(
+        $bin = LocationBin::firstOrCreate(
             ['location_id' => $location->id, 'bin_final_code' => 'RACK-A1'],
             ['floor_code' => '1', 'row_code' => 'A', 'column_code' => '1', 'bin_code' => 'A-1', 'is_inbound' => false]
         );
@@ -167,7 +195,7 @@ class LazadaOrderPullTest extends TestCase
 
         $onOrder = (int) Inventory::where('item_id', $variant->id)
             ->where('location_id', $location->id)->sum('on_order');
-        $summary = \Modules\Inventory\Support\StockSummary::forItem($variant->id, $location->id);
+        $summary = StockSummary::forItem($variant->id, $location->id);
         $this->assertEquals(2, $onOrder);
         $this->assertEquals(8, $summary['available']);
     }

@@ -2,8 +2,8 @@
 
 namespace Modules\Sales\Repositories;
 
-use App\Support\WarehouseAccess;
 use App\Exceptions\UserFacingException;
+use App\Support\WarehouseAccess;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -203,6 +203,12 @@ class SalesOrderRepository
                 'returned' => $this->visibleOrders($locationId)->whereHas('returns')->count(),
             ];
         });
+    }
+
+    public function forgetTabCounts(?string $locationId = null): void
+    {
+        $scopeKey = implode(',', WarehouseAccess::allowedIds() ?? ['all']);
+        Cache::forget('sales_order_tab_counts:'.($locationId ?? 'all').':'.$scopeKey);
     }
 
     public function readyToProcessQuery(?string $locationId = null): Builder

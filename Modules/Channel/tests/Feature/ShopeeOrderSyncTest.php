@@ -6,8 +6,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
-use Modules\Channel\Jobs\ProcessShopeeWebhook;
 use Modules\Channel\Exceptions\ChannelOrderPullIncompleteException;
+use Modules\Channel\Jobs\ProcessShopeeWebhook;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\ChannelDownloadService;
@@ -351,7 +351,7 @@ class ShopeeOrderSyncTest extends TestCase
         $this->assertNotNull(SalesOrder::where('salesorder_no', 'SP-2606SHOPEE01')->first());
     }
 
-    public function test_single_pull_reports_failure_when_order_cannot_be_persisted(): void
+    public function test_single_pull_quarantines_order_when_sku_is_not_downloaded(): void
     {
         Http::fake([
             'partner.shopeemobile.com/api/v2/order/get_order_detail*' => Http::response([
@@ -369,9 +369,13 @@ class ShopeeOrderSyncTest extends TestCase
 
         $count = app(ShopeeOrderService::class)->pullOrderById('778899', '2606SHOPEE01');
 
-        $this->assertSame(0, $count);
-        $this->assertDatabaseMissing('sales_orders', [
+        $this->assertSame(1, $count);
+        $this->assertDatabaseHas('sales_orders', [
             'salesorder_no' => 'SP-2606SHOPEE01',
+        ]);
+        $this->assertDatabaseHas('sales_order_items', [
+            'sku' => 'SKU-MISSING',
+            'item_id' => null,
         ]);
     }
 }

@@ -2,7 +2,6 @@
 
 namespace Modules\Sales\Tests\Feature;
 
-use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -18,8 +17,12 @@ class GagalDownloadFlowTest extends TestCase
     use RefreshDatabase;
 
     protected SalesOrderService $service;
+
     protected SalesOrderRepository $repository;
+
     protected string $locationId;
+
+    protected string $binId;
 
     protected function setUp(): void
     {
@@ -33,6 +36,17 @@ class GagalDownloadFlowTest extends TestCase
             'location_code' => 'LOC-GD',
             'location_name' => 'Gudang Gagal Download',
             'location_type' => 'WAREHOUSE',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->binId = Str::uuid()->toString();
+        DB::table('location_bins')->insert([
+            'id' => $this->binId,
+            'location_id' => $this->locationId,
+            'bin_code' => 'A1',
+            'bin_final_code' => 'LOC-GD-A1',
+            'is_inbound' => false,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -50,7 +64,7 @@ class GagalDownloadFlowTest extends TestCase
         DB::table('channel_shops')->insert([
             'id' => $this->channelShopId,
             'channel_id' => null,
-            'shop_id' => 'SHOP-DL-' . substr($this->channelShopId, 0, 8),
+            'shop_id' => 'SHOP-DL-'.substr($this->channelShopId, 0, 8),
             'shop_name' => 'Toko Downloaded',
             'is_active' => true,
             'created_at' => now(),
@@ -63,7 +77,7 @@ class GagalDownloadFlowTest extends TestCase
     protected function seedMasterOnlyVariant(string $sku, int $onHand = 10): string
     {
         $categoryId = DB::table('categories')->insertGetId([
-            'name' => 'Kategori ' . $sku,
+            'name' => 'Kategori '.$sku,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -72,7 +86,7 @@ class GagalDownloadFlowTest extends TestCase
         DB::table('products')->insert([
             'id' => $productId,
             'category_id' => $categoryId,
-            'name' => 'Produk ' . $sku,
+            'name' => 'Produk '.$sku,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -90,7 +104,7 @@ class GagalDownloadFlowTest extends TestCase
             'id' => Str::uuid()->toString(),
             'item_id' => $variantId,
             'location_id' => $this->locationId,
-            'bin_id' => null,
+            'bin_id' => $this->binId,
             'on_hand' => $onHand,
             'on_order' => 0,
             'available' => $onHand,
@@ -136,7 +150,7 @@ class GagalDownloadFlowTest extends TestCase
             'product_channel_mapping_id' => $pcmId,
             'variant_id' => $variantId,
             'channel_seller_sku' => $sku,
-            'external_sku_id' => 'EXT-' . $sku,
+            'external_sku_id' => 'EXT-'.$sku,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -171,7 +185,7 @@ class GagalDownloadFlowTest extends TestCase
             'items' => [[
                 'channel_product_id' => 'CP-GD',
                 'sku' => $sku,
-                'description' => 'Item ' . $sku,
+                'description' => 'Item '.$sku,
                 'qty_in_base' => 2,
                 'price' => 5000,
                 'disc' => 0,
@@ -217,7 +231,7 @@ class GagalDownloadFlowTest extends TestCase
             'item_id' => null,
             'channel_product_id' => 'CP-GD',
             'sku' => $sku,
-            'description' => 'Item ' . $sku,
+            'description' => 'Item '.$sku,
             'qty_in_base' => 2,
             'price' => 5000,
             'disc' => 0,
@@ -231,29 +245,31 @@ class GagalDownloadFlowTest extends TestCase
         return $orderId;
     }
 
-    public function test_channel_order_with_unknown_sku_is_rejected(): void
+    public function test_channel_order_with_unknown_sku_is_stored_in_failed_download(): void
     {
         $orderId = $this->service->upsertFromChannel($this->channelOrderData('GD-1', 'SKU-ASING'));
 
-        $this->assertNull($orderId, 'pesanan ber-SKU asing tidak boleh diterima');
-        $this->assertDatabaseMissing('sales_orders', ['salesorder_no' => 'GD-1']);
-        $this->assertSame(0, DB::table('sales_order_items')->count());
+        $this->assertNotNull($orderId, 'pesanan tetap disimpan agar terlihat di Gagal Download');
+        $this->assertDatabaseHas('sales_orders', ['salesorder_no' => 'GD-1', 'status' => 'pending']);
+        $this->assertDatabaseHas('sales_order_items', ['order_id' => $orderId, 'item_id' => null, 'sku' => 'SKU-ASING']);
+        $this->assertSame(1, $this->repository->getTabCounts()['failed']);
         $this->assertSame(0, DB::table('inventory_movements')->where('source', 'ORDER_RESERVE')->count());
     }
 
-    public function test_rejection_applies_to_every_channel(): void
+    public function test_unknown_sku_is_quarantined_for_every_channel(): void
     {
         foreach (['shopee', 'tiktok', 'lazada', 'woocommerce'] as $source) {
-            $payload = $this->channelOrderData('GD-CH-' . $source, 'SKU-ASING');
+            $payload = $this->channelOrderData('GD-CH-'.$source, 'SKU-ASING');
             $payload['source'] = $source;
 
-            $this->assertNull(
-                $this->service->upsertFromChannel($payload),
-                "pesanan {$source} ber-SKU asing seharusnya ditolak",
-            );
+            $orderId = $this->service->upsertFromChannel($payload);
+
+            $this->assertNotNull($orderId, "pesanan {$source} harus masuk Gagal Download");
+            $this->assertDatabaseHas('sales_orders', ['id' => $orderId, 'status' => 'pending']);
         }
 
-        $this->assertSame(0, DB::table('sales_orders')->count());
+        $this->assertSame(4, DB::table('sales_orders')->count());
+        $this->assertSame(4, $this->repository->getTabCounts()['failed']);
     }
 
     public function test_order_with_downloaded_sku_is_accepted(): void
@@ -300,16 +316,82 @@ class GagalDownloadFlowTest extends TestCase
     public function test_channel_order_downloaded_from_other_shop_is_accepted(): void
     {
 
-        $this->seedVariant('SKU-CROSSSHOP'); 
+        $this->seedVariant('SKU-CROSSSHOP');
 
         $payload = $this->channelOrderData('GD-CROSSSHOP', 'SKU-CROSSSHOP');
-        $payload['channel_shop_id'] = 'SHOP-LAIN-999'; 
+        $payload['channel_shop_id'] = 'SHOP-LAIN-999';
 
         $orderId = $this->service->upsertFromChannel($payload);
 
         $this->assertNotNull($orderId);
         $item = DB::table('sales_order_items')->where('order_id', $orderId)->first();
         $this->assertNotNull($item->item_id, 'SKU sudah kedownload dari toko lain → tetap ter-bind');
+    }
+
+    public function test_mixed_channel_order_waits_without_reserving_until_last_sku_is_downloaded(): void
+    {
+        $mappedVariantId = $this->seedVariant('SKU-MAPPED');
+        $payload = $this->channelOrderData('GD-MIXED', 'SKU-MAPPED');
+        $payload['items'][] = [
+            'channel_product_id' => 'CP-GD-MISSING',
+            'sku' => 'SKU-MISSING',
+            'description' => 'Item SKU-MISSING',
+            'qty_in_base' => 1,
+            'price' => 5000,
+            'disc' => 0,
+            'disc_amount' => 0,
+            'tax_amount' => 0,
+            'amount' => 5000,
+        ];
+
+        $orderId = $this->service->upsertFromChannel($payload);
+        $order = $this->freshOrder($orderId);
+
+        $this->assertSame('pending', $order->status);
+        $this->assertSame(1, $this->repository->getTabCounts()['failed']);
+        $this->assertSame(0, DB::table('inventory_movements')->where('source', 'ORDER_RESERVE')->count());
+        $this->assertSame(0, DB::table('inventories')->where('item_id', $mappedVariantId)->value('on_order'));
+
+        $missingVariantId = $this->seedVariant('SKU-MISSING');
+        $missingItemId = $order->items->firstWhere('sku', 'SKU-MISSING')->id;
+
+        $this->service->downloadOrderItem($order, $missingItemId);
+
+        $this->assertSame('reserved', $this->freshOrder($orderId)->status);
+        $this->assertSame(0, $this->repository->getTabCounts()['failed']);
+        $this->assertSame(2, DB::table('inventories')->where('item_id', $mappedVariantId)->value('on_order'));
+        $this->assertSame(1, DB::table('inventories')->where('item_id', $missingVariantId)->value('on_order'));
+        $this->assertSame(2, DB::table('inventory_movements')->where('source', 'ORDER_RESERVE')->count());
+    }
+
+    public function test_later_unmapped_webhook_does_not_regress_reserved_order_or_reserve_again(): void
+    {
+        $mappedVariantId = $this->seedVariant('SKU-RESERVED');
+        $payload = $this->channelOrderData('GD-RESERVED', 'SKU-RESERVED');
+        $orderId = $this->service->upsertFromChannel($payload);
+
+        $this->assertSame('reserved', $this->freshOrder($orderId)->status);
+        $this->assertSame(2, DB::table('inventories')->where('item_id', $mappedVariantId)->value('on_order'));
+
+        $payload['items'][] = [
+            'channel_product_id' => 'CP-GD-LATE-MISSING',
+            'sku' => 'SKU-LATE-MISSING',
+            'description' => 'Item SKU-LATE-MISSING',
+            'qty_in_base' => 1,
+            'price' => 5000,
+            'disc' => 0,
+            'disc_amount' => 0,
+            'tax_amount' => 0,
+            'amount' => 5000,
+        ];
+
+        $this->service->upsertFromChannel($payload);
+
+        $order = $this->freshOrder($orderId);
+        $this->assertSame('reserved', $order->status);
+        $this->assertSame(1, $this->repository->getTabCounts()['failed']);
+        $this->assertSame(2, DB::table('inventories')->where('item_id', $mappedVariantId)->value('on_order'));
+        $this->assertSame(1, DB::table('inventory_movements')->where('source', 'ORDER_RESERVE')->count());
     }
 
     public function test_unmapped_order_appears_in_failed_tab_not_ready_to_process(): void

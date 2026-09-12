@@ -2021,8 +2021,6 @@ class SalesOrderService
             $this->attemptChannelProductPull($order, $item);
         }
 
-        $wasUnmapped = $this->hasUnmappedItems($order->loadMissing('items'));
-
         $mutated = DB::transaction(function () use ($order, $orderItemId, $variantId) {
             $lockedOrderQuery = SalesOrder::whereKey($order->id);
             WarehouseAccess::apply($lockedOrderQuery, 'location_id');
@@ -2049,19 +2047,59 @@ class SalesOrderService
 
             $item->update(['item_id' => $resolvedVariantId]);
 
-            if ($lockedOrder->status === 'reserved') {
+            $stockMutated = false;
+
+            $lockedOrder->load('items');
+            $hasUnmappedAfterMapping = $this->hasUnmappedItems($lockedOrder);
+
+            if ($lockedOrder->status === 'reserved' && ! $hasUnmappedAfterMapping) {
                 $item->refresh();
                 $this->reserveStockForItem($lockedOrder, $item, $this->isManualSource($lockedOrder->source));
+                $stockMutated = true;
             }
 
-            return true;
+            if (
+                $lockedOrder->source
+                && $lockedOrder->status === 'pending'
+                && ! $hasUnmappedAfterMapping
+            ) {
+                $targetStatus = $this->targetStatusAfterDownload($lockedOrder);
+
+                if ($targetStatus !== 'pending') {
+                    $lockedOrder->status = $targetStatus;
+                    $lockedOrder->save();
+
+                    $stockMutated = $this->reconcileStockTransition(
+                        $lockedOrder,
+                        null,
+                        $targetStatus,
+                    ) || $stockMutated;
+
+                    $this->logStatusHistory($lockedOrder, 'PROCESS', [
+                        'from' => 'pending',
+                        'to' => $targetStatus,
+                        'reason' => 'failed_download_resolved',
+                        'channel_status' => $lockedOrder->channel_status,
+                    ]);
+                }
+            }
+
+            return $stockMutated;
         });
 
         if ($mutated) {
             SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
         }
 
+        $this->forgetOrderTabCounts();
+
         return $this->freshOrderWithItems($order);
+    }
+
+    private function forgetOrderTabCounts(): void
+    {
+        Cache::forget('sales:tab-counts:u:'.(auth()->id() ?? 'guest'));
+        $this->orderRepository->forgetTabCounts();
     }
 
     private function freshOrderWithItems(SalesOrder $order): SalesOrder
@@ -2083,6 +2121,17 @@ class SalesOrderService
         }
 
         return false;
+    }
+
+    private function targetStatusAfterDownload(SalesOrder $order): string
+    {
+        $channelStatus = strtoupper(trim((string) $order->channel_status));
+
+        if ($channelStatus !== '') {
+            return $this->mapChannelStatusToInternal($channelStatus);
+        }
+
+        return $order->is_paid ? 'reserved' : 'pending';
     }
 
     private function attemptChannelProductPull(SalesOrder $order, SalesOrderItem $item): void
@@ -2165,25 +2214,6 @@ class SalesOrderService
                 && empty($existing?->cancel_requested_at)
                 && ! $existing?->cancel_accepted_at
                 && ! $existing?->cancel_rejected_at;
-
-            if ($wasNewOrder && ! empty($orderData['items']) && is_array($orderData['items'])) {
-                $unmapped = $this->orderRepository->unmappedSkus($orderData['items']);
-
-                if (! empty($unmapped)) {
-                    DB::rollBack();
-
-                    Log::warning('Pesanan channel ditolak: SKU belum diunduh', [
-                        'salesorder_no' => $orderData['salesorder_no'] ?? null,
-                        'channel_order_no' => $orderData['channel_order_no'] ?? null,
-                        'source' => $source,
-                        'channel_shop_id' => $orderData['channel_shop_id'] ?? null,
-                        'transaction_date' => $orderData['transaction_date'] ?? null,
-                        'unmapped_skus' => $unmapped,
-                    ]);
-
-                    return null;
-                }
-            }
 
             if ($existing && $existing->handed_to_warehouse_at && in_array($mappedStatus, ['picked', 'packed'], true)) {
                 $mappedStatus = $previousStatus;
@@ -2286,7 +2316,20 @@ class SalesOrderService
                 }
             }
 
-            if ($order->source && $this->hasUnmappedItems($order) && $finalStatus !== 'cancelled') {
+            $hasUnmappedItems = $order->source
+                && $this->hasUnmappedItems($order)
+                && $finalStatus !== 'cancelled';
+
+            $shouldQuarantineUnmapped = $hasUnmappedItems
+                && ($previousStatus === null || $previousStatus === 'pending');
+
+            if ($hasUnmappedItems && ! $shouldQuarantineUnmapped && $previousStatus !== null) {
+
+                $finalStatus = $previousStatus;
+                $orderData['status'] = $previousStatus;
+            }
+
+            if ($shouldQuarantineUnmapped) {
                 if ($finalStatus !== 'pending') {
                     Log::info('Channel order quarantined: produk belum di-download', [
                         'order_id' => $order->id,
@@ -2304,11 +2347,14 @@ class SalesOrderService
             }
 
             $needsStockTransition = $this->shouldReconcileChannelStock($previousStatus, $finalStatus);
-            $deferStockTransition = $needsStockTransition
+            $deferStockTransition = ! $hasUnmappedItems
+                && $needsStockTransition
                 && $this->hasInvalidPhysicalStockForChannelOrder($order);
             $stockAllocation = $deferStockTransition
                 ? 'deferred_invalid_on_hand'
-                : ($finalStatus === 'reserved' ? 'reserved' : 'not_required');
+                : ($hasUnmappedItems
+                    ? 'quarantined_unmapped'
+                    : ($finalStatus === 'reserved' ? 'reserved' : 'not_required'));
 
             if ($existing === null) {
                 $this->logStatusHistory($order, 'CREATED', [
@@ -2325,11 +2371,16 @@ class SalesOrderService
                 );
             }
 
-            $stockMutated = ! $needsStockTransition
+            if (
+                $hasUnmappedItems
+                || ! $needsStockTransition
                 || $deferStockTransition
                 || $this->isPendingChannelCancellation($orderData, $finalStatus)
-                ? false
-                : $this->reconcileStockTransition($order, $previousStatus, $finalStatus);
+            ) {
+                $stockMutated = false;
+            } else {
+                $stockMutated = $this->reconcileStockTransition($order, $previousStatus, $finalStatus);
+            }
 
             if ($deferStockTransition) {
                 Log::warning('Channel order disimpan tanpa mutasi inventory karena on_hand fisik lama invalid', [
@@ -2348,6 +2399,8 @@ class SalesOrderService
             }
 
             DB::commit();
+
+            $this->forgetOrderTabCounts();
 
             $isShippedChannel = in_array(strtoupper((string) ($channelStatus ?? $order->channel_status)), ['SHIPPED', 'COMPLETED', 'DELIVERED', 'TO_CONFIRM_RECEIVE'], true)
                 || in_array($finalStatus, ['shipped', 'completed', 'delivered'], true);

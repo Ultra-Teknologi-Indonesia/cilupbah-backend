@@ -7,19 +7,24 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Services\TikTokOrderService;
+use Modules\Channel\Tests\Support\SeedsCatalogVariant;
 use Modules\Sales\Models\SalesOrder;
 use Tests\TestCase;
 
 class TikTokOrderOpsTest extends TestCase
 {
     use RefreshDatabase;
-    use \Modules\Channel\Tests\Support\SeedsCatalogVariant;
+    use SeedsCatalogVariant;
 
     private User $user;
+
     private ChannelShop $shop;
 
     private const ORDER_ID = '5760001';
+
     private const SALES_NO = 'TT-5760001';
+
     private const BASE = 'open-api.tiktokglobalshop.com';
 
     protected function setUp(): void
@@ -53,34 +58,34 @@ class TikTokOrderOpsTest extends TestCase
         $returnId = '4041827037794371092';
 
         Http::fake([
-            self::BASE . '/return_refund/202309/returns/search*' => Http::response([
+            self::BASE.'/return_refund/202309/returns/search*' => Http::response([
                 'code' => 0,
                 'data' => ['return_orders' => [[
-                    'return_id'          => $returnId,
-                    'order_id'           => self::ORDER_ID,
-                    'return_status'      => 'RETURN_OR_REFUND_REQUEST_PENDING',
-                    'return_reason'      => 'buyer_return_and_refund_suspected_counterfeit',
+                    'return_id' => $returnId,
+                    'order_id' => self::ORDER_ID,
+                    'return_status' => 'RETURN_OR_REFUND_REQUEST_PENDING',
+                    'return_reason' => 'buyer_return_and_refund_suspected_counterfeit',
                     'return_reason_text' => 'Suspected counterfeit',
-                    'update_time'        => 1718000000,
-                    'refund_amount'      => [
-                        'currency'            => 'IDR',
-                        'refund_subtotal'     => '35000',
+                    'update_time' => 1718000000,
+                    'refund_amount' => [
+                        'currency' => 'IDR',
+                        'refund_subtotal' => '35000',
                         'refund_shipping_fee' => '0',
-                        'refund_tax'          => '0',
-                        'buyer_service_fee'   => '1000',
-                        'refund_total'        => '36360',
+                        'refund_tax' => '0',
+                        'buyer_service_fee' => '1000',
+                        'refund_total' => '36360',
                     ],
                     'shipping_fee_amount' => [[
-                        'currency'                          => 'IDR',
-                        'buyer_paid_return_shipping_fee'    => '0',
+                        'currency' => 'IDR',
+                        'buyer_paid_return_shipping_fee' => '0',
                         'platform_paid_return_shipping_fee' => '0',
-                        'seller_paid_return_shipping_fee'   => '32000',
+                        'seller_paid_return_shipping_fee' => '32000',
                     ]],
                 ]]],
             ], 200),
         ]);
 
-        $detail = app(\Modules\Channel\Services\TikTokOrderService::class)
+        $detail = app(TikTokOrderService::class)
             ->fetchReturnDetail('TT-700', $returnId);
 
         $this->assertSame(36360.0, $detail['refund_amount']);
@@ -96,22 +101,22 @@ class TikTokOrderOpsTest extends TestCase
         return [
             'code' => 0,
             'data' => ['orders' => [[
-                'id'                => self::ORDER_ID,
-                'status'            => $status,
-                'create_time'       => 1718000000,
-                'buyer_email'       => 'buyer@example.com',
+                'id' => self::ORDER_ID,
+                'status' => $status,
+                'create_time' => 1718000000,
+                'buyer_email' => 'buyer@example.com',
                 'recipient_address' => ['name' => 'Budi', 'full_address' => 'Jl. Mawar 1'],
-                'payment'           => ['total_amount' => '100000', 'original_total_product_price' => '100000'],
-                'packages'          => [[
-                    'id'                     => 'PKG-1',
-                    'tracking_number'        => 'TTRK-1',
+                'payment' => ['total_amount' => '100000', 'original_total_product_price' => '100000'],
+                'packages' => [[
+                    'id' => 'PKG-1',
+                    'tracking_number' => 'TTRK-1',
                     'shipping_provider_name' => 'TikTok Logistics',
                 ]],
-                'line_items'        => [[
-                    'product_id'    => 'P1',
-                    'sku_id'        => 'S1',
-                    'product_name'  => 'Kaos',
-                    'quantity'      => 1,
+                'line_items' => [[
+                    'product_id' => 'P1',
+                    'sku_id' => 'S1',
+                    'product_name' => 'Kaos',
+                    'quantity' => 1,
                     'original_price' => '100000',
                 ]],
             ]]],
@@ -121,28 +126,28 @@ class TikTokOrderOpsTest extends TestCase
     private function seedLocalOrder(string $channelStatus, string $status): SalesOrder
     {
         return SalesOrder::create([
-            'salesorder_no'   => self::SALES_NO,
+            'salesorder_no' => self::SALES_NO,
             'channel_order_no' => self::ORDER_ID,
             'channel_shop_id' => 'TT-700',
-            'customer_name'   => 'Budi',
-            'source'          => 'tiktok',
-            'channel_status'  => $channelStatus,
-            'status'          => $status,
-            'sub_total'       => 100000,
-            'total_disc'      => 0,
-            'total_tax'       => 0,
-            'shipping_cost'   => 0,
-            'insurance_cost'  => 0,
-            'grand_total'     => 100000,
-            'is_paid'         => true,
+            'customer_name' => 'Budi',
+            'source' => 'tiktok',
+            'channel_status' => $channelStatus,
+            'status' => $status,
+            'sub_total' => 100000,
+            'total_disc' => 0,
+            'total_tax' => 0,
+            'shipping_cost' => 0,
+            'insurance_cost' => 0,
+            'grand_total' => 100000,
+            'is_paid' => true,
         ]);
     }
 
     public function test_accept_order_hits_packages_api_and_syncs_status(): void
     {
         Http::fake([
-            self::BASE . '/fulfillment/202309/packages*' => Http::response(['code' => 0, 'data' => ['package_id' => 'PKG-1']], 200),
-            self::BASE . '/order/202309/orders*' => Http::response($this->orderDetail('AWAITING_SHIPMENT'), 200),
+            self::BASE.'/fulfillment/202309/packages*' => Http::response(['code' => 0, 'data' => ['package_id' => 'PKG-1']], 200),
+            self::BASE.'/order/202309/orders*' => Http::response($this->orderDetail('AWAITING_SHIPMENT'), 200),
         ]);
 
         $this->actingAs($this->user, 'sanctum')
@@ -154,15 +159,15 @@ class TikTokOrderOpsTest extends TestCase
         $order = SalesOrder::where('salesorder_no', self::SALES_NO)->first();
         $this->assertNotNull($order);
         $this->assertEquals('READY_TO_SHIP', $order->channel_status);
-        $this->assertEquals('reserved', $order->status);
+        $this->assertEquals('pending', $order->status, 'SKU belum di-download sehingga order masuk Gagal Download');
     }
 
     public function test_ship_order_hits_ship_api_and_status_becomes_packed(): void
     {
         Http::fake([
-            self::BASE . '/fulfillment/202309/packages/*/ship*' => Http::response(['code' => 0, 'data' => ['package_id' => 'PKG-1']], 200),
-            self::BASE . '/fulfillment/202309/packages*' => Http::response(['code' => 0, 'data' => []], 200),
-            self::BASE . '/order/202309/orders*' => Http::response($this->orderDetail('AWAITING_COLLECTION'), 200),
+            self::BASE.'/fulfillment/202309/packages/*/ship*' => Http::response(['code' => 0, 'data' => ['package_id' => 'PKG-1']], 200),
+            self::BASE.'/fulfillment/202309/packages*' => Http::response(['code' => 0, 'data' => []], 200),
+            self::BASE.'/order/202309/orders*' => Http::response($this->orderDetail('AWAITING_COLLECTION'), 200),
         ]);
 
         $this->actingAs($this->user, 'sanctum')
@@ -175,15 +180,15 @@ class TikTokOrderOpsTest extends TestCase
         $order = SalesOrder::where('salesorder_no', self::SALES_NO)->first();
         $this->assertNotNull($order);
         $this->assertEquals('PROCESSED', $order->channel_status);
-        $this->assertEquals('packed', $order->status);
+        $this->assertEquals('pending', $order->status, 'SKU belum di-download sehingga order tetap dikarantina');
         $this->assertEquals('TTRK-1', $order->tracking_number);
     }
 
     public function test_decline_order_hits_cancellation_api_and_status_cancelled(): void
     {
         Http::fake([
-            self::BASE . '/return_refund/202309/cancellations*' => Http::response(['code' => 0, 'data' => ['cancel_id' => 'C1']], 200),
-            self::BASE . '/order/202309/orders*' => Http::response($this->orderDetail('CANCELLED'), 200),
+            self::BASE.'/return_refund/202309/cancellations*' => Http::response(['code' => 0, 'data' => ['cancel_id' => 'C1']], 200),
+            self::BASE.'/order/202309/orders*' => Http::response($this->orderDetail('CANCELLED'), 200),
         ]);
 
         $this->actingAs($this->user, 'sanctum')
@@ -200,8 +205,8 @@ class TikTokOrderOpsTest extends TestCase
     public function test_handle_buyer_cancel_accept_hits_approve_and_cancels(): void
     {
         Http::fake([
-            self::BASE . '/return_refund/202309/cancellations/approve*' => Http::response(['code' => 0, 'data' => []], 200),
-            self::BASE . '/order/202309/orders*' => Http::response($this->orderDetail('CANCELLED'), 200),
+            self::BASE.'/return_refund/202309/cancellations/approve*' => Http::response(['code' => 0, 'data' => []], 200),
+            self::BASE.'/order/202309/orders*' => Http::response($this->orderDetail('CANCELLED'), 200),
         ]);
 
         $this->actingAs($this->user, 'sanctum')
@@ -221,8 +226,8 @@ class TikTokOrderOpsTest extends TestCase
         $this->seedLocalOrder('AWAITING_SHIPMENT', 'reserved');
 
         Http::fake([
-            self::BASE . '/return_refund/202309/cancellations*' => Http::response(['code' => 0, 'data' => ['cancel_id' => 'C1']], 200),
-            self::BASE . '/order/202309/orders*' => Http::response($this->orderDetail('CANCELLED'), 200),
+            self::BASE.'/return_refund/202309/cancellations*' => Http::response(['code' => 0, 'data' => ['cancel_id' => 'C1']], 200),
+            self::BASE.'/order/202309/orders*' => Http::response($this->orderDetail('CANCELLED'), 200),
         ]);
 
         $this->actingAs($this->user, 'sanctum')
