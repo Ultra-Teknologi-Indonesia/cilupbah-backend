@@ -9,6 +9,8 @@ metadata:
     component: cilupbah-export-worker
 spec:
   replicas: 1
+  revisionHistoryLimit: 2
+  progressDeadlineSeconds: 1500
   strategy:
     type: Recreate
   selector:
@@ -31,11 +33,13 @@ spec:
             - -c
             - |
               child_pid=""
+              pid_file=/tmp/worker.pid
               stop_worker() {
                 if [ -n "${child_pid:-}" ]; then
                   kill -TERM "$child_pid" 2>/dev/null || true
                   wait "$child_pid" 2>/dev/null || true
                 fi
+                rm -f "$pid_file"
                 exit 0
               }
               trap stop_worker INT TERM
@@ -44,9 +48,11 @@ spec:
                   --queue=exports-sheet --sleep=3 --tries=2 --backoff=30 \
                   --timeout=780 --memory=768 --max-jobs=1 --max-time=720 &
                 child_pid=$!
+                echo "$child_pid" > "$pid_file"
                 wait "$child_pid"
                 exit_code=$?
                 child_pid=""
+                rm -f "$pid_file"
                 if [ "$exit_code" -ne 0 ]; then
                   exit "$exit_code"
                 fi
@@ -55,6 +61,9 @@ spec:
           envFrom:
             - secretRef:
                 name: cilupbah-env
+          env:
+            - name: REDIS_LONG_QUEUE_RETRY_AFTER
+              value: "2160"
           livenessProbe:
             exec:
               command: ["sh", "-c", "kill -0 1"]
@@ -64,7 +73,7 @@ spec:
             failureThreshold: 3
           readinessProbe:
             exec:
-              command: ["sh", "-c", "kill -0 1"]
+              command: ["sh", "-c", "test -s /tmp/worker.pid && kill -0 \"$(cat /tmp/worker.pid)\""]
             initialDelaySeconds: 10
             periodSeconds: 15
             timeoutSeconds: 5

@@ -38,6 +38,9 @@ spec:
           envFrom:
             - secretRef:
                 name: cilupbah-env
+          env:
+            - name: REDIS_LONG_QUEUE_RETRY_AFTER
+              value: "2160"
           livenessProbe:
             exec:
               command: ["sh", "-c", "php artisan horizon:status | grep -q running"]

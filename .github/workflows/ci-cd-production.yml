@@ -91,8 +91,8 @@ jobs:
           host: ${{ secrets.PROD_DEPLOY_SERVER }}
           username: ${{ secrets.PROD_DEPLOY_USER }}
           key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
-          timeout: 45m
-          command_timeout: 45m
+          timeout: 20m
+          command_timeout: 20m
           script: |
             set -e
 
@@ -102,6 +102,11 @@ jobs:
             echo "Deploying $IMAGE ke production..."
             NAMESPACE="cilupbah"
             K8S_DIR="/tmp/cilupbah-k8s/k8s/production"
+
+            cleanup() {
+              rm -rf "$K8S_DIR"
+            }
+            trap cleanup EXIT
 
             echo "==> Mengupdate image tag di file YAML temporary..."
             sed -i "s|image: ghcr.io/ultra-teknologi-indonesia/cilupbah:.*|image: $IMAGE|g" "$K8S_DIR"/*.yaml
@@ -114,7 +119,7 @@ jobs:
             echo "==> Mengaplikasikan konfigurasi YAML ke Kubernetes..."
             kubectl apply -f "$K8S_DIR" -n "$NAMESPACE"
 
-            echo "==> Menunggu rollout seluruh Deployment dari manifest production..."
+            echo "==> Menunggu rollout aplikasi dan layanan kritis..."
             DEPLOYMENTS="$(kubectl get -f "$K8S_DIR" -n "$NAMESPACE" -o name | sed -n 's#^deployment.apps/##p')"
             if [ -z "$DEPLOYMENTS" ]; then
               echo "Tidak ada Deployment yang ditemukan dari manifest production."
@@ -122,14 +127,40 @@ jobs:
             fi
 
             for deployment in $DEPLOYMENTS; do
-              echo "Menunggu rollout deployment/$deployment..."
-              grace_period="$(kubectl get deployment "$deployment" -n "$NAMESPACE" -o jsonpath='{.spec.template.spec.terminationGracePeriodSeconds}')"
-              case "$grace_period" in
-                ''|*[!0-9]*) grace_period=180 ;;
+              case "$deployment" in
+                cilupbah-import-worker|cilupbah-export-worker|cilupbah-catalog-export-worker|cilupbah-pdf-export-worker)
+                  continue
+                  ;;
               esac
-              rollout_timeout=$((grace_period + 180))
-              echo "Grace period=${grace_period}s; rollout timeout=${rollout_timeout}s"
-              kubectl rollout status "deployment/$deployment" -n "$NAMESPACE" --timeout="${rollout_timeout}s"
+
+              echo "Menunggu rollout deployment/$deployment (maksimal 300 detik)..."
+              kubectl rollout status "deployment/$deployment" -n "$NAMESPACE" --timeout=300s
+            done
+
+            echo "==> Memulai rollout worker berat secara asynchronous (graceful drain)..."
+            for deployment in \
+              cilupbah-import-worker \
+              cilupbah-export-worker \
+              cilupbah-catalog-export-worker \
+              cilupbah-pdf-export-worker
+            do
+              if ! kubectl get deployment "$deployment" -n "$NAMESPACE" >/dev/null 2>&1; then
+                echo "Worker $deployment tidak ada; dilewati."
+                continue
+              fi
+
+              # Recreate + terminationGracePeriodSeconds intentionally keeps
+              # one heavy worker per queue and lets its current job drain.
+              # Do only a short health check here; waiting for the full drain
+              # would make every deploy take up to 31 minutes.
+              if kubectl rollout status "deployment/$deployment" -n "$NAMESPACE" --timeout=20s; then
+                echo "Worker $deployment sudah siap."
+              else
+                echo "Worker $deployment masih graceful-draining; rollout dilanjutkan oleh Kubernetes."
+                kubectl get deployment "$deployment" -n "$NAMESPACE" \
+                  -o custom-columns='NAME:.metadata.name,READY:.status.readyReplicas,UPDATED:.status.updatedReplicas,AVAILABLE:.status.availableReplicas,UNAVAILABLE:.status.unavailableReplicas' \
+                  --no-headers || true
+              fi
             done
 
             # Migrasi DB: explicit gated deploy step (sesuai catatan di start.production.sh).
@@ -137,8 +168,5 @@ jobs:
             # Migrasi fitur ini additive (kolom nullable + tabel baru) → aman.
             echo "==> Menjalankan migrasi database..."
             kubectl exec deploy/cilupbah-app -n $NAMESPACE -- php artisan migrate --force
-
-            echo "==> Cleanup temporary files..."
-            rm -rf /tmp/cilupbah-k8s
 
             echo "Production deployment success: $VERSION"

@@ -66,7 +66,10 @@ return [
             'driver' => 'redis',
             'connection' => env('REDIS_LONG_CONNECTION', 'long'),
             'queue' => env('REDIS_LONG_QUEUE', 'downloads'),
-            'retry_after' => (int) env('REDIS_LONG_QUEUE_RETRY_AFTER', 1200),
+            // The longest production worker may run for 1,800 seconds. Keep
+            // the Redis visibility window above that timeout so a slow job is
+            // not delivered to a second worker while it is still running.
+            'retry_after' => (int) env('REDIS_LONG_QUEUE_RETRY_AFTER', 2160),
             'block_for' => null,
             'after_commit' => true,
         ],

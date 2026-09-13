@@ -33,6 +33,11 @@ spec:
           envFrom:
             - secretRef:
                 name: cilupbah-env
+          # Explicitly override a stale secret value. This prevents a long
+          # job from becoming visible to another worker before it finishes.
+          env:
+            - name: REDIS_LONG_QUEUE_RETRY_AFTER
+              value: "2160"
           resources:
             requests:
               memory: "256Mi"
