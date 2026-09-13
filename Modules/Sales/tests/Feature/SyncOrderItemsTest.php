@@ -350,4 +350,28 @@ class SyncOrderItemsTest extends TestCase
         $this->assertNotNull($resultId);
         $this->assertSame(120, (int) DB::table('sales_orders')->where('id', $resultId)->value('order_weight_gram'));
     }
+
+    public function test_channel_order_preserves_product_description_longer_than_255_characters(): void
+    {
+        $orderId = $this->createOrder('SP-LONG-DESCRIPTION-1', 'shopee');
+        $description = str_repeat('Marketplace product description ', 10);
+        self::assertGreaterThan(255, strlen($description));
+
+        $this->repository->syncOrderItems($orderId, [[
+            'channel_product_id' => 'CP-LONG-DESCRIPTION',
+            'sku' => 'SKU-LONG-DESCRIPTION',
+            'description' => $description,
+            'qty_in_base' => 1,
+            'price' => 10000,
+            'disc' => 0,
+            'disc_amount' => 0,
+            'tax_amount' => 0,
+            'amount' => 10000,
+        ]]);
+
+        $this->assertSame(
+            $description,
+            DB::table('sales_order_items')->where('order_id', $orderId)->value('description'),
+        );
+    }
 }
