@@ -39,9 +39,6 @@ final class ChannelVariantMappingResolver
             ->first();
     }
 
-    /**
-     * @return Collection<int, ProductVariantChannelMapping>
-     */
     public static function enabledForListing(ProductChannelMapping $listing): Collection
     {
         $listing->loadMissing('variantMappings.variant');
@@ -55,11 +52,6 @@ final class ChannelVariantMappingResolver
             ->values();
     }
 
-    /**
-     * Returns an actionable error when a listing cannot safely produce a stock payload.
-     *
-     * @param  Collection<int, ProductVariantChannelMapping>  $mappings
-     */
     public static function stockPayloadError(
         Collection $mappings,
         string $identifierAttribute,

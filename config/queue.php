@@ -50,9 +50,6 @@ return [
             'after_commit' => true,
         ],
 
-        // Scheduled channel pulls can need more than the default 180 seconds.
-        // Keep their visibility timeout isolated so ordinary operational queues
-        // recover quickly after a worker crash.
         'redis-channel-sync' => [
             'driver' => 'redis',
             'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),

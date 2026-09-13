@@ -279,11 +279,6 @@ final class OrderCutoverService
         ];
     }
 
-    /**
-     * Preview a clean order boundary without carrying a CSV whitelist.
-     * Orders at or after the cutoff are retained; older orders are candidates
-     * for deletion after operational child rows have been cleaned.
-     */
     public function previewHardCutoff(
         CarbonImmutable $cutoff,
         array $locationCodes,
@@ -378,10 +373,6 @@ final class OrderCutoverService
         ];
     }
 
-    /**
-     * Apply the hard cutoff in bounded chunks. Partial mode only deletes
-     * candidates without warehouse processing or child relations.
-     */
     public function applyHardCutoff(
         CarbonImmutable $cutoff,
         array $locationCodes,
