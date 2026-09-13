@@ -184,6 +184,30 @@ class MultiParticipantReceiveTest extends TestCase
         $this->assertEquals(90, $inbound->fresh('items')->items->first()->received_qty);
     }
 
+    public function test_admin_can_finalize_received_status_with_active_mobile_session(): void
+    {
+        $inbound = $this->makeInbound(100);
+        $this->receive($inbound, $this->staff['s1']->id, 100);
+
+        // RECEIVED dapat berasal dari alur lama/otomatis, tetapi sesi mobile
+        // tetap harus ditutup oleh admin sebelum koreksi atau penghapusan.
+        $inbound->forceFill(['status' => Inbound::STATUS_RECEIVED])->save();
+
+        $admin = User::factory()->create(['name' => 'ADMIN']);
+        $done = app(InboundService::class)->closeReceiving($inbound->id, $admin->id);
+
+        $this->assertEquals(Inbound::STATUS_RECEIVED, $done->status);
+        $this->assertNotNull($done->once_received_at);
+        $this->assertFalse($done->fresh()->hasActiveParticipant());
+        $this->assertDatabaseHas('inbound_participants', [
+            'inbound_id' => $inbound->id,
+            'user_id' => $this->staff['s1']->id,
+            'status' => InboundParticipant::STATUS_WITHDRAWN,
+            'withdraw_reason' => 'admin_finalize',
+            'withdrawn_by' => $admin->id,
+        ]);
+    }
+
     public function test_receive_stays_partial_even_when_expected_reached(): void
     {
 

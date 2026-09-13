@@ -6,7 +6,6 @@ use Throwable;
 
 class MobileSessionActiveException extends UserFacingException
 {
-
     public function __construct(
         array $activeParticipants,
         ?Throwable $previous = null,
@@ -16,7 +15,7 @@ class MobileSessionActiveException extends UserFacingException
 
         parent::__construct(
             title: 'Sesi penerimaan mobile aktif',
-            message: "Masih ada {$count} staff yang belum menandai Selesai ({$names}). Minta mereka Tandai Selesai di HP, atau tarik dari daftar peserta sebelum mengoreksi.",
+            message: "Masih ada {$count} staff yang aktif di sesi penerimaan ({$names}). Admin perlu menekan Selesaikan Penerimaan di web atau menarik peserta dari daftar sebelum mengoreksi atau menghapus.",
             status: 409,
             errors: [
                 'code' => 'MOBILE_SESSION_ACTIVE',
