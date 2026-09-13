@@ -394,6 +394,22 @@ class GagalDownloadFlowTest extends TestCase
         $this->assertSame(1, DB::table('inventory_movements')->where('source', 'ORDER_RESERVE')->count());
     }
 
+    public function test_mapping_completed_channel_order_does_not_reserve_stock(): void
+    {
+        $payload = $this->channelOrderData('GD-COMPLETED', 'SKU-COMPLETED');
+        $payload['channel_status'] = 'COMPLETED';
+        $orderId = $this->service->upsertFromChannel($payload);
+        $order = $this->freshOrder($orderId);
+        $itemId = $order->items->first()->id;
+
+        $variantId = $this->seedVariant('SKU-COMPLETED');
+        $this->service->downloadOrderItem($order, $itemId);
+
+        $this->assertSame('shipped', $this->freshOrder($orderId)->status);
+        $this->assertSame(0, DB::table('inventories')->where('item_id', $variantId)->value('on_order'));
+        $this->assertSame(0, DB::table('inventory_movements')->where('source', 'ORDER_RESERVE')->count());
+    }
+
     public function test_unmapped_order_appears_in_failed_tab_not_ready_to_process(): void
     {
         $this->seedLegacyUnmappedOrder('GD-2', 'SKU-ASING');
