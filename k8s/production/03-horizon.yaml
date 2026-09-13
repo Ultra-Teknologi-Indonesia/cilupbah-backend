@@ -26,12 +26,15 @@ spec:
           resources:
             requests:
               memory: "4Gi"
-              cpu: "500m"
+              cpu: "1000m"
             limits:
-              # The worker plan is kept below 80% of this limit. The remaining
-              # headroom absorbs peak PHP/Redis client memory without OOMKills.
-              memory: "7Gi"
-              cpu: "2000m"
+              # Order and webhook supervisors can autoscale to two bounded
+              # workers per channel. Keep a full 20% memory headroom for the
+              # Horizon master, PHP/Redis clients, and transient payloads.
+              memory: "9Gi"
+              # The node exposes 8 vCPU. A 4-core cap leaves room for the app,
+              # database, Redis, and host scheduling during burst traffic.
+              cpu: "4000m"
           envFrom:
             - secretRef:
                 name: cilupbah-env

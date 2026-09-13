@@ -110,15 +110,12 @@ class HorizonQueueCoverageTest extends TestCase
             'supervisor-order-operations' => 2,
             'supervisor-channel-sync' => 1,
             'supervisor-channel-operations' => 1,
-            'supervisor-stock' => 1,
-            'supervisor-shopee-orders' => 1,
-            'supervisor-tiktok-orders' => 1,
-            'supervisor-lazada-orders' => 1,
-            'supervisor-tiktok-webhooks-operational' => 1,
+            'supervisor-stock-default' => 1,
+            'supervisor-tiktok-packages' => 1,
             'supervisor-tiktok-webhooks-background' => 1,
-            'supervisor-shopee-webhooks-operational' => 1,
+            'supervisor-shopee-tracking' => 1,
             'supervisor-shopee-webhooks-background' => 1,
-            'supervisor-lazada-webhooks-operational' => 1,
+            'supervisor-lazada-fulfillment' => 1,
             'supervisor-lazada-webhooks-background' => 1,
         ] as $name => $workers) {
             $supervisor = config("horizon.defaults.{$name}");
@@ -127,6 +124,32 @@ class HorizonQueueCoverageTest extends TestCase
             $this->assertSame($workers, $supervisor['minProcesses'] ?? null, "{$name} min worker tidak sesuai.");
             $this->assertSame($workers, $supervisor['maxProcesses'] ?? null, "{$name} max worker tidak sesuai.");
         }
+
+        foreach ([
+            'supervisor-shopee-orders',
+            'supervisor-tiktok-orders',
+            'supervisor-lazada-orders',
+            'supervisor-shopee-webhooks-operational',
+            'supervisor-tiktok-webhooks-operational',
+            'supervisor-lazada-webhooks-operational',
+        ] as $name) {
+            $supervisor = config("horizon.defaults.{$name}");
+
+            $this->assertSame('auto', $supervisor['balance'] ?? null, "{$name} harus autoscale.");
+            $this->assertSame('size', $supervisor['autoScalingStrategy'] ?? null, "{$name} harus scale berdasarkan ukuran antrean.");
+            $this->assertSame(1, $supervisor['minProcesses'] ?? null, "{$name} minimum worker tidak sesuai.");
+            $this->assertSame(2, $supervisor['maxProcesses'] ?? null, "{$name} maksimum worker harus dibatasi.");
+            $this->assertSame(1, $supervisor['balanceMaxShift'] ?? null, "{$name} scale step terlalu besar.");
+            $this->assertSame(5, $supervisor['balanceCooldown'] ?? null, "{$name} cooldown autoscale tidak sesuai.");
+        }
+
+        $stock = config('horizon.defaults.supervisor-stock');
+        $this->assertSame('auto', $stock['balance'] ?? null);
+        $this->assertSame('size', $stock['autoScalingStrategy'] ?? null);
+        $this->assertSame(1, $stock['minProcesses'] ?? null);
+        $this->assertSame(3, $stock['maxProcesses'] ?? null);
+        $this->assertSame(1, $stock['balanceMaxShift'] ?? null);
+        $this->assertSame(5, $stock['balanceCooldown'] ?? null);
     }
 
     public function test_channel_orders_and_operational_webhooks_are_isolated_from_background_work(): void
@@ -135,8 +158,10 @@ class HorizonQueueCoverageTest extends TestCase
             'supervisor-shopee-orders' => [config('queue.names.shopee_orders', 'shopee-orders')],
             'supervisor-tiktok-orders' => [config('queue.names.tiktok_orders', 'tiktok-orders')],
             'supervisor-lazada-orders' => [config('queue.names.lazada_orders', 'lazada-orders')],
-            'supervisor-tiktok-webhooks-operational' => [
+            'supervisor-tiktok-packages' => [
                 env('QUEUE_NAME_TIKTOK_PACKAGES', 'tiktok-packages'),
+            ],
+            'supervisor-tiktok-webhooks-operational' => [
                 env('QUEUE_NAME_TIKTOK_WEBHOOKS', 'tiktok-webhooks'),
             ],
             'supervisor-tiktok-webhooks-background' => [
@@ -144,8 +169,10 @@ class HorizonQueueCoverageTest extends TestCase
                 env('QUEUE_NAME_TIKTOK_CATALOG', 'tiktok-catalog'),
             ],
             'supervisor-shopee-webhooks-operational' => [
-                env('QUEUE_NAME_SHOPEE_TRACKING', 'shopee-tracking'),
                 env('QUEUE_NAME_SHOPEE_WEBHOOKS', 'shopee-webhooks'),
+            ],
+            'supervisor-shopee-tracking' => [
+                env('QUEUE_NAME_SHOPEE_TRACKING', 'shopee-tracking'),
             ],
             'supervisor-shopee-webhooks-background' => [
                 env('QUEUE_NAME_SHOPEE_AFTERSALES', 'shopee-aftersales'),
@@ -153,8 +180,10 @@ class HorizonQueueCoverageTest extends TestCase
                 env('QUEUE_NAME_WEBHOOK_DOWNLOADS', 'webhook-downloads'),
             ],
             'supervisor-lazada-webhooks-operational' => [
-                env('QUEUE_NAME_LAZADA_FULFILLMENT', 'lazada-fulfillment'),
                 env('QUEUE_NAME_LAZADA_WEBHOOKS', 'lazada-webhooks'),
+            ],
+            'supervisor-lazada-fulfillment' => [
+                env('QUEUE_NAME_LAZADA_FULFILLMENT', 'lazada-fulfillment'),
             ],
             'supervisor-lazada-webhooks-background' => [
                 env('QUEUE_NAME_LAZADA_AFTERSALES', 'lazada-aftersales'),
@@ -180,6 +209,9 @@ class HorizonQueueCoverageTest extends TestCase
         );
         $withMasterMegabytes = $workerMegabytes + (int) config('horizon.memory_limit');
 
-        $this->assertLessThanOrEqual(5734, $withMasterMegabytes);
+        // The Horizon pod limit is 9 GiB. Keep the configured worst-case
+        // worker ceiling below 80% so PHP/Redis clients and the master retain
+        // headroom during a burst.
+        $this->assertLessThanOrEqual(7372, $withMasterMegabytes);
     }
 }
