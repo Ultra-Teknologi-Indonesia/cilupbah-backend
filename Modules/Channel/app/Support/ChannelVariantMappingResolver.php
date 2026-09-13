@@ -49,10 +49,19 @@ final class ChannelVariantMappingResolver
         return $listing->variantMappings
             ->filter(static fn (ProductVariantChannelMapping $mapping): bool => (bool) $mapping->sync_enabled
                 && $mapping->variant !== null
+                && (bool) $mapping->variant->is_active
                 && (string) $mapping->variant->product_id === (string) $listing->product_id
             )
             ->sortBy('id')
             ->values();
+    }
+
+    public static function hasEnabledMappings(ProductChannelMapping $listing): bool
+    {
+        $listing->loadMissing('variantMappings');
+
+        return $listing->variantMappings
+            ->contains(static fn (ProductVariantChannelMapping $mapping): bool => (bool) $mapping->sync_enabled);
     }
 
     /**

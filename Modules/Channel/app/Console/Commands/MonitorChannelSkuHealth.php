@@ -23,16 +23,17 @@ class MonitorChannelSkuHealth extends Command
             'listing terpecah ke lebih dari satu master' => $this->health->listingTerpecah(),
             'SKU induk yang menyalin SKU varian' => $this->health->masterSkuTurunanVarian()->count(),
             'varian ber-SKU placeholder channel' => $this->health->varianPlaceholder()->count(),
+            'mapping channel yatim atau mengarah ke master salah' => $this->health->orphanedChannelVariantMappings(),
         ];
 
         $melenceng = array_filter($ukuran);
 
         foreach ($ukuran as $label => $jml) {
-            $this->line(str_pad((string) $jml, 8) . $label);
+            $this->line(str_pad((string) $jml, 8).$label);
         }
 
         if (! $melenceng) {
-            $this->info('Sehat: ketiga invarian SKU masih nol.');
+            $this->info('Sehat: seluruh invarian SKU dan mapping channel masih nol.');
 
             return self::SUCCESS;
         }
@@ -48,10 +49,10 @@ class MonitorChannelSkuHealth extends Command
 
     private function pushAlert(string $message, array $context): void
     {
-        Log::warning('[sku-health] ' . $message, $context);
+        Log::warning('[sku-health] '.$message, $context);
 
         if (function_exists('Sentry\\captureMessage')) {
-            \Sentry\captureMessage('[sku-health] ' . $message);
+            \Sentry\captureMessage('[sku-health] '.$message);
         }
 
         $this->warn($message);

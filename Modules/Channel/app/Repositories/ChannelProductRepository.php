@@ -7,8 +7,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Inventory\Support\StockSummary;
+use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
+use Modules\Product\Services\ChannelMappingIntegrityService;
 use Ramsey\Uuid\Uuid;
 
 class ChannelProductRepository
@@ -95,10 +97,10 @@ class ChannelProductRepository
             $match = $loose->first();
 
             Log::info('Channel SKU dicocokkan ke variant secara case-insensitive', [
-                'product_id'   => $productId,
-                'channel_sku'  => $sku,
-                'variant_sku'  => $match->sku,
-                'variant_id'   => $match->id,
+                'product_id' => $productId,
+                'channel_sku' => $sku,
+                'variant_sku' => $match->sku,
+                'variant_id' => $match->id,
             ]);
 
             return $match;
@@ -109,9 +111,9 @@ class ChannelProductRepository
                 ? 'Channel SKU cocok ke lebih dari satu variant (ambigu) - mapping dilewati, listing tidak akan tersinkron'
                 : 'Channel SKU tidak cocok ke variant mana pun - mapping dilewati, listing tidak akan tersinkron',
             [
-                'product_id'  => $productId,
+                'product_id' => $productId,
                 'channel_sku' => $sku,
-                'kandidat'    => $loose->pluck('sku')->all(),
+                'kandidat' => $loose->pluck('sku')->all(),
             ]
         );
 
@@ -204,7 +206,7 @@ class ChannelProductRepository
 
     public function getChannelCategoryInfoByInternal(string $categoryId, string $channelId): ?object
     {
-        $category = \Modules\Product\Models\Category::with([
+        $category = Category::with([
             'channelCategories' => fn ($q) => $q->where('channel_id', $channelId)->orderByDesc('is_leaf'),
         ])->find($categoryId);
 
@@ -287,8 +289,8 @@ class ChannelProductRepository
             ->leftJoin('location_bins as b', 'b.id', '=', 'i.bin_id')
             ->where('i.item_id', $variantId)
             ->where('i.location_id', $locationId)
-            ->selectRaw(StockSummary::placedOnHandSql('i', 'b') . ' as oh')
-            ->selectRaw(StockSummary::onOrderSql('i') . ' as r')
+            ->selectRaw(StockSummary::placedOnHandSql('i', 'b').' as oh')
+            ->selectRaw(StockSummary::onOrderSql('i').' as r')
             ->first();
 
         return max(0, (int) ($row->oh ?? 0) - (int) ($row->r ?? 0));
@@ -297,7 +299,7 @@ class ChannelProductRepository
     public function getExternalProductId(string $productId, string $shopId): ?string
     {
         $channelShop = DB::table('channel_shops')->where('shop_id', $shopId)->first();
-        if (!$channelShop) {
+        if (! $channelShop) {
             return null;
         }
 
@@ -326,7 +328,7 @@ class ChannelProductRepository
         bool $pushInitialStock = false
     ): string {
         $channelShop = DB::table('channel_shops')->where('shop_id', $shopId)->first();
-        if (!$channelShop) {
+        if (! $channelShop) {
             throw new \Exception("Channel shop tidak ditemukan untuk shop_id: {$shopId}");
         }
 
@@ -335,9 +337,9 @@ class ChannelProductRepository
 
         $applyUpdate = function (string $existingId) use ($syncStatus, $now, $externalProductId, $attributesJson): string {
             $update = [
-                'sync_status'    => $syncStatus,
+                'sync_status' => $syncStatus,
                 'last_synced_at' => $now,
-                'updated_at'     => $now,
+                'updated_at' => $now,
             ];
 
             if ($externalProductId !== null) {
@@ -363,15 +365,15 @@ class ChannelProductRepository
         $pcmId = Uuid::uuid7()->getHex()->toString();
         try {
             DB::table('product_channel_mappings')->insert([
-                'id'                  => $pcmId,
-                'product_id'          => $productId,
-                'channel_shop_id'     => $channelShop->id,
+                'id' => $pcmId,
+                'product_id' => $productId,
+                'channel_shop_id' => $channelShop->id,
                 'external_product_id' => $externalProductId,
-                'channel_attributes'  => $attributesJson,
-                'sync_status'         => $syncStatus,
-                'last_synced_at'      => $now,
-                'created_at'          => $now,
-                'updated_at'          => $now,
+                'channel_attributes' => $attributesJson,
+                'sync_status' => $syncStatus,
+                'last_synced_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
             ]);
         } catch (QueryException $e) {
 
@@ -420,6 +422,8 @@ class ChannelProductRepository
         ?string $salesAttributeId = null,
         ?string $salesAttributeName = null
     ): void {
+        app(ChannelMappingIntegrityService::class)->assertVariantCanBeLinked($pcmId, $variantId);
+
         $now = now();
 
         $applyUpdate = function (string $existingId) use ($now, $externalSkuId, $channelSellerSku, $syncedPrice, $salesAttributeId, $salesAttributeName): void {
@@ -448,21 +452,22 @@ class ChannelProductRepository
 
         if ($existing) {
             $applyUpdate($existing->id);
+
             return;
         }
 
         try {
             DB::table('product_variant_channel_mappings')->insert([
-                'id'                         => Uuid::uuid7()->getHex()->toString(),
+                'id' => Uuid::uuid7()->getHex()->toString(),
                 'product_channel_mapping_id' => $pcmId,
-                'variant_id'                 => $variantId,
-                'external_sku_id'            => $externalSkuId,
-                'channel_seller_sku'         => $channelSellerSku,
-                'synced_price'               => $syncedPrice,
-                'sales_attribute_id'         => $salesAttributeId,
-                'sales_attribute_name'       => $salesAttributeName,
-                'created_at'                 => $now,
-                'updated_at'                 => $now,
+                'variant_id' => $variantId,
+                'external_sku_id' => $externalSkuId,
+                'channel_seller_sku' => $channelSellerSku,
+                'synced_price' => $syncedPrice,
+                'sales_attribute_id' => $salesAttributeId,
+                'sales_attribute_name' => $salesAttributeName,
+                'created_at' => $now,
+                'updated_at' => $now,
             ]);
         } catch (QueryException $e) {
 
@@ -474,6 +479,7 @@ class ChannelProductRepository
 
             if ($raced) {
                 $applyUpdate($raced->id);
+
                 return;
             }
 
@@ -530,7 +536,7 @@ class ChannelProductRepository
     public function getVariantChannelMappings(string $productId, string $shopId): array
     {
         $channelShop = DB::table('channel_shops')->where('shop_id', $shopId)->first();
-        if (!$channelShop) {
+        if (! $channelShop) {
             return [];
         }
 

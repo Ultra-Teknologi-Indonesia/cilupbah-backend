@@ -8,6 +8,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Modules\Channel\Support\ChannelVariantMappingResolver;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductBundleItem;
 use Modules\Product\Models\ProductChannelMapping;
@@ -43,7 +44,12 @@ class SyncStockToChannelsJob implements ShouldBeUniqueUntilProcessing, ShouldQue
 
     public function handle(ProductRepository $productRepository): void
     {
-        $variant = ProductVariant::with('product.channelMappings.variantMappings')->find($this->variantId);
+        $variant = ProductVariant::query()
+            ->whereKey($this->variantId)
+            ->where('is_active', true)
+            ->whereHas('product', fn ($query) => $query->where('is_active', true))
+            ->with('product.channelMappings.variantMappings.variant')
+            ->first();
 
         if (! $variant || ! $variant->product) {
             return;
@@ -58,8 +64,9 @@ class SyncStockToChannelsJob implements ShouldBeUniqueUntilProcessing, ShouldQue
             return;
         }
 
-        Product::with('channelMappings.variantMappings')
+        Product::with('channelMappings.variantMappings.variant')
             ->whereIn('id', $bundleIds)
+            ->where('is_active', true)
             ->get()
             ->each(fn (Product $bundle) => $this->dispatchForProduct($bundle, $dispatched));
 
@@ -70,8 +77,10 @@ class SyncStockToChannelsJob implements ShouldBeUniqueUntilProcessing, ShouldQue
             ->all();
 
         if (! empty($siblingVariantIds)) {
-            ProductVariant::with('product.channelMappings.variantMappings')
+            ProductVariant::with('product.channelMappings.variantMappings.variant')
                 ->whereIn('id', $siblingVariantIds)
+                ->where('is_active', true)
+                ->whereHas('product', fn ($query) => $query->where('is_active', true))
                 ->get()
                 ->pluck('product')
                 ->filter()
@@ -82,6 +91,10 @@ class SyncStockToChannelsJob implements ShouldBeUniqueUntilProcessing, ShouldQue
 
     private function dispatchForProduct(Product $product, array &$dispatched): void
     {
+        if (! $product->is_active || $product->trashed()) {
+            return;
+        }
+
         foreach ($product->channelMappings as $mapping) {
             $dispatchKey = "{$product->id}:{$mapping->channel_shop_id}";
 
@@ -102,6 +115,11 @@ class SyncStockToChannelsJob implements ShouldBeUniqueUntilProcessing, ShouldQue
             }
 
             if ($this->listingSyncFullyDisabled($mapping)) {
+                continue;
+            }
+
+            if (ChannelVariantMappingResolver::hasEnabledMappings($mapping)
+                && ChannelVariantMappingResolver::enabledForListing($mapping)->isEmpty()) {
                 continue;
             }
 

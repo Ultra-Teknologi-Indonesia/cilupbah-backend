@@ -8,12 +8,13 @@ use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Repositories\ChannelProductRepository;
 use Modules\Channel\Support\ChannelModelLinker;
+use Modules\Product\Exceptions\ChannelSkuConflictException;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
-use Modules\Product\Exceptions\ChannelSkuConflictException;
 use Modules\Product\Repositories\ProductRepository;
 use Modules\Product\Services\ChannelSkuHealth;
 use Modules\Product\Services\ProductService;
+use Ramsey\Uuid\Uuid;
 use Tests\TestCase;
 
 class BundleChannelSkuLinkerTest extends TestCase
@@ -70,13 +71,18 @@ class BundleChannelSkuLinkerTest extends TestCase
 
         $staleBundle = $defaultProductId === $firstBundle->id ? $secondBundle : $firstBundle;
         $staleTechnicalVariant = app(ProductRepository::class)->ensureActiveBundleVariant($staleBundle);
-        $repository->upsertVariantChannelMapping(
-            $defaultPcmId,
-            (string) $staleTechnicalVariant->id,
-            'STALE-MODEL',
-            (string) $staleBundle->sku,
-            50000,
-        );
+        // Simulate a legacy row created before ownership validation existed.
+        DB::table('product_variant_channel_mappings')->insert([
+            'id' => (string) Uuid::uuid7(),
+            'product_channel_mapping_id' => $defaultPcmId,
+            'variant_id' => (string) $staleTechnicalVariant->id,
+            'external_sku_id' => 'STALE-MODEL',
+            'channel_seller_sku' => (string) $staleBundle->sku,
+            'synced_price' => 50000,
+            'sync_enabled' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         app(ChannelModelLinker::class)->link(
             $this->shop,

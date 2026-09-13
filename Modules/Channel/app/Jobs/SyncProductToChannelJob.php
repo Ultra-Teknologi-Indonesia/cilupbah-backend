@@ -19,6 +19,7 @@ use Modules\Channel\Services\ChannelSyncSettingService;
 use Modules\Channel\Services\LazadaAuthService;
 use Modules\Channel\Services\ShopeeAuthService;
 use Modules\Channel\Services\TikTokAuthService;
+use Modules\Channel\Support\ChannelVariantMappingResolver;
 use Modules\Channel\Support\UploadErrorPresenter;
 use Modules\Product\Jobs\RecomputeProductChannelValidationJob;
 use Modules\Product\Models\Product;
@@ -162,7 +163,7 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
         }
 
         $product = self::isStockAction($this->action)
-            ? Product::find($this->productId)
+            ? Product::query()->where('is_active', true)->find($this->productId)
             : Product::with(['variants.channelMappings.channelMapping'])->find($this->productId);
         $shop = ChannelShop::with('channel')->find($this->channelShopId);
 
@@ -271,6 +272,19 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
             Log::notice('SyncProductToChannelJob skipped: listing belum terhubung ke channel.', [
                 'product_id' => $this->productId,
                 'channel_shop_id' => $this->channelShopId,
+                'action' => $this->action,
+            ]);
+
+            return;
+        }
+
+        if (self::isStockAction($this->action)
+            && ChannelVariantMappingResolver::hasEnabledMappings($mapping)
+            && ChannelVariantMappingResolver::enabledForListing($mapping)->isEmpty()) {
+            Log::warning('SyncProductToChannelJob skipped: listing tidak memiliki varian master aktif yang valid.', [
+                'product_id' => $this->productId,
+                'channel_shop_id' => $this->channelShopId,
+                'channel_mapping_id' => $mapping->id,
                 'action' => $this->action,
             ]);
 
@@ -452,7 +466,6 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
             ->where('sync_status', '!=', ProductChannelMapping::STATUS_DEACTIVATED)
             ->whereNotNull('external_product_id')
             ->where('external_product_id', '!=', '')
-            ->whereHas('variantMappings', fn ($query) => $query->where('sync_enabled', true))
             ->select(['id', 'product_id', 'channel_shop_id'])
             ->lazyById(100)
             ->each(function (ProductChannelMapping $mapping) use (&$dispatched): void {

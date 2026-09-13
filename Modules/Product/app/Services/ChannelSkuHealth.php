@@ -63,6 +63,25 @@ class ChannelSkuHealth
             ->count();
     }
 
+    public function orphanedChannelVariantMappings(): int
+    {
+        return DB::table('product_variant_channel_mappings as pvcm')
+            ->join('product_channel_mappings as pcm', 'pcm.id', '=', 'pvcm.product_channel_mapping_id')
+            ->leftJoin('products as mapped_product', 'mapped_product.id', '=', 'pcm.product_id')
+            ->leftJoin('product_variants as variant', 'variant.id', '=', 'pvcm.variant_id')
+            ->leftJoin('products as variant_product', 'variant_product.id', '=', 'variant.product_id')
+            ->where(function ($query): void {
+                $query->whereNull('mapped_product.id')
+                    ->orWhereNull('variant.id')
+                    ->orWhereNull('variant_product.id')
+                    ->orWhereNotNull('mapped_product.deleted_at')
+                    ->orWhereNotNull('variant.deleted_at')
+                    ->orWhereNotNull('variant_product.deleted_at')
+                    ->orWhereColumn('variant.product_id', '!=', 'pcm.product_id');
+            })
+            ->count();
+    }
+
     public function multiMasterListingDetails(?Collection $shopIds = null): Collection
     {
         $rows = DB::table('product_channel_mappings as pcm')

@@ -8,10 +8,10 @@ use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Inventory\Services\RackAssignmentCleanupService;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
+use Modules\Product\Services\ChannelMappingIntegrityService;
 
 class ProductObserver
 {
-
     private const LIFECYCLE_FIELDS = [
         'status',
         'archived_at',
@@ -63,6 +63,9 @@ class ProductObserver
             ->where('product_id', $product->id)
             ->pluck('id')
             ->all();
+
+        app(ChannelMappingIntegrityService::class)
+            ->removeForDeletedProduct((string) $product->id);
 
         app(RackAssignmentCleanupService::class)->removeForVariants($variantIds);
     }

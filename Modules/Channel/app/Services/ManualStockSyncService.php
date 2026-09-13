@@ -4,6 +4,7 @@ namespace Modules\Channel\Services;
 
 use Modules\Channel\Jobs\ManualStockResyncAllJob;
 use Modules\Channel\Jobs\SyncProductToChannelJob;
+use Modules\Channel\Support\ChannelVariantMappingResolver;
 use Modules\Product\Models\ProductChannelMapping;
 
 class ManualStockSyncService
@@ -36,6 +37,13 @@ class ManualStockSyncService
                 }
 
                 if ($this->listingSyncFullyDisabled($mapping)) {
+                    $skipped++;
+
+                    continue;
+                }
+
+                if (ChannelVariantMappingResolver::hasEnabledMappings($mapping)
+                    && ChannelVariantMappingResolver::enabledForListing($mapping)->isEmpty()) {
                     $skipped++;
 
                     continue;
@@ -82,7 +90,8 @@ class ManualStockSyncService
                 ! empty($filters['product_ids']),
                 fn ($q) => $q->whereIn('product_id', $filters['product_ids'])
             )
-            ->with('variantMappings')
+            ->whereHas('product', fn ($query) => $query->where('is_active', true))
+            ->with('variantMappings.variant')
             ->chunkById(500, function ($mappings) use (&$queued) {
                 foreach ($mappings as $mapping) {
                     if (blank($mapping->external_product_id)) {
@@ -90,6 +99,11 @@ class ManualStockSyncService
                     }
 
                     if ($this->listingSyncFullyDisabled($mapping)) {
+                        continue;
+                    }
+
+                    if (ChannelVariantMappingResolver::hasEnabledMappings($mapping)
+                        && ChannelVariantMappingResolver::enabledForListing($mapping)->isEmpty()) {
                         continue;
                     }
 
@@ -116,7 +130,8 @@ class ManualStockSyncService
         return ProductChannelMapping::query()
             ->where('product_id', $productId)
             ->where('sync_status', '!=', ProductChannelMapping::STATUS_DEACTIVATED)
-            ->with('variantMappings')
+            ->whereHas('product', fn ($query) => $query->where('is_active', true))
+            ->with('variantMappings.variant')
             ->when(
                 $channelShopId !== null,
                 fn ($q) => $q->where('channel_shop_id', $channelShopId)

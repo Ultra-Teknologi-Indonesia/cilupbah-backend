@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Cache;
 use Modules\Channel\Jobs\SyncStockToChannelsJob;
 use Modules\Inventory\Services\RackAssignmentCleanupService;
 use Modules\Product\Models\ProductVariant;
+use Modules\Product\Services\ChannelMappingIntegrityService;
 
 class ProductVariantObserver
 {
@@ -30,6 +31,9 @@ class ProductVariantObserver
 
     public function deleted(ProductVariant $variant): void
     {
+        app(ChannelMappingIntegrityService::class)
+            ->removeForDeletedVariant((string) $variant->id);
+
         app(RackAssignmentCleanupService::class)
             ->removeForVariants([(string) $variant->id]);
     }
