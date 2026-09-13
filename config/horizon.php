@@ -271,6 +271,8 @@ return [
             'nice' => 5,
         ],
 
+        // Order dari setiap channel adalah failure domain terpisah. Error atau
+        // lonjakan Shopee tidak boleh menahan order TikTok maupun Lazada.
         'supervisor-shopee-orders' => [
             'connection' => 'redis',
             'queue' => [config('queue.names.shopee_orders', 'shopee-orders')],

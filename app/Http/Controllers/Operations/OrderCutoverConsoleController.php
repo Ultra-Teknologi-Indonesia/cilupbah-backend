@@ -38,7 +38,8 @@ final class OrderCutoverConsoleController extends Controller
 
     public function preview(string $token, Request $request, OrderCutoverService $service): RedirectResponse
     {
-
+        // The current cutover flow is a hard boundary. Keep the legacy CSV
+        // branch for older API callers until they migrate to the UI flow.
         $hasLegacyFiles = collect(array_keys(self::FILE_FIELDS))
             ->contains(fn (string $field): bool => $request->hasFile($field));
         if (! $hasLegacyFiles) {

@@ -960,6 +960,9 @@ final class StockCutoverService
             ->where('is_warehouse', true)
             ->where('is_active', true);
 
+        // System warehouses (Pusat/Gudang Kecil) are valid cutover targets when
+        // they are not locked. Locked system locations (for example Transit)
+        // remain protected from destructive cutover operations.
         if (Schema::hasColumn('locations', 'is_system')) {
             if (Schema::hasColumn('locations', 'is_locked')) {
                 $query->where(function ($q): void {
