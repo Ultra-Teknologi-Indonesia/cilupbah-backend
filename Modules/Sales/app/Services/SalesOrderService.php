@@ -2069,22 +2069,17 @@ class SalesOrderService
                     $lockedOrder->status = $targetStatus;
                     $lockedOrder->save();
 
-                    if (! in_array($targetStatus, ['shipped', 'cancelled'], true)) {
-                        $stockMutated = $this->reconcileStockTransition(
-                            $lockedOrder,
-                            null,
-                            $targetStatus,
-                        ) || $stockMutated;
-                    }
+                    $stockMutated = $this->reconcileStockTransition(
+                        $lockedOrder,
+                        null,
+                        $targetStatus,
+                    ) || $stockMutated;
 
                     $this->logStatusHistory($lockedOrder, 'PROCESS', [
                         'from' => 'pending',
                         'to' => $targetStatus,
                         'reason' => 'failed_download_resolved',
                         'channel_status' => $lockedOrder->channel_status,
-                        'stock_allocation' => in_array($targetStatus, ['shipped', 'cancelled'], true)
-                            ? 'not_required_terminal_channel_status'
-                            : 'reserved',
                     ]);
                 }
             }
