@@ -91,8 +91,8 @@ jobs:
           host: ${{ secrets.PROD_DEPLOY_SERVER }}
           username: ${{ secrets.PROD_DEPLOY_USER }}
           key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
-          timeout: 30m
-          command_timeout: 30m
+          timeout: 45m
+          command_timeout: 45m
           script: |
             set -e
 
@@ -123,7 +123,13 @@ jobs:
 
             for deployment in $DEPLOYMENTS; do
               echo "Menunggu rollout deployment/$deployment..."
-              kubectl rollout status "deployment/$deployment" -n "$NAMESPACE" --timeout=180s
+              grace_period="$(kubectl get deployment "$deployment" -n "$NAMESPACE" -o jsonpath='{.spec.template.spec.terminationGracePeriodSeconds}')"
+              case "$grace_period" in
+                ''|*[!0-9]*) grace_period=180 ;;
+              esac
+              rollout_timeout=$((grace_period + 180))
+              echo "Grace period=${grace_period}s; rollout timeout=${rollout_timeout}s"
+              kubectl rollout status "deployment/$deployment" -n "$NAMESPACE" --timeout="${rollout_timeout}s"
             done
 
             # Migrasi DB: explicit gated deploy step (sesuai catatan di start.production.sh).

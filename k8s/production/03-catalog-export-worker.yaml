@@ -27,13 +27,24 @@ spec:
             - sh
             - -c
             - |
-              trap 'exit 0' INT TERM
+              child_pid=""
+              stop_worker() {
+                if [ -n "${child_pid:-}" ]; then
+                  kill -TERM "$child_pid" 2>/dev/null || true
+                  wait "$child_pid" 2>/dev/null || true
+                fi
+                exit 0
+              }
+              trap stop_worker INT TERM
               while true; do
                 php artisan queue:work "${CATALOG_EXPORT_QUEUE_CONNECTION:-redis-long}" \
                   --queue="${QUEUE_NAME_CATALOG_EXPORTS:-catalog-exports}" \
                   --sleep=3 --tries=2 --backoff=10 --timeout=660 \
-                  --memory=512 --max-jobs=1 --max-time=600
+                  --memory=512 --max-jobs=1 --max-time=600 &
+                child_pid=$!
+                wait "$child_pid"
                 exit_code=$?
+                child_pid=""
                 if [ "$exit_code" -ne 0 ]; then
                   exit "$exit_code"
                 fi
