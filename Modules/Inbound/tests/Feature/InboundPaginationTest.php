@@ -2,6 +2,7 @@
 
 namespace Modules\Inbound\Tests\Feature;
 
+use App\Models\User;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -71,6 +72,45 @@ class InboundPaginationTest extends TestCase
         $this->assertNotContains('TRFI-PAG-001', $pageOneTransactions);
         $this->assertSame(['TRFI-PAG-001'], $pageTwoTransactions);
         $this->assertSame(21, $pageTwoResponse->json('meta.total'));
+    }
+
+    public function test_inbound_search_by_creator_name_supports_legacy_actor_formats(): void
+    {
+        $this->seed(RoleSeeder::class);
+        $admin = $this->createPrivilegedUser();
+        $creator = User::factory()->create(['name' => 'Rizki Inbound']);
+        $this->actingAs($admin, 'sanctum');
+
+        $location = Location::create([
+            'location_code' => 'WH-CREATOR',
+            'location_name' => 'Gudang Creator',
+            'location_type' => 'warehouse',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+
+        foreach ([
+            (string) $creator->id,
+            'user:'.$creator->id,
+        ] as $sequence => $createdBy) {
+            Inbound::create([
+                'location_id' => $location->id,
+                'transaction_number' => sprintf('RET-CREATOR-%02d', $sequence + 1),
+                'reference_number' => sprintf('REF-CREATOR-%02d', $sequence + 1),
+                'type' => Inbound::TYPE_SALES_RETURN,
+                'source_type' => 'sales_return',
+                'source_id' => null,
+                'status' => Inbound::STATUS_RECEIVED,
+                'expected_date' => now()->toDateString(),
+                'created_by' => $createdBy,
+            ]);
+        }
+
+        $response = $this->getJson('/api/v1/inbounds?filter[type]=SALES_RETURN&search=Rizki&per_page=20')
+            ->assertOk();
+
+        $response->assertJsonPath('meta.total', 2);
+        $this->assertCount(2, $response->json('data'));
     }
 
     public function test_receiving_list_uses_meaningful_linked_putaway_note_without_exposing_generated_note(): void

@@ -3,7 +3,9 @@
 namespace Modules\Inbound\Repositories;
 
 use App\Models\User;
+use App\Support\SearchExpression;
 use App\Support\WarehouseAccess;
+use Illuminate\Database\Eloquent\Builder;
 use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Models\InboundAssignment;
 use Modules\Inbound\Models\InboundItem;
@@ -28,6 +30,8 @@ class InboundRepository
 
         WarehouseAccess::apply($query, 'location_id');
 
+        $this->applySearch($query);
+
         $paginator = $query
             ->allowedFilters(
                 AllowedFilter::exact('location_id'),
@@ -37,7 +41,6 @@ class InboundRepository
                 AllowedFilter::callback('date_from', fn ($query, $value) => $query->whereDate('created_at', '>=', $value)),
                 AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('created_at', '<=', $value)),
             )
-            ->allowedSearch('transaction_number', 'reference_number', 'created_by', 'creator.name')
             ->allowedSorts('expected_date', 'created_at', 'transaction_number', 'reference_number', 'status', 'type')
             ->defaultSort('-expected_date')
 
@@ -113,6 +116,48 @@ class InboundRepository
         }
 
         return $paginator;
+    }
+
+    /**
+     * Apply inbound search without comparing the legacy text actor column to
+     * the UUID users.id column. The created_by field contains both plain names
+     * and actor tokens such as user:<uuid>, so the relation search must remain
+     * text-based and never cast inbound values to UUID.
+     */
+    private function applySearch(QueryBuilder $query): void
+    {
+        $term = trim((string) (request()->query('search') ?? request()->query('q', '')));
+
+        if ($term === '') {
+            return;
+        }
+
+        $columns = [
+            'inbounds.transaction_number',
+            'inbounds.reference_number',
+            'inbounds.created_by',
+        ];
+
+        $query->where(function (Builder $search) use ($term, $columns): void {
+            $search->whereRaw(
+                SearchExpression::match($columns),
+                SearchExpression::matchBindings($term, $columns),
+            )->orWhereExists(function (\Illuminate\Database\Query\Builder $users) use ($term): void {
+                $users->selectRaw('1')
+                    ->from('users')
+                    ->whereRaw(
+                        "users.id::text = inbounds.created_by OR ('user:' || users.id::text) = inbounds.created_by",
+                    )
+                    ->whereRaw(
+                        SearchExpression::match(['users.name']),
+                        SearchExpression::matchBindings($term, ['users.name']),
+                    );
+            });
+        });
+
+        if (blank(request()->query('sort'))) {
+            $query->orderByRaw(SearchExpression::rank($columns).' DESC', [$term]);
+        }
     }
 
     public function findById(string $id): ?Inbound
