@@ -32,32 +32,9 @@ spec:
             - sh
             - -c
             - |
-              child_pid=""
-              pid_file=/tmp/worker.pid
-              stop_worker() {
-                if [ -n "${child_pid:-}" ]; then
-                  kill -TERM "$child_pid" 2>/dev/null || true
-                  wait "$child_pid" 2>/dev/null || true
-                fi
-                rm -f "$pid_file"
-                exit 0
-              }
-              trap stop_worker INT TERM
-              while true; do
-                php artisan queue:work redis-long \
-                  --queue=exports-sheet --sleep=3 --tries=2 --backoff=30 \
-                  --timeout=780 --memory=768 --max-jobs=1 --max-time=720 &
-                child_pid=$!
-                echo "$child_pid" > "$pid_file"
-                wait "$child_pid"
-                exit_code=$?
-                child_pid=""
-                rm -f "$pid_file"
-                if [ "$exit_code" -ne 0 ]; then
-                  exit "$exit_code"
-                fi
-                sleep 1
-              done
+              exec php artisan queue:work redis-long \
+                --queue=exports-sheet --sleep=3 --tries=2 --backoff=30 \
+                --timeout=780 --memory=768 --max-jobs=1 --max-time=720
           envFrom:
             - secretRef:
                 name: cilupbah-env
@@ -73,7 +50,7 @@ spec:
             failureThreshold: 3
           readinessProbe:
             exec:
-              command: ["sh", "-c", "test -s /tmp/worker.pid && kill -0 \"$(cat /tmp/worker.pid)\""]
+              command: ["sh", "-c", "kill -0 1"]
             initialDelaySeconds: 10
             periodSeconds: 15
             timeoutSeconds: 5
