@@ -79,6 +79,7 @@ class InboundPaginationTest extends TestCase
         $this->seed(RoleSeeder::class);
         $admin = $this->createPrivilegedUser();
         $creator = User::factory()->create(['name' => 'Rizki Inbound']);
+        $otherCreator = User::factory()->create(['name' => 'Budi Inbound']);
         $this->actingAs($admin, 'sanctum');
 
         $location = Location::create([
@@ -92,6 +93,7 @@ class InboundPaginationTest extends TestCase
         foreach ([
             (string) $creator->id,
             'user:'.$creator->id,
+            (string) $otherCreator->id,
         ] as $sequence => $createdBy) {
             Inbound::create([
                 'location_id' => $location->id,

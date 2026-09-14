@@ -146,7 +146,7 @@ class InboundRepository
                 $users->selectRaw('1')
                     ->from('users')
                     ->whereRaw(
-                        "users.id::text = inbounds.created_by OR ('user:' || users.id::text) = inbounds.created_by",
+                        "(users.id::text = inbounds.created_by OR ('user:' || users.id::text) = inbounds.created_by)",
                     )
                     ->whereRaw(
                         SearchExpression::match(['users.name']),
