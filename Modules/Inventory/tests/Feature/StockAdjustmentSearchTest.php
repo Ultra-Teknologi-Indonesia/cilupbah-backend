@@ -76,6 +76,62 @@ class StockAdjustmentSearchTest extends TestCase
             ->assertJsonPath('data.0.item_id', $variant->id);
     }
 
+    public function test_adjustment_items_default_to_twenty_and_cap_an_oversized_page(): void
+    {
+        $user = $this->createPrivilegedUser();
+        $location = Location::create([
+            'location_code' => 'WH-ADJ-PAGE-SIZE',
+            'location_name' => 'Gudang Adjustment Page Size',
+            'location_type' => 'warehouse',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'Kategori Adjustment Page Size',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $product = Product::create([
+            'category_id' => $categoryId,
+            'name' => 'Produk Adjustment Page Size',
+            'is_active' => true,
+        ]);
+        $adjustment = StockAdjustment::create([
+            'adjustment_no' => 'ADJ-PAGE-SIZE-001',
+            'transaction_date' => now(),
+            'location_id' => $location->id,
+            'created_by' => 'tester',
+        ]);
+
+        for ($i = 1; $i <= 21; $i++) {
+            $variant = ProductVariant::create([
+                'product_id' => $product->id,
+                'sku' => "ADJ-PAGE-{$i}",
+                'is_active' => true,
+            ]);
+            StockAdjustmentItem::create([
+                'stock_adjustment_id' => $adjustment->id,
+                'item_id' => $variant->id,
+                'system_qty' => 1,
+                'actual_qty' => 1,
+                'difference_qty' => 0,
+            ]);
+        }
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson("/api/v1/inventory/adjustments/documents/{$adjustment->id}/items")
+            ->assertOk()
+            ->assertJsonCount(20, 'data')
+            ->assertJsonPath('meta.per_page', 20)
+            ->assertJsonPath('meta.total', 21);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson("/api/v1/inventory/adjustments/documents/{$adjustment->id}/items?per_page=500")
+            ->assertOk()
+            ->assertJsonCount(21, 'data')
+            ->assertJsonPath('meta.per_page', 200);
+    }
+
     public function test_adjustment_list_search_matches_document_notes(): void
     {
         $user = $this->createPrivilegedUser();

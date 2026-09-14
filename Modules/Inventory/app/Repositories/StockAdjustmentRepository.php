@@ -12,6 +12,10 @@ use Illuminate\Http\Request;
 
 class StockAdjustmentRepository
 {
+    private const DEFAULT_ITEMS_PER_PAGE = 20;
+
+    private const MAX_ITEMS_PER_PAGE = 200;
+
     public function getAllPaginated(int $limit = 10)
     {
         $query = QueryBuilder::for(StockAdjustment::class)
@@ -130,10 +134,29 @@ class StockAdjustmentRepository
         $query->delete();
     }
 
-    public function getItemsPaginated(string $adjustmentId, int $limit = 10)
+    public function getItemsPaginated(string $adjustmentId, int $limit = self::DEFAULT_ITEMS_PER_PAGE)
     {
+
+        $perPage = min(
+            self::MAX_ITEMS_PER_PAGE,
+            max(1, (int) request('per_page', $limit)),
+        );
+
         $query = QueryBuilder::for(StockAdjustmentItem::class)
             ->where('stock_adjustment_id', $adjustmentId)
+            ->select([
+                'id',
+                'stock_adjustment_id',
+                'item_id',
+                'bin_id',
+                'system_qty',
+                'actual_qty',
+                'difference_qty',
+                'unit_cost',
+                'notes',
+                'created_at',
+                'updated_at',
+            ])
             ->with([
                 'product:id,sku,product_id',
                 'product.product:id,name',
@@ -142,15 +165,15 @@ class StockAdjustmentRepository
                 'bin:id,bin_final_code'
             ])
             ->allowedSearch('notes', 'product.sku')
-            ->allowedSorts('created_at')
-            ->defaultSort('-created_at');
+            ->allowedSorts('created_at', 'id')
+            ->defaultSort('-created_at', '-id');
 
         $query->whereHas('stockAdjustment', function ($adjustment) {
             WarehouseAccess::apply($adjustment, 'location_id');
         });
 
         return $query
-            ->paginate(request('per_page', $limit))
+            ->paginate($perPage)
             ->appends(request()->query());
     }
 

@@ -76,8 +76,7 @@ class StockAdjustmentLegacyNegativeCleanupTest extends TestCase
 
     private function createFixture(): array
     {
-        // Production still contains legacy negative rows created before this
-        // database invariant existed; reproduce that historical state here.
+
         DB::statement('ALTER TABLE inventories DROP CONSTRAINT IF EXISTS inventories_on_hand_non_negative_check');
 
         $location = Location::create([

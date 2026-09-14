@@ -161,10 +161,6 @@ class ProcessStockAdjustmentJob implements ShouldQueue
         }
     }
 
-    /**
-     * Allow only the exact correction needed to remove a legacy negative row
-     * outside the SKU's assigned bin. This never creates positive stock there.
-     */
     private function clearsLegacyNegativeOutsideAssignedBin(
         StockAdjustment $adjustment,
         StockAdjustmentItem $item,
