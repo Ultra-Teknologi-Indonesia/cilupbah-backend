@@ -6,6 +6,7 @@ use App\Support\WarehouseAccess;
 use Modules\Purchase\Repositories\PurchaseOrderRepository;
 use Modules\Purchase\Enums\PurchaseActivityAction;
 use Modules\Purchase\Models\PurchaseOrder;
+use Modules\Purchase\Models\PurchaseOrderItem;
 use Modules\Purchase\Models\PurchaseBill;
 use Modules\Purchase\Models\PurchasePayment;
 use Modules\Inbound\Models\Inbound;
@@ -160,6 +161,166 @@ class PurchaseOrderService
 
             return $this->getById($id);
         });
+    }
+
+    /**
+     * Applies a small, explicit set of purchase-order changes. Unlike the
+     * legacy full-document update this never interprets an unloaded page of
+     * items as a request to remove those items.
+     */
+    public function patch(string $id, array $data): PurchaseOrder
+    {
+        return DB::transaction(function () use ($id, $data) {
+            $po = $this->poRepository->findByIdForUpdate($id);
+            if (! $po) {
+                throw ValidationException::withMessages(['id' => 'PO tidak ditemukan.']);
+            }
+
+            $this->inboundService->assertPurchaseOrderEditable($po);
+
+            $headerKeys = [
+                'po_number', 'contact_id', 'location_id', 'order_date', 'expected_date',
+                'ref_no', 'payment_term', 'is_tax_included', 'notes',
+            ];
+            $header = array_intersect_key($data, array_flip($headerKeys));
+            if (array_key_exists('location_id', $header)) {
+                WarehouseAccess::assert($header['location_id']);
+            }
+            $effectiveOrderDate = $header['order_date'] ?? $po->order_date?->toDateString();
+            $effectiveExpectedDate = array_key_exists('expected_date', $header)
+                ? $header['expected_date']
+                : $po->expected_date?->toDateString();
+            if ($effectiveExpectedDate && $effectiveOrderDate && $effectiveExpectedDate < $effectiveOrderDate) {
+                throw ValidationException::withMessages([
+                    'expected_date' => 'Tanggal estimasi tidak boleh sebelum tanggal pesanan.',
+                ]);
+            }
+
+            $changes = $data['changes'] ?? [];
+            $creates = $changes['create'] ?? [];
+            $updates = $changes['update'] ?? [];
+            $deleteIds = collect($changes['delete_ids'] ?? [])->values();
+            $mutatedIds = collect($updates)->pluck('id')->merge($deleteIds)->unique()->values();
+
+            // Lock the document lines server-side. The browser never needs to
+            // download every page just to preserve lines it did not touch.
+            $existing = $this->poRepository->lockItems($po->id);
+            $missingIds = $mutatedIds->diff($existing->keys());
+            if ($missingIds->isNotEmpty()) {
+                throw ValidationException::withMessages([
+                    'changes' => 'Sebagian baris PO sudah berubah atau tidak lagi tersedia. Muat ulang halaman sebelum menyimpan.',
+                ]);
+            }
+
+            $itemsBefore = $this->snapshotItems($po);
+            $taxIncluded = array_key_exists('is_tax_included', $header)
+                ? (bool) $header['is_tax_included']
+                : (bool) $po->is_tax_included;
+
+            $desired = $existing
+                ->reject(fn (PurchaseOrderItem $item): bool => $deleteIds->contains($item->id))
+                ->map(fn (PurchaseOrderItem $item): array => $this->purchaseOrderItemPayload($item));
+
+            foreach ($updates as $change) {
+                $current = $desired->get($change['id']);
+                $desired->put($change['id'], array_merge($current, $this->itemPatchFields($change)));
+            }
+
+            foreach ($creates as $index => $create) {
+                $desired->put("new:{$index}", $this->itemPatchFields($create));
+            }
+
+            if ($desired->isEmpty()) {
+                throw ValidationException::withMessages(['changes.delete_ids' => 'PO harus memiliki minimal satu produk.']);
+            }
+            if ($desired->pluck('item_id')->duplicates()->isNotEmpty()) {
+                throw ValidationException::withMessages(['changes' => 'Satu produk hanya boleh muncul sekali pada PO.']);
+            }
+
+            // Receipt reversals are calculated from the complete server-side
+            // state before any line is deleted or reduced.
+            $this->reverseReceiptsForShrunkLines($po, $desired->values()->all());
+
+            foreach ($updates as $change) {
+                $item = $existing->get($change['id']);
+                $payload = $desired->get($change['id']);
+                $this->calculateItemAmounts($payload, $taxIncluded);
+                $item->update($this->itemDatabasePayload($payload));
+            }
+
+            if ($deleteIds->isNotEmpty()) {
+                PurchaseOrderItem::query()
+                    ->where('purchase_order_id', $po->id)
+                    ->whereIn('id', $deleteIds)
+                    ->delete();
+            }
+
+            foreach ($creates as $index => $_create) {
+                $payload = $desired->get("new:{$index}");
+                $this->calculateItemAmounts($payload, $taxIncluded);
+                $this->poRepository->createItem(array_merge(
+                    $this->itemDatabasePayload($payload),
+                    ['purchase_order_id' => $po->id],
+                ));
+            }
+
+            $po->load('items');
+            $header = array_merge($header, $this->calculateTotals(
+                $po->items->map(fn (PurchaseOrderItem $item): array => [
+                    'unit_price' => (float) $item->unit_price,
+                    'qty' => (int) $item->qty,
+                    'disc' => (float) $item->disc,
+                    'tax_amount' => (float) $item->tax_amount,
+                    'shipping_cost' => (float) $item->shipping_cost,
+                ])->all(),
+                $taxIncluded,
+            ));
+
+            $headerBefore = $po->only(array_keys($header));
+            $po->update($header);
+            $this->logItemDiff($po, $itemsBefore);
+            $this->activityLogger->logHeaderChanges($po, $headerBefore, $header);
+
+            $statusBefore = $po->status;
+            $newStatus = $po->recomputeStatus();
+            if ($newStatus !== $po->status) {
+                $this->poRepository->updateStatus($po, $newStatus);
+            }
+            $this->activityLogger->logStatusChanged($po, $statusBefore, $po->fresh()->status);
+
+            $this->inboundService->resyncDraftFromPO($po->fresh()->load('items'));
+
+            return $this->getById($id);
+        });
+    }
+
+    private function purchaseOrderItemPayload(PurchaseOrderItem $item): array
+    {
+        return [
+            'item_id' => $item->item_id,
+            'description' => $item->description,
+            'unit' => $item->unit,
+            'qty' => (int) $item->qty,
+            'unit_price' => (float) $item->unit_price,
+            'disc' => (float) $item->disc,
+            'shipping_cost' => (float) $item->shipping_cost,
+            'tax_id' => $item->tax_id,
+        ];
+    }
+
+    private function itemPatchFields(array $data): array
+    {
+        return array_intersect_key($data, array_flip([
+            'item_id', 'description', 'unit', 'qty', 'unit_price', 'disc', 'shipping_cost', 'tax_id',
+        ]));
+    }
+
+    private function itemDatabasePayload(array $data): array
+    {
+        return array_intersect_key($data, array_flip([
+            'item_id', 'description', 'unit', 'qty', 'unit_price', 'disc', 'disc_amount',
+            'shipping_cost', 'tax_id', 'tax_amount', 'amount',
+        ]));
     }
 
     private function snapshotItems(PurchaseOrder $po): array
