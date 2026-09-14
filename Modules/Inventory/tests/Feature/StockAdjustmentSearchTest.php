@@ -74,6 +74,11 @@ class StockAdjustmentSearchTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('data.0.item_id', $variant->id);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson("/api/v1/inventory/adjustments/documents/{$adjustment->id}")
+            ->assertOk()
+            ->assertJsonPath('data.items_count', 2);
     }
 
     public function test_adjustment_items_default_to_twenty_and_cap_an_oversized_page(): void

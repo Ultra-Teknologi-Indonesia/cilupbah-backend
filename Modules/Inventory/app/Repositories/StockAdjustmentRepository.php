@@ -103,7 +103,8 @@ class StockAdjustmentRepository
 
     public function findById(string $id): ?StockAdjustment
     {
-        $query = StockAdjustment::with(['location:id,location_name']);
+        $query = StockAdjustment::with(['location:id,location_name'])
+            ->withCount('items');
         WarehouseAccess::apply($query, 'location_id');
 
         return $query->find($id);

@@ -19,6 +19,7 @@ class StockAdjustmentResource extends JsonResource
             'created_by' => ActorName::resolve($this->created_by),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
+            'items_count' => $this->whenCounted('items'),
             'location' => $this->whenLoaded('location', function () {
                 return [
                     'id' => $this->location->id,
