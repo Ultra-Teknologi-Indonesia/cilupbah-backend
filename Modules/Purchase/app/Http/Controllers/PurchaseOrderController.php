@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Purchase\Services\PurchaseOrderService;
 use Modules\Purchase\Http\Requests\StorePurchaseOrderRequest;
+use Modules\Purchase\Http\Requests\PatchPurchaseOrderRequest;
 use Modules\Purchase\Http\Requests\ReceivePurchaseOrderRequest;
 use Modules\Purchase\Http\Resources\PurchaseOrderResource;
 use OpenApi\Attributes as OA;
@@ -66,6 +67,13 @@ class PurchaseOrderController extends Controller
         } catch (\Exception $e) {
             throw $e;
         }
+    }
+
+    public function patch(string $id, PatchPurchaseOrderRequest $request): JsonResponse
+    {
+        $po = $this->poService->patch($id, $request->validated());
+
+        return $this->successResponse($po, 'PO berhasil diperbarui.');
     }
 
     public function receive(string $id, ReceivePurchaseOrderRequest $request): JsonResponse

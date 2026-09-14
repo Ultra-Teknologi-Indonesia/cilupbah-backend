@@ -129,10 +129,6 @@ class AutoJournalService
         float $signedValue,
     ): void {
         $amount = abs($signedValue);
-        if ($amount <= 0) {
-            return;
-        }
-
         $debit = $signedValue > 0
             ? $this->mappedAccountId(AccountMappingKey::INVENTORY)
             : $this->mappedAccountId(AccountMappingKey::INVENTORY_LOSS);
@@ -141,7 +137,7 @@ class AutoJournalService
             ? $this->mappedAccountId(AccountMappingKey::INVENTORY_GAIN)
             : $this->mappedAccountId(AccountMappingKey::INVENTORY);
 
-        $this->record(
+        $this->syncStockAdjustmentRecord(
             sourceType: 'stock_adjustment',
             sourceId: $sourceId,
             sourceNo: $adjustmentNumber,
@@ -151,6 +147,57 @@ class AutoJournalService
             creditAccountId: $credit,
             description: 'Penyesuaian stok ' . $adjustmentNumber,
         );
+    }
+
+    protected function syncStockAdjustmentRecord(
+        string $sourceType,
+        string $sourceId,
+        ?string $sourceNo,
+        $date,
+        float $amount,
+        ?string $debitAccountId,
+        ?string $creditAccountId,
+        string $description,
+    ): void {
+        $existing = $this->journalRepository->findBySourceDoc($sourceType, $sourceId);
+
+        if ($amount <= 0) {
+            $existing?->delete();
+
+            return;
+        }
+
+        if (! $debitAccountId || ! $creditAccountId) {
+            Log::warning('AutoJournal dilewati: akun debit/kredit belum tersedia.', [
+                'source' => "{$sourceType}:{$sourceNo}",
+            ]);
+
+            return;
+        }
+
+        $amountStr = number_format($amount, 4, '.', '');
+        $header = [
+            'transaction_date' => $date,
+            'journal_type' => null,
+            'source_doc_type' => $sourceType,
+            'source_doc_id' => $sourceId,
+            'source_doc_no' => $sourceNo,
+            'notes' => $description,
+        ];
+        $lines = [
+            ['account_id' => $debitAccountId, 'debit' => $amountStr, 'credit' => 0, 'description' => $description],
+            ['account_id' => $creditAccountId, 'debit' => 0, 'credit' => $amountStr, 'description' => $description],
+        ];
+
+        if ($existing) {
+            $this->journalRepository->replaceLines($existing, $header, $lines);
+
+            return;
+        }
+
+        $this->journalRepository->createWithLines($header + [
+            'journal_no' => $this->journalRepository->nextJournalNo(),
+        ], $lines);
     }
 
     public function forStockRevaluation(

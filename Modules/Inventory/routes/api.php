@@ -181,6 +181,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         });
         Route::middleware('role_or_permission:owner|create-penyesuaian-stok|edit-penyesuaian-stok')->group(function () {
             Route::post('/', [StockAdjustmentController::class, 'store'])->name('inventory.adjustments.documents.store');
+            Route::patch('/{id}', [StockAdjustmentController::class, 'patch'])->name('inventory.adjustments.documents.patch');
             Route::put('/{id}', [StockAdjustmentController::class, 'update'])->name('inventory.adjustments.documents.update');
         });
         Route::middleware('role_or_permission:owner|export-penyesuaian-stok')->group(function () {

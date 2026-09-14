@@ -2,19 +2,27 @@
 
 namespace Modules\Channel\Services;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Log;
+use Modules\Channel\Exceptions\ChannelCancelException;
 use Modules\Channel\Exceptions\ChannelOrderPullIncompleteException;
+use Modules\Channel\Exceptions\TikTokApiException;
+use Modules\Channel\Exceptions\TikTokOrderListUnavailableException;
+use Modules\Channel\Repositories\ChannelOrderRepository;
+use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Outbound\Support\ChannelInstantSignal;
 use Modules\Sales\Services\SalesOrderService as OrderService;
-use Modules\Channel\Repositories\ChannelShopRepository;
-use Modules\Channel\Repositories\ChannelOrderRepository;
 
 class TikTokOrderService
 {
     protected TikTokClient $client;
+
     protected TikTokToInternalOrderMapper $mapper;
+
     protected OrderService $orderService;
+
     protected ChannelShopRepository $shopRepository;
+
     protected ChannelOrderRepository $orderRepository;
 
     public function __construct(
@@ -66,7 +74,7 @@ class TikTokOrderService
 
     public function pullOrders(string $shopId, ?int $updatedAfter = null, ?int $updatedBefore = null): int
     {
-        if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
+        if (app(ChannelSyncSettingService::class)->isPaused()) {
             return 0;
         }
 
@@ -79,7 +87,7 @@ class TikTokOrderService
         $shopCipher = $shop->shop_cipher ?? '';
 
         $timeFrom = $updatedAfter ?: now()->subDays(7)->timestamp;
-        $timeTo   = $updatedBefore ?: now()->timestamp;
+        $timeTo = $updatedBefore ?: now()->timestamp;
 
         $count = 0;
         $failedOrderIds = [];
@@ -89,12 +97,12 @@ class TikTokOrderService
         do {
             $queries = [
                 'shop_cipher' => $shopCipher,
-                'page_size'   => 100,
+                'page_size' => 100,
             ];
 
             $body = [
-                'sort_field'     => 'update_time',
-                'sort_order'     => 'ASC',
+                'sort_field' => 'update_time',
+                'sort_order' => 'ASC',
                 'update_time_ge' => $timeFrom,
                 'update_time_lt' => $timeTo,
             ];
@@ -103,11 +111,32 @@ class TikTokOrderService
                 $body['next_page_token'] = $nextPageToken;
             }
 
-            $res = $this->client->request('POST', '/order/202309/orders/search', $queries, $body, $accessToken);
+            $res = retry(
+                2,
+                function () use ($queries, $body, $accessToken): array {
+                    $response = $this->client->request(
+                        'POST',
+                        '/order/202309/orders/search',
+                        $queries,
+                        $body,
+                        $accessToken,
+                    );
 
-            if (! isset($res['data']['orders']) || ! is_array($res['data']['orders'])) {
-                throw new \RuntimeException('TikTok tidak mengembalikan daftar order yang valid.');
-            }
+                    if (! is_array($response)
+                        || ! isset($response['data']['orders'])
+                        || ! is_array($response['data']['orders'])) {
+                        throw new TikTokOrderListUnavailableException(
+                            'TikTok tidak mengembalikan daftar order yang valid.',
+                        );
+                    }
+
+                    return $response;
+                },
+                500,
+                static fn (\Throwable $e): bool => $e instanceof TikTokOrderListUnavailableException
+                    || $e instanceof ConnectionException
+                    || ($e instanceof TikTokApiException && $e->isRetryable()),
+            );
 
             foreach ($res['data']['orders'] as $item) {
                 try {
@@ -123,7 +152,7 @@ class TikTokOrderService
                     }
                     $count++;
                 } catch (\Exception $e) {
-                    Log::error("Failed to pull order {$item['id']}: " . $e->getMessage());
+                    Log::error("Failed to pull order {$item['id']}: ".$e->getMessage());
                     $failedOrderIds[] = (string) ($item['id'] ?? 'unknown');
                 }
             }
@@ -152,7 +181,7 @@ class TikTokOrderService
 
         $queries = [
             'shop_cipher' => $shop->shop_cipher ?? '',
-            'ids'         => $orderId,
+            'ids' => $orderId,
         ];
 
         $res = $this->client->request('GET', '/order/202309/orders', $queries, [], $shop->access_token);
@@ -184,7 +213,7 @@ class TikTokOrderService
                     try {
                         $statement = $this->getOrderStatement($shopId, (string) $item['id']);
                         if (! empty($statement)) {
-                            $finance = app(\Modules\Channel\Services\TikTokStatementMapper::class)->map($statement);
+                            $finance = app(TikTokStatementMapper::class)->map($statement);
                             $this->orderService->updateOrderFinance($localOrderId, $finance);
                         }
                     } catch (\Throwable $e) {
@@ -193,7 +222,7 @@ class TikTokOrderService
                 }
                 $count++;
             } catch (\Throwable $e) {
-                Log::error("Failed to pull specific order {$item['id']}: " . $e->getMessage());
+                Log::error("Failed to pull specific order {$item['id']}: ".$e->getMessage());
                 throw $e;
             }
         }
@@ -220,9 +249,9 @@ class TikTokOrderService
         }
 
         Log::debug('TikTok instant/sameday order diproses', [
-            'shop_id'          => $shopId,
-            'order_id'         => $item['id'] ?? null,
-            'shipping_type'    => $item['shipping_type'] ?? null,
+            'shop_id' => $shopId,
+            'order_id' => $item['id'] ?? null,
+            'shipping_type' => $item['shipping_type'] ?? null,
             'fulfillment_type' => $item['fulfillment_type'] ?? null,
         ]);
     }
@@ -259,7 +288,7 @@ class TikTokOrderService
                 $internalData['shipping_provider'] = (string) $data['shipping_provider_name'];
             }
         } catch (\Exception $e) {
-            Log::warning("Failed to enrich tracking from package {$packageId}: " . $e->getMessage());
+            Log::warning("Failed to enrich tracking from package {$packageId}: ".$e->getMessage());
         }
 
         return $internalData;
@@ -294,9 +323,9 @@ class TikTokOrderService
         $shop = $this->requireFinanceShop($shopId);
 
         $queries = [
-            'sort_field'       => 'statement_time',
-            'shop_cipher'      => $shop->shop_cipher ?? '',
-            'page_size'        => 100,
+            'sort_field' => 'statement_time',
+            'shop_cipher' => $shop->shop_cipher ?? '',
+            'page_size' => 100,
             'statement_time_ge' => $stmtTimeGe,
             'statement_time_lt' => $stmtTimeLt,
         ];
@@ -311,9 +340,9 @@ class TikTokOrderService
         $shop = $this->requireFinanceShop($shopId);
 
         $queries = [
-            'sort_field'  => 'order_create_time',
+            'sort_field' => 'order_create_time',
             'shop_cipher' => $shop->shop_cipher ?? '',
-            'page_size'   => 100,
+            'page_size' => 100,
         ];
 
         $res = $this->client->request('GET', "/finance/202501/statements/{$statementId}/statement_transactions", $queries, [], $shop->access_token);
@@ -326,9 +355,9 @@ class TikTokOrderService
         $shop = $this->requireFinanceShop($shopId);
 
         $queries = [
-            'sort_field'    => 'create_time',
-            'shop_cipher'   => $shop->shop_cipher ?? '',
-            'page_size'     => 100,
+            'sort_field' => 'create_time',
+            'shop_cipher' => $shop->shop_cipher ?? '',
+            'page_size' => 100,
             'create_time_ge' => $ge,
             'create_time_lt' => $lt,
         ];
@@ -387,14 +416,14 @@ class TikTokOrderService
 
             if (empty($packageIds)) {
                 Log::warning('TikTok RTS: no package_id resolvable for order', [
-                    'shop_id'  => $shopId,
+                    'shop_id' => $shopId,
                     'order_id' => $orderId,
                 ]);
 
                 return [
                     'order_id' => $orderId,
-                    'shipped'  => false,
-                    'message'  => 'Tidak ada package_id yang dapat di-resolve untuk order ini. Pastikan order sudah AWAITING_SHIPMENT dan package sudah dibuat.',
+                    'shipped' => false,
+                    'message' => 'Tidak ada package_id yang dapat di-resolve untuk order ini. Pastikan order sudah AWAITING_SHIPMENT dan package sudah dibuat.',
                     'packages' => [],
                 ];
             }
@@ -427,10 +456,10 @@ class TikTokOrderService
                 } catch (\Throwable $e) {
                     $allOk = false;
                     Log::error('TikTok RTS: gagal ship package', [
-                        'shop_id'    => $shopId,
-                        'order_id'   => $orderId,
+                        'shop_id' => $shopId,
+                        'order_id' => $orderId,
                         'package_id' => $packageId,
-                        'error'      => $e->getMessage(),
+                        'error' => $e->getMessage(),
                     ]);
                     $results[] = ['package_id' => $packageId, 'shipped' => false, 'message' => $e->getMessage()];
                 }
@@ -446,17 +475,17 @@ class TikTokOrderService
 
             return [
                 'order_id' => $orderId,
-                'shipped'  => $allOk,
-                'message'  => $allOk
+                'shipped' => $allOk,
+                'message' => $allOk
                     ? 'RTS berhasil.'
                     : ($someOk ? 'Sebagian package berhasil, sebagian gagal (PARTIALLY_SHIPPING).' : 'Semua package gagal di-RTS.'),
                 'packages' => $results,
             ];
         } catch (\Throwable $e) {
             Log::error('TikTok RTS: gagal', [
-                'shop_id'  => $shopId,
+                'shop_id' => $shopId,
                 'order_id' => $orderId,
-                'error'    => $e->getMessage(),
+                'error' => $e->getMessage(),
             ]);
 
             throw $e;
@@ -481,7 +510,7 @@ class TikTokOrderService
         }
 
         $queries = [
-            'shop_cipher'   => $shop->shop_cipher ?? '',
+            'shop_cipher' => $shop->shop_cipher ?? '',
             'document_type' => $documentType,
             'document_size' => $documentSize,
         ];
@@ -575,11 +604,11 @@ class TikTokOrderService
         }
 
         return [
-            'cancel_id'   => isset($c['cancel_id']) ? (string) $c['cancel_id'] : (isset($c['id']) ? (string) $c['id'] : null),
-            'reason_key'  => $c['cancel_reason_key'] ?? $c['cancel_reason'] ?? null,
+            'cancel_id' => isset($c['cancel_id']) ? (string) $c['cancel_id'] : (isset($c['id']) ? (string) $c['id'] : null),
+            'reason_key' => $c['cancel_reason_key'] ?? $c['cancel_reason'] ?? null,
             'reason_text' => $c['cancel_reason_text'] ?? $c['reason_text'] ?? null,
-            'status'      => $c['cancel_status'] ?? $c['status'] ?? null,
-            'raw'         => $c,
+            'status' => $c['cancel_status'] ?? $c['status'] ?? null,
+            'raw' => $c,
         ];
     }
 
@@ -596,10 +625,10 @@ class TikTokOrderService
         }
 
         $queries = [
-            'shop_cipher'         => $shop->shop_cipher ?? '',
+            'shop_cipher' => $shop->shop_cipher ?? '',
             'return_or_cancel_id' => $cancelId,
-            'check_decisions'     => 'REJECT_REQUEST_CANCEL',
-            'locale'              => 'id-ID',
+            'check_decisions' => 'REJECT_REQUEST_CANCEL',
+            'locale' => 'id-ID',
         ];
 
         $res = $this->client->request(
@@ -676,12 +705,12 @@ class TikTokOrderService
 
             return [
                 'tracking_number' => $tracking ? (string) $tracking : null,
-                'carrier'         => $carrier ? (string) $carrier : null,
-                'shipped_at'      => $shippedAt,
+                'carrier' => $carrier ? (string) $carrier : null,
+                'shipped_at' => $shippedAt,
                 '_request_succeeded' => true,
             ];
         } catch (\Throwable $e) {
-            Log::warning("TikTok: gagal ambil resi retur (return_id={$returnId}): " . $e->getMessage());
+            Log::warning("TikTok: gagal ambil resi retur (return_id={$returnId}): ".$e->getMessage());
 
             return $empty + ['_failure_reason' => $e->getMessage()];
         }
@@ -772,7 +801,7 @@ class TikTokOrderService
                 'raw' => $ret,
             ];
         } catch (\Throwable $e) {
-            Log::warning("TikTok: gagal ambil detail retur (return_id={$returnId}): " . $e->getMessage());
+            Log::warning("TikTok: gagal ambil detail retur (return_id={$returnId}): ".$e->getMessage());
 
             return $empty;
         }
@@ -812,7 +841,7 @@ class TikTokOrderService
 
             return ['records' => $records];
         } catch (\Throwable $e) {
-            Log::warning("TikTok: gagal ambil riwayat banding retur (return_id={$returnId}): " . $e->getMessage());
+            Log::warning("TikTok: gagal ambil riwayat banding retur (return_id={$returnId}): ".$e->getMessage());
 
             return ['records' => []];
         }
@@ -836,7 +865,7 @@ class TikTokOrderService
 
             return true;
         } catch (\Throwable $e) {
-            Log::warning("TikTok: gagal setujui retur (return_id={$returnId}): " . $e->getMessage());
+            Log::warning("TikTok: gagal setujui retur (return_id={$returnId}): ".$e->getMessage());
 
             return false;
         }
@@ -865,7 +894,7 @@ class TikTokOrderService
 
             return true;
         } catch (\Throwable $e) {
-            Log::warning("TikTok: gagal tolak retur (return_id={$returnId}): " . $e->getMessage());
+            Log::warning("TikTok: gagal tolak retur (return_id={$returnId}): ".$e->getMessage());
 
             return false;
         }
@@ -894,7 +923,7 @@ class TikTokOrderService
                 'text' => (string) ($r['reject_reason_text'] ?? $r['text'] ?? ''),
             ], $reasons);
         } catch (\Throwable $e) {
-            Log::warning("TikTok: gagal ambil alasan tolak retur (return_id={$returnId}): " . $e->getMessage());
+            Log::warning("TikTok: gagal ambil alasan tolak retur (return_id={$returnId}): ".$e->getMessage());
 
             return [];
         }
@@ -942,9 +971,9 @@ class TikTokOrderService
 
         $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
         $body = [
-            'order_id'           => $orderId,
-            'cancel_reason_key'  => $reason,
-            'cancel_reason'      => $reason,
+            'order_id' => $orderId,
+            'cancel_reason_key' => $reason,
+            'cancel_reason' => $reason,
         ];
 
         $res = $this->client->request('POST', '/return_refund/202309/cancellations', $queries, $body, $shop->access_token);
@@ -971,7 +1000,7 @@ class TikTokOrderService
 
         if (! $cancelable) {
             $shown = $rawStatus !== '' ? $rawStatus : $normalized;
-            throw \Modules\Channel\Exceptions\ChannelCancelException::final(
+            throw ChannelCancelException::final(
                 "TikTok menolak pembatalan {$orderId}: status {$shown} tidak dapat dibatalkan seller.",
             );
         }
@@ -983,7 +1012,7 @@ class TikTokOrderService
 
         $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
         $body = [
-            'order_id'      => $tiktokOrderId,
+            'order_id' => $tiktokOrderId,
             'cancel_reason' => $reason,
         ];
 
@@ -993,7 +1022,7 @@ class TikTokOrderService
         if ($code !== 0) {
             $message = $res['message'] ?? "code {$code}";
 
-            throw new \Modules\Channel\Exceptions\ChannelCancelException(
+            throw new ChannelCancelException(
                 "TikTok menolak pembatalan {$orderId}: {$message}",
                 retryable: $code === 36009003,
                 channelCode: (string) $code,
@@ -1002,7 +1031,7 @@ class TikTokOrderService
 
         $cancelStatus = $res['data']['cancel_status'] ?? null;
         if ($cancelStatus === 'CANCELLATION_REQUEST_CANCEL') {
-            throw \Modules\Channel\Exceptions\ChannelCancelException::final(
+            throw ChannelCancelException::final(
                 "TikTok membatalkan permintaan pembatalan {$orderId} (CANCELLATION_REQUEST_CANCEL).",
             );
         }
@@ -1010,10 +1039,10 @@ class TikTokOrderService
         $this->resyncLocalOrder($order->channel_shop_id, $tiktokOrderId);
 
         return [
-            'cancel_id'     => $res['data']['cancel_id'] ?? null,
+            'cancel_id' => $res['data']['cancel_id'] ?? null,
             'cancel_status' => $cancelStatus,
-            'async'         => $cancelStatus !== 'CANCELLATION_REQUEST_COMPLETE',
-            'raw'           => $res,
+            'async' => $cancelStatus !== 'CANCELLATION_REQUEST_COMPLETE',
+            'raw' => $res,
         ];
     }
 
@@ -1044,7 +1073,7 @@ class TikTokOrderService
             }
 
             return [
-                'key'   => (string) $key,
+                'key' => (string) $key,
                 'label' => (string) ($r['text'] ?? $r['label'] ?? $key),
             ];
         }, $reasons)));
@@ -1055,7 +1084,7 @@ class TikTokOrderService
         try {
             $this->pullOrderById($shopId, $orderId);
         } catch (\Throwable $e) {
-            Log::warning("TikTok: resync order {$orderId} gagal pasca aksi: " . $e->getMessage());
+            Log::warning("TikTok: resync order {$orderId} gagal pasca aksi: ".$e->getMessage());
         }
     }
 
@@ -1073,7 +1102,7 @@ class TikTokOrderService
             if (strpos($e->getMessage(), 'invalid params') === false) {
                 Log::warning('TikTok RTS: gagal membuat package sebelum RTS', [
                     'order_id' => $orderId,
-                    'error'    => $e->getMessage(),
+                    'error' => $e->getMessage(),
                 ]);
             }
         }
@@ -1145,9 +1174,9 @@ class TikTokOrderService
                         }
                     } catch (\Throwable $docErr) {
                         Log::debug('fetchAndStoreTracking: shipping document fallback gagal', [
-                            'order_id'   => $orderId,
+                            'order_id' => $orderId,
                             'package_id' => $packageId,
-                            'error'      => $docErr->getMessage(),
+                            'error' => $docErr->getMessage(),
                         ]);
                     }
                 }
@@ -1159,7 +1188,7 @@ class TikTokOrderService
         } catch (\Throwable $e) {
             Log::warning('TikTok: gagal fetch tracking post-RTS', [
                 'order_id' => $orderId,
-                'error'    => $e->getMessage(),
+                'error' => $e->getMessage(),
             ]);
         }
     }
@@ -1182,7 +1211,7 @@ class TikTokOrderService
             $tn = $pkg['tracking_number'] ?? null;
             if ($tn !== null && $tn !== '') {
                 return [
-                    'tracking_number'   => (string) $tn,
+                    'tracking_number' => (string) $tn,
                     'shipping_provider' => $pkg['shipping_provider_name'] ?? $pkg['shipping_provider'] ?? null,
                 ];
             }
@@ -1198,15 +1227,15 @@ class TikTokOrderService
                 $tn = $docRes['data']['tracking_number'] ?? null;
                 if ($tn !== null && $tn !== '') {
                     return [
-                        'tracking_number'   => (string) $tn,
+                        'tracking_number' => (string) $tn,
                         'shipping_provider' => $pkg['shipping_provider_name'] ?? $pkg['shipping_provider'] ?? null,
                     ];
                 }
             } catch (\Throwable $e) {
                 Log::debug('resolveTrackingNumber: shipping document fallback gagal', [
-                    'order_id'   => $orderId,
+                    'order_id' => $orderId,
                     'package_id' => $packageId,
-                    'error'      => $e->getMessage(),
+                    'error' => $e->getMessage(),
                 ]);
             }
         }

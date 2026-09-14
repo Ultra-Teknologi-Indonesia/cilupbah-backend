@@ -125,6 +125,47 @@ class RespondBuyerCancellationTest extends TestCase
         }
     }
 
+    public function test_tiktok_missing_active_request_is_marked_stale_without_retrying(): void
+    {
+        [$id, $orderNo] = $this->seedOrder('tiktok', ['cancel_accepted_at' => now()]);
+
+        $this->mock(TikTokOrderService::class, function ($m) use ($orderNo): void {
+            $m->shouldReceive('acceptBuyerCancellation')
+                ->once()
+                ->with('SHOP-123', $orderNo)
+                ->andThrow(new \RuntimeException(
+                    "Tidak ditemukan permintaan pembatalan aktif untuk order {$orderNo} di TikTok.",
+                    404,
+                ));
+        });
+
+        (new RespondBuyerCancellationJob($id, RespondBuyerCancellationJob::ACCEPT))->handle();
+
+        $order = SalesOrder::findOrFail($id);
+        $this->assertSame('stale', $order->buyer_cancel_sync_status);
+        $this->assertStringContainsString('Tidak ditemukan', $order->buyer_cancel_sync_error);
+    }
+
+    public function test_shopee_non_cancellable_status_is_marked_stale_without_retrying(): void
+    {
+        [$id, $orderNo] = $this->seedOrder('shopee', ['cancel_accepted_at' => now()]);
+
+        $this->mock(ShopeeOrderService::class, function ($m) use ($orderNo): void {
+            $m->shouldReceive('handleBuyerCancellation')
+                ->once()
+                ->with('SHOP-123', $orderNo, 'ACCEPT')
+                ->andThrow(new \RuntimeException(
+                    'Permintaan ditolak Shopee: Invalid order_status. The order status should be IN_CANCEL.',
+                ));
+        });
+
+        (new RespondBuyerCancellationJob($id, RespondBuyerCancellationJob::ACCEPT))->handle();
+
+        $order = SalesOrder::findOrFail($id);
+        $this->assertSame('stale', $order->buyer_cancel_sync_status);
+        $this->assertStringContainsString('IN_CANCEL', $order->buyer_cancel_sync_error);
+    }
+
     public function test_reject_cancel_request_responds_to_channel_synchronously(): void
     {
         [$id, $orderNo] = $this->seedOrder('shopee');

@@ -3,6 +3,7 @@
 namespace Modules\Channel\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Modules\Channel\Exceptions\ChannelOrderPullIncompleteException;
@@ -109,6 +110,32 @@ class PullLiveOrdersCommandTest extends TestCase
 
         $this->artisan('channel:pull-orders', ['--queue' => true])->assertSuccessful();
         Queue::assertPushed(PullChannelOrdersJob::class, 1);
+    }
+
+    public function test_scheduled_pull_bounds_each_shop_window_for_worker_safety(): void
+    {
+        Queue::fake();
+        config(['queue.routing.channel_sync.window_minutes' => 10]);
+
+        $this->artisan('channel:pull-orders', [
+            '--queue' => true,
+            '--hours' => 1,
+        ])->assertSuccessful();
+
+        Queue::assertPushed(PullChannelOrdersJob::class, function (PullChannelOrdersJob $job): bool {
+            $from = Carbon::parse($job->from);
+            $to = Carbon::parse($job->to);
+
+            return $from->diffInMinutes($to) <= 10;
+        });
+
+        $shop = $this->liveShop->fresh();
+        $this->assertNotNull($shop->order_pull_window_from);
+        $this->assertNotNull($shop->order_pull_window_to);
+        $this->assertLessThanOrEqual(
+            10,
+            $shop->order_pull_window_from->diffInMinutes($shop->order_pull_window_to),
+        );
     }
 
     public function test_leased_pull_job_releases_store_after_success(): void

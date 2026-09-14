@@ -84,6 +84,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('locations/{locationId}/bins/generate', [LocationBinController::class, 'generate'])->whereUuid('locationId')->name('warehouse.bins.generate');
         Route::post('locations/{locationId}/bins/import/preview', [LocationBinController::class, 'importPreview'])->whereUuid('locationId')->name('warehouse.bins.import-preview');
         Route::post('locations/{locationId}/bins/import', [LocationBinController::class, 'import'])->whereUuid('locationId')->name('warehouse.bins.import');
+        Route::patch('locations/{locationId}/bins', [LocationBinController::class, 'bulkUpdate'])->whereUuid('locationId')->name('warehouse.bins.patch');
+
         Route::put('locations/{locationId}/bins/bulk', [LocationBinController::class, 'bulkUpdate'])->whereUuid('locationId')->name('warehouse.bins.bulk-update');
         Route::post('locations/{locationId}/bins/uniform-apply', [LocationBinController::class, 'uniformApply'])->whereUuid('locationId')->name('warehouse.bins.uniform-apply');
         Route::post('locations/{locationId}/bins/{binId}/assign-sku', [LocationBinController::class, 'assignSku'])->whereUuid(['locationId', 'binId'])->name('warehouse.bins.assign-sku');

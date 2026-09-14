@@ -13,6 +13,7 @@ use Modules\Inventory\Services\StockAdjustmentService;
 use Modules\Inventory\Http\Requests\StoreStockAdjustmentRequest;
 use Modules\Inventory\Http\Requests\UpdateStockAdjustmentRequest;
 use Modules\Inventory\Http\Requests\BulkPdfStockAdjustmentAsyncRequest;
+use Modules\Inventory\Http\Requests\PatchStockAdjustmentRequest;
 use Modules\Inventory\Http\Resources\StockAdjustmentResource;
 use Modules\Report\Services\ExportManager;
 use OpenApi\Attributes as OA;
@@ -199,6 +200,49 @@ class StockAdjustmentController extends Controller
             $data['updated_by'] = $request->user()->name ?? $request->user()->email;
 
             $adjustment = $this->adjustmentService->update($id, $data);
+
+            return $this->successResponse(new StockAdjustmentResource($adjustment), 'Dokumen adjustment berhasil diperbarui.', 200);
+        } catch (\Exception $e) {
+            return $this->errorResponse(
+                $e->getMessage() ?: 'Gagal memperbarui.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Aksi tidak dapat diproses',
+            );
+        }
+    }
+
+    #[OA\Patch(
+        path: '/api/v1/inventory/adjustments/documents/{id}',
+        summary: 'Patch changed stock adjustment rows without replacing the full document',
+        security: [['bearerAuth' => []]],
+        tags: ['Stock Adjustment'],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'string')),
+        ],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(
+            properties: [
+                new OA\Property(property: 'transaction_date', type: 'string', format: 'date'),
+                new OA\Property(property: 'notes', type: 'string', nullable: true),
+                new OA\Property(
+                    property: 'changes',
+                    type: 'object',
+                    description: 'Optional create, update, and delete_ids change sets. Untouched document rows remain unchanged.',
+                ),
+            ],
+        )),
+        responses: [
+            new OA\Response(response: 200, description: 'Dokumen adjustment berhasil diperbarui.'),
+            new OA\Response(response: 422, description: 'Validation Error'),
+        ],
+    )]
+    public function patch(PatchStockAdjustmentRequest $request, string $id): JsonResponse
+    {
+        try {
+            $data = $request->validated();
+            $data['updated_by'] = $request->user()->name ?? $request->user()->email;
+
+            $adjustment = $this->adjustmentService->patch($id, $data);
 
             return $this->successResponse(new StockAdjustmentResource($adjustment), 'Dokumen adjustment berhasil diperbarui.', 200);
         } catch (\Exception $e) {

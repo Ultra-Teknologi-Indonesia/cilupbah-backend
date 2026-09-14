@@ -243,6 +243,134 @@ class StockAdjustmentService
         return $this->adjustmentRepository->findById($adjustment->id);
     }
 
+    public function patch(string $id, array $data): StockAdjustment
+    {
+        $deletedItemIds = [];
+
+        DB::transaction(function () use ($id, $data, &$deletedItemIds) {
+            $adjustmentQuery = StockAdjustment::lockForUpdate()->whereKey($id);
+            WarehouseAccess::apply($adjustmentQuery, 'location_id');
+            $adjustment = $adjustmentQuery->first();
+
+            if (! $adjustment) {
+                throw new \Exception('Dokumen adjustment tidak ditemukan.');
+            }
+
+            $changes = $data['changes'] ?? [];
+            $creates = array_values($changes['create'] ?? []);
+            $updates = array_values($changes['update'] ?? []);
+            $deleteIds = array_values(array_unique($changes['delete_ids'] ?? []));
+            $updateIds = array_column($updates, 'id');
+
+            if (count($updateIds) !== count(array_unique($updateIds))) {
+                throw new \InvalidArgumentException('Baris penyesuaian yang sama tidak boleh diperbarui lebih dari sekali.');
+            }
+
+            if (array_intersect($updateIds, $deleteIds) !== []) {
+                throw new \InvalidArgumentException('Satu baris tidak boleh diperbarui dan dihapus dalam aksi yang sama.');
+            }
+
+            $requestedExistingIds = array_values(array_unique([...$updateIds, ...$deleteIds]));
+            $items = StockAdjustmentItem::query()
+                ->where('stock_adjustment_id', $adjustment->id)
+                ->when(
+                    $requestedExistingIds !== [],
+                    fn ($query) => $query->whereIn('id', $requestedExistingIds),
+                    fn ($query) => $query->whereRaw('1 = 0'),
+                )
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
+            if (count($requestedExistingIds) !== $items->count()) {
+                throw new \InvalidArgumentException('Satu atau beberapa baris penyesuaian tidak ditemukan pada dokumen ini.');
+            }
+
+            $binValidationItems = [
+                ...$creates,
+                ...collect($updates)->map(function (array $update) use ($items): array {
+                    $current = $items->get($update['id']);
+
+                    return [
+                        'item_id' => $current->item_id,
+                        'bin_id' => array_key_exists('bin_id', $update)
+                            ? $update['bin_id']
+                            : $current->bin_id,
+                    ];
+                })->all(),
+            ];
+
+            $this->assertBinsBelongToLocation($binValidationItems, $adjustment->location_id);
+            app(BundleGuardService::class)->assertNotBundle(
+                array_column($binValidationItems, 'item_id'),
+                'penyesuaian stok',
+            );
+            $this->assertPatchPairsAreUnique(
+                $adjustment->id,
+                $items,
+                $creates,
+                $updates,
+                $deleteIds,
+            );
+
+            $adjustment->update([
+                'transaction_date' => $data['transaction_date'] ?? $adjustment->transaction_date,
+                'notes' => array_key_exists('notes', $data) ? $data['notes'] : $adjustment->notes,
+                'is_beginning_balance' => $data['is_beginning_balance'] ?? $adjustment->is_beginning_balance,
+            ]);
+
+            $processableItemIds = [];
+            foreach ($deleteIds as $itemId) {
+                $item = $items->get($itemId);
+                $this->revertAppliedItem($adjustment, $item);
+                $item->delete();
+                $deletedItemIds[] = $item->item_id;
+            }
+
+            foreach ($updates as $updateData) {
+                $item = $items->get($updateData['id']);
+                if (! $this->patchChangesStock($item, $updateData)) {
+                    $item->update([
+                        'notes' => array_key_exists('notes', $updateData) ? $updateData['notes'] : $item->notes,
+                        'unit_cost' => array_key_exists('unit_cost', $updateData) ? $updateData['unit_cost'] : $item->unit_cost,
+                    ]);
+                    continue;
+                }
+
+                $this->revertAppliedItem($adjustment, $item);
+                $this->writeItemFromInput($adjustment, $item, $updateData);
+                $processableItemIds[] = $item->id;
+            }
+
+            foreach ($creates as $createData) {
+                $item = StockAdjustmentItem::make([
+                    'stock_adjustment_id' => $adjustment->id,
+                    'item_id' => $createData['item_id'],
+                    'bin_id' => $createData['bin_id'] ?? null,
+
+                    'system_qty' => 0,
+                    'actual_qty' => 0,
+                    'difference_qty' => 0,
+                ]);
+                $item->save();
+                $this->writeItemFromInput($adjustment, $item, $createData);
+                $processableItemIds[] = $item->id;
+            }
+
+            (new ProcessStockAdjustmentJob(
+                $adjustment->id,
+                $data['updated_by'] ?? auth()->user()?->name ?? 'system',
+                $processableItemIds,
+            ))->handle($this->inventoryRepository, $this->movementRepository);
+        });
+
+        foreach (array_values(array_unique($deletedItemIds)) as $itemId) {
+            SyncStockToChannelsJob::dispatch($itemId);
+        }
+
+        return $this->adjustmentRepository->findById($id);
+    }
+
     public function delete(string $id): bool
     {
         $adjustmentQuery = StockAdjustment::withTrashed()->with('items')->whereKey($id);
@@ -340,5 +468,130 @@ class StockAdjustmentService
                 'Rak penyesuaian harus berada di gudang yang dipilih. Rak inbound/DEFAULT tidak dapat dipakai untuk penyesuaian; tempatkan penerimaan terlebih dahulu sebelum penyesuaian.',
             );
         }
+    }
+
+    private function assertPatchPairsAreUnique(
+        string $adjustmentId,
+        $affectedItems,
+        array $creates,
+        array $updates,
+        array $deleteIds,
+    ): void
+    {
+        $updatesById = collect($updates)->keyBy('id');
+        $replacedOrDeletedIds = array_values(array_unique([
+            ...array_column($updates, 'id'),
+            ...$deleteIds,
+        ]));
+        $pairs = StockAdjustmentItem::query()
+            ->where('stock_adjustment_id', $adjustmentId)
+            ->when(
+                $replacedOrDeletedIds !== [],
+                fn ($query) => $query->whereNotIn('id', $replacedOrDeletedIds),
+            )
+            ->get(['item_id', 'bin_id'])
+            ->map(fn (StockAdjustmentItem $item): string => sprintf('%s|%s', $item->item_id, $item->bin_id ?? ''))
+            ->merge($affectedItems
+                ->reject(fn (StockAdjustmentItem $item) => in_array($item->id, $deleteIds, true))
+            ->map(function (StockAdjustmentItem $item) use ($updatesById): string {
+                $update = $updatesById->get($item->id);
+
+                $binId = $update !== null && array_key_exists('bin_id', $update)
+                    ? $update['bin_id']
+                    : $item->bin_id;
+
+                return sprintf('%s|%s', $item->item_id, $binId ?? '');
+            }))
+            ->merge(collect($creates)->map(
+                fn (array $item): string => sprintf('%s|%s', $item['item_id'], $item['bin_id'] ?? ''),
+            ));
+
+        if ($pairs->duplicates()->isNotEmpty()) {
+            throw new \InvalidArgumentException('SKU yang sama tidak boleh dicantumkan dua kali pada rak yang sama.');
+        }
+    }
+
+    private function patchChangesStock(StockAdjustmentItem $item, array $data): bool
+    {
+        $binChanged = array_key_exists('bin_id', $data) && $data['bin_id'] !== $item->bin_id;
+        $mode = $data['mode'] ?? StockAdjustmentRule::MODE_FINAL;
+        $input = array_key_exists('input_value', $data)
+            ? (int) $data['input_value']
+            : (int) $data['actual_qty'];
+
+        return $binChanged
+            || ($mode === StockAdjustmentRule::MODE_DELTA && $input !== (int) $item->difference_qty)
+            || ($mode === StockAdjustmentRule::MODE_FINAL && $input !== (int) $item->actual_qty)
+            || (array_key_exists('unit_cost', $data) && (float) $data['unit_cost'] !== (float) ($item->unit_cost ?? 0));
+    }
+
+    private function revertAppliedItem(StockAdjustment $adjustment, StockAdjustmentItem $item): void
+    {
+        $delta = (int) $item->difference_qty;
+        if ($delta === 0) {
+            return;
+        }
+
+        if ($item->bin_id) {
+            app(InboundBinPolicy::class)->assertConsumable(
+                $adjustment->location_id,
+                $item->bin_id,
+                'pembaruan penyesuaian stok',
+            );
+        }
+
+        $inventory = $this->inventoryRepository->findOrCreateForUpdate(
+            $item->item_id,
+            $adjustment->location_id,
+            $item->bin_id,
+        );
+        $inventory->on_hand = $this->onHandGuard->resultAfterDelta(
+            (int) $inventory->on_hand,
+            -$delta,
+            'Pembaruan penyesuaian stok',
+        );
+        $this->inventoryRepository->updateStock($inventory);
+
+        InventoryMovement::query()
+            ->where('transaction_number', $adjustment->adjustment_no)
+            ->where('item_id', $item->item_id)
+            ->where('location_id', $adjustment->location_id)
+            ->where('source', 'ADJUSTMENT')
+            ->when(
+                $item->bin_id === null,
+                fn ($query) => $query->whereNull('bin_id'),
+                fn ($query) => $query->where('bin_id', $item->bin_id),
+            )
+            ->delete();
+    }
+
+    private function writeItemFromInput(StockAdjustment $adjustment, StockAdjustmentItem $item, array $data): void
+    {
+        $binId = array_key_exists('bin_id', $data) ? $data['bin_id'] : $item->bin_id;
+        $inventory = $this->inventoryRepository->findOrCreateForUpdate(
+            $item->item_id,
+            $adjustment->location_id,
+            $binId,
+        );
+        $mode = $data['mode'] ?? StockAdjustmentRule::MODE_FINAL;
+        $inputValue = array_key_exists('input_value', $data)
+            ? $data['input_value']
+            : $data['actual_qty'];
+        $calculation = $this->stockAdjustmentRule->calculate(
+            systemQty: $inventory->on_hand,
+            inputValue: $inputValue,
+            mode: $mode,
+        );
+
+        $item->update([
+            'bin_id' => $binId,
+            'system_qty' => $calculation->systemQty,
+            'actual_qty' => $calculation->actualQty,
+            'difference_qty' => $calculation->differenceQty,
+            'unit_cost' => array_key_exists('unit_cost', $data)
+                ? ($data['unit_cost'] !== '' ? (float) $data['unit_cost'] : null)
+                : $item->unit_cost,
+            'notes' => array_key_exists('notes', $data) ? $data['notes'] : $item->notes,
+        ]);
     }
 }

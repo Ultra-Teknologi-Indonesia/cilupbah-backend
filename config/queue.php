@@ -73,7 +73,8 @@ return [
             'driver' => 'redis',
             'connection' => env('REDIS_FINANCE_CONNECTION', 'finance'),
             'queue' => env('REDIS_FINANCE_QUEUE', 'channel-finance'),
-            'retry_after' => (int) env('REDIS_FINANCE_QUEUE_RETRY_AFTER', 240),
+
+            'retry_after' => (int) env('REDIS_FINANCE_QUEUE_RETRY_AFTER', 360),
             'block_for' => null,
             'after_commit' => true,
         ],
@@ -194,6 +195,10 @@ return [
         'channel_sync' => [
             'connection' => env('QUEUE_CHANNEL_SYNC_CONNECTION', 'redis-channel-sync'),
             'queue' => env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync'),
+
+            'window_minutes' => max(5, min(30, (int) env('CHANNEL_SYNC_WINDOW_MINUTES', 10))),
+
+            'lease_seconds' => max(420, min(900, (int) env('CHANNEL_SYNC_LEASE_SECONDS', 420))),
         ],
 
         'labels' => [

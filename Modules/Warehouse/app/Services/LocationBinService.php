@@ -178,25 +178,50 @@ class LocationBinService
     public function bulkUpdate(string $locationId, array $bins): int
     {
         return DB::transaction(function () use ($locationId, $bins) {
-            $updated = 0;
-            foreach ($bins as $binData) {
-                $payload = [
-                    'is_stock_acknowledged' => $binData['is_stock_acknowledged'],
-                    'is_large_bin' => $binData['is_large_bin'],
-                    'category' => $binData['category'] ?? null,
-                ];
+            $ids = collect($bins)->pluck('id')->all();
+            $foundIds = LocationBin::query()
+                ->where('location_id', $locationId)
+                ->whereIn('id', $ids)
+                ->lockForUpdate()
+                ->pluck('id')
+                ->all();
 
-                if (array_key_exists('bin_final_code', $binData)) {
-                    $payload['bin_final_code'] = $binData['bin_final_code'];
-                }
-
-                $affected = LocationBin::where('location_id', $locationId)
-                    ->where('id', $binData['id'])
-                    ->update($payload);
-                $updated += $affected;
+            $missingIds = array_values(array_diff($ids, $foundIds));
+            if ($missingIds !== []) {
+                throw new \DomainException('Sebagian rak tidak ditemukan atau bukan milik lokasi ini. Muat ulang halaman lalu coba kembali.');
             }
 
-            return $updated;
+            $now = now();
+            $rows = array_map(static function (array $binData) use ($now): array {
+                $row = [
+                    'id' => $binData['id'],
+                    'bin_final_code' => $binData['bin_final_code'],
+                    'is_stock_acknowledged' => $binData['is_stock_acknowledged'],
+                    'is_large_bin' => $binData['is_large_bin'],
+                    'updated_at' => $now,
+                ];
+
+                if (array_key_exists('category', $binData)) {
+                    $row['category'] = $binData['category'];
+                }
+
+                return $row;
+            }, $bins);
+
+            $columns = ['bin_final_code', 'is_stock_acknowledged', 'is_large_bin', 'updated_at'];
+            if (collect($rows)->contains(static fn (array $row): bool => array_key_exists('category', $row))) {
+
+                $categories = LocationBin::query()->whereIn('id', $ids)->pluck('category', 'id');
+                foreach ($rows as &$row) {
+                    $row['category'] ??= $categories[$row['id']] ?? null;
+                }
+                unset($row);
+                $columns[] = 'category';
+            }
+
+            LocationBin::upsert($rows, ['id'], $columns);
+
+            return count($rows);
         });
     }
 

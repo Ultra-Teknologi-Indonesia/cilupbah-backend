@@ -34,11 +34,11 @@ class SyncOrderFinanceJob implements ShouldBeUnique, ShouldQueue
         return $this->orderId;
     }
 
-    public int $tries = 3;
+    public int $tries = 5;
 
-    public int $maxExceptions = 3;
+    public int $maxExceptions = 5;
 
-    public array $backoff = [15, 60, 180];
+    public array $backoff = [30, 120, 300, 900, 1800];
 
     public function __construct(
         public readonly string $orderId,

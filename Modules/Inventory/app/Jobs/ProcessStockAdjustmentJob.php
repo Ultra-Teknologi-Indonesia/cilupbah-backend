@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Jobs\SyncStockToChannelsJob;
 use Modules\Finance\Services\AutoJournalService;
 use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Models\SkuRackAssignment;
 use Modules\Inventory\Models\StockAdjustment;
 use Modules\Inventory\Models\StockAdjustmentItem;
@@ -35,6 +36,8 @@ class ProcessStockAdjustmentJob implements ShouldQueue
     public function __construct(
         protected string $adjustmentId,
         protected string $approvedBy,
+
+        protected ?array $onlyItemIds = null,
     ) {
         $this->onQueue(config('queue.names.stock_critical'));
     }
@@ -45,7 +48,13 @@ class ProcessStockAdjustmentJob implements ShouldQueue
         ?StockAdjustmentRule $stockAdjustmentRule = null,
     ): void {
         $stockAdjustmentRule ??= app(StockAdjustmentRule::class);
-        $adjustment = StockAdjustment::with('items')->find($this->adjustmentId);
+        $adjustment = StockAdjustment::with([
+            'items' => function ($query) {
+                if ($this->onlyItemIds !== null) {
+                    $query->whereIn('id', $this->onlyItemIds);
+                }
+            },
+        ])->find($this->adjustmentId);
 
         if (! $adjustment) {
             return;
@@ -141,6 +150,14 @@ class ProcessStockAdjustmentJob implements ShouldQueue
             });
 
             $adjustedItemIds[] = $item->item_id;
+        }
+
+        if ($this->onlyItemIds !== null) {
+            $totalSignedValue = (float) InventoryMovement::query()
+                ->where('transaction_number', $adjustment->adjustment_no)
+                ->where('location_id', $adjustment->location_id)
+                ->where('source', 'ADJUSTMENT')
+                ->sum('total_cost');
         }
 
         try {

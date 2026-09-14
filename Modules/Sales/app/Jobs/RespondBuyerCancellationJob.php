@@ -126,6 +126,25 @@ class RespondBuyerCancellationJob implements ShouldBeUnique, ShouldQueue
                 'decision' => $this->decision,
             ]);
         } catch (\Throwable $e) {
+            if ($this->isAlreadyResolvedByChannel($source, $e)) {
+                $order->forceFill([
+                    'buyer_cancel_sync_status' => BuyerCancellationSyncStatus::STALE->value,
+                    'buyer_cancel_sync_decision' => $this->decision,
+                    'buyer_cancel_sync_error' => mb_substr($e->getMessage(), 0, 255),
+                    'buyer_cancel_synced_at' => now(),
+                ])->saveQuietly();
+
+                Log::notice('RespondBuyerCancellationJob ditandai stale karena status channel sudah berubah', [
+                    'order_id' => $order->id,
+                    'salesorder_no' => $order->salesorder_no,
+                    'source' => $source,
+                    'decision' => $this->decision,
+                    'exception' => $e->getMessage(),
+                ]);
+
+                return;
+            }
+
             $order->forceFill([
                 'buyer_cancel_sync_status' => BuyerCancellationSyncStatus::FAILED->value,
                 'buyer_cancel_sync_decision' => $this->decision,
@@ -142,6 +161,25 @@ class RespondBuyerCancellationJob implements ShouldBeUnique, ShouldQueue
 
             throw $e;
         }
+    }
+
+    private function isAlreadyResolvedByChannel(string $source, \Throwable $exception): bool
+    {
+        $message = mb_strtolower($exception->getMessage());
+
+        if ($source === 'tiktok' && str_contains($message, 'tidak ditemukan permintaan pembatalan aktif')) {
+            return true;
+        }
+
+        if ($source === 'shopee'
+            && str_contains($message, 'invalid order_status')
+            && str_contains($message, 'in_cancel')) {
+            return true;
+        }
+
+        return str_contains($message, 'already cancelled')
+            || str_contains($message, 'already canceled')
+            || str_contains($message, 'cancellation not found');
     }
 
     public function simulate(SalesOrder $order): array
