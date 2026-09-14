@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cilupbah-horizon-critical
+  namespace: cilupbah
+  labels:
+    app: cilupbah-horizon-critical
+    component: queue-critical
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  # Do not overlap two critical Horizon masters during rollout. Redis queue
+  # reservations remain safe, while this avoids duplicate side effects for
+  # non-idempotent marketplace operations.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: cilupbah-horizon-critical
+  template:
+    metadata:
+      labels:
+        app: cilupbah-horizon-critical
+        component: queue-critical
+    spec:
+      terminationGracePeriodSeconds: 180
+      imagePullSecrets:
+        - name: ghcr-creds
+      containers:
+        - name: horizon-critical
+          image: ghcr.io/ultra-teknologi-indonesia/cilupbah:v1.0.0
+          command: ["php", "artisan", "horizon"]
+          envFrom:
+            - secretRef:
+                name: cilupbah-env
+          env:
+            - name: REDIS_LONG_QUEUE_RETRY_AFTER
+              value: "2160"
+            - name: HORIZON_PROFILE
+              value: "critical"
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "1000m"
+            limits:
+              # Critical profile worker budget is 3.84GiB plus Horizon
+              # overhead. Keep headroom for transient API payloads.
+              memory: "5Gi"
+              cpu: "2500m"
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "php artisan horizon:status | grep -q running"]
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 15
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "php artisan horizon:status | grep -q running"]
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 15
+            failureThreshold: 3

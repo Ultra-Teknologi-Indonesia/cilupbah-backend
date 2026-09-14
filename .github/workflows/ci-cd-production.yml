@@ -116,8 +116,27 @@ jobs:
             # Deployment harus dihapus eksplisit agar tidak dua scheduler aktif.
             kubectl delete deployment cilupbah-scheduler -n "$NAMESPACE" --ignore-not-found
 
-            echo "==> Mengaplikasikan konfigurasi YAML ke Kubernetes..."
-            kubectl apply -f "$K8S_DIR" -n "$NAMESPACE"
+            echo "==> Menjeda profil Horizon critical sebelum rollout..."
+            # The old Horizon deployment may still be running with the legacy
+            # all-supervisor profile. Stop the new critical pool first so two
+            # masters cannot consume the same side-effecting queues during the
+            # profile migration. Redis keeps pending jobs durable.
+            kubectl scale deployment/cilupbah-horizon-critical \
+              --replicas=0 -n "$NAMESPACE" --ignore-not-found
+
+            echo "==> Mengaplikasikan konfigurasi non-critical ke Kubernetes..."
+            for manifest in "$K8S_DIR"/*.yaml; do
+              if [ "$(basename "$manifest")" = "03-horizon-critical.yaml" ]; then
+                continue
+              fi
+              kubectl apply -f "$manifest" -n "$NAMESPACE"
+            done
+
+            echo "==> Menunggu Horizon background berpindah profil..."
+            kubectl rollout status deployment/cilupbah-horizon -n "$NAMESPACE" --timeout=300s
+
+            echo "==> Mengaktifkan profil Horizon critical..."
+            kubectl apply -f "$K8S_DIR/03-horizon-critical.yaml" -n "$NAMESPACE"
 
             echo "==> Menunggu rollout aplikasi dan layanan kritis..."
             DEPLOYMENTS="$(kubectl get -f "$K8S_DIR" -n "$NAMESPACE" -o name | sed -n 's#^deployment.apps/##p')"

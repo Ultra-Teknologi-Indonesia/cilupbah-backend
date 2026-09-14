@@ -5,8 +5,8 @@ metadata:
   namespace: cilupbah
 spec:
   replicas: 1
-  # Never run two Horizon masters during a rollout: duplicate workers consume
-  # memory and can process the same operational backlog concurrently.
+  # This instance owns only background supervisors. The critical profile is
+  # deployed separately so catalog/export work cannot delay marketplace events.
   strategy:
     type: Recreate
   selector:
@@ -25,22 +25,22 @@ spec:
           command: ["php", "artisan", "horizon"]
           resources:
             requests:
-              memory: "4Gi"
-              cpu: "1000m"
+              memory: "2Gi"
+              cpu: "500m"
             limits:
-              # Order and webhook supervisors can autoscale to two bounded
-              # workers per channel. Keep a full 20% memory headroom for the
-              # Horizon master, PHP/Redis clients, and transient payloads.
-              memory: "9Gi"
-              # The node exposes 8 vCPU. A 4-core cap leaves room for the app,
-              # database, Redis, and host scheduling during burst traffic.
-              cpu: "4000m"
+              # Background supervisors have a bounded worker budget plus
+              # Horizon/master overhead; this cap prevents fan-out growth.
+              memory: "5Gi"
+              # Keep CPU available for critical queues, API and Redis.
+              cpu: "2000m"
           envFrom:
             - secretRef:
                 name: cilupbah-env
           env:
             - name: REDIS_LONG_QUEUE_RETRY_AFTER
               value: "2160"
+            - name: HORIZON_PROFILE
+              value: "background"
           livenessProbe:
             exec:
               command: ["sh", "-c", "php artisan horizon:status | grep -q running"]

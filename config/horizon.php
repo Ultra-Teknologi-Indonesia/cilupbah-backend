@@ -3,6 +3,41 @@
 use App\Http\Middleware\HorizonBasicAuth;
 use Illuminate\Support\Str;
 
+$supervisorProfiles = [
+
+    'critical' => [
+        'supervisor-order-operations',
+        'supervisor-channel-operations',
+        'supervisor-stock',
+        'supervisor-stock-default',
+        'supervisor-tracking',
+        'supervisor-shopee-orders',
+        'supervisor-tiktok-orders',
+        'supervisor-lazada-orders',
+        'supervisor-tiktok-webhooks-operational',
+        'supervisor-tiktok-packages',
+        'supervisor-shopee-webhooks-operational',
+        'supervisor-shopee-tracking',
+        'supervisor-lazada-webhooks-operational',
+        'supervisor-lazada-fulfillment',
+    ],
+
+    'background' => [
+        'supervisor-default',
+        'supervisor-channel-sync',
+        'supervisor-channel-finance',
+        'supervisor-channel-product',
+        'supervisor-channel-after-sales',
+        'supervisor-cutover',
+        'supervisor-downloads',
+        'supervisor-labels',
+        'supervisor-qr-labels',
+        'supervisor-tiktok-webhooks-background',
+        'supervisor-shopee-webhooks-background',
+        'supervisor-lazada-webhooks-background',
+    ],
+];
+
 return [
 
     'name' => env('HORIZON_NAME'),
@@ -79,7 +114,27 @@ return [
 
     'memory_limit' => 192,
 
-    'defaults' => [
+    'profiles' => $supervisorProfiles,
+
+    'active_profile' => env('HORIZON_PROFILE', 'all'),
+
+    'defaults' => (function (array $supervisors) use ($supervisorProfiles): array {
+        $profile = strtolower(trim((string) env('HORIZON_PROFILE', 'all')));
+
+        if ($profile === 'all') {
+            return $supervisors;
+        }
+
+        if (! array_key_exists($profile, $supervisorProfiles)) {
+            throw new InvalidArgumentException(
+                "HORIZON_PROFILE '{$profile}' tidak dikenal. Gunakan all, critical, atau background."
+            );
+        }
+
+        $allowed = array_flip($supervisorProfiles[$profile]);
+
+        return array_intersect_key($supervisors, $allowed);
+    })([
         'supervisor-default' => [
             'connection' => 'redis',
             'queue' => [env('WEBHOOK_QUEUE', 'webhooks'), 'default', 'notifications', 'failed-jobs'],
@@ -293,7 +348,7 @@ return [
             'balance' => 'auto',
             'autoScalingStrategy' => 'size',
             'minProcesses' => 1,
-            'maxProcesses' => 2,
+            'maxProcesses' => 3,
             'maxJobs' => 250,
             'timeout' => 120,
             'tries' => 3,
@@ -309,7 +364,7 @@ return [
             'balance' => 'auto',
             'autoScalingStrategy' => 'size',
             'minProcesses' => 1,
-            'maxProcesses' => 2,
+            'maxProcesses' => 3,
             'maxJobs' => 250,
             'timeout' => 120,
             'tries' => 3,
@@ -342,7 +397,7 @@ return [
             'balance' => 'auto',
             'autoScalingStrategy' => 'size',
             'minProcesses' => 1,
-            'maxProcesses' => 2,
+            'maxProcesses' => 3,
             'maxJobs' => 250,
             'timeout' => 120,
             'tries' => 3,
@@ -357,7 +412,7 @@ return [
             'queue' => [env('QUEUE_NAME_TIKTOK_PACKAGES', 'tiktok-packages')],
             'balance' => 'off',
             'minProcesses' => 1,
-            'maxProcesses' => 1,
+            'maxProcesses' => 2,
             'maxJobs' => 250,
             'timeout' => 120,
             'tries' => 3,
@@ -387,7 +442,7 @@ return [
             'balance' => 'auto',
             'autoScalingStrategy' => 'size',
             'minProcesses' => 1,
-            'maxProcesses' => 2,
+            'maxProcesses' => 3,
             'maxJobs' => 250,
             'timeout' => 120,
             'tries' => 3,
@@ -400,14 +455,18 @@ return [
         'supervisor-shopee-tracking' => [
             'connection' => 'redis',
             'queue' => [env('QUEUE_NAME_SHOPEE_TRACKING', 'shopee-tracking')],
-            'balance' => 'off',
-            'minProcesses' => 1,
-            'maxProcesses' => 1,
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'size',
+
+            'minProcesses' => 2,
+            'maxProcesses' => 2,
             'maxJobs' => 250,
             'timeout' => 120,
             'tries' => 3,
             'backoff' => [10, 60, 300],
             'memory' => 128,
+            'balanceMaxShift' => 1,
+            'balanceCooldown' => 3,
             'nice' => 0,
         ],
         'supervisor-shopee-webhooks-background' => [
@@ -472,7 +531,7 @@ return [
             'memory' => 128,
             'nice' => 5,
         ],
-    ],
+    ]),
 
     'environments' => [
 
