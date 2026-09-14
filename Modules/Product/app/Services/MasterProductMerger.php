@@ -3,9 +3,12 @@
 namespace Modules\Product\Services;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class MasterProductMerger
 {
+    public function __construct(private readonly ChannelMappingIntegrityService $channelMappings) {}
+
     public function moveVariants(string $targetProductId, array $variantIds): int
     {
         $variantIds = array_values(array_filter(array_unique(array_map('strval', $variantIds))));
@@ -25,6 +28,9 @@ class MasterProductMerger
                 return 0;
             }
 
+            $parentMappingsToReassign = $this->channelMappings
+                ->parentMappingsForVariantMove($targetProductId, $moving);
+
             $this->ensureVariationTypes($targetProductId, $moving);
 
             DB::table('product_media')
@@ -34,6 +40,18 @@ class MasterProductMerger
             DB::table('product_variants')
                 ->whereIn('id', $moving)
                 ->update(['product_id' => $targetProductId, 'updated_at' => now()]);
+
+            if ($parentMappingsToReassign->isNotEmpty()) {
+                DB::table('product_channel_mappings')
+                    ->whereIn('id', $parentMappingsToReassign->all())
+                    ->update(['product_id' => $targetProductId, 'updated_at' => now()]);
+
+                Log::info('Listing channel ikut dipindahkan saat varian dikonsolidasikan', [
+                    'master_tujuan' => $targetProductId,
+                    'varian_pindah' => count($moving),
+                    'listing_dipindahkan' => $parentMappingsToReassign->count(),
+                ]);
+            }
 
             return count($moving);
         });
