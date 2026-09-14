@@ -163,11 +163,6 @@ class PurchaseOrderService
         });
     }
 
-    /**
-     * Applies a small, explicit set of purchase-order changes. Unlike the
-     * legacy full-document update this never interprets an unloaded page of
-     * items as a request to remove those items.
-     */
     public function patch(string $id, array $data): PurchaseOrder
     {
         return DB::transaction(function () use ($id, $data) {
@@ -202,8 +197,6 @@ class PurchaseOrderService
             $deleteIds = collect($changes['delete_ids'] ?? [])->values();
             $mutatedIds = collect($updates)->pluck('id')->merge($deleteIds)->unique()->values();
 
-            // Lock the document lines server-side. The browser never needs to
-            // download every page just to preserve lines it did not touch.
             $existing = $this->poRepository->lockItems($po->id);
             $missingIds = $mutatedIds->diff($existing->keys());
             if ($missingIds->isNotEmpty()) {
@@ -237,8 +230,6 @@ class PurchaseOrderService
                 throw ValidationException::withMessages(['changes' => 'Satu produk hanya boleh muncul sekali pada PO.']);
             }
 
-            // Receipt reversals are calculated from the complete server-side
-            // state before any line is deleted or reduced.
             $this->reverseReceiptsForShrunkLines($po, $desired->values()->all());
 
             foreach ($updates as $change) {
