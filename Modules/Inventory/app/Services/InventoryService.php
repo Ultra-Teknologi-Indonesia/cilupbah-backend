@@ -523,6 +523,119 @@ class InventoryService
         });
     }
 
+    public function moveBetweenFinalBins(array $data): Inventory
+    {
+        app(BundleGuardService::class)
+            ->assertNotBundle([$data['item_id'] ?? null], 'pindah rak');
+
+        $qty = (int) ($data['qty'] ?? 0);
+        if ($qty <= 0) {
+            throw new \DomainException('Qty pindah rak harus lebih dari 0.');
+        }
+
+        if (empty($data['transaction_number'])) {
+            throw new \RuntimeException(
+                'Pindah rak wajib memiliki nomor referensi.'
+            );
+        }
+
+        $destination = DB::transaction(function () use ($data, $qty): Inventory {
+            $locationId = (string) $data['location_id'];
+            $sourceBinId = (string) $data['source_bin_id'];
+            $destinationBinId = (string) $data['destination_bin_id'];
+            $itemId = (string) $data['item_id'];
+            $transactionNumber = (string) $data['transaction_number'];
+            $sourceOut = (string) ($data['source_out'] ?? 'BIN_TRANSFER_OUT');
+            $sourceIn = (string) ($data['source_in'] ?? 'BIN_TRANSFER_IN');
+
+            app(InboundBinPolicy::class)->assertConsumable($locationId, $sourceBinId, 'pindah rak');
+            app(InboundBinPolicy::class)->assertConsumable($locationId, $destinationBinId, 'pindah rak');
+            app(BinOccupancyGuard::class)->assertBinFitsSku($destinationBinId, $itemId);
+
+            $source = $this->inventoryRepository->findExactForUpdate(
+                $itemId,
+                $locationId,
+                $sourceBinId,
+                (string) ($data['batch_no'] ?? ''),
+                (string) ($data['serial_no'] ?? ''),
+            );
+
+            if (! $source || (int) $source->on_hand < $qty) {
+                $available = $source ? (int) $source->on_hand : 0;
+
+                throw new \DomainException(
+                    "Stok di rak asal tidak mencukupi (tersedia: {$available}, diminta: {$qty})."
+                );
+            }
+
+            if ((int) $source->on_order !== 0) {
+                throw new \DomainException(
+                    'Stok di rak asal masih memiliki reservasi dan tidak dapat dipindahkan.'
+                );
+            }
+
+            $unitCost = (float) ($source->avg_cost ?? 0);
+            $source->on_hand -= $qty;
+            $this->inventoryRepository->updateStock($source);
+
+            $this->movementRepository->create([
+                'item_id' => $itemId,
+                'location_id' => $locationId,
+                'bin_id' => $sourceBinId,
+                'transaction_number' => $transactionNumber,
+                'source' => $sourceOut,
+                'qty' => -$qty,
+                'balance' => $source->on_hand,
+                'cost_per_unit' => $unitCost > 0 ? $unitCost : null,
+                'total_cost' => $unitCost > 0 ? round($unitCost * $qty, 2) : null,
+                'transaction_date' => now(),
+                'created_by' => $data['created_by'],
+            ]);
+
+            $destination = $this->inventoryRepository->findOrCreateForUpdate(
+                $itemId,
+                $locationId,
+                $destinationBinId,
+                (string) ($data['batch_no'] ?? ''),
+                (string) ($data['serial_no'] ?? ''),
+                ['expired_date' => $data['expired_date'] ?? null],
+            );
+
+            $previousOnHand = (float) $destination->on_hand;
+            $previousAverageCost = (float) ($destination->avg_cost ?? 0);
+            $destination->on_hand += $qty;
+
+            if ($unitCost > 0) {
+                $destination->avg_cost = MovingAverageCost::afterReceipt(
+                    $previousOnHand,
+                    $previousAverageCost,
+                    (float) $qty,
+                    $unitCost,
+                );
+            }
+
+            $this->inventoryRepository->updateStock($destination);
+
+            $this->movementRepository->create([
+                'item_id' => $itemId,
+                'location_id' => $locationId,
+                'bin_id' => $destinationBinId,
+                'transaction_number' => $transactionNumber,
+                'source' => $sourceIn,
+                'qty' => $qty,
+                'balance' => $destination->on_hand,
+                'cost_per_unit' => $unitCost > 0 ? $unitCost : null,
+                'total_cost' => $unitCost > 0 ? round($unitCost * $qty, 2) : null,
+                'transaction_date' => now(),
+                'created_by' => $data['created_by'],
+            ]);
+
+            return $destination->fresh();
+        });
+
+        return $destination;
+    }
+
     public function reverseBinMove(array $data): void
     {
         DB::transaction(function () use ($data) {

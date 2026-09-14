@@ -18,8 +18,8 @@ use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Services\StockAdjustmentService;
 use Modules\Product\Models\ProductVariant;
 use Modules\Product\Support\TechnicalSku;
-use Modules\Warehouse\Models\LocationBin;
 use Modules\Warehouse\Models\Location;
+use Modules\Warehouse\Models\LocationBin;
 use Modules\Warehouse\Models\LocationZone;
 use Modules\Warehouse\Repositories\LocationBinRepository;
 use Modules\Warehouse\Repositories\LocationRepository;
@@ -543,7 +543,7 @@ class LocationBinService
                         continue;
                     }
 
-                    $inventoryService->putaway([
+                    $inventoryService->moveBetweenFinalBins([
                         'item_id' => $itemId,
                         'location_id' => $locationId,
                         'source_bin_id' => $sourceBinId,
@@ -555,7 +555,6 @@ class LocationBinService
                         'transaction_number' => $transactionNumber,
                         'source_out' => 'BIN_TRANSFER_OUT',
                         'source_in' => 'BIN_TRANSFER_IN',
-                        'skip_home_bin_guard' => true,
                     ]);
 
                     $moved += $qty;
