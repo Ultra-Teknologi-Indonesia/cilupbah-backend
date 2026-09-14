@@ -152,6 +152,24 @@ class InboundRepository
                         SearchExpression::match(['users.name']),
                         SearchExpression::matchBindings($term, ['users.name']),
                     );
+            })->orWhereExists(function (\Illuminate\Database\Query\Builder $users) use ($term): void {
+                $users->selectRaw('1')
+                    ->from('users')
+                    ->whereRaw('users.id::text = inbounds.assigned_to')
+                    ->whereRaw(
+                        SearchExpression::match(['users.name']),
+                        SearchExpression::matchBindings($term, ['users.name']),
+                    );
+            })->orWhereHas('putaways.assignee', function (Builder $assignee) use ($term): void {
+                $assignee->whereRaw(
+                    SearchExpression::match(['users.name']),
+                    SearchExpression::matchBindings($term, ['users.name']),
+                );
+            })->orWhereHas('directPutaways.assignee', function (Builder $assignee) use ($term): void {
+                $assignee->whereRaw(
+                    SearchExpression::match(['users.name']),
+                    SearchExpression::matchBindings($term, ['users.name']),
+                );
             });
         });
 

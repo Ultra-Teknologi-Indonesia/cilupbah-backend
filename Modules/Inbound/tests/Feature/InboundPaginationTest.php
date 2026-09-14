@@ -113,6 +113,53 @@ class InboundPaginationTest extends TestCase
         $this->assertCount(2, $response->json('data'));
     }
 
+    public function test_inbound_search_by_assignee_name_matches_putaway_workers_without_uuid_errors(): void
+    {
+        $this->seed(RoleSeeder::class);
+        $admin = $this->createPrivilegedUser();
+        $worker = User::factory()->create(['name' => 'Santo Worker']);
+        $this->actingAs($admin, 'sanctum');
+
+        $location = Location::create([
+            'location_code' => 'WH-ASSIGNEE',
+            'location_name' => 'Gudang Assignee',
+            'location_type' => 'warehouse',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+
+        $putawayInbound = Inbound::create([
+            'location_id' => $location->id,
+            'transaction_number' => 'RET-ASSIGNEE-02',
+            'reference_number' => 'REF-ASSIGNEE-02',
+            'type' => Inbound::TYPE_SALES_RETURN,
+            'source_type' => 'sales_return',
+            'source_id' => null,
+            'status' => Inbound::STATUS_RECEIVED,
+            'expected_date' => now()->toDateString(),
+            'created_by' => 'system',
+        ]);
+
+        Putaway::create([
+            'putaway_no' => 'PUT-ASSIGNEE-01',
+            'location_id' => $location->id,
+            'source_type' => 'INBOUND',
+            'source_id' => $putawayInbound->id,
+            'status' => Putaway::STATUS_IN_PROGRESS,
+            'assigned_to' => $worker->id,
+            'created_by' => 'system',
+        ]);
+
+        $response = $this->getJson('/api/v1/inbounds?filter[type]=SALES_RETURN&search=Santo&per_page=20')
+            ->assertOk();
+
+        $response->assertJsonPath('meta.total', 1);
+        $this->assertSame(
+            ['RET-ASSIGNEE-02'],
+            collect($response->json('data'))->pluck('transaction_number')->sort()->values()->all(),
+        );
+    }
+
     public function test_receiving_list_uses_meaningful_linked_putaway_note_without_exposing_generated_note(): void
     {
         $this->seed(RoleSeeder::class);
