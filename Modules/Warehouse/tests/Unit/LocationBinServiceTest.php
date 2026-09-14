@@ -108,4 +108,32 @@ class LocationBinServiceTest extends TestCase
 
         $this->service->delete($bin->id);
     }
+
+    public function test_bulk_patch_updates_only_requested_bins_without_erasing_category(): void
+    {
+        $location = Location::factory()->create();
+        $target = LocationBin::factory()->create([
+            'location_id' => $location->id,
+            'bin_final_code' => 'A-01',
+            'category' => 'PICKING',
+        ]);
+        $untouched = LocationBin::factory()->create([
+            'location_id' => $location->id,
+            'bin_final_code' => 'A-02',
+            'category' => 'STORAGE',
+        ]);
+
+        $updated = $this->service->bulkUpdate($location->id, [[
+            'id' => $target->id,
+            'bin_final_code' => 'A-01-RENAMED',
+            'is_stock_acknowledged' => false,
+            'is_large_bin' => true,
+        ]]);
+
+        $this->assertSame(1, $updated);
+        $this->assertSame('A-01-RENAMED', $target->fresh()->bin_final_code);
+        $this->assertSame('PICKING', $target->fresh()->category);
+        $this->assertSame('A-02', $untouched->fresh()->bin_final_code);
+        $this->assertSame('STORAGE', $untouched->fresh()->category);
+    }
 }

@@ -192,9 +192,11 @@ class LocationBinService
             }
 
             $now = now();
-            $rows = array_map(static function (array $binData) use ($now): array {
+            $rows = array_map(static function (array $binData) use ($now, $locationId): array {
                 $row = [
                     'id' => $binData['id'],
+
+                    'location_id' => $locationId,
                     'bin_final_code' => $binData['bin_final_code'],
                     'is_stock_acknowledged' => $binData['is_stock_acknowledged'],
                     'is_large_bin' => $binData['is_large_bin'],
