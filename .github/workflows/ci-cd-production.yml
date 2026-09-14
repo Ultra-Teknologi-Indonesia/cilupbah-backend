@@ -121,8 +121,12 @@ jobs:
             # all-supervisor profile. Stop the new critical pool first so two
             # masters cannot consume the same side-effecting queues during the
             # profile migration. Redis keeps pending jobs durable.
-            kubectl scale deployment/cilupbah-horizon-critical \
-              --replicas=0 -n "$NAMESPACE" --ignore-not-found
+            if kubectl get deployment/cilupbah-horizon-critical -n "$NAMESPACE" >/dev/null 2>&1; then
+              kubectl scale deployment/cilupbah-horizon-critical \
+                --replicas=0 -n "$NAMESPACE"
+            else
+              echo "Profil Horizon critical belum ada; lanjutkan bootstrap deployment."
+            fi
 
             echo "==> Mengaplikasikan konfigurasi non-critical ke Kubernetes..."
             for manifest in "$K8S_DIR"/*.yaml; do
