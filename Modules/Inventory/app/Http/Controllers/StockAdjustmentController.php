@@ -2,19 +2,21 @@
 
 namespace Modules\Inventory\Http\Controllers;
 
+use App\Exceptions\UserFacingException;
 use App\Http\Controllers\Controller;
 use App\Support\ActorName;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Inventory\Exports\StockAdjustmentExport;
-use Modules\Inventory\Services\StockAdjustmentService;
-use Modules\Inventory\Http\Requests\StoreStockAdjustmentRequest;
-use Modules\Inventory\Http\Requests\UpdateStockAdjustmentRequest;
 use Modules\Inventory\Http\Requests\BulkPdfStockAdjustmentAsyncRequest;
 use Modules\Inventory\Http\Requests\PatchStockAdjustmentRequest;
+use Modules\Inventory\Http\Requests\StoreStockAdjustmentRequest;
+use Modules\Inventory\Http\Requests\UpdateStockAdjustmentRequest;
 use Modules\Inventory\Http\Resources\StockAdjustmentResource;
+use Modules\Inventory\Services\StockAdjustmentService;
 use Modules\Report\Services\ExportManager;
 use OpenApi\Attributes as OA;
 use Throwable;
@@ -78,11 +80,11 @@ class StockAdjustmentController extends Controller
     {
         try {
             $adjustment = $this->adjustmentService->getById($id);
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (QueryException $e) {
             return $this->errorResponse('Dokumen adjustment tidak ditemukan.', 404);
         }
 
-        if (!$adjustment) {
+        if (! $adjustment) {
             return $this->errorResponse('Dokumen adjustment tidak ditemukan.', 404);
         }
 
@@ -151,6 +153,8 @@ class StockAdjustmentController extends Controller
             $adjustment = $this->adjustmentService->create($data);
 
             return $this->successResponse(new StockAdjustmentResource($adjustment), 'Dokumen adjustment berhasil dibuat.', 201);
+        } catch (UserFacingException $e) {
+            return $this->userFacingErrorResponse($e);
         } catch (\Exception $e) {
             return $this->errorResponse(
                 $e->getMessage() ?: 'Gagal menyimpan.',
@@ -202,6 +206,8 @@ class StockAdjustmentController extends Controller
             $adjustment = $this->adjustmentService->update($id, $data);
 
             return $this->successResponse(new StockAdjustmentResource($adjustment), 'Dokumen adjustment berhasil diperbarui.', 200);
+        } catch (UserFacingException $e) {
+            return $this->userFacingErrorResponse($e);
         } catch (\Exception $e) {
             return $this->errorResponse(
                 $e->getMessage() ?: 'Gagal memperbarui.',
@@ -245,6 +251,8 @@ class StockAdjustmentController extends Controller
             $adjustment = $this->adjustmentService->patch($id, $data);
 
             return $this->successResponse(new StockAdjustmentResource($adjustment), 'Dokumen adjustment berhasil diperbarui.', 200);
+        } catch (UserFacingException $e) {
+            return $this->userFacingErrorResponse($e);
         } catch (\Exception $e) {
             return $this->errorResponse(
                 $e->getMessage() ?: 'Gagal memperbarui.',
@@ -253,6 +261,16 @@ class StockAdjustmentController extends Controller
                 'Aksi tidak dapat diproses',
             );
         }
+    }
+
+    private function userFacingErrorResponse(UserFacingException $exception): JsonResponse
+    {
+        return $this->errorResponse(
+            $exception->getMessage(),
+            $exception->getStatus(),
+            $exception->getErrors(),
+            $exception->getTitle(),
+        );
     }
 
     #[OA\Delete(
@@ -274,6 +292,8 @@ class StockAdjustmentController extends Controller
             $this->adjustmentService->delete($id);
 
             return $this->successResponse(null, 'Dokumen adjustment berhasil dihapus.');
+        } catch (UserFacingException $e) {
+            return $this->userFacingErrorResponse($e);
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal menghapus.',
@@ -302,11 +322,11 @@ class StockAdjustmentController extends Controller
         try {
             $adjustment = $this->adjustmentService->getForPdf($id);
 
-            if (!$adjustment) {
+            if (! $adjustment) {
                 return $this->errorResponse('Dokumen adjustment tidak ditemukan.', 404);
             }
 
-            $filename = 'Laporan-Penyesuaian-' . $adjustment->adjustment_no . '.pdf';
+            $filename = 'Laporan-Penyesuaian-'.$adjustment->adjustment_no.'.pdf';
 
             $pdf = Pdf::loadView('inventory::pdf.stock-adjustment', [
                 'adjustment' => $adjustment,
@@ -315,6 +335,7 @@ class StockAdjustmentController extends Controller
             return $pdf->stream($filename);
         } catch (Throwable $e) {
             report($e);
+
             return $this->errorResponse(
                 'Gagal membuat PDF penyesuaian.',
                 500,
@@ -356,13 +377,14 @@ class StockAdjustmentController extends Controller
             if ($adjustments->count() !== count($ids)) {
                 $foundIds = $adjustments->pluck('id')->all();
                 $missing = array_values(array_diff($ids, $foundIds));
+
                 return $this->errorResponse(
-                    'Sebagian dokumen tidak ditemukan: ' . implode(', ', $missing),
+                    'Sebagian dokumen tidak ditemukan: '.implode(', ', $missing),
                     404
                 );
             }
 
-            $filename = 'Laporan-Penyesuaian-Bulk-' . now()->format('Ymd-His') . '.pdf';
+            $filename = 'Laporan-Penyesuaian-Bulk-'.now()->format('Ymd-His').'.pdf';
 
             $pdf = Pdf::loadView('inventory::pdf.stock-adjustment-bulk', [
                 'adjustments' => $adjustments,
@@ -371,6 +393,7 @@ class StockAdjustmentController extends Controller
             return $pdf->stream($filename);
         } catch (Throwable $e) {
             report($e);
+
             return $this->errorResponse(
                 'Gagal membuat PDF penyesuaian bulk.',
                 500,
@@ -423,7 +446,7 @@ class StockAdjustmentController extends Controller
             try {
                 $this->adjustmentService->delete($id);
                 $deleted++;
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 $failed[] = [
                     'id' => $id,
                     'reason' => $e->getMessage(),
@@ -434,7 +457,7 @@ class StockAdjustmentController extends Controller
         return $this->successResponse(
             ['deleted' => $deleted, 'failed' => $failed],
             $deleted > 0
-                ? "{$deleted} dokumen dihapus" . (count($failed) > 0 ? ", " . count($failed) . " gagal" : "")
+                ? "{$deleted} dokumen dihapus".(count($failed) > 0 ? ', '.count($failed).' gagal' : '')
                 : 'Tidak ada dokumen yang berhasil dihapus.'
         );
     }
@@ -442,7 +465,7 @@ class StockAdjustmentController extends Controller
     public function exportXlsx(Request $request)
     {
         $query = $this->adjustmentService->getQueryForExport($request);
-        $filename = 'koreksi-stok-' . now()->format('Ymd') . '.xlsx';
+        $filename = 'koreksi-stok-'.now()->format('Ymd').'.xlsx';
 
         return Excel::download(new StockAdjustmentExport($query), $filename);
     }

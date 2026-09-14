@@ -5,8 +5,12 @@ namespace Modules\Inventory\Services;
 use App\Support\WarehouseAccess;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Modules\Channel\Jobs\SyncStockToChannelsJob;
+use Modules\Inventory\Exceptions\NegativeOnHandException;
+use Modules\Inventory\Exceptions\NegativeStockAdjustmentException;
+use Modules\Inventory\Exceptions\StockAdjustmentStockValidationException;
 use Modules\Inventory\Jobs\ProcessStockAdjustmentJob;
 use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Models\StockAdjustment;
@@ -15,7 +19,9 @@ use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Repositories\StockAdjustmentRepository;
 use Modules\Inventory\Support\InventoryOnHandGuard;
+use Modules\Inventory\Support\StockAdjustmentCalculation;
 use Modules\Inventory\Support\StockAdjustmentRule;
+use Modules\Product\Models\ProductVariant;
 use Modules\Product\Services\BundleGuardService;
 use Modules\Warehouse\Models\LocationBin;
 use Modules\Warehouse\Services\InboundBinPolicy;
@@ -105,10 +111,13 @@ class StockAdjustmentService
                 $inputValue = array_key_exists('input_value', $itemData)
                     ? $itemData['input_value']
                     : $itemData['actual_qty'];
-                $calculation = $this->stockAdjustmentRule->calculate(
-                    systemQty: $inventory->on_hand,
+                $calculation = $this->calculateForInventory(
+                    inventoryOnHand: (int) $inventory->on_hand,
                     inputValue: $inputValue,
                     mode: $mode,
+                    itemId: $itemData['item_id'],
+                    binId: $itemData['bin_id'] ?? null,
+                    operation: 'Pembuatan penyesuaian stok',
                 );
 
                 $this->adjustmentRepository->createItem([
@@ -181,6 +190,7 @@ class StockAdjustmentService
                     (int) $inventory->on_hand,
                     (int) $revertDelta,
                     'Pembaruan penyesuaian stok',
+                    $this->stockContext($item->item_id, $item->bin_id),
                 );
                 $this->inventoryRepository->updateStock($inventory);
             }
@@ -209,10 +219,13 @@ class StockAdjustmentService
                 $inputValue = array_key_exists('input_value', $itemData)
                     ? $itemData['input_value']
                     : $itemData['actual_qty'];
-                $calculation = $this->stockAdjustmentRule->calculate(
-                    systemQty: $inventory->on_hand,
+                $calculation = $this->calculateForInventory(
+                    inventoryOnHand: (int) $inventory->on_hand,
                     inputValue: $inputValue,
                     mode: $mode,
+                    itemId: $itemData['item_id'],
+                    binId: $itemData['bin_id'] ?? null,
+                    operation: 'Pembaruan penyesuaian stok',
                 );
 
                 $this->adjustmentRepository->createItem([
@@ -312,6 +325,13 @@ class StockAdjustmentService
                 $updates,
                 $deleteIds,
             );
+            $this->assertPatchStockCanBeApplied(
+                $adjustment,
+                $items,
+                $creates,
+                $updates,
+                $deleteIds,
+            );
 
             $adjustment->update([
                 'transaction_date' => $data['transaction_date'] ?? $adjustment->transaction_date,
@@ -334,6 +354,7 @@ class StockAdjustmentService
                         'notes' => array_key_exists('notes', $updateData) ? $updateData['notes'] : $item->notes,
                         'unit_cost' => array_key_exists('unit_cost', $updateData) ? $updateData['unit_cost'] : $item->unit_cost,
                     ]);
+
                     continue;
                 }
 
@@ -409,6 +430,7 @@ class StockAdjustmentService
                     (int) $inventory->on_hand,
                     (int) $revertDelta,
                     'Penghapusan penyesuaian stok',
+                    $this->stockContext($item->item_id, $item->bin_id),
                 );
                 $this->inventoryRepository->updateStock($inventory);
 
@@ -476,23 +498,24 @@ class StockAdjustmentService
         array $creates,
         array $updates,
         array $deleteIds,
-    ): void
-    {
+    ): void {
         $updatesById = collect($updates)->keyBy('id');
         $replacedOrDeletedIds = array_values(array_unique([
             ...array_column($updates, 'id'),
             ...$deleteIds,
         ]));
-        $pairs = StockAdjustmentItem::query()
+        $existingPairs = StockAdjustmentItem::query()
             ->where('stock_adjustment_id', $adjustmentId)
             ->when(
                 $replacedOrDeletedIds !== [],
                 fn ($query) => $query->whereNotIn('id', $replacedOrDeletedIds),
             )
             ->get(['item_id', 'bin_id'])
-            ->map(fn (StockAdjustmentItem $item): string => sprintf('%s|%s', $item->item_id, $item->bin_id ?? ''))
-            ->merge($affectedItems
-                ->reject(fn (StockAdjustmentItem $item) => in_array($item->id, $deleteIds, true))
+            ->toBase()
+            ->map(fn (StockAdjustmentItem $item): string => sprintf('%s|%s', $item->item_id, $item->bin_id ?? ''));
+        $affectedPairs = $affectedItems
+            ->toBase()
+            ->reject(fn (StockAdjustmentItem $item) => in_array($item->id, $deleteIds, true))
             ->map(function (StockAdjustmentItem $item) use ($updatesById): string {
                 $update = $updatesById->get($item->id);
 
@@ -501,10 +524,11 @@ class StockAdjustmentService
                     : $item->bin_id;
 
                 return sprintf('%s|%s', $item->item_id, $binId ?? '');
-            }))
-            ->merge(collect($creates)->map(
-                fn (array $item): string => sprintf('%s|%s', $item['item_id'], $item['bin_id'] ?? ''),
-            ));
+            });
+        $createdPairs = collect($creates)->map(
+            fn (array $item): string => sprintf('%s|%s', $item['item_id'], $item['bin_id'] ?? ''),
+        );
+        $pairs = $existingPairs->merge($affectedPairs)->merge($createdPairs);
 
         if ($pairs->duplicates()->isNotEmpty()) {
             throw new \InvalidArgumentException('SKU yang sama tidak boleh dicantumkan dua kali pada rak yang sama.');
@@ -517,12 +541,192 @@ class StockAdjustmentService
         $mode = $data['mode'] ?? StockAdjustmentRule::MODE_FINAL;
         $input = array_key_exists('input_value', $data)
             ? (int) $data['input_value']
-            : (int) $data['actual_qty'];
+            : (int) ($data['actual_qty'] ?? ($mode === StockAdjustmentRule::MODE_DELTA
+                ? $item->difference_qty
+                : $item->actual_qty));
 
         return $binChanged
             || ($mode === StockAdjustmentRule::MODE_DELTA && $input !== (int) $item->difference_qty)
-            || ($mode === StockAdjustmentRule::MODE_FINAL && $input !== (int) $item->actual_qty)
-            || (array_key_exists('unit_cost', $data) && (float) $data['unit_cost'] !== (float) ($item->unit_cost ?? 0));
+            || ($mode === StockAdjustmentRule::MODE_FINAL && $input !== (int) $item->actual_qty);
+    }
+
+    /**
+     * Simulates the complete PATCH while its document and item rows are locked.
+     * Nothing is written until every affected SKU/rack is safe, so one response
+     * can identify all invalid rows instead of failing one row at a time.
+     *
+     * @param  Collection<string, StockAdjustmentItem>  $items
+     */
+    private function assertPatchStockCanBeApplied(
+        StockAdjustment $adjustment,
+        $items,
+        array $creates,
+        array $updates,
+        array $deleteIds,
+    ): void {
+        $balances = [];
+        $issues = [];
+        $contexts = $this->patchStockContexts($items, $creates, $updates);
+
+        $balance = function (string $itemId, ?string $binId) use (&$balances, $adjustment): int {
+            $key = $this->inventoryKey($itemId, $binId);
+
+            if (! array_key_exists($key, $balances)) {
+                $balances[$key] = (int) $this->inventoryRepository
+                    ->findOrCreateForUpdate($itemId, $adjustment->location_id, $binId)
+                    ->on_hand;
+            }
+
+            return $balances[$key];
+        };
+        $applyDelta = function (string $itemId, ?string $binId, int $delta) use (&$balances, &$issues, $balance, $contexts): bool {
+            $key = $this->inventoryKey($itemId, $binId);
+            $current = $balance($itemId, $binId);
+            $result = $current + $delta;
+
+            if ($result < 0) {
+                $context = $contexts[$key] ?? ['sku' => null, 'rack_code' => null];
+                $issues[] = [
+                    'sku' => $context['sku'],
+                    'rack_code' => $context['rack_code'],
+                    'current_on_hand' => $current,
+                    'delta' => $delta,
+                    'resulting_on_hand' => $result,
+                    'reason' => 'Saldo on hand tidak boleh kurang dari 0.',
+                ];
+
+                return false;
+            }
+
+            $balances[$key] = $result;
+
+            return true;
+        };
+
+        foreach ($deleteIds as $id) {
+            $item = $items->get($id);
+            $applyDelta($item->item_id, $item->bin_id, -(int) $item->difference_qty);
+        }
+
+        foreach ($updates as $data) {
+            $item = $items->get($data['id']);
+            if (! $this->patchChangesStock($item, $data)) {
+                continue;
+            }
+
+            if (! $applyDelta($item->item_id, $item->bin_id, -(int) $item->difference_qty)) {
+                continue;
+            }
+
+            $binId = array_key_exists('bin_id', $data) ? $data['bin_id'] : $item->bin_id;
+            $this->simulatePatchInput($item->item_id, $binId, $data, $balance, $applyDelta, $issues, $contexts, $item);
+        }
+
+        foreach ($creates as $data) {
+            $this->simulatePatchInput($data['item_id'], $data['bin_id'] ?? null, $data, $balance, $applyDelta, $issues, $contexts);
+        }
+
+        if ($issues !== []) {
+            throw new StockAdjustmentStockValidationException($issues);
+        }
+    }
+
+    /**
+     * @param  callable(string, ?string): int  $balance
+     * @param  callable(string, ?string, int): bool  $applyDelta
+     * @param  list<array{sku: string|null, rack_code: string|null, current_on_hand: int, delta: int, resulting_on_hand: int, reason: string}>  $issues
+     * @param  array<string, array{sku: string|null, rack_code: string|null}>  $contexts
+     */
+    private function simulatePatchInput(
+        string $itemId,
+        ?string $binId,
+        array $data,
+        callable $balance,
+        callable $applyDelta,
+        array &$issues,
+        array $contexts,
+        ?StockAdjustmentItem $existingItem = null,
+    ): void {
+        $mode = $data['mode'] ?? StockAdjustmentRule::MODE_FINAL;
+        $input = array_key_exists('input_value', $data)
+            ? $data['input_value']
+            : ($data['actual_qty'] ?? ($mode === StockAdjustmentRule::MODE_DELTA
+                ? $existingItem?->difference_qty
+                : $existingItem?->actual_qty));
+        $current = $balance($itemId, $binId);
+        $normalizedMode = strtoupper(trim($mode));
+
+        if ($normalizedMode === StockAdjustmentRule::MODE_DELTA) {
+            $applyDelta($itemId, $binId, $this->stockAdjustmentRule->parseInteger($input, 'delta_qty'));
+
+            return;
+        }
+
+        $finalQty = $this->stockAdjustmentRule->parseInteger($input, 'final_qty');
+        if ($finalQty < 0) {
+            $context = $contexts[$this->inventoryKey($itemId, $binId)] ?? ['sku' => null, 'rack_code' => null];
+            $issues[] = [
+                'sku' => $context['sku'],
+                'rack_code' => $context['rack_code'],
+                'current_on_hand' => $current,
+                'delta' => $finalQty - $current,
+                'resulting_on_hand' => $finalQty,
+                'reason' => 'Nilai stok akhir tidak boleh kurang dari 0.',
+            ];
+
+            return;
+        }
+
+        $applyDelta($itemId, $binId, $finalQty - $current);
+    }
+
+    /**
+     * @param  Collection<string, StockAdjustmentItem>  $items
+     * @return array<string, array{sku: string|null, rack_code: string|null}>
+     */
+    private function patchStockContexts($items, array $creates, array $updates): array
+    {
+        $pairs = [];
+        $addPair = function (string $itemId, ?string $binId) use (&$pairs): void {
+            $pairs[$this->inventoryKey($itemId, $binId)] = [
+                'item_id' => $itemId,
+                'bin_id' => $binId,
+            ];
+        };
+
+        foreach ($items as $item) {
+            $addPair($item->item_id, $item->bin_id);
+        }
+        foreach ($creates as $data) {
+            $addPair($data['item_id'], $data['bin_id'] ?? null);
+        }
+        foreach ($updates as $data) {
+            if (! array_key_exists('bin_id', $data)) {
+                continue;
+            }
+
+            $addPair($items->get($data['id'])->item_id, $data['bin_id']);
+        }
+
+        $itemIds = collect($pairs)->pluck('item_id')->unique()->values();
+        $binIds = collect($pairs)->pluck('bin_id')->filter()->unique()->values();
+        $skus = ProductVariant::query()->whereIn('id', $itemIds)->pluck('sku', 'id');
+        $rackCodes = LocationBin::query()->whereIn('id', $binIds)->pluck('bin_final_code', 'id');
+        $contexts = [];
+
+        foreach ($pairs as $key => $pair) {
+            $contexts[$key] = [
+                'sku' => $skus->get($pair['item_id']),
+                'rack_code' => $pair['bin_id'] === null ? null : $rackCodes->get($pair['bin_id']),
+            ];
+        }
+
+        return $contexts;
+    }
+
+    private function inventoryKey(string $itemId, ?string $binId): string
+    {
+        return $itemId.'|'.($binId ?? '');
     }
 
     private function revertAppliedItem(StockAdjustment $adjustment, StockAdjustmentItem $item): void
@@ -549,6 +753,7 @@ class StockAdjustmentService
             (int) $inventory->on_hand,
             -$delta,
             'Pembaruan penyesuaian stok',
+            $this->stockContext($item->item_id, $item->bin_id),
         );
         $this->inventoryRepository->updateStock($inventory);
 
@@ -576,11 +781,16 @@ class StockAdjustmentService
         $mode = $data['mode'] ?? StockAdjustmentRule::MODE_FINAL;
         $inputValue = array_key_exists('input_value', $data)
             ? $data['input_value']
-            : $data['actual_qty'];
-        $calculation = $this->stockAdjustmentRule->calculate(
-            systemQty: $inventory->on_hand,
+            : ($data['actual_qty'] ?? ($mode === StockAdjustmentRule::MODE_DELTA
+                ? $item->difference_qty
+                : $item->actual_qty));
+        $calculation = $this->calculateForInventory(
+            inventoryOnHand: (int) $inventory->on_hand,
             inputValue: $inputValue,
             mode: $mode,
+            itemId: $item->item_id,
+            binId: $binId,
+            operation: 'Pembaruan penyesuaian stok',
         );
 
         $item->update([
@@ -593,5 +803,44 @@ class StockAdjustmentService
                 : $item->unit_cost,
             'notes' => array_key_exists('notes', $data) ? $data['notes'] : $item->notes,
         ]);
+    }
+
+    /**
+     * Adds the user-visible inventory identity only on an invalid write path.
+     * Normal adjustment processing remains free of the extra lookups.
+     */
+    private function calculateForInventory(
+        int $inventoryOnHand,
+        mixed $inputValue,
+        string $mode,
+        string $itemId,
+        ?string $binId,
+        string $operation,
+    ): StockAdjustmentCalculation {
+        try {
+            return $this->stockAdjustmentRule->calculate(
+                systemQty: $inventoryOnHand,
+                inputValue: $inputValue,
+                mode: $mode,
+            );
+        } catch (NegativeStockAdjustmentException $exception) {
+            throw new NegativeOnHandException(
+                $exception->systemQty,
+                $exception->adjustmentQty,
+                $operation,
+                $this->stockContext($itemId, $binId),
+                $exception,
+            );
+        }
+    }
+
+    private function stockContext(string $itemId, ?string $binId): array
+    {
+        return array_filter([
+            'sku' => ProductVariant::query()->whereKey($itemId)->value('sku'),
+            'rack_code' => $binId === null
+                ? null
+                : LocationBin::query()->whereKey($binId)->value('bin_final_code'),
+        ], static fn (mixed $value): bool => $value !== null && $value !== '');
     }
 }

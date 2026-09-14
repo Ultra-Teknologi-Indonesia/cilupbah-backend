@@ -12,20 +12,24 @@ final class InventoryOnHandGuard
         int $currentOnHand,
         int $delta,
         string $operation,
+        array $context = [],
     ): int {
         $result = $currentOnHand + $delta;
 
         if ($result < 0) {
-            throw new NegativeOnHandException($currentOnHand, $delta, $operation);
+            throw new NegativeOnHandException($currentOnHand, $delta, $operation, $context);
         }
 
         return $result;
     }
 
-    public function assertNonNegative(int $onHand, string $operation = 'Perubahan stok'): void
-    {
+    public function assertNonNegative(
+        int $onHand,
+        string $operation = 'Perubahan stok',
+        array $context = [],
+    ): void {
         if ($onHand < 0) {
-            throw new NegativeOnHandException($onHand, 0, $operation);
+            throw new NegativeOnHandException($onHand, 0, $operation, $context);
         }
     }
 }
