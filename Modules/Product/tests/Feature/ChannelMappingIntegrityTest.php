@@ -138,6 +138,19 @@ final class ChannelMappingIntegrityTest extends TestCase
         $this->assertDatabaseHas('products', ['id' => $product->id, 'deleted_at' => null]);
     }
 
+    public function test_active_listing_without_channel_variant_rows_is_not_an_automatic_prune_candidate(): void
+    {
+        [, , $mapping] = $this->listedProduct('EMPTY-LISTING-REVIEW');
+
+        $candidates = app(StaleChannelMappingPruneService::class)->candidates();
+
+        $this->assertFalse($candidates->pluck('mapping_id')->contains((string) $mapping->id));
+
+        $this->expectException(DomainException::class);
+
+        app(StaleChannelMappingPruneService::class)->prune((string) $mapping->id);
+    }
+
     public function test_stale_mapping_prune_command_is_dry_run_until_apply_is_explicitly_confirmed(): void
     {
         [$product, $variant, $mapping] = $this->listedProduct('PRUNE-COMMAND-GUARD');

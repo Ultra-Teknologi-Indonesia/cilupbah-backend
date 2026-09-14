@@ -23,11 +23,15 @@ final class StaleChannelMappingPruneService
             ->where(function ($query): void {
                 $query->whereNull('mapped_product.id')
                     ->orWhereNotNull('mapped_product.deleted_at')
-                    ->orWhereNull('child.id')
-                    ->orWhereNull('variant.id')
-                    ->orWhereNotNull('variant.deleted_at')
-                    ->orWhereNull('variant_product.id')
-                    ->orWhereNotNull('variant_product.deleted_at');
+                    ->orWhere(function ($childQuery): void {
+                        $childQuery->whereNotNull('child.id')
+                            ->where(function ($variantQuery): void {
+                                $variantQuery->whereNull('variant.id')
+                                    ->orWhereNotNull('variant.deleted_at')
+                                    ->orWhereNull('variant_product.id')
+                                    ->orWhereNotNull('variant_product.deleted_at');
+                            });
+                    });
             })
             ->when($channel !== null && $channel !== '', fn ($query) => $query->where('channel.code', $channel))
             ->when($shopId !== null && $shopId !== '', fn ($query) => $query->where('shop.shop_id', $shopId))
@@ -124,8 +128,10 @@ final class StaleChannelMappingPruneService
                 ->map(static fn ($id): string => (string) $id)
                 ->all();
 
-            if ($staleChildIds === [] && $children->isNotEmpty()) {
-                throw new DomainException('Pembersihan dibatalkan: mapping tidak lagi memenuhi syarat stale.');
+            if ($staleChildIds === []) {
+                throw new DomainException(
+                    'Pembersihan dibatalkan: mapping tanpa varian atau tanpa varian stale wajib ditinjau manual.'
+                );
             }
 
             $deletedChildren = $staleChildIds === []
@@ -140,14 +146,13 @@ final class StaleChannelMappingPruneService
                 DB::table('product_channel_mappings')->where('id', $mapping->id)->delete();
             }
 
-            $reason = $children->isEmpty() ? 'EMPTY_LISTING_MAPPING' : 'VARIANT_DELETED';
-            $this->audit($mapping, $deletedChildren, ! $hasChildren, $reason);
+            $this->audit($mapping, $deletedChildren, ! $hasChildren, 'VARIANT_DELETED');
 
             return [
                 'mapping_id' => (string) $mapping->id,
                 'deleted_children' => $deletedChildren,
                 'deleted_parent' => ! $hasChildren,
-                'reason' => $reason,
+                'reason' => 'VARIANT_DELETED',
             ];
         }, 3);
     }
