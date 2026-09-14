@@ -7,6 +7,7 @@ use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -125,6 +126,18 @@ class ProcessTikTokWebhook implements ShouldBeUnique, ShouldQueue
     public function uniqueId(): string
     {
         return self::idempotencyKey($this->payload);
+    }
+
+    /**
+     * Scaling workers must not turn a flash-sale burst into API throttling at
+     * TikTok. The limiter is scoped by shop and releases work back to Redis,
+     * so no event is discarded when the marketplace budget is exhausted.
+     */
+    public function middleware(): array
+    {
+        return [
+            (new RateLimited('channel_api'))->releaseAfter(5),
+        ];
     }
 
     public function handle(

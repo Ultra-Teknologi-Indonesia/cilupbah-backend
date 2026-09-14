@@ -17,6 +17,7 @@ $supervisorProfiles = [
         'supervisor-tiktok-webhooks-operational',
         'supervisor-tiktok-packages',
         'supervisor-shopee-webhooks-operational',
+        'supervisor-shopee-tracking-ingress',
         'supervisor-shopee-tracking',
         'supervisor-lazada-webhooks-operational',
         'supervisor-lazada-fulfillment',
@@ -77,6 +78,8 @@ return [
         'redis-long:stock-cutover' => 300,
         'redis-long:order-cutover' => 300,
         'redis-long:qr-labels' => 300,
+        'redis:shopee-tracking-events' => 30,
+        'redis:shopee-tracking' => 60,
     ],
 
     'trim' => [
@@ -168,8 +171,11 @@ return [
             'connection' => config('queue.routing.channel_sync.connection', 'redis-channel-sync'),
             'queue' => [env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync'), env('QUEUE_NAME_PRODUCT', 'product')],
             'balance' => 'off',
-            'minProcesses' => 1,
-            'maxProcesses' => 1,
+            // Satu toko/API yang lambat tidak boleh menahan validasi produk atau
+            // sinkronisasi toko lain. Dua worker tetap dibatasi agar CPU host dan
+            // memori pod tidak melonjak tanpa kendali.
+            'minProcesses' => 2,
+            'maxProcesses' => 2,
             'maxTime' => 3600,
             'maxJobs' => 250,
             'timeout' => 270,
@@ -364,7 +370,9 @@ return [
             'balance' => 'auto',
             'autoScalingStrategy' => 'size',
             'minProcesses' => 1,
-            'maxProcesses' => 3,
+            // API-bound work: one elastic worker is enough to absorb a burst
+            // while the per-shop limiter prevents upstream throttling.
+            'maxProcesses' => 4,
             'maxJobs' => 250,
             'timeout' => 120,
             'tries' => 3,
@@ -442,7 +450,7 @@ return [
             'balance' => 'auto',
             'autoScalingStrategy' => 'size',
             'minProcesses' => 1,
-            'maxProcesses' => 3,
+            'maxProcesses' => 2,
             'maxJobs' => 250,
             'timeout' => 120,
             'tries' => 3,
@@ -459,7 +467,7 @@ return [
             'autoScalingStrategy' => 'size',
 
             'minProcesses' => 2,
-            'maxProcesses' => 2,
+            'maxProcesses' => 3,
             'maxJobs' => 250,
             'timeout' => 120,
             'tries' => 3,
@@ -467,6 +475,23 @@ return [
             'memory' => 128,
             'balanceMaxShift' => 1,
             'balanceCooldown' => 3,
+            'nice' => 0,
+        ],
+        // Jalur ini tidak melakukan HTTP ke marketplace: hanya validasi ringan,
+        // pencatatan tracking lokal, dan enqueue refresh detail. Dipisahkan dari
+        // shopee-tracking supaya burst webhook tetap diakui cepat.
+        'supervisor-shopee-tracking-ingress' => [
+            'connection' => 'redis',
+            'queue' => [env('QUEUE_NAME_SHOPEE_TRACKING_EVENTS', 'shopee-tracking-events')],
+            'balance' => 'off',
+            'minProcesses' => 1,
+            'maxProcesses' => 1,
+            'maxTime' => 3600,
+            'maxJobs' => 250,
+            'timeout' => 30,
+            'tries' => 3,
+            'backoff' => [5, 15, 60],
+            'memory' => 128,
             'nice' => 0,
         ],
         'supervisor-shopee-webhooks-background' => [

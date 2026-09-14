@@ -33,6 +33,9 @@ spec:
               envFrom:
                 - secretRef:
                     name: cilupbah-env
+              env:
+                - name: CHANNEL_SYNC_WINDOW_MINUTES
+                  value: "5"
               resources:
                 requests:
                   memory: "256Mi"

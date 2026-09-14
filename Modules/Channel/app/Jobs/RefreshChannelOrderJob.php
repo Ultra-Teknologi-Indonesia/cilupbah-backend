@@ -9,10 +9,12 @@ use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\ChannelOrderRefreshService;
 use Modules\Channel\Support\ChannelOrderPullGuard;
+use Modules\Channel\Support\WebhookRetryPolicy;
 
 final class RefreshChannelOrderJob implements ShouldBeUnique, ShouldQueue
 {
@@ -20,10 +22,9 @@ final class RefreshChannelOrderJob implements ShouldBeUnique, ShouldQueue
     use InteractsWithQueue;
     use Queueable;
     use SerializesModels;
+    use WebhookRetryPolicy;
 
-    public array $backoff = [15, 60];
-
-    public int $tries = 3;
+    public array $backoff = [15, 60, 300, 900];
 
     public int $timeout = 120;
 
@@ -33,13 +34,25 @@ final class RefreshChannelOrderJob implements ShouldBeUnique, ShouldQueue
         public readonly string $channel,
         public readonly string $shopId,
         public readonly string $orderId,
+        ?string $queue = null,
     ) {
-        $this->onQueue(self::resolveQueueName($channel));
+        $this->onQueue($queue ?: self::resolveQueueName($channel));
     }
 
     public function uniqueId(): string
     {
         return strtolower($this->channel).':'.$this->shopId.':'.$this->orderId;
+    }
+
+    /**
+     * Marketplace detail refreshes may scale horizontally, but never beyond
+     * the configured per-channel/per-shop API budget.
+     */
+    public function middleware(): array
+    {
+        return [
+            (new RateLimited('channel_api'))->releaseAfter(5),
+        ];
     }
 
     public function handle(ChannelOrderRefreshService $orders): void

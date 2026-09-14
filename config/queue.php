@@ -129,6 +129,10 @@ return [
         'qr_labels' => env('QUEUE_NAME_QR_LABELS', 'qr-labels'),
 
         'shopee_orders' => env('QUEUE_NAME_SHOPEE_ORDERS', 'shopee-orders'),
+        // Ingress webhook tracking hanya mencatat event dan menjadwalkan refresh.
+        // Detail order yang dapat memanggil API marketplace tetap berjalan pada
+        // shopee-tracking agar lonjakan callback tidak memblokir acknowledgement.
+        'shopee_tracking_events' => env('QUEUE_NAME_SHOPEE_TRACKING_EVENTS', 'shopee-tracking-events'),
         'shopee_tracking' => env('QUEUE_NAME_SHOPEE_TRACKING', 'shopee-tracking'),
         'shopee_catalog' => env('QUEUE_NAME_SHOPEE_CATALOG', 'shopee-catalog'),
         'shopee_aftersales' => env('QUEUE_NAME_SHOPEE_AFTERSALES', 'shopee-aftersales'),
@@ -196,7 +200,10 @@ return [
             'connection' => env('QUEUE_CHANNEL_SYNC_CONNECTION', 'redis-channel-sync'),
             'queue' => env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync'),
 
-            'window_minutes' => max(5, min(30, (int) env('CHANNEL_SYNC_WINDOW_MINUTES', 10))),
+            // Batas lima menit menjaga satu pull terjadwal tetap kecil. Lease dan
+            // cursor membuat beberapa window berurutan tetap idempoten, tanpa
+            // melompati order ketika trafik sedang tinggi.
+            'window_minutes' => max(5, min(30, (int) env('CHANNEL_SYNC_WINDOW_MINUTES', 5))),
 
             'lease_seconds' => max(420, min(900, (int) env('CHANNEL_SYNC_LEASE_SECONDS', 420))),
         ],

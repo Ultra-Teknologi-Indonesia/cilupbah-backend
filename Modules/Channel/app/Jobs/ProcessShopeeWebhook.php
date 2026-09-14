@@ -84,7 +84,7 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
             self::PUSH_BOOKING_TRACKING_NO,
             self::PUSH_BOOKING_SHIPPING_DOC,
             self::PUSH_PACKAGE_FULFILLMENT,
-            self::PUSH_COURIER_DELIVERY_BINDING => config('queue.names.shopee_tracking', 'shopee-tracking'),
+            self::PUSH_COURIER_DELIVERY_BINDING => config('queue.names.shopee_tracking_events', 'shopee-tracking-events'),
             self::PUSH_RETURN_UPDATE => config('queue.names.shopee_aftersales', 'shopee-aftersales'),
             self::PUSH_RESERVED_STOCK_CHANGE,
             self::PUSH_ITEM_PRICE_UPDATE,
@@ -145,14 +145,14 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
         try {
             match ($code) {
                 self::PUSH_SHOP_DEAUTHORIZED => $this->handleDeauthorized($shopId),
-                self::PUSH_ORDER_STATUS,
+                self::PUSH_ORDER_STATUS => $this->handleOrderEventOrSkip($orderService, $shopId, $data),
                 self::PUSH_TRACKING_NO,
                 self::PUSH_SHIPPING_DOC,
                 self::PUSH_BOOKING_STATUS,
                 self::PUSH_BOOKING_TRACKING_NO,
                 self::PUSH_BOOKING_SHIPPING_DOC,
                 self::PUSH_PACKAGE_FULFILLMENT,
-                self::PUSH_COURIER_DELIVERY_BINDING => $this->handleOrderEventOrSkip($orderService, $shopId, $data),
+                self::PUSH_COURIER_DELIVERY_BINDING => $this->handleTrackingEventOrSkip($shopId, $data),
                 self::PUSH_RETURN_UPDATE => $this->handleReturnEvent($orderService, $shopId, $data),
                 self::PUSH_RESERVED_STOCK_CHANGE,
                 self::PUSH_ITEM_PRICE_UPDATE => $this->logItemEvent($downloadService, $shopId, $data),
@@ -196,6 +196,37 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
         }
 
         $this->handleOrderEvent($orderService, $shopId, $data);
+    }
+
+    /**
+     * Tracking callbacks are high-volume, especially around marketplace
+     * campaigns. They must acknowledge the inbox quickly, while the heavier
+     * order-detail refresh runs on its own bounded queue.
+     */
+    protected function handleTrackingEventOrSkip(string $shopId, array $data): void
+    {
+        if (ChannelOrderIntakeGate::blocksShop($shopId, 'shopee')) {
+            $this->orderIntakeSkipped = true;
+
+            return;
+        }
+
+        $orderSn = (string) ($data['ordersn'] ?? $data['order_sn'] ?? '');
+        if ($orderSn === '') {
+            Log::warning('Shopee webhook tracking tanpa ordersn — diabaikan.', [
+                'shop_id' => $shopId,
+                'event_key' => self::idempotencyKey($this->payload),
+            ]);
+
+            return;
+        }
+
+        RefreshChannelOrderJob::dispatch(
+            'shopee',
+            $shopId,
+            $orderSn,
+            (string) config('queue.names.shopee_tracking', 'shopee-tracking'),
+        )->delay(now()->addSeconds(2));
     }
 
     protected function recordShopeeTrackingEvent(string $shopId, int $code, array $data): void

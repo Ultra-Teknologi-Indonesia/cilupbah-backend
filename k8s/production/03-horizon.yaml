@@ -41,6 +41,8 @@ spec:
               value: "2160"
             - name: HORIZON_PROFILE
               value: "background"
+            - name: CHANNEL_SYNC_WINDOW_MINUTES
+              value: "5"
           livenessProbe:
             exec:
               command: ["sh", "-c", "php artisan horizon:status | grep -q running"]

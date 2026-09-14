@@ -220,6 +220,29 @@ class ShopeeWebhookTest extends TestCase
         });
     }
 
+    public function test_tracking_event_is_acknowledged_without_waiting_for_marketplace_order_detail(): void
+    {
+        Queue::fake();
+
+        $orderService = Mockery::mock(ShopeeOrderService::class);
+        $payload = $this->orderPayload([
+            'code' => 4,
+            'data' => [
+                'ordersn' => 'TRACKING-ORDER',
+                'tracking_no' => 'SPX-1',
+            ],
+        ]);
+
+        (new ProcessShopeeWebhook($payload))->handle($orderService, app(ChannelDownloadService::class));
+
+        Queue::assertPushed(RefreshChannelOrderJob::class, function (RefreshChannelOrderJob $job): bool {
+            return $job->channel === 'shopee'
+                && $job->shopId === '778899'
+                && $job->orderId === 'TRACKING-ORDER'
+                && $job->queue === config('queue.names.shopee_tracking');
+        });
+    }
+
     public function test_configured_push_url_used_for_signature(): void
     {
         Queue::fake();

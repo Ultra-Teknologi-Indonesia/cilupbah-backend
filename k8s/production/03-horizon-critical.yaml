@@ -43,8 +43,9 @@ spec:
               memory: "2Gi"
               cpu: "1000m"
             limits:
-              # Critical profile worker budget is 3.84GiB plus Horizon
-              # overhead. Keep headroom for transient API payloads.
+              # Critical profile worker budget is 4.00GiB plus Horizon
+              # overhead. The 5GiB limit preserves roughly 1GiB headroom for
+              # the Horizon master and transient marketplace API payloads.
               memory: "5Gi"
               cpu: "2500m"
           livenessProbe:

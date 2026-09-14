@@ -34,5 +34,15 @@ final class RefreshChannelOrderJobTest extends TestCase
 
         self::assertSame('shopee:SHOP-1:ORDER-1', $job->uniqueId());
         self::assertSame(config('queue.names.shopee_orders'), $job->queue);
+        self::assertSame(0, $job->tries);
+        self::assertCount(1, $job->middleware());
+    }
+
+    public function test_it_can_use_the_isolated_tracking_refresh_queue(): void
+    {
+        $job = new RefreshChannelOrderJob('shopee', 'SHOP-1', 'ORDER-1', 'shopee-tracking');
+
+        self::assertSame('shopee-tracking', $job->queue);
+        self::assertGreaterThanOrEqual(now()->addHours(23)->getTimestamp(), $job->retryUntil()->getTimestamp());
     }
 }

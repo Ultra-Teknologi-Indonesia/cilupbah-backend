@@ -16,10 +16,10 @@ class WebhookQueueTieringTest extends TestCase
 
         $this->assertSame('shopee-orders', ProcessShopeeWebhook::resolveQueueName(['code' => 3]));
 
-        $this->assertSame('shopee-tracking', ProcessShopeeWebhook::resolveQueueName(['code' => 4]));
-        $this->assertSame('shopee-tracking', ProcessShopeeWebhook::resolveQueueName(['code' => 37]));
-        $this->assertSame('shopee-tracking', ProcessShopeeWebhook::resolveQueueName(['code' => 15]));
-        $this->assertSame('shopee-tracking', ProcessShopeeWebhook::resolveQueueName(['code' => 30]));
+        $this->assertSame('shopee-tracking-events', ProcessShopeeWebhook::resolveQueueName(['code' => 4]));
+        $this->assertSame('shopee-tracking-events', ProcessShopeeWebhook::resolveQueueName(['code' => 37]));
+        $this->assertSame('shopee-tracking-events', ProcessShopeeWebhook::resolveQueueName(['code' => 15]));
+        $this->assertSame('shopee-tracking-events', ProcessShopeeWebhook::resolveQueueName(['code' => 30]));
 
         $this->assertSame('shopee-aftersales', ProcessShopeeWebhook::resolveQueueName(['code' => 29]));
 
@@ -90,5 +90,8 @@ class WebhookQueueTieringTest extends TestCase
                 $job->retryUntil()->getTimestamp(),
             );
         }
+
+        $tiktokMiddleware = (new ProcessTikTokWebhook(['shop_id' => 'shop-1']))->middleware();
+        $this->assertCount(1, $tiktokMiddleware);
     }
 }
