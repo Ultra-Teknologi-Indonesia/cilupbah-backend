@@ -2,30 +2,34 @@
 
 namespace Modules\Inventory\Jobs;
 
+use App\Traits\StockLockable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Modules\Channel\Jobs\SyncStockToChannelsJob;
-use Modules\Finance\Services\AutoJournalService;
-use Modules\Inventory\Models\StockAdjustment;
-use Modules\Inventory\Repositories\InventoryRepository;
-use Modules\Inventory\Repositories\InventoryMovementRepository;
-use Modules\Warehouse\Services\BinOccupancyGuard;
-use Modules\Warehouse\Services\SkuHomeBinGuard;
-use App\Traits\StockLockable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Modules\Inventory\Support\StockAdjustmentRule;
+use Modules\Channel\Jobs\SyncStockToChannelsJob;
+use Modules\Finance\Services\AutoJournalService;
+use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Models\SkuRackAssignment;
+use Modules\Inventory\Models\StockAdjustment;
+use Modules\Inventory\Models\StockAdjustmentItem;
+use Modules\Inventory\Repositories\InventoryMovementRepository;
+use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Support\MovingAverageCost;
+use Modules\Inventory\Support\StockAdjustmentRule;
+use Modules\Warehouse\Services\BinOccupancyGuard;
 use Modules\Warehouse\Services\InboundBinPolicy;
+use Modules\Warehouse\Services\SkuHomeBinGuard;
 
 class ProcessStockAdjustmentJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, StockLockable;
 
     public int $tries = 3;
+
     public array $backoff = [3, 10, 30];
 
     public function __construct(
@@ -39,12 +43,11 @@ class ProcessStockAdjustmentJob implements ShouldQueue
         InventoryRepository $inventoryRepository,
         InventoryMovementRepository $movementRepository,
         ?StockAdjustmentRule $stockAdjustmentRule = null,
-    ): void
-    {
+    ): void {
         $stockAdjustmentRule ??= app(StockAdjustmentRule::class);
         $adjustment = StockAdjustment::with('items')->find($this->adjustmentId);
 
-        if (!$adjustment) {
+        if (! $adjustment) {
             return;
         }
 
@@ -80,11 +83,6 @@ class ProcessStockAdjustmentJob implements ShouldQueue
                         );
                     }
 
-                    if (! empty($item->bin_id) && (float) $item->difference_qty > 0) {
-                        app(BinOccupancyGuard::class)->assertBinFitsSku($item->bin_id, $item->item_id);
-                        app(SkuHomeBinGuard::class)->assertSkuFitsBin($adjustment->location_id, $item->item_id, $item->bin_id);
-                    }
-
                     $inventory = $inventoryRepository->findOrCreateForUpdate(
                         $item->item_id,
                         $adjustment->location_id,
@@ -95,6 +93,14 @@ class ProcessStockAdjustmentJob implements ShouldQueue
                     $preAvgCost = (float) ($inventory->avg_cost ?? 0);
                     $delta = (float) $item->difference_qty;
                     $itemUnitCost = (float) ($item->unit_cost ?? 0);
+
+                    if (! empty($item->bin_id)
+                        && $delta > 0
+                        && ! $this->clearsLegacyNegativeOutsideAssignedBin($adjustment, $item, $inventory, $delta)
+                    ) {
+                        app(BinOccupancyGuard::class)->assertBinFitsSku($item->bin_id, $item->item_id);
+                        app(SkuHomeBinGuard::class)->assertSkuFitsBin($adjustment->location_id, $item->item_id, $item->bin_id);
+                    }
 
                     $stockAdjustmentRule->assertAllowed(
                         systemQty: (int) $preOnHand,
@@ -145,7 +151,7 @@ class ProcessStockAdjustmentJob implements ShouldQueue
                 $totalSignedValue,
             );
         } catch (\Throwable $e) {
-            Log::warning('AutoJournal stock adjustment gagal: ' . $e->getMessage(), [
+            Log::warning('AutoJournal stock adjustment gagal: '.$e->getMessage(), [
                 'adjustment_no' => $adjustment->adjustment_no,
             ]);
         }
@@ -153,5 +159,31 @@ class ProcessStockAdjustmentJob implements ShouldQueue
         foreach (array_values(array_unique($adjustedItemIds)) as $itemId) {
             SyncStockToChannelsJob::dispatch($itemId);
         }
+    }
+
+    /**
+     * Allow only the exact correction needed to remove a legacy negative row
+     * outside the SKU's assigned bin. This never creates positive stock there.
+     */
+    private function clearsLegacyNegativeOutsideAssignedBin(
+        StockAdjustment $adjustment,
+        StockAdjustmentItem $item,
+        Inventory $inventory,
+        float $delta,
+    ): bool {
+        if (empty($item->bin_id)
+            || (float) $inventory->on_hand >= 0
+            || (int) $inventory->on_order !== 0
+            || $delta <= 0
+            || (float) $inventory->on_hand + $delta !== 0.0
+        ) {
+            return false;
+        }
+
+        return SkuRackAssignment::query()
+            ->where('location_id', $adjustment->location_id)
+            ->where('item_id', $item->item_id)
+            ->where('bin_id', '!=', $item->bin_id)
+            ->exists();
     }
 }
