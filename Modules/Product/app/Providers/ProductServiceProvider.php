@@ -12,6 +12,7 @@ use Modules\Product\Console\Commands\RecomputeChannelValidation;
 use Modules\Product\Console\Commands\RemirrorProductImages;
 use Modules\Product\Console\Commands\RepairChannelMappingIntegrity;
 use Modules\Product\Console\Commands\RepairChannelSku;
+use Modules\Product\Console\Commands\SplitMixedChannelMappings;
 use Modules\Product\Jobs\PruneUploadHistoriesJob;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
@@ -29,6 +30,7 @@ class ProductServiceProvider extends ModuleServiceProvider
         MergeMasterProducts::class,
         RepairChannelSku::class,
         RepairChannelMappingIntegrity::class,
+        SplitMixedChannelMappings::class,
         BackfillProductSkus::class,
         PurgeSoftDeletedSkus::class,
     ];

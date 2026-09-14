@@ -22,6 +22,7 @@ use Modules\Product\Repositories\ProductWriteRepository;
 use Modules\Product\Services\ChannelMappingRepairService;
 use Modules\Product\Services\ChannelSkuHealth;
 use Modules\Product\Services\MasterProductMerger;
+use Modules\Product\Services\MixedChannelMappingSplitService;
 use Modules\Product\Services\StaleChannelMappingPruneService;
 use Ramsey\Uuid\Uuid;
 use Tests\TestCase;
@@ -376,6 +377,147 @@ final class ChannelMappingIntegrityTest extends TestCase
             'id' => $mapping->id,
             'product_id' => $target->id,
         ]);
+    }
+
+    public function test_mixed_legacy_listing_is_split_without_moving_the_source_product_variants(): void
+    {
+        [$source, $stayingVariant, $sourceMapping] = $this->listedProduct('SPLIT-SOURCE');
+        [$target, $movingVariant] = $this->productWithVariant('SPLIT-TARGET');
+
+        ProductVariantChannelMapping::create([
+            'product_channel_mapping_id' => $sourceMapping->id,
+            'variant_id' => $stayingVariant->id,
+            'external_sku_id' => 'SPLIT-STAYS-EXT',
+            'sync_enabled' => true,
+        ]);
+        DB::table('product_variant_channel_mappings')->insert([
+            'id' => (string) Uuid::uuid7(),
+            'product_channel_mapping_id' => $sourceMapping->id,
+            'variant_id' => $movingVariant->id,
+            'external_sku_id' => 'SPLIT-MOVES-EXT',
+            'sync_enabled' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $service = app(MixedChannelMappingSplitService::class);
+
+        $plans = $service->candidates();
+
+        $this->assertCount(1, $plans);
+        $this->assertSame(1, $plans->first()->moved_models);
+        $this->assertSame(1, $plans->first()->created_parents);
+
+        $result = $service->split((string) $sourceMapping->id);
+
+        $this->assertSame(1, $result['moved_models']);
+        $this->assertSame(1, $result['created_parents']);
+        $this->assertDatabaseHas('product_variant_channel_mappings', [
+            'product_channel_mapping_id' => $sourceMapping->id,
+            'variant_id' => $stayingVariant->id,
+        ]);
+
+        $targetMappingId = ProductChannelMapping::query()
+            ->where('channel_shop_id', $sourceMapping->channel_shop_id)
+            ->where('external_product_id', $sourceMapping->external_product_id)
+            ->where('product_id', $target->id)
+            ->value('id');
+
+        $this->assertNotNull($targetMappingId);
+        $this->assertDatabaseHas('product_variant_channel_mappings', [
+            'product_channel_mapping_id' => $targetMappingId,
+            'variant_id' => $movingVariant->id,
+        ]);
+        $this->assertDatabaseHas('channel_mapping_split_audits', [
+            'source_mapping_id' => $sourceMapping->id,
+            'target_mapping_id' => $targetMappingId,
+            'target_product_id' => $target->id,
+            'moved_models' => 1,
+            'created_target_mapping' => true,
+        ]);
+    }
+
+    public function test_mixed_mapping_split_command_requires_explicit_apply_confirmation(): void
+    {
+        [$source, $stayingVariant, $sourceMapping] = $this->listedProduct('SPLIT-COMMAND-SOURCE');
+        [, $movingVariant] = $this->productWithVariant('SPLIT-COMMAND-TARGET');
+
+        ProductVariantChannelMapping::create([
+            'product_channel_mapping_id' => $sourceMapping->id,
+            'variant_id' => $stayingVariant->id,
+            'external_sku_id' => 'SPLIT-COMMAND-STAYS-EXT',
+            'sync_enabled' => true,
+        ]);
+        DB::table('product_variant_channel_mappings')->insert([
+            'id' => (string) Uuid::uuid7(),
+            'product_channel_mapping_id' => $sourceMapping->id,
+            'variant_id' => $movingVariant->id,
+            'external_sku_id' => 'SPLIT-COMMAND-MOVES-EXT',
+            'sync_enabled' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->artisan('products:split-mixed-channel-mappings', ['--limit' => 25])
+            ->expectsOutputToContain('DRY-RUN')
+            ->assertExitCode(0);
+
+        $this->assertDatabaseMissing('product_channel_mappings', [
+            'product_id' => $movingVariant->product_id,
+            'external_product_id' => $sourceMapping->external_product_id,
+        ]);
+
+        $this->artisan('products:split-mixed-channel-mappings', [
+            '--limit' => 25,
+            '--apply' => true,
+            '--confirm' => 'SPLIT-MIXED-CHANNEL-MAPPINGS',
+        ])->assertExitCode(0);
+
+        $this->assertDatabaseHas('product_channel_mappings', [
+            'product_id' => $movingVariant->product_id,
+            'external_product_id' => $sourceMapping->external_product_id,
+        ]);
+    }
+
+    public function test_mixed_mapping_with_a_stale_child_is_not_eligible_for_automatic_split(): void
+    {
+        [$source, $stayingVariant, $sourceMapping] = $this->listedProduct('SPLIT-STALE-SOURCE');
+        [, $movingVariant] = $this->productWithVariant('SPLIT-STALE-TARGET');
+        $staleVariant = ProductVariant::create([
+            'product_id' => $source->id,
+            'sku' => 'SPLIT-STALE-CHILD',
+            'is_active' => true,
+        ]);
+
+        ProductVariantChannelMapping::create([
+            'product_channel_mapping_id' => $sourceMapping->id,
+            'variant_id' => $stayingVariant->id,
+            'external_sku_id' => 'SPLIT-STALE-STAYS-EXT',
+            'sync_enabled' => true,
+        ]);
+        DB::table('product_variant_channel_mappings')->insert([
+            [
+                'id' => (string) Uuid::uuid7(),
+                'product_channel_mapping_id' => $sourceMapping->id,
+                'variant_id' => $movingVariant->id,
+                'external_sku_id' => 'SPLIT-STALE-MOVES-EXT',
+                'sync_enabled' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'id' => (string) Uuid::uuid7(),
+                'product_channel_mapping_id' => $sourceMapping->id,
+                'variant_id' => $staleVariant->id,
+                'external_sku_id' => 'SPLIT-STALE-CHILD-EXT',
+                'sync_enabled' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+        DB::table('product_variants')->where('id', $staleVariant->id)->update(['deleted_at' => now()]);
+
+        $this->assertCount(0, app(MixedChannelMappingSplitService::class)->candidates());
     }
 
     private function listedProduct(string $sku): array
