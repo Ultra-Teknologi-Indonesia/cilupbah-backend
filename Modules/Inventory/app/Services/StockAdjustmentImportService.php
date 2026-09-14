@@ -3,14 +3,13 @@
 namespace Modules\Inventory\Services;
 
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
-use Modules\Inventory\Models\Inventory;
-use Modules\Inventory\Repositories\InventoryRepository;
-use Modules\Product\Models\ProductVariant;
-use Modules\Warehouse\Models\LocationBin;
 use Modules\Inventory\Exceptions\NegativeStockAdjustmentException;
+use Modules\Inventory\Repositories\StockAdjustmentImportPreviewRepository;
+use Modules\Inventory\Repositories\StockAdjustmentImportRepository;
 use Modules\Inventory\Support\StockAdjustmentRule;
+use Modules\Warehouse\Services\BinOccupancyGuard;
+use Modules\Warehouse\Services\SkuHomeBinGuard;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -20,17 +19,24 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx as XlsxWriter;
 
 class StockAdjustmentImportService
 {
-    public const CACHE_PREFIX = 'stock-adjustment-import:';
     public const CACHE_TTL_MINUTES = 30;
     public const MAX_ROWS = 1000;
     public const DATA_SHEET_NAME = 'Pengisian Data';
 
     public function __construct(
-        protected InventoryRepository $inventoryRepository,
         protected StockAdjustmentRule $stockAdjustmentRule,
+        protected BinOccupancyGuard $binOccupancyGuard,
+        protected SkuHomeBinGuard $skuHomeBinGuard,
+        protected StockAdjustmentImportRepository $importRepository,
+        protected StockAdjustmentImportPreviewRepository $previewRepository,
     ) {}
 
-    public function preview(UploadedFile $file, string $locationId, ?string $actorId = null): array
+    public function preview(
+        UploadedFile $file,
+        string $locationId,
+        ?string $actorId = null,
+        array $query = [],
+    ): array
     {
         $rows = $this->readDataRows($file);
 
@@ -43,25 +49,19 @@ class StockAdjustmentImportService
         }
 
         $skus = collect($rows)->pluck('item_code')->filter()->map(fn ($s) => trim((string) $s))->unique()->values()->all();
-        $variants = ProductVariant::whereIn('sku', $skus)
-            ->whereHas('product', fn ($query) => $query->whereNull('deleted_at'))
-            ->get(['id', 'sku', 'product_id'])
-            ->keyBy(fn ($v) => strtolower($v->sku));
-
-        $variantsById = $variants->keyBy('id');
+        $variants = $this->importRepository->findVariantsBySkus($skus);
 
         $binCodes = collect($rows)->pluck('bin_final_code')->filter()->map(fn ($s) => trim((string) $s))->unique()->values()->all();
-        $bins = LocationBin::where('location_id', $locationId)
-            ->whereIn('bin_final_code', $binCodes)
-            ->get(['id', 'bin_final_code', 'is_inbound'])
-            ->keyBy('bin_final_code');
+        $bins = $this->importRepository->findFinalBinsByCodes($locationId, $binCodes);
 
-        $productNames = \Modules\Product\Models\Product::whereIn('id', $variants->pluck('product_id')->filter()->unique())
-            ->pluck('name', 'id');
+        $productNames = $this->importRepository->productNamesByIds(
+            $variants->pluck('product_id')->filter()->unique()->all(),
+        );
 
         $items = [];
         $errors = [];
         $warnings = [];
+        $seenSkuBins = [];
 
         foreach ($rows as $idx => $row) {
             $rowNo = $idx + 2; 
@@ -133,23 +133,10 @@ class StockAdjustmentImportService
                 $binResolved = $bin->bin_final_code;
             } else {
 
-                $primary = Inventory::where('item_id', $variant->id)
-                    ->where('location_id', $locationId)
-                    ->whereNotNull('bin_id')
-                    ->where('on_hand', '>', 0)
-                    ->with('bin:id,bin_final_code')
-                    ->whereHas('bin', fn ($q) => $q->where('is_inbound', false))
-                    ->orderBy('created_at')
-                    ->first();
+                $primary = $this->importRepository->findPrimaryFinalInventory($variant->id, $locationId);
 
                 if (! $primary) {
-                    $primary = Inventory::where('item_id', $variant->id)
-                        ->where('location_id', $locationId)
-                        ->whereNotNull('bin_id')
-                        ->with('bin:id,bin_final_code')
-                        ->whereHas('bin', fn ($q) => $q->where('is_inbound', false))
-                        ->orderBy('created_at')
-                        ->first();
+                    $primary = $this->importRepository->findAnyFinalInventory($variant->id, $locationId);
                 }
 
                 if (! $primary) {
@@ -160,10 +147,7 @@ class StockAdjustmentImportService
                 $binResolved = $primary->bin?->bin_final_code;
             }
 
-            $inventory = Inventory::where('item_id', $variant->id)
-                ->where('location_id', $locationId)
-                ->where('bin_id', $binId)
-                ->first();
+            $inventory = $this->importRepository->findInventory($variant->id, $locationId, $binId);
 
             $systemQty = $inventory ? (int) $inventory->on_hand : 0;
 
@@ -181,6 +165,35 @@ class StockAdjustmentImportService
                 ];
                 continue;
             }
+
+            if ($calculation->differenceQty > 0 && $binId !== null) {
+                try {
+                    $this->binOccupancyGuard->assertBinFitsSku($binId, $variant->id);
+                    $this->skuHomeBinGuard->assertSkuFitsBin($locationId, $variant->id, $binId);
+                } catch (\DomainException|\InvalidArgumentException $e) {
+                    $errors[] = [
+                        'row' => $rowNo,
+                        'field' => 'bin_final_code',
+                        'error' => "[SKU: {$sku}] {$e->getMessage()}",
+                    ];
+                    continue;
+                }
+            }
+
+            $seenBins = $seenSkuBins[$variant->id] ?? [];
+            if ($seenBins !== []) {
+                $previousRow = array_values($seenBins)[0];
+                $message = array_key_exists($binId, $seenBins)
+                    ? "SKU dan rak yang sama muncul lebih dari sekali pada file (baris {$previousRow} dan {$rowNo}). Gabungkan menjadi satu baris."
+                    : "SKU diarahkan ke lebih dari satu rak dalam satu file (baris {$previousRow} dan {$rowNo}). Gunakan satu rak tujuan.";
+                $errors[] = [
+                    'row' => $rowNo,
+                    'field' => 'item_code|bin_final_code',
+                    'error' => "[SKU: {$sku}] {$message}",
+                ];
+                continue;
+            }
+            $seenSkuBins[$variant->id][$binId] = $rowNo;
 
             $hppRaw = $row['hpp'] ?? null;
             $unitCost = null;
@@ -223,40 +236,40 @@ class StockAdjustmentImportService
             'warnings'   => count($warnings),
         ];
 
-        Cache::put(self::CACHE_PREFIX . $token, [
+        $this->previewRepository->put($token, [
             'location_id' => $locationId,
             'actor_id'    => $actorId,
             'items'       => $items,
+            'errors'      => $errors,
+            'warnings'    => $warnings,
             'summary'     => $summary,
-        ], now()->addMinutes(self::CACHE_TTL_MINUTES));
+        ], self::CACHE_TTL_MINUTES);
 
-        return [
-            'token'    => $token,
-            'items'    => $items,
-            'errors'   => $errors,
-            'warnings' => $warnings,
-            'summary'  => $summary,
-        ];
+        return $this->previewRepository->paginate(
+            [
+                'items' => $items,
+                'errors' => $errors,
+                'warnings' => $warnings,
+                'summary' => $summary,
+            ],
+            $token,
+            $query,
+        );
+    }
+
+    public function paginatePreview(array $preview, string $token, array $query = []): array
+    {
+        return $this->previewRepository->paginate($preview, $token, $query);
     }
 
     public function getPreview(string $token, ?string $actorId = null): ?array
     {
-        $preview = Cache::get(self::CACHE_PREFIX . $token);
-
-        if (! is_array($preview)) {
-            return null;
-        }
-
-        if (array_key_exists('actor_id', $preview) && $preview['actor_id'] !== $actorId) {
-            return null;
-        }
-
-        return $preview;
+        return $this->previewRepository->find($token, $actorId);
     }
 
     public function forgetPreview(string $token): void
     {
-        Cache::forget(self::CACHE_PREFIX . $token);
+        $this->previewRepository->forget($token);
     }
 
     protected function readDataRows(UploadedFile $file): array

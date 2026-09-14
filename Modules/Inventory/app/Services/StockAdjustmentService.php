@@ -80,7 +80,7 @@ class StockAdjustmentService
             'penyesuaian stok',
         );
 
-        $adjustment = DB::transaction(function () use ($data) {
+        return DB::transaction(function () use ($data) {
             $adjustmentNo = ! empty($data['adjustment_no'])
                 ? $data['adjustment_no']
                 : $this->adjustmentRepository->generateAdjustmentNo();
@@ -125,15 +125,13 @@ class StockAdjustmentService
                 ]);
             }
 
+            (new ProcessStockAdjustmentJob($adjustment->id, $data['created_by']))->handle(
+                $this->inventoryRepository,
+                $this->movementRepository,
+            );
+
             return $this->adjustmentRepository->findById($adjustment->id);
         });
-
-        (new ProcessStockAdjustmentJob($adjustment->id, $data['created_by']))->handle(
-            $this->inventoryRepository,
-            $this->movementRepository,
-        );
-
-        return $adjustment;
     }
 
     public function update(string $id, array $data): StockAdjustment

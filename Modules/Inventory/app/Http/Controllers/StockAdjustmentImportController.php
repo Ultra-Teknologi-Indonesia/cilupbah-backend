@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Inventory\Models\ImpexActivity;
+use Modules\Inventory\Exceptions\NegativeStockAdjustmentException;
 use Modules\Inventory\Services\ImpexActivityService;
 use Modules\Inventory\Services\StockAdjustmentImportService;
 use Modules\Inventory\Services\StockAdjustmentService;
@@ -37,9 +38,13 @@ class StockAdjustmentImportController extends Controller
 
     public function preview(Request $request): JsonResponse
     {
-        $request->validate([
+        $validated = $request->validate([
             'file'        => 'required|file|mimes:xlsx|max:5120',
             'location_id' => 'required|string',
+            'page'        => 'nullable|integer|min:1',
+            'per_page'    => 'nullable|integer|min:1|max:100',
+            'search'      => 'nullable|string|max:100',
+            'sort'        => 'nullable|string|max:40',
         ]);
 
         try {
@@ -47,6 +52,7 @@ class StockAdjustmentImportController extends Controller
                 $request->file('file'),
                 $request->input('location_id'),
                 (string) $request->user()->getAuthIdentifier(),
+                $validated,
             );
 
             return $this->successResponse($result, 'Preview import berhasil di-generate.');
@@ -58,6 +64,33 @@ class StockAdjustmentImportController extends Controller
                 'Terjadi kesalahan',
             );
         }
+    }
+
+    public function previewPage(Request $request, string $token): JsonResponse
+    {
+        $validated = $request->validate([
+            'page'     => 'nullable|integer|min:1',
+            'per_page' => 'nullable|integer|min:1|max:100',
+            'search'   => 'nullable|string|max:100',
+            'sort'     => 'nullable|string|max:40',
+        ]);
+
+        $preview = $this->importService->getPreview(
+            $token,
+            (string) $request->user()->getAuthIdentifier(),
+        );
+
+        if (! $preview) {
+            return $this->errorResponse(
+                'Preview token expired atau tidak ditemukan. Silakan upload ulang.',
+                404,
+            );
+        }
+
+        return $this->successResponse(
+            $this->importService->paginatePreview($preview, $token, $validated),
+            'Preview import berhasil diambil.',
+        );
     }
 
     public function confirm(Request $request): JsonResponse
@@ -81,6 +114,15 @@ class StockAdjustmentImportController extends Controller
 
         if (empty($preview['items'])) {
             return $this->errorResponse('Tidak ada item valid untuk di-import.', 422);
+        }
+
+        if (! empty($preview['errors'])) {
+            return $this->errorResponse(
+                'Preview masih memiliki error. Perbaiki baris bermasalah lalu upload ulang.',
+                422,
+                ['rows' => $preview['errors']],
+                'Validasi import gagal',
+            );
         }
 
         $activity = $this->activityService->record(
@@ -111,13 +153,22 @@ class StockAdjustmentImportController extends Controller
             $this->activityService->markSuccess($activity);
 
             return $this->successResponse(new StockAdjustmentResource($adjustment), 'Import penyesuaian stok berhasil diterapkan.');
+        } catch (NegativeStockAdjustmentException|\DomainException|\InvalidArgumentException $e) {
+            $this->activityService->markFailed($activity, $e->getMessage());
+
+            return $this->errorResponse(
+                'Periksa baris yang bermasalah lalu upload ulang.',
+                422,
+                ['detail' => $e->getMessage()],
+                'Validasi import gagal',
+            );
         } catch (\Exception $e) {
             $this->activityService->markFailed($activity, $e->getMessage());
 
             return $this->errorResponse(
                 'Gagal menyetujui.',
                 500,
-                ['detail' => $e->getMessage()],
+                ['detail' => 'Proses import tidak dapat diselesaikan. Silakan coba lagi.'],
                 'Aksi tidak dapat diproses',
             );
         }

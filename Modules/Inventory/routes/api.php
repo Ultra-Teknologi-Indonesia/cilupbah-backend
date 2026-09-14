@@ -163,6 +163,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::prefix('inventory/adjustments/import')->middleware('role_or_permission:owner|import-penyesuaian-stok')->group(function () {
         Route::get('/template', [StockAdjustmentImportController::class, 'template'])->name('inventory.adjustments.import.template');
         Route::post('/preview', [StockAdjustmentImportController::class, 'preview'])->name('inventory.adjustments.import.preview');
+        Route::get('/preview/{token}', [StockAdjustmentImportController::class, 'previewPage'])->name('inventory.adjustments.import.preview.page');
         Route::post('/confirm', [StockAdjustmentImportController::class, 'confirm'])->name('inventory.adjustments.import.confirm');
     });
 
