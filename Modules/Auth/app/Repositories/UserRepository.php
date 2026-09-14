@@ -18,11 +18,19 @@ class UserRepository
             ->appends(request()->query());
     }
 
-    public function lookup(?string $q, int $page, int $perPage, ?string $role = null): array
-    {
+    public function lookup(
+        ?string $q,
+        int $page,
+        int $perPage,
+        string|array|null $role = null,
+        ?string $locationId = null,
+        ?string $permission = null,
+    ): array {
         $query = User::query()->with('roles');
 
-        if (! empty($q)) {
+        $q = trim((string) $q);
+
+        if ($q !== '') {
             $query->where(function (Builder $w) use ($q) {
                 $w->where('email', 'ilike', "%{$q}%")
                     ->orWhere('name', 'ilike', "%{$q}%");
@@ -32,6 +40,27 @@ class UserRepository
         if (! empty($role)) {
             $roles = is_array($role) ? $role : explode(',', $role);
             $query->whereHas('roles', fn (Builder $r) => $r->whereIn('name', $roles));
+        }
+
+        if ($locationId !== null && $locationId !== '') {
+            $query->where(function (Builder $location) use ($locationId): void {
+                $location
+                    ->where('warehouse_id', $locationId)
+                    ->orWhereHas('locations', fn (Builder $assigned) => $assigned->whereKey($locationId))
+                    ->orWhereDoesntHave('locations')
+                    ->orWhereHas('roles', fn (Builder $owner) => $owner->where('name', 'owner'));
+            });
+        }
+
+        if ($permission !== null && $permission !== '') {
+            $query
+                ->where(function (Builder $permissionQuery) use ($permission): void {
+                    $permissionQuery
+                        ->whereHas('roles.permissions', fn (Builder $rolePermission) => $rolePermission->where('name', $permission))
+                        ->orWhereHas('permissions', fn (Builder $directPermission) => $directPermission->where('name', $permission))
+                        ->orWhereHas('roles', fn (Builder $owner) => $owner->where('name', 'owner'));
+                })
+                ->whereDoesntHave('permissionDenials.permission', fn (Builder $denied) => $denied->where('name', $permission));
         }
 
         $total = (clone $query)->count();

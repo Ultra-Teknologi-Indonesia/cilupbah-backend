@@ -130,6 +130,42 @@ class UserManagementApiTest extends TestCase
         $this->assertTrue($res->json('data.0.is_owner'));
     }
 
+    public function test_user_lookup_searches_server_side_by_location_and_effective_permission(): void
+    {
+        $location = Location::factory()->create(['location_name' => 'Gudang Kecil']);
+        $otherLocation = Location::factory()->create(['location_name' => 'Pusat']);
+
+        $eligible = User::factory()->create([
+            'name' => 'Dika Outbound',
+            'email' => 'outboundcilupbah@example.com',
+        ]);
+        $eligible->givePermissionTo('edit-penempatan');
+        $eligible->syncLocations([$location->id]);
+
+        $wrongLocation = User::factory()->create(['name' => 'Dika Pusat']);
+        $wrongLocation->givePermissionTo('edit-penempatan');
+        $wrongLocation->syncLocations([$otherLocation->id]);
+
+        $global = User::factory()->create(['name' => 'Global Putaway']);
+        $global->givePermissionTo('edit-penempatan');
+
+        $response = $this->actingAs($this->owner, 'sanctum')
+            ->getJson('/api/v1/users/lookup?q=outbound&location_id='.$location->id.'&permission=edit-penempatan&per_page=20')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1);
+
+        $this->assertSame($eligible->id, $response->json('data.0.id'));
+
+        $allEligible = $this->actingAs($this->owner, 'sanctum')
+            ->getJson('/api/v1/users/lookup?location_id='.$location->id.'&permission=edit-penempatan&per_page=20')
+            ->assertOk();
+
+        $ids = collect($allEligible->json('data'))->pluck('id');
+        $this->assertTrue($ids->contains($eligible->id));
+        $this->assertTrue($ids->contains($global->id));
+        $this->assertFalse($ids->contains($wrongLocation->id));
+    }
+
     public function test_show_returns_user_detail(): void
     {
         $target = User::factory()->create();

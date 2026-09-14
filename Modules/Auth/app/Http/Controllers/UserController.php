@@ -61,6 +61,8 @@ class UserController extends Controller
         parameters: [
             new OA\Parameter(name: 'q', in: 'query', description: 'Search name or email', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'role', in: 'query', description: 'Filter by role (e.g. putaway, picker, courier)', required: false, schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'location_id', in: 'query', description: 'Only users eligible for this warehouse/location', required: false, schema: new OA\Schema(type: 'string', format: 'uuid')),
+            new OA\Parameter(name: 'permission', in: 'query', description: 'Only users with this effective permission', required: false, schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'page', in: 'query', description: 'Page number', required: false, schema: new OA\Schema(type: 'integer', default: 1)),
             new OA\Parameter(name: 'per_page', in: 'query', description: 'Items per page', required: false, schema: new OA\Schema(type: 'integer', default: 50)),
         ],
@@ -71,14 +73,26 @@ class UserController extends Controller
     )]
     public function lookup(Request $request): JsonResponse
     {
-        $q = $request->query('q') ?? $request->query('search');
-        $role = $request->query('role') ?? data_get($request->query('filter'), 'role');
+        $validated = $request->validate([
+            'q' => ['nullable', 'string', 'max:100'],
+            'search' => ['nullable', 'string', 'max:100'],
+            'role' => ['nullable', 'string', 'max:100'],
+            'location_id' => ['nullable', 'uuid', 'exists:locations,id'],
+            'permission' => ['nullable', 'string', 'max:100'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+
+        $q = $validated['q'] ?? $validated['search'] ?? null;
+        $role = $validated['role'] ?? data_get($request->query('filter'), 'role');
 
         $result = $this->userService->getUserLookup(
             $q,
-            max(1, (int) $request->query('page', 1)),
-            max(1, (int) $request->query('per_page', 50)),
-            $role
+            max(1, (int) ($validated['page'] ?? 1)),
+            max(1, (int) ($validated['per_page'] ?? 50)),
+            $role,
+            $validated['location_id'] ?? null,
+            $validated['permission'] ?? null,
         );
 
         return $this->successResponse(

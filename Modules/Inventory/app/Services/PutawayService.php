@@ -890,6 +890,11 @@ class PutawayService
                 throw new \Exception("Putaway {$putaway->putaway_no} sudah {$putaway->status}, tidak bisa di-assign.");
             }
 
+            $this->assertAssigneeEligible(
+                (string) $assignment['assigned_to'],
+                (string) $putaway->location_id,
+            );
+
             $previousAssignee = $putaway->assigned_to;
             $action = $previousAssignee === null
                 ? AssignmentActionEnum::ASSIGN
@@ -926,6 +931,35 @@ class PutawayService
         }
 
         return $results;
+    }
+
+    private function assertAssigneeEligible(string $assigneeId, string $locationId): void
+    {
+        $assignee = User::with([
+            'roles.permissions',
+            'permissions',
+            'permissionDenials.permission',
+            'locations',
+        ])->find($assigneeId);
+
+        if (! $assignee) {
+            throw new \InvalidArgumentException('Pengguna penempatan tidak ditemukan.');
+        }
+
+        $isOwner = $assignee->hasRole('owner');
+        $allowedLocations = $assignee->allowedLocationIds();
+        $hasLocationAccess = $isOwner
+            || $allowedLocations === null
+            || in_array($locationId, $allowedLocations, true);
+        $hasPermission = $isOwner || $assignee->hasPermissionTo('edit-penempatan');
+
+        if (! $hasLocationAccess) {
+            throw new \InvalidArgumentException('Pengguna tidak memiliki akses ke lokasi penempatan ini.');
+        }
+
+        if (! $hasPermission) {
+            throw new \InvalidArgumentException('Pengguna tidak memiliki izin untuk mengerjakan penempatan.');
+        }
     }
 
     public function start(string $id): Putaway

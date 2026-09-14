@@ -16,7 +16,7 @@ class AssignPutawayStaffRequest extends FormRequest
         return [
             'data' => 'required|array|min:1',
             'data.*.putaway_id' => 'required|string|exists:putaways,id',
-            'data.*.assigned_to' => 'required|integer|exists:users,id',
+            'data.*.assigned_to' => 'required|string|exists:users,id',
             'performed_by' => 'required|string|max:100',
         ];
     }

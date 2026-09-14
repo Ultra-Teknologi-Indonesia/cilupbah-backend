@@ -86,9 +86,22 @@ class UserService
         return $this->userRepository->findByIdWithRelations($id);
     }
 
-    public function getUserLookup(?string $q, int $page = 1, int $perPage = 50, ?string $role = null): array
-    {
-        [$users, $total] = $this->userRepository->lookup($q, $page, $perPage, $role);
+    public function getUserLookup(
+        ?string $q,
+        int $page = 1,
+        int $perPage = 50,
+        string|array|null $role = null,
+        ?string $locationId = null,
+        ?string $permission = null,
+    ): array {
+        [$users, $total] = $this->userRepository->lookup(
+            $q,
+            $page,
+            $perPage,
+            $role,
+            $locationId,
+            $permission,
+        );
 
         return [
             'data' => $users,
