@@ -53,7 +53,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     });
     Route::middleware('role_or_permission:owner|edit-transaksi-pembelian')->group(function () {
         Route::patch('purchase/orders/{id}', [PurchaseOrderController::class, 'patch'])->name('purchase.orders.patch');
-        // Compatibility endpoint for full-document clients. New clients use PATCH.
+
         Route::put('purchase/orders/{id}', [PurchaseOrderController::class, 'update'])->name('purchase.orders.update');
     });
     Route::middleware('role_or_permission:owner|receive-transaksi-pembelian')->group(function () {
