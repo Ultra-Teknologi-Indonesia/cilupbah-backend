@@ -18,9 +18,11 @@ use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductVariant;
 use Modules\Product\Models\ProductVariantChannelMapping;
 use Modules\Product\Repositories\ProductRepository;
+use Modules\Product\Repositories\ProductWriteRepository;
 use Modules\Product\Services\ChannelMappingRepairService;
 use Modules\Product\Services\ChannelSkuHealth;
 use Modules\Product\Services\MasterProductMerger;
+use Modules\Product\Services\StaleChannelMappingPruneService;
 use Ramsey\Uuid\Uuid;
 use Tests\TestCase;
 
@@ -51,6 +53,114 @@ final class ChannelMappingIntegrityTest extends TestCase
 
         $this->assertSoftDeleted('products', ['id' => $product->id]);
         $this->assertDatabaseMissing('product_variant_channel_mappings', ['id' => $variantMapping->id]);
+        $this->assertDatabaseMissing('product_channel_mappings', ['id' => $mapping->id]);
+    }
+
+    public function test_repository_supersede_removes_channel_variant_mapping_before_soft_delete(): void
+    {
+        [, $variant, $mapping] = $this->listedProduct('SUPERSEDE-GUARD');
+        $variantMapping = ProductVariantChannelMapping::create([
+            'product_channel_mapping_id' => $mapping->id,
+            'variant_id' => $variant->id,
+            'external_sku_id' => 'SUPERSEDE-GUARD-EXT',
+            'sync_enabled' => true,
+        ]);
+
+        app(ProductWriteRepository::class)->supersedeVariant((string) $variant->id);
+
+        $this->assertSoftDeleted('product_variants', ['id' => $variant->id]);
+        $this->assertDatabaseMissing('product_variant_channel_mappings', ['id' => $variantMapping->id]);
+    }
+
+    public function test_repository_free_inactive_skus_removes_channel_variant_mappings_before_soft_delete(): void
+    {
+        [$product, $variant, $mapping] = $this->listedProduct('FREE-SKU-GUARD');
+        $variantMapping = ProductVariantChannelMapping::create([
+            'product_channel_mapping_id' => $mapping->id,
+            'variant_id' => $variant->id,
+            'external_sku_id' => 'FREE-SKU-GUARD-EXT',
+            'sync_enabled' => true,
+        ]);
+        $variant->update(['is_active' => false]);
+
+        app(ProductWriteRepository::class)->freeInactiveVariantSkus((string) $product->id, [(string) $variant->sku]);
+
+        $this->assertSoftDeleted('product_variants', ['id' => $variant->id]);
+        $this->assertDatabaseMissing('product_variant_channel_mappings', ['id' => $variantMapping->id]);
+    }
+
+    public function test_stale_parent_mapping_is_pruned_only_after_revalidation_and_audited(): void
+    {
+        [$product, $variant, $mapping] = $this->listedProduct('PRUNE-PARENT-GUARD');
+        $variantMapping = ProductVariantChannelMapping::create([
+            'product_channel_mapping_id' => $mapping->id,
+            'variant_id' => $variant->id,
+            'external_sku_id' => 'PRUNE-PARENT-GUARD-EXT',
+            'sync_enabled' => true,
+        ]);
+
+        DB::table('products')->where('id', $product->id)->update(['deleted_at' => now()]);
+
+        $result = app(StaleChannelMappingPruneService::class)->prune((string) $mapping->id);
+
+        $this->assertTrue($result['deleted_parent']);
+        $this->assertSame(1, $result['deleted_children']);
+        $this->assertDatabaseMissing('product_channel_mappings', ['id' => $mapping->id]);
+        $this->assertDatabaseMissing('product_variant_channel_mappings', ['id' => $variantMapping->id]);
+        $this->assertDatabaseHas('channel_mapping_prune_audits', [
+            'mapping_id' => $mapping->id,
+            'reason' => 'LISTING_MASTER_DELETED',
+        ]);
+    }
+
+    public function test_stale_child_mapping_is_pruned_and_empty_parent_is_removed(): void
+    {
+        [$product, $variant, $mapping] = $this->listedProduct('PRUNE-CHILD-GUARD');
+        $variantMapping = ProductVariantChannelMapping::create([
+            'product_channel_mapping_id' => $mapping->id,
+            'variant_id' => $variant->id,
+            'external_sku_id' => 'PRUNE-CHILD-GUARD-EXT',
+            'sync_enabled' => true,
+        ]);
+
+        DB::table('product_variants')->where('id', $variant->id)->update(['deleted_at' => now()]);
+
+        $result = app(StaleChannelMappingPruneService::class)->prune((string) $mapping->id);
+
+        $this->assertTrue($result['deleted_parent']);
+        $this->assertSame(1, $result['deleted_children']);
+        $this->assertDatabaseMissing('product_channel_mappings', ['id' => $mapping->id]);
+        $this->assertDatabaseMissing('product_variant_channel_mappings', ['id' => $variantMapping->id]);
+        $this->assertDatabaseHas('channel_mapping_prune_audits', [
+            'mapping_id' => $mapping->id,
+            'reason' => 'VARIANT_DELETED',
+        ]);
+        $this->assertDatabaseHas('products', ['id' => $product->id, 'deleted_at' => null]);
+    }
+
+    public function test_stale_mapping_prune_command_is_dry_run_until_apply_is_explicitly_confirmed(): void
+    {
+        [$product, $variant, $mapping] = $this->listedProduct('PRUNE-COMMAND-GUARD');
+        ProductVariantChannelMapping::create([
+            'product_channel_mapping_id' => $mapping->id,
+            'variant_id' => $variant->id,
+            'external_sku_id' => 'PRUNE-COMMAND-GUARD-EXT',
+            'sync_enabled' => true,
+        ]);
+        DB::table('products')->where('id', $product->id)->update(['deleted_at' => now()]);
+
+        $this->artisan('products:prune-stale-channel-mappings', ['--limit' => 1])
+            ->expectsOutputToContain('DRY-RUN')
+            ->assertExitCode(0);
+
+        $this->assertDatabaseHas('product_channel_mappings', ['id' => $mapping->id]);
+
+        $this->artisan('products:prune-stale-channel-mappings', [
+            '--limit' => 1,
+            '--apply' => true,
+            '--confirm' => 'PRUNE-STALE-CHANNEL-MAPPINGS',
+        ])->assertExitCode(0);
+
         $this->assertDatabaseMissing('product_channel_mappings', ['id' => $mapping->id]);
     }
 

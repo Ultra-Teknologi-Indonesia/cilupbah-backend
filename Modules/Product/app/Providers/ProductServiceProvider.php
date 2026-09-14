@@ -5,6 +5,7 @@ namespace Modules\Product\Providers;
 use Illuminate\Console\Scheduling\Schedule;
 use Modules\Product\Console\Commands\BackfillProductSkus;
 use Modules\Product\Console\Commands\MergeMasterProducts;
+use Modules\Product\Console\Commands\PruneStaleChannelMappings;
 use Modules\Product\Console\Commands\PruneUploadHistories;
 use Modules\Product\Console\Commands\PurgeSoftDeletedSkus;
 use Modules\Product\Console\Commands\RecomputeChannelValidation;
@@ -22,6 +23,7 @@ class ProductServiceProvider extends ModuleServiceProvider
 
     protected array $commands = [
         PruneUploadHistories::class,
+        PruneStaleChannelMappings::class,
         RecomputeChannelValidation::class,
         RemirrorProductImages::class,
         MergeMasterProducts::class,

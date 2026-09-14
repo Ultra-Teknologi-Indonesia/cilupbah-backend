@@ -6,6 +6,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Services\RackAssignmentCleanupService;
 use Modules\Product\Models\ProductVariant;
+use Modules\Product\Services\ChannelMappingIntegrityService;
 use Ramsey\Uuid\Uuid;
 
 class ProductWriteRepository
@@ -254,6 +255,8 @@ class ProductWriteRepository
 
     public function supersedeVariant(string $variantId): void
     {
+        app(ChannelMappingIntegrityService::class)->removeForDeletedVariant($variantId);
+
         app(RackAssignmentCleanupService::class)->removeForVariants([$variantId]);
 
         DB::table('product_variants')->where('id', $variantId)
@@ -276,6 +279,10 @@ class ProductWriteRepository
             ->all();
 
         app(RackAssignmentCleanupService::class)->removeForVariants($variantIds);
+
+        foreach ($variantIds as $variantId) {
+            app(ChannelMappingIntegrityService::class)->removeForDeletedVariant((string) $variantId);
+        }
 
         DB::table('product_variants')
             ->whereIn('id', $variantIds)
