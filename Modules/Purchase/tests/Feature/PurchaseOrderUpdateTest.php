@@ -455,4 +455,30 @@ class PurchaseOrderUpdateTest extends TestCase
         $this->assertDatabaseMissing('inbounds', ['source_id' => $po->id]);
         $this->assertDatabaseHas('inventory_movements', ['source' => 'PURCHASE_REVERSAL']);
     }
+
+    public function test_patch_changes_only_requested_line_and_preserves_other_lines(): void
+    {
+        $po = $this->makePO(PurchaseOrder::STATUS_OPEN);
+        $first = $po->items->firstOrFail();
+        $second = PurchaseOrderItem::create([
+            'purchase_order_id' => $po->id,
+            'item_id' => $this->variantB->id,
+            'qty' => 7,
+            'unit_price' => 500,
+            'disc' => 0,
+        ]);
+
+        $this->service->patch($po->id, [
+            'changes' => [
+                'update' => [[
+                    'id' => $first->id,
+                    'qty' => 120,
+                ]],
+            ],
+        ]);
+
+        $this->assertSame(120, (int) $first->fresh()->qty);
+        $this->assertSame(7, (int) $second->fresh()->qty);
+        $this->assertSame(2, PurchaseOrderItem::where('purchase_order_id', $po->id)->count());
+    }
 }
