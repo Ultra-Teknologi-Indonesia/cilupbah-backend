@@ -15,10 +15,8 @@ final class StockAdjustmentImportPreviewRepository
 
     public const MAX_PER_PAGE = 100;
 
-    /** @var list<string> */
     private const SEARCHABLE_FIELDS = ['sku', 'product_name', 'bin_code'];
 
-    /** @var list<string> */
     private const SORTABLE_FIELDS = [
         'row_no', 'sku', 'product_name', 'bin_code', 'mode',
         'input_value', 'system_qty', 'actual_qty', 'difference',

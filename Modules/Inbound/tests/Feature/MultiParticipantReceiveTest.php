@@ -189,8 +189,6 @@ class MultiParticipantReceiveTest extends TestCase
         $inbound = $this->makeInbound(100);
         $this->receive($inbound, $this->staff['s1']->id, 100);
 
-        // RECEIVED dapat berasal dari alur lama/otomatis, tetapi sesi mobile
-        // tetap harus ditutup oleh admin sebelum koreksi atau penghapusan.
         $inbound->forceFill(['status' => Inbound::STATUS_RECEIVED])->save();
 
         $admin = User::factory()->create(['name' => 'ADMIN']);

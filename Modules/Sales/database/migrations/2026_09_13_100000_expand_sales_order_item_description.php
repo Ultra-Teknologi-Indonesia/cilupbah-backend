@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('sales_order_items', function (Blueprint $table): void {
-            // Marketplace product names are not bounded to 255 characters.
+
             $table->text('description')->nullable()->change();
         });
     }

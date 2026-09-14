@@ -9,11 +9,6 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Ramsey\Uuid\Uuid;
 
-/**
- * Repairs legacy listings whose channel variants belong to more than one
- * internal product. Each owner gets its own parent mapping for the same
- * marketplace listing; the source parent keeps its own variants.
- */
 final class MixedChannelMappingSplitService
 {
     public function candidates(?string $channel = null, ?string $shopId = null, ?int $limit = null): Collection
@@ -44,7 +39,7 @@ final class MixedChannelMappingSplitService
             try {
                 $plans->push($this->plan((string) $mappingId));
             } catch (DomainException) {
-                // A candidate must be completely verifiable before it may appear in a dry run.
+
             }
         }
 
@@ -58,9 +53,6 @@ final class MixedChannelMappingSplitService
             ->values();
     }
 
-    /**
-     * @return array{mapping_id: string, channel: string, shop_id: string, shop_name: string, listing: ?string, moved_models: int, created_parents: int}
-     */
     public function split(string $mappingId): array
     {
         return DB::transaction(function () use ($mappingId): array {

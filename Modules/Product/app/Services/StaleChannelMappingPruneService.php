@@ -53,9 +53,6 @@ final class StaleChannelMappingPruneService
             ->get();
     }
 
-    /**
-     * @return array{mapping_id: string, deleted_children: int, deleted_parent: bool, reason: string}
-     */
     public function prune(string $mappingId): array
     {
         return DB::transaction(function () use ($mappingId): array {

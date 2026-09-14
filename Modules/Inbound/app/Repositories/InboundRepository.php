@@ -118,12 +118,6 @@ class InboundRepository
         return $paginator;
     }
 
-    /**
-     * Apply inbound search without comparing the legacy text actor column to
-     * the UUID users.id column. The created_by field contains both plain names
-     * and actor tokens such as user:<uuid>, so the relation search must remain
-     * text-based and never cast inbound values to UUID.
-     */
     private function applySearch(QueryBuilder $query): void
     {
         $term = trim((string) (request()->query('search') ?? request()->query('q', '')));

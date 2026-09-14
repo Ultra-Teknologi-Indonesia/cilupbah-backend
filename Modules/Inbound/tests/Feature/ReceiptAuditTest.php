@@ -98,6 +98,32 @@ class ReceiptAuditTest extends TestCase
         ]);
     }
 
+    public function test_cancel_purchase_inbound_reverses_unputaway_stock_with_audited_source(): void
+    {
+        $inbound = $this->makeInbound(1);
+        $this->receiveAs($this->staffA, $inbound, 1);
+        app(InboundService::class)->closeReceiving($inbound->id, $this->staffA->id);
+
+        $result = app(InboundService::class)->cancel($inbound->id, $this->staffA->id);
+
+        $this->assertSame(Inbound::STATUS_CANCELLED, $result->status);
+        $this->assertSame(0, (int) DB::table('inventories')
+            ->where('item_id', $this->variant->id)
+            ->where('location_id', $this->location->id)
+            ->where('bin_id', $this->inboundBin->id)
+            ->value('on_hand'));
+        $this->assertDatabaseHas('inventory_movements', [
+            'transaction_number' => $inbound->transaction_number,
+            'source' => 'PURCHASE',
+            'qty' => 1,
+        ]);
+        $this->assertDatabaseHas('inventory_movements', [
+            'transaction_number' => $inbound->transaction_number.'-CANCEL',
+            'source' => 'PURCHASE_REVERSAL',
+            'qty' => -1,
+        ]);
+    }
+
     public function test_same_staff_multiple_receipts_recorded_as_separate_rows(): void
     {
         $inbound = $this->makeInbound(100);

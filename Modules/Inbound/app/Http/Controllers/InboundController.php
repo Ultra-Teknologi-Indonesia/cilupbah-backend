@@ -622,7 +622,15 @@ class InboundController extends Controller
             $userId = (string) ($request->user()->id ?? 'system');
             $result = $this->inboundService->cancelMany($validated['ids'], $userId);
 
-            return $this->successResponse($result, 'Penerimaan terpilih diproses.');
+            $cancelledCount = count($result['cancelled']);
+            $failedCount = count($result['failed']);
+            $message = match (true) {
+                $failedCount === 0 => 'Penerimaan berhasil dihapus.',
+                $cancelledCount === 0 => 'Tidak ada penerimaan yang berhasil dihapus.',
+                default => 'Sebagian penerimaan berhasil dihapus.',
+            };
+
+            return $this->successResponse($result, $message);
         } catch (\Exception $e) {
             return $this->errorResponse(
                 'Gagal membatalkan.',

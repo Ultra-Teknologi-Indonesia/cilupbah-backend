@@ -349,6 +349,16 @@ class InboundService
         };
     }
 
+    private function reversalMovementSourceFor(Inbound $inbound): string
+    {
+        return match ($inbound->type) {
+            Inbound::TYPE_PURCHASE_ORDER => 'PURCHASE_REVERSAL',
+            Inbound::TYPE_SALES_RETURN => 'SALES_RETURN_REVERSAL',
+            Inbound::TYPE_CONSIGNMENT => 'CONSIGNMENT_REVERSAL',
+            default => 'INBOUND_QTY_CORRECTION',
+        };
+    }
+
     public function createDraft(array $data): Inbound
     {
         return DB::transaction(function () use ($data) {
@@ -1982,7 +1992,7 @@ class InboundService
                     'bin_id' => $defaultBin->id,
                     'qty' => -$reverseQty,
                     'transaction_number' => $inbound->transaction_number.'-CANCEL',
-                    'source' => $this->movementSourceFor($inbound),
+                    'source' => $this->reversalMovementSourceFor($inbound),
                     'created_by' => $createdBy,
                 ]);
             }

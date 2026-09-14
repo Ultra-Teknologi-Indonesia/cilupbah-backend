@@ -204,9 +204,7 @@ return [
         ],
         'supervisor-stock' => [
             'connection' => config('queue.routing.stock_critical.connection', 'redis'),
-            // Critical stock pushes are listing-scoped jobs. Keep this pool
-            // separate from bulk reconciliation so one SKU with many channel
-            // listings can drain in parallel without starving operational stock.
+
             'queue' => [config('queue.routing.stock_critical.queue', 'stock-critical')],
             'balance' => 'auto',
             'autoScalingStrategy' => 'size',
@@ -224,7 +222,7 @@ return [
         ],
         'supervisor-stock-default' => [
             'connection' => config('queue.routing.stock_default.connection', 'redis'),
-            // Bulk/manual resync work must never consume the critical pool.
+
             'queue' => [config('queue.routing.stock_default.queue', 'stock-default')],
             'balance' => 'off',
             'minProcesses' => 1,
@@ -288,13 +286,10 @@ return [
             'nice' => 5,
         ],
 
-        // Order dari setiap channel adalah failure domain terpisah. Error atau
-        // lonjakan Shopee tidak boleh menahan order TikTok maupun Lazada.
         'supervisor-shopee-orders' => [
             'connection' => 'redis',
             'queue' => [config('queue.names.shopee_orders', 'shopee-orders')],
-            // Order pulls are isolated per marketplace and may add one worker
-            // during a burst. The hard max prevents unbounded fan-out.
+
             'balance' => 'auto',
             'autoScalingStrategy' => 'size',
             'minProcesses' => 1,
@@ -342,9 +337,7 @@ return [
         ],
         'supervisor-tiktok-webhooks-operational' => [
             'connection' => 'redis',
-            // Keep order webhooks independent from package/catalog work. During
-            // flash-sale bursts this pool may grow by at most one worker per
-            // balancing cycle, keeping CPU and memory bounded.
+
             'queue' => [env('QUEUE_NAME_TIKTOK_WEBHOOKS', 'tiktok-webhooks')],
             'balance' => 'auto',
             'autoScalingStrategy' => 'size',

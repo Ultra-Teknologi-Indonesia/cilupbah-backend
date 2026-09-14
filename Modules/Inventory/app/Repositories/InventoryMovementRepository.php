@@ -141,6 +141,8 @@ class InventoryMovementRepository
         $authorizedInboundReversals = [
             'INBOUND_QTY_CORRECTION',
             'PURCHASE_REVERSAL',
+            'SALES_RETURN_REVERSAL',
+            'CONSIGNMENT_REVERSAL',
             'TRANSFER_REVERT',
         ];
 

@@ -209,9 +209,6 @@ class HorizonQueueCoverageTest extends TestCase
         );
         $withMasterMegabytes = $workerMegabytes + (int) config('horizon.memory_limit');
 
-        // The Horizon pod limit is 9 GiB. Keep the configured worst-case
-        // worker ceiling below 80% so PHP/Redis clients and the master retain
-        // headroom during a burst.
         $this->assertLessThanOrEqual(7372, $withMasterMegabytes);
     }
 }

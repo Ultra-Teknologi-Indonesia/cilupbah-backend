@@ -625,9 +625,6 @@ class ImportBaselineStock extends Command
             $binCodeById[(string) $bin->id] = (string) $binCode;
         }
 
-        // Gudang kecil normally protects one-SKU racks, except for bins that
-        // match an explicitly configured multi-SKU pattern. Gudang Pusat is
-        // intentionally unrestricted because its inventory is M:M.
         $csvItemsByBin = [];
         if ($strictBinSku) {
             foreach ($rows as $row) {
@@ -1197,12 +1194,6 @@ class ImportBaselineStock extends Command
         return $upserted;
     }
 
-    /**
-     * Select one primary rack for each SKU while preserving every CSV rack in
-     * inventories. Existing assignments win when they still point to a CSV
-     * rack; otherwise the rack with the highest target quantity wins, with a
-     * stable bin-id tie breaker.
-     */
     private function selectRackAssignments(array $candidates, string $locationId): array
     {
         if ($candidates === [] || ! Schema::hasTable('sku_rack_assignments')) {

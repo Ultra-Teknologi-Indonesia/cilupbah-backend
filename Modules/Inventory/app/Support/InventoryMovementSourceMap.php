@@ -12,6 +12,7 @@ class InventoryMovementSourceMap
         'PURCHASE_REVERSAL' => ['category' => 'TAGIHAN', 'label' => 'Koreksi Tagihan'],
         'BILL' => ['category' => 'TAGIHAN', 'label' => 'Tagihan'],
         'CONSIGNMENT' => ['category' => 'TAGIHAN', 'label' => 'Konsinyasi'],
+        'CONSIGNMENT_REVERSAL' => ['category' => 'TAGIHAN', 'label' => 'Koreksi Konsinyasi'],
 
         'ADJUSTMENT' => ['category' => 'PENYESUAIAN', 'label' => 'Penyesuaian'],
         'STOCK_OPNAME' => ['category' => 'PENYESUAIAN', 'label' => 'Penyesuaian'],
@@ -19,6 +20,7 @@ class InventoryMovementSourceMap
 
         'PURCHASE_RETURN' => ['category' => 'RETUR_PEMBELIAN', 'label' => 'Retur Pembelian'],
         'SALES_RETURN' => ['category' => 'RETUR_PENJUALAN', 'label' => 'Retur Penjualan'],
+        'SALES_RETURN_REVERSAL' => ['category' => 'RETUR_PENJUALAN', 'label' => 'Koreksi Retur Penjualan'],
 
         'INVOICE' => ['category' => 'FAKTUR', 'label' => 'Faktur'],
         'ORDER_SHIP' => ['category' => 'FAKTUR', 'label' => 'Faktur'],
@@ -94,6 +96,8 @@ class InventoryMovementSourceMap
         'BIN_TRANSFER_REVERT_OUT',
         'TRANSIT_REVERT_IN',
         'PURCHASE_REVERSAL',
+        'SALES_RETURN_REVERSAL',
+        'CONSIGNMENT_REVERSAL',
         'PICKING_REVERSAL',
         'PACKING_REVERSAL',
         'ORDER_COMPLETE_REVERSAL',

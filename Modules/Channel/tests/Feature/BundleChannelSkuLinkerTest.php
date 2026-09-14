@@ -71,7 +71,7 @@ class BundleChannelSkuLinkerTest extends TestCase
 
         $staleBundle = $defaultProductId === $firstBundle->id ? $secondBundle : $firstBundle;
         $staleTechnicalVariant = app(ProductRepository::class)->ensureActiveBundleVariant($staleBundle);
-        // Simulate a legacy row created before ownership validation existed.
+
         DB::table('product_variant_channel_mappings')->insert([
             'id' => (string) Uuid::uuid7(),
             'product_channel_mapping_id' => $defaultPcmId,
