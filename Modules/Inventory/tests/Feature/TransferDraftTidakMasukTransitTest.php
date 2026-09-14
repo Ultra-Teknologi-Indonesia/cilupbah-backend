@@ -415,7 +415,7 @@ class TransferDraftTidakMasukTransitTest extends TestCase
             $this->fail('Transfer seharusnya ditolak ketika available tidak mencukupi.');
         } catch (\Exception $exception) {
             $this->assertStringContainsString(
-                'Stok tersedia tidak mencukupi untuk transfer',
+                'Stok tersedia tidak mencukupi untuk SKU SKU-TRF di rak SRC-R1',
                 $exception->getMessage(),
             );
         }
