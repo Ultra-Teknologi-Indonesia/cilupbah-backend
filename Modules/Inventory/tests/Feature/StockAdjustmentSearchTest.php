@@ -3,13 +3,78 @@
 namespace Modules\Inventory\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Models\StockAdjustment;
+use Modules\Inventory\Models\StockAdjustmentItem;
+use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductVariant;
 use Modules\Warehouse\Models\Location;
 use Tests\TestCase;
 
 class StockAdjustmentSearchTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_adjustment_item_search_matches_variant_sku(): void
+    {
+        $user = $this->createPrivilegedUser();
+        $location = Location::create([
+            'location_code' => 'WH-ADJ-ITEM-SEARCH',
+            'location_name' => 'Gudang Adjustment Item Search',
+            'location_type' => 'warehouse',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'Kategori Adjustment Item Search',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $product = Product::create([
+            'category_id' => $categoryId,
+            'name' => 'Wavy Holo Case',
+            'is_active' => true,
+        ]);
+        $variant = ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => 'WAVY-HOLO-IP-13',
+            'is_active' => true,
+        ]);
+        $otherVariant = ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => 'UNRELATED-SKU',
+            'is_active' => true,
+        ]);
+        $adjustment = StockAdjustment::create([
+            'adjustment_no' => 'ADJ-ITEM-SEARCH-001',
+            'transaction_date' => now(),
+            'location_id' => $location->id,
+            'created_by' => 'tester',
+        ]);
+        StockAdjustmentItem::create([
+            'stock_adjustment_id' => $adjustment->id,
+            'item_id' => $variant->id,
+            'system_qty' => 10,
+            'actual_qty' => 8,
+            'difference_qty' => -2,
+            'notes' => 'Selisih opname',
+        ]);
+        StockAdjustmentItem::create([
+            'stock_adjustment_id' => $adjustment->id,
+            'item_id' => $otherVariant->id,
+            'system_qty' => 5,
+            'actual_qty' => 5,
+            'difference_qty' => 0,
+            'notes' => 'Item lain',
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->getJson("/api/v1/inventory/adjustments/documents/{$adjustment->id}/items?search=WAVY-HOLO-IP-13&per_page=10");
+
+        $response->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.item_id', $variant->id);
+    }
 
     public function test_adjustment_list_search_matches_document_notes(): void
     {

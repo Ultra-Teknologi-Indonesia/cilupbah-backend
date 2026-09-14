@@ -141,7 +141,7 @@ class StockAdjustmentRepository
                 'product.product.media',
                 'bin:id,bin_final_code'
             ])
-            ->allowedSearch('notes')
+            ->allowedSearch('notes', 'product.sku')
             ->allowedSorts('created_at')
             ->defaultSort('-created_at');
 
