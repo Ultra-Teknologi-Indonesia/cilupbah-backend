@@ -187,7 +187,11 @@ class PullLiveOrdersCommand extends Command
 
             $token = $leases->acquire($shop, $leaseSeconds, $windowStart, $shopWindowEnd);
             if ($token === null) {
-                $rows[] = [$shop->shop_name, $shop->channel->code ?? 'unknown', '-', 'masih diproses'];
+                $maxAttempts = (int) config('queue.routing.channel_sync.max_attempts', 8);
+                $status = (int) $shop->order_pull_attempts >= $maxAttempts
+                    ? 'dikarantiina setelah batas retry'
+                    : 'masih diproses';
+                $rows[] = [$shop->shop_name, $shop->channel->code ?? 'unknown', '-', $status];
 
                 continue;
             }

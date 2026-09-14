@@ -206,6 +206,11 @@ return [
             'window_minutes' => max(5, min(30, (int) env('CHANNEL_SYNC_WINDOW_MINUTES', 5))),
 
             'lease_seconds' => max(420, min(900, (int) env('CHANNEL_SYNC_LEASE_SECONDS', 420))),
+
+            // Setelah batas ini window gagal dikarantina. Data dan rentangnya
+            // tetap tersimpan untuk replay manual; worker rutin tidak boleh
+            // terus mengambil poison job yang sama.
+            'max_attempts' => max(1, min(8, (int) env('CHANNEL_SYNC_MAX_ATTEMPTS', 8))),
         ],
 
         'labels' => [

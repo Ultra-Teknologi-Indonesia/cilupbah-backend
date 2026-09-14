@@ -234,4 +234,24 @@ class PullLiveOrdersCommandTest extends TestCase
         $this->assertSame(1, $shop->order_pull_attempts);
         $this->assertNotNull($shop->order_pull_next_attempt_at);
     }
+
+    public function test_poison_window_is_quarantined_after_the_retry_limit(): void
+    {
+        config(['queue.routing.channel_sync.max_attempts' => 2]);
+
+        $this->liveShop->forceFill([
+            'order_pull_attempts' => 2,
+            'order_pull_next_attempt_at' => now()->subMinute(),
+        ])->save();
+
+        $leases = app(ChannelOrderPullLeaseService::class);
+        $token = $leases->acquire(
+            $this->liveShop->fresh(),
+            420,
+            now()->subMinutes(5),
+            now(),
+        );
+
+        $this->assertNull($token);
+    }
 }

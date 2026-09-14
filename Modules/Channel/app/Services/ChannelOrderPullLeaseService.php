@@ -33,6 +33,11 @@ final class ChannelOrderPullLeaseService
                 $query->whereNull('order_pull_next_attempt_at')
                     ->orWhere('order_pull_next_attempt_at', '<=', $now);
             })
+            ->where(
+                'order_pull_attempts',
+                '<',
+                (int) config('queue.routing.channel_sync.max_attempts', 8),
+            )
             ->update([
                 'order_pull_lease_token' => $token,
                 'order_pull_locked_until' => $now->copy()->addSeconds($seconds),

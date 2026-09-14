@@ -242,16 +242,20 @@ class ChannelShopRepository
                 return null;
             }
 
-            $attempts = min(8, ((int) $shop->order_pull_attempts) + 1);
+            $attempts = min(
+                (int) config('queue.routing.channel_sync.max_attempts', 8),
+                ((int) $shop->order_pull_attempts) + 1,
+            );
             $delaySeconds = min(3600, 60 * (2 ** min(6, $attempts - 1)));
             $friendly = $this->humanizeError($id, $message);
+            $quarantined = $attempts >= (int) config('queue.routing.channel_sync.max_attempts', 8);
 
             $shop->forceFill([
                 'order_sync_status' => ChannelShop::ORDER_SYNC_PROBLEM,
                 'last_order_error' => $friendly ? mb_substr($friendly, 0, 500) : null,
                 'last_order_error_at' => now(),
                 'order_pull_attempts' => $attempts,
-                'order_pull_next_attempt_at' => now()->addSeconds($delaySeconds),
+                'order_pull_next_attempt_at' => $quarantined ? null : now()->addSeconds($delaySeconds),
             ])->save();
 
             return [
