@@ -174,12 +174,23 @@ class ChannelShopRepository
     public function markOrderSyncOk(string $id): void
     {
         $shop = ChannelShop::find($id);
+        $hasPendingScheduledWindow = $shop
+            && (int) $shop->order_pull_attempts > 0
+            && $shop->order_pull_window_from
+            && $shop->order_pull_window_to;
         $updates = [
-            'order_sync_status' => ChannelShop::ORDER_SYNC_NORMAL,
+            // A successful webhook/detail refresh must not hide a scheduled
+            // window that is still failing and waiting for manual replay.
+            'order_sync_status' => $hasPendingScheduledWindow
+                ? ChannelShop::ORDER_SYNC_PROBLEM
+                : ChannelShop::ORDER_SYNC_NORMAL,
             'last_order_synced_at' => now(),
-            'last_order_error' => null,
-            'last_order_error_at' => null,
         ];
+
+        if (! $hasPendingScheduledWindow) {
+            $updates['last_order_error'] = null;
+            $updates['last_order_error_at'] = null;
+        }
 
         if ($shop && (! $shop->token_expires_at || $shop->token_expires_at->isFuture())) {
             $updates['integration_status'] = 'normal';

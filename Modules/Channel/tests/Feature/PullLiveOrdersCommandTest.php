@@ -194,6 +194,9 @@ class PullLiveOrdersCommandTest extends TestCase
         $this->assertSame($to->timestamp, $shop->order_pull_window_to->timestamp);
         $this->assertSame(1, $shop->order_pull_attempts);
         $this->assertNotNull($shop->order_pull_next_attempt_at);
+
+        app(ChannelShopRepository::class)->markOrderSyncOk($shop->id);
+        $this->assertSame(ChannelShop::ORDER_SYNC_PROBLEM, $shop->fresh()->order_sync_status);
     }
 
     public function test_incomplete_store_pull_keeps_the_same_window_for_idempotent_retry(): void
