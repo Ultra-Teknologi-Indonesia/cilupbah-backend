@@ -9,6 +9,7 @@ enum SalesOrderStatus: string
     case PICKED    = 'picked';
     case PACKED    = 'packed';
     case SHIPPED   = 'shipped';
+    case RETURNED  = 'returned';
     case CANCELLED = 'cancelled';
 
     case UNPAID                       = 'UNPAID';
@@ -32,7 +33,8 @@ enum SalesOrderStatus: string
             self::RESERVED  => [self::PICKED,   self::CANCELLED],
             self::PICKED    => [self::PACKED,   self::CANCELLED],
             self::PACKED    => [self::SHIPPED,  self::CANCELLED],
-            self::SHIPPED,
+            self::SHIPPED   => [self::RETURNED],
+            self::RETURNED,
             self::CANCELLED => [],
             default         => [],
         }, true);
