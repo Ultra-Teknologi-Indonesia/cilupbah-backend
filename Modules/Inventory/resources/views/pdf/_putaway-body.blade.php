@@ -8,6 +8,13 @@
         ?? ($putaway->sources ?? collect())->pluck('transaction_number')->filter()->implode(', ')
         ?: '-';
     $putawayDate = $putaway->completed_at ?? $putaway->created_at;
+    $statusMap = [
+        'NOT_STARTED' => 'Belum Dimulai',
+        'IN_PROGRESS' => 'Sedang Diproses',
+        'COMPLETED' => 'Selesai',
+        'CANCELLED' => 'Dibatalkan'
+    ];
+    $statusLabel = $statusMap[$putaway->status] ?? ($putaway->status ?? '-');
 @endphp
 <table class="header">
     <tr>
@@ -26,17 +33,17 @@
         <td class="label">No. Putaway</td>
         <td class="value">{{ $putaway->putaway_no }}</td>
         <td class="label">No. Penerimaan</td>
-        <td class="value">{{ $inboundNumber }}</td>
+        <td class="value"><div class="long-text">{{ $inboundNumber }}</div></td>
     </tr>
     <tr>
         <td class="label">Tgl. Putaway</td>
         <td class="value">{{ $putawayDate ? \Carbon\Carbon::parse($putawayDate)->format('d M Y') : '-' }}</td>
         <td class="label">Status</td>
-        <td class="value">{{ $putaway->status ?? '-' }}</td>
+        <td class="value">{{ $statusLabel }}</td>
     </tr>
     <tr>
         <td class="label">Sumber</td>
-        <td class="value">{{ $sourceLabel ?: '-' }}</td>
+        <td class="value"><div class="long-text">{{ $sourceLabel ?: '-' }}</div></td>
         <td class="label">Lokasi</td>
         <td class="value">{{ $locationName }}</td>
     </tr>

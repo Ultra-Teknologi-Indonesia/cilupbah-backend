@@ -31,6 +31,12 @@
     .info-grid td { padding: 3px 0; font-size: 10px; vertical-align: top; }
     .info-grid .label { color: #555; width: 110px; }
     .info-grid .value { font-weight: 700; padding-right: 18px; }
+    .info-grid .long-text {
+        font-size: 8px;
+        line-height: 1.3;
+        font-weight: 400;
+        word-break: break-word;
+    }
     table.items {
         width: 100%;
         border-collapse: collapse;
@@ -59,10 +65,10 @@
     .center { text-align: center; }
     .num { text-align: right; }
     .col-no { width: 24px; }
-    .col-sku { width: 92px; }
+    .col-sku { width: 140px; }
     /* Match the receipt print widths for the shared quantity columns. */
-    .col-qty-assigned { width: 70px; }
-    .col-qty-placed, .col-qty-remaining { width: 64px; }
+    .col-qty-assigned { width: 45px; }
+    .col-qty-placed, .col-qty-remaining { width: 45px; }
     .col-rak { width: 88px; }
     .rak-line { margin-bottom: 1px; }
     .barang-sku {
