@@ -6,15 +6,9 @@ namespace Modules\Inventory\Exceptions;
 
 use App\Exceptions\UserFacingException;
 
-/**
- * A single PATCH request may affect many adjustment rows. Keep every failed
- * stock projection together so the operator can correct them in one pass.
- */
 final class StockAdjustmentStockValidationException extends UserFacingException
 {
-    /**
-     * @param  list<array{sku: string|null, rack_code: string|null, current_on_hand: int, delta: int, resulting_on_hand: int, reason: string}>  $issues
-     */
+
     public function __construct(array $issues)
     {
         $messages = array_map(static function (array $issue): array {

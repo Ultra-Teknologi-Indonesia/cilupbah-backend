@@ -271,7 +271,7 @@ class ProcessLazadaWebhook implements ShouldBeUnique, ShouldQueue
             $orderId,
             fn (): int => $orderService->pullOrderById($sellerId, $orderId),
         )) {
-            Log::info("Lazada webhook {$orderId} di-debounce (sudah di-pull dalam 15 detik terakhir).");
+            Log::info("Lazada webhook {$orderId} di-debounce (sudah di-pull dalam 15 detik).");
             $this->recordLazadaTrackingEvent($orderId, $data);
 
             return;

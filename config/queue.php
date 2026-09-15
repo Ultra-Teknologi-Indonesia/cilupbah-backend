@@ -129,9 +129,7 @@ return [
         'qr_labels' => env('QUEUE_NAME_QR_LABELS', 'qr-labels'),
 
         'shopee_orders' => env('QUEUE_NAME_SHOPEE_ORDERS', 'shopee-orders'),
-        // Ingress webhook tracking hanya mencatat event dan menjadwalkan refresh.
-        // Detail order yang dapat memanggil API marketplace tetap berjalan pada
-        // shopee-tracking agar lonjakan callback tidak memblokir acknowledgement.
+
         'shopee_tracking_events' => env('QUEUE_NAME_SHOPEE_TRACKING_EVENTS', 'shopee-tracking-events'),
         'shopee_tracking' => env('QUEUE_NAME_SHOPEE_TRACKING', 'shopee-tracking'),
         'shopee_catalog' => env('QUEUE_NAME_SHOPEE_CATALOG', 'shopee-catalog'),
@@ -200,16 +198,11 @@ return [
             'connection' => env('QUEUE_CHANNEL_SYNC_CONNECTION', 'redis-channel-sync'),
             'queue' => env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync'),
 
-            // Batas lima menit menjaga satu pull terjadwal tetap kecil. Lease dan
-            // cursor membuat beberapa window berurutan tetap idempoten, tanpa
-            // melompati order ketika trafik sedang tinggi.
             'window_minutes' => max(5, min(30, (int) env('CHANNEL_SYNC_WINDOW_MINUTES', 5))),
 
             'lease_seconds' => max(420, min(900, (int) env('CHANNEL_SYNC_LEASE_SECONDS', 420))),
+            'job_timeout' => max(60, min(240, (int) env('CHANNEL_SYNC_JOB_TIMEOUT', 210))),
 
-            // Setelah batas ini window gagal dikarantina. Data dan rentangnya
-            // tetap tersimpan untuk replay manual; worker rutin tidak boleh
-            // terus mengambil poison job yang sama.
             'max_attempts' => max(1, min(8, (int) env('CHANNEL_SYNC_MAX_ATTEMPTS', 8))),
         ],
 
@@ -219,6 +212,13 @@ return [
             'parallelism' => (int) env('QUEUE_LABEL_PARALLELISM', 2),
             'rate_limit_attempts' => (int) env('QUEUE_LABEL_RATE_LIMIT_ATTEMPTS', 5),
             'rate_limit_decay_seconds' => (int) env('QUEUE_LABEL_RATE_LIMIT_DECAY_SECONDS', 1),
+        ],
+
+        'label_archive' => [
+            'connection' => env('QUEUE_LABEL_ARCHIVE_CONNECTION', 'redis-long'),
+            'queue' => env('QUEUE_NAME_LABEL_ARCHIVE', 'label-archive'),
+            'timeout' => max(60, min(600, (int) env('QUEUE_LABEL_ARCHIVE_TIMEOUT', 300))),
+            'tries' => max(1, min(8, (int) env('QUEUE_LABEL_ARCHIVE_TRIES', 5))),
         ],
 
         'qr_labels' => [

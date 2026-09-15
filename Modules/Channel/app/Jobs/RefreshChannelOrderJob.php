@@ -44,10 +44,6 @@ final class RefreshChannelOrderJob implements ShouldBeUnique, ShouldQueue
         return strtolower($this->channel).':'.$this->shopId.':'.$this->orderId;
     }
 
-    /**
-     * Marketplace detail refreshes may scale horizontally, but never beyond
-     * the configured per-channel/per-shop API budget.
-     */
     public function middleware(): array
     {
         return [

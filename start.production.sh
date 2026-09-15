@@ -12,6 +12,7 @@ mkdir -p storage/app/public/baseline-reports \
          storage/app/private/imports/sales-orders \
          storage/app/private/imports/rack-allocation \
          storage/app/private/exports \
+         storage/app/print-spool \
          storage/framework/cache/laravel-excel \
          storage/framework/sessions \
          storage/framework/views \

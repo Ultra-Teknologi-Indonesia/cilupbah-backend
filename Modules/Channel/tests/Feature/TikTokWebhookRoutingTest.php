@@ -3,11 +3,11 @@
 namespace Modules\Channel\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Queue;
 use Mockery;
 use Modules\Channel\Enums\WebhookInboxStatus;
-use Modules\Channel\Exceptions\ChannelOrderNotAvailableException;
 use Modules\Channel\Jobs\ProcessTikTokWebhook;
+use Modules\Channel\Jobs\RefreshChannelOrderJob;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Models\ChannelWebhookInbox;
@@ -45,15 +45,17 @@ class TikTokWebhookRoutingTest extends TestCase
         ]);
     }
 
-    public function test_type_1_order_status_pulls_order(): void
+    public function test_type_1_order_status_queues_order_refresh(): void
     {
-        $order = Mockery::mock(TikTokOrderService::class);
-        $order->shouldReceive('pullOrderById')->once()->with('TT1', 'O-1')->andReturn(1);
+        Queue::fake();
 
         $this->process(
             ['type' => 1, 'shop_id' => 'TT1', 'tts_notification_id' => 'n1',
                 'data' => ['order_id' => 'O-1', 'order_status' => 'UNPAID']],
-            $order,
+        );
+
+        Queue::assertPushed(RefreshChannelOrderJob::class, fn (RefreshChannelOrderJob $job): bool =>
+            $job->channel === 'tiktok' && $job->shopId === 'TT1' && $job->orderId === 'O-1'
         );
     }
 
@@ -204,23 +206,20 @@ class TikTokWebhookRoutingTest extends TestCase
 
     public function test_duplicate_notification_id_is_processed_once(): void
     {
-        $order = Mockery::mock(TikTokOrderService::class);
-        $order->shouldReceive('pullOrderById')->once()->with('TT1', 'O-1')->andReturn(1);
+        Queue::fake();
 
         $payload = ['type' => 1, 'shop_id' => 'TT1', 'tts_notification_id' => 'dup-1',
             'data' => ['order_id' => 'O-1', 'order_status' => 'UNPAID']];
 
-        $this->process($payload, $order);
-        $this->process($payload, $order);
+        $this->process($payload);
+        $this->process($payload);
+
+        Queue::assertPushed(RefreshChannelOrderJob::class, 1);
     }
 
-    public function test_empty_order_pull_throws_and_releases_idempotency_for_retry(): void
+    public function test_empty_order_is_queued_for_bounded_retry(): void
     {
-        $order = Mockery::mock(TikTokOrderService::class);
-        $order->shouldReceive('pullOrderById')
-            ->once()
-            ->with('TT1', 'O-EMPTY')
-            ->andReturn(0);
+        Queue::fake();
 
         $payload = [
             'type' => 1,
@@ -229,14 +228,11 @@ class TikTokWebhookRoutingTest extends TestCase
             'data' => ['order_id' => 'O-EMPTY', 'order_status' => 'UNPAID'],
         ];
 
-        $this->expectException(ChannelOrderNotAvailableException::class);
+        $this->process($payload);
 
-        try {
-            $this->process($payload, $order);
-        } finally {
-            self::assertFalse(Cache::has(ProcessTikTokWebhook::idempotencyKey($payload)));
-            self::assertFalse(Cache::has('tiktok_pulled_recent:TT1:O-EMPTY'));
-        }
+        Queue::assertPushed(RefreshChannelOrderJob::class, fn (RefreshChannelOrderJob $job): bool =>
+            $job->channel === 'tiktok' && $job->shopId === 'TT1' && $job->orderId === 'O-EMPTY'
+        );
     }
 
     public function test_webhook_for_an_unavailable_shop_is_skipped_without_order_pull(): void

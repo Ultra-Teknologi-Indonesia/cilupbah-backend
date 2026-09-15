@@ -193,12 +193,6 @@ class ShopeeWebhookTest extends TestCase
             'channel_order_no' => 'RAPID-ORDER',
         ]);
 
-        $orderService = Mockery::mock(ShopeeOrderService::class);
-        $orderService->shouldReceive('pullOrderById')
-            ->once()
-            ->with('778899', 'RAPID-ORDER')
-            ->andReturn(1);
-
         $first = $this->orderPayload([
             'timestamp' => 1760000000,
             'data' => ['ordersn' => 'RAPID-ORDER', 'status' => 'UNPAID'],
@@ -208,8 +202,8 @@ class ShopeeWebhookTest extends TestCase
             'data' => ['ordersn' => 'RAPID-ORDER', 'status' => 'READY_TO_SHIP'],
         ]);
 
-        (new ProcessShopeeWebhook($first))->handle($orderService, app(ChannelDownloadService::class));
-        (new ProcessShopeeWebhook($second))->handle($orderService, app(ChannelDownloadService::class));
+        (new ProcessShopeeWebhook($first))->handle(app(ShopeeOrderService::class), app(ChannelDownloadService::class));
+        (new ProcessShopeeWebhook($second))->handle(app(ShopeeOrderService::class), app(ChannelDownloadService::class));
 
         Queue::assertPushed(RefreshChannelOrderJob::class, 1);
         Queue::assertPushed(RefreshChannelOrderJob::class, function (RefreshChannelOrderJob $job): bool {

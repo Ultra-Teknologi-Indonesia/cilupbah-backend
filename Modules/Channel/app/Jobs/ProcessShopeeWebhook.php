@@ -145,7 +145,7 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
         try {
             match ($code) {
                 self::PUSH_SHOP_DEAUTHORIZED => $this->handleDeauthorized($shopId),
-                self::PUSH_ORDER_STATUS => $this->handleOrderEventOrSkip($orderService, $shopId, $data),
+                self::PUSH_ORDER_STATUS => $this->handleOrderEventOrSkip($shopId, $data),
                 self::PUSH_TRACKING_NO,
                 self::PUSH_SHIPPING_DOC,
                 self::PUSH_BOOKING_STATUS,
@@ -187,7 +187,7 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
         ChannelWebhookInbox::markProcessedByKey($eventKey);
     }
 
-    protected function handleOrderEventOrSkip(ShopeeOrderService $orderService, string $shopId, array $data): void
+    protected function handleOrderEventOrSkip(string $shopId, array $data): void
     {
         if (ChannelOrderIntakeGate::blocksShop($shopId, 'shopee')) {
             $this->orderIntakeSkipped = true;
@@ -195,14 +195,9 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        $this->handleOrderEvent($orderService, $shopId, $data);
+        $this->handleOrderEvent($shopId, $data);
     }
 
-    /**
-     * Tracking callbacks are high-volume, especially around marketplace
-     * campaigns. They must acknowledge the inbox quickly, while the heavier
-     * order-detail refresh runs on its own bounded queue.
-     */
     protected function handleTrackingEventOrSkip(string $shopId, array $data): void
     {
         if (ChannelOrderIntakeGate::blocksShop($shopId, 'shopee')) {
@@ -312,7 +307,7 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
         Log::info('Shopee toko di-deauthorize via webhook.', ['shop_id' => $shopId]);
     }
 
-    protected function handleOrderEvent(ShopeeOrderService $orderService, string $shopId, array $data): void
+    protected function handleOrderEvent(string $shopId, array $data): void
     {
         $orderSn = (string) ($data['ordersn'] ?? $data['order_sn'] ?? '');
 
@@ -322,17 +317,12 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        if (! ChannelOrderPullGuard::pullOnce(
+        RefreshChannelOrderJob::dispatch(
             'shopee',
             $shopId,
             $orderSn,
-            fn (): int => $orderService->pullOrderById($shopId, $orderSn),
-        )) {
-            Log::info("Shopee webhook {$orderSn} di-debounce (sudah di-pull dalam 15 detik terakhir).");
-            $this->recordDeliveredEventIfApplicable($orderSn, $data);
-
-            return;
-        }
+            (string) config('queue.names.shopee_orders', 'shopee-orders'),
+        )->delay(now()->addSeconds(2));
 
         $this->recordDeliveredEventIfApplicable($orderSn, $data);
     }

@@ -179,8 +179,7 @@ class ChannelShopRepository
             && $shop->order_pull_window_from
             && $shop->order_pull_window_to;
         $updates = [
-            // A successful webhook/detail refresh must not hide a scheduled
-            // window that is still failing and waiting for manual replay.
+
             'order_sync_status' => $hasPendingScheduledWindow
                 ? ChannelShop::ORDER_SYNC_PROBLEM
                 : ChannelShop::ORDER_SYNC_NORMAL,

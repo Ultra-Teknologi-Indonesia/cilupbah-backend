@@ -25,6 +25,13 @@ return [
 
     'channel_api_per_second' => (int) env('RATE_LIMIT_CHANNEL_API_PER_SECOND', 8),
 
+    'channel_api_per_second_by_channel' => [
+        'lazada' => (int) env('RATE_LIMIT_LAZADA_API_PER_SECOND', 1),
+        'shopee' => (int) env('RATE_LIMIT_SHOPEE_API_PER_SECOND', 4),
+        'tiktok' => (int) env('RATE_LIMIT_TIKTOK_API_PER_SECOND', 4),
+        'woocommerce' => (int) env('RATE_LIMIT_WOOCOMMERCE_API_PER_SECOND', 2),
+    ],
+
     'stock_cutover' => [
         'page_per_minute' => (int) env('RATE_LIMIT_STOCK_CUTOVER_PAGE', 30),
         'preview_per_minute' => (int) env('RATE_LIMIT_STOCK_CUTOVER_PREVIEW', 10),

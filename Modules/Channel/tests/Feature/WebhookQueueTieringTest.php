@@ -7,6 +7,7 @@ use Modules\Channel\Jobs\ProcessLazadaWebhook;
 use Modules\Channel\Jobs\ProcessShopeeWebhook;
 use Modules\Channel\Jobs\ProcessTikTokWebhook;
 use Modules\Channel\Jobs\ProcessWooCommerceWebhook;
+use Modules\Channel\Jobs\RefreshChannelOrderJob;
 use Tests\TestCase;
 
 class WebhookQueueTieringTest extends TestCase
@@ -91,7 +92,7 @@ class WebhookQueueTieringTest extends TestCase
             );
         }
 
-        $tiktokMiddleware = (new ProcessTikTokWebhook(['shop_id' => 'shop-1']))->middleware();
-        $this->assertCount(1, $tiktokMiddleware);
+        $refreshMiddleware = (new RefreshChannelOrderJob('tiktok', 'shop-1', 'order-1'))->middleware();
+        $this->assertCount(1, $refreshMiddleware);
     }
 }

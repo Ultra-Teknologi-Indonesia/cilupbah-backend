@@ -51,10 +51,20 @@ class AppServiceProvider extends ServiceProvider
                 ? trim((string) $job->channel)
                 : trim((string) ($payload['channel'] ?? $payload['source'] ?? 'channel'));
 
+            if ($channel === 'channel') {
+                $class = strtolower(get_class($job));
+                $channel = str_contains($class, 'lazada') ? 'lazada'
+                    : (str_contains($class, 'shopee') ? 'shopee'
+                        : (str_contains($class, 'tiktok') ? 'tiktok' : $channel));
+            }
+
             $scope = $shopId !== '' ? $channel.'|'.$shopId : $channel.'|'.get_class($job);
 
             return \Illuminate\Cache\RateLimiting\Limit::perSecond(
-                (int) config('ratelimit.channel_api_per_second', 8),
+                (int) config(
+                    'ratelimit.channel_api_per_second_by_channel.'.$channel,
+                    config('ratelimit.channel_api_per_second', 8),
+                ),
             )->by('channel-api|'.$scope);
         });
 

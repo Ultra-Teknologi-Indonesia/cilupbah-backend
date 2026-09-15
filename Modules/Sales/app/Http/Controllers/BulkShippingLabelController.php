@@ -81,8 +81,11 @@ class BulkShippingLabelController extends Controller
             'retryable_count' => $retryable,
             'started_at' => $batch->started_at,
             'finished_at' => $batch->finished_at,
-            'file_available' => $batch->merged_pdf_path !== null && $batch->file_purged_at === null,
+            'file_available' => $batch->file_purged_at === null
+                && ($batch->merged_pdf_path !== null || $batch->print_pdf_path !== null),
             'file_purged_at' => $batch->file_purged_at,
+            'archive_status' => $batch->archive_status,
+            'archived_at' => $batch->archived_at,
             'items' => $batch->items->map(function ($i) {
                 $order = $i->order;
 
@@ -112,7 +115,9 @@ class BulkShippingLabelController extends Controller
 
     private function resolvePdfUrl(BulkShippingLabelBatch $batch): ?string
     {
-        if ($batch->status !== BulkShippingLabelBatch::STATUS_READY || empty($batch->merged_pdf_path) || $batch->file_purged_at !== null) {
+        if ($batch->status !== BulkShippingLabelBatch::STATUS_READY
+            || (empty($batch->merged_pdf_path) && empty($batch->print_pdf_path))
+            || $batch->file_purged_at !== null) {
             return null;
         }
 
@@ -173,11 +178,11 @@ class BulkShippingLabelController extends Controller
     public function downloadPdf(Request $req, BulkShippingLabelBatch $batch): StreamedResponse
     {
         abort_unless($batch->user_id === $req->user()->id, 403);
-        $path = $this->svc->downloadablePath($batch, $req->user());
-        $disk = Storage::disk('documents');
+        $file = $this->svc->downloadableFile($batch, $req->user());
+        $disk = Storage::disk($file['disk']);
 
         return $disk->response(
-            $path,
+            $file['path'],
             "labels-{$batch->id}.pdf",
             ['Content-Type' => 'application/pdf'],
         );

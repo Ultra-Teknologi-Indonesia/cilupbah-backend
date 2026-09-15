@@ -18,6 +18,14 @@ class BulkShippingLabelBatch extends Model
 
     public const STATUS_FAILED = 'failed';
 
+    public const ARCHIVE_PENDING = 'pending';
+
+    public const ARCHIVE_PROCESSING = 'processing';
+
+    public const ARCHIVE_ARCHIVED = 'archived';
+
+    public const ARCHIVE_FAILED = 'failed';
+
     protected $fillable = [
         'user_id',
         'status',
@@ -28,6 +36,12 @@ class BulkShippingLabelBatch extends Model
         'skipped_count',
         'merged_pdf_path',
         'merged_pdf_bytes',
+        'print_pdf_path',
+        'archive_status',
+        'archive_checksum',
+        'archive_pdf_bytes',
+        'archive_error',
+        'archived_at',
         'file_purged_at',
         'started_at',
         'finished_at',
@@ -41,8 +55,10 @@ class BulkShippingLabelBatch extends Model
         'failed_count' => 'integer',
         'skipped_count' => 'integer',
         'merged_pdf_bytes' => 'integer',
+        'archive_pdf_bytes' => 'integer',
         'started_at' => 'datetime',
         'finished_at' => 'datetime',
+        'archived_at' => 'datetime',
         'file_purged_at' => 'datetime',
     ];
 

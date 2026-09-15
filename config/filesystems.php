@@ -41,6 +41,13 @@ return [
             'report' => false,
         ],
 
+        'print_spool' => [
+            'driver' => 'local',
+            'root' => env('LABEL_PRINT_SPOOL_ROOT', storage_path('app/print-spool')),
+            'throw' => true,
+            'report' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

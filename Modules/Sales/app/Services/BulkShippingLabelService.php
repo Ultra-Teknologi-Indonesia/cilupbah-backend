@@ -15,6 +15,7 @@ use Illuminate\Support\Str;
 use Modules\Channel\Services\ChannelSyncSettingService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Sales\Exceptions\ShippingLabelPreparingException;
+use Modules\Sales\Jobs\ArchiveBulkShippingLabelJob;
 use Modules\Sales\Jobs\PrepareLazadaShippingLabelJob;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelItemJob;
@@ -142,21 +143,49 @@ class BulkShippingLabelService
         ProcessBulkShippingLabelJob::dispatch($batch->id);
     }
 
-    public function downloadablePath(BulkShippingLabelBatch $batch, User $user): string
+    public function downloadableFile(BulkShippingLabelBatch $batch, User $user): array
     {
         if ((string) $batch->user_id !== (string) $user->id) {
             throw new AuthorizationException('Batch label bukan milik pengguna ini.');
         }
 
-        if ($batch->status !== BulkShippingLabelBatch::STATUS_READY || empty($batch->merged_pdf_path)) {
+        if ($batch->status !== BulkShippingLabelBatch::STATUS_READY
+            || (empty($batch->merged_pdf_path) && empty($batch->print_pdf_path))) {
             throw new \Symfony\Component\HttpKernel\Exception\NotFoundHttpException('File label belum siap.');
         }
 
-        $disk = Storage::disk('documents');
-        if (! $disk->exists($batch->merged_pdf_path)) {
+        if ($batch->print_pdf_path) {
+            $spoolDiskName = config('bulk-labels.spool_disk', 'print_spool');
+            $spool = Storage::disk($spoolDiskName);
+            if ($spool->exists($batch->print_pdf_path)) {
+                $this->recordLabelPrinted($batch, $user);
+
+                return ['disk' => $spoolDiskName, 'path' => $batch->print_pdf_path];
+            }
+        }
+
+        if (! $batch->merged_pdf_path) {
             throw new \Symfony\Component\HttpKernel\Exception\NotFoundHttpException('File label tidak ditemukan.');
         }
 
+        $archiveDiskName = config('bulk-labels.archive_disk', 'documents');
+        $archive = Storage::disk($archiveDiskName);
+        if (! $archive->exists($batch->merged_pdf_path)) {
+            throw new \Symfony\Component\HttpKernel\Exception\NotFoundHttpException('File label tidak ditemukan.');
+        }
+
+        $this->recordLabelPrinted($batch, $user);
+
+        return ['disk' => $archiveDiskName, 'path' => $batch->merged_pdf_path];
+    }
+
+    public function downloadablePath(BulkShippingLabelBatch $batch, User $user): string
+    {
+        return $this->downloadableFile($batch, $user)['path'];
+    }
+
+    private function recordLabelPrinted(BulkShippingLabelBatch $batch, User $user): void
+    {
         $batch->items()
             ->where('status', BulkShippingLabelItem::STATUS_DONE)
             ->with('order')
@@ -167,7 +196,6 @@ class BulkShippingLabelService
                 }
             });
 
-        return $batch->merged_pdf_path;
     }
 
     public function retryFailed(User $user, BulkShippingLabelBatch $batch): BulkShippingLabelBatch
@@ -1116,20 +1144,89 @@ class BulkShippingLabelService
             }
         }
 
-        $blob = $pdf->Output('S');
         $path = "bulk-labels/{$batch->id}.pdf";
-        Storage::disk('documents')->put($path, $blob);
+
+        $tempPath = tempnam(sys_get_temp_dir(), 'bulk-label-');
+        if ($tempPath === false) {
+            throw new \RuntimeException('File sementara PDF label tidak dapat dibuat.');
+        }
+
+        $bytes = 0;
+        $localFirst = false;
+        try {
+            $pdf->Output('F', $tempPath);
+            clearstatcache(true, $tempPath);
+            $bytes = (int) filesize($tempPath);
+            if ($bytes <= 0) {
+                throw new \RuntimeException('PDF label hasil merge kosong.');
+            }
+
+            $localFirst = (bool) config('bulk-labels.local_first', false);
+            if ($localFirst) {
+                $spoolPath = $path;
+                $spool = Storage::disk(config('bulk-labels.spool_disk', 'print_spool'));
+                $stream = null;
+                try {
+                    $stream = fopen($tempPath, 'rb');
+                    if (! is_resource($stream) || ! $spool->writeStream($spoolPath, $stream)) {
+                        throw new \RuntimeException('Print spool write returned false.');
+                    }
+                } catch (Throwable $e) {
+                    Log::warning('Print spool unavailable; falling back to archive-first', [
+                        'batch_id' => $batch->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                    $localFirst = false;
+                    try {
+                        $spool->delete($spoolPath);
+                    } catch (Throwable) {
+
+                    }
+                } finally {
+                    if (is_resource($stream)) {
+                        fclose($stream);
+                    }
+                }
+            }
+
+            if (! $localFirst) {
+                $archive = Storage::disk(config('bulk-labels.archive_disk', 'documents'));
+                $stream = fopen($tempPath, 'rb');
+                try {
+                    if (! is_resource($stream) || ! $archive->writeStream($path, $stream)) {
+                        throw new \RuntimeException('PDF label tidak dapat disimpan ke object storage.');
+                    }
+                } finally {
+                    if (is_resource($stream)) {
+                        fclose($stream);
+                    }
+                }
+            }
+        } finally {
+            @unlink($tempPath);
+        }
 
         $batch->items()->update(['pdf_bytes' => null]);
 
         $batch->update([
-            'merged_pdf_path' => $path,
-            'merged_pdf_bytes' => strlen($blob),
+            'merged_pdf_path' => $localFirst ? null : $path,
+            'merged_pdf_bytes' => $bytes,
+            'print_pdf_path' => $localFirst ? $path : null,
+            'archive_status' => $localFirst
+                ? BulkShippingLabelBatch::ARCHIVE_PENDING
+                : BulkShippingLabelBatch::ARCHIVE_ARCHIVED,
+            'archive_pdf_bytes' => $localFirst ? null : $bytes,
+            'archived_at' => $localFirst ? null : now(),
+            'archive_error' => null,
             'status' => BulkShippingLabelBatch::STATUS_READY,
             'finished_at' => now(),
         ]);
 
         $batch->recomputeCounts();
+
+        if ($localFirst) {
+            ArchiveBulkShippingLabelJob::dispatch($batch->id)->afterCommit();
+        }
     }
 
     public function markCrashed(BulkShippingLabelBatch $batch): void

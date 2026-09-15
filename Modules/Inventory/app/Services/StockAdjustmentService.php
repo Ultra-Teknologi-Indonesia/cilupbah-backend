@@ -550,13 +550,6 @@ class StockAdjustmentService
             || ($mode === StockAdjustmentRule::MODE_FINAL && $input !== (int) $item->actual_qty);
     }
 
-    /**
-     * Simulates the complete PATCH while its document and item rows are locked.
-     * Nothing is written until every affected SKU/rack is safe, so one response
-     * can identify all invalid rows instead of failing one row at a time.
-     *
-     * @param  Collection<string, StockAdjustmentItem>  $items
-     */
     private function assertPatchStockCanBeApplied(
         StockAdjustment $adjustment,
         $items,
@@ -631,12 +624,6 @@ class StockAdjustmentService
         }
     }
 
-    /**
-     * @param  callable(string, ?string): int  $balance
-     * @param  callable(string, ?string, int): bool  $applyDelta
-     * @param  list<array{sku: string|null, rack_code: string|null, current_on_hand: int, delta: int, resulting_on_hand: int, reason: string}>  $issues
-     * @param  array<string, array{sku: string|null, rack_code: string|null}>  $contexts
-     */
     private function simulatePatchInput(
         string $itemId,
         ?string $binId,
@@ -680,10 +667,6 @@ class StockAdjustmentService
         $applyDelta($itemId, $binId, $finalQty - $current);
     }
 
-    /**
-     * @param  Collection<string, StockAdjustmentItem>  $items
-     * @return array<string, array{sku: string|null, rack_code: string|null}>
-     */
     private function patchStockContexts($items, array $creates, array $updates): array
     {
         $pairs = [];
@@ -805,10 +788,6 @@ class StockAdjustmentService
         ]);
     }
 
-    /**
-     * Adds the user-visible inventory identity only on an invalid write path.
-     * Normal adjustment processing remains free of the extra lookups.
-     */
     private function calculateForInventory(
         int $inventoryOnHand,
         mixed $inputValue,

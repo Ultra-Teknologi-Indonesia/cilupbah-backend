@@ -7,7 +7,6 @@ use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -128,18 +127,6 @@ class ProcessTikTokWebhook implements ShouldBeUnique, ShouldQueue
         return self::idempotencyKey($this->payload);
     }
 
-    /**
-     * Scaling workers must not turn a flash-sale burst into API throttling at
-     * TikTok. The limiter is scoped by shop and releases work back to Redis,
-     * so no event is discarded when the marketplace budget is exhausted.
-     */
-    public function middleware(): array
-    {
-        return [
-            (new RateLimited('channel_api'))->releaseAfter(5),
-        ];
-    }
-
     public function handle(
         TikTokOrderService $orderService,
         WebhookProductHandler $productHandler,
@@ -183,7 +170,7 @@ class ProcessTikTokWebhook implements ShouldBeUnique, ShouldQueue
             $event = $this->resolveEvent($type, $data);
 
             match ($event) {
-                self::EVENT_ORDER => $this->skipsOrderIntake($shopId) ? null : $this->handleOrderEvent($orderService, $shopId, $data),
+                self::EVENT_ORDER => $this->skipsOrderIntake($shopId) ? null : $this->handleOrderEvent($shopId, $data),
                 self::EVENT_PACKAGE => $this->skipsOrderIntake($shopId) ? null : $this->handlePackageEvent($orderService, $shopId, $data),
                 self::EVENT_CANCELLATION => $this->handleCancellationEvent($orderService, $shopId, $data),
                 self::EVENT_REVERSE => $this->handleReverseEvent($orderService, $shopId, $data),
@@ -270,7 +257,7 @@ class ProcessTikTokWebhook implements ShouldBeUnique, ShouldQueue
         return $this->orderIntakeSkipped = true;
     }
 
-    protected function handleOrderEvent(TikTokOrderService $orderService, string $shopId, array $data): void
+    protected function handleOrderEvent(string $shopId, array $data): void
     {
         $orderId = (string) ($data['order_id'] ?? '');
         if ($orderId === '') {
@@ -279,17 +266,12 @@ class ProcessTikTokWebhook implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        if (! ChannelOrderPullGuard::pullOnce(
+        RefreshChannelOrderJob::dispatch(
             'tiktok',
             $shopId,
             $orderId,
-            fn (): int => $orderService->pullOrderById($shopId, $orderId),
-        )) {
-            Log::info("TikTok webhook {$orderId} di-debounce (sudah di-pull dalam 15 detik terakhir).");
-            $this->recordTikTokTrackingEvent($orderId, $data);
-
-            return;
-        }
+            (string) config('queue.names.tiktok_orders', 'tiktok-orders'),
+        )->delay(now()->addSeconds(2));
 
         $this->recordTikTokTrackingEvent($orderId, $data);
     }

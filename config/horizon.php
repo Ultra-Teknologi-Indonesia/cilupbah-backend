@@ -26,12 +26,14 @@ $supervisorProfiles = [
     'background' => [
         'supervisor-default',
         'supervisor-channel-sync',
+        'supervisor-product-validation',
         'supervisor-channel-finance',
         'supervisor-channel-product',
         'supervisor-channel-after-sales',
         'supervisor-cutover',
         'supervisor-downloads',
         'supervisor-labels',
+        'supervisor-label-archive',
         'supervisor-qr-labels',
         'supervisor-tiktok-webhooks-background',
         'supervisor-shopee-webhooks-background',
@@ -72,12 +74,18 @@ return [
             .config('queue.routing.stock_default.queue', 'stock-default') => 120,
         config('queue.routing.channel_finance.connection', 'redis-finance').':'
             .config('queue.routing.channel_finance.queue', 'channel-finance') => 120,
+        config('queue.routing.channel_sync.connection', 'redis-channel-sync').':'
+            .config('queue.routing.channel_sync.queue', 'channel-sync') => 120,
+        config('queue.routing.channel_sync.connection', 'redis-channel-sync').':'
+            .config('queue.names.product', 'product') => 120,
         'redis:channel-fulfillment' => 60,
         'redis-long:channel-product' => 120,
         'redis-long:channel-after-sales' => 120,
         'redis-long:stock-cutover' => 300,
         'redis-long:order-cutover' => 300,
         'redis-long:qr-labels' => 300,
+        config('queue.routing.label_archive.connection', 'redis-long').':'
+            .config('queue.routing.label_archive.queue', 'label-archive') => 120,
         'redis:shopee-tracking-events' => 30,
         'redis:shopee-tracking' => 60,
     ],
@@ -169,11 +177,9 @@ return [
         ],
         'supervisor-channel-sync' => [
             'connection' => config('queue.routing.channel_sync.connection', 'redis-channel-sync'),
-            'queue' => [env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync'), env('QUEUE_NAME_PRODUCT', 'product')],
+            'queue' => [env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync')],
             'balance' => 'off',
-            // Satu toko/API yang lambat tidak boleh menahan validasi produk atau
-            // sinkronisasi toko lain. Dua worker tetap dibatasi agar CPU host dan
-            // memori pod tidak melonjak tanpa kendali.
+
             'minProcesses' => 2,
             'maxProcesses' => 2,
             'maxTime' => 3600,
@@ -183,6 +189,20 @@ return [
             'backoff' => [5, 15, 30],
             'memory' => 192,
             'nice' => 0,
+        ],
+        'supervisor-product-validation' => [
+            'connection' => config('queue.routing.channel_sync.connection', 'redis-channel-sync'),
+            'queue' => [env('QUEUE_NAME_PRODUCT', 'product')],
+            'balance' => 'off',
+            'minProcesses' => 1,
+            'maxProcesses' => 1,
+            'maxTime' => 1800,
+            'maxJobs' => 250,
+            'timeout' => 180,
+            'tries' => 3,
+            'backoff' => [30, 120, 300],
+            'memory' => 192,
+            'nice' => 10,
         ],
 
         'supervisor-channel-operations' => [
@@ -321,6 +341,21 @@ return [
             'memory' => 512,
             'nice' => 0,
         ],
+        'supervisor-label-archive' => [
+            'connection' => config('queue.routing.label_archive.connection', 'redis-long'),
+            'queue' => [config('queue.routing.label_archive.queue', 'label-archive')],
+            'balance' => 'off',
+
+            'minProcesses' => 1,
+            'maxProcesses' => 1,
+            'maxTime' => 1800,
+            'maxJobs' => 100,
+            'timeout' => config('queue.routing.label_archive.timeout', 300),
+            'tries' => config('queue.routing.label_archive.tries', 5),
+            'backoff' => [10, 30, 120, 300],
+            'memory' => 128,
+            'nice' => 10,
+        ],
         'supervisor-qr-labels' => [
             'connection' => config('queue.routing.qr_labels.connection', 'redis-long'),
             'queue' => [config('queue.routing.qr_labels.queue', 'qr-labels')],
@@ -370,8 +405,7 @@ return [
             'balance' => 'auto',
             'autoScalingStrategy' => 'size',
             'minProcesses' => 1,
-            // API-bound work: one elastic worker is enough to absorb a burst
-            // while the per-shop limiter prevents upstream throttling.
+
             'maxProcesses' => 4,
             'maxJobs' => 250,
             'timeout' => 120,
@@ -477,9 +511,7 @@ return [
             'balanceCooldown' => 3,
             'nice' => 0,
         ],
-        // Jalur ini tidak melakukan HTTP ke marketplace: hanya validasi ringan,
-        // pencatatan tracking lokal, dan enqueue refresh detail. Dipisahkan dari
-        // shopee-tracking supaya burst webhook tetap diakui cepat.
+
         'supervisor-shopee-tracking-ingress' => [
             'connection' => 'redis',
             'queue' => [env('QUEUE_NAME_SHOPEE_TRACKING_EVENTS', 'shopee-tracking-events')],

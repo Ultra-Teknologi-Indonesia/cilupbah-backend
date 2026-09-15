@@ -212,6 +212,41 @@ class BulkShippingLabelControllerTest extends TestCase
         ]);
     }
 
+    public function test_download_pdf_streams_from_local_print_spool_before_archive(): void
+    {
+        Storage::fake('print_spool');
+        Storage::fake('documents');
+
+        $order = SalesOrder::factory()->create([
+            'status' => 'picked',
+            'tracking_number' => 'AWB-BULK-SPOOL-001',
+        ]);
+
+        $batch = BulkShippingLabelBatch::create([
+            'user_id' => $this->user->id,
+            'status' => BulkShippingLabelBatch::STATUS_READY,
+            'total_count' => 1,
+            'done_count' => 1,
+            'failed_count' => 0,
+            'print_pdf_path' => 'bulk-labels/spool-only.pdf',
+            'archive_status' => BulkShippingLabelBatch::ARCHIVE_PENDING,
+        ]);
+        BulkShippingLabelItem::create([
+            'batch_id' => $batch->id,
+            'order_id' => $order->id,
+            'channel' => 'shopee',
+            'status' => BulkShippingLabelItem::STATUS_DONE,
+        ]);
+        Storage::disk('print_spool')->put('bulk-labels/spool-only.pdf', '%PDF-spool');
+
+        $this->get("/api/v1/sales/shipping-labels/bulk/{$batch->id}/pdf")
+            ->assertOk()
+            ->assertHeader('Content-Type', 'application/pdf');
+
+        Storage::disk('print_spool')->assertExists('bulk-labels/spool-only.pdf');
+        Storage::disk('documents')->assertMissing('bulk-labels/spool-only.pdf');
+    }
+
     public function test_retry_failed_returns_422_when_no_recoverable(): void
     {
         Bus::fake();

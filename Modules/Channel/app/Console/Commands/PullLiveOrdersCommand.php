@@ -202,6 +202,7 @@ class PullLiveOrdersCommand extends Command
                     $token,
                     $windowStart->toIso8601String(),
                     $shopWindowEnd->toIso8601String(),
+                    (string) ($shop->channel->code ?? 'channel'),
                 )->onQueue((string) config('queue.names.channel_sync', 'channel-sync'));
 
                 $rows[] = [$shop->shop_name, $shop->channel->code ?? 'unknown', '-', 'diantrikan'];

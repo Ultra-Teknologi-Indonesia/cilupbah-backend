@@ -8,6 +8,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
@@ -25,15 +26,24 @@ final class PullChannelOrdersJob implements ShouldQueue
 
     public int $tries = 1;
 
-    public int $timeout = 240;
+    public int $timeout;
 
     public function __construct(
         public readonly string $channelShopId,
         public readonly string $leaseToken,
         public readonly string $from,
         public readonly string $to,
+        public readonly ?string $channel = null,
     ) {
         $this->onConnection(config('queue.routing.channel_sync.connection', 'redis-channel-sync'));
+        $this->timeout = max(60, min(240, (int) config('queue.routing.channel_sync.job_timeout', 210)));
+    }
+
+    public function middleware(): array
+    {
+        return [
+            (new RateLimited('channel_api'))->releaseAfter(10),
+        ];
     }
 
     public function handle(
