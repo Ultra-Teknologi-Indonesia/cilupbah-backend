@@ -65,10 +65,10 @@
     .center { text-align: center; }
     .num { text-align: right; }
     .col-no { width: 24px; }
-    .col-sku { width: 140px; }
+    .col-sku { width: 170px; }
     /* Match the receipt print widths for the shared quantity columns. */
-    .col-qty-assigned { width: 45px; }
-    .col-qty-placed, .col-qty-remaining { width: 45px; }
+    .col-qty-assigned { width: 35px; }
+    .col-qty-placed, .col-qty-remaining { width: 35px; }
     .col-rak { width: 88px; }
     .rak-line { margin-bottom: 1px; }
     .barang-sku {

@@ -28,24 +28,40 @@
     </tr>
 </table>
 
-<table class="info-grid">
+<table class="info-grid-wrapper" style="width: 100%; margin: 10px 0 14px; border-collapse: collapse;">
     <tr>
-        <td class="label">No. Putaway</td>
-        <td class="value">{{ $putaway->putaway_no }}</td>
-        <td class="label">No. Penerimaan</td>
-        <td class="value"><div class="long-text">{{ $inboundNumber }}</div></td>
-    </tr>
-    <tr>
-        <td class="label">Tgl. Putaway</td>
-        <td class="value">{{ $putawayDate ? \Carbon\Carbon::parse($putawayDate)->format('d M Y') : '-' }}</td>
-        <td class="label">Status</td>
-        <td class="value">{{ $statusLabel }}</td>
-    </tr>
-    <tr>
-        <td class="label">Sumber</td>
-        <td class="value"><div class="long-text">{{ $sourceLabel ?: '-' }}</div></td>
-        <td class="label">Lokasi</td>
-        <td class="value">{{ $locationName }}</td>
+        <td style="width: 50%; vertical-align: top; padding-right: 5px;">
+            <table class="info-grid" style="margin: 0;">
+                <tr>
+                    <td class="label">No. Putaway</td>
+                    <td class="value">{{ $putaway->putaway_no }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Tgl. Putaway</td>
+                    <td class="value">{{ $putawayDate ? \Carbon\Carbon::parse($putawayDate)->format('d M Y') : '-' }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Status</td>
+                    <td class="value">{{ $statusLabel }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Lokasi</td>
+                    <td class="value">{{ $locationName }}</td>
+                </tr>
+            </table>
+        </td>
+        <td style="width: 50%; vertical-align: top; padding-left: 5px;">
+            <table class="info-grid" style="margin: 0;">
+                <tr>
+                    <td class="label" style="width: 90px;">No. Penerimaan</td>
+                    <td class="value"><div class="long-text">{{ $inboundNumber }}</div></td>
+                </tr>
+                <tr>
+                    <td class="label" style="width: 90px;">Sumber</td>
+                    <td class="value"><div class="long-text">{{ $sourceLabel ?: '-' }}</div></td>
+                </tr>
+            </table>
+        </td>
     </tr>
 </table>
 
