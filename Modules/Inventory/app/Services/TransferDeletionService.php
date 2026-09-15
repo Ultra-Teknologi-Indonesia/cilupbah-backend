@@ -31,7 +31,7 @@ final class TransferDeletionService
         $putaways = $this->lockPutaways($putawayIds);
         $this->assertPutawaysAreNotShared($putaways, $inboundIds);
 
-        $transactionNumbers = collect([
+        $baseNumbers = collect([
             $transfer->transfer_number,
             $transfer->receive_number,
         ])
@@ -39,6 +39,11 @@ final class TransferDeletionService
             ->merge($putaways->pluck('putaway_no'))
             ->filter(static fn ($number): bool => trim((string) $number) !== '')
             ->map(static fn ($number): string => (string) $number)
+            ->unique()
+            ->values();
+
+        $transactionNumbers = $baseNumbers
+            ->merge($baseNumbers->map(static fn (string $num): string => $num . '-REVERT'))
             ->unique()
             ->values()
             ->all();
@@ -64,7 +69,18 @@ final class TransferDeletionService
             ->values()
             ->all();
 
-        $transfer->delete();
+        $transfer->update([
+            'status' => InventoryTransfer::STATUS_DRAFT,
+            'approved_by' => null,
+            'approved_at' => null,
+            'assigned_to' => null,
+            'received_by' => null,
+            'received_at' => null,
+            'shipped_at' => null,
+            'cancelled_by' => null,
+            'cancel_reason' => null,
+            'cancelled_at' => null,
+        ]);
 
         return [
             'item_ids' => $itemIds,
