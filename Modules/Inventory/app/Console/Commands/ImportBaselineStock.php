@@ -613,6 +613,7 @@ class ImportBaselineStock extends Command
             'rak_kosong' => [],
             'rak_inbound' => [],
             'rak_multi_sku' => [],
+            'rak_tidak_sesuai_assignment' => [],
         ];
 
         $lowerIndex = [];
@@ -653,6 +654,7 @@ class ImportBaselineStock extends Command
 
         $variantIds = array_filter(array_column(array_values($variants), 'id'));
         $currentStockMap = [];
+        $assignedBinsMap = [];
         if (! empty($variantIds)) {
             foreach (array_chunk($variantIds, 2000) as $chunk) {
                 $invRows = DB::table('inventories')
@@ -662,6 +664,16 @@ class ImportBaselineStock extends Command
                 foreach ($invRows as $inv) {
                     $key = $inv->item_id.':'.($inv->bin_id ?? 'null');
                     $currentStockMap[$key] = (float) $inv->on_hand;
+                }
+
+                if ($strictBinSku) {
+                    $assignments = DB::table('sku_rack_assignments')
+                        ->where('location_id', $locationId)
+                        ->whereIn('item_id', $chunk)
+                        ->get(['item_id', 'bin_id']);
+                    foreach ($assignments as $assignment) {
+                        $assignedBinsMap[$assignment->item_id][] = (string) $assignment->bin_id;
+                    }
                 }
             }
         }
@@ -765,6 +777,21 @@ class ImportBaselineStock extends Command
                 $problems['rak_multi_sku'][] = $row + ['catatan' => $notes];
                 $status = 'DITOLAK_RAK_MULTI_SKU';
                 $blocked = true;
+            }
+
+            if ($strictBinSku && ! $blocked && $resolvedBinId !== null) {
+                $assignedBins = $assignedBinsMap[$variantId] ?? [];
+                if (empty($assignedBins)) {
+                    $notes = 'SKU belum di-assign ke rak mana pun di sistem master';
+                    $problems['rak_tidak_sesuai_assignment'][] = $row + ['catatan' => $notes];
+                    $status = 'DITOLAK_BELUM_ASSIGN_RAK';
+                    $blocked = true;
+                } elseif (! in_array((string) $resolvedBinId, $assignedBins, true)) {
+                    $notes = 'Rak di file tidak sesuai dengan rak yang di-assign untuk SKU ini di master';
+                    $problems['rak_tidak_sesuai_assignment'][] = $row + ['catatan' => $notes];
+                    $status = 'DITOLAK_RAK_TIDAK_SESUAI';
+                    $blocked = true;
+                }
             }
 
             $pairKey = $variantId.':'.($resolvedBinId ?? 'null');
@@ -939,6 +966,7 @@ class ImportBaselineStock extends Command
             'rak_kosong' => 'Kode rak kosong (baris DITOLAK)',
             'rak_inbound' => 'Rak inbound/DEFAULT (baris DITOLAK)',
             'rak_multi_sku' => 'Rak Gudang Kecil tidak mengizinkan multi-SKU (baris DITOLAK)',
+            'rak_tidak_sesuai_assignment' => 'Rak tidak sesuai assignment master (baris DITOLAK)',
         ];
 
         foreach ($labels as $key => $label) {
