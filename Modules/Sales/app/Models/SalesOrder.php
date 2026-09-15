@@ -587,9 +587,6 @@ class SalesOrder extends Model implements HasMedia
 
     public function resolveWmsStatus(): string
     {
-        if ($this->status === 'returned') {
-            return WmsStatus::RETURNED->value;
-        }
         if ($this->status === 'cancelled') {
             return WmsStatus::CANCELLED->value;
         }
@@ -652,7 +649,6 @@ class SalesOrder extends Model implements HasMedia
             'picked' => 'Pengambilan - Selesai',
             'packed' => 'Pengepakan - Selesai',
             'shipped' => $this->received_date ? 'Selesai' : 'Pengiriman - Sedang Dikirim',
-            'returned' => 'Diretur',
             'cancelled' => 'Dibatalkan',
             default => ucfirst((string) $this->status),
         };
