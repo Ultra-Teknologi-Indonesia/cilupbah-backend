@@ -746,7 +746,7 @@ class ImportBaselineStockTest extends TestCase
             'is_small_warehouse' => true,
             'is_active' => true,
         ]);
-        $bin = LocationBin::create([
+        LocationBin::create([
             'location_id' => $location->id,
             'bin_final_code' => 'SHARED-RACK',
             'bin_code' => 'SHARED-RACK',
@@ -761,13 +761,8 @@ class ImportBaselineStockTest extends TestCase
                 'category_id' => $categoryId,
                 'name' => $sku, 'sku' => $sku, 'is_active' => true,
             ]);
-            $variant = ProductVariant::create([
+            ProductVariant::create([
                 'product_id' => $product->id, 'sku' => $sku, 'is_active' => true,
-            ]);
-            \Modules\Inventory\Models\SkuRackAssignment::create([
-                'location_id' => $location->id,
-                'item_id' => $variant->id,
-                'bin_id' => $bin->id,
             ]);
         }
         $excelPath = $this->createSampleExcel([

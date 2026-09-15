@@ -678,6 +678,22 @@ class ImportBaselineStock extends Command
             }
         }
 
+        $assignedSkusByBinMap = [];
+        if ($strictBinSku) {
+            $binIdsHere = array_keys($binCodeById);
+            if (! empty($binIdsHere)) {
+                foreach (array_chunk($binIdsHere, 2000) as $chunk) {
+                    $assignments = DB::table('sku_rack_assignments')
+                        ->where('location_id', $locationId)
+                        ->whereIn('bin_id', $chunk)
+                        ->get(['item_id', 'bin_id']);
+                    foreach ($assignments as $assignment) {
+                        $assignedSkusByBinMap[(string) $assignment->bin_id][] = (string) $assignment->item_id;
+                    }
+                }
+            }
+        }
+
         $validRows = [];
         $allEvaluatedRows = [];
         $okRows = 0;
@@ -782,10 +798,20 @@ class ImportBaselineStock extends Command
             if ($strictBinSku && ! $blocked && $resolvedBinId !== null) {
                 $assignedBins = $assignedBinsMap[$variantId] ?? [];
                 if (empty($assignedBins)) {
-                    $notes = 'SKU belum di-assign ke rak mana pun di sistem master';
-                    $problems['rak_tidak_sesuai_assignment'][] = $row + ['catatan' => $notes];
-                    $status = 'DITOLAK_BELUM_ASSIGN_RAK';
-                    $blocked = true;
+                    $skusInBin = $assignedSkusByBinMap[(string) $resolvedBinId] ?? [];
+                    $binCode = $binCodeById[(string) $resolvedBinId] ?? '';
+                    $isMultiSkuAllowed = $this->binMultiSkuRuleService->allowsMultiSkuCode($locationId, $binCode);
+
+                    if (empty($skusInBin) || $isMultiSkuAllowed) {
+                        if (! in_array((string) $variantId, $skusInBin, true)) {
+                            $assignedSkusByBinMap[(string) $resolvedBinId][] = (string) $variantId;
+                        }
+                    } else {
+                        $notes = 'Rak sudah di-assign ke SKU lain di sistem master (tidak bisa dipakai otomatis)';
+                        $problems['rak_tidak_sesuai_assignment'][] = $row + ['catatan' => $notes];
+                        $status = 'DITOLAK_RAK_MILIK_SKU_LAIN';
+                        $blocked = true;
+                    }
                 } elseif (! in_array((string) $resolvedBinId, $assignedBins, true)) {
                     $notes = 'Rak di file tidak sesuai dengan rak yang di-assign untuk SKU ini di master';
                     $problems['rak_tidak_sesuai_assignment'][] = $row + ['catatan' => $notes];
