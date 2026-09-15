@@ -157,8 +157,8 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         $mappings = ChannelVariantMappingResolver::enabledForListing($listing);
         $payloadError = ChannelVariantMappingResolver::stockPayloadError(
             $mappings,
-            'channel_seller_sku',
-            'Seller SKU Lazada',
+            'external_sku_id',
+            'SkuId Lazada',
         );
         if ($payloadError !== null) {
             return ['success' => false, 'message' => $payloadError];
@@ -174,7 +174,7 @@ class LazadaAdapter implements MarketplaceAdapterInterface
             $availableQty = $stockByVariant[$variant->id] ?? 0;
 
             $skuPayloads[] = [
-                'SellerSku' => $mapping->channel_seller_sku,
+                'SkuId' => (int) $mapping->external_sku_id,
                 'Price' => (string) $variant->sell_price,
                 'Quantity' => (string) max(0, $availableQty),
             ];
@@ -213,8 +213,8 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         $mappings = ChannelVariantMappingResolver::enabledForListing($listing);
         $payloadError = ChannelVariantMappingResolver::stockPayloadError(
             $mappings,
-            'channel_seller_sku',
-            'Seller SKU Lazada',
+            'external_sku_id',
+            'SkuId Lazada',
         );
         if ($payloadError !== null) {
             return ['success' => false, 'message' => $payloadError];
@@ -230,7 +230,7 @@ class LazadaAdapter implements MarketplaceAdapterInterface
             $availableQty = $stockByVariant[$variant->id] ?? 0;
 
             $skuPayloads[] = [
-                'SellerSku' => $mapping->channel_seller_sku,
+                'SkuId' => (int) $mapping->external_sku_id,
                 'Quantity' => (string) max(0, $availableQty),
             ];
         }

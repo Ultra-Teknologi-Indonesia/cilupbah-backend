@@ -179,9 +179,9 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
 
         try {
             if (! empty($variationUpdates)) {
-                $this->client->post($shop, "products/{$externalProductId}/variations/batch", [
-                    'update' => $variationUpdates,
-                ]);
+                foreach ($variationUpdates as $update) {
+                    $this->client->put($shop, "products/{$externalProductId}/variations/{$update['id']}", $update);
+                }
             }
 
             if ($simplePayload !== null) {
@@ -250,9 +250,9 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
 
         try {
             if (! empty($variationUpdates)) {
-                $this->client->post($shop, "products/{$externalProductId}/variations/batch", [
-                    'update' => $variationUpdates,
-                ]);
+                foreach ($variationUpdates as $update) {
+                    $this->client->put($shop, "products/{$externalProductId}/variations/{$update['id']}", $update);
+                }
             }
 
             if ($simplePayload !== null) {
