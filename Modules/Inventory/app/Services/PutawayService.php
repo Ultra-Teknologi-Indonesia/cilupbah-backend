@@ -1032,8 +1032,13 @@ class PutawayService
 
             $plannedBin = $guard->assignedBinId($putaway->location_id, $item->item_id);
             $destBin = $data['destination_bin_id'] ?? null;
-            if ($plannedBin !== null && $destBin !== null && (string) $destBin !== (string) $plannedBin) {
-                throw new \DomainException('Item ini sudah dialokasikan ke rak tertentu; tidak bisa ditempatkan ke rak lain.');
+            
+            
+            if ($plannedBin !== null) {
+                if ($destBin !== null && (string) $destBin !== (string) $plannedBin) {
+                    throw new \DomainException('Item ini sudah dialokasikan ke rak tertentu; tidak bisa ditempatkan ke rak lain.');
+                }
+                $data['destination_bin_id'] = $plannedBin;
             }
         }
 
