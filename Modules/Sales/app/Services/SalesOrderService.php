@@ -2671,7 +2671,8 @@ class SalesOrderService
             'SHIPPED', 'TO_CONFIRM_RECEIVE' => 'shipped',
             'DELIVERED', 'COMPLETED' => 'shipped',
 
-            'IN_CANCEL', 'TO_RETURN' => 'pending',
+            'IN_CANCEL' => 'pending',
+            'TO_RETURN', 'RETURNED' => 'returned',
             'CANCELLED' => 'cancelled',
             default => 'pending',
         };
@@ -2699,6 +2700,7 @@ class SalesOrderService
         'picked' => 2,
         'packed' => 3,
         'shipped' => 4,
+        'returned' => 5,
     ];
 
     private function resolveInternalStatus(?string $currentStatus, string $newStatus): string
@@ -2712,6 +2714,9 @@ class SalesOrderService
         }
 
         if ($newStatus === 'cancelled') {
+            if (in_array($currentStatus, ['shipped', 'returned'], true)) {
+                return 'returned';
+            }
             return 'cancelled';
         }
 
