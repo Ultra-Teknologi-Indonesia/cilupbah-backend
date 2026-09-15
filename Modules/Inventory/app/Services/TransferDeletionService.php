@@ -69,18 +69,22 @@ final class TransferDeletionService
             ->values()
             ->all();
 
-        $transfer->update([
-            'status' => InventoryTransfer::STATUS_DRAFT,
-            'approved_by' => null,
-            'approved_at' => null,
-            'assigned_to' => null,
-            'received_by' => null,
-            'received_at' => null,
-            'shipped_at' => null,
-            'cancelled_by' => null,
-            'cancel_reason' => null,
-            'cancelled_at' => null,
-        ]);
+        if ($transfer->status === InventoryTransfer::STATUS_DRAFT) {
+            $transfer->delete();
+        } else {
+            $transfer->update([
+                'status' => InventoryTransfer::STATUS_DRAFT,
+                'approved_by' => null,
+                'approved_at' => null,
+                'assigned_to' => null,
+                'received_by' => null,
+                'received_at' => null,
+                'shipped_at' => null,
+                'cancelled_by' => null,
+                'cancel_reason' => null,
+                'cancelled_at' => null,
+            ]);
+        }
 
         return [
             'item_ids' => $itemIds,
