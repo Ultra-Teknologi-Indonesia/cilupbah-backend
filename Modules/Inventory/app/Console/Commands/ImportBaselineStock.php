@@ -614,6 +614,8 @@ class ImportBaselineStock extends Command
             'rak_inbound' => [],
             'rak_multi_sku' => [],
             'rak_tidak_sesuai_assignment' => [],
+            'rak_tidak_sesuai_assignment_stok_nol' => [],
+            'sku_multi_rak' => [],
         ];
 
         $lowerIndex = [];
@@ -651,6 +653,31 @@ class ImportBaselineStock extends Command
                 $blockedMultiSkuBins[$binId] = true;
             }
         }
+
+        $csvBinsByItem = [];
+        if ($strictBinSku) {
+            foreach ($rows as $row) {
+                if ((int) $row['qty'] <= 0) {
+                    continue;
+                }
+
+                $variant = $variants[$row['sku']] ?? null;
+                if ($variant === null) {
+                    $alternatives = $lowerIndex[mb_strtolower($row['sku'])] ?? [];
+                    $variant = count($alternatives) === 1 ? ($variants[$alternatives[0]] ?? null) : null;
+                }
+                $bin = $binsHere[$row['bin']] ?? null;
+                if ($variant === null || $bin === null || $bin->is_inbound || strtoupper(trim((string) $bin->bin_final_code)) === 'DEFAULT') {
+                    continue;
+                }
+
+                $csvBinsByItem[(string) $variant->id][(string) $bin->id] = true;
+            }
+        }
+        $itemsInMultipleCsvBins = array_fill_keys(
+            array_keys(array_filter($csvBinsByItem, static fn (array $binIds): bool => count($binIds) > 1)),
+            true,
+        );
 
         $variantIds = array_filter(array_column(array_values($variants), 'id'));
         $currentStockMap = [];
@@ -710,6 +737,7 @@ class ImportBaselineStock extends Command
                 ? ($existingPositivePairs[$this->stockPairKey($sku, $bin)] ?? null)
                 : null;
             $blocked = false;
+            $ignored = false;
             $status = 'VALID';
             $notes = 'Siap diimpor';
             $variantId = null;
@@ -788,14 +816,32 @@ class ImportBaselineStock extends Command
                 }
             }
 
-            if (! $blocked && $strictBinSku && isset($blockedMultiSkuBins[(string) $resolvedBinId])) {
+            if (! $blocked && $isZero && $strictBinSku && $resolvedBinId !== null) {
+                $assignedBins = $assignedBinsMap[$variantId] ?? [];
+
+                if ($assignedBins !== [] && ! in_array((string) $resolvedBinId, $assignedBins, true)) {
+                    $notes = 'Diabaikan: stok aktual file 0 dan rak berbeda dari assignment master; tidak ada perubahan stok atau assignment.';
+                    $problems['rak_tidak_sesuai_assignment_stok_nol'][] = $row + ['catatan' => $notes];
+                    $status = 'DIABAIKAN_RAK_TIDAK_SESUAI_STOK_NOL';
+                    $ignored = true;
+                }
+            }
+
+            if (! $ignored && ! $blocked && ! $isZero && $strictBinSku && isset($itemsInMultipleCsvBins[(string) $variantId])) {
+                $notes = 'INVALID: SKU diarahkan ke lebih dari satu rak dalam file; gunakan satu rak tujuan.';
+                $problems['sku_multi_rak'][] = $row + ['catatan' => $notes];
+                $status = 'INVALID_SKU_MULTI_RAK';
+                $blocked = true;
+            }
+
+            if (! $ignored && ! $blocked && $strictBinSku && isset($blockedMultiSkuBins[(string) $resolvedBinId])) {
                 $notes = 'Rak Gudang Kecil berisi lebih dari satu SKU dan tidak memiliki pattern multi-SKU.';
                 $problems['rak_multi_sku'][] = $row + ['catatan' => $notes];
                 $status = 'DITOLAK_RAK_MULTI_SKU';
                 $blocked = true;
             }
 
-            if ($strictBinSku && ! $blocked && $resolvedBinId !== null) {
+            if (! $ignored && $strictBinSku && ! $blocked && $resolvedBinId !== null) {
                 $assignedBins = $assignedBinsMap[$variantId] ?? [];
                 if (empty($assignedBins)) {
                     $skusInBin = $assignedSkusByBinMap[(string) $resolvedBinId] ?? [];
@@ -827,7 +873,7 @@ class ImportBaselineStock extends Command
             $targetOnHand = (float) $row['qty'];
             $delta = $targetOnHand - $curOnHand;
 
-            if ($isZero && ! $blocked && $existingPair === null) {
+            if ($isZero && ! $ignored && ! $blocked && $existingPair === null) {
                 $status = 'ZERO_TANPA_STOK_SISTEM';
                 $notes = 'Rak valid; SKU tidak divalidasi karena Qty 0 dan tidak ada stok lama pada pasangan SKU-rak ini. Tidak ada perubahan yang perlu ditulis.';
                 $zeroRowsWithoutCurrentStock++;
@@ -837,6 +883,7 @@ class ImportBaselineStock extends Command
                 'status' => $status,
                 'catatan' => $notes,
                 'blocked' => $blocked,
+                'ignored' => $ignored,
                 'variant_id' => $variantId,
                 'bin_id' => $resolvedBinId,
                 'current_on_hand' => $curOnHand,
@@ -845,6 +892,10 @@ class ImportBaselineStock extends Command
             ];
 
             $allEvaluatedRows[] = $evaluatedRow;
+
+            if ($ignored) {
+                continue;
+            }
 
             if ($blocked) {
                 $blockedRows++;
@@ -993,6 +1044,8 @@ class ImportBaselineStock extends Command
             'rak_inbound' => 'Rak inbound/DEFAULT (baris DITOLAK)',
             'rak_multi_sku' => 'Rak Gudang Kecil tidak mengizinkan multi-SKU (baris DITOLAK)',
             'rak_tidak_sesuai_assignment' => 'Rak tidak sesuai assignment master (baris DITOLAK)',
+            'rak_tidak_sesuai_assignment_stok_nol' => 'Rak berbeda dari assignment master, stok file 0 (diabaikan)',
+            'sku_multi_rak' => 'Satu SKU diarahkan ke lebih dari satu rak (INVALID)',
         ];
 
         foreach ($labels as $key => $label) {
@@ -1032,7 +1085,7 @@ class ImportBaselineStock extends Command
         $assignmentCandidates = [];
         $protectedItemIds = [];
         foreach ($allRows as $row) {
-            if (($row['blocked'] ?? false) === true) {
+            if (($row['blocked'] ?? false) === true || ($row['ignored'] ?? false) === true) {
                 if (! empty($row['variant_id'])) {
                     $protectedItemIds[(string) $row['variant_id']] = true;
                 }
