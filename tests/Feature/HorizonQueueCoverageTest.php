@@ -107,8 +107,8 @@ class HorizonQueueCoverageTest extends TestCase
     {
         foreach ([
             'supervisor-default' => [1, 1],
-            'supervisor-order-operations' => [2, 2],
-            'supervisor-channel-sync' => [2, 2],
+            'supervisor-order-operations' => [4, 4],
+            'supervisor-channel-sync' => [4, 4],
             'supervisor-product-validation' => [1, 1],
             'supervisor-channel-operations' => [1, 1],
             'supervisor-stock-default' => [1, 1],
@@ -137,18 +137,18 @@ class HorizonQueueCoverageTest extends TestCase
         $this->assertSame(3, $tracking['balanceCooldown'] ?? null);
 
         foreach ([
-            'supervisor-shopee-orders' => 3,
-            'supervisor-tiktok-orders' => 4,
-            'supervisor-lazada-orders' => 2,
-            'supervisor-shopee-webhooks-operational' => 2,
-            'supervisor-tiktok-webhooks-operational' => 3,
-            'supervisor-lazada-webhooks-operational' => 2,
-        ] as $name => $maxProcesses) {
+            'supervisor-shopee-orders' => [2, 4],
+            'supervisor-tiktok-orders' => [2, 4],
+            'supervisor-lazada-orders' => [1, 2],
+            'supervisor-shopee-webhooks-operational' => [2, 2],
+            'supervisor-tiktok-webhooks-operational' => [2, 3],
+            'supervisor-lazada-webhooks-operational' => [1, 2],
+        ] as $name => [$minProcesses, $maxProcesses]) {
             $supervisor = config("horizon.defaults.{$name}");
 
             $this->assertSame('auto', $supervisor['balance'] ?? null, "{$name} harus autoscale.");
             $this->assertSame('size', $supervisor['autoScalingStrategy'] ?? null, "{$name} harus scale berdasarkan ukuran antrean.");
-            $this->assertSame(1, $supervisor['minProcesses'] ?? null, "{$name} minimum worker tidak sesuai.");
+            $this->assertSame($minProcesses, $supervisor['minProcesses'] ?? null, "{$name} minimum worker tidak sesuai.");
             $this->assertSame($maxProcesses, $supervisor['maxProcesses'] ?? null, "{$name} maksimum worker harus dibatasi.");
             $this->assertSame(1, $supervisor['balanceMaxShift'] ?? null, "{$name} scale step terlalu besar.");
             $this->assertSame(5, $supervisor['balanceCooldown'] ?? null, "{$name} cooldown autoscale tidak sesuai.");
