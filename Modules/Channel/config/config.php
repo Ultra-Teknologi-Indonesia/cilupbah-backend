@@ -14,6 +14,7 @@ return [
     'download_max_pages' => (int) env('CHANNEL_DOWNLOAD_MAX_PAGES', 10000),
 
     'search_cache_ttl_seconds' => (int) env('CHANNEL_SEARCH_CACHE_TTL_SECONDS', 30),
+    'lazada_search_index_max_pages' => (int) env('LAZADA_SEARCH_INDEX_MAX_PAGES', 10000),
 
     'search_remote_timeout_seconds' => (int) env('CHANNEL_SEARCH_REMOTE_TIMEOUT_SECONDS', 10),
     'search_remote_attempts' => (int) env('CHANNEL_SEARCH_REMOTE_ATTEMPTS', 2),

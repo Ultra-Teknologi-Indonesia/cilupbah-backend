@@ -450,7 +450,7 @@ class ChannelDownloadService
 
     protected function searchCacheKey(string $channel, string $shopId, string $query): string
     {
-        return 'channel_catalog_search:v2:' . strtolower($channel) . ':' . $shopId . ':' . sha1(mb_strtolower(trim($query)));
+        return 'channel_catalog_search:v3:' . strtolower($channel) . ':' . $shopId . ':' . sha1(mb_strtolower(trim($query)));
     }
 
     protected function searchRemoteShop(string $channel, string $shopId, string $query, int $limit): array

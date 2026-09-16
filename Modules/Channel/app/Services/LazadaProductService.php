@@ -25,6 +25,7 @@ class LazadaProductService
         protected ChannelShopRepository $shopRepository,
         protected ChannelProductRepository $productRepository,
         protected LazadaAuthService $authService,
+        protected LazadaCatalogSearchIndexService $searchIndex,
     ) {}
 
     public function pushProductListing(string $shopId, string $productId): array
@@ -550,7 +551,73 @@ class LazadaProductService
             }
         }
 
-        return array_slice($results, 0, $targetLimit);
+        if ($results !== [] || $needle === '') {
+            return array_slice($results, 0, $targetLimit);
+        }
+
+        return $this->searchVerifiedIndexedSkus($shopId, $shop, $needle, $targetLimit);
+    }
+
+    /**
+     * Lazada's catalog search does not reliably index variant seller SKUs.
+     * Candidates from the local index are therefore verified against the live
+     * listing before they are returned to the caller.
+     */
+    protected function searchVerifiedIndexedSkus(string $shopId, object $shop, string $needle, int $limit): array
+    {
+        $candidates = $this->searchIndex->findExact((string) $shop->id, $needle, max(20, $limit * 3));
+        $results = [];
+        $seenListings = [];
+
+        foreach ($candidates as $candidate) {
+            $listingId = (string) $candidate->external_product_id;
+            if ($listingId === '' || isset($seenListings[$listingId])) {
+                continue;
+            }
+
+            $seenListings[$listingId] = true;
+            $item = $this->fetchLiveProduct($shopId, $listingId);
+            if (! is_array($item) || $item === []) {
+                continue;
+            }
+
+            $status = strtolower(trim((string) ($item['status'] ?? '')));
+            if ($status !== '' && ! in_array($status, ['active', 'live'], true)) {
+                continue;
+            }
+
+            $sellerSkus = $this->sellerSkus($item);
+            $matchingSku = collect($sellerSkus)->first(
+                fn (string $sellerSku): bool => self::normalizeSearchValue($sellerSku) === $needle,
+            );
+
+            if ($matchingSku === null) {
+                continue;
+            }
+
+            $results[] = [
+                'external_product_id' => (string) ($item['item_id'] ?? $listingId),
+                'name' => (string) ($item['attributes']['name'] ?? $item['name'] ?? $candidate->product_name ?? ''),
+                'seller_sku' => $matchingSku,
+                'seller_skus' => $sellerSkus,
+                'image' => $item['images'][0] ?? null,
+                'shop_id' => $shopId,
+                'shop_name' => $shop->shop_name ?? null,
+                'channel_code' => 'lazada',
+                'search_source' => 'verified_sku_index',
+            ];
+
+            if (count($results) >= $limit) {
+                break;
+            }
+        }
+
+        return $results;
+    }
+
+    protected static function normalizeSearchValue(string $value): string
+    {
+        return mb_strtolower(trim($value));
     }
 
     protected function sellerSkus(array $item): array
@@ -603,6 +670,81 @@ class LazadaProductService
         return $models;
     }
 
+    /**
+     * Rebuild only the Lazada seller-SKU index. This intentionally does not
+     * create products or channel mappings and can be run independently from a
+     * catalog download.
+     */
+    public function rebuildSearchIndex(string $shopId): array
+    {
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (! $shop || ! $shop->access_token) {
+            throw new \RuntimeException("Toko Lazada tidak ditemukan atau belum terhubung: {$shopId}");
+        }
+
+        $limit = self::PULL_PAGE_LIMIT;
+        $maxPages = max(1, (int) config('channel.lazada_search_index_max_pages', 10000));
+        $pages = 0;
+        $productsScanned = 0;
+        $skusIndexed = 0;
+        $complete = true;
+        $seen = [];
+
+        foreach (self::PULL_FILTERS as $filter) {
+            $offset = 0;
+            $filterPages = 0;
+
+            do {
+                $params = ['filter' => $filter, 'offset' => $offset, 'limit' => $limit];
+                $res = \Modules\Channel\Support\ChannelRetry::run('lazada', function () use (&$shop, $shopId, $params) {
+                    try {
+                        return $this->client->request('GET', '/products/get', $params, $shop->access_token);
+                    } catch (TokenExpiredException $e) {
+                        $this->authService->refreshStoreToken((string) $shop->id);
+                        $shop = $this->shopRepository->findByShopId($shopId);
+
+                        return $this->client->request('GET', '/products/get', $params, $shop->access_token);
+                    }
+                });
+
+                $products = $res['data']['products'] ?? [];
+                $uniqueProducts = [];
+
+                foreach ($products as $product) {
+                    $externalProductId = (string) ($product['item_id'] ?? '');
+                    if ($externalProductId === '' || isset($seen[$externalProductId])) {
+                        continue;
+                    }
+
+                    $seen[$externalProductId] = true;
+                    $uniqueProducts[] = $product;
+                }
+
+                $pages++;
+                $filterPages++;
+                $productsScanned += count($uniqueProducts);
+                $skusIndexed += $this->searchIndex->upsertProducts((string) $shop->id, $uniqueProducts);
+
+                if (count($products) < $limit) {
+                    break;
+                }
+
+                $offset += $limit;
+            } while ($filterPages < $maxPages);
+
+            if ($filterPages >= $maxPages) {
+                $complete = false;
+            }
+        }
+
+        return [
+            'products_scanned' => $productsScanned,
+            'skus_indexed' => $skusIndexed,
+            'pages' => $pages,
+            'complete' => $complete,
+        ];
+    }
+
     public function pullProducts(string $shopId, ?\Closure $onProgress = null): int
     {
         $shop = $this->shopRepository->findByShopId($shopId);
@@ -645,6 +787,7 @@ class LazadaProductService
                 }
 
                 $products = $res['data']['products'] ?? [];
+                $this->searchIndex->upsertProducts((string) $shop->id, $products);
 
                 foreach ($products as $item) {
                     $status = strtolower((string) ($item['status'] ?? ''));

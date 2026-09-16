@@ -7,6 +7,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Str;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Jobs\DownloadSingleProductJob;
@@ -154,6 +155,91 @@ class ChannelSearchDownloadTest extends TestCase
         $this->assertCount(1, $results);
         $this->assertSame('SKU-RUN-44', $results[0]['seller_sku']);
         $this->assertSame(['SKU-RUN-42', 'SKU-RUN-44'], $results[0]['seller_skus']);
+    }
+
+    public function test_search_falls_back_to_verified_sku_index_when_lazada_catalog_search_misses_variant_sku(): void
+    {
+        $item = $this->lazadaItem();
+        $item['item_id'] = 8300938504;
+        $item['skus'] = [[
+            'SkuId' => 116289937317,
+            'SellerSku' => 'ULTRA-SPY-IP-7-8',
+            'quantity' => 24,
+            'Status' => 'active',
+        ]];
+
+        DB::table('channel_catalog_sku_indexes')->insert([
+            'id' => (string) Str::uuid(),
+            'channel_shop_id' => $this->lazadaShop->id,
+            'external_product_id' => '8300938504',
+            'external_sku_id' => '116289937317',
+            'seller_sku' => 'ULTRA-SPY-IP-7-8',
+            'normalized_seller_sku' => 'ultra-spy-ip-7-8',
+            'product_name' => 'Tempered Glass Ultra Fit',
+            'listing_status' => 'active',
+            'last_seen_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Http::fake([
+            'api.lazada.co.id/rest/products/get*' => Http::response([
+                'code' => '0', 'data' => ['products' => []],
+            ], 200),
+            'api.lazada.co.id/rest/product/item/get*' => Http::response([
+                'code' => '0', 'data' => $item,
+            ], 200),
+        ]);
+
+        $results = app(LazadaProductService::class)->searchProducts(
+            'LZ-100',
+            'ULTRA-SPY-IP-7-8',
+            5,
+            20,
+        );
+
+        $this->assertCount(1, $results);
+        $this->assertSame('8300938504', $results[0]['external_product_id']);
+        $this->assertSame('ULTRA-SPY-IP-7-8', $results[0]['seller_sku']);
+        $this->assertSame('verified_sku_index', $results[0]['search_source']);
+    }
+
+    public function test_verified_sku_index_does_not_return_stale_or_wrong_listing(): void
+    {
+        DB::table('channel_catalog_sku_indexes')->insert([
+            'id' => (string) Str::uuid(),
+            'channel_shop_id' => $this->lazadaShop->id,
+            'external_product_id' => '8300938504',
+            'external_sku_id' => '116289937317',
+            'seller_sku' => 'ULTRA-SPY-IP-7-8',
+            'normalized_seller_sku' => 'ultra-spy-ip-7-8',
+            'product_name' => 'Old listing data',
+            'listing_status' => 'active',
+            'last_seen_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $liveItem = $this->lazadaItem();
+        $liveItem['skus'][0]['SellerSku'] = 'A-DIFFERENT-SKU';
+
+        Http::fake([
+            'api.lazada.co.id/rest/products/get*' => Http::response([
+                'code' => '0', 'data' => ['products' => []],
+            ], 200),
+            'api.lazada.co.id/rest/product/item/get*' => Http::response([
+                'code' => '0', 'data' => $liveItem,
+            ], 200),
+        ]);
+
+        $results = app(LazadaProductService::class)->searchProducts(
+            'LZ-100',
+            'ULTRA-SPY-IP-7-8',
+            5,
+            20,
+        );
+
+        $this->assertSame([], $results);
     }
 
     public function test_search_excludes_non_active_tiktok_products(): void
