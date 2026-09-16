@@ -23,7 +23,7 @@ class BulkShippingLabelController extends Controller
     {
         $data = $req->validate([
             'order_ids' => 'required|array|min:1',
-            'order_ids.*' => 'string|uuid',
+            'order_ids.*' => 'string|uuid|distinct',
             'document_size' => 'nullable|string|in:thermal_100x150,thermal_100x120',
             'per_channel' => 'nullable|array',
         ]);

@@ -88,6 +88,12 @@ class BulkShippingLabelService
 
     public function createBatch(User $user, array $orderIds, array $perChannelOpts): BulkShippingLabelBatch
     {
+
+        $orderIds = array_values(array_unique(array_map('strval', $orderIds)));
+        if ($orderIds === []) {
+            throw new \InvalidArgumentException('Minimal satu pesanan diperlukan.');
+        }
+
         $awaitingAwb = [];
 
         $batch = DB::transaction(function () use ($user, $orderIds, $perChannelOpts, &$awaitingAwb) {
@@ -131,6 +137,12 @@ class BulkShippingLabelService
             return $batch->fresh();
         });
 
+        foreach ($orderIds as $orderId) {
+            if (! $this->hydrateCachedLabel($orderId)) {
+                $this->inheritActiveOrderState($batch->id, $orderId);
+            }
+        }
+
         foreach ($awaitingAwb as $orderId) {
             RequestChannelAwbJob::dispatch($orderId);
         }
@@ -140,6 +152,15 @@ class BulkShippingLabelService
 
     public function queueBatch(BulkShippingLabelBatch $batch): void
     {
+        $hasPending = $batch->items()
+            ->where('status', BulkShippingLabelItem::STATUS_PENDING)
+            ->exists();
+
+        if (! $hasPending) {
+
+            return;
+        }
+
         ProcessBulkShippingLabelJob::dispatch($batch->id);
     }
 
@@ -311,11 +332,25 @@ class BulkShippingLabelService
             return 0;
         }
 
+        $activeStatuses = [
+            BulkShippingLabelItem::STATUS_DOWNLOADING,
+            BulkShippingLabelItem::STATUS_WAITING_AWB,
+            BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP,
+            BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP,
+        ];
+
         $count = 0;
         $batch->items()
             ->where('status', BulkShippingLabelItem::STATUS_PENDING)
+            ->whereNotExists(function ($query) use ($activeStatuses): void {
+                $query
+                    ->selectRaw('1')
+                    ->from('bulk_shipping_label_items as active_items')
+                    ->whereColumn('active_items.order_id', 'bulk_shipping_label_items.order_id')
+                    ->whereIn('active_items.status', $activeStatuses);
+            })
             ->orderBy('created_at')
-            ->select(['id', 'batch_id'])
+            ->select(['id', 'batch_id', 'order_id'])
             ->cursor()
             ->each(function (BulkShippingLabelItem $item) use (&$count): void {
                 $this->dispatchItem($item);
@@ -327,7 +362,7 @@ class BulkShippingLabelService
 
     public function dispatchItem(BulkShippingLabelItem $item): void
     {
-        ProcessBulkShippingLabelItemJob::dispatch($item->batch_id, $item->id);
+        ProcessBulkShippingLabelItemJob::dispatch($item->batch_id, $item->id, (string) $item->order_id);
     }
 
     public function processPendingItem(BulkShippingLabelItem $item): void
@@ -358,25 +393,21 @@ class BulkShippingLabelService
 
     public function markItemCrashed(string $batchId, string $itemId): void
     {
-        $updated = BulkShippingLabelItem::query()
+        $item = BulkShippingLabelItem::query()
             ->whereKey($itemId)
             ->where('batch_id', $batchId)
-            ->whereIn('status', BulkShippingLabelItem::TRANSIENT_STATUSES)
-            ->update([
-                'status' => BulkShippingLabelItem::STATUS_FAILED,
-                'reason' => BulkShippingLabelItem::REASON_BATCH_CRASHED,
-                'updated_at' => now(),
-            ]);
+            ->first(['id', 'order_id']);
 
-        if ($updated === 0) {
+        if (! $item) {
             return;
         }
 
-        $batch = BulkShippingLabelBatch::find($batchId);
-        if ($batch) {
-            $batch->recomputeCounts();
-            $this->tryFinalize($batch);
-        }
+        $items = $this->failOrderItems(
+            (string) $item->order_id,
+            BulkShippingLabelItem::REASON_BATCH_CRASHED,
+        );
+
+        $this->finalizeAffectedBatches($items);
     }
 
     public function resolveChannelOptions(string $channel): array
@@ -758,7 +789,7 @@ class BulkShippingLabelService
 
         $bytes = $this->resolveLabelBytes($result);
         if ($bytes !== null) {
-            $this->succeed($item, $bytes);
+            $this->succeed($item, $bytes, $order);
 
             return;
         }
@@ -873,32 +904,146 @@ class BulkShippingLabelService
         string $bytes,
         ?SalesOrder $order = null,
     ): void {
+        $orderId = (string) ($order?->id ?? $item->order_id);
         if ($order) {
             $this->salesOrderService->cacheShippingLabelBytes($order, $bytes);
+            if ($order->shipping_label_status !== 'ready') {
+                $order->forceFill([
+                    'shipping_label_status' => 'ready',
+                    'shipping_label_prepared_at' => now(),
+                ])->saveQuietly();
+            }
         }
 
-        $item->update([
-            'status' => BulkShippingLabelItem::STATUS_DONE,
-            'pdf_bytes' => $bytes,
-            'downloaded_at' => now(),
-            'reason' => null,
-        ]);
+        $items = $this->completeOrderItems($orderId, $bytes);
+        if ($items->isEmpty()) {
+
+            $this->completeItems(collect([$item]), $bytes);
+            $items = collect([$item]);
+        }
+
+        $this->finalizeAffectedBatches($items);
     }
 
     private function fail(BulkShippingLabelItem $item, string $reason): void
     {
-        $item->update([
-            'status' => BulkShippingLabelItem::STATUS_FAILED,
-            'reason' => $reason,
-        ]);
+        $items = $this->failOrderItems((string) $item->order_id, $reason);
+        if ($items->isEmpty()) {
+            $item->update([
+                'status' => BulkShippingLabelItem::STATUS_FAILED,
+                'reason' => $reason,
+            ]);
+            $items = collect([$item]);
+        }
+
+        $this->finalizeAffectedBatches($items);
     }
 
     private function skipInstant(BulkShippingLabelItem $item): void
     {
-        $item->update([
-            'status' => BulkShippingLabelItem::STATUS_SKIPPED_INSTANT,
-            'reason' => BulkShippingLabelItem::REASON_INSTANT_COURIER,
-        ]);
+        $items = BulkShippingLabelItem::query()
+            ->where('order_id', $item->order_id)
+            ->whereIn('status', BulkShippingLabelItem::TRANSIENT_STATUSES)
+            ->get();
+
+        foreach ($items as $sharedItem) {
+            $sharedItem->update([
+                'status' => BulkShippingLabelItem::STATUS_SKIPPED_INSTANT,
+                'reason' => BulkShippingLabelItem::REASON_INSTANT_COURIER,
+            ]);
+        }
+
+        $this->finalizeAffectedBatches($items->isEmpty() ? collect([$item]) : $items);
+    }
+
+    private function hydrateCachedLabel(string $orderId): bool
+    {
+        $order = SalesOrder::find($orderId);
+        if (! $order) {
+            return false;
+        }
+
+        $bytes = $this->salesOrderService->cachedShippingLabelBytes($order);
+        if ($bytes === null || $bytes === '') {
+            return false;
+        }
+
+        $items = $this->completeOrderItems($orderId, $bytes);
+        if ($items->isNotEmpty()) {
+            $this->finalizeAffectedBatches($items);
+        }
+
+        return $items->isNotEmpty();
+    }
+
+    private function inheritActiveOrderState(string $batchId, string $orderId): void
+    {
+        $active = BulkShippingLabelItem::query()
+            ->where('order_id', $orderId)
+            ->where('batch_id', '!=', $batchId)
+            ->whereIn('status', [
+                BulkShippingLabelItem::STATUS_DOWNLOADING,
+                BulkShippingLabelItem::STATUS_WAITING_AWB,
+                BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP,
+                BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP,
+            ])
+            ->latest('updated_at')
+            ->first(['status', 'reason']);
+
+        if (! $active) {
+            return;
+        }
+
+        BulkShippingLabelItem::query()
+            ->where('batch_id', $batchId)
+            ->where('order_id', $orderId)
+            ->where('status', BulkShippingLabelItem::STATUS_PENDING)
+            ->update([
+                'status' => $active->status,
+                'reason' => $active->reason,
+                'updated_at' => now(),
+            ]);
+    }
+
+    private function completeOrderItems(string $orderId, string $bytes)
+    {
+        $items = BulkShippingLabelItem::query()
+            ->where('order_id', $orderId)
+            ->whereIn('status', BulkShippingLabelItem::TRANSIENT_STATUSES)
+            ->get();
+
+        $this->completeItems($items, $bytes);
+
+        return $items;
+    }
+
+    private function completeItems($items, string $bytes): void
+    {
+        foreach ($items as $sharedItem) {
+            $sharedItem->update([
+                'status' => BulkShippingLabelItem::STATUS_DONE,
+                'pdf_bytes' => $bytes,
+                'downloaded_at' => now(),
+                'reason' => null,
+            ]);
+        }
+    }
+
+    private function failOrderItems(string $orderId, string $reason)
+    {
+        $items = BulkShippingLabelItem::query()
+            ->where('order_id', $orderId)
+            ->whereIn('status', BulkShippingLabelItem::TRANSIENT_STATUSES)
+            ->get();
+
+        foreach ($items as $sharedItem) {
+            $sharedItem->update([
+                'status' => BulkShippingLabelItem::STATUS_FAILED,
+                'reason' => $reason,
+            ]);
+        }
+
+        return $items;
     }
 
     public function onOrderAwbReady(string $orderId): void

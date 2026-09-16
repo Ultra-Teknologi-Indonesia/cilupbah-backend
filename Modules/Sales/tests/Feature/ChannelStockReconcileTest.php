@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Modules\Inbound\Models\Inbound;
+use Modules\Inventory\Support\StockSummary;
 use Modules\Sales\Exceptions\InvalidReturnStateException;
 use Modules\Sales\Jobs\SyncStockJob;
 use Modules\Sales\Models\SalesOrder;
@@ -461,7 +462,8 @@ class ChannelStockReconcileTest extends TestCase
         $this->assertNotNull($orderId);
         $this->assertSame(2, $this->totalOnOrder(), 'Stok Kosong tetap menahan kuota order marketplace.');
         $this->assertSame(0, (int) $inv->on_hand, 'Order channel tidak mengubah stok fisik.');
-        $this->assertSame(-2, (int) $inv->available);
+        $summary = StockSummary::forItems([$this->variantId], [$this->locationId]);
+        $this->assertSame(-2, (int) ($summary[$this->variantId]['available'] ?? 0));
         $this->assertSame(1, $this->movements('ORDER_RESERVE'));
 
         $order = SalesOrder::findOrFail($orderId);

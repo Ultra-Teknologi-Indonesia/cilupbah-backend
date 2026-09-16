@@ -1,52 +1,50 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: cilupbah-horizon
+  name: cilupbah-horizon-labels
   namespace: cilupbah
 spec:
   replicas: 1
-  # This instance owns only background supervisors. The critical profile is
-  # deployed separately so catalog/export work cannot delay marketplace events.
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: cilupbah-horizon
+      app: cilupbah-horizon-labels
   template:
     metadata:
       labels:
-        app: cilupbah-horizon
+        app: cilupbah-horizon-labels
     spec:
       imagePullSecrets:
         - name: ghcr-creds
       containers:
-        - name: horizon
+        - name: horizon-labels
           image: ghcr.io/ultra-teknologi-indonesia/cilupbah:v1.0.0
           command: ["php", "artisan", "horizon"]
-          resources:
-            requests:
-              memory: "2Gi"
-              cpu: "500m"
-            limits:
-              # Background supervisors have a bounded worker budget plus
-              # Horizon/master overhead; this cap prevents fan-out growth.
-              memory: "5Gi"
-              # Keep CPU available for critical queues, API and Redis.
-              cpu: "2000m"
           envFrom:
             - secretRef:
                 name: cilupbah-env
           env:
-            - name: REDIS_LONG_QUEUE_RETRY_AFTER
-              value: "2160"
             - name: HORIZON_PROFILE
-              value: "background"
-            - name: CHANNEL_SYNC_WINDOW_MINUTES
-              value: "5"
+              value: "labels"
+            - name: QUEUE_LABEL_PARALLELISM
+              value: "4"
             - name: LABEL_LOCAL_FIRST
               value: "true"
             - name: LABEL_PRINT_SPOOL_ROOT
               value: "/var/www/html/storage/app/print-spool"
+            - name: REDIS_LONG_QUEUE_RETRY_AFTER
+              value: "2160"
+          volumeMounts:
+            - name: label-spool
+              mountPath: /var/www/html/storage/app/print-spool
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "1000m"
+            limits:
+              memory: "5Gi"
+              cpu: "2500m"
           livenessProbe:
             exec:
               command: ["sh", "-c", "php artisan horizon:status | grep -q running"]
@@ -54,3 +52,7 @@ spec:
             periodSeconds: 60
             timeoutSeconds: 15
             failureThreshold: 3
+      volumes:
+        - name: label-spool
+          persistentVolumeClaim:
+            claimName: cilupbah-label-spool

@@ -32,12 +32,16 @@ $supervisorProfiles = [
         'supervisor-channel-after-sales',
         'supervisor-cutover',
         'supervisor-downloads',
-        'supervisor-labels',
-        'supervisor-label-archive',
         'supervisor-qr-labels',
         'supervisor-tiktok-webhooks-background',
         'supervisor-shopee-webhooks-background',
         'supervisor-lazada-webhooks-background',
+    ],
+
+    'labels' => [
+        'supervisor-labels',
+        'supervisor-label-awb',
+        'supervisor-label-archive',
     ],
 ];
 
@@ -86,6 +90,8 @@ return [
         'redis-long:qr-labels' => 300,
         config('queue.routing.label_archive.connection', 'redis-long').':'
             .config('queue.routing.label_archive.queue', 'label-archive') => 120,
+        config('queue.routing.label_awb.connection', 'redis-long').':'
+            .config('queue.routing.label_awb.queue', 'label-awb') => 60,
         'redis:shopee-tracking-events' => 30,
         'redis:shopee-tracking' => 60,
     ],
@@ -138,7 +144,7 @@ return [
 
         if (! array_key_exists($profile, $supervisorProfiles)) {
             throw new InvalidArgumentException(
-                "HORIZON_PROFILE '{$profile}' tidak dikenal. Gunakan all, critical, atau background."
+                "HORIZON_PROFILE '{$profile}' tidak dikenal. Gunakan all, critical, background, atau labels."
             );
         }
 
@@ -333,13 +339,26 @@ return [
             'connection' => config('queue.routing.labels.connection', 'redis-long'),
             'queue' => [config('queue.routing.labels.queue', 'labels')],
             'balance' => 'off',
-            'minProcesses' => 1,
-            'maxProcesses' => 1,
+            'minProcesses' => config('queue.routing.labels.parallelism', 4),
+            'maxProcesses' => config('queue.routing.labels.parallelism', 4),
             'maxJobs' => 100,
             'timeout' => 600,
             'tries' => 1,
             'memory' => 512,
             'nice' => 0,
+        ],
+        'supervisor-label-awb' => [
+            'connection' => config('queue.routing.label_awb.connection', 'redis-long'),
+            'queue' => [config('queue.routing.label_awb.queue', 'label-awb')],
+            'balance' => 'off',
+            'minProcesses' => 1,
+            'maxProcesses' => 1,
+            'maxJobs' => 100,
+            'timeout' => 180,
+            'tries' => 3,
+            'backoff' => [10, 30, 60],
+            'memory' => 256,
+            'nice' => 5,
         ],
         'supervisor-label-archive' => [
             'connection' => config('queue.routing.label_archive.connection', 'redis-long'),

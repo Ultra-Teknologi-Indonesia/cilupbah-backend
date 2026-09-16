@@ -209,9 +209,14 @@ return [
         'labels' => [
             'connection' => env('QUEUE_LABEL_CONNECTION', 'redis-long'),
             'queue' => env('QUEUE_NAME_LABELS', 'labels'),
-            'parallelism' => (int) env('QUEUE_LABEL_PARALLELISM', 2),
+            'parallelism' => max(1, min(4, (int) env('QUEUE_LABEL_PARALLELISM', 4))),
             'rate_limit_attempts' => (int) env('QUEUE_LABEL_RATE_LIMIT_ATTEMPTS', 5),
             'rate_limit_decay_seconds' => (int) env('QUEUE_LABEL_RATE_LIMIT_DECAY_SECONDS', 1),
+        ],
+
+        'label_awb' => [
+            'connection' => env('QUEUE_LABEL_AWB_CONNECTION', 'redis-long'),
+            'queue' => env('QUEUE_NAME_LABEL_AWB', 'label-awb'),
         ],
 
         'label_archive' => [

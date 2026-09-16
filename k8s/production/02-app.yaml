@@ -38,6 +38,13 @@ spec:
           env:
             - name: REDIS_LONG_QUEUE_RETRY_AFTER
               value: "2160"
+            - name: LABEL_LOCAL_FIRST
+              value: "true"
+            - name: LABEL_PRINT_SPOOL_ROOT
+              value: "/var/www/html/storage/app/print-spool"
+          volumeMounts:
+            - name: label-spool
+              mountPath: /var/www/html/storage/app/print-spool
           resources:
             requests:
               memory: "512Mi"
@@ -69,6 +76,10 @@ spec:
             periodSeconds: 30
             timeoutSeconds: 5
             failureThreshold: 5
+      volumes:
+        - name: label-spool
+          persistentVolumeClaim:
+            claimName: cilupbah-label-spool
 ---
 apiVersion: v1
 kind: Service

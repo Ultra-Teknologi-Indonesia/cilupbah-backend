@@ -117,6 +117,9 @@ class HorizonQueueCoverageTest extends TestCase
             'supervisor-shopee-webhooks-background' => [1, 1],
             'supervisor-lazada-fulfillment' => [1, 1],
             'supervisor-lazada-webhooks-background' => [1, 1],
+            'supervisor-labels' => [4, 4],
+            'supervisor-label-awb' => [1, 1],
+            'supervisor-label-archive' => [1, 1],
         ] as $name => [$minProcesses, $maxProcesses]) {
             $supervisor = config("horizon.defaults.{$name}");
 
@@ -224,9 +227,11 @@ class HorizonQueueCoverageTest extends TestCase
 
         $critical = config('horizon.profiles.critical', []);
         $background = config('horizon.profiles.background', []);
+        $labels = config('horizon.profiles.labels', []);
         $this->assertSame([], array_intersect($critical, $background));
+        $this->assertSame([], array_intersect($labels, array_merge($critical, $background)));
         $expectedSupervisors = array_values(array_unique(array_keys($allSupervisors)));
-        $profileSupervisors = array_values(array_unique(array_merge($critical, $background)));
+        $profileSupervisors = array_values(array_unique(array_merge($critical, $background, $labels)));
         sort($expectedSupervisors);
         sort($profileSupervisors);
         $this->assertSame(
@@ -264,6 +269,7 @@ class HorizonQueueCoverageTest extends TestCase
         $profileQueues = array_values(array_unique(array_merge(
             $criticalQueues,
             $backgroundQueues,
+            $queuesByProfile['labels'] ?? [],
             (array) config('queue.dedicated_queues', []),
         )));
         sort($expected);

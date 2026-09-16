@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cilupbah-label-spool
+  namespace: cilupbah
+spec:
+  # Production currently runs on one dedicated VPS. RWO still permits the
+  # API and label pods to mount the volume together when scheduled on that
+  # node, while avoiding an unbounded ephemeral container filesystem.
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi

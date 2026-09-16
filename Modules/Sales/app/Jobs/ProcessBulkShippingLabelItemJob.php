@@ -28,6 +28,7 @@ class ProcessBulkShippingLabelItemJob implements ShouldBeUnique, ShouldQueue
     public function __construct(
         public readonly string $batchId,
         public readonly string $itemId,
+        public readonly ?string $orderId = null,
     ) {
         $this->onConnection(config('queue.routing.labels.connection', 'redis-long'));
         $this->onQueue(config('queue.routing.labels.queue', 'labels'));
@@ -35,7 +36,10 @@ class ProcessBulkShippingLabelItemJob implements ShouldBeUnique, ShouldQueue
 
     public function uniqueId(): string
     {
-        return "{$this->batchId}:{$this->itemId}";
+
+        return $this->orderId !== null
+            ? "order:{$this->orderId}"
+            : "{$this->batchId}:{$this->itemId}";
     }
 
     public function handle(BulkShippingLabelService $service): void
@@ -45,7 +49,18 @@ class ProcessBulkShippingLabelItemJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        $lock = Cache::lock("bulk-label-item:{$this->itemId}", $this->timeout + 60);
+        $pendingItem = BulkShippingLabelItem::query()
+            ->whereKey($this->itemId)
+            ->where('batch_id', $this->batchId)
+            ->where('status', BulkShippingLabelItem::STATUS_PENDING)
+            ->first();
+
+        if (! $pendingItem) {
+            return;
+        }
+
+        $orderKey = $this->orderId ?: (string) $pendingItem->order_id;
+        $lock = Cache::lock("bulk-label-order:{$orderKey}", $this->timeout + 60);
         if (! $lock->get()) {
             $this->release(5);
 

@@ -3,6 +3,7 @@
 namespace Modules\Sales\Jobs;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -18,13 +19,15 @@ use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\BulkShippingLabelService;
 
-class RequestChannelAwbJob implements ShouldQueue
+class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
 
     public array $backoff = [10, 30, 60];
+
+    public int $uniqueFor = 900;
 
     private const TRACKING_RETRY_DELAYS = [30, 60, 300, 600];
 
@@ -33,7 +36,13 @@ class RequestChannelAwbJob implements ShouldQueue
         public readonly int $trackingAttempt = 0,
     ) {
         $this->onConnection(config('queue.routing.labels.connection', 'redis-long'));
-        $this->onQueue(config('queue.routing.labels.queue', 'labels'));
+        $this->onQueue(config('queue.routing.label_awb.queue', 'label-awb'));
+    }
+
+    public function uniqueId(): string
+    {
+
+        return "order:{$this->orderId}:attempt:{$this->trackingAttempt}";
     }
 
     public function handle(OutboundFulfillmentService $fulfillment): void

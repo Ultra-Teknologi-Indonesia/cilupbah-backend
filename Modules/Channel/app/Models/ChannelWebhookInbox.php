@@ -226,11 +226,6 @@ class ChannelWebhookInbox extends Model
         });
     }
 
-    /**
-     * Marks a downstream order refresh as failed after the webhook was
-     * accepted. This is separate so a late refresh failure cannot overwrite a
-     * successful non-order webhook.
-     */
     public static function markDownstreamFailedByKey(string $eventKey, string $message): void
     {
         DB::transaction(function () use ($eventKey, $message): void {

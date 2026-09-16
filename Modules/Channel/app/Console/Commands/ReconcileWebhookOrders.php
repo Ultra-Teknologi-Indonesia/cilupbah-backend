@@ -80,10 +80,6 @@ final class ReconcileWebhookOrders extends Command
         return self::SUCCESS;
     }
 
-    /**
-     * @param  array{channel:string,shop_id:string,order_id:string,event_key:string,event_type:?string}  $candidate
-     * @param  array<string,int>  $stats
-     */
     private function processBatch(array $candidates, bool $fix, int $limit, array &$stats): void
     {
         $unique = [];
@@ -146,10 +142,6 @@ final class ReconcileWebhookOrders extends Command
         }
     }
 
-    /**
-     * @param  list<array{channel:string,shop_id:string,order_id:string,event_key:string,event_type:?string}>  $candidates
-     * @return list<array{key:string,channel:string,shop_id:string,order_ids:list<string>}>
-     */
     private function groupByShop(array $candidates): array
     {
         $groups = [];
@@ -167,9 +159,6 @@ final class ReconcileWebhookOrders extends Command
         return array_values($groups);
     }
 
-    /**
-     * @return array{channel:string,shop_id:string,order_id:string,event_key:string,event_type:?string}|null
-     */
     private function candidateFromWebhook(ChannelWebhookInbox $row): ?array
     {
         $channel = strtolower((string) $row->channel);

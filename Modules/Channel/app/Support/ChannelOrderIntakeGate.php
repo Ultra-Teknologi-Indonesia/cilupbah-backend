@@ -33,10 +33,6 @@ class ChannelOrderIntakeGate
         return 'Sinkron pesanan toko ini dimatikan — event tidak diproses.';
     }
 
-    /**
-     * Order intake only blocks creating a new local order. It must not block
-     * status/payment updates for an order that is already known locally.
-     */
     public static function shouldDeferOrderEvent(string $channel, string $shopId, string $orderId): bool
     {
         $orderId = trim($orderId);

@@ -1238,6 +1238,18 @@ class SalesOrderService
         throw new \InvalidArgumentException("Channel '{$source}' belum mendukung cetak resi otomatis.");
     }
 
+    public function cachedShippingLabelBytes(SalesOrder $order): ?string
+    {
+        $cached = $this->readCachedShippingLabel($order);
+        if (! is_array($cached) || empty($cached['document_base64'])) {
+            return null;
+        }
+
+        $bytes = base64_decode((string) $cached['document_base64'], true);
+
+        return $bytes === false || $bytes === '' ? null : $bytes;
+    }
+
     private function readCachedShippingLabel(SalesOrder $order): ?array
     {
         if ($order->shipping_label_status !== 'ready') {
