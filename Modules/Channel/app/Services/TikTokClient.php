@@ -2,17 +2,23 @@
 
 namespace Modules\Channel\Services;
 
+use Illuminate\Contracts\Cache\LockProvider;
+use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Modules\Channel\Exceptions\TikTokApiException;
 use Modules\Channel\Exceptions\TokenExpiredException;
+use Modules\Channel\Helpers\TikTokSignature;
 use Modules\Channel\Support\TikTokErrorCatalog;
 
 class TikTokClient
 {
     protected string $appKey;
+
     protected string $appSecret;
+
     protected string $baseUrl;
 
     public function __construct()
@@ -21,7 +27,7 @@ class TikTokClient
         $this->appSecret = config('services.tiktok.app_secret');
         $this->baseUrl = config('services.tiktok.base_url', 'https://open-api.tiktokglobalshop.com');
 
-        if (!$this->appKey || !$this->appSecret) {
+        if (! $this->appKey || ! $this->appSecret) {
             throw new \RuntimeException('TikTok credentials are not configured. Set TIKTOK_APP_KEY and TIKTOK_APP_SECRET.');
         }
     }
@@ -30,11 +36,11 @@ class TikTokClient
     {
         $contentType = $isMultipart ? 'multipart/form-data' : 'application/json';
 
-        if (!$isMultipart && empty($body) && strtoupper($method) !== 'GET') {
+        if (! $isMultipart && empty($body) && strtoupper($method) !== 'GET') {
             $body = '{}';
         }
 
-        return \Modules\Channel\Helpers\TikTokSignature::generate($path, $queries, $body, $this->appSecret, $contentType);
+        return TikTokSignature::generate($path, $queries, $body, $this->appSecret, $contentType);
     }
 
     public function request(string $method, string $path, array $queries = [], array $body = [], ?string $accessToken = null, array $files = [], ?int $timeoutSeconds = null)
@@ -46,15 +52,15 @@ class TikTokClient
             $queries['access_token'] = $accessToken;
         }
 
-        $isMultipart = !empty($files);
+        $isMultipart = ! empty($files);
         $queries['sign'] = $this->generateSignature($path, $queries, empty($body) ? null : $body, $isMultipart, $method);
 
-        $url = $this->baseUrl . $path;
+        $url = $this->baseUrl.$path;
 
         $queryString = http_build_query($queries);
-        $fullUrl = $url . '?' . $queryString;
+        $fullUrl = $url.'?'.$queryString;
 
-        $this->throttle();
+        $this->throttle($queries['shop_cipher'] ?? $queries['shop_id'] ?? $accessToken ?? 'global');
 
         $requestMethod = strtolower($method);
 
@@ -89,10 +95,10 @@ class TikTokClient
         if (is_array($data) && isset($data['code']) && $data['code'] !== 0) {
             $shopId = $queries['shop_cipher'] ?? 'unknown';
             $this->raiseApiError($data['code'], $data['message'] ?? null, $shopId, [
-                'url'         => $fullUrl,
-                'body'        => $body,
+                'url' => $fullUrl,
+                'body' => $body,
                 'http_status' => $response->status(),
-                'response'    => $data,
+                'response' => $data,
             ]);
         }
 
@@ -105,7 +111,7 @@ class TikTokClient
                 'message' => $message,
             ]);
 
-            throw new \RuntimeException('TikTok API HTTP Error [' . $response->status() . ']: ' . $message);
+            throw new \RuntimeException('TikTok API HTTP Error ['.$response->status().']: '.$message);
         }
 
         return $data;
@@ -134,14 +140,60 @@ class TikTokClient
         );
     }
 
-    protected function throttle(): void
+    protected function throttle(string $scope): void
     {
-        $limit = config('channel.api_rate_limit_per_second', 8);
+        $limit = max(1, (int) config('ratelimit.channel_api_per_second_by_channel.tiktok', 4));
+        $key = 'tiktok-api:'.hash('sha256', (string) $scope);
+        $decaySeconds = 1;
+        $cache = Cache::store(config('ratelimit.store'));
+        $store = $cache->getStore();
 
-        if (!RateLimiter::attempt('tiktok-api', $limit, fn () => null, 1)) {
-            $wait = RateLimiter::availableIn('tiktok-api');
-            usleep((int) ($wait * 1_000_000) + 50_000);
+        if ($store instanceof LockProvider) {
+            try {
+                $store->lock('tiktok-api-throttle-lock:'.hash('sha256', $key), 10)
+                    ->block(60, function () use ($key, $limit, $decaySeconds): void {
+                        $this->reserveTikTokApiSlot($key, $limit, $decaySeconds);
+                    });
+
+                return;
+            } catch (LockTimeoutException $e) {
+                Log::warning('TikTok API throttle lock timeout; applying bounded fallback delay.', [
+                    'scope' => hash('sha256', (string) $scope),
+                    'exception' => $e->getMessage(),
+                ]);
+                usleep(1_050_000);
+
+                if (RateLimiter::attempt($key, $limit, fn () => null, $decaySeconds)) {
+                    return;
+                }
+
+                throw new \RuntimeException('Pembatas TikTok sedang penuh; request ditunda oleh queue.', 0, $e);
+            }
         }
+
+        for ($attempt = 0; $attempt < 10; $attempt++) {
+            if (RateLimiter::attempt($key, $limit, fn () => null, $decaySeconds)) {
+                return;
+            }
+
+            $wait = max(1, RateLimiter::availableIn($key));
+            usleep(($wait * 1_000_000) + 50_000);
+        }
+
+        throw new \RuntimeException('Slot pembatas TikTok tidak tersedia dalam batas waktu.');
+    }
+
+    protected function reserveTikTokApiSlot(string $key, int $limit, int $decaySeconds): void
+    {
+        for ($attempt = 0; $attempt < 60; $attempt++) {
+            if (RateLimiter::attempt($key, $limit, fn () => null, $decaySeconds)) {
+                return;
+            }
+
+            sleep(max(1, RateLimiter::availableIn($key)));
+        }
+
+        throw new \RuntimeException('Slot pembatas TikTok tidak tersedia dalam batas waktu.');
     }
 
     public function getAuthUrl(string $redirectUri, string $state = ''): string
@@ -153,7 +205,7 @@ class TikTokClient
             'state' => $state,
         ];
 
-        return $url . '?' . http_build_query($queries);
+        return $url.'?'.http_build_query($queries);
     }
 
     public function getAccessToken(string $authCode, string $redirectUri)
@@ -168,7 +220,7 @@ class TikTokClient
         ];
 
         $authBaseUrl = 'https://auth.tiktok-shops.com';
-        $url = $authBaseUrl . $path . '?' . http_build_query($queries);
+        $url = $authBaseUrl.$path.'?'.http_build_query($queries);
 
         $response = Http::timeout(30)->connectTimeout(15)->get($url);
 
@@ -194,7 +246,7 @@ class TikTokClient
         ];
 
         $authBaseUrl = 'https://auth.tiktok-shops.com';
-        $url = $authBaseUrl . $path . '?' . http_build_query($queries);
+        $url = $authBaseUrl.$path.'?'.http_build_query($queries);
 
         $response = Http::timeout(30)->connectTimeout(15)->get($url);
 
@@ -208,23 +260,24 @@ class TikTokClient
             return [];
         }
 
-        $limit  = max(1, (int) config('channel.api_rate_limit_per_second', 8));
+        $limit = max(1, (int) config('channel.api_rate_limit_per_second', 8));
         $chunks = array_chunk($productIds, $limit);
-        $out    = [];
+        $out = [];
 
         foreach ($chunks as $ci => $chunk) {
             $responses = Http::pool(function ($pool) use ($chunk, $shopCipher, $accessToken) {
                 $requests = [];
                 foreach ($chunk as $pid) {
-                    $path    = "/product/202309/products/{$pid}";
+                    $this->throttle($shopCipher);
+                    $path = "/product/202309/products/{$pid}";
                     $queries = [
-                        'app_key'      => $this->appKey,
-                        'timestamp'    => time(),
+                        'app_key' => $this->appKey,
+                        'timestamp' => time(),
                         'access_token' => $accessToken,
-                        'shop_cipher'  => $shopCipher,
+                        'shop_cipher' => $shopCipher,
                     ];
                     $queries['sign'] = $this->generateSignature($path, $queries, null, false, 'GET');
-                    $url = $this->baseUrl . $path . '?' . http_build_query($queries);
+                    $url = $this->baseUrl.$path.'?'.http_build_query($queries);
 
                     $requests[] = $pool->as($pid)
                         ->withHeaders(['x-tts-access-token' => $accessToken])

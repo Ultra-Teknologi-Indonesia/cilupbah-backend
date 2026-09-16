@@ -159,7 +159,7 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
     public function handle(AdapterFactory $factory): void
     {
         if (app(ChannelSyncSettingService::class)->isPaused()) {
-            $this->recordUploadResult(false, 'Sinkronisasi channel sedang dinonaktifkan.');
+            $this->recordSkipped('Sinkronisasi channel sedang dinonaktifkan.');
 
             return;
         }
@@ -185,7 +185,7 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
                 ? 'Sinkronisasi stok untuk toko ini sedang dinonaktifkan.'
                 : 'Upload katalog untuk toko ini sedang dinonaktifkan.';
 
-            $this->recordUploadResult(false, $message);
+            $this->recordSkipped($message);
 
             Log::info('SyncProductToChannelJob skipped: sinkronisasi untuk toko ini dimatikan.', [
                 'product_id' => $this->productId,
@@ -564,6 +564,47 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
                 'error' => $structured,
                 'original_message' => $message,
                 'raw' => ! empty($raw) ? $raw : null,
+            ],
+        ]);
+    }
+
+    protected function recordSkipped(string $message): void
+    {
+        $logAction = $this->syncLogAction();
+
+        if ($logAction === null) {
+            return;
+        }
+
+        $query = ProductSyncLog::query()
+            ->where('product_id', $this->productId)
+            ->where('channel_shop_id', $this->channelShopId)
+            ->where('action', $logAction);
+
+        if ($this->uploadLogId) {
+            $query->whereKey($this->uploadLogId);
+        } else {
+            $query->where('status', ProductSyncLog::STATUS_PENDING);
+        }
+
+        $log = $query->latest()->first();
+
+        if (! $log) {
+            $log = ProductSyncLog::record([
+                'product_id' => $this->productId,
+                'channel_shop_id' => $this->channelShopId,
+                'action' => $logAction,
+                'status' => ProductSyncLog::STATUS_SKIPPED,
+            ]);
+        }
+
+        $this->uploadResultRecorded = true;
+        $log->update([
+            'status' => ProductSyncLog::STATUS_SKIPPED,
+            'error_message' => null,
+            'response' => [
+                'outcome' => ProductSyncLog::STATUS_SKIPPED,
+                'reason' => $message,
             ],
         ]);
     }

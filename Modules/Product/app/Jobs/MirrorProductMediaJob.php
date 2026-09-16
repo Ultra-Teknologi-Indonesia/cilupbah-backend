@@ -44,12 +44,7 @@ class MirrorProductMediaJob implements ShouldQueue
         $from = $row->url;
         $sourceUrl = TikTokImageUrl::ensureFetchable($from) ?? $from;
 
-        $media = $uploads->storeFromUrl($sourceUrl);
-        if (! $media) {
-            throw new \RuntimeException(
-                "Gagal mirror product_media #{$this->mediaId} dari {$sourceUrl}"
-            );
-        }
+        $media = $uploads->storeFromUrlStrict($sourceUrl);
 
         $row->forceFill([
             'url' => $media->getUrl(),

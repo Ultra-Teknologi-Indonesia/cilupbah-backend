@@ -338,6 +338,7 @@ class ChannelProductRepository
         $applyUpdate = function (string $existingId) use ($syncStatus, $now, $externalProductId, $attributesJson): string {
             $update = [
                 'sync_status' => $syncStatus,
+                'error_message' => null,
                 'last_synced_at' => $now,
                 'updated_at' => $now,
             ];

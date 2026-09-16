@@ -35,6 +35,7 @@ return [
         'base_url' => env('TIKTOK_BASE_URL', 'https://open-api.tiktokglobalshop.com'),
 
         'finance_statement_path' => env('TIKTOK_FINANCE_STATEMENT_PATH', '/finance/202501/orders/{order_id}/statement_transactions'),
+        'finance_timeout_seconds' => (int) env('TIKTOK_FINANCE_TIMEOUT_SECONDS', 15),
 
         'dump_instant_payload' => env('TIKTOK_DUMP_INSTANT_PAYLOAD', false),
 

@@ -42,6 +42,7 @@ class UploadHistoryResource extends JsonResource
         return match ($this->status) {
             ProductSyncLog::STATUS_SUCCESS => 'Sukses',
             ProductSyncLog::STATUS_FAILED => $this->error_message ?: 'Gagal',
+            ProductSyncLog::STATUS_SKIPPED => 'Dilewati karena sinkronisasi dinonaktifkan',
             default => 'Sedang diproses',
         };
     }

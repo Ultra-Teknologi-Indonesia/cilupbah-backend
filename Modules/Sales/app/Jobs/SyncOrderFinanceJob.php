@@ -7,6 +7,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
@@ -114,6 +115,22 @@ class SyncOrderFinanceJob implements ShouldBeUnique, ShouldQueue
                 'lazada' => $this->fetchLazada($order),
                 default => null,
             };
+        } catch (ConnectionException $e) {
+            $delay = min(300, max(30, $this->backoffSeconds() + random_int(3, 10)));
+            Log::warning('SyncOrderFinanceJob downstream connection timeout; deferred with bounded retry', [
+                'job' => self::class,
+                'order_id' => $order->id,
+                'source' => $order->source,
+                'channel_shop_id' => $order->channel_shop_id,
+                'attempt' => $this->attempts(),
+                'delay_seconds' => $delay,
+                'exception_class' => $e::class,
+                'exception' => $e->getMessage(),
+            ]);
+            $control->markRetryable($order->id, $e, $delay);
+            $this->release($delay);
+
+            return;
         } catch (TikTokApiException $e) {
             if ($e->isRetryable() || \in_array((string) $e->errorCode, ['36009002', '12052109', '36009003'], true)) {
                 $delay = min(300, (int) pow(2, $this->attempts()) * 10 + rand(3, 10));
@@ -143,6 +160,24 @@ class SyncOrderFinanceJob implements ShouldBeUnique, ShouldQueue
         } catch (\Throwable $e) {
             if (DatabaseAvailability::isPermanentDataError($e)) {
                 $this->failWithoutRetry($e, $order, 'fetch');
+
+                return;
+            }
+
+            if ($this->isDownstreamConnectionFailure($e)) {
+                $delay = min(300, max(30, $this->backoffSeconds() + random_int(3, 10)));
+                Log::warning('SyncOrderFinanceJob downstream timeout; deferred with bounded retry', [
+                    'job' => self::class,
+                    'order_id' => $order->id,
+                    'source' => $order->source,
+                    'channel_shop_id' => $order->channel_shop_id,
+                    'attempt' => $this->attempts(),
+                    'delay_seconds' => $delay,
+                    'exception_class' => $e::class,
+                    'exception' => $e->getMessage(),
+                ]);
+                $control->markRetryable($order->id, $e, $delay);
+                $this->release($delay);
 
                 return;
             }
@@ -360,5 +395,20 @@ class SyncOrderFinanceJob implements ShouldBeUnique, ShouldQueue
         $index = max(0, min(count($this->backoff) - 1, $this->attempts() - 1));
 
         return (int) ($this->backoff[$index] ?? 60);
+    }
+
+    private function isDownstreamConnectionFailure(\Throwable $exception): bool
+    {
+        for ($current = $exception; $current !== null; $current = $current->getPrevious()) {
+            if ($current instanceof ConnectionException) {
+                return true;
+            }
+        }
+
+        $message = strtolower($exception->getMessage());
+
+        return str_contains($message, 'curl error 28')
+            || str_contains($message, 'timed out')
+            || str_contains($message, 'timeout');
     }
 }

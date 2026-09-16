@@ -21,6 +21,10 @@ return [
 
     'search_concurrency_driver' => env('CHANNEL_SEARCH_CONCURRENCY_DRIVER', 'process'),
 
+    'media_mirror_timeout_seconds' => (int) env('CHANNEL_MEDIA_MIRROR_TIMEOUT_SECONDS', 15),
+    'media_mirror_connect_timeout_seconds' => (int) env('CHANNEL_MEDIA_MIRROR_CONNECT_TIMEOUT_SECONDS', 5),
+    'media_mirror_max_bytes' => (int) env('CHANNEL_MEDIA_MIRROR_MAX_BYTES', 10 * 1024 * 1024),
+
     'lazada_defaults' => [
         'primary_category' => env('LAZADA_DEFAULT_CATEGORY_ID'),
         'brand' => env('LAZADA_DEFAULT_BRAND', 'No Brand'),

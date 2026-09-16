@@ -127,7 +127,7 @@ class UploadStatusTransitionTest extends TestCase
         Queue::assertNothingPushed(SyncProductToChannelJob::class);
     }
 
-    public function test_catalog_push_disabled_marks_existing_pending_log_failed(): void
+    public function test_catalog_push_disabled_marks_existing_pending_log_skipped(): void
     {
         $this->shop->forceFill(['catalog_push_enabled' => false])->save();
         $log = $this->pendingLog();
@@ -136,8 +136,12 @@ class UploadStatusTransitionTest extends TestCase
             ->handle($this->app->make(AdapterFactory::class));
 
         $log->refresh();
-        $this->assertSame(ProductSyncLog::STATUS_FAILED, $log->status);
-        $this->assertSame('Upload katalog untuk toko ini sedang dinonaktifkan.', $log->error_message);
+        $this->assertSame(ProductSyncLog::STATUS_SKIPPED, $log->status);
+        $this->assertNull($log->error_message);
+        $this->assertSame(
+            'Upload katalog untuk toko ini sedang dinonaktifkan.',
+            $log->response['reason'] ?? null,
+        );
     }
 
     public function test_job_updates_the_exact_upload_log(): void

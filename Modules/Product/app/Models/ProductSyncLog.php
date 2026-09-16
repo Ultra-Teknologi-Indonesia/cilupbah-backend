@@ -12,15 +12,24 @@ class ProductSyncLog extends Model
     use HasUuid7;
 
     public const ACTION_UPLOAD = 'upload';
+
     public const ACTION_DOWNLOAD = 'download';
+
     public const ACTION_SYNC = 'sync';
+
     public const ACTION_SYNC_PRICE = 'sync_price';
+
     public const ACTION_SYNC_STOCK = 'sync_stock';
+
     public const ACTION_UNLINK = 'unlink';
 
     public const STATUS_SUCCESS = 'success';
+
     public const STATUS_FAILED = 'failed';
+
     public const STATUS_PENDING = 'pending';
+
+    public const STATUS_SKIPPED = 'skipped';
 
     protected $fillable = [
         'product_id',

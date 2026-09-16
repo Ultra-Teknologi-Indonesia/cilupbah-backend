@@ -313,7 +313,15 @@ class TikTokOrderService
 
         $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
 
-        $res = $this->client->request('GET', $this->financeStatementPath($orderId), $queries, [], $shop->access_token);
+        $res = $this->client->request(
+            'GET',
+            $this->financeStatementPath($orderId),
+            $queries,
+            [],
+            $shop->access_token,
+            [],
+            max(1, (int) config('services.tiktok.finance_timeout_seconds', 15)),
+        );
 
         return $res['data'] ?? [];
     }

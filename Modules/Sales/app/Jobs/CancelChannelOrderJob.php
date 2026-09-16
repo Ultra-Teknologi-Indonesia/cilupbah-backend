@@ -3,9 +3,11 @@
 namespace Modules\Sales\Jobs;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -18,7 +20,7 @@ use Modules\Notification\Services\NotificationDispatcher;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderService;
 
-class CancelChannelOrderJob implements ShouldQueue
+class CancelChannelOrderJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -26,11 +28,27 @@ class CancelChannelOrderJob implements ShouldQueue
 
     public array $backoff = [30, 60, 120, 300];
 
+    public int $uniqueFor = 900;
+
     public function __construct(
         public readonly string $orderId,
         public readonly string $cancelReason,
     ) {
         $this->onQueue(config('queue.names.channel_cancellation'));
+    }
+
+    public function uniqueId(): string
+    {
+        return $this->orderId;
+    }
+
+    public function middleware(): array
+    {
+        return [
+            (new WithoutOverlapping("channel-cancel:{$this->orderId}"))
+                ->releaseAfter(30)
+                ->expireAfter(600),
+        ];
     }
 
     public function handle(): void
@@ -42,6 +60,12 @@ class CancelChannelOrderJob implements ShouldQueue
         }
 
         if (ChannelFulfillmentGuard::blocks($order->channel_shop_id, 'cancel_order', $order->salesorder_no)) {
+            return;
+        }
+
+        if ($order->channel_cancel_status === 'accepted'
+            || $order->status === 'cancelled'
+            || $order->is_canceled) {
             return;
         }
 
@@ -70,6 +94,10 @@ class CancelChannelOrderJob implements ShouldQueue
             ])->saveQuietly();
         } catch (ChannelCancelException $e) {
             if ($e->retryable) {
+                $order->forceFill([
+                    'channel_cancel_status' => 'pending',
+                    'channel_cancel_error' => Str::limit($e->getMessage(), 255),
+                ])->saveQuietly();
                 throw $e;
             }
 
@@ -89,6 +117,10 @@ class CancelChannelOrderJob implements ShouldQueue
 
             return;
         } catch (\Throwable $e) {
+            $order->forceFill([
+                'channel_cancel_status' => 'pending',
+                'channel_cancel_error' => Str::limit($e->getMessage(), 255),
+            ])->saveQuietly();
             Log::error("CancelChannelOrderJob: gagal cancel di {$order->source}", [
                 'order_id' => $this->orderId,
                 'salesorder_no' => $order->salesorder_no,

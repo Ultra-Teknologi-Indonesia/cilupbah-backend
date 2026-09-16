@@ -257,6 +257,7 @@ final class QueueFailureRecorder
         $chain = [];
         $current = $exception;
         $depth = 0;
+        $message = $this->exceptionMessage($exception);
 
         while ($current !== null && $depth < 10) {
             $chain[] = [
@@ -272,7 +273,7 @@ final class QueueFailureRecorder
 
         return [
             'class' => $exception::class,
-            'message' => $this->redact($exception->getMessage()),
+            'message' => $message,
             'code' => (string) $exception->getCode(),
             'file' => $this->limit($exception->getFile(), 2000),
             'line' => $exception->getLine(),
@@ -281,6 +282,23 @@ final class QueueFailureRecorder
             'attempt' => null,
             'occurred_at' => null,
         ];
+    }
+
+    private function exceptionMessage(Throwable $exception): string
+    {
+        $message = $this->redact($exception->getMessage());
+        $rawMessage = property_exists($exception, 'rawMessage')
+            ? $exception->rawMessage
+            : null;
+
+        if (! is_string($rawMessage) || trim($rawMessage) === '' || str_contains($message, $rawMessage)) {
+            return $message;
+        }
+
+        return $this->limit(
+            $message.' | raw='.$this->redact($rawMessage),
+            self::MAX_MESSAGE_LENGTH,
+        );
     }
 
     private function formatException(array $exception): string

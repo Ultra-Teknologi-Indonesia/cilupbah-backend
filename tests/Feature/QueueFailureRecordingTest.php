@@ -12,7 +12,9 @@ use Illuminate\Queue\MaxAttemptsExceededException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Mockery;
+use Modules\Channel\Exceptions\TikTokApiException;
 use Modules\Channel\Models\ChannelWebhookInbox;
+use Modules\Channel\Support\TikTokErrorCatalog;
 use Modules\Channel\Support\WebhookFailureHandler;
 use Modules\Sales\Jobs\AdminAlertJob;
 use Tests\TestCase;
@@ -108,6 +110,35 @@ final class QueueFailureRecordingTest extends TestCase
         $this->assertSame(\RuntimeException::class, $failedJob->original_exception_class);
         $this->assertSame(2, $failedJob->original_attempt);
         $this->assertStringContainsString('Api access frequency exceeds the limit', $failedJob->original_exception);
+    }
+
+    public function test_channel_exception_keeps_friendly_and_raw_messages(): void
+    {
+        $uuid = 'queue-failure-raw-channel-test';
+        $job = Mockery::mock(Job::class);
+        $job->shouldReceive('uuid')->andReturn($uuid);
+        $job->shouldReceive('getJobId')->andReturn($uuid);
+        $job->shouldReceive('getQueue')->andReturn('channel-sync');
+        $job->shouldReceive('getRawBody')->andReturn(json_encode(['uuid' => $uuid], JSON_THROW_ON_ERROR));
+        $job->shouldReceive('resolveQueuedJobClass')->andReturn('Tests\\Feature\\ExampleJob');
+        $job->shouldReceive('resolveName')->andReturn('Tests\\Feature\\ExampleJob@handle');
+        $job->shouldReceive('attempts')->andReturn(1);
+
+        event(new JobExceptionOccurred(
+            'redis',
+            $job,
+            new TikTokApiException(
+                '36009003',
+                TikTokErrorCatalog::RETRYABLE,
+                'TikTok sedang sibuk.',
+                'upstream internal error code 36009003',
+            ),
+        ));
+
+        $failure = DB::table('queue_failure_attempts')->where('job_uuid', $uuid)->first();
+
+        $this->assertStringContainsString('TikTok sedang sibuk.', $failure->exception_message);
+        $this->assertStringContainsString('upstream internal error code 36009003', $failure->exception_message);
     }
 
     public function test_webhook_failure_uses_the_original_attempt_error(): void
