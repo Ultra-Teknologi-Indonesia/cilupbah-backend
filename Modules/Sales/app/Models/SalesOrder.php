@@ -3,8 +3,8 @@
 namespace Modules\Sales\Models;
 
 use App\Traits\HasUuid7;
-use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -22,7 +22,6 @@ use Modules\Outbound\Models\ShipmentOrder;
 use Modules\Outbound\Support\InstantOrderClassifier;
 use Modules\Sales\Database\Factories\SalesOrderFactory;
 use Modules\Sales\Enums\CancelChannel;
-use Modules\Sales\Enums\BuyerCancellationSyncStatus;
 use Modules\Sales\Enums\ChannelStatus;
 use Modules\Sales\Enums\ContactChannel;
 use Modules\Sales\Enums\CustomerDecision;
@@ -44,12 +43,24 @@ class SalesOrder extends Model implements HasMedia
 {
     use HasFactory, HasUuid7, InteractsWithMedia;
 
+    private bool $channelSnapshotStale = false;
+
     protected static function newFactory(): SalesOrderFactory
     {
         return SalesOrderFactory::new();
     }
 
     protected $table = 'sales_orders';
+
+    public function markChannelSnapshotStale(bool $stale = true): void
+    {
+        $this->channelSnapshotStale = $stale;
+    }
+
+    public function isChannelSnapshotStale(): bool
+    {
+        return $this->channelSnapshotStale;
+    }
 
     public const SEARCH_COLUMNS = [
         'salesorder_no',

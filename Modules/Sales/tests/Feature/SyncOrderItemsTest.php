@@ -5,6 +5,7 @@ namespace Modules\Sales\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Repositories\SalesOrderRepository;
 use Modules\Sales\Services\SalesOrderService;
 use Tests\TestCase;
@@ -24,7 +25,7 @@ class SyncOrderItemsTest extends TestCase
     protected function createVariant(string $sku, float $weight = 0): string
     {
         $categoryId = DB::table('categories')->insertGetId([
-            'name' => 'Kategori ' . $sku,
+            'name' => 'Kategori '.$sku,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -33,7 +34,7 @@ class SyncOrderItemsTest extends TestCase
         DB::table('products')->insert([
             'id' => $productId,
             'category_id' => $categoryId,
-            'name' => 'Produk ' . $sku,
+            'name' => 'Produk '.$sku,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -84,15 +85,53 @@ class SyncOrderItemsTest extends TestCase
     protected function item(string $sku, int $qty, float $price): array
     {
         return [
-            'channel_product_id' => 'CP-' . $sku,
+            'channel_product_id' => 'CP-'.$sku,
             'sku' => $sku,
-            'description' => 'Item ' . $sku,
+            'description' => 'Item '.$sku,
             'qty_in_base' => $qty,
             'price' => $price,
             'disc' => 0,
             'disc_amount' => 0,
             'tax_amount' => 0,
             'amount' => $qty * $price,
+        ];
+    }
+
+    protected function channelOrderPayload(
+        string $salesOrderNo,
+        string $channelOrderNo,
+        string $channelStatus,
+        string $status,
+        bool $isPaid,
+        string $channelUpdatedAt,
+        ?string $paidTime = null,
+    ): array {
+        return [
+            'salesorder_no' => $salesOrderNo,
+            'channel_order_no' => $channelOrderNo,
+            'channel_shop_id' => 'SHOP-1',
+            'customer_name' => 'Buyer Test',
+            'transaction_date' => now(),
+            'sub_total' => 30000,
+            'total_disc' => 0,
+            'total_tax' => 0,
+            'shipping_cost' => 0,
+            'insurance_cost' => 0,
+            'grand_total' => 30000,
+            'shipping_full_name' => null,
+            'shipping_phone' => null,
+            'shipping_address' => null,
+            'shipping_city' => null,
+            'shipping_province' => null,
+            'shipping_post_code' => null,
+            'shipping_country' => null,
+            'channel_status' => $channelStatus,
+            'status' => $status,
+            'is_paid' => $isPaid,
+            'paid_time' => $paidTime,
+            'channel_updated_at' => $channelUpdatedAt,
+            'payment_method' => null,
+            'source' => 'lazada',
         ];
     }
 
@@ -136,10 +175,100 @@ class SyncOrderItemsTest extends TestCase
         $this->assertNotSame($first->id, $second->id);
         $this->assertSame($first->id, $same->id);
         $this->assertSame(2,
-            \Modules\Sales\Models\SalesOrder::query()
+            SalesOrder::query()
                 ->where('channel_order_no', 'ORDER-SAME')
                 ->count(),
         );
+    }
+
+    public function test_channel_payment_state_cannot_regress_and_stale_snapshot_is_ignored(): void
+    {
+        $this->repository->upsertOrderBySalesOrderNo(
+            'LZ-CONSISTENCY-1',
+            $this->channelOrderPayload(
+                'LZ-CONSISTENCY-1',
+                'CHANNEL-CONSISTENCY-1',
+                'UNPAID',
+                'pending',
+                false,
+                '2026-09-15 12:00:00',
+            ),
+        );
+
+        $paid = $this->repository->upsertOrderBySalesOrderNo(
+            'LZ-CONSISTENCY-1',
+            $this->channelOrderPayload(
+                'LZ-CONSISTENCY-1',
+                'CHANNEL-CONSISTENCY-1',
+                'READY_TO_SHIP',
+                'reserved',
+                true,
+                '2026-09-15 12:01:00',
+                '2026-09-15 12:00:59',
+            ),
+        );
+
+        $this->assertSame(
+            '2026-09-15 12:01:00',
+            (string) DB::table('sales_orders')->where('id', $paid->id)->value('channel_updated_at'),
+        );
+
+        $stale = $this->repository->upsertOrderBySalesOrderNo(
+            'LZ-CONSISTENCY-1',
+            $this->channelOrderPayload(
+                'LZ-CONSISTENCY-1',
+                'CHANNEL-CONSISTENCY-1',
+                'UNPAID',
+                'pending',
+                false,
+                '2026-09-15 12:00:30',
+            ),
+        );
+
+        $order = DB::table('sales_orders')
+            ->where('id', $paid->id)
+            ->first();
+
+        $this->assertTrue((bool) $order->is_paid);
+        $this->assertSame('2026-09-15 12:00:59', (string) $order->paid_time);
+        $this->assertSame('READY_TO_SHIP', $order->channel_status);
+        $this->assertSame('2026-09-15 12:01:00', (string) $order->channel_updated_at);
+        $this->assertTrue($stale->isChannelSnapshotStale());
+    }
+
+    public function test_channel_paid_state_remains_paid_when_newer_snapshot_is_unpaid(): void
+    {
+        $this->repository->upsertOrderBySalesOrderNo(
+            'LZ-CONSISTENCY-2',
+            $this->channelOrderPayload(
+                'LZ-CONSISTENCY-2',
+                'CHANNEL-CONSISTENCY-2',
+                'AWAITING_SHIPMENT',
+                'reserved',
+                true,
+                '2026-09-15 12:01:00',
+                '2026-09-15 12:00:59',
+            ),
+        );
+
+        $this->repository->upsertOrderBySalesOrderNo(
+            'LZ-CONSISTENCY-2',
+            $this->channelOrderPayload(
+                'LZ-CONSISTENCY-2',
+                'CHANNEL-CONSISTENCY-2',
+                'UNPAID',
+                'pending',
+                false,
+                '2026-09-15 12:02:00',
+            ),
+        );
+
+        $order = DB::table('sales_orders')
+            ->where('salesorder_no', 'LZ-CONSISTENCY-2')
+            ->first();
+
+        $this->assertTrue((bool) $order->is_paid);
+        $this->assertSame('2026-09-15 12:00:59', (string) $order->paid_time);
     }
 
     protected function createPicklistReferencing(string $orderId, string $orderItemId, string $variantId, string $sku): void
@@ -147,7 +276,7 @@ class SyncOrderItemsTest extends TestCase
         $locationId = Str::uuid()->toString();
         DB::table('locations')->insert([
             'id' => $locationId,
-            'location_code' => 'LOC-' . Str::random(6),
+            'location_code' => 'LOC-'.Str::random(6),
             'location_name' => 'Gudang Test',
             'location_type' => 'WAREHOUSE',
             'created_at' => now(),
@@ -157,7 +286,7 @@ class SyncOrderItemsTest extends TestCase
         $picklistId = Str::uuid()->toString();
         DB::table('picklists')->insert([
             'id' => $picklistId,
-            'picklist_no' => 'PL-' . Str::random(8),
+            'picklist_no' => 'PL-'.Str::random(8),
             'location_id' => $locationId,
             'status' => 'IN_PROGRESS',
             'created_by' => 'tester',

@@ -4,6 +4,7 @@ namespace Modules\Sales\Repositories;
 
 use App\Exceptions\UserFacingException;
 use App\Support\WarehouseAccess;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +21,13 @@ use Spatie\QueryBuilder\QueryBuilder;
 
 class SalesOrderRepository
 {
+    private const CHANNEL_SOURCES = [
+        'shopee',
+        'tiktok',
+        'lazada',
+        'woocommerce',
+    ];
+
     private const ORDER_SORTS = [
         'created_at',
         'transaction_date',
@@ -813,6 +821,65 @@ class SalesOrderRepository
 
         $existing = $existingQuery->lockForUpdate()->first();
 
+        $incomingIsPaid = (bool) ($orderData['is_paid'] ?? false);
+        $existingIsPaid = (bool) ($existing?->is_paid ?? false);
+        $incomingChannelUpdatedAt = $this->parseChannelUpdatedAt($orderData['channel_updated_at'] ?? null);
+        $existingChannelUpdatedAt = $this->parseChannelUpdatedAt($existing?->channel_updated_at ?? null);
+        $isStaleChannelSnapshot = $this->isStaleChannelSnapshot(
+            $source,
+            $existing,
+            $incomingChannelUpdatedAt,
+            $existingChannelUpdatedAt,
+        );
+
+        if ($isStaleChannelSnapshot) {
+            if (! $existingIsPaid && $incomingIsPaid) {
+                DB::table('sales_orders')
+                    ->where('id', $existing->id)
+                    ->update([
+                        'is_paid' => true,
+                        'paid_time' => $orderData['paid_time'] ?? null,
+                        'updated_at' => now(),
+                    ]);
+            }
+
+            Log::notice('sales_order.channel_snapshot_stale_ignored', [
+                'salesorder_no' => $existing->salesorder_no,
+                'source' => $source,
+                'channel_shop_id' => $channelShopId,
+                'channel_order_no' => $channelOrderNo,
+                'incoming_channel_updated_at' => $incomingChannelUpdatedAt?->toIso8601String(),
+                'stored_channel_updated_at' => $existingChannelUpdatedAt?->toIso8601String(),
+                'incoming_is_paid' => $incomingIsPaid,
+                'stored_is_paid' => $existingIsPaid,
+            ]);
+
+            $staleOrder = SalesOrder::find($existing->id);
+            $staleOrder?->markChannelSnapshotStale();
+
+            return $staleOrder;
+        }
+
+        if ($existingIsPaid && ! $incomingIsPaid && in_array($source, self::CHANNEL_SOURCES, true)) {
+            Log::warning('sales_order.channel_payment_regression_prevented', [
+                'salesorder_no' => $existing->salesorder_no,
+                'source' => $source,
+                'channel_shop_id' => $channelShopId,
+                'channel_order_no' => $channelOrderNo,
+                'stored_channel_updated_at' => $existingChannelUpdatedAt?->toIso8601String(),
+                'incoming_channel_updated_at' => $incomingChannelUpdatedAt?->toIso8601String(),
+                'stored_is_paid' => true,
+                'incoming_is_paid' => false,
+            ]);
+        }
+
+        if (in_array($source, self::CHANNEL_SOURCES, true)) {
+            $orderData['is_paid'] = $existingIsPaid || $incomingIsPaid;
+            $orderData['paid_time'] = $orderData['is_paid']
+                ? ($existing?->paid_time ?? ($orderData['paid_time'] ?? null))
+                : null;
+        }
+
         $shippingProvider = $orderData['shipping_provider'] ?? ($existing->shipping_provider ?? null);
         $courierMapper = app(CourierMappingService::class);
         $resolvedCourierId = $shippingProvider
@@ -976,7 +1043,36 @@ class SalesOrderRepository
             $orderId = $orderRow['id'];
         }
 
-        return SalesOrder::find($orderId);
+        $order = SalesOrder::find($orderId);
+        $order?->markChannelSnapshotStale(false);
+
+        return $order;
+    }
+
+    private function isStaleChannelSnapshot(
+        string $source,
+        ?object $existing,
+        ?CarbonImmutable $incomingChannelUpdatedAt,
+        ?CarbonImmutable $existingChannelUpdatedAt,
+    ): bool {
+        return $existing !== null
+            && in_array($source, self::CHANNEL_SOURCES, true)
+            && $incomingChannelUpdatedAt !== null
+            && $existingChannelUpdatedAt !== null
+            && $incomingChannelUpdatedAt->lessThan($existingChannelUpdatedAt);
+    }
+
+    private function parseChannelUpdatedAt(mixed $value): ?CarbonImmutable
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        try {
+            return CarbonImmutable::parse($value);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     private function encodeChannelPackageIds(mixed $value): ?string

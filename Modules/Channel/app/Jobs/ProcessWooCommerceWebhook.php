@@ -7,6 +7,7 @@ use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -56,6 +57,19 @@ class ProcessWooCommerceWebhook implements ShouldBeUnique, ShouldQueue
     public function uniqueId(): string
     {
         return self::idempotencyKey($this->shopId, $this->topic, $this->payload);
+    }
+
+    public function middleware(): array
+    {
+        if ($this->resourceId === '') {
+            return [];
+        }
+
+        return [
+            (new WithoutOverlapping('channel-order:woocommerce:'.$this->shopId.':'.$this->resourceId))
+                ->releaseAfter(5)
+                ->expireAfter(300),
+        ];
     }
 
     public function handle(

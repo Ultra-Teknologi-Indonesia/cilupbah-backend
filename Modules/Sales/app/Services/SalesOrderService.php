@@ -2242,6 +2242,21 @@ class SalesOrderService
                 return null;
             }
 
+            $isChannelSnapshotStale = $order->isChannelSnapshotStale();
+            $this->recordChannelPaymentTransition(
+                $order,
+                (bool) ($existing?->is_paid ?? false),
+                $orderData,
+            );
+
+            if ($isChannelSnapshotStale) {
+                DB::commit();
+
+                $this->forgetOrderTabCounts();
+
+                return $order->id;
+            }
+
             if (! $order->location_id) {
                 try {
                     $locationId = $this->resolveLocationId($order);
@@ -2507,6 +2522,34 @@ class SalesOrderService
         }
     }
 
+    private function recordChannelPaymentTransition(
+        SalesOrder $order,
+        bool $wasPaid,
+        array $orderData,
+    ): void {
+        if ($wasPaid || ! $order->is_paid || ! $order->source || ! $order->channel_shop_id) {
+            return;
+        }
+
+        $this->logStatusHistory($order, OrderActivityAction::PAID, [
+            'prev_values' => [
+                'is_paid' => false,
+                'paid_time' => null,
+            ],
+            'new_values' => [
+                'is_paid' => true,
+                'paid_time' => $order->paid_time?->toIso8601String(),
+            ],
+            'origin' => 'channel_sync',
+            'source' => $order->source,
+            'channel_shop_id' => $order->channel_shop_id,
+            'channel_order_no' => $order->channel_order_no,
+            'channel_updated_at' => isset($orderData['channel_updated_at'])
+                ? (string) $orderData['channel_updated_at']
+                : null,
+        ]);
+    }
+
     private function logChannelStatusHistoryIfChanged(
         SalesOrder $order,
         ?string $previousChannelStatus,
@@ -2717,6 +2760,7 @@ class SalesOrderService
             if (in_array($currentStatus, ['shipped', 'returned'], true)) {
                 return 'returned';
             }
+
             return 'cancelled';
         }
 

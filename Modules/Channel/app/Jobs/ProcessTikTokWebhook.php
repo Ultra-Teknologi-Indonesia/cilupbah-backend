@@ -7,6 +7,7 @@ use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -125,6 +126,22 @@ class ProcessTikTokWebhook implements ShouldBeUnique, ShouldQueue
     public function uniqueId(): string
     {
         return self::idempotencyKey($this->payload);
+    }
+
+    public function middleware(): array
+    {
+        $data = is_array($this->payload['data'] ?? null) ? $this->payload['data'] : [];
+        $orderNo = (string) ($data['order_id'] ?? $data['main_order_id'] ?? $data['id'] ?? '');
+
+        if ($orderNo === '') {
+            return [];
+        }
+
+        return [
+            (new WithoutOverlapping('channel-order:tiktok:'.($this->payload['shop_id'] ?? '').':'.$orderNo))
+                ->releaseAfter(5)
+                ->expireAfter(300),
+        ];
     }
 
     public function handle(
