@@ -56,12 +56,17 @@ return new class extends Migration
                     ]);
                 }
 
+                // Rows with on_hand < 0 exist as dirty data in production.
+                // PostgreSQL re-evaluates ALL check constraints on every UPDATE,
+                // so we must also clamp on_hand to 0 in the same statement to
+                // satisfy inventories_on_hand_non_negative_check.
                 DB::table('inventories')
                     ->where('item_id', $group->item_id)
                     ->where('location_id', $group->location_id)
                     ->whereNotNull('bin_id')
                     ->where('on_order', '>', 0)
                     ->update([
+                        'on_hand'  => DB::raw('GREATEST(on_hand, 0)'),
                         'on_order' => 0,
                         'available' => DB::raw('GREATEST(on_hand, 0)'),
                         'updated_at' => now(),
