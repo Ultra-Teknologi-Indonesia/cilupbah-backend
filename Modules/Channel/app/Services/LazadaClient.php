@@ -2,7 +2,10 @@
 
 namespace Modules\Channel\Services;
 
+use Illuminate\Contracts\Cache\LockProvider;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
@@ -308,15 +311,51 @@ class LazadaClient
     protected function throttle(): void
     {
         $limit = max(1, (int) config('ratelimit.channel_api_per_second_by_channel.lazada', 1));
+        $decaySeconds = max(1, (int) config('ratelimit.lazada_api_window_seconds', 2));
+        $cache = Cache::store(config('ratelimit.store'));
+        $store = $cache->getStore();
+
+        if ($store instanceof LockProvider) {
+            try {
+                $store->lock('lazada-api-throttle-lock', max(10, $decaySeconds + 5))
+                    ->block(60, function () use ($decaySeconds, $limit): void {
+                        $this->reserveLazadaApiSlot($decaySeconds, $limit);
+                    });
+
+                return;
+            } catch (LockTimeoutException $e) {
+                Log::warning('Lazada API throttle lock timeout; applying bounded fallback delay.', [
+                    'decay_seconds' => $decaySeconds,
+                    'exception' => $e->getMessage(),
+                ]);
+                usleep($decaySeconds * 1_000_000);
+
+                return;
+            }
+        }
 
         for ($attempt = 0; $attempt < 10; $attempt++) {
-            if (RateLimiter::attempt('lazada-api', $limit, fn () => null, 1)) {
+            if (RateLimiter::attempt('lazada-api', $limit, fn () => null, $decaySeconds)) {
                 return;
             }
 
             $wait = RateLimiter::availableIn('lazada-api');
             usleep((int) ($wait * 1_000_000) + 50_000);
         }
+    }
+
+    protected function reserveLazadaApiSlot(int $decaySeconds, int $limit): void
+    {
+        for ($attempt = 0; $attempt < 60; $attempt++) {
+            if (RateLimiter::attempt('lazada-api', $limit, fn () => null, $decaySeconds)) {
+                return;
+            }
+
+            $wait = max(1, RateLimiter::availableIn('lazada-api'));
+            sleep($wait);
+        }
+
+        throw new \RuntimeException('Lazada API throttle slot tidak tersedia dalam batas waktu.');
     }
 
     public function getAuthUrl(string $redirectUri, string $state = '', bool $forceAuth = false): string

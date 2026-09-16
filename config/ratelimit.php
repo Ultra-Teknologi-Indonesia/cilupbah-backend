@@ -32,6 +32,8 @@ return [
         'woocommerce' => (int) env('RATE_LIMIT_WOOCOMMERCE_API_PER_SECOND', 2),
     ],
 
+    'lazada_api_window_seconds' => (int) env('RATE_LIMIT_LAZADA_API_WINDOW_SECONDS', 2),
+
     'stock_cutover' => [
         'page_per_minute' => (int) env('RATE_LIMIT_STOCK_CUTOVER_PAGE', 30),
         'preview_per_minute' => (int) env('RATE_LIMIT_STOCK_CUTOVER_PREVIEW', 10),

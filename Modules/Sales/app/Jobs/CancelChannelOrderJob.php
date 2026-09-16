@@ -22,9 +22,9 @@ class CancelChannelOrderJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 3;
+    public int $tries = 5;
 
-    public array $backoff = [5, 15, 30];
+    public array $backoff = [30, 60, 120, 300];
 
     public function __construct(
         public readonly string $orderId,

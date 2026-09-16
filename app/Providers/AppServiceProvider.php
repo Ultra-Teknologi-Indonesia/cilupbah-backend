@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Models\PersonalAccessToken;
 use App\Support\AllowedSearch;
+use App\Support\OriginalExceptionFailedJobProvider;
 use App\Support\QueueFailureRecorder;
 use Illuminate\Cache\RateLimiter;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -24,6 +25,19 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->extend('queue.failer', function ($failer, $app) {
+            $config = $app['config']['queue.failed'];
+
+            if (($config['driver'] ?? null) !== 'database-uuids') {
+                return $failer;
+            }
+
+            return new OriginalExceptionFailedJobProvider(
+                $app['db'],
+                $config['database'],
+                $config['table'],
+            );
+        });
 
         $this->app->singleton(RateLimiter::class, function ($app) {
             return new RateLimiter(

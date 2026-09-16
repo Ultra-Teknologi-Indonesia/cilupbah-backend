@@ -73,6 +73,43 @@ final class QueueFailureRecordingTest extends TestCase
         $this->assertStringContainsString('Marketplace HTTP 429: retry-after=30', (string) $failedJob->original_exception);
     }
 
+    public function test_failed_job_provider_enriches_the_failed_row_after_framework_persists_it(): void
+    {
+        $uuid = 'queue-failure-provider-test-uuid';
+        $rawPayload = json_encode([
+            'uuid' => $uuid,
+            'displayName' => 'Tests\\Feature\\ExampleJob',
+            'data' => ['command' => 'serialized-secret-command'],
+        ], JSON_THROW_ON_ERROR);
+
+        $job = Mockery::mock(Job::class);
+        $job->shouldReceive('uuid')->andReturn($uuid);
+        $job->shouldReceive('getJobId')->andReturn($uuid);
+        $job->shouldReceive('getQueue')->andReturn('test-queue');
+        $job->shouldReceive('getRawBody')->andReturn($rawPayload);
+        $job->shouldReceive('resolveQueuedJobClass')->andReturn('Tests\\Feature\\ExampleJob');
+        $job->shouldReceive('resolveName')->andReturn('Tests\\Feature\\ExampleJob@handle');
+        $job->shouldReceive('attempts')->andReturn(2);
+
+        $original = new \RuntimeException('Lazada API Error: Api access frequency exceeds the limit');
+        event(new JobExceptionOccurred('redis', $job, $original));
+        $retryExhausted = MaxAttemptsExceededException::forJob($job);
+        event(new JobFailed('redis', $job, $retryExhausted));
+
+        app('queue.failer')->log(
+            'redis',
+            'test-queue',
+            $rawPayload,
+            $retryExhausted,
+        );
+
+        $failedJob = DB::table('failed_jobs')->where('uuid', $uuid)->first();
+
+        $this->assertSame(\RuntimeException::class, $failedJob->original_exception_class);
+        $this->assertSame(2, $failedJob->original_attempt);
+        $this->assertStringContainsString('Api access frequency exceeds the limit', $failedJob->original_exception);
+    }
+
     public function test_webhook_failure_uses_the_original_attempt_error(): void
     {
         Queue::fake();

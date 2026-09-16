@@ -98,6 +98,11 @@ final class QueueFailureRecorder
         return $this->originalFailure($jobUuid, $fallback)['message'];
     }
 
+    public function originalFailureText(array $failure): string
+    {
+        return $this->formatException($failure);
+    }
+
     public function hasAttemptException(?string $jobUuid): bool
     {
         return $jobUuid !== null
