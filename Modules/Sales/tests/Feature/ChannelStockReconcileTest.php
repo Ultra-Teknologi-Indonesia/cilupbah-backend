@@ -186,10 +186,19 @@ class ChannelStockReconcileTest extends TestCase
 
     protected function inventory(): object
     {
-        return DB::table('inventories')
+        $inventory = DB::table('inventories')
             ->where('item_id', $this->variantId)
             ->where('location_id', $this->locationId)
+            ->selectRaw('COALESCE(SUM(on_hand), 0) AS on_hand')
+            ->selectRaw('COALESCE(SUM(on_order), 0) AS on_order')
+            ->selectRaw('COALESCE(SUM(available), 0) AS available')
             ->first();
+
+        return (object) [
+            'on_hand' => (int) ($inventory->on_hand ?? 0),
+            'on_order' => (int) ($inventory->on_order ?? 0),
+            'available' => (int) ($inventory->available ?? 0),
+        ];
     }
 
     protected function totalOnOrder(): int
@@ -235,6 +244,32 @@ class ChannelStockReconcileTest extends TestCase
         $this->assertSame(1, $this->movements('ORDER_RELEASE'), 'pelepasan tepat sekali');
         $this->assertSame(0, $this->movements('ORDER_PICK'), 'ORDER_PICK sudah tidak ditulis sejak 647876d1');
         $this->assertSame(0, $this->movements('ORDER_SHIP'), 'ORDER_SHIP sudah tidak ditulis: pengiriman bukan gerakan stok');
+    }
+
+    public function test_stale_terminal_webhook_still_releases_an_outstanding_reservation(): void
+    {
+        $this->service->upsertFromChannel($this->orderData('LZ-RC-STALE-SHIP', 'AWAITING_SHIPMENT'));
+        $this->assertSame(2, $this->totalOnOrder());
+
+        DB::table('sales_orders')
+            ->where('salesorder_no', 'LZ-RC-STALE-SHIP')
+            ->update([
+                'status' => 'shipped',
+                'channel_updated_at' => now()->addMinutes(10),
+            ]);
+
+        $staleWebhook = $this->orderData('LZ-RC-STALE-SHIP', 'DELIVERED');
+        $staleWebhook['channel_updated_at'] = now()->subMinute();
+
+        $this->service->upsertFromChannel($staleWebhook);
+
+        $this->assertSame(0, $this->totalOnOrder());
+        $this->assertSame(1, $this->movements('ORDER_RELEASE'));
+
+        $this->service->upsertFromChannel($staleWebhook);
+
+        $this->assertSame(0, $this->totalOnOrder(), 'Webhook berulang tidak boleh melepas dua kali');
+        $this->assertSame(1, $this->movements('ORDER_RELEASE'));
     }
 
     public function test_pending_channel_order_reserves_until_it_is_cancelled_or_fulfilled(): void

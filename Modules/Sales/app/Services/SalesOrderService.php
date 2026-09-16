@@ -2254,6 +2254,19 @@ class SalesOrderService
 
                 $this->forgetOrderTabCounts();
 
+                $terminalReservationReleased = $this->reconcileTerminalReservationAfterChannelSync($order);
+                if ($terminalReservationReleased > 0) {
+                    try {
+                        SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
+                    } catch (\Throwable $e) {
+                        Log::warning('Dispatch SyncStockJob gagal setelah rekonsiliasi reservasi terminal', [
+                            'order_id' => $order->id,
+                            'salesorder_no' => $order->salesorder_no,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+
                 return $order->id;
             }
 
@@ -2438,6 +2451,8 @@ class SalesOrderService
 
             $this->forgetOrderTabCounts();
 
+            $terminalReservationReleased = $this->reconcileTerminalReservationAfterChannelSync($order);
+
             $isShippedChannel = in_array(strtoupper((string) ($channelStatus ?? $order->channel_status)), ['SHIPPED', 'COMPLETED', 'DELIVERED', 'TO_CONFIRM_RECEIVE'], true)
                 || in_array($finalStatus, ['shipped', 'completed', 'delivered'], true);
 
@@ -2465,7 +2480,7 @@ class SalesOrderService
                 }
             }
 
-            if ($stockMutated) {
+            if ($stockMutated || $terminalReservationReleased > 0) {
                 try {
                     SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
                 } catch (\Throwable $e) {
@@ -2514,6 +2529,50 @@ class SalesOrderService
             DB::rollBack();
             Log::error('Failed to upsert order: '.$e->getMessage());
             throw $e;
+        }
+    }
+
+    /**
+     * Ensure a terminal channel order cannot retain an outstanding reservation.
+     *
+     * This runs after the order transaction commits so a stale webhook, deferred
+     * stock transition, or a repeated terminal webhook cannot leave on_order
+     * behind. StockService protects the item/location pair and makes the release
+     * idempotent; physical on_hand is intentionally not changed here.
+     */
+    private function reconcileTerminalReservationAfterChannelSync(SalesOrder $order): int
+    {
+        if ($order->is_shadow
+            || $order->is_canceled
+            || ! in_array(strtolower((string) $order->status), ['shipped', 'completed', 'delivered'], true)
+        ) {
+            return 0;
+        }
+
+        try {
+            $released = $this->stockService->reconcileTerminalReservationByTransaction(
+                (string) $order->salesorder_no,
+            );
+
+            if ($released > 0) {
+                Log::notice('Reservasi order terminal direkonsiliasi setelah sinkronisasi channel', [
+                    'order_id' => $order->id,
+                    'salesorder_no' => $order->salesorder_no,
+                    'status' => $order->status,
+                    'released' => $released,
+                ]);
+            }
+
+            return $released;
+        } catch (\Throwable $e) {
+            Log::warning('Rekonsiliasi reservasi order terminal gagal setelah sinkronisasi channel', [
+                'order_id' => $order->id,
+                'salesorder_no' => $order->salesorder_no,
+                'status' => $order->status,
+                'error' => $e->getMessage(),
+            ]);
+
+            return 0;
         }
     }
 
