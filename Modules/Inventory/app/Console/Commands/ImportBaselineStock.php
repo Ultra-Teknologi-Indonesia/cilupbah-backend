@@ -723,9 +723,6 @@ class ImportBaselineStock extends Command
                     }
                 }
 
-                // A stale/missing assignment must not make a physically occupied
-                // rack look empty. Include every non-zero inventory item in the
-                // candidate racks, not only SKUs present in the uploaded file.
                 foreach (array_chunk($binIdsHere, 2000) as $chunk) {
                     $occupancies = DB::table('inventories')
                         ->where('location_id', $locationId)
