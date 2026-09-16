@@ -107,7 +107,7 @@ class HorizonQueueCoverageTest extends TestCase
     {
         foreach ([
             'supervisor-default' => [1, 1],
-            'supervisor-order-operations' => [4, 4],
+            'supervisor-order-operations' => [6, 6],
             'supervisor-channel-sync' => [4, 4],
             'supervisor-product-validation' => [1, 1],
             'supervisor-channel-operations' => [1, 1],
@@ -118,8 +118,8 @@ class HorizonQueueCoverageTest extends TestCase
             'supervisor-lazada-fulfillment' => [1, 1],
             'supervisor-lazada-webhooks-background' => [1, 1],
             'supervisor-labels' => [4, 4],
-            'supervisor-label-awb' => [4, 4],
-            'supervisor-label-archive' => [1, 1],
+            'supervisor-label-awb' => [2, 2],
+            'supervisor-label-archive' => [2, 2],
         ] as $name => [$minProcesses, $maxProcesses]) {
             $supervisor = config("horizon.defaults.{$name}");
 
@@ -158,7 +158,7 @@ class HorizonQueueCoverageTest extends TestCase
         $this->assertSame('auto', $stock['balance'] ?? null);
         $this->assertSame('size', $stock['autoScalingStrategy'] ?? null);
         $this->assertSame(1, $stock['minProcesses'] ?? null);
-        $this->assertSame(3, $stock['maxProcesses'] ?? null);
+        $this->assertSame(4, $stock['maxProcesses'] ?? null);
         $this->assertSame(1, $stock['balanceMaxShift'] ?? null);
         $this->assertSame(5, $stock['balanceCooldown'] ?? null);
     }
@@ -219,9 +219,9 @@ class HorizonQueueCoverageTest extends TestCase
             $withMasterMegabytes = $workerMegabytes + (int) config('horizon.memory_limit');
 
             $this->assertLessThanOrEqual(
-                4608,
+                5120,
                 $withMasterMegabytes,
-                "Profil Horizon {$profile} melewati ceiling 4.5GiB worker+master."
+                "Profil Horizon {$profile} melewati ceiling 5GiB worker+master."
             );
         }
 

@@ -17,6 +17,7 @@ spec:
     spec:
       imagePullSecrets:
         - name: ghcr-creds
+      terminationGracePeriodSeconds: 180
       containers:
         - name: horizon-labels
           image: ghcr.io/ultra-teknologi-indonesia/cilupbah:v1.0.0
@@ -28,9 +29,11 @@ spec:
             - name: HORIZON_PROFILE
               value: "labels"
             - name: QUEUE_LABEL_PARALLELISM
-              value: "4"
+              value: "6"
             - name: QUEUE_LABEL_AWB_PARALLELISM
-              value: "4"
+              value: "2"
+            - name: QUEUE_LABEL_ARCHIVE_PARALLELISM
+              value: "2"
             - name: LABEL_LOCAL_FIRST
               value: "true"
             - name: LABEL_PRINT_SPOOL_ROOT
@@ -42,11 +45,11 @@ spec:
               mountPath: /var/www/html/storage/app/print-spool
           resources:
             requests:
-              memory: "2Gi"
-              cpu: "1000m"
+              memory: "2560Mi"
+              cpu: "1500m"
             limits:
-              memory: "5Gi"
-              cpu: "2500m"
+              memory: "6Gi"
+              cpu: "3500m"
           livenessProbe:
             exec:
               command: ["sh", "-c", "php artisan horizon:status | grep -q running"]

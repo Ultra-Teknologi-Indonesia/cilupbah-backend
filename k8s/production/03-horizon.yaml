@@ -25,14 +25,14 @@ spec:
           command: ["php", "artisan", "horizon"]
           resources:
             requests:
-              memory: "2Gi"
-              cpu: "500m"
+              memory: "2560Mi"
+              cpu: "750m"
             limits:
               # Background supervisors have a bounded worker budget plus
               # Horizon/master overhead; this cap prevents fan-out growth.
-              memory: "5Gi"
+              memory: "6Gi"
               # Keep CPU available for critical queues, API and Redis.
-              cpu: "2000m"
+              cpu: "2500m"
           envFrom:
             - secretRef:
                 name: cilupbah-env

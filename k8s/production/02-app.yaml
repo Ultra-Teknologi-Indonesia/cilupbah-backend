@@ -4,7 +4,7 @@ metadata:
   name: cilupbah-app
   namespace: cilupbah
 spec:
-  replicas: 2
+  replicas: 3
   # ── Zero-downtime deploy ──
   # maxUnavailable: 0 → pod lama WAJIB tetap Running sampai pod baru Ready.
   # maxSurge: 1     → hanya 1 pod ekstra (hemat RAM) selama transisi.

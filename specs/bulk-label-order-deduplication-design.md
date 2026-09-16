@@ -17,8 +17,10 @@ The implementation uses four safeguards:
    repeated order does not start from fetch/queue again.
 
 AWB acquisition has its own `label-awb` queue and order/attempt idempotency
-key. Four label workers process label downloads; AWB remains one controlled
-worker because it calls channel fulfillment APIs and is rate-sensitive.
+key. Six bounded label workers process downloads, two workers archive local
+artifacts, and AWB is capped at two workers because it calls channel
+fulfillment APIs and is rate-sensitive. The application-side per-channel
+limiter remains the throughput ceiling; adding workers must not bypass it.
 
 ## State flow
 
@@ -46,8 +48,8 @@ condition, preserving correctness while making the storage problem visible.
 
 - Label workers are isolated in the `labels` Horizon profile; background work
   cannot consume their queue.
-- The deployment has four bounded label processes, a 2.5 CPU limit, and a 5 GiB
+- The deployment has six bounded label processes, a 3.5 CPU limit, and a 6 GiB
   memory limit.
-- The AWB and archive queues remain separate from the four download workers.
+- The AWB and archive queues remain separate from the six download workers.
 - The deployment must be observed through queue depth, active database
   connections, error rate, and pod restarts after rollout.

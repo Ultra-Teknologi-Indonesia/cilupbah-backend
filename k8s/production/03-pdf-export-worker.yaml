@@ -4,7 +4,7 @@ metadata:
   name: cilupbah-pdf-export-worker
   namespace: cilupbah
 spec:
-  replicas: 1
+  replicas: 2
   revisionHistoryLimit: 2
   progressDeadlineSeconds: 1500
   strategy:
@@ -55,5 +55,5 @@ spec:
               memory: "1Gi"
               cpu: "500m"
             limits:
-              memory: "2Gi"
+              memory: "3Gi"
               cpu: "1500m"

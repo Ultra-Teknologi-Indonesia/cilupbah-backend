@@ -45,6 +45,15 @@ $supervisorProfiles = [
     ],
 ];
 
+$orderOperationsProcesses = max(
+    1,
+    min(6, (int) env('HORIZON_ORDER_OPERATIONS_PROCESSES', 6)),
+);
+$stockMaxProcesses = max(
+    1,
+    min(4, (int) env('HORIZON_STOCK_MAX_PROCESSES', 4)),
+);
+
 return [
 
     'name' => env('HORIZON_NAME'),
@@ -171,8 +180,8 @@ return [
             'connection' => 'redis',
             'queue' => ['orders', 'fulfillment', 'stock-sync'],
             'balance' => 'off',
-            'minProcesses' => 4,
-            'maxProcesses' => 4,
+            'minProcesses' => $orderOperationsProcesses,
+            'maxProcesses' => $orderOperationsProcesses,
             'maxTime' => 3600,
             'maxJobs' => 250,
             'timeout' => 60,
@@ -296,7 +305,7 @@ return [
             'balance' => 'auto',
             'autoScalingStrategy' => 'size',
             'minProcesses' => 1,
-            'maxProcesses' => 3,
+            'maxProcesses' => $stockMaxProcesses,
             'maxTime' => 3600,
             'maxJobs' => 250,
             'timeout' => 60,
@@ -351,8 +360,8 @@ return [
             'connection' => config('queue.routing.label_awb.connection', 'redis-long'),
             'queue' => [config('queue.routing.label_awb.queue', 'label-awb')],
             'balance' => 'off',
-            'minProcesses' => config('queue.routing.label_awb.parallelism', 4),
-            'maxProcesses' => config('queue.routing.label_awb.parallelism', 4),
+            'minProcesses' => config('queue.routing.label_awb.parallelism', 2),
+            'maxProcesses' => config('queue.routing.label_awb.parallelism', 2),
             'maxJobs' => 100,
             'timeout' => 180,
             'tries' => 3,
@@ -365,8 +374,8 @@ return [
             'queue' => [config('queue.routing.label_archive.queue', 'label-archive')],
             'balance' => 'off',
 
-            'minProcesses' => 1,
-            'maxProcesses' => 1,
+            'minProcesses' => config('queue.routing.label_archive.parallelism', 2),
+            'maxProcesses' => config('queue.routing.label_archive.parallelism', 2),
             'maxTime' => 1800,
             'maxJobs' => 100,
             'timeout' => config('queue.routing.label_archive.timeout', 300),
