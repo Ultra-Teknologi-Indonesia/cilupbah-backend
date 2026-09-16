@@ -28,6 +28,7 @@ final class StockCutoverService
         'putaways', 'stock_opnames', 'stock_revaluations', 'bin_transfers', 'inbounds',
         'inbound_receipts', 'inbound_backfill_reconciliations', 'picklists', 'packlists',
         'shipments', 'sales_returns', 'bin_transfer_receipts',
+        'purchase_orders', 'purchase_bills', 'purchase_returns',
     ];
 
     public function createRun(string $cutoff, array $locationCodes, array $sourceFiles = []): array
@@ -630,7 +631,7 @@ final class StockCutoverService
 
         DB::transaction(function () use ($run, $orderAudit, $purgeAll, &$counts, &$terminalOrderIds, &$deletedOrderIds): void {
             $locationIds = $run['location_ids'];
-            $this->pauseChannels();
+            $this->pauseChannels(pauseOrderSync: true);
 
             $orderIds = DB::table('sales_orders')->whereIn('location_id', $locationIds)->pluck('id')->all();
             $terminalOrderIds = DB::table('sales_orders')
@@ -667,6 +668,8 @@ final class StockCutoverService
             $this->deleteOperationalDocuments($locationIds, $orderIds, $counts);
             $this->deleteOrderStateHistory($orderIds, $counts);
             $this->deleteFinanceDocuments($locationIds, $orderIds, $counts);
+            $this->deletePurchaseDocuments($locationIds, $counts);
+            $this->deleteChannelSettlementHistory($locationIds, $orderIds, $counts);
             $this->deleteReplenishmentRequests($locationIds, $counts);
             $this->deleteInventoryTransfers($locationIds, $counts);
             $this->deleteStockHistory($locationIds, $counts);
@@ -676,6 +679,10 @@ final class StockCutoverService
                 $whitelistMode ? ($orderAudit['whitelist_queue_event_ids'] ?? []) : [],
                 $purgeAll,
             );
+
+            if ($purgeAll) {
+                $this->deleteImportExportHistory($counts);
+            }
 
             if ($deletedOrderIds !== []) {
                 $this->deleteOrderHistory($deletedOrderIds, $counts);
@@ -935,6 +942,33 @@ final class StockCutoverService
                 'updated_at' => now(),
             ]);
             DB::table('stock_cutover_runs')->where('id', $run['run_id'])->update(['status' => 'RESUMED', 'updated_at' => now()]);
+        }
+
+        return $count;
+    }
+
+    public function openOrderIntake(string $runId, bool $dryRun): int
+    {
+        $run = $this->getRun($runId);
+        if (! $dryRun) {
+            $this->assertApplyAllowed($run, 'OPEN-ORDER-INTAKE', [
+                'RESET_APPLIED', 'STOCK_IMPORTED', 'RESERVATIONS_REBUILT', 'VERIFIED', 'RESUMED',
+            ]);
+        }
+        if (! Schema::hasTable('channel_shops') || ! Schema::hasColumn('channel_shops', 'order_sync_enabled')) {
+            return 0;
+        }
+
+        $query = DB::table('channel_shops');
+        if (Schema::hasColumn('channel_shops', 'stock_source_location_id')) {
+            $query->whereIn('stock_source_location_id', $run['location_ids']);
+        }
+        $count = (clone $query)->where('order_sync_enabled', false)->count();
+        if (! $dryRun) {
+            $query->update([
+                'order_sync_enabled' => true,
+                'updated_at' => now(),
+            ]);
         }
 
         return $count;
@@ -1394,16 +1428,104 @@ final class StockCutoverService
         return trim($header, '_');
     }
 
-    private function pauseChannels(): void
+    private function pauseChannels(bool $pauseOrderSync = false): void
     {
         if (! Schema::hasTable('channel_shops')) {
             return;
         }
-        DB::table('channel_shops')->update([
+        $values = [
             'stock_push_enabled' => false,
             'fulfillment_push_enabled' => false,
             'updated_at' => now(),
-        ]);
+        ];
+        if ($pauseOrderSync && Schema::hasColumn('channel_shops', 'order_sync_enabled')) {
+            $values['order_sync_enabled'] = false;
+        }
+        DB::table('channel_shops')->update($values);
+    }
+
+    private function deletePurchaseDocuments(array $locationIds, array &$counts): void
+    {
+        $purchaseOrderIds = Schema::hasTable('purchase_orders')
+            ? DB::table('purchase_orders')->whereIn('location_id', $locationIds)->pluck('id')->all()
+            : [];
+        $purchaseBillIds = Schema::hasTable('purchase_bills')
+            ? DB::table('purchase_bills')
+                ->whereIn('location_id', $locationIds)
+                ->when($purchaseOrderIds !== [], fn ($query) => $query->orWhereIn('purchase_order_id', $purchaseOrderIds))
+                ->pluck('id')
+                ->all()
+            : [];
+        $purchaseReturnIds = Schema::hasTable('purchase_returns')
+            ? DB::table('purchase_returns')
+                ->whereIn('location_id', $locationIds)
+                ->when($purchaseOrderIds !== [], fn ($query) => $query->orWhereIn('purchase_order_id', $purchaseOrderIds))
+                ->pluck('id')
+                ->all()
+            : [];
+        $settlementIds = Schema::hasTable('purchase_return_settlements') && $purchaseReturnIds !== []
+            ? DB::table('purchase_return_settlements')->whereIn('return_id', $purchaseReturnIds)->pluck('id')->all()
+            : [];
+        $billItemIds = Schema::hasTable('purchase_bill_items') && $purchaseBillIds !== []
+            ? DB::table('purchase_bill_items')->whereIn('purchase_bill_id', $purchaseBillIds)->pluck('id')->all()
+            : [];
+
+        $this->deleteByParent('purchase_serial_numbers', 'purchase_bill_item_id', $billItemIds, $counts);
+        $this->deleteByParent('purchase_payments', 'purchase_bill_id', $purchaseBillIds, $counts);
+        $this->deleteByParent('purchase_bill_items', 'purchase_bill_id', $purchaseBillIds, $counts);
+        $this->deleteByParent('purchase_return_settlement_bills', 'settlement_id', $settlementIds, $counts);
+        $this->deleteByParent('purchase_return_settlement_refunds', 'settlement_id', $settlementIds, $counts);
+        $this->deleteByParent('purchase_return_settlements', 'id', $settlementIds, $counts);
+        $this->deleteByParent('purchase_return_items', 'purchase_return_id', $purchaseReturnIds, $counts);
+        $this->deleteByParent('purchase_returns', 'id', $purchaseReturnIds, $counts);
+        $this->deleteByParent('purchase_order_activities', 'purchase_order_id', $purchaseOrderIds, $counts);
+        $this->deleteByParent('purchase_order_items', 'purchase_order_id', $purchaseOrderIds, $counts);
+        $this->deleteByParent('purchase_bills', 'id', $purchaseBillIds, $counts);
+        $this->deleteByParent('purchase_orders', 'id', $purchaseOrderIds, $counts);
+    }
+
+    private function deleteChannelSettlementHistory(array $locationIds, array $orderIds, array &$counts): void
+    {
+        if (! Schema::hasTable('channel_settlements') || ! Schema::hasTable('channel_shops')
+            || ! Schema::hasColumn('channel_shops', 'stock_source_location_id')) {
+            return;
+        }
+
+        $shopIds = DB::table('channel_shops')
+            ->whereIn('stock_source_location_id', $locationIds)
+            ->pluck('shop_id')
+            ->filter()
+            ->map(fn ($id): string => (string) $id)
+            ->unique()
+            ->values()
+            ->all();
+        if ($shopIds === []) {
+            return;
+        }
+
+        $settlementIds = DB::table('channel_settlements')
+            ->whereIn('shop_id', $shopIds)
+            ->pluck('id')
+            ->all();
+        if (Schema::hasTable('channel_settlement_adjustments')) {
+            $query = DB::table('channel_settlement_adjustments')->whereIn('shop_id', $shopIds);
+            if ($orderIds !== []) {
+                $query->orWhereIn('order_id', $orderIds);
+            }
+            $counts['channel_settlement_adjustments'] = ($counts['channel_settlement_adjustments'] ?? 0) + $query->delete();
+        }
+        $counts['channel_settlements'] = DB::table('channel_settlements')->whereIn('id', $settlementIds)->delete();
+    }
+
+    private function deleteImportExportHistory(array &$counts): void
+    {
+        if (! Schema::hasTable('impex_activities')) {
+            return;
+        }
+
+        $activityIds = DB::table('impex_activities')->pluck('id')->all();
+        $this->deleteByParent('impex_activity_details', 'impex_activity_id', $activityIds, $counts);
+        $counts['impex_activities'] = DB::table('impex_activities')->delete();
     }
 
     private function deleteOperationalDocuments(array $locationIds, array $orderIds, array &$counts): void

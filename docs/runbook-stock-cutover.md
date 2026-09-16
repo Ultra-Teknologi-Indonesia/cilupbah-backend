@@ -16,8 +16,8 @@ Dokumen ini adalah prosedur operasional untuk memindahkan angka stok dari Jubeli
 - order aktif lain tetap dipertahankan, histori picking/packing/shipping dibersihkan, lalu order dinormalisasi kembali ke `pending`, sedangkan order yang sudah dibatalkan tidak diaktifkan kembali;
 - invoice dan payment order terminal hanya dihapus jika `--purge-finance` diberikan;
 - SKU, product variant, gudang, user, rak, dan `sku_rack_assignments` tidak menjadi target penghapusan;
-- webhook tetap ditampung di `channel_webhook_inbox` saat pause, lalu diproses batch setelah resume;
-- history transfer antar gudang, inbound/putaway, picking, packing, shipping/manifest, backfill stok, replenishment request, opname, adjustment, dan movement reversal ikut dibersihkan untuk gudang yang dipilih;
+- pada reset penuh, `order_sync_enabled`, stock push, dan fulfillment push dimatikan selama penghapusan agar order baru tidak ikut terhapus; webhook baru mulai diterima setelah intake order dibuka;
+- history transfer antar gudang, inbound/putaway, picking, packing, shipping/manifest, backfill stok, replenishment request, opname, adjustment, movement reversal, serta dokumen pembelian (PO, bill, pembayaran, dan retur) ikut dibersihkan untuk gudang yang dipilih;
 - push stok harus tetap mati sampai verifikasi selesai dan Jubelio tidak lagi menjadi writer stok.
 - mode partial hanya digunakan dengan persetujuan operator: centang opsi apply hanya baris valid untuk melewati baris blocking; default tetap all-or-nothing.
 
@@ -56,7 +56,7 @@ Jika seluruh audit tidak memiliki blocking issue, hentikan channel dan apply res
 
 ```bash
 php artisan cutover:pause --run-id=<run_id> --apply --confirm=PAUSE-CUTOVER
-php artisan cutover:reset --run-id=<run_id> --purge-finance --apply --confirm=RESET-STOCK-DATA
+php artisan cutover:reset --run-id=<run_id> --purge-finance --purge-all --apply --confirm=RESET-ALL-OPERATIONAL-DATA
 ```
 
 Import dilakukan satu kali per gudang:
@@ -78,10 +78,11 @@ php artisan cutover:rebuild-reservation --run-id=<run_id> --apply --confirm=REBU
 php artisan cutover:verify --run-id=<run_id>
 ```
 
-Setelah verify sukses, buka order intake. Push stok tetap mati:
+Setelah reset selesai, buka order intake pada saat operasional WMS mulai menerima order (misalnya pukul 15.00). Push stok tetap mati:
 
 ```bash
-php artisan cutover:resume --run-id=<run_id> --apply --confirm=RESUME-CUTOVER
+php artisan cutover:open-order-intake --run-id=<run_id>
+php artisan cutover:open-order-intake --run-id=<run_id> --apply --confirm=OPEN-ORDER-INTAKE
 php artisan cutover:replay-orders --run-id=<run_id> --limit=50 --apply --confirm=REPLAY-ORDERS
 ```
 

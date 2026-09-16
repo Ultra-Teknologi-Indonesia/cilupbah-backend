@@ -13,6 +13,7 @@ use Modules\Inventory\Console\Commands\BackfillTransitInbounds;
 use Modules\Inventory\Console\Commands\CleanupDraftTransitStock;
 use Modules\Inventory\Console\Commands\CleanupImportFilesCommand;
 use Modules\Inventory\Console\Commands\CutoverImportStockCommand;
+use Modules\Inventory\Console\Commands\CutoverOpenOrderIntakeCommand;
 use Modules\Inventory\Console\Commands\CutoverOrderAuditCommand;
 use Modules\Inventory\Console\Commands\CutoverPauseCommand;
 use Modules\Inventory\Console\Commands\CutoverPreflightCommand;
@@ -70,6 +71,7 @@ class InventoryServiceProvider extends ModuleServiceProvider
         CutoverOrderAuditCommand::class,
         CutoverPauseCommand::class,
         CutoverResetCommand::class,
+        CutoverOpenOrderIntakeCommand::class,
         CutoverImportStockCommand::class,
         CutoverRebuildReservationCommand::class,
         CutoverResumeCommand::class,

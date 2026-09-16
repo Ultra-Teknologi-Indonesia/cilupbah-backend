@@ -13,7 +13,7 @@ final class CutoverResetCommand extends CutoverCommandSupport
         {--apply : Terapkan penghapusan}
         {--confirm= : Wajib RESET-STOCK-DATA atau RESET-ALL-OPERATIONAL-DATA saat apply}';
 
-    protected $description = 'Menghapus history stok dan dokumen operasional secara atomik, sambil menjaga master SKU, gudang, user, rak, serta order Excel/order yang lebih baru.';
+    protected $description = 'Menghapus history stok dan dokumen operasional secara atomik, sambil menjaga master SKU, gudang, user, rak, serta konfigurasi.';
 
     public function handle(): int
     {

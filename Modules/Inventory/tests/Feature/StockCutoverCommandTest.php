@@ -7,6 +7,7 @@ namespace Modules\Inventory\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Modules\Channel\Enums\WebhookInboxStatus;
 use Modules\Channel\Jobs\ProcessTikTokWebhook;
@@ -183,6 +184,40 @@ final class StockCutoverCommandTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+        DB::table('channel_shops')->insert([
+            'id' => (string) Str::uuid(),
+            'shop_id' => 'FULL-PURGE-SHOP',
+            'shop_name' => 'Full Purge Shop',
+            'is_active' => true,
+            'order_sync_enabled' => true,
+            'stock_push_enabled' => true,
+            'fulfillment_push_enabled' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('channel_shops')->where('shop_id', 'FULL-PURGE-SHOP')->update([
+            'stock_source_location_id' => $location->id,
+        ]);
+        if (Schema::hasTable('channel_settlements')) {
+            DB::table('channel_settlements')->insert([
+                'id' => (string) Str::uuid(),
+                'channel' => 'shopee',
+                'shop_id' => 'FULL-PURGE-SHOP',
+                'external_id' => 'FULL-PURGE-SETTLEMENT',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+        if (Schema::hasTable('impex_activities')) {
+            DB::table('impex_activities')->insert([
+                'id' => (string) Str::uuid(),
+                'direction' => 'import',
+                'activity_type' => 'stock_cutover',
+                'status' => 'success',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
 
         $runId = (string) Str::uuid();
         DB::table('stock_cutover_runs')->insert([
@@ -204,6 +239,120 @@ final class StockCutoverCommandTest extends TestCase
         self::assertDatabaseMissing('sales_orders', ['id' => $orderIds[0]]);
         self::assertDatabaseMissing('sales_orders', ['id' => $orderIds[1]]);
         self::assertDatabaseCount('channel_webhook_inbox', 0);
+        if (Schema::hasTable('channel_settlements')) {
+            self::assertDatabaseCount('channel_settlements', 0);
+        }
+        if (Schema::hasTable('impex_activities')) {
+            self::assertDatabaseCount('impex_activities', 0);
+        }
+        self::assertDatabaseHas('channel_shops', [
+            'shop_id' => 'FULL-PURGE-SHOP',
+            'order_sync_enabled' => false,
+            'stock_push_enabled' => false,
+            'fulfillment_push_enabled' => false,
+        ]);
+    }
+
+    public function test_open_order_intake_reenables_only_order_sync_for_run_locations(): void
+    {
+        $location = Location::create([
+            'location_code' => 'WH-OPEN-INTAKE',
+            'location_name' => 'Gudang Open Intake',
+            'location_type' => 'warehouse',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+        $shopId = (string) Str::uuid();
+        DB::table('channel_shops')->insert([
+            'id' => $shopId,
+            'shop_id' => 'OPEN-INTAKE-SHOP',
+            'shop_name' => 'Open Intake Shop',
+            'is_active' => true,
+            'order_sync_enabled' => false,
+            'stock_push_enabled' => false,
+            'fulfillment_push_enabled' => false,
+            'stock_source_location_id' => $location->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $runId = (string) Str::uuid();
+        DB::table('stock_cutover_runs')->insert([
+            'id' => $runId,
+            'cutoff_at' => now(),
+            'location_codes' => json_encode([$location->location_code], JSON_THROW_ON_ERROR),
+            'source_files' => json_encode([], JSON_THROW_ON_ERROR),
+            'report' => json_encode([], JSON_THROW_ON_ERROR),
+            'status' => 'RESET_APPLIED',
+            'created_by' => 'test',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $service = app(StockCutoverService::class);
+        self::assertSame(1, $service->openOrderIntake($runId, true));
+        self::assertSame(1, $service->openOrderIntake($runId, false));
+        self::assertDatabaseHas('channel_shops', [
+            'shop_id' => 'OPEN-INTAKE-SHOP',
+            'order_sync_enabled' => true,
+            'stock_push_enabled' => false,
+            'fulfillment_push_enabled' => false,
+        ]);
+    }
+
+    public function test_full_purge_removes_purchase_order_history_for_selected_locations(): void
+    {
+        if (! Schema::hasTable('purchase_orders') || ! Schema::hasTable('contacts')) {
+            self::markTestSkipped('purchase module tidak tersedia pada schema test.');
+        }
+
+        $location = Location::create([
+            'location_code' => 'WH-PURCHASE-PURGE',
+            'location_name' => 'Gudang Purchase Purge',
+            'location_type' => 'warehouse',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+        $contactId = (string) Str::uuid();
+        DB::table('contacts')->insert([
+            'id' => $contactId,
+            'code' => 'PURGE-CONTACT',
+            'name' => 'Purge Contact',
+            'type' => 'SUPPLIER',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $purchaseOrderId = (string) Str::uuid();
+        $purchaseOrder = [
+            'id' => $purchaseOrderId,
+            'po_number' => 'PO-PURGE-001',
+            'location_id' => $location->id,
+            'status' => 'DRAFT',
+            'order_date' => now()->toDateString(),
+            'total_amount' => 0,
+            'created_by' => 'test',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ];
+        $purchaseOrder[Schema::hasColumn('purchase_orders', 'contact_id') ? 'contact_id' : 'supplier_id'] = $contactId;
+        DB::table('purchase_orders')->insert($purchaseOrder);
+
+        $runId = (string) Str::uuid();
+        DB::table('stock_cutover_runs')->insert([
+            'id' => $runId,
+            'cutoff_at' => now(),
+            'location_codes' => json_encode([$location->location_code], JSON_THROW_ON_ERROR),
+            'source_files' => json_encode([], JSON_THROW_ON_ERROR),
+            'report' => json_encode(['order_audit' => ['mode' => 'terminal_before_cutoff']], JSON_THROW_ON_ERROR),
+            'status' => 'PAUSED',
+            'created_by' => 'test',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        app(StockCutoverService::class)->reset($runId, true, true);
+
+        self::assertDatabaseMissing('purchase_orders', ['id' => $purchaseOrderId]);
     }
 
     public function test_stock_audit_ignores_zero_quantity_rows_without_a_rack(): void
