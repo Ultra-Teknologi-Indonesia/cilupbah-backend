@@ -274,7 +274,7 @@ class ProcessTikTokWebhook implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        $this->handleOrderEvent($shopId, $data);
+        $this->handleOrderEvent($shopId, $data, $eventKey);
     }
 
     protected function handlePackageEventOrDefer(
@@ -318,7 +318,7 @@ class ProcessTikTokWebhook implements ShouldBeUnique, ShouldQueue
         ]);
     }
 
-    protected function handleOrderEvent(string $shopId, array $data): void
+    protected function handleOrderEvent(string $shopId, array $data, string $eventKey): void
     {
         $orderId = (string) ($data['order_id'] ?? '');
         if ($orderId === '') {
@@ -332,6 +332,7 @@ class ProcessTikTokWebhook implements ShouldBeUnique, ShouldQueue
             $shopId,
             $orderId,
             (string) config('queue.names.tiktok_orders', 'tiktok-orders'),
+            $eventKey,
         )->delay(now()->addSeconds(2));
 
         $this->recordTikTokTrackingEvent($orderId, $data);
@@ -358,6 +359,7 @@ class ProcessTikTokWebhook implements ShouldBeUnique, ShouldQueue
                 $shopId,
                 $orderId,
                 fn (): int => $orderService->pullOrderById($shopId, $orderId),
+                webhookEventKey: self::idempotencyKey($this->payload),
             );
 
             $localId = SalesOrder::query()
@@ -384,6 +386,7 @@ class ProcessTikTokWebhook implements ShouldBeUnique, ShouldQueue
             $shopId,
             $orderId,
             fn (): int => $orderService->pullOrderById($shopId, $orderId),
+            webhookEventKey: self::idempotencyKey($this->payload),
         );
 
         $cancelStatus = (string) ($data['cancel_status'] ?? '');
@@ -413,6 +416,7 @@ class ProcessTikTokWebhook implements ShouldBeUnique, ShouldQueue
             $shopId,
             $orderId,
             fn (): int => $orderService->pullOrderById($shopId, $orderId),
+            webhookEventKey: self::idempotencyKey($this->payload),
         );
         Log::info("TikTok reverse/return: order {$orderId} resynced.", [
             'shop_id' => $shopId,
@@ -453,6 +457,7 @@ class ProcessTikTokWebhook implements ShouldBeUnique, ShouldQueue
             $shopId,
             $orderId,
             fn (): int => $orderService->pullOrderById($shopId, $orderId),
+            webhookEventKey: self::idempotencyKey($this->payload),
         );
 
         $this->createChannelReturn(

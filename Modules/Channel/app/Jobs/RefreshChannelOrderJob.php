@@ -14,6 +14,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\ChannelOrderRefreshService;
 use Modules\Channel\Support\ChannelOrderPullGuard;
+use Modules\Channel\Support\WebhookFailureHandler;
 use Modules\Channel\Support\WebhookRetryPolicy;
 
 final class RefreshChannelOrderJob implements ShouldBeUnique, ShouldQueue
@@ -35,6 +36,7 @@ final class RefreshChannelOrderJob implements ShouldBeUnique, ShouldQueue
         public readonly string $shopId,
         public readonly string $orderId,
         ?string $queue = null,
+        public readonly ?string $webhookEventKey = null,
     ) {
         $this->onQueue($queue ?: self::resolveQueueName($channel));
     }
@@ -60,6 +62,7 @@ final class RefreshChannelOrderJob implements ShouldBeUnique, ShouldQueue
             $this->shopId,
             $this->orderId,
             $pulled,
+            verifyLocalOrder: true,
         );
 
         Log::info('Delayed channel order refresh completed.', [
@@ -71,6 +74,20 @@ final class RefreshChannelOrderJob implements ShouldBeUnique, ShouldQueue
 
     public function failed(\Throwable $e): void
     {
+        if ($this->webhookEventKey !== null && $this->webhookEventKey !== '') {
+            WebhookFailureHandler::recordDownstreamFailure(
+                $this->channel,
+                $this->webhookEventKey,
+                [
+                    'shop_id' => $this->shopId,
+                    'order_id' => $this->orderId,
+                    'queue' => $this->queue,
+                ],
+                $e,
+                $this->job?->uuid(),
+            );
+        }
+
         Log::warning('Delayed channel order refresh failed.', [
             'channel' => $this->channel,
             'shop_id' => $this->shopId,

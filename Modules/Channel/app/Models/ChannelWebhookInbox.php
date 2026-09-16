@@ -225,4 +225,34 @@ class ChannelWebhookInbox extends Model
             $row->save();
         });
     }
+
+    /**
+     * Marks a downstream order refresh as failed after the webhook was
+     * accepted. This is separate so a late refresh failure cannot overwrite a
+     * successful non-order webhook.
+     */
+    public static function markDownstreamFailedByKey(string $eventKey, string $message): void
+    {
+        DB::transaction(function () use ($eventKey, $message): void {
+            $row = static::query()
+                ->where('event_key', $eventKey)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $row || in_array($row->status, [
+                WebhookInboxStatus::FAILED,
+                WebhookInboxStatus::SKIPPED,
+            ], true)) {
+                return;
+            }
+
+            $row->update([
+                'status' => WebhookInboxStatus::FAILED,
+                'attempts' => (int) $row->attempts + 1,
+                'error' => mb_substr('DOWNSTREAM_ORDER_REFRESH_FAILED: '.$message, 0, 2000),
+                'processed_at' => null,
+                'next_attempt_at' => null,
+            ]);
+        });
+    }
 }

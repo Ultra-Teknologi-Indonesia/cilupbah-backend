@@ -56,6 +56,12 @@ class TikTokWebhookRoutingTest extends TestCase
         );
 
         Queue::assertPushed(RefreshChannelOrderJob::class, fn (RefreshChannelOrderJob $job): bool => $job->channel === 'tiktok' && $job->shopId === 'TT1' && $job->orderId === 'O-1'
+            && $job->webhookEventKey === ProcessTikTokWebhook::idempotencyKey([
+                'type' => 1,
+                'shop_id' => 'TT1',
+                'tts_notification_id' => 'n1',
+                'data' => ['order_id' => 'O-1', 'order_status' => 'UNPAID'],
+            ])
         );
     }
 

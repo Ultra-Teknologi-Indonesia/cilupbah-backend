@@ -13,6 +13,7 @@ class ReconcileOrderAllocationLedger extends Command
     protected $signature = 'inventory:reconcile-order-ledger
         {--sku= : Filter SKU tertentu}
         {--limit=0 : Batas transaksi yang dipindai; 0 berarti tanpa batas}
+        {--include-orphans : Sertakan reserve yang tidak lagi memiliki order lokal}
         {--fix : Terapkan ORDER_RELEASE. Tanpa flag ini hanya dry-run}
         {--apply : Alias dari --fix}';
 
@@ -22,6 +23,7 @@ class ReconcileOrderAllocationLedger extends Command
     {
         $skuFilter = $this->option('sku') ? strtoupper(trim((string) $this->option('sku'))) : null;
         $fix = (bool) $this->option('fix') || (bool) $this->option('apply');
+        $includeOrphans = (bool) $this->option('include-orphans');
         $rawLimit = (string) $this->option('limit');
 
         if (! ctype_digit($rawLimit)) {
@@ -36,9 +38,18 @@ class ReconcileOrderAllocationLedger extends Command
             ->leftJoin('sales_orders as so', 'so.salesorder_no', '=', 'im.transaction_number')
             ->leftJoin('product_variants as pv', 'pv.id', '=', 'im.item_id')
             ->whereIn('im.source', InventoryMovementSourceMap::ORDER_LEDGER_SOURCES)
-            ->where(function ($query): void {
-                $query
-                    ->where('so.is_canceled', true)
+            ->where(function ($query) use ($includeOrphans): void {
+                if ($includeOrphans) {
+                    $query->whereNull('so.id')
+                        ->orWhere('so.is_canceled', true)
+                        ->orWhereIn('so.status', [
+                            'cancelled', 'picked', 'packed', 'shipped', 'completed', 'delivered',
+                        ]);
+
+                    return;
+                }
+
+                $query->where('so.is_canceled', true)
                     ->orWhereIn('so.status', [
                         'cancelled', 'picked', 'packed', 'shipped', 'completed', 'delivered',
                     ]);
@@ -49,6 +60,7 @@ class ReconcileOrderAllocationLedger extends Command
                 'im.item_id',
                 'im.location_id',
                 'pv.sku',
+                'so.id as order_id',
                 'so.status',
                 'so.is_canceled',
             )
@@ -58,6 +70,7 @@ class ReconcileOrderAllocationLedger extends Command
                 'im.item_id',
                 'im.location_id',
                 'pv.sku',
+                'so.id',
                 'so.status',
                 'so.is_canceled',
             )
@@ -71,6 +84,9 @@ class ReconcileOrderAllocationLedger extends Command
         $this->line('Mode: '.($fix ? 'FIX' : 'DRY-RUN / INSPECTION ONLY'));
         if ($skuFilter) {
             $this->line("Filter SKU: {$skuFilter}");
+        }
+        if ($includeOrphans) {
+            $this->warn('Orphan reserve ikut dipindai. Jalankan --fix hanya setelah rekonsiliasi channel selesai.');
         }
 
         $candidateCount = $fix
@@ -175,7 +191,7 @@ class ReconcileOrderAllocationLedger extends Command
                 '%s x%s @%s',
                 $row->sku ?: $row->item_id,
                 (int) $row->outstanding_qty,
-                $row->status ?: 'tanpa-order',
+                $row->order_id === null ? 'orphan' : ($row->status ?: 'tanpa-order'),
             ))
             ->implode(', ');
 
@@ -195,6 +211,10 @@ class ReconcileOrderAllocationLedger extends Command
 
     private function isTerminal(object $row): bool
     {
+        if ($row->order_id === null) {
+            return true;
+        }
+
         return (bool) $row->is_canceled
             || in_array(strtolower((string) $row->status), [
                 'cancelled', 'picked', 'packed', 'shipped', 'completed', 'delivered',

@@ -306,6 +306,37 @@ class OrderAllocationLedgerTest extends TestCase
         ]);
     }
 
+    public function test_reconcile_command_can_close_an_orphan_reservation_after_channel_reconciliation(): void
+    {
+        $v = $this->variant('ALLOC-ORPHAN');
+        $this->setInventory($v->id, 50);
+
+        $this->stock()->reserve('ALLOC-ORPHAN', $v->id, $this->locationId, 2, 'TT-ORPHAN-1');
+
+        $this->artisan('inventory:reconcile-order-ledger', ['--include-orphans' => true])
+            ->expectsOutputToContain('orphan')
+            ->assertSuccessful();
+
+        $this->assertDatabaseMissing('inventory_movements', [
+            'transaction_number' => 'TT-ORPHAN-1',
+            'source' => 'ORDER_RELEASE',
+        ]);
+
+        $this->artisan('inventory:reconcile-order-ledger', [
+            '--include-orphans' => true,
+            '--fix' => true,
+        ])->assertSuccessful();
+
+        $this->assertSame(0, (int) DB::table('inventories')
+            ->where('item_id', $v->id)
+            ->where('location_id', $this->locationId)
+            ->sum('on_order'));
+        $this->assertSame(0, (int) DB::table('inventory_movements')
+            ->where('transaction_number', 'TT-ORPHAN-1')
+            ->whereIn('source', ['ORDER_RESERVE', 'ORDER_RELEASE'])
+            ->sum('qty'));
+    }
+
     public function test_reconcile_command_does_not_consume_active_on_order_when_terminal_ledger_is_stale(): void
     {
         $v = $this->variant('ALLOC-STALE-WITH-ACTIVE');

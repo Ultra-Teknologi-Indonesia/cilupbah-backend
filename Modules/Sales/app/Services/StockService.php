@@ -509,7 +509,8 @@ class StockService
 
     private function isTerminalOrder(object $row): bool
     {
-        return (bool) $row->is_canceled
+        return $row->status === null
+            || (bool) $row->is_canceled
             || in_array(strtolower((string) $row->status), [
                 'cancelled', 'picked', 'packed', 'shipped', 'completed', 'delivered',
             ], true);

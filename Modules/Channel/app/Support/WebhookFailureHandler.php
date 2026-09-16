@@ -33,4 +33,33 @@ class WebhookFailureHandler
             $context + ['channel' => $channel, 'event_key' => $eventKey],
         );
     }
+
+    public static function recordDownstreamFailure(
+        string $channel,
+        string $eventKey,
+        array $context,
+        \Throwable $e,
+        ?string $jobUuid = null,
+    ): void {
+        $message = app(QueueFailureRecorder::class)->messageForJob($jobUuid, $e);
+
+        ChannelWebhookInbox::markDownstreamFailedByKey($eventKey, $message);
+
+        Log::error("Webhook {$channel} diterima tetapi refresh order gagal permanen.", [
+            'event_key' => $eventKey,
+            'exception' => $e::class,
+            'error' => $message,
+            'context' => $context,
+        ]);
+
+        AdminAlertJob::dispatch(
+            "Refresh order {$channel} gagal permanen",
+            $message,
+            $context + [
+                'channel' => $channel,
+                'event_key' => $eventKey,
+                'stage' => 'downstream_order_refresh',
+            ],
+        );
+    }
 }

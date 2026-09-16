@@ -23,6 +23,7 @@ use Modules\Channel\Console\Commands\PullLiveOrdersCommand;
 use Modules\Channel\Console\Commands\PullShadowOrdersCommand;
 use Modules\Channel\Console\Commands\ReapStaleDownloadTransactions;
 use Modules\Channel\Console\Commands\RebuildLazadaCatalogSearchIndex;
+use Modules\Channel\Console\Commands\ReconcileWebhookOrders;
 use Modules\Channel\Console\Commands\RepairStaleSyncErrors;
 use Modules\Channel\Console\Commands\ReplayFailedWebhooksCommand;
 use Modules\Channel\Console\Commands\ReportMissingChannelSku;
@@ -66,6 +67,7 @@ class ChannelServiceProvider extends ModuleServiceProvider
         RebuildLazadaCatalogSearchIndex::class,
         ReportMissingChannelSku::class,
         RepairStaleSyncErrors::class,
+        ReconcileWebhookOrders::class,
         SyncTikTokAttributes::class,
 
         MonitorShadowPullHealth::class,

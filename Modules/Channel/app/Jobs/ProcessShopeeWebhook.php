@@ -162,14 +162,14 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
         try {
             match ($code) {
                 self::PUSH_SHOP_DEAUTHORIZED => $this->handleDeauthorized($shopId),
-                self::PUSH_ORDER_STATUS => $this->handleOrderEventOrDefer($shopId, $data),
+                self::PUSH_ORDER_STATUS => $this->handleOrderEventOrDefer($shopId, $data, $idempotencyKey),
                 self::PUSH_TRACKING_NO,
                 self::PUSH_SHIPPING_DOC,
                 self::PUSH_BOOKING_STATUS,
                 self::PUSH_BOOKING_TRACKING_NO,
                 self::PUSH_BOOKING_SHIPPING_DOC,
                 self::PUSH_PACKAGE_FULFILLMENT,
-                self::PUSH_COURIER_DELIVERY_BINDING => $this->handleTrackingEventOrDefer($shopId, $data),
+                self::PUSH_COURIER_DELIVERY_BINDING => $this->handleTrackingEventOrDefer($shopId, $data, $idempotencyKey),
                 self::PUSH_RETURN_UPDATE => $this->handleReturnEvent($orderService, $shopId, $data),
                 self::PUSH_RESERVED_STOCK_CHANGE,
                 self::PUSH_ITEM_PRICE_UPDATE => $this->logItemEvent($downloadService, $shopId, $data),
@@ -202,7 +202,7 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
         ChannelWebhookInbox::markProcessedByKey($eventKey);
     }
 
-    protected function handleOrderEventOrDefer(string $shopId, array $data): void
+    protected function handleOrderEventOrDefer(string $shopId, array $data, string $eventKey): void
     {
         $orderSn = (string) ($data['ordersn'] ?? $data['order_sn'] ?? '');
         if ($orderSn !== '' && ChannelOrderIntakeGate::shouldDeferOrderEvent('shopee', $shopId, $orderSn)) {
@@ -211,10 +211,10 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        $this->handleOrderEvent($shopId, $data);
+        $this->handleOrderEvent($shopId, $data, $eventKey);
     }
 
-    protected function handleTrackingEventOrDefer(string $shopId, array $data): void
+    protected function handleTrackingEventOrDefer(string $shopId, array $data, string $eventKey): void
     {
         $orderSn = (string) ($data['ordersn'] ?? $data['order_sn'] ?? '');
         if ($orderSn === '') {
@@ -237,6 +237,7 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
             $shopId,
             $orderSn,
             (string) config('queue.names.shopee_tracking', 'shopee-tracking'),
+            $eventKey,
         )->delay(now()->addSeconds(2));
     }
 
@@ -344,7 +345,7 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
         Log::info('Shopee toko di-deauthorize via webhook.', ['shop_id' => $shopId]);
     }
 
-    protected function handleOrderEvent(string $shopId, array $data): void
+    protected function handleOrderEvent(string $shopId, array $data, string $eventKey): void
     {
         $orderSn = (string) ($data['ordersn'] ?? $data['order_sn'] ?? '');
 
@@ -359,6 +360,7 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
             $shopId,
             $orderSn,
             (string) config('queue.names.shopee_orders', 'shopee-orders'),
+            $eventKey,
         )->delay(now()->addSeconds(2));
 
         $this->recordDeliveredEventIfApplicable($orderSn, $data);
@@ -433,6 +435,7 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
             $shopId,
             $orderSn,
             fn (): int => $orderService->pullOrderById($shopId, $orderSn),
+            webhookEventKey: self::idempotencyKey($this->payload),
         );
 
         ProcessChannelReturnJob::dispatch([

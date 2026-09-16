@@ -126,8 +126,9 @@ class ProcessWooCommerceWebhook implements ShouldBeUnique, ShouldQueue
 
     protected function handleOrderEvent(WooCommerceOrderService $orderService): void
     {
+        $eventKey = self::idempotencyKey($this->shopId, $this->topic, $this->payload);
+
         if (ChannelOrderIntakeGate::shouldDeferOrderEvent('woocommerce', (string) $this->shopId, (string) $this->resourceId)) {
-            $eventKey = self::idempotencyKey($this->shopId, $this->topic, $this->payload);
             ChannelWebhookInbox::deferByKey($eventKey, ChannelOrderIntakeGate::deferredReason());
             try {
                 Cache::forget($eventKey);
@@ -153,6 +154,7 @@ class ProcessWooCommerceWebhook implements ShouldBeUnique, ShouldQueue
             $this->shopId,
             $this->resourceId,
             fn (): int => $orderService->pullOrderById($this->shopId, $this->resourceId),
+            webhookEventKey: $eventKey,
         );
 
         if ($this->topic === 'order.deleted') {

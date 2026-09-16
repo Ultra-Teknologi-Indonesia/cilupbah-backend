@@ -17,12 +17,19 @@ final class ChannelOrderPullGuard
         string $shopId,
         string $orderId,
         ?int $pulled,
+        bool $verifyLocalOrder = false,
     ): void {
-        if ((int) $pulled > 0) {
-            return;
+        if ((int) $pulled <= 0) {
+            throw new ChannelOrderNotAvailableException($channel, $shopId, $orderId);
         }
 
-        throw new ChannelOrderNotAvailableException($channel, $shopId, $orderId);
+        if ($verifyLocalOrder && ! SalesOrder::query()
+            ->where('source', strtolower($channel))
+            ->where('channel_shop_id', $shopId)
+            ->where('channel_order_no', $orderId)
+            ->exists()) {
+            throw new ChannelOrderNotAvailableException($channel, $shopId, $orderId);
+        }
     }
 
     public static function pullOnce(
@@ -31,6 +38,7 @@ final class ChannelOrderPullGuard
         string $orderId,
         Closure $pull,
         int $seconds = 15,
+        ?string $webhookEventKey = null,
     ): bool {
         $channel = strtolower($channel);
         $key = "{$channel}_pulled_recent:{$shopId}:{$orderId}";
@@ -71,7 +79,7 @@ final class ChannelOrderPullGuard
 
         if (! $pulled) {
 
-            RefreshChannelOrderJob::dispatch($channel, $shopId, $orderId)
+            RefreshChannelOrderJob::dispatch($channel, $shopId, $orderId, null, $webhookEventKey)
                 ->delay(now()->addSeconds($seconds));
         }
 

@@ -263,6 +263,7 @@ class ProcessLazadaWebhook implements ShouldBeUnique, ShouldQueue
                 $sellerId,
                 $orderId,
                 fn (): int => $orderService->pullOrderById($sellerId, $orderId),
+                webhookEventKey: self::idempotencyKey($this->payload),
             );
         }
 
@@ -294,6 +295,7 @@ class ProcessLazadaWebhook implements ShouldBeUnique, ShouldQueue
             $sellerId,
             $orderId,
             fn (): int => $orderService->pullOrderById($sellerId, $orderId),
+            webhookEventKey: self::idempotencyKey($this->payload),
         )) {
             Log::info("Lazada webhook {$orderId} di-debounce (sudah di-pull dalam 15 detik).");
             $this->recordLazadaTrackingEvent($orderId, $data);
