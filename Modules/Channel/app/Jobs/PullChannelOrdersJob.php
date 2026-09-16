@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Services\ChannelOrderPullLeaseService;
+use Modules\Channel\Support\ChannelErrorClassifier;
 
 final class PullChannelOrdersJob implements ShouldQueue
 {
@@ -85,6 +86,20 @@ final class PullChannelOrdersJob implements ShouldQueue
             ]);
         } catch (\Throwable $e) {
             $shops->markScheduledOrderPullFailed($shop->id, $this->leaseToken, $e->getMessage());
+
+            $channel = strtolower(trim((string) ($this->channel ?: ($shop->channel?->code ?? ''))));
+            if ($channel === 'lazada' && ChannelErrorClassifier::isRetryable($channel, $e)) {
+                Log::warning('Scheduled Lazada order pull deferred after transient failure.', [
+                    'channel_shop_id' => $shop->id,
+                    'shop_id' => $shop->shop_id,
+                    'from' => $this->from,
+                    'to' => $this->to,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return;
+            }
+
             throw $e;
         } finally {
             $leases->release($this->channelShopId, $this->leaseToken);

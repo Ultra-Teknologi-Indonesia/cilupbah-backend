@@ -4,6 +4,7 @@ namespace Modules\Channel\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Modules\Channel\Exceptions\ChannelOrderPullIncompleteException;
@@ -197,6 +198,46 @@ class PullLiveOrdersCommandTest extends TestCase
 
         app(ChannelShopRepository::class)->markOrderSyncOk($shop->id);
         $this->assertSame(ChannelShop::ORDER_SYNC_PROBLEM, $shop->fresh()->order_sync_status);
+    }
+
+    public function test_lazada_rate_limit_is_deferred_without_creating_failed_job(): void
+    {
+        $channel = Channel::create(['code' => 'lazada', 'name' => 'Lazada', 'is_active' => true]);
+        $shop = ChannelShop::create([
+            'channel_id' => $channel->id,
+            'shop_id' => '998877',
+            'shop_name' => 'Lazada Shop',
+            'access_token' => 'lazada-token',
+            'refresh_token' => 'lazada-refresh',
+            'token_expires_at' => now()->addHours(4),
+            'is_active' => true,
+            'is_shadow_mode' => false,
+            'stock_push_enabled' => false,
+        ]);
+
+        $leases = app(ChannelOrderPullLeaseService::class);
+        $from = now()->subMinutes(10);
+        $to = now();
+        $token = $leases->acquire($shop, 300, $from, $to);
+
+        Artisan::shouldReceive('call')
+            ->once()
+            ->andThrow(new \RuntimeException('Lazada API Error: Api access frequency exceeds the limit. this ban will last 1 seconds'));
+
+        (new PullChannelOrdersJob(
+            $shop->id,
+            $token,
+            $from->toIso8601String(),
+            $to->toIso8601String(),
+            'lazada',
+        ))->handle($leases, app(ChannelShopRepository::class));
+
+        $freshShop = $shop->fresh();
+
+        $this->assertSame(ChannelShop::ORDER_SYNC_PROBLEM, $freshShop->order_sync_status);
+        $this->assertSame(1, $freshShop->order_pull_attempts);
+        $this->assertNotNull($freshShop->order_pull_next_attempt_at);
+        $this->assertNull($freshShop->order_pull_lease_token);
     }
 
     public function test_incomplete_store_pull_keeps_the_same_window_for_idempotent_retry(): void

@@ -2,6 +2,7 @@
 
 namespace Modules\Channel\Services;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
@@ -9,7 +10,6 @@ use Modules\Channel\Exceptions\TokenExpiredException;
 
 class LazadaClient
 {
-
     protected const TOKEN_ERROR_CODES = ['IllegalAccessToken', 'InvalidAccessToken', 'AppCallLimit.TokenExpired'];
 
     protected const TRANSIENT_MARKERS = [
@@ -27,8 +27,11 @@ class LazadaClient
     protected const MAX_ATTEMPTS = 3;
 
     protected string $appKey;
+
     protected string $appSecret;
+
     protected string $authUrl;
+
     protected string $baseUrl;
 
     public function __construct()
@@ -50,8 +53,7 @@ class LazadaClient
         ?string $accessToken = null,
         ?int $timeoutSeconds = null,
         ?int $maxAttempts = null,
-    ): array
-    {
+    ): array {
         $baseParams = $params;
         $timeout = max(1, $timeoutSeconds ?? 30);
         $attemptLimit = max(1, $maxAttempts ?? self::MAX_ATTEMPTS);
@@ -72,13 +74,13 @@ class LazadaClient
 
             $this->throttle();
 
-            $url = $this->baseUrl . $apiPath;
+            $url = $this->baseUrl.$apiPath;
 
             try {
                 $response = strtoupper($method) === 'GET'
                     ? Http::timeout($timeout)->connectTimeout(min(15, $timeout))->get($url, $signed)
                     : Http::asForm()->timeout($timeout)->connectTimeout(min(15, $timeout))->post($url, $signed);
-            } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            } catch (ConnectionException $e) {
                 if ($attempt < $attemptLimit) {
                     Log::warning('Lazada API koneksi/timeout, retry', ['path' => $apiPath, 'attempt' => $attempt]);
                     $this->backoff($attempt);
@@ -94,7 +96,7 @@ class LazadaClient
                 ]);
 
                 throw new \Exception(
-                    'Lazada API Error: ' . $this->safeConnectionErrorMessage($e, $timeout),
+                    'Lazada API Error: '.$this->safeConnectionErrorMessage($e, $timeout),
                     0,
                     $e,
                 );
@@ -122,7 +124,7 @@ class LazadaClient
                     || $this->isTransient((string) ($data['code'] ?? ''), (string) $message)
                 )) {
                     Log::warning('Lazada API HTTP transien, retry', ['path' => $apiPath, 'attempt' => $attempt, 'status' => $response->status()]);
-                    $this->backoff($attempt);
+                    $this->backoff($attempt, $this->retryAfterSeconds((string) $message));
 
                     continue;
                 }
@@ -133,7 +135,7 @@ class LazadaClient
                     'message' => $message,
                 ]);
 
-                throw new \Exception('Lazada API Error: ' . $message);
+                throw new \Exception('Lazada API Error: '.$message);
             }
 
             if (($data['code'] ?? '0') !== '0') {
@@ -152,14 +154,17 @@ class LazadaClient
                     throw new TokenExpiredException('lazada', $data['message'] ?? 'Lazada access token expired');
                 }
 
-                if ($attempt < $attemptLimit && $this->isTransient($code, trim(((string) ($data['message'] ?? '')) . ' ' . $detail))) {
+                if ($attempt < $attemptLimit && $this->isTransient($code, trim(((string) ($data['message'] ?? '')).' '.$detail))) {
                     Log::warning('Lazada API transien, retry', [
                         'path' => $apiPath,
                         'attempt' => $attempt,
                         'code' => $code,
                         'message' => $data['message'] ?? null,
                     ]);
-                    $this->backoff($attempt);
+                    $this->backoff(
+                        $attempt,
+                        $this->retryAfterSeconds(trim(((string) ($data['message'] ?? '')).' '.$detail)),
+                    );
 
                     continue;
                 }
@@ -174,10 +179,10 @@ class LazadaClient
 
                 $reason = trim((string) ($data['message'] ?? $code ?: 'Unknown error'));
                 if ($detail !== '' && ! str_contains($reason, $detail)) {
-                    $reason = $reason !== '' ? $reason . ' — ' . $detail : $detail;
+                    $reason = $reason !== '' ? $reason.' — '.$detail : $detail;
                 }
 
-                throw new \Exception('Lazada API Error: ' . $reason);
+                throw new \Exception('Lazada API Error: '.$reason);
             }
 
             return $data;
@@ -186,7 +191,7 @@ class LazadaClient
 
     protected function isTransient(string $code, string $message): bool
     {
-        $haystack = strtolower(trim($code . ' ' . $message));
+        $haystack = strtolower(trim($code.' '.$message));
 
         if ($haystack === '') {
             return false;
@@ -201,13 +206,24 @@ class LazadaClient
         return false;
     }
 
-    protected function backoff(int $attempt): void
+    protected function backoff(int $attempt, ?int $retryAfterSeconds = null): void
     {
+        $exponential = min(2 ** ($attempt - 1), 8);
+        $serverDelay = $retryAfterSeconds !== null ? min(30, max(1, $retryAfterSeconds)) : 0;
 
-        sleep(min(2 ** ($attempt - 1), 8));
+        sleep(max($exponential, $serverDelay));
     }
 
-    protected function safeConnectionErrorMessage(\Illuminate\Http\Client\ConnectionException $exception, int $timeout): string
+    protected function retryAfterSeconds(string $message): ?int
+    {
+        if (preg_match('/(?:last|in|after|retry after)\s+(\d+)\s*seconds?/i', $message, $matches) !== 1) {
+            return null;
+        }
+
+        return max(1, min(30, (int) $matches[1]));
+    }
+
+    protected function safeConnectionErrorMessage(ConnectionException $exception, int $timeout): string
     {
         $message = strtolower($exception->getMessage());
 
@@ -244,6 +260,7 @@ class LazadaClient
         foreach ($detail as $item) {
             if (! is_array($item)) {
                 $parts[] = trim((string) $item);
+
                 continue;
             }
 
@@ -278,11 +295,11 @@ class LazadaClient
 
         $this->throttle();
 
-        $response = Http::attach($fileField, $fileContents, $filename)->timeout(30)->connectTimeout(15)->post($this->baseUrl . $apiPath, $params);
+        $response = Http::attach($fileField, $fileContents, $filename)->timeout(30)->connectTimeout(15)->post($this->baseUrl.$apiPath, $params);
         $data = $response->json() ?? [];
 
         if (($data['code'] ?? '0') !== '0') {
-            throw new \Exception('Lazada API Error: ' . ($data['message'] ?? $data['code'] ?? 'Unknown error'));
+            throw new \Exception('Lazada API Error: '.($data['message'] ?? $data['code'] ?? 'Unknown error'));
         }
 
         return $data;
@@ -290,7 +307,7 @@ class LazadaClient
 
     protected function throttle(): void
     {
-        $limit = config('channel.api_rate_limit_per_second', 8);
+        $limit = max(1, (int) config('ratelimit.channel_api_per_second_by_channel.lazada', 1));
 
         for ($attempt = 0; $attempt < 10; $attempt++) {
             if (RateLimiter::attempt('lazada-api', $limit, fn () => null, 1)) {
@@ -322,7 +339,7 @@ class LazadaClient
             $queries['state'] = $state;
         }
 
-        return $this->authUrl . '/oauth/authorize?' . http_build_query($queries);
+        return $this->authUrl.'/oauth/authorize?'.http_build_query($queries);
     }
 
     public function getAccessToken(string $code): array
@@ -345,7 +362,7 @@ class LazadaClient
 
         $params['sign'] = $this->generateSign($apiPath, $params);
 
-        $response = Http::asForm()->timeout(30)->connectTimeout(15)->get($this->authUrl . '/rest' . $apiPath, $params);
+        $response = Http::asForm()->timeout(30)->connectTimeout(15)->get($this->authUrl.'/rest'.$apiPath, $params);
 
         return $response->json() ?? [];
     }
@@ -357,7 +374,7 @@ class LazadaClient
 
         $payload = $apiPath;
         foreach ($params as $key => $value) {
-            $payload .= $key . $value;
+            $payload .= $key.$value;
         }
 
         return strtoupper(hash_hmac('sha256', $payload, $this->appSecret));
