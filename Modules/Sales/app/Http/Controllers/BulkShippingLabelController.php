@@ -201,14 +201,16 @@ class BulkShippingLabelController extends Controller
         abort_unless($batch->user_id === $req->user()->id, 403);
 
         try {
-            $newBatch = $this->svc->retryFailed($req->user(), $batch);
+            $retriedBatch = $this->svc->retryFailed($req->user(), $batch);
         } catch (\InvalidArgumentException $e) {
             return $this->errorResponse($e->getMessage(), 422);
         }
 
+        $transientCount = $retriedBatch->items()->whereIn('status', BulkShippingLabelItem::TRANSIENT_STATUSES)->count();
+
         return $this->successResponse([
-            'batch_id' => $newBatch->id,
-            'retried_count' => $newBatch->total_count,
+            'batch_id' => $retriedBatch->id,
+            'retried_count' => $transientCount,
         ], null, 202);
     }
 }

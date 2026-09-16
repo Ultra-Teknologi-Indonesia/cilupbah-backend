@@ -225,7 +225,7 @@ class BulkShippingLabelService
             throw new AuthorizationException('Batch label bukan milik pengguna ini.');
         }
 
-        $recoverableOrderIds = $batch->items()
+        $recoverableItems = $batch->items()
             ->where('status', BulkShippingLabelItem::STATUS_FAILED)
             ->where(function ($query): void {
                 $query->whereIn('reason', BulkShippingLabelItem::RECOVERABLE_REASONS)
@@ -234,17 +234,64 @@ class BulkShippingLabelService
                             ->where('reason', BulkShippingLabelItem::REASON_SELF_DESIGN);
                     });
             })
-            ->pluck('order_id')
-            ->all();
+            ->get();
 
-        if ($recoverableOrderIds === []) {
+        if ($recoverableItems->isEmpty()) {
             throw new \InvalidArgumentException('Tidak ada label gagal yang bisa dicoba ulang.');
         }
 
-        $newBatch = $this->createBatch($user, $recoverableOrderIds, $batch->per_channel_opts ?? []);
-        $this->queueBatch($newBatch);
+        $awaitingAwb = [];
+        $toDispatch = [];
 
-        return $newBatch;
+        DB::transaction(function () use ($batch, $recoverableItems, &$awaitingAwb, &$toDispatch): void {
+            $batch->update([
+                'status' => BulkShippingLabelBatch::STATUS_PROCESSING,
+                'finished_at' => null,
+            ]);
+
+            $orderIds = $recoverableItems->pluck('order_id')->all();
+            $orders = SalesOrder::whereIn('id', $orderIds)->get()->keyBy('id');
+
+            foreach ($recoverableItems as $item) {
+                $order = $orders->get($item->order_id);
+                $channel = $order?->source ?? $item->channel ?? self::CHANNEL_MANUAL;
+                [$status, $reason] = $this->initialItemStatus($order, $channel);
+
+                $item->update([
+                    'status' => $status,
+                    'reason' => $reason,
+                    'pdf_bytes' => null,
+                    'updated_at' => now(),
+                ]);
+
+                if ($status === BulkShippingLabelItem::STATUS_WAITING_AWB) {
+                    $awaitingAwb[] = (string) $item->order_id;
+                } elseif ($status === BulkShippingLabelItem::STATUS_PENDING) {
+                    $toDispatch[] = $item;
+                }
+            }
+
+            $batch->recomputeCounts();
+        });
+
+        foreach ($recoverableItems as $item) {
+            if (! $this->hydrateCachedLabel((string) $item->order_id)) {
+                $this->inheritActiveOrderState($batch->id, (string) $item->order_id);
+            }
+        }
+
+        foreach (array_unique($awaitingAwb) as $orderId) {
+            RequestChannelAwbJob::dispatch($orderId);
+        }
+
+        foreach ($toDispatch as $item) {
+            $freshItem = BulkShippingLabelItem::find($item->id);
+            if ($freshItem && $freshItem->status === BulkShippingLabelItem::STATUS_PENDING) {
+                $this->dispatchItem($freshItem);
+            }
+        }
+
+        return $batch->fresh();
     }
 
     private function initialItemStatus(?SalesOrder $order, string $channel): array
@@ -1259,12 +1306,20 @@ class BulkShippingLabelService
             ->orderBy('created_at');
 
         foreach ($itemsQuery->cursor() as $item) {
-            if (empty($item->pdf_bytes)) {
+            $pdfBytes = $item->pdf_bytes;
+            if (empty($pdfBytes)) {
+                $order = $item->order ?: SalesOrder::find($item->order_id);
+                if ($order) {
+                    $pdfBytes = $this->salesOrderService->cachedShippingLabelBytes($order);
+                }
+            }
+
+            if (empty($pdfBytes)) {
                 continue;
             }
 
             try {
-                $preparedBytes = $this->preprocessPdfForFpdi($item->pdf_bytes);
+                $preparedBytes = $this->preprocessPdfForFpdi($pdfBytes);
                 $pageCount = $pdf->setSourceFile(StreamReader::createByString($preparedBytes));
                 for ($p = 1; $p <= $pageCount; $p++) {
                     $tpl = $pdf->importPage($p);

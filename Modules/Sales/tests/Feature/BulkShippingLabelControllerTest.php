@@ -301,9 +301,9 @@ class BulkShippingLabelControllerTest extends TestCase
         Bus::assertNotDispatched(ProcessBulkShippingLabelJob::class);
     }
 
-    public function test_retry_failed_dispatches_new_batch_for_recoverable(): void
+    public function test_retry_failed_resets_batch_in_place_for_recoverable(): void
     {
-        Bus::fake();
+        Queue::fake();
 
         $order = SalesOrder::factory()->create([
             'source' => 'shopee',
@@ -317,7 +317,7 @@ class BulkShippingLabelControllerTest extends TestCase
             'done_count' => 0,
             'failed_count' => 1,
         ]);
-        BulkShippingLabelItem::create([
+        $item = BulkShippingLabelItem::create([
             'batch_id' => $batch->id,
             'order_id' => $order->id,
             'channel' => 'shopee',
@@ -325,10 +325,18 @@ class BulkShippingLabelControllerTest extends TestCase
             'reason' => BulkShippingLabelItem::REASON_SHOPEE_PREP_TIMEOUT,
         ]);
 
-        $this->postJson("/api/v1/sales/shipping-labels/bulk/{$batch->id}/retry-failed")
-            ->assertStatus(202)
-            ->assertJsonStructure(['data' => ['batch_id']]);
+        $res = $this->postJson("/api/v1/sales/shipping-labels/bulk/{$batch->id}/retry-failed");
 
-        Bus::assertDispatched(ProcessBulkShippingLabelJob::class);
+        $res->assertStatus(202)
+            ->assertJsonPath('data.batch_id', $batch->id)
+            ->assertJsonPath('data.retried_count', 1);
+
+        $this->assertEquals(BulkShippingLabelBatch::STATUS_PROCESSING, $batch->fresh()->status);
+        $this->assertEquals(BulkShippingLabelItem::STATUS_PENDING, $item->fresh()->status);
+        $this->assertNull($item->fresh()->reason);
+
+        Queue::assertPushed(ProcessBulkShippingLabelItemJob::class, function ($job) use ($batch, $item): bool {
+            return $job->batchId === $batch->id && $job->itemId === $item->id;
+        });
     }
 }
