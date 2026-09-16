@@ -628,6 +628,7 @@ class ProcessTikTokWebhook implements ShouldBeUnique, ShouldQueue
                 'type' => $this->payload['type'] ?? null,
             ],
             $e,
+            $this->job?->uuid(),
         );
     }
 }

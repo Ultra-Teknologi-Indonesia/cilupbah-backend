@@ -479,6 +479,7 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
                 'code' => $this->payload['code'] ?? null,
             ],
             $e,
+            $this->job?->uuid(),
         );
     }
 }

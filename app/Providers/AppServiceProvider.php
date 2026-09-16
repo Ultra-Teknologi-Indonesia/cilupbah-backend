@@ -2,16 +2,31 @@
 
 namespace App\Providers;
 
+use App\Models\PersonalAccessToken;
+use App\Support\AllowedSearch;
+use App\Support\QueueFailureRecorder;
+use Illuminate\Cache\RateLimiter;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Request;
+use Illuminate\Queue\Events\JobExceptionOccurred;
+use Illuminate\Queue\Events\JobFailed;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Str;
+use Laravel\Sanctum\Sanctum;
 
 class AppServiceProvider extends ServiceProvider
 {
-
     public function register(): void
     {
 
-        $this->app->singleton(\Illuminate\Cache\RateLimiter::class, function ($app) {
-            return new \Illuminate\Cache\RateLimiter(
+        $this->app->singleton(RateLimiter::class, function ($app) {
+            return new RateLimiter(
                 $app->make('cache')->store(config('ratelimit.store'))
             );
         });
@@ -19,15 +34,25 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        \Illuminate\Support\Facades\Gate::before(function ($user, $ability) {
+        Event::listen(
+            JobExceptionOccurred::class,
+            [QueueFailureRecorder::class, 'recordException'],
+        );
+        Event::listen(
+            JobFailed::class,
+            [QueueFailureRecorder::class, 'recordFailed'],
+            -100,
+        );
+
+        Gate::before(function ($user, $ability) {
             return $user->hasRole('owner') ? true : null;
         });
 
-        \Laravel\Sanctum\Sanctum::usePersonalAccessTokenModel(\App\Models\PersonalAccessToken::class);
+        Sanctum::usePersonalAccessTokenModel(PersonalAccessToken::class);
 
         if (config('app.env') === 'production' || config('app.env') === 'staging') {
-            \Illuminate\Support\Facades\URL::forceScheme('https');
-            \Illuminate\Support\Facades\DB::disableQueryLog();
+            URL::forceScheme('https');
+            DB::disableQueryLog();
         }
 
         \Illuminate\Support\Facades\RateLimiter::for('tiktok_api', function (object $job) {
@@ -35,7 +60,8 @@ class AppServiceProvider extends ServiceProvider
             $shopId = (property_exists($job, 'payload') && is_array($job->payload))
                 ? ($job->payload['shop_id'] ?? 'default')
                 : 'default';
-            return \Illuminate\Cache\RateLimiting\Limit::perSecond(20)->by($shopId);
+
+            return Limit::perSecond(20)->by($shopId);
         });
 
         \Illuminate\Support\Facades\RateLimiter::for('channel_api', function (object $job) {
@@ -60,7 +86,7 @@ class AppServiceProvider extends ServiceProvider
 
             $scope = $shopId !== '' ? $channel.'|'.$shopId : $channel.'|'.get_class($job);
 
-            return \Illuminate\Cache\RateLimiting\Limit::perSecond(
+            return Limit::perSecond(
                 (int) config(
                     'ratelimit.channel_api_per_second_by_channel.'.$channel,
                     config('ratelimit.channel_api_per_second', 8),
@@ -78,96 +104,96 @@ class AppServiceProvider extends ServiceProvider
                 $shopId = (string) ($job->payload['shop_id'] ?? $job->payload['seller_id'] ?? 'default');
             }
 
-            return \Illuminate\Cache\RateLimiting\Limit::perSecond(10)->by($shopId);
+            return Limit::perSecond(10)->by($shopId);
         });
 
-        \Illuminate\Support\Facades\RateLimiter::for('login', function (\Illuminate\Http\Request $request) {
-            $email = \Illuminate\Support\Str::lower(trim((string) $request->input('email')));
+        \Illuminate\Support\Facades\RateLimiter::for('login', function (Request $request) {
+            $email = Str::lower(trim((string) $request->input('email')));
             $ip = (string) $request->ip();
 
             return [
-                \Illuminate\Cache\RateLimiting\Limit::perMinute((int) config('ratelimit.login.per_email', 10))
+                Limit::perMinute((int) config('ratelimit.login.per_email', 10))
                     ->by($email !== '' ? 'login|'.$email.'|'.$ip : 'login|ip|'.$ip),
-                \Illuminate\Cache\RateLimiting\Limit::perMinute((int) config('ratelimit.login.per_ip', 60))
+                Limit::perMinute((int) config('ratelimit.login.per_ip', 60))
                     ->by('login-ip|'.$ip),
             ];
         });
 
-        \Illuminate\Support\Facades\RateLimiter::for('forgot_password', function (\Illuminate\Http\Request $request) {
-            $email = \Illuminate\Support\Str::lower(trim((string) $request->input('email')));
+        \Illuminate\Support\Facades\RateLimiter::for('forgot_password', function (Request $request) {
+            $email = Str::lower(trim((string) $request->input('email')));
             $ip = (string) $request->ip();
             $action = (string) ($request->route()?->getName() ?? 'forgot');
 
             return [
-                \Illuminate\Cache\RateLimiting\Limit::perMinute((int) config('ratelimit.forgot_password.per_email', 10))
+                Limit::perMinute((int) config('ratelimit.forgot_password.per_email', 10))
                     ->by($email !== '' ? 'forgot|'.$action.'|'.$email.'|'.$ip : 'forgot|'.$action.'|ip|'.$ip),
-                \Illuminate\Cache\RateLimiting\Limit::perMinute((int) config('ratelimit.forgot_password.per_ip', 60))
+                Limit::perMinute((int) config('ratelimit.forgot_password.per_ip', 60))
                     ->by('forgot-ip|'.$ip),
             ];
         });
 
-        \Illuminate\Support\Facades\RateLimiter::for('api', function (\Illuminate\Http\Request $request) {
+        \Illuminate\Support\Facades\RateLimiter::for('api', function (Request $request) {
             $name = (string) ($request->route()?->getName() ?? '');
 
             if (str_contains($name, '.webhook') || str_contains($name, '.callback')) {
-                return \Illuminate\Cache\RateLimiting\Limit::none();
+                return Limit::none();
             }
 
             $user = $request->user('sanctum');
 
             if ($user) {
-                return \Illuminate\Cache\RateLimiting\Limit::perMinute((int) config('ratelimit.api.per_identity', 300))
+                return Limit::perMinute((int) config('ratelimit.api.per_identity', 300))
                     ->by('api|u|'.$user->getAuthIdentifier());
             }
 
-            return \Illuminate\Cache\RateLimiting\Limit::perMinute((int) config('ratelimit.api.per_ip', 600))
+            return Limit::perMinute((int) config('ratelimit.api.per_ip', 600))
                 ->by('api|ip|'.$request->ip());
         });
 
-        \Illuminate\Support\Facades\RateLimiter::for('heavy', function (\Illuminate\Http\Request $request) {
+        \Illuminate\Support\Facades\RateLimiter::for('heavy', function (Request $request) {
             $user = $request->user('sanctum');
             $key = $user ? 'heavy|u|'.$user->getAuthIdentifier() : 'heavy|ip|'.$request->ip();
 
-            return \Illuminate\Cache\RateLimiting\Limit::perMinute((int) config('ratelimit.heavy.per_identity', 30))->by($key);
+            return Limit::perMinute((int) config('ratelimit.heavy.per_identity', 30))->by($key);
         });
 
-        $stockCutoverLimit = static function (\Illuminate\Http\Request $request, string $action, int $default): \Illuminate\Cache\RateLimiting\Limit {
+        $stockCutoverLimit = static function (Request $request, string $action, int $default): Limit {
             $tokenFingerprint = substr(hash('sha256', (string) $request->route('token')), 0, 16);
 
-            return \Illuminate\Cache\RateLimiting\Limit::perMinute(
+            return Limit::perMinute(
                 (int) config('ratelimit.stock_cutover.'.$action.'_per_minute', $default),
             )->by('stock-cutover|'.$action.'|'.$request->ip().'|'.$tokenFingerprint);
         };
 
         \Illuminate\Support\Facades\RateLimiter::for(
             'stock_cutover_page',
-            fn (\Illuminate\Http\Request $request): \Illuminate\Cache\RateLimiting\Limit => $stockCutoverLimit($request, 'page', 30),
+            fn (Request $request): Limit => $stockCutoverLimit($request, 'page', 30),
         );
 
         \Illuminate\Support\Facades\RateLimiter::for(
             'stock_cutover_preview',
-            fn (\Illuminate\Http\Request $request): \Illuminate\Cache\RateLimiting\Limit => $stockCutoverLimit($request, 'preview', 10),
+            fn (Request $request): Limit => $stockCutoverLimit($request, 'preview', 10),
         );
 
         \Illuminate\Support\Facades\RateLimiter::for(
             'stock_cutover_status',
-            fn (\Illuminate\Http\Request $request): \Illuminate\Cache\RateLimiting\Limit => $stockCutoverLimit($request, 'status', 180),
+            fn (Request $request): Limit => $stockCutoverLimit($request, 'status', 180),
         );
 
         \Illuminate\Support\Facades\RateLimiter::for(
             'stock_cutover_apply',
-            fn (\Illuminate\Http\Request $request): \Illuminate\Cache\RateLimiting\Limit => $stockCutoverLimit($request, 'apply', 10),
+            fn (Request $request): Limit => $stockCutoverLimit($request, 'apply', 10),
         );
 
         \Illuminate\Support\Facades\RateLimiter::for(
             'stock_cutover_report',
-            fn (\Illuminate\Http\Request $request): \Illuminate\Cache\RateLimiting\Limit => $stockCutoverLimit($request, 'report', 60),
+            fn (Request $request): Limit => $stockCutoverLimit($request, 'report', 60),
         );
 
-        $orderCutoverLimit = static function (\Illuminate\Http\Request $request, string $action, int $default): \Illuminate\Cache\RateLimiting\Limit {
+        $orderCutoverLimit = static function (Request $request, string $action, int $default): Limit {
             $tokenFingerprint = substr(hash('sha256', (string) $request->route('token')), 0, 16);
 
-            return \Illuminate\Cache\RateLimiting\Limit::perMinute(
+            return Limit::perMinute(
                 (int) config('ratelimit.order_cutover.'.$action.'_per_minute', $default),
             )->by('order-cutover|'.$action.'|'.$request->ip().'|'.$tokenFingerprint);
         };
@@ -175,15 +201,15 @@ class AppServiceProvider extends ServiceProvider
         foreach (['page' => 30, 'preview' => 10, 'status' => 180, 'apply' => 10, 'report' => 60] as $action => $default) {
             \Illuminate\Support\Facades\RateLimiter::for(
                 'order_cutover_'.$action,
-                fn (\Illuminate\Http\Request $request): \Illuminate\Cache\RateLimiting\Limit => $orderCutoverLimit($request, $action, $default),
+                fn (Request $request): Limit => $orderCutoverLimit($request, $action, $default),
             );
         }
 
-        \Illuminate\Database\Eloquent\Builder::macro('allowedSearch', function (...$columns) {
-            return \App\Support\AllowedSearch::apply($this, $columns);
+        Builder::macro('allowedSearch', function (...$columns) {
+            return AllowedSearch::apply($this, $columns);
         });
 
-        \Illuminate\Database\Eloquent\Model::preventLazyLoading(
+        Model::preventLazyLoading(
             (bool) config('database.prevent_lazy_loading', false)
         );
 

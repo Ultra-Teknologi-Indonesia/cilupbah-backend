@@ -2,6 +2,7 @@
 
 namespace Modules\Channel\Support;
 
+use App\Support\QueueFailureRecorder;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Sales\Jobs\AdminAlertJob;
@@ -13,18 +14,22 @@ class WebhookFailureHandler
         string $eventKey,
         array $context,
         \Throwable $e,
+        ?string $jobUuid = null,
     ): void {
-        ChannelWebhookInbox::markFailedByKey($eventKey, $e->getMessage());
+        $message = app(QueueFailureRecorder::class)->messageForJob($jobUuid, $e);
+
+        ChannelWebhookInbox::markFailedByKey($eventKey, $message);
 
         Log::error("Webhook {$channel} gagal permanen — ditandai FAILED di inbox.", [
             'event_key' => $eventKey,
-            'error' => $e->getMessage(),
+            'exception' => $e::class,
+            'error' => $message,
             'context' => $context,
         ]);
 
         AdminAlertJob::dispatch(
             "Webhook {$channel} gagal permanen",
-            $e->getMessage(),
+            $message,
             $context + ['channel' => $channel, 'event_key' => $eventKey],
         );
     }

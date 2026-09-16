@@ -11,6 +11,7 @@ use Modules\Channel\Services\WooCommerceClient;
 use Modules\Channel\Services\WooCommerceProductMapper;
 use Modules\Channel\Services\WooCommerceToInternalProductMapper;
 use Modules\Channel\Support\ChannelVariantMappingResolver;
+use Modules\Channel\Support\UploadErrorPresenter;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductVariantChannelMapping;
@@ -45,7 +46,11 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
         } catch (\Exception $e) {
             Log::error('WooCommerce pushProduct error: '.$e->getMessage());
 
-            return ['success' => false, 'message' => $e->getMessage()];
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+                'error' => UploadErrorPresenter::fromMessage('woocommerce', $e->getMessage()),
+            ];
         }
 
         try {
@@ -206,7 +211,11 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
         } catch (\Exception $e) {
             Log::error('WooCommerce syncPriceAndStock error: '.$e->getMessage());
 
-            return ['success' => false, 'message' => $e->getMessage()];
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+                'error' => UploadErrorPresenter::fromMessage('woocommerce', $e->getMessage()),
+            ];
         }
     }
 

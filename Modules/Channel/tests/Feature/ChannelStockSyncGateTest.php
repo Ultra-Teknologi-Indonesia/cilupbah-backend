@@ -9,12 +9,14 @@ use Illuminate\Support\Facades\Queue;
 use Modules\Channel\Adapters\AdapterFactory;
 use Modules\Channel\Adapters\ShopeeAdapter;
 use Modules\Channel\Adapters\TikTokAdapter;
+use Modules\Channel\Contracts\MarketplaceAdapterInterface;
 use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
+use Modules\Product\Models\ProductSyncLog;
 use Modules\Product\Models\ProductVariant;
 use Modules\Product\Models\ProductVariantChannelMapping;
 use Modules\Warehouse\Models\Location;
@@ -128,6 +130,60 @@ class ChannelStockSyncGateTest extends TestCase
 
         $this->assertFalse($result['success']);
         Http::assertNothingSent();
+    }
+
+    public function test_price_stock_failure_keeps_the_original_error_in_sync_history(): void
+    {
+        $this->shop->forceFill(['stock_push_enabled' => true])->save();
+        $product = $this->makeListedProduct([
+            ['sku' => 'SKU-ERROR', 'model_id' => '333', 'sync_enabled' => true],
+        ]);
+        $mapping = ProductChannelMapping::query()
+            ->where('product_id', $product->id)
+            ->where('channel_shop_id', $this->shop->id)
+            ->firstOrFail();
+
+        $adapter = $this->createMock(MarketplaceAdapterInterface::class);
+        $adapter->expects($this->once())
+            ->method('syncPriceAndStock')
+            ->willReturn([
+                'success' => false,
+                'message' => 'Shopee API Error [product_not_found]: listing 555001 tidak ditemukan',
+            ]);
+
+        $factory = $this->createMock(AdapterFactory::class);
+        $factory->expects($this->once())
+            ->method('make')
+            ->with('shopee')
+            ->willReturn($adapter);
+
+        $this->expectException(\Exception::class);
+        try {
+            (new SyncProductToChannelJob(
+                $product->id,
+                $this->shop->id,
+                'sync_price_stock',
+                null,
+                null,
+                null,
+                'critical',
+                $mapping->id,
+            ))->handle($factory);
+        } finally {
+            $log = ProductSyncLog::query()
+                ->where('product_id', $product->id)
+                ->where('channel_shop_id', $this->shop->id)
+                ->latest()
+                ->first();
+
+            $this->assertNotNull($log);
+            $this->assertSame(ProductSyncLog::ACTION_SYNC_STOCK, $log->action);
+            $this->assertSame(ProductSyncLog::STATUS_FAILED, $log->status);
+            $this->assertSame(
+                'Shopee API Error [product_not_found]: listing 555001 tidak ditemukan',
+                $log->response['original_message'] ?? null,
+            );
+        }
     }
 
     public function test_stock_payload_is_limited_to_the_requested_listing(): void

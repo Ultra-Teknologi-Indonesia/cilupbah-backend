@@ -13,6 +13,7 @@ use Modules\Channel\Services\TikTokProductMapper;
 use Modules\Channel\Services\TikTokProductService;
 use Modules\Channel\Services\TikTokToInternalProductMapper;
 use Modules\Channel\Support\ChannelVariantMappingResolver;
+use Modules\Channel\Support\UploadErrorPresenter;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
 
@@ -123,6 +124,7 @@ class TikTokAdapter implements MarketplaceAdapterInterface
             return [
                 'success' => false,
                 'message' => $e->getMessage(),
+                'error' => UploadErrorPresenter::fromThrowable('tiktok', $e),
             ];
         }
     }
@@ -181,6 +183,7 @@ class TikTokAdapter implements MarketplaceAdapterInterface
             return [
                 'success' => false,
                 'message' => $e->getMessage(),
+                'error' => UploadErrorPresenter::fromThrowable('tiktok', $e),
             ];
         }
     }
@@ -404,6 +407,7 @@ class TikTokAdapter implements MarketplaceAdapterInterface
             return [
                 'success' => false,
                 'message' => $e->getMessage(),
+                'error' => UploadErrorPresenter::fromThrowable('tiktok', $e),
             ];
         }
     }

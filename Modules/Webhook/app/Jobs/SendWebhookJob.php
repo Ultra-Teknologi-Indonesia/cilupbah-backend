@@ -2,6 +2,7 @@
 
 namespace Modules\Webhook\Jobs;
 
+use App\Support\QueueFailureRecorder;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -84,13 +85,14 @@ class SendWebhookJob implements ShouldQueue
 
     public function failed(\Throwable $e): void
     {
+        $error = app(QueueFailureRecorder::class)->messageForJob($this->job?->uuid(), $e);
         $deliveries = app(WebhookDeliveryRepository::class);
         $delivery = $deliveries->find($this->deliveryId);
         if (! $delivery) {
             return;
         }
 
-        $deliveries->markFailed($delivery, $delivery->status_code, $e->getMessage());
+        $deliveries->markFailed($delivery, $delivery->status_code, $error);
 
         app(WebhookSubscriptionRepository::class)->registerFailureAndMaybeDisable(
             $delivery->subscription_id,

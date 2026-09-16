@@ -2,11 +2,13 @@
 
 namespace Modules\Channel\Jobs;
 
+use App\Support\QueueFailureRecorder;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\MaxAttemptsExceededException;
 use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
@@ -498,14 +500,16 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
 
     protected function recordUploadResult(bool $success, ?string $message, ?array $response = null): void
     {
-        if (! in_array($this->action, ['push', 'update'], true)) {
+        $logAction = $this->syncLogAction();
+
+        if ($logAction === null) {
             return;
         }
 
         $query = ProductSyncLog::query()
             ->where('product_id', $this->productId)
             ->where('channel_shop_id', $this->channelShopId)
-            ->where('action', ProductSyncLog::ACTION_UPLOAD);
+            ->where('action', $logAction);
 
         if ($this->uploadLogId) {
             $query->whereKey($this->uploadLogId);
@@ -514,6 +518,19 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
         }
 
         $log = $query->latest()->first();
+
+        if (! $log) {
+            if ($success) {
+                return;
+            }
+
+            $log = ProductSyncLog::record([
+                'product_id' => $this->productId,
+                'channel_shop_id' => $this->channelShopId,
+                'action' => $logAction,
+                'status' => ProductSyncLog::STATUS_FAILED,
+            ]);
+        }
 
         if (! $log) {
             return;
@@ -531,8 +548,9 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
             return;
         }
 
-        $structured = $response['error']
-            ?? UploadErrorPresenter::fromMessage($this->channelCodeResolved, (string) $message);
+        $structured = is_array($response) && isset($response['error']) && is_array($response['error'])
+            ? $response['error']
+            : UploadErrorPresenter::fromMessage($this->channelCodeResolved, (string) $message);
 
         $raw = $response;
         if (is_array($raw)) {
@@ -544,9 +562,19 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
             'error_message' => $structured['reason'] ?? $message,
             'response' => [
                 'error' => $structured,
+                'original_message' => $message,
                 'raw' => ! empty($raw) ? $raw : null,
             ],
         ]);
+    }
+
+    private function syncLogAction(): ?string
+    {
+        return match ($this->action) {
+            'push', 'update' => ProductSyncLog::ACTION_UPLOAD,
+            'sync_price_stock', 'sync_stock' => ProductSyncLog::ACTION_SYNC_STOCK,
+            default => null,
+        };
     }
 
     protected function handleFailure(string $channelCode): void
@@ -617,11 +645,13 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
 
     public function failed(\Throwable $exception): void
     {
+        $recorder = app(QueueFailureRecorder::class);
+        $jobUuid = $this->job?->uuid();
+        $hasOriginalFailure = $recorder->hasAttemptException($jobUuid);
+        $message = $recorder->messageForJob($jobUuid, $exception);
+
         if (! $this->uploadResultRecorded) {
-            $this->recordUploadResult(
-                false,
-                'Sinkronisasi ke channel gagal setelah beberapa percobaan. Silakan coba lagi.'
-            );
+            $this->recordUploadResult(false, $message);
         }
 
         if (self::isStockAction($this->action) && $this->channelMappingId === null) {
@@ -637,16 +667,26 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
             ->get();
 
         foreach ($mappings as $mapping) {
-
-            if ($this->lastActionableFailure !== null
+            if (! $hasOriginalFailure
+                && $this->isGenericQueueFailure($exception)
                 && $mapping->sync_status === ProductChannelMapping::STATUS_FAILED
                 && filled($mapping->error_message)) {
                 continue;
             }
 
-            $mapping->markAsFailed(
-                'Sinkronisasi ke channel gagal setelah beberapa percobaan. Silakan coba lagi.'
-            );
+            $mapping->markAsFailed($message);
         }
+    }
+
+    private function isGenericQueueFailure(\Throwable $exception): bool
+    {
+        if ($exception instanceof MaxAttemptsExceededException) {
+            return true;
+        }
+
+        $message = strtolower($exception->getMessage());
+
+        return str_contains($message, 'maxattemptsexceeded')
+            || str_contains($message, 'attempted too many times');
     }
 }

@@ -493,6 +493,7 @@ class ProcessLazadaWebhook implements ShouldBeUnique, ShouldQueue
                 'message_type' => $this->payload['message_type'] ?? null,
             ],
             $e,
+            $this->job?->uuid(),
         );
     }
 }

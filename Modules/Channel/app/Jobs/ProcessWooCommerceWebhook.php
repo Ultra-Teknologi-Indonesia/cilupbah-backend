@@ -227,6 +227,7 @@ class ProcessWooCommerceWebhook implements ShouldBeUnique, ShouldQueue
                 'resource_id' => $this->resourceId,
             ],
             $e,
+            $this->job?->uuid(),
         );
     }
 }

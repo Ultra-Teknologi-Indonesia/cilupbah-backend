@@ -34,6 +34,14 @@ final class PruneOperationalHistory extends Command
                 maxRows: $maxRows,
                 dryRun: $dryRun,
             ),
+            'queue_failure_attempts' => $this->prune(
+                table: 'queue_failure_attempts',
+                dateColumn: 'occurred_at',
+                cutoff: now()->subHours((int) config('operational-retention.queue_failure_attempts_hours')),
+                batchSize: $batchSize,
+                maxRows: $maxRows,
+                dryRun: $dryRun,
+            ),
             'notifications' => $this->prune(
                 table: 'notifications',
                 dateColumn: 'created_at',
