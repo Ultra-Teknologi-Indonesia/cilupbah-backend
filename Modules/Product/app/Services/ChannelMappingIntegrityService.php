@@ -113,23 +113,52 @@ final class ChannelMappingIntegrityService
 
     public function assertVariantCanBeLinked(string $channelMappingId, string $variantId): void
     {
-        $valid = DB::table('product_variants as variant')
-            ->join('product_channel_mappings as mapping', function ($join): void {
-                $join->on('mapping.product_id', '=', 'variant.product_id');
-            })
-            ->join('products as product', 'product.id', '=', 'mapping.product_id')
-            ->where('mapping.id', $channelMappingId)
-            ->where('variant.id', $variantId)
-            ->where('product.is_active', true)
-            ->where('variant.is_active', true)
-            ->whereNull('product.deleted_at')
-            ->whereNull('variant.deleted_at')
-            ->exists();
+        $reasons = [];
+        $mapping = DB::table('product_channel_mappings')
+            ->where('id', $channelMappingId)
+            ->lockForUpdate()
+            ->first(['id', 'product_id', 'external_product_id']);
 
-        if (! $valid) {
-            throw new DomainException(
-                'Mapping channel ditolak: varian harus aktif, belum dihapus, dan berasal dari produk master yang sama dengan listing.'
-            );
+        if (! $mapping) {
+            $reasons[] = 'listing mapping tidak ditemukan';
+        } else {
+            $product = DB::table('products')
+                ->where('id', $mapping->product_id)
+                ->lockForUpdate()
+                ->first(['id', 'is_active', 'deleted_at']);
+            $variant = DB::table('product_variants')
+                ->where('id', $variantId)
+                ->lockForUpdate()
+                ->first(['id', 'product_id', 'is_active', 'deleted_at']);
+
+            if (! $variant) {
+                $reasons[] = 'varian tidak ditemukan';
+            } elseif ((string) $mapping->product_id !== (string) $variant->product_id) {
+                $reasons[] = 'varian berasal dari master produk yang berbeda';
+            }
+
+            if (! $product || ! (bool) $product->is_active) {
+                $reasons[] = 'master produk tidak aktif';
+            }
+            if ($product?->deleted_at !== null) {
+                $reasons[] = 'master produk sudah dihapus';
+            }
+            if ($variant && ! (bool) $variant->is_active) {
+                $reasons[] = 'varian tidak aktif';
+            }
+            if ($variant?->deleted_at !== null) {
+                $reasons[] = 'varian sudah dihapus';
+            }
+        }
+
+        if ($reasons !== []) {
+            throw new DomainException(sprintf(
+                'Mapping channel ditolak: %s. mapping_id=%s, variant_id=%s, external_product_id=%s.',
+                implode('; ', $reasons),
+                $channelMappingId,
+                $variantId,
+                $mapping->external_product_id ?? '-',
+            ));
         }
     }
 

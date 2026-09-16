@@ -162,8 +162,11 @@ class ChannelProductRepository
         return DB::table('product_variants')
             ->join('products as p', 'p.id', '=', 'product_variants.product_id')
             ->whereIn('product_variants.sku', $skus)
+            ->where('product_variants.is_active', true)
             ->whereNull('product_variants.deleted_at')
+            ->where('p.is_active', true)
             ->whereNull('p.deleted_at')
+            ->orderBy('product_variants.id')
             ->get(['product_variants.id', 'product_variants.sku', 'product_variants.product_id'])
             ->keyBy('sku')
             ->all();

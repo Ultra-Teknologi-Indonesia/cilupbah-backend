@@ -203,6 +203,8 @@ class ProductWriteRepository
         return DB::table('product_variants')
             ->where('product_id', $productId)
             ->where('sku', $sku)
+            ->where('is_active', true)
+            ->whereNull('deleted_at')
             ->value('id');
     }
 

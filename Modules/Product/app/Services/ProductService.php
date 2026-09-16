@@ -633,10 +633,25 @@ class ProductService
         }
 
         return DB::transaction(function () use ($productId, $variant, $sku) {
-            $existing = $this->writeRepository->variantIdByProductAndSku($productId, $sku);
+            $existing = DB::table('product_variants')
+                ->where('product_id', $productId)
+                ->where('sku', $sku)
+                ->whereNull('deleted_at')
+                ->lockForUpdate()
+                ->first(['id', 'is_active']);
 
             if ($existing) {
-                return $existing;
+                if (! (bool) $existing->is_active) {
+                    DB::table('product_variants')
+                        ->where('id', $existing->id)
+                        ->update([
+                            'is_active' => true,
+                            'superseded_at' => null,
+                            'updated_at' => now(),
+                        ]);
+                }
+
+                return (string) $existing->id;
             }
 
             $variantData = Arr::only($variant, [

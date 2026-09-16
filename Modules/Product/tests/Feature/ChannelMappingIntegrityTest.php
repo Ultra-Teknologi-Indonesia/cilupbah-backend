@@ -23,6 +23,7 @@ use Modules\Product\Services\ChannelMappingRepairService;
 use Modules\Product\Services\ChannelSkuHealth;
 use Modules\Product\Services\MasterProductMerger;
 use Modules\Product\Services\MixedChannelMappingSplitService;
+use Modules\Product\Services\ProductService;
 use Modules\Product\Services\StaleChannelMappingPruneService;
 use Ramsey\Uuid\Uuid;
 use Tests\TestCase;
@@ -190,6 +191,53 @@ final class ChannelMappingIntegrityTest extends TestCase
             'variant_id' => $foreignVariant->id,
             'external_sku_id' => 'OWNER-B-EXT',
             'sync_enabled' => true,
+        ]);
+    }
+
+    public function test_channel_download_does_not_reuse_a_soft_deleted_variant(): void
+    {
+        [$product, $oldVariant] = $this->productWithVariant('REUSE-DELETED-SKU');
+
+        DB::table('product_variants')
+            ->where('id', $oldVariant->id)
+            ->update(['deleted_at' => now(), 'is_active' => false]);
+
+        $newVariantId = app(ProductService::class)->addVariantFromChannel(
+            (string) $product->id,
+            ['sku' => 'REUSE-DELETED-SKU', 'is_active' => true],
+        );
+
+        $this->assertNotSame((string) $oldVariant->id, (string) $newVariantId);
+        $this->assertDatabaseHas('product_variants', [
+            'id' => $newVariantId,
+            'product_id' => $product->id,
+            'sku' => 'REUSE-DELETED-SKU',
+            'is_active' => true,
+            'deleted_at' => null,
+        ]);
+    }
+
+    public function test_channel_download_reactivates_an_inactive_variant_without_creating_a_duplicate(): void
+    {
+        [$product, $oldVariant] = $this->productWithVariant('REACTIVATE-INACTIVE-SKU');
+
+        DB::table('product_variants')
+            ->where('id', $oldVariant->id)
+            ->update(['is_active' => false]);
+
+        $variantId = app(ProductService::class)->addVariantFromChannel(
+            (string) $product->id,
+            ['sku' => 'REACTIVATE-INACTIVE-SKU', 'is_active' => true],
+        );
+
+        $this->assertSame((string) $oldVariant->id, (string) $variantId);
+        $this->assertSame(1, DB::table('product_variants')
+            ->where('sku', 'REACTIVATE-INACTIVE-SKU')
+            ->whereNull('deleted_at')
+            ->count());
+        $this->assertDatabaseHas('product_variants', [
+            'id' => $oldVariant->id,
+            'is_active' => true,
         ]);
     }
 
