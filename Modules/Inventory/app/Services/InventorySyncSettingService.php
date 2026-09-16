@@ -164,7 +164,7 @@ class InventorySyncSettingService
     {
         foreach ($resyncTargets as $productId => $shops) {
             foreach (array_keys($shops) as $shopId) {
-                SyncProductToChannelJob::dispatch($productId, $shopId, 'sync_price_stock');
+                SyncProductToChannelJob::dispatch($productId, $shopId, 'sync_stock');
             }
         }
     }

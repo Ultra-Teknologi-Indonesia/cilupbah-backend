@@ -54,6 +54,7 @@ class ChannelSyncAxesTest extends TestCase
             'is_active' => true,
             'order_sync_enabled' => true,
             'stock_push_enabled' => true,
+            'price_push_enabled' => true,
             'catalog_push_enabled' => true,
             'catalog_pull_enabled' => true,
         ]);
@@ -119,6 +120,37 @@ class ChannelSyncAxesTest extends TestCase
         $this->runSync('sync_stock');
 
         Http::assertNothingSent();
+    }
+
+    public function test_price_push_off_blocks_price_actions(): void
+    {
+        Http::fake();
+        $this->shop->forceFill(['stock_push_enabled' => true, 'price_push_enabled' => false])->save();
+
+        $this->runSync('sync_price');
+
+        Http::assertNothingSent();
+    }
+
+    public function test_price_push_can_run_without_stock_push(): void
+    {
+        Http::fake([
+            'partner.shopeemobile.com/api/v2/product/update_price*' => Http::response(['response' => []], 200),
+            'partner.shopeemobile.com/api/v2/product/update_stock*' => Http::response(['response' => []], 200),
+        ]);
+        $this->shop->forceFill(['stock_push_enabled' => false, 'price_push_enabled' => true])->save();
+
+        $product = $this->makeListedProduct();
+        $mapping = ProductChannelMapping::query()
+            ->where('product_id', $product->id)
+            ->where('channel_shop_id', $this->shop->id)
+            ->firstOrFail();
+
+        (new SyncProductToChannelJob($product->id, $this->shop->id, 'sync_price', null, null, null, 'critical', $mapping->id))
+            ->handle(app(AdapterFactory::class));
+
+        Http::assertSent(fn ($request): bool => str_contains($request->url(), '/product/update_price'));
+        Http::assertNotSent(fn ($request): bool => str_contains($request->url(), '/product/update_stock'));
     }
 
     public function test_stock_sync_does_not_turn_unlinked_listing_into_catalog_upload(): void

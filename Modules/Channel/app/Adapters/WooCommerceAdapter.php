@@ -135,7 +135,13 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
         ChannelShop $shop,
         string $externalProductId,
         ?ProductChannelMapping $listing = null,
+        bool $syncPrice = true,
+        bool $syncStock = true,
     ): array {
+        if (! $syncPrice && ! $syncStock) {
+            return ['success' => false, 'message' => 'Tidak ada arah sinkronisasi yang diaktifkan.'];
+        }
+
         $listing = ChannelVariantMappingResolver::listing($product, $shop, $externalProductId, $listing);
         if (! $listing) {
             return ['success' => false, 'message' => 'Tidak ada SKU terhubung: listing WooCommerce tidak ditemukan atau tidak sesuai dengan produk.'];
@@ -164,7 +170,9 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
             return ['success' => false, 'message' => $payloadError];
         }
 
-        $stockByVariant = $this->stockResolver->availableByVariant($shop, $mappings->pluck('variant'));
+        $stockByVariant = $syncStock
+            ? $this->stockResolver->availableByVariant($shop, $mappings->pluck('variant'))
+            : [];
 
         $variationUpdates = [];
         $simplePayload = null;
@@ -177,18 +185,24 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
             $availableQty = max(0, (int) ($stockByVariant[$variant->id] ?? 0));
 
             if (! empty($mapping->external_sku_id)) {
-                $variationUpdates[] = [
-                    'id' => (int) $mapping->external_sku_id,
-                    'regular_price' => (string) $variant->sell_price,
-                    'manage_stock' => true,
-                    'stock_quantity' => $availableQty,
-                ];
+                $update = ['id' => (int) $mapping->external_sku_id];
+                if ($syncPrice) {
+                    $update['regular_price'] = (string) $variant->sell_price;
+                }
+                if ($syncStock) {
+                    $update['manage_stock'] = true;
+                    $update['stock_quantity'] = $availableQty;
+                }
+                $variationUpdates[] = $update;
             } elseif (! $isVariable) {
-                $simplePayload = [
-                    'regular_price' => (string) $variant->sell_price,
-                    'manage_stock' => true,
-                    'stock_quantity' => $availableQty,
-                ];
+                $simplePayload = [];
+                if ($syncPrice) {
+                    $simplePayload['regular_price'] = (string) $variant->sell_price;
+                }
+                if ($syncStock) {
+                    $simplePayload['manage_stock'] = true;
+                    $simplePayload['stock_quantity'] = $availableQty;
+                }
             }
         }
 
@@ -207,7 +221,11 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
                 $this->client->put($shop, "products/{$externalProductId}", $simplePayload);
             }
 
-            return ['success' => true, 'message' => 'Harga dan stok berhasil disinkronisasi ke WooCommerce'];
+            return ['success' => true, 'message' => match (true) {
+                $syncPrice && $syncStock => 'Harga dan stok berhasil disinkronisasi ke WooCommerce',
+                $syncPrice => 'Harga berhasil disinkronisasi ke WooCommerce',
+                default => 'Stok berhasil disinkronisasi ke WooCommerce',
+            }];
         } catch (\Exception $e) {
             Log::error('WooCommerce syncPriceAndStock error: '.$e->getMessage());
 
@@ -302,14 +320,6 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
         }
     }
 
-    /**
-     * Resolve a stale WooCommerce simple-looking mapping that actually points
-     * at a variation ID already mapped under its canonical parent listing.
-     *
-     * WooCommerce variation IDs are not valid product IDs for the simple
-     * product endpoint. Only resolve when the database contains exactly one
-     * unambiguous canonical mapping for the same master variant and seller SKU.
-     */
     private function resolveStaleVariationTarget(
         Product $product,
         ChannelShop $shop,

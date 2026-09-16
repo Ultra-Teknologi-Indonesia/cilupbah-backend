@@ -235,7 +235,12 @@ class ProductService
             SyncProductToChannelJob::dispatch(
                 $productId,
                 $mapping->channel_shop_id,
-                'sync_price_stock',
+                'sync_stock',
+            )->afterCommit();
+            SyncProductToChannelJob::dispatch(
+                $productId,
+                $mapping->channel_shop_id,
+                'sync_price',
             )->afterCommit();
 
             ProductSyncLog::record([
@@ -1230,7 +1235,8 @@ class ProductService
     private function propagatePriceStockToChannels(string $productId): void
     {
         foreach ($this->writeRepository->channelShopIdsForStockPriceSync($productId) as $channelShopId) {
-            SyncProductToChannelJob::dispatch($productId, $channelShopId, 'sync_price_stock');
+            SyncProductToChannelJob::dispatch($productId, $channelShopId, 'sync_stock');
+            SyncProductToChannelJob::dispatch($productId, $channelShopId, 'sync_price');
         }
     }
 

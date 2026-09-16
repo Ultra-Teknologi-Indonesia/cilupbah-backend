@@ -43,6 +43,7 @@ class ShadowStockPushGateTest extends TestCase
             'token_expires_at' => now()->addHours(4),
             'is_active' => true,
             'stock_push_enabled' => true,
+            'price_push_enabled' => true,
         ]);
     }
 

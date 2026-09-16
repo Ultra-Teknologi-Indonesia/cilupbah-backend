@@ -49,6 +49,8 @@ class ChannelStockSyncGateTest extends TestCase
             'refresh_token' => 'refresh-token',
             'token_expires_at' => now()->addHours(4),
             'is_active' => true,
+            'stock_push_enabled' => true,
+            'price_push_enabled' => true,
         ]);
     }
 

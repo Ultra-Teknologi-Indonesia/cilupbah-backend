@@ -65,18 +65,28 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
 
     protected ?string $lastActionableFailure = null;
 
-    private const STOCK_ACTIONS = ['sync_price_stock', 'sync_stock'];
+    private const STOCK_ACTIONS = ['sync_price_stock', 'sync_stock', 'sync_price'];
+
+    private const PRICE_ACTIONS = ['sync_price_stock', 'sync_price'];
 
     public static function isStockAction(string $action): bool
     {
         return in_array($action, self::STOCK_ACTIONS, true);
     }
 
+    public static function isPriceAction(string $action): bool
+    {
+        return in_array($action, self::PRICE_ACTIONS, true);
+    }
+
     private function shopAllowsAction(ChannelShop $shop): bool
     {
-        return self::isStockAction($this->action)
-            ? (bool) $shop->stock_push_enabled
-            : (bool) $shop->catalog_push_enabled;
+        return match ($this->action) {
+            'sync_stock' => (bool) $shop->stock_push_enabled,
+            'sync_price' => (bool) $shop->price_push_enabled,
+            'sync_price_stock' => (bool) $shop->stock_push_enabled && (bool) $shop->price_push_enabled,
+            default => (bool) $shop->catalog_push_enabled,
+        };
     }
 
     public function __construct(
@@ -181,9 +191,11 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
         }
 
         if (! $this->shopAllowsAction($shop)) {
-            $message = self::isStockAction($this->action)
-                ? 'Sinkronisasi stok untuk toko ini sedang dinonaktifkan.'
-                : 'Upload katalog untuk toko ini sedang dinonaktifkan.';
+            $message = match ($this->action) {
+                'sync_price' => 'Sinkronisasi harga untuk toko ini sedang dinonaktifkan.',
+                'sync_stock', 'sync_price_stock' => 'Sinkronisasi stok untuk toko ini sedang dinonaktifkan.',
+                default => 'Upload katalog untuk toko ini sedang dinonaktifkan.',
+            };
 
             $this->recordSkipped($message);
 
@@ -191,7 +203,11 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
                 'product_id' => $this->productId,
                 'channel_shop_id' => $this->channelShopId,
                 'action' => $this->action,
-                'axis' => self::isStockAction($this->action) ? 'stok' : 'katalog',
+                'axis' => match ($this->action) {
+                    'sync_price' => 'harga',
+                    'sync_stock', 'sync_price_stock' => 'stok',
+                    default => 'katalog',
+                },
                 'is_shadow_mode' => (bool) $shop->is_shadow_mode,
             ]);
 
@@ -343,6 +359,11 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
                 case 'sync_price_stock':
                     if ($externalId) {
                         $result = $adapter->syncPriceAndStock($product, $shop, $externalId, $mapping);
+                    }
+                    break;
+                case 'sync_price':
+                    if ($externalId) {
+                        $result = $adapter->syncPriceAndStock($product, $shop, $externalId, $mapping, true, false);
                     }
                     break;
                 case 'sync_stock':
@@ -614,6 +635,7 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
         return match ($this->action) {
             'push', 'update' => ProductSyncLog::ACTION_UPLOAD,
             'sync_price_stock', 'sync_stock' => ProductSyncLog::ACTION_SYNC_STOCK,
+            'sync_price' => ProductSyncLog::ACTION_SYNC_PRICE,
             default => null,
         };
     }

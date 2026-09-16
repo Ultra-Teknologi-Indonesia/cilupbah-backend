@@ -25,6 +25,8 @@ interface MarketplaceAdapterInterface
         ChannelShop $shop,
         string $externalProductId,
         ?ProductChannelMapping $listing = null,
+        bool $syncPrice = true,
+        bool $syncStock = true,
     ): array;
 
     public function syncStock(

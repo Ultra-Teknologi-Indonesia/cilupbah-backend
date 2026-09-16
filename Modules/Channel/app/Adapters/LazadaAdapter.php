@@ -148,7 +148,13 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         ChannelShop $shop,
         string $externalProductId,
         ?ProductChannelMapping $listing = null,
+        bool $syncPrice = true,
+        bool $syncStock = true,
     ): array {
+        if (! $syncPrice && ! $syncStock) {
+            return ['success' => false, 'message' => 'Tidak ada arah sinkronisasi yang diaktifkan.'];
+        }
+
         $listing = ChannelVariantMappingResolver::listing($product, $shop, $externalProductId, $listing);
         if (! $listing) {
             return ['success' => false, 'message' => 'Tidak ada SKU terhubung: listing Lazada tidak ditemukan atau tidak sesuai dengan produk.'];
@@ -164,7 +170,9 @@ class LazadaAdapter implements MarketplaceAdapterInterface
             return ['success' => false, 'message' => $payloadError];
         }
 
-        $stockByVariant = $this->stockResolver->availableByVariant($shop, $mappings->pluck('variant'));
+        $stockByVariant = $syncStock
+            ? $this->stockResolver->availableByVariant($shop, $mappings->pluck('variant'))
+            : [];
 
         $skuPayloads = [];
 
@@ -173,11 +181,14 @@ class LazadaAdapter implements MarketplaceAdapterInterface
 
             $availableQty = $stockByVariant[$variant->id] ?? 0;
 
-            $skuPayloads[] = [
-                'SkuId' => (int) $mapping->external_sku_id,
-                'Price' => (string) $variant->sell_price,
-                'Quantity' => (string) max(0, $availableQty),
-            ];
+            $skuPayload = ['SkuId' => (int) $mapping->external_sku_id];
+            if ($syncPrice) {
+                $skuPayload['Price'] = (string) $variant->sell_price;
+            }
+            if ($syncStock) {
+                $skuPayload['Quantity'] = (string) max(0, $availableQty);
+            }
+            $skuPayloads[] = $skuPayload;
         }
 
         if (empty($skuPayloads)) {
@@ -191,7 +202,11 @@ class LazadaAdapter implements MarketplaceAdapterInterface
                 'payload' => json_encode($payload),
             ], $token));
 
-            return ['success' => true, 'message' => 'Harga dan stok berhasil disinkronisasi ke Lazada'];
+            return ['success' => true, 'message' => match (true) {
+                $syncPrice && $syncStock => 'Harga dan stok berhasil disinkronisasi ke Lazada',
+                $syncPrice => 'Harga berhasil disinkronisasi ke Lazada',
+                default => 'Stok berhasil disinkronisasi ke Lazada',
+            }];
         } catch (\Exception $e) {
             Log::error('Lazada syncPriceAndStock error: '.$e->getMessage());
 

@@ -392,7 +392,7 @@ class ChannelProductRepository
         }
 
         if ($pushInitialStock) {
-            SyncProductToChannelJob::dispatch($productId, $channelShop->id, 'sync_price_stock')
+            SyncProductToChannelJob::dispatch($productId, $channelShop->id, 'sync_stock')
                 ->delay(now()->addSeconds(15));
         }
 

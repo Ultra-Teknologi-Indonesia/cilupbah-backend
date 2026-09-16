@@ -54,6 +54,8 @@ class LazadaProductSyncTest extends TestCase
             'refresh_token' => 'refresh-token',
             'token_expires_at' => now()->addDays(7),
             'is_active' => true,
+            'stock_push_enabled' => true,
+            'price_push_enabled' => true,
         ]);
     }
 

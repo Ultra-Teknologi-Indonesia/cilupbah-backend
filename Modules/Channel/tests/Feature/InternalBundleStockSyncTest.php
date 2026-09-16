@@ -153,7 +153,7 @@ class InternalBundleStockSyncTest extends TestCase
             SyncProductToChannelJob::class,
             fn ($job) => $job->productId === $this->standingVariant->product_id
                 && $job->channelShopId === $this->shop->id
-                && $job->action === 'sync_price_stock'
+                && $job->action === 'sync_stock'
         );
     }
 

@@ -163,7 +163,13 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         ChannelShop $shop,
         string $externalProductId,
         ?ProductChannelMapping $listing = null,
+        bool $syncPrice = true,
+        bool $syncStock = true,
     ): array {
+        if (! $syncPrice && ! $syncStock) {
+            return ['success' => false, 'message' => 'Tidak ada arah sinkronisasi yang diaktifkan.'];
+        }
+
         $listing = ChannelVariantMappingResolver::listing($product, $shop, $externalProductId, $listing);
         if (! $listing) {
             return ['success' => false, 'message' => 'Tidak ada SKU terhubung: listing Shopee tidak ditemukan atau tidak sesuai dengan produk.'];
@@ -180,11 +186,15 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
             return ['success' => false, 'message' => $payloadError];
         }
 
-        $stockByVariant = $this->stockResolver->availableByVariant($shop, $mappings->pluck('variant'));
+        $stockByVariant = $syncStock
+            ? $this->stockResolver->availableByVariant($shop, $mappings->pluck('variant'))
+            : [];
 
-        $channelLocationId = DB::table('channel_warehouses')
-            ->where('store_id', $shop->shop_id)
-            ->value('channel_location_id');
+        $channelLocationId = $syncStock
+            ? DB::table('channel_warehouses')
+                ->where('store_id', $shop->shop_id)
+                ->value('channel_location_id')
+            : null;
 
         $priceList = [];
         $stockList = [];
@@ -195,34 +205,47 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
             $modelId = (int) ($mapping->external_sku_id ?? 0);
             $availableQty = max(0, (int) ($stockByVariant[$variant->id] ?? 0));
 
-            $sellerStockEntry = ['stock' => $availableQty];
-            if ($channelLocationId) {
-                $sellerStockEntry['location_id'] = (string) $channelLocationId;
+            if ($syncPrice) {
+                $priceList[] = ['model_id' => $modelId, 'original_price' => (float) $variant->sell_price];
             }
 
-            $priceList[] = ['model_id' => $modelId, 'original_price' => (float) $variant->sell_price];
-            $stockList[] = [
-                'model_id' => $modelId,
-                'seller_stock' => [$sellerStockEntry],
-            ];
+            if ($syncStock) {
+                $sellerStockEntry = ['stock' => $availableQty];
+                if ($channelLocationId) {
+                    $sellerStockEntry['location_id'] = (string) $channelLocationId;
+                }
+
+                $stockList[] = [
+                    'model_id' => $modelId,
+                    'seller_stock' => [$sellerStockEntry],
+                ];
+            }
         }
 
-        if (empty($priceList)) {
+        if (empty($priceList) && empty($stockList)) {
             return ['success' => false, 'message' => 'Tidak ada SKU yang terhubung untuk diperbarui'];
         }
 
         try {
-            $this->client->request('POST', '/api/v2/product/update_price', [
-                'item_id' => (int) $externalProductId,
-                'price_list' => $priceList,
-            ], $shop->access_token, $shop->shop_id);
+            if ($syncPrice) {
+                $this->client->request('POST', '/api/v2/product/update_price', [
+                    'item_id' => (int) $externalProductId,
+                    'price_list' => $priceList,
+                ], $shop->access_token, $shop->shop_id);
+            }
 
-            $this->client->request('POST', '/api/v2/product/update_stock', [
-                'item_id' => (int) $externalProductId,
-                'stock_list' => $stockList,
-            ], $shop->access_token, $shop->shop_id);
+            if ($syncStock) {
+                $this->client->request('POST', '/api/v2/product/update_stock', [
+                    'item_id' => (int) $externalProductId,
+                    'stock_list' => $stockList,
+                ], $shop->access_token, $shop->shop_id);
+            }
 
-            return ['success' => true, 'message' => 'Harga dan stok berhasil disinkronisasi ke Shopee'];
+            return ['success' => true, 'message' => match (true) {
+                $syncPrice && $syncStock => 'Harga dan stok berhasil disinkronisasi ke Shopee',
+                $syncPrice => 'Harga berhasil disinkronisasi ke Shopee',
+                default => 'Stok berhasil disinkronisasi ke Shopee',
+            }];
         } catch (\Exception $e) {
             Log::error('Shopee syncPriceAndStock error: '.$e->getMessage());
 

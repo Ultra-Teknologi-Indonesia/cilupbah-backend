@@ -125,11 +125,7 @@ class SyncStockToChannelsJob implements ShouldBeUniqueUntilProcessing, ShouldQue
 
             $dispatched[$dispatchKey] = true;
 
-            SyncProductToChannelJob::dispatch(
-                $product->id,
-                $mapping->channel_shop_id,
-                'sync_price_stock'
-            );
+            SyncProductToChannelJob::dispatch($product->id, $mapping->channel_shop_id, 'sync_stock');
         }
     }
 

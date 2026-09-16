@@ -34,7 +34,7 @@ class ResyncShopStockJob implements ShouldQueue
                     SyncProductToChannelJob::dispatch(
                         (string) $mapping->product_id,
                         $this->channelShopId,
-                        'sync_price_stock',
+                        'sync_stock',
                         null,
                         null,
                         null,

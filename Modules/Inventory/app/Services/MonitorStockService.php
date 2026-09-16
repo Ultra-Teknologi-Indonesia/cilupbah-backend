@@ -71,7 +71,7 @@ class MonitorStockService
         SyncProductToChannelJob::dispatch(
             $mapping->product_id,
             $mapping->channel_shop_id,
-            'sync_price_stock'
+            'sync_stock'
         );
 
         $mapping->markAsSyncing();
@@ -87,7 +87,7 @@ class MonitorStockService
             SyncProductToChannelJob::dispatch(
                 $mapping->product_id,
                 $mapping->channel_shop_id,
-                'sync_price_stock'
+                'sync_stock'
             );
             $mapping->markAsSyncing();
         }

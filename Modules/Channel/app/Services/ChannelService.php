@@ -152,6 +152,7 @@ class ChannelService
             $data['shadow_started_at'] = now();
             $data['shadow_last_pulled_at'] = null;
             $data['stock_push_enabled'] = false;
+            $data['price_push_enabled'] = false;
             $data['catalog_push_enabled'] = false;
             $data['fulfillment_push_enabled'] = false;
         }

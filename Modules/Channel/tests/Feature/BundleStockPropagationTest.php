@@ -77,7 +77,7 @@ class BundleStockPropagationTest extends TestCase
             SyncProductToChannelJob::class,
             fn ($job) => $job->productId === $bundleVar->product_id
                 && $job->channelShopId === $shopId
-                && $job->action === 'sync_price_stock'
+                && $job->action === 'sync_stock'
         );
     }
 

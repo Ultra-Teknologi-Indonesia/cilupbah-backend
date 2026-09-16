@@ -340,7 +340,13 @@ class TikTokAdapter implements MarketplaceAdapterInterface
         ChannelShop $shop,
         string $externalProductId,
         ?ProductChannelMapping $listing = null,
+        bool $syncPrice = true,
+        bool $syncStock = true,
     ): array {
+        if (! $syncPrice && ! $syncStock) {
+            return ['success' => false, 'message' => 'Tidak ada arah sinkronisasi yang diaktifkan.'];
+        }
+
         $listing = ChannelVariantMappingResolver::listing($product, $shop, $externalProductId, $listing);
         if (! $listing) {
             return ['success' => false, 'message' => 'Tidak ada SKU terhubung: listing TikTok tidak ditemukan atau tidak sesuai dengan produk.'];
@@ -356,7 +362,9 @@ class TikTokAdapter implements MarketplaceAdapterInterface
             return ['success' => false, 'message' => $payloadError];
         }
 
-        $stockByVariant = $this->stockResolver->availableByVariant($shop, $mappings->pluck('variant'));
+        $stockByVariant = $syncStock
+            ? $this->stockResolver->availableByVariant($shop, $mappings->pluck('variant'))
+            : [];
 
         $inventorySkus = [];
         $priceSkus = [];
@@ -365,41 +373,53 @@ class TikTokAdapter implements MarketplaceAdapterInterface
             $variant = $mapping->variant;
             $availableQty = (int) ($stockByVariant[$variant->id] ?? 0);
 
-            $inventorySkus[] = [
-                'id' => $mapping->external_sku_id,
-                'inventory' => [
-                    [
-                        'warehouse_id' => $this->resolveTikTokWarehouseId($shop),
-                        'quantity' => max(0, $availableQty),
+            if ($syncStock) {
+                $inventorySkus[] = [
+                    'id' => $mapping->external_sku_id,
+                    'inventory' => [
+                        [
+                            'warehouse_id' => $this->resolveTikTokWarehouseId($shop),
+                            'quantity' => max(0, $availableQty),
+                        ],
                     ],
-                ],
-            ];
+                ];
+            }
 
-            $priceSkus[] = [
-                'id' => $mapping->external_sku_id,
-                'price' => [
-                    'amount' => (string) $variant->sell_price,
-                    'currency' => 'IDR',
-                ],
-            ];
+            if ($syncPrice) {
+                $priceSkus[] = [
+                    'id' => $mapping->external_sku_id,
+                    'price' => [
+                        'amount' => (string) $variant->sell_price,
+                        'currency' => 'IDR',
+                    ],
+                ];
+            }
         }
 
-        if (empty($inventorySkus)) {
+        if (empty($inventorySkus) && empty($priceSkus)) {
             return ['success' => false, 'message' => 'Tidak ada SKU yang terhubung untuk diperbarui'];
         }
 
         try {
             $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
 
-            $invPayload = ['skus' => $inventorySkus];
-            $this->client->request('POST', "/product/202309/products/{$externalProductId}/inventory/update", $queries, $invPayload, $shop->access_token);
+            if ($syncStock) {
+                $invPayload = ['skus' => $inventorySkus];
+                $this->client->request('POST', "/product/202309/products/{$externalProductId}/inventory/update", $queries, $invPayload, $shop->access_token);
+            }
 
-            $pricePayload = ['skus' => $priceSkus];
-            $this->client->request('POST', "/product/202309/products/{$externalProductId}/prices/update", $queries, $pricePayload, $shop->access_token);
+            if ($syncPrice) {
+                $pricePayload = ['skus' => $priceSkus];
+                $this->client->request('POST', "/product/202309/products/{$externalProductId}/prices/update", $queries, $pricePayload, $shop->access_token);
+            }
 
             return [
                 'success' => true,
-                'message' => 'Harga dan stok berhasil disinkronisasi',
+                'message' => match (true) {
+                    $syncPrice && $syncStock => 'Harga dan stok berhasil disinkronisasi ke TikTok',
+                    $syncPrice => 'Harga berhasil disinkronisasi ke TikTok',
+                    default => 'Stok berhasil disinkronisasi ke TikTok',
+                },
             ];
         } catch (\Exception $e) {
             Log::error('TikTok syncPriceAndStock error: '.$e->getMessage());

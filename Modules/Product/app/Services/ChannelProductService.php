@@ -113,7 +113,7 @@ class ChannelProductService
         $channelShopId = $this->requireChannelShopId($shopId);
 
         $product = $this->productRepo->findByExternalId($externalId, $channelShopId);
-        SyncProductToChannelJob::dispatch($product->id, $channelShopId, 'sync_price_stock');
+        SyncProductToChannelJob::dispatch($product->id, $channelShopId, 'sync_stock');
     }
 
     public function updatePrice(string $externalId, string $shopId): void
@@ -121,7 +121,7 @@ class ChannelProductService
         $channelShopId = $this->requireChannelShopId($shopId);
 
         $product = $this->productRepo->findByExternalId($externalId, $channelShopId);
-        SyncProductToChannelJob::dispatch($product->id, $channelShopId, 'sync_price_stock');
+        SyncProductToChannelJob::dispatch($product->id, $channelShopId, 'sync_price');
     }
 
     public function unlinkProduct(string $externalId, string $shopId): void
