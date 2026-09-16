@@ -2,6 +2,7 @@
 
 namespace Modules\Channel\Adapters;
 
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Contracts\MarketplaceAdapterInterface;
 use Modules\Channel\Models\ChannelShop;
@@ -12,6 +13,7 @@ use Modules\Channel\Services\WooCommerceToInternalProductMapper;
 use Modules\Channel\Support\ChannelVariantMappingResolver;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
+use Modules\Product\Models\ProductVariantChannelMapping;
 
 class WooCommerceAdapter implements MarketplaceAdapterInterface
 {
@@ -135,6 +137,18 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
         }
 
         $mappings = ChannelVariantMappingResolver::enabledForListing($listing);
+        $resolved = $this->resolveStaleVariationTarget($product, $shop, $listing, $mappings, $externalProductId);
+
+        if (isset($resolved['error'])) {
+            return ['success' => false, 'message' => $resolved['error']];
+        }
+
+        if ($resolved !== null) {
+            $listing = $resolved['listing'];
+            $mappings = $resolved['mappings'];
+            $externalProductId = $resolved['external_product_id'];
+        }
+
         $payloadError = ChannelVariantMappingResolver::stockPayloadError(
             $mappings,
             'external_sku_id',
@@ -208,6 +222,18 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
         }
 
         $mappings = ChannelVariantMappingResolver::enabledForListing($listing);
+        $resolved = $this->resolveStaleVariationTarget($product, $shop, $listing, $mappings, $externalProductId);
+
+        if (isset($resolved['error'])) {
+            return ['success' => false, 'message' => $resolved['error']];
+        }
+
+        if ($resolved !== null) {
+            $listing = $resolved['listing'];
+            $mappings = $resolved['mappings'];
+            $externalProductId = $resolved['external_product_id'];
+        }
+
         $payloadError = ChannelVariantMappingResolver::stockPayloadError(
             $mappings,
             'external_sku_id',
@@ -265,6 +291,80 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    /**
+     * Resolve a stale WooCommerce simple-looking mapping that actually points
+     * at a variation ID already mapped under its canonical parent listing.
+     *
+     * WooCommerce variation IDs are not valid product IDs for the simple
+     * product endpoint. Only resolve when the database contains exactly one
+     * unambiguous canonical mapping for the same master variant and seller SKU.
+     */
+    private function resolveStaleVariationTarget(
+        Product $product,
+        ChannelShop $shop,
+        ProductChannelMapping $listing,
+        Collection $mappings,
+        string $externalProductId,
+    ): ?array {
+        if ($mappings->count() !== 1) {
+            return null;
+        }
+
+        $mapping = $mappings->first();
+
+        if (filled($mapping->external_sku_id) || blank($mapping->channel_seller_sku)) {
+            return null;
+        }
+
+        $candidates = ProductVariantChannelMapping::query()
+            ->where('variant_id', $mapping->variant_id)
+            ->where('channel_seller_sku', $mapping->channel_seller_sku)
+            ->where('external_sku_id', (string) $externalProductId)
+            ->where('sync_enabled', true)
+            ->whereHas('variant', function ($query) use ($product): void {
+                $query->where('product_id', $product->id)
+                    ->where('is_active', true);
+            })
+            ->whereHas('channelMapping', function ($query) use ($product, $shop, $listing): void {
+                $query->where('product_id', $product->id)
+                    ->where('channel_shop_id', $shop->id)
+                    ->where('id', '!=', $listing->id)
+                    ->whereNotNull('external_product_id')
+                    ->where('external_product_id', '!=', '')
+                    ->where('sync_status', '!=', ProductChannelMapping::STATUS_DEACTIVATED);
+            })
+            ->with('channelMapping')
+            ->get();
+
+        if ($candidates->isEmpty()) {
+            return null;
+        }
+
+        if ($candidates->count() > 1) {
+            return [
+                'error' => 'Mapping WooCommerce ambigu: satu variation ditemukan pada lebih dari satu listing parent.',
+            ];
+        }
+
+        $canonicalMapping = $candidates->first();
+        $canonicalListing = $canonicalMapping->channelMapping;
+
+        Log::warning('WooCommerce stale variation mapping dialihkan ke listing parent canonical.', [
+            'stale_listing_id' => $listing->id,
+            'stale_external_product_id' => $externalProductId,
+            'canonical_listing_id' => $canonicalListing->id,
+            'canonical_external_product_id' => $canonicalListing->external_product_id,
+            'external_sku_id' => $canonicalMapping->external_sku_id,
+            'variant_id' => $mapping->variant_id,
+        ]);
+
+        return [
+            'listing' => $canonicalListing,
+            'mappings' => collect([$canonicalMapping]),
+            'external_product_id' => (string) $canonicalListing->external_product_id,
+        ];
     }
 
     public function mapInboundProduct(array $channelData, string $shopId): array
