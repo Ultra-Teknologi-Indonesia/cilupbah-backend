@@ -29,6 +29,8 @@ spec:
               value: "labels"
             - name: QUEUE_LABEL_PARALLELISM
               value: "4"
+            - name: QUEUE_LABEL_AWB_PARALLELISM
+              value: "4"
             - name: LABEL_LOCAL_FIRST
               value: "true"
             - name: LABEL_PRINT_SPOOL_ROOT

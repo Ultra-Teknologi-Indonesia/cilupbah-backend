@@ -118,7 +118,7 @@ class HorizonQueueCoverageTest extends TestCase
             'supervisor-lazada-fulfillment' => [1, 1],
             'supervisor-lazada-webhooks-background' => [1, 1],
             'supervisor-labels' => [4, 4],
-            'supervisor-label-awb' => [3, 3],
+            'supervisor-label-awb' => [4, 4],
             'supervisor-label-archive' => [1, 1],
         ] as $name => [$minProcesses, $maxProcesses]) {
             $supervisor = config("horizon.defaults.{$name}");
