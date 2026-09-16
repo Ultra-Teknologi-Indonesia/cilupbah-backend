@@ -617,6 +617,9 @@ class ImportBaselineStock extends Command
             'rak_tidak_sesuai_assignment_stok_nol' => [],
             'sku_multi_rak' => [],
         ];
+        $notices = [
+            'stok_nol_assignment_sesuai' => [],
+        ];
 
         $lowerIndex = [];
         foreach ($variants as $sku => $variant) {
@@ -898,12 +901,32 @@ class ImportBaselineStock extends Command
                 }
             }
 
+            $assignmentMatchesCurrentRack = $isZero
+                && $existingPair !== null
+                && ! $ignored
+                && ! $blocked
+                && $resolvedBinId !== null
+                && count($assignedBinsMap[$variantId] ?? []) === 1
+                && in_array(
+                    (string) $resolvedBinId,
+                    $assignedBinsMap[$variantId] ?? [],
+                    true,
+                );
+
             $pairKey = $variantId.':'.($resolvedBinId ?? 'null');
             if (! $isZero || $existingPair === null) {
                 $curOnHand = (float) ($currentStockMap[$pairKey] ?? 0.0);
             }
             $targetOnHand = (float) $row['qty'];
             $delta = $targetOnHand - $curOnHand;
+
+            if ($assignmentMatchesCurrentRack) {
+                $status = 'VALID_STOK_NOL_ASSIGNMENT_SESUAI';
+                $notes = 'Valid: stok aktual file 0 dan assignment SKU sesuai dengan rak ini; stok sistem akan dinolkan menjadi 0.';
+                $notices['stok_nol_assignment_sesuai'][] = $row + [
+                    'catatan' => $notes,
+                ];
+            }
 
             if ($isZero && ! $ignored && ! $blocked && $existingPair === null) {
                 $status = 'ZERO_TANPA_STOK_SISTEM';
@@ -950,6 +973,7 @@ class ImportBaselineStock extends Command
             'lost_qty' => $lostQty,
             'blocking' => $blockedRows,
             'problems' => $problems,
+            'notices' => $notices,
             'valid_rows' => $validRows,
             'all_rows' => $allEvaluatedRows,
             'zero_rows_without_current_stock' => $zeroRowsWithoutCurrentStock,
@@ -1062,6 +1086,32 @@ class ImportBaselineStock extends Command
 
             if (count($report['valid_rows']) > $limit) {
                 $this->line(sprintf('  … %s baris valid lainnya tidak ditampilkan di layar CLI. Semua baris lengkap ada di file CSV laporan.', number_format(count($report['valid_rows']) - $limit)));
+            }
+        }
+
+        $noticeLabels = [
+            'stok_nol_assignment_sesuai' => 'Qty aktual 0 dengan assignment SKU sesuai (VALID, stok akan dinolkan)',
+        ];
+
+        foreach ($noticeLabels as $key => $label) {
+            $items = $report['notices'][$key] ?? [];
+
+            if ($items === []) {
+                continue;
+            }
+
+            $this->newLine();
+            $this->line(sprintf('%s — %s baris', $label, number_format(count($items))));
+
+            $this->table(
+                ['Baris', 'SKU', 'Rak', 'Qty File', 'Catatan'],
+                collect($items)->take($limit)->map(fn ($i) => [
+                    $i['row'], $i['sku'], $i['bin'] ?: '—', $i['qty'], $i['catatan'],
+                ])->all(),
+            );
+
+            if (count($items) > $limit) {
+                $this->line(sprintf('  … %s baris valid lainnya tidak ditampilkan. Semua baris tercantum di file laporan CSV.', number_format(count($items) - $limit)));
             }
         }
 

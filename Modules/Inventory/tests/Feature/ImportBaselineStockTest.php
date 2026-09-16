@@ -665,6 +665,96 @@ class ImportBaselineStockTest extends TestCase
         self::assertStringContainsString('DIABAIKAN_RAK_TIDAK_SESUAI_STOK_NOL', (string) file_get_contents($this->tempReportPath));
     }
 
+    public function test_qty_nol_dengan_assignment_sesuai_dinilai_valid_dan_dinolkan(): void
+    {
+        $location = Location::create([
+            'location_code' => 'WH-RACK-ZERO-MATCH',
+            'location_name' => 'Gudang Rack Zero Match',
+            'location_type' => 'warehouse',
+            'is_warehouse' => true,
+            'is_small_warehouse' => true,
+            'is_active' => true,
+        ]);
+        $bin = LocationBin::create([
+            'location_id' => $location->id,
+            'bin_final_code' => 'ZERO-MATCH',
+            'bin_code' => 'ZERO-MATCH',
+            'is_inbound' => false,
+        ]);
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'Rack Zero Match', 'is_active' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $product = Product::create([
+            'category_id' => $categoryId,
+            'name' => 'Rack Zero Match Item',
+            'sku' => 'SKU-RACK-ZERO-MATCH',
+            'is_active' => true,
+        ]);
+        $variant = ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => 'SKU-RACK-ZERO-MATCH',
+            'is_active' => true,
+        ]);
+
+        Inventory::create([
+            'item_id' => $variant->id,
+            'location_id' => $location->id,
+            'bin_id' => $bin->id,
+            'batch_no' => '',
+            'serial_no' => '',
+            'on_hand' => 40,
+            'on_order' => 0,
+            'available' => 40,
+            'avg_cost' => 1000,
+        ]);
+        DB::table('sku_rack_assignments')->insert([
+            'id' => (string) Str::uuid(),
+            'location_id' => $location->id,
+            'item_id' => $variant->id,
+            'bin_id' => $bin->id,
+            'assigned_by' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $excelPath = $this->createSampleExcel([
+            ['sku' => 'SKU-RACK-ZERO-MATCH', 'bin' => 'ZERO-MATCH', 'qty' => 0],
+        ]);
+        $this->tempReportPath = tempnam(sys_get_temp_dir(), 'baseline_report_test_').'.csv';
+
+        $this->artisan('inventory:import-baseline', [
+            'file' => $excelPath,
+            '--location' => 'WH-RACK-ZERO-MATCH',
+            '--commit' => true,
+            '--export' => $this->tempReportPath,
+        ])->assertExitCode(0)
+            ->expectsOutputToContain('Qty aktual 0 dengan assignment SKU sesuai');
+
+        $inventory = Inventory::where('item_id', $variant->id)
+            ->where('bin_id', $bin->id)
+            ->first();
+
+        self::assertNotNull($inventory);
+        self::assertSame(0, (int) $inventory->on_hand);
+        self::assertSame(0, (int) $inventory->available);
+        self::assertDatabaseHas('sku_rack_assignments', [
+            'location_id' => $location->id,
+            'item_id' => $variant->id,
+            'bin_id' => $bin->id,
+        ]);
+        self::assertDatabaseHas('stock_adjustment_items', [
+            'item_id' => $variant->id,
+            'bin_id' => $bin->id,
+            'actual_qty' => 0,
+            'difference_qty' => -40,
+        ]);
+        self::assertStringContainsString(
+            'VALID_STOK_NOL_ASSIGNMENT_SESUAI',
+            (string) file_get_contents($this->tempReportPath),
+        );
+    }
+
     public function test_qty_nol_menolak_sku_yang_sudah_di_assign_meski_assignment_lamanya_kosong(): void
     {
         $location = Location::create([
