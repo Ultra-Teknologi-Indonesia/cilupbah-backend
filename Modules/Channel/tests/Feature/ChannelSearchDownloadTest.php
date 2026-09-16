@@ -8,11 +8,12 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use Modules\Channel\Jobs\DownloadSingleProductJob;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
-use Modules\Channel\Jobs\DownloadSingleProductJob;
-use Modules\Channel\Services\LazadaProductService;
+use Modules\Channel\Models\DownloadTransaction;
 use Modules\Channel\Services\ChannelDownloadService;
+use Modules\Channel\Services\LazadaProductService;
 use Modules\Channel\Services\TikTokProductService;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
@@ -23,7 +24,9 @@ class ChannelSearchDownloadTest extends TestCase
     use RefreshDatabase;
 
     private User $user;
+
     private ChannelShop $tiktokShop;
+
     private ChannelShop $lazadaShop;
 
     protected function setUp(): void
@@ -242,6 +245,47 @@ class ChannelSearchDownloadTest extends TestCase
         $this->assertSame([], $results);
     }
 
+    public function test_unified_search_returns_lazada_variant_from_verified_sku_index(): void
+    {
+        DB::table('channel_catalog_sku_indexes')->insert([
+            'id' => (string) Str::uuid(),
+            'channel_shop_id' => $this->lazadaShop->id,
+            'external_product_id' => '8300938504',
+            'external_sku_id' => '116289937317',
+            'seller_sku' => 'ULTRA-SPY-IP-7-8',
+            'normalized_seller_sku' => 'ultra-spy-ip-7-8',
+            'product_name' => 'Tempered Glass Ultra Fit',
+            'listing_status' => 'active',
+            'last_seen_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $item = $this->lazadaItem();
+        $item['item_id'] = 8300938504;
+        $item['skus'][0]['SellerSku'] = 'ULTRA-SPY-IP-7-8';
+
+        Http::fake([
+            'api.lazada.co.id/rest/products/get*' => Http::response([
+                'code' => '0', 'data' => ['products' => []],
+            ], 200),
+            'api.lazada.co.id/rest/product/item/get*' => Http::response([
+                'code' => '0', 'data' => $item,
+            ], 200),
+        ]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/channel/download/search', [
+                'q' => 'ULTRA-SPY-IP-7-8',
+                'shop_ids' => ['LZ-100'],
+            ])
+            ->assertOk()
+            ->assertJsonPath('meta.total_found', 1)
+            ->assertJsonPath('data.0.external_product_id', '8300938504')
+            ->assertJsonPath('data.0.seller_sku', 'ULTRA-SPY-IP-7-8')
+            ->assertJsonPath('data.0.search_source', 'verified_sku_index');
+    }
+
     public function test_search_excludes_non_active_tiktok_products(): void
     {
         $inactive = $this->tiktokItem();
@@ -323,7 +367,7 @@ class ChannelSearchDownloadTest extends TestCase
             ->assertStatus(202)
             ->assertJsonPath('data.state', 'queued');
 
-        $transaction = \Modules\Channel\Models\DownloadTransaction::query()->latest('created_at')->firstOrFail();
+        $transaction = DownloadTransaction::query()->latest('created_at')->firstOrFail();
         (new DownloadSingleProductJob($transaction->id, 'lazada', 'LZ-100', '555100'))
             ->handle(app(ChannelDownloadService::class));
 
@@ -368,7 +412,7 @@ class ChannelSearchDownloadTest extends TestCase
             ])
             ->assertStatus(202);
 
-        $transaction = \Modules\Channel\Models\DownloadTransaction::query()->latest('created_at')->firstOrFail();
+        $transaction = DownloadTransaction::query()->latest('created_at')->firstOrFail();
         (new DownloadSingleProductJob($transaction->id, 'lazada', 'LZ-100', '555100'))
             ->handle(app(ChannelDownloadService::class));
 
@@ -450,7 +494,7 @@ class ChannelSearchDownloadTest extends TestCase
             'external_product_id' => '555100',
         ]);
 
-        \Illuminate\Support\Facades\Queue::assertPushed(DownloadSingleProductJob::class);
+        Queue::assertPushed(DownloadSingleProductJob::class);
     }
 
     public function test_download_product_not_found_records_failed_transaction(): void
@@ -467,7 +511,7 @@ class ChannelSearchDownloadTest extends TestCase
             ])
             ->assertStatus(202);
 
-        $transaction = \Modules\Channel\Models\DownloadTransaction::query()->latest('created_at')->firstOrFail();
+        $transaction = DownloadTransaction::query()->latest('created_at')->firstOrFail();
         $job = new DownloadSingleProductJob($transaction->id, 'lazada', 'LZ-100', 'NON-EXISTENT');
         try {
             $job->handle(app(ChannelDownloadService::class));
@@ -500,7 +544,7 @@ class ChannelSearchDownloadTest extends TestCase
             ])
             ->assertStatus(202);
 
-        $transaction = \Modules\Channel\Models\DownloadTransaction::query()->latest('created_at')->firstOrFail();
+        $transaction = DownloadTransaction::query()->latest('created_at')->firstOrFail();
         $job = new DownloadSingleProductJob($transaction->id, 'lazada', 'LZ-100', '555100');
         try {
             $job->handle(app(ChannelDownloadService::class));

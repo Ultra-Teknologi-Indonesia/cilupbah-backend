@@ -4,15 +4,20 @@ namespace Modules\Channel\Services;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Channel\Adapters\LazadaAdapter;
 use Modules\Channel\Exceptions\TokenExpiredException;
 use Modules\Channel\Repositories\ChannelProductRepository;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Support\ChannelModelLinker;
+use Modules\Channel\Support\ChannelRetry;
+use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductSyncLog;
+use Modules\Product\Models\ProductVariantChannelMapping;
+use Modules\Product\Services\ProductService;
+use Ramsey\Uuid\Uuid;
 
 class LazadaProductService
 {
-
     private const PULL_PAGE_LIMIT = 20;
 
     private const SEARCH_PAGE_LIMIT = 10;
@@ -40,12 +45,12 @@ class LazadaProductService
             return ['ok' => false, 'code' => 404, 'message' => 'Produk tidak ditemukan'];
         }
 
-        $issues = app(\Modules\Channel\Services\ChannelListingValidator::class)->validate($product, 'lazada');
+        $issues = app(ChannelListingValidator::class)->validate($product, 'lazada');
         if (! empty($issues)) {
             return ['ok' => false, 'code' => 422, 'message' => 'Produk belum siap di-listing ke Lazada', 'errors' => ['issues' => $issues]];
         }
 
-        $result = app(\Modules\Channel\Adapters\LazadaAdapter::class)->pushProduct($product, $shop);
+        $result = app(LazadaAdapter::class)->pushProduct($product, $shop);
 
         if (! ($result['success'] ?? false)) {
             return ['ok' => false, 'code' => 422, 'message' => $result['message'] ?? 'Gagal push ke Lazada', 'errors' => $result];
@@ -65,7 +70,7 @@ class LazadaProductService
             return ['ok' => false, 'code' => 404, 'message' => 'Produk tidak ditemukan'];
         }
 
-        $issues = app(\Modules\Channel\Services\ChannelListingValidator::class)->validate($product, 'lazada');
+        $issues = app(ChannelListingValidator::class)->validate($product, 'lazada');
 
         return [
             'ok' => true,
@@ -170,7 +175,7 @@ class LazadaProductService
                     DB::table('channel_categories')->where('id', $existing->id)->update($values);
                 } else {
                     DB::table('channel_categories')->insert($values + [
-                        'id' => \Ramsey\Uuid\Uuid::uuid7()->toString(),
+                        'id' => Uuid::uuid7()->toString(),
                         'channel_id' => $channelId,
                         'external_id' => $extId,
                         'created_at' => now(),
@@ -293,7 +298,7 @@ class LazadaProductService
                 DB::table('channel_attributes')->where('id', $existing->id)->update($values);
                 $channelAttributeId = $existing->id;
             } else {
-                $channelAttributeId = \Ramsey\Uuid\Uuid::uuid7()->toString();
+                $channelAttributeId = Uuid::uuid7()->toString();
                 DB::table('channel_attributes')->insert($values + [
                     'id' => $channelAttributeId,
                     'channel_category_id' => $channelCategory->id,
@@ -323,7 +328,7 @@ class LazadaProductService
                     DB::table('channel_attribute_options')->where('id', $existingOpt->id)->update($optValues);
                 } else {
                     DB::table('channel_attribute_options')->insert($optValues + [
-                        'id' => \Ramsey\Uuid\Uuid::uuid7()->toString(),
+                        'id' => Uuid::uuid7()->toString(),
                         'channel_attribute_id' => $channelAttributeId,
                         'external_id' => $optExtId,
                         'created_at' => now(),
@@ -413,7 +418,7 @@ class LazadaProductService
             $insertedId = DB::transaction(function () use ($shop, $shopId, $itemId, $item, $internalData) {
                 $matchedExisting = false;
                 $variantIds = [];
-                $productService = app(\Modules\Product\Services\ProductService::class);
+                $productService = app(ProductService::class);
                 $productId = $productService->upsertFromChannel($internalData, $matchedExisting, $variantIds, true);
 
                 if (! $productId) {
@@ -441,7 +446,7 @@ class LazadaProductService
                 return $productId;
             });
         } catch (\Throwable $e) {
-            Log::error('Lazada: gagal re-sync produk ' . $itemId . ': ' . $e->getMessage());
+            Log::error('Lazada: gagal re-sync produk '.$itemId.': '.$e->getMessage());
 
             return false;
         }
@@ -460,9 +465,9 @@ class LazadaProductService
             return [];
         }
 
-        $needle  = trim(mb_strtolower($query));
+        $needle = trim(mb_strtolower($query));
         $results = [];
-        $seen    = [];
+        $seen = [];
         $targetLimit = max(1, min(50, $limit));
         $pageLimit = min(self::SEARCH_PAGE_LIMIT, $targetLimit);
         $searchTimeout = max(1, $timeoutSeconds ?? (int) config('channel.search_remote_timeout_seconds', 10));
@@ -471,7 +476,7 @@ class LazadaProductService
         foreach (self::PULL_FILTERS as $filter) {
 
             $offset = 0;
-            $pages  = 0;
+            $pages = 0;
 
             do {
 
@@ -528,13 +533,13 @@ class LazadaProductService
 
                     $results[] = [
                         'external_product_id' => $extId,
-                        'name'                => $name,
-                        'seller_sku'          => $matchingSku ?: ($sellerSkus[0] ?? null),
-                        'seller_skus'         => $sellerSkus,
-                        'image'               => $item['images'][0] ?? null,
-                        'shop_id'             => $shopId,
-                        'shop_name'           => $shop->shop_name ?? null,
-                        'channel_code'        => 'lazada',
+                        'name' => $name,
+                        'seller_sku' => $matchingSku ?: ($sellerSkus[0] ?? null),
+                        'seller_skus' => $sellerSkus,
+                        'image' => $item['images'][0] ?? null,
+                        'shop_id' => $shopId,
+                        'shop_name' => $shop->shop_name ?? null,
+                        'channel_code' => 'lazada',
                     ];
 
                     if (count($results) >= $targetLimit) {
@@ -558,11 +563,6 @@ class LazadaProductService
         return $this->searchVerifiedIndexedSkus($shopId, $shop, $needle, $targetLimit);
     }
 
-    /**
-     * Lazada's catalog search does not reliably index variant seller SKUs.
-     * Candidates from the local index are therefore verified against the live
-     * listing before they are returned to the caller.
-     */
     protected function searchVerifiedIndexedSkus(string $shopId, object $shop, string $needle, int $limit): array
     {
         $candidates = $this->searchIndex->findExact((string) $shop->id, $needle, max(20, $limit * 3));
@@ -670,11 +670,6 @@ class LazadaProductService
         return $models;
     }
 
-    /**
-     * Rebuild only the Lazada seller-SKU index. This intentionally does not
-     * create products or channel mappings and can be run independently from a
-     * catalog download.
-     */
     public function rebuildSearchIndex(string $shopId): array
     {
         $shop = $this->shopRepository->findByShopId($shopId);
@@ -696,7 +691,7 @@ class LazadaProductService
 
             do {
                 $params = ['filter' => $filter, 'offset' => $offset, 'limit' => $limit];
-                $res = \Modules\Channel\Support\ChannelRetry::run('lazada', function () use (&$shop, $shopId, $params) {
+                $res = ChannelRetry::run('lazada', function () use (&$shop, $shopId, $params) {
                     try {
                         return $this->client->request('GET', '/products/get', $params, $shop->access_token);
                     } catch (TokenExpiredException $e) {
@@ -752,7 +747,7 @@ class LazadaProductService
             throw new \Exception("Toko Lazada tidak ditemukan atau belum terhubung: {$shopId}");
         }
 
-        $productService = app(\Modules\Product\Services\ProductService::class);
+        $productService = app(ProductService::class);
 
         $count = 0;
         $failed = 0;
@@ -770,7 +765,7 @@ class LazadaProductService
 
                 $params = ['filter' => $filter, 'offset' => $offset, 'limit' => $limit];
 
-                $res = \Modules\Channel\Support\ChannelRetry::run('lazada', function () use (&$shop, $shopId, $params) {
+                $res = ChannelRetry::run('lazada', function () use (&$shop, $shopId, $params) {
                     try {
                         return $this->client->request('GET', '/products/get', $params, $shop->access_token);
                     } catch (TokenExpiredException $e) {
@@ -835,7 +830,7 @@ class LazadaProductService
                         }
                     } catch (\Throwable $e) {
                         $failed++;
-                        Log::error('Lazada: gagal pull produk ' . ($item['item_id'] ?? '?') . ': ' . $e->getMessage());
+                        Log::error('Lazada: gagal pull produk '.($item['item_id'] ?? '?').': '.$e->getMessage());
 
                         ProductSyncLog::record([
                             'channel_shop_id' => $shop->id,
@@ -898,7 +893,7 @@ class LazadaProductService
             $products = $res['data']['products'] ?? [];
 
             foreach ($products as $item) {
-                $mapping = \Modules\Product\Models\ProductChannelMapping::where('external_product_id', (string) ($item['item_id'] ?? ''))
+                $mapping = ProductChannelMapping::where('external_product_id', (string) ($item['item_id'] ?? ''))
                     ->where('channel_shop_id', $channelShopId)
                     ->first();
 
@@ -907,7 +902,7 @@ class LazadaProductService
                 }
 
                 $attrs = (! empty($item['attributes']) && is_array($item['attributes'])) ? $item['attributes'] : null;
-                $canonical = \Modules\Channel\Repositories\ChannelProductRepository::canonicalAttributes($attrs);
+                $canonical = ChannelProductRepository::canonicalAttributes($attrs);
                 $mapping->update([
                     'channel_attributes' => $canonical !== null ? json_decode($canonical, true) : null,
                 ]);
@@ -916,7 +911,7 @@ class LazadaProductService
                     if (empty($skuData['SkuId'])) {
                         continue;
                     }
-                    $vm = \Modules\Product\Models\ProductVariantChannelMapping::where('product_channel_mapping_id', $mapping->id)
+                    $vm = ProductVariantChannelMapping::where('product_channel_mapping_id', $mapping->id)
                         ->where('external_sku_id', (string) $skuData['SkuId'])
                         ->first();
                     if (! $vm) {
