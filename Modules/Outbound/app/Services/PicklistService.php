@@ -15,6 +15,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Models\SkuRackAssignment;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Support\StockSummary;
 use Modules\Notification\Events\TaskAssigned;
@@ -28,6 +29,7 @@ use Modules\Outbound\Models\PicklistItemAllocation;
 use Modules\Outbound\Repositories\PicklistRepository;
 use Modules\Product\Repositories\ProductRepository;
 use Modules\Sales\Models\SalesOrder as Order;
+use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 
 class PicklistService
@@ -367,6 +369,7 @@ class PicklistService
                     'item_status' => PicklistItem::STATUS_PROCESSED_EXTERNALLY,
                     'bin_id' => $this->resolveBin($picklist, $data['bin_code'])->id ?? null,
                 ]);
+
                 return [
                     'already_shipped' => true,
                     'order_no' => $pickOrder->salesorder_no,
@@ -676,6 +679,8 @@ class PicklistService
             );
         }
 
+        $this->assertAssignedBinForPick($item, $locationId, $bin);
+
         $inventory = Inventory::where('item_id', $item->item_id)
             ->where('location_id', $locationId)
             ->where('bin_id', $bin->id)
@@ -696,11 +701,60 @@ class PicklistService
         return $available;
     }
 
+    private function assertAssignedBinForPick(
+        PicklistItem $item,
+        string $locationId,
+        LocationBin $bin,
+        bool $lock = false,
+    ): void {
+        $location = Location::find($locationId);
+        if (! $location?->enforcesStrictBinSku()) {
+            return;
+        }
+
+        $assignmentQuery = SkuRackAssignment::query()
+            ->where('location_id', $locationId)
+            ->where('item_id', $item->item_id);
+
+        if ($lock) {
+            $assignmentQuery->lockForUpdate();
+        }
+
+        $assignedBinId = $assignmentQuery->value('bin_id');
+        if ($assignedBinId === null) {
+            throw new OutboundValidationException(
+                "SKU {$item->sku} belum memiliki rak yang di-assign. Picking ditahan sampai rak ditentukan."
+            );
+        }
+
+        if ((string) $assignedBinId !== (string) $bin->id) {
+            $assignedBinCode = LocationBin::whereKey($assignedBinId)->value('bin_final_code') ?? $assignedBinId;
+
+            throw new OutboundValidationException(
+                "SKU {$item->sku} harus diambil dari rak {$assignedBinCode}."
+            );
+        }
+    }
+
     private function suggestBinsForItem(Picklist $picklist, PicklistItem $item): Collection
     {
+        $location = Location::find($picklist->location_id);
+        $assignedBinId = null;
+
+        if ($location?->enforcesStrictBinSku()) {
+            $assignedBinId = SkuRackAssignment::query()
+                ->where('location_id', $picklist->location_id)
+                ->where('item_id', $item->item_id)
+                ->value('bin_id');
+
+            if ($assignedBinId === null) {
+                return collect();
+            }
+        }
 
         $rows = Inventory::where('item_id', $item->item_id)
             ->where('location_id', $picklist->location_id)
+            ->when($assignedBinId !== null, fn ($query) => $query->where('bin_id', $assignedBinId))
             ->placed()
             ->where('on_hand', '>', 0)
             ->with(['bin:id,bin_final_code'])
@@ -917,6 +971,8 @@ class PicklistService
         if ($qty <= 0) {
             return;
         }
+
+        $this->assertAssignedBinForPick($item, (string) $picklist->location_id, $bin, true);
 
         $inventory = Inventory::where('item_id', $item->item_id)
             ->where('location_id', $picklist->location_id)

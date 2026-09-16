@@ -760,28 +760,18 @@ final class StockCutoverService
 
                     continue;
                 }
-                $targetBinId = DB::table('sku_rack_assignments')
+                $target = DB::table('inventories')
                     ->where('item_id', $row->item_id)
                     ->where('location_id', $row->location_id)
-                    ->value('bin_id');
-                $targetBinId ??= DB::table('inventories')
-                    ->where('item_id', $row->item_id)
-                    ->where('location_id', $row->location_id)
-                    ->whereNotNull('bin_id')
-                    ->value('bin_id');
-                $target = DB::table('inventories')->where('item_id', $row->item_id)->where('location_id', $row->location_id)->where('bin_id', $targetBinId)->first();
+                    ->whereNull('bin_id')
+                    ->first();
                 if (! $target) {
-                    if ($targetBinId === null) {
-                        $skipped++;
-
-                        continue;
-                    }
                     $inventoryId = (string) Str::uuid();
                     DB::table('inventories')->insert([
                         'id' => $inventoryId,
                         'item_id' => $row->item_id,
                         'location_id' => $row->location_id,
-                        'bin_id' => $targetBinId,
+                        'bin_id' => null,
                         'batch_no' => '',
                         'serial_no' => '',
                         'on_hand' => 0,
@@ -795,19 +785,20 @@ final class StockCutoverService
                 }
                 DB::table('inventories')->where('id', $target->id)->update([
                     'on_order' => DB::raw('on_order + '.(int) $qty),
-                    'available' => DB::raw('GREATEST(on_hand - (on_order + '.(int) $qty.'), 0)'),
+                    'available' => 0,
                     'updated_at' => now(),
                 ]);
+                $targetOnOrder = (int) DB::table('inventories')->where('id', $target->id)->value('on_order');
                 $exists = DB::table('inventory_movements')->where('transaction_number', $row->salesorder_no)->where('item_id', $row->item_id)->where('location_id', $row->location_id)->where('source', 'ORDER_RESERVE')->exists();
                 if (! $exists) {
                     DB::table('inventory_movements')->insert([
                         'item_id' => $row->item_id,
                         'location_id' => $row->location_id,
-                        'bin_id' => $targetBinId,
+                        'bin_id' => null,
                         'transaction_number' => $row->salesorder_no,
                         'source' => 'ORDER_RESERVE',
                         'qty' => $qty,
-                        'balance' => (int) $target->on_order + $qty,
+                        'balance' => $targetOnOrder,
                         'transaction_date' => now(),
                         'created_by' => 'cutover',
                         'created_at' => now(),

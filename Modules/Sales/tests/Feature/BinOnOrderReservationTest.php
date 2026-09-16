@@ -22,6 +22,7 @@ class BinOnOrderReservationTest extends TestCase
     use RefreshDatabase;
 
     private string $kecilId;
+
     private string $pusatId;
 
     protected function setUp(): void
@@ -42,7 +43,7 @@ class BinOnOrderReservationTest extends TestCase
         $this->pusatId = (string) $pusat->id;
     }
 
-    public function test_reserve_allocates_on_order_directly_to_sku_assigned_rack_in_gudang_kecil(): void
+    public function test_reserve_keeps_on_order_at_location_aggregate_in_gudang_kecil(): void
     {
         $product = Product::create([
             'name' => 'Earphone ME570FAW',
@@ -112,14 +113,15 @@ class BinOnOrderReservationTest extends TestCase
 
         $this->assertNotNull($invKecil);
         $this->assertSame(24, (int) $invKecil->on_hand);
-        $this->assertSame(1, (int) $invKecil->on_order, 'On order harus tercatat pada baris rak fisik');
-        $this->assertSame(23, (int) $invKecil->available, 'Available rak fisik harus berkurang jadi 23');
+        $this->assertSame(0, (int) $invKecil->on_order, 'On order tidak boleh menempel pada rak fisik');
+        $this->assertSame(24, (int) $invKecil->available, 'Available rak fisik tidak berubah oleh reservasi agregat');
 
         $aggRow = Inventory::where('item_id', $variant->id)
             ->where('location_id', $this->kecilId)
             ->whereNull('bin_id')
             ->first();
-        $this->assertTrue($aggRow === null || (int) $aggRow->on_order === 0);
+        $this->assertNotNull($aggRow);
+        $this->assertSame(1, (int) $aggRow->on_order);
 
         $stocks = app(InventoryRepository::class)->getByItem($variant->id);
         $resourceStocks = InventoryStockResource::collectionWithActual($stocks);
@@ -127,15 +129,15 @@ class BinOnOrderReservationTest extends TestCase
         $rowKecil = collect($resourceStocks)->firstWhere('bin_code', 'O-LX-KX-KANTOR');
         $this->assertNotNull($rowKecil);
         $this->assertSame(24, $rowKecil['on_hand']);
-        $this->assertSame(1, $rowKecil['on_order'], 'Resource rak harus mengembalikan On Order 1');
-        $this->assertSame(23, $rowKecil['available'], 'Resource rak harus mengembalikan Available 23');
+        $this->assertSame(0, $rowKecil['on_order'], 'Resource rak tidak boleh mengembalikan reservasi agregat');
+        $this->assertSame(24, $rowKecil['available'], 'Resource rak tetap memiliki stok fisik penuh');
 
         $variantDetail = app(InventoryRepository::class)->findVariantWithStockDetail($variant->id);
         $summaryResource = (new StockItemResource($variantDetail))->resolve();
 
-        $this->assertSame(624, $summaryResource['total_stocks']['on_hand']); 
+        $this->assertSame(624, $summaryResource['total_stocks']['on_hand']);
         $this->assertSame(1, $summaryResource['total_stocks']['on_order']);
-        $this->assertSame(623, $summaryResource['total_stocks']['available']); 
+        $this->assertSame(623, $summaryResource['total_stocks']['available']);
 
         $locKecil = collect($summaryResource['location_stocks'])->firstWhere('location_id', $this->kecilId);
         $this->assertSame(24, $locKecil['on_hand']);

@@ -547,6 +547,7 @@ class InventoryService
             $transactionNumber = (string) $data['transaction_number'];
             $sourceOut = (string) ($data['source_out'] ?? 'BIN_TRANSFER_OUT');
             $sourceIn = (string) ($data['source_in'] ?? 'BIN_TRANSFER_IN');
+            $moveOnOrder = (bool) ($data['move_on_order'] ?? false);
 
             app(InboundBinPolicy::class)->assertConsumable($locationId, $sourceBinId, 'pindah rak');
             app(InboundBinPolicy::class)->assertConsumable($locationId, $destinationBinId, 'pindah rak');
@@ -568,14 +569,16 @@ class InventoryService
                 );
             }
 
-            if ((int) $source->on_order !== 0) {
+            if (! $moveOnOrder && (int) $source->on_order !== 0) {
                 throw new \DomainException(
                     'Stok di rak asal masih memiliki reservasi dan tidak dapat dipindahkan.'
                 );
             }
 
             $unitCost = (float) ($source->avg_cost ?? 0);
+            $movedOnOrder = $moveOnOrder ? max(0, (int) $source->on_order) : 0;
             $source->on_hand -= $qty;
+            $source->on_order -= $movedOnOrder;
             $this->inventoryRepository->updateStock($source);
 
             $this->movementRepository->create([
@@ -604,6 +607,7 @@ class InventoryService
             $previousOnHand = (float) $destination->on_hand;
             $previousAverageCost = (float) ($destination->avg_cost ?? 0);
             $destination->on_hand += $qty;
+            $destination->on_order += $movedOnOrder;
 
             if ($unitCost > 0) {
                 $destination->avg_cost = MovingAverageCost::afterReceipt(
@@ -2910,8 +2914,7 @@ class InventoryService
         int $qty,
         ?string $itemId = null,
         ?string $binId = null,
-    ): void
-    {
+    ): void {
         $this->assertPhysicalSourceAvailable($sourceInventory, $qty, $itemId, $binId);
 
         if (! config('inventory.allow_negative_stock', true)
@@ -2928,8 +2931,7 @@ class InventoryService
         int $qty,
         ?string $itemId = null,
         ?string $binId = null,
-    ): void
-    {
+    ): void {
         if ((int) $sourceInventory->on_hand < $qty) {
             $label = $this->transferSourceLabel($itemId, $binId);
             throw new \Exception(

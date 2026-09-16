@@ -460,58 +460,69 @@ class LocationBinService
 
     public function assignSkuToBin(string $locationId, string $binId, string $itemId, string $userId): array
     {
-        $active = ProductVariant::query()
-            ->whereKey($itemId)
-            ->whereHas('product', fn ($query) => $query->whereNull('deleted_at'))
-            ->exists();
+        return $this->withStockLock($itemId, $locationId, function () use ($locationId, $binId, $itemId, $userId): array {
+            $active = ProductVariant::query()
+                ->whereKey($itemId)
+                ->whereHas('product', fn ($query) => $query->whereNull('deleted_at'))
+                ->exists();
 
-        if (! $active) {
-            throw new \DomainException('SKU tidak aktif atau master produknya sudah dihapus.');
-        }
-
-        $location = $this->locationRepository->find($locationId);
-        if (! $location) {
-            throw new ModelNotFoundException('Lokasi tidak ditemukan.');
-        }
-        if (! $location->enforcesStrictBinSku()) {
-            throw new \DomainException('Penempatan SKU langsung hanya berlaku untuk Gudang Kecil.');
-        }
-
-        $bin = LocationBin::where('location_id', $locationId)->find($binId);
-        if (! $bin) {
-            throw new ModelNotFoundException('Rak tidak ditemukan.');
-        }
-        if ($bin->is_inbound) {
-            throw new \DomainException('Rak inbound tidak dapat diisi SKU secara manual.');
-        }
-
-        if (! app(BinMultiSkuRuleService::class)->allowsMultiSku($bin)) {
-            $occupant = app(BinOccupancyGuard::class)->currentOccupantItemId($binId);
-            if ($occupant !== null && $occupant !== $itemId) {
-                throw new \DomainException('Rak sudah berisi SKU lain.');
+            if (! $active) {
+                throw new \DomainException('SKU tidak aktif atau master produknya sudah dihapus.');
             }
-        }
 
-        app(SkuHomeBinGuard::class)->assertSkuFitsBin($locationId, $itemId, $binId);
-        app(BinOccupancyGuard::class)->assertBinFitsSku($binId, $itemId);
+            $location = $this->locationRepository->find($locationId);
+            if (! $location) {
+                throw new ModelNotFoundException('Lokasi tidak ditemukan.');
+            }
+            if (! $location->enforcesStrictBinSku()) {
+                throw new \DomainException('Penempatan SKU langsung hanya berlaku untuk Gudang Kecil.');
+            }
 
-        return DB::transaction(function () use ($locationId, $binId, $itemId, $userId) {
-            SkuRackAssignment::updateOrCreate(
-                [
-                    'location_id' => $locationId,
-                    'item_id' => $itemId,
-                ],
-                [
+            $bin = LocationBin::where('location_id', $locationId)->find($binId);
+            if (! $bin) {
+                throw new ModelNotFoundException('Rak tidak ditemukan.');
+            }
+            if ($bin->is_inbound) {
+                throw new \DomainException('Rak inbound tidak dapat diisi SKU secara manual.');
+            }
+
+            if (! app(BinMultiSkuRuleService::class)->allowsMultiSku($bin)) {
+                $occupant = app(BinOccupancyGuard::class)->currentOccupantItemId($binId);
+                if ($occupant !== null && $occupant !== $itemId) {
+                    throw new \DomainException('Rak sudah berisi SKU lain.');
+                }
+            }
+
+            app(SkuHomeBinGuard::class)->assertSkuFitsBin($locationId, $itemId, $binId);
+            app(BinOccupancyGuard::class)->assertBinFitsSku($binId, $itemId);
+
+            return DB::transaction(function () use ($locationId, $binId, $itemId, $userId): array {
+                $assignment = SkuRackAssignment::query()
+                    ->where('location_id', $locationId)
+                    ->where('item_id', $itemId)
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($assignment) {
+                    $assignment->forceFill([
+                        'bin_id' => $binId,
+                        'assigned_by' => $userId,
+                    ])->save();
+                } else {
+                    SkuRackAssignment::create([
+                        'location_id' => $locationId,
+                        'item_id' => $itemId,
+                        'bin_id' => $binId,
+                        'assigned_by' => $userId,
+                    ]);
+                }
+
+                return [
                     'bin_id' => $binId,
-                    'assigned_by' => $userId,
-                ]
-            );
-
-            return [
-                'bin_id' => $binId,
-                'item_id' => $itemId,
-                'placed_qty' => 0,
-            ];
+                    'item_id' => $itemId,
+                    'placed_qty' => 0,
+                ];
+            });
         });
     }
 
@@ -550,6 +561,20 @@ class LocationBinService
 
         return $this->withStockLock($itemId, $locationId, function () use ($locationId, $sourceBinId, $destinationBinId, $itemId, $userId, $inventoryService) {
             return DB::transaction(function () use ($locationId, $sourceBinId, $destinationBinId, $itemId, $userId, $inventoryService) {
+                $assignment = SkuRackAssignment::query()
+                    ->where('location_id', $locationId)
+                    ->where('item_id', $itemId)
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($assignment && (string) $assignment->bin_id !== (string) $sourceBinId) {
+                    $assignedBin = LocationBin::whereKey($assignment->bin_id)->value('bin_final_code') ?? $assignment->bin_id;
+
+                    throw new \DomainException(
+                        "SKU ini ter-assign di rak {$assignedBin}. Pindahkan dari rak tersebut agar picklist tetap memakai rak yang benar."
+                    );
+                }
+
                 $transactionNumber = 'BIN-MOVE-'.Str::upper(Str::random(12));
                 $rows = Inventory::query()
                     ->where('location_id', $locationId)
@@ -582,9 +607,24 @@ class LocationBinService
                         'transaction_number' => $transactionNumber,
                         'source_out' => 'BIN_TRANSFER_OUT',
                         'source_in' => 'BIN_TRANSFER_IN',
+                        'move_on_order' => true,
                     ]);
 
                     $moved += $qty;
+                }
+
+                if ($assignment) {
+                    $assignment->forceFill([
+                        'bin_id' => $destinationBinId,
+                        'assigned_by' => $userId,
+                    ])->save();
+                } else {
+                    SkuRackAssignment::create([
+                        'location_id' => $locationId,
+                        'item_id' => $itemId,
+                        'bin_id' => $destinationBinId,
+                        'assigned_by' => $userId,
+                    ]);
                 }
 
                 return [

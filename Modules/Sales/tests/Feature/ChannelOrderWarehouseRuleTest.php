@@ -108,7 +108,7 @@ class ChannelOrderWarehouseRuleTest extends TestCase
 
         $this->assertSame($this->smallLocationId, $order->location_id);
         $this->assertSame(0, (int) $this->inventory($this->centralLocationId)->on_order);
-        $this->assertSame(1, (int) $this->inventory($this->smallLocationId)->on_order);
+        $this->assertSame(1, $this->aggregateOnOrder($this->smallLocationId));
         $this->assertSame($this->smallBinId, $this->inventory($this->smallLocationId)->bin_id);
     }
 
@@ -145,7 +145,7 @@ class ChannelOrderWarehouseRuleTest extends TestCase
 
         $this->assertSame($this->smallLocationId, $relocated->location_id);
         $this->assertSame(0, (int) $this->inventory($this->centralLocationId)->on_order);
-        $this->assertSame(1, (int) $this->inventory($this->smallLocationId)->on_order);
+        $this->assertSame(1, $this->aggregateOnOrder($this->smallLocationId));
         $this->assertSame($this->smallBinId, $this->inventory($this->smallLocationId)->bin_id);
         $this->assertDatabaseHas('inventory_movements', [
             'transaction_number' => $order->salesorder_no,
@@ -218,7 +218,7 @@ class ChannelOrderWarehouseRuleTest extends TestCase
         $this->assertSame($order->id, $orderId);
         $this->assertSame($this->smallLocationId, (string) SalesOrder::find($order->id)->location_id);
         $this->assertSame(0, (int) $this->inventory($this->centralLocationId)->on_order);
-        $this->assertSame(1, (int) $this->inventory($this->smallLocationId)->on_order);
+        $this->assertSame(1, $this->aggregateOnOrder($this->smallLocationId));
         $this->assertSame($this->smallBinId, $this->inventory($this->smallLocationId)->bin_id);
     }
 
@@ -291,5 +291,14 @@ class ChannelOrderWarehouseRuleTest extends TestCase
             ->where('location_id', $locationId)
             ->whereNotNull('bin_id')
             ->first();
+    }
+
+    private function aggregateOnOrder(string $locationId): int
+    {
+        return (int) DB::table('inventories')
+            ->where('item_id', $this->variantId)
+            ->where('location_id', $locationId)
+            ->whereNull('bin_id')
+            ->sum('on_order');
     }
 }

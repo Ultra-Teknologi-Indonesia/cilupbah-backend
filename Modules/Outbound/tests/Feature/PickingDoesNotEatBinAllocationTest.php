@@ -8,8 +8,10 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use Modules\Inventory\Models\SkuRackAssignment;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Outbound\Models\Picklist;
+use Modules\Outbound\Repositories\PicklistRepository;
 use Modules\Outbound\Services\PicklistService;
 use Tests\TestCase;
 
@@ -35,7 +37,7 @@ class PickingDoesNotEatBinAllocationTest extends TestCase
         return $id;
     }
 
-    private function seedLocation(): string
+    private function seedLocation(bool $small = false): string
     {
         $id = Str::uuid()->toString();
         DB::table('locations')->insert([
@@ -44,6 +46,7 @@ class PickingDoesNotEatBinAllocationTest extends TestCase
             'location_name' => 'Gudang Alokasi Bin',
             'location_type' => 'WAREHOUSE',
             'is_warehouse' => true,
+            'is_small_warehouse' => $small,
             'is_active' => true,
             'created_at' => now(), 'updated_at' => now(),
         ]);
@@ -199,6 +202,44 @@ class PickingDoesNotEatBinAllocationTest extends TestCase
             'source' => 'INVOICE',
             'qty' => -2,
             'bin_id' => $binId,
+        ]);
+    }
+
+    public function test_small_warehouse_picklist_only_uses_the_assigned_sku_rack(): void
+    {
+        Queue::fake();
+
+        $userId = $this->seedUser();
+        $locationId = $this->seedLocation(small: true);
+        $assignedBinId = $this->seedBin($locationId, 'RACK-ASSIGNED');
+        $otherBinId = $this->seedBin($locationId, 'RACK-OTHER');
+        $variantId = $this->seedProductVariant('SKU-ASSIGNED-1');
+
+        $this->seedInventory($variantId, $locationId, $assignedBinId, onHand: 2);
+        $this->seedInventory($variantId, $locationId, $otherBinId, onHand: 10);
+        SkuRackAssignment::create([
+            'location_id' => $locationId,
+            'item_id' => $variantId,
+            'bin_id' => $assignedBinId,
+        ]);
+
+        $ids = $this->seedPicklistWithItem($locationId, $variantId, 'SKU-ASSIGNED-1', 1, $userId);
+
+        $scan = app(PicklistService::class)->scanForPick(
+            $ids['picklist_id'],
+            'SKU-ASSIGNED-1',
+        );
+
+        $this->assertSame('RACK-ASSIGNED', $scan['bin_code']);
+        $this->assertSame([$assignedBinId], array_column($scan['candidates'], 'bin_id'));
+
+        $recommended = app(PicklistRepository::class)->recommendedBinStocks([$variantId], $locationId);
+        $this->assertSame([$assignedBinId], $recommended->pluck('bin_id')->all());
+
+        $this->expectExceptionMessage('harus diambil dari rak RACK-ASSIGNED');
+        app(PicklistService::class)->pickItem($ids['picklist_id'], $ids['item_id'], [
+            'qty_picked' => 1,
+            'bin_code' => 'RACK-OTHER',
         ]);
     }
 }

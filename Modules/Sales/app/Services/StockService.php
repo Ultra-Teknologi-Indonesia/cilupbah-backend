@@ -86,14 +86,13 @@ class StockService
                     ]);
                 }
 
-                $targetBinId = $this->inventoryRepository->findTargetBinForItemLocation($itemId, $locationId);
-                $targetInv = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, $targetBinId);
+                $targetInv = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, null);
                 $targetInv->on_order = ((int) $targetInv->on_order) + $qty;
                 $targetInv->recalculateAvailable();
                 $this->inventoryRepository->updateReservation($targetInv);
 
                 $totalOnOrder = $this->inventoryRepository->sumOnOrderAtLocation($itemId, $locationId);
-                $this->recordAllocation($itemId, $locationId, $qty, $transactionNumber, 'ORDER_RESERVE', $totalOnOrder, $targetBinId);
+                $this->recordAllocation($itemId, $locationId, $qty, $transactionNumber, 'ORDER_RESERVE', $totalOnOrder);
             });
         });
     }
@@ -114,17 +113,15 @@ class StockService
 
         $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty, $transactionNumber) {
             DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber) {
-                $releasedBinId = null;
                 $released = $this->releaseOutstandingReservation(
                     $itemId,
                     $locationId,
                     $qty,
                     $transactionNumber,
-                    $releasedBinId,
                 );
                 if ($released > 0) {
                     $totalOnOrder = $this->inventoryRepository->sumOnOrderAtLocation($itemId, $locationId);
-                    $this->recordAllocation($itemId, $locationId, -$released, $transactionNumber, 'ORDER_RELEASE', $totalOnOrder, $releasedBinId);
+                    $this->recordAllocation($itemId, $locationId, -$released, $transactionNumber, 'ORDER_RELEASE', $totalOnOrder);
                 }
             });
         });
@@ -262,7 +259,6 @@ class StockService
         string $locationId,
         int $requestedQty,
         string $transactionNumber,
-        ?string &$releasedBinId = null,
     ): int {
         if ($requestedQty <= 0) {
             return 0;
@@ -280,17 +276,10 @@ class StockService
 
         $releaseQty = min($requestedQty, $outstanding);
 
-        $releasedBinId = $this->reservationBinId(
-            $itemId,
-            $locationId,
-            $transactionNumber,
-        );
-
         $this->decrementOnOrderAtLocation(
             $itemId,
             $locationId,
             $releaseQty,
-            $releasedBinId,
         );
 
         return $releaseQty;
@@ -309,20 +298,6 @@ class StockService
             ->sum('qty'));
     }
 
-    private function reservationBinId(string $itemId, string $locationId, string $transactionNumber): ?string
-    {
-        $bins = DB::table('inventory_movements')
-            ->where('item_id', $itemId)
-            ->where('location_id', $locationId)
-            ->where('transaction_number', $transactionNumber)
-            ->where('source', 'ORDER_RESERVE')
-            ->whereNotNull('bin_id')
-            ->distinct()
-            ->pluck('bin_id');
-
-        return $bins->count() === 1 ? (string) $bins->first() : null;
-    }
-
     private function decrementOnOrderAtLocation(string $itemId, string $locationId, int $qty, ?string $preferredBinId = null): int
     {
         if ($qty <= 0) {
@@ -335,11 +310,16 @@ class StockService
             ->where('on_order', '>', 0);
 
         if ($preferredBinId !== null) {
-            $query->orderByRaw('CASE WHEN bin_id = ? THEN 0 ELSE 1 END', [$preferredBinId]);
+            $query->orderByRaw(
+                'CASE WHEN bin_id = ? THEN 0 WHEN bin_id IS NULL THEN 1 ELSE 2 END',
+                [$preferredBinId],
+            );
+        } else {
+            $query->orderByRaw('CASE WHEN bin_id IS NULL THEN 0 ELSE 1 END');
         }
 
         $rows = $query
-            ->orderByRaw('bin_id IS NULL, on_order DESC')
+            ->orderByDesc('on_order')
             ->lockForUpdate()
             ->get();
 
@@ -370,17 +350,15 @@ class StockService
     {
         $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty, $transactionNumber) {
             DB::transaction(function () use ($itemId, $locationId, $qty, $transactionNumber) {
-                $releasedBinId = null;
                 $released = $this->releaseOutstandingReservation(
                     $itemId,
                     $locationId,
                     $qty,
                     $transactionNumber,
-                    $releasedBinId,
                 );
                 if ($released > 0) {
                     $totalOnOrder = $this->inventoryRepository->sumOnOrderAtLocation($itemId, $locationId);
-                    $this->recordAllocation($itemId, $locationId, -$released, $transactionNumber, 'ORDER_RELEASE', $totalOnOrder, $releasedBinId);
+                    $this->recordAllocation($itemId, $locationId, -$released, $transactionNumber, 'ORDER_RELEASE', $totalOnOrder);
                 }
             });
         });
@@ -423,7 +401,6 @@ class StockService
                         $transactionNumber,
                         'ORDER_RELEASE',
                         $totalOnOrder,
-                        $this->reservationBinId($row->item_id, $row->location_id, $transactionNumber),
                     );
 
                     if ($actuallyReleased < $outstanding) {
@@ -502,7 +479,6 @@ class StockService
                         $transactionNumber,
                         'ORDER_RELEASE',
                         $totalOnOrder,
-                        $this->reservationBinId($row->item_id, $row->location_id, $transactionNumber),
                     );
 
                     $released += $outstanding;
@@ -545,8 +521,7 @@ class StockService
             return;
         }
 
-        $targetBinId = $this->inventoryRepository->findTargetBinForItemLocation($itemId, $locationId);
-        $target = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, $targetBinId);
+        $target = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, null);
         $target->on_order = (int) $target->on_order + $qty;
         $target->recalculateAvailable();
         $this->inventoryRepository->updateStock($target);
@@ -579,8 +554,7 @@ class StockService
         }
 
         $onOrder = (int) $this->inventoryRepository->sumOnOrderAtLocation($itemId, $locationId);
-        $targetBinId = $this->inventoryRepository->findTargetBinForItemLocation($itemId, $locationId);
-        $this->recordAllocation($itemId, $locationId, $qty, $transactionNumber, 'ORDER_RESERVE', $onOrder, $targetBinId);
+        $this->recordAllocation($itemId, $locationId, $qty, $transactionNumber, 'ORDER_RESERVE', $onOrder);
 
         return 1;
     }

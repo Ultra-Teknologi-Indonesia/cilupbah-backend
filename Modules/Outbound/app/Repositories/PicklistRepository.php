@@ -2,34 +2,35 @@
 
 namespace Modules\Outbound\Repositories;
 
-use App\Support\WarehouseAccess;
 use App\Exceptions\UserFacingException;
+use App\Support\WarehouseAccess;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Models\Inventory;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
-use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
-use Spatie\QueryBuilder\QueryBuilder;
-use Spatie\QueryBuilder\AllowedFilter;
 use Modules\Outbound\Support\FilterValues;
+use Modules\Warehouse\Models\Location;
+use Spatie\QueryBuilder\AllowedFilter;
+use Spatie\QueryBuilder\AllowedSort;
+use Spatie\QueryBuilder\QueryBuilder;
 
 class PicklistRepository
 {
-
     public function getForBulkPdf(array $orderIds): Collection
     {
         $query = Picklist::with([
-                'items.product:id,product_id,sku',
-                'items.product.product:id,name',
-                'items.product.options:id,variant_id,attribute_id,value',
-                'items.product.media:id,product_id,variant_id,url,is_primary,sort_order',
-                'items.product.product.media:id,product_id,variant_id,url,is_primary,sort_order',
-                'items.orderItem:id,order_id,description',
-                'items.order:id,salesorder_no,customer_name',
-                'items.bin:id,bin_final_code',
-                'location:id,location_name,location_code',
-                'picker:id,name,email',
-            ])
+            'items.product:id,product_id,sku',
+            'items.product.product:id,name',
+            'items.product.options:id,variant_id,attribute_id,value',
+            'items.product.media:id,product_id,variant_id,url,is_primary,sort_order',
+            'items.product.product.media:id,product_id,variant_id,url,is_primary,sort_order',
+            'items.orderItem:id,order_id,description',
+            'items.order:id,salesorder_no,customer_name',
+            'items.bin:id,bin_final_code',
+            'location:id,location_name,location_code',
+            'picker:id,name,email',
+        ])
             ->whereHas('items', fn ($q) => $q->whereIn('order_id', $orderIds))
             ->orderBy('created_at');
         WarehouseAccess::apply($query, 'location_id');
@@ -54,11 +55,24 @@ class PicklistRepository
     {
         WarehouseAccess::assert($locationId);
 
+        $location = Location::find($locationId);
+
         return Inventory::query()
             ->whereIn('item_id', $itemIds)
             ->where('location_id', $locationId)
             ->where('on_hand', '>', 0)
             ->whereNotNull('bin_id')
+            ->when(
+                $location?->enforcesStrictBinSku(),
+                fn ($query) => $query->whereExists(function ($assignmentQuery): void {
+                    $assignmentQuery
+                        ->selectRaw('1')
+                        ->from('sku_rack_assignments as assignments')
+                        ->whereColumn('assignments.location_id', 'inventories.location_id')
+                        ->whereColumn('assignments.item_id', 'inventories.item_id')
+                        ->whereColumn('assignments.bin_id', 'inventories.bin_id');
+                }),
+            )
             ->with('bin:id,bin_final_code')
             ->orderByDesc('on_hand')
             ->get(['id', 'item_id', 'bin_id', 'on_hand']);
@@ -72,7 +86,7 @@ class PicklistRepository
             $query->whereNotIn('status', [Picklist::STATUS_COMPLETED, Picklist::STATUS_CANCELLED]);
         }
 
-        \App\Support\WarehouseAccess::apply($query, 'location_id');
+        WarehouseAccess::apply($query, 'location_id');
 
         $query->selectRaw("picklists.*, EXISTS(
             SELECT 1 FROM picklist_items
@@ -108,15 +122,22 @@ class PicklistRepository
                     $query->whereHas('items.order', fn ($q) => $q->where('channel_shop_id', $value));
                 }),
                 AllowedFilter::callback('date_from', function ($query, $value) {
-                    if ($value) $query->whereHas('items.order', fn ($q) => $q->whereDate('transaction_date', '>=', $value));
+                    if ($value) {
+                        $query->whereHas('items.order', fn ($q) => $q->whereDate('transaction_date', '>=', $value));
+                    }
                 }),
                 AllowedFilter::callback('date_to', function ($query, $value) {
-                    if ($value) $query->whereHas('items.order', fn ($q) => $q->whereDate('transaction_date', '<=', $value));
+                    if ($value) {
+                        $query->whereHas('items.order', fn ($q) => $q->whereDate('transaction_date', '<=', $value));
+                    }
                 }),
                 AllowedFilter::callback('label_printed', function ($query, $value) {
                     $v = strtolower((string) $value);
-                    if ($v === 'yes') $query->whereHas('items.order', fn ($q) => $q->whereNotNull('shipping_label_prepared_at'));
-                    elseif ($v === 'no') $query->whereHas('items.order', fn ($q) => $q->whereNull('shipping_label_prepared_at'));
+                    if ($v === 'yes') {
+                        $query->whereHas('items.order', fn ($q) => $q->whereNotNull('shipping_label_prepared_at'));
+                    } elseif ($v === 'no') {
+                        $query->whereHas('items.order', fn ($q) => $q->whereNull('shipping_label_prepared_at'));
+                    }
                 }),
 
                 AllowedFilter::callback('zone_id', function ($query, $value) {
@@ -144,7 +165,7 @@ class PicklistRepository
             'location:id,location_name,location_code',
             'picker:id,name,email',
             'creator:id,name',
-            ]);
+        ]);
         WarehouseAccess::apply($query, 'location_id');
 
         return $query->find($id);
@@ -154,7 +175,7 @@ class PicklistRepository
     {
         $query = Picklist::query()
             ->select(['id', 'picklist_no', 'location_id'])
-            ->tap(fn ($q) => \App\Support\WarehouseAccess::apply($q, 'location_id'));
+            ->tap(fn ($q) => WarehouseAccess::apply($q, 'location_id'));
 
         return $query->find($id);
     }
@@ -234,16 +255,16 @@ class PicklistRepository
                 AllowedFilter::exact('item_id'),
             )
             ->allowedSorts(
-                'created_at', 
-                'qty_ordered', 
-                'qty_picked', 
-                'package_no', 
+                'created_at',
+                'qty_ordered',
+                'qty_picked',
+                'package_no',
                 'item_status',
-                \Spatie\QueryBuilder\AllowedSort::field('sku', 'picklist_items.sku'),
-                \Spatie\QueryBuilder\AllowedSort::field('bin_code', 'location_bins.bin_final_code'),
-                \Spatie\QueryBuilder\AllowedSort::field('order_no', 'sales_orders.salesorder_no'),
-                \Spatie\QueryBuilder\AllowedSort::field('tracking_number', 'sales_orders.tracking_number'),
-                \Spatie\QueryBuilder\AllowedSort::field('produk', 'products.name')
+                AllowedSort::field('sku', 'picklist_items.sku'),
+                AllowedSort::field('bin_code', 'location_bins.bin_final_code'),
+                AllowedSort::field('order_no', 'sales_orders.salesorder_no'),
+                AllowedSort::field('tracking_number', 'sales_orders.tracking_number'),
+                AllowedSort::field('produk', 'products.name')
             )
             ->defaultSort('created_at')
             ->paginate($limit)
@@ -253,11 +274,11 @@ class PicklistRepository
     public function generatePicklistNo(): string
     {
         $last = Picklist::whereRaw("picklist_no ~ '^PICK-[0-9]+$'")
-            ->orderByRaw("CAST(SUBSTRING(picklist_no FROM 6) AS BIGINT) DESC")
+            ->orderByRaw('CAST(SUBSTRING(picklist_no FROM 6) AS BIGINT) DESC')
             ->value('picklist_no');
 
         $seq = $last ? ((int) substr($last, 5)) + 1 : (Picklist::count() + 1);
 
-        return 'PICK-' . str_pad((string) $seq, 9, '0', STR_PAD_LEFT);
+        return 'PICK-'.str_pad((string) $seq, 9, '0', STR_PAD_LEFT);
     }
 }

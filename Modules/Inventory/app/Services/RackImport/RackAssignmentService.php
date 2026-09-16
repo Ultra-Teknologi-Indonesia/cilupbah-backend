@@ -2,7 +2,9 @@
 
 namespace Modules\Inventory\Services\RackImport;
 
+use App\Traits\StockLockable;
 use DomainException;
+use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Models\SkuRackAssignment;
 use Modules\Product\Models\ProductVariant;
 use Modules\Warehouse\Models\Location;
@@ -13,18 +15,39 @@ use Modules\Warehouse\Services\SkuHomeBinGuard;
 
 class RackAssignmentService
 {
+    use StockLockable;
+
     public function __construct(
         private BinMultiSkuRuleService $ruleService,
     ) {}
 
     public function assign(string $locationId, string $binId, string $itemId, ?string $userId): void
     {
-        $this->validate($locationId, $binId, $itemId);
+        $this->withStockLock($itemId, $locationId, function () use ($locationId, $binId, $itemId, $userId): void {
+            DB::transaction(function () use ($locationId, $binId, $itemId, $userId): void {
+                $this->validate($locationId, $binId, $itemId);
 
-        SkuRackAssignment::updateOrCreate(
-            ['location_id' => $locationId, 'item_id' => $itemId],
-            ['bin_id' => $binId, 'assigned_by' => $userId],
-        );
+                $assignment = SkuRackAssignment::query()
+                    ->where('location_id', $locationId)
+                    ->where('item_id', $itemId)
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($assignment) {
+                    $assignment->forceFill([
+                        'bin_id' => $binId,
+                        'assigned_by' => $userId,
+                    ])->save();
+                } else {
+                    SkuRackAssignment::create([
+                        'location_id' => $locationId,
+                        'item_id' => $itemId,
+                        'bin_id' => $binId,
+                        'assigned_by' => $userId,
+                    ]);
+                }
+            });
+        });
     }
 
     public function validate(string $locationId, string $binId, string $itemId): void

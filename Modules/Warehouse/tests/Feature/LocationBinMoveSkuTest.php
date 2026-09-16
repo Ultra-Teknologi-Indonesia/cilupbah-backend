@@ -4,7 +4,9 @@ namespace Modules\Warehouse\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Models\SkuRackAssignment;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
@@ -20,13 +22,14 @@ class LocationBinMoveSkuTest extends TestCase
     public function test_move_sku_moves_final_bin_stock_without_using_the_inbound_putaway_route(): void
     {
         [$location, $source, $destination, $variant] = $this->createMoveScenario();
+        $actorId = (string) Str::uuid();
 
         $result = app(LocationBinService::class)->moveSkuToBin(
             $location->id,
             $source->id,
             $variant->id,
             $destination->id,
-            'test-operator',
+            $actorId,
         );
 
         $this->assertSame(5, $result['moved_qty']);
@@ -44,26 +47,72 @@ class LocationBinMoveSkuTest extends TestCase
         $this->assertSame(0, (int) $movements->sum('qty'));
     }
 
-    public function test_move_sku_does_not_move_stock_that_is_reserved_for_an_order(): void
+    public function test_move_sku_moves_reserved_stock_and_reservation_to_the_assigned_destination(): void
     {
         [$location, $source, $destination, $variant] = $this->createMoveScenario(onOrder: 1);
+        $actorId = (string) Str::uuid();
 
-        $this->expectException(\DomainException::class);
-        $this->expectExceptionMessage('masih memiliki reservasi');
+        $result = app(LocationBinService::class)->moveSkuToBin(
+            $location->id,
+            $source->id,
+            $variant->id,
+            $destination->id,
+            $actorId,
+        );
 
-        try {
-            app(LocationBinService::class)->moveSkuToBin(
-                $location->id,
-                $source->id,
-                $variant->id,
-                $destination->id,
-                'test-operator',
-            );
-        } finally {
-            $this->assertSame(5, (int) Inventory::where('item_id', $variant->id)->where('bin_id', $source->id)->value('on_hand'));
-            $this->assertNull(Inventory::where('item_id', $variant->id)->where('bin_id', $destination->id)->first());
-            $this->assertSame(0, DB::table('inventory_movements')->where('item_id', $variant->id)->count());
-        }
+        $this->assertSame(5, $result['moved_qty']);
+        $this->assertSame(0, (int) Inventory::where('item_id', $variant->id)->where('bin_id', $source->id)->value('on_hand'));
+        $this->assertSame(0, (int) Inventory::where('item_id', $variant->id)->where('bin_id', $source->id)->value('on_order'));
+        $this->assertSame(5, (int) Inventory::where('item_id', $variant->id)->where('bin_id', $destination->id)->value('on_hand'));
+        $this->assertSame(1, (int) Inventory::where('item_id', $variant->id)->where('bin_id', $destination->id)->value('on_order'));
+        $this->assertSame(4, (int) Inventory::where('item_id', $variant->id)->where('bin_id', $destination->id)->value('available'));
+        $this->assertSame($destination->id, (string) SkuRackAssignment::where('location_id', $location->id)->where('item_id', $variant->id)->value('bin_id'));
+    }
+
+    public function test_remove_empty_sku_rack_then_assigning_a_new_rack_keeps_location_reservation(): void
+    {
+        [$location, $source, $destination, $variant] = $this->createMoveScenario();
+        $actorId = (string) Str::uuid();
+
+        Inventory::where('item_id', $variant->id)
+            ->where('location_id', $location->id)
+            ->where('bin_id', $source->id)
+            ->update(['on_hand' => 0, 'available' => 0]);
+
+        Inventory::create([
+            'item_id' => $variant->id,
+            'location_id' => $location->id,
+            'bin_id' => null,
+            'on_hand' => 0,
+            'on_order' => 2,
+            'available' => 0,
+        ]);
+
+        app(LocationBinService::class)->removeSkuFromBin(
+            $location->id,
+            $source->id,
+            $variant->id,
+            'operator',
+        );
+
+        app(LocationBinService::class)->assignSkuToBin(
+            $location->id,
+            $destination->id,
+            $variant->id,
+            $actorId,
+        );
+
+        $this->assertDatabaseMissing('sku_rack_assignments', [
+            'location_id' => $location->id,
+            'item_id' => $variant->id,
+            'bin_id' => $source->id,
+        ]);
+        $this->assertDatabaseHas('sku_rack_assignments', [
+            'location_id' => $location->id,
+            'item_id' => $variant->id,
+            'bin_id' => $destination->id,
+        ]);
+        $this->assertSame(2, (int) Inventory::where('item_id', $variant->id)->where('location_id', $location->id)->sum('on_order'));
     }
 
     private function createMoveScenario(int $onOrder = 0): array
@@ -112,6 +161,13 @@ class LocationBinMoveSkuTest extends TestCase
             'on_order' => $onOrder,
             'available' => 5 - $onOrder,
             'avg_cost' => 1250,
+        ]);
+
+        SkuRackAssignment::create([
+            'location_id' => $location->id,
+            'item_id' => $variant->id,
+            'bin_id' => $source->id,
+            'assigned_by' => null,
         ]);
 
         return [$location, $source, $destination, $variant];

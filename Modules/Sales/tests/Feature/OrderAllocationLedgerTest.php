@@ -10,6 +10,7 @@ use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Modules\Sales\Services\StockService;
+use Modules\Warehouse\Models\LocationBin;
 use Tests\TestCase;
 
 class OrderAllocationLedgerTest extends TestCase
@@ -64,7 +65,7 @@ class OrderAllocationLedgerTest extends TestCase
 
     private function setInventory(string $variantId, int $onHand): void
     {
-        $bin = \Modules\Warehouse\Models\LocationBin::firstOrCreate(
+        $bin = LocationBin::firstOrCreate(
             ['location_id' => $this->locationId, 'bin_final_code' => 'RACK-A1'],
             ['floor_code' => '1', 'row_code' => 'A', 'column_code' => '1', 'bin_code' => 'A-1', 'is_inbound' => false]
         );
@@ -84,11 +85,17 @@ class OrderAllocationLedgerTest extends TestCase
 
     private function insertOnHandMovement(string $variantId, int $qty, int $balance, string $source, string $date): void
     {
+        $binId = DB::table('inventories')
+            ->where('item_id', $variantId)
+            ->where('location_id', $this->locationId)
+            ->whereNotNull('bin_id')
+            ->value('bin_id');
+
         DB::table('inventory_movements')->insert([
             'id' => Str::uuid()->toString(),
             'item_id' => $variantId,
             'location_id' => $this->locationId,
-            'bin_id' => null,
+            'bin_id' => $binId,
             'transaction_number' => 'MOV-'.$source,
             'source' => $source,
             'qty' => $qty,
@@ -115,11 +122,12 @@ class OrderAllocationLedgerTest extends TestCase
             'balance' => 7,
         ]);
 
-        $this->assertNotNull(
+        $this->assertNull(
             DB::table('inventory_movements')
                 ->where('transaction_number', 'SO-ALLOC-1')
                 ->where('source', 'ORDER_RESERVE')
-                ->value('bin_id')
+                ->value('bin_id'),
+            'Reservasi order harus dicatat pada level lokasi, bukan rak fisik.',
         );
     }
 
@@ -208,7 +216,7 @@ class OrderAllocationLedgerTest extends TestCase
                 ->where('item_id', $v->id)
                 ->where('transaction_number', 'SO-DRIFT-CANCEL')
                 ->sum('qty'),
-            );
+        );
     }
 
     public function test_pick_closes_ledger_when_on_order_is_already_zero(): void
