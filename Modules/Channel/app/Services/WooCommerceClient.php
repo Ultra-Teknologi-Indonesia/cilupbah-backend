@@ -125,7 +125,10 @@ class WooCommerceClient
 
     protected function throttle(): void
     {
-        $limit = config('channel.api_rate_limit_per_second', 8);
+        $limit = max(
+            1,
+            (int) config('ratelimit.channel_api_per_second_by_channel.woocommerce', 2),
+        );
 
         if (! RateLimiter::attempt('woocommerce-api', $limit, fn () => null, 1)) {
             $wait = RateLimiter::availableIn('woocommerce-api');

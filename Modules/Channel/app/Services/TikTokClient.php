@@ -260,7 +260,10 @@ class TikTokClient
             return [];
         }
 
-        $limit = max(1, (int) config('channel.api_rate_limit_per_second', 8));
+        $limit = max(
+            1,
+            (int) config('ratelimit.channel_api_per_second_by_channel.tiktok', 4),
+        );
         $chunks = array_chunk($productIds, $limit);
         $out = [];
 
