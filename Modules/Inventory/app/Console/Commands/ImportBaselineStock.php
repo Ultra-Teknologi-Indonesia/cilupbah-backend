@@ -682,6 +682,7 @@ class ImportBaselineStock extends Command
         $variantIds = array_filter(array_column(array_values($variants), 'id'));
         $currentStockMap = [];
         $assignedBinsMap = [];
+        $occupiedItemsByBinMap = [];
         if (! empty($variantIds)) {
             foreach (array_chunk($variantIds, 2000) as $chunk) {
                 $invRows = DB::table('inventories')
@@ -716,6 +717,37 @@ class ImportBaselineStock extends Command
                         ->get(['item_id', 'bin_id']);
                     foreach ($assignments as $assignment) {
                         $assignedSkusByBinMap[(string) $assignment->bin_id][] = (string) $assignment->item_id;
+                    }
+                }
+
+                // A stale/missing assignment must not make a physically occupied
+                // rack look empty. Include every non-zero inventory item in the
+                // candidate racks, not only SKUs present in the uploaded file.
+                foreach (array_chunk($binIdsHere, 2000) as $chunk) {
+                    $occupancies = DB::table('inventories')
+                        ->where('location_id', $locationId)
+                        ->whereIn('bin_id', $chunk)
+                        ->where(function ($query): void {
+                            $query
+                                ->where('on_hand', '<>', 0)
+                                ->orWhere('on_order', '<>', 0);
+                        })
+                        ->get(['item_id', 'bin_id']);
+
+                    foreach ($occupancies as $occupancy) {
+                        $binId = (string) $occupancy->bin_id;
+                        $itemId = (string) $occupancy->item_id;
+                        if (! in_array($itemId, $occupiedItemsByBinMap[$binId] ?? [], true)) {
+                            $occupiedItemsByBinMap[$binId][] = $itemId;
+                        }
+                    }
+                }
+            }
+
+            foreach ($occupiedItemsByBinMap as $binId => $itemIds) {
+                foreach ($itemIds as $itemId) {
+                    if (! in_array($itemId, $assignedSkusByBinMap[$binId] ?? [], true)) {
+                        $assignedSkusByBinMap[$binId][] = $itemId;
                     }
                 }
             }
@@ -820,7 +852,7 @@ class ImportBaselineStock extends Command
                 $assignedBins = $assignedBinsMap[$variantId] ?? [];
 
                 if ($assignedBins !== [] && ! in_array((string) $resolvedBinId, $assignedBins, true)) {
-                    $notes = 'Diabaikan: stok aktual file 0 dan rak berbeda dari assignment master; tidak ada perubahan stok atau assignment.';
+                    $notes = 'Diabaikan: SKU sudah memiliki assignment di rak lain; stok aktual file 0 tidak memindahkan assignment master.';
                     $problems['rak_tidak_sesuai_assignment_stok_nol'][] = $row + ['catatan' => $notes];
                     $status = 'DIABAIKAN_RAK_TIDAK_SESUAI_STOK_NOL';
                     $ignored = true;
