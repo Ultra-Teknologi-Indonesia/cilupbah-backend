@@ -3,12 +3,15 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
 use Modules\Channel\Enums\WebhookInboxStatus;
 use Modules\Channel\Models\ChannelWebhookInbox;
+use Modules\Channel\Services\ChannelSyncSettingService;
 use Modules\Channel\Services\ChannelWebhookService;
+use Modules\Sales\Jobs\AdminAlertJob;
 
 class ReplayWebhookInbox extends Command
 {
@@ -18,7 +21,7 @@ class ReplayWebhookInbox extends Command
 
     public function handle(ChannelWebhookService $webhookService): int
     {
-        if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
+        if (app(ChannelSyncSettingService::class)->isPaused()) {
             $this->info('Sinkronisasi channel dijeda - replay webhook masuk dilewati.');
 
             return self::SUCCESS;
@@ -61,6 +64,7 @@ class ReplayWebhookInbox extends Command
 
                 if (! in_array(strtolower((string) $row->channel), ['lazada', 'shopee', 'tiktok', 'woocommerce'], true)) {
                     $row->markFailed('Channel webhook tidak dikenal saat replay.');
+
                     continue;
                 }
 
@@ -76,7 +80,7 @@ class ReplayWebhookInbox extends Command
         return self::SUCCESS;
     }
 
-    private function deadLetterExhausted(\Illuminate\Support\Carbon $threshold, int $maxAttempts, int $limit): void
+    private function deadLetterExhausted(Carbon $threshold, int $maxAttempts, int $limit): void
     {
         $exhausted = DB::transaction(function () use ($threshold, $maxAttempts, $limit) {
             $now = now();
@@ -84,6 +88,10 @@ class ReplayWebhookInbox extends Command
                 ->where('status', WebhookInboxStatus::RECEIVED)
                 ->where('received_at', '<', $threshold)
                 ->where('attempts', '>=', $maxAttempts)
+                ->where(function ($query): void {
+                    $query->whereNull('error')
+                        ->orWhere('error', 'not like', 'ORDER_INTAKE_DEFERRED:%');
+                })
                 ->where(function ($query) use ($now): void {
                     $query->whereNull('next_attempt_at')
                         ->orWhere('next_attempt_at', '<=', $now);
@@ -107,7 +115,7 @@ class ReplayWebhookInbox extends Command
 
         foreach ($exhausted as $row) {
             try {
-                \Modules\Sales\Jobs\AdminAlertJob::dispatch(
+                AdminAlertJob::dispatch(
                     "Webhook {$row->channel} macet permanen (dead-letter)",
                     "Event {$row->event_type} gagal diproses setelah {$row->attempts} percobaan replay.",
                     [

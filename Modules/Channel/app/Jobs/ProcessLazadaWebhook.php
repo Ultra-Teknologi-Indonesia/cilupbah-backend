@@ -167,17 +167,12 @@ class ProcessLazadaWebhook implements ShouldBeUnique, ShouldQueue
             throw $e;
         }
 
-        if (! $this->orderIntakeSkipped && $webhookAudit) {
-            $webhookAudit->recordFromInbox('lazada', self::idempotencyKey($this->payload), $this->payload);
+        if ($this->orderIntakeDeferred) {
+            return;
         }
 
-        if ($this->orderIntakeSkipped) {
-            ChannelWebhookInbox::markSkippedByKey(
-                self::idempotencyKey($this->payload),
-                ChannelOrderIntakeGate::reason(),
-            );
-
-            return;
+        if ($webhookAudit) {
+            $webhookAudit->recordFromInbox('lazada', self::idempotencyKey($this->payload), $this->payload);
         }
 
         ChannelWebhookInbox::markProcessedByKey(self::idempotencyKey($this->payload));
@@ -202,6 +197,10 @@ class ProcessLazadaWebhook implements ShouldBeUnique, ShouldQueue
         $reverseStatus = strtoupper((string) ($data['reverse_status'] ?? $data['status'] ?? ''));
         $channelOrderId = (string) ($data['trade_order_id'] ?? $data['order_id'] ?? '');
         $reverseOrderId = (string) ($data['reverse_order_id'] ?? '');
+
+        if ($this->orderIntakeDeferred) {
+            return;
+        }
 
         if ($channelOrderId !== '' && in_array($reverseStatus, ['CANCEL_INIT'], true)) {
             app(SalesOrderService::class)->markBuyerCancellationRequestedFromChannel(
@@ -250,6 +249,12 @@ class ProcessLazadaWebhook implements ShouldBeUnique, ShouldQueue
             return;
         }
 
+        if (ChannelOrderIntakeGate::shouldDeferOrderEvent('lazada', $sellerId, $orderId)) {
+            $this->deferOrderEvent($sellerId, $orderId);
+
+            return;
+        }
+
         $status = strtoupper((string) ($data['status'] ?? ''));
 
         if (in_array($status, ['READY_TO_SHIP', 'SHIPPED', 'DELIVERED', 'CANCELLED'], true)) {
@@ -261,23 +266,25 @@ class ProcessLazadaWebhook implements ShouldBeUnique, ShouldQueue
             );
         }
 
-        $this->recordLazadaTrackingEvent($orderId, $data);
+        if (! $this->orderIntakeDeferred) {
+            $this->recordLazadaTrackingEvent($orderId, $data);
+        }
     }
 
-    protected bool $orderIntakeSkipped = false;
+    protected bool $orderIntakeDeferred = false;
 
     protected function handleOrderEvent(LazadaOrderService $orderService, string $sellerId, array $data): void
     {
-        if (ChannelOrderIntakeGate::blocksShop($sellerId, 'lazada')) {
-            $this->orderIntakeSkipped = true;
-
-            return;
-        }
-
         $orderId = (string) ($data['trade_order_id'] ?? $data['order_id'] ?? $data['reverse_order_id'] ?? '');
 
         if ($orderId === '') {
             Log::warning('Lazada webhook order tanpa id — diabaikan.', ['data' => $data]);
+
+            return;
+        }
+
+        if (ChannelOrderIntakeGate::shouldDeferOrderEvent('lazada', $sellerId, $orderId)) {
+            $this->deferOrderEvent($sellerId, $orderId);
 
             return;
         }
@@ -295,6 +302,27 @@ class ProcessLazadaWebhook implements ShouldBeUnique, ShouldQueue
         }
 
         $this->recordLazadaTrackingEvent($orderId, $data);
+    }
+
+    protected function deferOrderEvent(string $shopId, string $orderId): void
+    {
+        $eventKey = self::idempotencyKey($this->payload);
+        ChannelWebhookInbox::deferByKey($eventKey, ChannelOrderIntakeGate::deferredReason());
+        try {
+            Cache::forget($eventKey);
+        } catch (\Throwable $e) {
+            Log::warning('Cache idempotensi Lazada tidak dapat dibersihkan setelah defer webhook.', [
+                'event_key' => $eventKey,
+                'error' => $e->getMessage(),
+            ]);
+        }
+        $this->orderIntakeDeferred = true;
+
+        Log::info('Lazada order webhook ditunda sampai intake dibuka atau order lokal tersedia.', [
+            'shop_id' => $shopId,
+            'order_id' => $orderId,
+            'event_key' => $eventKey,
+        ]);
     }
 
     protected function recordLazadaTrackingEvent(string $orderId, array $data): void

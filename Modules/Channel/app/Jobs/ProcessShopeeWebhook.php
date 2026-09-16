@@ -128,7 +128,7 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
         ];
     }
 
-    protected bool $orderIntakeSkipped = false;
+    protected bool $orderIntakeDeferred = false;
 
     public function handle(
         ShopeeOrderService $orderService,
@@ -162,14 +162,14 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
         try {
             match ($code) {
                 self::PUSH_SHOP_DEAUTHORIZED => $this->handleDeauthorized($shopId),
-                self::PUSH_ORDER_STATUS => $this->handleOrderEventOrSkip($shopId, $data),
+                self::PUSH_ORDER_STATUS => $this->handleOrderEventOrDefer($shopId, $data),
                 self::PUSH_TRACKING_NO,
                 self::PUSH_SHIPPING_DOC,
                 self::PUSH_BOOKING_STATUS,
                 self::PUSH_BOOKING_TRACKING_NO,
                 self::PUSH_BOOKING_SHIPPING_DOC,
                 self::PUSH_PACKAGE_FULFILLMENT,
-                self::PUSH_COURIER_DELIVERY_BINDING => $this->handleTrackingEventOrSkip($shopId, $data),
+                self::PUSH_COURIER_DELIVERY_BINDING => $this->handleTrackingEventOrDefer($shopId, $data),
                 self::PUSH_RETURN_UPDATE => $this->handleReturnEvent($orderService, $shopId, $data),
                 self::PUSH_RESERVED_STOCK_CHANGE,
                 self::PUSH_ITEM_PRICE_UPDATE => $this->logItemEvent($downloadService, $shopId, $data),
@@ -180,7 +180,7 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
             throw $e;
         }
 
-        if (! $this->orderIntakeSkipped && in_array($code, [
+        if (! $this->orderIntakeDeferred && in_array($code, [
             self::PUSH_TRACKING_NO,
             self::PUSH_PACKAGE_FULFILLMENT,
             self::PUSH_COURIER_DELIVERY_BINDING,
@@ -191,23 +191,22 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
 
         $eventKey = self::idempotencyKey($this->payload);
 
-        if (! $this->orderIntakeSkipped && $webhookAudit) {
-            $webhookAudit->recordFromInbox('shopee', $eventKey, $this->payload);
+        if ($this->orderIntakeDeferred) {
+            return;
         }
 
-        if ($this->orderIntakeSkipped) {
-            ChannelWebhookInbox::markSkippedByKey($eventKey, ChannelOrderIntakeGate::reason());
-
-            return;
+        if ($webhookAudit) {
+            $webhookAudit->recordFromInbox('shopee', $eventKey, $this->payload);
         }
 
         ChannelWebhookInbox::markProcessedByKey($eventKey);
     }
 
-    protected function handleOrderEventOrSkip(string $shopId, array $data): void
+    protected function handleOrderEventOrDefer(string $shopId, array $data): void
     {
-        if (ChannelOrderIntakeGate::blocksShop($shopId, 'shopee')) {
-            $this->orderIntakeSkipped = true;
+        $orderSn = (string) ($data['ordersn'] ?? $data['order_sn'] ?? '');
+        if ($orderSn !== '' && ChannelOrderIntakeGate::shouldDeferOrderEvent('shopee', $shopId, $orderSn)) {
+            $this->deferOrderEvent($shopId, $orderSn);
 
             return;
         }
@@ -215,14 +214,8 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
         $this->handleOrderEvent($shopId, $data);
     }
 
-    protected function handleTrackingEventOrSkip(string $shopId, array $data): void
+    protected function handleTrackingEventOrDefer(string $shopId, array $data): void
     {
-        if (ChannelOrderIntakeGate::blocksShop($shopId, 'shopee')) {
-            $this->orderIntakeSkipped = true;
-
-            return;
-        }
-
         $orderSn = (string) ($data['ordersn'] ?? $data['order_sn'] ?? '');
         if ($orderSn === '') {
             Log::warning('Shopee webhook tracking tanpa ordersn — diabaikan.', [
@@ -233,12 +226,39 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
             return;
         }
 
+        if (ChannelOrderIntakeGate::shouldDeferOrderEvent('shopee', $shopId, $orderSn)) {
+            $this->deferOrderEvent($shopId, $orderSn);
+
+            return;
+        }
+
         RefreshChannelOrderJob::dispatch(
             'shopee',
             $shopId,
             $orderSn,
             (string) config('queue.names.shopee_tracking', 'shopee-tracking'),
         )->delay(now()->addSeconds(2));
+    }
+
+    protected function deferOrderEvent(string $shopId, string $orderId): void
+    {
+        $eventKey = self::idempotencyKey($this->payload);
+        ChannelWebhookInbox::deferByKey($eventKey, ChannelOrderIntakeGate::deferredReason());
+        try {
+            Cache::forget($eventKey);
+        } catch (\Throwable $e) {
+            Log::warning('Cache idempotensi Shopee tidak dapat dibersihkan setelah defer webhook.', [
+                'event_key' => $eventKey,
+                'error' => $e->getMessage(),
+            ]);
+        }
+        $this->orderIntakeDeferred = true;
+
+        Log::info('Shopee order webhook ditunda sampai intake dibuka atau order lokal tersedia.', [
+            'shop_id' => $shopId,
+            'order_id' => $orderId,
+            'event_key' => $eventKey,
+        ]);
     }
 
     protected function recordShopeeTrackingEvent(string $shopId, int $code, array $data): void

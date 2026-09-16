@@ -270,22 +270,34 @@ final class OrderCutoverServiceTest extends TestCase
             'stock_source_location_id' => $otherId,
             'created_at' => now(), 'updated_at' => now(),
         ]);
+        DB::table('channel_shops')->insert([
+            'id' => (string) Str::uuid(),
+            'channel_id' => $shopee,
+            'shop_id' => 'shop-total-'.Str::lower(Str::random(8)),
+            'shop_name' => 'Toko Total',
+            'is_active' => true,
+            'order_sync_enabled' => true,
+            'stock_source_mode' => 'total',
+            'stock_source_location_id' => null,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
 
         $service = app(OrderCutoverService::class);
         $audit = $service->previewOrderIntake(['O', 'WH-PUSAT']);
 
         self::assertSame(0, $audit['blocking']);
-        self::assertSame(1, $audit['enabled_count']);
+        self::assertSame(2, $audit['enabled_count']);
         self::assertSame(1, $audit['already_closed_count']);
-        self::assertCount(2, $audit['shops']);
+        self::assertCount(3, $audit['shops']);
         $shops = collect($audit['shops'])->keyBy('location_code');
         self::assertSame('shopee', $shops['O']['channel']);
         self::assertTrue($shops['O']['order_sync_enabled']);
         self::assertFalse($shops['WH-PUSAT']['order_sync_enabled']);
+        self::assertTrue($shops['TOTAL']['order_sync_enabled']);
 
         $result = $service->applyOrderIntake(['O', 'WH-PUSAT']);
 
-        self::assertSame(1, $result['closed_count']);
+        self::assertSame(2, $result['closed_count']);
         self::assertDatabaseHas('channel_shops', [
             'shop_name' => 'Toko Kecil',
             'order_sync_enabled' => false,
@@ -293,6 +305,10 @@ final class OrderCutoverServiceTest extends TestCase
         self::assertDatabaseHas('channel_shops', [
             'shop_name' => 'Toko Lain',
             'order_sync_enabled' => true,
+        ]);
+        self::assertDatabaseHas('channel_shops', [
+            'shop_name' => 'Toko Total',
+            'order_sync_enabled' => false,
         ]);
     }
 }

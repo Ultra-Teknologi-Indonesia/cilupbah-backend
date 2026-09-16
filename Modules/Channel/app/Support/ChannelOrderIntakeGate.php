@@ -3,6 +3,7 @@
 namespace Modules\Channel\Support;
 
 use Illuminate\Support\Facades\DB;
+use Modules\Sales\Models\SalesOrder;
 
 class ChannelOrderIntakeGate
 {
@@ -30,5 +31,33 @@ class ChannelOrderIntakeGate
     public static function reason(): string
     {
         return 'Sinkron pesanan toko ini dimatikan — event tidak diproses.';
+    }
+
+    /**
+     * Order intake only blocks creating a new local order. It must not block
+     * status/payment updates for an order that is already known locally.
+     */
+    public static function shouldDeferOrderEvent(string $channel, string $shopId, string $orderId): bool
+    {
+        $orderId = trim($orderId);
+
+        if ($orderId === '' || ! self::blocksShop($shopId, $channel)) {
+            return false;
+        }
+
+        return ! SalesOrder::query()
+            ->where('source', strtolower(trim($channel)))
+            ->where('channel_order_no', $orderId)
+            ->exists();
+    }
+
+    public static function deferredReason(): string
+    {
+        return 'ORDER_INTAKE_DEFERRED: Sinkron order ditunda karena penerimaan order toko dimatikan; akan diproses otomatis setelah intake dibuka.';
+    }
+
+    public static function isDeferredReason(?string $reason): bool
+    {
+        return is_string($reason) && str_starts_with($reason, 'ORDER_INTAKE_DEFERRED:');
     }
 }

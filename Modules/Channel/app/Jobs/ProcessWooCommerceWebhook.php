@@ -109,27 +109,41 @@ class ProcessWooCommerceWebhook implements ShouldBeUnique, ShouldQueue
 
         $eventKey = self::idempotencyKey($this->shopId, $this->topic, $this->payload);
 
-        if (! $this->orderIntakeSkipped && $webhookAudit) {
+        if ($this->orderIntakeDeferred) {
+            return;
+        }
+
+        if ($webhookAudit) {
             $webhookAudit->recordFromInbox('woocommerce', $eventKey, $this->payload + [
                 '_webhook_topic' => $this->topic,
             ]);
         }
 
-        if ($this->orderIntakeSkipped) {
-            ChannelWebhookInbox::markSkippedByKey($eventKey, ChannelOrderIntakeGate::reason());
-
-            return;
-        }
-
         ChannelWebhookInbox::markProcessedByKey($eventKey);
     }
 
-    protected bool $orderIntakeSkipped = false;
+    protected bool $orderIntakeDeferred = false;
 
     protected function handleOrderEvent(WooCommerceOrderService $orderService): void
     {
-        if (ChannelOrderIntakeGate::blocksShop((string) $this->shopId, 'woocommerce')) {
-            $this->orderIntakeSkipped = true;
+        if (ChannelOrderIntakeGate::shouldDeferOrderEvent('woocommerce', (string) $this->shopId, (string) $this->resourceId)) {
+            $eventKey = self::idempotencyKey($this->shopId, $this->topic, $this->payload);
+            ChannelWebhookInbox::deferByKey($eventKey, ChannelOrderIntakeGate::deferredReason());
+            try {
+                Cache::forget($eventKey);
+            } catch (\Throwable $e) {
+                Log::warning('Cache idempotensi WooCommerce tidak dapat dibersihkan setelah defer webhook.', [
+                    'event_key' => $eventKey,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+            $this->orderIntakeDeferred = true;
+
+            Log::info('WooCommerce order webhook ditunda sampai intake dibuka atau order lokal tersedia.', [
+                'shop_id' => $this->shopId,
+                'order_id' => $this->resourceId,
+                'event_key' => $eventKey,
+            ]);
 
             return;
         }

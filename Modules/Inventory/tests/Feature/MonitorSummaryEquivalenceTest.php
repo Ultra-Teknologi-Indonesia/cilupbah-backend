@@ -235,4 +235,14 @@ class MonitorSummaryEquivalenceTest extends TestCase
             'Data tanpa rak wajib terisolasi dari alur penempatan.',
         );
     }
+
+    public function test_minus_includes_zero_on_hand_when_available_is_negative(): void
+    {
+        $this->makeVariant('SKU-MINUS-ZERO', 0, -2);
+
+        $repository = app(MonitorStockRepository::class);
+
+        $this->assertSame(1, $repository->countMode('minus', []));
+        $this->assertSame(1, $repository->summary([])['minus']);
+    }
 }

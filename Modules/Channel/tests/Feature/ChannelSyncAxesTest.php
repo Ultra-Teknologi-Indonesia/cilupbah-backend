@@ -271,7 +271,7 @@ class ChannelSyncAxesTest extends TestCase
         );
     }
 
-    public function test_order_webhook_is_marked_skipped_not_processed_when_sync_off(): void
+    public function test_new_order_webhook_is_deferred_not_skipped_when_sync_off(): void
     {
         Http::fake();
         $this->shop->forceFill(['order_sync_enabled' => false])->save();
@@ -301,12 +301,11 @@ class ChannelSyncAxesTest extends TestCase
 
         $inbox = ChannelWebhookInbox::where('event_key', $eventKey)->first();
 
-        $this->assertSame(
-            WebhookInboxStatus::SKIPPED,
-            $inbox->status,
-            'Order yang ditolak harus terminal, supaya channel:webhooks-replay tidak mendorongnya ulang selamanya.',
-        );
-        $this->assertTrue($inbox->status->isTerminal());
+        $inbox->refresh();
+        $this->assertSame(WebhookInboxStatus::RECEIVED, $inbox->status);
+        $this->assertFalse($inbox->status->isTerminal());
+        $this->assertNotNull($inbox->next_attempt_at);
+        $this->assertStringStartsWith('ORDER_INTAKE_DEFERRED:', (string) $inbox->error);
         $this->assertDatabaseMissing('sales_orders', ['channel_order_no' => 'SO-XYZ-1']);
     }
 }

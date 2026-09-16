@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Modules\Channel\Enums\WebhookInboxStatus;
 use Modules\Channel\Jobs\ProcessShopeeWebhook;
+use Modules\Channel\Jobs\ProcessTikTokWebhook;
 use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Repositories\ChannelWebhookInboxRepository;
 use Modules\Channel\Services\ChannelWebhookService;
@@ -103,6 +104,32 @@ class WebhookInboxTest extends TestCase
             WebhookInboxStatus::FAILED,
             ChannelWebhookInbox::query()->where('event_key', 'maxed')->value('status'),
         );
+    }
+
+    public function test_deferred_intake_event_is_not_dead_lettered_while_intake_is_closed(): void
+    {
+        Queue::fake();
+
+        ChannelWebhookInbox::create([
+            'channel' => 'tiktok',
+            'shop_id' => 'TT1',
+            'event_key' => 'deferred-intake',
+            'event_type' => '1',
+            'payload' => ['type' => 1, 'shop_id' => 'TT1', 'data' => ['order_id' => 'O1']],
+            'attempts' => 5,
+            'error' => 'ORDER_INTAKE_DEFERRED: Sinkron order ditunda.',
+            'status' => WebhookInboxStatus::RECEIVED,
+            'received_at' => now()->subMinutes(30),
+        ]);
+
+        Artisan::call('channel:webhooks-replay', ['--minutes' => 15]);
+
+        $row = ChannelWebhookInbox::query()->where('event_key', 'deferred-intake')->firstOrFail();
+        $this->assertSame(WebhookInboxStatus::RECEIVED, $row->status);
+        $this->assertSame(5, $row->attempts);
+        $this->assertNotNull($row->next_attempt_at);
+        Queue::assertPushed(ProcessTikTokWebhook::class, 1);
+        Queue::assertNotPushed(AdminAlertJob::class);
     }
 
     public function test_dead_letter_preserves_existing_error_and_respects_replay_lease(): void

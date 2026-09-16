@@ -15,6 +15,7 @@ use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Services\TikTokAuthService;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Channel\Services\WebhookProductHandler;
+use Modules\Sales\Models\SalesOrder;
 use Tests\TestCase;
 
 class TikTokWebhookRoutingTest extends TestCase
@@ -54,9 +55,82 @@ class TikTokWebhookRoutingTest extends TestCase
                 'data' => ['order_id' => 'O-1', 'order_status' => 'UNPAID']],
         );
 
-        Queue::assertPushed(RefreshChannelOrderJob::class, fn (RefreshChannelOrderJob $job): bool =>
-            $job->channel === 'tiktok' && $job->shopId === 'TT1' && $job->orderId === 'O-1'
+        Queue::assertPushed(RefreshChannelOrderJob::class, fn (RefreshChannelOrderJob $job): bool => $job->channel === 'tiktok' && $job->shopId === 'TT1' && $job->orderId === 'O-1'
         );
+    }
+
+    public function test_order_status_update_is_processed_when_intake_is_disabled_for_existing_order(): void
+    {
+        Queue::fake();
+
+        $shop = $this->makeShop();
+        $shop->forceFill(['order_sync_enabled' => false])->save();
+
+        SalesOrder::factory()->create([
+            'source' => 'tiktok',
+            'channel_order_no' => 'O-EXISTING',
+        ]);
+
+        $payload = [
+            'type' => 1,
+            'shop_id' => 'TT1',
+            'tts_notification_id' => 'existing-order-status',
+            'data' => ['order_id' => 'O-EXISTING', 'order_status' => 'AWAITING_SHIPMENT'],
+        ];
+        $eventKey = ProcessTikTokWebhook::idempotencyKey($payload);
+
+        ChannelWebhookInbox::create([
+            'channel' => 'tiktok',
+            'shop_id' => 'TT1',
+            'event_key' => $eventKey,
+            'event_type' => '1',
+            'payload' => $payload,
+            'status' => WebhookInboxStatus::RECEIVED,
+            'received_at' => now(),
+        ]);
+
+        $this->process($payload);
+
+        Queue::assertPushed(RefreshChannelOrderJob::class, fn (RefreshChannelOrderJob $job): bool => $job->channel === 'tiktok' && $job->shopId === 'TT1' && $job->orderId === 'O-EXISTING'
+        );
+        $this->assertSame(WebhookInboxStatus::PROCESSED, ChannelWebhookInbox::query()
+            ->where('event_key', $eventKey)
+            ->value('status'));
+    }
+
+    public function test_new_order_is_deferred_when_intake_is_disabled_instead_of_skipped(): void
+    {
+        Queue::fake();
+
+        $shop = $this->makeShop();
+        $shop->forceFill(['order_sync_enabled' => false])->save();
+
+        $payload = [
+            'type' => 1,
+            'shop_id' => 'TT1',
+            'tts_notification_id' => 'new-order-deferred',
+            'data' => ['order_id' => 'O-NEW', 'order_status' => 'UNPAID'],
+        ];
+        $eventKey = ProcessTikTokWebhook::idempotencyKey($payload);
+
+        ChannelWebhookInbox::create([
+            'channel' => 'tiktok',
+            'shop_id' => 'TT1',
+            'event_key' => $eventKey,
+            'event_type' => '1',
+            'payload' => $payload,
+            'status' => WebhookInboxStatus::RECEIVED,
+            'received_at' => now(),
+        ]);
+
+        $this->process($payload);
+
+        Queue::assertNotPushed(RefreshChannelOrderJob::class);
+        $row = ChannelWebhookInbox::query()->where('event_key', $eventKey)->firstOrFail();
+        $this->assertSame(WebhookInboxStatus::RECEIVED, $row->status);
+        $this->assertFalse($row->status->isTerminal());
+        $this->assertNotNull($row->next_attempt_at);
+        $this->assertStringStartsWith('ORDER_INTAKE_DEFERRED:', (string) $row->error);
     }
 
     public function test_type_4_package_update_pulls_each_order(): void
@@ -230,8 +304,7 @@ class TikTokWebhookRoutingTest extends TestCase
 
         $this->process($payload);
 
-        Queue::assertPushed(RefreshChannelOrderJob::class, fn (RefreshChannelOrderJob $job): bool =>
-            $job->channel === 'tiktok' && $job->shopId === 'TT1' && $job->orderId === 'O-EMPTY'
+        Queue::assertPushed(RefreshChannelOrderJob::class, fn (RefreshChannelOrderJob $job): bool => $job->channel === 'tiktok' && $job->shopId === 'TT1' && $job->orderId === 'O-EMPTY'
         );
     }
 

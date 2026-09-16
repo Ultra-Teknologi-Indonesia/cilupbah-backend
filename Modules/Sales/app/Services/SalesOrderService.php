@@ -2366,6 +2366,22 @@ class SalesOrderService
                 }
             }
 
+            if (
+                ! $hasUnmappedItems
+                && $this->isShippedChannelCancellationResolvedAsReturn(
+                    $previousStatus,
+                    $mappedStatus,
+                    $finalStatus,
+                    (string) $channelStatus,
+                )
+            ) {
+                app(SalesReturnService::class)->createFromCancelledShipped(
+                    $order,
+                    $orderData['cancel_reason'] ?? 'Pesanan diretur setelah dikirim',
+                    'system:channel-return',
+                );
+            }
+
             $needsStockTransition = $this->shouldReconcileChannelStock($previousStatus, $finalStatus);
             $deferStockTransition = ! $hasUnmappedItems
                 && $needsStockTransition
@@ -2716,7 +2732,7 @@ class SalesOrderService
 
             'IN_CANCEL' => 'pending',
             'TO_RETURN', 'RETURNED' => 'returned',
-            'CANCELLED' => 'cancelled',
+            'CANCELLED', 'CANCELED' => 'cancelled',
             default => 'pending',
         };
     }
@@ -2782,6 +2798,18 @@ class SalesOrderService
             || ! empty($orderData['cancel_requested_at']);
     }
 
+    private function isShippedChannelCancellationResolvedAsReturn(
+        ?string $previousStatus,
+        string $mappedStatus,
+        string $finalStatus,
+        string $channelStatus,
+    ): bool {
+        return $mappedStatus === 'cancelled'
+            && $finalStatus === 'returned'
+            && in_array($previousStatus, ['shipped', 'completed', 'delivered'], true)
+            && in_array(strtoupper(trim($channelStatus)), ['CANCELLED', 'CANCELED'], true);
+    }
+
     private function shouldReconcileChannelStock(?string $previousStatus, string $finalStatus): bool
     {
         if ($previousStatus === null) {
@@ -2845,6 +2873,10 @@ class SalesOrderService
 
     private function reconcileStockTransition(SalesOrder $order, ?string $previousStatus, string $finalStatus): bool
     {
+        if ($finalStatus === 'returned') {
+            return false;
+        }
+
         if ($finalStatus === 'cancelled') {
             return $this->handleCancellationStockTransition($order, $previousStatus);
         }

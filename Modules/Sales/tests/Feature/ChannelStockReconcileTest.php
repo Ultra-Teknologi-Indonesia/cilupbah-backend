@@ -256,16 +256,34 @@ class ChannelStockReconcileTest extends TestCase
         $this->assertSame(0, $this->movements('ORDER_RELEASE'));
     }
 
-    public function test_channel_cancellation_after_shipped_creates_return_without_restoring_physical_stock(): void
+    public function test_channel_cancellation_after_shipped_is_returned_without_restoring_physical_stock(): void
     {
         $this->service->upsertFromChannel($this->orderData('LZ-RC-RETURN-1', 'AWAITING_COLLECTION'));
         $this->service->upsertFromChannel($this->orderData('LZ-RC-RETURN-1', 'COMPLETED'));
+        $onHandBeforeReturn = (int) DB::table('inventories')
+            ->where('item_id', $this->variantId)
+            ->where('location_id', $this->locationId)
+            ->sum('on_hand');
+        $movementCountBeforeReturn = DB::table('inventory_movements')
+            ->where('item_id', $this->variantId)
+            ->where('location_id', $this->locationId)
+            ->count();
         $this->service->upsertFromChannel($this->orderData('LZ-RC-RETURN-1', 'CANCELLED'));
 
         $order = SalesOrder::query()->where('salesorder_no', 'LZ-RC-RETURN-1')->sole();
 
-        $this->assertSame('cancelled', $order->status);
-        $this->assertSame(10, (int) $this->inventory()->on_hand);
+        $this->assertSame('returned', $order->status);
+        $this->assertFalse($order->is_canceled);
+        $this->assertSame('RETURNED', $order->channel_status);
+        $this->assertSame('CANCELLED', $order->channel_status_raw);
+        $this->assertSame($onHandBeforeReturn, (int) DB::table('inventories')
+            ->where('item_id', $this->variantId)
+            ->where('location_id', $this->locationId)
+            ->sum('on_hand'));
+        $this->assertSame($movementCountBeforeReturn, DB::table('inventory_movements')
+            ->where('item_id', $this->variantId)
+            ->where('location_id', $this->locationId)
+            ->count());
         $this->assertSame(0, $this->totalOnOrder());
         $this->assertDatabaseHas('sales_returns', [
             'order_id' => $order->id,
@@ -290,6 +308,10 @@ class ChannelStockReconcileTest extends TestCase
     {
         $this->service->upsertFromChannel($this->orderData('LZ-RC-RETURN-RECEIVE-1', 'AWAITING_COLLECTION'));
         $this->service->upsertFromChannel($this->orderData('LZ-RC-RETURN-RECEIVE-1', 'COMPLETED'));
+        $onHandBeforeReturn = (int) DB::table('inventories')
+            ->where('item_id', $this->variantId)
+            ->where('location_id', $this->locationId)
+            ->sum('on_hand');
         $this->service->upsertFromChannel($this->orderData('LZ-RC-RETURN-RECEIVE-1', 'CANCELLED'));
 
         $order = SalesOrder::query()->where('salesorder_no', 'LZ-RC-RETURN-RECEIVE-1')->sole();
@@ -314,7 +336,10 @@ class ChannelStockReconcileTest extends TestCase
             'action' => 'RETURN_INBOUND_CREATED',
         ]);
         $this->assertSame(0, $this->movements('SALES_RETURN'));
-        $this->assertSame(10, (int) $this->inventory()->on_hand);
+        $this->assertSame($onHandBeforeReturn, (int) DB::table('inventories')
+            ->where('item_id', $this->variantId)
+            ->where('location_id', $this->locationId)
+            ->sum('on_hand'));
 
         $this->expectException(InvalidReturnStateException::class);
         app(SalesReturnService::class)->complete($return->id, ['processed_by' => 'warehouse_staff']);

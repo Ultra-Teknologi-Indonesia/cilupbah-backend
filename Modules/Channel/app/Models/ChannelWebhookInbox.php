@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Modules\Channel\Enums\WebhookInboxStatus;
+use Modules\Channel\Support\ChannelOrderIntakeGate;
 
 class ChannelWebhookInbox extends Model
 {
@@ -103,6 +104,14 @@ class ChannelWebhookInbox extends Model
                 return;
             }
 
+            if (ChannelOrderIntakeGate::isDeferredReason($row->error)) {
+                $row->update([
+                    'next_attempt_at' => now()->addMinutes(5),
+                ]);
+
+                return;
+            }
+
             $attempts = (int) $row->attempts + 1;
             $row->update([
                 'attempts' => $attempts,
@@ -122,7 +131,10 @@ class ChannelWebhookInbox extends Model
             $rows = static::query()
                 ->where('status', WebhookInboxStatus::RECEIVED)
                 ->where('received_at', '<', $threshold)
-                ->where('attempts', '<', $maxAttempts)
+                ->where(function ($query) use ($maxAttempts): void {
+                    $query->where('attempts', '<', $maxAttempts)
+                        ->orWhere('error', 'like', 'ORDER_INTAKE_DEFERRED:%');
+                })
                 ->where(function ($query): void {
                     $query->whereNull('next_attempt_at')
                         ->orWhere('next_attempt_at', '<=', now());
@@ -170,6 +182,26 @@ class ChannelWebhookInbox extends Model
                 'error' => mb_substr($reason, 0, 2000),
                 'next_attempt_at' => null,
             ]);
+    }
+
+    public static function deferByKey(string $eventKey, string $reason, int $delaySeconds = 60): void
+    {
+        DB::transaction(function () use ($eventKey, $reason, $delaySeconds): void {
+            $row = static::query()
+                ->where('event_key', $eventKey)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $row || $row->status !== WebhookInboxStatus::RECEIVED) {
+                return;
+            }
+
+            $row->update([
+                'error' => mb_substr($reason, 0, 2000),
+                'processed_at' => null,
+                'next_attempt_at' => now()->addSeconds(max(5, $delaySeconds)),
+            ]);
+        });
     }
 
     public static function markFailedByKey(string $eventKey, string $message): void

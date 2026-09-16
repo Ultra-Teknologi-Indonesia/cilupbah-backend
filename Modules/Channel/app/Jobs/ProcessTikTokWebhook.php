@@ -187,8 +187,8 @@ class ProcessTikTokWebhook implements ShouldBeUnique, ShouldQueue
             $event = $this->resolveEvent($type, $data);
 
             match ($event) {
-                self::EVENT_ORDER => $this->skipsOrderIntake($shopId) ? null : $this->handleOrderEvent($shopId, $data),
-                self::EVENT_PACKAGE => $this->skipsOrderIntake($shopId) ? null : $this->handlePackageEvent($orderService, $shopId, $data),
+                self::EVENT_ORDER => $this->handleOrderEventOrDefer($shopId, $data, $idempotencyKey),
+                self::EVENT_PACKAGE => $this->handlePackageEventOrDefer($orderService, $shopId, $data, $idempotencyKey),
                 self::EVENT_CANCELLATION => $this->handleCancellationEvent($orderService, $shopId, $data),
                 self::EVENT_REVERSE => $this->handleReverseEvent($orderService, $shopId, $data),
                 self::EVENT_REFUND_SUCCESS => $this->handleRefundSuccessEvent($orderService, $shopId, $data),
@@ -209,15 +209,15 @@ class ProcessTikTokWebhook implements ShouldBeUnique, ShouldQueue
                 ]),
             };
 
-            if (! $this->orderIntakeSkipped && $webhookAudit) {
+            if ($this->orderIntakeDeferred) {
+                return;
+            }
+
+            if ($webhookAudit) {
                 $webhookAudit->recordFromInbox('tiktok', $idempotencyKey, $this->payload);
             }
 
-            if ($this->orderIntakeSkipped) {
-                ChannelWebhookInbox::markSkippedByKey($idempotencyKey, ChannelOrderIntakeGate::reason());
-            } else {
-                ChannelWebhookInbox::markProcessedByKey($idempotencyKey);
-            }
+            ChannelWebhookInbox::markProcessedByKey($idempotencyKey);
         } catch (\Throwable $e) {
             Cache::forget($idempotencyKey);
             throw $e;
@@ -263,15 +263,59 @@ class ProcessTikTokWebhook implements ShouldBeUnique, ShouldQueue
         return self::EVENT_UNKNOWN;
     }
 
-    protected bool $orderIntakeSkipped = false;
+    protected bool $orderIntakeDeferred = false;
 
-    protected function skipsOrderIntake(string $shopId): bool
+    protected function handleOrderEventOrDefer(string $shopId, array $data, string $eventKey): void
     {
-        if (! ChannelOrderIntakeGate::blocksShop($shopId, 'tiktok')) {
-            return false;
+        $orderId = (string) ($data['order_id'] ?? '');
+        if ($orderId !== '' && ChannelOrderIntakeGate::shouldDeferOrderEvent('tiktok', $shopId, $orderId)) {
+            $this->deferOrderEvent($eventKey, $shopId, $orderId);
+
+            return;
         }
 
-        return $this->orderIntakeSkipped = true;
+        $this->handleOrderEvent($shopId, $data);
+    }
+
+    protected function handlePackageEventOrDefer(
+        TikTokOrderService $orderService,
+        string $shopId,
+        array $data,
+        string $eventKey,
+    ): void {
+        if (ChannelOrderIntakeGate::blocksShop($shopId, 'tiktok')) {
+            foreach ((array) ($data['package_list'] ?? []) as $package) {
+                foreach ((array) ($package['order_id_list'] ?? []) as $orderId) {
+                    if (ChannelOrderIntakeGate::shouldDeferOrderEvent('tiktok', $shopId, (string) $orderId)) {
+                        $this->deferOrderEvent($eventKey, $shopId, (string) $orderId);
+
+                        return;
+                    }
+                }
+            }
+        }
+
+        $this->handlePackageEvent($orderService, $shopId, $data);
+    }
+
+    protected function deferOrderEvent(string $eventKey, string $shopId, string $orderId): void
+    {
+        ChannelWebhookInbox::deferByKey($eventKey, ChannelOrderIntakeGate::deferredReason());
+        try {
+            Cache::forget($eventKey);
+        } catch (\Throwable $e) {
+            Log::warning('Cache idempotensi TikTok tidak dapat dibersihkan setelah defer webhook.', [
+                'event_key' => $eventKey,
+                'error' => $e->getMessage(),
+            ]);
+        }
+        $this->orderIntakeDeferred = true;
+
+        Log::info('TikTok order webhook ditunda sampai intake dibuka atau order lokal tersedia.', [
+            'shop_id' => $shopId,
+            'order_id' => $orderId,
+            'event_key' => $eventKey,
+        ]);
     }
 
     protected function handleOrderEvent(string $shopId, array $data): void

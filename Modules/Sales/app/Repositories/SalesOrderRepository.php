@@ -918,6 +918,18 @@ class SalesOrderRepository
             $canonicalChannelStatus = $existing->channel_status;
         }
 
+        if (($orderData['status'] ?? null) === 'returned'
+            && $canonicalChannelStatus === ChannelStatus::CANCELLED->value
+        ) {
+            $canonicalChannelStatus = ChannelStatus::RETURNED->value;
+        }
+
+        $isCanceled = (bool) ($orderData['is_canceled'] ?? false);
+
+        if (($orderData['status'] ?? null) === 'returned') {
+            $isCanceled = false;
+        }
+
         $incomingOrderWeightGram = $orderData['order_weight_gram'] ?? null;
         $orderWeightGram = $incomingOrderWeightGram;
         if (
@@ -998,7 +1010,7 @@ class SalesOrderRepository
             'days_to_ship' => $orderData['days_to_ship'] ?? null,
             'status' => $orderData['status'],
             'is_paid' => $orderData['is_paid'],
-            'is_canceled' => $orderData['is_canceled'] ?? false,
+            'is_canceled' => $isCanceled,
             'is_cod' => $orderData['is_cod'] ?? false,
             'priority_fulfillment' => $orderData['priority_fulfillment'] ?? false,
             'is_split_order' => $orderData['is_split_order'] ?? false,

@@ -484,14 +484,17 @@ final class OrderCutoverService
         $locationIds = $locations->pluck('id')->all();
         $shops = DB::table('channel_shops as cs')
             ->leftJoin('channels as c', 'c.id', '=', 'cs.channel_id')
-            ->whereIn('cs.stock_source_location_id', $locationIds)
+            ->where(function (Builder $query) use ($locationIds): void {
+                $query->whereIn('cs.stock_source_location_id', $locationIds)
+                    ->orWhere('cs.stock_source_mode', 'total');
+            })
             ->where('cs.is_active', true)
             ->whereNull('cs.disconnected_at')
             ->orderBy('c.code')
             ->orderBy('cs.shop_name')
             ->get([
                 'cs.id', 'cs.shop_id', 'cs.shop_name', 'cs.order_sync_enabled',
-                'cs.stock_push_enabled', 'cs.stock_source_location_id', 'c.code as channel',
+                'cs.stock_push_enabled', 'cs.stock_source_mode', 'cs.stock_source_location_id', 'c.code as channel',
             ]);
 
         $base['shops'] = $shops->map(static fn (object $shop): array => [
@@ -499,7 +502,9 @@ final class OrderCutoverService
             'shop_id' => (string) $shop->shop_id,
             'shop_name' => (string) $shop->shop_name,
             'channel' => (string) ($shop->channel ?? 'unknown'),
-            'location_code' => (string) ($locations->firstWhere('id', $shop->stock_source_location_id)->location_code ?? 'unknown'),
+            'location_code' => (string) ($shop->stock_source_mode === 'total'
+                ? 'TOTAL'
+                : ($locations->firstWhere('id', $shop->stock_source_location_id)->location_code ?? 'unknown')),
             'order_sync_enabled' => (bool) $shop->order_sync_enabled,
             'stock_push_enabled' => (bool) $shop->stock_push_enabled,
         ])->values()->all();
@@ -522,7 +527,10 @@ final class OrderCutoverService
             ->all();
         $closed = DB::transaction(function () use ($locationIds): int {
             return DB::table('channel_shops')
-                ->whereIn('stock_source_location_id', $locationIds)
+                ->where(function (Builder $query) use ($locationIds): void {
+                    $query->whereIn('stock_source_location_id', $locationIds)
+                        ->orWhere('stock_source_mode', 'total');
+                })
                 ->where('is_active', true)
                 ->whereNull('disconnected_at')
                 ->where('order_sync_enabled', true)
