@@ -63,7 +63,7 @@ return new class extends Migration
                     ->where('on_order', '>', 0)
                     ->update([
                         'on_order' => 0,
-                        'available' => DB::raw('on_hand'),
+                        'available' => DB::raw('GREATEST(on_hand, 0)'),
                         'updated_at' => now(),
                     ]);
             }
