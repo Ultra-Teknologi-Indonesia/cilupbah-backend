@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Inventory\Services;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -80,8 +81,9 @@ final class OrderCutoverLookupService
                 'error' => $row->error,
                 'received_at' => $row->received_at,
                 'processed_at' => $row->processed_at,
+                'next_attempt_at' => $row->next_attempt_at,
                 'order_sync_enabled' => $row->order_sync_enabled === null ? null : (bool) $row->order_sync_enabled,
-                'replayable' => in_array(strtolower((string) $row->status), ['skipped', 'failed'], true)
+                'replayable' => in_array(strtolower((string) $row->status), ['received', 'skipped', 'failed'], true)
                     && $this->isOrderWebhook((string) $row->channel, (string) ($row->event_type ?? '')),
             ])->values()->all(),
             'actions' => [
@@ -115,6 +117,17 @@ final class OrderCutoverLookupService
             throw new RuntimeException('Pesanan tidak ditemukan di WMS atau intake channel masih tertutup; buka intake lalu cek ulang.');
         }
 
+        if (strtolower((string) $webhook['status']) === 'received'
+            && $webhook['next_attempt_at'] !== null
+            && now()->lessThan(CarbonImmutable::parse((string) $webhook['next_attempt_at']))) {
+            return [
+                'action' => 'include',
+                'result' => 'already_queued',
+                'message' => 'Webhook pesanan sudah berada di antrean WMS dan tidak dikirim ulang.',
+                'audit' => $audit,
+            ];
+        }
+
         $lock = Cache::lock('cutover:include-order:'.$webhook['id'], 60);
         if (! $lock->get()) {
             throw new RuntimeException('Pesanan sedang diproses oleh permintaan lain. Tunggu sebentar lalu cek ulang.');
@@ -123,7 +136,7 @@ final class OrderCutoverLookupService
         try {
             $row = DB::transaction(function () use ($webhook): ?ChannelWebhookInbox {
                 $record = ChannelWebhookInbox::query()->lockForUpdate()->find($webhook['id']);
-                if (! $record || ! in_array(strtolower((string) $record->status->value), ['skipped', 'failed'], true)) {
+                if (! $record || ! in_array(strtolower((string) $record->status->value), ['received', 'skipped', 'failed'], true)) {
                     return null;
                 }
                 $record->update([
@@ -258,7 +271,7 @@ final class OrderCutoverLookupService
     private function canInclude(Collection $orders, Collection $webhooks): bool
     {
         return $orders->isEmpty()
-            && $webhooks->contains(fn (object $row): bool => in_array(strtolower((string) $row->status), ['skipped', 'failed'], true)
+            && $webhooks->contains(fn (object $row): bool => in_array(strtolower((string) $row->status), ['received', 'skipped', 'failed'], true)
                 && $this->isOrderWebhook((string) $row->channel, (string) ($row->event_type ?? ''))
                 && in_array($row->location_code, self::LOCATION_CODES, true)
                 && (bool) $row->order_sync_enabled);
@@ -280,7 +293,7 @@ final class OrderCutoverLookupService
             ->get([
                 'wi.id', 'wi.channel', 'wi.shop_id', 'wi.event_type', 'wi.status', 'wi.error',
                 'wi.received_at', 'wi.processed_at', 'wi.payload', 'l.location_code',
-                'cs.order_sync_enabled',
+                'cs.order_sync_enabled', 'wi.next_attempt_at',
             ])
             ->filter(function (object $row) use ($reference): bool {
                 $payload = is_array($row->payload) ? $row->payload : json_decode((string) $row->payload, true);

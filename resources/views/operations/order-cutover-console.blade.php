@@ -57,7 +57,7 @@
                 <button class="danger" type="button" id="delete-order">Buang dari WMS</button>
             </div>
         </div>
-        <p class="muted">Masukkan hanya menjalankan replay jika webhook pesanan ditemukan dan berstatus dilewati/gagal. Hapus ditolak jika order sudah diproses atau memiliki relasi proses gudang.</p>
+        <p class="muted">Masukkan dapat melanjutkan webhook pesanan yang masih antre, dilewati, atau gagal. Jika sudah memiliki antrean aktif, sistem tidak mengirim ulang. Hapus ditolak jika order sudah diproses atau memiliki relasi proses gudang.</p>
     </section>
 
     @if (! $job)

@@ -87,4 +87,78 @@ final class OrderCutoverLookupServiceTest extends TestCase
         self::assertSame(WebhookInboxStatus::RECEIVED, $inbox->fresh()->status);
         Queue::assertPushed(ProcessShopeeWebhook::class);
     }
+
+    public function test_include_dispatches_a_received_webhook_that_has_not_been_queued(): void
+    {
+        Queue::fake();
+        $locationId = DB::table('locations')->where('location_code', 'O')->value('id');
+        if ($locationId === null) {
+            $locationId = (string) Str::uuid();
+            DB::table('locations')->insert([
+                'id' => $locationId, 'location_code' => 'O', 'location_name' => 'Gudang Kecil',
+                'location_type' => 'warehouse', 'is_active' => true, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+        $channelId = (string) Str::uuid();
+        DB::table('channels')->insert([
+            'id' => $channelId, 'code' => 'shopee', 'name' => 'Shopee', 'is_active' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $shopId = 'shop-lookup-'.Str::lower(Str::random(8));
+        DB::table('channel_shops')->insert([
+            'id' => (string) Str::uuid(), 'channel_id' => $channelId, 'shop_id' => $shopId,
+            'shop_name' => 'Shop Lookup', 'is_active' => true, 'order_sync_enabled' => true,
+            'stock_source_location_id' => $locationId, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $inbox = ChannelWebhookInbox::create([
+            'channel' => 'shopee', 'shop_id' => $shopId, 'event_key' => 'lookup-'.Str::uuid(),
+            'event_type' => '3',
+            'payload' => ['shop_id' => $shopId, 'code' => 3, 'data' => ['ordersn' => 'CH-LOOKUP-003']],
+            'status' => WebhookInboxStatus::RECEIVED,
+            'received_at' => now(),
+        ]);
+
+        $result = app(OrderCutoverLookupService::class)->include('CH-LOOKUP-003');
+
+        self::assertSame('replay_queued', $result['result']);
+        self::assertSame(WebhookInboxStatus::RECEIVED, $inbox->fresh()->status);
+        Queue::assertPushed(ProcessShopeeWebhook::class);
+    }
+
+    public function test_include_does_not_dispatch_a_received_webhook_with_an_active_queue_lease(): void
+    {
+        Queue::fake();
+        $locationId = DB::table('locations')->where('location_code', 'O')->value('id');
+        if ($locationId === null) {
+            $locationId = (string) Str::uuid();
+            DB::table('locations')->insert([
+                'id' => $locationId, 'location_code' => 'O', 'location_name' => 'Gudang Kecil',
+                'location_type' => 'warehouse', 'is_active' => true, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+        $channelId = (string) Str::uuid();
+        DB::table('channels')->insert([
+            'id' => $channelId, 'code' => 'shopee', 'name' => 'Shopee', 'is_active' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $shopId = 'shop-lookup-'.Str::lower(Str::random(8));
+        DB::table('channel_shops')->insert([
+            'id' => (string) Str::uuid(), 'channel_id' => $channelId, 'shop_id' => $shopId,
+            'shop_name' => 'Shop Lookup', 'is_active' => true, 'order_sync_enabled' => true,
+            'stock_source_location_id' => $locationId, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $inbox = ChannelWebhookInbox::create([
+            'channel' => 'shopee', 'shop_id' => $shopId, 'event_key' => 'lookup-'.Str::uuid(),
+            'event_type' => '3',
+            'payload' => ['shop_id' => $shopId, 'code' => 3, 'data' => ['ordersn' => 'CH-LOOKUP-004']],
+            'status' => WebhookInboxStatus::RECEIVED,
+            'received_at' => now(), 'next_attempt_at' => now()->addMinutes(5),
+        ]);
+
+        $result = app(OrderCutoverLookupService::class)->include('CH-LOOKUP-004');
+
+        self::assertSame('already_queued', $result['result']);
+        self::assertSame(WebhookInboxStatus::RECEIVED, $inbox->fresh()->status);
+        Queue::assertNotPushed(ProcessShopeeWebhook::class);
+    }
 }
