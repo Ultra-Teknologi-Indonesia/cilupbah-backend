@@ -217,6 +217,7 @@ return [
         'label_awb' => [
             'connection' => env('QUEUE_LABEL_AWB_CONNECTION', 'redis-long'),
             'queue' => env('QUEUE_NAME_LABEL_AWB', 'label-awb'),
+            'parallelism' => max(1, min(4, (int) env('QUEUE_LABEL_AWB_PARALLELISM', 3))),
         ],
 
         'label_archive' => [

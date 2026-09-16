@@ -29,7 +29,7 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
 
     public int $uniqueFor = 900;
 
-    private const TRACKING_RETRY_DELAYS = [30, 60, 300, 600];
+    private const TRACKING_RETRY_DELAYS = [3, 6, 12, 30, 60];
 
     public function __construct(
         public readonly string $orderId,
