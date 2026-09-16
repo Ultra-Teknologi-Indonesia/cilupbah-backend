@@ -132,6 +132,35 @@ class BulkShippingLabelControllerTest extends TestCase
             ->assertJsonPath('data.pdf_url', null);
     }
 
+    public function test_show_explains_that_pending_with_tracking_waits_for_label(): void
+    {
+        $order = SalesOrder::factory()->create([
+            'source' => 'tiktok',
+            'tracking_number' => 'GTL-LABEL-001',
+        ]);
+        $batch = BulkShippingLabelBatch::create([
+            'user_id' => $this->user->id,
+            'status' => BulkShippingLabelBatch::STATUS_PROCESSING,
+            'total_count' => 1,
+            'done_count' => 0,
+            'failed_count' => 0,
+        ]);
+        BulkShippingLabelItem::create([
+            'batch_id' => $batch->id,
+            'order_id' => $order->id,
+            'channel' => 'tiktok',
+            'status' => BulkShippingLabelItem::STATUS_PENDING,
+        ]);
+
+        $this->getJson("/api/v1/sales/shipping-labels/bulk/{$batch->id}")
+            ->assertOk()
+            ->assertJsonPath('data.items.0.status_label', 'Menunggu Label')
+            ->assertJsonPath(
+                'data.items.0.status_message',
+                'Resi sudah tersedia — menunggu pembuatan label pengiriman.',
+            );
+    }
+
     public function test_show_returns_authenticated_audited_pdf_url_when_ready(): void
     {
         $batch = BulkShippingLabelBatch::create([

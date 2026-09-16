@@ -127,9 +127,9 @@ class BulkShippingLabelController extends Controller
     private function statusLabel(string $status): string
     {
         return match ($status) {
-            BulkShippingLabelItem::STATUS_PENDING => 'Menunggu',
-            BulkShippingLabelItem::STATUS_DOWNLOADING => 'Mengambil',
-            BulkShippingLabelItem::STATUS_WAITING_AWB => 'Menarik No. Resi',
+            BulkShippingLabelItem::STATUS_PENDING => 'Menunggu Label',
+            BulkShippingLabelItem::STATUS_DOWNLOADING => 'Mengambil Label',
+            BulkShippingLabelItem::STATUS_WAITING_AWB => 'Menunggu No. Resi',
             BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP => 'Menunggu Shopee',
             BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP => 'Menunggu Lazada',
             BulkShippingLabelItem::STATUS_DONE => 'Berhasil',
@@ -142,14 +142,22 @@ class BulkShippingLabelController extends Controller
     private function statusMessage(BulkShippingLabelItem $item): string
     {
         $item_class = BulkShippingLabelItem::class;
+        $hasTrackingNumber = filled($item->order?->tracking_number);
 
         return match (true) {
-            $item->status === $item_class::STATUS_PENDING => 'Menunggu antrean',
-            $item->status === $item_class::STATUS_DOWNLOADING => 'Sedang mengambil resi...',
-            $item->status === $item_class::STATUS_WAITING_AWB => 'Meminta No. Resi ke marketplace...',
+            $item->status === $item_class::STATUS_PENDING && $hasTrackingNumber
+                => 'Resi sudah tersedia — menunggu pembuatan label pengiriman.',
+            $item->status === $item_class::STATUS_PENDING
+                => 'Menunggu job pembuatan label di antrean.',
+            $item->status === $item_class::STATUS_DOWNLOADING && $hasTrackingNumber
+                => 'Sedang mengambil label pengiriman dari marketplace...',
+            $item->status === $item_class::STATUS_DOWNLOADING
+                => 'Sedang mengambil nomor resi dari marketplace...',
+            $item->status === $item_class::STATUS_WAITING_AWB
+                => 'Menunggu nomor resi dari marketplace...',
             $item->status === $item_class::STATUS_WAITING_SHOPEE_PREP => 'Menunggu Shopee menyiapkan label...',
             $item->status === $item_class::STATUS_WAITING_LAZADA_PREP => 'Menunggu Lazada menyiapkan label...',
-            $item->status === $item_class::STATUS_DONE => 'Resi berhasil diambil',
+            $item->status === $item_class::STATUS_DONE => 'Label pengiriman berhasil dibuat.',
             $item->status === $item_class::STATUS_SKIPPED_INSTANT => 'Pesanan dengan instant courier, panggil driver di tab Pengiriman',
             $item->status === $item_class::STATUS_FAILED => match (true) {
                 $item->reason === $item_class::REASON_PARCEL_ALREADY_SHIPPED
