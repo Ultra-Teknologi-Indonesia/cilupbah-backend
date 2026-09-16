@@ -21,6 +21,13 @@ use Spatie\QueryBuilder\QueryBuilder;
 
 class InventoryMovementRepository
 {
+    private const ACTIVE_ORDER_STATUSES = [
+        'pending',
+        'reserved',
+        'UNPAID',
+        'AWAITING_BUYER_CONFIRMATION',
+    ];
+
     public function getByItem(string $itemId, string $locationId): Collection
     {
         WarehouseAccess::assertOperational($locationId);
@@ -781,13 +788,34 @@ SQL;
                     $value = (string) $value;
 
                     if ($value === 'order_active') {
-                        $query->where('inventory_movements.source', 'ORDER_RESERVE')
-                            ->whereExists(function ($sub) {
-                                $sub->select(DB::raw(1))
-                                    ->from('sales_orders')
-                                    ->whereColumn('sales_orders.salesorder_no', 'inventory_movements.transaction_number')
-                                    ->where('sales_orders.status', 'reserved');
+                        $query->where(function ($active) {
+                            $active->where(function ($order) {
+                                $order
+                                    ->whereIn('inventory_movements.source', ['ORDER_RESERVE', 'ORDER'])
+                                    ->whereExists(function ($sub) {
+                                        $sub->select(DB::raw(1))
+                                            ->from('sales_orders')
+                                            ->whereColumn('sales_orders.salesorder_no', 'inventory_movements.transaction_number')
+                                            ->whereIn('sales_orders.status', self::ACTIVE_ORDER_STATUSES)
+                                            ->where(function ($cancelled) {
+                                                $cancelled
+                                                    ->where('sales_orders.is_canceled', false)
+                                                    ->orWhereNull('sales_orders.is_canceled');
+                                            });
+                                    });
+                            })->orWhere(function ($reserved) {
+                                $reserved
+                                    ->where('inventory_movements.source', 'RESERVE')
+                                    ->whereExists(function ($sub) {
+                                        $sub->select(DB::raw(1))
+                                            ->from('reserved_stocks')
+                                            ->whereColumn('reserved_stocks.reserved_stock_no', 'inventory_movements.transaction_number')
+                                            ->where('reserved_stocks.status', 'ACTIVE')
+                                            ->where('reserved_stocks.is_active', true)
+                                            ->whereNull('reserved_stocks.deleted_at');
+                                    });
                             });
+                        });
 
                         return;
                     }

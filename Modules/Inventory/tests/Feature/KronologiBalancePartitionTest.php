@@ -236,6 +236,63 @@ class KronologiBalancePartitionTest extends TestCase
         $this->assertSame(['ORDER_RESERVE'], $sources, 'drill=allocation hanya boleh mengembalikan baris alokasi');
     }
 
+    public function test_filter_drill_order_active_menampilkan_semua_status_pra_fulfillment(): void
+    {
+        foreach (['pending', 'reserved', 'cancelled'] as $index => $status) {
+            $orderNo = 'SO-ACTIVE-'.$index;
+            $orderId = Str::uuid()->toString();
+
+            DB::table('sales_orders')->insert([
+                'id' => $orderId,
+                'salesorder_no' => $orderNo,
+                'customer_name' => 'Buyer',
+                'status' => $status,
+                'is_canceled' => $status === 'cancelled',
+                'location_id' => $this->locationId,
+                'sub_total' => 0,
+                'total_disc' => 0,
+                'total_tax' => 0,
+                'shipping_cost' => 0,
+                'insurance_cost' => 0,
+                'grand_total' => 0,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            DB::table('inventory_movements')->insert([
+                'id' => Str::uuid()->toString(),
+                'item_id' => $this->itemId,
+                'location_id' => $this->locationId,
+                'bin_id' => null,
+                'transaction_number' => $orderNo,
+                'source' => 'ORDER_RESERVE',
+                'qty' => -1,
+                'balance' => 0,
+                'transaction_date' => now()->addMinutes($index + 1),
+                'created_by' => 'system',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        request()->merge([
+            'filter' => [
+                'item_id' => $this->itemId,
+                'source' => 'ORDER_RESERVE,ORDER_RELEASE,RESERVE,RESERVE_CANCEL,RESERVE_EXPIRED',
+                'drill' => 'order_active',
+            ],
+            'per_page' => 50,
+        ]);
+
+        $rows = collect(app(InventoryMovementRepository::class)->getHistoryPaginated(50)->items());
+
+        $this->assertSame(
+            ['SO-ACTIVE-1', 'SO-ACTIVE-0'],
+            $rows->pluck('transaction_number')->all(),
+            'On Order harus menampilkan seluruh order pra-fulfillment aktif, bukan hanya status reserved',
+        );
+    }
+
     public function test_filter_source_menerima_nama_kategori(): void
     {
         $this->movement('PUTAWAY_IN', 10, 10, 1);
