@@ -41,6 +41,9 @@ class ChannelWebhookInboxRepository
                 $existing->update([
                     'status' => WebhookInboxStatus::RECEIVED,
                     'attempts' => 0,
+                    'error' => null,
+                    'processed_at' => null,
+                    'next_attempt_at' => null,
                     'channel_return_id' => ChannelWebhookReferenceExtractor::returnId($channel, $payload),
                     'payload' => $payload,
                     'received_at' => $now,

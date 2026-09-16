@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
 use Modules\Channel\Enums\WebhookInboxStatus;
@@ -77,17 +78,34 @@ class ReplayWebhookInbox extends Command
 
     private function deadLetterExhausted(\Illuminate\Support\Carbon $threshold, int $maxAttempts, int $limit): void
     {
-        $exhausted = ChannelWebhookInbox::query()
-            ->where('status', WebhookInboxStatus::RECEIVED)
-            ->where('received_at', '<', $threshold)
-            ->where('attempts', '>=', $maxAttempts)
-            ->orderBy('received_at')
-            ->limit($limit)
-            ->get();
+        $exhausted = DB::transaction(function () use ($threshold, $maxAttempts, $limit) {
+            $now = now();
+            $rows = ChannelWebhookInbox::query()
+                ->where('status', WebhookInboxStatus::RECEIVED)
+                ->where('received_at', '<', $threshold)
+                ->where('attempts', '>=', $maxAttempts)
+                ->where(function ($query) use ($now): void {
+                    $query->whereNull('next_attempt_at')
+                        ->orWhere('next_attempt_at', '<=', $now);
+                })
+                ->orderBy('received_at')
+                ->limit($limit)
+                ->lock('FOR UPDATE SKIP LOCKED')
+                ->get();
+
+            foreach ($rows as $row) {
+                $row->status = WebhookInboxStatus::FAILED;
+                if (trim((string) $row->error) === '') {
+                    $row->error = "Replay habis setelah {$row->attempts} percobaan - webhook tidak pernah berhasil diproses.";
+                }
+                $row->next_attempt_at = null;
+                $row->save();
+            }
+
+            return $rows;
+        });
 
         foreach ($exhausted as $row) {
-            $row->markFailed("Replay habis setelah {$row->attempts} percobaan - webhook tidak pernah berhasil diproses.");
-
             try {
                 \Modules\Sales\Jobs\AdminAlertJob::dispatch(
                     "Webhook {$row->channel} macet permanen (dead-letter)",

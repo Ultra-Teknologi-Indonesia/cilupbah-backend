@@ -151,6 +151,7 @@ class ChannelWebhookInbox extends Model
     {
         static::query()
             ->where('event_key', $eventKey)
+            ->where('status', WebhookInboxStatus::RECEIVED)
             ->update([
                 'status' => WebhookInboxStatus::PROCESSED,
                 'processed_at' => now(),
@@ -162,6 +163,7 @@ class ChannelWebhookInbox extends Model
     {
         static::query()
             ->where('event_key', $eventKey)
+            ->where('status', WebhookInboxStatus::RECEIVED)
             ->update([
                 'status' => WebhookInboxStatus::SKIPPED,
                 'processed_at' => now(),
@@ -172,12 +174,23 @@ class ChannelWebhookInbox extends Model
 
     public static function markFailedByKey(string $eventKey, string $message): void
     {
-        static::query()
-            ->where('event_key', $eventKey)
-            ->update([
-                'status' => WebhookInboxStatus::FAILED,
-                'error' => mb_substr($message, 0, 2000),
-                'next_attempt_at' => null,
-            ]);
+        DB::transaction(function () use ($eventKey, $message): void {
+            $row = static::query()
+                ->where('event_key', $eventKey)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $row || in_array($row->status, [
+                WebhookInboxStatus::PROCESSED,
+                WebhookInboxStatus::SKIPPED,
+            ], true)) {
+                return;
+            }
+
+            $row->status = WebhookInboxStatus::FAILED;
+            $row->error = mb_substr($message, 0, 2000);
+            $row->next_attempt_at = null;
+            $row->save();
+        });
     }
 }

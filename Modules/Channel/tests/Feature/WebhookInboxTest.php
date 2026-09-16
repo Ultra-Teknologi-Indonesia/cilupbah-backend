@@ -105,6 +105,59 @@ class WebhookInboxTest extends TestCase
         );
     }
 
+    public function test_dead_letter_preserves_existing_error_and_respects_replay_lease(): void
+    {
+        Queue::fake();
+
+        ChannelWebhookInbox::create([
+            'channel' => 'shopee', 'shop_id' => 'SH1', 'event_key' => 'leased-error',
+            'event_type' => '29', 'payload' => ['shop_id' => 'SH1'], 'attempts' => 5,
+            'error' => 'Shopee API asli: return_not_found',
+            'next_attempt_at' => now()->addMinutes(5),
+            'status' => WebhookInboxStatus::RECEIVED, 'received_at' => now()->subMinutes(30),
+        ]);
+
+        Artisan::call('channel:webhooks-replay', ['--minutes' => 15]);
+
+        $row = ChannelWebhookInbox::query()->where('event_key', 'leased-error')->firstOrFail();
+        $this->assertSame(WebhookInboxStatus::RECEIVED, $row->status);
+        $this->assertSame('Shopee API asli: return_not_found', $row->error);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_late_failure_cannot_overwrite_success(): void
+    {
+        ChannelWebhookInbox::create([
+            'channel' => 'shopee', 'shop_id' => 'SH1', 'event_key' => 'already-success',
+            'event_type' => '29', 'payload' => ['shop_id' => 'SH1'],
+            'status' => WebhookInboxStatus::PROCESSED, 'received_at' => now(),
+            'processed_at' => now(),
+        ]);
+
+        ChannelWebhookInbox::markFailedByKey('already-success', 'generic late failure');
+
+        $row = ChannelWebhookInbox::query()->where('event_key', 'already-success')->firstOrFail();
+        $this->assertSame(WebhookInboxStatus::PROCESSED, $row->status);
+        $this->assertNull($row->error);
+    }
+
+    public function test_actual_failure_replaces_previous_dispatch_message(): void
+    {
+        ChannelWebhookInbox::create([
+            'channel' => 'shopee', 'shop_id' => 'SH1', 'event_key' => 'actual-error',
+            'event_type' => '29', 'payload' => ['shop_id' => 'SH1'],
+            'status' => WebhookInboxStatus::RECEIVED,
+            'error' => 'Queue dispatch gagal dan akan dicoba ulang',
+            'received_at' => now(),
+        ]);
+
+        ChannelWebhookInbox::markFailedByKey('actual-error', 'Shopee API asli: return_not_found');
+
+        $row = ChannelWebhookInbox::query()->where('event_key', 'actual-error')->firstOrFail();
+        $this->assertSame(WebhookInboxStatus::FAILED, $row->status);
+        $this->assertSame('Shopee API asli: return_not_found', $row->error);
+    }
+
     public function test_replay_continues_when_idempotency_cache_is_unavailable(): void
     {
         Queue::fake();
