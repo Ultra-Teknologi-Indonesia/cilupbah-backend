@@ -9,8 +9,10 @@ Cloudflare 502, or exhausting the Horizon pod memory budget.
 
 - Export jobs use a dedicated `exports` Redis queue.
 - A dedicated Kubernetes worker consumes that queue with one process only.
-- The worker exits after one job so PHP and PDF-library memory is fully
-  reclaimed by Kubernetes between exports.
+- The worker stays alive while the queue is active and recycles after a bounded
+  number of jobs or maximum runtime. A Kubernetes Deployment must not use
+  `--max-jobs=1`: that makes the worker exit normally after one job and causes
+  an unnecessary restart loop.
 - Excel continues to use the query-based Laravel Excel writer, which reads the
   result in chunks rather than loading the complete dataset into PHP memory.
 - PDF rendering is bounded to small row batches. Each batch is rendered by
@@ -26,8 +28,9 @@ Cloudflare 502, or exhausting the Horizon pod memory budget.
   budget. This is a safety boundary, not a reason to increase concurrency.
 - The main Horizon pod no longer consumes the export queue and receives modest
   headroom for its existing supervisors.
-- A worker restart after every export limits the impact of gradual native or
-  library memory growth.
+- A worker recycle after at most 100 jobs or its maximum runtime limits the
+  impact of gradual native or library memory growth without restarting after
+  every successful export.
 
 ## Failure handling
 
@@ -47,4 +50,3 @@ Monitor these metrics after deployment:
 - API pod readiness and endpoint count;
 - API 5xx rate, CPU throttling, and PHP-FPM busy warnings;
 - failed export jobs and temporary storage usage.
-

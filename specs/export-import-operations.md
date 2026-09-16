@@ -8,13 +8,14 @@ the status endpoint and downloads only after the job is ready.
 
 Queues are isolated by workload:
 
-- `exports-pdf`: one PDF job per worker process, 1.5 GiB PHP limit, 2 GiB pod limit.
-- `exports-sheet`: one XLSX/CSV job per worker process, 768 MiB PHP limit, 1 GiB pod limit.
-- `catalog-exports`: one catalog CSV job per worker process, 512 MiB PHP limit, 1 GiB pod limit.
-- `imports`: one import job per worker process, 1 GiB PHP limit, 1.5 GiB pod limit.
+- `exports-pdf`: one PDF job at a time, 1.5 GiB PHP limit, 2 GiB pod limit.
+- `exports-sheet`: one XLSX/CSV job at a time, 768 MiB PHP limit, 1 GiB pod limit.
+- `catalog-exports`: one catalog CSV job at a time, 512 MiB PHP limit, 1 GiB pod limit.
+- `imports`: one import job at a time, 1 GiB PHP limit, 1.5 GiB pod limit.
 
-Every dedicated worker recycles after one job or its maximum runtime. This is
-intentional: it bounds memory retained by PhpSpreadsheet/PDF libraries.
+Every dedicated worker stays alive and recycles after a bounded number of jobs
+or its maximum runtime. This bounds memory retained by PhpSpreadsheet/PDF
+libraries without causing a Kubernetes Deployment to restart after every job.
 
 ## Redis separation
 

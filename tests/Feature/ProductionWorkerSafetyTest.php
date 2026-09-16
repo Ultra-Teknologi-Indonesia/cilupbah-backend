@@ -15,13 +15,13 @@ class ProductionWorkerSafetyTest extends TestCase
         );
     }
 
-    public function test_heavy_workers_drain_without_parallel_replicas(): void
+    public function test_heavy_workers_are_long_running_and_recycle_safely(): void
     {
         foreach ([
             '03-import-worker.yaml' => ['1860', '2400'],
             '03-export-worker.yaml' => ['960', '1500'],
-            '03-catalog-export-worker.yaml' => ['660', '1200'],
-            '03-pdf-export-worker.yaml' => ['960', '1500'],
+            '03-catalog-export-worker.yaml' => ['720', '1200'],
+            '03-pdf-export-worker.yaml' => ['1020', '1500'],
         ] as $manifest => [$grace, $deadline]) {
             $yaml = file_get_contents(base_path("k8s/production/{$manifest}"));
 
@@ -29,7 +29,9 @@ class ProductionWorkerSafetyTest extends TestCase
             $this->assertStringContainsString("type: Recreate", $yaml, $manifest);
             $this->assertStringContainsString("terminationGracePeriodSeconds: {$grace}", $yaml, $manifest);
             $this->assertStringContainsString("progressDeadlineSeconds: {$deadline}", $yaml, $manifest);
-            $this->assertStringContainsString('/tmp/worker.pid', $yaml, $manifest);
+            $this->assertStringContainsString('--max-jobs=100', $yaml, $manifest);
+            $this->assertDoesNotMatchRegularExpression('/--max-jobs=1(?:\D|$)/', $yaml, $manifest);
+            $this->assertStringContainsString('--max-time=', $yaml, $manifest);
         }
     }
 

@@ -34,7 +34,7 @@ spec:
             - |
               exec php artisan queue:work redis-long \
                 --queue=exports-sheet --sleep=3 --tries=2 --backoff=30 \
-                --timeout=780 --memory=768 --max-jobs=1 --max-time=720
+                --timeout=780 --memory=768 --max-jobs=100 --max-time=720
           envFrom:
             - secretRef:
                 name: cilupbah-env
