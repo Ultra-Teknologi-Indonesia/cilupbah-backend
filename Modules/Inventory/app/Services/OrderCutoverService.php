@@ -434,6 +434,114 @@ final class OrderCutoverService
         return $parsed->setTimezone(self::CSV_TIMEZONE);
     }
 
+    public function previewOrderIntake(array $locationCodes): array
+    {
+        $locationCodes = array_values(array_unique(array_map(
+            static fn (mixed $code): string => strtoupper(trim((string) $code)),
+            $locationCodes,
+        )));
+        $locations = DB::table('locations')
+            ->whereIn('location_code', $locationCodes)
+            ->get(['id', 'location_code', 'location_name', 'is_active']);
+        $missingLocations = array_values(array_diff($locationCodes, $locations->pluck('location_code')->all()));
+        $inactiveLocations = $locations
+            ->filter(static fn (object $location): bool => ! (bool) $location->is_active)
+            ->pluck('location_code')
+            ->values()
+            ->all();
+
+        $base = [
+            'mode' => 'CLOSE_ORDER_INTAKE',
+            'location_codes' => $locationCodes,
+            'locations' => $locations->map(static fn (object $location): array => [
+                'code' => (string) $location->location_code,
+                'name' => (string) $location->location_name,
+                'active' => (bool) $location->is_active,
+            ])->values()->all(),
+            'missing_locations' => $missingLocations,
+            'inactive_locations' => $inactiveLocations,
+            'shops' => [],
+            'enabled_count' => 0,
+            'already_closed_count' => 0,
+            'blocking' => count($missingLocations) + count($inactiveLocations),
+            'issues' => [],
+            'rule' => 'penerimaan order ditutup hanya untuk toko aktif yang sumber stoknya Gudang Kecil (O) atau Gudang Pusat (WH-PUSAT); stock push tidak berubah.',
+        ];
+
+        if ($missingLocations !== []) {
+            $base['issues'][] = ['reason' => 'lokasi_tidak_ditemukan', 'locations' => $missingLocations];
+        }
+        if ($inactiveLocations !== []) {
+            $base['issues'][] = ['reason' => 'lokasi_tidak_aktif', 'locations' => $inactiveLocations];
+        }
+        if (! Schema::hasTable('channel_shops') || ! Schema::hasColumn('channel_shops', 'stock_source_location_id')) {
+            $base['blocking']++;
+            $base['issues'][] = ['reason' => 'mapping_sumber_stok_toko_tidak_tersedia'];
+
+            return $base;
+        }
+
+        $locationIds = $locations->pluck('id')->all();
+        $shops = DB::table('channel_shops as cs')
+            ->leftJoin('channels as c', 'c.id', '=', 'cs.channel_id')
+            ->whereIn('cs.stock_source_location_id', $locationIds)
+            ->where('cs.is_active', true)
+            ->whereNull('cs.disconnected_at')
+            ->orderBy('c.code')
+            ->orderBy('cs.shop_name')
+            ->get([
+                'cs.id', 'cs.shop_id', 'cs.shop_name', 'cs.order_sync_enabled',
+                'cs.stock_push_enabled', 'cs.stock_source_location_id', 'c.code as channel',
+            ]);
+
+        $base['shops'] = $shops->map(static fn (object $shop): array => [
+            'id' => (string) $shop->id,
+            'shop_id' => (string) $shop->shop_id,
+            'shop_name' => (string) $shop->shop_name,
+            'channel' => (string) ($shop->channel ?? 'unknown'),
+            'location_code' => (string) ($locations->firstWhere('id', $shop->stock_source_location_id)->location_code ?? 'unknown'),
+            'order_sync_enabled' => (bool) $shop->order_sync_enabled,
+            'stock_push_enabled' => (bool) $shop->stock_push_enabled,
+        ])->values()->all();
+        $base['enabled_count'] = $shops->where('order_sync_enabled', true)->count();
+        $base['already_closed_count'] = $shops->where('order_sync_enabled', false)->count();
+
+        return $base;
+    }
+
+    public function applyOrderIntake(array $locationCodes): array
+    {
+        $audit = $this->previewOrderIntake($locationCodes);
+        if ((int) ($audit['blocking'] ?? 0) > 0) {
+            throw new RuntimeException('penutupan intake order dibatalkan karena mapping gudang tidak valid.');
+        }
+
+        $locationIds = DB::table('locations')
+            ->whereIn('location_code', $locationCodes)
+            ->pluck('id')
+            ->all();
+        $closed = DB::transaction(function () use ($locationIds): int {
+            return DB::table('channel_shops')
+                ->whereIn('stock_source_location_id', $locationIds)
+                ->where('is_active', true)
+                ->whereNull('disconnected_at')
+                ->where('order_sync_enabled', true)
+                ->update([
+                    'order_sync_enabled' => false,
+                    'updated_at' => now(),
+                ]);
+        }, 3);
+
+        return [
+            'mode' => 'CLOSE_ORDER_INTAKE_APPLY',
+            'location_codes' => $locationCodes,
+            'closed_count' => $closed,
+            'audit' => $audit,
+            'applied_at' => now()->toIso8601String(),
+            'message' => 'Penerimaan order ditutup. Webhook order selama periode ini perlu direplay setelah intake dibuka.',
+        ];
+    }
+
     private function restrictToSafeCandidates(Builder $query): void
     {
         $query->where(function (Builder $safe): void {

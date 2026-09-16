@@ -55,18 +55,23 @@ final class RunOrderCutoverConsoleJob implements ShouldQueue
             $localDisk->makeDirectory($workingDirectory);
             $paths = [];
             $meta = [];
-            foreach (($job->files ?? []) as $file) {
-                $path = $this->materializeSourceFile($file, $workingDirectory);
-                $paths[] = $path;
-                $meta[$path] = $file;
+            $locationCodes = array_values(array_map('strval', $job->location_codes ?? []));
+            $isIntake = in_array($job->type, ['intake_preview', 'intake_apply'], true);
+            if (! $isIntake) {
+                foreach (($job->files ?? []) as $file) {
+                    $path = $this->materializeSourceFile($file, $workingDirectory);
+                    $paths[] = $path;
+                    $meta[$path] = $file;
+                }
             }
 
             $cutoff = CarbonImmutable::parse($job->cutoff_at)->utc();
-            $locationCodes = array_values(array_map('strval', $job->location_codes ?? []));
             $isHardCutoff = in_array($job->type, ['hard_preview', 'hard_apply', 'hard_apply_partial'], true);
             $isApply = in_array($job->type, ['apply', 'apply_partial', 'hard_apply', 'hard_apply_partial'], true);
             $allowPartial = in_array($job->type, ['apply_partial', 'hard_apply_partial'], true);
             $report = match (true) {
+                $job->type === 'intake_apply' => $service->applyOrderIntake($locationCodes),
+                $job->type === 'intake_preview' => $service->previewOrderIntake($locationCodes),
                 $isHardCutoff && $isApply => $service->applyHardCutoff($cutoff, $locationCodes, $allowPartial),
                 $isHardCutoff => $service->previewHardCutoff($cutoff, $locationCodes),
                 $isApply => $service->apply($paths, $cutoff, $locationCodes, $meta, $allowPartial),

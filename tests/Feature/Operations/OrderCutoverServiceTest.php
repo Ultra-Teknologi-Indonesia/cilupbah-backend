@@ -201,4 +201,98 @@ final class OrderCutoverServiceTest extends TestCase
 
         self::assertSame('2026-09-10 15:30:00', $cutoff->toDateTimeString());
     }
+
+    public function test_order_intake_preview_and_apply_are_scoped_to_both_cutover_warehouses(): void
+    {
+        $locationId = static function (string $code): string {
+            $existing = DB::table('locations')->where('location_code', $code)->value('id');
+            if ($existing !== null) {
+                DB::table('locations')->where('id', $existing)->update(['is_active' => true]);
+
+                return (string) $existing;
+            }
+
+            $id = (string) Str::uuid();
+            DB::table('locations')->insert([
+                'id' => $id,
+                'location_code' => $code,
+                'location_name' => $code,
+                'location_type' => 'warehouse',
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            return $id;
+        };
+        $smallId = $locationId('O');
+        $centralId = $locationId('WH-PUSAT');
+        $otherId = $locationId('OTHER-WH-'.Str::upper(Str::random(5)));
+        $shopee = (string) Str::uuid();
+        DB::table('channels')->insert([
+            'id' => $shopee,
+            'code' => 'shopee', 'name' => 'Shopee', 'is_active' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $lazada = (string) Str::uuid();
+        DB::table('channels')->insert([
+            'id' => $lazada,
+            'code' => 'lazada', 'name' => 'Lazada', 'is_active' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('channel_shops')->insert([
+            'id' => (string) Str::uuid(),
+            'channel_id' => $shopee,
+            'shop_id' => 'shop-small-'.Str::lower(Str::random(8)),
+            'shop_name' => 'Toko Kecil',
+            'is_active' => true,
+            'order_sync_enabled' => true,
+            'stock_source_location_id' => $smallId,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('channel_shops')->insert([
+            'id' => (string) Str::uuid(),
+            'channel_id' => $lazada,
+            'shop_id' => 'shop-central-'.Str::lower(Str::random(8)),
+            'shop_name' => 'Toko Pusat',
+            'is_active' => true,
+            'order_sync_enabled' => false,
+            'stock_source_location_id' => $centralId,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('channel_shops')->insert([
+            'id' => (string) Str::uuid(),
+            'channel_id' => $shopee,
+            'shop_id' => 'shop-other-'.Str::lower(Str::random(8)),
+            'shop_name' => 'Toko Lain',
+            'is_active' => true,
+            'order_sync_enabled' => true,
+            'stock_source_location_id' => $otherId,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $service = app(OrderCutoverService::class);
+        $audit = $service->previewOrderIntake(['O', 'WH-PUSAT']);
+
+        self::assertSame(0, $audit['blocking']);
+        self::assertSame(1, $audit['enabled_count']);
+        self::assertSame(1, $audit['already_closed_count']);
+        self::assertCount(2, $audit['shops']);
+        $shops = collect($audit['shops'])->keyBy('location_code');
+        self::assertSame('shopee', $shops['O']['channel']);
+        self::assertTrue($shops['O']['order_sync_enabled']);
+        self::assertFalse($shops['WH-PUSAT']['order_sync_enabled']);
+
+        $result = $service->applyOrderIntake(['O', 'WH-PUSAT']);
+
+        self::assertSame(1, $result['closed_count']);
+        self::assertDatabaseHas('channel_shops', [
+            'shop_name' => 'Toko Kecil',
+            'order_sync_enabled' => false,
+        ]);
+        self::assertDatabaseHas('channel_shops', [
+            'shop_name' => 'Toko Lain',
+            'order_sync_enabled' => true,
+        ]);
+    }
 }

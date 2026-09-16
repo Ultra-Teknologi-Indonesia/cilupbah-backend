@@ -13,10 +13,13 @@ use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Modules\Inventory\Jobs\RunOrderCutoverConsoleJob;
 use Modules\Inventory\Models\OrderCutoverConsoleJob;
+use Modules\Inventory\Services\OrderCutoverLookupService;
 use Modules\Inventory\Services\OrderCutoverService;
 
 final class OrderCutoverConsoleController extends Controller
 {
+    private const CUTOVER_LOCATIONS = ['O', 'WH-PUSAT'];
+
     private const FILE_FIELDS = [
         'failed_pickup' => 'Gagal pengambilan / pick gagal',
         'no_internal_stock' => 'Stok kosong di internal',
@@ -116,6 +119,22 @@ final class OrderCutoverConsoleController extends Controller
         return redirect()->route('operations.order-cutover.index', ['token' => $token, 'job' => $job->id]);
     }
 
+    public function intakePreview(string $token): RedirectResponse
+    {
+        $id = (string) Str::uuid7();
+        $job = OrderCutoverConsoleJob::create([
+            'id' => $id,
+            'type' => 'intake_preview',
+            'status' => OrderCutoverConsoleJob::STATUS_QUEUED,
+            'files' => [],
+            'location_codes' => self::CUTOVER_LOCATIONS,
+            'cutoff_at' => now(),
+        ]);
+        RunOrderCutoverConsoleJob::dispatch($job->id);
+
+        return redirect()->route('operations.order-cutover.index', ['token' => $token, 'job' => $job->id]);
+    }
+
     public function status(string $token, OrderCutoverConsoleJob $job): JsonResponse
     {
         return response()->json([
@@ -128,6 +147,43 @@ final class OrderCutoverConsoleController extends Controller
             'finished_at' => $job->finished_at?->toIso8601String(),
             'download_ready' => $job->report_path !== null,
         ]);
+    }
+
+    public function lookupOrder(string $token, Request $request, OrderCutoverLookupService $service): JsonResponse
+    {
+        $validated = $request->validate([
+            'reference' => ['required', 'string', 'max:128'],
+        ]);
+
+        return response()->json($service->lookup((string) $validated['reference']));
+    }
+
+    public function includeOrder(string $token, Request $request, OrderCutoverLookupService $service): JsonResponse
+    {
+        $validated = $request->validate([
+            'reference' => ['required', 'string', 'max:128'],
+            'confirmation' => ['required', 'in:INCLUDE-ORDER'],
+        ]);
+
+        try {
+            return response()->json($service->include((string) $validated['reference']));
+        } catch (\RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+    }
+
+    public function deleteOrder(string $token, Request $request, OrderCutoverLookupService $service): JsonResponse
+    {
+        $validated = $request->validate([
+            'reference' => ['required', 'string', 'max:128'],
+            'confirmation' => ['required', 'in:DELETE-ORDER'],
+        ]);
+
+        try {
+            return response()->json($service->delete((string) $validated['reference']));
+        } catch (\RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
     }
 
     public function apply(string $token, Request $request, OrderCutoverConsoleJob $job): RedirectResponse
@@ -153,6 +209,33 @@ final class OrderCutoverConsoleController extends Controller
             'files' => $job->files,
             'location_codes' => $job->location_codes,
             'cutoff_at' => $job->cutoff_at,
+        ]);
+        RunOrderCutoverConsoleJob::dispatch($apply->id);
+
+        return redirect()->route('operations.order-cutover.index', ['token' => $token, 'job' => $apply->id]);
+    }
+
+    public function intakeApply(string $token, Request $request, OrderCutoverConsoleJob $job): RedirectResponse
+    {
+        $request->validate([
+            'understood' => ['accepted'],
+            'confirmation' => ['required', 'in:CLOSE-ORDER-INTAKE'],
+        ]);
+
+        if ($job->type !== 'intake_preview' || $job->status !== OrderCutoverConsoleJob::STATUS_READY) {
+            return back()->withErrors(['intake' => 'Preview penutupan penerimaan order harus selesai terlebih dahulu.']);
+        }
+
+        if ((int) data_get($job->report, 'blocking', 1) > 0) {
+            return back()->withErrors(['intake' => 'Preview memiliki masalah dan tidak dapat diterapkan.']);
+        }
+
+        $apply = OrderCutoverConsoleJob::create([
+            'type' => 'intake_apply',
+            'status' => OrderCutoverConsoleJob::STATUS_QUEUED,
+            'files' => [],
+            'location_codes' => $job->location_codes,
+            'cutoff_at' => now(),
         ]);
         RunOrderCutoverConsoleJob::dispatch($apply->id);
 

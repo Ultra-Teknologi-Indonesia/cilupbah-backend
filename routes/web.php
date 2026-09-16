@@ -47,12 +47,27 @@ Route::prefix('/_ops/order-cutover/{token}')
         Route::post('/preview', [OrderCutoverConsoleController::class, 'preview'])
             ->middleware('throttle:order_cutover_preview')
             ->name('preview');
+        Route::post('/intake/preview', [OrderCutoverConsoleController::class, 'intakePreview'])
+            ->middleware('throttle:order_cutover_preview')
+            ->name('intake.preview');
         Route::get('/jobs/{job}', [OrderCutoverConsoleController::class, 'status'])
             ->middleware('throttle:order_cutover_status')
             ->name('status');
+        Route::post('/lookup', [OrderCutoverConsoleController::class, 'lookupOrder'])
+            ->middleware('throttle:order_cutover_status')
+            ->name('lookup');
+        Route::post('/lookup/include', [OrderCutoverConsoleController::class, 'includeOrder'])
+            ->middleware('throttle:order_cutover_apply')
+            ->name('lookup.include');
+        Route::post('/lookup/delete', [OrderCutoverConsoleController::class, 'deleteOrder'])
+            ->middleware('throttle:order_cutover_apply')
+            ->name('lookup.delete');
         Route::post('/jobs/{job}/apply', [OrderCutoverConsoleController::class, 'apply'])
             ->middleware('throttle:order_cutover_apply')
             ->name('apply');
+        Route::post('/jobs/{job}/intake-apply', [OrderCutoverConsoleController::class, 'intakeApply'])
+            ->middleware('throttle:order_cutover_apply')
+            ->name('intake.apply');
         Route::get('/jobs/{job}/report', [OrderCutoverConsoleController::class, 'download'])
             ->middleware('throttle:order_cutover_report')
             ->name('report');

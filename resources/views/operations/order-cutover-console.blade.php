@@ -23,14 +23,52 @@
 <main>
     <section class="card">
         <h1>Order Cutover — Hard Cutoff</h1>
-        <p class="muted">Preview ini tidak memakai whitelist CSV. Sistem membersihkan order sebelum cutoff dan mempertahankan order mulai cutoff, khusus order WMS Gudang Kecil (kode O).</p>
+        <p class="muted">Gunakan halaman ini untuk menutup intake order sebelum cutover dan membersihkan order berdasarkan cutoff. Kontrol intake mencakup Gudang Kecil (O) dan Gudang Pusat (WH-PUSAT).</p>
     </section>
 
     @if ($errors->any())
         <section class="card error">{{ $errors->first() }}</section>
     @endif
 
+    <section class="card">
+        <h2>Cek pesanan tertentu</h2>
+        <p class="muted">Masukkan nomor pesanan internal atau nomor dari marketplace untuk melihat status WMS, proses gudang, channel, dan webhook.</p>
+        <div class="grid">
+            <div>
+                <label for="order-reference">Nomor pesanan</label>
+                <input id="order-reference" type="text" maxlength="128" placeholder="Contoh: SP-250912345678 atau SO-000123">
+            </div>
+            <div>
+                <label>&nbsp;</label>
+                <button type="button" id="lookup-order">Cari status pesanan</button>
+            </div>
+        </div>
+        <p class="error" id="lookup-error"></p>
+        <pre id="lookup-result">Belum ada pencarian.</pre>
+        <div class="grid">
+            <div>
+                <label for="include-confirmation">Konfirmasi masukkan</label>
+                <input id="include-confirmation" type="text" autocomplete="off" placeholder="INCLUDE-ORDER">
+                <button type="button" id="include-order">Masukkan / replay ke WMS</button>
+            </div>
+            <div>
+                <label for="delete-confirmation">Konfirmasi hapus</label>
+                <input id="delete-confirmation" type="text" autocomplete="off" placeholder="DELETE-ORDER">
+                <button class="danger" type="button" id="delete-order">Buang dari WMS</button>
+            </div>
+        </div>
+        <p class="muted">Masukkan hanya menjalankan replay jika webhook pesanan ditemukan dan berstatus dilewati/gagal. Hapus ditolak jika order sudah diproses atau memiliki relasi proses gudang.</p>
+    </section>
+
     @if (! $job)
+        <section class="card warning">
+            <h2>0. Tutup penerimaan order WMS</h2>
+            <p>Gunakan langkah ini sebelum reset atau penghapusan histori. Penerimaan order akan ditutup untuk channel aktif yang memakai Gudang Kecil (O) dan Gudang Pusat (WH-PUSAT). Stock push tidak ikut berubah.</p>
+            <form method="post" action="{{ route('operations.order-cutover.intake.preview', ['token' => $token]) }}">
+                @csrf
+                <button class="danger" type="submit">Cek channel yang akan ditutup</button>
+            </form>
+        </section>
         <section class="card">
             <h2>1. Tentukan cutoff dan dry-run</h2>
             <form method="post" action="{{ route('operations.order-cutover.preview', ['token' => $token]) }}" enctype="multipart/form-data">
@@ -50,6 +88,20 @@
             <p><a id="report" class="{{ $job->report_path ? '' : 'hidden' }}" href="{{ route('operations.order-cutover.report', ['token' => $token, 'job' => $job->id]) }}">Download laporan JSON</a></p>
             <pre id="report-data">{{ $job->report ? json_encode($job->report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) : 'Menunggu proses queue…' }}</pre>
         </section>
+
+        @if ($job->type === 'intake_preview')
+            <section class="card warning {{ $job->status === 'ready' ? '' : 'hidden' }}" id="intake-apply-card">
+                <h2>Tutup penerimaan order WMS</h2>
+                <p>Setelah diterapkan, order baru tidak diproses selama intake tertutup. Webhook order yang masuk akan ditandai dilewati dan harus direplay setelah intake dibuka.</p>
+                <form method="post" action="{{ route('operations.order-cutover.intake.apply', ['token' => $token, 'job' => $job->id]) }}">
+                    @csrf
+                    <label><input required type="checkbox" name="understood" value="1"> Saya sudah memastikan proses reset siap dijalankan.</label>
+                    <label>Ketik <code>CLOSE-ORDER-INTAKE</code> untuk konfirmasi</label>
+                    <input required type="text" name="confirmation" autocomplete="off">
+                    <button class="danger" type="submit">Tutup penerimaan order</button>
+                </form>
+            </section>
+        @endif
 
         @if (in_array($job->type, ['preview', 'hard_preview'], true))
             <section class="card warning {{ $job->status === 'ready' ? '' : 'hidden' }}" id="apply-card">
@@ -79,6 +131,7 @@ const error = document.getElementById('error');
 const report = document.getElementById('report');
 const reportData = document.getElementById('report-data');
 const applyCard = document.getElementById('apply-card');
+const intakeApplyCard = document.getElementById('intake-apply-card');
 async function refresh() {
     if (refresh.inFlight) return;
     refresh.inFlight = true;
@@ -92,6 +145,7 @@ async function refresh() {
         reportData.textContent = data.report ? JSON.stringify(data.report, null, 2) : 'Menunggu proses queue…';
         if (data.download_ready) report.classList.remove('hidden');
         if (['preview', 'hard_preview'].includes(data.type) && data.status === 'ready' && applyCard) applyCard.classList.remove('hidden');
+        if (data.type === 'intake_preview' && data.status === 'ready' && intakeApplyCard) intakeApplyCard.classList.remove('hidden');
         refresh.delay = 5000;
         if (['queued', 'processing'].includes(data.status)) refresh.timer = setTimeout(refresh, refresh.delay);
     } catch (exception) { refresh.delay = Math.min(refresh.delay * 2, 60000); error.textContent = 'Status sementara tidak dapat dibaca. Mencoba lagi otomatis.'; refresh.timer = setTimeout(refresh, refresh.delay); }
@@ -100,5 +154,48 @@ async function refresh() {
 refresh.delay = 5000; refresh.inFlight = false; refresh.timer = null; refresh();
 </script>
 @endif
+<script>
+const lookupUrl = @json(route('operations.order-cutover.lookup', ['token' => $token]));
+const includeUrl = @json(route('operations.order-cutover.lookup.include', ['token' => $token]));
+const deleteUrl = @json(route('operations.order-cutover.lookup.delete', ['token' => $token]));
+const csrf = @json(csrf_token());
+const referenceInput = document.getElementById('order-reference');
+const lookupResult = document.getElementById('lookup-result');
+const lookupError = document.getElementById('lookup-error');
+let lastReference = '';
+async function postJson(url, payload) {
+    const response = await fetch(url, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf},
+        body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || data.error || Object.values(data.errors || {}).flat().join(' ') || `Request gagal (${response.status})`);
+    return data;
+}
+async function lookupOrder() {
+    const reference = referenceInput.value.trim();
+    if (!reference) { lookupError.textContent = 'Nomor pesanan wajib diisi.'; return; }
+    lookupError.textContent = '';
+    lookupResult.textContent = 'Mencari…';
+    try { lastReference = reference; lookupResult.textContent = JSON.stringify(await postJson(lookupUrl, {reference}), null, 2); }
+    catch (error) { lookupError.textContent = error.message; lookupResult.textContent = 'Pencarian gagal.'; }
+}
+async function performOrderAction(url, confirmationId) {
+    const reference = lastReference || referenceInput.value.trim();
+    const confirmation = document.getElementById(confirmationId).value.trim();
+    if (!reference) { lookupError.textContent = 'Cari nomor pesanan terlebih dahulu.'; return; }
+    lookupError.textContent = '';
+    try {
+        lookupResult.textContent = JSON.stringify(await postJson(url, {reference, confirmation}), null, 2);
+    } catch (error) { lookupError.textContent = error.message; }
+}
+document.getElementById('lookup-order')?.addEventListener('click', lookupOrder);
+document.getElementById('include-order')?.addEventListener('click', () => performOrderAction(includeUrl, 'include-confirmation'));
+document.getElementById('delete-order')?.addEventListener('click', () => {
+    if (window.confirm('Hapus pesanan ini dari WMS jika aturan keamanan mengizinkan?')) performOrderAction(deleteUrl, 'delete-confirmation');
+});
+</script>
 </body>
 </html>
