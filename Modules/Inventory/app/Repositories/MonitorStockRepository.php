@@ -150,7 +150,7 @@ class MonitorStockRepository
     private function applyMode(Builder $query, string $mode): Builder
     {
         return match ($mode) {
-            'habis' => $query->whereRaw('COALESCE(inv.available, 0) <= 0'),
+            'habis' => $query->whereRaw('COALESCE(inv.on_hand, 0) <= 0'),
             'minus' => $query->whereRaw('COALESCE(inv.available, 0) < 0')
                 ->whereRaw('COALESCE(inv.on_hand, 0) > 0'),
             'dipesan' => $query->whereRaw('COALESCE(inv.on_hand, 0) <= 0')
@@ -195,7 +195,7 @@ class MonitorStockRepository
             ->leftJoinSub($this->pendingOrderItemIds()->distinct(), 'pending', 'pending.item_id', '=', 'b.id')
             ->leftJoinSub($this->openPoItemIds()->distinct(), 'open_po', 'open_po.item_id', '=', 'b.id')
             ->selectRaw(<<<'SQL'
-                COUNT(*) FILTER (WHERE b.total_available <= 0) AS habis,
+                COUNT(*) FILTER (WHERE b.total_on_hand <= 0) AS habis,
                 COUNT(*) FILTER (WHERE b.total_available < 0 AND b.total_on_hand > 0) AS minus,
                 COUNT(*) FILTER (WHERE b.total_on_hand <= 0 AND pending.item_id IS NOT NULL) AS dipesan,
                 COUNT(*) FILTER (WHERE b.min_stock > 0 AND b.total_available < b.min_stock) AS menipis,
