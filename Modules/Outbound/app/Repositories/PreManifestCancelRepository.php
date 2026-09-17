@@ -13,7 +13,10 @@ class PreManifestCancelRepository
     public function baseQuery(): Builder
     {
         $query = Order::query()
-            ->where('status', 'cancelled')
+            ->where(function (Builder $q) {
+                $q->where('status', 'cancelled')
+                  ->orWhere('is_canceled', true);
+            })
             ->whereNotNull('handed_to_warehouse_at')
             ->whereNull('cancel_dismissed_at')
             ->whereHas('packlist', fn (Builder $packlist): Builder => $packlist

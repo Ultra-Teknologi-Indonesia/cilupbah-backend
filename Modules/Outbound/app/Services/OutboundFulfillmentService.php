@@ -790,14 +790,9 @@ SQL;
 
     private function finishPack()
     {
-        return Order::where(function ($q) {
-            $q->where('status', 'packed')
-                ->orWhere(function ($q2) {
-                    $q2->where('status', 'cancelled')
-                        ->whereNull('cancel_dismissed_at')
-                        ->whereHas('packlist', fn ($pq) => $pq->where('status', Packlist::STATUS_COMPLETED));
-                });
-        })->whereDoesntHave('shipmentOrders');
+        return Order::where('status', 'packed')
+            ->where('is_canceled', false)
+            ->whereDoesntHave('shipmentOrders');
     }
 
     private function readyToShipStage()
