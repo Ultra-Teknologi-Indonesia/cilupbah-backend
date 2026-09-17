@@ -5,6 +5,7 @@ namespace Modules\Inventory\Services;
 use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Inventory\Repositories\MonitorStockRepository;
 use Modules\Product\Models\ProductChannelMapping;
+use Modules\Warehouse\Models\Location;
 
 class MonitorStockService
 {
@@ -15,7 +16,7 @@ class MonitorStockService
     public function filtersFrom(array $input): array
     {
         return array_filter([
-            'search'      => $input['search'] ?? null,
+            'search' => $input['search'] ?? null,
             'category_id' => $input['category_id'] ?? null,
             'location_id' => $input['location_id'] ?? null,
         ], fn ($v) => $v !== null && $v !== '');
@@ -26,7 +27,11 @@ class MonitorStockService
 
         $mode = in_array($mode, ['habis', 'minus', 'dipesan'], true) ? $mode : 'habis';
 
-        return $this->repository->paginateMode($mode, $filters, $perPage);
+        return $this->repository->paginateMode(
+            $mode,
+            $this->applyDefaultSmallWarehouseForMinus($mode, $filters),
+            $perPage,
+        );
     }
 
     public function lowStock(array $filters, int $perPage = 20)
@@ -39,9 +44,33 @@ class MonitorStockService
         return $this->repository->paginateMode('on-order', $filters, $perPage);
     }
 
-    public function summary(array $filters): array
+    public function summary(array $filters, ?string $mode = null): array
     {
-        return $this->repository->summary($filters);
+        return $this->repository->summary(
+            $this->applyDefaultSmallWarehouseForMinus($mode, $filters),
+        );
+    }
+
+    /**
+     * The Minus monitor is an operational exception queue for the small
+     * warehouse. Keep its implicit scope identical for the list and badge;
+     * callers may still select another explicit operational location.
+     */
+    private function applyDefaultSmallWarehouseForMinus(?string $mode, array $filters): array
+    {
+        if ($mode !== 'minus' || ! empty($filters['location_id'])) {
+            return $filters;
+        }
+
+        $smallWarehouseId = Location::getOfficialSmallWarehouseId();
+
+        if (! $smallWarehouseId) {
+            return $filters;
+        }
+
+        $filters['location_id'] = $smallWarehouseId;
+
+        return $filters;
     }
 
     public function deadStock(array $filters, int $days = 90, int $perPage = 20)

@@ -46,8 +46,10 @@ class MonitorStockController extends Controller
     )]
     public function summary(Request $request): JsonResponse
     {
+        $mode = (string) $request->query('mode', '');
+
         return $this->successResponse(
-            $this->service->summary($this->filters($request)),
+            $this->service->summary($this->filters($request), $mode),
             'Ringkasan monitor stok berhasil diambil.'
         );
     }

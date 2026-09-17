@@ -4,10 +4,12 @@ namespace Modules\Inventory\Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Repositories\MonitorStockRepository;
+use Modules\Inventory\Services\MonitorStockService;
 use Modules\Inventory\Support\StockSummary;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
@@ -244,5 +246,44 @@ class MonitorSummaryEquivalenceTest extends TestCase
 
         $this->assertSame(1, $repository->countMode('minus', []));
         $this->assertSame(1, $repository->summary([])['minus']);
+    }
+
+    public function test_minus_monitor_defaults_to_the_small_warehouse_for_list_and_summary(): void
+    {
+        $smallWarehouse = Location::query()
+            ->where('is_small_warehouse', true)
+            ->where('is_warehouse', true)
+            ->where('is_active', true)
+            ->first();
+
+        if (! $smallWarehouse) {
+            $smallWarehouse = Location::create([
+                'location_code' => 'WH-TEST-SMALL',
+                'location_name' => 'Gudang Kecil Test',
+                'location_type' => 'warehouse',
+                'is_warehouse' => true,
+                'is_small_warehouse' => true,
+                'is_active' => true,
+            ]);
+        }
+
+        $smallWarehouseId = Location::getOfficialSmallWarehouseId();
+
+        $this->assertSame($smallWarehouse->id, $smallWarehouseId);
+
+        $repository = \Mockery::mock(MonitorStockRepository::class);
+        $repository->shouldReceive('paginateMode')
+            ->once()
+            ->with('minus', ['location_id' => $smallWarehouseId], 20)
+            ->andReturn(new LengthAwarePaginator([], 0, 20));
+        $repository->shouldReceive('summary')
+            ->once()
+            ->with(['location_id' => $smallWarehouseId])
+            ->andReturn([]);
+
+        $service = new MonitorStockService($repository);
+
+        $service->outOfStock('minus', [], 20);
+        $service->summary([], 'minus');
     }
 }
