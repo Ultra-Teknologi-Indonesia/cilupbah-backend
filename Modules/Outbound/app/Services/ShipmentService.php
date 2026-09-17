@@ -378,7 +378,7 @@ class ShipmentService
                     return false;
                 }
 
-                $orderCourierCode = $this->courierMapper->resolveCode((string) $order->shipping_provider);
+                $orderCourierCode = $this->courierMapper->resolveOrderCourierCode($order);
 
                 return $orderCourierCode !== '' && $orderCourierCode !== $shipmentCourierCode;
             });
@@ -670,7 +670,7 @@ class ShipmentService
 
             if ($shipment->courier_name && $order->shipping_provider) {
                 $shipmentCode = $this->courierMapper->resolveCode($shipment->courier_name);
-                $orderCode = $this->courierMapper->resolveCode($order->shipping_provider);
+                $orderCode = $this->courierMapper->resolveOrderCourierCode($order);
 
                 if ($shipmentCode !== '' && $orderCode !== '' && $shipmentCode !== $orderCode) {
                     throw new ScanRejectedException(
