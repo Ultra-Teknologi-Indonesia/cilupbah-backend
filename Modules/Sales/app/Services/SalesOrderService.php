@@ -26,6 +26,8 @@ use Modules\Channel\Services\TikTokClient;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Channel\Support\ChannelOrderPullGuard;
 use Modules\Inventory\Jobs\AutoDetectStockReplenishmentJob;
+use Modules\Inventory\Models\InventoryMovement;
+use Modules\Inventory\Support\InventoryMovementSourceMap;
 use Modules\Notification\Services\NotificationDispatcher;
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\Picklist;
@@ -2888,7 +2890,10 @@ class SalesOrderService
         }
 
         if ($finalStatus === 'cancelled') {
-            return $previousStatus !== 'cancelled';
+            // Cancellation webhooks are also the recovery trigger for an
+            // earlier cancellation that completed without its physical
+            // reversal. The stock path below is idempotent.
+            return true;
         }
 
         if ($previousStatus === 'cancelled') {
@@ -3234,9 +3239,87 @@ class SalesOrderService
             $restored = $this->restoreStockToOriginBins($order);
         }
 
+        if (! $restored) {
+            $restored = $this->restorePostedPhysicalMovementsForCancellation($order);
+        }
+
         $released = $this->stockService->releaseReservationByTransaction($order->salesorder_no);
 
         return $restored || $released > 0;
+    }
+
+    private function restorePostedPhysicalMovementsForCancellation(SalesOrder $order): bool
+    {
+        $invoiceNumbers = DB::table('sales_invoices')
+            ->where('order_id', $order->id)
+            ->pluck('invoice_number')
+            ->filter()
+            ->map(static fn ($number): string => (string) $number)
+            ->values()
+            ->all();
+
+        if ($invoiceNumbers === []) {
+            return false;
+        }
+
+        $movements = InventoryMovement::query()
+            ->whereIn('transaction_number', $invoiceNumbers)
+            ->whereIn('source', InventoryMovementSourceMap::INVOICE_SOURCES)
+            ->where('qty', '<', 0)
+            ->lockForUpdate()
+            ->get();
+
+        if ($movements->isEmpty()) {
+            return false;
+        }
+
+        $skuByItem = $order->items
+            ->pluck('sku', 'item_id')
+            ->map(static fn ($sku): string => (string) $sku)
+            ->all();
+        $restored = false;
+
+        foreach ($movements as $movement) {
+            $movementKey = (string) $movement->id;
+
+            $restoreRows = InventoryMovement::query()
+                ->where('source', 'ORDER_RESTORE_CANCEL')
+                ->where('item_id', $movement->item_id)
+                ->where('location_id', $movement->location_id)
+                ->when(
+                    $movement->bin_id === null,
+                    static fn ($query) => $query->whereNull('bin_id'),
+                    fn ($query) => $query->where('bin_id', $movement->bin_id),
+                )
+                ->where('qty', '>', 0)
+                ->get(['qty', 'transaction_number', 'reference_number']);
+
+            $restoredQty = $restoreRows
+                ->filter(static fn ($row): bool => (string) $row->transaction_number === $order->salesorder_no
+                    || (string) $row->reference_number === $movementKey)
+                ->sum(static fn ($row): int => (int) $row->qty);
+            $remainingQty = max(0, abs((int) $movement->qty) - $restoredQty);
+
+            if ($remainingQty === 0) {
+                continue;
+            }
+
+            $this->stockService->restoreToBin(
+                $skuByItem[$movement->item_id] ?? "item:{$movement->item_id}",
+                (string) $movement->item_id,
+                (string) $movement->location_id,
+                $movement->bin_id,
+                $remainingQty,
+                $order->salesorder_no.'-CANCEL-'.$movementKey,
+                'ORDER_RESTORE_CANCEL',
+                'system:channel-cancel',
+                $movementKey,
+            );
+
+            $restored = true;
+        }
+
+        return $restored;
     }
 
     private function restoreDirectCompletionAllocations(SalesOrder $order): bool

@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Modules\Inbound\Models\Inbound;
+use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Support\StockSummary;
 use Modules\Sales\Exceptions\InvalidReturnStateException;
 use Modules\Sales\Jobs\SyncStockJob;
@@ -290,6 +291,85 @@ class ChannelStockReconcileTest extends TestCase
         $this->assertSame(2, $this->totalOnOrder());
         $this->assertSame(1, $this->movements('ORDER_RESERVE'));
         $this->assertSame(0, $this->movements('ORDER_RELEASE'));
+    }
+
+    public function test_channel_cancellation_restores_posted_invoice_stock_when_picklist_rows_are_missing(): void
+    {
+        $orderNo = 'LZ-RC-INVOICE-CANCEL';
+
+        $this->service->upsertFromChannel($this->orderData($orderNo, 'AWAITING_SHIPMENT'));
+
+        $order = SalesOrder::query()
+            ->where('salesorder_no', $orderNo)
+            ->sole();
+        $invoiceNumber = 'INV-RECON-CANCEL-1';
+
+        DB::table('sales_invoices')->insert([
+            'id' => Str::uuid()->toString(),
+            'invoice_number' => $invoiceNumber,
+            'order_id' => $order->id,
+            'customer_name' => 'Buyer Reconcile',
+            'location_id' => $this->locationId,
+            'status' => 'OPEN',
+            'invoice_date' => now()->toDateString(),
+            'due_date' => now()->addDays(30)->toDateString(),
+            'total_amount' => 10000,
+            'paid_amount' => 0,
+            'created_by' => 'system',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('inventories')
+            ->where('item_id', $this->variantId)
+            ->where('location_id', $this->locationId)
+            ->where('bin_id', $this->binId)
+            ->update([
+                'on_hand' => 9,
+                'available' => 9,
+                'updated_at' => now(),
+            ]);
+
+        $invoiceMovement = InventoryMovement::create([
+            'item_id' => $this->variantId,
+            'location_id' => $this->locationId,
+            'bin_id' => $this->binId,
+            'transaction_number' => $invoiceNumber,
+            'reference_number' => $order->channel_order_no,
+            'source' => 'INVOICE',
+            'qty' => -1,
+            'balance' => 9,
+            'transaction_date' => now(),
+            'created_by' => 'system',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->service->upsertFromChannel($this->orderData($orderNo, 'CANCELLED'));
+
+        $this->assertSame(10, $this->inventory()->on_hand);
+        $this->assertSame(0, $this->totalOnOrder());
+        $this->assertDatabaseHas('inventory_movements', [
+            'source' => 'ORDER_RESTORE_CANCEL',
+            'reference_number' => (string) $invoiceMovement->id,
+            'transaction_number' => $orderNo.'-CANCEL-'.$invoiceMovement->id,
+            'qty' => 1,
+            'bin_id' => $this->binId,
+        ]);
+
+        $movementCount = DB::table('inventory_movements')
+            ->where('source', 'ORDER_RESTORE_CANCEL')
+            ->count();
+
+        $this->service->upsertFromChannel($this->orderData($orderNo, 'CANCELLED'));
+
+        $this->assertSame(
+            $movementCount,
+            DB::table('inventory_movements')
+                ->where('source', 'ORDER_RESTORE_CANCEL')
+                ->count(),
+            'Webhook pembatalan berulang tidak boleh memulihkan stok dua kali',
+        );
     }
 
     public function test_channel_cancellation_after_shipped_is_returned_without_restoring_physical_stock(): void
