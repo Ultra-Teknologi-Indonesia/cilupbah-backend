@@ -113,7 +113,96 @@ final class EventStreamController extends Controller
         $streamKey = $this->publisher->streamKey($userId);
         $lastEventId = $data['last_event_id'] ?? null;
 
-        $response = new StreamedResponse(function () use ($streamKey, $topics, $lastEventId, $lease): void {
+        $terminalEvents = [];
+        $activeTopics = $topics;
+
+        if ($exportIds !== []) {
+            $terminalExports = ExportJob::query()
+                ->whereIn('id', $exportIds)
+                ->whereIn('status', [
+                    ExportJob::STATUS_READY,
+                    ExportJob::STATUS_FAILED,
+                ])
+                ->get([
+                    'id',
+                    'type',
+                    'status',
+                    'file_name',
+                    'file_path',
+                    'file_purged_at',
+                    'finished_at',
+                    'error',
+                ]);
+
+            foreach ($terminalExports as $export) {
+                $topic = 'export:'.$export->id;
+                $terminalEvents[] = [
+                    'event' => 'export.progress',
+                    'data' => [
+                        'export_id' => (string) $export->id,
+                        'type' => $export->type,
+                        'status' => $export->status,
+                        'file_name' => $export->file_name,
+                        'file_available' => $export->file_path !== null
+                            && $export->file_purged_at === null,
+                        'error' => $export->status === ExportJob::STATUS_FAILED
+                            ? $export->error
+                            : null,
+                        'finished_at' => $export->finished_at?->toIso8601String(),
+                    ],
+                ];
+                $activeTopics = array_values(array_diff($activeTopics, [$topic]));
+            }
+        }
+
+        if ($batchIds !== []) {
+            $terminalBatches = BulkShippingLabelBatch::query()
+                ->whereIn('id', $batchIds)
+                ->whereIn('status', [
+                    BulkShippingLabelBatch::STATUS_READY,
+                    BulkShippingLabelBatch::STATUS_FAILED,
+                ])
+                ->get([
+                    'id',
+                    'status',
+                    'total_count',
+                    'done_count',
+                    'failed_count',
+                    'skipped_count',
+                    'merged_pdf_path',
+                    'print_pdf_path',
+                    'file_purged_at',
+                    'finished_at',
+                ]);
+
+            foreach ($terminalBatches as $batch) {
+                $topic = 'bulk-label:'.$batch->id;
+                $terminalEvents[] = [
+                    'event' => 'bulk-label.progress',
+                    'data' => [
+                        'batch_id' => (string) $batch->id,
+                        'status' => $batch->status,
+                        'total' => (int) $batch->total_count,
+                        'done' => (int) $batch->done_count,
+                        'failed' => (int) $batch->failed_count,
+                        'skipped' => (int) $batch->skipped_count,
+                        'file_available' => $batch->file_purged_at === null
+                            && ($batch->merged_pdf_path !== null
+                                || $batch->print_pdf_path !== null),
+                        'finished_at' => $batch->finished_at?->toIso8601String(),
+                    ],
+                ];
+                $activeTopics = array_values(array_diff($activeTopics, [$topic]));
+            }
+        }
+
+        $response = new StreamedResponse(function () use (
+            $streamKey,
+            $activeTopics,
+            $terminalEvents,
+            $lastEventId,
+            $lease,
+        ): void {
             try {
             @ini_set('output_buffering', 'off');
             @ini_set('zlib.output_compression', '0');
@@ -130,6 +219,14 @@ final class EventStreamController extends Controller
             $this->writeEvent('connected', [
                 'server_time' => now()->toIso8601String(),
             ]);
+
+            foreach ($terminalEvents as $terminalEvent) {
+                $this->writeEvent($terminalEvent['event'], $terminalEvent['data']);
+            }
+
+            if ($activeTopics === []) {
+                return;
+            }
 
             while (! connection_aborted() && microtime(true) < $deadline) {
                 try {
@@ -150,7 +247,7 @@ final class EventStreamController extends Controller
                 $published = false;
                 foreach ($this->normaliseEntries($entries, $streamKey) as $entry) {
                     $cursor = $entry['id'];
-                    if (! in_array($entry['topic'], $topics, true)) {
+                    if (! in_array($entry['topic'], $activeTopics, true)) {
                         continue;
                     }
 
@@ -200,11 +297,6 @@ final class EventStreamController extends Controller
         flush();
     }
 
-    /**
-     * Normalise phpredis XREAD output into a stable internal representation.
-     *
-     * @return list<array{id: string, topic: string, event_type: string, payload: string}>
-     */
     private function normaliseEntries(mixed $entries, string $streamKey): array
     {
         $streamEntries = is_array($entries) ? ($entries[$streamKey] ?? []) : [];
