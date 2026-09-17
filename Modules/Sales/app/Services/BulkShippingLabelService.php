@@ -150,9 +150,7 @@ class BulkShippingLabelService
 
     public function queueBatch(BulkShippingLabelBatch $batch): void
     {
-        // A batch that never started cannot legitimately have an item in a
-        // processing state. Older versions copied that state from another
-        // batch and then skipped dispatching this batch entirely.
+
         if ($batch->started_at === null) {
             $batch->items()
                 ->whereIn('status', [
@@ -179,13 +177,6 @@ class BulkShippingLabelService
         ProcessBulkShippingLabelJob::dispatch($batch->id);
     }
 
-    /**
-     * Requeue transient items from a batch that never started.
-     *
-     * Such items can only be left in a processing state by the old
-     * cross-batch state inheritance. A real running batch always receives
-     * started_at before its items are dispatched.
-     */
     public function requeueOrphanedBatch(BulkShippingLabelBatch $batch): int
     {
         if ($batch->status !== BulkShippingLabelBatch::STATUS_PROCESSING

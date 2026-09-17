@@ -1,0 +1,11 @@
+{
+    "name": "Realtime",
+    "alias": "realtime",
+    "description": "Authenticated server-sent events for asynchronous progress.",
+    "keywords": ["sse", "realtime"],
+    "priority": 0,
+    "providers": [
+        "Modules\\Realtime\\Providers\\RealtimeServiceProvider"
+    ],
+    "files": []
+}

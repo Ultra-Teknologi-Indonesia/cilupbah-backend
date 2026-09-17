@@ -18,6 +18,7 @@ use Modules\Inventory\Http\Requests\BulkPdfTransferRequest;
 use Modules\Inventory\Http\Requests\CancelTransferRequest;
 use Modules\Inventory\Http\Requests\CreateTransferDraftRequest;
 use Modules\Inventory\Http\Requests\MarkTransferPrintedRequest;
+use Modules\Inventory\Http\Requests\PrepareBulkTransferPrintRequest;
 use Modules\Inventory\Http\Requests\PutawayStockRequest;
 use Modules\Inventory\Http\Requests\ReceiveBinTransferRequest;
 use Modules\Inventory\Http\Requests\ReverseBinTransferItemRequest;
@@ -219,6 +220,14 @@ class InventoryTransactionController extends Controller
                 'Aksi tidak dapat diproses',
             );
         }
+    }
+
+    public function prepareBulkForPrint(PrepareBulkTransferPrintRequest $request): JsonResponse
+    {
+        $data = $request->validated();
+        $result = $this->inventoryService->prepareBulkForPrint($data['ids'], $data['shipped_by']);
+
+        return $this->successResponse($result, 'Transfer disiapkan untuk cetak secara massal.');
     }
 
     #[OA\Post(

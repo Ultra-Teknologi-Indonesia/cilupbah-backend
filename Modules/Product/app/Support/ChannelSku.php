@@ -5,9 +5,6 @@ namespace Modules\Product\Support;
 class ChannelSku
 {
 
-    /**
-     * Internal bundle variants are implementation details, never seller SKUs.
-     */
     public static function isTechnicalBundleSku($value): bool
     {
         $sku = trim((string) ($value ?? ''));

@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Tests\Feature;
 
+use App\Exceptions\UserFacingException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -107,8 +108,84 @@ class BundleStockCascadeTest extends TestCase
         $this->assertDatabaseHas('inventories', ['item_id' => $a->id, 'on_order' =>10]);
         $this->assertDatabaseHas('inventories', ['item_id' => $b->id, 'on_order' =>15]);
 
+        $this->assertDatabaseHas('inventory_movements', [
+            'item_id' => $a->id,
+            'location_id' => $this->locationId,
+            'transaction_number' => 'SO-1',
+            'source' => 'ORDER_RESERVE',
+            'qty' => 10,
+            'balance' => 10,
+            'bin_id' => null,
+        ]);
+        $this->assertDatabaseHas('inventory_movements', [
+            'item_id' => $b->id,
+            'location_id' => $this->locationId,
+            'transaction_number' => 'SO-1',
+            'source' => 'ORDER_RESERVE',
+            'qty' => 15,
+            'balance' => 15,
+            'bin_id' => null,
+        ]);
+
         $this->assertDatabaseMissing('inventories', ['item_id' => $bundleVar->id]);
         $this->assertDatabaseMissing('inventory_movements', ['item_id' => $bundleVar->id]);
+    }
+
+    public function test_restore_to_bin_for_bundle_updates_components_not_technical_variant(): void
+    {
+        [$a, $b, $bundleVar] = $this->makeBundle(10, 10);
+        $binId = DB::table('inventories')
+            ->where('item_id', $a->id)
+            ->where('location_id', $this->locationId)
+            ->value('bin_id');
+
+        $this->stock()->restoreToBin(
+            'BUNDLE-1',
+            $bundleVar->id,
+            $this->locationId,
+            $binId,
+            2,
+            'SO-RESTORE',
+            'ORDER_RESTORE_CANCEL',
+        );
+
+        $this->assertDatabaseHas('inventories', ['item_id' => $a->id, 'on_hand' => 14]);
+        $this->assertDatabaseHas('inventories', ['item_id' => $b->id, 'on_hand' => 16]);
+        $this->assertDatabaseMissing('inventories', ['item_id' => $bundleVar->id]);
+        $this->assertDatabaseHas('inventory_movements', [
+            'item_id' => $a->id,
+            'transaction_number' => 'SO-RESTORE',
+            'qty' => 4,
+        ]);
+        $this->assertDatabaseHas('inventory_movements', [
+            'item_id' => $b->id,
+            'transaction_number' => 'SO-RESTORE',
+            'qty' => 6,
+        ]);
+    }
+
+    public function test_bundle_without_components_is_rejected_without_stock_mutation(): void
+    {
+        $bundleVar = $this->variant('BUNDLE-INVALID', true);
+
+        $this->expectException(UserFacingException::class);
+        $this->expectExceptionMessage('belum memiliki komponen');
+
+        try {
+            $this->stock()->reserve(
+                'BUNDLE-INVALID',
+                $bundleVar->id,
+                $this->locationId,
+                1,
+                'SO-INVALID-BUNDLE',
+            );
+        } finally {
+            $this->assertDatabaseMissing('inventories', ['item_id' => $bundleVar->id]);
+            $this->assertDatabaseMissing('inventory_movements', [
+                'item_id' => $bundleVar->id,
+                'transaction_number' => 'SO-INVALID-BUNDLE',
+            ]);
+        }
     }
 
     public function test_cancel_restores_component_reservation(): void

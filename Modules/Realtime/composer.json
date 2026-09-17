@@ -1,0 +1,14 @@
+{
+    "name": "nwidart/realtime",
+    "description": "Realtime SSE module",
+    "autoload": {
+        "psr-4": {
+            "Modules\\Realtime\\": "app/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Modules\\Realtime\\Tests\\": "tests/"
+        }
+    }
+}

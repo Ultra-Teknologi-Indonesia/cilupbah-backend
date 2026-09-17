@@ -97,6 +97,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::get('shipments/{id}/tracking-events', [ShipmentController::class, 'trackingEvents'])->name('outbound.shipments.tracking-events')->middleware('role_or_permission:owner|view-pengiriman');
     Route::get('shipments/{id}', [ShipmentController::class, 'show'])->name('outbound.shipments.show')->middleware('role_or_permission:owner|view-pengiriman');
     Route::get('shipments/{id}/orders', [ShipmentController::class, 'orders'])->name('outbound.shipments.orders')->middleware('role_or_permission:owner|view-pengiriman');
+    Route::post('shipments/bulk-orders', [ShipmentController::class, 'bulkOrders'])->name('outbound.shipments.bulk-orders')->middleware('role_or_permission:owner|view-pengiriman');
     Route::post('shipments/{id}/scan-order', [ShipmentController::class, 'scanOrder'])->name('outbound.shipments.scan-order')->middleware('role_or_permission:owner|edit-pengiriman');
     Route::post('shipments/{id}/add-orders', [ShipmentController::class, 'addOrders'])->name('outbound.shipments.add-orders')->middleware('role_or_permission:owner|edit-pengiriman');
     Route::post('shipments/{id}/remove-orders', [ShipmentController::class, 'removeOrders'])->name('outbound.shipments.remove-orders')->middleware('role_or_permission:owner|edit-pengiriman');

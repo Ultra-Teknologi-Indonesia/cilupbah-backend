@@ -72,6 +72,25 @@ class ShipmentService
         return $this->shipmentRepository->getOrdersPaginated($id, $limit);
     }
 
+    public function getOrdersForBulkLabel(array $shipmentIds): array
+    {
+        $query = DB::table('shipment_orders as so')
+            ->join('sales_orders as o', 'o.id', '=', 'so.order_id')
+            ->whereIn('so.shipment_id', array_values(array_unique($shipmentIds)))
+            ->select(['so.shipment_id', 'o.id as order_id', 'o.source'])
+            ->distinct();
+
+        WarehouseAccess::apply($query, 'o.location_id');
+
+        return $query->get()
+            ->map(fn (object $row): array => [
+                'shipment_id' => $row->shipment_id,
+                'order_id' => $row->order_id,
+                'source' => $row->source,
+            ])
+            ->all();
+    }
+
     public function getForBulkManifestPdf(array $orderIds)
     {
         return $this->shipmentRepository->getForBulkManifestPdf($orderIds);

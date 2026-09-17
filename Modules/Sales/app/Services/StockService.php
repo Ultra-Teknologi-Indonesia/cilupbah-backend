@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Services;
 
+use App\Exceptions\UserFacingException;
 use App\Traits\StockLockable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -28,7 +29,7 @@ class StockService
 
     private function cascadeBundle(string $itemId, int $qty, callable $operation): bool
     {
-        $components = $this->productRepository->bundleComponentsForVariant($itemId);
+        $components = $this->bundleComponentsOrFail($itemId);
 
         if ($components === null) {
             return false;
@@ -144,6 +145,27 @@ class StockService
             $this->inboundBinPolicy->assertConsumable($locationId, $binId, 'pengembalian stok');
         }
 
+        $components = $this->bundleComponentsOrFail($itemId);
+        if ($components !== null) {
+            DB::transaction(function () use ($components, $locationId, $binId, $qty, $transactionNumber, $source, $createdBy, $referenceNumber): void {
+                foreach ($components as $component) {
+                    $this->restoreToBin(
+                        (string) ($component['sku'] ?? "item:{$component['variant_id']}"),
+                        (string) $component['variant_id'],
+                        $locationId,
+                        $binId,
+                        $qty * (int) $component['qty'],
+                        $transactionNumber,
+                        $source,
+                        $createdBy,
+                        $referenceNumber,
+                    );
+                }
+            });
+
+            return;
+        }
+
         if ($binId === null) {
             $this->restore($sku, $itemId, $locationId, $qty, $transactionNumber);
 
@@ -170,6 +192,36 @@ class StockService
                 ]);
             });
         });
+    }
+
+    private function bundleComponentsOrFail(string $itemId): ?array
+    {
+        $components = $this->productRepository->bundleComponentsForVariant($itemId);
+
+        if ($components === null) {
+            return null;
+        }
+
+        if ($components === []) {
+            throw new UserFacingException(
+                'Komposisi bundle tidak valid',
+                "Bundle item {$itemId} belum memiliki komponen. Stok tidak diubah.",
+            );
+        }
+
+        foreach ($components as $component) {
+            if (empty($component['variant_id'])
+                || trim((string) ($component['sku'] ?? '')) === ''
+                || (int) ($component['qty'] ?? 0) <= 0
+            ) {
+                throw new UserFacingException(
+                    'Komposisi bundle tidak valid',
+                    "Bundle item {$itemId} belum memiliki komponen aktif dengan SKU dan jumlah yang valid. Stok tidak diubah.",
+                );
+            }
+        }
+
+        return $components;
     }
 
     public function consumeFromBin(
@@ -530,7 +582,7 @@ class StockService
 
     public function recordExistingReservation(string $sku, string $itemId, string $locationId, int $qty, string $transactionNumber): int
     {
-        $components = $this->productRepository->bundleComponentsForVariant($itemId);
+        $components = $this->bundleComponentsOrFail($itemId);
 
         if ($components !== null) {
             $created = 0;

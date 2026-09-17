@@ -1396,13 +1396,6 @@ class SalesOrderRepository
             ->all();
     }
 
-    /**
-     * Resolve a channel order item through its exact listing mapping first.
-     * Bundle orders retain the seller SKU on the order; only item_id may point
-     * to the internal technical bundle variant for component stock cascading.
-     *
-     * @return array{by_item: array<string, string>, by_sku: array<string, string>}
-     */
     protected function resolveVariantIdsForOrder(string $orderId, array $items): array
     {
         $bySku = $this->resolveVariantIdsBySku($items);

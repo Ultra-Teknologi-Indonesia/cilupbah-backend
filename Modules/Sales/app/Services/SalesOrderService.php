@@ -2073,10 +2073,6 @@ class SalesOrderService
             return $this->freshOrderWithItems($order);
         }
 
-        // A bundle's seller SKU is mapped to an internal technical variant
-        // (`__bundle__...`). Resolve the listing mapping before attempting a
-        // remote product pull; otherwise a valid bundle can be downloaded a
-        // second time and incorrectly end up in Gagal Download.
         $mappedVariantId = $variantId ?? $this->orderRepository->variantIdForChannelOrderItem(
             (string) $order->id,
             $item->channel_product_id,
@@ -2255,10 +2251,6 @@ class SalesOrderService
                 ->where('shop_id', $shopId)
                 ->first();
 
-            // `channel_shop_id` on channel orders is normally the external
-            // shop_id. Only query the UUID primary key when the value really
-            // is a UUID; an OR against a UUID column would abort PostgreSQL
-            // transactions for normal marketplace shop IDs.
             if (! $channelShop && Str::isUuid((string) $shopId)) {
                 $channelShop = DB::table('channel_shops')
                     ->where('id', $shopId)
@@ -2287,8 +2279,6 @@ class SalesOrderService
                     ->first()
                 : null;
 
-            // Never attach a repaired order item to another listing of the
-            // same master product. A missing listing mapping gets its own row.
             if (! $pcm && ! $item->channel_product_id) {
                 $pcm = (clone $pcmQuery)
                     ->whereNull('external_product_id')
@@ -2675,14 +2665,6 @@ class SalesOrderService
         }
     }
 
-    /**
-     * Ensure a terminal channel order cannot retain an outstanding reservation.
-     *
-     * This runs after the order transaction commits so a stale webhook, deferred
-     * stock transition, or a repeated terminal webhook cannot leave on_order
-     * behind. StockService protects the item/location pair and makes the release
-     * idempotent; physical on_hand is intentionally not changed here.
-     */
     private function reconcileTerminalReservationAfterChannelSync(SalesOrder $order): int
     {
         if ($order->is_shadow
@@ -3019,9 +3001,7 @@ class SalesOrderService
         }
 
         if ($finalStatus === 'cancelled') {
-            // Cancellation webhooks are also the recovery trigger for an
-            // earlier cancellation that completed without its physical
-            // reversal. The stock path below is idempotent.
+
             return true;
         }
 

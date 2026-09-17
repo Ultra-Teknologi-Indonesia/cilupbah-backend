@@ -199,14 +199,6 @@ class ProductRepository
         return null;
     }
 
-    /**
-     * Resolve bundle order lines in bulk so outbound creation does not issue
-     * three additional queries for every order item.
-     *
-     * A present key with an empty array has the same meaning as
-     * bundleComponentsForVariant(): the variant belongs to a bundle product,
-     * but that bundle has no components.
-     */
     public function bundleComponentsForVariants(array $variantIds): array
     {
         $variantIds = array_values(array_unique(array_filter(array_map(

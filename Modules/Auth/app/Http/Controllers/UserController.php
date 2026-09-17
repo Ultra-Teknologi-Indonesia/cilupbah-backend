@@ -336,6 +336,19 @@ class UserController extends Controller
         return $this->successResponse(null, 'Pengguna berhasil dihapus.');
     }
 
+    public function bulkDestroy(Request $request): JsonResponse
+    {
+        $ids = $request->validate([
+            'user_ids' => ['required', 'array', 'min:1', 'max:500'],
+            'user_ids.*' => ['required', 'bail', 'uuid', 'distinct'],
+        ])['user_ids'];
+
+        return $this->successResponse(
+            $this->userService->bulkDeleteUsers($ids),
+            'Penghapusan pengguna diproses secara massal.',
+        );
+    }
+
     #[OA\Get(
         path: '/api/v1/users/{id}/histories',
         summary: 'Get user history',
