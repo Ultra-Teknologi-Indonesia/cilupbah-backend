@@ -156,7 +156,7 @@ class EmptyStockGuardTest extends TestCase
         ];
     }
 
-    public function test_move_to_ready_skips_empty_stock_and_keeps_it_parked(): void
+    public function test_move_to_ready_allows_empty_stock_for_partial_processing(): void
     {
         $orderId = $this->createOrder([$this->item($this->variant->id, 5)]);
 
@@ -167,11 +167,63 @@ class EmptyStockGuardTest extends TestCase
         ]);
 
         $response->assertOk();
-        $this->assertSame(0, $response->json('data.moved'));
-        $this->assertCount(1, $response->json('data.skipped'));
-        $this->assertSame($orderId, $response->json('data.skipped.0.id'));
+        $this->assertSame(1, $response->json('data.moved'));
+        $this->assertCount(0, $response->json('data.skipped'));
 
-        $this->assertNull(SalesOrder::find($orderId)->handed_to_warehouse_at);
+        $this->assertNotNull(SalesOrder::find($orderId)->handed_to_warehouse_at);
+    }
+
+    public function test_positive_available_is_not_flagged_empty_when_order_quantity_is_larger(): void
+    {
+        $orderId = $this->createOrder([$this->item($this->variant->id, 5)]);
+
+        Inventory::where('item_id', $this->variant->id)
+            ->where('location_id', $this->location->id)
+            ->update(['on_hand' => 7, 'available' => 2]);
+
+        $this->assertFalse(SalesOrder::whereKey($orderId)->hasStockShortfall()->exists());
+        $orderNo = SalesOrder::findOrFail($orderId)->salesorder_no;
+
+        $emptyResponse = $this->getJson('/api/v1/sales?tab=empty-stock&q=' . $orderNo);
+        $this->assertNotContains($orderNo, array_column($emptyResponse->json('data'), 'salesorder_no'));
+
+        $readyResponse = $this->getJson('/api/v1/sales?tab=ready-to-process&q=' . $orderNo);
+        $this->assertContains($orderNo, array_column($readyResponse->json('data'), 'salesorder_no'));
+
+        $response = $this->postJson('/api/v1/sales/orders/move-to-ready', [
+            'order_ids' => [$orderId],
+        ]);
+
+        $response->assertOk();
+        $this->assertSame(1, $response->json('data.moved'));
+        $this->assertCount(0, $response->json('data.skipped'));
+    }
+
+    public function test_negative_available_remains_empty_but_can_move_to_ready_with_on_hand_remaining(): void
+    {
+        $orderId = $this->createOrder([$this->item($this->variant->id, 3)]);
+
+        Inventory::where('item_id', $this->variant->id)
+            ->where('location_id', $this->location->id)
+            ->update(['on_hand' => 2, 'available' => -1]);
+
+        $this->assertTrue(SalesOrder::whereKey($orderId)->hasStockShortfall()->exists());
+        $orderNo = SalesOrder::findOrFail($orderId)->salesorder_no;
+
+        $emptyResponse = $this->getJson('/api/v1/sales?tab=empty-stock&q=' . $orderNo);
+        $this->assertContains($orderNo, array_column($emptyResponse->json('data'), 'salesorder_no'));
+
+        $readyResponse = $this->getJson('/api/v1/sales?tab=ready-to-process&q=' . $orderNo);
+        $this->assertNotContains($orderNo, array_column($readyResponse->json('data'), 'salesorder_no'));
+
+        $response = $this->postJson('/api/v1/sales/orders/move-to-ready', [
+            'order_ids' => [$orderId],
+        ]);
+
+        $response->assertOk();
+        $this->assertSame(1, $response->json('data.moved'));
+        $this->assertCount(0, $response->json('data.skipped'));
+        $this->assertNotNull(SalesOrder::find($orderId)->handed_to_warehouse_at);
     }
 
     public function test_move_to_ready_processes_order_with_sufficient_stock(): void
@@ -314,8 +366,8 @@ class EmptyStockGuardTest extends TestCase
         ]);
 
         $response->assertOk();
-        $this->assertSame(0, $response->json('data.moved'));
-        $this->assertSame($orderId, $response->json('data.skipped.0.id'));
-        $this->assertSame('empty_stock', $response->json('data.skipped.0.reason'));
+        $this->assertSame(1, $response->json('data.moved'));
+        $this->assertCount(0, $response->json('data.skipped'));
+        $this->assertNotNull(SalesOrder::find($orderId)->handed_to_warehouse_at);
     }
 }
