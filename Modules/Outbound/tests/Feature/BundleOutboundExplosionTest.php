@@ -4,11 +4,14 @@ namespace Modules\Outbound\Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Outbound\Exceptions\OutboundValidationException;
 use Modules\Outbound\Models\PacklistItem;
+use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
+use Modules\Outbound\Services\OutboundFulfillmentService;
 use Modules\Outbound\Services\PacklistService;
 use Modules\Outbound\Services\PicklistService;
 use Modules\Product\Models\Product;
@@ -185,9 +188,70 @@ class BundleOutboundExplosionTest extends TestCase
 
             $this->fail('Order yang sama seharusnya ditolak pada picklist aktif.');
         } catch (OutboundValidationException $exception) {
-            $this->assertStringContainsString('Order sudah berada di picklist aktif', $exception->getMessage());
+            $this->assertStringContainsString('Order sudah terdaftar di picklist', $exception->getMessage());
         }
 
         $this->assertSame(1, DB::table('picklists')->count());
+    }
+
+    public function test_scan_path_cannot_put_one_order_in_a_second_picklist(): void
+    {
+        $single = $this->variant('SINGLE-SCAN-DUPLICATE');
+        $order = $this->makeOrder($single, 1, 'reserved');
+
+        $service = app(OutboundFulfillmentService::class);
+        $service->moveToReadyToPick($order->id, $this->locationId, $this->actorId);
+
+        try {
+            $service->moveToReadyToPick($order->id, $this->locationId, $this->actorId);
+            $this->fail('Order yang sama seharusnya ditolak pada jalur scan picklist.');
+        } catch (OutboundValidationException $exception) {
+            $this->assertStringContainsString('sudah terdaftar di picklist', $exception->getMessage());
+        }
+
+        $this->assertSame(1, DB::table('picklists')->count());
+        $this->assertSame(1, DB::table('picklist_items')->where('order_id', $order->id)->count());
+    }
+
+    public function test_database_rejects_direct_insert_of_order_into_second_picklist(): void
+    {
+        $single = $this->variant('SINGLE-DATABASE-DUPLICATE');
+        $order = $this->makeOrder($single, 1, 'reserved');
+        $first = app(PicklistService::class)->create([
+            'order_ids' => [$order->id],
+            'location_id' => $this->locationId,
+            'created_by' => $this->actorId,
+        ]);
+        $second = Picklist::create([
+            'picklist_no' => 'PICK-DATABASE-DUPLICATE',
+            'location_id' => $this->locationId,
+            'status' => Picklist::STATUS_DRAFT,
+            'created_by' => $this->actorId,
+        ]);
+        $orderItem = $order->items()->firstOrFail();
+
+        try {
+            DB::transaction(function () use ($second, $order, $orderItem, $single): void {
+                DB::table('picklist_items')->insert([
+                    'id' => Str::uuid()->toString(),
+                    'picklist_id' => $second->id,
+                    'order_id' => $order->id,
+                    'order_item_id' => $orderItem->id,
+                    'item_id' => $single->id,
+                    'sku' => $single->sku,
+                    'qty_ordered' => 1,
+                    'qty_picked' => 0,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            });
+
+            $this->fail('Database seharusnya menolak order pada picklist kedua.');
+        } catch (QueryException $exception) {
+            $this->assertSame('23505', $exception->errorInfo[0] ?? null);
+        }
+
+        $this->assertSame(1, DB::table('picklist_items')->where('order_id', $order->id)->count());
+        $this->assertSame($first->id, DB::table('picklist_items')->where('order_id', $order->id)->value('picklist_id'));
     }
 }

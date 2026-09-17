@@ -45,6 +45,7 @@ class OutboundFulfillmentService
         protected ShipmentRepository $shipmentRepository,
         protected LogisticsGateway $logisticsGateway,
         protected ChannelWarehousePolicy $channelWarehousePolicy,
+        protected PicklistOrderGuard $picklistOrderGuard,
     ) {}
 
     public function queueProcessOrdersExport(User $user, array $filters): ExportJob
@@ -639,34 +640,30 @@ SQL;
     {
         WarehouseAccess::assert($locationId);
 
-        $orderQuery = Order::whereKey($orderId);
-        WarehouseAccess::apply($orderQuery, 'location_id');
-        $order = $orderQuery->first();
+        return DB::transaction(function () use ($orderId, $locationId, $movedBy): Order {
+            $this->picklistOrderGuard->lockForCreation([$orderId]);
 
-        if (! $order) {
-            throw new \Exception('Order tidak ditemukan.');
-        }
+            $orderQuery = Order::whereKey($orderId)->lockForUpdate();
+            WarehouseAccess::apply($orderQuery, 'location_id');
+            $order = $orderQuery->first();
 
-        if ($order->status !== 'reserved') {
-            throw new \Exception("Order harus berstatus 'reserved' untuk dipindah ke ready-to-pick (saat ini: {$order->status}).");
-        }
+            if (! $order) {
+                throw new \Exception('Order tidak ditemukan.');
+            }
 
-        $this->channelWarehousePolicy->assertOrderAndTargetLocation(
-            $order->source,
-            $order->location_id,
-            $locationId,
-            'Pemindahan order ke ready-to-pick',
-        );
+            if ($order->status !== 'reserved') {
+                throw new \Exception("Order harus berstatus 'reserved' untuk dipindah ke ready-to-pick (saat ini: {$order->status}).");
+            }
 
-        $existing = PicklistItem::where('order_id', $orderId)
-            ->whereHas('picklist', fn ($q) => $q->whereNotIn('status', [Picklist::STATUS_CANCELLED, Picklist::STATUS_FAILED]))
-            ->exists();
+            $this->channelWarehousePolicy->assertOrderAndTargetLocation(
+                $order->source,
+                $order->location_id,
+                $locationId,
+                'Pemindahan order ke ready-to-pick',
+            );
 
-        if ($existing) {
-            throw new \Exception('Order sudah memiliki picklist aktif.');
-        }
+            $this->picklistOrderGuard->assertNotAssigned([$orderId]);
 
-        DB::transaction(function () use ($order, $locationId, $movedBy) {
             $picklist = Picklist::create([
                 'picklist_no' => $this->generatePicklistNo(),
                 'location_id' => $locationId,
@@ -685,9 +682,9 @@ SQL;
                     'qty_picked' => 0,
                 ]);
             }
-        });
 
-        return $order->fresh();
+            return $order->fresh();
+        });
     }
 
     public function moveToReadyToProcess(string $orderId): Order
