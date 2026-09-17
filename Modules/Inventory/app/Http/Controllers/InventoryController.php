@@ -224,7 +224,7 @@ class InventoryController extends Controller
     )]
     public function movements(MovementsRequest $request): JsonResponse
     {
-        $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
+        $limit = min(100, max(1, (int) ($request->query('per_page') ?? $request->query('limit') ?? 20)));
         $movements = $this->inventoryService->getHistoryPaginated($limit);
 
         ActorName::preload($movements->pluck('created_by'));
