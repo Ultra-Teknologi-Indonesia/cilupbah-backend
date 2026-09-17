@@ -2343,7 +2343,6 @@ class SalesOrderService
 
             $existing = $existingQuery->lockForUpdate()->first();
 
-            $wasNewOrder = $existing === null;
             $previousStatus = $existing?->status;
             $hasBuyerCancellationRequest = ! empty($orderData['cancel_requested_at'])
                 && empty($existing?->cancel_requested_at)
@@ -2447,37 +2446,6 @@ class SalesOrderService
                         'status' => $order->status,
                         'location_id' => $order->location_id,
                         'target_location_id' => $channelLocationId,
-                    ]);
-                }
-            }
-
-            if ($wasNewOrder && $order->source && ! empty($orderData['items']) && is_array($orderData['items'])) {
-                $downloaded = $this->orderRepository->channelDownloadedSkus(
-                    $orderData['items'],
-                    $order->channel_shop_id,
-                );
-                $undownloadedItemIds = $order->items
-                    ->filter(fn ($it) => $it->item_id && $it->sku && ! in_array($it->sku, $downloaded, true))
-                    ->pluck('id')
-                    ->all();
-
-                if (! empty($undownloadedItemIds)) {
-                    DB::table('sales_order_items')
-                        ->whereIn('id', $undownloadedItemIds)
-                        ->update(['item_id' => null, 'updated_at' => now()]);
-
-                    $order->load('items');
-
-                    Log::info('Channel order dikarantina ke Gagal Download: SKU ada di master tapi belum di-download dari channel', [
-                        'order_id' => $order->id,
-                        'salesorder_no' => $order->salesorder_no,
-                        'source' => $order->source,
-                        'channel_shop_id' => $order->channel_shop_id,
-                        'skus' => $order->items
-                            ->whereIn('id', $undownloadedItemIds)
-                            ->pluck('sku')
-                            ->values()
-                            ->all(),
                     ]);
                 }
             }

@@ -3,6 +3,7 @@
 namespace Modules\Sales\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Modules\Channel\Services\ChannelDownloadService;
@@ -360,32 +361,30 @@ class GagalDownloadFlowTest extends TestCase
         $this->assertStringStartsWith('__bundle__', DB::table('product_variants')->where('id', $item->item_id)->value('sku'));
     }
 
-    public function test_channel_order_with_master_only_sku_is_quarantined_to_failed_tab(): void
+    public function test_channel_order_with_master_only_sku_is_accepted_without_channel_download(): void
     {
-
-        $this->seedMasterOnlyVariant('SKU-IMPORT-ONLY');
+        $this->seedMasterOnlyVariant('SKU-IMPORT-ONLY', 1000);
 
         $orderId = $this->service->upsertFromChannel(
             $this->channelOrderData('GD-MASTER-ONLY', 'SKU-IMPORT-ONLY')
         );
 
-        $this->assertNotNull($orderId, 'order tetap tersimpan agar terlihat di Gagal Download');
+        $this->assertNotNull($orderId, 'order tetap tersimpan');
 
         $item = DB::table('sales_order_items')->where('order_id', $orderId)->first();
-        $this->assertNull($item->item_id, 'SKU belum di-download dari channel → tidak boleh ter-bind ke master');
+        $this->assertNotNull($item->item_id, 'SKU master yang valid harus langsung ter-bind');
 
         $order = DB::table('sales_orders')->where('id', $orderId)->first();
-        $this->assertSame('pending', $order->status, 'order dikarantina ke status pending (Gagal Download)');
+        $this->assertSame('reserved', $order->status, 'order ber-SKU master valid harus siap diproses');
 
         $counts = $this->repository->getTabCounts();
-        $this->assertSame(1, $counts['failed'], 'harus masuk tab Gagal Download');
-        $this->assertSame(0, $counts['all'], 'tidak boleh muncul di tab Semua');
-        $this->assertSame(0, $counts['ready-to-process'], 'tidak boleh masuk antrean Siap Proses');
+        $this->assertSame(0, $counts['failed'], 'tidak boleh masuk tab Gagal Download');
+        $this->assertSame(1, $counts['all'], 'harus muncul di tab Semua');
 
         $this->assertSame(
-            0,
+            1,
             DB::table('inventory_movements')->where('source', 'ORDER_RESERVE')->count(),
-            'stok tidak boleh ter-reserve untuk order Gagal Download'
+            'stok harus ter-reserve untuk order yang SKU master-nya valid'
         );
     }
 
@@ -718,7 +717,7 @@ class GagalDownloadFlowTest extends TestCase
         $this->assertSame('SKU-1', $res->json('data.0.salesorder_no'));
     }
 
-    public function test_download_order_item_creates_channel_mapping_for_future_orders(): void
+    public function test_master_only_sku_remains_resolvable_for_future_orders(): void
     {
         $variantId = $this->seedMasterOnlyVariant('SKU-FUTURE-OK');
         $shopId = $this->channelShopId();
@@ -729,16 +728,8 @@ class GagalDownloadFlowTest extends TestCase
 
         $this->assertNotNull($orderId1);
         $order1 = $this->freshOrder($orderId1);
-        $this->assertNull($order1->items->first()->item_id, 'order pertama masuk karantina Gagal Download');
-
-        $this->service->downloadOrderItem($order1, $order1->items->first()->id);
-
-        $order1Fresh = $this->freshOrder($orderId1);
-        $this->assertSame($variantId, $order1Fresh->items->first()->item_id, 'item order pertama terpetakan');
-        $this->assertDatabaseHas('product_variant_channel_mappings', [
-            'variant_id' => $variantId,
-            'channel_seller_sku' => 'SKU-FUTURE-OK',
-        ]);
+        $this->assertSame($variantId, $order1->items->first()->item_id, 'order pertama langsung terpetakan ke master');
+        $this->assertSame('reserved', $order1->status, 'order pertama langsung siap diproses');
 
         $secondPayload = $this->channelOrderData('GD-SECOND', 'SKU-FUTURE-OK');
         $secondPayload['channel_shop_id'] = $shopId;
@@ -748,5 +739,17 @@ class GagalDownloadFlowTest extends TestCase
         $order2 = $this->freshOrder($orderId2);
         $this->assertSame($variantId, $order2->items->first()->item_id, 'order kedua langsung terpetakan tanpa karantina');
         $this->assertSame('reserved', $order2->status, 'order kedua langsung siap proses');
+    }
+
+    public function test_reconcile_failed_downloads_repairs_resolvable_legacy_items_without_pull(): void
+    {
+        $variantId = $this->seedMasterOnlyVariant('SKU-RECONCILE', 1000);
+        $orderId = $this->seedLegacyUnmappedOrder('GD-RECONCILE', 'SKU-RECONCILE');
+
+        $this->assertSame(0, Artisan::call('sales:reconcile-failed-downloads'));
+        $this->assertNull(DB::table('sales_order_items')->where('order_id', $orderId)->value('item_id'));
+
+        $this->assertSame(0, Artisan::call('sales:reconcile-failed-downloads', ['--apply' => true]));
+        $this->assertSame($variantId, DB::table('sales_order_items')->where('order_id', $orderId)->value('item_id'));
     }
 }
