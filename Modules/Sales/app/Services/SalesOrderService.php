@@ -3290,26 +3290,16 @@ class SalesOrderService
 
     private function requiresPhysicalReturn(SalesOrder $order, ?string $previousStatus): bool
     {
+        // A bin allocation or an ORDER_COMPLETE_OUT movement only proves that
+        // stock was picked/committed inside the warehouse. For a cancellation
+        // before shipment, that stock must be restored immediately to its
+        // origin bin by releaseStockForStatus(). A physical sales return is
+        // required only after the parcel has left the warehouse.
         if ($order->pickup_done_time !== null) {
             return true;
         }
 
         if (in_array($previousStatus, ['shipped', 'completed', 'delivered'], true)) {
-            return true;
-        }
-
-        if (OrderBinAllocation::query()
-            ->where('order_id', $order->id)
-            ->whereNull('reversed_at')
-            ->exists()) {
-            return true;
-        }
-
-        if (DB::table('inventory_movements')
-            ->where('transaction_number', $order->salesorder_no)
-            ->where('source', 'ORDER_COMPLETE_OUT')
-            ->where('qty', '<', 0)
-            ->exists()) {
             return true;
         }
 

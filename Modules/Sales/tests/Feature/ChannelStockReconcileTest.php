@@ -372,6 +372,75 @@ class ChannelStockReconcileTest extends TestCase
         );
     }
 
+    public function test_pre_manifest_cancellation_restores_direct_pick_allocation_without_creating_return(): void
+    {
+        $orderNo = 'LZ-RC-PRE-MANIFEST-PICKED-1';
+
+        $this->service->upsertFromChannel($this->orderData($orderNo, 'AWAITING_SHIPMENT'));
+
+        $order = SalesOrder::query()
+            ->where('salesorder_no', $orderNo)
+            ->with('items')
+            ->sole();
+        $orderItem = $order->items->firstOrFail();
+
+        app(\Modules\Sales\Services\StockService::class)->consumeFromBin(
+            'SKU-RECON',
+            $this->variantId,
+            $this->locationId,
+            $this->binId,
+            2,
+            $orderNo,
+            'ORDER_COMPLETE_OUT',
+            'system:test',
+        );
+
+        DB::table('order_bin_allocations')->insert([
+            'id' => Str::uuid()->toString(),
+            'order_id' => $order->id,
+            'order_item_id' => $orderItem->id,
+            'item_id' => $this->variantId,
+            'location_id' => $this->locationId,
+            'bin_id' => $this->binId,
+            'qty' => 2,
+            'completed_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('sales_orders')->where('id', $order->id)->update([
+            'status' => 'packed',
+            'handed_to_warehouse_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->service->upsertFromChannel($this->orderData($orderNo, 'CANCELLED'));
+
+        $this->assertSame('cancelled', SalesOrder::query()->whereKey($order->id)->value('status'));
+        $this->assertSame(10, $this->inventory()->on_hand);
+        $this->assertSame(0, $this->inventory()->on_order);
+        $this->assertDatabaseMissing('sales_returns', [
+            'order_id' => $order->id,
+            'reason_category' => 'CANCEL_SHIPPED',
+        ]);
+        $this->assertDatabaseHas('inventory_movements', [
+            'transaction_number' => $orderNo,
+            'source' => 'ORDER_COMPLETE_REVERSAL',
+            'qty' => 2,
+            'bin_id' => $this->binId,
+        ]);
+        $this->assertNotNull(
+            DB::table('order_bin_allocations')
+                ->where('order_id', $order->id)
+                ->whereNotNull('reversed_at')
+                ->value('reversed_at'),
+        );
+
+        $reversalCount = $this->movements('ORDER_COMPLETE_REVERSAL');
+        $this->service->upsertFromChannel($this->orderData($orderNo, 'CANCELLED'));
+        $this->assertSame($reversalCount, $this->movements('ORDER_COMPLETE_REVERSAL'));
+    }
+
     public function test_channel_cancellation_after_shipped_is_returned_without_restoring_physical_stock(): void
     {
         $this->service->upsertFromChannel($this->orderData('LZ-RC-RETURN-1', 'AWAITING_COLLECTION'));

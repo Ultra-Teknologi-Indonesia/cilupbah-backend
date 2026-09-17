@@ -19,6 +19,7 @@ use Modules\Sales\Exports\ReturnChannelOnlineExport;
 use Modules\Sales\Exports\SalesReturnReportExport;
 use Modules\Sales\Jobs\AdminAlertJob;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Models\SalesOrderStatusHistory;
 use Modules\Sales\Models\SalesReturn;
 use Modules\Sales\Repositories\SalesReturnRepository;
 
@@ -319,6 +320,17 @@ class SalesReturnService
             }
         }
 
+        if (! $this->orderHasLeftWarehouse($order)) {
+            Log::info('Retur marketplace dilewati: order belum shipped dan paket masih di gudang.', [
+                'source' => $source,
+                'order_id' => $order->id,
+                'salesorder_no' => $order->salesorder_no,
+                'channel_return_id' => $channelReturnId,
+            ]);
+
+            return null;
+        }
+
         $locationId = $order->location_id ?? $this->settings->restockLocationId();
         if (! $locationId) {
             Log::warning('Retur marketplace dilewati: lokasi restock tidak dapat ditentukan.', [
@@ -368,6 +380,45 @@ class SalesReturnService
             'created_by' => $payload['created_by'] ?? 'system:'.$source.'-webhook',
             'items' => $items,
         ]);
+    }
+
+    private function orderHasLeftWarehouse(SalesOrder $order): bool
+    {
+        if ($order->pickup_done_time !== null) {
+            return true;
+        }
+
+        if (in_array(strtolower((string) $order->status), ['shipped', 'completed', 'delivered', 'returned'], true)) {
+            return true;
+        }
+
+        $shippedStatuses = [
+            'IN_TRANSIT',
+            'SHIPPED',
+            'TO_CONFIRM_RECEIVE',
+            'DELIVERED',
+            'COMPLETED',
+        ];
+
+        return SalesOrderStatusHistory::query()
+            ->where('salesorder_id', $order->id)
+            ->whereIn('action', ['SHIPPED', 'CHANNEL_STATUS'])
+            ->get(['action', 'metadata'])
+            ->contains(function (SalesOrderStatusHistory $history) use ($shippedStatuses): bool {
+                if ($history->action === 'SHIPPED') {
+                    return true;
+                }
+
+                $metadata = strtoupper((string) json_encode($history->metadata));
+
+                foreach ($shippedStatuses as $status) {
+                    if (str_contains($metadata, $status)) {
+                        return true;
+                    }
+                }
+
+                return false;
+            });
     }
 
     private function applyChannelStatus(SalesReturn $return, array $payload): SalesReturn

@@ -151,6 +151,27 @@ class SalesReturnFromChannelTest extends TestCase
         $this->assertSame(SalesReturn::REASON_CATEGORY_CANCEL_SHIPPED, $bound->reason_category);
     }
 
+    public function test_does_not_create_marketplace_return_before_order_has_left_warehouse(): void
+    {
+        [$orderId] = $this->seedOrder('tiktok', 'TT-PRE-MANIFEST-RETURN');
+
+        DB::table('sales_orders')->where('id', $orderId)->update([
+            'status' => 'cancelled',
+            'is_canceled' => true,
+        ]);
+
+        $return = app(SalesReturnService::class)->createFromChannel([
+            'source' => 'tiktok',
+            'channel_order_id' => 'TT-PRE-MANIFEST-RETURN',
+            'channel_return_id' => 'CANCEL-RETURN-1',
+            'channel_status' => 'CANCELLED',
+            'created_by' => 'system:tiktok-webhook',
+        ]);
+
+        $this->assertNull($return);
+        $this->assertDatabaseMissing('sales_returns', ['order_id' => $orderId]);
+    }
+
     public function test_skips_when_order_not_found(): void
     {
         $return = app(SalesReturnService::class)->createFromChannel([
