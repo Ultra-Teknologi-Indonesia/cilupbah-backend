@@ -174,7 +174,9 @@ class SalesOrdersExport implements FromQuery, WithChunkReading, WithHeadings, Wi
             'completed' => $query->where('status', 'shipped')->whereNotNull('received_date'),
             'cancellation' => $query->where(fn ($q) => $q->where('is_canceled', true)->orWhereNotNull('cancel_requested_at')),
             'returned' => $query->whereHas('returns'),
-            'empty-stock' => $query->where('status', 'reserved')->whereRaw(SalesOrder::shortfallItemWhereRaw()),
+            'empty-stock' => $query
+                ->where('status', 'reserved')
+                ->whereHas('items', fn ($items) => $items->whereRaw(SalesOrder::shortfallItemWhereRaw())),
             'failed-pick' => $query->where('status', 'reserved')->whereNotNull('pick_failed_at'),
             default => null,
         };

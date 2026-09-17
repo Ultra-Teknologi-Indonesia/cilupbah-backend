@@ -40,4 +40,15 @@ final class SalesOrdersExportTest extends TestCase
         $this->assertNotNull($order);
         $this->assertSame('Toko Sales Export Uji', $export->map($order)[8]);
     }
+
+    public function test_empty_stock_export_scopes_shortfall_filter_to_order_items(): void
+    {
+        SalesOrder::factory()->create([
+            'status' => 'reserved',
+        ]);
+
+        $export = new SalesOrdersExport('empty-stock', null, null, null, null, null, null);
+
+        $this->assertCount(0, $export->query()->get());
+    }
 }
