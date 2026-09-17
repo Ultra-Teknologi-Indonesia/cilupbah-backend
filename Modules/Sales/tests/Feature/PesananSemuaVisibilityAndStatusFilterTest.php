@@ -252,7 +252,8 @@ class PesananSemuaVisibilityAndStatusFilterTest extends TestCase
             ->where('location_id', $this->locationId)
             ->update([
                 'on_hand' => 0,
-                'available' => 0,
+                'on_order' => 1,
+                'available' => -1,
             ]);
 
         $allResponse = $this->actingAs($user, 'sanctum')

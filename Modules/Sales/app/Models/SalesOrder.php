@@ -437,14 +437,14 @@ class SalesOrder extends Model implements HasMedia
                     JOIN product_bundle_items pbi ON pbi.bundle_product_id = p.id
                     WHERE pv.id = sales_order_items.item_id
                       AND p.is_bundle = true
-                      AND sales_order_items.qty_in_base * GREATEST(pbi.qty, 1) > COALESCE((
+                      AND COALESCE((
                           SELECT {$componentAvailable}
                           FROM inventories component_inventories
                           LEFT JOIN location_bins component_bins
                             ON component_bins.id = component_inventories.bin_id
                           WHERE component_inventories.item_id = pbi.component_variant_id
                             AND component_inventories.location_id = sales_orders.location_id
-                      ), 0)
+                      ), 0) < 0
                 )";
 
         $normalShortfall = "NOT EXISTS (
@@ -454,13 +454,13 @@ class SalesOrder extends Model implements HasMedia
                     WHERE pv.id = sales_order_items.item_id
                       AND p.is_bundle = true
                 )
-                AND sales_order_items.qty_in_base > COALESCE((
+                AND COALESCE((
                     SELECT {$available}
                     FROM inventories
                     LEFT JOIN location_bins ON location_bins.id = inventories.bin_id
                     WHERE inventories.item_id = sales_order_items.item_id
                       AND inventories.location_id = sales_orders.location_id
-                ), 0)";
+                ), 0) < 0";
 
         return "({$bundleShortfall} OR {$normalShortfall})";
     }

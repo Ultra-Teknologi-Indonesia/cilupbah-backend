@@ -816,12 +816,8 @@ SQL;
     private function emptyStock()
     {
         return Order::where('status', 'reserved')
-            ->whereHas('items', function ($q) {
-                $q->whereDoesntHave('inventory', function ($iq) {
-                    $iq->where('available', '>', 0)
-                        ->whereRaw('(sales_orders.location_id IS NULL OR inventories.location_id = sales_orders.location_id)');
-                });
-            });
+            ->whereNull('handed_to_warehouse_at')
+            ->whereHas('items', fn ($q) => $q->whereRaw(Order::shortfallItemWhereRaw()));
     }
 
     private function pendingCancelRequests()

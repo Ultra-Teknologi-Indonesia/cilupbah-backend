@@ -246,19 +246,9 @@ class SalesOrderService
             ->pluck('salesorder_no', 'id')
             ->all();
 
-        $stockShortIds = SalesOrder::whereIn('id', $orderIds)
-            ->whereNotIn('id', array_keys($pendingCancelIds))
-            ->where('status', 'reserved')
-            ->hasStockShortfall()
-            ->pluck('salesorder_no', 'id')
-            ->all();
-
         $skipped = [];
         foreach ($pendingCancelIds as $id => $orderNo) {
             $skipped[] = ['id' => (string) $id, 'salesorder_no' => $orderNo, 'reason' => 'cancel_pending'];
-        }
-        foreach ($stockShortIds as $id => $orderNo) {
-            $skipped[] = ['id' => (string) $id, 'salesorder_no' => $orderNo, 'reason' => 'empty_stock'];
         }
 
         if (! empty($skipped)) {
@@ -288,7 +278,7 @@ class SalesOrderService
             }
         }
 
-        $skippedDbIds = array_merge(array_keys($pendingCancelIds), array_keys($stockShortIds));
+        $skippedDbIds = array_keys($pendingCancelIds);
         $eligibleIds = array_values(array_diff($orderIds, $skippedDbIds));
 
         if (empty($eligibleIds)) {
@@ -345,9 +335,15 @@ class SalesOrderService
     {
         $message = "{$moved} order berhasil dipindahkan ke siap proses";
 
-        if (! empty($skipped)) {
-            $skippedCount = count($skipped);
-            $message .= " · {$skippedCount} order dilewati karena stok kosong (cek tab Stok Kosong)";
+        $cancelCount = count(array_filter($skipped, fn (array $item): bool => ($item['reason'] ?? null) === 'cancel_pending'));
+        $stockCount = count(array_filter($skipped, fn (array $item): bool => ($item['reason'] ?? null) === 'empty_stock'));
+
+        if ($stockCount > 0) {
+            $message .= " · {$stockCount} order dilewati karena stok kosong (cek tab Stok Kosong)";
+        }
+
+        if ($cancelCount > 0) {
+            $message .= " · {$cancelCount} order ditahan karena pembatalan masih diproses";
         }
 
         return $message;
