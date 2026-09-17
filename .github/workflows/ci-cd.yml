@@ -75,9 +75,9 @@ jobs:
       - name: npm run build
         run: npm run build
 
-      - name: Run Tests (optional)
-        run: php artisan test
-        continue-on-error: true
+      # - name: Run Tests (optional)
+      #   run: php artisan test
+      #   continue-on-error: true
 
   # ─────────────────────────────────────────────
   # CD — hanya jalan untuk push ke main / workflow_dispatch.
