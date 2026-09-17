@@ -104,7 +104,7 @@ class MonitorStockTest extends TestCase
         $this->makeVariant('MINUS-1', [], ['on_hand' => 5, 'on_order' => 10, 'available' => -5]);
         $this->makeVariant('HABIS-2', [], ['on_hand' => 0, 'available' => 0]);
 
-        $res = $this->getJson('/api/v1/inventory/monitor/out-of-stock?mode=minus')->assertOk();
+        $res = $this->getJson('/api/v1/inventory/monitor/out-of-stock?mode=minus&location_id='.$this->location->id)->assertOk();
         $skus = $this->skus($res->json('data'));
 
         $this->assertContains('MINUS-1', $skus);

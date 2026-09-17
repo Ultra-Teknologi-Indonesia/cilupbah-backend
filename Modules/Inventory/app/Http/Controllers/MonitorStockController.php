@@ -56,7 +56,7 @@ class MonitorStockController extends Controller
 
     public function exportAsync(MonitorStockExportRequest $request, ExportManager $exports): JsonResponse
     {
-        $params = $request->validated();
+        $params = $this->service->prepareExportParams($request->validated());
         $params['allowed_location_ids'] = WarehouseAccess::allowedIds();
 
         $type = $params['format'] === 'pdf'

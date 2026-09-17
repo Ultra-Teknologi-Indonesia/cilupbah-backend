@@ -25,11 +25,11 @@ class MonitorStockService
     public function outOfStock(string $mode, array $filters, int $perPage = 20)
     {
 
-        $mode = in_array($mode, ['habis', 'minus', 'dipesan'], true) ? $mode : 'habis';
+        $mode = $this->normalizeOutOfStockMode($mode);
 
         return $this->repository->paginateMode(
             $mode,
-            $this->applyDefaultSmallWarehouseForMinus($mode, $filters),
+            $this->filtersForMode($mode, $filters),
             $perPage,
         );
     }
@@ -47,8 +47,32 @@ class MonitorStockService
     public function summary(array $filters, ?string $mode = null): array
     {
         return $this->repository->summary(
-            $this->applyDefaultSmallWarehouseForMinus($mode, $filters),
+            $this->filtersForMode($mode, $filters),
         );
+    }
+
+    public function prepareExportParams(array $params): array
+    {
+        if (($params['tab'] ?? null) !== 'stok-kosong') {
+            return $params;
+        }
+
+        $mode = $this->normalizeOutOfStockMode($params['mode'] ?? 'habis');
+
+        return [
+            ...$this->filtersForMode($mode, $params),
+            'mode' => $mode,
+        ];
+    }
+
+    public function filtersForMode(?string $mode, array $filters): array
+    {
+        return $this->applyDefaultSmallWarehouseForMinus($mode, $filters);
+    }
+
+    private function normalizeOutOfStockMode(string $mode): string
+    {
+        return in_array($mode, ['habis', 'minus', 'dipesan'], true) ? $mode : 'habis';
     }
 
     private function applyDefaultSmallWarehouseForMinus(?string $mode, array $filters): array
