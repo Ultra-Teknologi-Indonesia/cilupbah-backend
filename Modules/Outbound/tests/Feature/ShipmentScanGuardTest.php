@@ -261,6 +261,28 @@ class ShipmentScanGuardTest extends TestCase
         }
     }
 
+    public function test_rejects_rescan_when_existing_manifest_order_becomes_canceled(): void
+    {
+        Bus::fake();
+        $loc = $this->seedLocation();
+        $shipmentId = $this->seedShipment($loc, 'JNE', 'REGULAR');
+        [$orderId, $no] = $this->seedPackedOrder($loc, 'JNE');
+
+        app(ShipmentService::class)->scanAndAddOrder($shipmentId, $no);
+
+        DB::table('sales_orders')->where('id', $orderId)->update([
+            'status' => 'cancelled',
+            'is_canceled' => true,
+        ]);
+
+        try {
+            app(ShipmentService::class)->scanAndAddOrder($shipmentId, $no);
+            $this->fail('Expected ScanRejectedException for a canceled order that already exists in the shipment.');
+        } catch (ScanRejectedException $e) {
+            $this->assertSame('order_canceled', $e->reason);
+        }
+    }
+
     public function test_rejects_scan_when_order_cancel_requested(): void
     {
         $loc = $this->seedLocation();

@@ -625,6 +625,20 @@ class ShipmentService
                 );
             }
 
+            if ($this->isOrderCancelled($order)) {
+                throw new ScanRejectedException(
+                    'order_canceled',
+                    "Pesanan {$order->salesorder_no} sudah DIBATALKAN — pisahkan paket fisik, jangan dimanifestkan."
+                );
+            }
+
+            if ($order->cancel_requested_at !== null) {
+                throw new ScanRejectedException(
+                    'order_cancel_requested',
+                    "Pesanan {$order->salesorder_no} sedang MINTA BATAL (req cancel) — cek dulu sebelum dimanifestkan."
+                );
+            }
+
             $existing = ShipmentOrder::query()
                 ->where('order_id', $order->id)
                 ->lockForUpdate()
@@ -643,20 +657,6 @@ class ShipmentService
                 throw new ScanRejectedException(
                     'duplicate',
                     "Pesanan {$order->salesorder_no} sudah ada di pengiriman lain."
-                );
-            }
-
-            if ($order->is_canceled) {
-                throw new ScanRejectedException(
-                    'order_canceled',
-                    "Pesanan {$order->salesorder_no} sudah DIBATALKAN — pisahkan paket fisik, jangan dimanifestkan."
-                );
-            }
-
-            if ($order->cancel_requested_at !== null) {
-                throw new ScanRejectedException(
-                    'order_cancel_requested',
-                    "Pesanan {$order->salesorder_no} sedang MINTA BATAL (req cancel) — cek dulu sebelum dimanifestkan."
                 );
             }
 
@@ -737,6 +737,11 @@ class ShipmentService
         }
 
         return $result;
+    }
+
+    private function isOrderCancelled(Order $order): bool
+    {
+        return (bool) $order->is_canceled || strtolower((string) $order->status) === 'cancelled';
     }
 
     private function loadShipmentOrderForResponse(ShipmentOrder $shipmentOrder): ShipmentOrder
