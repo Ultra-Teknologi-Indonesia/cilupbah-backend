@@ -210,6 +210,8 @@ class PicklistService
                 throw new OutboundValidationException('Minimal satu order harus dipilih.');
             }
 
+            $this->lockPicklistCreationForOrders($orderIds);
+
             $orders = Order::with('items')
                 ->whereIn('id', $orderIds)
                 ->where('status', 'reserved')
@@ -223,28 +225,7 @@ class PicklistService
                 );
             }
 
-            $existing = DB::table('picklist_items as existing_items')
-                ->join('picklists as existing_picklists', 'existing_picklists.id', '=', 'existing_items.picklist_id')
-                ->join('sales_orders as existing_orders', 'existing_orders.id', '=', 'existing_items.order_id')
-                ->whereIn('existing_items.order_id', $orderIds)
-                ->where('existing_picklists.status', '<>', Picklist::STATUS_CANCELLED)
-                ->select([
-                    'existing_orders.salesorder_no',
-                    'existing_picklists.picklist_no',
-                    'existing_picklists.status',
-                ])
-                ->distinct()
-                ->get();
-
-            if ($existing->isNotEmpty()) {
-                $details = $existing
-                    ->map(static fn ($row): string => "{$row->salesorder_no} ({$row->picklist_no})")
-                    ->implode(', ');
-
-                throw new OutboundValidationException(
-                    "Order sudah berada di picklist aktif: {$details}. Tidak dibuat ulang."
-                );
-            }
+            $this->assertOrdersNotAlreadyInActivePicklists($orderIds);
 
             foreach ($orders as $order) {
                 $this->channelWarehousePolicy->assertOrderAndTargetLocation(
@@ -332,6 +313,61 @@ class PicklistService
 
             return $picklist;
         });
+    }
+
+    /**
+     * Serialise picklist creation per order inside the current transaction.
+     *
+     * The row lock on sales_orders already protects the normal create path, but this advisory lock
+     * keeps the guarantee explicit for bulk/double-click/concurrent requests before any picklist
+     * rows are inserted. Sorting avoids deadlocks when two requests contain the same order ids in
+     * different order.
+     */
+    private function lockPicklistCreationForOrders(array $orderIds): void
+    {
+        $orderIds = array_values(array_unique(array_map(
+            static fn ($id): string => (string) $id,
+            $orderIds,
+        )));
+        sort($orderIds);
+
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            return;
+        }
+
+        foreach ($orderIds as $orderId) {
+            DB::select('SELECT pg_advisory_xact_lock(hashtext(?))', [
+                "picklist:create:order:{$orderId}",
+            ]);
+        }
+    }
+
+    private function assertOrdersNotAlreadyInActivePicklists(array $orderIds): void
+    {
+        $existing = DB::table('picklist_items as existing_items')
+            ->join('picklists as existing_picklists', 'existing_picklists.id', '=', 'existing_items.picklist_id')
+            ->join('sales_orders as existing_orders', 'existing_orders.id', '=', 'existing_items.order_id')
+            ->whereIn('existing_items.order_id', $orderIds)
+            ->where('existing_picklists.status', '<>', Picklist::STATUS_CANCELLED)
+            ->select([
+                'existing_orders.salesorder_no',
+                'existing_picklists.picklist_no',
+                'existing_picklists.status',
+            ])
+            ->distinct()
+            ->get();
+
+        if ($existing->isEmpty()) {
+            return;
+        }
+
+        $details = $existing
+            ->map(static fn ($row): string => "{$row->salesorder_no} ({$row->picklist_no})")
+            ->implode(', ');
+
+        throw new OutboundValidationException(
+            "Order sudah berada di picklist aktif: {$details}. Tidak dibuat ulang."
+        );
     }
 
     public function assignPicker(string $id, string $pickerId, string $assignedBy): Picklist
