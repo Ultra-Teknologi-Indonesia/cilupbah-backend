@@ -466,6 +466,33 @@ class RevertStageTest extends TestCase
         $this->assertTrue((bool) $log->reversed_stock);
     }
 
+    public function test_bulk_dispatcher_processes_each_order_and_returns_per_order_results(): void
+    {
+        $locationId = $this->seedLocation();
+        $firstOrderId = $this->seedOrder($locationId, 'reserved');
+        $secondOrderId = $this->seedOrder($locationId, 'reserved');
+
+        $results = app(OutboundFulfillmentService::class)->bulkDeleteOrdersFromFulfillment(
+            [$firstOrderId, $secondOrderId],
+            'barang minus',
+            'ops@cilupbah.test',
+        );
+
+        $this->assertSame(
+            ['success', 'success'],
+            array_column($results, 'status'),
+            'Bulk revert harus mengembalikan hasil untuk setiap order.',
+        );
+        $this->assertSame(
+            [$firstOrderId, $secondOrderId],
+            array_column($results, 'order_id'),
+        );
+        $this->assertSame(2, DB::table('fulfillment_removals')->count());
+        $this->assertSame(2, SalesOrder::whereIn('id', [$firstOrderId, $secondOrderId])
+            ->whereNotNull('pick_failed_at')
+            ->count());
+    }
+
     public function test_gagal_picking_order_appears_in_failed_pick_tab_not_ready_to_process(): void
     {
         $userId = $this->seedUser();
