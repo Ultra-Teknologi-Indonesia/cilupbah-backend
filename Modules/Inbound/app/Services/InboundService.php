@@ -1779,6 +1779,40 @@ class InboundService
         });
     }
 
+    public function setReceivedQtyBatch(string $inboundId, array $items, string $userId, ?string $expectedUpdatedAt = null): array
+    {
+        $results = [];
+        $currentExpectedUpdatedAt = $expectedUpdatedAt;
+
+        foreach ($items as $item) {
+            $itemId = (string) $item['item_id'];
+
+            try {
+                $inbound = $this->setReceivedQty(
+                    $inboundId,
+                    $itemId,
+                    (int) $item['qty'],
+                    $userId,
+                    $currentExpectedUpdatedAt,
+                    $item['reason_note'] ?? null,
+                );
+
+                $currentExpectedUpdatedAt = $inbound->updated_version_at?->toISOString()
+                    ?? $currentExpectedUpdatedAt;
+                $results[] = ['item_id' => $itemId, 'status' => 'success'];
+            } catch (\Throwable $e) {
+                $results[] = ['item_id' => $itemId, 'status' => 'failed', 'message' => $e->getMessage()];
+            }
+        }
+
+        return [
+            'processed' => count($results),
+            'succeeded' => count(array_filter($results, fn (array $result): bool => $result['status'] === 'success')),
+            'failed' => array_values(array_filter($results, fn (array $result): bool => $result['status'] === 'failed')),
+            'results' => $results,
+        ];
+    }
+
     public function cancel(string $inboundId, ?string $userId = null): Inbound
     {
         return DB::transaction(function () use ($inboundId, $userId) {

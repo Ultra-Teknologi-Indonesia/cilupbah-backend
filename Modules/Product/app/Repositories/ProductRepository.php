@@ -199,6 +199,72 @@ class ProductRepository
         return null;
     }
 
+    /**
+     * Resolve bundle order lines in bulk so outbound creation does not issue
+     * three additional queries for every order item.
+     *
+     * A present key with an empty array has the same meaning as
+     * bundleComponentsForVariant(): the variant belongs to a bundle product,
+     * but that bundle has no components.
+     */
+    public function bundleComponentsForVariants(array $variantIds): array
+    {
+        $variantIds = array_values(array_unique(array_filter(array_map(
+            static fn ($id): string => (string) $id,
+            $variantIds,
+        ), static fn (string $id): bool => $id !== '')));
+
+        if ($variantIds === []) {
+            return [];
+        }
+
+        $bundleProducts = ProductVariant::query()
+            ->join('products', 'products.id', '=', 'product_variants.product_id')
+            ->whereIn('product_variants.id', $variantIds)
+            ->whereNull('products.deleted_at')
+            ->where('products.is_bundle', true)
+            ->pluck('product_variants.product_id', 'product_variants.id')
+            ->mapWithKeys(static fn ($productId, $variantId): array => [
+                (string) $variantId => (string) $productId,
+            ])
+            ->all();
+
+        if ($bundleProducts === []) {
+            return [];
+        }
+
+        $componentRows = DB::table('product_bundle_items as bundle_items')
+            ->leftJoin('product_variants as component_variants', function ($join): void {
+                $join->on('component_variants.id', '=', 'bundle_items.component_variant_id')
+                    ->whereNull('component_variants.deleted_at');
+            })
+            ->whereIn('bundle_items.bundle_product_id', array_values($bundleProducts))
+            ->orderBy('bundle_items.bundle_product_id')
+            ->orderBy('bundle_items.component_variant_id')
+            ->get([
+                'bundle_items.bundle_product_id',
+                'bundle_items.component_variant_id',
+                'bundle_items.qty',
+                'component_variants.sku as component_sku',
+            ]);
+
+        $componentsByProduct = $componentRows
+            ->groupBy('bundle_product_id')
+            ->map(static fn (\Illuminate\Support\Collection $rows): array => $rows->map(static fn ($row): array => [
+                'variant_id' => $row->component_variant_id,
+                'qty' => (int) $row->qty,
+                'sku' => $row->component_sku,
+            ])->all())
+            ->all();
+
+        $result = [];
+        foreach ($bundleProducts as $variantId => $productId) {
+            $result[$variantId] = $componentsByProduct[$productId] ?? [];
+        }
+
+        return $result;
+    }
+
     public function bundleProductIdsUsingComponent(string $variantId): array
     {
         return ProductBundleItem::where('component_variant_id', $variantId)

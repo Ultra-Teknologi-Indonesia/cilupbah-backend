@@ -488,6 +488,48 @@ class SalesOrderService
         return $result;
     }
 
+    public function bulkAcceptCancelRequest(array $orderIds, ?string $reason = null): array
+    {
+        return $this->runBulkAction($orderIds, function (string $orderId) use ($reason): void {
+            $this->acceptCancelRequest($orderId, auto: false, reason: $reason);
+        });
+    }
+
+    public function bulkRejectCancelRequest(array $orderIds, ?string $reason = null): array
+    {
+        return $this->runBulkAction($orderIds, function (string $orderId) use ($reason): void {
+            $this->rejectCancelRequest($orderId, reason: $reason, auto: false);
+        });
+    }
+
+    public function bulkRequestChannelCancel(array $orderIds, string $reason): array
+    {
+        return $this->runBulkAction($orderIds, function (string $orderId) use ($reason): void {
+            $this->requestChannelCancel($orderId, $reason);
+        });
+    }
+
+    private function runBulkAction(array $ids, callable $action): array
+    {
+        $results = [];
+
+        foreach (array_values(array_unique(array_map('strval', $ids))) as $id) {
+            try {
+                $action($id);
+                $results[] = ['id' => $id, 'status' => 'success'];
+            } catch (\Throwable $e) {
+                $results[] = ['id' => $id, 'status' => 'failed', 'message' => $e->getMessage()];
+            }
+        }
+
+        return [
+            'processed' => count($results),
+            'succeeded' => count(array_filter($results, fn (array $result): bool => $result['status'] === 'success')),
+            'failed' => array_values(array_filter($results, fn (array $result): bool => $result['status'] === 'failed')),
+            'results' => $results,
+        ];
+    }
+
     private function respondToBuyerCancellationSynchronously(SalesOrder $order, string $decision): void
     {
         if (! in_array(strtolower((string) $order->source), ['shopee', 'tiktok', 'lazada'], true)) {

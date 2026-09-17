@@ -12,6 +12,8 @@ use Modules\Sales\Enums\BuyerCancellationSyncStatus;
 use Modules\Sales\Http\Requests\AcceptOrderCancelRequest;
 use Modules\Sales\Http\Requests\BulkCancelManualOrderRequest;
 use Modules\Sales\Http\Requests\BulkMarkContactedRequest;
+use Modules\Sales\Http\Requests\BulkOrderCancelActionRequest;
+use Modules\Sales\Http\Requests\BulkRequestChannelCancelRequest;
 use Modules\Sales\Http\Requests\CancelManualOrderRequest;
 use Modules\Sales\Http\Requests\DeleteCanceledOrdersRequest;
 use Modules\Sales\Http\Requests\DownloadOrderItemRequest;
@@ -682,6 +684,14 @@ class SalesOrderController extends Controller
         return $this->successResponse(new SalesOrderResource($order), 'Pembatalan buyer diterima dan sudah dikonfirmasi ke channel');
     }
 
+    public function bulkAcceptCancelRequest(BulkOrderCancelActionRequest $request): JsonResponse
+    {
+        $data = $request->validated();
+        $result = $this->orderService->bulkAcceptCancelRequest($data['order_ids'], $data['reason'] ?? null);
+
+        return $this->successResponse($result, 'Keputusan pembatalan buyer diproses secara massal.');
+    }
+
     #[OA\Post(
         path: '/api/v1/sales/{id}/reject-cancel',
         summary: 'Reject a cancel request and keep the order active',
@@ -721,6 +731,14 @@ class SalesOrderController extends Controller
         }
 
         return $this->successResponse(new SalesOrderResource($order), 'Pembatalan buyer ditolak dan sudah dikonfirmasi ke channel');
+    }
+
+    public function bulkRejectCancelRequest(BulkOrderCancelActionRequest $request): JsonResponse
+    {
+        $data = $request->validated();
+        $result = $this->orderService->bulkRejectCancelRequest($data['order_ids'], $data['reason'] ?? null);
+
+        return $this->successResponse($result, 'Penolakan pembatalan buyer diproses secara massal.');
     }
 
     public function retryBuyerCancellationSync(string $id)
@@ -778,6 +796,14 @@ class SalesOrderController extends Controller
         $order = $this->orderService->requestChannelCancel($id, $request->validated()['reason']);
 
         return $this->successResponse(new SalesOrderResource($order), 'Permintaan pembatalan dikirim ke marketplace');
+    }
+
+    public function bulkRequestChannelCancel(BulkRequestChannelCancelRequest $request): JsonResponse
+    {
+        $data = $request->validated();
+        $result = $this->orderService->bulkRequestChannelCancel($data['order_ids'], $data['reason']);
+
+        return $this->successResponse($result, 'Permintaan pembatalan diproses secara massal.');
     }
 
     #[OA\Post(

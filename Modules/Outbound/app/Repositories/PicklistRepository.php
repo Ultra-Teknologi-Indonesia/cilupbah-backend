@@ -190,6 +190,13 @@ class PicklistRepository
         return PicklistItem::create($data);
     }
 
+    public function createItems(array $rows): void
+    {
+        foreach (array_chunk($rows, 500) as $chunk) {
+            DB::table('picklist_items')->insert($chunk);
+        }
+    }
+
     public function updateItem(string $itemId, array $data): bool
     {
         $query = PicklistItem::where('id', $itemId);

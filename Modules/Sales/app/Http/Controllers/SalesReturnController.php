@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Maatwebsite\Excel\Facades\Excel;
 use Modules\Report\Services\ExportManager;
 use Modules\Sales\Http\Requests\AcceptSalesReturnRequest;
+use Modules\Sales\Http\Requests\BulkSalesReturnActionRequest;
 use Modules\Sales\Http\Requests\ChannelRejectSalesReturnRequest;
 use Modules\Sales\Http\Requests\CompleteSalesReturnRequest;
 use Modules\Sales\Http\Requests\ExportReturnChannelOnlineRequest;
@@ -200,6 +201,24 @@ class SalesReturnController extends Controller
         return $this->successResponse(new SalesReturnResource($return), $message);
     }
 
+    public function bulkAccept(BulkSalesReturnActionRequest $request): JsonResponse
+    {
+        $data = $request->validated();
+        $processedBy = $data['processed_by'] ?? $request->user()?->name ?? 'system';
+        $results = [];
+
+        foreach (array_values(array_unique($data['return_ids'])) as $id) {
+            try {
+                $this->returnService->accept($id, ['processed_by' => $processedBy]);
+                $results[] = ['id' => $id, 'status' => 'success'];
+            } catch (\Throwable $e) {
+                $results[] = ['id' => $id, 'status' => 'failed', 'message' => $e->getMessage()];
+            }
+        }
+
+        return $this->successResponse($this->bulkActionResult($results), 'Penerimaan retur diproses secara massal.');
+    }
+
     #[OA\Post(
         path: '/api/v1/sales/returns/{id}/reject',
         summary: 'Reject a return (stock tidak berubah)',
@@ -225,6 +244,37 @@ class SalesReturnController extends Controller
         $return = $this->returnService->reject($id, $request->only('processed_by', 'reason'));
 
         return $this->successResponse(new SalesReturnResource($return), 'Return ditolak');
+    }
+
+    public function bulkReject(BulkSalesReturnActionRequest $request): JsonResponse
+    {
+        $data = $request->validated();
+        $processedBy = $data['processed_by'] ?? $request->user()?->name ?? 'system';
+        $results = [];
+
+        foreach (array_values(array_unique($data['return_ids'])) as $id) {
+            try {
+                $this->returnService->reject($id, [
+                    'processed_by' => $processedBy,
+                    'reason' => $data['reason'] ?? null,
+                ]);
+                $results[] = ['id' => $id, 'status' => 'success'];
+            } catch (\Throwable $e) {
+                $results[] = ['id' => $id, 'status' => 'failed', 'message' => $e->getMessage()];
+            }
+        }
+
+        return $this->successResponse($this->bulkActionResult($results), 'Penolakan retur diproses secara massal.');
+    }
+
+    private function bulkActionResult(array $results): array
+    {
+        return [
+            'processed' => count($results),
+            'succeeded' => count(array_filter($results, fn (array $result): bool => $result['status'] === 'success')),
+            'failed' => array_values(array_filter($results, fn (array $result): bool => $result['status'] === 'failed')),
+            'results' => $results,
+        ];
     }
 
     #[OA\Post(

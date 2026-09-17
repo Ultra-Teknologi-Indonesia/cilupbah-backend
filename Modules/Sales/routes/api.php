@@ -84,6 +84,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('sales/returns/{id}', [SalesReturnController::class, 'show'])->whereUuid('id')->name('sales.returns.show');
     });
     Route::middleware('role_or_permission:owner|edit-retur-penjualan')->group(function () {
+        Route::post('sales/returns/bulk-accept', [SalesReturnController::class, 'bulkAccept'])->name('sales.returns.bulk-accept');
+        Route::post('sales/returns/bulk-reject', [SalesReturnController::class, 'bulkReject'])->name('sales.returns.bulk-reject');
         Route::post('sales/returns/{id}/accept', [SalesReturnController::class, 'accept'])->whereUuid('id')->name('sales.returns.accept');
         Route::post('sales/returns/{id}/reject', [SalesReturnController::class, 'reject'])->whereUuid('id')->name('sales.returns.reject');
         Route::post('sales/returns/{id}/complete', [SalesReturnController::class, 'complete'])->whereUuid('id')->name('sales.returns.complete');
@@ -236,9 +238,12 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('sales/orders/save-received-date', [SalesOrderController::class, 'saveReceivedDate'])->name('sales.orders.save-received-date');
         Route::post('sales/orders/set-as-paid', [SalesOrderController::class, 'setAsPaid'])->name('sales.orders.set-as-paid');
         Route::post('sales/orders/{id}/accept-cancel', [SalesOrderController::class, 'acceptCancelRequest'])->whereUuid('id')->name('sales.orders.accept-cancel');
+        Route::post('sales/orders/bulk-accept-cancel', [SalesOrderController::class, 'bulkAcceptCancelRequest'])->name('sales.orders.bulk-accept-cancel');
         Route::post('sales/orders/{id}/reject-cancel', [SalesOrderController::class, 'rejectCancelRequest'])->whereUuid('id')->name('sales.orders.reject-cancel');
+        Route::post('sales/orders/bulk-reject-cancel', [SalesOrderController::class, 'bulkRejectCancelRequest'])->name('sales.orders.bulk-reject-cancel');
         Route::post('sales/orders/{id}/retry-cancel-sync', [SalesOrderController::class, 'retryBuyerCancellationSync'])->whereUuid('id')->name('sales.orders.retry-cancel-sync');
         Route::post('sales/orders/{id}/request-cancel', [SalesOrderController::class, 'requestChannelCancel'])->whereUuid('id')->name('sales.orders.request-cancel');
+        Route::post('sales/orders/bulk-request-cancel', [SalesOrderController::class, 'bulkRequestChannelCancel'])->name('sales.orders.bulk-request-cancel');
         Route::post('sales/orders/{id}/cancel-manual', [SalesOrderController::class, 'cancelManual'])->whereUuid('id')->name('sales.orders.cancel-manual');
         Route::post('sales/orders/bulk-cancel-manual', [SalesOrderController::class, 'bulkCancelManual'])->name('sales.orders.bulk-cancel-manual');
         Route::get('sales/orders/{id}/cancel-reasons', [SalesOrderController::class, 'cancelReasons'])->whereUuid('id')->name('sales.orders.cancel-reasons');

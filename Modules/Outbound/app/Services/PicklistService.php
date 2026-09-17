@@ -31,6 +31,7 @@ use Modules\Product\Repositories\ProductRepository;
 use Modules\Sales\Models\SalesOrder as Order;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
+use Ramsey\Uuid\Uuid;
 
 class PicklistService
 {
@@ -200,25 +201,49 @@ class PicklistService
         WarehouseAccess::assert($data['location_id'] ?? null);
 
         return DB::transaction(function () use ($data) {
-            $picklistNo = $this->picklistRepository->generatePicklistNo();
+            $orderIds = array_values(array_unique(array_map(
+                static fn ($id): string => (string) $id,
+                $data['order_ids'] ?? [],
+            )));
 
-            $picklist = $this->picklistRepository->create([
-                'picklist_no' => $picklistNo,
-                'location_id' => $data['location_id'],
-                'picker_id' => $data['picker_id'] ?? null,
-                'assigned_by' => isset($data['picker_id']) ? $data['created_by'] : null,
-                'status' => Picklist::STATUS_DRAFT,
-                'notes' => $data['notes'] ?? null,
-                'created_by' => $data['created_by'],
-            ]);
+            if ($orderIds === []) {
+                throw new OutboundValidationException('Minimal satu order harus dipilih.');
+            }
 
             $orders = Order::with('items')
-                ->whereIn('id', $data['order_ids'])
+                ->whereIn('id', $orderIds)
                 ->where('status', 'reserved')
+                ->orderBy('id')
+                ->lockForUpdate()
                 ->get();
 
-            if ($orders->isEmpty()) {
-                throw new \Exception('Tidak ada order dengan status reserved yang ditemukan.');
+            if ($orders->count() !== count($orderIds)) {
+                throw new OutboundValidationException(
+                    'Sebagian order sudah tidak berstatus reserved. Picklist dibatalkan agar tidak terbentuk secara parsial.'
+                );
+            }
+
+            $existing = DB::table('picklist_items as existing_items')
+                ->join('picklists as existing_picklists', 'existing_picklists.id', '=', 'existing_items.picklist_id')
+                ->join('sales_orders as existing_orders', 'existing_orders.id', '=', 'existing_items.order_id')
+                ->whereIn('existing_items.order_id', $orderIds)
+                ->where('existing_picklists.status', '<>', Picklist::STATUS_CANCELLED)
+                ->select([
+                    'existing_orders.salesorder_no',
+                    'existing_picklists.picklist_no',
+                    'existing_picklists.status',
+                ])
+                ->distinct()
+                ->get();
+
+            if ($existing->isNotEmpty()) {
+                $details = $existing
+                    ->map(static fn ($row): string => "{$row->salesorder_no} ({$row->picklist_no})")
+                    ->implode(', ');
+
+                throw new OutboundValidationException(
+                    "Order sudah berada di picklist aktif: {$details}. Tidak dibuat ulang."
+                );
             }
 
             foreach ($orders as $order) {
@@ -228,26 +253,38 @@ class PicklistService
                     (string) $data['location_id'],
                     'Pembuatan picklist',
                 );
+            }
 
+            $orderItems = $orders->flatMap(static fn (Order $order) => $order->items);
+            $bundleComponents = $this->productRepository->bundleComponentsForVariants(
+                $orderItems->pluck('item_id')->filter()->unique()->values()->all(),
+            );
+            $now = now();
+            $picklistItems = [];
+
+            foreach ($orders as $order) {
                 foreach ($order->items as $orderItem) {
-                    $components = $this->productRepository->bundleComponentsForVariant($orderItem->item_id);
+                    $itemId = (string) $orderItem->item_id;
+                    $components = $bundleComponents[$itemId] ?? null;
 
                     if ($components !== null) {
-                        foreach ($components as $comp) {
-                            $this->picklistRepository->createItem([
-                                'picklist_id' => $picklist->id,
+                        foreach ($components as $component) {
+                            $picklistItems[] = [
+                                'id' => Uuid::uuid7()->toString(),
                                 'order_id' => $order->id,
                                 'order_item_id' => $orderItem->id,
-                                'item_id' => $comp['variant_id'],
-                                'sku' => $comp['sku'] ?? $orderItem->sku,
+                                'item_id' => $component['variant_id'],
+                                'sku' => $component['sku'] ?? $orderItem->sku,
                                 'bin_id' => null,
-                                'qty_ordered' => $orderItem->qty_in_base * $comp['qty'],
+                                'qty_ordered' => $orderItem->qty_in_base * $component['qty'],
                                 'qty_picked' => 0,
-                            ]);
+                                'created_at' => $now,
+                                'updated_at' => $now,
+                            ];
                         }
                     } else {
-                        $this->picklistRepository->createItem([
-                            'picklist_id' => $picklist->id,
+                        $picklistItems[] = [
+                            'id' => Uuid::uuid7()->toString(),
                             'order_id' => $order->id,
                             'order_item_id' => $orderItem->id,
                             'item_id' => $orderItem->item_id,
@@ -255,12 +292,33 @@ class PicklistService
                             'bin_id' => null,
                             'qty_ordered' => $orderItem->qty_in_base,
                             'qty_picked' => 0,
-                        ]);
+                            'created_at' => $now,
+                            'updated_at' => $now,
+                        ];
                     }
                 }
             }
 
-            $picklist = $this->picklistRepository->findById($picklist->id);
+            if ($picklistItems === []) {
+                throw new OutboundValidationException('Order tidak memiliki item yang dapat dibuat menjadi picklist.');
+            }
+
+            $picklist = $this->picklistRepository->create([
+                'picklist_no' => $this->picklistRepository->generatePicklistNo(),
+                'location_id' => $data['location_id'],
+                'picker_id' => $data['picker_id'] ?? null,
+                'assigned_by' => isset($data['picker_id']) ? $data['created_by'] : null,
+                'status' => Picklist::STATUS_DRAFT,
+                'notes' => $data['notes'] ?? null,
+                'created_by' => $data['created_by'],
+            ]);
+
+            foreach ($picklistItems as &$picklistItem) {
+                $picklistItem['picklist_id'] = $picklist->id;
+            }
+            unset($picklistItem);
+
+            $this->picklistRepository->createItems($picklistItems);
 
             if (! empty($data['picker_id'])) {
                 TaskAssigned::dispatch(

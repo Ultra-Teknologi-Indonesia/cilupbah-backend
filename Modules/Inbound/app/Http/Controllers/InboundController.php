@@ -10,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Inbound\Http\Requests\AssignInboundRequest;
 use Modules\Inbound\Http\Requests\BulkCancelInboundRequest;
+use Modules\Inbound\Http\Requests\BulkSetReceivedQtyRequest;
 use Modules\Inbound\Http\Requests\CorrectReceivedLineRequest;
 use Modules\Inbound\Http\Requests\CorrectReceivedLinesRequest;
 use Modules\Inbound\Http\Requests\ExecuteAutoPutawayRequest;
@@ -551,6 +552,21 @@ class InboundController extends Controller
                 'Aksi tidak dapat diproses',
             );
         }
+    }
+
+    public function setReceivedQtyBatch(string $id, BulkSetReceivedQtyRequest $request): JsonResponse
+    {
+        $data = $request->validated();
+        $userId = (string) ($request->user()->id ?? 'system');
+
+        $result = $this->inboundService->setReceivedQtyBatch(
+            $id,
+            $data['items'],
+            $userId,
+            $data['_expected_updated_at'] ?? null,
+        );
+
+        return $this->successResponse($result, 'Jumlah diterima diproses secara massal.');
     }
 
     #[OA\Patch(

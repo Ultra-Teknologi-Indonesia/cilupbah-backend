@@ -2,10 +2,11 @@
 
 namespace Modules\Outbound\Tests\Feature;
 
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Modules\Outbound\Models\Packlist;
+use Modules\Outbound\Exceptions\OutboundValidationException;
 use Modules\Outbound\Models\PacklistItem;
 use Modules\Outbound\Models\PicklistItem;
 use Modules\Outbound\Services\PacklistService;
@@ -29,7 +30,7 @@ class BundleOutboundExplosionTest extends TestCase
         parent::setUp();
         DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Umum']);
         $this->locationId = $this->makeLocation();
-        $this->actorId = \App\Models\User::factory()->create()->id;
+        $this->actorId = User::factory()->create()->id;
     }
 
     private function makeLocation(): string
@@ -107,11 +108,13 @@ class BundleOutboundExplosionTest extends TestCase
             'created_by' => $this->actorId,
         ]);
 
+        $this->assertFalse($picklist->relationLoaded('items'));
+
         $items = PicklistItem::where('picklist_id', $picklist->id)->get();
 
         $this->assertCount(2, $items);
-        $this->assertSame(4, (int) $items->firstWhere('item_id', $a->id)->qty_ordered); 
-        $this->assertSame(6, (int) $items->firstWhere('item_id', $b->id)->qty_ordered); 
+        $this->assertSame(4, (int) $items->firstWhere('item_id', $a->id)->qty_ordered);
+        $this->assertSame(6, (int) $items->firstWhere('item_id', $b->id)->qty_ordered);
         $this->assertNull($items->firstWhere('item_id', $bundleVar->id));
     }
 
@@ -160,5 +163,31 @@ class BundleOutboundExplosionTest extends TestCase
         $this->assertCount(1, $packItems);
         $this->assertSame($single->id, $packItems->first()->item_id);
         $this->assertSame(3, (int) $packItems->first()->qty_ordered);
+    }
+
+    public function test_reserved_order_cannot_be_added_to_another_active_picklist(): void
+    {
+        $single = $this->variant('SINGLE-DUPLICATE');
+        $order = $this->makeOrder($single, 1, 'reserved');
+
+        app(PicklistService::class)->create([
+            'order_ids' => [$order->id],
+            'location_id' => $this->locationId,
+            'created_by' => $this->actorId,
+        ]);
+
+        try {
+            app(PicklistService::class)->create([
+                'order_ids' => [$order->id],
+                'location_id' => $this->locationId,
+                'created_by' => $this->actorId,
+            ]);
+
+            $this->fail('Order yang sama seharusnya ditolak pada picklist aktif.');
+        } catch (OutboundValidationException $exception) {
+            $this->assertStringContainsString('Order sudah berada di picklist aktif', $exception->getMessage());
+        }
+
+        $this->assertSame(1, DB::table('picklists')->count());
     }
 }
