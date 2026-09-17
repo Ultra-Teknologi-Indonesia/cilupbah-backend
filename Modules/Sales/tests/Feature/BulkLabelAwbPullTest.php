@@ -12,6 +12,7 @@ use Mockery;
 use Modules\Channel\Services\ChannelSyncSettingService;
 use Modules\Sales\Http\Controllers\BulkShippingLabelController;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelItemJob;
+use Modules\Sales\Jobs\ProcessBulkShippingLabelJob;
 use Modules\Sales\Jobs\RequestChannelAwbJob;
 use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Models\SalesOrder;
@@ -175,6 +176,59 @@ class BulkLabelAwbPullTest extends TestCase
         );
 
         Queue::assertNotPushed(RequestChannelAwbJob::class);
+    }
+
+    public function test_batch_baru_tidak_mewarisi_status_downloading_dari_batch_orphan(): void
+    {
+        Queue::fake();
+
+        $order = $this->orderWithoutAwb([
+            'tracking_number' => 'AWB-ORPHAN-001',
+        ]);
+        $firstBatch = $this->createBatchFor($order);
+        BulkShippingLabelItem::where('batch_id', $firstBatch->id)->update([
+            'status' => BulkShippingLabelItem::STATUS_DOWNLOADING,
+        ]);
+
+        $secondBatch = $this->createBatchFor($order);
+        $secondItem = $this->itemOf($secondBatch);
+
+        $this->assertSame(
+            BulkShippingLabelItem::STATUS_PENDING,
+            $secondItem->status,
+            'Batch baru harus tetap pending; status downloading tidak boleh diwariskan dari batch lain.',
+        );
+
+        app(BulkShippingLabelService::class)->queueBatch($secondBatch);
+
+        Queue::assertPushed(
+            ProcessBulkShippingLabelJob::class,
+            fn ($job) => $job->batchId === $secondBatch->id,
+        );
+    }
+
+    public function test_batch_orphan_lama_dikembalikan_ke_antrean(): void
+    {
+        Queue::fake();
+
+        $order = $this->orderWithoutAwb([
+            'tracking_number' => 'AWB-ORPHAN-002',
+        ]);
+        $batch = $this->createBatchFor($order);
+        $item = $this->itemOf($batch);
+        $item->update(['status' => BulkShippingLabelItem::STATUS_DOWNLOADING]);
+
+        $reset = app(BulkShippingLabelService::class)->requeueOrphanedBatch($batch);
+
+        $this->assertSame(1, $reset);
+        $this->assertSame(
+            BulkShippingLabelItem::STATUS_PENDING,
+            $item->refresh()->status,
+        );
+        Queue::assertPushed(
+            ProcessBulkShippingLabelJob::class,
+            fn ($job) => $job->batchId === $batch->id,
+        );
     }
 
     public function test_sinkronisasi_channel_mati_ditandai_gagal_bukan_menggantung(): void
