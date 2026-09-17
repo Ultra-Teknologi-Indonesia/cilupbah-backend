@@ -11,6 +11,20 @@
         ['key' => 'durasi_per_pesanan', 'label' => 'Durasi Per Pesanan', 'align' => 'center'],
     ];
     $detailTotals = $detailTotals ?? false;
+
+    // Hitung lebar kolom summary agar sejajar presisi antara table data dan grand total
+    $summaryColCount = count($summaryColumns);
+    if ($summaryColCount === 4) {
+        $summaryFirstWidth = $summaryFirstWidth ?? '20%';
+        $defaultWidths = ['15%', '15%', '25%', '25%'];
+    } elseif ($summaryColCount === 3) {
+        $summaryFirstWidth = $summaryFirstWidth ?? '25%';
+        $defaultWidths = ['20%', '20%', '35%'];
+    } else {
+        $summaryFirstWidth = $summaryFirstWidth ?? '20%';
+        $rem = floor(80 / max($summaryColCount, 1));
+        $defaultWidths = array_fill(0, $summaryColCount, $rem . '%');
+    }
 @endphp
 <!DOCTYPE html>
 <html lang="id">
@@ -41,6 +55,7 @@
         .sub-name { font-size: 9px; margin-bottom: 5px; }
 
         table.data { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+        table.data.summary, table.grand { table-layout: fixed; }
         table.data th {
             font-size: 8px;
             font-weight: 700;
@@ -57,7 +72,7 @@
         tr.total td.label { text-align: center; }
 
         table.grand { width: 100%; border-collapse: collapse; margin-top: 4px; }
-        table.grand td { padding: 5px; border: 1px solid #222; font-weight: 700; }
+        table.grand td { padding: 4px 5px; border: 1px solid #222; font-weight: 700; }
         table.grand td.label { text-align: center; }
 
         .footer {
@@ -133,7 +148,13 @@
     @foreach ($groups as $group)
         <div class="group-label">{{ $summaryGroupLabel }} &nbsp; {{ $group['nama'] }}</div>
 
-        <table class="data">
+        <table class="data summary">
+            <colgroup>
+                <col style="width: {{ $summaryFirstWidth }};">
+                @foreach ($summaryColumns as $i => $col)
+                    <col style="width: {{ $col['width'] ?? ($defaultWidths[$i] ?? 'auto') }};">
+                @endforeach
+            </colgroup>
             <thead>
                 <tr>
                     <th style="text-align: left;">{{ $summaryFirstLabel }}</th>
@@ -163,14 +184,22 @@
 
     @if ($grandTotal)
         <table class="grand">
-            <tr>
-                <td class="label">Grand Total</td>
-                @foreach ($summaryColumns as $col)
-                    <td style="text-align: {{ ($col['align'] ?? 'left') === 'right' ? 'right' : 'center' }};">
-                        {{ $grandTotal[$col['key']] ?? '' }}
-                    </td>
+            <colgroup>
+                <col style="width: {{ $summaryFirstWidth }};">
+                @foreach ($summaryColumns as $i => $col)
+                    <col style="width: {{ $col['width'] ?? ($defaultWidths[$i] ?? 'auto') }};">
                 @endforeach
-            </tr>
+            </colgroup>
+            <tbody>
+                <tr>
+                    <td class="label">Grand Total</td>
+                    @foreach ($summaryColumns as $col)
+                        <td class="{{ $col['align'] ?? '' }}">
+                            {{ $grandTotal[$col['key']] ?? '' }}
+                        </td>
+                    @endforeach
+                </tr>
+            </tbody>
         </table>
     @endif
 @endif
