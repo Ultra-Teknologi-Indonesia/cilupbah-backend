@@ -121,6 +121,7 @@ final class ActiveProcessOrderScope
 
             'packing:selesai', 'shipping:siap-kirim' => $query
                 ->where('sales_orders.status', 'packed')
+                ->where('sales_orders.is_canceled', false)
                 ->whereDoesntHave('shipmentOrders'),
 
             'shipping:jadwal' => $query
@@ -129,7 +130,10 @@ final class ActiveProcessOrderScope
                     ->where('status', Shipment::STATUS_SCHEDULED)),
 
             'shipping:batal' => $query
-                ->where('sales_orders.status', 'cancelled')
+                ->where(function (Builder $q) {
+                    $q->where('sales_orders.status', 'cancelled')
+                      ->orWhere('sales_orders.is_canceled', true);
+                })
                 ->whereNotNull('sales_orders.handed_to_warehouse_at')
                 ->whereNull('sales_orders.cancel_dismissed_at')
                 ->whereHas('packlist', fn (Builder $packlist): Builder => $packlist
