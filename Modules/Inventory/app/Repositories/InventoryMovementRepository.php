@@ -598,6 +598,14 @@ SQL;
             ->selectRaw('movement_balances.current_balance')
             ->selectRaw('movement_balances.current_available_balance')
             ->selectRaw(
+                '(SELECT so.status FROM sales_orders so '
+                .'WHERE so.salesorder_no = inventory_movements.transaction_number LIMIT 1) AS order_status'
+            )
+            ->selectRaw(
+                '(SELECT so.is_canceled FROM sales_orders so '
+                .'WHERE so.salesorder_no = inventory_movements.transaction_number LIMIT 1) AS order_is_canceled'
+            )
+            ->selectRaw(
                 '(SELECT EXISTS(SELECT 1 FROM sales_invoices si '
                 .'JOIN picklist_items pi ON pi.order_id = si.order_id '
                 .'JOIN picklists p ON p.id = pi.picklist_id '

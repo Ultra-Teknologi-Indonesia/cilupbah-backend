@@ -958,15 +958,64 @@ class KronologiBalancePartitionTest extends TestCase
         $row = $rows[0];
         $this->assertSame('ORDER_RELEASE', $row['source']);
         $this->assertSame('PESANAN_BATAL', $row['source_category']);
-        $this->assertSame('Pesanan Batal', $row['source_label']);
+        $this->assertSame('Pesanan batal — belum di-pick', $row['source_label']);
         $this->assertSame('reservation_release', $row['stock_effect']['type']);
+        $this->assertSame('Pesanan batal belum di-pick', $row['stock_effect']['label']);
         $this->assertSame('tersedia', $row['stock_effect']['quantity_label']);
         $this->assertSame(
-            'Cadangan pesanan dilepas. Stok fisik tidak berubah.',
+            'Pesanan batal sebelum di-pick. Cadangan pesanan dilepas sehingga available bertambah; stok fisik tidak berubah.',
             $row['stock_effect']['description'],
         );
         $this->assertSame(1, $row['qty'], 'Qty harus positif (+1) untuk pemulihan stok');
         $this->assertSame('in', $row['direction']);
+    }
+
+    public function test_pesanan_batal_setelah_pick_menjelaskan_pemulihan_stok_fisik(): void
+    {
+        $orderId = Str::uuid()->toString();
+        DB::table('sales_orders')->insert([
+            'id' => $orderId,
+            'salesorder_no' => 'TT-TEST-CANCEL-PICKED',
+            'channel_order_no' => 'TEST-CANCEL-PICKED',
+            'source' => 'tiktok',
+            'status' => 'cancelled',
+            'is_canceled' => true,
+            'location_id' => $this->locationId,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        DB::table('inventory_movements')->insert([
+            'id' => Str::uuid()->toString(),
+            'item_id' => $this->itemId,
+            'location_id' => $this->locationId,
+            'bin_id' => $this->finalBinId,
+            'transaction_number' => 'TT-TEST-CANCEL-PICKED',
+            'source' => 'ORDER_RESTORE_CANCEL',
+            'qty' => 1,
+            'balance' => 25,
+            'transaction_date' => now(),
+            'created_by' => 'system',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        request()->merge([
+            'filter' => ['item_id' => $this->itemId],
+            'per_page' => 50,
+        ]);
+
+        $paginated = app(InventoryMovementRepository::class)->getHistoryPaginated(50);
+        $resource = InventoryMovementResource::collection($paginated);
+        $row = collect($resource->response()->getData(true)['data'])
+            ->firstWhere('transaction_number', 'TT-TEST-CANCEL-PICKED');
+
+        $this->assertSame('Pesanan batal — sudah di-pick', $row['source_label']);
+        $this->assertSame('physical_restore', $row['stock_effect']['type']);
+        $this->assertSame('Pesanan batal sudah di-pick', $row['stock_effect']['label']);
+        $this->assertSame('fisik', $row['stock_effect']['quantity_label']);
+        $this->assertSame(
+            'Pesanan batal setelah di-pick. Stok fisik dikembalikan ke rak dan available bertambah.',
+            $row['stock_effect']['description'],
+        );
     }
 
     public function test_transfer_workflow_sort_mengikuti_urutan_fisik(): void

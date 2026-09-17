@@ -40,6 +40,21 @@ class InventoryMovementResource extends JsonResource
             $sourceLabel = $workflow['label'];
         }
 
+        $isCancelledOrder = $this->isCancelledOrder();
+        if ($isCancelledOrder && $this->source === 'ORDER_RELEASE') {
+            $sourceCategory = 'PESANAN_BATAL';
+            $sourceLabel = 'Pesanan batal — belum di-pick';
+        } elseif ($isCancelledOrder && in_array($this->source, [
+            'ORDER_RESTORE',
+            'ORDER_RESTORE_CANCEL',
+            'ORDER_COMPLETE_REVERSAL',
+            'PICKING_REVERSAL',
+            'PACKING_REVERSAL',
+        ], true)) {
+            $sourceCategory = 'PESANAN_BATAL';
+            $sourceLabel = 'Pesanan batal — sudah di-pick';
+        }
+
         if (in_array($this->source, ['PUTAWAY_IN', 'PUTAWAY_OUT', 'PUTAWAY_REVERSAL'], true)) {
             $putawayType = strtolower((string) ($this->putaway_source_type ?? ''));
             $refNo = strtoupper((string) ($this->ref_no ?? ''));
@@ -137,11 +152,17 @@ class InventoryMovementResource extends JsonResource
     private function stockEffect(string $source): ?array
     {
         if ($source === 'ORDER_RELEASE') {
+            $isCancelledOrder = $this->isCancelledOrder();
+
             return [
                 'type' => 'reservation_release',
-                'label' => 'Cadangan dilepas',
+                'label' => $isCancelledOrder
+                    ? 'Pesanan batal belum di-pick'
+                    : 'Cadangan dilepas',
                 'quantity_label' => 'tersedia',
-                'description' => 'Cadangan pesanan dilepas. Stok fisik tidak berubah.',
+                'description' => $isCancelledOrder
+                    ? 'Pesanan batal sebelum di-pick. Cadangan pesanan dilepas sehingga available bertambah; stok fisik tidak berubah.'
+                    : 'Cadangan pesanan dilepas. Stok fisik tidak berubah.',
             ];
         }
 
@@ -152,11 +173,17 @@ class InventoryMovementResource extends JsonResource
             'PICKING_REVERSAL',
             'PACKING_REVERSAL',
         ], true)) {
+            $isCancelledOrder = $this->isCancelledOrder();
+
             return [
                 'type' => 'physical_restore',
-                'label' => 'Stok fisik dikembalikan',
+                'label' => $isCancelledOrder
+                    ? 'Pesanan batal sudah di-pick'
+                    : 'Stok fisik dikembalikan',
                 'quantity_label' => 'fisik',
-                'description' => 'Barang dikembalikan ke stok fisik.',
+                'description' => $isCancelledOrder
+                    ? 'Pesanan batal setelah di-pick. Stok fisik dikembalikan ke rak dan available bertambah.'
+                    : 'Barang dikembalikan ke stok fisik.',
             ];
         }
 
@@ -170,5 +197,15 @@ class InventoryMovementResource extends JsonResource
         }
 
         return null;
+    }
+
+    private function isCancelledOrder(): bool
+    {
+        $flag = $this->order_is_canceled ?? false;
+        $isCancelledFlag = $flag === true
+            || in_array(strtolower(trim((string) $flag)), ['1', 't', 'true', 'yes'], true);
+
+        return $isCancelledFlag
+            || strtolower(trim((string) ($this->order_status ?? ''))) === 'cancelled';
     }
 }
