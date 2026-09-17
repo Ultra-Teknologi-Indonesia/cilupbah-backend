@@ -633,9 +633,17 @@ class ShopeeProductService implements ChunkedDownloadable
             if (! $matchedExisting) {
                 $variantId = $variantIds[0] ?? null;
             } else {
-                $sku = $item['item_sku'] ?? null;
-                $variant = $sku ? $this->productRepository->getVariantByProductIdAndSku((string) $insertedId, $sku) : null;
-                $variantId = $variant->id ?? null;
+                $technicalBundleVariant = $this->productRepository
+                    ->getActiveBundleTechnicalVariant((string) $insertedId);
+                if ($technicalBundleVariant) {
+                    $variantId = $technicalBundleVariant->id;
+                } else {
+                    $sku = $item['item_sku'] ?? null;
+                    $variant = $sku
+                        ? $this->productRepository->getVariantByProductIdAndSku((string) $insertedId, $sku)
+                        : null;
+                    $variantId = $variant->id ?? null;
+                }
             }
 
             if ($variantId) {

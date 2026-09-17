@@ -2070,6 +2070,10 @@ class SalesOrderService
         $item = $order->items()->whereKey($orderItemId)->firstOrFail();
 
         if ($item->item_id) {
+            if ($this->reconcileStaleBundleOrderItem($order, $orderItemId)) {
+                return $this->freshOrderWithItems($order);
+            }
+
             return $this->freshOrderWithItems($order);
         }
 
@@ -2174,6 +2178,191 @@ class SalesOrderService
         $this->forgetOrderTabCounts();
 
         return $this->freshOrderWithItems($order);
+    }
+
+    /**
+     * Return a safe replacement for a legacy order item that points to a
+     * deleted/non-bundle master while an active bundle with the same
+     * marketplace SKU exists.
+     *
+     * This method is deliberately read-only. Applying the replacement is
+     * handled by reconcileStaleBundleOrderItem().
+     */
+    public function inspectStaleBundleOrderItem(SalesOrder $order, SalesOrderItem $item): ?object
+    {
+        if ($item->item_id === null
+            || ! in_array(strtolower((string) $order->source), ['shopee', 'tiktok', 'lazada', 'woocommerce'], true)
+            || ! in_array((string) $order->status, ['pending', 'reserved'], true)
+            || $order->handed_to_warehouse_at !== null
+            || trim((string) $item->sku) === '') {
+            return null;
+        }
+
+        $hasFulfillmentReference = DB::table('picklist_items')
+            ->where('order_item_id', $item->id)
+            ->exists()
+            || DB::table('packlist_items')
+                ->where('order_item_id', $item->id)
+                ->exists();
+
+        if ($hasFulfillmentReference) {
+            return null;
+        }
+
+        $current = DB::table('product_variants as v')
+            ->leftJoin('products as p', 'p.id', '=', 'v.product_id')
+            ->where('v.id', $item->item_id)
+            ->first([
+                'v.id',
+                'v.is_active as variant_active',
+                'v.deleted_at as variant_deleted_at',
+                'p.id as product_id',
+                'p.is_bundle as product_is_bundle',
+                'p.is_active as product_active',
+                'p.deleted_at as product_deleted_at',
+            ]);
+
+        $currentIsValidBundle = $current !== null
+            && (bool) $current->variant_active
+            && $current->variant_deleted_at === null
+            && (bool) $current->product_is_bundle
+            && (bool) $current->product_active
+            && $current->product_deleted_at === null;
+
+        if ($currentIsValidBundle) {
+            return null;
+        }
+
+        $hasOldReservationBalance = DB::table('inventory_movements')
+            ->where('transaction_number', $order->salesorder_no)
+            ->where('item_id', $item->item_id)
+            ->whereIn('source', ['ORDER_RESERVE', 'ORDER_RELEASE'])
+            ->select('location_id')
+            ->selectRaw('SUM(qty) AS balance')
+            ->groupBy('location_id')
+            ->havingRaw('SUM(qty) <> 0')
+            ->exists();
+
+        if ($hasOldReservationBalance) {
+            return null;
+        }
+
+        $targets = DB::table('product_variants as v')
+            ->join('products as p', 'p.id', '=', 'v.product_id')
+            ->where('p.is_bundle', true)
+            ->where('p.is_active', true)
+            ->whereNull('p.deleted_at')
+            ->where('v.is_active', true)
+            ->whereNull('v.deleted_at')
+            ->whereRaw('LOWER(TRIM(p.sku)) = ?', [mb_strtolower(trim((string) $item->sku))])
+            ->get([
+                'v.id as target_variant_id',
+                'v.sku as target_variant_sku',
+                'p.id as target_product_id',
+                'p.name as target_product_name',
+                'p.sku as target_product_sku',
+            ]);
+
+        if ($targets->count() !== 1 || (string) $targets[0]->target_variant_id === (string) $item->item_id) {
+            return null;
+        }
+
+        $target = $targets[0];
+        $componentCount = DB::table('product_bundle_items as pbi')
+            ->join('product_variants as cv', 'cv.id', '=', 'pbi.component_variant_id')
+            ->join('products as cp', 'cp.id', '=', 'cv.product_id')
+            ->where('pbi.bundle_product_id', $target->target_product_id)
+            ->where('cv.is_active', true)
+            ->whereNull('cv.deleted_at')
+            ->where('cp.is_active', true)
+            ->whereNull('cp.deleted_at')
+            ->count();
+
+        $allComponentCount = DB::table('product_bundle_items')
+            ->where('bundle_product_id', $target->target_product_id)
+            ->count();
+
+        if ($allComponentCount === 0 || $componentCount !== $allComponentCount) {
+            return null;
+        }
+
+        return $target;
+    }
+
+    /**
+     * Rebind one safe legacy order item to its active bundle variant.
+     * Existing marketplace SKU is preserved; only the internal item_id is
+     * changed. Reservation is created only for the new bundle components.
+     */
+    public function reconcileStaleBundleOrderItem(SalesOrder $order, string $orderItemId): bool
+    {
+        $resolvedVariantId = null;
+        $resolvedItem = null;
+        $stockMutated = false;
+
+        DB::transaction(function () use ($order, $orderItemId, &$resolvedVariantId, &$resolvedItem, &$stockMutated): void {
+            $lockedOrderQuery = SalesOrder::whereKey($order->id);
+            WarehouseAccess::apply($lockedOrderQuery, 'location_id');
+            $lockedOrder = $lockedOrderQuery->lockForUpdate()->firstOrFail();
+            $item = $lockedOrder->items()->whereKey($orderItemId)->lockForUpdate()->firstOrFail();
+            $target = $this->inspectStaleBundleOrderItem($lockedOrder, $item);
+
+            if ($target === null) {
+                return;
+            }
+
+            $item->update(['item_id' => $target->target_variant_id]);
+            $resolvedVariantId = (string) $target->target_variant_id;
+            $resolvedItem = $item;
+            $lockedOrder->load('items');
+            $hasUnmappedAfterMapping = $this->hasUnmappedItems($lockedOrder);
+
+            if ($lockedOrder->status === 'reserved' && ! $hasUnmappedAfterMapping) {
+                $this->reserveStockForItem($lockedOrder, $item->refresh(), false);
+                $stockMutated = true;
+            }
+
+            if ($lockedOrder->status === 'pending' && ! $hasUnmappedAfterMapping) {
+                $targetStatus = $this->targetStatusAfterDownload($lockedOrder);
+
+                if ($targetStatus !== 'pending') {
+                    $lockedOrder->status = $targetStatus;
+                    $lockedOrder->save();
+
+                    if (! in_array($targetStatus, ['shipped', 'cancelled'], true)) {
+                        $stockMutated = $this->reconcileStockTransition(
+                            $lockedOrder,
+                            null,
+                            $targetStatus,
+                        ) || $stockMutated;
+                    }
+
+                    $this->logStatusHistory($lockedOrder, 'PROCESS', [
+                        'from' => 'pending',
+                        'to' => $targetStatus,
+                        'reason' => 'stale_bundle_item_reconciled',
+                        'channel_status' => $lockedOrder->channel_status,
+                        'stock_allocation' => in_array($targetStatus, ['shipped', 'cancelled'], true)
+                            ? 'not_required_terminal_channel_status'
+                            : 'reserved',
+                    ]);
+                }
+            }
+        }, 3);
+
+        if ($resolvedVariantId !== null && $resolvedItem !== null) {
+            $this->ensureChannelVariantMapping($order, $resolvedItem, $resolvedVariantId);
+        }
+
+        if ($stockMutated) {
+            SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
+        }
+
+        if ($resolvedVariantId !== null) {
+            $this->forgetOrderTabCounts();
+        }
+
+        return $resolvedVariantId !== null;
     }
 
     private function forgetOrderTabCounts(): void

@@ -12,6 +12,7 @@ use Modules\Sales\Console\Commands\FinanceQueueHealth;
 use Modules\Sales\Console\Commands\PrepareShopeeLabelsBackfill;
 use Modules\Sales\Console\Commands\ReapStaleBulkLabelBatches;
 use Modules\Sales\Console\Commands\ReconcileFailedDownloadOrders;
+use Modules\Sales\Console\Commands\ReconcileStaleBundleOrderItems;
 use Modules\Sales\Console\Commands\RelocateOrdersToKecil;
 use Modules\Sales\Console\Commands\RestoreTrackingNumbers;
 use Modules\Sales\Console\Commands\SyncOrderFinance;
@@ -48,6 +49,7 @@ class SalesServiceProvider extends ModuleServiceProvider
         CleanupBulkLabelBatchesCommand::class,
         ReapStaleBulkLabelBatches::class,
         ReconcileFailedDownloadOrders::class,
+        ReconcileStaleBundleOrderItems::class,
         SyncShippingStatus::class,
     ];
 

@@ -752,4 +752,75 @@ class GagalDownloadFlowTest extends TestCase
         $this->assertSame(0, Artisan::call('sales:reconcile-failed-downloads', ['--apply' => true]));
         $this->assertSame($variantId, DB::table('sales_order_items')->where('order_id', $orderId)->value('item_id'));
     }
+
+    public function test_stale_non_bundle_item_is_reconciled_to_active_bundle_once(): void
+    {
+        $this->channelShopId();
+        $oldVariantId = $this->seedMasterOnlyVariant('SKU-STALE-BUNDLE', 0);
+        $componentVariantId = $this->seedMasterOnlyVariant('COMPONENT-STALE-BUNDLE', 20);
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'Kategori Bundle Stale',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $bundleProductId = Str::uuid()->toString();
+        DB::table('products')->insert([
+            'id' => $bundleProductId,
+            'category_id' => $categoryId,
+            'name' => 'Bundle Stale',
+            'sku' => 'SKU-STALE-BUNDLE',
+            'is_bundle' => true,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $bundleVariantId = Str::uuid()->toString();
+        DB::table('product_variants')->insert([
+            'id' => $bundleVariantId,
+            'product_id' => $bundleProductId,
+            'sku' => '__bundle__'.$bundleProductId,
+            'is_active' => true,
+            'is_internal' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('product_bundle_items')->insert([
+            'id' => Str::uuid()->toString(),
+            'bundle_product_id' => $bundleProductId,
+            'component_variant_id' => $componentVariantId,
+            'qty' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $orderId = $this->seedLegacyUnmappedOrder('GD-STALE-BUNDLE', 'SKU-STALE-BUNDLE');
+        DB::table('sales_order_items')
+            ->where('order_id', $orderId)
+            ->update(['item_id' => $oldVariantId]);
+        DB::table('sales_orders')
+            ->where('id', $orderId)
+            ->update(['status' => 'reserved']);
+
+        $order = $this->freshOrder($orderId);
+        $orderItemId = $order->items->first()->id;
+
+        $this->assertTrue($this->service->reconcileStaleBundleOrderItem($order, $orderItemId));
+        $this->assertFalse($this->service->reconcileStaleBundleOrderItem($this->freshOrder($orderId), $orderItemId));
+        $this->assertSame(
+            $bundleVariantId,
+            DB::table('sales_order_items')->where('id', $orderItemId)->value('item_id'),
+        );
+        $this->assertSame(
+            'SKU-STALE-BUNDLE',
+            DB::table('sales_order_items')->where('id', $orderItemId)->value('sku'),
+        );
+        $this->assertSame(2, DB::table('inventories')
+            ->where('item_id', $componentVariantId)
+            ->where('location_id', $this->locationId)
+            ->value('on_order'));
+        $this->assertSame(1, DB::table('inventory_movements')
+            ->where('transaction_number', 'GD-STALE-BUNDLE')
+            ->where('source', 'ORDER_RESERVE')
+            ->count());
+    }
 }
