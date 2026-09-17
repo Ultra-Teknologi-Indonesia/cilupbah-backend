@@ -315,8 +315,12 @@ class ReportRepository
 
     public function orderPerformanceRows(string $type, array $filters): array
     {
-        $from = $filters['from'] ?? null;
-        $to = $filters['to'] ?? null;
+        $from = ! empty($filters['from'])
+            ? CarbonImmutable::parse((string) $filters['from'])->startOfDay()->toDateTimeString()
+            : null;
+        $toExclusive = ! empty($filters['to'])
+            ? CarbonImmutable::parse((string) $filters['to'])->addDay()->startOfDay()->toDateTimeString()
+            : null;
         $locationIds = WarehouseAccess::constrain(empty($filters['location_ids']) ? null : $filters['location_ids']);
 
         $query = match ($type) {
@@ -328,7 +332,7 @@ class ReportRepository
 
         return $query
             ->when($from, fn ($q, $v) => $q->where('tanggal_raw', '>=', $v))
-            ->when($to, fn ($q, $v) => $q->where('tanggal_raw', '<=', $v))
+            ->when($toExclusive, fn ($q, $v) => $q->where('tanggal_raw', '<', $v))
             ->when($locationIds !== null, fn ($q) => $q->whereIn('location_id', $locationIds))
             ->orderBy('lokasi')
             ->orderBy('grup')
