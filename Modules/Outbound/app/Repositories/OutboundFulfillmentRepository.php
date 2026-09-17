@@ -66,8 +66,12 @@ class OutboundFulfillmentRepository
                     ->join('picklist_items', 'picklist_items.picklist_id', '=', 'picklists.id')
                     ->join('users', 'users.id', '=', 'picklists.picker_id')
                     ->whereColumn('picklist_items.order_id', 'sales_orders.id')
-                    ->where('picklists.status', Picklist::STATUS_COMPLETED)
-                    ->orderByDesc('picklists.completed_at')
+                    ->whereIn('picklists.status', [
+                        Picklist::STATUS_DRAFT,
+                        Picklist::STATUS_IN_PROGRESS,
+                        Picklist::STATUS_COMPLETED,
+                    ])
+                    ->orderByDesc('picklists.created_at')
                     ->limit(1)
                     ->select('users.name'),
             ]);
@@ -90,15 +94,23 @@ class OutboundFulfillmentRepository
                 'picklist_id' => DB::table('picklist_items')
                     ->join('picklists', 'picklists.id', '=', 'picklist_items.picklist_id')
                     ->whereColumn('picklist_items.order_id', 'sales_orders.id')
-                    ->where('picklists.status', Picklist::STATUS_COMPLETED)
-                    ->orderByDesc('picklists.completed_at')
+                    ->whereIn('picklists.status', [
+                        Picklist::STATUS_DRAFT,
+                        Picklist::STATUS_IN_PROGRESS,
+                        Picklist::STATUS_COMPLETED,
+                    ])
+                    ->orderByDesc('picklists.created_at')
                     ->limit(1)
                     ->select('picklists.id'),
                 'picklist_no' => DB::table('picklist_items')
                     ->join('picklists', 'picklists.id', '=', 'picklist_items.picklist_id')
                     ->whereColumn('picklist_items.order_id', 'sales_orders.id')
-                    ->where('picklists.status', Picklist::STATUS_COMPLETED)
-                    ->orderByDesc('picklists.completed_at')
+                    ->whereIn('picklists.status', [
+                        Picklist::STATUS_DRAFT,
+                        Picklist::STATUS_IN_PROGRESS,
+                        Picklist::STATUS_COMPLETED,
+                    ])
+                    ->orderByDesc('picklists.created_at')
                     ->limit(1)
                     ->select('picklists.picklist_no'),
             ]);

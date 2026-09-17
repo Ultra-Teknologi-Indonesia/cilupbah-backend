@@ -212,6 +212,21 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
         $this->assertIsArray($response->json('data'));
     }
 
+    public function test_finish_pick_shows_in_progress_picklist_reference(): void
+    {
+        $this->actingAs($this->user);
+        $this->order->update(['status' => 'picked']);
+
+        $response = $this->getJson('/api/v1/outbound/orders/finish-pick');
+
+        $response->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.id', $this->order->id)
+            ->assertJsonPath('data.0.picklist_id', $this->picklist->id)
+            ->assertJsonPath('data.0.picklist_no', $this->picklist->picklist_no)
+            ->assertJsonPath('data.0.picker_name', $this->user->name);
+    }
+
     public function test_cancelling_after_finish_pick_restores_the_same_origin_bin_once(): void
     {
         $this->actingAs($this->user);
