@@ -1225,7 +1225,7 @@ class ReportRepository
         )';
     }
 
-    public function rincianPendapatanQuery(array $filters): \Illuminate\Database\Eloquent\Builder
+    public function rincianPendapatanQuery(array $filters): \Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Query\Builder
     {
         $from = $filters['from'] ?? null;
         $to = $filters['to'] ?? null;
@@ -1260,7 +1260,7 @@ class ReportRepository
             ->orderBy('sales_invoices.invoice_number');
     }
 
-    public function rincianPendapatanPerBarangQuery(array $filters): \Illuminate\Database\Eloquent\Builder
+    public function rincianPendapatanPerBarangQuery(array $filters): \Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Query\Builder
     {
         $from = $filters['from'] ?? null;
         $to = $filters['to'] ?? null;

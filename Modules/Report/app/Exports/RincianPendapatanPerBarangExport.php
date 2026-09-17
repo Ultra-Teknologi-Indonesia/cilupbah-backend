@@ -2,7 +2,8 @@
 
 namespace Modules\Report\Exports;
 
-use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Carbon;
 use Maatwebsite\Excel\Concerns\FromQuery;
 use Maatwebsite\Excel\Concerns\WithColumnFormatting;
@@ -19,7 +20,7 @@ class RincianPendapatanPerBarangExport implements FromQuery, WithHeadings, WithM
     private const MONEY_FORMAT = '#,##0';
 
     public function __construct(
-        private readonly Builder $query,
+        private readonly EloquentBuilder|QueryBuilder $query,
     ) {}
 
     public function query()
