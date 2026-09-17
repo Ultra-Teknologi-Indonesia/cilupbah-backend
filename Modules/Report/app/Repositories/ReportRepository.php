@@ -894,18 +894,65 @@ class ReportRepository
             return [];
         }
 
-        return DB::table('inventories')
-            ->join('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
-            ->where('inventories.location_id', $locationId)
-            ->whereIn('inventories.item_id', $variantIds)
-            ->where(fn ($w) => $w->where('inventories.on_hand', '>', 0)->orWhere('inventories.on_order', '>', 0))
-            ->where('location_bins.is_inbound', false)
-            ->where('location_bins.is_stock_acknowledged', true)
-            ->where('location_bins.bin_final_code', '!=', 'DEFAULT')
-
-            ->orderBy('inventories.on_hand')
-            ->pluck('location_bins.bin_final_code', 'inventories.item_id')
+        $ids = collect($variantIds)
+            ->map(static fn ($id): string => (string) $id)
+            ->filter()
+            ->unique()
+            ->values()
             ->all();
+
+        if ($ids === []) {
+            return [];
+        }
+
+        $validBin = static function ($query) use ($locationId): void {
+            $query
+                ->where('location_bins.location_id', $locationId)
+                ->where('location_bins.is_inbound', false)
+                ->where('location_bins.is_stock_acknowledged', true)
+                ->whereRaw("UPPER(TRIM(COALESCE(location_bins.bin_final_code, ''))) <> 'DEFAULT'")
+                ->whereRaw("TRIM(COALESCE(location_bins.bin_final_code, '')) <> ''");
+        };
+
+        $bins = [];
+
+        $assignedIds = DB::table('sku_rack_assignments')
+            ->where('location_id', $locationId)
+            ->whereIn('item_id', $ids)
+            ->pluck('item_id')
+            ->map(static fn ($id): string => (string) $id)
+            ->all();
+
+        DB::table('sku_rack_assignments as assignments')
+            ->join('location_bins', 'location_bins.id', '=', 'assignments.bin_id')
+            ->where('assignments.location_id', $locationId)
+            ->whereIn('assignments.item_id', $ids)
+            ->tap($validBin)
+            ->orderBy('assignments.item_id')
+            ->get(['assignments.item_id', 'location_bins.bin_final_code'])
+            ->each(function ($row) use (&$bins): void {
+                $bins[(string) $row->item_id] = (string) $row->bin_final_code;
+            });
+
+        $missingIds = array_values(array_diff($ids, $assignedIds));
+
+        if ($missingIds !== []) {
+            DB::table('inventories')
+                ->join('location_bins', 'location_bins.id', '=', 'inventories.bin_id')
+                ->where('inventories.location_id', $locationId)
+                ->whereIn('inventories.item_id', $missingIds)
+                ->where(fn ($w) => $w->where('inventories.on_hand', '>', 0)->orWhere('inventories.on_order', '>', 0))
+                ->tap($validBin)
+                ->orderBy('inventories.on_hand')
+                ->orderBy('inventories.id')
+                ->get(['inventories.item_id', 'location_bins.bin_final_code'])
+                ->each(function ($row) use (&$bins): void {
+                    $itemId = (string) $row->item_id;
+                    $bins[$itemId] ??= (string) $row->bin_final_code;
+                });
+        }
+
+        return $bins;
     }
 
     public function barcodeOnlineMappings($variantIds): Collection

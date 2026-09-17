@@ -284,6 +284,82 @@ class GagalDownloadFlowTest extends TestCase
         );
     }
 
+    public function test_bundle_order_resolves_by_channel_seller_sku_without_writing_technical_sku(): void
+    {
+        $channelShopId = Str::uuid()->toString();
+        DB::table('channel_shops')->insert([
+            'id' => $channelShopId,
+            'channel_id' => null,
+            'shop_id' => 'SHOP-GD',
+            'shop_name' => 'Toko Bundle Downloaded',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'Kategori Bundle SKU Order',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $productId = Str::uuid()->toString();
+        DB::table('products')->insert([
+            'id' => $productId,
+            'category_id' => $categoryId,
+            'name' => 'Bundle SKU Order',
+            'sku' => 'BUNDLE-SKU',
+            'is_bundle' => true,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $technicalVariantId = Str::uuid()->toString();
+        DB::table('product_variants')->insert([
+            'id' => $technicalVariantId,
+            'product_id' => $productId,
+            'sku' => '__bundle__'.$productId,
+            'is_active' => true,
+            'is_internal' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $mappingId = Str::uuid()->toString();
+        DB::table('product_channel_mappings')->insert([
+            'id' => $mappingId,
+            'product_id' => $productId,
+            'channel_shop_id' => $channelShopId,
+            'external_product_id' => 'CP-GD',
+            'sync_status' => 'synced',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('product_variant_channel_mappings')->insert([
+            'id' => Str::uuid()->toString(),
+            'product_channel_mapping_id' => $mappingId,
+            'variant_id' => $technicalVariantId,
+            'channel_seller_sku' => 'BUNDLE-SKU',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $orderId = $this->seedLegacyUnmappedOrder('GD-BUNDLE', 'BUNDLE-SKU');
+        $this->repository->syncOrderItems($orderId, [[
+            'channel_product_id' => 'CP-GD',
+            'sku' => 'BUNDLE-SKU',
+            'qty_in_base' => 1,
+            'price' => 10000,
+        ]]);
+
+        $item = DB::table('sales_order_items')->where('order_id', $orderId)->first();
+
+        $this->assertSame($technicalVariantId, $item->item_id);
+        $this->assertSame('BUNDLE-SKU', $item->sku);
+        $this->assertStringStartsWith('__bundle__', DB::table('product_variants')->where('id', $item->item_id)->value('sku'));
+    }
+
     public function test_channel_order_with_master_only_sku_is_quarantined_to_failed_tab(): void
     {
 
@@ -595,14 +671,14 @@ class GagalDownloadFlowTest extends TestCase
         $this->assertCount(0, $ready->json('data'));
     }
 
-    public function test_index_defaults_to_ten_per_page(): void
+    public function test_index_defaults_to_twenty_per_page(): void
     {
         $user = $this->createPrivilegedUser();
 
         $response = $this->actingAs($user, 'sanctum')->getJson('/api/v1/sales');
 
         $response->assertStatus(200);
-        $response->assertJsonPath('meta.per_page', 10);
+        $response->assertJsonPath('meta.per_page', 20);
     }
 
     public function test_index_supports_legacy_sort_and_search_params(): void
@@ -640,5 +716,37 @@ class GagalDownloadFlowTest extends TestCase
         $res->assertStatus(200);
         $this->assertCount(1, $res->json('data'));
         $this->assertSame('SKU-1', $res->json('data.0.salesorder_no'));
+    }
+
+    public function test_download_order_item_creates_channel_mapping_for_future_orders(): void
+    {
+        $variantId = $this->seedMasterOnlyVariant('SKU-FUTURE-OK');
+        $shopId = $this->channelShopId();
+
+        $firstPayload = $this->channelOrderData('GD-FIRST', 'SKU-FUTURE-OK');
+        $firstPayload['channel_shop_id'] = $shopId;
+        $orderId1 = $this->service->upsertFromChannel($firstPayload);
+
+        $this->assertNotNull($orderId1);
+        $order1 = $this->freshOrder($orderId1);
+        $this->assertNull($order1->items->first()->item_id, 'order pertama masuk karantina Gagal Download');
+
+        $this->service->downloadOrderItem($order1, $order1->items->first()->id);
+
+        $order1Fresh = $this->freshOrder($orderId1);
+        $this->assertSame($variantId, $order1Fresh->items->first()->item_id, 'item order pertama terpetakan');
+        $this->assertDatabaseHas('product_variant_channel_mappings', [
+            'variant_id' => $variantId,
+            'channel_seller_sku' => 'SKU-FUTURE-OK',
+        ]);
+
+        $secondPayload = $this->channelOrderData('GD-SECOND', 'SKU-FUTURE-OK');
+        $secondPayload['channel_shop_id'] = $shopId;
+        $orderId2 = $this->service->upsertFromChannel($secondPayload);
+
+        $this->assertNotNull($orderId2);
+        $order2 = $this->freshOrder($orderId2);
+        $this->assertSame($variantId, $order2->items->first()->item_id, 'order kedua langsung terpetakan tanpa karantina');
+        $this->assertSame('reserved', $order2->status, 'order kedua langsung siap proses');
     }
 }

@@ -51,11 +51,6 @@ class MonitorStockService
         );
     }
 
-    /**
-     * The Minus monitor is an operational exception queue for the small
-     * warehouse. Keep its implicit scope identical for the list and badge;
-     * callers may still select another explicit operational location.
-     */
     private function applyDefaultSmallWarehouseForMinus(?string $mode, array $filters): array
     {
         if ($mode !== 'minus' || ! empty($filters['location_id'])) {

@@ -2031,11 +2031,24 @@ class SalesOrderService
             return $this->freshOrderWithItems($order);
         }
 
-        if ($variantId === null && ! $this->skuExistsInMaster($item->sku)) {
+        // A bundle's seller SKU is mapped to an internal technical variant
+        // (`__bundle__...`). Resolve the listing mapping before attempting a
+        // remote product pull; otherwise a valid bundle can be downloaded a
+        // second time and incorrectly end up in Gagal Download.
+        $mappedVariantId = $variantId ?? $this->orderRepository->variantIdForChannelOrderItem(
+            (string) $order->id,
+            $item->channel_product_id,
+            $item->sku,
+        );
+
+        if ($variantId === null && $mappedVariantId === null && ! $this->skuExistsInMaster($item->sku)) {
             $this->attemptChannelProductPull($order, $item);
         }
 
-        $mutated = DB::transaction(function () use ($order, $orderItemId, $variantId) {
+        $resolvedVariantIdForMapping = null;
+        $orderItemForMapping = null;
+
+        $mutated = DB::transaction(function () use ($order, $orderItemId, $variantId, &$resolvedVariantIdForMapping, &$orderItemForMapping) {
             $lockedOrderQuery = SalesOrder::whereKey($order->id);
             WarehouseAccess::apply($lockedOrderQuery, 'location_id');
             $lockedOrder = $lockedOrderQuery->lockForUpdate()->firstOrFail();
@@ -2052,7 +2065,11 @@ class SalesOrderService
                 }
                 $resolvedVariantId = $variantId;
             } else {
-                $resolvedVariantId = $this->orderRepository->variantIdBySku($item->sku);
+                $resolvedVariantId = $this->orderRepository->variantIdForChannelOrderItem(
+                    (string) $lockedOrder->id,
+                    $item->channel_product_id,
+                    $item->sku,
+                );
             }
 
             if (! $resolvedVariantId) {
@@ -2060,6 +2077,8 @@ class SalesOrderService
             }
 
             $item->update(['item_id' => $resolvedVariantId]);
+            $resolvedVariantIdForMapping = $resolvedVariantId;
+            $orderItemForMapping = $item;
 
             $stockMutated = false;
 
@@ -2105,6 +2124,10 @@ class SalesOrderService
 
             return $stockMutated;
         });
+
+        if ($resolvedVariantIdForMapping && $orderItemForMapping) {
+            $this->ensureChannelVariantMapping($order, $orderItemForMapping, $resolvedVariantIdForMapping);
+        }
 
         if ($mutated) {
             SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
@@ -2173,6 +2196,99 @@ class SalesOrderService
                 'channel' => $channel,
                 'channel_shop_id' => $shopId,
                 'channel_product_id' => $externalProductId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function ensureChannelVariantMapping(SalesOrder $order, SalesOrderItem $item, string $variantId): void
+    {
+        $shopId = $order->channel_shop_id;
+        if (! $shopId) {
+            return;
+        }
+
+        try {
+            $channelShop = DB::table('channel_shops')
+                ->where('shop_id', $shopId)
+                ->first();
+
+            // `channel_shop_id` on channel orders is normally the external
+            // shop_id. Only query the UUID primary key when the value really
+            // is a UUID; an OR against a UUID column would abort PostgreSQL
+            // transactions for normal marketplace shop IDs.
+            if (! $channelShop && Str::isUuid((string) $shopId)) {
+                $channelShop = DB::table('channel_shops')
+                    ->where('id', $shopId)
+                    ->first();
+            }
+
+            if (! $channelShop) {
+                return;
+            }
+
+            $productId = DB::table('product_variants')
+                ->where('id', $variantId)
+                ->value('product_id');
+
+            if (! $productId) {
+                return;
+            }
+
+            $pcmQuery = DB::table('product_channel_mappings')
+                ->where('product_id', $productId)
+                ->where('channel_shop_id', $channelShop->id);
+
+            $pcm = $item->channel_product_id
+                ? (clone $pcmQuery)
+                    ->where('external_product_id', $item->channel_product_id)
+                    ->first()
+                : null;
+
+            // Never attach a repaired order item to another listing of the
+            // same master product. A missing listing mapping gets its own row.
+            if (! $pcm && ! $item->channel_product_id) {
+                $pcm = (clone $pcmQuery)
+                    ->whereNull('external_product_id')
+                    ->first();
+            }
+
+            if (! $pcm) {
+                $pcmId = (string) Str::uuid();
+                DB::table('product_channel_mappings')->insert([
+                    'id' => $pcmId,
+                    'product_id' => $productId,
+                    'channel_shop_id' => $channelShop->id,
+                    'external_product_id' => $item->channel_product_id ?: null,
+                    'sync_status' => 'synced',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            } else {
+                $pcmId = $pcm->id;
+            }
+
+            $exists = DB::table('product_variant_channel_mappings')
+                ->where('product_channel_mapping_id', $pcmId)
+                ->where('variant_id', $variantId)
+                ->exists();
+
+            if (! $exists) {
+                DB::table('product_variant_channel_mappings')->insert([
+                    'id' => (string) Str::uuid(),
+                    'product_channel_mapping_id' => $pcmId,
+                    'variant_id' => $variantId,
+                    'external_sku_id' => $item->channel_product_id ?: null,
+                    'channel_seller_sku' => $item->sku ?: null,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('SalesOrderService: gagal auto-link channel variant mapping pada order item download', [
+                'order_id' => $order->id,
+                'item_id' => $item->id,
+                'variant_id' => $variantId,
                 'error' => $e->getMessage(),
             ]);
         }
@@ -2336,7 +2452,10 @@ class SalesOrderService
             }
 
             if ($wasNewOrder && $order->source && ! empty($orderData['items']) && is_array($orderData['items'])) {
-                $downloaded = $this->orderRepository->channelDownloadedSkus($orderData['items']);
+                $downloaded = $this->orderRepository->channelDownloadedSkus(
+                    $orderData['items'],
+                    $order->channel_shop_id,
+                );
                 $undownloadedItemIds = $order->items
                     ->filter(fn ($it) => $it->item_id && $it->sku && ! in_array($it->sku, $downloaded, true))
                     ->pluck('id')

@@ -198,7 +198,7 @@ class ReportService
         $jenis = $data['jenis'];
         $ids = $data['ids'];
         $harga = $data['harga'];
-        $paper = $data['paper'] ?? 'thermal_50x40';
+        $paper = $data['paper'] ?? 'thermal_50x50';
 
         $variants = $this->repository->barcodeVariants($jenis, $ids);
 
@@ -262,6 +262,13 @@ class ReportService
         ]);
 
         switch ($paper) {
+            case 'thermal_50x50':
+                $pdf->setPaper([0, 0, 141.7, 141.7], 'portrait');
+                break;
+            case 'thermal_30x40':
+
+                $pdf->setPaper([0, 0, 113.4, 85.0], 'portrait');
+                break;
             case 'thermal_50x40':
                 $pdf->setPaper([0, 0, 141.7, 113.4], 'portrait');
                 break;
