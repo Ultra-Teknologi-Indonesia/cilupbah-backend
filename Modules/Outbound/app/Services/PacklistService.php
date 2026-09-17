@@ -55,7 +55,12 @@ class PacklistService
         }
 
         if ($order->is_canceled) {
-            throw new \Exception("Pesanan {$order->salesorder_no} sudah DIBATALKAN — tidak bisa dipacking.");
+            throw new UserFacingException(
+                title: 'Pesanan Dibatalkan',
+                message: "Pesanan {$order->salesorder_no} sudah DIBATALKAN — tidak bisa dipacking.",
+                status: 422,
+                errors: ['code' => 'order_canceled'],
+            );
         }
 
         $packlist = Packlist::where('order_id', $order->id)
@@ -271,7 +276,12 @@ class PacklistService
         WarehouseAccess::apply($packOrderQuery, 'location_id');
         $packOrder = $packOrderQuery->first();
         if ($packOrder && $packOrder->is_canceled) {
-            throw new \Exception("Pesanan {$packOrder->salesorder_no} sudah DIBATALKAN — tidak bisa dipacking.");
+            throw new UserFacingException(
+                title: 'Pesanan Dibatalkan',
+                message: "Pesanan {$packOrder->salesorder_no} sudah DIBATALKAN — tidak bisa dipacking.",
+                status: 422,
+                errors: ['code' => 'order_canceled'],
+            );
         }
 
         $item = $packlist->items->firstWhere('id', $itemId);

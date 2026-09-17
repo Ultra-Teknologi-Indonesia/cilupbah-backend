@@ -33,10 +33,28 @@ class FulfillmentCancelGuardTest extends TestCase
         $orderId = $this->seedOrder('cancelled', true);
         $no = DB::table('sales_orders')->where('id', $orderId)->value('salesorder_no');
 
-        $this->expectException(\Exception::class);
+        $this->expectException(UserFacingException::class);
         $this->expectExceptionMessageMatches('/DIBATALKAN/i');
 
         app(PacklistService::class)->scanOrder($no);
+    }
+
+    public function test_packing_scan_api_returns_422_with_order_canceled_code(): void
+    {
+        $orderId = $this->seedOrder('cancelled', true);
+        $no = DB::table('sales_orders')->where('id', $orderId)->value('salesorder_no');
+
+        \App\Models\Permission::firstOrCreate(['name' => 'view-packing', 'guard_name' => 'web']);
+        $user = \App\Models\User::factory()->create();
+        $user->givePermissionTo('view-packing');
+
+        $response = $this->actingAs($user)->getJson("/api/v1/outbound/packlists/scan-order?order_no={$no}");
+        $response->assertStatus(422)
+            ->assertJson([
+                'status' => 'error',
+                'title' => 'Pesanan Dibatalkan',
+                'errors' => ['code' => 'order_canceled'],
+            ]);
     }
 
     public function test_packing_scan_returns_null_for_unknown_order(): void
