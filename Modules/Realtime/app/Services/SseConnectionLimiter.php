@@ -42,15 +42,13 @@ LUA;
             $acquired = Redis::connection(config('realtime.redis_connection', 'default'))
                 ->eval(
                     self::ACQUIRE_SCRIPT,
-                    [
-                        $this->key(),
-                        (string) $now,
-                        $token,
-                        (string) ($now + $ttl),
-                        (string) $maximum,
-                        (string) $ttl,
-                    ],
                     1,
+                    $this->key(),
+                    (string) $now,
+                    $token,
+                    (string) ($now + $ttl),
+                    (string) $maximum,
+                    (string) $ttl,
                 );
 
             return (int) $acquired === 1 ? $token : null;

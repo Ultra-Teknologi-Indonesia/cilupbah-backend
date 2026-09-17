@@ -13,6 +13,12 @@ class SseConnectionLimiterTest extends TestCase
         $redis = \Mockery::mock();
         $redis->shouldReceive('eval')
             ->once()
+            ->withArgs(function (string $script, int $numberOfKeys, mixed ...$arguments): bool {
+                return $script !== ''
+                    && $numberOfKeys === 1
+                    && count($arguments) === 6
+                    && $arguments[0] === 'realtime:sse:active';
+            })
             ->andReturn(1);
         $redis->shouldReceive('zrem')
             ->once()
@@ -35,6 +41,12 @@ class SseConnectionLimiterTest extends TestCase
         $redis = \Mockery::mock();
         $redis->shouldReceive('eval')
             ->once()
+            ->withArgs(function (string $script, int $numberOfKeys, mixed ...$arguments): bool {
+                return $script !== ''
+                    && $numberOfKeys === 1
+                    && count($arguments) === 6
+                    && $arguments[0] === 'realtime:sse:active';
+            })
             ->andReturn(0);
 
         Redis::shouldReceive('connection')
