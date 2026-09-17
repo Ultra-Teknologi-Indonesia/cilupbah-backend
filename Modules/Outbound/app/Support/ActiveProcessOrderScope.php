@@ -107,6 +107,15 @@ final class ActiveProcessOrderScope
 
             'picking:selesai', 'packing:belum' => $query
                 ->where('sales_orders.status', 'picked')
+                ->where(function (Builder $q): void {
+                    // A regular order may enter this queue only after its
+                    // picklist is completed. Orders completed through the
+                    // ad-hoc picking flow have no picklist items and remain
+                    // valid packing candidates.
+                    $q->whereHas('picklistItems.picklist', fn (Builder $picklist): Builder => $picklist
+                        ->where('status', Picklist::STATUS_COMPLETED))
+                        ->orWhereDoesntHave('picklistItems');
+                })
                 ->whereDoesntHave('packlist', fn (Builder $packlist): Builder => $packlist
                     ->whereIn('status', [
                         Packlist::STATUS_DRAFT,

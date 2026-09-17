@@ -19,7 +19,7 @@ class MonitorStockController extends Controller
 {
     private const DEFAULT_PAGE_SIZE = 20;
 
-    private const MAX_PAGE_SIZE = 100;
+    private const MAX_PAGE_SIZE = 200;
 
     public function __construct(
         protected MonitorStockService $service,

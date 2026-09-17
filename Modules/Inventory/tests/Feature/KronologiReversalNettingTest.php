@@ -260,6 +260,33 @@ class KronologiReversalNettingTest extends TestCase
         ]);
     }
 
+    public function test_kronologi_menyembunyikan_transfer_dibatalkan_dan_pasangan_batal_tanpa_menghapus_ledger(): void
+    {
+        $original = $this->repo()->create([
+            ...$this->payload('TRANSIT_IN', 89, 89),
+            'transaction_number' => 'TRFO-000001102',
+        ]);
+        $cancelled = $this->repo()->create([
+            ...$this->payload('TRANSIT_OUT', -89, 0),
+            'transaction_number' => 'TRFO-000001102-BATAL',
+        ]);
+        $active = $this->repo()->create([
+            ...$this->payload('TRANSIT_IN', 5, 5),
+            'transaction_number' => 'TRFO-000001103',
+        ]);
+
+        request()->merge(['view' => 'all', 'per_page' => 50]);
+        $page = $this->repo()->getHistoryPaginated(50);
+
+        $this->assertSame(['TRFO-000001103'], collect($page->items())
+            ->pluck('transaction_number')
+            ->values()
+            ->all());
+        $this->assertDatabaseHas('inventory_movements', ['id' => $original->id]);
+        $this->assertDatabaseHas('inventory_movements', ['id' => $cancelled->id]);
+        $this->assertDatabaseHas('inventory_movements', ['id' => $active->id]);
+    }
+
     public function test_visibility_backfill_tidak_memasangkan_reversal_partial(): void
     {
         $original = InventoryMovement::create($this->payload('TRANSFER_IN', 10, 10));

@@ -290,6 +290,7 @@ class PicklistService
                 'location_id' => $data['location_id'],
                 'picker_id' => $data['picker_id'] ?? null,
                 'assigned_by' => isset($data['picker_id']) ? $data['created_by'] : null,
+                'assigned_at' => ! empty($data['picker_id']) ? $now : null,
                 'status' => Picklist::STATUS_DRAFT,
                 'notes' => $data['notes'] ?? null,
                 'created_by' => $data['created_by'],
@@ -331,6 +332,7 @@ class PicklistService
         $this->picklistRepository->update($id, [
             'picker_id' => $pickerId,
             'assigned_by' => $assignedBy,
+            'assigned_at' => now(),
         ]);
 
         $picklist = $this->picklistRepository->findById($id);
