@@ -6,6 +6,8 @@ use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\FulfillmentRemoval;
+use Modules\Outbound\Models\Shipment;
+use Modules\Outbound\Models\ShipmentOrder;
 use Modules\Sales\Models\SalesOrder;
 use Illuminate\Support\Facades\Log;
 
@@ -54,6 +56,15 @@ class FulfillmentCleanupService
             }
 
             $stage = $stage ?? FulfillmentRemoval::STAGE_PICKING;
+        }
+
+        $removedScheduledShipments = ShipmentOrder::query()
+            ->where('order_id', $orderId)
+            ->whereHas('shipment', fn ($shipment) => $shipment->where('status', Shipment::STATUS_SCHEDULED))
+            ->delete();
+
+        if ($removedScheduledShipments > 0) {
+            $stage = FulfillmentRemoval::STAGE_SHIPPING;
         }
 
         if ($stage === null) {

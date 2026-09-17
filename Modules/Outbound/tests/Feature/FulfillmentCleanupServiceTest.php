@@ -139,6 +139,34 @@ class FulfillmentCleanupServiceTest extends TestCase
         return $id;
     }
 
+    private function seedShipment(string $status = 'SCHEDULED'): string
+    {
+        $id = Str::uuid()->toString();
+        DB::table('shipments')->insert([
+            'id' => $id,
+            'shipment_no' => 'SHP-' . substr($id, 0, 6),
+            'location_id' => $this->locationId,
+            'courier_name' => 'J&T',
+            'shipment_type' => 'REGULAR',
+            'shipment_date' => now()->toDateString(),
+            'status' => $status,
+            'created_by' => 'system:test',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        return $id;
+    }
+
+    private function seedShipmentOrder(string $shipmentId, string $orderId): void
+    {
+        DB::table('shipment_orders')->insert([
+            'id' => Str::uuid()->toString(),
+            'shipment_id' => $shipmentId,
+            'order_id' => $orderId,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+
     public function test_removes_picklist_rows_and_drops_empty_picklist(): void
     {
         $orderId = $this->seedOrder('cancelled', true);
@@ -201,6 +229,33 @@ class FulfillmentCleanupServiceTest extends TestCase
             Packlist::STATUS_COMPLETED,
             DB::table('packlists')->where('id', $packlistId)->value('status')
         );
+    }
+
+    public function test_removes_cancelled_order_from_scheduled_shipment(): void
+    {
+        $orderId = $this->seedOrder('cancelled', true);
+        $shipmentId = $this->seedShipment('SCHEDULED');
+        $this->seedShipmentOrder($shipmentId, $orderId);
+
+        app(FulfillmentCleanupService::class)->detachCancelledOrder($orderId);
+
+        $this->assertSame(0, DB::table('shipment_orders')->where('order_id', $orderId)->count());
+        $this->assertDatabaseHas('fulfillment_removals', [
+            'order_id' => $orderId,
+            'stage' => 'shipping',
+            'reversed_stock' => false,
+        ]);
+    }
+
+    public function test_keeps_cancelled_order_in_handed_over_shipment(): void
+    {
+        $orderId = $this->seedOrder('cancelled', true);
+        $shipmentId = $this->seedShipment('HANDED_OVER');
+        $this->seedShipmentOrder($shipmentId, $orderId);
+
+        app(FulfillmentCleanupService::class)->detachCancelledOrder($orderId);
+
+        $this->assertSame(1, DB::table('shipment_orders')->where('order_id', $orderId)->count());
     }
 
     public function test_guard_skips_non_cancelled_order(): void

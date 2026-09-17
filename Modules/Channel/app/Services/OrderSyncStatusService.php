@@ -38,7 +38,7 @@ class OrderSyncStatusService
 
     private function needsReauth(ChannelShop $shop): bool
     {
-        if (empty($shop->access_token)) {
+        if (! \Modules\Channel\Support\ChannelTokenStatus::hasCredentials($shop)) {
             return true;
         }
 

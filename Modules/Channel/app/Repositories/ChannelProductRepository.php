@@ -120,6 +120,22 @@ class ChannelProductRepository
         return null;
     }
 
+    public function getActiveBundleTechnicalVariant(string $productId): ?object
+    {
+        $variants = DB::table('product_variants as pv')
+            ->join('products as p', 'p.id', '=', 'pv.product_id')
+            ->where('pv.product_id', $productId)
+            ->where('p.is_bundle', true)
+            ->where('p.is_active', true)
+            ->whereNull('p.deleted_at')
+            ->where('pv.is_active', true)
+            ->whereNull('pv.deleted_at')
+            ->whereRaw('LEFT(LOWER(TRIM(pv.sku)), 10) = ?', ['__bundle__'])
+            ->get(['pv.id', 'pv.sku']);
+
+        return $variants->count() === 1 ? $variants->first() : null;
+    }
+
     public function listingsForProductShop(string $productId, string $shopId): array
     {
         $channelShop = DB::table('channel_shops')->where('shop_id', $shopId)->first();

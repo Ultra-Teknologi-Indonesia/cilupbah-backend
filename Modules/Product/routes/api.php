@@ -1,29 +1,32 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use Modules\Product\Http\Controllers\ProductController;
-use Modules\Product\Http\Controllers\ChannelProductController;
-use Modules\Product\Http\Controllers\MediaController;
-use Modules\Product\Http\Controllers\CategoryController;
-use Modules\Product\Http\Controllers\AttributeController;
-use Modules\Product\Http\Controllers\ChannelCategoryController;
-use Modules\Product\Http\Controllers\ProductChannelDraftController;
-use Modules\Product\Http\Controllers\ProductSyncLogController;
-use Modules\Product\Http\Controllers\ChannelMonitorController;
-use Modules\Product\Http\Controllers\ProductMergeController;
-use Modules\Product\Http\Controllers\MasterFeedController;
-use Modules\Product\Http\Controllers\ReviewFeedController;
 use Modules\Product\Http\Controllers\ArchiveFeedController;
-use Modules\Product\Http\Controllers\ChannelProductListingController;
-use Modules\Product\Http\Controllers\ProductPantauanController;
-use Modules\Product\Http\Controllers\ProductUploadListingController;
-use Modules\Product\Http\Controllers\RaiseProductController;
-use Modules\Product\Http\Controllers\VariantController;
+use Modules\Product\Http\Controllers\AttributeController;
 use Modules\Product\Http\Controllers\CatalogController;
-use Modules\Product\Http\Controllers\ProductMasterDataController;
-use Modules\Product\Http\Controllers\ProductPickerFeedController;
+use Modules\Product\Http\Controllers\CategoryController;
+use Modules\Product\Http\Controllers\CategoryFormAttributeController;
+use Modules\Product\Http\Controllers\ChannelAttributeController;
+use Modules\Product\Http\Controllers\ChannelCategoryController;
+use Modules\Product\Http\Controllers\ChannelMonitorController;
+use Modules\Product\Http\Controllers\ChannelProductController;
+use Modules\Product\Http\Controllers\ChannelProductListingController;
+use Modules\Product\Http\Controllers\MasterFeedController;
+use Modules\Product\Http\Controllers\MediaController;
 use Modules\Product\Http\Controllers\PriceListController;
 use Modules\Product\Http\Controllers\ProductCatalogExportController;
+use Modules\Product\Http\Controllers\ProductChannelDraftController;
+use Modules\Product\Http\Controllers\ProductController;
+use Modules\Product\Http\Controllers\ProductImportController;
+use Modules\Product\Http\Controllers\ProductMasterDataController;
+use Modules\Product\Http\Controllers\ProductMergeController;
+use Modules\Product\Http\Controllers\ProductPantauanController;
+use Modules\Product\Http\Controllers\ProductPickerFeedController;
+use Modules\Product\Http\Controllers\ProductSyncLogController;
+use Modules\Product\Http\Controllers\ProductUploadListingController;
+use Modules\Product\Http\Controllers\RaiseProductController;
+use Modules\Product\Http\Controllers\ReviewFeedController;
+use Modules\Product\Http\Controllers\VariantController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
@@ -170,6 +173,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('products/{id}/channel-mappings/{mappingId}/re-sync', [ProductController::class, 'resyncChannelMapping'])->whereUuid('id')->whereUuid('mappingId');
     });
 
+    Route::post('products/channel-products/bulk-unlink', [ChannelProductController::class, 'bulkUnlink'])
+        ->middleware('role_or_permission:owner|delete-produk');
+
     Route::middleware('role_or_permission:owner|view-produk-naik')->group(function () {
         Route::get('products/{id}/upload-listing', [ProductUploadListingController::class, 'index'])->whereUuid('id');
     });
@@ -188,6 +194,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     });
 
     Route::middleware('role_or_permission:owner|create-produk-naik')->group(function () {
+        Route::post('products/{id}/channel-drafts/bulk-create', [ProductChannelDraftController::class, 'bulkStore'])->whereUuid('id');
         Route::post('products/{id}/channel-drafts', [ProductChannelDraftController::class, 'store'])->whereUuid('id');
     });
 
@@ -288,15 +295,15 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::middleware('role_or_permission:owner|view-kategori')->group(function () {
         Route::get('categories/{category}/available-channel-attributes', [CategoryController::class, 'availableChannelAttributes'])->whereNumber('category');
 
-        Route::get('categories/{category}/form-attributes', [\Modules\Product\Http\Controllers\CategoryFormAttributeController::class, 'show'])->whereNumber('category')->name('category.form-attributes');
+        Route::get('categories/{category}/form-attributes', [CategoryFormAttributeController::class, 'show'])->whereNumber('category')->name('category.form-attributes');
     });
 
     Route::middleware('role_or_permission:owner|create-kategori')->group(function () {
-        Route::post('categories/{category}/attributes', [\Modules\Product\Http\Controllers\CategoryFormAttributeController::class, 'store'])->whereNumber('category');
+        Route::post('categories/{category}/attributes', [CategoryFormAttributeController::class, 'store'])->whereNumber('category');
     });
 
     Route::middleware('role_or_permission:owner|delete-kategori')->group(function () {
-        Route::delete('categories/{category}/attributes/{attribute}', [\Modules\Product\Http\Controllers\CategoryFormAttributeController::class, 'destroy'])->whereNumber('category')->whereNumber('attribute');
+        Route::delete('categories/{category}/attributes/{attribute}', [CategoryFormAttributeController::class, 'destroy'])->whereNumber('category')->whereNumber('attribute');
     });
 
     Route::middleware('role_or_permission:owner|view-kategori')->group(function () {
@@ -327,16 +334,16 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::delete('media/upload/{uuid}', [MediaController::class, 'destroy'])->whereUuid('uuid')->name('media.destroy');
 
     Route::middleware('role_or_permission:owner|import-produk')->group(function () {
-        Route::get('products/import/template/single', [\Modules\Product\Http\Controllers\ProductImportController::class, 'downloadSingleTemplate']);
-        Route::get('products/import/template/bundle', [\Modules\Product\Http\Controllers\ProductImportController::class, 'downloadBundleTemplate']);
-        Route::post('products/import/single', [\Modules\Product\Http\Controllers\ProductImportController::class, 'importSingle']);
-        Route::post('products/import/bundle', [\Modules\Product\Http\Controllers\ProductImportController::class, 'importBundle']);
-        Route::get('products/import/batches', [\Modules\Product\Http\Controllers\ProductImportController::class, 'batches']);
-        Route::get('products/import/batches/{batch}', [\Modules\Product\Http\Controllers\ProductImportController::class, 'show'])->whereUuid('batch');
-        Route::get('products/import/batches/{batch}/rows', [\Modules\Product\Http\Controllers\ProductImportController::class, 'rows'])->whereUuid('batch');
-        Route::post('products/import/batches/{batch}/confirm', [\Modules\Product\Http\Controllers\ProductImportController::class, 'confirm'])->whereUuid('batch');
-        Route::get('products/import/batches/{batch}/errors', [\Modules\Product\Http\Controllers\ProductImportController::class, 'errors'])->whereUuid('batch');
-        Route::get('products/import/batches/{batch}/errors/download', [\Modules\Product\Http\Controllers\ProductImportController::class, 'downloadErrors'])->whereUuid('batch');
+        Route::get('products/import/template/single', [ProductImportController::class, 'downloadSingleTemplate']);
+        Route::get('products/import/template/bundle', [ProductImportController::class, 'downloadBundleTemplate']);
+        Route::post('products/import/single', [ProductImportController::class, 'importSingle']);
+        Route::post('products/import/bundle', [ProductImportController::class, 'importBundle']);
+        Route::get('products/import/batches', [ProductImportController::class, 'batches']);
+        Route::get('products/import/batches/{batch}', [ProductImportController::class, 'show'])->whereUuid('batch');
+        Route::get('products/import/batches/{batch}/rows', [ProductImportController::class, 'rows'])->whereUuid('batch');
+        Route::post('products/import/batches/{batch}/confirm', [ProductImportController::class, 'confirm'])->whereUuid('batch');
+        Route::get('products/import/batches/{batch}/errors', [ProductImportController::class, 'errors'])->whereUuid('batch');
+        Route::get('products/import/batches/{batch}/errors/download', [ProductImportController::class, 'downloadErrors'])->whereUuid('batch');
     });
 
     Route::get('inventory/items/by-sku/{sku}', [ProductController::class, 'showBySku'])->middleware('role_or_permission:owner|view-produk');
@@ -346,7 +353,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('inventory/items/prices', [ProductController::class, 'prices'])->middleware('role_or_permission:owner|view-harga-jual');
     Route::post('inventory/items', [ProductController::class, 'storeBundle'])->middleware('role_or_permission:owner|create-bundle');
 
-    Route::get('inventory/items/channel-category-attributes', [\Modules\Product\Http\Controllers\ChannelAttributeController::class, 'all'])->middleware('role_or_permission:owner|view-kategori');
+    Route::get('inventory/items/channel-category-attributes', [ChannelAttributeController::class, 'all'])->middleware('role_or_permission:owner|view-kategori');
 
     Route::get('inventory/categories/category-map/{id}', [CategoryController::class, 'channelMap'])->whereNumber('id')->middleware('role_or_permission:owner|view-kategori');
 
@@ -381,7 +388,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 Route::middleware(['auth:sanctum'])->prefix('v1/{channel}')->group(function () {
 
     Route::get('categories', [ChannelCategoryController::class, 'index'])->middleware('role_or_permission:owner|view-kategori');
-    Route::get('categories/{categoryId}/attributes', [\Modules\Product\Http\Controllers\ChannelAttributeController::class, 'index'])->middleware('role_or_permission:owner|view-kategori');
+    Route::get('categories/{categoryId}/attributes', [ChannelAttributeController::class, 'index'])->middleware('role_or_permission:owner|view-kategori');
 
     Route::middleware('role_or_permission:owner|view-produk')->group(function () {
         Route::get('products/categories', [ChannelProductController::class, 'categories']);

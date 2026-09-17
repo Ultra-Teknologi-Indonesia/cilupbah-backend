@@ -269,6 +269,29 @@ class InventoryMovementRepository
             $baseQuery->whereIn('inventory_movements.location_id', $get('allowed_location_ids'));
         }
         $baseQuery->whereNotIn('source', InventoryMovementSourceMap::HIDDEN_SOURCES);
+        // Cancellation movements remain in the ledger for audit and stock
+        // reconciliation, but a cancelled transfer is not an operational
+        // history row. Hide both the original transfer and its -BATAL
+        // counterpart when the cancellation pair exists.
+        $baseQuery->whereNotExists(function ($query): void {
+            $query
+                ->selectRaw('1')
+                ->from('inventory_movements as cancelled_movement')
+                ->whereColumn('cancelled_movement.item_id', 'inventory_movements.item_id')
+                ->whereColumn('cancelled_movement.location_id', 'inventory_movements.location_id')
+                ->where(function ($bins): void {
+                    $bins
+                        ->whereColumn('cancelled_movement.bin_id', 'inventory_movements.bin_id')
+                        ->orWhere(function ($sameNullBin): void {
+                            $sameNullBin
+                                ->whereNull('cancelled_movement.bin_id')
+                                ->whereNull('inventory_movements.bin_id');
+                        });
+                })
+                ->whereRaw(
+                    "cancelled_movement.transaction_number = regexp_replace(inventory_movements.transaction_number, '-BATAL$', '') || '-BATAL'"
+                );
+        });
         $baseQuery->whereNotExists(function ($query): void {
             $query
                 ->selectRaw('1')
@@ -597,6 +620,14 @@ SQL;
             ->selectRaw('movement_balances.on_order_balance')
             ->selectRaw('movement_balances.current_balance')
             ->selectRaw('movement_balances.current_available_balance')
+            ->selectRaw(
+                '(SELECT so.status FROM sales_orders so '
+                .'WHERE so.salesorder_no = inventory_movements.transaction_number LIMIT 1) AS order_status'
+            )
+            ->selectRaw(
+                '(SELECT so.is_canceled FROM sales_orders so '
+                .'WHERE so.salesorder_no = inventory_movements.transaction_number LIMIT 1) AS order_is_canceled'
+            )
             ->selectRaw(
                 '(SELECT EXISTS(SELECT 1 FROM sales_invoices si '
                 .'JOIN picklist_items pi ON pi.order_id = si.order_id '

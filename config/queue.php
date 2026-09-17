@@ -209,9 +209,7 @@ return [
         'labels' => [
             'connection' => env('QUEUE_LABEL_CONNECTION', 'redis-long'),
             'queue' => env('QUEUE_NAME_LABELS', 'labels'),
-            // Six workers are enough to saturate the application-side channel
-            // limiter without creating an unbounded fan-out of marketplace
-            // requests. The limit is intentionally hard-bounded here.
+
             'parallelism' => max(1, min(6, (int) env('QUEUE_LABEL_PARALLELISM', 4))),
             'rate_limit_attempts' => (int) env('QUEUE_LABEL_RATE_LIMIT_ATTEMPTS', 5),
             'rate_limit_decay_seconds' => (int) env('QUEUE_LABEL_RATE_LIMIT_DECAY_SECONDS', 1),
@@ -220,8 +218,7 @@ return [
         'label_awb' => [
             'connection' => env('QUEUE_LABEL_AWB_CONNECTION', 'redis-long'),
             'queue' => env('QUEUE_NAME_LABEL_AWB', 'label-awb'),
-            // AWB calls fulfillment/tracking APIs and is deliberately kept
-            // below label-download concurrency to protect marketplace quotas.
+
             'parallelism' => max(1, min(4, (int) env('QUEUE_LABEL_AWB_PARALLELISM', 2))),
         ],
 

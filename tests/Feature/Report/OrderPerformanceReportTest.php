@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\Shipment;
 use Modules\Report\Repositories\ReportRepository;
@@ -231,6 +232,53 @@ class OrderPerformanceReportTest extends TestCase
 
         $this->assertStringContainsString('0 jam 10 menit 0 detik', $html);
         $this->assertStringNotContainsString('0 jam 30 menit 0 detik', $html);
+    }
+
+    public function test_rentang_satu_hari_mencakup_packlist_hingga_akhir_hari(): void
+    {
+        $order = $this->makeOrder('SO-SAME-DAY-PACKER');
+        $orderItemId = (string) Str::uuid7();
+
+        DB::table('sales_order_items')->insert([
+            'id' => $orderItemId,
+            'order_id' => $order->id,
+            'item_id' => $this->variant->id,
+            'sku' => 'PRF-SKU-1',
+            'qty_in_base' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $packlist = Packlist::create([
+            'packlist_no' => 'PACK-SAME-DAY',
+            'location_id' => $this->kecil->id,
+            'packer_id' => $this->picker->id,
+            'order_id' => $order->id,
+            'status' => Packlist::STATUS_COMPLETED,
+            'started_at' => '2026-07-19 23:59:00',
+            'completed_at' => '2026-07-19 23:59:30',
+            'created_by' => 'tester',
+        ]);
+
+        DB::table('packlist_items')->insert([
+            'id' => (string) Str::uuid7(),
+            'packlist_id' => $packlist->id,
+            'order_item_id' => $orderItemId,
+            'item_id' => $this->variant->id,
+            'sku' => 'PRF-SKU-1',
+            'qty_ordered' => 1,
+            'qty_packed' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $rows = $this->repository->orderPerformanceRows(OrderPerformanceSpec::PACKER, [
+            'from' => '2026-07-19',
+            'to' => '2026-07-19',
+        ]);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('PACK-SAME-DAY', $rows[0]->no_transaksi);
     }
 
     public function test_summary_menampilkan_total_transaksi_dan_quantity(): void

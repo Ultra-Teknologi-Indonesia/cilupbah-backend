@@ -3,17 +3,17 @@
 namespace Modules\Product\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Traits\ApiResponse;
 use DomainException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Modules\Product\Http\Requests\StoreCatalogListingRequest;
 use Modules\Product\Http\Requests\StoreChannelDraftRequest;
 use Modules\Product\Http\Resources\ProductChannelDraftResource;
 use Modules\Product\Models\ProductChannelDraft;
 use Modules\Product\Services\ProductChannelDraftService;
 use OpenApi\Attributes as OA;
-use App\Traits\ApiResponse;
 
 class ProductChannelDraftController extends Controller
 {
@@ -105,7 +105,7 @@ class ProductChannelDraftController extends Controller
         responses: [
             new OA\Response(response: 201, description: 'Draft saved'),
             new OA\Response(response: 404, description: 'Product not found'),
-            new OA\Response(response: 422, description: 'Validation / toko tidak ditemukan')
+            new OA\Response(response: 422, description: 'Validation / toko tidak ditemukan'),
         ]
     )]
     public function store(StoreChannelDraftRequest $request, $id): JsonResponse
@@ -137,6 +137,47 @@ class ProductChannelDraftController extends Controller
         );
     }
 
+    public function bulkStore(Request $request, string $id): JsonResponse
+    {
+        if (! $this->draftService->productExists($id)) {
+            return $this->errorResponse('Produk tidak ditemukan', 404);
+        }
+
+        $data = $request->validate([
+            'shop_ids' => ['required', 'array', 'min:1', 'max:500'],
+            'shop_ids.*' => ['required', 'string', 'distinct'],
+            'channel_category_id' => ['nullable', 'string'],
+            'attribute_mapping' => ['nullable', 'array'],
+            'price_override' => ['nullable', 'numeric', 'min:0'],
+            'status' => ['nullable', 'in:draft,ready,cancelled'],
+        ]);
+
+        $results = [];
+        foreach (array_values(array_unique($data['shop_ids'])) as $shopId) {
+            try {
+                $draft = $this->draftService->upsertDraft(
+                    $id,
+                    $shopId,
+                    $data,
+                    $request->user()?->id,
+                );
+                $results[] = ['shop_id' => $shopId, 'status' => 'success', 'draft_id' => $draft->id];
+            } catch (\Throwable $e) {
+                $results[] = ['shop_id' => $shopId, 'status' => 'failed', 'message' => $e->getMessage()];
+            }
+        }
+
+        $succeeded = count(array_filter($results, fn (array $result): bool => $result['status'] === 'success'));
+
+        return $this->successResponse([
+            'processed' => count($results),
+            'succeeded' => $succeeded,
+            'failed' => array_values(array_filter($results, fn (array $result): bool => $result['status'] === 'failed')),
+            'draft_ids' => array_values(array_filter(array_column($results, 'draft_id'))),
+            'results' => $results,
+        ], "{$succeeded} draft berhasil disiapkan secara massal");
+    }
+
     #[OA\Put(
         path: '/api/v1/products/{id}/channel-drafts/{draft}',
         summary: 'Update draft listing',
@@ -150,7 +191,7 @@ class ProductChannelDraftController extends Controller
     public function update(Request $request, $id, $draftId): JsonResponse
     {
         $draft = $this->draftService->findDraftForProduct((string) $id, (string) $draftId);
-        if (!$draft) {
+        if (! $draft) {
             return $this->errorResponse('Draft tidak ditemukan', 404);
         }
 
@@ -180,7 +221,7 @@ class ProductChannelDraftController extends Controller
     public function destroy($id, $draftId): JsonResponse
     {
         $draft = $this->draftService->findDraftForProduct((string) $id, (string) $draftId);
-        if (!$draft) {
+        if (! $draft) {
             return $this->errorResponse('Draft tidak ditemukan', 404);
         }
 
@@ -242,5 +283,4 @@ class ProductChannelDraftController extends Controller
             ? $this->successResponse($result['data'], $result['message'])
             : $this->successResponse($result['data']);
     }
-
 }

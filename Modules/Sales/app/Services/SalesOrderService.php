@@ -484,6 +484,48 @@ class SalesOrderService
         return $result;
     }
 
+    public function bulkAcceptCancelRequest(array $orderIds, ?string $reason = null): array
+    {
+        return $this->runBulkAction($orderIds, function (string $orderId) use ($reason): void {
+            $this->acceptCancelRequest($orderId, auto: false, reason: $reason);
+        });
+    }
+
+    public function bulkRejectCancelRequest(array $orderIds, ?string $reason = null): array
+    {
+        return $this->runBulkAction($orderIds, function (string $orderId) use ($reason): void {
+            $this->rejectCancelRequest($orderId, reason: $reason, auto: false);
+        });
+    }
+
+    public function bulkRequestChannelCancel(array $orderIds, string $reason): array
+    {
+        return $this->runBulkAction($orderIds, function (string $orderId) use ($reason): void {
+            $this->requestChannelCancel($orderId, $reason);
+        });
+    }
+
+    private function runBulkAction(array $ids, callable $action): array
+    {
+        $results = [];
+
+        foreach (array_values(array_unique(array_map('strval', $ids))) as $id) {
+            try {
+                $action($id);
+                $results[] = ['id' => $id, 'status' => 'success'];
+            } catch (\Throwable $e) {
+                $results[] = ['id' => $id, 'status' => 'failed', 'message' => $e->getMessage()];
+            }
+        }
+
+        return [
+            'processed' => count($results),
+            'succeeded' => count(array_filter($results, fn (array $result): bool => $result['status'] === 'success')),
+            'failed' => array_values(array_filter($results, fn (array $result): bool => $result['status'] === 'failed')),
+            'results' => $results,
+        ];
+    }
+
     private function respondToBuyerCancellationSynchronously(SalesOrder $order, string $decision): void
     {
         if (! in_array(strtolower((string) $order->source), ['shopee', 'tiktok', 'lazada'], true)) {
@@ -2024,14 +2066,27 @@ class SalesOrderService
         $item = $order->items()->whereKey($orderItemId)->firstOrFail();
 
         if ($item->item_id) {
+            if ($this->reconcileStaleBundleOrderItem($order, $orderItemId)) {
+                return $this->freshOrderWithItems($order);
+            }
+
             return $this->freshOrderWithItems($order);
         }
 
-        if ($variantId === null && ! $this->skuExistsInMaster($item->sku)) {
+        $mappedVariantId = $variantId ?? $this->orderRepository->variantIdForChannelOrderItem(
+            (string) $order->id,
+            $item->channel_product_id,
+            $item->sku,
+        );
+
+        if ($variantId === null && $mappedVariantId === null && ! $this->skuExistsInMaster($item->sku)) {
             $this->attemptChannelProductPull($order, $item);
         }
 
-        $mutated = DB::transaction(function () use ($order, $orderItemId, $variantId) {
+        $resolvedVariantIdForMapping = null;
+        $orderItemForMapping = null;
+
+        $mutated = DB::transaction(function () use ($order, $orderItemId, $variantId, &$resolvedVariantIdForMapping, &$orderItemForMapping) {
             $lockedOrderQuery = SalesOrder::whereKey($order->id);
             WarehouseAccess::apply($lockedOrderQuery, 'location_id');
             $lockedOrder = $lockedOrderQuery->lockForUpdate()->firstOrFail();
@@ -2048,7 +2103,11 @@ class SalesOrderService
                 }
                 $resolvedVariantId = $variantId;
             } else {
-                $resolvedVariantId = $this->orderRepository->variantIdBySku($item->sku);
+                $resolvedVariantId = $this->orderRepository->variantIdForChannelOrderItem(
+                    (string) $lockedOrder->id,
+                    $item->channel_product_id,
+                    $item->sku,
+                );
             }
 
             if (! $resolvedVariantId) {
@@ -2056,6 +2115,8 @@ class SalesOrderService
             }
 
             $item->update(['item_id' => $resolvedVariantId]);
+            $resolvedVariantIdForMapping = $resolvedVariantId;
+            $orderItemForMapping = $item;
 
             $stockMutated = false;
 
@@ -2102,6 +2163,10 @@ class SalesOrderService
             return $stockMutated;
         });
 
+        if ($resolvedVariantIdForMapping && $orderItemForMapping) {
+            $this->ensureChannelVariantMapping($order, $orderItemForMapping, $resolvedVariantIdForMapping);
+        }
+
         if ($mutated) {
             SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
         }
@@ -2109,6 +2174,178 @@ class SalesOrderService
         $this->forgetOrderTabCounts();
 
         return $this->freshOrderWithItems($order);
+    }
+
+    public function inspectStaleBundleOrderItem(SalesOrder $order, SalesOrderItem $item): ?object
+    {
+        if ($item->item_id === null
+            || ! in_array(strtolower((string) $order->source), ['shopee', 'tiktok', 'lazada', 'woocommerce'], true)
+            || ! in_array((string) $order->status, ['pending', 'reserved'], true)
+            || $order->handed_to_warehouse_at !== null
+            || trim((string) $item->sku) === '') {
+            return null;
+        }
+
+        $hasFulfillmentReference = DB::table('picklist_items')
+            ->where('order_item_id', $item->id)
+            ->exists()
+            || DB::table('packlist_items')
+                ->where('order_item_id', $item->id)
+                ->exists();
+
+        if ($hasFulfillmentReference) {
+            return null;
+        }
+
+        $current = DB::table('product_variants as v')
+            ->leftJoin('products as p', 'p.id', '=', 'v.product_id')
+            ->where('v.id', $item->item_id)
+            ->first([
+                'v.id',
+                'v.is_active as variant_active',
+                'v.deleted_at as variant_deleted_at',
+                'p.id as product_id',
+                'p.is_bundle as product_is_bundle',
+                'p.is_active as product_active',
+                'p.deleted_at as product_deleted_at',
+            ]);
+
+        $currentIsValidBundle = $current !== null
+            && (bool) $current->variant_active
+            && $current->variant_deleted_at === null
+            && (bool) $current->product_is_bundle
+            && (bool) $current->product_active
+            && $current->product_deleted_at === null;
+
+        if ($currentIsValidBundle) {
+            return null;
+        }
+
+        $hasOldReservationBalance = DB::table('inventory_movements')
+            ->where('transaction_number', $order->salesorder_no)
+            ->where('item_id', $item->item_id)
+            ->whereIn('source', ['ORDER_RESERVE', 'ORDER_RELEASE'])
+            ->select('location_id')
+            ->selectRaw('SUM(qty) AS balance')
+            ->groupBy('location_id')
+            ->havingRaw('SUM(qty) <> 0')
+            ->exists();
+
+        if ($hasOldReservationBalance) {
+            return null;
+        }
+
+        $targets = DB::table('product_variants as v')
+            ->join('products as p', 'p.id', '=', 'v.product_id')
+            ->where('p.is_bundle', true)
+            ->where('p.is_active', true)
+            ->whereNull('p.deleted_at')
+            ->where('v.is_active', true)
+            ->whereNull('v.deleted_at')
+            ->whereRaw('LOWER(TRIM(p.sku)) = ?', [mb_strtolower(trim((string) $item->sku))])
+            ->get([
+                'v.id as target_variant_id',
+                'v.sku as target_variant_sku',
+                'p.id as target_product_id',
+                'p.name as target_product_name',
+                'p.sku as target_product_sku',
+            ]);
+
+        if ($targets->count() !== 1 || (string) $targets[0]->target_variant_id === (string) $item->item_id) {
+            return null;
+        }
+
+        $target = $targets[0];
+        $componentCount = DB::table('product_bundle_items as pbi')
+            ->join('product_variants as cv', 'cv.id', '=', 'pbi.component_variant_id')
+            ->join('products as cp', 'cp.id', '=', 'cv.product_id')
+            ->where('pbi.bundle_product_id', $target->target_product_id)
+            ->where('cv.is_active', true)
+            ->whereNull('cv.deleted_at')
+            ->where('cp.is_active', true)
+            ->whereNull('cp.deleted_at')
+            ->count();
+
+        $allComponentCount = DB::table('product_bundle_items')
+            ->where('bundle_product_id', $target->target_product_id)
+            ->count();
+
+        if ($allComponentCount === 0 || $componentCount !== $allComponentCount) {
+            return null;
+        }
+
+        return $target;
+    }
+
+    public function reconcileStaleBundleOrderItem(SalesOrder $order, string $orderItemId): bool
+    {
+        $resolvedVariantId = null;
+        $resolvedItem = null;
+        $stockMutated = false;
+
+        DB::transaction(function () use ($order, $orderItemId, &$resolvedVariantId, &$resolvedItem, &$stockMutated): void {
+            $lockedOrderQuery = SalesOrder::whereKey($order->id);
+            WarehouseAccess::apply($lockedOrderQuery, 'location_id');
+            $lockedOrder = $lockedOrderQuery->lockForUpdate()->firstOrFail();
+            $item = $lockedOrder->items()->whereKey($orderItemId)->lockForUpdate()->firstOrFail();
+            $target = $this->inspectStaleBundleOrderItem($lockedOrder, $item);
+
+            if ($target === null) {
+                return;
+            }
+
+            $item->update(['item_id' => $target->target_variant_id]);
+            $resolvedVariantId = (string) $target->target_variant_id;
+            $resolvedItem = $item;
+            $lockedOrder->load('items');
+            $hasUnmappedAfterMapping = $this->hasUnmappedItems($lockedOrder);
+
+            if ($lockedOrder->status === 'reserved' && ! $hasUnmappedAfterMapping) {
+                $this->reserveStockForItem($lockedOrder, $item->refresh(), false);
+                $stockMutated = true;
+            }
+
+            if ($lockedOrder->status === 'pending' && ! $hasUnmappedAfterMapping) {
+                $targetStatus = $this->targetStatusAfterDownload($lockedOrder);
+
+                if ($targetStatus !== 'pending') {
+                    $lockedOrder->status = $targetStatus;
+                    $lockedOrder->save();
+
+                    if (! in_array($targetStatus, ['shipped', 'cancelled'], true)) {
+                        $stockMutated = $this->reconcileStockTransition(
+                            $lockedOrder,
+                            null,
+                            $targetStatus,
+                        ) || $stockMutated;
+                    }
+
+                    $this->logStatusHistory($lockedOrder, 'PROCESS', [
+                        'from' => 'pending',
+                        'to' => $targetStatus,
+                        'reason' => 'stale_bundle_item_reconciled',
+                        'channel_status' => $lockedOrder->channel_status,
+                        'stock_allocation' => in_array($targetStatus, ['shipped', 'cancelled'], true)
+                            ? 'not_required_terminal_channel_status'
+                            : 'reserved',
+                    ]);
+                }
+            }
+        }, 3);
+
+        if ($resolvedVariantId !== null && $resolvedItem !== null) {
+            $this->ensureChannelVariantMapping($order, $resolvedItem, $resolvedVariantId);
+        }
+
+        if ($stockMutated) {
+            SyncStockJob::dispatch($order->id)->onQueue(config('queue.names.stock_sync'));
+        }
+
+        if ($resolvedVariantId !== null) {
+            $this->forgetOrderTabCounts();
+        }
+
+        return $resolvedVariantId !== null;
     }
 
     private function forgetOrderTabCounts(): void
@@ -2174,6 +2411,93 @@ class SalesOrderService
         }
     }
 
+    private function ensureChannelVariantMapping(SalesOrder $order, SalesOrderItem $item, string $variantId): void
+    {
+        $shopId = $order->channel_shop_id;
+        if (! $shopId) {
+            return;
+        }
+
+        try {
+            $channelShop = DB::table('channel_shops')
+                ->where('shop_id', $shopId)
+                ->first();
+
+            if (! $channelShop && Str::isUuid((string) $shopId)) {
+                $channelShop = DB::table('channel_shops')
+                    ->where('id', $shopId)
+                    ->first();
+            }
+
+            if (! $channelShop) {
+                return;
+            }
+
+            $productId = DB::table('product_variants')
+                ->where('id', $variantId)
+                ->value('product_id');
+
+            if (! $productId) {
+                return;
+            }
+
+            $pcmQuery = DB::table('product_channel_mappings')
+                ->where('product_id', $productId)
+                ->where('channel_shop_id', $channelShop->id);
+
+            $pcm = $item->channel_product_id
+                ? (clone $pcmQuery)
+                    ->where('external_product_id', $item->channel_product_id)
+                    ->first()
+                : null;
+
+            if (! $pcm && ! $item->channel_product_id) {
+                $pcm = (clone $pcmQuery)
+                    ->whereNull('external_product_id')
+                    ->first();
+            }
+
+            if (! $pcm) {
+                $pcmId = (string) Str::uuid();
+                DB::table('product_channel_mappings')->insert([
+                    'id' => $pcmId,
+                    'product_id' => $productId,
+                    'channel_shop_id' => $channelShop->id,
+                    'external_product_id' => $item->channel_product_id ?: null,
+                    'sync_status' => 'synced',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            } else {
+                $pcmId = $pcm->id;
+            }
+
+            $exists = DB::table('product_variant_channel_mappings')
+                ->where('product_channel_mapping_id', $pcmId)
+                ->where('variant_id', $variantId)
+                ->exists();
+
+            if (! $exists) {
+                DB::table('product_variant_channel_mappings')->insert([
+                    'id' => (string) Str::uuid(),
+                    'product_channel_mapping_id' => $pcmId,
+                    'variant_id' => $variantId,
+                    'external_sku_id' => $item->channel_product_id ?: null,
+                    'channel_seller_sku' => $item->sku ?: null,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('SalesOrderService: gagal auto-link channel variant mapping pada order item download', [
+                'order_id' => $order->id,
+                'item_id' => $item->id,
+                'variant_id' => $variantId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
     public function upsertFromChannel(array $orderData): ?string
     {
         $channelStatus = $orderData['channel_status'] ?? 'UNKNOWN';
@@ -2223,7 +2547,6 @@ class SalesOrderService
 
             $existing = $existingQuery->lockForUpdate()->first();
 
-            $wasNewOrder = $existing === null;
             $previousStatus = $existing?->status;
             $hasBuyerCancellationRequest = ! empty($orderData['cancel_requested_at'])
                 && empty($existing?->cancel_requested_at)
@@ -2327,34 +2650,6 @@ class SalesOrderService
                         'status' => $order->status,
                         'location_id' => $order->location_id,
                         'target_location_id' => $channelLocationId,
-                    ]);
-                }
-            }
-
-            if ($wasNewOrder && $order->source && ! empty($orderData['items']) && is_array($orderData['items'])) {
-                $downloaded = $this->orderRepository->channelDownloadedSkus($orderData['items']);
-                $undownloadedItemIds = $order->items
-                    ->filter(fn ($it) => $it->item_id && $it->sku && ! in_array($it->sku, $downloaded, true))
-                    ->pluck('id')
-                    ->all();
-
-                if (! empty($undownloadedItemIds)) {
-                    DB::table('sales_order_items')
-                        ->whereIn('id', $undownloadedItemIds)
-                        ->update(['item_id' => null, 'updated_at' => now()]);
-
-                    $order->load('items');
-
-                    Log::info('Channel order dikarantina ke Gagal Download: SKU ada di master tapi belum di-download dari channel', [
-                        'order_id' => $order->id,
-                        'salesorder_no' => $order->salesorder_no,
-                        'source' => $order->source,
-                        'channel_shop_id' => $order->channel_shop_id,
-                        'skus' => $order->items
-                            ->whereIn('id', $undownloadedItemIds)
-                            ->pluck('sku')
-                            ->values()
-                            ->all(),
                     ]);
                 }
             }
@@ -2542,14 +2837,6 @@ class SalesOrderService
         }
     }
 
-    /**
-     * Ensure a terminal channel order cannot retain an outstanding reservation.
-     *
-     * This runs after the order transaction commits so a stale webhook, deferred
-     * stock transition, or a repeated terminal webhook cannot leave on_order
-     * behind. StockService protects the item/location pair and makes the release
-     * idempotent; physical on_hand is intentionally not changed here.
-     */
     private function reconcileTerminalReservationAfterChannelSync(SalesOrder $order): int
     {
         if ($order->is_shadow
@@ -2886,9 +3173,7 @@ class SalesOrderService
         }
 
         if ($finalStatus === 'cancelled') {
-            // Cancellation webhooks are also the recovery trigger for an
-            // earlier cancellation that completed without its physical
-            // reversal. The stock path below is idempotent.
+
             return true;
         }
 

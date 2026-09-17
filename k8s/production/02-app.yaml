@@ -36,6 +36,11 @@ spec:
           # Explicitly override a stale secret value. This prevents a long
           # job from becoming visible to another worker before it finishes.
           env:
+            # SSE is bounded separately from background workers. Keep this
+            # explicit so a stale cilupbah-env secret cannot leave production
+            # at the old default of 3 connections.
+            - name: REALTIME_MAX_ACTIVE_CONNECTIONS
+              value: "20"
             - name: REDIS_LONG_QUEUE_RETRY_AFTER
               value: "2160"
             - name: LABEL_LOCAL_FIRST

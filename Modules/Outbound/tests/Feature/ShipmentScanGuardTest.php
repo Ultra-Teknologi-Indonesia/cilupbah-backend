@@ -103,6 +103,25 @@ class ShipmentScanGuardTest extends TestCase
         app(ShipmentService::class)->scanAndAddOrder($shipmentId, $no);
     }
 
+    public function test_allows_lazada_pickup_courier_when_delivery_courier_differs(): void
+    {
+        Bus::fake();
+        $loc = $this->seedLocation();
+        $shipmentId = $this->seedShipment($loc, 'LEX', 'REGULAR');
+        [$orderId, $no] = $this->seedPackedOrder(
+            $loc,
+            'Pickup: LEX ID, Delivery: J&T',
+            source: 'lazada',
+        );
+
+        app(ShipmentService::class)->scanAndAddOrder($shipmentId, $no);
+
+        $this->assertDatabaseHas('shipment_orders', [
+            'shipment_id' => $shipmentId,
+            'order_id' => $orderId,
+        ]);
+    }
+
     public function test_allows_scan_for_alias_variant_of_same_courier(): void
     {
         Bus::fake();
@@ -237,6 +256,28 @@ class ShipmentScanGuardTest extends TestCase
         try {
             app(ShipmentService::class)->scanAndAddOrder($shipmentId, $no);
             $this->fail('Expected ScanRejectedException for canceled order.');
+        } catch (ScanRejectedException $e) {
+            $this->assertSame('order_canceled', $e->reason);
+        }
+    }
+
+    public function test_rejects_rescan_when_existing_manifest_order_becomes_canceled(): void
+    {
+        Bus::fake();
+        $loc = $this->seedLocation();
+        $shipmentId = $this->seedShipment($loc, 'JNE', 'REGULAR');
+        [$orderId, $no] = $this->seedPackedOrder($loc, 'JNE');
+
+        app(ShipmentService::class)->scanAndAddOrder($shipmentId, $no);
+
+        DB::table('sales_orders')->where('id', $orderId)->update([
+            'status' => 'cancelled',
+            'is_canceled' => true,
+        ]);
+
+        try {
+            app(ShipmentService::class)->scanAndAddOrder($shipmentId, $no);
+            $this->fail('Expected ScanRejectedException for a canceled order that already exists in the shipment.');
         } catch (ScanRejectedException $e) {
             $this->assertSame('order_canceled', $e->reason);
         }

@@ -4,6 +4,7 @@ namespace Modules\Outbound\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Traits\HasUuid7;
 
@@ -62,5 +63,15 @@ class Picklist extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(\App\Models\User::class, 'created_by');
+    }
+
+    public function orders(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            \Modules\Sales\Models\SalesOrder::class,
+            'picklist_items',
+            'picklist_id',
+            'order_id'
+        );
     }
 }

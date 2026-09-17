@@ -3,17 +3,23 @@
 namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Support\ActorName;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Modules\Inventory\Services\InventoryService;
-use Modules\Inventory\Services\MonitorStockService;
-use Modules\Inventory\Services\PurchaseCostService;
 use Modules\Inventory\Http\Requests\AllStocksByIdsRequest;
+use Modules\Inventory\Http\Requests\BulkStockBySkuRequest;
 use Modules\Inventory\Http\Requests\MovementsRequest;
 use Modules\Inventory\Http\Requests\SplitItemRequest;
 use Modules\Inventory\Http\Requests\StockedItemsRequest;
 use Modules\Inventory\Http\Requests\ToAdjustRequest;
+use Modules\Inventory\Http\Resources\InventoryMovementResource;
+use Modules\Inventory\Http\Resources\InventoryStockResource;
+use Modules\Inventory\Http\Resources\MonitorStockResource;
 use Modules\Inventory\Http\Resources\StockItemResource;
+use Modules\Inventory\Services\InventoryService;
+use Modules\Inventory\Services\MonitorStockService;
+use Modules\Inventory\Services\PurchaseCostService;
 use Modules\Product\Models\ProductVariant;
 use OpenApi\Attributes as OA;
 
@@ -105,7 +111,7 @@ class InventoryController extends Controller
                 ),
                 'Detail stok item berhasil diambil.'
             );
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        } catch (ModelNotFoundException $e) {
             return $this->errorResponse('Item tidak ditemukan.', 404);
         } catch (\Throwable $e) {
             report($e);
@@ -125,7 +131,7 @@ class InventoryController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inventory'],
         parameters: [
-            new OA\Parameter(name: 'limit', in: 'query', required: false, description: 'Number of items per page', schema: new OA\Schema(type: 'integer', default: 10))
+            new OA\Parameter(name: 'limit', in: 'query', required: false, description: 'Number of items per page', schema: new OA\Schema(type: 'integer', default: 10)),
         ],
         responses: [
             new OA\Response(
@@ -134,11 +140,11 @@ class InventoryController extends Controller
                 content: new OA\JsonContent(
                     properties: [
                         new OA\Property(property: 'data', type: 'array', items: new OA\Items(ref: '#/components/schemas/InventoryStock')),
-                        new OA\Property(property: 'message', type: 'string', example: 'Daftar stok berhasil diambil')
+                        new OA\Property(property: 'message', type: 'string', example: 'Daftar stok berhasil diambil'),
                     ]
                 )
             ),
-            new OA\Response(response: 401, description: 'Unauthenticated')
+            new OA\Response(response: 401, description: 'Unauthenticated'),
         ]
     )]
     public function index(Request $request): JsonResponse
@@ -155,7 +161,7 @@ class InventoryController extends Controller
         security: [['bearerAuth' => []]],
         tags: ['Inventory'],
         parameters: [
-            new OA\Parameter(name: 'itemId', in: 'path', required: true, description: 'ID of the item', schema: new OA\Schema(type: 'string'))
+            new OA\Parameter(name: 'itemId', in: 'path', required: true, description: 'ID of the item', schema: new OA\Schema(type: 'string')),
         ],
         responses: [
             new OA\Response(
@@ -164,11 +170,11 @@ class InventoryController extends Controller
                 content: new OA\JsonContent(
                     properties: [
                         new OA\Property(property: 'data', type: 'array', items: new OA\Items(ref: '#/components/schemas/InventoryStock')),
-                        new OA\Property(property: 'message', type: 'string', example: 'Detail stok per item berhasil diambil')
+                        new OA\Property(property: 'message', type: 'string', example: 'Detail stok per item berhasil diambil'),
                     ]
                 )
             ),
-            new OA\Response(response: 401, description: 'Unauthenticated')
+            new OA\Response(response: 401, description: 'Unauthenticated'),
         ]
     )]
     public function show(string $itemId): JsonResponse
@@ -176,7 +182,7 @@ class InventoryController extends Controller
         $stocks = $this->inventoryService->getStockByItem($itemId);
 
         return $this->successResponse(
-            \Modules\Inventory\Http\Resources\InventoryStockResource::collectionWithActual($stocks),
+            InventoryStockResource::collectionWithActual($stocks),
             'Detail stok per item berhasil diambil'
         );
     }
@@ -209,22 +215,22 @@ class InventoryController extends Controller
                 content: new OA\JsonContent(
                     properties: [
                         new OA\Property(property: 'data', type: 'array', items: new OA\Items(type: 'object')),
-                        new OA\Property(property: 'message', type: 'string', example: 'Riwayat pergerakan stok berhasil diambil')
+                        new OA\Property(property: 'message', type: 'string', example: 'Riwayat pergerakan stok berhasil diambil'),
                     ]
                 )
             ),
-            new OA\Response(response: 401, description: 'Unauthenticated')
+            new OA\Response(response: 401, description: 'Unauthenticated'),
         ]
     )]
     public function movements(MovementsRequest $request): JsonResponse
     {
-        $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
+        $limit = min(200, max(1, (int) ($request->query('per_page') ?? $request->query('limit') ?? 20)));
         $movements = $this->inventoryService->getHistoryPaginated($limit);
 
-        \App\Support\ActorName::preload($movements->pluck('created_by'));
+        ActorName::preload($movements->pluck('created_by'));
 
         return $this->successPaginatedResponse(
-            \Modules\Inventory\Http\Resources\InventoryMovementResource::collection($movements),
+            InventoryMovementResource::collection($movements),
             'Riwayat pergerakan stok berhasil diambil'
         );
     }
@@ -301,10 +307,10 @@ class InventoryController extends Controller
         $limit = (int) ($request->query('per_page') ?? $request->query('limit') ?? 20);
         $movements = $this->inventoryService->getHistoryPaginated($limit);
 
-        \App\Support\ActorName::preload($movements->pluck('created_by'));
+        ActorName::preload($movements->pluck('created_by'));
 
         return $this->successPaginatedResponse(
-            \Modules\Inventory\Http\Resources\InventoryMovementResource::collection($movements),
+            InventoryMovementResource::collection($movements),
             'Riwayat stok berhasil diambil.'
         );
     }
@@ -489,7 +495,7 @@ class InventoryController extends Controller
         );
 
         return $this->successPaginatedResponse(
-            \Modules\Inventory\Http\Resources\MonitorStockResource::collection($data),
+            MonitorStockResource::collection($data),
             'Daftar produk yang perlu restock berhasil diambil.'
         );
     }
@@ -618,6 +624,19 @@ class InventoryController extends Controller
         $this->inventoryService->assertSkuHasStock($summary, $locationId, $request->boolean('require_stock'));
 
         return $this->successResponse($summary, 'Produk ditemukan.');
+    }
+
+    public function bulkBySku(BulkStockBySkuRequest $request): JsonResponse
+    {
+        $data = $request->validated();
+        $result = $this->inventoryService->buildBulkSkuStockSummary(
+            $data['skus'],
+            $data['location_id'] ?? null,
+            $data['strategy'] ?? 'default',
+            (bool) ($data['require_stock'] ?? false),
+        );
+
+        return $this->successResponse($result, 'Stok beberapa SKU berhasil diambil.');
     }
 
     public function byBinCode(string $binCode): JsonResponse

@@ -2,11 +2,11 @@
     /** @var array $cells */
     /** @var string $mode */
     /** @var string $paper */
-    $paper = $paper ?? 'a4_multi';
+    $paper = $paper ?? 'thermal_50x50';
     $showPrice = $mode === 'default' || $mode === 'online';
     $showStore = $mode === 'online';
     $fmtPrice = fn ($p) => $p !== null ? 'Rp' . number_format($p, 0, ',', '.') : '-';
-    $perPage = in_array($paper, ['thermal_50x40', 'thermal_80x40', 'thermal_40x30', 'thermal_30x20', 'a4_single'], true);
+    $perPage = in_array($paper, ['thermal_50x50', 'thermal_30x40', 'thermal_50x40', 'thermal_80x40', 'thermal_40x30', 'thermal_30x20', 'a4_single'], true);
 
     // Label menumpuk blok (toko + SKU + rak + harga) di ruang yang tingginya
     // tetap. height pada td HANYA memusatkan, tidak membatasi: konten yang
@@ -38,6 +38,8 @@
     // baris penuh — begitu labelnya melar, dompdf melempar seluruh baris ke
     // halaman berikutnya dan lahir halaman kosong berselang-seling.
     $skuCaps = [
+        'thermal_50x50' => 42,
+        'thermal_30x40' => 42,
         'thermal_80x40' => 64,
         'thermal_50x40' => 44,
         'thermal_40x30' => 42,
@@ -61,6 +63,8 @@
     $limits = [
         // Kode rak format bebas (mis. ZONA-BARIS-KOLOM-BOX), jadi batasnya
         // menyisakan ruang di atas kode terpanjang yang dipakai sekarang.
+        'thermal_50x50' => ['bin' => 24, 'store' => 26],
+        'thermal_30x40' => ['bin' => 20, 'store' => 22],
         'thermal_80x40' => ['bin' => 28, 'store' => 40],
         'thermal_50x40' => ['bin' => 24, 'store' => 26],
         'thermal_40x30' => ['bin' => 20, 'store' => 22],
@@ -127,6 +131,40 @@
         }
         .bin { font-weight: 700; line-height: 1.15; margin-top: 1mm; overflow-wrap: anywhere; }
         .price { font-weight: 700; margin-top: 1mm; }
+        @endif
+
+        @if($paper === 'thermal_50x50')
+        @page { margin: 0; }
+        .label { padding: 2mm; height: 46mm; }
+        body { font-size: 7pt; }
+        .square-label { text-align: center; }
+        .square-qr { text-align: center; }
+        .square-qr img { width: 31mm; height: 31mm; display: inline-block; }
+        .square-label .store { font-size: 5pt; margin-bottom: 0.8mm; }
+        .square-label .sku { margin-top: 0.8mm; line-height: 1.08; }
+        .square-label .sku-lg { font-size: 12pt; }
+        .square-label .sku-md { font-size: 10pt; }
+        .square-label .sku-sm { font-size: 8pt; }
+        .square-label .sku-xs { font-size: 6.5pt; }
+        .square-label .bin { font-size: 7.5pt; margin-top: 1mm; line-height: 1.05; }
+        .square-label .price { font-size: 7.5pt; margin-top: 0.8mm; }
+        @endif
+
+        @if($paper === 'thermal_30x40')
+        @page { margin: 0; }
+        .label { padding: 1.5mm; height: 26mm; }
+        body { font-size: 6pt; }
+        table.label-row td { height: 26mm; }
+        td.qr-cell { width: 18mm; }
+        td.qr-cell img { width: 17mm; height: 17mm; }
+        td.text-cell { padding-left: 1.5mm; }
+        .store { font-size: 4pt; }
+        .sku-lg { font-size: 9pt; }
+        .sku-md { font-size: 7.5pt; }
+        .sku-sm { font-size: 6.2pt; }
+        .sku-xs { font-size: 5.2pt; }
+        .bin { font-size: 6pt; margin-top: 0.8mm; }
+        .price { font-size: 6pt; }
         @endif
 
         @if($paper === 'thermal_50x40')
@@ -243,6 +281,28 @@
         <div class="empty">Tidak ada label untuk dicetak. Pastikan produk terpilih memiliki
             {{ $mode === 'online' ? 'listing toko yang sudah tersinkron.' : 'SKU aktif.' }}</div>
     @elseif($perPage)
+        @if($paper === 'thermal_50x50')
+            @foreach($cells as $cell)
+                @php($extras = $extraBlocks($cell))
+                <div class="page">
+                    <div class="label square-label">
+                        @if($cell['qr'])
+                            <div class="square-qr"><img src="{{ $cell['qr'] }}" alt="QR SKU"></div>
+                        @endif
+                        @if($showStore)
+                            <div class="store">{{ $clip($cell['store_name'], $limit['store']) ?: '—' }}</div>
+                        @endif
+                        <div class="sku {{ $skuClass($cell['sku'], $extras) }}">{{ $clip($cell['sku'], $skuCapFor($extras)) }}</div>
+                        @if($cell['bin'])
+                            <div class="bin">RAK {{ $clip($cell['bin'], $limit['bin']) }}</div>
+                        @endif
+                        @if($showPrice)
+                            <div class="price">{{ $fmtPrice($cell['price']) }}</div>
+                        @endif
+                    </div>
+                </div>
+            @endforeach
+        @else
         @foreach($cells as $cell)
             @php($extras = $extraBlocks($cell))
             <div class="page">
@@ -271,6 +331,7 @@
                 </div>
             </div>
         @endforeach
+        @endif
     @else
         <table class="grid">
             @foreach(array_chunk($cells, 2) as $rowCells)

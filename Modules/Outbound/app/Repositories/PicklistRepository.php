@@ -144,7 +144,14 @@ class PicklistRepository
                     $query->whereHas('items.bin', fn ($q) => $q->where('zone_id', $value));
                 }),
             )
-            ->allowedSearch('picklist_no')
+            ->allowedSearch(
+                'picklist_no',
+                'picker.name',
+                'orders.salesorder_no',
+                'orders.channel_order_no',
+                'orders.tracking_number',
+                'items.product.sku',
+            )
             ->allowedSorts('created_at', 'picklist_no', 'started_at', 'completed_at', 'location_id', 'picker_id', 'status')
             ->defaultSort('-created_at')
             ->paginate($limit)
@@ -188,6 +195,13 @@ class PicklistRepository
     public function createItem(array $data): PicklistItem
     {
         return PicklistItem::create($data);
+    }
+
+    public function createItems(array $rows): void
+    {
+        foreach (array_chunk($rows, 500) as $chunk) {
+            DB::table('picklist_items')->insert($chunk);
+        }
     }
 
     public function updateItem(string $itemId, array $data): bool

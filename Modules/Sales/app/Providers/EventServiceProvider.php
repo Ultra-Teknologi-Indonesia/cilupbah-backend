@@ -4,6 +4,8 @@ namespace Modules\Sales\Providers;
 
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Models\BulkShippingLabelBatch;
+use Modules\Sales\Observers\BulkShippingLabelBatchRealtimeObserver;
 use Modules\Sales\Observers\SalesOrderAuditObserver;
 use Modules\Sales\Observers\SalesOrderCancelObserver;
 use Modules\Sales\Observers\SalesOrderChannelStatusObserver;
@@ -21,5 +23,6 @@ class EventServiceProvider extends ServiceProvider
         SalesOrder::observe(SalesOrderAuditObserver::class);
         SalesOrder::observe(SalesOrderChannelStatusObserver::class);
         SalesOrder::observe(SalesOrderFinanceResyncObserver::class);
+        BulkShippingLabelBatch::observe(BulkShippingLabelBatchRealtimeObserver::class);
     }
 }

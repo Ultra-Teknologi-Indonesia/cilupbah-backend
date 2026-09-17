@@ -211,6 +211,33 @@ class InventoryService
         ];
     }
 
+    public function buildBulkSkuStockSummary(array $skus, ?string $locationId, string $strategy = 'default', bool $requireStock = false): array
+    {
+        $results = [];
+
+        foreach (array_values(array_unique(array_map(fn ($sku): string => trim((string) $sku), $skus))) as $sku) {
+            try {
+                $variant = $this->findVariantForSku($sku);
+                if (! $variant) {
+                    throw new \RuntimeException('SKU tidak ditemukan.');
+                }
+
+                $summary = $this->buildSkuStockSummary($variant, $locationId, $strategy);
+                $this->assertSkuHasStock($summary, $locationId, $requireStock);
+                $results[] = ['sku' => $sku, 'status' => 'success', 'data' => $summary];
+            } catch (\Throwable $e) {
+                $results[] = ['sku' => $sku, 'status' => 'failed', 'message' => $e->getMessage()];
+            }
+        }
+
+        return [
+            'processed' => count($results),
+            'succeeded' => count(array_filter($results, fn (array $result): bool => $result['status'] === 'success')),
+            'failed' => array_values(array_filter($results, fn (array $result): bool => $result['status'] === 'failed')),
+            'results' => $results,
+        ];
+    }
+
     public function getBinStockItems(string $binCode): ?array
     {
         $bin = $this->inventoryRepository->findBinByFinalCode($binCode);
@@ -2753,6 +2780,41 @@ class InventoryService
         }
 
         return $this->transferRepository->findById($transferId);
+    }
+
+    public function prepareBulkForPrint(array $ids, string $shippedBy): array
+    {
+        $results = [];
+
+        foreach (array_values(array_unique(array_map('strval', $ids))) as $id) {
+            try {
+                $transfer = $this->getTransferById($id);
+                if (! $transfer) {
+                    throw new \RuntimeException('Transfer tidak ditemukan.');
+                }
+
+                if ($transfer->status === InventoryTransfer::STATUS_DRAFT) {
+                    $this->submitDraft($id);
+                } elseif ($transfer->status === InventoryTransfer::STATUS_APPROVED) {
+                    $this->shipTransfer($id, ['shipped_by' => $shippedBy]);
+                }
+
+                $results[] = ['id' => $id, 'status' => 'success'];
+            } catch (\Throwable $e) {
+                $results[] = ['id' => $id, 'status' => 'failed', 'message' => $e->getMessage()];
+            }
+        }
+
+        return [
+            'processed' => count($results),
+            'succeeded' => count(array_filter($results, fn (array $result): bool => $result['status'] === 'success')),
+            'failed' => array_values(array_filter($results, fn (array $result): bool => $result['status'] === 'failed')),
+            'printable_ids' => array_values(array_map(
+                fn (array $result): string => $result['id'],
+                array_filter($results, fn (array $result): bool => $result['status'] === 'success'),
+            )),
+            'results' => $results,
+        ];
     }
 
     public function addDraftItem(string $transferId, array $data): InventoryTransferItem

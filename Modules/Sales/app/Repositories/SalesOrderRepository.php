@@ -1133,7 +1133,7 @@ class SalesOrderRepository
     public function syncOrderItems(string $orderId, array $items): void
     {
         $items = $this->consolidateIncomingItems($items);
-        $variantIdsBySku = $this->resolveVariantIdsBySku($items);
+        $resolvedVariants = $this->resolveVariantIdsForOrder($orderId, $items);
 
         $pools = [];
         $existingRows = DB::table('sales_order_items')
@@ -1150,7 +1150,9 @@ class SalesOrderRepository
 
         foreach ($items as $item) {
             $sku = $item['sku'] ?? null;
-            $resolvedItemId = $sku ? ($variantIdsBySku[$sku] ?? null) : null;
+            $itemKey = $this->channelItemKey($item['channel_product_id'] ?? null, $sku);
+            $resolvedItemId = $resolvedVariants['by_item'][$itemKey]
+                ?? ($sku ? ($resolvedVariants['by_sku'][$sku] ?? null) : null);
 
             $values = [
                 'channel_product_id' => $item['channel_product_id'] ?? null,
@@ -1233,7 +1235,43 @@ class SalesOrderRepository
 
     public function variantIdBySku(?string $sku): ?string
     {
-        return $sku ? DB::table('product_variants')->where('sku', $sku)->value('id') : null;
+        $sku = trim((string) $sku);
+
+        if ($sku === '') {
+            return null;
+        }
+
+        return DB::table('product_variants as pv')
+            ->join('products as p', 'p.id', '=', 'pv.product_id')
+            ->whereRaw('LOWER(TRIM(pv.sku)) = ?', [mb_strtolower($sku)])
+            ->where('pv.is_active', true)
+            ->whereNull('pv.deleted_at')
+            ->where('p.is_active', true)
+            ->whereNull('p.deleted_at')
+            ->orderByDesc('p.is_bundle')
+            ->orderByDesc('pv.updated_at')
+            ->orderBy('pv.id')
+            ->value('pv.id');
+    }
+
+    public function variantIdForChannelOrderItem(
+        string $orderId,
+        ?string $listingId,
+        ?string $sku,
+    ): ?string {
+        $sku = trim((string) $sku);
+        if ($sku === '') {
+            return null;
+        }
+
+        $resolved = $this->resolveVariantIdsForOrder($orderId, [[
+            'channel_product_id' => $listingId,
+            'sku' => $sku,
+        ]]);
+
+        return $resolved['by_item'][$this->channelItemKey($listingId, $sku)]
+            ?? $resolved['by_sku'][$sku]
+            ?? null;
     }
 
     public function variantExists(string $variantId): bool
@@ -1262,26 +1300,215 @@ class SalesOrderRepository
             return [];
         }
 
-        return DB::table('product_variants')
-            ->whereIn('sku', $skus)
-            ->pluck('id', 'sku')
+        $normalizedSkus = $skus
+            ->map(fn ($sku): string => mb_strtolower(trim((string) $sku)))
             ->all();
+
+        $rows = DB::table('product_variants as pv')
+            ->join('products as p', 'p.id', '=', 'pv.product_id')
+            ->whereIn(DB::raw('LOWER(TRIM(pv.sku))'), $normalizedSkus)
+            ->where('pv.is_active', true)
+            ->whereNull('pv.deleted_at')
+            ->where('p.is_active', true)
+            ->whereNull('p.deleted_at')
+            ->orderByDesc('p.is_bundle')
+            ->orderByDesc('pv.updated_at')
+            ->orderBy('pv.id')
+            ->get(['pv.id', 'pv.sku']);
+
+        $resolved = [];
+        foreach ($rows as $row) {
+            $key = trim((string) $row->sku);
+            if ($key !== '' && ! isset($resolved[$key])) {
+                $resolved[$key] = (string) $row->id;
+            }
+        }
+
+        $unresolvedNormalized = array_values(array_filter(
+            $normalizedSkus,
+            fn (string $n): bool => ! isset($resolved[$n]),
+        ));
+
+        if (! empty($unresolvedNormalized)) {
+            $bundleRows = DB::table('product_variants as pv')
+                ->join('products as p', 'p.id', '=', 'pv.product_id')
+                ->whereIn(DB::raw('LOWER(TRIM(p.sku))'), $unresolvedNormalized)
+                ->where('p.is_bundle', true)
+                ->where('p.is_active', true)
+                ->whereNull('p.deleted_at')
+                ->where('pv.is_active', true)
+                ->whereNull('pv.deleted_at')
+                ->orderByDesc('pv.updated_at')
+                ->orderBy('pv.id')
+                ->get(['pv.id', 'p.sku as product_sku']);
+
+            foreach ($bundleRows as $row) {
+                $key = trim((string) $row->product_sku);
+                if ($key !== '' && ! isset($resolved[$key])) {
+                    $resolved[$key] = (string) $row->id;
+                }
+            }
+        }
+
+        return $resolved;
     }
 
-    public function channelDownloadedSkus(array $items): array
+    public function channelDownloadedSkus(array $items, ?string $externalShopId = null): array
     {
-        $skus = collect($items)->pluck('sku')->filter()->unique()->values();
+        $skus = collect($items)
+            ->pluck('sku')
+            ->filter(fn ($sku): bool => trim((string) $sku) !== '')
+            ->map(fn ($sku): string => mb_strtolower(trim((string) $sku)))
+            ->unique()
+            ->values();
 
         if ($skus->isEmpty()) {
             return [];
         }
 
-        return DB::table('product_variants as pv')
-            ->join('product_variant_channel_mappings as pvcm', 'pvcm.variant_id', '=', 'pv.id')
-            ->whereIn('pv.sku', $skus)
+        $listingIds = collect($items)
+            ->pluck('channel_product_id')
+            ->filter(fn ($id): bool => trim((string) $id) !== '')
+            ->map(fn ($id): string => (string) $id)
+            ->unique()
+            ->values();
+
+        $query = DB::table('product_variant_channel_mappings as pvcm')
+            ->join('product_channel_mappings as pcm', 'pcm.id', '=', 'pvcm.product_channel_mapping_id')
+            ->join('channel_shops as cs', 'cs.id', '=', 'pcm.channel_shop_id')
+            ->join('product_variants as pv', 'pv.id', '=', 'pvcm.variant_id')
+            ->join('products as p', 'p.id', '=', 'pv.product_id')
+            ->where('pcm.sync_status', 'synced')
+            ->where('pv.is_active', true)
+            ->whereNull('pv.deleted_at')
+            ->where('p.is_active', true)
+            ->whereNull('p.deleted_at')
+            ->where(function ($q) use ($skus): void {
+                $q->whereIn(DB::raw('LOWER(TRIM(pvcm.channel_seller_sku))'), $skus->all())
+                    ->orWhereIn(DB::raw('LOWER(TRIM(pv.sku))'), $skus->all());
+            });
+
+        $hasKnownShop = $externalShopId !== null
+            && trim($externalShopId) !== ''
+            && DB::table('channel_shops')->where('shop_id', trim($externalShopId))->exists();
+
+        if ($hasKnownShop) {
+            $query->where('cs.shop_id', trim($externalShopId));
+            if ($listingIds->isNotEmpty()) {
+                $query->whereIn('pcm.external_product_id', $listingIds->all());
+            }
+        }
+
+        $mappedSkus = $query
             ->distinct()
-            ->pluck('pv.sku')
+            ->get(['pvcm.channel_seller_sku', 'pv.sku as variant_sku'])
+            ->flatMap(static fn (object $row): array => array_values(array_filter([
+                $row->channel_seller_sku,
+                $row->variant_sku,
+            ], static fn ($sku): bool => trim((string) $sku) !== '')))
+            ->map(fn ($sku): string => mb_strtolower(trim((string) $sku)))
+            ->unique()
             ->all();
+
+        return collect($items)
+            ->pluck('sku')
+            ->filter(fn ($sku): bool => in_array(
+                mb_strtolower(trim((string) $sku)),
+                $mappedSkus,
+                true,
+            ))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    protected function resolveVariantIdsForOrder(string $orderId, array $items): array
+    {
+        $bySku = $this->resolveVariantIdsBySku($items);
+        $byItem = [];
+        $order = DB::table('sales_orders')->where('id', $orderId)->first(['channel_shop_id']);
+        $externalShopId = trim((string) ($order->channel_shop_id ?? ''));
+
+        if ($externalShopId === '') {
+            return ['by_item' => $byItem, 'by_sku' => $bySku];
+        }
+
+        $requests = [];
+        $skus = [];
+        $listingIds = [];
+
+        foreach ($items as $item) {
+            $sku = trim((string) ($item['sku'] ?? ''));
+            $listingId = trim((string) ($item['channel_product_id'] ?? ''));
+
+            if ($sku === '' || $listingId === '') {
+                continue;
+            }
+
+            $key = $this->channelItemKey($listingId, $sku);
+            $requests[$key] = [
+                'listing_id' => $listingId,
+                'sku' => mb_strtolower($sku),
+            ];
+            $skus[mb_strtolower($sku)] = true;
+            $listingIds[$listingId] = true;
+        }
+
+        if ($requests === []) {
+            return ['by_item' => $byItem, 'by_sku' => $bySku];
+        }
+
+        $rows = DB::table('product_variant_channel_mappings as pvcm')
+            ->join('product_channel_mappings as pcm', 'pcm.id', '=', 'pvcm.product_channel_mapping_id')
+            ->join('channel_shops as cs', 'cs.id', '=', 'pcm.channel_shop_id')
+            ->join('product_variants as pv', 'pv.id', '=', 'pvcm.variant_id')
+            ->join('products as p', 'p.id', '=', 'pv.product_id')
+            ->where('cs.shop_id', $externalShopId)
+            ->whereIn('pcm.external_product_id', array_keys($listingIds))
+            ->where('pcm.sync_status', 'synced')
+            ->where('pv.is_active', true)
+            ->whereNull('pv.deleted_at')
+            ->where('p.is_active', true)
+            ->whereNull('p.deleted_at')
+            ->where(function ($q) use ($skus): void {
+                $q->whereIn(DB::raw('LOWER(TRIM(pvcm.channel_seller_sku))'), array_keys($skus))
+                    ->orWhereIn(DB::raw('LOWER(TRIM(pv.sku))'), array_keys($skus));
+            })
+            ->orderBy('pcm.id')
+            ->orderBy('pvcm.id')
+            ->get([
+                'pcm.external_product_id as listing_id',
+                'pvcm.channel_seller_sku',
+                'pv.sku as variant_sku',
+                'pv.id as variant_id',
+            ]);
+
+        $priority = [];
+        foreach ($rows as $row) {
+            $sellerSku = mb_strtolower(trim((string) $row->channel_seller_sku));
+            $variantSku = mb_strtolower(trim((string) $row->variant_sku));
+
+            foreach ($requests as $key => $request) {
+                if ((string) $row->listing_id !== $request['listing_id']) {
+                    continue;
+                }
+
+                $rowPriority = $sellerSku === $request['sku'] ? 0 : ($variantSku === $request['sku'] ? 1 : null);
+                if ($rowPriority === null || (isset($priority[$key]) && $priority[$key] <= $rowPriority)) {
+                    continue;
+                }
+
+                $byItem[$key] = (string) $row->variant_id;
+                $priority[$key] = $rowPriority;
+            }
+        }
+
+        return ['by_item' => $byItem, 'by_sku' => $bySku];
+    }
+
+    protected function channelItemKey(mixed $listingId, mixed $sku): string
+    {
+        return mb_strtolower(trim((string) $listingId)).'|'.mb_strtolower(trim((string) $sku));
     }
 
     protected function deleteUnreferencedLeftovers(string $orderId, array $pools): void

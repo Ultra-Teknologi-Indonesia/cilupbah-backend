@@ -72,6 +72,25 @@ class ShipmentService
         return $this->shipmentRepository->getOrdersPaginated($id, $limit);
     }
 
+    public function getOrdersForBulkLabel(array $shipmentIds): array
+    {
+        $query = DB::table('shipment_orders as so')
+            ->join('sales_orders as o', 'o.id', '=', 'so.order_id')
+            ->whereIn('so.shipment_id', array_values(array_unique($shipmentIds)))
+            ->select(['so.shipment_id', 'o.id as order_id', 'o.source'])
+            ->distinct();
+
+        WarehouseAccess::apply($query, 'o.location_id');
+
+        return $query->get()
+            ->map(fn (object $row): array => [
+                'shipment_id' => $row->shipment_id,
+                'order_id' => $row->order_id,
+                'source' => $row->source,
+            ])
+            ->all();
+    }
+
     public function getForBulkManifestPdf(array $orderIds)
     {
         return $this->shipmentRepository->getForBulkManifestPdf($orderIds);
@@ -359,7 +378,7 @@ class ShipmentService
                     return false;
                 }
 
-                $orderCourierCode = $this->courierMapper->resolveCode((string) $order->shipping_provider);
+                $orderCourierCode = $this->courierMapper->resolveOrderCourierCode($order);
 
                 return $orderCourierCode !== '' && $orderCourierCode !== $shipmentCourierCode;
             });
@@ -606,6 +625,20 @@ class ShipmentService
                 );
             }
 
+            if ($this->isOrderCancelled($order)) {
+                throw new ScanRejectedException(
+                    'order_canceled',
+                    "Pesanan {$order->salesorder_no} sudah DIBATALKAN — pisahkan paket fisik, jangan dimanifestkan."
+                );
+            }
+
+            if ($order->cancel_requested_at !== null) {
+                throw new ScanRejectedException(
+                    'order_cancel_requested',
+                    "Pesanan {$order->salesorder_no} sedang MINTA BATAL (req cancel) — cek dulu sebelum dimanifestkan."
+                );
+            }
+
             $existing = ShipmentOrder::query()
                 ->where('order_id', $order->id)
                 ->lockForUpdate()
@@ -627,20 +660,6 @@ class ShipmentService
                 );
             }
 
-            if ($order->is_canceled) {
-                throw new ScanRejectedException(
-                    'order_canceled',
-                    "Pesanan {$order->salesorder_no} sudah DIBATALKAN — pisahkan paket fisik, jangan dimanifestkan."
-                );
-            }
-
-            if ($order->cancel_requested_at !== null) {
-                throw new ScanRejectedException(
-                    'order_cancel_requested',
-                    "Pesanan {$order->salesorder_no} sedang MINTA BATAL (req cancel) — cek dulu sebelum dimanifestkan."
-                );
-            }
-
             if (! in_array($order->status, self::MANIFESTABLE_ORDER_STATUSES, true)) {
                 throw new ScanRejectedException(
                     'invalid_status',
@@ -651,7 +670,7 @@ class ShipmentService
 
             if ($shipment->courier_name && $order->shipping_provider) {
                 $shipmentCode = $this->courierMapper->resolveCode($shipment->courier_name);
-                $orderCode = $this->courierMapper->resolveCode($order->shipping_provider);
+                $orderCode = $this->courierMapper->resolveOrderCourierCode($order);
 
                 if ($shipmentCode !== '' && $orderCode !== '' && $shipmentCode !== $orderCode) {
                     throw new ScanRejectedException(
@@ -718,6 +737,11 @@ class ShipmentService
         }
 
         return $result;
+    }
+
+    private function isOrderCancelled(Order $order): bool
+    {
+        return (bool) $order->is_canceled || strtolower((string) $order->status) === 'cancelled';
     }
 
     private function loadShipmentOrderForResponse(ShipmentOrder $shipmentOrder): ShipmentOrder

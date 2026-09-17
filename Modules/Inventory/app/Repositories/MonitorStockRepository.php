@@ -24,7 +24,11 @@ class MonitorStockRepository
 
     private const PENDING_ORDER_STATUSES = ['pending', 'reserved', 'UNPAID', 'AWAITING_BUYER_CONFIRMATION'];
 
-    private function baseQuery(array $filters, bool $includePresentation = true): Builder
+    private function baseQuery(
+        array $filters,
+        bool $includePresentation = true,
+        bool $includePendingOrderNos = true,
+    ): Builder
     {
         $locationId = $filters['location_id'] ?? null;
 
@@ -60,6 +64,16 @@ class MonitorStockRepository
             ->join('products', 'products.id', '=', 'product_variants.product_id')
             ->leftJoinSub($inv, 'inv', 'inv.item_id', '=', 'product_variants.id')
             ->leftJoinSub($activeRestock, 'active_restock', 'active_restock.item_id', '=', 'product_variants.id')
+            ->when(
+                $includePresentation && $includePendingOrderNos,
+                fn ($q) => $q->leftJoinSub(
+                    $this->pendingOrderNosSubquery(),
+                    'pending_orders',
+                    'pending_orders.item_id',
+                    '=',
+                    'product_variants.id',
+                ),
+            )
             ->where('products.is_stored', true)
             ->where('products.is_bundle', false)
             ->tap(fn ($q) => TechnicalSku::exclude($q, 'product_variants.sku'))
@@ -77,12 +91,22 @@ class MonitorStockRepository
             ->when(
                 $includePresentation,
                 fn ($q) => $q
-                    ->selectRaw('('.$this->pendingOrderNosSql().') as pending_order_nos')
+                    ->when(
+                        $includePendingOrderNos,
+                        fn ($q) => $q->selectRaw('pending_orders.pending_order_nos as pending_order_nos'),
+                    )
                     ->selectRaw("(SELECT STRING_AGG(CONCAT_WS(': ', attributes.name, variant_options.value), ', ' ORDER BY variant_options.id) FROM variant_options JOIN attributes ON attributes.id = variant_options.attribute_id WHERE variant_options.variant_id = product_variants.id) as variation_text")
                     ->with([
                         'product:id,name,sku,is_bundle,is_stored,category_id',
-                        'product.media' => fn ($q) => $q->whereNull('variant_id')->orderBy('sort_order'),
-                        'media' => fn ($q) => $q->orderBy('sort_order'),
+                        'product.media' => fn ($q) => $q
+                            ->select(['id', 'product_id', 'variant_id', 'url', 'sort_order', 'is_primary'])
+                            ->whereNull('variant_id')
+                            ->orderBy('sort_order'),
+                        'media' => fn ($q) => $q
+                            ->select(['id', 'product_id', 'variant_id', 'url', 'sort_order', 'is_primary'])
+                            ->orderBy('sort_order'),
+                        'options' => fn ($q) => $q
+                            ->select(['id', 'variant_id', 'attribute_id', 'value']),
                         'options.attribute:id,name',
                     ])
             );
@@ -90,29 +114,32 @@ class MonitorStockRepository
         return $this->applyCommonFilters($query, $filters);
     }
 
-    private function pendingOrderNosSql(): string
+    private function pendingOrderNosSubquery()
     {
-        return <<<'SQL'
-            SELECT STRING_AGG(DISTINCT sales_orders.salesorder_no, ', ')
-            FROM sales_order_items
-            JOIN sales_orders ON sales_orders.id = sales_order_items.order_id
-            WHERE sales_orders.status IN ('pending', 'reserved', 'UNPAID', 'AWAITING_BUYER_CONFIRMATION')
-              AND (
-                  sales_order_items.item_id = product_variants.id
-                  OR EXISTS (
-                      SELECT 1
-                      FROM product_variants AS pending_bundle_variant
-                      JOIN products AS pending_bundle_product
-                        ON pending_bundle_product.id = pending_bundle_variant.product_id
-                      JOIN product_bundle_items AS pending_bundle_item
-                        ON pending_bundle_item.bundle_product_id = pending_bundle_product.id
-                      WHERE pending_bundle_variant.id = sales_order_items.item_id
-                        AND pending_bundle_product.is_bundle = true
-                        AND pending_bundle_product.deleted_at IS NULL
-                        AND pending_bundle_item.component_variant_id = product_variants.id
-                  )
-              )
-        SQL;
+        $direct = DB::table('sales_order_items as pending_direct_items')
+            ->join('sales_orders as pending_direct_orders', 'pending_direct_orders.id', '=', 'pending_direct_items.order_id')
+            ->whereIn('pending_direct_orders.status', self::PENDING_ORDER_STATUSES)
+            ->whereNotNull('pending_direct_items.item_id')
+            ->selectRaw('pending_direct_items.item_id as item_id')
+            ->selectRaw('pending_direct_orders.salesorder_no as salesorder_no');
+
+        $bundleComponents = DB::table('sales_order_items as pending_bundle_items')
+            ->join('sales_orders as pending_bundle_orders', 'pending_bundle_orders.id', '=', 'pending_bundle_items.order_id')
+            ->join('product_variants as pending_bundle_variant', 'pending_bundle_variant.id', '=', 'pending_bundle_items.item_id')
+            ->join('products as pending_bundle_product', 'pending_bundle_product.id', '=', 'pending_bundle_variant.product_id')
+            ->join('product_bundle_items as pending_bundle_component', 'pending_bundle_component.bundle_product_id', '=', 'pending_bundle_product.id')
+            ->whereIn('pending_bundle_orders.status', self::PENDING_ORDER_STATUSES)
+            ->where('pending_bundle_product.is_bundle', true)
+            ->whereNull('pending_bundle_product.deleted_at')
+            ->whereNotNull('pending_bundle_component.component_variant_id')
+            ->selectRaw('pending_bundle_component.component_variant_id as item_id')
+            ->selectRaw('pending_bundle_orders.salesorder_no as salesorder_no');
+
+        return DB::query()
+            ->fromSub($direct->unionAll($bundleComponents), 'pending_order_links')
+            ->select('item_id')
+            ->selectRaw("STRING_AGG(DISTINCT salesorder_no, ', ') as pending_order_nos")
+            ->groupBy('item_id');
     }
 
     private function pendingOrderItemIds()
@@ -150,8 +177,9 @@ class MonitorStockRepository
     private function applyMode(Builder $query, string $mode): Builder
     {
         return match ($mode) {
-            'habis' => $query->whereRaw('COALESCE(inv.available, 0) <= 0'),
-            'minus' => $query->whereRaw('COALESCE(inv.available, 0) < 0'),
+            'habis' => $query->whereRaw('COALESCE(inv.on_hand, 0) <= 0'),
+            'minus' => $query->whereRaw('COALESCE(inv.available, 0) < 0')
+                ->whereRaw('COALESCE(inv.on_hand, 0) > 0'),
             'dipesan' => $query->whereRaw('COALESCE(inv.on_hand, 0) <= 0')
                 ->whereIn('product_variants.id', $this->pendingOrderItemIds()),
             'menipis' => $query
@@ -162,6 +190,7 @@ class MonitorStockRepository
         };
     }
 
+
     public function paginateMode(string $mode, array $filters, int $perPage = 20): LengthAwarePaginator
     {
         $query = $this->modeQuery($mode, $filters);
@@ -171,14 +200,14 @@ class MonitorStockRepository
 
     public function modeQuery(string $mode, array $filters): Builder
     {
-        return $this->applyMode($this->baseQuery($filters), $mode)
+        return $this->applyMode($this->baseQuery($filters, includePendingOrderNos: true), $mode)
             ->orderBy('products.name')
             ->orderBy('product_variants.sku');
     }
 
     public function countMode(string $mode, array $filters): int
     {
-        return $this->applyMode($this->baseQuery($filters), $mode)
+        return $this->applyMode($this->baseQuery($filters, includePendingOrderNos: false), $mode)
             ->toBase()
             ->getCountForPagination();
     }
@@ -193,8 +222,8 @@ class MonitorStockRepository
             ->leftJoinSub($this->pendingOrderItemIds()->distinct(), 'pending', 'pending.item_id', '=', 'b.id')
             ->leftJoinSub($this->openPoItemIds()->distinct(), 'open_po', 'open_po.item_id', '=', 'b.id')
             ->selectRaw(<<<'SQL'
-                COUNT(*) FILTER (WHERE b.total_available <= 0) AS habis,
-                COUNT(*) FILTER (WHERE b.total_available < 0) AS minus,
+                COUNT(*) FILTER (WHERE b.total_on_hand <= 0) AS habis,
+                COUNT(*) FILTER (WHERE b.total_available < 0 AND b.total_on_hand > 0) AS minus,
                 COUNT(*) FILTER (WHERE b.total_on_hand <= 0 AND pending.item_id IS NOT NULL) AS dipesan,
                 COUNT(*) FILTER (WHERE b.min_stock > 0 AND b.total_available < b.min_stock) AS menipis,
                 COUNT(*) FILTER (WHERE open_po.item_id IS NOT NULL) AS on_order
@@ -233,7 +262,7 @@ class MonitorStockRepository
     {
         $sales = $this->salesSub($filters['location_id'] ?? null, $from, $filters);
 
-        return $this->baseQuery($filters)
+        return $this->baseQuery($filters, includePendingOrderNos: false)
             ->leftJoinSub($sales, 'sales', 'sales.item_id', '=', 'product_variants.id')
             ->addSelect('sales.last_sold')
             ->selectRaw('COALESCE(sales.qty_sold, 0) as qty_sold');

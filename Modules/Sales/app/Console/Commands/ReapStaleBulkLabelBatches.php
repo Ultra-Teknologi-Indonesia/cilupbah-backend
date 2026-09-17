@@ -19,7 +19,14 @@ class ReapStaleBulkLabelBatches extends Command
 
         $stale = BulkShippingLabelBatch::query()
             ->where('status', BulkShippingLabelBatch::STATUS_PROCESSING)
-            ->where('started_at', '<', $threshold)
+            ->where(function ($query) use ($threshold): void {
+                $query
+                    ->where(function ($query) use ($threshold): void {
+                        $query->whereNull('started_at')
+                            ->where('created_at', '<', $threshold);
+                    })
+                    ->orWhere('started_at', '<', $threshold);
+            })
             ->whereHas('items', function ($q) {
                 $q->whereIn('status', BulkShippingLabelItem::TRANSIENT_STATUSES);
             })
@@ -31,6 +38,13 @@ class ReapStaleBulkLabelBatches extends Command
         }
 
         foreach ($stale as $batch) {
+            if ($batch->started_at === null) {
+                $reset = $svc->requeueOrphanedBatch($batch);
+                $this->info("Requeued orphan batch {$batch->id} ({$reset} item).");
+
+                continue;
+            }
+
             $this->warn("Reap batch {$batch->id} (started_at={$batch->started_at})");
             $svc->forceFinalize($batch, BulkShippingLabelItem::REASON_STALE_BATCH_REAPED);
         }

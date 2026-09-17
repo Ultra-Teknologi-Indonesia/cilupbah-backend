@@ -14,8 +14,8 @@ class MovementsRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'per_page' => 'nullable|integer|min:1|max:500',
-            'limit' => 'nullable|integer|min:1|max:500',
+            'per_page' => 'nullable|integer|min:1|max:200',
+            'limit' => 'nullable|integer|min:1|max:200',
             'page' => 'nullable|integer|min:1',
         ];
     }

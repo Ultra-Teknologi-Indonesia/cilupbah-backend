@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Exports;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromQuery;
@@ -37,11 +38,13 @@ class SalesOrdersExport implements FromQuery, WithChunkReading, WithHeadings, Wi
 
         $this->applyTabFilter($query);
 
+        $businessTimezone = (string) config('app.business_timezone', 'Asia/Jakarta');
+
         if ($this->dateFrom) {
-            $query->whereDate('transaction_date', '>=', $this->dateFrom);
+            $query->where('transaction_date', '>=', $this->boundary($this->dateFrom, $businessTimezone));
         }
         if ($this->dateTo) {
-            $query->whereDate('transaction_date', '<=', $this->dateTo);
+            $query->where('transaction_date', '<', $this->exclusiveEnd($this->dateTo, $businessTimezone));
         }
         if ($this->source) {
             $query->where('source', $this->source);
@@ -66,6 +69,20 @@ class SalesOrdersExport implements FromQuery, WithChunkReading, WithHeadings, Wi
         }
 
         return $query->orderByDesc('transaction_date')->orderByDesc('created_at');
+    }
+
+    private function boundary(string $value, string $timezone): CarbonImmutable
+    {
+        return CarbonImmutable::parse($value, $timezone)->utc();
+    }
+
+    private function exclusiveEnd(string $value, string $timezone): CarbonImmutable
+    {
+        $parsed = CarbonImmutable::parse($value, $timezone);
+
+        return preg_match('/^\d{4}-\d{2}-\d{2}$/', trim($value)) === 1
+            ? $parsed->startOfDay()->addDay()->utc()
+            : $parsed->utc()->addSecond();
     }
 
     public function chunkSize(): int

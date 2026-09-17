@@ -5,11 +5,19 @@ namespace Modules\Product\Support;
 class ChannelSku
 {
 
+    public static function isTechnicalBundleSku($value): bool
+    {
+        $sku = trim((string) ($value ?? ''));
+
+        return str_starts_with(mb_strtolower($sku), '__bundle__')
+            && mb_strlen($sku) > mb_strlen('__bundle__');
+    }
+
     public static function normalize($value, ?string $externalProductId = null): ?string
     {
         $sku = trim((string) ($value ?? ''));
 
-        if ($sku === '' || preg_match('/[\p{L}\p{N}]/u', $sku) !== 1) {
+        if ($sku === '' || self::isTechnicalBundleSku($sku) || preg_match('/[\p{L}\p{N}]/u', $sku) !== 1) {
             return null;
         }
 
@@ -31,6 +39,10 @@ class ChannelSku
 
         if ($sku === '') {
             return 'Model tidak punya SKU di channel — isi SKU di Seller Center agar bisa dipetakan.';
+        }
+
+        if (self::isTechnicalBundleSku($sku)) {
+            return 'SKU teknis internal bundle ("' . $sku . '") tidak boleh dipakai sebagai SKU channel — isi SKU penjual asli di Seller Center.';
         }
 
         if (preg_match('/[\p{L}\p{N}]/u', $sku) !== 1) {

@@ -2,7 +2,8 @@
 
 namespace Modules\Report\Services;
 
-use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Modules\Report\Repositories\ReportRepository;
 
 class RincianPendapatanReportService
@@ -14,7 +15,7 @@ class RincianPendapatanReportService
         protected ReportRepository $repository,
     ) {}
 
-    public function query(string $mode, array $filters): Builder
+    public function query(string $mode, array $filters): EloquentBuilder|QueryBuilder
     {
         ini_set('memory_limit', '1024M');
         set_time_limit(300);

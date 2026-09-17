@@ -17,13 +17,23 @@ use OpenApi\Attributes as OA;
 #[OA\Tag(name: 'Monitor Stok', description: 'Dashboard pengawasan persediaan (read-only)')]
 class MonitorStockController extends Controller
 {
+    private const DEFAULT_PAGE_SIZE = 20;
+
+    private const MAX_PAGE_SIZE = 200;
+
     public function __construct(
         protected MonitorStockService $service,
     ) {}
 
     private function perPage(Request $request): int
     {
-        return (int) ($request->query('per_page') ?? $request->query('limit') ?? 10);
+        $raw = $request->query('per_page') ?? $request->query('limit');
+
+        if (! is_numeric($raw)) {
+            return self::DEFAULT_PAGE_SIZE;
+        }
+
+        return min(self::MAX_PAGE_SIZE, max(1, (int) $raw));
     }
 
     private function filters(Request $request): array
@@ -56,7 +66,7 @@ class MonitorStockController extends Controller
 
     public function exportAsync(MonitorStockExportRequest $request, ExportManager $exports): JsonResponse
     {
-        $params = $request->validated();
+        $params = $this->service->prepareExportParams($request->validated());
         $params['allowed_location_ids'] = WarehouseAccess::allowedIds();
 
         $type = $params['format'] === 'pdf'

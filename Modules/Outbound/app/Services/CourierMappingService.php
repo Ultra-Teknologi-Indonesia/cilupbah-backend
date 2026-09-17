@@ -134,6 +134,26 @@ class CourierMappingService
         return $this->activeCourierCodeMap()[$code] ?? null;
     }
 
+    public function resolveOrderCourierCode(object $order): string
+    {
+        $providerName = trim((string) ($order->shipping_provider ?? ''));
+
+        if ($providerName === '') {
+            return '';
+        }
+
+        if ($this->channelCodeFor($order) === 'lazada'
+            && preg_match('/pickup\s*:\s*(.+?)(?:,\s*delivery\s*:|$)/i', $providerName, $matches)) {
+            $pickupCourier = trim((string) ($matches[1] ?? ''));
+
+            if ($pickupCourier !== '') {
+                return $this->resolveCode($pickupCourier);
+            }
+        }
+
+        return $this->resolveCode($providerName);
+    }
+
     private ?array $courierCodeMap = null;
 
     private function activeCourierCodeMap(): array
@@ -208,7 +228,7 @@ class CourierMappingService
         }
 
         if (($order->channel_instant ?? null) !== null) {
-            $code = $this->resolveCode($providerName);
+            $code = $this->resolveOrderCourierCode($order);
             $shipmentType = $this->resolveShipmentType($providerName, (bool) $order->channel_instant);
 
             return [
@@ -219,7 +239,7 @@ class CourierMappingService
         }
 
         if (in_array($channelCode, ['shopee', 'tiktok', 'lazada'], true)) {
-            $code = $this->resolveCode($providerName);
+            $code = $this->resolveOrderCourierCode($order);
 
             return [
                 'courier_code' => $code,

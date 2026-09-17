@@ -19,5 +19,6 @@
     "Sales": true,
     "IssueTracker": true,
     "Dashboard": true,
-    "Bantuan": true
+    "Bantuan": true,
+    "Realtime": true
 }

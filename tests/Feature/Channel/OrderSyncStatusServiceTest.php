@@ -68,6 +68,19 @@ class OrderSyncStatusServiceTest extends TestCase
         );
     }
 
+    public function test_normal_when_woocommerce_credentials_present(): void
+    {
+        $this->assertSame(
+            ChannelShop::ORDER_SYNC_NORMAL,
+            $this->derive([
+                'access_token' => null,
+                'consumer_key' => 'ck_test',
+                'consumer_secret' => 'cs_test',
+                'last_order_synced_at' => now()->subMinutes(5),
+            ]),
+        );
+    }
+
     public function test_problem_when_pull_error_after_last_success(): void
     {
         $this->assertSame(

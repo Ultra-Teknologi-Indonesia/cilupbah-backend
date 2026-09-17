@@ -11,6 +11,7 @@ use Modules\Outbound\Models\PicklistItem;
 use Modules\Outbound\Models\PicklistItemAllocation;
 use Modules\Outbound\Services\OrderReleaseService;
 use Modules\Outbound\Services\PicklistService;
+use Modules\Outbound\Support\ActiveProcessOrderScope;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
@@ -210,6 +211,53 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
             ->assertJsonPath('meta.total', 0);
 
         $this->assertIsArray($response->json('data'));
+    }
+
+    public function test_finish_pick_does_not_show_order_until_picklist_is_completed(): void
+    {
+        $this->actingAs($this->user);
+        $this->order->update(['status' => 'picked']);
+
+        $response = $this->getJson('/api/v1/outbound/orders/finish-pick');
+
+        $response->assertOk()
+            ->assertJsonPath('meta.total', 0);
+
+        $this->picklist->update([
+            'status' => Picklist::STATUS_COMPLETED,
+            'completed_at' => now(),
+        ]);
+
+        $completedResponse = $this->getJson('/api/v1/outbound/orders/finish-pick');
+
+        $completedResponse->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.id', $this->order->id)
+            ->assertJsonPath('data.0.picklist_id', $this->picklist->id)
+            ->assertJsonPath('data.0.picklist_no', $this->picklist->picklist_no)
+            ->assertJsonPath('data.0.picker_name', $this->user->name);
+    }
+
+    public function test_packing_belum_scope_does_not_export_an_in_progress_picklist(): void
+    {
+        $scope = app(ActiveProcessOrderScope::class);
+
+        $this->order->update(['status' => 'picked']);
+
+        $this->assertSame(
+            0,
+            $scope->apply(SalesOrder::query(), 'packing', 'belum')->count(),
+        );
+
+        $this->picklist->update([
+            'status' => Picklist::STATUS_COMPLETED,
+            'completed_at' => now(),
+        ]);
+
+        $this->assertSame(
+            1,
+            $scope->apply(SalesOrder::query(), 'packing', 'belum')->count(),
+        );
     }
 
     public function test_cancelling_after_finish_pick_restores_the_same_origin_bin_once(): void

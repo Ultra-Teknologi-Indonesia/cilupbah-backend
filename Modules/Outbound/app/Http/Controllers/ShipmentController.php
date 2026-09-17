@@ -12,8 +12,9 @@ use Maatwebsite\Excel\Facades\Excel;
 use Modules\Outbound\Exceptions\ScanRejectedException;
 use Modules\Outbound\Exports\ShipmentManifestExport;
 use Modules\Outbound\Http\Requests\AddShipmentOrdersRequest;
-use Modules\Outbound\Http\Requests\BulkManifestPdfRequest;
 use Modules\Outbound\Http\Requests\BulkManifestPdfAsyncRequest;
+use Modules\Outbound\Http\Requests\BulkManifestPdfRequest;
+use Modules\Outbound\Http\Requests\BulkShipmentOrdersRequest;
 use Modules\Outbound\Http\Requests\CreateShipmentRequest;
 use Modules\Outbound\Http\Requests\DriverCallRequest;
 use Modules\Outbound\Http\Requests\RemoveShipmentOrdersRequest;
@@ -308,6 +309,13 @@ class ShipmentController extends Controller
         $data = $this->shipmentService->getOrdersPaginated($id, $limit);
 
         return $this->successPaginatedResponse($data);
+    }
+
+    public function bulkOrders(BulkShipmentOrdersRequest $request): JsonResponse
+    {
+        $rows = $this->shipmentService->getOrdersForBulkLabel($request->validated()['shipment_ids']);
+
+        return $this->successResponse($rows, 'Pesanan dari shipment berhasil dikumpulkan.');
     }
 
     #[OA\Post(

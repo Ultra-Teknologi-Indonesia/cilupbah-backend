@@ -63,6 +63,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::get('inventory/items/by-sku/{sku}', [InventoryController::class, 'bySku'])->name('inventory.items.bySku');
     Route::get('inventory/stock/by-sku/{sku}', [InventoryController::class, 'bySku'])->name('inventory.stock.bySku')->middleware('role_or_permission:owner|view-posisi-stok|view-penyesuaian-stok|create-penyesuaian-stok|view-pindah-bin|create-pindah-bin|view-transfer-keluar|create-transfer-keluar|view-pesanan|create-pesanan|view-manajemen-rak');
+    Route::post('inventory/stock/by-sku-bulk', [InventoryController::class, 'bulkBySku'])->name('inventory.stock.bySkuBulk')->middleware('role_or_permission:owner|view-posisi-stok|view-penyesuaian-stok|create-penyesuaian-stok|view-pindah-bin|create-pindah-bin|view-transfer-keluar|create-transfer-keluar|view-pesanan|create-pesanan|view-manajemen-rak');
     Route::get('inventory/stock/by-bin-code/{binCode}', [InventoryController::class, 'byBinCode'])->name('inventory.stock.byBinCode')->middleware('role_or_permission:owner|view-posisi-stok|view-penyesuaian-stok|create-penyesuaian-stok|view-pindah-bin|create-pindah-bin|view-transfer-keluar|create-transfer-keluar|view-pesanan|create-pesanan|view-manajemen-rak');
     Route::get('inventory/stock/items', [InventoryController::class, 'stockedItems'])->name('inventory.stock.items')->middleware('role_or_permission:owner|view-posisi-stok|view-penyesuaian-stok|create-penyesuaian-stok|view-pindah-bin|create-pindah-bin|view-transfer-keluar|create-transfer-keluar|view-pesanan|create-pesanan|view-manajemen-rak');
     Route::post('inventory/items/all-stocks', [InventoryController::class, 'allStocksByIds'])->name('inventory.items.allStocks')->middleware('role_or_permission:owner|view-posisi-stok|view-penyesuaian-stok|create-penyesuaian-stok|view-pindah-bin|create-pindah-bin|view-transfer-keluar|create-transfer-keluar|view-pesanan|create-pesanan|view-manajemen-rak');
@@ -240,6 +241,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::post('inventory/transfers/{id}/submit', [InventoryTransactionController::class, 'submitDraft'])->name('inventory.transfers.submitDraft');
     });
     Route::middleware('role_or_permission:owner|edit-barang-keluar')->group(function () {
+        Route::post('inventory/transfers/bulk/prepare-print', [InventoryTransactionController::class, 'prepareBulkForPrint'])->name('inventory.transfers.bulk.prepare-print');
         Route::patch('inventory/transfers/{id}', [InventoryTransactionController::class, 'updateDraft'])->name('inventory.transfers.updateDraft');
         Route::post('inventory/transfers/{id}/items', [InventoryTransactionController::class, 'addDraftItem'])->name('inventory.transfers.addDraftItem');
         Route::patch('inventory/transfers/{id}/items/{itemId}', [InventoryTransactionController::class, 'updateDraftItem'])->name('inventory.transfers.updateDraftItem');

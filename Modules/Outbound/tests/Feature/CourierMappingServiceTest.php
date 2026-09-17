@@ -249,6 +249,19 @@ class CourierMappingServiceTest extends TestCase
         $this->assertSame('INSTANT', $instant['shipment_type']);
     }
 
+    public function test_lazada_manifest_uses_pickup_courier_when_delivery_courier_is_also_present(): void
+    {
+        $this->assertSame('lex', $this->service->resolveOrderCourierCode((object) [
+            'source' => 'lazada',
+            'shipping_provider' => 'Pickup: LEX ID, Delivery: J&T',
+        ]));
+
+        $this->assertSame('jnt', $this->service->resolveOrderCourierCode((object) [
+            'source' => 'shopee',
+            'shipping_provider' => 'Drop-off: LEX ID, Delivery: J&T',
+        ]));
+    }
+
     public function test_manifest_grouping_honors_stored_resolved_shipment_type(): void
     {
 

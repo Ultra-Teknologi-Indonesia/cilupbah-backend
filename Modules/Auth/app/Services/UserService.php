@@ -457,6 +457,27 @@ class UserService
         }
     }
 
+    public function bulkDeleteUsers(array $ids): array
+    {
+        $results = [];
+
+        foreach (array_values(array_unique(array_map('strval', $ids))) as $id) {
+            try {
+                $this->deleteUser($id);
+                $results[] = ['id' => $id, 'status' => 'success'];
+            } catch (\Throwable $e) {
+                $results[] = ['id' => $id, 'status' => 'failed', 'message' => $e->getMessage()];
+            }
+        }
+
+        return [
+            'processed' => count($results),
+            'succeeded' => count(array_filter($results, fn (array $result): bool => $result['status'] === 'success')),
+            'failed' => array_values(array_filter($results, fn (array $result): bool => $result['status'] === 'failed')),
+            'results' => $results,
+        ];
+    }
+
     private function isForeignKeyViolation(QueryException $exception): bool
     {
         $sqlState = (string) ($exception->errorInfo[0] ?? $exception->getCode());

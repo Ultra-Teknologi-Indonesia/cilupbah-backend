@@ -81,6 +81,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     });
 
     Route::middleware('role_or_permission:owner|delete-user')->group(function () {
+        Route::post('/users/bulk-delete', [UserController::class, 'bulkDestroy'])->name('auth.users.bulk-destroy');
         Route::delete('/users/{id}', [UserController::class, 'destroy'])->whereUuid('id')->name('auth.users.destroy');
     });
 
