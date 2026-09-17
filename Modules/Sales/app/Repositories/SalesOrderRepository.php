@@ -1324,6 +1324,32 @@ class SalesOrderRepository
             }
         }
 
+        $unresolvedNormalized = array_values(array_filter(
+            $normalizedSkus,
+            fn (string $n): bool => ! isset($resolved[$n]),
+        ));
+
+        if (! empty($unresolvedNormalized)) {
+            $bundleRows = DB::table('product_variants as pv')
+                ->join('products as p', 'p.id', '=', 'pv.product_id')
+                ->whereIn(DB::raw('LOWER(TRIM(p.sku))'), $unresolvedNormalized)
+                ->where('p.is_bundle', true)
+                ->where('p.is_active', true)
+                ->whereNull('p.deleted_at')
+                ->where('pv.is_active', true)
+                ->whereNull('pv.deleted_at')
+                ->orderByDesc('pv.updated_at')
+                ->orderBy('pv.id')
+                ->get(['pv.id', 'p.sku as product_sku']);
+
+            foreach ($bundleRows as $row) {
+                $key = trim((string) $row->product_sku);
+                if ($key !== '' && ! isset($resolved[$key])) {
+                    $resolved[$key] = (string) $row->id;
+                }
+            }
+        }
+
         return $resolved;
     }
 

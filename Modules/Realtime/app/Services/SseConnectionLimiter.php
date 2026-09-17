@@ -5,13 +5,6 @@ namespace Modules\Realtime\Services;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Str;
 
-/**
- * Distributed, TTL-backed semaphore for SSE connections.
- *
- * The lease is deliberately independent from the request lifecycle: if a
- * worker is killed, the sorted-set entry expires and capacity returns without
- * requiring a cleanup request.
- */
 final class SseConnectionLimiter
 {
     private const ACQUIRE_SCRIPT = <<<'LUA'
@@ -53,7 +46,7 @@ LUA;
 
             return (int) $acquired === 1 ? $token : null;
         } catch (\Throwable $e) {
-            // Fail closed: without Redis we cannot guarantee the worker cap.
+
             report($e);
 
             return null;
@@ -70,8 +63,7 @@ LUA;
             Redis::connection(config('realtime.redis_connection', 'default'))
                 ->zrem($this->key(), $token);
         } catch (\Throwable $e) {
-            // TTL remains the safety net if the client disconnects or Redis is
-            // unavailable during cleanup.
+
             report($e);
         }
     }

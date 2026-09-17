@@ -2180,14 +2180,6 @@ class SalesOrderService
         return $this->freshOrderWithItems($order);
     }
 
-    /**
-     * Return a safe replacement for a legacy order item that points to a
-     * deleted/non-bundle master while an active bundle with the same
-     * marketplace SKU exists.
-     *
-     * This method is deliberately read-only. Applying the replacement is
-     * handled by reconcileStaleBundleOrderItem().
-     */
     public function inspectStaleBundleOrderItem(SalesOrder $order, SalesOrderItem $item): ?object
     {
         if ($item->item_id === null
@@ -2289,11 +2281,6 @@ class SalesOrderService
         return $target;
     }
 
-    /**
-     * Rebind one safe legacy order item to its active bundle variant.
-     * Existing marketplace SKU is preserved; only the internal item_id is
-     * changed. Reservation is created only for the new bundle components.
-     */
     public function reconcileStaleBundleOrderItem(SalesOrder $order, string $orderItemId): bool
     {
         $resolvedVariantId = null;

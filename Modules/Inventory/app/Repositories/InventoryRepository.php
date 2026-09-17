@@ -345,9 +345,7 @@ class InventoryRepository
         $orderItemsQuery = DB::table('sales_order_items')
             ->join('sales_orders', 'sales_orders.id', '=', 'sales_order_items.order_id')
             ->whereRaw("UPPER(sales_orders.status) IN ('PENDING', 'CONFIRMED', 'PROCESSING', 'UNPAID')")
-            // Use the same component-aware rule as the Pesanan page. A bundle
-            // has no stock of its technical variant; its availability belongs
-            // to the component variants at the order's location.
+
             ->whereRaw(SalesOrder::shortfallItemWhereRaw())
             ->select('sales_order_items.item_id')
             ->distinct();

@@ -118,14 +118,12 @@ class PicklistSearchTest extends TestCase
             'item_status' => PicklistItem::STATUS_PENDING,
         ]);
 
-        // 1. Search by picklist_no
         $res1 = $this->actingAs($user, 'sanctum')
             ->getJson('/api/v1/outbound/picklists?search=AAA-111');
         $res1->assertOk()
             ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('data.0.picklist_no', 'PK-2026-AAA-111');
 
-        // 2. Search by picker name
         $res2 = $this->actingAs($user, 'sanctum')
             ->getJson('/api/v1/outbound/picklists?search=Budi');
         $res2->assertOk()
@@ -138,21 +136,18 @@ class PicklistSearchTest extends TestCase
             ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('data.0.picklist_no', 'PK-2026-BBB-222');
 
-        // 3. Search by salesorder_no
         $res4 = $this->actingAs($user, 'sanctum')
             ->getJson('/api/v1/outbound/picklists?search=SEARCH-001');
         $res4->assertOk()
             ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('data.0.picklist_no', 'PK-2026-AAA-111');
 
-        // 4. Search by channel_order_no
         $res5 = $this->actingAs($user, 'sanctum')
             ->getJson('/api/v1/outbound/picklists?search=ALPHA-999');
         $res5->assertOk()
             ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('data.0.picklist_no', 'PK-2026-AAA-111');
 
-        // 5. Search by tracking_number
         $res6 = $this->actingAs($user, 'sanctum')
             ->getJson('/api/v1/outbound/picklists?search=AWB-BETA');
         $res6->assertOk()

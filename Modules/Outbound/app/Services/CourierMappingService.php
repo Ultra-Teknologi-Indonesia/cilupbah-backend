@@ -134,13 +134,6 @@ class CourierMappingService
         return $this->activeCourierCodeMap()[$code] ?? null;
     }
 
-    /**
-     * Resolve the courier used for outbound manifest matching.
-     *
-     * Lazada can send both the pickup courier and the delivery courier in
-     * shipping_provider. A manifest is handed to the pickup courier, so the
-     * pickup segment is authoritative for Lazada orders.
-     */
     public function resolveOrderCourierCode(object $order): string
     {
         $providerName = trim((string) ($order->shipping_provider ?? ''));

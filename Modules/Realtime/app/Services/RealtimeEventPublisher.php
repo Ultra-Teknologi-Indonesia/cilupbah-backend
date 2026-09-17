@@ -36,7 +36,7 @@ final class RealtimeEventPublisher
         } catch (JsonException $e) {
             report($e);
         } catch (\Throwable $e) {
-            // Realtime must never break the business transaction or queue job.
+
             report($e);
         }
     }
