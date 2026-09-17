@@ -150,6 +150,7 @@ class PicklistRepository
                 'orders.salesorder_no',
                 'orders.channel_order_no',
                 'orders.tracking_number',
+                'items.product.sku',
             )
             ->allowedSorts('created_at', 'picklist_no', 'started_at', 'completed_at', 'location_id', 'picker_id', 'status')
             ->defaultSort('-created_at')
