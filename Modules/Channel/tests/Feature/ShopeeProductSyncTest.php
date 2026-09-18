@@ -164,6 +164,9 @@ class ShopeeProductSyncTest extends TestCase
         ]);
 
         Http::fake([
+            'partner.shopeemobile.com/api/v2/product/get_model_list*' => Http::response([
+                'response' => ['model' => [['model_id' => 777001, 'model_sku' => 'SKU-A']]],
+            ], 200),
             'partner.shopeemobile.com/api/v2/product/update_price*' => Http::response(['response' => []], 200),
             'partner.shopeemobile.com/api/v2/product/update_stock*' => Http::response(['response' => []], 200),
         ]);

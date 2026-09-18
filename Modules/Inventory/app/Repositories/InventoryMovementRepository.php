@@ -269,10 +269,7 @@ class InventoryMovementRepository
             $baseQuery->whereIn('inventory_movements.location_id', $get('allowed_location_ids'));
         }
         $baseQuery->whereNotIn('source', InventoryMovementSourceMap::HIDDEN_SOURCES);
-        // Cancellation movements remain in the ledger for audit and stock
-        // reconciliation, but a cancelled transfer is not an operational
-        // history row. Hide both the original transfer and its -BATAL
-        // counterpart when the cancellation pair exists.
+
         $baseQuery->whereNotExists(function ($query): void {
             $query
                 ->selectRaw('1')

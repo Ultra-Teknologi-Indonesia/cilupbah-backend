@@ -179,6 +179,8 @@ class ChannelModelLinker
             ? $defaultPcmId
             : $this->repository->upsertChannelMapping($productId, $shopId, $externalProductId, 'synced', null, false);
 
+        $linkedExternalSkuIds = [];
+
         foreach ($models as $model) {
             $sku = ChannelSku::normalize($model['sku'] ?? null, $externalProductId);
 
@@ -234,9 +236,43 @@ class ChannelModelLinker
                 $model['sales_attribute_id'] ?? null,
                 $model['sales_attribute_name'] ?? null
             );
+
+            if (filled($model['external_sku_id'] ?? null)) {
+                $linkedExternalSkuIds[] = (string) $model['external_sku_id'];
+            }
+        }
+
+        $deleted = $this->pruneStaleVariantMappings($pcmId, $linkedExternalSkuIds);
+        if ($deleted > 0) {
+            Log::warning('Mapping model channel lama dibersihkan saat download.', [
+                'shop_id' => $shop->id,
+                'external_product_id' => $externalProductId,
+                'product_channel_mapping_id' => $pcmId,
+                'deleted_mappings' => $deleted,
+            ]);
         }
 
         return $pcmId;
+    }
+
+    protected function pruneStaleVariantMappings(string $pcmId, array $linkedExternalSkuIds): int
+    {
+        $linkedExternalSkuIds = array_values(array_unique($linkedExternalSkuIds));
+
+        return DB::table('product_variant_channel_mappings')
+            ->where('product_channel_mapping_id', $pcmId)
+            ->where(function ($query) use ($linkedExternalSkuIds): void {
+                $query->whereNull('external_sku_id');
+
+                if ($linkedExternalSkuIds === []) {
+                    $query->orWhereNotNull('external_sku_id');
+
+                    return;
+                }
+
+                $query->orWhereNotIn('external_sku_id', $linkedExternalSkuIds);
+            })
+            ->delete();
     }
 
     protected function consolidate(object $shop, string $externalProductId, array &$known, string $defaultProductId): string

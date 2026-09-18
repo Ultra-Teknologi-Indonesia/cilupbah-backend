@@ -11,6 +11,7 @@ use Modules\Channel\Support\ChannelModelLinker;
 use Modules\Product\Exceptions\ChannelSkuConflictException;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductVariant;
 use Modules\Product\Repositories\ProductRepository;
 use Modules\Product\Services\ChannelSkuHealth;
 use Modules\Product\Services\ProductService;
@@ -208,6 +209,79 @@ class BundleChannelSkuLinkerTest extends TestCase
             'id' => $legacyVariantIds[0],
             'sku' => 'C-CBCTLG1',
             'deleted_at' => null,
+        ]);
+    }
+
+    public function test_redownload_replaces_a_reused_model_id_and_prunes_stale_models(): void
+    {
+        $category = Category::firstOrCreate(['name' => 'Regular model linker test']);
+        $product = Product::create([
+            'name' => 'Regular model listing',
+            'category_id' => $category->id,
+            'status' => Product::STATUS_MASTER,
+            'is_active' => true,
+        ]);
+        $variantA = ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => 'MODEL-SKU-A',
+            'is_active' => true,
+        ]);
+        $variantB = ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => 'MODEL-SKU-B',
+            'is_active' => true,
+        ]);
+
+        $repository = app(ChannelProductRepository::class);
+        $pcmId = $repository->upsertChannelMapping(
+            (string) $product->id,
+            $this->shop->shop_id,
+            'MODEL-LINKER-LISTING',
+            'synced',
+            null,
+            false,
+        );
+        $linker = app(ChannelModelLinker::class);
+
+        $linker->link(
+            $this->shop,
+            $this->shop->shop_id,
+            'MODEL-LINKER-LISTING',
+            [
+                ['sku' => 'MODEL-SKU-A', 'external_sku_id' => 'REUSED-MODEL', 'price' => 10000, 'variant' => []],
+                ['sku' => 'MODEL-SKU-B', 'external_sku_id' => 'STALE-MODEL', 'price' => 10000, 'variant' => []],
+            ],
+            (string) $product->id,
+            $pcmId,
+        );
+
+        $linker->link(
+            $this->shop,
+            $this->shop->shop_id,
+            'MODEL-LINKER-LISTING',
+            [
+                ['sku' => 'MODEL-SKU-B', 'external_sku_id' => 'REUSED-MODEL', 'price' => 10000, 'variant' => []],
+                ['sku' => 'MODEL-SKU-A', 'external_sku_id' => 'CURRENT-MODEL-A', 'price' => 10000, 'variant' => []],
+            ],
+            (string) $product->id,
+            $pcmId,
+        );
+
+        $this->assertDatabaseHas('product_variant_channel_mappings', [
+            'product_channel_mapping_id' => $pcmId,
+            'variant_id' => $variantB->id,
+            'external_sku_id' => 'REUSED-MODEL',
+            'channel_seller_sku' => 'MODEL-SKU-B',
+        ]);
+        $this->assertDatabaseHas('product_variant_channel_mappings', [
+            'product_channel_mapping_id' => $pcmId,
+            'variant_id' => $variantA->id,
+            'external_sku_id' => 'CURRENT-MODEL-A',
+            'channel_seller_sku' => 'MODEL-SKU-A',
+        ]);
+        $this->assertDatabaseMissing('product_variant_channel_mappings', [
+            'product_channel_mapping_id' => $pcmId,
+            'external_sku_id' => 'STALE-MODEL',
         ]);
     }
 

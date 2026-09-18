@@ -32,8 +32,6 @@ return new class extends Migration
             $table->timestamps();
         });
 
-        // Existing duplicates are historical data. Keep the earliest picklist
-        // as the canonical database assignment without deleting any rows.
         DB::statement(<<<'SQL'
 INSERT INTO picklist_order_assignments (order_id, picklist_id, created_at, updated_at)
 SELECT DISTINCT ON (pi.order_id)

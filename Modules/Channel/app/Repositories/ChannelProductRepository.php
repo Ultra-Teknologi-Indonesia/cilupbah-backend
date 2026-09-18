@@ -446,8 +446,11 @@ class ChannelProductRepository
 
         $now = now();
 
-        $applyUpdate = function (string $existingId) use ($now, $externalSkuId, $channelSellerSku, $syncedPrice, $salesAttributeId, $salesAttributeName): void {
+        $applyUpdate = function (string $existingId, bool $replaceVariant = false) use ($now, $variantId, $externalSkuId, $channelSellerSku, $syncedPrice, $salesAttributeId, $salesAttributeName): void {
             $update = ['updated_at' => $now];
+            if ($replaceVariant) {
+                $update['variant_id'] = $variantId;
+            }
             if ($externalSkuId !== null) {
                 $update['external_sku_id'] = $externalSkuId;
             }
@@ -471,7 +474,11 @@ class ChannelProductRepository
         $existing = $this->findVariantChannelMappingRow($pcmId, $variantId, $externalSkuId);
 
         if ($existing) {
-            $applyUpdate($existing->id);
+            $applyUpdate(
+                $existing->id,
+                $externalSkuId !== null
+                    && (string) $existing->external_sku_id === (string) $externalSkuId,
+            );
 
             return;
         }
@@ -498,7 +505,11 @@ class ChannelProductRepository
             $raced = $this->findVariantChannelMappingRow($pcmId, $variantId, $externalSkuId);
 
             if ($raced) {
-                $applyUpdate($raced->id);
+                $applyUpdate(
+                    $raced->id,
+                    $externalSkuId !== null
+                        && (string) $raced->external_sku_id === (string) $externalSkuId,
+                );
 
                 return;
             }

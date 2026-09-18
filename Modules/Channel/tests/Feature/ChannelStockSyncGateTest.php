@@ -90,6 +90,9 @@ class ChannelStockSyncGateTest extends TestCase
     public function test_disabled_variant_is_excluded_from_price_and_stock_payload(): void
     {
         Http::fake([
+            'partner.shopeemobile.com/api/v2/product/get_model_list*' => Http::response([
+                'response' => ['model' => [['model_id' => 111, 'model_sku' => 'SKU-ON']]],
+            ], 200),
             'partner.shopeemobile.com/api/v2/product/update_price*' => Http::response(['response' => []], 200),
             'partner.shopeemobile.com/api/v2/product/update_stock*' => Http::response(['response' => []], 200),
         ]);
@@ -194,6 +197,9 @@ class ChannelStockSyncGateTest extends TestCase
     public function test_stock_payload_is_limited_to_the_requested_listing(): void
     {
         Http::fake([
+            'partner.shopeemobile.com/api/v2/product/get_model_list*' => Http::response([
+                'response' => ['model' => [['model_id' => 111, 'model_sku' => 'SKU-LISTING-A']]],
+            ], 200),
             'partner.shopeemobile.com/api/v2/product/update_stock*' => Http::response(['response' => []], 200),
         ]);
 
@@ -240,6 +246,31 @@ class ChannelStockSyncGateTest extends TestCase
         });
     }
 
+    public function test_stock_sync_refuses_a_remote_model_sku_mismatch_before_posting(): void
+    {
+        Http::fake([
+            'partner.shopeemobile.com/api/v2/product/get_model_list*' => Http::response([
+                'response' => ['model' => [['model_id' => 111, 'model_sku' => 'SKU-REMOTE-LAIN']]],
+            ], 200),
+            'partner.shopeemobile.com/api/v2/product/update_stock*' => Http::response(['response' => []], 200),
+        ]);
+
+        $product = $this->makeListedProduct([
+            ['sku' => 'SKU-MASTER', 'model_id' => '111', 'sync_enabled' => true],
+        ]);
+
+        $result = app(ShopeeAdapter::class)->syncStock(
+            $product,
+            $this->shop,
+            '555001',
+        );
+
+        $this->assertFalse($result['success']);
+        $this->assertStringContainsString('Mapping model Shopee berubah', $result['message']);
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/product/get_model_list'));
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '/product/update_stock'));
+    }
+
     public function test_shopee_stock_sync_refuses_mapping_without_channel_seller_sku(): void
     {
         Http::fake();
@@ -258,6 +289,30 @@ class ChannelStockSyncGateTest extends TestCase
 
         $this->assertFalse($result['success']);
         $this->assertStringContainsString('SKU Shopee belum lengkap', $result['message']);
+        Http::assertNothingSent();
+    }
+
+    public function test_shopee_stock_sync_refuses_a_stored_seller_sku_mismatch_before_api_call(): void
+    {
+        Http::fake();
+
+        $product = $this->makeListedProduct([
+            [
+                'sku' => 'SKU-MASTER',
+                'model_id' => '111',
+                'channel_seller_sku' => 'SKU-CHANNEL-LAIN',
+                'sync_enabled' => true,
+            ],
+        ]);
+
+        $result = app(ShopeeAdapter::class)->syncStock(
+            $product,
+            $this->shop,
+            '555001',
+        );
+
+        $this->assertFalse($result['success']);
+        $this->assertStringContainsString('tidak cocok dengan SKU master', $result['message']);
         Http::assertNothingSent();
     }
 

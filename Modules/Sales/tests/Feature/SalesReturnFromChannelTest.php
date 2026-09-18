@@ -228,7 +228,7 @@ class SalesReturnFromChannelTest extends TestCase
         ]);
 
         $this->assertNotNull($return);
-        // Dedicated return tracking MUST be used, NOT the forward tracking
+
         $this->assertSame('SPX-RETURN-WAYBILL-777', $return->return_tracking_number);
         $this->assertSame('Shopee Xpress Return', $return->return_carrier);
     }

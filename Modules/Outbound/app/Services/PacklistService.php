@@ -399,11 +399,6 @@ class PacklistService
             ])->save();
         });
 
-        // The local fulfillment state must be visible immediately after the
-        // packlist completes. Queueing this transition behind stock-critical
-        // work can leave the order at "picked" and block manifest scanning.
-        // The job remains idempotent and keeps its downstream side effects
-        // (stock/channel work) asynchronous.
         ProcessPacklistCompleteJob::dispatchSync($id);
 
         return $this->packlistRepository->findById($id);

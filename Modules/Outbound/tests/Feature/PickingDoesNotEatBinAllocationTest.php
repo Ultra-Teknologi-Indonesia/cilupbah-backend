@@ -252,10 +252,8 @@ class PickingDoesNotEatBinAllocationTest extends TestCase
         $binId = $this->seedBin($locationId, 'O-B3-K5-X21');
         $variantId = $this->seedProductVariant('SB-MAROON-IP-15');
 
-        // On hand fisik di rak adalah 9
         $this->seedInventory($variantId, $locationId, $binId, onHand: 9);
 
-        // Buat picklist A dengan alokasi 10 (melebihi on hand di rak, simulasi pending pack / meja packing 10)
         $idsA = $this->seedPicklistWithItem($locationId, $variantId, 'SB-MAROON-IP-15', 10, $userId);
         DB::table('picklist_item_allocations')->insert([
             'id' => Str::uuid()->toString(),
@@ -267,17 +265,14 @@ class PickingDoesNotEatBinAllocationTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        // Picklist B mau pick 1 barang
         $idsB = $this->seedPicklistWithItem($locationId, $variantId, 'SB-MAROON-IP-15', 1, $userId);
         $this->actingAs(User::find($userId), 'sanctum');
 
-        // Scan barang harus sukses dan mengikuti qty on hand (9), bukan ditolak replenishment
         $scan = app(PicklistService::class)->scanForPick($idsB['picklist_id'], 'SB-MAROON-IP-15');
         $this->assertSame('O-B3-K5-X21', $scan['bin_code']);
         $this->assertSame(9, $scan['available_in_bin']);
         $this->assertNotEmpty($scan['candidates']);
 
-        // Pick item juga harus sukses
         app(PicklistService::class)->pickItem($idsB['picklist_id'], $idsB['item_id'], [
             'qty_picked' => 1,
             'bin_code' => 'O-B3-K5-X21',

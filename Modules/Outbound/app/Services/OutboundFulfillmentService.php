@@ -768,10 +768,7 @@ SQL;
     private function finishPick()
     {
         return Order::where('status', 'picked')
-            // An order may be marked as picked by OrderReleaseService just
-            // before the picklist completion transaction finishes.  The
-            // packing queue must only expose orders whose picklist is
-            // explicitly completed, never merely orders with status=picked.
+
             ->whereHas('picklistItems', function ($q) {
                 $q->whereHas('picklist', fn ($pq) => $pq->where('status', Picklist::STATUS_COMPLETED));
             })

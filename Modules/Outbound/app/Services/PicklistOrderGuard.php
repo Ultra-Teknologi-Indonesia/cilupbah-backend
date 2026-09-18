@@ -7,13 +7,7 @@ use Modules\Outbound\Exceptions\OutboundValidationException;
 
 final class PicklistOrderGuard
 {
-    /**
-     * Serialize every picklist creation attempt for the same order ids.
-     *
-     * This lock must be acquired inside the caller's transaction. Sorting the
-     * ids prevents deadlocks when concurrent requests contain the same orders
-     * in a different order.
-     */
+
     public function lockForCreation(array $orderIds): void
     {
         $orderIds = array_values(array_unique(array_map(
@@ -33,11 +27,6 @@ final class PicklistOrderGuard
         }
     }
 
-    /**
-     * An order may not be attached to a second picklist, regardless of the
-     * existing picklist status. Re-processing must first remove/revert the
-     * previous picklist association through the normal workflow.
-     */
     public function assertNotAssigned(array $orderIds): void
     {
         $existing = DB::table('picklist_items as existing_items')

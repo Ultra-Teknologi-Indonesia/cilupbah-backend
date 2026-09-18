@@ -107,6 +107,17 @@ final class ChannelVariantMappingResolver
             return "{$sellerSkuLabel} belum lengkap untuk seluruh varian listing ini.";
         }
 
+        $mismatchedSellerSkus = $mappings->filter(
+            static fn (ProductVariantChannelMapping $mapping): bool => strcasecmp(
+                trim((string) $mapping->channel_seller_sku),
+                trim((string) ($mapping->variant?->sku ?? '')),
+            ) !== 0,
+        );
+
+        if ($mismatchedSellerSkus->isNotEmpty()) {
+            return "{$sellerSkuLabel} tidak cocok dengan SKU master pada listing ini.";
+        }
+
         return null;
     }
 
