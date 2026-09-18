@@ -8,6 +8,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\Picklist;
+use Modules\Product\Repositories\ProductRepository;
 use Modules\Sales\Models\SalesInvoice;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Outbound\Support\FilterValues;
@@ -24,6 +25,10 @@ class OutboundFulfillmentRepository
         'salesorder_no',
         'status',
     ];
+
+    public function __construct(
+        protected ProductRepository $productRepository,
+    ) {}
 
     public function getPickers(?string $locationId, string $role): Collection
     {
@@ -255,6 +260,15 @@ class OutboundFulfillmentRepository
             ->appends(request()->query());
 
         $labelCapabilities = (array) config('channel_print_capabilities', []);
+        $bundleComponents = $this->productRepository->bundleComponentsForVariants(
+            $paginator->getCollection()
+                ->flatMap(fn (SalesOrder $order) => $order->items->pluck('item_id'))
+                ->filter()
+                ->unique()
+                ->values()
+                ->all(),
+        );
+
         $paginator->getCollection()->transform(function (SalesOrder $order) use ($labelCapabilities): SalesOrder {
             $source = strtolower(trim((string) ($order->source ?? '')));
             $capability = $labelCapabilities[$source] ?? null;
@@ -264,6 +278,40 @@ class OutboundFulfillmentRepository
                 is_array($capability)
                     && (! empty($capability['document_types']) || ! empty($capability['document_sizes'])),
             );
+
+            return $order;
+        });
+
+        $paginator->getCollection()->transform(function (SalesOrder $order) use ($bundleComponents): SalesOrder {
+            $skuSet = [];
+            $totalQty = 0;
+
+            foreach ($order->items as $item) {
+                $variantId = (string) ($item->item_id ?? '');
+                if (array_key_exists($variantId, $bundleComponents)) {
+                    $components = $bundleComponents[$variantId];
+                    $item->setAttribute('bundle_components', $components);
+
+                    foreach ($components as $component) {
+                        $componentSku = trim((string) ($component['sku'] ?? ''));
+                        if ($componentSku !== '') {
+                            $skuSet[$componentSku] = true;
+                        }
+                        $totalQty += (int) $item->qty_in_base * (int) ($component['qty'] ?? 0);
+                    }
+
+                    continue;
+                }
+
+                $sku = trim((string) ($item->sku ?? ''));
+                if ($sku !== '') {
+                    $skuSet[$sku] = true;
+                }
+                $totalQty += (int) $item->qty_in_base;
+            }
+
+            $order->setAttribute('total_sku', count($skuSet));
+            $order->setAttribute('total_qty', $totalQty);
 
             return $order;
         });

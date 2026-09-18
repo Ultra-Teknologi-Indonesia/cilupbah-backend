@@ -168,6 +168,25 @@ class BundleOutboundExplosionTest extends TestCase
         $this->assertSame(3, (int) $packItems->first()->qty_ordered);
     }
 
+    public function test_fulfillment_totals_and_item_metadata_use_bundle_components(): void
+    {
+        [, , $bundleVar] = $this->makeBundle();
+        $order = $this->makeOrder($bundleVar, 1, 'reserved');
+        $order->update(['handed_to_warehouse_at' => now()]);
+
+        $page = app(OutboundFulfillmentService::class)->getOrdersByStage(
+            'ready-to-process',
+            10,
+            $this->locationId,
+        );
+        $result = $page->getCollection()->firstWhere('id', $order->id);
+
+        $this->assertNotNull($result);
+        $this->assertSame(2, (int) $result->total_sku);
+        $this->assertSame(5, (int) $result->total_qty);
+        $this->assertCount(2, $result->items->firstOrFail()->getAttribute('bundle_components'));
+    }
+
     public function test_reserved_order_cannot_be_added_to_another_active_picklist(): void
     {
         $single = $this->variant('SINGLE-DUPLICATE');
