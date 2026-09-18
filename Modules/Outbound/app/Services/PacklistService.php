@@ -37,6 +37,11 @@ class PacklistService
         return $this->packlistRepository->findById($id);
     }
 
+    public function getBoardDetail(string $id): ?Packlist
+    {
+        return $this->packlistRepository->findForBoardDetail($id);
+    }
+
     public function getItems(string $packlistId, int $limit = 10)
     {
         return $this->packlistRepository->getItemsPaginated($packlistId, $limit);

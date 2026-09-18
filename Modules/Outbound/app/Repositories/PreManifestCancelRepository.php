@@ -15,7 +15,7 @@ class PreManifestCancelRepository
         $query = Order::query()
             ->where(function (Builder $q) {
                 $q->where('status', 'cancelled')
-                  ->orWhere('is_canceled', true);
+                    ->orWhere('is_canceled', true);
             })
             ->whereNotNull('handed_to_warehouse_at')
             ->whereNull('cancel_dismissed_at')
@@ -31,7 +31,18 @@ class PreManifestCancelRepository
     public function paginateList(array $filters = [], int $perPage = 10)
     {
         $query = $this->baseQuery()
-            ->with(['location:id,location_name,location_code']);
+            ->select([
+                'sales_orders.id',
+                'sales_orders.salesorder_no',
+                'sales_orders.channel_order_no',
+                'sales_orders.customer_name',
+                'sales_orders.source',
+                'sales_orders.transaction_date',
+                'sales_orders.tracking_number',
+                'sales_orders.channel_status',
+                'sales_orders.cancel_reason',
+                'sales_orders.cancel_accepted_at',
+            ]);
 
         if (! empty($filters['source'])) {
             $query->where('source', $filters['source']);

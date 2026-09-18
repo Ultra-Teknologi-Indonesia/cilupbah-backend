@@ -7,6 +7,7 @@ use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Maatwebsite\Excel\Facades\Excel;
+use Modules\Outbound\Http\Resources\PreManifestCancelResource;
 use Modules\Outbound\Services\PreManifestCancelService;
 use Modules\Sales\Exports\CancelledOrdersExport;
 use OpenApi\Attributes as OA;
@@ -47,7 +48,7 @@ class PreManifestCancelController extends Controller
 
         $paginator = $this->service->list($filters, $perPage);
 
-        return $this->successPaginatedResponse($paginator);
+        return $this->successPaginatedResponse(PreManifestCancelResource::collection($paginator));
     }
 
     #[OA\Get(

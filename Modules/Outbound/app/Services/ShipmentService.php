@@ -67,6 +67,11 @@ class ShipmentService
         return $this->shipmentRepository->findById($id);
     }
 
+    public function getForManifest(string $id): ?Shipment
+    {
+        return $this->shipmentRepository->findForManifest($id);
+    }
+
     public function getOrdersPaginated(string $id, int $limit = 20)
     {
         return $this->shipmentRepository->getOrdersPaginated($id, $limit);

@@ -8,10 +8,10 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\Picklist;
+use Modules\Outbound\Support\FilterValues;
 use Modules\Product\Repositories\ProductRepository;
 use Modules\Sales\Models\SalesInvoice;
 use Modules\Sales\Models\SalesOrder;
-use Modules\Outbound\Support\FilterValues;
 use Spatie\Permission\Models\Role;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
@@ -64,13 +64,13 @@ class OutboundFulfillmentRepository
         array $extraSelects = [],
         bool $latestFirst = false,
         bool $lightweight = false,
-    )
-    {
+    ) {
         if ($lightweight) {
             $query->select([
                 'sales_orders.id',
                 'sales_orders.salesorder_no',
                 'sales_orders.channel_order_no',
+                'sales_orders.channel_buyer_id',
                 'sales_orders.customer_name',
                 'sales_orders.shipping_full_name',
                 'sales_orders.source',
@@ -81,16 +81,30 @@ class OutboundFulfillmentRepository
                 'sales_orders.is_paid',
                 'sales_orders.grand_total',
                 'sales_orders.actual_shipping_fee',
+                'sales_orders.order_weight_gram',
                 'sales_orders.transaction_date',
                 'sales_orders.location_id',
                 'sales_orders.tracking_number',
                 'sales_orders.shipping_provider',
+                'sales_orders.is_cod',
+                'sales_orders.priority_fulfillment',
+                'sales_orders.is_split_order',
+                'sales_orders.channel_status',
                 'sales_orders.is_canceled',
                 'sales_orders.cancel_requested_at',
+                'sales_orders.cancel_reason',
+                'sales_orders.cancel_accepted_at',
                 'sales_orders.ship_by_date',
+                'sales_orders.pickup_done_time',
+                'sales_orders.days_to_ship',
+                'sales_orders.dropshipper_name',
+                'sales_orders.dropshipper_phone',
                 'sales_orders.channel_instant',
                 'sales_orders.resolved_shipment_type',
                 'sales_orders.shipping_type',
+                'sales_orders.driver_call_status',
+                'sales_orders.driver_call_message',
+                'sales_orders.driver_call_attempted_at',
                 'sales_orders.created_at',
             ]);
         }

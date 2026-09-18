@@ -186,6 +186,11 @@ class PicklistService
         return $this->picklistRepository->findById($id);
     }
 
+    public function getBoardDetail(string $id): ?Picklist
+    {
+        return $this->picklistRepository->findForBoardDetail($id);
+    }
+
     public function getItems(string $picklistId, int $limit = 10)
     {
         return $this->picklistRepository->getItemsPaginated($picklistId, $limit);

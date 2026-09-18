@@ -5,12 +5,11 @@ namespace Modules\Outbound\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-class ShipmentResource extends JsonResource
+final class ShipmentListResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
         $location = $this->relationLoaded('location') ? $this->location : null;
-        $shipper = $this->relationLoaded('shipper') ? $this->shipper : null;
 
         return [
             'id' => $this->id,
@@ -19,7 +18,6 @@ class ShipmentResource extends JsonResource
             'location' => $location ? [
                 'id' => $location->id,
                 'location_name' => $location->location_name,
-                'location_code' => $location->location_code,
             ] : null,
             'courier_code' => $this->courier_code,
             'courier_name' => $this->courier_name,
@@ -27,27 +25,14 @@ class ShipmentResource extends JsonResource
             'shipment_date' => $this->shipment_date,
             'status' => $this->status,
             'handed_over_at' => $this->handed_over_at,
-            'orders_count' => (int) ($this->orders_count ?? ($this->relationLoaded('orders') ? $this->orders->count() : 0)),
+            'orders_count' => (int) ($this->orders_count ?? 0),
+            'total_weight_gram' => (float) ($this->total_weight_gram ?? 0),
             'has_instant' => (bool) $this->has_instant,
             'created_at' => $this->created_at,
             'driver_name' => $this->driver_name,
             'driver_phone' => $this->driver_phone,
-            'driver_vehicle_plate' => $this->driver_vehicle_plate,
-            'driver_booking_code' => $this->driver_booking_code,
-            'driver_call_method' => $this->driver_call_method,
             'driver_call_status' => $this->driver_call_status,
             'driver_called_at' => $this->driver_called_at,
-            'driver_called_by' => $this->driver_called_by,
-            'driver_id_card_url' => $this->relationLoaded('media') ? $this->driver_id_card_url : null,
-            'shipper_id' => $this->shipper_id,
-            'shipper' => $shipper ? [
-                'id' => $shipper->id,
-                'name' => $shipper->name,
-                'email' => $shipper->email,
-            ] : null,
-            'notes' => $this->notes,
-            'created_by' => $this->created_by,
-            'orders' => $this->whenLoaded('orders', fn () => ShipmentOrderResource::collection($this->orders)),
         ];
     }
 }

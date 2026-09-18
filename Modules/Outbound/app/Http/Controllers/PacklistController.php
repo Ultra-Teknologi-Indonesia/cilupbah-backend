@@ -14,7 +14,9 @@ use Modules\Outbound\Http\Requests\ScanPacklistOrderRequest;
 use Modules\Outbound\Http\Requests\UnpackItemRequest;
 use Modules\Outbound\Http\Requests\UnpackItemsRequest;
 use Modules\Outbound\Http\Requests\VerifyPacklistBarcodeRequest;
-use Modules\Outbound\Http\Resources\PacklistResource;
+use Modules\Outbound\Http\Resources\PacklistDetailResource;
+use Modules\Outbound\Http\Resources\PacklistItemResource;
+use Modules\Outbound\Http\Resources\PacklistListResource;
 use Modules\Outbound\Services\PacklistService;
 use OpenApi\Attributes as OA;
 use Throwable;
@@ -100,7 +102,7 @@ class PacklistController extends Controller
         $limit = (int) $request->query('per_page', $request->query('limit', 10));
         $data = $this->packlistService->getAllPaginated($limit);
 
-        $data->through(fn ($packlist) => new PacklistResource($packlist));
+        $data->through(fn ($packlist) => new PacklistListResource($packlist));
 
         return $this->successPaginatedResponse($data);
     }
@@ -153,13 +155,13 @@ class PacklistController extends Controller
     )]
     public function show(string $id): JsonResponse
     {
-        $packlist = $this->packlistService->getById($id);
+        $packlist = $this->packlistService->getBoardDetail($id);
 
         if (! $packlist) {
             return $this->errorResponse('Packlist tidak ditemukan.', 404);
         }
 
-        return $this->successResponse(new PacklistResource($packlist));
+        return $this->successResponse(new PacklistDetailResource($packlist));
     }
 
     #[OA\Get(
@@ -180,7 +182,7 @@ class PacklistController extends Controller
         $limit = (int) $request->query('per_page', $request->query('limit', 10));
         $data = $this->packlistService->getItems($id, $limit);
 
-        return $this->successPaginatedResponse($data);
+        return $this->successPaginatedResponse(PacklistItemResource::collection($data));
     }
 
     #[OA\Post(

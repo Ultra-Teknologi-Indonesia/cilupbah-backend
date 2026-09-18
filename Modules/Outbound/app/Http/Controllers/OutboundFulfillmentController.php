@@ -55,9 +55,7 @@ class OutboundFulfillmentController extends Controller
             );
         }
 
-        $payload = in_array($stage, ['ready-to-process', 'finish-pick'], true)
-            ? FulfillmentOrderListResource::collection($data)
-            : $data;
+        $payload = FulfillmentOrderListResource::collection($data);
 
         return $this->successPaginatedResponse($payload);
     }

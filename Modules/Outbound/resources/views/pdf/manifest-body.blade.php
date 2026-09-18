@@ -93,12 +93,12 @@
     <thead>
         <tr>
             <th class="col-no">No</th>
-            <th>No Pesanan</th>
-            <th class="center">Paket</th>
-            <th class="center">Quantity</th>
-            <th class="center">Berat</th>
-            <th>No Resi</th>
-            <th>Status Channel</th>
+            <th class="col-order-no">No Pesanan</th>
+            <th class="col-pkg center">Paket</th>
+            <th class="col-qty center">Quantity</th>
+            <th class="col-weight center">Berat</th>
+            <th class="col-resi">No Resi</th>
+            <th class="col-status">Status Channel</th>
         </tr>
     </thead>
     <tbody>
@@ -111,12 +111,12 @@
             @endphp
             <tr>
                 <td class="col-no">{{ $i + 1 }}</td>
-                <td>{{ $order->salesorder_no ?? '-' }}</td>
-                <td class="center"></td>
-                <td class="center">{{ (int) ($order->total_qty ?? 1) }}</td>
-                <td class="center">{{ $weightKg }}</td>
-                <td>{{ $resi }}</td>
-                <td>{{ $order->status ?? '' }}</td>
+                <td class="col-order-no">{{ $order->salesorder_no ?? '-' }}</td>
+                <td class="col-pkg center"></td>
+                <td class="col-qty center">{{ (int) ($order->total_qty ?? 1) }}</td>
+                <td class="col-weight center">{{ $weightKg }}</td>
+                <td class="col-resi">{{ $resi }}</td>
+                <td class="col-status">{{ $order->status ?? '' }}</td>
             </tr>
         @empty
             <tr>

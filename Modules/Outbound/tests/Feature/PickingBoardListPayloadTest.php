@@ -5,8 +5,10 @@ namespace Modules\Outbound\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
+use Modules\Outbound\Models\Shipment;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderItem;
 use Modules\Warehouse\Models\Location;
@@ -115,6 +117,97 @@ class PickingBoardListPayloadTest extends TestCase
             ->assertJsonMissingPath('data.0.finance')
             ->assertJsonMissingPath('data.0.shipping')
             ->assertJsonMissingPath('data.0.items.0.image_url');
+    }
+
+    public function test_packlist_index_returns_only_the_table_contract(): void
+    {
+        $user = $this->createPrivilegedUser();
+        $location = Location::factory()->create();
+        $order = SalesOrder::factory()->create([
+            'location_id' => $location->id,
+            'status' => 'picked',
+        ]);
+        $packlist = Packlist::create([
+            'packlist_no' => 'PACK-LIST-CONTRACT',
+            'location_id' => $location->id,
+            'order_id' => $order->id,
+            'status' => Packlist::STATUS_DRAFT,
+            'created_by' => $user->email,
+            'notes' => 'Internal note must not be sent to the table',
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/outbound/packlists?per_page=20');
+
+        $response->assertOk()
+            ->assertJsonPath('data.0.id', $packlist->id)
+            ->assertJsonPath('data.0.packlist_no', 'PACK-LIST-CONTRACT')
+            ->assertJsonPath('data.0.order.salesorder_no', $order->salesorder_no)
+            ->assertJsonMissingPath('data.0.notes')
+            ->assertJsonMissingPath('data.0.created_by')
+            ->assertJsonMissingPath('data.0.updated_at');
+    }
+
+    public function test_shipment_index_returns_only_the_table_contract(): void
+    {
+        $user = $this->createPrivilegedUser();
+        $location = Location::factory()->create();
+        $shipment = Shipment::create([
+            'shipment_no' => 'SHIPMENT-LIST-CONTRACT',
+            'location_id' => $location->id,
+            'courier_name' => 'Courier',
+            'courier_code' => 'courier',
+            'shipment_type' => 'REGULAR',
+            'shipment_date' => now()->toDateString(),
+            'status' => Shipment::STATUS_SCHEDULED,
+            'created_by' => $user->email,
+            'notes' => 'Internal note must not be sent to the table',
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/outbound/shipments?per_page=20');
+
+        $response->assertOk()
+            ->assertJsonPath('data.0.id', $shipment->id)
+            ->assertJsonPath('data.0.shipment_no', 'SHIPMENT-LIST-CONTRACT')
+            ->assertJsonMissingPath('data.0.notes')
+            ->assertJsonMissingPath('data.0.created_by')
+            ->assertJsonMissingPath('data.0.driver_id_card_url')
+            ->assertJsonMissingPath('data.0.orders');
+    }
+
+    public function test_picklist_index_query_count_does_not_scale_with_rows(): void
+    {
+        $user = $this->createPrivilegedUser();
+        $location = Location::factory()->create();
+        $attributes = [
+            'location_id' => $location->id,
+            'status' => Picklist::STATUS_DRAFT,
+            'created_by' => $user->id,
+        ];
+        Picklist::create($attributes + ['picklist_no' => 'QUERY-COUNT-1']);
+        Picklist::create($attributes + ['picklist_no' => 'QUERY-COUNT-2']);
+
+        $connection = DB::connection();
+        $connection->enableQueryLog();
+        $connection->flushQueryLog();
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/outbound/picklists?per_page=20')
+            ->assertOk();
+        $singleRowQueries = count($connection->getQueryLog());
+
+        Picklist::create($attributes + ['picklist_no' => 'QUERY-COUNT-3']);
+        $connection->flushQueryLog();
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/outbound/picklists?per_page=20')
+            ->assertOk();
+        $twoRowQueries = count($connection->getQueryLog());
+        fwrite(STDERR, json_encode($connection->getQueryLog()).PHP_EOL);
+        $connection->disableQueryLog();
+
+        $this->assertSame($singleRowQueries, $twoRowQueries);
     }
 
     private function seedProductVariant(string $sku): string

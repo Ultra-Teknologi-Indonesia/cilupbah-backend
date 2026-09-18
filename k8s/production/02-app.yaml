@@ -47,6 +47,8 @@ spec:
               value: "true"
             - name: LABEL_PRINT_SPOOL_ROOT
               value: "/var/www/html/storage/app/print-spool"
+            - name: GOTENBERG_URL
+              value: "http://cilupbah-gotenberg:3000"
           volumeMounts:
             - name: label-spool
               mountPath: /var/www/html/storage/app/print-spool

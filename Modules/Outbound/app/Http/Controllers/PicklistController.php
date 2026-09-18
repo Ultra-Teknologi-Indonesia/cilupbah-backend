@@ -24,6 +24,7 @@ use Modules\Outbound\Http\Requests\ResetPicklistAssignmentRequest;
 use Modules\Outbound\Http\Requests\ScanForPickRequest;
 use Modules\Outbound\Http\Requests\UnassignPicklistRequest;
 use Modules\Outbound\Http\Requests\UnpickItemsRequest;
+use Modules\Outbound\Http\Resources\PicklistItemResource;
 use Modules\Outbound\Http\Resources\PicklistListResource;
 use Modules\Outbound\Http\Resources\PicklistResource;
 use Modules\Outbound\Services\PicklistService;
@@ -174,13 +175,11 @@ class PicklistController extends Controller
     )]
     public function show(string $id): JsonResponse
     {
-        $picklist = $this->picklistService->getById($id);
+        $picklist = $this->picklistService->getBoardDetail($id);
 
         if (! $picklist) {
             return $this->errorResponse('Picklist tidak ditemukan.', 404);
         }
-
-        $this->picklistService->attachRecommendedBins($picklist);
 
         return $this->successResponse(new PicklistResource($picklist));
     }
@@ -203,7 +202,7 @@ class PicklistController extends Controller
         $limit = (int) $request->query('per_page', $request->query('limit', 10));
         $data = $this->picklistService->getItems($id, $limit);
 
-        return $this->successPaginatedResponse($data);
+        return $this->successPaginatedResponse(PicklistItemResource::collection($data));
     }
 
     #[OA\Get(

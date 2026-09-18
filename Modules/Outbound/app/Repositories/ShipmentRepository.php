@@ -2,16 +2,17 @@
 
 namespace Modules\Outbound\Repositories;
 
-use App\Support\WarehouseAccess;
 use App\Exceptions\UserFacingException;
+use App\Support\WarehouseAccess;
+use Illuminate\Support\Collection;
 use Modules\Outbound\Models\Shipment;
 use Modules\Outbound\Models\ShipmentOrder;
 use Modules\Outbound\Models\ShipmentTrackingEvent;
+use Modules\Outbound\Support\FilterValues;
 use Modules\Sales\Models\SalesOrder;
-use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\AllowedSort;
-use Modules\Outbound\Support\FilterValues;
+use Spatie\QueryBuilder\QueryBuilder;
 
 class ShipmentRepository
 {
@@ -26,10 +27,25 @@ class ShipmentRepository
 
     public function getAllPaginated(int $limit = 10)
     {
-        $query = QueryBuilder::for(Shipment::class)
+        $query = QueryBuilder::for(Shipment::query()->select([
+            'shipments.id',
+            'shipments.shipment_no',
+            'shipments.location_id',
+            'shipments.courier_code',
+            'shipments.courier_name',
+            'shipments.shipment_type',
+            'shipments.shipment_date',
+            'shipments.status',
+            'shipments.handed_over_at',
+            'shipments.created_at',
+            'shipments.driver_name',
+            'shipments.driver_phone',
+            'shipments.driver_call_status',
+            'shipments.driver_called_at',
+        ]))
             ->with(['location:id,location_name,location_code'])
             ->withCount('orders')
-            ->addSelect(['total_weight_gram' => \Modules\Sales\Models\SalesOrder::selectRaw('COALESCE(SUM(order_weight_gram), 0)')
+            ->addSelect(['total_weight_gram' => SalesOrder::selectRaw('COALESCE(SUM(order_weight_gram), 0)')
                 ->join('shipment_orders', 'shipment_orders.order_id', '=', 'sales_orders.id')
                 ->whereColumn('shipment_orders.shipment_id', 'shipments.id'),
             ])
@@ -49,7 +65,9 @@ class ShipmentRepository
                 AllowedFilter::callback('status', function ($query, $value) {
                     $values = is_array($value) ? $value : explode(',', (string) $value);
                     $values = array_filter(array_map('trim', $values));
-                    if (! empty($values)) $query->whereIn('status', $values);
+                    if (! empty($values)) {
+                        $query->whereIn('status', $values);
+                    }
                 }),
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::callback('courier_code', function ($query, $value) {
@@ -66,10 +84,14 @@ class ShipmentRepository
                 }),
                 AllowedFilter::exact('shipment_type'),
                 AllowedFilter::callback('date_from', function ($query, $value) {
-                    if ($value) $query->whereDate('shipment_date', '>=', $value);
+                    if ($value) {
+                        $query->whereDate('shipment_date', '>=', $value);
+                    }
                 }),
                 AllowedFilter::callback('date_to', function ($query, $value) {
-                    if ($value) $query->whereDate('shipment_date', '<=', $value);
+                    if ($value) {
+                        $query->whereDate('shipment_date', '<=', $value);
+                    }
                 }),
             )
             ->allowedSearch('shipment_no', 'courier_name', 'courier_code')
@@ -95,10 +117,42 @@ class ShipmentRepository
     public function getByCourier(string $courierCode, int $limit = 10)
     {
         $query = QueryBuilder::for(
-            Shipment::where('courier_code', $courierCode)
+            Shipment::query()
+                ->select([
+                    'shipments.id',
+                    'shipments.shipment_no',
+                    'shipments.location_id',
+                    'shipments.courier_code',
+                    'shipments.courier_name',
+                    'shipments.shipment_type',
+                    'shipments.shipment_date',
+                    'shipments.status',
+                    'shipments.handed_over_at',
+                    'shipments.created_at',
+                    'shipments.driver_name',
+                    'shipments.driver_phone',
+                    'shipments.driver_call_status',
+                    'shipments.driver_called_at',
+                ])
+                ->where('courier_code', $courierCode)
         )
             ->with(['location:id,location_name,location_code'])
             ->withCount('orders')
+            ->addSelect(['total_weight_gram' => SalesOrder::selectRaw('COALESCE(SUM(order_weight_gram), 0)')
+                ->join('shipment_orders', 'shipment_orders.order_id', '=', 'sales_orders.id')
+                ->whereColumn('shipment_orders.shipment_id', 'shipments.id'),
+            ])
+            ->selectRaw("EXISTS(
+                SELECT 1 FROM shipment_orders
+                JOIN sales_orders ON sales_orders.id = shipment_orders.order_id
+                WHERE shipment_orders.shipment_id = shipments.id
+                  AND (
+                    sales_orders.channel_instant IS TRUE
+                    OR (sales_orders.channel_instant IS NULL
+                        AND (sales_orders.source IS NULL OR sales_orders.source NOT IN ('shopee', 'tiktok', 'lazada'))
+                        AND sales_orders.resolved_shipment_type IN ('INSTANT', 'SAME_DAY'))
+                  )
+            ) AS has_instant")
             ->allowedFilters(
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('shipment_type'),
@@ -199,10 +253,42 @@ class ShipmentRepository
     public function getByType(string $type, int $limit = 10)
     {
         $query = QueryBuilder::for(
-            Shipment::where('shipment_type', $type)
+            Shipment::query()
+                ->select([
+                    'shipments.id',
+                    'shipments.shipment_no',
+                    'shipments.location_id',
+                    'shipments.courier_code',
+                    'shipments.courier_name',
+                    'shipments.shipment_type',
+                    'shipments.shipment_date',
+                    'shipments.status',
+                    'shipments.handed_over_at',
+                    'shipments.created_at',
+                    'shipments.driver_name',
+                    'shipments.driver_phone',
+                    'shipments.driver_call_status',
+                    'shipments.driver_called_at',
+                ])
+                ->where('shipment_type', $type)
         )
             ->with(['location:id,location_name,location_code'])
             ->withCount('orders')
+            ->addSelect(['total_weight_gram' => SalesOrder::selectRaw('COALESCE(SUM(order_weight_gram), 0)')
+                ->join('shipment_orders', 'shipment_orders.order_id', '=', 'sales_orders.id')
+                ->whereColumn('shipment_orders.shipment_id', 'shipments.id'),
+            ])
+            ->selectRaw("EXISTS(
+                SELECT 1 FROM shipment_orders
+                JOIN sales_orders ON sales_orders.id = shipment_orders.order_id
+                WHERE shipment_orders.shipment_id = shipments.id
+                  AND (
+                    sales_orders.channel_instant IS TRUE
+                    OR (sales_orders.channel_instant IS NULL
+                        AND (sales_orders.source IS NULL OR sales_orders.source NOT IN ('shopee', 'tiktok', 'lazada'))
+                        AND sales_orders.resolved_shipment_type IN ('INSTANT', 'SAME_DAY'))
+                  )
+            ) AS has_instant")
             ->allowedFilters(
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('courier_code'),
@@ -239,13 +325,13 @@ class ShipmentRepository
             ->appends(request()->query());
     }
 
-    public function getForBulkManifestPdf(array $orderIds): \Illuminate\Support\Collection
+    public function getForBulkManifestPdf(array $orderIds): Collection
     {
         $query = Shipment::with([
-                'orders.order:id,salesorder_no,customer_name,status,grand_total,shipping_provider,shipping_type,channel_instant,resolved_shipment_type,tracking_number,source,channel_order_no,order_weight_gram',
-                'orders.packlist:id,packlist_no',
-                'location:id,location_name,location_code',
-            ])
+            'orders.order:id,salesorder_no,customer_name,status,grand_total,shipping_provider,shipping_type,channel_instant,resolved_shipment_type,tracking_number,source,channel_order_no,order_weight_gram',
+            'orders.packlist:id,packlist_no',
+            'location:id,location_name,location_code',
+        ])
             ->whereHas('orders', fn ($q) => $q->whereIn('order_id', $orderIds))
             ->orderBy('shipment_date');
         WarehouseAccess::apply($query, 'location_id');
@@ -273,10 +359,22 @@ class ShipmentRepository
     public function findById(string $id): ?Shipment
     {
         $query = Shipment::with([
-                'orders.order:id,salesorder_no,customer_name,status,grand_total,shipping_provider,shipping_type,channel_instant,resolved_shipment_type,tracking_number,source,channel_order_no,order_weight_gram,channel_status',
+            'orders.order:id,salesorder_no,customer_name,status,grand_total,shipping_provider,shipping_type,channel_instant,resolved_shipment_type,tracking_number,source,channel_order_no,order_weight_gram,channel_status',
             'orders.packlist:id,packlist_no',
             'location:id,location_name,location_code',
             'media',
+        ]);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->find($id);
+    }
+
+    public function findForManifest(string $id): ?Shipment
+    {
+        $query = Shipment::with([
+            'orders' => fn ($q) => $q->select(['id', 'shipment_id', 'order_id', 'tracking_number']),
+            'orders.order:id,salesorder_no,status,order_weight_gram,tracking_number',
+            'location:id,location_name,location_code',
         ]);
         WarehouseAccess::apply($query, 'location_id');
 
@@ -305,8 +403,7 @@ class ShipmentRepository
         }
 
         $query = ShipmentOrder::where('shipment_id', $shipmentId)
-            ->whereIn('order_id', $orderIds)
-            ;
+            ->whereIn('order_id', $orderIds);
         $query->whereHas('shipment', fn ($shipment) => WarehouseAccess::apply($shipment, 'location_id'));
 
         return $query->delete();
@@ -328,7 +425,7 @@ class ShipmentRepository
         return $query->delete() > 0;
     }
 
-    public function getTrackingEvents(string $shipmentId): \Illuminate\Support\Collection
+    public function getTrackingEvents(string $shipmentId): Collection
     {
         $query = ShipmentTrackingEvent::query()
             ->where('shipment_id', $shipmentId)
@@ -350,6 +447,6 @@ class ShipmentRepository
 
         $seq = $last ? (int) substr($last, -4) + 1 : 1;
 
-        return $prefix . str_pad($seq, 4, '0', STR_PAD_LEFT);
+        return $prefix.str_pad($seq, 4, '0', STR_PAD_LEFT);
     }
 }

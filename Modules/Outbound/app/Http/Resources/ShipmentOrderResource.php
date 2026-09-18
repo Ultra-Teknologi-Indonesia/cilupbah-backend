@@ -34,6 +34,7 @@ class ShipmentOrderResource extends JsonResource
                 'channel_order_no' => $order->channel_order_no,
                 'order_weight_gram' => $order->order_weight_gram,
                 'channel_status' => $order->channel_status,
+                'transaction_date' => $order->transaction_date,
             ] : null,
             'packlist' => $packlist ? [
                 'id' => $packlist->id,

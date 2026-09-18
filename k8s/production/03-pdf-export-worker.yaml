@@ -36,6 +36,8 @@ spec:
           env:
             - name: REDIS_LONG_QUEUE_RETRY_AFTER
               value: "2160"
+            - name: GOTENBERG_URL
+              value: "http://cilupbah-gotenberg:3000"
           livenessProbe:
             exec:
               command: ["sh", "-c", "kill -0 1"]

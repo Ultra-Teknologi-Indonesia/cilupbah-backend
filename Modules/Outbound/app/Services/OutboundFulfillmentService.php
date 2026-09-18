@@ -16,6 +16,7 @@ use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Channel\Support\UploadErrorPresenter;
 use Modules\Outbound\Contracts\DriverCallResult;
 use Modules\Outbound\Jobs\ProcessBulkReadyToShipJob;
+use Modules\Outbound\Jobs\RunProcessOrdersCsvExportJob;
 use Modules\Outbound\Models\BulkRtsBatch;
 use Modules\Outbound\Models\BulkRtsItem;
 use Modules\Outbound\Models\FulfillmentRemoval;
@@ -23,12 +24,10 @@ use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
 use Modules\Outbound\Models\ShipmentOrder;
-use Modules\Outbound\Models\Shipment;
 use Modules\Outbound\Repositories\OutboundFulfillmentRepository;
 use Modules\Outbound\Repositories\PreManifestCancelRepository;
 use Modules\Outbound\Repositories\ShipmentRepository;
 use Modules\Outbound\Services\Logistics\LogisticsGateway;
-use Modules\Outbound\Jobs\RunProcessOrdersCsvExportJob;
 use Modules\Report\Models\ExportJob;
 use Modules\Sales\Models\SalesOrder as Order;
 use Modules\Sales\Services\SalesOrderService;
@@ -365,19 +364,18 @@ class OutboundFulfillmentService
         int $limit = 10,
         ?string $locationId = null,
         bool $latestFirst = false,
-    )
-    {
+    ) {
         $query = $this->stageQuery($stage);
 
         $query->when($locationId, fn ($q) => $q->where('sales_orders.location_id', $locationId));
 
         $extraSelects = match ($stage) {
             'finish-pick' => ['picker_name', 'picklist_ref', 'invoice_ref'],
-            'finish-pack' => ['packer_name', 'picklist_ref', 'invoice_ref'],
-            default => ['invoice_ref'],
+            'finish-pack' => ['packer_name', 'invoice_ref'],
+            default => [],
         };
 
-        $lightweight = in_array($stage, ['ready-to-process', 'finish-pick'], true);
+        $lightweight = true;
 
         return $this->fulfillmentRepository->paginateStage(
             $query,
@@ -629,16 +627,15 @@ SQL;
     public function findOrderByNo(string $orderNo): ?Order
     {
         $query = Order::where(function ($query) use ($orderNo): void {
-                $query->where('salesorder_no', $orderNo)
-                    ->orWhere('channel_order_no', $orderNo)
-                    ->orWhere('tracking_number', $orderNo);
-            })
+            $query->where('salesorder_no', $orderNo)
+                ->orWhere('channel_order_no', $orderNo)
+                ->orWhere('tracking_number', $orderNo);
+        })
             ->with([
-                'items.product:id,sku,product_id',
-                'items.product.product:id,name',
-                'location:id,location_name,location_code',
-            ])
-            ;
+            'items.product:id,sku,product_id',
+            'items.product.product:id,name',
+            'location:id,location_name,location_code',
+        ]);
         WarehouseAccess::apply($query, 'location_id');
 
         return $query->first();

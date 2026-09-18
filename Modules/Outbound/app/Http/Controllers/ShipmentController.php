@@ -25,6 +25,7 @@ use Modules\Outbound\Http\Requests\StoreInstantShipmentRequest;
 use Modules\Outbound\Http\Requests\UpdateDriverCallRequest;
 use Modules\Outbound\Http\Requests\UpdateHandoverQtyRequest;
 use Modules\Outbound\Http\Resources\CompletedShipmentOrderResource;
+use Modules\Outbound\Http\Resources\ShipmentListResource;
 use Modules\Outbound\Http\Resources\ShipmentOrderResource;
 use Modules\Outbound\Http\Resources\ShipmentResource;
 use Modules\Outbound\Services\ShipmentService;
@@ -86,7 +87,7 @@ class ShipmentController extends Controller
         $limit = (int) $request->query('per_page', $request->query('limit', 10));
         $data = $this->shipmentService->getAllPaginated($limit);
 
-        $data->through(fn ($shipment) => new ShipmentResource($shipment));
+        $data->through(fn ($shipment) => new ShipmentListResource($shipment));
 
         return $this->successPaginatedResponse($data);
     }
@@ -156,7 +157,7 @@ class ShipmentController extends Controller
         $limit = (int) $request->query('per_page', $request->query('limit', 10));
         $data = $this->shipmentService->getByCourier($courierCode, $limit);
 
-        $data->through(fn ($shipment) => new ShipmentResource($shipment));
+        $data->through(fn ($shipment) => new ShipmentListResource($shipment));
 
         return $this->successPaginatedResponse($data);
     }
@@ -202,7 +203,7 @@ class ShipmentController extends Controller
         $limit = (int) $request->query('per_page', $request->query('limit', 10));
         $data = $this->shipmentService->getInstantAll($limit);
 
-        $data->through(fn ($shipment) => new ShipmentResource($shipment));
+        $data->through(fn ($shipment) => new ShipmentListResource($shipment));
 
         return $this->successPaginatedResponse($data);
     }
@@ -308,7 +309,7 @@ class ShipmentController extends Controller
         $limit = (int) $request->query('per_page', $request->query('limit', 20));
         $data = $this->shipmentService->getOrdersPaginated($id, $limit);
 
-        return $this->successPaginatedResponse($data);
+        return $this->successPaginatedResponse(ShipmentOrderResource::collection($data));
     }
 
     public function bulkOrders(BulkShipmentOrdersRequest $request): JsonResponse
@@ -561,10 +562,10 @@ class ShipmentController extends Controller
     )]
     public function manifestPdf(string $id)
     {
-        @ini_set('memory_limit', '1024M');
-        @set_time_limit(180);
+        @ini_set('memory_limit', '1536M');
+        @set_time_limit(300);
 
-        $shipment = $this->shipmentService->getById($id);
+        $shipment = $this->shipmentService->getForManifest($id);
 
         if (! $shipment) {
             return $this->errorResponse('Shipment tidak ditemukan.', 404);
@@ -614,7 +615,7 @@ class ShipmentController extends Controller
         @ini_set('memory_limit', '1024M');
         @set_time_limit(180);
 
-        $shipment = $this->shipmentService->getById($id);
+        $shipment = $this->shipmentService->getForManifest($id);
 
         if (! $shipment) {
             return $this->errorResponse('Shipment tidak ditemukan.', 404);

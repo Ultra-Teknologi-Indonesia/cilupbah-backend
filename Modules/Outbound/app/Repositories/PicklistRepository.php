@@ -190,6 +190,31 @@ class PicklistRepository
         return $query->find($id);
     }
 
+    public function findForBoardDetail(string $id): ?Picklist
+    {
+        $query = Picklist::query()
+            ->select([
+                'id',
+                'picklist_no',
+                'location_id',
+                'picker_id',
+                'status',
+                'assigned_at',
+                'started_at',
+                'completed_at',
+                'updated_version_at',
+                'notes',
+                'created_at',
+            ])
+            ->with([
+                'location:id,location_name,location_code',
+                'picker:id,name,email',
+            ]);
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query->find($id);
+    }
+
     public function findAccessibleHeader(string $id): ?Picklist
     {
         $query = Picklist::query()

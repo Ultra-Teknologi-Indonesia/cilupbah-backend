@@ -42,14 +42,18 @@
     }
     .items {
         width: 100%;
+        table-layout: fixed;
         border-collapse: collapse;
         margin-top: 6px;
         font-size: 10px;
     }
     .items th, .items td {
         border: 1px solid #000;
-        padding: 5px 7px;
+        padding: 5px 6px;
         vertical-align: top;
+        word-wrap: break-word;
+        word-break: break-all;
+        overflow: hidden;
     }
     .items th {
         background: #f3f4f6;
@@ -58,7 +62,13 @@
         font-size: 10px;
     }
     .center { text-align: center; }
-    .col-no { width: 30px; text-align: center; }
+    .col-no { width: 5%; text-align: center; }
+    .col-order-no { width: 25%; }
+    .col-pkg { width: 8%; text-align: center; }
+    .col-qty { width: 8%; text-align: center; }
+    .col-weight { width: 10%; text-align: center; }
+    .col-resi { width: 26%; }
+    .col-status { width: 18%; }
     .summary-row {
         margin-top: 10px;
         font-size: 11px;

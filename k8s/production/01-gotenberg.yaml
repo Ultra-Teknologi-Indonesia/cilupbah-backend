@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cilupbah-gotenberg
+  namespace: cilupbah
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cilupbah-gotenberg
+  template:
+    metadata:
+      labels:
+        app: cilupbah-gotenberg
+    spec:
+      containers:
+        - name: gotenberg
+          image: gotenberg/gotenberg:8
+          ports:
+            - containerPort: 3000
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cilupbah-gotenberg
+  namespace: cilupbah
+spec:
+  selector:
+    app: cilupbah-gotenberg
+  ports:
+    - port: 3000
+      targetPort: 3000
