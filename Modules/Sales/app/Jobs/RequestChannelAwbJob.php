@@ -19,6 +19,7 @@ use Modules\Outbound\Services\OutboundFulfillmentService;
 use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\BulkShippingLabelService;
+use Modules\Sales\Services\ShippingLabelPrefetchService;
 
 class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
 {
@@ -36,9 +37,14 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
         public readonly string $orderId,
         public readonly int $trackingAttempt = 0,
         public readonly bool $requestReadyToShip = true,
+        public readonly bool $prefetch = false,
     ) {
-        $this->onConnection(config('queue.routing.labels.connection', 'redis-long'));
-        $this->onQueue(config('queue.routing.label_awb.queue', 'label-awb'));
+        $this->onConnection($prefetch
+            ? config('shipping-label-prefetch.connection', 'redis-long')
+            : config('queue.routing.labels.connection', 'redis-long'));
+        $this->onQueue($prefetch
+            ? config('shipping-label-prefetch.queue', 'label-prefetch')
+            : config('queue.routing.label_awb.queue', 'label-awb'));
     }
 
     public function uniqueId(): string
@@ -61,8 +67,41 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
+        $prefetchLock = null;
+        if ($this->prefetch) {
+            $prefetch = app(ShippingLabelPrefetchService::class);
+            $prefetchLock = $prefetch->lock();
+
+            if (! $prefetchLock->get()) {
+                $delay = (int) config('shipping-label-prefetch.reschedule_seconds');
+                $prefetch->deferExecution($order->id, 'global_lock_busy', $delay);
+                self::dispatch($order->id, $this->trackingAttempt, true, true)
+                    ->delay(now()->addSeconds($delay));
+
+                return;
+            }
+
+            $gate = $prefetch->begin($order);
+            if (! $gate['allowed']) {
+                if ($gate['delay'] > 0) {
+                    self::dispatch($order->id, $this->trackingAttempt, true, true)
+                        ->delay(now()->addSeconds($gate['delay']));
+                }
+
+                $prefetchLock->release();
+
+                return;
+            }
+        }
+
         if (! empty($order->tracking_number)) {
             app(BulkShippingLabelService::class)->onOrderAwbReady($order->id);
+            $this->prepareLabel($order);
+            $this->markPrefetchAwbReady($order);
+
+            if ($prefetchLock) {
+                $prefetchLock->release();
+            }
 
             return;
         }
@@ -72,6 +111,10 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                 $order->id,
                 BulkShippingLabelItem::REASON_CHANNEL_SYNC_PAUSED,
             );
+
+            if ($prefetchLock && $prefetchLock->isOwnedByCurrentProcess()) {
+                $prefetchLock->release();
+            }
 
             return;
         }
@@ -106,14 +149,24 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
             if ($gotTracking) {
                 app(BulkShippingLabelService::class)->onOrderAwbReady($order->id);
             } elseif (isset(self::TRACKING_RETRY_DELAYS[$this->trackingAttempt])) {
-                $delay = self::TRACKING_RETRY_DELAYS[$this->trackingAttempt];
+                $delay = $this->prefetch
+                    ? app(ShippingLabelPrefetchService::class)->retry(
+                        $order,
+                        $this->trackingAttempt + 1,
+                        'awb_not_ready',
+                    )
+                    : self::TRACKING_RETRY_DELAYS[$this->trackingAttempt];
+
+                if ($delay === null) {
+                    return;
+                }
                 Log::info('RequestChannelAwbJob: tracking belum tersedia, retry', [
                     'order_id' => $order->id,
                     'salesorder_no' => $order->salesorder_no,
                     'next_attempt' => $this->trackingAttempt + 1,
                     'delay_seconds' => $delay,
                 ]);
-                self::dispatch($order->id, $this->trackingAttempt + 1, false)
+                self::dispatch($order->id, $this->trackingAttempt + 1, false, $this->prefetch)
                     ->delay(now()->addSeconds($delay));
             } else {
                 Log::warning('RequestChannelAwbJob: menyerah, tracking tidak kunjung terbit', [
@@ -133,7 +186,27 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                 'source' => $source,
                 'exception' => $e->getMessage(),
             ]);
+            if ($this->prefetch) {
+                $delay = app(ShippingLabelPrefetchService::class)->retry(
+                    $order,
+                    $this->trackingAttempt + 1,
+                    'marketplace_error',
+                    $e->getMessage(),
+                );
+
+                if ($delay !== null) {
+                    self::dispatch($order->id, $this->trackingAttempt + 1, true, true)
+                        ->delay(now()->addSeconds($delay));
+                }
+
+                return;
+            }
+
             throw $e;
+        } finally {
+            if ($prefetchLock && $prefetchLock->isOwnedByCurrentProcess()) {
+                $prefetchLock->release();
+            }
         }
     }
 
@@ -172,9 +245,8 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                     'tracking_number' => $tn,
                 ]);
 
-                PrepareShopeeShippingLabelJob::dispatch($order->id)
-                    ->onConnection(config('queue.routing.labels.connection', 'redis-long'))
-                    ->onQueue(config('queue.routing.labels.queue', 'labels'));
+                $this->prepareLabel($order);
+                $this->markPrefetchAwbReady($order);
 
                 return true;
             }
@@ -251,9 +323,8 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                     'tracking_number' => $resolved['tracking_number'],
                 ]);
 
-                PrepareTikTokShippingLabelJob::dispatch($order->id)
-                    ->onConnection(config('queue.routing.labels.connection', 'redis-long'))
-                    ->onQueue(config('queue.routing.labels.queue', 'labels'));
+                $this->prepareLabel($order);
+                $this->markPrefetchAwbReady($order);
 
                 return true;
             }
@@ -285,9 +356,8 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                     'tracking_number' => $tn,
                 ]);
 
-                PrepareLazadaShippingLabelJob::dispatch($order->id)
-                    ->onConnection(config('queue.routing.labels.connection', 'redis-long'))
-                    ->onQueue(config('queue.routing.labels.queue', 'labels'));
+                $this->prepareLabel($order);
+                $this->markPrefetchAwbReady($order);
 
                 return true;
             }
@@ -299,5 +369,22 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
         }
 
         return false;
+    }
+
+    private function markPrefetchAwbReady(SalesOrder $order): void
+    {
+        if ($this->prefetch) {
+            app(ShippingLabelPrefetchService::class)->markAwbReady($order->id);
+        }
+    }
+
+    private function prepareLabel(SalesOrder $order): void
+    {
+        match (strtolower((string) $order->source)) {
+            'shopee' => PrepareShopeeShippingLabelJob::dispatch($order->id, 0, $this->prefetch),
+            'tiktok' => PrepareTikTokShippingLabelJob::dispatch($order->id, 0, $this->prefetch),
+            'lazada' => PrepareLazadaShippingLabelJob::dispatch($order->id, 0, $this->prefetch),
+            default => null,
+        };
     }
 }

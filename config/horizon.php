@@ -101,6 +101,8 @@ return [
             .config('queue.routing.label_archive.queue', 'label-archive') => 120,
         config('queue.routing.label_awb.connection', 'redis-long').':'
             .config('queue.routing.label_awb.queue', 'label-awb') => 60,
+        config('queue.routing.label_prefetch.connection', 'redis-long').':'
+            .config('queue.routing.label_prefetch.queue', 'label-prefetch') => 300,
         'redis:shopee-tracking-events' => 30,
         'redis:shopee-tracking' => 60,
     ],
@@ -346,7 +348,10 @@ return [
         ],
         'supervisor-labels' => [
             'connection' => config('queue.routing.labels.connection', 'redis-long'),
-            'queue' => [config('queue.routing.labels.queue', 'labels')],
+            'queue' => [
+                config('queue.routing.labels.queue', 'labels'),
+                config('queue.routing.label_prefetch.queue', 'label-prefetch'),
+            ],
             'balance' => 'off',
             'minProcesses' => config('queue.routing.labels.parallelism', 4),
             'maxProcesses' => config('queue.routing.labels.parallelism', 4),
@@ -358,6 +363,7 @@ return [
         ],
         'supervisor-label-awb' => [
             'connection' => config('queue.routing.label_awb.connection', 'redis-long'),
+
             'queue' => [config('queue.routing.label_awb.queue', 'label-awb')],
             'balance' => 'off',
             'minProcesses' => config('queue.routing.label_awb.parallelism', 2),

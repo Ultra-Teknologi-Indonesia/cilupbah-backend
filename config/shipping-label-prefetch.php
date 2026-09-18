@@ -2,19 +2,9 @@
 
 return [
 
-    'enabled' => (bool) env('SHIPPING_LABEL_PREFETCH_ENABLED', false),
-    'allow_ready_to_ship' => (bool) env('SHIPPING_LABEL_PREFETCH_ALLOW_READY_TO_SHIP', false),
+    'enabled' => (bool) env('SHIPPING_LABEL_PREFETCH_ENABLED', true),
 
-    'sources' => array_values(array_filter(array_map(
-        'trim',
-        explode(',', (string) env('SHIPPING_LABEL_PREFETCH_SOURCES', '')),
-    ))),
-    'shop_ids' => array_values(array_filter(array_map(
-        'trim',
-        explode(',', (string) env('SHIPPING_LABEL_PREFETCH_SHOP_IDS', '')),
-    ))),
-
-    'connection' => env('QUEUE_LABEL_PREFETCH_CONNECTION', 'redis-long'),
+    'connection' => env('QUEUE_LABEL_CONNECTION', 'redis-long'),
     'queue' => env('QUEUE_NAME_LABEL_PREFETCH', 'label-prefetch'),
 
     'global_interval_seconds' => max(5, (int) env('SHIPPING_LABEL_PREFETCH_GLOBAL_INTERVAL_SECONDS', 15)),

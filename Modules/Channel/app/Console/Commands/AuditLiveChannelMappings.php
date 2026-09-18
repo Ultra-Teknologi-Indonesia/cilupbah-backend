@@ -18,12 +18,7 @@ final class AuditLiveChannelMappings extends Command
 
     protected $description = 'Bandingkan model ID dan seller SKU mapping lokal dengan listing live tanpa mengirim stok';
 
-    public function __construct(private readonly ChannelLiveMappingVerifier $verifier)
-    {
-        parent::__construct();
-    }
-
-    public function handle(): int
+    public function handle(ChannelLiveMappingVerifier $verifier): int
     {
         $limit = (int) $this->option('limit');
         if ($limit < 1 || $limit > 500) {
@@ -78,7 +73,7 @@ final class AuditLiveChannelMappings extends Command
                 $reason = $localError;
                 $issues = [];
             } else {
-                $inspection = $this->verifier->inspect(
+                $inspection = $verifier->inspect(
                     $channelCode,
                     $shop,
                     (string) $listing->external_product_id,

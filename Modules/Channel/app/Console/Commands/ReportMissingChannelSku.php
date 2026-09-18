@@ -15,15 +15,10 @@ class ReportMissingChannelSku extends Command
 
     protected $description = 'Daftar listing yang punya model tanpa SKU, per toko, siap dikerjakan tim katalog';
 
-    public function __construct(private ChannelSkuHealth $health)
-    {
-        parent::__construct();
-    }
-
-    public function handle(): int
+    public function handle(ChannelSkuHealth $health): int
     {
         $jam = max(1, (int) $this->option('hours'));
-        $rows = $this->health->modelTanpaSku($jam, $this->option('channel'));
+        $rows = $health->modelTanpaSku($jam, $this->option('channel'));
 
         if ($rows->isEmpty()) {
             $this->info("Tidak ada model tanpa SKU dalam {$jam} jam terakhir.");

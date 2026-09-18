@@ -43,7 +43,10 @@ class LazadaClient
         $this->appSecret = (string) config('services.lazada.app_secret');
         $this->authUrl = rtrim((string) config('services.lazada.auth_url', 'https://auth.lazada.com'), '/');
         $this->baseUrl = rtrim((string) config('services.lazada.base_url', 'https://api.lazada.co.id/rest'), '/');
+    }
 
+    public function ensureConfigured(): void
+    {
         if (! $this->appKey || ! $this->appSecret) {
             throw new \RuntimeException('Kredensial Lazada belum dikonfigurasi. Set LAZADA_APP_KEY dan LAZADA_APP_SECRET.');
         }
@@ -57,6 +60,8 @@ class LazadaClient
         ?int $timeoutSeconds = null,
         ?int $maxAttempts = null,
     ): array {
+        $this->ensureConfigured();
+
         $baseParams = $params;
         $timeout = max(1, $timeoutSeconds ?? 30);
         $attemptLimit = max(1, $maxAttempts ?? self::MAX_ATTEMPTS);
@@ -284,6 +289,8 @@ class LazadaClient
 
     public function uploadMultipart(string $apiPath, array $params, string $fileField, string $fileContents, string $filename, ?string $accessToken = null): array
     {
+        $this->ensureConfigured();
+
         $params = array_merge($params, [
             'app_key' => $this->appKey,
             'sign_method' => 'sha256',
@@ -360,6 +367,8 @@ class LazadaClient
 
     public function getAuthUrl(string $redirectUri, string $state = '', bool $forceAuth = false): string
     {
+        $this->ensureConfigured();
+
         if (trim($redirectUri) === '') {
             throw new \RuntimeException('LAZADA_REDIRECT_URI belum dikonfigurasi. Callback URL wajib diisi agar OAuth authorize tidak gagal "Missing parameter".');
         }
@@ -393,6 +402,8 @@ class LazadaClient
 
     protected function signedGet(string $apiPath, array $params): array
     {
+        $this->ensureConfigured();
+
         $params = array_merge($params, [
             'app_key' => $this->appKey,
             'sign_method' => 'sha256',
@@ -408,6 +419,8 @@ class LazadaClient
 
     public function generateSign(string $apiPath, array $params): string
     {
+        $this->ensureConfigured();
+
         unset($params['sign']);
         ksort($params);
 

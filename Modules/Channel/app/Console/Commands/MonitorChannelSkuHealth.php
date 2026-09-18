@@ -12,18 +12,13 @@ class MonitorChannelSkuHealth extends Command
 
     protected $description = 'Alert saat invarian SKU channel bergeser: listing terpecah, SKU induk turunan varian, atau varian ber-SKU placeholder';
 
-    public function __construct(private ChannelSkuHealth $health)
-    {
-        parent::__construct();
-    }
-
-    public function handle(): int
+    public function handle(ChannelSkuHealth $health): int
     {
         $ukuran = [
-            'listing terpecah ke lebih dari satu master' => $this->health->listingTerpecah(),
-            'SKU induk yang menyalin SKU varian' => $this->health->masterSkuTurunanVarian()->count(),
-            'varian ber-SKU placeholder channel' => $this->health->varianPlaceholder()->count(),
-            'mapping channel yatim atau mengarah ke master salah' => $this->health->orphanedChannelVariantMappings(),
+            'listing terpecah ke lebih dari satu master' => $health->listingTerpecah(),
+            'SKU induk yang menyalin SKU varian' => $health->masterSkuTurunanVarian()->count(),
+            'varian ber-SKU placeholder channel' => $health->varianPlaceholder()->count(),
+            'mapping channel yatim atau mengarah ke master salah' => $health->orphanedChannelVariantMappings(),
         ];
 
         $melenceng = array_filter($ukuran);

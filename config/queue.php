@@ -126,6 +126,7 @@ return [
         'channel_after_sales' => env('QUEUE_NAME_CHANNEL_AFTER_SALES', 'channel-after-sales'),
         'channel_fulfillment' => env('QUEUE_NAME_CHANNEL_FULFILLMENT', 'channel-fulfillment'),
         'labels' => env('QUEUE_NAME_LABELS', 'labels'),
+        'label_prefetch' => env('QUEUE_NAME_LABEL_PREFETCH', 'label-prefetch'),
         'qr_labels' => env('QUEUE_NAME_QR_LABELS', 'qr-labels'),
 
         'shopee_orders' => env('QUEUE_NAME_SHOPEE_ORDERS', 'shopee-orders'),
@@ -220,6 +221,11 @@ return [
             'queue' => env('QUEUE_NAME_LABEL_AWB', 'label-awb'),
 
             'parallelism' => max(1, min(4, (int) env('QUEUE_LABEL_AWB_PARALLELISM', 2))),
+        ],
+
+        'label_prefetch' => [
+            'connection' => env('QUEUE_LABEL_CONNECTION', 'redis-long'),
+            'queue' => env('QUEUE_NAME_LABEL_PREFETCH', 'label-prefetch'),
         ],
 
         'label_archive' => [

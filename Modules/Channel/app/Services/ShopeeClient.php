@@ -22,7 +22,10 @@ class ShopeeClient
         $this->partnerId = (string) config('services.shopee.partner_id');
         $this->partnerKey = (string) config('services.shopee.partner_key');
         $this->host = rtrim((string) config('services.shopee.host', 'https://partner.shopeemobile.com'), '/');
+    }
 
+    public function ensureConfigured(): void
+    {
         if (! $this->partnerId || ! $this->partnerKey) {
             throw new \RuntimeException('Kredensial Shopee belum dikonfigurasi. Set SHOPEE_PARTNER_ID dan SHOPEE_PARTNER_KEY.');
         }
@@ -30,6 +33,8 @@ class ShopeeClient
 
     public function getAuthUrl(string $redirectUri, string $state = ''): string
     {
+        $this->ensureConfigured();
+
         $path = '/api/v2/shop/auth_partner';
         $timestamp = time();
         $sign = ShopeeSignature::publicSign($this->partnerId, $path, $timestamp, $this->partnerKey);
@@ -69,6 +74,8 @@ class ShopeeClient
 
     public function request(string $method, string $apiPath, array $params, string $accessToken, string $shopId, ?int $timeoutSeconds = null): array
     {
+        $this->ensureConfigured();
+
         $timestamp = time();
         $sign = ShopeeSignature::shopSign($this->partnerId, $apiPath, $timestamp, $accessToken, $shopId, $this->partnerKey);
 
@@ -126,6 +133,8 @@ class ShopeeClient
         if ($requests === []) {
             return [];
         }
+
+        $this->ensureConfigured();
 
         $timeout = max(1, $timeoutSeconds ?? 30);
         $responses = Http::pool(function ($pool) use ($apiPath, $requests, $accessToken, $shopId, $timeout) {
@@ -265,6 +274,8 @@ class ShopeeClient
 
     public function requestBinary(string $apiPath, array $params, string $accessToken, string $shopId): array
     {
+        $this->ensureConfigured();
+
         $timestamp = time();
         $sign = ShopeeSignature::shopSign($this->partnerId, $apiPath, $timestamp, $accessToken, $shopId, $this->partnerKey);
 
@@ -308,6 +319,8 @@ class ShopeeClient
 
     public function uploadImage(string $contents, string $filename = 'image.jpg'): ?string
     {
+        $this->ensureConfigured();
+
         $path = '/api/v2/media_space/upload_image';
         $timestamp = time();
         $sign = ShopeeSignature::publicSign($this->partnerId, $path, $timestamp, $this->partnerKey);
@@ -347,6 +360,8 @@ class ShopeeClient
 
     public function uploadVideoPart(string $videoUploadId, int $partSeq, string $contentMd5, string $partContent): array
     {
+        $this->ensureConfigured();
+
         $path = '/api/v2/media_space/upload_video_part';
         $timestamp = time();
         $sign = ShopeeSignature::publicSign($this->partnerId, $path, $timestamp, $this->partnerKey);
@@ -385,6 +400,8 @@ class ShopeeClient
 
     protected function publicPost(string $path, array $body): array
     {
+        $this->ensureConfigured();
+
         $timestamp = time();
         $sign = ShopeeSignature::publicSign($this->partnerId, $path, $timestamp, $this->partnerKey);
 

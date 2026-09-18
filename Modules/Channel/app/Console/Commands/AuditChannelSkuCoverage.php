@@ -19,12 +19,7 @@ class AuditChannelSkuCoverage extends Command
 
     protected $description = 'Audit apakah semua SKU varian aktif di channel sudah berada di satu master per listing';
 
-    public function __construct(private ChannelSkuHealth $skuHealth)
-    {
-        parent::__construct();
-    }
-
-    public function handle(): int
+    public function handle(ChannelSkuHealth $skuHealth): int
     {
         $shops = $this->resolveShops();
 
@@ -43,7 +38,7 @@ class AuditChannelSkuCoverage extends Command
         }
 
         $this->newLine();
-        $this->laporkanListingTerpecah($shops);
+        $this->laporkanListingTerpecah($shops, $skuHealth);
         $this->newLine();
         $this->laporkanModelDilewati($shops);
         $this->newLine();
@@ -100,9 +95,9 @@ class AuditChannelSkuCoverage extends Command
         }
     }
 
-    private function laporkanListingTerpecah($shops): void
+    private function laporkanListingTerpecah($shops, ChannelSkuHealth $skuHealth): void
     {
-        $rows = $this->skuHealth->multiMasterListingDetails($shops->pluck('id'));
+        $rows = $skuHealth->multiMasterListingDetails($shops->pluck('id'));
         $validBundles = $rows->where('valid_bundle_split', true)->values();
         $invalid = $rows->where('valid_bundle_split', false)->values();
 

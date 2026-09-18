@@ -8,6 +8,7 @@ use Modules\Sales\Console\Commands\BackfillShippedOrdersStockCommand;
 use Modules\Sales\Console\Commands\BackfillStatusHistory;
 use Modules\Sales\Console\Commands\CleanupBulkLabelBatchesCommand;
 use Modules\Sales\Console\Commands\DispatchDueFinanceSync;
+use Modules\Sales\Console\Commands\DispatchDueShippingLabelPrefetch;
 use Modules\Sales\Console\Commands\FinanceQueueHealth;
 use Modules\Sales\Console\Commands\PrepareShopeeLabelsBackfill;
 use Modules\Sales\Console\Commands\ReapStaleBulkLabelBatches;
@@ -36,6 +37,7 @@ class SalesServiceProvider extends ModuleServiceProvider
     protected array $commands = [
         SyncOrderFinance::class,
         DispatchDueFinanceSync::class,
+        DispatchDueShippingLabelPrefetch::class,
         FinanceQueueHealth::class,
         SyncSettlements::class,
         BackfillSettlement::class,
@@ -69,6 +71,11 @@ class SalesServiceProvider extends ModuleServiceProvider
         $schedule->command('sales:sync-shipping-status')
             ->everyFifteenMinutes()
             ->withoutOverlapping()
+            ->runInBackground();
+
+        $schedule->command('shipping-labels:dispatch-prefetch')
+            ->everyMinute()
+            ->withoutOverlapping(2)
             ->runInBackground();
     }
 }

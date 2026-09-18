@@ -2922,6 +2922,16 @@ class SalesOrderService
                 }
             }
 
+            if (! (bool) ($existing?->is_paid ?? false)
+                && $order->is_paid
+                && $stockMutated
+                && ! $hasUnmappedItems
+                && ! $deferStockTransition
+                && ! $this->isPendingChannelCancellation($orderData, $finalStatus)
+            ) {
+                app(ShippingLabelPrefetchService::class)->schedule($order);
+            }
+
             if ($hasBuyerCancellationRequest) {
                 $order->forceFill([
                     'buyer_cancel_sync_status' => BuyerCancellationSyncStatus::PENDING->value,

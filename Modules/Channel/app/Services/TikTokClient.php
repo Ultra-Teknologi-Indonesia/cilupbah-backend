@@ -23,10 +23,13 @@ class TikTokClient
 
     public function __construct()
     {
-        $this->appKey = config('services.tiktok.app_key');
-        $this->appSecret = config('services.tiktok.app_secret');
-        $this->baseUrl = config('services.tiktok.base_url', 'https://open-api.tiktokglobalshop.com');
+        $this->appKey = (string) config('services.tiktok.app_key');
+        $this->appSecret = (string) config('services.tiktok.app_secret');
+        $this->baseUrl = (string) config('services.tiktok.base_url', 'https://open-api.tiktokglobalshop.com');
+    }
 
+    public function ensureConfigured(): void
+    {
         if (! $this->appKey || ! $this->appSecret) {
             throw new \RuntimeException('TikTok credentials are not configured. Set TIKTOK_APP_KEY and TIKTOK_APP_SECRET.');
         }
@@ -34,6 +37,8 @@ class TikTokClient
 
     public function generateSignature(string $path, array $queries, $body = null, bool $isMultipart = false, string $method = 'POST'): string
     {
+        $this->ensureConfigured();
+
         $contentType = $isMultipart ? 'multipart/form-data' : 'application/json';
 
         if (! $isMultipart && empty($body) && strtoupper($method) !== 'GET') {
@@ -45,6 +50,8 @@ class TikTokClient
 
     public function request(string $method, string $path, array $queries = [], array $body = [], ?string $accessToken = null, array $files = [], ?int $timeoutSeconds = null)
     {
+        $this->ensureConfigured();
+
         $queries['app_key'] = $this->appKey;
         $queries['timestamp'] = time();
 
@@ -198,6 +205,8 @@ class TikTokClient
 
     public function getAuthUrl(string $redirectUri, string $state = ''): string
     {
+        $this->ensureConfigured();
+
         $url = 'https://services.tiktokshop.com/open/authorize';
 
         $queries = [
@@ -210,6 +219,8 @@ class TikTokClient
 
     public function getAccessToken(string $authCode, string $redirectUri)
     {
+        $this->ensureConfigured();
+
         $path = '/api/v2/token/get';
 
         $queries = [
@@ -236,6 +247,8 @@ class TikTokClient
 
     public function refreshAccessToken(string $refreshToken): array
     {
+        $this->ensureConfigured();
+
         $path = '/api/v2/token/refresh';
 
         $queries = [
@@ -259,6 +272,8 @@ class TikTokClient
         if (empty($productIds)) {
             return [];
         }
+
+        $this->ensureConfigured();
 
         $limit = max(
             1,

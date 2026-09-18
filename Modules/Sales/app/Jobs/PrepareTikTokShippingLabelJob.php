@@ -31,9 +31,14 @@ class PrepareTikTokShippingLabelJob implements ShouldBeUnique, ShouldQueue
     public function __construct(
         public readonly string $orderId,
         public readonly int $attempt = 0,
+        public readonly bool $prefetch = false,
     ) {
-        $this->onConnection(config('queue.routing.labels.connection', 'redis-long'));
-        $this->onQueue(config('queue.routing.labels.queue', 'labels'));
+        $this->onConnection($prefetch
+            ? config('shipping-label-prefetch.connection', 'redis-long')
+            : config('queue.routing.labels.connection', 'redis-long'));
+        $this->onQueue($prefetch
+            ? config('shipping-label-prefetch.queue', 'label-prefetch')
+            : config('queue.routing.labels.queue', 'labels'));
     }
 
     public function uniqueId(): string
@@ -156,9 +161,7 @@ class PrepareTikTokShippingLabelJob implements ShouldBeUnique, ShouldQueue
                 'next_attempt' => $nextAttempt,
                 'delay_seconds' => $delaySeconds,
             ]);
-            self::dispatch($order->id, $nextAttempt)
-                ->onConnection(config('queue.routing.labels.connection', 'redis-long'))
-                ->onQueue(config('queue.routing.labels.queue', 'labels'))
+            self::dispatch($order->id, $nextAttempt, $this->prefetch)
                 ->delay(now()->addSeconds($delaySeconds));
 
             return;
