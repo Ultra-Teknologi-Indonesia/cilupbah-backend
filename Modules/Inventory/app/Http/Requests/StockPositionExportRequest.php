@@ -34,13 +34,18 @@ final class StockPositionExportRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        $this->merge([
+        $normalized = [
             'search' => $this->filled('search') ? trim((string) $this->input('search')) : null,
             'channel' => $this->filled('channel') ? trim((string) $this->input('channel')) : null,
-            'visible_location_ids' => array_values(array_unique(array_filter(
+        ];
+
+        if ($this->has('visible_location_ids')) {
+            $normalized['visible_location_ids'] = array_values(array_unique(array_filter(
                 (array) $this->input('visible_location_ids', []),
                 static fn ($id): bool => is_string($id) && trim($id) !== '',
-            ))),
-        ]);
+            )));
+        }
+
+        $this->merge($normalized);
     }
 }
