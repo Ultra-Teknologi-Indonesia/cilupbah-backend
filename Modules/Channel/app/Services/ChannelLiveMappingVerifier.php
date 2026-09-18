@@ -16,9 +16,6 @@ final class ChannelLiveMappingVerifier
         private readonly LazadaProductService $lazadaProducts,
     ) {}
 
-    /**
-     * @return array{status: 'ok'|'mismatch'|'unreadable', issues: array<int, array<string, string>>}
-     */
     public function inspect(
         string $channel,
         ChannelShop $shop,
@@ -103,7 +100,6 @@ final class ChannelLiveMappingVerifier
         };
     }
 
-    /** @return array<string, array{seller_sku: string}> */
     private function remoteModels(string $channel, ChannelShop $shop, string $externalProductId): array
     {
         return match (strtolower($channel)) {
@@ -114,7 +110,6 @@ final class ChannelLiveMappingVerifier
         };
     }
 
-    /** @return array<string, array{seller_sku: string}> */
     private function shopeeModels(ChannelShop $shop, string $externalProductId): array
     {
         $response = $this->shopeeClient->request(
@@ -135,7 +130,6 @@ final class ChannelLiveMappingVerifier
             ->all();
     }
 
-    /** @return array<string, array{seller_sku: string}> */
     private function tikTokModels(ChannelShop $shop, string $externalProductId): array
     {
         $product = $this->tikTokProducts->fetchLiveProduct(
@@ -157,7 +151,6 @@ final class ChannelLiveMappingVerifier
             ->all();
     }
 
-    /** @return array<string, array{seller_sku: string}> */
     private function lazadaModels(ChannelShop $shop, string $externalProductId): array
     {
         $product = $this->lazadaProducts->fetchLiveProduct(
