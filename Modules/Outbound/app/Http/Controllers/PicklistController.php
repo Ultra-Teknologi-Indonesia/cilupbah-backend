@@ -2,29 +2,32 @@
 
 namespace Modules\Outbound\Http\Controllers;
 
+use App\Enums\UnassignReasonEnum;
+use App\Exceptions\UserFacingException;
 use App\Http\Controllers\Controller;
 use App\Services\PdfRenderer;
 use App\Services\QrCodeGenerator;
+use App\Traits\AutoScopeMobileToAuth;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
-use Modules\Outbound\Http\Resources\PicklistResource;
-use Modules\Outbound\Services\PicklistService;
-use Modules\Outbound\Http\Requests\CreatePicklistRequest;
-use Modules\Outbound\Http\Requests\PickItemRequest;
-use Modules\Outbound\Http\Requests\FailPickItemRequest;
-use Modules\Outbound\Http\Requests\BulkPicklistPdfRequest;
+use Modules\Outbound\Exceptions\OutboundValidationException;
+use Modules\Outbound\Http\Requests\BulkAssignPickerRequest;
+use Modules\Outbound\Http\Requests\BulkPicklistIdsPdfAsyncRequest;
 use Modules\Outbound\Http\Requests\BulkPicklistPdfAsyncRequest;
+use Modules\Outbound\Http\Requests\BulkPicklistPdfRequest;
+use Modules\Outbound\Http\Requests\BulkRevertPicklistsRequest;
+use Modules\Outbound\Http\Requests\CreatePicklistRequest;
+use Modules\Outbound\Http\Requests\FailPickItemRequest;
+use Modules\Outbound\Http\Requests\PickItemRequest;
 use Modules\Outbound\Http\Requests\PicklistPdfRequest;
 use Modules\Outbound\Http\Requests\ResetPicklistAssignmentRequest;
 use Modules\Outbound\Http\Requests\ScanForPickRequest;
 use Modules\Outbound\Http\Requests\UnassignPicklistRequest;
 use Modules\Outbound\Http\Requests\UnpickItemsRequest;
-
-use Modules\Outbound\Exceptions\OutboundValidationException;
-use Modules\Report\Services\ReportService;
+use Modules\Outbound\Http\Resources\PicklistResource;
+use Modules\Outbound\Services\PicklistService;
 use Modules\Report\Services\ExportManager;
-use App\Traits\AutoScopeMobileToAuth;
+use Modules\Report\Services\ReportService;
 use OpenApi\Attributes as OA;
 use Throwable;
 
@@ -172,7 +175,7 @@ class PicklistController extends Controller
     {
         $picklist = $this->picklistService->getById($id);
 
-        if (!$picklist) {
+        if (! $picklist) {
             return $this->errorResponse('Picklist tidak ditemukan.', 404);
         }
 
@@ -298,7 +301,7 @@ class PicklistController extends Controller
                 fn ($picklist) => (string) ($picklist->picklist_no ?? ''),
             );
 
-            $filename = 'Picklist-Bulk-' . now()->format('Ymd-His') . '.pdf';
+            $filename = 'Picklist-Bulk-'.now()->format('Ymd-His').'.pdf';
 
             return $this->pdfRenderer->stream('outbound::pdf.picklist-bulk', [
                 'picklists' => $picklists,
@@ -306,6 +309,7 @@ class PicklistController extends Controller
             ], $filename, 'a4', 'portrait');
         } catch (Throwable $e) {
             report($e);
+
             return $this->errorResponse(
                 'Gagal membuat PDF picklist bulk.',
                 500,
@@ -326,6 +330,51 @@ class PicklistController extends Controller
             'status' => $job->status,
             'total' => count($orderIds),
         ], 'PDF picklist sedang diproses.', 202);
+    }
+
+    public function bulkPdfByPicklistsAsync(BulkPicklistIdsPdfAsyncRequest $request): JsonResponse
+    {
+        $orderIds = $this->picklistService->orderIdsForBulkPdfByPicklists(
+            $request->validated('picklist_ids'),
+        );
+
+        if ($orderIds === []) {
+            return $this->errorResponse(
+                'Tidak ada picklist yang dapat diakses untuk dicetak.',
+                404,
+            );
+        }
+
+        $job = $this->exportManager->queue($request->user(), 'picklist-bulk-pdf', [
+            'order_ids' => $orderIds,
+        ]);
+
+        return $this->successResponse([
+            'export_id' => $job->id,
+            'status' => $job->status,
+            'total' => count($orderIds),
+        ], 'PDF picklist sedang diproses.', 202);
+    }
+
+    public function bulkAssignPicker(BulkAssignPickerRequest $request): JsonResponse
+    {
+        $result = $this->picklistService->bulkAssignPicker(
+            $request->validated('picklist_ids'),
+            $request->validated('picker_id'),
+            (string) ($request->user()->id ?? 'system'),
+        );
+
+        return $this->successResponse($result, 'Proses ubah picker selesai.');
+    }
+
+    public function bulkRevert(BulkRevertPicklistsRequest $request): JsonResponse
+    {
+        $result = $this->picklistService->bulkRevert(
+            $request->validated('picklist_ids'),
+            (string) ($request->user()->id ?? 'system'),
+        );
+
+        return $this->successResponse($result, 'Proses pengembalian picklist selesai.');
     }
 
     #[OA\Post(
@@ -406,7 +455,7 @@ class PicklistController extends Controller
     {
         try {
             $this->picklistService->pickItem($id, $itemId, $request->validated());
-        } catch (\App\Exceptions\UserFacingException $e) {
+        } catch (UserFacingException $e) {
 
             throw $e;
         } catch (\Exception $e) {
@@ -527,6 +576,7 @@ class PicklistController extends Controller
             );
         } catch (Throwable $e) {
             report($e);
+
             return $this->errorResponse(
                 'Gagal menandai item.',
                 500,
@@ -566,6 +616,7 @@ class PicklistController extends Controller
             );
         } catch (Throwable $e) {
             report($e);
+
             return $this->errorResponse(
                 'Gagal membatalkan fail item.',
                 500,
@@ -725,6 +776,7 @@ class PicklistController extends Controller
             );
         } catch (Throwable $e) {
             report($e);
+
             return $this->errorResponse(
                 'Gagal mengembalikan picklist.',
                 500,
@@ -743,7 +795,7 @@ class PicklistController extends Controller
         $picklist = $this->picklistService->unassign(
             $id,
             (string) $request->user()->id,
-            \App\Enums\UnassignReasonEnum::from($validated['reason_code']),
+            UnassignReasonEnum::from($validated['reason_code']),
             $validated['reason_note'] ?? null,
             $validated['new_assignee_id'] ?? null,
         );

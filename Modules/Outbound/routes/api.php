@@ -46,7 +46,10 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::get('picklists/{id}/items', [PicklistController::class, 'items'])->name('outbound.picklists.items')->middleware('role_or_permission:owner|view-picking');
     Route::get('picklists/{id}/pdf', [PicklistController::class, 'pdf'])->name('outbound.picklists.pdf')->middleware('role_or_permission:owner|export-picking');
     Route::get('picklists/{id}/xlsx', [PicklistController::class, 'excel'])->name('outbound.picklists.xlsx')->middleware('role_or_permission:owner|export-picking');
+    Route::post('picklists/bulk-revert', [PicklistController::class, 'bulkRevert'])->name('outbound.picklists.bulk-revert')->middleware('role_or_permission:owner|edit-picking');
+    Route::post('picklists/bulk-assign-picker', [PicklistController::class, 'bulkAssignPicker'])->name('outbound.picklists.bulk-assign-picker')->middleware('role_or_permission:owner|edit-picking');
     Route::post('picklists/documents/bulk/pdf/async', [PicklistController::class, 'bulkPdfAsync'])->name('outbound.picklists.bulk-pdf-async')->middleware('role_or_permission:owner|export-picking');
+    Route::post('picklists/documents/bulk-by-picklists/pdf/async', [PicklistController::class, 'bulkPdfByPicklistsAsync'])->name('outbound.picklists.bulk-by-picklists-pdf-async')->middleware('role_or_permission:owner|export-picking');
     Route::post('picklists/documents/bulk/pdf', [PicklistController::class, 'bulkPdf'])->name('outbound.picklists.bulk-pdf')->middleware('role_or_permission:owner|export-picking');
     Route::post('picklists/{id}/assign-picker', [PicklistController::class, 'assignPicker'])->name('outbound.picklists.assign-picker')->middleware('role_or_permission:owner|edit-picking');
 

@@ -21,6 +21,7 @@ use Modules\Channel\Services\ChannelSyncSettingService;
 use Modules\Channel\Services\LazadaAuthService;
 use Modules\Channel\Services\ShopeeAuthService;
 use Modules\Channel\Services\TikTokAuthService;
+use Modules\Channel\Support\ChannelErrorClassifier;
 use Modules\Channel\Support\ChannelVariantMappingResolver;
 use Modules\Channel\Support\UploadErrorPresenter;
 use Modules\Product\Jobs\RecomputeProductChannelValidationJob;
@@ -410,12 +411,33 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
                 $message = $result['message'] ?? 'Gagal mengeksekusi aksi';
                 $this->lastActionableFailure = $message;
 
+                $retryable = data_get($result, 'error.retryable');
+                if ($retryable === null) {
+                    $retryable = ChannelErrorClassifier::isRetryable(
+                        $channelCode,
+                        new \RuntimeException($message),
+                    );
+                }
+
                 if (empty($externalId) && ! empty($result['external_product_id'])) {
                     $mapping->update(['external_product_id' => (string) $result['external_product_id']]);
                 }
 
                 $mapping->markAsFailed($message);
                 $this->recordUploadResult(false, $message, $result);
+
+                if (! $retryable) {
+                    Log::notice('SyncProductToChannelJob stopped without retry for a deterministic failure.', [
+                        'product_id' => $this->productId,
+                        'channel_shop_id' => $this->channelShopId,
+                        'channel_mapping_id' => $this->channelMappingId,
+                        'channel' => $channelCode,
+                        'action' => $this->action,
+                        'reason' => $message,
+                    ]);
+
+                    return;
+                }
 
                 throw new \Exception($message);
             }

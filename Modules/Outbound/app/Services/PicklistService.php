@@ -323,8 +323,8 @@ class PicklistService
             throw new \Exception('Picklist tidak ditemukan.');
         }
 
-        if ($picklist->status !== Picklist::STATUS_DRAFT) {
-            throw new \Exception("Picker hanya bisa di-assign pada status DRAFT (saat ini: {$picklist->status}).");
+        if (! in_array($picklist->status, [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS], true)) {
+            throw new \Exception("Picker tidak bisa diubah pada status {$picklist->status}.");
         }
 
         $this->picklistRepository->update($id, [
@@ -1230,6 +1230,70 @@ class PicklistService
         });
     }
 
+    /**
+     * @param  array<int, string>  $ids
+     * @return array{success_count: int, failed_count: int, results: array<int, array{picklist_id: string, status: string, message: string}>}
+     */
+    public function bulkRevert(array $ids, string $userId): array
+    {
+        $results = [];
+
+        foreach (array_values(array_unique($ids)) as $id) {
+            try {
+                $this->revert($id, $userId);
+                $results[] = [
+                    'picklist_id' => $id,
+                    'status' => 'success',
+                    'message' => 'Picklist dikembalikan ke belum mulai.',
+                ];
+            } catch (\Throwable $e) {
+                $results[] = [
+                    'picklist_id' => $id,
+                    'status' => 'failed',
+                    'message' => $e->getMessage(),
+                ];
+            }
+        }
+
+        return [
+            'success_count' => count(array_filter($results, fn (array $item): bool => $item['status'] === 'success')),
+            'failed_count' => count(array_filter($results, fn (array $item): bool => $item['status'] === 'failed')),
+            'results' => $results,
+        ];
+    }
+
+    /**
+     * @param  array<int, string>  $ids
+     * @return array{success_count: int, failed_count: int, results: array<int, array{picklist_id: string, status: string, message: string}>}
+     */
+    public function bulkAssignPicker(array $ids, string $pickerId, string $assignedBy): array
+    {
+        $results = [];
+
+        foreach (array_values(array_unique($ids)) as $id) {
+            try {
+                $this->assignPicker($id, $pickerId, $assignedBy);
+                $results[] = [
+                    'picklist_id' => $id,
+                    'status' => 'success',
+                    'message' => 'Picker berhasil diubah.',
+                ];
+            } catch (\Throwable $e) {
+                $results[] = [
+                    'picklist_id' => $id,
+                    'status' => 'failed',
+                    'message' => $e->getMessage(),
+                ];
+            }
+        }
+
+        return [
+            'success_count' => count(array_filter($results, fn (array $item): bool => $item['status'] === 'success')),
+            'failed_count' => count(array_filter($results, fn (array $item): bool => $item['status'] === 'failed')),
+            'results' => $results,
+        ];
+    }
+
     private function assertOrderNotProgressedBeyondPicking(string $orderId): void
     {
         $orderQuery = Order::whereKey($orderId);
@@ -1348,5 +1412,24 @@ class PicklistService
     public function assertOrdersAccessibleForBulkPdf(array $orderIds): void
     {
         $this->picklistRepository->assertOrdersAccessibleForBulkPdf($orderIds);
+    }
+
+    /**
+     * @param  array<int, string>  $picklistIds
+     * @return array<int, string>
+     */
+    public function orderIdsForBulkPdfByPicklists(array $picklistIds): array
+    {
+        $query = Picklist::query()->with('items:id,picklist_id,order_id');
+        WarehouseAccess::apply($query, 'location_id');
+
+        return $query
+            ->whereIn('id', array_values(array_unique($picklistIds)))
+            ->get()
+            ->flatMap(fn (Picklist $picklist) => $picklist->items->pluck('order_id'))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
     }
 }

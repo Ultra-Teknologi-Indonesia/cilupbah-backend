@@ -20,6 +20,9 @@ use Modules\Product\Models\ProductChannelMapping;
 
 class LazadaAdapter implements MarketplaceAdapterInterface
 {
+    /** Lazada rejects a price/quantity update containing more than 50 SKUs. */
+    private const PRICE_QUANTITY_UPDATE_MAX_SKUS = 50;
+
     public function __construct(
         protected LazadaClient $client,
         protected LazadaProductMapper $outboundMapper,
@@ -205,12 +208,8 @@ class LazadaAdapter implements MarketplaceAdapterInterface
             return ['success' => false, 'message' => 'Tidak ada SKU yang terhubung untuk diperbarui'];
         }
 
-        $payload = ['Request' => ['Product' => ['Skus' => ['Sku' => $skuPayloads]]]];
-
         try {
-            $this->withTokenRefresh($shop, fn ($token) => $this->client->request('POST', '/product/price_quantity/update', [
-                'payload' => json_encode($payload),
-            ], $token));
+            $this->updatePriceQuantityInChunks($skuPayloads, $shop);
 
             return ['success' => true, 'message' => match (true) {
                 $syncPrice && $syncStock => 'Harga dan stok berhasil disinkronisasi ke Lazada',
@@ -276,12 +275,8 @@ class LazadaAdapter implements MarketplaceAdapterInterface
             return ['success' => false, 'message' => 'Tidak ada SKU yang terhubung untuk diperbarui'];
         }
 
-        $payload = ['Request' => ['Product' => ['Skus' => ['Sku' => $skuPayloads]]]];
-
         try {
-            $this->withTokenRefresh($shop, fn ($token) => $this->client->request('POST', '/product/price_quantity/update', [
-                'payload' => json_encode($payload),
-            ], $token));
+            $this->updatePriceQuantityInChunks($skuPayloads, $shop);
 
             return ['success' => true, 'message' => 'Stok berhasil disinkronisasi ke Lazada'];
         } catch (\Exception $e) {
@@ -294,6 +289,36 @@ class LazadaAdapter implements MarketplaceAdapterInterface
     public function mapInboundProduct(array $channelData, string $shopId): array
     {
         return $this->inboundMapper->map($channelData, $shopId);
+    }
+
+    /**
+     * Sends only the SKU payloads already resolved for one Lazada listing.
+     * Lazada accepts at most 50 SKUs per price/quantity request.
+     *
+     * @param array<int, array<string, string|int>> $skuPayloads
+     */
+    protected function updatePriceQuantityInChunks(array $skuPayloads, ChannelShop $shop): void
+    {
+        $chunks = array_chunk($skuPayloads, self::PRICE_QUANTITY_UPDATE_MAX_SKUS);
+        $totalChunks = count($chunks);
+
+        foreach ($chunks as $index => $skuChunk) {
+            $payload = ['Request' => ['Product' => ['Skus' => ['Sku' => $skuChunk]]]];
+
+            try {
+                $this->withTokenRefresh($shop, fn ($token) => $this->client->request('POST', '/product/price_quantity/update', [
+                    'payload' => json_encode($payload),
+                ], $token));
+            } catch (\Throwable $e) {
+                $batch = $index + 1;
+
+                throw new \RuntimeException(
+                    "Lazada batch {$batch}/{$totalChunks} gagal: {$e->getMessage()}",
+                    0,
+                    $e,
+                );
+            }
+        }
     }
 
     protected function sendProductPayload(string $path, array $payload, ChannelShop $shop): array

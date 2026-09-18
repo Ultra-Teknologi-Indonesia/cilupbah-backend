@@ -140,7 +140,7 @@ class ChannelStockSyncGateTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_price_stock_failure_keeps_the_original_error_in_sync_history(): void
+    public function test_price_stock_deterministic_failure_is_recorded_without_retrying(): void
     {
         $this->shop->forceFill(['stock_push_enabled' => true])->save();
         $product = $this->makeListedProduct([
@@ -165,33 +165,30 @@ class ChannelStockSyncGateTest extends TestCase
             ->with('shopee')
             ->willReturn($adapter);
 
-        $this->expectException(\Exception::class);
-        try {
-            (new SyncProductToChannelJob(
-                $product->id,
-                $this->shop->id,
-                'sync_price_stock',
-                null,
-                null,
-                null,
-                'critical',
-                $mapping->id,
-            ))->handle($factory);
-        } finally {
-            $log = ProductSyncLog::query()
-                ->where('product_id', $product->id)
-                ->where('channel_shop_id', $this->shop->id)
-                ->latest()
-                ->first();
+        (new SyncProductToChannelJob(
+            $product->id,
+            $this->shop->id,
+            'sync_price_stock',
+            null,
+            null,
+            null,
+            'critical',
+            $mapping->id,
+        ))->handle($factory);
 
-            $this->assertNotNull($log);
-            $this->assertSame(ProductSyncLog::ACTION_SYNC_STOCK, $log->action);
-            $this->assertSame(ProductSyncLog::STATUS_FAILED, $log->status);
-            $this->assertSame(
-                'Shopee API Error [product_not_found]: listing 555001 tidak ditemukan',
-                $log->response['original_message'] ?? null,
-            );
-        }
+        $log = ProductSyncLog::query()
+            ->where('product_id', $product->id)
+            ->where('channel_shop_id', $this->shop->id)
+            ->latest()
+            ->first();
+
+        $this->assertNotNull($log);
+        $this->assertSame(ProductSyncLog::ACTION_SYNC_STOCK, $log->action);
+        $this->assertSame(ProductSyncLog::STATUS_FAILED, $log->status);
+        $this->assertSame(
+            'Shopee API Error [product_not_found]: listing 555001 tidak ditemukan',
+            $log->response['original_message'] ?? null,
+        );
     }
 
     public function test_stock_payload_is_limited_to_the_requested_listing(): void

@@ -151,7 +151,7 @@ class LazadaProductSyncTest extends TestCase
         $pcm->variantMappings()->create([
             'variant_id' => $variant->id,
             'external_sku_id' => '777001',
-            'channel_seller_sku' => 'LAZADA-SKU-A',
+            'channel_seller_sku' => 'SKU-A',
         ]);
 
         $location = Location::firstOrCreate(
@@ -180,7 +180,7 @@ class LazadaProductSyncTest extends TestCase
             $payload = json_decode($query['payload'] ?? ($request['payload'] ?? ''), true);
             $sku = $payload['Request']['Product']['Skus']['Sku'][0] ?? [];
 
-            return ($sku['SellerSku'] ?? null) === 'LAZADA-SKU-A'
+            return ($sku['SellerSku'] ?? null) === 'SKU-A'
                 && ($sku['Quantity'] ?? null) === '7'
                 && ($sku['Price'] ?? null) === '75000.00';
         });
@@ -240,7 +240,7 @@ class LazadaProductSyncTest extends TestCase
         $listingA->variantMappings()->create([
             'variant_id' => $variantA->id,
             'external_sku_id' => 'LZ-SKU-A',
-            'channel_seller_sku' => 'SELLER-SKU-A',
+            'channel_seller_sku' => 'MASTER-SKU-A',
         ]);
         $variantB = ProductVariant::create([
             'product_id' => $product->id,
@@ -257,7 +257,7 @@ class LazadaProductSyncTest extends TestCase
         $listingB->variantMappings()->create([
             'variant_id' => $variantB->id,
             'external_sku_id' => 'LZ-SKU-B',
-            'channel_seller_sku' => 'SELLER-SKU-B',
+            'channel_seller_sku' => 'MASTER-SKU-B',
         ]);
 
         Http::fake([
@@ -277,8 +277,81 @@ class LazadaProductSyncTest extends TestCase
             $payload = json_decode($query['payload'] ?? ($request['payload'] ?? ''), true);
             $skus = $payload['Request']['Product']['Skus']['Sku'] ?? [];
 
-            return array_column($skus, 'SellerSku') === ['SELLER-SKU-A'];
+            return array_column($skus, 'SellerSku') === ['MASTER-SKU-A'];
         });
+    }
+
+    public function test_stock_sync_sends_only_the_listing_skus_in_chunks_of_fifty(): void
+    {
+        $product = $this->makeProduct('MASTER-SKU-1');
+        $listing = ProductChannelMapping::create([
+            'product_id' => $product->id,
+            'channel_shop_id' => $this->shop->id,
+            'external_product_id' => 'LZ-LISTING-CHUNKED',
+            'sync_status' => 'synced',
+        ]);
+
+        $expectedSellerSkus = [];
+
+        foreach (range(1, 51) as $number) {
+            if ($number === 1) {
+                $variant = $product->variants->firstOrFail();
+            } else {
+                $variant = ProductVariant::create([
+                    'product_id' => $product->id,
+                    'sku' => "MASTER-SKU-{$number}",
+                    'sell_price' => 50000,
+                    'is_active' => true,
+                ]);
+            }
+
+            $sellerSku = "MASTER-SKU-{$number}";
+            $expectedSellerSkus[] = $sellerSku;
+
+            $listing->variantMappings()->create([
+                'variant_id' => $variant->id,
+                'external_sku_id' => (string) (880000 + $number),
+                'channel_seller_sku' => $sellerSku,
+            ]);
+        }
+
+        $otherListing = ProductChannelMapping::create([
+            'product_id' => $product->id,
+            'channel_shop_id' => $this->shop->id,
+            'external_product_id' => 'LZ-LISTING-OUTSIDE',
+            'sync_status' => 'synced',
+        ]);
+        $otherListing->variantMappings()->create([
+            'variant_id' => $product->variants->firstOrFail()->id,
+            'external_sku_id' => '999999',
+            'channel_seller_sku' => 'MUST-NOT-BE-SENT',
+        ]);
+
+        $sentSkuGroups = [];
+        Http::fake(function ($request) use (&$sentSkuGroups) {
+            parse_str(parse_url($request->url(), PHP_URL_QUERY) ?? '', $query);
+            $payload = json_decode($query['payload'] ?? ($request['payload'] ?? ''), true);
+            $sentSkuGroups[] = array_column(
+                $payload['Request']['Product']['Skus']['Sku'] ?? [],
+                'SellerSku'
+            );
+
+            return Http::response(['code' => '0', 'data' => []], 200);
+        });
+
+        $result = app(LazadaAdapter::class)->syncStock(
+            $product->fresh(['variants']),
+            $this->shop,
+            'LZ-LISTING-CHUNKED',
+            $listing->fresh(['variantMappings.variant']),
+        );
+
+        $this->assertTrue($result['success']);
+        $this->assertCount(2, $sentSkuGroups);
+        $this->assertCount(50, $sentSkuGroups[0]);
+        $this->assertCount(1, $sentSkuGroups[1]);
+        $this->assertSame($expectedSellerSkus, array_merge(...$sentSkuGroups));
+        $this->assertNotContains('MUST-NOT-BE-SENT', array_merge(...$sentSkuGroups));
     }
 
     public function test_delete_product_uses_mapped_seller_skus(): void
