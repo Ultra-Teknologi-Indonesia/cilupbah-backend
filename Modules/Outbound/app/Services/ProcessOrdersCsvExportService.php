@@ -182,10 +182,12 @@ final class ProcessOrdersCsvExportService
         $shipment = $shipmentOrder?->shipment;
         $storeName = $order->internalStore?->name ?? $order->shop?->shop_name ?? '';
 
+        $timezone = (string) config('app.business_timezone', 'Asia/Jakarta');
+
         return [
             $order->salesorder_no,
             $order->channel_order_no,
-            $order->transaction_date?->format('Y-m-d H:i:s'),
+            $order->transaction_date?->timezone($timezone)->format('Y-m-d H:i:s'),
             $status['stage'],
             $status['sub_status'],
             $this->internalStatusLabel($order->status),
@@ -219,7 +221,7 @@ final class ProcessOrdersCsvExportService
             $order->packlist?->packlist_no,
             $shipment?->shipment_no,
             $shipment?->status,
-            $shipment?->handed_over_at?->format('Y-m-d H:i:s'),
+            $shipment?->handed_over_at?->timezone($timezone)->format('Y-m-d H:i:s'),
             $order->note,
         ];
     }

@@ -108,15 +108,17 @@ class CancelledOrdersExport implements FromQuery, ShouldAutoSize, WithChunkReadi
 
     public function map($order): array
     {
+        $timezone = (string) config('app.business_timezone', 'Asia/Jakarta');
+
         return [
             $order->salesorder_no,
             $order->source,
             $order->channel_order_no,
             $order->customer_name,
             $order->tracking_number,
-            optional($order->cancel_requested_at)?->format('Y-m-d H:i:s'),
-            optional($order->cancel_accepted_at)?->format('Y-m-d H:i:s'),
-            optional($order->handed_to_warehouse_at)?->format('Y-m-d H:i:s'),
+            optional($order->cancel_requested_at)?->timezone($timezone)->format('Y-m-d H:i:s'),
+            optional($order->cancel_accepted_at)?->timezone($timezone)->format('Y-m-d H:i:s'),
+            optional($order->handed_to_warehouse_at)?->timezone($timezone)->format('Y-m-d H:i:s'),
             $order->status,
             $order->cancel_reason ?? $order->cancel_request_reason,
             $order->cancel_channel,

@@ -59,8 +59,10 @@ class SalesListPesananExport implements FromQuery, WithHeadings, WithMapping, Wi
 
     public function map($order): array
     {
+        $timezone = (string) config('app.business_timezone', 'Asia/Jakarta');
+
         return [
-            $order->transaction_date?->format('Y-m-d H:i:s'),
+            $order->transaction_date?->timezone($timezone)->format('Y-m-d H:i:s'),
             $order->salesorder_no,
             $order->channel_order_no,
             $this->channelLabel($order->source),

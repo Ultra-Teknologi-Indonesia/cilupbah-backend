@@ -107,6 +107,8 @@ class SalesReturnReportExport implements FromQuery, WithChunkReading, WithHeadin
         $settlement = $return->settlement;
         $refunds = $settlement?->refunds ?? collect();
 
+        $timezone = (string) config('app.business_timezone', 'Asia/Jakarta');
+
         return [
             $return->return_number,
             $return->order?->salesorder_no,
@@ -120,8 +122,8 @@ class SalesReturnReportExport implements FromQuery, WithChunkReading, WithHeadin
             $return->channel_reason_text ?? $return->channel_reason_code,
             $return->location?->location_name,
             $return->processed_by,
-            optional($return->processed_at)?->format('Y-m-d H:i:s'),
-            optional($return->created_at)?->format('Y-m-d H:i:s'),
+            optional($return->processed_at)?->timezone($timezone)->format('Y-m-d H:i:s'),
+            optional($return->created_at)?->timezone($timezone)->format('Y-m-d H:i:s'),
             $settlement?->settlement_number,
             $settlement?->status,
             $settlement ? (float) $settlement->total_amount : 0,
@@ -137,7 +139,7 @@ class SalesReturnReportExport implements FromQuery, WithChunkReading, WithHeadin
                 : null,
             $return->return_tracking_number,
             $return->return_carrier,
-            optional($return->return_shipped_at)?->format('Y-m-d H:i:s'),
+            optional($return->return_shipped_at)?->timezone($timezone)->format('Y-m-d H:i:s'),
             $return->notes,
         ];
     }

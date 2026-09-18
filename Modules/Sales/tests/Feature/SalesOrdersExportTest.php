@@ -91,4 +91,19 @@ final class SalesOrdersExportTest extends TestCase
 
         $this->assertContains($inside->salesorder_no, $export->query()->pluck('salesorder_no')->all());
     }
+
+    public function test_export_maps_timestamps_in_business_timezone(): void
+    {
+        $order = SalesOrder::factory()->create([
+            'salesorder_no' => 'SO-TZ-TEST',
+            'transaction_date' => CarbonImmutable::create(2026, 9, 18, 7, 14, 59, 'Asia/Jakarta')->utc(),
+            'created_at' => CarbonImmutable::create(2026, 9, 18, 7, 17, 21, 'Asia/Jakarta')->utc(),
+        ]);
+
+        $export = new SalesOrdersExport(null, null, null, null, null, null, null);
+        $mapped = $export->map($order);
+
+        $this->assertSame('2026-09-18 07:14:59', $mapped[3]);
+        $this->assertSame('2026-09-18 07:17:21', $mapped[4]);
+    }
 }

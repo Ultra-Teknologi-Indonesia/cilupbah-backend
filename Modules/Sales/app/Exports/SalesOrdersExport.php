@@ -136,14 +136,15 @@ class SalesOrdersExport implements FromQuery, WithChunkReading, WithHeadings, Wi
 
     public function map($order): array
     {
+        $timezone = (string) config('app.business_timezone', 'Asia/Jakarta');
         $storeName = $order->internalStore?->name ?? $order->shop?->shop_name ?? '';
 
         return [
             $order->salesorder_no,
             $order->no_ref,
             $order->channel_order_no,
-            optional($order->transaction_date)?->format('Y-m-d H:i:s'),
-            optional($order->created_at)?->format('Y-m-d H:i:s'),
+            optional($order->transaction_date)?->timezone($timezone)->format('Y-m-d H:i:s'),
+            optional($order->created_at)?->timezone($timezone)->format('Y-m-d H:i:s'),
             $this->statusLabel($order->status),
             $order->channel_status,
             $order->source ?? 'Manual',
