@@ -223,12 +223,10 @@ class OrderPerformanceReportTest extends TestCase
         $rows = collect($this->rows(OrderPerformanceSpec::PICKER));
         $this->assertCount(3, $rows, 'detail tetap satu baris per SKU');
 
-        $pdf = app(OrderPerformanceReportService::class)->build(
+        $html = app(OrderPerformanceReportService::class)->renderHtml(
             OrderPerformanceSpec::PICKER, false,
             ['from' => '2026-07-19', 'to' => '2026-07-20'],
         );
-
-        $html = $pdf->getDomPDF()->outputHtml();
 
         $this->assertStringContainsString('0 jam 10 menit 0 detik', $html);
         $this->assertStringNotContainsString('0 jam 30 menit 0 detik', $html);
@@ -287,8 +285,7 @@ class OrderPerformanceReportTest extends TestCase
         $this->makePicklist('PICK-S2', 1200, ['PRF-SKU-1' => 5]);
 
         $html = app(OrderPerformanceReportService::class)
-            ->build(OrderPerformanceSpec::PICKER, false, ['from' => '2026-07-19', 'to' => '2026-07-20'])
-            ->getDomPDF()->outputHtml();
+            ->renderHtml(OrderPerformanceSpec::PICKER, false, ['from' => '2026-07-19', 'to' => '2026-07-20']);
 
         $this->assertStringContainsString('ari.s', $html);
         $this->assertStringContainsString('Grand Total', $html);
