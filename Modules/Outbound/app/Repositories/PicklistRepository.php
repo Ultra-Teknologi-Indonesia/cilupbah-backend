@@ -159,6 +159,9 @@ class PicklistRepository
                 'orders.salesorder_no',
                 'orders.channel_order_no',
                 'orders.tracking_number',
+                'orders.customer_name',
+                'orders.channel_shop_id',
+                'orders.shop.shop_name',
                 'items.sku',
             )
             ->allowedSorts('created_at', 'picklist_no', 'started_at', 'completed_at', 'location_id', 'picker_id', 'status')

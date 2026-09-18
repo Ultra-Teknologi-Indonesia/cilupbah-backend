@@ -71,12 +71,13 @@ class AllowedSearch
                 continue;
             }
 
-            [$prefix, $col] = explode('.', $column, 2);
+            $segments = explode('.', $column);
+            $prefix = $segments[0];
 
             if ($prefix === $baseTable || ! method_exists($model, $prefix)) {
                 $local[] = $column;
             } else {
-                $relations[$prefix][] = $col;
+                $relations[implode('.', array_slice($segments, 0, -1))][] = end($segments);
             }
         }
 

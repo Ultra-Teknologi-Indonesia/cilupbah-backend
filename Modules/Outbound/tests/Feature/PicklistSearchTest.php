@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\Channel\Models\ChannelShop;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
 use Modules\Sales\Models\SalesOrder;
@@ -37,10 +38,17 @@ class PicklistSearchTest extends TestCase
             'updated_at' => now(),
         ]);
 
+        ChannelShop::create([
+            'shop_id' => 'SHOP-SEARCH-001',
+            'shop_name' => 'Akun Toko Alpha',
+            'is_active' => true,
+        ]);
+
         $order1 = SalesOrder::create([
             'salesorder_no' => 'SO-2026-SEARCH-001',
             'channel_order_no' => 'CH-ORDER-ALPHA-999',
             'tracking_number' => 'AWB-ALPHA-888',
+            'channel_shop_id' => 'SHOP-SEARCH-001',
             'status' => 'reserved',
             'location_id' => $locationId,
             'customer_name' => 'Customer Satu',
@@ -50,7 +58,7 @@ class PicklistSearchTest extends TestCase
         $order2 = SalesOrder::create([
             'salesorder_no' => 'SO-2026-SEARCH-002',
             'channel_order_no' => 'CH-ORDER-BETA-777',
-            'tracking_number' => 'AWB-BETA-666',
+            'tracking_number' => '586130349585958416',
             'status' => 'reserved',
             'location_id' => $locationId,
             'customer_name' => 'Customer Dua',
@@ -149,10 +157,17 @@ class PicklistSearchTest extends TestCase
             ->assertJsonPath('data.0.picklist_no', 'PK-2026-AAA-111');
 
         $res6 = $this->actingAs($user, 'sanctum')
-            ->getJson('/api/v1/outbound/picklists?search=AWB-BETA');
+            ->getJson('/api/v1/outbound/picklists?search=586130349585958416');
         $res6->assertOk()
             ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('data.0.picklist_no', 'PK-2026-BBB-222');
+
+        $res7 = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/outbound/picklists?search=Akun%20Toko%20Alpha');
+        $res7->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.picklist_no', 'PK-2026-AAA-111');
+
     }
 
     private function seedProductVariant(string $sku): string
