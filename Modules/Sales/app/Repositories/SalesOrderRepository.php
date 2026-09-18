@@ -279,6 +279,7 @@ class SalesOrderRepository
     protected function scopeFailedDownload($query)
     {
         return $query->whereNotNull('source')
+            ->where('status', '!=', 'cancelled')
             ->whereHas('items', $this->unmappedItemsConstraint());
     }
 
