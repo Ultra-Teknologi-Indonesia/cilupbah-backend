@@ -405,6 +405,134 @@ final class InventoryStockExportTest extends TestCase
         $this->assertSame(4000.0, (float) $historical->inventory_value);
     }
 
+    public function test_current_location_export_includes_bundle_with_user_facing_sku_only(): void
+    {
+        $location = Location::factory()->create([
+            'location_code' => 'WH-BUNDLE-REPORT',
+            'location_name' => 'Gudang Bundle',
+            'is_warehouse' => true,
+            'is_active' => true,
+        ]);
+        $bin = LocationBin::create([
+            'location_id' => $location->id,
+            'floor_code' => 'F1',
+            'row_code' => 'R1',
+            'column_code' => 'C1',
+            'bin_code' => 'B1',
+            'bin_final_code' => 'F1-R1-C1-B1',
+            'is_inbound' => false,
+        ]);
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'Laporan Bundle Test',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $componentA = Product::create([
+            'category_id' => $categoryId,
+            'name' => 'Komponen Bundle A',
+            'status' => 'master',
+            'is_bundle' => false,
+            'is_active' => true,
+        ]);
+        $componentVariantA = ProductVariant::create([
+            'product_id' => $componentA->id,
+            'sku' => 'BUNDLE-COMP-A',
+            'sell_price' => 10,
+            'is_active' => true,
+        ]);
+        $componentB = Product::create([
+            'category_id' => $categoryId,
+            'name' => 'Komponen Bundle B',
+            'status' => 'master',
+            'is_bundle' => false,
+            'is_active' => true,
+        ]);
+        $componentVariantB = ProductVariant::create([
+            'product_id' => $componentB->id,
+            'sku' => 'BUNDLE-COMP-B',
+            'sell_price' => 10,
+            'is_active' => true,
+        ]);
+
+        Inventory::create([
+            'item_id' => $componentVariantA->id,
+            'location_id' => $location->id,
+            'bin_id' => $bin->id,
+            'on_hand' => 10,
+            'on_order' => 2,
+            'available' => 8,
+            'avg_cost' => 10,
+        ]);
+        Inventory::create([
+            'item_id' => $componentVariantB->id,
+            'location_id' => $location->id,
+            'bin_id' => $bin->id,
+            'on_hand' => 7,
+            'on_order' => 1,
+            'available' => 6,
+            'avg_cost' => 10,
+        ]);
+
+        $bundle = Product::create([
+            'category_id' => $categoryId,
+            'name' => 'Bundle User Facing',
+            'sku' => 'BUNDLE-USER-FACING',
+            'status' => 'master',
+            'is_bundle' => true,
+            'is_active' => true,
+        ]);
+        $technicalVariant = ProductVariant::create([
+            'product_id' => $bundle->id,
+            'sku' => '__bundle__'.$bundle->id,
+            'sell_price' => 50000,
+            'is_active' => true,
+            'is_internal' => true,
+        ]);
+        $bundle->bundleItems()->create([
+            'component_variant_id' => $componentVariantA->id,
+            'qty' => 2,
+        ]);
+        $bundle->bundleItems()->create([
+            'component_variant_id' => $componentVariantB->id,
+            'qty' => 1,
+        ]);
+
+        Inventory::create([
+            'item_id' => $technicalVariant->id,
+            'location_id' => $location->id,
+            'bin_id' => $bin->id,
+            'on_hand' => 999,
+            'on_order' => 0,
+            'available' => 999,
+            'avg_cost' => 1,
+        ]);
+
+        $rows = app(InventoryStockReportService::class)->query([
+            'report_type' => 'by_location',
+            'item_ids' => [],
+            'location_ids' => [$location->id],
+            'stock_filter' => 'all',
+            'only_not_restocked' => false,
+            'only_with_stock' => false,
+        ])->get();
+
+        self::assertFalse($rows->contains(fn ($row) => str_starts_with((string) $row->sku, '__bundle__')));
+
+        $bundleRow = $rows->firstWhere('sku', 'BUNDLE-USER-FACING');
+
+        self::assertNotNull($bundleRow);
+        self::assertSame($bundle->id, $bundleRow->item_id);
+        self::assertSame('Bundle User Facing', $bundleRow->product_name);
+        self::assertTrue((bool) $bundleRow->is_bundle);
+        self::assertSame(5, (int) $bundleRow->qty);
+        self::assertSame(1, (int) $bundleRow->ordered);
+        self::assertSame(1, (int) $bundleRow->reserved);
+        self::assertSame(4, (int) $bundleRow->available);
+        self::assertSame(50000.0, (float) $bundleRow->sell_price);
+    }
+
     public function test_rack_query_includes_explicit_zero_stock_assignment(): void
     {
         $location = Location::factory()->create([
