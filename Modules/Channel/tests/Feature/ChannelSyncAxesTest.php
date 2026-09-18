@@ -3,6 +3,7 @@
 namespace Modules\Channel\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Facades\Http;
 use Modules\Channel\Adapters\AdapterFactory;
 use Modules\Channel\Enums\WebhookInboxStatus;
@@ -211,6 +212,17 @@ class ChannelSyncAxesTest extends TestCase
 
         $this->assertSame(config('queue.routing.stock_critical.queue'), $variantJob->queue);
         $this->assertSame('variant-stock:variant-1:*', $variantJob->uniqueId());
+    }
+
+    public function test_product_sync_overlap_lock_expires_after_a_bounded_period(): void
+    {
+        $job = new SyncProductToChannelJob('product-1', self::SHOP_ID, 'push');
+        $middleware = $job->middleware();
+
+        $this->assertInstanceOf(WithoutOverlapping::class, $middleware[1]);
+        $this->assertSame(60, $middleware[1]->releaseAfter);
+        $this->assertSame(config('channel.product_sync_overlap_lock_seconds'), $middleware[1]->expiresAfter);
+        $this->assertGreaterThan(300, $middleware[1]->expiresAfter);
     }
 
     public function test_shadow_mode_silences_both_write_axes(): void

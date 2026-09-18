@@ -158,7 +158,9 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
 
         return [
             (new RateLimited('channel_api'))->releaseAfter(5),
-            (new WithoutOverlapping("product_sync:{$this->productId}:{$this->channelShopId}:{$listingScope}"))->releaseAfter(60),
+            (new WithoutOverlapping("product_sync:{$this->productId}:{$this->channelShopId}:{$listingScope}"))
+                ->releaseAfter(60)
+                ->expireAfter(config('channel.product_sync_overlap_lock_seconds', 360)),
         ];
     }
 

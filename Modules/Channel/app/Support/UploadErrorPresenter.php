@@ -2,15 +2,21 @@
 
 namespace Modules\Channel\Support;
 
+use Illuminate\Queue\MaxAttemptsExceededException;
 use Modules\Channel\Exceptions\ShopeeApiException;
 use Modules\Channel\Exceptions\TokenExpiredException;
 
 class UploadErrorPresenter
 {
     public const TOKEN = 'token';
+
     public const RETRYABLE = 'retryable';
+
     public const USER_FIXABLE = 'user_fixable';
+
     public const FATAL = 'fatal';
+
+    public const QUEUE = 'queue';
 
     protected const KEYWORDS = [
         [['sku channel', 'duplicate key', 'product_variants_sku_unique'], 'SKU produk sudah digunakan', 'Hubungkan listing ke master yang benar atau selesaikan produk lama yang memakai SKU tersebut, lalu coba download lagi.'],
@@ -30,6 +36,15 @@ class UploadErrorPresenter
 
     public static function fromThrowable(string $channelCode, \Throwable $e): array
     {
+        if ($e instanceof MaxAttemptsExceededException) {
+            return self::build(
+                self::QUEUE,
+                $channelCode,
+                'Upload tertahan di antrean dan melebihi batas percobaan.',
+                $e->getMessage(),
+            );
+        }
+
         if ($e instanceof TokenExpiredException) {
             return self::build(self::TOKEN, $channelCode, $e->getMessage(), null);
         }
@@ -53,6 +68,15 @@ class UploadErrorPresenter
 
     public static function fromMessage(string $channelCode, string $message): array
     {
+        if (str_contains(mb_strtolower($message), 'attempted too many times')) {
+            return self::build(
+                self::QUEUE,
+                $channelCode,
+                'Upload tertahan di antrean dan melebihi batas percobaan.',
+                $message,
+            );
+        }
+
         if ($channelCode === 'lazada' && str_contains($message, 'Lazada API Error')) {
             $resolved = LazadaErrorCatalog::resolve($message);
 
@@ -75,7 +99,7 @@ class UploadErrorPresenter
             'reason' => $reason,
             'action' => $action,
             'detail' => $detail !== null && trim($detail) !== '' && trim($detail) !== $reason ? trim($detail) : null,
-            'retryable' => $category === self::RETRYABLE || $category === self::TOKEN,
+            'retryable' => $category === self::RETRYABLE || $category === self::TOKEN || $category === self::QUEUE,
         ];
     }
 
@@ -87,6 +111,10 @@ class UploadErrorPresenter
 
         if ($category === self::RETRYABLE) {
             return ['Channel sedang bermasalah', 'Coba upload ulang beberapa saat lagi.'];
+        }
+
+        if ($category === self::QUEUE) {
+            return ['Antrean upload bermasalah', 'Tunggu antrean normal atau hubungi dukungan teknis sebelum upload ulang.'];
         }
 
         $lower = mb_strtolower($reason);
