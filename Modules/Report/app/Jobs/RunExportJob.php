@@ -23,6 +23,7 @@ use Modules\Report\Services\ExportManager;
 use Modules\Report\Services\MonitorStockReportService;
 use Modules\Report\Services\RenderedPdfExportService;
 use Modules\Report\Services\StockPositionReportService;
+use Modules\Report\Services\StreamingCsvExportService;
 use Modules\Report\Services\TabularPdfExportService;
 use Modules\Sales\Services\BulkInvoiceService;
 use Throwable;
@@ -82,9 +83,9 @@ class RunExportJob implements ShouldQueue
         $diskName = config('filesystems.disks.documents') ? 'documents' : config('filesystems.default', 'local');
         $pdfTypes = ExportManager::PDF_TYPES;
         $csvTypes = ['product-catalog-csv', 'stock-position-csv', 'purchase-order-list', 'purchase-order-detail'];
-        $extension = in_array($job->type, $pdfTypes, true)
-            ? 'pdf'
-            : (in_array($job->type, $csvTypes, true) ? 'csv' : 'xlsx');
+        $isPdf = in_array($job->type, $pdfTypes, true);
+        $isCsv = in_array($job->type, $csvTypes, true) || ($params['format'] ?? null) === 'csv';
+        $extension = $isPdf ? 'pdf' : ($isCsv ? 'csv' : 'xlsx');
         $path = "exports/{$job->id}.{$extension}";
         $exportedRows = null;
 
@@ -96,23 +97,24 @@ class RunExportJob implements ShouldQueue
             'memory_limit' => ini_get('memory_limit'),
         ]);
 
-        $streamedCsv = in_array($job->type, ['product-catalog-csv', 'stock-position-csv'], true);
-
-        if (in_array($job->type, $pdfTypes, true) || $streamedCsv) {
+        if ($isPdf || $isCsv) {
             $temporaryPath = tempnam(sys_get_temp_dir(), 'cilupbah-export-');
             if ($temporaryPath === false) {
                 throw new \RuntimeException('Tidak dapat membuat berkas sementara untuk export.');
             }
 
             try {
-                if ($streamedCsv) {
+                if ($isCsv) {
                     if ($job->type === 'stock-position-csv') {
                         $exportedRows = app(StockPositionReportService::class)->writeCsv($params, $temporaryPath);
-                    } else {
+                    } elseif ($job->type === 'product-catalog-csv') {
                         $exportedRows = app(ProductCatalogCsvWriter::class)->write(
                             new ProductCatalogCsvExport($params),
                             $temporaryPath,
                         );
+                    } else {
+                        $export = $manager->build($job->type, $params);
+                        $exportedRows = app(StreamingCsvExportService::class)->write($export, $temporaryPath);
                     }
                 } elseif ($job->type === 'monitor-stock-pdf') {
                     app(MonitorStockReportService::class)->writePdf($params, $temporaryPath);
@@ -164,15 +166,7 @@ class RunExportJob implements ShouldQueue
             }
         } else {
             $export = $manager->build($job->type, $params);
-            $writerType = in_array($job->type, $csvTypes, true)
-                ? \Maatwebsite\Excel\Excel::CSV
-                : null;
-
-            if ($writerType === null) {
-                Excel::store($export, $path, $diskName);
-            } else {
-                Excel::store($export, $path, $diskName, $writerType);
-            }
+            Excel::store($export, $path, $diskName);
         }
 
         $job->update([
