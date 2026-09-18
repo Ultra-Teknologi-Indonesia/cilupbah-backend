@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Modules\Outbound\Exceptions\OutboundValidationException;
+use Modules\Outbound\Jobs\ProcessPacklistCompleteJob;
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Services\PacklistService;
 use Tests\TestCase;
@@ -19,7 +20,7 @@ class PacklistStockPostingTest extends TestCase
 
     public function test_completed_packlist_does_not_post_stock_that_was_posted_at_finish_pick(): void
     {
-        Queue::fake();
+        Queue::fake()->except(ProcessPacklistCompleteJob::class);
 
         [$userId, $locationId, $binId, $itemId, $orderId, $orderItemId, $packlistId] = $this->seedScenario();
         $this->actingAs(User::findOrFail($userId));
@@ -27,6 +28,14 @@ class PacklistStockPostingTest extends TestCase
         $packlist = app(PacklistService::class)->complete($packlistId);
 
         $this->assertSame(Packlist::STATUS_COMPLETED, $packlist->status);
+        $this->assertDatabaseHas('sales_orders', [
+            'id' => $orderId,
+            'status' => 'packed',
+        ]);
+        $this->assertDatabaseHas('sales_order_status_histories', [
+            'salesorder_id' => $orderId,
+            'action' => 'FINISH_PACK',
+        ]);
         $this->assertSame(3, (int) DB::table('inventories')->where('bin_id', $binId)->value('on_hand'));
         $this->assertDatabaseMissing('inventory_movements', [
             'transaction_number' => $packlist->packlist_no,
