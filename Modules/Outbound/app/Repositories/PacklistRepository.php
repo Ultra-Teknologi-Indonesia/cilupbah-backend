@@ -53,8 +53,6 @@ class PacklistRepository
                 'order.salesorder_no',
                 'order.channel_order_no',
                 'order.customer_name',
-                'order.items.sku',
-                'order.items.description',
             )
             ->allowedSorts(
                 'created_at',
