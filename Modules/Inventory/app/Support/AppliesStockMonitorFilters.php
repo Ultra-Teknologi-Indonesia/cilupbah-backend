@@ -16,6 +16,10 @@ trait AppliesStockMonitorFilters
                     TechnicalSku::exclude($skuQuery, 'product_variants.sku')
                         ->whereRaw('LOWER(product_variants.sku) LIKE LOWER(?)', [$term]);
                 })
+                    ->orWhere(function ($skuQuery) use ($term) {
+                        TechnicalSku::exclude($skuQuery, 'products.sku')
+                            ->whereRaw('LOWER(products.sku) LIKE LOWER(?)', [$term]);
+                    })
                     ->orWhereRaw('LOWER(products.name) LIKE LOWER(?)', [$term]);
             });
         }

@@ -46,12 +46,12 @@ class MonitorSummaryEquivalenceTest extends TestCase
         ]);
     }
 
-    private function makeVariant(string $sku, int $onHand, int $available, int $minStock = 0): ProductVariant
+    private function makeVariant(string $sku, int $onHand, int $available, int $minStock = 0, ?string $productSku = null): ProductVariant
     {
         $product = Product::create([
             'category_id' => $this->categoryId,
             'name' => 'P-'.$sku,
-            'sku' => 'P-'.$sku,
+            'sku' => $productSku ?? 'P-'.$sku,
             'is_active' => true,
             'is_stored' => true,
             'is_bundle' => false,
@@ -246,6 +246,18 @@ class MonitorSummaryEquivalenceTest extends TestCase
 
         $this->assertSame(1, $repository->countMode('minus', []));
         $this->assertSame(1, $repository->summary([])['minus']);
+    }
+
+    public function test_monitor_search_matches_product_sku_when_variant_sku_differs(): void
+    {
+        $this->makeVariant('VARIANT-NOT-CH001', 0, -5, productSku: 'CH001');
+
+        $repository = app(MonitorStockRepository::class);
+
+        $this->assertSame(1, $repository->countMode('habis', ['search' => 'CH001']));
+        $this->assertSame(1, $repository->countMode('minus', ['search' => 'CH001']));
+        $this->assertSame(1, $repository->summary(['search' => 'CH001'])['minus']);
+        $this->assertSame(0, $repository->countMode('habis', ['search' => 'SKU-TIDAK-ADA']));
     }
 
     public function test_minus_monitor_defaults_to_the_small_warehouse_for_list_and_summary(): void
