@@ -185,6 +185,13 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         if ($payloadError !== null) {
             return ['success' => false, 'message' => $payloadError];
         }
+        $sellerSkuError = ChannelVariantMappingResolver::sellerSkuPayloadError(
+            $mappings,
+            'SKU Shopee',
+        );
+        if ($sellerSkuError !== null) {
+            return ['success' => false, 'message' => $sellerSkuError];
+        }
 
         $stockByVariant = $syncStock
             ? $this->stockResolver->availableByVariant($shop, $mappings->pluck('variant'))
@@ -277,6 +284,13 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         );
         if ($payloadError !== null) {
             return ['success' => false, 'message' => $payloadError];
+        }
+        $sellerSkuError = ChannelVariantMappingResolver::sellerSkuPayloadError(
+            $mappings,
+            'SKU Shopee',
+        );
+        if ($sellerSkuError !== null) {
+            return ['success' => false, 'message' => $sellerSkuError];
         }
 
         $stockByVariant = $this->stockResolver->availableByVariant($shop, $mappings->pluck('variant'));

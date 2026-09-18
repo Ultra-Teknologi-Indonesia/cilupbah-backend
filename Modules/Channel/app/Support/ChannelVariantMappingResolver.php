@@ -95,6 +95,21 @@ final class ChannelVariantMappingResolver
         return null;
     }
 
+    public static function sellerSkuPayloadError(
+        Collection $mappings,
+        string $sellerSkuLabel,
+    ): ?string {
+        $blankSellerSkus = $mappings->filter(
+            static fn (ProductVariantChannelMapping $mapping): bool => blank($mapping->channel_seller_sku),
+        );
+
+        if ($blankSellerSkus->isNotEmpty()) {
+            return "{$sellerSkuLabel} belum lengkap untuk seluruh varian listing ini.";
+        }
+
+        return null;
+    }
+
     public static function forShop(
         ProductVariant $variant,
         ChannelShop $shop,

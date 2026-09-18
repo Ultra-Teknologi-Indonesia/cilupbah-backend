@@ -44,7 +44,7 @@ class PreManifestCancelRepository
         }
 
         return QueryBuilder::for($query)
-            ->allowedSearch(...array_merge(Order::SEARCH_COLUMNS, ['items.sku']))
+            ->allowedSearch(...array_merge(Order::SEARCH_COLUMNS, ['items.sku', 'items.description']))
             ->allowedSorts(
                 'salesorder_no',
                 'source',

@@ -51,4 +51,47 @@ class OutboundSkuSearchTest extends TestCase
         $this->assertContains('SO-TEST-001', $orderNumbers);
         $this->assertNotContains('SO-TEST-002', $orderNumbers);
     }
+
+    public function test_stage_orders_search_combined_with_filter(): void
+    {
+        $orderA = $this->createOrderWithItem('SO-TEST-SPX', 'LSM-001');
+        $orderA->update(['shipping_provider' => 'SPX Hemat']);
+
+        $orderB = $this->createOrderWithItem('SO-TEST-JNT', 'LSM-002');
+        $orderB->update(['shipping_provider' => 'J&T Express']);
+
+        $orderC = $this->createOrderWithItem('SO-TEST-SPX-OTHER', 'XYZ-999');
+        $orderC->update(['shipping_provider' => 'SPX Hemat']);
+
+        request()->merge([
+            'search' => 'lsm-',
+            'filter' => ['shipping_provider' => 'SPX Hemat'],
+        ]);
+
+        $service = app(OutboundFulfillmentService::class);
+        $result = $service->getOrdersByStage('ready-to-process', 10);
+
+        $orderNumbers = collect($result->items())->pluck('salesorder_no')->all();
+        $this->assertContains('SO-TEST-SPX', $orderNumbers);
+        $this->assertNotContains('SO-TEST-JNT', $orderNumbers);
+        $this->assertNotContains('SO-TEST-SPX-OTHER', $orderNumbers);
+    }
+
+    public function test_stage_orders_search_by_item_description(): void
+    {
+        $orderA = $this->createOrderWithItem('SO-DESC-001', 'SKU-UNKNOWN');
+        $orderA->items()->first()->update(['description' => 'Tali Gantungan LSM-BLACK Original']);
+
+        $orderB = $this->createOrderWithItem('SO-DESC-002', 'SKU-OTHER');
+        $orderB->items()->first()->update(['description' => 'Casing HP Silicone Red']);
+
+        request()->merge(['search' => 'LSM-BLACK']);
+
+        $service = app(OutboundFulfillmentService::class);
+        $result = $service->getOrdersByStage('ready-to-process', 10);
+
+        $orderNumbers = collect($result->items())->pluck('salesorder_no')->all();
+        $this->assertContains('SO-DESC-001', $orderNumbers);
+        $this->assertNotContains('SO-DESC-002', $orderNumbers);
+    }
 }

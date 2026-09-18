@@ -14,6 +14,8 @@ use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductVariant;
+use Modules\Warehouse\Models\Location;
+use Modules\Warehouse\Models\LocationBin;
 use Tests\TestCase;
 
 class ShopeeProductSyncTest extends TestCase
@@ -21,6 +23,7 @@ class ShopeeProductSyncTest extends TestCase
     use RefreshDatabase;
 
     private ChannelShop $shop;
+
     private Channel $shopee;
 
     protected function setUp(): void
@@ -50,7 +53,7 @@ class ShopeeProductSyncTest extends TestCase
 
     private function makeProduct(string $sku = 'SKU-A', float $price = 50000): Product
     {
-        $category = Category::create(['name' => 'C' . uniqid(), 'is_active' => true]);
+        $category = Category::create(['name' => 'C'.uniqid(), 'is_active' => true]);
         $product = Product::create([
             'category_id' => $category->id, 'name' => 'Kaos Polos',
             'description' => 'Bahan katun', 'status' => 'master', 'is_active' => true,
@@ -139,16 +142,24 @@ class ShopeeProductSyncTest extends TestCase
             'external_product_id' => '555001',
             'sync_status' => 'synced',
         ]);
-        $pcm->variantMappings()->create(['variant_id' => $variant->id, 'external_sku_id' => '777001']);
+        $pcm->variantMappings()->create([
+            'variant_id' => $variant->id,
+            'external_sku_id' => '777001',
+            'channel_seller_sku' => 'SKU-A',
+        ]);
 
-        $location = \Modules\Warehouse\Models\Location::factory()->create();
+        $location = Location::factory()->create();
+        $bin = LocationBin::firstOrCreate(
+            ['location_id' => $location->id, 'bin_final_code' => 'BIN-SHP-1'],
+            ['floor_code' => '1', 'row_code' => 'A', 'column_code' => '1', 'bin_code' => 'SHP-1', 'is_inbound' => false],
+        );
         DB::table('channel_warehouses')->insert([
             'channel_id' => $this->shopee->id, 'store_id' => '778899',
             'channel_location_id' => 'SHP-WH-1', 'location_id' => $location->id,
             'created_at' => now(), 'updated_at' => now(),
         ]);
         Inventory::create([
-            'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => null,
+            'item_id' => $variant->id, 'location_id' => $location->id, 'bin_id' => $bin->id,
             'on_hand' => 9, 'on_order' => 2, 'available' => 7,
         ]);
 

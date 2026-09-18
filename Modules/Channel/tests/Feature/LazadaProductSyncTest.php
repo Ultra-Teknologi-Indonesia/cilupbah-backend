@@ -196,6 +196,37 @@ class LazadaProductSyncTest extends TestCase
         $this->assertStringContainsString('Tidak ada SKU', $result['message']);
     }
 
+    public function test_lazada_stock_sync_refuses_mapping_without_channel_seller_sku(): void
+    {
+        Http::fake();
+
+        $product = $this->makeProduct('SKU-LZD-EMPTY-SELLER');
+        $variant = $product->variants->firstOrFail();
+
+        $listing = ProductChannelMapping::create([
+            'product_id' => $product->id,
+            'channel_shop_id' => $this->shop->id,
+            'external_product_id' => 'LZ-LISTING-EMPTY-SELLER',
+            'sync_status' => 'synced',
+        ]);
+        $listing->variantMappings()->create([
+            'variant_id' => $variant->id,
+            'external_sku_id' => 'LZ-SKU-EMPTY-SELLER',
+            'channel_seller_sku' => null,
+        ]);
+
+        $result = app(LazadaAdapter::class)->syncStock(
+            $product,
+            $this->shop,
+            'LZ-LISTING-EMPTY-SELLER',
+            $listing,
+        );
+
+        $this->assertFalse($result['success']);
+        $this->assertStringContainsString('SKU Lazada belum lengkap', $result['message']);
+        Http::assertNothingSent();
+    }
+
     public function test_stock_payload_uses_listing_seller_sku_only(): void
     {
         $product = $this->makeProduct('MASTER-SKU-A');

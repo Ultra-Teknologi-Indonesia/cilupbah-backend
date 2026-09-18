@@ -108,4 +108,65 @@ class WooCommerceStockSyncTest extends TestCase
             return str_ends_with($request->url(), '/products/8930');
         });
     }
+
+    public function test_stock_sync_refuses_mapping_without_channel_seller_sku(): void
+    {
+        Http::fake();
+
+        $channel = Channel::create([
+            'code' => 'woocommerce',
+            'name' => 'WooCommerce',
+            'is_active' => true,
+        ]);
+        $shop = ChannelShop::create([
+            'channel_id' => $channel->id,
+            'shop_id' => 'woo_empty_sku',
+            'shop_name' => 'WooCommerce Empty SKU',
+            'store_url' => 'https://woo.example',
+            'consumer_key' => 'ck_test',
+            'consumer_secret' => 'cs_test',
+            'is_active' => true,
+            'stock_push_enabled' => true,
+        ]);
+        $category = Category::create([
+            'name' => 'Woo Empty SKU Category',
+            'is_active' => true,
+        ]);
+        $product = Product::create([
+            'category_id' => $category->id,
+            'name' => 'Woo Empty SKU Product',
+            'status' => Product::STATUS_MASTER,
+            'is_active' => true,
+        ]);
+        $variant = ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => 'WOO-MASTER-SKU',
+            'sell_price' => 10000,
+            'is_active' => true,
+        ]);
+        $listing = ProductChannelMapping::create([
+            'product_id' => $product->id,
+            'channel_shop_id' => $shop->id,
+            'external_product_id' => '8921',
+            'sync_status' => ProductChannelMapping::STATUS_SYNCED,
+        ]);
+        ProductVariantChannelMapping::create([
+            'product_channel_mapping_id' => $listing->id,
+            'variant_id' => $variant->id,
+            'external_sku_id' => '8930',
+            'channel_seller_sku' => null,
+            'sync_enabled' => true,
+        ]);
+
+        $result = app(WooCommerceAdapter::class)->syncStock(
+            $product,
+            $shop,
+            '8921',
+            $listing,
+        );
+
+        $this->assertFalse($result['success']);
+        $this->assertStringContainsString('SKU WooCommerce belum lengkap', $result['message']);
+        Http::assertNothingSent();
+    }
 }

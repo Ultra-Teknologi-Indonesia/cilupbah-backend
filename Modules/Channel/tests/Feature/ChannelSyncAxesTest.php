@@ -88,6 +88,7 @@ class ChannelSyncAxesTest extends TestCase
             'product_channel_mapping_id' => $listing->id,
             'variant_id' => $variant->id,
             'external_sku_id' => '111',
+            'channel_seller_sku' => 'SKU-1',
             'sync_enabled' => true,
         ]);
 

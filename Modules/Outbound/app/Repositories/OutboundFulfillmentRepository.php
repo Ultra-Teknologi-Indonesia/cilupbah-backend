@@ -247,6 +247,7 @@ class OutboundFulfillmentRepository
             ->allowedSearch(...array_merge(SalesOrder::SEARCH_COLUMNS, [
                 'completedPicklists.picklist_no',
                 'items.sku',
+                'items.description',
             ]))
             ->allowedSorts(...self::STAGE_SORTS)
             ->defaultSort('-created_at')

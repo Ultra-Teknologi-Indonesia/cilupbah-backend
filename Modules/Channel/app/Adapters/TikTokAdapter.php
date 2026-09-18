@@ -361,6 +361,13 @@ class TikTokAdapter implements MarketplaceAdapterInterface
         if ($payloadError !== null) {
             return ['success' => false, 'message' => $payloadError];
         }
+        $sellerSkuError = ChannelVariantMappingResolver::sellerSkuPayloadError(
+            $mappings,
+            'SKU TikTok',
+        );
+        if ($sellerSkuError !== null) {
+            return ['success' => false, 'message' => $sellerSkuError];
+        }
 
         $stockByVariant = $syncStock
             ? $this->stockResolver->availableByVariant($shop, $mappings->pluck('variant'))
@@ -451,6 +458,13 @@ class TikTokAdapter implements MarketplaceAdapterInterface
         );
         if ($payloadError !== null) {
             return ['success' => false, 'message' => $payloadError];
+        }
+        $sellerSkuError = ChannelVariantMappingResolver::sellerSkuPayloadError(
+            $mappings,
+            'SKU TikTok',
+        );
+        if ($sellerSkuError !== null) {
+            return ['success' => false, 'message' => $sellerSkuError];
         }
 
         $stockByVariant = $this->stockResolver->availableByVariant($shop, $mappings->pluck('variant'));

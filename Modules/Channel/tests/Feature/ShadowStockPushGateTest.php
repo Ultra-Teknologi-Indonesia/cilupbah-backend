@@ -4,6 +4,7 @@ namespace Modules\Channel\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Modules\Channel\Adapters\AdapterFactory;
 use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
@@ -49,7 +50,7 @@ class ShadowStockPushGateTest extends TestCase
 
     private function makeListedProduct(): Product
     {
-        $category = Category::create(['name' => 'C' . uniqid(), 'is_active' => true]);
+        $category = Category::create(['name' => 'C'.uniqid(), 'is_active' => true]);
         $product = Product::create([
             'category_id' => $category->id,
             'name' => 'Kaos Polos',
@@ -75,6 +76,7 @@ class ShadowStockPushGateTest extends TestCase
             'product_channel_mapping_id' => $listing->id,
             'variant_id' => $variant->id,
             'external_sku_id' => '111',
+            'channel_seller_sku' => 'SKU-1',
             'sync_enabled' => true,
         ]);
 
@@ -89,7 +91,7 @@ class ShadowStockPushGateTest extends TestCase
         $product = $this->makeListedProduct();
 
         (new SyncProductToChannelJob($product->id, $this->shop->id, 'sync_price_stock'))
-            ->handle(app(\Modules\Channel\Adapters\AdapterFactory::class));
+            ->handle(app(AdapterFactory::class));
 
         Http::assertNothingSent();
     }

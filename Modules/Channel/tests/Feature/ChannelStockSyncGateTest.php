@@ -77,6 +77,9 @@ class ChannelStockSyncGateTest extends TestCase
                 'product_channel_mapping_id' => $listing->id,
                 'variant_id' => $variant->id,
                 'external_sku_id' => $spec['model_id'],
+                'channel_seller_sku' => array_key_exists('channel_seller_sku', $spec)
+                    ? $spec['channel_seller_sku']
+                    : $spec['sku'],
                 'sync_enabled' => $spec['sync_enabled'],
             ]);
         }
@@ -215,6 +218,7 @@ class ChannelStockSyncGateTest extends TestCase
             'product_channel_mapping_id' => $listingB->id,
             'variant_id' => $variantB->id,
             'external_sku_id' => '222',
+            'channel_seller_sku' => 'SKU-LISTING-B',
             'sync_enabled' => true,
         ]);
 
@@ -234,6 +238,27 @@ class ChannelStockSyncGateTest extends TestCase
             return ($request['item_id'] ?? null) === 555001
                 && array_column($request['stock_list'] ?? [], 'model_id') === [111];
         });
+    }
+
+    public function test_shopee_stock_sync_refuses_mapping_without_channel_seller_sku(): void
+    {
+        Http::fake();
+
+        $product = $this->makeListedProduct([
+            ['sku' => 'SKU-EMPTY-CHANNEL', 'model_id' => '111', 'channel_seller_sku' => null, 'sync_enabled' => true],
+        ]);
+        $listing = ProductChannelMapping::where('product_id', $product->id)->firstOrFail();
+
+        $result = app(ShopeeAdapter::class)->syncStock(
+            $product,
+            $this->shop,
+            '555001',
+            $listing,
+        );
+
+        $this->assertFalse($result['success']);
+        $this->assertStringContainsString('SKU Shopee belum lengkap', $result['message']);
+        Http::assertNothingSent();
     }
 
     public function test_generic_stock_job_fans_out_one_job_per_listing(): void
@@ -260,6 +285,7 @@ class ChannelStockSyncGateTest extends TestCase
             'product_channel_mapping_id' => $listingB->id,
             'variant_id' => $variantB->id,
             'external_sku_id' => '222',
+            'channel_seller_sku' => 'SKU-LISTING-B',
             'sync_enabled' => true,
         ]);
 
@@ -318,6 +344,7 @@ class ChannelStockSyncGateTest extends TestCase
             'product_channel_mapping_id' => $listingA->id,
             'variant_id' => $variantA->id,
             'external_sku_id' => 'TT-SKU-A',
+            'channel_seller_sku' => 'SKU-TT-A',
             'sync_enabled' => true,
         ]);
         $variantB = ProductVariant::create([
@@ -336,6 +363,7 @@ class ChannelStockSyncGateTest extends TestCase
             'product_channel_mapping_id' => $listingB->id,
             'variant_id' => $variantB->id,
             'external_sku_id' => 'TT-SKU-B',
+            'channel_seller_sku' => 'SKU-TT-B',
             'sync_enabled' => true,
         ]);
 
@@ -355,6 +383,50 @@ class ChannelStockSyncGateTest extends TestCase
             return str_contains($request->url(), '/products/TT-LISTING-A/inventory/update')
                 && array_column($request['skus'] ?? [], 'id') === ['TT-SKU-A'];
         });
+    }
+
+    public function test_tiktok_stock_sync_refuses_mapping_without_channel_seller_sku(): void
+    {
+        Http::fake();
+
+        $tiktok = Channel::create(['code' => 'tiktok', 'name' => 'TikTok', 'is_active' => true]);
+        $tiktokShop = ChannelShop::create([
+            'channel_id' => $tiktok->id,
+            'shop_id' => 'TT-SHOP-EMPTY-SELLER-SKU',
+            'shop_name' => 'TikTok Empty Seller SKU',
+            'shop_cipher' => 'cipher',
+            'access_token' => 'token',
+            'is_active' => true,
+        ]);
+
+        $product = $this->makeListedProduct([
+            ['sku' => 'SKU-TT-EMPTY-SELLER', 'model_id' => '111', 'sync_enabled' => true],
+        ]);
+        $variant = $product->variants->firstOrFail();
+        $listing = ProductChannelMapping::create([
+            'product_id' => $product->id,
+            'channel_shop_id' => $tiktokShop->id,
+            'external_product_id' => 'TT-LISTING-EMPTY-SELLER-SKU',
+            'sync_status' => 'synced',
+        ]);
+        ProductVariantChannelMapping::create([
+            'product_channel_mapping_id' => $listing->id,
+            'variant_id' => $variant->id,
+            'external_sku_id' => 'TT-SKU-EMPTY-SELLER',
+            'channel_seller_sku' => null,
+            'sync_enabled' => true,
+        ]);
+
+        $result = app(TikTokAdapter::class)->syncStock(
+            $product,
+            $tiktokShop,
+            'TT-LISTING-EMPTY-SELLER-SKU',
+            $listing,
+        );
+
+        $this->assertFalse($result['success']);
+        $this->assertStringContainsString('SKU TikTok belum lengkap', $result['message']);
+        Http::assertNothingSent();
     }
 
     public function test_missing_tiktok_sku_id_stops_before_an_api_request(): void

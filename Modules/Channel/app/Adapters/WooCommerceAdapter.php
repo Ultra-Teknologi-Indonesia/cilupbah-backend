@@ -169,6 +169,13 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
         if ($payloadError !== null) {
             return ['success' => false, 'message' => $payloadError];
         }
+        $sellerSkuError = ChannelVariantMappingResolver::sellerSkuPayloadError(
+            $mappings,
+            'SKU WooCommerce',
+        );
+        if ($sellerSkuError !== null) {
+            return ['success' => false, 'message' => $sellerSkuError];
+        }
 
         $stockByVariant = $syncStock
             ? $this->stockResolver->availableByVariant($shop, $mappings->pluck('variant'))
@@ -269,6 +276,13 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
         );
         if ($payloadError !== null) {
             return ['success' => false, 'message' => $payloadError];
+        }
+        $sellerSkuError = ChannelVariantMappingResolver::sellerSkuPayloadError(
+            $mappings,
+            'SKU WooCommerce',
+        );
+        if ($sellerSkuError !== null) {
+            return ['success' => false, 'message' => $sellerSkuError];
         }
 
         $stockByVariant = $this->stockResolver->availableByVariant($shop, $mappings->pluck('variant'));
