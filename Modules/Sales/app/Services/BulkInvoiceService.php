@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Modules\Sales\Services;
 
 use App\Services\ChunkedPdfMerger;
-use Barryvdh\DomPDF\Facade\Pdf;
+use App\Services\PdfRenderer;
 use Illuminate\Support\Facades\Log;
 use Modules\Sales\Repositories\SalesOrderRepository;
 use setasign\Fpdi\Fpdi;
@@ -17,6 +17,7 @@ final class BulkInvoiceService
     public function __construct(
         private readonly SalesOrderRepository $salesOrderRepository,
         private readonly ChunkedPdfMerger $merger,
+        private readonly PdfRenderer $pdfRenderer,
     ) {}
 
     public function write(array $orderIds, string $targetPath): void
@@ -118,8 +119,6 @@ final class BulkInvoiceService
             'post_code' => $order->shipping_post_code,
         ];
 
-        return Pdf::loadView('sales::pdf.invoice', ['order' => $order])
-            ->setPaper('a4', 'portrait')
-            ->output();
+        return $this->pdfRenderer->bytes('sales::pdf.invoice', ['order' => $order], 'a4', 'portrait');
     }
 }

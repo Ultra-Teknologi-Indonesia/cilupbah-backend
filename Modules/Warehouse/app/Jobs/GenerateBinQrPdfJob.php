@@ -2,8 +2,8 @@
 
 namespace Modules\Warehouse\Jobs;
 
+use App\Services\PdfRenderer;
 use App\Services\QrCodeGenerator;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -34,7 +34,7 @@ class GenerateBinQrPdfJob implements ShouldQueue
         $this->onQueue(config('queue.routing.qr_labels.queue', 'qr-labels'));
     }
 
-    public function handle(QrCodeGenerator $qrCodeGenerator): void
+    public function handle(QrCodeGenerator $qrCodeGenerator, PdfRenderer $pdfRenderer): void
     {
         ini_set('memory_limit', (string) config('queue.routing.qr_labels.memory_limit', '512M'));
         set_time_limit($this->timeout);
@@ -86,8 +86,9 @@ class GenerateBinQrPdfJob implements ShouldQueue
             $mergedPdf = new Fpdi('P', 'mm');
             $hasPages = false;
             $processed = 0;
+            $paperConfig = $this->resolvePaper($paper);
 
-            $query->chunk(self::CHUNK_SIZE, function ($chunk) use (&$mergedPdf, &$hasPages, &$temporaryFiles, &$processed, $qrSize, $printJob, $qrCodeGenerator, $location, $paper) {
+            $query->chunk(self::CHUNK_SIZE, function ($chunk) use (&$mergedPdf, &$hasPages, &$temporaryFiles, &$processed, $qrSize, $printJob, $qrCodeGenerator, $location, $paper, $paperConfig, $pdfRenderer) {
                 $items = [];
 
                 foreach ($chunk as $bin) {
@@ -105,19 +106,23 @@ class GenerateBinQrPdfJob implements ShouldQueue
                     $chunkPath = $this->temporaryPdfPath();
                     $temporaryFiles[] = $chunkPath;
 
-                    $chunkPdf = Pdf::loadView('warehouse::pdf.bin-qr', [
-                        'location' => $location,
-                        'items' => $items,
-                        'paper' => $paper,
-                    ]);
-                    $this->applyPaperSettings($chunkPdf, $paper);
-                    $chunkPdf->save($chunkPath);
+                    $pdfRenderer->save(
+                        'warehouse::pdf.bin-qr',
+                        [
+                            'location' => $location,
+                            'items' => $items,
+                            'paper' => $paper,
+                        ],
+                        $chunkPath,
+                        $paperConfig,
+                        'portrait'
+                    );
 
                     $this->appendPdfFile($mergedPdf, $chunkPath);
                     $hasPages = true;
                     @unlink($chunkPath);
                     $processed += count($items);
-                    unset($chunkPdf, $items);
+                    unset($items);
                     gc_collect_cycles();
                 }
 
@@ -131,14 +136,17 @@ class GenerateBinQrPdfJob implements ShouldQueue
             $temporaryFiles[] = $mergedPath;
 
             if (! $hasPages) {
-                $emptyPdf = Pdf::loadView('warehouse::pdf.bin-qr', [
-                    'location' => $location,
-                    'items' => [],
-                    'paper' => $paper,
-                ]);
-                $this->applyPaperSettings($emptyPdf, $paper);
-                $emptyPdf->save($mergedPath);
-                unset($emptyPdf);
+                $pdfRenderer->save(
+                    'warehouse::pdf.bin-qr',
+                    [
+                        'location' => $location,
+                        'items' => [],
+                        'paper' => $paper,
+                    ],
+                    $mergedPath,
+                    $paperConfig,
+                    'portrait'
+                );
             } else {
                 $mergedPdf->Output('F', $mergedPath);
             }
@@ -203,19 +211,13 @@ class GenerateBinQrPdfJob implements ShouldQueue
         }
     }
 
-    private function applyPaperSettings($pdf, string $paper): void
+    private function resolvePaper(string $paper): string|array
     {
-        switch ($paper) {
-            case 'thermal_50x40':
-                $pdf->setPaper([0, 0, 141.7, 113.4], 'portrait');
-                break;
-            case 'thermal_80x40':
-                $pdf->setPaper([0, 0, 226.8, 113.4], 'portrait');
-                break;
-            default:
-                $pdf->setPaper('a4', 'portrait');
-                break;
-        }
+        return match ($paper) {
+            'thermal_50x40' => [0, 0, 141.7, 113.4],
+            'thermal_80x40' => [0, 0, 226.8, 113.4],
+            default => 'a4',
+        };
     }
 
     private function qrSizeFor(string $paper): int

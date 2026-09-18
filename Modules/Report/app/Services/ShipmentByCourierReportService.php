@@ -2,7 +2,7 @@
 
 namespace Modules\Report\Services;
 
-use Barryvdh\DomPDF\Facade\Pdf;
+use App\Services\PdfRenderer;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Modules\Report\Repositories\ReportRepository;
@@ -13,16 +13,21 @@ class ShipmentByCourierReportService
 {
     public function __construct(
         protected ReportRepository $repository,
+        protected PdfRenderer $pdfRenderer = new PdfRenderer(),
     ) {}
 
-    public function build(bool $detail, array $filters)
+    public function build(bool $detail, array $filters): string
     {
         $payload = $this->pdfPayload($detail, $filters);
 
-        $pdf = Pdf::loadView($payload['view'], $payload['data']);
-        $pdf->setPaper('a4', 'portrait');
+        return $this->pdfRenderer->bytes($payload['view'], $payload['data'], 'a4', 'portrait');
+    }
 
-        return $pdf;
+    public function renderHtml(bool $detail, array $filters): string
+    {
+        $payload = $this->pdfPayload($detail, $filters);
+
+        return view($payload['view'], $payload['data'])->render();
     }
 
     public function pdfPayload(bool $detail, array $filters): array

@@ -116,8 +116,7 @@ class PutawayPerformanceReportTest extends TestCase
     private function html(bool $detail): string
     {
         return app(PutawayPerformanceReportService::class)
-            ->build($detail, ['from' => '2026-07-19', 'to' => '2026-07-20'])
-            ->getDomPDF()->outputHtml();
+            ->renderHtml($detail, ['from' => '2026-07-19', 'to' => '2026-07-20']);
     }
 
     public function test_durasi_penempatan_ditulis_tanpa_detik(): void

@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace Modules\Report\Services;
 
-use Barryvdh\DomPDF\Facade\Pdf;
+use App\Services\PdfRenderer;
 use RuntimeException;
 use Modules\Report\Repositories\ReportRepository;
 
 final class RenderedPdfExportService
 {
+    public function __construct(
+        private readonly PdfRenderer $pdfRenderer = new PdfRenderer(),
+    ) {}
+
     public function write(string $type, array $params, string $targetPath): void
     {
         $payload = match ($type) {
@@ -35,9 +39,13 @@ final class RenderedPdfExportService
             default => throw new RuntimeException("Tipe PDF layout tidak dikenal: {$type}"),
         };
 
-        Pdf::loadView($payload['view'], $payload['data'])
-            ->setPaper('a4', $payload['orientation'] ?? 'portrait')
-            ->save($targetPath);
+        $this->pdfRenderer->save(
+            $payload['view'],
+            $payload['data'],
+            $targetPath,
+            'a4',
+            $payload['orientation'] ?? 'portrait'
+        );
     }
 
     private function penyesuaianStokPayload(array $params): array

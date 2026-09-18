@@ -5,7 +5,7 @@ namespace Modules\Inbound\Http\Controllers;
 use App\Enums\UnassignReasonEnum;
 use App\Exceptions\UserFacingException;
 use App\Http\Controllers\Controller;
-use Barryvdh\DomPDF\Facade\Pdf;
+use App\Services\PdfRenderer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Inbound\Http\Requests\AssignInboundRequest;
@@ -218,7 +218,8 @@ use OpenApi\Attributes as OA;
 class InboundController extends Controller
 {
     public function __construct(
-        protected InboundService $inboundService
+        protected InboundService $inboundService,
+        protected PdfRenderer $pdfRenderer,
     ) {}
 
     #[OA\Get(
@@ -344,11 +345,13 @@ class InboundController extends Controller
         try {
             $filename = "{$inbound->transaction_number}.pdf";
 
-            $pdf = Pdf::loadView('inbound::pdf.receipt', [
-                'inbound' => $inbound,
-            ])->setPaper('a4', 'portrait');
-
-            return $pdf->stream($filename);
+            return $this->pdfRenderer->stream(
+                'inbound::pdf.receipt',
+                ['inbound' => $inbound],
+                $filename,
+                'a4',
+                'portrait'
+            );
         } catch (\Throwable $e) {
             report($e);
 

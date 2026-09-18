@@ -16,7 +16,7 @@ use App\Support\ActorName;
 use App\Support\WarehouseAccess;
 use App\Traits\AutoScopeMobileToAuth;
 use App\Traits\EnforcesAssignmentChannel;
-use Barryvdh\DomPDF\Facade\Pdf;
+use App\Services\PdfRenderer;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -70,6 +70,7 @@ class InboundService
         protected PurchaseOrderRepository $purchaseOrderRepository,
         protected InventoryMovementReversalVisibilityService $movementReversalVisibility,
         protected SalesReturnOrderActivityService $returnActivities,
+        protected PdfRenderer $pdfRenderer,
     ) {}
 
     protected function unlockedOnceColumn(Model $doc): string
@@ -2145,10 +2146,13 @@ class InboundService
             }
         }
 
-        $pdf = Pdf::loadView('inbound::pdf.barcodes', compact('pages'))
-            ->setPaper([0, 0, 141.73, 85.04], 'landscape');
-
-        return $pdf->stream("barcodes-inbound-{$inbound->transaction_number}.pdf");
+        return $this->pdfRenderer->stream(
+            'inbound::pdf.barcodes',
+            compact('pages'),
+            "barcodes-inbound-{$inbound->transaction_number}.pdf",
+            [0, 0, 141.73, 85.04],
+            'landscape'
+        );
     }
 
     private function resolveLandedCostMap(Inbound $inbound): array

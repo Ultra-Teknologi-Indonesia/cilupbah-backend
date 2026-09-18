@@ -2,7 +2,7 @@
 
 namespace Modules\Report\Services;
 
-use Barryvdh\DomPDF\Facade\Pdf;
+use App\Services\PdfRenderer;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
 use Modules\Report\Repositories\ReportRepository;
@@ -47,7 +47,8 @@ class ReportService
     ];
 
     public function __construct(
-        protected ReportRepository $repository
+        protected ReportRepository $repository,
+        protected PdfRenderer $pdfRenderer,
     ) {}
 
     public function putawayReport(array $filters): array
@@ -255,38 +256,26 @@ class ReportService
             }
         }
 
-        $pdf = Pdf::loadView('report::pdf.barcode', [
+        $paperConfig = $this->resolveBarcodePaper($paper);
+
+        return $this->pdfRenderer->bytes('report::pdf.barcode', [
             'cells' => $cells,
             'mode' => $harga,
             'paper' => $paper,
-        ]);
+        ], $paperConfig, 'portrait');
+    }
 
-        switch ($paper) {
-            case 'thermal_50x50':
-                $pdf->setPaper([0, 0, 141.7, 141.7], 'portrait');
-                break;
-            case 'thermal_30x40':
-
-                $pdf->setPaper([0, 0, 113.4, 85.0], 'portrait');
-                break;
-            case 'thermal_50x40':
-                $pdf->setPaper([0, 0, 141.7, 113.4], 'portrait');
-                break;
-            case 'thermal_80x40':
-                $pdf->setPaper([0, 0, 226.8, 113.4], 'portrait');
-                break;
-            case 'thermal_40x30':
-                $pdf->setPaper([0, 0, 113.4, 85.0], 'portrait');
-                break;
-            case 'thermal_30x20':
-                $pdf->setPaper([0, 0, 85.0, 56.7], 'portrait');
-                break;
-            default:
-                $pdf->setPaper('a4', 'portrait');
-                break;
-        }
-
-        return $pdf;
+    public function resolveBarcodePaper(string $paper): string|array
+    {
+        return match ($paper) {
+            'thermal_50x50' => [0, 0, 141.7, 141.7],
+            'thermal_30x40' => [0, 0, 113.4, 85.0],
+            'thermal_50x40' => [0, 0, 141.7, 113.4],
+            'thermal_80x40' => [0, 0, 226.8, 113.4],
+            'thermal_40x30' => [0, 0, 113.4, 85.0],
+            'thermal_30x20' => [0, 0, 85.0, 56.7],
+            default => 'a4',
+        };
     }
 
     private function qrDataUri(string $content): ?string
@@ -306,14 +295,11 @@ class ReportService
         }
     }
 
-    public function penyesuaianStokBuild(array $data)
+    public function penyesuaianStokBuild(array $data): string
     {
         $payload = $this->penyesuaianStokPayload($data);
 
-        $pdf = Pdf::loadView('report::pdf.penyesuaian-stok', $payload);
-        $pdf->setPaper('a4', 'portrait');
-
-        return $pdf;
+        return $this->pdfRenderer->bytes('report::pdf.penyesuaian-stok', $payload, 'a4', 'portrait');
     }
 
     public function penyesuaianStokPayload(array $data): array
@@ -525,14 +511,11 @@ class ReportService
             ->all();
     }
 
-    public function pickListDetailBuild(string $picklistId, ?array $orderIds = null)
+    public function pickListDetailBuild(string $picklistId, ?array $orderIds = null): string
     {
         $data = $this->pickListDetailPayload($picklistId, $orderIds);
 
-        $pdf = Pdf::loadView('report::pdf.detail-picklist', $data);
-        $pdf->setPaper('a4', 'portrait');
-
-        return $pdf;
+        return $this->pdfRenderer->bytes('report::pdf.detail-picklist', $data, 'a4', 'portrait');
     }
 
     public function pickListDetailPayload(string $picklistId, ?array $orderIds = null): array

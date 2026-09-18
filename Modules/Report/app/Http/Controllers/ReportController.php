@@ -489,12 +489,12 @@ class ReportController extends Controller
     public function barcodePdf(BarcodeReportRequest $request): Response
     {
         $validated = $request->validated();
-        $pdf = $this->reportService->barcodePdf($validated);
+        $pdfBytes = $this->reportService->barcodePdf($validated);
 
         $filename = sprintf('Barcode-Barang_%s.pdf', now()->format('Ymd-His'));
         $disposition = ($validated['download'] ?? false) ? 'attachment' : 'inline';
 
-        return response($pdf->output(), 200, [
+        return response($pdfBytes, 200, [
             'Content-Type' => 'application/pdf',
             'Content-Disposition' => "{$disposition}; filename=\"{$filename}\"",
         ]);

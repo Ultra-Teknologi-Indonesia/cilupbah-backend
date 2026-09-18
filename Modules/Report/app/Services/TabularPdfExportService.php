@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Report\Services;
 
-use Barryvdh\DomPDF\Facade\Pdf;
+use App\Services\PdfRenderer;
 use Maatwebsite\Excel\Concerns\FromQuery;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
@@ -14,6 +14,7 @@ final class TabularPdfExportService
 {
     public function __construct(
         private readonly ExportManager $exports,
+        private readonly PdfRenderer $pdfRenderer = new PdfRenderer(),
     ) {}
 
     public function write(string $pdfType, array $params, string $targetPath): int
@@ -39,14 +40,18 @@ final class TabularPdfExportService
             $rows[] = $this->normaliseRow($export->map($record));
         }
 
-        Pdf::loadView('report::pdf.tabular', [
-            'title' => $this->exports->labelFor($sourceType),
-            'headings' => $export->headings(),
-            'rows' => $rows,
-            'generatedAt' => now(),
-        ])
-            ->setPaper('a4', 'landscape')
-            ->save($targetPath);
+        $this->pdfRenderer->save(
+            'report::pdf.tabular',
+            [
+                'title' => $this->exports->labelFor($sourceType),
+                'headings' => $export->headings(),
+                'rows' => $rows,
+                'generatedAt' => now(),
+            ],
+            $targetPath,
+            'a4',
+            'landscape'
+        );
 
         return count($rows);
     }

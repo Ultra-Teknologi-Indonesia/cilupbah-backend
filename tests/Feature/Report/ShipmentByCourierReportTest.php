@@ -100,9 +100,9 @@ class ShipmentByCourierReportTest extends TestCase
 
     private function html(bool $detail, array $filters = []): string
     {
-        return $this->service->build($detail, [
+        return $this->service->renderHtml($detail, [
             'from' => '2026-07-18', 'to' => '2026-07-18',
-        ] + $filters)->getDomPDF()->outputHtml();
+        ] + $filters);
     }
 
     public function test_normalizer_memetakan_nama_layanan_ke_keluarga_ekspedisi(): void
@@ -165,8 +165,7 @@ class ShipmentByCourierReportTest extends TestCase
         $this->makeOrder('SP-OK', 'SPX Hemat', 1);
         $this->makeOrder('LZ-UNMAPPED', 'LEX ID', 1, unmapped: true);
 
-        $rows = $this->service->build(true, ['from' => '2026-07-18', 'to' => '2026-07-18']);
-        $html = $rows->getDomPDF()->outputHtml();
+        $html = $this->service->renderHtml(true, ['from' => '2026-07-18', 'to' => '2026-07-18']);
 
         $this->assertStringContainsString('SP-OK', $html);
         $this->assertStringNotContainsString('LZ-UNMAPPED', $html);

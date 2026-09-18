@@ -13,10 +13,10 @@ use Modules\Inbound\Models\Inbound;
 use Modules\Inbound\Services\InboundService;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Warehouse\Services\CompanyProfileService;
+use App\Services\PdfRenderer;
 use App\Traits\StockLockable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
-use Barryvdh\DomPDF\Facade\Pdf;
 
 class PurchaseOrderService
 {
@@ -28,6 +28,7 @@ class PurchaseOrderService
         protected InventoryRepository $inventoryRepository,
         protected CompanyProfileService $companyProfile,
         protected PurchaseOrderActivityLogger $activityLogger,
+        protected PdfRenderer $pdfRenderer,
     ) {}
 
     public function downloadPdf(string $id)
@@ -39,12 +40,16 @@ class PurchaseOrderService
 
         $company = $this->companyProfile->forPdf();
 
-        $pdf = Pdf::loadView('purchase::pdf.purchase-order', [
-            'po'      => $po,
-            'company' => $company,
-        ])->setPaper('a4', 'portrait');
-
-        return $pdf->stream("PO-{$po->po_number}.pdf");
+        return $this->pdfRenderer->stream(
+            'purchase::pdf.purchase-order',
+            [
+                'po'      => $po,
+                'company' => $company,
+            ],
+            "PO-{$po->po_number}.pdf",
+            'a4',
+            'portrait'
+        );
     }
 
     public function getAllPaginated(int $limit = 10)

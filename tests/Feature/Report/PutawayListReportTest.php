@@ -131,8 +131,7 @@ class PutawayListReportTest extends TestCase
 
     private function html(array $putawayIds = []): string
     {
-        return $this->service->build('2026-07-20', $this->pusat->id, $putawayIds)
-            ->getDomPDF()->outputHtml();
+        return $this->service->renderHtml('2026-07-20', $this->pusat->id, $putawayIds);
     }
 
     public function test_menampilkan_kepala_dokumen_lengkap(): void

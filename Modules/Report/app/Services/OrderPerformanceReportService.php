@@ -2,7 +2,7 @@
 
 namespace Modules\Report\Services;
 
-use Barryvdh\DomPDF\Facade\Pdf;
+use App\Services\PdfRenderer;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Modules\Report\Repositories\ReportRepository;
@@ -13,6 +13,7 @@ class OrderPerformanceReportService
 {
     public function __construct(
         protected ReportRepository $repository,
+        protected PdfRenderer $pdfRenderer = new PdfRenderer(),
     ) {}
 
     public static function formatDuration(int|float|null $seconds, bool $withSeconds = true): string
@@ -26,14 +27,18 @@ class OrderPerformanceReportService
             : sprintf('%d jam %d menit', $jam, $menit);
     }
 
-    public function build(string $type, bool $detail, array $filters)
+    public function build(string $type, bool $detail, array $filters): string
     {
         $payload = $this->pdfPayload($type, $detail, $filters);
 
-        $pdf = Pdf::loadView($payload['view'], $payload['data']);
-        $pdf->setPaper('a4', $payload['orientation']);
+        return $this->pdfRenderer->bytes($payload['view'], $payload['data'], 'a4', $payload['orientation']);
+    }
 
-        return $pdf;
+    public function renderHtml(string $type, bool $detail, array $filters): string
+    {
+        $payload = $this->pdfPayload($type, $detail, $filters);
+
+        return view($payload['view'], $payload['data'])->render();
     }
 
     public function pdfPayload(string $type, bool $detail, array $filters): array

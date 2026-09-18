@@ -2,8 +2,8 @@
 
 namespace Modules\Report\Services;
 
+use App\Services\PdfRenderer;
 use App\Support\WarehouseAccess;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Modules\Report\Repositories\ReportRepository;
@@ -14,6 +14,7 @@ class PutawayListReportService
 {
     public function __construct(
         protected ReportRepository $repository,
+        protected PdfRenderer $pdfRenderer = new PdfRenderer(),
     ) {}
 
     public function lookup(string $date, string $locationId): array
@@ -25,14 +26,18 @@ class PutawayListReportService
             ->all();
     }
 
-    public function build(string $date, string $locationId, array $putawayIds = [])
+    public function build(string $date, string $locationId, array $putawayIds = []): string
     {
         $payload = $this->pdfPayload($date, $locationId, $putawayIds);
 
-        $pdf = Pdf::loadView($payload['view'], $payload['data']);
-        $pdf->setPaper('a4', 'portrait');
+        return $this->pdfRenderer->bytes($payload['view'], $payload['data'], 'a4', 'portrait');
+    }
 
-        return $pdf;
+    public function renderHtml(string $date, string $locationId, array $putawayIds = []): string
+    {
+        $payload = $this->pdfPayload($date, $locationId, $putawayIds);
+
+        return view($payload['view'], $payload['data'])->render();
     }
 
     public function pdfPayload(string $date, string $locationId, array $putawayIds = []): array

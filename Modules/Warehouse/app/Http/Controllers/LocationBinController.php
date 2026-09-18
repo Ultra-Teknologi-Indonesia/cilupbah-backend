@@ -3,7 +3,7 @@
 namespace Modules\Warehouse\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Barryvdh\DomPDF\Facade\Pdf;
+use App\Services\PdfRenderer;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
@@ -52,6 +52,7 @@ class LocationBinController extends Controller
         protected BinLayoutImporter $binLayoutImporter,
         protected BinQrPrintService $qrPrintService,
         protected BinImportTemplateService $templateService,
+        protected PdfRenderer $pdfRenderer,
     ) {}
 
     #[OA\Get(
@@ -488,21 +489,25 @@ class LocationBinController extends Controller
             $qrSize = $this->qrSizeFor($paper);
             $items = BinQrItemResource::mapCollection($print['bins'], $qrSize);
 
-            $view = Pdf::loadView('warehouse::pdf.bin-qr', [
-                'location' => $location,
-                'items' => $items,
-                'paper' => $paper,
-            ]);
-
-            $this->applyPaperSettings($view, $paper);
-
             $filename = sprintf(
                 'bin-qr-%s-%s.pdf',
                 $location->location_code ?: 'LOC',
                 now()->format('YmdHis')
             );
 
-            return $view->stream($filename);
+            $paperConfig = $this->resolvePaper($paper);
+
+            return $this->pdfRenderer->stream(
+                'warehouse::pdf.bin-qr',
+                [
+                    'location' => $location,
+                    'items' => $items,
+                    'paper' => $paper,
+                ],
+                $filename,
+                $paperConfig,
+                'portrait'
+            );
         } catch (Throwable $e) {
             report($e);
 
@@ -541,21 +546,13 @@ class LocationBinController extends Controller
         ], 'Job print QR rak berhasil dibuat.');
     }
 
-    protected function applyPaperSettings($pdf, string $paper): void
+    protected function resolvePaper(string $paper): string|array
     {
-        switch ($paper) {
-            case self::PAPER_THERMAL_50X40:
-                $pdf->setPaper([0, 0, 141.7, 113.4], 'portrait');
-                break;
-            case self::PAPER_THERMAL_80X40:
-                $pdf->setPaper([0, 0, 226.8, 113.4], 'portrait');
-                break;
-            case self::PAPER_A4_SINGLE:
-            case self::PAPER_A4_MULTI:
-            default:
-                $pdf->setPaper('a4', 'portrait');
-                break;
-        }
+        return match ($paper) {
+            self::PAPER_THERMAL_50X40 => [0, 0, 141.7, 113.4],
+            self::PAPER_THERMAL_80X40 => [0, 0, 226.8, 113.4],
+            default => 'a4',
+        };
     }
 
     protected function qrSizeFor(string $paper): int

@@ -4,8 +4,8 @@ namespace Modules\Inventory\Http\Controllers;
 
 use App\Exceptions\UserFacingException;
 use App\Http\Controllers\Controller;
+use App\Services\PdfRenderer;
 use App\Support\ActorName;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -27,6 +27,7 @@ class StockAdjustmentController extends Controller
     public function __construct(
         protected StockAdjustmentService $adjustmentService,
         protected ExportManager $exportManager,
+        protected PdfRenderer $pdfRenderer,
     ) {}
 
     #[OA\Get(
@@ -328,11 +329,13 @@ class StockAdjustmentController extends Controller
 
             $filename = 'Laporan-Penyesuaian-'.$adjustment->adjustment_no.'.pdf';
 
-            $pdf = Pdf::loadView('inventory::pdf.stock-adjustment', [
-                'adjustment' => $adjustment,
-            ])->setPaper('a4', 'portrait');
-
-            return $pdf->stream($filename);
+            return $this->pdfRenderer->stream(
+                'inventory::pdf.stock-adjustment',
+                ['adjustment' => $adjustment],
+                $filename,
+                'a4',
+                'portrait'
+            );
         } catch (Throwable $e) {
             report($e);
 
@@ -386,11 +389,13 @@ class StockAdjustmentController extends Controller
 
             $filename = 'Laporan-Penyesuaian-Bulk-'.now()->format('Ymd-His').'.pdf';
 
-            $pdf = Pdf::loadView('inventory::pdf.stock-adjustment-bulk', [
-                'adjustments' => $adjustments,
-            ])->setPaper('a4', 'portrait');
-
-            return $pdf->stream($filename);
+            return $this->pdfRenderer->stream(
+                'inventory::pdf.stock-adjustment-bulk',
+                ['adjustments' => $adjustments],
+                $filename,
+                'a4',
+                'portrait'
+            );
         } catch (Throwable $e) {
             report($e);
 
