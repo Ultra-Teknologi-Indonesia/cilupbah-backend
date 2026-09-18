@@ -4,7 +4,7 @@ namespace Modules\Sales\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
-use Maatwebsite\Excel\Facades\Excel;
+use App\Facades\Xlsx;
 use Modules\Sales\Exports\SettlementReportExport;
 use Modules\Sales\Http\Resources\SalesOrderResource;
 use Modules\Sales\Services\OrderSettlementService;
@@ -73,7 +73,7 @@ class OrderSettlementController extends Controller
 
         $filename = 'laporan-settlement-' . now()->format('Ymd') . '.xlsx';
 
-        return Excel::download(new SettlementReportExport($orders), $filename);
+        return Xlsx::download(new SettlementReportExport($orders), $filename);
     }
 
     public function exportAsync(Request $request, ExportManager $exports): JsonResponse

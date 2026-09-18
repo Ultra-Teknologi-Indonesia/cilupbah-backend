@@ -50,22 +50,24 @@ final class RenderedPdfExportService
 
     private function penyesuaianStokPayload(array $params): array
     {
-        $maxRows = max(1, (int) config('exports.pdf_max_rows', 1000));
-        $lineCount = app(ReportRepository::class)
-            ->penyesuaianStokLinesQuery(
-                (string) $params['start_date'],
-                (string) $params['end_date'],
-                (array) ($params['product_ids'] ?? []),
-                (array) ($params['location_ids'] ?? []),
-            )
-            ->limit($maxRows + 1)
-            ->get()
-            ->count();
+        $maxRows = (int) config('exports.pdf_max_rows', 0);
+        if ($maxRows > 0) {
+            $lineCount = app(ReportRepository::class)
+                ->penyesuaianStokLinesQuery(
+                    (string) $params['start_date'],
+                    (string) $params['end_date'],
+                    (array) ($params['product_ids'] ?? []),
+                    (array) ($params['location_ids'] ?? []),
+                )
+                ->limit($maxRows + 1)
+                ->get()
+                ->count();
 
-        if ($lineCount > $maxRows) {
-            throw new RuntimeException(
-                "PDF dibatasi {$maxRows} baris agar server tetap stabil. Gunakan Excel untuk data yang lebih besar."
-            );
+            if ($lineCount > $maxRows) {
+                throw new RuntimeException(
+                    "PDF dibatasi {$maxRows} baris agar server tetap stabil. Gunakan Excel untuk data yang lebih besar."
+                );
+            }
         }
 
         return [

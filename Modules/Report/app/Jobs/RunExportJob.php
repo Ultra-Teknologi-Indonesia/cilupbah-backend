@@ -9,7 +9,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use Maatwebsite\Excel\Facades\Excel;
+use App\Services\XlsxRenderer;
 use Modules\Inventory\Services\PutawayBulkPdfExportService;
 use Modules\Inventory\Services\StockAdjustmentBulkPdfExportService;
 use Modules\Inventory\Services\TransferBulkPdfExportService;
@@ -97,26 +97,26 @@ class RunExportJob implements ShouldQueue
             'memory_limit' => ini_get('memory_limit'),
         ]);
 
-        if ($isPdf || $isCsv) {
-            $temporaryPath = tempnam(sys_get_temp_dir(), 'cilupbah-export-');
-            if ($temporaryPath === false) {
-                throw new \RuntimeException('Tidak dapat membuat berkas sementara untuk export.');
-            }
+        $temporaryPath = tempnam(sys_get_temp_dir(), 'cilupbah-export-');
+        if ($temporaryPath === false) {
+            throw new \RuntimeException('Tidak dapat membuat berkas sementara untuk export.');
+        }
 
-            try {
-                if ($isCsv) {
-                    if ($job->type === 'stock-position-csv') {
-                        $exportedRows = app(StockPositionReportService::class)->writeCsv($params, $temporaryPath);
-                    } elseif ($job->type === 'product-catalog-csv') {
-                        $exportedRows = app(ProductCatalogCsvWriter::class)->write(
-                            new ProductCatalogCsvExport($params),
-                            $temporaryPath,
-                        );
-                    } else {
-                        $export = $manager->build($job->type, $params);
-                        $exportedRows = app(StreamingCsvExportService::class)->write($export, $temporaryPath);
-                    }
-                } elseif ($job->type === 'monitor-stock-pdf') {
+        try {
+            if ($isCsv) {
+                if ($job->type === 'stock-position-csv') {
+                    $exportedRows = app(StockPositionReportService::class)->writeCsv($params, $temporaryPath);
+                } elseif ($job->type === 'product-catalog-csv') {
+                    $exportedRows = app(ProductCatalogCsvWriter::class)->write(
+                        new ProductCatalogCsvExport($params),
+                        $temporaryPath,
+                    );
+                } else {
+                    $export = $manager->build($job->type, $params);
+                    $exportedRows = app(StreamingCsvExportService::class)->write($export, $temporaryPath);
+                }
+            } elseif ($isPdf) {
+                if ($job->type === 'monitor-stock-pdf') {
                     app(MonitorStockReportService::class)->writePdf($params, $temporaryPath);
                 } elseif ($job->type === 'stock-position-pdf') {
                     app(StockPositionReportService::class)->writePdf($params, $temporaryPath);
@@ -151,22 +151,24 @@ class RunExportJob implements ShouldQueue
                         $temporaryPath,
                     );
                 }
-                $stream = fopen($temporaryPath, 'rb');
-                if ($stream === false) {
-                    throw new \RuntimeException('Tidak dapat membaca hasil export.');
-                }
+            } else {
 
-                try {
-                    Storage::disk($diskName)->put($path, $stream);
-                } finally {
-                    fclose($stream);
-                }
-            } finally {
-                @unlink($temporaryPath);
+                $export = $manager->build($job->type, $params);
+                $exportedRows = app(\App\Services\XlsxRenderer::class)->save($export, $temporaryPath);
             }
-        } else {
-            $export = $manager->build($job->type, $params);
-            Excel::store($export, $path, $diskName);
+
+            $stream = fopen($temporaryPath, 'rb');
+            if ($stream === false) {
+                throw new \RuntimeException('Tidak dapat membaca hasil export.');
+            }
+
+            try {
+                Storage::disk($diskName)->put($path, $stream);
+            } finally {
+                fclose($stream);
+            }
+        } finally {
+            @unlink($temporaryPath);
         }
 
         $job->update([

@@ -72,6 +72,64 @@ class PickingBoardListPayloadTest extends TestCase
             ->assertJsonMissingPath('data.0.updated_at');
     }
 
+    public function test_mobile_picklist_detail_returns_items_and_creator_without_changing_web_payload(): void
+    {
+        $user = $this->createPrivilegedUser();
+        $location = Location::factory()->create();
+        $order = SalesOrder::factory()->create([
+            'status' => 'reserved',
+            'location_id' => $location->id,
+        ]);
+        $variantId = $this->seedProductVariant('MOBILE-DETAIL-SKU');
+        DB::table('product_variants')
+            ->where('id', $variantId)
+            ->update(['barcode' => 'MOBILE-DETAIL-BARCODE']);
+        $orderItem = SalesOrderItem::create([
+            'order_id' => $order->id,
+            'item_id' => $variantId,
+            'sku' => 'MOBILE-DETAIL-SKU',
+            'description' => 'Mobile detail item',
+            'qty_in_base' => 2,
+        ]);
+        $picklist = Picklist::create([
+            'picklist_no' => 'PICK-MOBILE-DETAIL',
+            'location_id' => $location->id,
+            'status' => Picklist::STATUS_IN_PROGRESS,
+            'picker_id' => $user->id,
+            'created_by' => $user->id,
+        ]);
+        $picklistItem = PicklistItem::create([
+            'picklist_id' => $picklist->id,
+            'order_id' => $order->id,
+            'order_item_id' => $orderItem->id,
+            'item_id' => $variantId,
+            'sku' => 'MOBILE-DETAIL-SKU',
+            'qty_ordered' => 2,
+            'qty_picked' => 0,
+        ]);
+
+        $webResponse = $this->actingAs($user, 'sanctum')
+            ->withHeader('X-Client-Channel', 'WEB')
+            ->getJson("/api/v1/outbound/picklists/{$picklist->id}");
+
+        $webResponse->assertOk()
+            ->assertJsonMissingPath('data.items')
+            ->assertJsonMissingPath('data.creator');
+
+        $mobileResponse = $this->actingAs($user, 'sanctum')
+            ->withHeader('X-Client-Channel', 'MOBILE')
+            ->getJson("/api/v1/outbound/picklists/{$picklist->id}");
+
+        $mobileResponse->assertOk()
+            ->assertJsonPath('data.creator.id', $user->id)
+            ->assertJsonPath('data.creator.name', $user->name)
+            ->assertJsonPath('data.items.0.id', $picklistItem->id)
+            ->assertJsonPath('data.items.0.picklist_id', $picklist->id)
+            ->assertJsonPath('data.items.0.order_item_id', $orderItem->id)
+            ->assertJsonPath('data.items.0.product.barcode', 'MOBILE-DETAIL-BARCODE')
+            ->assertJsonPath('data.items.0.product.product.name', 'Prod-MOBILE-DETAIL-SKU');
+    }
+
     public function test_finish_pick_returns_picklist_and_invoice_references_without_full_order_data(): void
     {
         $user = $this->createPrivilegedUser();

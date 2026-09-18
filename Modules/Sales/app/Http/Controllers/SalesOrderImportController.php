@@ -5,7 +5,7 @@ namespace Modules\Sales\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
-use Maatwebsite\Excel\Facades\Excel;
+use App\Facades\Xlsx;
 use Modules\Sales\Exports\SalesOrderImportErrorReportExport;
 use Modules\Sales\Exports\SalesOrderImportTemplateExport;
 use Modules\Sales\Http\Resources\SalesOrderImportBatchResource;
@@ -105,7 +105,7 @@ class SalesOrderImportController extends Controller
             return $this->errorResponse('Batch tidak ditemukan', 404);
         }
 
-        $content = Excel::raw(new SalesOrderImportErrorReportExport($model), \Maatwebsite\Excel\Excel::XLSX);
+        $content = Xlsx::raw(new SalesOrderImportErrorReportExport($model));
 
         return response($content, 200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -116,7 +116,7 @@ class SalesOrderImportController extends Controller
 
     public function downloadTemplate()
     {
-        $content = Excel::raw(new SalesOrderImportTemplateExport(), \Maatwebsite\Excel\Excel::XLSX);
+        $content = Xlsx::raw(new SalesOrderImportTemplateExport());
 
         return response($content, 200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

@@ -5,7 +5,7 @@ namespace Modules\Product\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
-use Maatwebsite\Excel\Facades\Excel;
+use App\Facades\Xlsx;
 use Modules\Product\Exports\BundleTemplateExport;
 use Modules\Product\Exports\ImportErrorReportExport;
 use Modules\Product\Exports\ProductTemplateExport;
@@ -124,7 +124,7 @@ class ProductImportController extends Controller
             return $this->errorResponse('Batch tidak ditemukan', 404);
         }
 
-        $content = Excel::raw(new ImportErrorReportExport($model), \Maatwebsite\Excel\Excel::XLSX);
+        $content = Xlsx::raw(new ImportErrorReportExport($model));
 
         return response($content, 200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -135,7 +135,7 @@ class ProductImportController extends Controller
 
     public function downloadSingleTemplate()
     {
-        $content = Excel::raw(new ProductTemplateExport(), \Maatwebsite\Excel\Excel::XLSX);
+        $content = Xlsx::raw(new ProductTemplateExport());
 
         return response($content, 200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -146,7 +146,7 @@ class ProductImportController extends Controller
 
     public function downloadBundleTemplate()
     {
-        $content = Excel::raw(new BundleTemplateExport(), \Maatwebsite\Excel\Excel::XLSX);
+        $content = Xlsx::raw(new BundleTemplateExport());
 
         return response($content, 200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

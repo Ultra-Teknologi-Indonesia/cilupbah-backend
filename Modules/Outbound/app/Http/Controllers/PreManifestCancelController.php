@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Maatwebsite\Excel\Facades\Excel;
+use App\Facades\Xlsx;
 use Modules\Outbound\Http\Resources\PreManifestCancelResource;
 use Modules\Outbound\Services\PreManifestCancelService;
 use Modules\Sales\Exports\CancelledOrdersExport;
@@ -161,6 +161,6 @@ class PreManifestCancelController extends Controller
 
         $filename = sprintf('cancel-pasca-packing-%s-%s.xlsx', $dateFrom, $dateTo);
 
-        return Excel::download($export, $filename);
+        return Xlsx::download($export, $filename);
     }
 }

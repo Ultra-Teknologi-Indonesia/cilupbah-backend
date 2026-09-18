@@ -26,18 +26,25 @@ final class TabularPdfExportService
             throw new RuntimeException("Export {$sourceType} tidak mendukung format PDF tabel.");
         }
 
-        $maxRows = max(1, (int) config('exports.pdf_max_rows', 1000));
-        $records = $export->query()->limit($maxRows + 1)->get();
+        $maxRows = (int) config('exports.pdf_max_rows', 0);
+        $query = $export->query();
 
-        if ($records->count() > $maxRows) {
-            throw new RuntimeException(
-                "PDF dibatasi {$maxRows} baris agar server tetap stabil. Gunakan Excel untuk data yang lebih besar."
-            );
-        }
-
-        $rows = [];
-        foreach ($records as $record) {
-            $rows[] = $this->normaliseRow($export->map($record));
+        if ($maxRows > 0) {
+            $records = $query->limit($maxRows + 1)->get();
+            if ($records->count() > $maxRows) {
+                throw new RuntimeException(
+                    "PDF dibatasi {$maxRows} baris agar server tetap stabil. Gunakan Excel untuk data yang lebih besar."
+                );
+            }
+            $rows = [];
+            foreach ($records as $record) {
+                $rows[] = $this->normaliseRow($export->map($record));
+            }
+        } else {
+            $rows = [];
+            foreach ($query->cursor() as $record) {
+                $rows[] = $this->normaliseRow($export->map($record));
+            }
         }
 
         $this->pdfRenderer->save(

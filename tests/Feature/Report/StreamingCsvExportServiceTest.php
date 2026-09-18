@@ -96,9 +96,9 @@ class StreamingCsvExportServiceTest extends TestCase
             $this->assertSame(1, $count);
 
             $content = file_get_contents($tempPath);
-            // Check BOM
+
             $this->assertStringStartsWith("\xEF\xBB\xBF", $content);
-            // Check semicolon delimiter
+
             $this->assertStringContainsString('Header1;Header2', $content);
             $this->assertStringContainsString('Alpha;Beta', $content);
         } finally {

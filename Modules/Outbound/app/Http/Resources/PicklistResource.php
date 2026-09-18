@@ -29,6 +29,10 @@ class PicklistResource extends JsonResource
             'started_at' => $this->started_at,
             'completed_at' => $this->completed_at,
             'created_at' => $this->created_at,
+            'creator' => $this->whenLoaded('creator', fn () => $this->creator ? [
+                'id' => $this->creator->id,
+                'name' => $this->creator->name,
+            ] : null),
             'items' => $this->whenLoaded('items', fn () => PicklistItemResource::collection($this->items)),
         ];
     }

@@ -2,6 +2,7 @@
 
 namespace Modules\Outbound\Http\Resources;
 
+use App\Enums\ClientChannelEnum;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -12,12 +13,16 @@ final class PicklistItemResource extends JsonResource
         $product = $this->relationLoaded('product') ? $this->product : null;
         $order = $this->relationLoaded('order') ? $this->order : null;
         $bin = $this->relationLoaded('bin') ? $this->bin : null;
+        $isMobile = $request->attributes->get('client_channel') === ClientChannelEnum::MOBILE
+            || strtoupper((string) $request->header('X-Client-Channel')) === ClientChannelEnum::MOBILE->value;
 
         return [
             'id' => $this->id,
+            'picklist_id' => $this->picklist_id,
             'sku' => $this->sku,
             'item_id' => $this->item_id,
             'order_id' => $this->order_id,
+            'order_item_id' => $this->order_item_id,
             'bin_id' => $this->bin_id,
             'qty_ordered' => (int) $this->qty_ordered,
             'qty_picked' => (int) $this->qty_picked,
@@ -31,12 +36,30 @@ final class PicklistItemResource extends JsonResource
             'image_url' => $product && $this->relationLoaded('product')
                 ? $this->image_url
                 : null,
-            'product' => $product ? [
+            'product' => $product ? array_merge([
                 'variant_name' => null,
-                'product' => $product->relationLoaded('product') && $product->product ? [
+                'product' => $product->relationLoaded('product') && $product->product ? array_merge([
                     'name' => $product->product->name,
-                ] : null,
-            ] : null,
+                ], $isMobile ? [
+                    'media' => $product->product->relationLoaded('media')
+                        ? $product->product->media->map(fn ($media) => [
+                            'url' => $media->url,
+                            'is_primary' => (bool) $media->is_primary,
+                            'media_type' => $media->media_type,
+                        ])->values()
+                        : [],
+                ] : []) : null,
+            ], $isMobile ? [
+                'barcode' => $product->barcode,
+                'media' => $product->relationLoaded('media')
+                    ? $product->media->map(fn ($media) => [
+                        'url' => $media->url,
+                        'is_primary' => (bool) $media->is_primary,
+                        'media_type' => $media->media_type,
+                    ])->values()
+                    : [],
+            ] : []) : null,
+            'recommended_bin_code' => $this->recommended_bin_code,
             'bin' => $bin ? [
                 'bin_final_code' => $bin->bin_final_code,
                 'bin_code' => $bin->bin_code,

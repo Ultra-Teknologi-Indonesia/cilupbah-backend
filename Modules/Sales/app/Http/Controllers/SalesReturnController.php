@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Support\ActorName;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Maatwebsite\Excel\Facades\Excel;
+use App\Facades\Xlsx;
 use Modules\Report\Services\ExportManager;
 use Modules\Sales\Http\Requests\AcceptSalesReturnRequest;
 use Modules\Sales\Http\Requests\BulkSalesReturnActionRequest;
@@ -603,7 +603,7 @@ class SalesReturnController extends Controller
             $request->user()?->id,
         );
 
-        return Excel::download($export, $filename);
+        return Xlsx::download($export, $filename);
     }
 
     public function reportExportAsync(SalesReturnReportRequest $request, ExportManager $exports): JsonResponse
@@ -625,6 +625,6 @@ class SalesReturnController extends Controller
             $request->user()?->id,
         );
 
-        return Excel::download($export, $filename);
+        return Xlsx::download($export, $filename);
     }
 }

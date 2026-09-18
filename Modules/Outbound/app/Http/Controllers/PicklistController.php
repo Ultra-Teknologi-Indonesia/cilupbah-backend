@@ -2,6 +2,7 @@
 
 namespace Modules\Outbound\Http\Controllers;
 
+use App\Enums\ClientChannelEnum;
 use App\Enums\UnassignReasonEnum;
 use App\Exceptions\UserFacingException;
 use App\Http\Controllers\Controller;
@@ -173,9 +174,11 @@ class PicklistController extends Controller
             new OA\Response(response: 404, description: 'Not Found'),
         ]
     )]
-    public function show(string $id): JsonResponse
+    public function show(string $id, Request $request): JsonResponse
     {
-        $picklist = $this->picklistService->getBoardDetail($id);
+        $isMobile = $request->attributes->get('client_channel') === ClientChannelEnum::MOBILE
+            || strtoupper((string) $request->header('X-Client-Channel')) === ClientChannelEnum::MOBILE->value;
+        $picklist = $this->picklistService->getBoardDetail($id, includeItems: $isMobile);
 
         if (! $picklist) {
             return $this->errorResponse('Picklist tidak ditemukan.', 404);

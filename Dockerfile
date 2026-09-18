@@ -53,8 +53,8 @@ RUN apt-get update && apt-get install -y \
         gd \
         zip \
         opcache \
-    && pecl install redis \
-    && docker-php-ext-enable redis \
+    && pecl install redis xlswriter \
+    && docker-php-ext-enable redis xlswriter \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

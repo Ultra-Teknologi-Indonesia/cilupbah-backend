@@ -7,7 +7,7 @@ use App\Services\PdfRenderer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Maatwebsite\Excel\Facades\Excel;
+use App\Facades\Xlsx;
 use Modules\Report\Exports\CustomerListExport;
 use Modules\Report\Exports\NegativeStockReportExport;
 use Modules\Report\Exports\PicklistDetailPhotoExport;
@@ -589,7 +589,7 @@ class ReportController extends Controller
             $validated['to'] ?? now()->format('Y-m-d'),
         );
 
-        return Excel::download($export, $filename);
+        return Xlsx::download($export, $filename);
     }
 
     #[OA\Get(
@@ -612,7 +612,7 @@ class ReportController extends Controller
             $validated['to'],
         );
 
-        return Excel::download($export, $filename);
+        return Xlsx::download($export, $filename);
     }
 
     #[OA\Get(
@@ -634,7 +634,7 @@ class ReportController extends Controller
             $validated['to'],
         );
 
-        return Excel::download($export, $filename);
+        return Xlsx::download($export, $filename);
     }
 
     #[OA\Post(
@@ -699,7 +699,7 @@ class ReportController extends Controller
             $validated['to'],
         );
 
-        return Excel::download($export, $filename);
+        return Xlsx::download($export, $filename);
     }
 
     public function shipmentListExportAsync(ShipmentListExportRequest $request, ExportManager $exports): JsonResponse
@@ -871,7 +871,7 @@ class ReportController extends Controller
             $validated['to'],
         );
 
-        return Excel::download(new SectionedReportExport($report), $filename);
+        return Xlsx::download(new SectionedReportExport($report), $filename);
     }
 
     #[OA\Get(
@@ -895,7 +895,7 @@ class ReportController extends Controller
             $validated['to'],
         );
 
-        return Excel::download(new SectionedReportExport($report), $filename);
+        return Xlsx::download(new SectionedReportExport($report), $filename);
     }
 
     #[OA\Get(
@@ -917,7 +917,7 @@ class ReportController extends Controller
 
         $filename = sprintf('Daftar-Penempatan-Barang_%s.xlsx', $validated['date']);
 
-        return Excel::download(new SectionedReportExport($report), $filename);
+        return Xlsx::download(new SectionedReportExport($report), $filename);
     }
 
     #[OA\Get(
@@ -941,7 +941,7 @@ class ReportController extends Controller
             $validated['to'],
         );
 
-        return Excel::download(new SectionedReportExport($report), $filename);
+        return Xlsx::download(new SectionedReportExport($report), $filename);
     }
 
     #[OA\Post(
@@ -962,7 +962,7 @@ class ReportController extends Controller
 
         $filename = sprintf('Detail-Picklist_%s.xlsx', substr($validated['picklist_id'], 0, 8));
 
-        return Excel::download(
+        return Xlsx::download(
             new PicklistDetailPhotoExport($data['picklist'], $data['groups']),
             $filename,
         );
@@ -992,7 +992,7 @@ class ReportController extends Controller
             $validated['to'] ?? now()->format('Y-m-d'),
         );
 
-        return Excel::download(new SalesListPesananExport($query), $filename);
+        return Xlsx::download(new SalesListPesananExport($query), $filename);
     }
 
     #[OA\Get(
@@ -1042,7 +1042,7 @@ class ReportController extends Controller
             $validated['to'] ?? now()->format('Y-m-d'),
         );
 
-        return Excel::download(new SalesProductExport($query), $filename);
+        return Xlsx::download(new SalesProductExport($query), $filename);
     }
 
     #[OA\Get(
@@ -1069,7 +1069,7 @@ class ReportController extends Controller
             $validated['to'] ?? now()->format('Y-m-d'),
         );
 
-        return Excel::download(new SalesReturnExport($query), $filename);
+        return Xlsx::download(new SalesReturnExport($query), $filename);
     }
 
     #[OA\Get(
@@ -1103,7 +1103,7 @@ class ReportController extends Controller
             $validated['to'] ?? now()->format('Y-m-d'),
         );
 
-        return Excel::download($export, $filename);
+        return Xlsx::download($export, $filename);
     }
 
     #[OA\Get(
@@ -1129,7 +1129,7 @@ class ReportController extends Controller
             $validated['to'] ?? now()->format('Y-m-d'),
         );
 
-        return Excel::download(new CustomerListExport($query), $filename);
+        return Xlsx::download(new CustomerListExport($query), $filename);
     }
 
     public function lazadaGetDocument(LazadaGetDocumentRequest $request, LazadaDocumentService $service): JsonResponse

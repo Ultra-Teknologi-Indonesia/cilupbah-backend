@@ -25,6 +25,11 @@ class SectionedReportExport implements FromArray, WithEvents, WithTitle, ShouldA
         private readonly string $sheetTitle = 'Laporan',
     ) {}
 
+    public function getReport(): SectionedReport
+    {
+        return $this->report;
+    }
+
     public function array(): array
     {
         $cols = $this->report->columnCount();

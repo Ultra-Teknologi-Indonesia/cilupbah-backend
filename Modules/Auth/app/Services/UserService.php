@@ -13,8 +13,7 @@ use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Log;
-use Maatwebsite\Excel\Facades\Excel;
+use App\Facades\Xlsx;
 use Modules\Auth\Exports\UsersExport;
 use Modules\Auth\Repositories\PermissionRepository;
 use Modules\Auth\Repositories\UserHistoryRepository;
@@ -116,7 +115,7 @@ class UserService
 
     public function downloadUsersExport(): BinaryFileResponse
     {
-        return Excel::download(
+        return Xlsx::download(
             new UsersExport($this->userRepository->getExportUsersQuery()),
             'users_export_'.now()->format('Ymd_His').'.xlsx'
         );

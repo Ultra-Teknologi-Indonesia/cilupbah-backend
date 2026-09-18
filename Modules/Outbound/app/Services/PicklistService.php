@@ -186,9 +186,15 @@ class PicklistService
         return $this->picklistRepository->findById($id);
     }
 
-    public function getBoardDetail(string $id): ?Picklist
+    public function getBoardDetail(string $id, bool $includeItems = false): ?Picklist
     {
-        return $this->picklistRepository->findForBoardDetail($id);
+        $picklist = $this->picklistRepository->findForBoardDetail($id, $includeItems);
+
+        if ($picklist && $includeItems) {
+            $this->attachRecommendedBins($picklist);
+        }
+
+        return $picklist;
     }
 
     public function getItems(string $picklistId, int $limit = 10)

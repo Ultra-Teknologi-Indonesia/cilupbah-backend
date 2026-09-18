@@ -8,7 +8,7 @@ use App\Services\QrCodeGenerator;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Maatwebsite\Excel\Facades\Excel;
+use App\Facades\Xlsx;
 use Modules\Outbound\Exceptions\ScanRejectedException;
 use Modules\Outbound\Exports\ShipmentManifestExport;
 use Modules\Outbound\Http\Requests\AddShipmentOrdersRequest;
@@ -625,7 +625,7 @@ class ShipmentController extends Controller
             $shipmentNo = $shipment->shipment_no ?? 'SHP';
             $filename = "{$shipmentNo}-manifest.xlsx";
 
-            return Excel::download(new ShipmentManifestExport($shipment), $filename);
+            return Xlsx::download(new ShipmentManifestExport($shipment), $filename);
         } catch (Throwable $e) {
             report($e);
 

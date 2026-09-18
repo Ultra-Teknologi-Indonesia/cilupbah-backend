@@ -5,7 +5,7 @@ namespace Modules\Inventory\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Maatwebsite\Excel\Facades\Excel;
+use App\Facades\Xlsx;
 use Modules\Inventory\Exports\RackAllocationExport;
 use Modules\Inventory\Http\Resources\InventorySettingProductResource;
 use Modules\Inventory\Models\ImpexActivity;
@@ -68,7 +68,7 @@ class InventorySettingController extends Controller
             $request->user()?->id,
         );
 
-        return Excel::download(
+        return Xlsx::download(
             new RackAllocationExport(
                 is_string($locationId) ? $locationId : null,
                 is_string($search) ? $search : null,

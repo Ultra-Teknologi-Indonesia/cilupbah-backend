@@ -75,7 +75,7 @@ class ShipmentListReportTest extends TestCase
     {
         return SalesOrder::create(array_merge([
             'customer_name' => 'Pembeli',
-            'status' => 'SHIPPED',
+            'status' => 'shipped',
         ], $attrs));
     }
 
@@ -125,7 +125,7 @@ class ShipmentListReportTest extends TestCase
             'salesorder_no' => 'SP-26071806BY6NAN',
             'transaction_date' => '2026-07-18 00:00:44',
             'shipping_provider' => 'Hemat Kargo',
-            'status' => 'CANCELED',
+            'status' => 'cancelled',
             'channel_status' => ChannelStatus::CANCELLED->value,
         ]);
 
@@ -134,7 +134,7 @@ class ShipmentListReportTest extends TestCase
             'transaction_date' => '2026-07-18 00:00:50',
             'shipping_provider' => 'SPX Hemat',
             'tracking_number' => 'SPXID067109318917',
-            'status' => 'COMPLETED',
+            'status' => 'shipped',
             'channel_status' => ChannelStatus::COMPLETED->value,
         ]);
         $this->manifest($terkirim, 'SPX 18-07-2026', 'SPX Hemat');
@@ -216,13 +216,13 @@ class ShipmentListReportTest extends TestCase
         $this->makeOrder([
             'salesorder_no' => 'SP-DUA-STATUS',
             'transaction_date' => '2026-07-18 08:00:00',
-            'status' => 'PROCESSING',
+            'status' => 'pending',
             'channel_status' => ChannelStatus::READY_TO_SHIP->value,
         ]);
 
         $rows = $this->rows(['from' => '2026-07-18', 'to' => '2026-07-18']);
 
-        $this->assertSame('PROCESSING', $rows[0]->status);
+        $this->assertSame('pending', $rows[0]->status);
         $this->assertSame('READY_TO_SHIP', $rows[0]->channel_status);
     }
 
@@ -438,13 +438,13 @@ class ShipmentListReportTest extends TestCase
             'from' => '2026-07-18', 'to' => '2026-07-18',
         ]);
 
-        \Maatwebsite\Excel\Facades\Excel::store($export, 'test-pengiriman.xlsx', 'local');
+        \App\Facades\Xlsx::store($export, 'test-pengiriman.xlsx', 'local');
         $path = \Illuminate\Support\Facades\Storage::disk('local')->path('test-pengiriman.xlsx');
         $sheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($path)->getActiveSheet();
 
-        $this->assertSame(1, $sheet->getCell('A2')->getValue());
-        $this->assertSame(2, $sheet->getCell('A3')->getValue());
-        $this->assertSame(3, $sheet->getCell('A4')->getValue());
+        $this->assertEquals(1, $sheet->getCell('A2')->getValue());
+        $this->assertEquals(2, $sheet->getCell('A3')->getValue());
+        $this->assertEquals(3, $sheet->getCell('A4')->getValue());
 
         $tanggal = $sheet->getCell('D2')->getValue();
         $this->assertIsFloat($tanggal, 'Tanggal Pesanan harus serial Excel, bukan teks');
@@ -453,7 +453,7 @@ class ShipmentListReportTest extends TestCase
             \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($tanggal)->format('Y-m-d H:i'),
         );
 
-        $this->assertSame('Dikirim', $sheet->getCell('I2')->getValue(), 'Status Channel dilabeli Indonesia');
+        $this->assertSame('Dikirim', (string) $sheet->getCell('I2')->getValue(), 'Status Channel dilabeli Indonesia');
 
         @unlink($path);
     }
@@ -463,7 +463,7 @@ class ShipmentListReportTest extends TestCase
         foreach ([
             ['SP-LBL-1', '08:00:00', 'pending'],
             ['SP-LBL-2', '09:00:00', 'cancelled'],
-            ['SP-LBL-3', '10:00:00', 'ready-to-ship'],
+            ['SP-LBL-3', '10:00:00', 'READY'],
             ['SP-LBL-4', '11:00:00', 'AWAITING_BUYER_CONFIRMATION'],
             ['SP-LBL-5', '12:00:00', 'packed'],
         ] as [$no, $jam, $status]) {
@@ -478,19 +478,19 @@ class ShipmentListReportTest extends TestCase
             'from' => '2026-07-18', 'to' => '2026-07-18',
         ]);
 
-        \Maatwebsite\Excel\Facades\Excel::store($export, 'test-pengiriman-label.xlsx', 'local');
+        \App\Facades\Xlsx::store($export, 'test-pengiriman-label.xlsx', 'local');
         $path = \Illuminate\Support\Facades\Storage::disk('local')->path('test-pengiriman-label.xlsx');
         $sheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($path)->getActiveSheet();
 
-        $this->assertSame('Menunggu', $sheet->getCell('H2')->getValue());
-        $this->assertSame('Dibatalkan', $sheet->getCell('H3')->getValue());
-        $this->assertSame('Siap Kirim', $sheet->getCell('H4')->getValue(), 'Tanda hubung harus dinormalkan');
+        $this->assertSame('Menunggu', (string) $sheet->getCell('H2')->getValue());
+        $this->assertSame('Dibatalkan', (string) $sheet->getCell('H3')->getValue());
+        $this->assertSame('Siap Kirim', (string) $sheet->getCell('H4')->getValue());
         $this->assertSame(
             'Menunggu Konfirmasi Pembeli',
-            $sheet->getCell('H5')->getValue(),
+            (string) $sheet->getCell('H5')->getValue(),
             'Garis bawah dan huruf besar harus dinormalkan',
         );
-        $this->assertSame('Dikemas - Siap Dikirim', $sheet->getCell('H6')->getValue());
+        $this->assertSame('Dikemas - Siap Dikirim', (string) $sheet->getCell('H6')->getValue());
 
         @unlink($path);
     }
@@ -515,13 +515,13 @@ class ShipmentListReportTest extends TestCase
             'from' => '2026-07-18', 'to' => '2026-07-18',
         ]);
 
-        \Maatwebsite\Excel\Facades\Excel::store($export, 'test-status-channel.xlsx', 'local');
+        \App\Facades\Xlsx::store($export, 'test-status-channel.xlsx', 'local');
         $path = \Illuminate\Support\Facades\Storage::disk('local')->path('test-status-channel.xlsx');
         $sheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($path)->getActiveSheet();
 
         $this->assertSame(
             'Dikirim',
-            $sheet->getCell('I2')->getValue(),
+            (string) $sheet->getCell('I2')->getValue(),
             'Status Channel harus label, bukan kode logistik mentah',
         );
 

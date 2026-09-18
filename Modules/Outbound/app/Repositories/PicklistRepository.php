@@ -190,26 +190,57 @@ class PicklistRepository
         return $query->find($id);
     }
 
-    public function findForBoardDetail(string $id): ?Picklist
+    public function findForBoardDetail(string $id, bool $includeItems = false): ?Picklist
     {
-        $query = Picklist::query()
-            ->select([
-                'id',
-                'picklist_no',
-                'location_id',
-                'picker_id',
-                'status',
-                'assigned_at',
-                'started_at',
-                'completed_at',
-                'updated_version_at',
-                'notes',
-                'created_at',
-            ])
-            ->with([
-                'location:id,location_name,location_code',
-                'picker:id,name,email',
+        $columns = [
+            'id',
+            'picklist_no',
+            'location_id',
+            'picker_id',
+            'status',
+            'assigned_at',
+            'started_at',
+            'completed_at',
+            'updated_version_at',
+            'notes',
+            'created_at',
+        ];
+
+        if ($includeItems) {
+            $columns[] = 'created_by';
+        }
+
+        $with = [
+            'location:id,location_name,location_code',
+            'picker:id,name,email',
+        ];
+
+        if ($includeItems) {
+            $with = array_merge($with, [
+                'creator:id,name',
+                'items:id,picklist_id,order_id,order_item_id,item_id,sku,bin_id,qty_ordered,qty_picked,item_status,fail_reason_code,fail_reason_note,failed_qty',
+                'items.product:id,sku,product_id,barcode',
+                'items.product.product:id,name',
+                'items.product.media' => static fn ($query) => $query
+                    ->select(['id', 'variant_id', 'product_id', 'url', 'is_primary', 'sort_order', 'media_type'])
+                    ->where('media_type', 'image')
+                    ->orderByDesc('is_primary')
+                    ->orderBy('sort_order'),
+                'items.product.product.media' => static fn ($query) => $query
+                    ->select(['id', 'product_id', 'variant_id', 'url', 'is_primary', 'sort_order', 'media_type'])
+                    ->where('media_type', 'image')
+                    ->orderByDesc('is_primary')
+                    ->orderBy('sort_order'),
+                'items.bin:id,bin_code,bin_final_code',
+                'items.order:id,salesorder_no,customer_name,tracking_number,source',
+                'items.order.shipmentOrders:id,order_id,shipment_id',
+                'items.order.shipmentOrders.shipment:id,shipment_no',
             ]);
+        }
+
+        $query = Picklist::query()
+            ->select($columns)
+            ->with($with);
         WarehouseAccess::apply($query, 'location_id');
 
         return $query->find($id);

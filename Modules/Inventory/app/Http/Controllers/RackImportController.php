@@ -5,7 +5,7 @@ namespace Modules\Inventory\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
-use Maatwebsite\Excel\Facades\Excel;
+use App\Facades\Xlsx;
 use Modules\Inventory\Exports\RackImportErrorExport;
 use Modules\Inventory\Http\Resources\RackImportBatchResource;
 use Modules\Inventory\Http\Resources\RackImportRowResource;
@@ -96,7 +96,7 @@ class RackImportController extends Controller
             return $this->errorResponse('Batch tidak ditemukan', 404);
         }
 
-        $content = Excel::raw(new RackImportErrorExport($model), \Maatwebsite\Excel\Excel::XLSX);
+        $content = Xlsx::raw(new RackImportErrorExport($model));
 
         return response($content, 200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

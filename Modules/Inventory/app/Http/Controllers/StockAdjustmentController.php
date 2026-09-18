@@ -9,7 +9,7 @@ use App\Support\ActorName;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Maatwebsite\Excel\Facades\Excel;
+use App\Facades\Xlsx;
 use Modules\Inventory\Exports\StockAdjustmentExport;
 use Modules\Inventory\Http\Requests\BulkPdfStockAdjustmentAsyncRequest;
 use Modules\Inventory\Http\Requests\PatchStockAdjustmentRequest;
@@ -472,7 +472,7 @@ class StockAdjustmentController extends Controller
         $query = $this->adjustmentService->getQueryForExport($request);
         $filename = 'koreksi-stok-'.now()->format('Ymd').'.xlsx';
 
-        return Excel::download(new StockAdjustmentExport($query), $filename);
+        return Xlsx::download(new StockAdjustmentExport($query), $filename);
     }
 
     public function exportXlsxAsync(Request $request): JsonResponse

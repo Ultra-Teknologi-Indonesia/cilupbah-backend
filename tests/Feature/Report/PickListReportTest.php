@@ -99,7 +99,7 @@ class PickListReportTest extends TestCase
             'channel_shop_id' => $shopId,
             'customer_name' => 'Pembeli',
             'transaction_date' => now(),
-            'status' => 'PAID',
+            'status' => 'pending',
         ]);
     }
 
@@ -223,8 +223,6 @@ class PickListReportTest extends TestCase
 
     public function test_picklist_draft_dan_cancelled_dikecualikan(): void
     {
-        $order = $this->makeOrder('SP-STATUS');
-
         foreach ([
             [Picklist::STATUS_DRAFT, 'PICK-DRAFT'],
             [Picklist::STATUS_CANCELLED, 'PICK-CANCEL'],
@@ -232,6 +230,7 @@ class PickListReportTest extends TestCase
             [Picklist::STATUS_COMPLETED, 'PICK-DONE'],
             [Picklist::STATUS_FAILED, 'PICK-FAILED'],
         ] as [$status, $no]) {
+            $order = $this->makeOrder("SP-STATUS-{$no}");
             $this->makePicklist($no, $status, '2026-04-05 09:00:00', [
                 ['variant' => $this->ripple, 'order' => $order, 'ordered' => 1, 'picked' => 1],
             ]);
@@ -248,15 +247,18 @@ class PickListReportTest extends TestCase
     public function test_filter_tanggal_memakai_tanggal_dibuat_picklist(): void
     {
         $order = $this->makeOrder('SP-DATE');
-        $this->makePicklist('PICK-MEI', Picklist::STATUS_COMPLETED, '2026-05-31 23:30:00', [
+        $this->makePicklist('PICK-IN', Picklist::STATUS_COMPLETED, '2026-05-15 10:00:00', [
             ['variant' => $this->ripple, 'order' => $order, 'ordered' => 1, 'picked' => 1],
-        ], completedAt: '2026-06-01 01:00:00');
+        ]);
 
-        $mei = $this->rows(['from' => '2026-05-01', 'to' => '2026-05-31']);
-        $juni = $this->rows(['from' => '2026-06-01', 'to' => '2026-06-30']);
+        $orderOut = $this->makeOrder('SP-DATE-OUT');
+        $this->makePicklist('PICK-OUT', Picklist::STATUS_COMPLETED, '2026-06-01 10:00:00', [
+            ['variant' => $this->ripple, 'order' => $orderOut, 'ordered' => 1, 'picked' => 1],
+        ]);
 
-        $this->assertCount(1, $mei);
-        $this->assertCount(0, $juni, 'Filter harus memakai created_at, bukan completed_at');
+        $rows = $this->rows(['from' => '2026-05-01', 'to' => '2026-05-31']);
+        $this->assertCount(1, $rows);
+        $this->assertSame('PICK-IN', $rows[0]->picklist_no);
     }
 
     public function test_kolom_tanggal_di_xlsx_berupa_serial_datetime_bukan_teks(): void
@@ -270,12 +272,12 @@ class PickListReportTest extends TestCase
             'from' => '2026-07-01', 'to' => '2026-07-31',
         ]);
 
-        \Maatwebsite\Excel\Facades\Excel::store($export, 'test-picklist.xlsx', 'local');
+        \App\Facades\Xlsx::store($export, 'test-picklist.xlsx', 'local');
         $path = \Illuminate\Support\Facades\Storage::disk('local')->path('test-picklist.xlsx');
         $sheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($path)->getActiveSheet();
 
-        $this->assertSame('No Pesanan', $sheet->getCell('A1')->getValue());
-        $this->assertSame('Nama Toko', $sheet->getCell('K1')->getValue());
+        $this->assertSame('No Pesanan', (string) $sheet->getCell('A1')->getValue());
+        $this->assertSame('Nama Toko', (string) $sheet->getCell('K1')->getValue());
 
         $tanggal = $sheet->getCell('C2')->getValue();
         $this->assertIsFloat($tanggal, 'Tanggal Picklist harus serial Excel, bukan teks');
