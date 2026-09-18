@@ -1230,10 +1230,6 @@ class PicklistService
         });
     }
 
-    /**
-     * @param  array<int, string>  $ids
-     * @return array{success_count: int, failed_count: int, results: array<int, array{picklist_id: string, status: string, message: string}>}
-     */
     public function bulkRevert(array $ids, string $userId): array
     {
         $results = [];
@@ -1262,10 +1258,6 @@ class PicklistService
         ];
     }
 
-    /**
-     * @param  array<int, string>  $ids
-     * @return array{success_count: int, failed_count: int, results: array<int, array{picklist_id: string, status: string, message: string}>}
-     */
     public function bulkAssignPicker(array $ids, string $pickerId, string $assignedBy): array
     {
         $results = [];
@@ -1414,10 +1406,6 @@ class PicklistService
         $this->picklistRepository->assertOrdersAccessibleForBulkPdf($orderIds);
     }
 
-    /**
-     * @param  array<int, string>  $picklistIds
-     * @return array<int, string>
-     */
     public function orderIdsForBulkPdfByPicklists(array $picklistIds): array
     {
         $query = Picklist::query()->with('items:id,picklist_id,order_id');

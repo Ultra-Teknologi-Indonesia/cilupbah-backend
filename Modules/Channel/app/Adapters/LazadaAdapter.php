@@ -20,7 +20,7 @@ use Modules\Product\Models\ProductChannelMapping;
 
 class LazadaAdapter implements MarketplaceAdapterInterface
 {
-    /** Lazada rejects a price/quantity update containing more than 50 SKUs. */
+
     private const PRICE_QUANTITY_UPDATE_MAX_SKUS = 50;
 
     public function __construct(
@@ -291,12 +291,6 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         return $this->inboundMapper->map($channelData, $shopId);
     }
 
-    /**
-     * Sends only the SKU payloads already resolved for one Lazada listing.
-     * Lazada accepts at most 50 SKUs per price/quantity request.
-     *
-     * @param array<int, array<string, string|int>> $skuPayloads
-     */
     protected function updatePriceQuantityInChunks(array $skuPayloads, ChannelShop $shop): void
     {
         $chunks = array_chunk($skuPayloads, self::PRICE_QUANTITY_UPDATE_MAX_SKUS);

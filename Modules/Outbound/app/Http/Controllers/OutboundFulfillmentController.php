@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Modules\Outbound\Http\Requests\ExportProcessOrdersRequest;
 use Modules\Outbound\Services\OutboundFulfillmentService;
+use Modules\Sales\Jobs\WarmShippingLabelsJob;
 use OpenApi\Attributes as OA;
 
 #[OA\Tag(name: 'Outbound - Fulfillment', description: 'API Endpoints for Outbound Fulfillment Queue Views')]
@@ -418,7 +419,25 @@ class OutboundFulfillmentController extends Controller
 
         $results = $this->fulfillmentService->readyToShip($validated['order_ids']);
 
+        $this->warmShippingLabels($results);
+
         return $this->successResponse($results, 'Proses Siap Dikirim selesai.');
+    }
+
+    private function warmShippingLabels(array $results): void
+    {
+        $orderIds = collect($results)
+            ->filter(static fn (array $result): bool => in_array($result['status'] ?? null, ['success', 'skipped'], true))
+            ->pluck('order_id')
+            ->filter()
+            ->values()
+            ->all();
+
+        if ($orderIds === []) {
+            return;
+        }
+
+        WarmShippingLabelsJob::dispatch($orderIds);
     }
 
     public function bulkReadyToShip(Request $request): JsonResponse

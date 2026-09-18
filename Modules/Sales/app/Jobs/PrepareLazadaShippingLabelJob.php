@@ -25,7 +25,9 @@ class PrepareLazadaShippingLabelJob implements ShouldBeUnique, ShouldQueue
 
     public int $uniqueFor = 900;
 
-    private const MAX_GLOBAL_ATTEMPTS = 3;
+    private const MAX_GLOBAL_ATTEMPTS = 6;
+
+    private const RETRY_DELAYS_SECONDS = [5, 10, 20, 30, 60];
 
     public function __construct(
         public readonly string $orderId,
@@ -129,15 +131,17 @@ class PrepareLazadaShippingLabelJob implements ShouldBeUnique, ShouldQueue
 
         $nextAttempt = $this->attempt + 1;
         if ($nextAttempt < self::MAX_GLOBAL_ATTEMPTS) {
+            $delaySeconds = self::RETRY_DELAYS_SECONDS[$this->attempt] ?? 60;
             Log::warning('PrepareLazadaShippingLabelJob: label belum siap, retry', [
                 'order_id' => $order->id,
                 'order_sn' => $orderSn,
                 'next_attempt' => $nextAttempt,
+                'delay_seconds' => $delaySeconds,
             ]);
             self::dispatch($order->id, $nextAttempt)
                 ->onConnection(config('queue.routing.labels.connection', 'redis-long'))
                 ->onQueue(config('queue.routing.labels.queue', 'labels'))
-                ->delay(now()->addMinutes(5));
+                ->delay(now()->addSeconds($delaySeconds));
 
             return;
         }

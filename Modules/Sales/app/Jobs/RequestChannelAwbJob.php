@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Jobs;
 
+use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -34,6 +35,7 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
     public function __construct(
         public readonly string $orderId,
         public readonly int $trackingAttempt = 0,
+        public readonly bool $requestReadyToShip = true,
     ) {
         $this->onConnection(config('queue.routing.labels.connection', 'redis-long'));
         $this->onQueue(config('queue.routing.label_awb.queue', 'label-awb'));
@@ -75,7 +77,7 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
         }
 
         try {
-            if ($this->trackingAttempt === 0) {
+            if ($this->trackingAttempt === 0 && $this->requestReadyToShip && $this->shouldRequestReadyToShip($order)) {
                 $results = $fulfillment->readyToShip([$order->id]);
                 $result = $results[0] ?? null;
 
@@ -111,7 +113,8 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                     'next_attempt' => $this->trackingAttempt + 1,
                     'delay_seconds' => $delay,
                 ]);
-                self::dispatch($order->id, $this->trackingAttempt + 1)->delay(now()->addSeconds($delay));
+                self::dispatch($order->id, $this->trackingAttempt + 1, false)
+                    ->delay(now()->addSeconds($delay));
             } else {
                 Log::warning('RequestChannelAwbJob: menyerah, tracking tidak kunjung terbit', [
                     'order_id' => $order->id,
@@ -185,6 +188,42 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
         return false;
     }
 
+    private function shouldRequestReadyToShip(SalesOrder $order): bool
+    {
+
+        if ($this->attempts() > 1) {
+            return true;
+        }
+
+        $requestedAt = data_get($order->shipping_label_raw_data, 'bulk_label_awb.requested_at');
+        $window = max(1, (int) config('bulk-labels.awb_request_dedupe_seconds', 300));
+
+        if ($requestedAt !== null) {
+            try {
+                if (now()->diffInSeconds(Carbon::parse($requestedAt)) < $window) {
+                    Log::info('RequestChannelAwbJob: join existing AWB preparation', [
+                        'order_id' => $order->id,
+                        'salesorder_no' => $order->salesorder_no,
+                    ]);
+
+                    return false;
+                }
+            } catch (\Throwable) {
+
+            }
+        }
+
+        $rawData = is_array($order->shipping_label_raw_data)
+            ? $order->shipping_label_raw_data
+            : [];
+        $rawData['bulk_label_awb'] = [
+            'requested_at' => now()->toIso8601String(),
+        ];
+        $order->forceFill(['shipping_label_raw_data' => $rawData])->saveQuietly();
+
+        return true;
+    }
+
     private function fetchTiktokTracking(SalesOrder $order): bool
     {
         try {
@@ -211,6 +250,10 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                     'salesorder_no' => $order->salesorder_no,
                     'tracking_number' => $resolved['tracking_number'],
                 ]);
+
+                PrepareTikTokShippingLabelJob::dispatch($order->id)
+                    ->onConnection(config('queue.routing.labels.connection', 'redis-long'))
+                    ->onQueue(config('queue.routing.labels.queue', 'labels'));
 
                 return true;
             }

@@ -33,6 +33,8 @@ class BulkShippingLabelContractTest extends TestCase
         $mock = Mockery::mock(SalesOrderService::class);
         $mock->shouldReceive('getShippingLabel')->andReturn($returnShape);
         $mock->shouldReceive('cacheShippingLabelBytes')->byDefault();
+        $mock->shouldReceive('cachedFpdiShippingLabelBytes')->andReturnNull();
+        $mock->shouldReceive('cacheFpdiShippingLabelBytes')->byDefault();
 
         return new BulkShippingLabelService($mock);
     }
@@ -51,6 +53,57 @@ class BulkShippingLabelContractTest extends TestCase
         ]);
 
         return [$batch, $order];
+    }
+
+    public function test_thermal_cache_hanya_dipakai_untuk_file_asal_dan_ukuran_yang_sama(): void
+    {
+        $order = SalesOrder::factory()->create();
+        $service = app(SalesOrderService::class);
+        $source = '%PDF-1.4 source-label';
+        $thermal = '%PDF-1.4 thermal-100x120';
+
+        $service->cacheThermalShippingLabelBytes(
+            $order,
+            $source,
+            BulkShippingLabelService::SIZE_100X120,
+            $thermal,
+        );
+
+        $this->assertSame(
+            $thermal,
+            $service->cachedThermalShippingLabelBytes(
+                $order,
+                $source,
+                BulkShippingLabelService::SIZE_100X120,
+            ),
+        );
+        $this->assertNull(
+            $service->cachedThermalShippingLabelBytes(
+                $order,
+                $source,
+                BulkShippingLabelService::SIZE_100X150,
+            ),
+        );
+        $this->assertNull(
+            $service->cachedThermalShippingLabelBytes(
+                $order,
+                '%PDF-1.4 changed-source-label',
+                BulkShippingLabelService::SIZE_100X120,
+            ),
+        );
+    }
+
+    public function test_fpdi_compatibility_cache_hanya_dipakai_untuk_file_asal_yang_sama(): void
+    {
+        $order = SalesOrder::factory()->create();
+        $service = app(SalesOrderService::class);
+        $source = '%PDF-1.4 marketplace-label';
+        $prepared = '%PDF-1.4 fpdi-compatible-label';
+
+        $service->cacheFpdiShippingLabelBytes($order, $source, $prepared);
+
+        $this->assertSame($prepared, $service->cachedFpdiShippingLabelBytes($order, $source));
+        $this->assertNull($service->cachedFpdiShippingLabelBytes($order, '%PDF-1.4 new-label'));
     }
 
     public function test_shopee_label_yang_sudah_terunduh_harus_jadi_done(): void

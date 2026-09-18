@@ -1368,6 +1368,128 @@ class SalesOrderService
         $order->forceFill(['shipping_label_raw_data' => $metadata])->saveQuietly();
     }
 
+    public function cachedFpdiShippingLabelBytes(SalesOrder $order, string $sourceBytes): ?string
+    {
+        if ($sourceBytes === '') {
+            return null;
+        }
+
+        $path = $this->fpdiShippingLabelCachePath($order, $sourceBytes);
+        $disk = Storage::disk('documents');
+
+        try {
+            if (! $disk->exists($path)) {
+                return null;
+            }
+
+            $bytes = $disk->get($path);
+
+            return $bytes === '' ? null : $bytes;
+        } catch (\Throwable $e) {
+            Log::warning('FPDI shipping label cache gagal dibaca', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    public function cacheFpdiShippingLabelBytes(
+        SalesOrder $order,
+        string $sourceBytes,
+        string $preparedBytes,
+    ): void {
+        if ($sourceBytes === '' || $preparedBytes === '') {
+            return;
+        }
+
+        $path = $this->fpdiShippingLabelCachePath($order, $sourceBytes);
+        $disk = Storage::disk('documents');
+
+        try {
+            if (! $disk->exists($path)) {
+                $disk->put($path, $preparedBytes);
+            }
+        } catch (\Throwable $e) {
+
+            Log::warning('FPDI shipping label cache gagal disimpan', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    public function cachedThermalShippingLabelBytes(
+        SalesOrder $order,
+        string $sourceBytes,
+        string $sizeKey,
+    ): ?string {
+        if ($sourceBytes === '') {
+            return null;
+        }
+
+        $path = $this->thermalShippingLabelCachePath($order, $sourceBytes, $sizeKey);
+        $disk = Storage::disk('documents');
+
+        try {
+            if (! $disk->exists($path)) {
+                return null;
+            }
+
+            $bytes = $disk->get($path);
+
+            return $bytes === '' ? null : $bytes;
+        } catch (\Throwable $e) {
+            Log::warning('Thermal shipping label cache gagal dibaca', [
+                'order_id' => $order->id,
+                'size_key' => $sizeKey,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    public function cacheThermalShippingLabelBytes(
+        SalesOrder $order,
+        string $sourceBytes,
+        string $sizeKey,
+        string $thermalBytes,
+    ): void {
+        if ($sourceBytes === '' || $thermalBytes === '') {
+            return;
+        }
+
+        $path = $this->thermalShippingLabelCachePath($order, $sourceBytes, $sizeKey);
+        $disk = Storage::disk('documents');
+
+        try {
+            if (! $disk->exists($path)) {
+                $disk->put($path, $thermalBytes);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Thermal shipping label cache gagal disimpan', [
+                'order_id' => $order->id,
+                'size_key' => $sizeKey,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function fpdiShippingLabelCachePath(SalesOrder $order, string $sourceBytes): string
+    {
+        return 'shipping-label-cache/'.$order->id.'/'.hash('sha256', $sourceBytes).'.fpdi.pdf';
+    }
+
+    private function thermalShippingLabelCachePath(
+        SalesOrder $order,
+        string $sourceBytes,
+        string $sizeKey,
+    ): string {
+        return 'shipping-label-cache/'.$order->id.'/'.hash('sha256', $sourceBytes).'.'.$sizeKey.'.pdf';
+    }
+
     private function channelPackageIds(SalesOrder $order): array
     {
         $ids = is_array($order->channel_package_ids) ? $order->channel_package_ids : [];
@@ -1508,7 +1630,11 @@ class SalesOrderService
 
             $this->cacheShippingLabelBytes($order, $rawBytes, $order->shipping_label_doc_type);
 
-            $normalized = $bulkService->normalizeToTarget($rawBytes, $sizeKey, $source);
+            $normalized = $this->cachedThermalShippingLabelBytes($order, $rawBytes, $sizeKey);
+            if ($normalized === null) {
+                $normalized = $bulkService->normalizeToTarget($rawBytes, $sizeKey, $source);
+                $this->cacheThermalShippingLabelBytes($order, $rawBytes, $sizeKey, $normalized);
+            }
 
             return [
                 'type' => 'base64',

@@ -478,13 +478,6 @@ class PacklistService
         });
     }
 
-    /**
-     * Revert selected packlists independently so one invalid order does not
-     * prevent the other selected packlists from being returned.
-     *
-     * @param  array<int, string>  $ids
-     * @return array{success_count: int, failed_count: int, results: array<int, array{packlist_id: string, status: string, message: string}>}
-     */
     public function bulkRevert(array $ids): array
     {
         $results = [];

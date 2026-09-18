@@ -21,7 +21,7 @@ class ProcessBulkShippingLabelItemJob implements ShouldBeUnique, ShouldQueue
 
     public int $timeout = 120;
 
-    public int $tries = 1;
+    public int $tries = 180;
 
     public int $uniqueFor = 900;
 
@@ -91,7 +91,19 @@ class ProcessBulkShippingLabelItemJob implements ShouldBeUnique, ShouldQueue
             }
 
             $item->refresh();
-            $service->processPendingItem($item);
+            if (! $service->processPendingItem($item)) {
+                BulkShippingLabelItem::query()
+                    ->whereKey($item->id)
+                    ->where('status', BulkShippingLabelItem::STATUS_DOWNLOADING)
+                    ->update([
+                        'status' => BulkShippingLabelItem::STATUS_PENDING,
+                        'updated_at' => now(),
+                    ]);
+
+                $this->release(1);
+
+                return;
+            }
             $batch->recomputeCounts();
             $service->tryFinalize($batch);
         } finally {

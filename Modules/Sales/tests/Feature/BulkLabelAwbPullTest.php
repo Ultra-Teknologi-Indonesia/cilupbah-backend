@@ -7,13 +7,19 @@ use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Storage;
 use Mockery;
 use Modules\Channel\Services\ChannelSyncSettingService;
+use Modules\Outbound\Http\Controllers\OutboundFulfillmentController;
+use Modules\Outbound\Services\OutboundFulfillmentService;
 use Modules\Sales\Http\Controllers\BulkShippingLabelController;
+use Modules\Sales\Jobs\PrepareTikTokShippingLabelJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelItemJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelJob;
 use Modules\Sales\Jobs\RequestChannelAwbJob;
+use Modules\Sales\Jobs\WarmShippingLabelsJob;
 use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\BulkShippingLabelService;
@@ -271,6 +277,130 @@ class BulkLabelAwbPullTest extends TestCase
         Queue::assertPushed(ProcessBulkShippingLabelItemJob::class, function ($job) use ($batch): bool {
             return $job->batchId === $batch->id;
         });
+    }
+
+    public function test_batas_channel_melepas_worker_tanpa_menandai_label_gagal(): void
+    {
+        config()->set('queue.routing.labels.rate_limit_attempts', 1);
+        config()->set('queue.routing.labels.rate_limit_decay_seconds', 60);
+
+        $order = $this->orderWithoutAwb(['tracking_number' => 'AWB-RATE-LIMIT']);
+        $batch = $this->createBatchFor($order);
+        $item = $this->itemOf($batch);
+        $item->update(['status' => BulkShippingLabelItem::STATUS_DOWNLOADING]);
+
+        $key = 'bulk-label:shopee:'.$order->channel_shop_id;
+        RateLimiter::clear($key);
+        RateLimiter::attempt($key, 1, static fn (): bool => true, 60);
+
+        $service = new BulkShippingLabelService(Mockery::mock(SalesOrderService::class));
+
+        $this->assertFalse($service->processPendingItem($item->fresh()));
+        $this->assertSame(
+            BulkShippingLabelItem::STATUS_DOWNLOADING,
+            $item->fresh()->status,
+            'Job yang memanggil service akan mengembalikan item ini ke pending lalu mencoba lagi, bukan gagal.',
+        );
+
+        RateLimiter::clear($key);
+    }
+
+    public function test_siap_kirim_memanaskan_label_di_belakang_layar(): void
+    {
+        Queue::fake();
+
+        $order = $this->orderWithoutAwb([
+            'source' => 'tiktok',
+            'tracking_number' => 'TT-WARM-001',
+        ]);
+        $fulfillment = Mockery::mock(OutboundFulfillmentService::class);
+        $fulfillment->shouldReceive('readyToShip')
+            ->once()
+            ->with([$order->id])
+            ->andReturn([[
+                'order_id' => $order->id,
+                'status' => 'success',
+            ]]);
+
+        $request = Request::create('/', 'POST', ['order_ids' => [$order->id]]);
+        $request->setUserResolver(fn () => $this->user);
+
+        (new OutboundFulfillmentController($fulfillment))->readyToShip($request);
+
+        Queue::assertPushed(
+            WarmShippingLabelsJob::class,
+            fn (WarmShippingLabelsJob $job): bool => $job->orderIds === [$order->id],
+        );
+
+        Queue::fake();
+        (new WarmShippingLabelsJob([$order->id]))->handle();
+        Queue::assertPushed(
+            PrepareTikTokShippingLabelJob::class,
+            fn (PrepareTikTokShippingLabelJob $job): bool => $job->orderId === $order->id,
+        );
+    }
+
+    public function test_siap_kirim_tanpa_resi_hanya_memantau_awb_tanpa_rts_ulang(): void
+    {
+        Queue::fake();
+
+        $order = $this->orderWithoutAwb();
+        $fulfillment = Mockery::mock(OutboundFulfillmentService::class);
+        $fulfillment->shouldReceive('readyToShip')
+            ->once()
+            ->with([$order->id])
+            ->andReturn([[
+                'order_id' => $order->id,
+                'status' => 'success',
+            ]]);
+
+        $request = Request::create('/', 'POST', ['order_ids' => [$order->id]]);
+        $request->setUserResolver(fn () => $this->user);
+
+        (new OutboundFulfillmentController($fulfillment))->readyToShip($request);
+
+        Queue::assertPushed(WarmShippingLabelsJob::class);
+
+        Queue::fake();
+        (new WarmShippingLabelsJob([$order->id]))->handle();
+        Queue::assertPushed(
+            RequestChannelAwbJob::class,
+            fn (RequestChannelAwbJob $job): bool => $job->orderId === $order->id
+                && $job->requestReadyToShip === false,
+        );
+    }
+
+    public function test_label_tiktok_yang_siap_mengirim_sse_dan_membangunkan_batch(): void
+    {
+        Queue::fake();
+
+        $order = $this->orderWithoutAwb([
+            'source' => 'tiktok',
+            'tracking_number' => 'TT-SSE-001',
+            'shipping_label_status' => 'ready',
+        ]);
+        $batch = $this->createBatchFor($order);
+        $item = $this->itemOf($batch);
+        $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_TIKTOK_PREP]);
+
+        $redis = Mockery::mock();
+        $redis->shouldReceive('xadd')
+            ->once()
+            ->withArgs(fn (string $key, string $id, array $fields): bool => $key === 'realtime:user:'.$this->user->id
+                && $id === '*'
+                && $fields['topic'] === 'bulk-label:'.$batch->id
+                && $fields['event_type'] === 'bulk-label.progress'
+                && data_get(json_decode($fields['payload'], true), 'status') === 'processing')
+            ->andReturn('1-0');
+        Redis::shouldReceive('connection')->once()->with('default')->andReturn($redis);
+
+        app(BulkShippingLabelService::class)->onOrderLabelReady($order->id);
+
+        $this->assertSame(BulkShippingLabelItem::STATUS_PENDING, $item->refresh()->status);
+        Queue::assertPushed(
+            ProcessBulkShippingLabelItemJob::class,
+            fn (ProcessBulkShippingLabelItemJob $job): bool => $job->batchId === $batch->id,
+        );
     }
 
     public function test_marketplace_tak_kunjung_menerbitkan_resi_bisa_dicoba_ulang(): void

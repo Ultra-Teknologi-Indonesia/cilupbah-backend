@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Services\BulkShippingLabelService;
 
 class PrepareTikTokShippingLabelJob implements ShouldBeUnique, ShouldQueue
 {
@@ -23,7 +24,9 @@ class PrepareTikTokShippingLabelJob implements ShouldBeUnique, ShouldQueue
 
     public int $uniqueFor = 900;
 
-    private const MAX_GLOBAL_ATTEMPTS = 3;
+    private const MAX_GLOBAL_ATTEMPTS = 6;
+
+    private const RETRY_DELAYS_SECONDS = [5, 10, 20, 30, 60];
 
     public function __construct(
         public readonly string $orderId,
@@ -132,6 +135,8 @@ class PrepareTikTokShippingLabelJob implements ShouldBeUnique, ShouldQueue
                 'packages' => count($documents),
             ]);
 
+            $this->notifyBulkListeners();
+
             return;
         }
 
@@ -144,15 +149,17 @@ class PrepareTikTokShippingLabelJob implements ShouldBeUnique, ShouldQueue
 
         $nextAttempt = $this->attempt + 1;
         if ($nextAttempt < self::MAX_GLOBAL_ATTEMPTS) {
+            $delaySeconds = self::RETRY_DELAYS_SECONDS[$this->attempt] ?? 60;
             Log::warning('PrepareTikTokShippingLabelJob: label belum siap, retry', [
                 'order_id' => $order->id,
                 'order_sn' => $orderSn,
                 'next_attempt' => $nextAttempt,
+                'delay_seconds' => $delaySeconds,
             ]);
             self::dispatch($order->id, $nextAttempt)
                 ->onConnection(config('queue.routing.labels.connection', 'redis-long'))
                 ->onQueue(config('queue.routing.labels.queue', 'labels'))
-                ->delay(now()->addMinutes(5));
+                ->delay(now()->addSeconds($delaySeconds));
 
             return;
         }
@@ -162,6 +169,7 @@ class PrepareTikTokShippingLabelJob implements ShouldBeUnique, ShouldQueue
             'order_id' => $order->id,
             'order_sn' => $orderSn,
         ]);
+        $this->notifyBulkListeners();
     }
 
     public function failed(\Throwable $exception): void
@@ -175,6 +183,20 @@ class PrepareTikTokShippingLabelJob implements ShouldBeUnique, ShouldQueue
         $order = SalesOrder::find($this->orderId);
         if ($order && $order->shipping_label_status !== 'ready') {
             $order->update(['shipping_label_status' => 'failed']);
+        }
+
+        $this->notifyBulkListeners();
+    }
+
+    private function notifyBulkListeners(): void
+    {
+        try {
+            app(BulkShippingLabelService::class)->onOrderLabelReady($this->orderId);
+        } catch (\Throwable $e) {
+            Log::warning('PrepareTikTokShippingLabelJob: notifyBulkListeners gagal', [
+                'order_id' => $this->orderId,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 }

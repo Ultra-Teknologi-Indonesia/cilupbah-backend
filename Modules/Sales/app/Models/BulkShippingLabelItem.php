@@ -21,6 +21,8 @@ class BulkShippingLabelItem extends Model
 
     public const STATUS_WAITING_LAZADA_PREP = 'waiting_lazada_prep';
 
+    public const STATUS_WAITING_TIKTOK_PREP = 'waiting_tiktok_prep';
+
     public const STATUS_DONE = 'done';
 
     public const STATUS_FAILED = 'failed';
@@ -39,6 +41,7 @@ class BulkShippingLabelItem extends Model
         self::STATUS_WAITING_AWB,
         self::STATUS_WAITING_SHOPEE_PREP,
         self::STATUS_WAITING_LAZADA_PREP,
+        self::STATUS_WAITING_TIKTOK_PREP,
     ];
 
     public const ALL_STATUSES = [
@@ -47,6 +50,7 @@ class BulkShippingLabelItem extends Model
         self::STATUS_WAITING_AWB,
         self::STATUS_WAITING_SHOPEE_PREP,
         self::STATUS_WAITING_LAZADA_PREP,
+        self::STATUS_WAITING_TIKTOK_PREP,
         self::STATUS_DONE,
         self::STATUS_FAILED,
         self::STATUS_SKIPPED_INSTANT,

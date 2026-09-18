@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Modules\Channel\Services\ChannelSyncSettingService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
+use Modules\Realtime\Services\RealtimeEventPublisher;
 use Modules\Sales\Exceptions\ShippingLabelPreparingException;
 use Modules\Sales\Jobs\ArchiveBulkShippingLabelJob;
 use Modules\Sales\Jobs\PrepareLazadaShippingLabelJob;
@@ -26,6 +27,7 @@ use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Models\SalesOrder;
 use setasign\Fpdi\Fpdi;
 use setasign\Fpdi\PdfParser\StreamReader;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Throwable;
 
 class BulkShippingLabelService
@@ -211,7 +213,7 @@ class BulkShippingLabelService
 
         if ($batch->status !== BulkShippingLabelBatch::STATUS_READY
             || (empty($batch->merged_pdf_path) && empty($batch->print_pdf_path))) {
-            throw new \Symfony\Component\HttpKernel\Exception\NotFoundHttpException('File label belum siap.');
+            throw new NotFoundHttpException('File label belum siap.');
         }
 
         if ($batch->print_pdf_path) {
@@ -225,13 +227,13 @@ class BulkShippingLabelService
         }
 
         if (! $batch->merged_pdf_path) {
-            throw new \Symfony\Component\HttpKernel\Exception\NotFoundHttpException('File label tidak ditemukan.');
+            throw new NotFoundHttpException('File label tidak ditemukan.');
         }
 
         $archiveDiskName = config('bulk-labels.archive_disk', 'documents');
         $archive = Storage::disk($archiveDiskName);
         if (! $archive->exists($batch->merged_pdf_path)) {
-            throw new \Symfony\Component\HttpKernel\Exception\NotFoundHttpException('File label tidak ditemukan.');
+            throw new NotFoundHttpException('File label tidak ditemukan.');
         }
 
         $this->recordLabelPrinted($batch, $user);
@@ -435,30 +437,42 @@ class BulkShippingLabelService
         ProcessBulkShippingLabelItemJob::dispatch($item->batch_id, $item->id, (string) $item->order_id);
     }
 
-    public function processPendingItem(BulkShippingLabelItem $item): void
+    public function processPendingItem(BulkShippingLabelItem $item): bool
     {
         $order = SalesOrder::find($item->order_id);
         if (! $order) {
             $this->fail($item, BulkShippingLabelItem::REASON_NO_AWB);
 
-            return;
+            return true;
+        }
+
+        $waitingStatus = match ($item->channel) {
+            self::CHANNEL_SHOPEE => BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP,
+            self::CHANNEL_TIKTOK => BulkShippingLabelItem::STATUS_WAITING_TIKTOK_PREP,
+            self::CHANNEL_LAZADA => BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP,
+            default => null,
+        };
+        if ($order->shipping_label_status === 'preparing' && $waitingStatus !== null) {
+            $item->update([
+                'status' => $waitingStatus,
+                'reason' => null,
+            ]);
+            $this->publishBatchProgress($item->batch_id);
+
+            return true;
         }
 
         $limit = max(1, (int) config('queue.routing.labels.rate_limit_attempts', 5));
         $decay = max(1, (int) config('queue.routing.labels.rate_limit_decay_seconds', 1));
         $key = sprintf('bulk-label:%s:%s', $item->channel, $order->channel_shop_id ?: 'internal');
 
-        $startedAt = microtime(true);
-        while (! RateLimiter::attempt($key, $limit, fn (): bool => true, $decay)) {
-            if ((microtime(true) - $startedAt) >= 15) {
-                $this->fail($item, 'channel_rate_limit_timeout');
-
-                return;
-            }
-            usleep(100_000);
+        if (! RateLimiter::attempt($key, $limit, fn (): bool => true, $decay)) {
+            return false;
         }
 
         $this->processItem($item, null);
+
+        return true;
     }
 
     public function markItemCrashed(string $batchId, string $itemId): void
@@ -1116,6 +1130,8 @@ class BulkShippingLabelService
                 $this->dispatchItem($item);
             }
         }
+
+        $this->publishBatchProgressForItems($items);
     }
 
     public function onOrderAwbSkippedInstant(string $orderId): void
@@ -1158,6 +1174,7 @@ class BulkShippingLabelService
             ->whereIn('status', [
                 BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP,
                 BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP,
+                BulkShippingLabelItem::STATUS_WAITING_TIKTOK_PREP,
             ])
             ->get();
 
@@ -1188,6 +1205,7 @@ class BulkShippingLabelService
                         ->whereIn('status', [
                             BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP,
                             BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP,
+                            BulkShippingLabelItem::STATUS_WAITING_TIKTOK_PREP,
                         ])
                         ->update([
                             'status' => BulkShippingLabelItem::STATUS_PENDING,
@@ -1218,6 +1236,42 @@ class BulkShippingLabelService
         }
 
         $this->finalizeAffectedBatches($items);
+        $this->publishBatchProgressForItems($items);
+    }
+
+    private function publishBatchProgressForItems($items): void
+    {
+        $items->pluck('batch_id')
+            ->unique()
+            ->each(fn (string $batchId) => $this->publishBatchProgress($batchId));
+    }
+
+    private function publishBatchProgress(string $batchId): void
+    {
+        $batch = BulkShippingLabelBatch::find($batchId);
+        if (! $batch) {
+            return;
+        }
+
+        $batch->recomputeCounts();
+        $batch->refresh();
+
+        app(RealtimeEventPublisher::class)->publish(
+            (string) $batch->user_id,
+            'bulk-label:'.$batch->id,
+            'bulk-label.progress',
+            [
+                'batch_id' => (string) $batch->id,
+                'status' => $batch->status,
+                'total' => (int) $batch->total_count,
+                'done' => (int) $batch->done_count,
+                'failed' => (int) $batch->failed_count,
+                'skipped' => (int) $batch->skipped_count,
+                'file_available' => $batch->file_purged_at === null
+                    && ($batch->merged_pdf_path !== null || $batch->print_pdf_path !== null),
+                'finished_at' => $batch->finished_at?->toIso8601String(),
+            ],
+        );
     }
 
     private function finalizeAffectedBatches($items): void
@@ -1313,8 +1367,22 @@ class BulkShippingLabelService
             }
 
             try {
-                $preparedBytes = $this->preprocessPdfForFpdi($pdfBytes);
-                $pageCount = $pdf->setSourceFile(StreamReader::createByString($preparedBytes));
+                $order = $item->order ?: SalesOrder::find($item->order_id);
+                $preparedBytes = $order
+                    ? $this->salesOrderService->cachedFpdiShippingLabelBytes($order, $pdfBytes)
+                    : null;
+
+                try {
+
+                    $pageCount = $pdf->setSourceFile(StreamReader::createByString($preparedBytes ?? $pdfBytes));
+                } catch (Throwable) {
+
+                    $preparedBytes = $this->preprocessPdfForFpdi($pdfBytes);
+                    if ($order) {
+                        $this->salesOrderService->cacheFpdiShippingLabelBytes($order, $pdfBytes, $preparedBytes);
+                    }
+                    $pageCount = $pdf->setSourceFile(StreamReader::createByString($preparedBytes));
+                }
                 for ($p = 1; $p <= $pageCount; $p++) {
                     $tpl = $pdf->importPage($p);
                     $src = $pdf->getTemplateSize($tpl);
