@@ -12,6 +12,7 @@ use Modules\Outbound\Models\Shipment;
 use Modules\Outbound\Models\ShipmentOrder;
 use Modules\Outbound\Support\ProcessOrderStatusResolver;
 use Modules\Sales\Models\SalesOrder;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class ProcessOrderStatusResolverTest extends TestCase
@@ -70,14 +71,68 @@ final class ProcessOrderStatusResolverTest extends TestCase
         ], $this->resolver->resolve($order));
     }
 
-    public function test_shipped_order_is_completed_only_after_received_date(): void
+    public function test_shipped_channel_order_without_manifest_stays_ready_to_ship(): void
     {
         $order = $this->order([
             'status' => 'shipped',
-            'received_date' => now(),
+            'channel_status' => 'SHIPPED',
+        ]);
+        $order->setRelation('shipmentOrders', new Collection);
+
+        $this->assertSame([
+            'stage' => 'Shipping',
+            'sub_status' => 'Siap Kirim',
+        ], $this->resolver->resolve($order));
+    }
+
+    public function test_shipped_channel_order_with_manifest_is_already_shipped(): void
+    {
+        $shipmentOrder = (new ShipmentOrder)->setRelation(
+            'shipment',
+            (new Shipment)->setAttribute('status', Shipment::STATUS_IN_TRANSIT),
+        );
+        $order = $this->order([
+            'status' => 'shipped',
+            'channel_status' => 'SHIPPED',
+        ]);
+        $order->setRelation('shipmentOrders', new Collection([$shipmentOrder]));
+
+        $this->assertSame('Sudah Dikirim', $this->resolver->resolve($order)['stage']);
+    }
+
+    public function test_shipped_channel_order_with_scheduled_manifest_stays_in_shipping_schedule(): void
+    {
+        $shipment = (new Shipment)->setAttribute('status', Shipment::STATUS_SCHEDULED);
+        $shipmentOrder = (new ShipmentOrder)->setRelation('shipment', $shipment);
+        $order = $this->order([
+            'status' => 'shipped',
+            'channel_status' => 'SHIPPED',
+        ]);
+        $order->setRelation('shipmentOrders', new Collection([$shipmentOrder]));
+
+        $this->assertSame([
+            'stage' => 'Shipping',
+            'sub_status' => 'Jadwal Pengiriman',
+        ], $this->resolver->resolve($order));
+    }
+
+    #[DataProvider('completedChannelStatuses')]
+    public function test_shipped_channel_order_moves_to_completed_after_buyer_confirmation(string $channelStatus): void
+    {
+        $order = $this->order([
+            'status' => 'shipped',
+            'channel_status' => $channelStatus,
         ]);
 
         $this->assertSame('Selesai', $this->resolver->resolve($order)['stage']);
+    }
+
+    public static function completedChannelStatuses(): array
+    {
+        return [
+            ['TO_CONFIRM_RECEIVE'],
+            ['COMPLETED'],
+        ];
     }
 
     public function test_packed_order_with_scheduled_shipment_is_shipping_schedule(): void

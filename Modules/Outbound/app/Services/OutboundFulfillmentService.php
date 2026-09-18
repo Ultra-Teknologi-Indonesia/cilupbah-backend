@@ -36,6 +36,11 @@ class OutboundFulfillmentService
 {
     private const FULFILLMENT_PUSH_OFF = 'Pengiriman ke marketplace dimatikan untuk toko ini.';
 
+    private const CHANNEL_COMPLETED_STATUSES = [
+        'TO_CONFIRM_RECEIVE',
+        'COMPLETED',
+    ];
+
     public function __construct(
         protected SalesOrderService $orderService,
         protected ShopeeOrderService $shopeeOrderService,
@@ -796,8 +801,14 @@ SQL;
 
     private function finishPack()
     {
-        return Order::where('status', 'packed')
-            ->where('is_canceled', false)
+        return Order::where('is_canceled', false)
+            ->where(function ($q) {
+                $q->where('status', 'packed')
+                    ->orWhere(function ($q2) {
+                        $q2->where('status', 'shipped')
+                            ->where('channel_status', 'SHIPPED');
+                    });
+            })
             ->whereDoesntHave('shipmentOrders');
     }
 
@@ -808,6 +819,10 @@ SQL;
                 ->orWhere(function ($q2) {
                     $q2->where('status', 'cancelled')
                         ->whereNull('cancel_dismissed_at');
+                })
+                ->orWhere(function ($q2) {
+                    $q2->where('status', 'shipped')
+                        ->where('channel_status', 'SHIPPED');
                 });
         })->whereHas('shipmentOrders', function ($q) {
             $q->whereHas('shipment', fn ($sq) => $sq->where('status', 'SCHEDULED'));
@@ -816,7 +831,11 @@ SQL;
 
     private function shipped()
     {
-        return Order::where('status', 'shipped');
+        return Order::where('status', 'shipped')
+            ->where(function ($q) {
+                $q->whereIn('channel_status', self::CHANNEL_COMPLETED_STATUSES)
+                    ->orWhereNotNull('received_date');
+            });
     }
 
     private function emptyStock()

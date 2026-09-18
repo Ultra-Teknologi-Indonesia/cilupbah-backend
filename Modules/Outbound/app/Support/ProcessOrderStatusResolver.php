@@ -11,6 +11,11 @@ use Modules\Sales\Models\SalesOrder;
 
 final class ProcessOrderStatusResolver
 {
+    private const CHANNEL_COMPLETED_STATUSES = [
+        'TO_CONFIRM_RECEIVE',
+        'COMPLETED',
+    ];
+
     public function resolve(SalesOrder $order): ?array
     {
         return match ($order->status) {
@@ -18,12 +23,48 @@ final class ProcessOrderStatusResolver
             'picked' => $this->resolvePicked($order),
             'packed' => $this->resolvePacked($order),
             'cancelled' => $this->resolveCancelled($order),
-            'shipped' => [
-                'stage' => $order->received_date ? 'Selesai' : 'Sudah Dikirim',
-                'sub_status' => '',
-            ],
+            'shipped' => $this->resolveShipped($order),
             default => null,
         };
+    }
+
+    private function resolveShipped(SalesOrder $order): array
+    {
+        $channelStatus = strtoupper(trim((string) $order->channel_status));
+
+        if (in_array($channelStatus, self::CHANNEL_COMPLETED_STATUSES, true)) {
+            return [
+                'stage' => 'Selesai',
+                'sub_status' => '',
+            ];
+        }
+
+        if ($channelStatus === 'SHIPPED') {
+            if ($order->relationLoaded('shipmentOrders') && $order->shipmentOrders->isEmpty()) {
+                return [
+                    'stage' => 'Shipping',
+                    'sub_status' => 'Siap Kirim',
+                ];
+            }
+
+            $hasScheduledShipment = $order->relationLoaded('shipmentOrders')
+                && $order->shipmentOrders
+                    ->map(fn ($shipmentOrder) => $shipmentOrder->shipment)
+                    ->filter()
+                    ->contains(fn ($shipment): bool => $shipment->status === Shipment::STATUS_SCHEDULED);
+
+            if ($hasScheduledShipment) {
+                return [
+                    'stage' => 'Shipping',
+                    'sub_status' => 'Jadwal Pengiriman',
+                ];
+            }
+        }
+
+        return [
+            'stage' => $order->received_date ? 'Selesai' : 'Sudah Dikirim',
+            'sub_status' => '',
+        ];
     }
 
     private function resolveReserved(SalesOrder $order): ?array

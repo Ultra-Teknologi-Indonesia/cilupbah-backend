@@ -125,13 +125,30 @@ final class ActiveProcessOrderScope
                 ->whereHas('packlist', fn (Builder $packlist): Builder => $packlist
                     ->whereIn('status', [Packlist::STATUS_DRAFT, Packlist::STATUS_IN_PROGRESS])),
 
-            'packing:selesai', 'shipping:siap-kirim' => $query
+            'packing:selesai' => $query
                 ->where('sales_orders.status', 'packed')
                 ->where('sales_orders.is_canceled', false)
                 ->whereDoesntHave('shipmentOrders'),
 
+            'shipping:siap-kirim' => $query
+                ->where('sales_orders.is_canceled', false)
+                ->where(function (Builder $q): void {
+                    $q->where('sales_orders.status', 'packed')
+                        ->orWhere(function (Builder $shipped): void {
+                            $shipped->where('sales_orders.status', 'shipped')
+                                ->where('sales_orders.channel_status', 'SHIPPED');
+                        });
+                })
+                ->whereDoesntHave('shipmentOrders'),
+
             'shipping:jadwal' => $query
-                ->whereIn('sales_orders.status', ['packed', 'cancelled'])
+                ->where(function (Builder $q): void {
+                    $q->whereIn('sales_orders.status', ['packed', 'cancelled'])
+                        ->orWhere(function (Builder $shipped): void {
+                            $shipped->where('sales_orders.status', 'shipped')
+                                ->where('sales_orders.channel_status', 'SHIPPED');
+                        });
+                })
                 ->whereHas('shipmentOrders.shipment', fn (Builder $shipment): Builder => $shipment
                     ->where('status', Shipment::STATUS_SCHEDULED)),
 

@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\Sales\Models\SalesOrder;
 use Tests\TestCase;
 
 class OutboundBoardCountsTest extends TestCase
@@ -118,5 +119,83 @@ class OutboundBoardCountsTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.shipping.batal', 1)
             ->assertJsonPath('data.shipping.jadwal', 1);
+    }
+
+    public function test_shipped_channel_orders_are_kept_in_the_correct_process_tab(): void
+    {
+        $viewer = User::factory()->create();
+        $viewer->givePermissionTo(Permission::create([
+            'name' => 'view-pesanan',
+            'guard_name' => 'web',
+        ]));
+
+        $locationId = Str::uuid()->toString();
+        DB::table('locations')->insert([
+            'id' => $locationId,
+            'location_code' => 'LOC-ST-'.substr($locationId, 0, 6),
+            'location_name' => 'Gudang Status Test',
+            'location_type' => 'WAREHOUSE',
+            'is_warehouse' => true,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $readyOrder = SalesOrder::factory()->create([
+            'location_id' => $locationId,
+            'status' => 'shipped',
+            'channel_status' => 'SHIPPED',
+            'source' => 'shopee',
+        ]);
+        $completedOrder = SalesOrder::factory()->create([
+            'location_id' => $locationId,
+            'status' => 'shipped',
+            'channel_status' => 'TO_CONFIRM_RECEIVE',
+            'source' => 'shopee',
+        ]);
+        $manifestOrder = SalesOrder::factory()->create([
+            'location_id' => $locationId,
+            'status' => 'shipped',
+            'channel_status' => 'SHIPPED',
+            'source' => 'shopee',
+        ]);
+
+        $shipmentId = Str::uuid()->toString();
+        DB::table('shipments')->insert([
+            'id' => $shipmentId,
+            'shipment_no' => 'SHP-ST-'.substr($shipmentId, 0, 6),
+            'location_id' => $locationId,
+            'shipment_type' => 'REGULAR',
+            'shipment_date' => now()->toDateString(),
+            'status' => 'SCHEDULED',
+            'created_by' => 'system:test',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('shipment_orders')->insert([
+            'id' => Str::uuid()->toString(),
+            'shipment_id' => $shipmentId,
+            'order_id' => $manifestOrder->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $request = $this->actingAs($viewer, 'sanctum')
+            ->withHeader('X-Client-Channel', 'WEB');
+
+        $request->getJson('/api/v1/outbound/orders/finish-pack?per_page=20')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.id', $readyOrder->id);
+
+        $request->getJson('/api/v1/outbound/orders/ready-to-ship?per_page=20')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonFragment(['id' => $manifestOrder->id]);
+
+        $request->getJson('/api/v1/outbound/orders/shipped?per_page=20')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonFragment(['id' => $completedOrder->id]);
     }
 }
