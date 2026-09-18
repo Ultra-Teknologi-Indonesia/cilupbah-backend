@@ -69,15 +69,19 @@
     .col-weight { width: 10%; text-align: center; }
     .col-resi { width: 26%; }
     .col-status { width: 18%; }
+    thead { display: table-header-group; }
+    tbody tr { page-break-inside: avoid; }
     .summary-row {
         margin-top: 10px;
         font-size: 11px;
+        page-break-inside: avoid;
     }
     .summary-row .info-label { font-weight: 700; }
     .signature {
         width: 100%;
         border-collapse: collapse;
-        margin-top: 40px;
+        margin-top: 30px;
+        page-break-inside: avoid;
     }
     .signature td {
         width: 50%;
@@ -100,7 +104,7 @@
         font-size: 10px;
         margin-top: 4px;
     }
-    .footer {
+    .dompdf-footer {
         position: fixed;
         bottom: -8mm;
         left: 0;
@@ -108,8 +112,13 @@
         font-size: 9px;
         color: #555;
     }
-    .footer table { width: 100%; border-collapse: collapse; }
-    .footer td { padding: 0 2px; }
-    .footer .right { text-align: right; }
+    .dompdf-footer table { width: 100%; border-collapse: collapse; }
+    .dompdf-footer td { padding: 0 2px; }
+    .dompdf-footer .right { text-align: right; }
     .page-num:after { content: counter(page); }
+    @media print {
+        .dompdf-footer {
+            display: none !important;
+        }
+    }
 </style>

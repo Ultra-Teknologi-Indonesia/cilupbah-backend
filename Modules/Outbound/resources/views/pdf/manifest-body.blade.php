@@ -147,7 +147,7 @@
     </tr>
 </table>
 
-<div class="footer">
+<div class="dompdf-footer">
     <table>
         <tr>
             <td>Tgl. Cetak: {{ now()->timezone('Asia/Jakarta')->format('d M Y H:i') }}</td>

@@ -63,13 +63,50 @@ class PdfRenderer
         try {
             $html = View::make($view, $data)->render();
             $isLandscape = strtolower($orientation) === 'landscape';
+            $printDate = now()->timezone('Asia/Jakarta')->format('d M Y H:i');
+
+            $footerHtml = <<<HTML
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body {
+    margin: 0;
+    padding: 0 12mm;
+    width: 100%;
+    box-sizing: border-box;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 9px;
+    color: #555555;
+    -webkit-print-color-adjust: exact;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 0; vertical-align: middle; }
+  .right { text-align: right; }
+</style>
+</head>
+<body>
+  <table>
+    <tr>
+      <td>Tgl. Cetak: {$printDate}</td>
+      <td class="right">Hal: <span class="pageNumber"></span> / <span class="totalPages"></span></td>
+    </tr>
+  </table>
+</body>
+</html>
+HTML;
 
             $response = Http::timeout(60)
                 ->attach('files', $html, 'index.html')
+                ->attach('files', $footerHtml, 'footer.html')
                 ->post(rtrim($gotenbergUrl, '/') . '/forms/chromium/convert/html', [
                     'landscape' => $isLandscape ? 'true' : 'false',
                     'preferCssPageSize' => 'true',
                     'printBackground' => 'true',
+                    'marginTop' => '0.47', // 12mm
+                    'marginBottom' => '0.6', // 15mm
+                    'marginLeft' => '0.47', // 12mm
+                    'marginRight' => '0.47', // 12mm
                 ]);
 
             if ($response->successful()) {
