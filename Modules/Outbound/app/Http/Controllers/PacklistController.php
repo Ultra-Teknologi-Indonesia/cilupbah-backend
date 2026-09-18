@@ -7,6 +7,7 @@ use App\Traits\AutoScopeMobileToAuth;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Outbound\Http\Requests\AssignPackerRequest;
+use Modules\Outbound\Http\Requests\BulkRevertPacklistsRequest;
 use Modules\Outbound\Http\Requests\CreatePacklistRequest;
 use Modules\Outbound\Http\Requests\PackItemRequest;
 use Modules\Outbound\Http\Requests\ScanPacklistOrderRequest;
@@ -408,5 +409,17 @@ class PacklistController extends Controller
         }
 
         return $this->successResponse(null, 'Packlist dikembalikan, order kembali ke belum dipack.');
+    }
+
+    public function bulkRevert(BulkRevertPacklistsRequest $request): JsonResponse
+    {
+        $result = $this->packlistService->bulkRevert(
+            $request->validated('packlist_ids'),
+        );
+
+        return $this->successResponse(
+            $result,
+            'Proses pengembalian packing selesai.',
+        );
     }
 }

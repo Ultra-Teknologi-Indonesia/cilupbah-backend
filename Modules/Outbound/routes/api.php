@@ -69,6 +69,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1/outbound')->group(function () {
     Route::get('packlists/scan-order', [PacklistController::class, 'scanOrder'])->name('outbound.packlists.scan-order')->middleware('role_or_permission:owner|view-packing');
     Route::get('packlists', [PacklistController::class, 'index'])->name('outbound.packlists.index')->middleware('role_or_permission:owner|view-packing');
     Route::post('packlists', [PacklistController::class, 'store'])->name('outbound.packlists.store')->middleware('role_or_permission:owner|create-packing');
+    Route::post('packlists/bulk-revert', [PacklistController::class, 'bulkRevert'])->name('outbound.packlists.bulk-revert')->middleware('role_or_permission:owner|edit-packing');
     Route::get('packlists/{id}', [PacklistController::class, 'show'])->name('outbound.packlists.show')->middleware('role_or_permission:owner|view-packing');
     Route::get('packlists/{id}/items', [PacklistController::class, 'items'])->name('outbound.packlists.items')->middleware('role_or_permission:owner|view-packing');
     Route::post('packlists/{id}/assign-packer', [PacklistController::class, 'assignPacker'])->name('outbound.packlists.assign-packer')->middleware('role_or_permission:owner|edit-packing');

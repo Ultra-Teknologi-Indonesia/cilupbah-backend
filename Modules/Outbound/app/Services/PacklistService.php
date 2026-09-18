@@ -477,4 +477,40 @@ class PacklistService
             $this->packlistRepository->delete($id);
         });
     }
+
+    /**
+     * Revert selected packlists independently so one invalid order does not
+     * prevent the other selected packlists from being returned.
+     *
+     * @param  array<int, string>  $ids
+     * @return array{success_count: int, failed_count: int, results: array<int, array{packlist_id: string, status: string, message: string}>}
+     */
+    public function bulkRevert(array $ids): array
+    {
+        $results = [];
+
+        foreach (array_values(array_unique($ids)) as $id) {
+            try {
+                $this->revert($id);
+
+                $results[] = [
+                    'packlist_id' => $id,
+                    'status' => 'success',
+                    'message' => 'Packing dikembalikan ke belum mulai.',
+                ];
+            } catch (\Throwable $e) {
+                $results[] = [
+                    'packlist_id' => $id,
+                    'status' => 'failed',
+                    'message' => $e->getMessage(),
+                ];
+            }
+        }
+
+        return [
+            'success_count' => count(array_filter($results, fn (array $item): bool => $item['status'] === 'success')),
+            'failed_count' => count(array_filter($results, fn (array $item): bool => $item['status'] === 'failed')),
+            'results' => $results,
+        ];
+    }
 }
