@@ -22,6 +22,7 @@ use Modules\Report\Models\ExportJob;
 use Modules\Report\Services\ExportManager;
 use Modules\Report\Services\MonitorStockReportService;
 use Modules\Report\Services\RenderedPdfExportService;
+use Modules\Report\Services\StockPositionReportService;
 use Modules\Report\Services\TabularPdfExportService;
 use Modules\Sales\Services\BulkInvoiceService;
 use Throwable;
@@ -80,7 +81,7 @@ class RunExportJob implements ShouldQueue
         $fileName = $manager->filename($job->type, $params);
         $diskName = config('filesystems.disks.documents') ? 'documents' : config('filesystems.default', 'local');
         $pdfTypes = ExportManager::PDF_TYPES;
-        $csvTypes = ['product-catalog-csv', 'purchase-order-list', 'purchase-order-detail'];
+        $csvTypes = ['product-catalog-csv', 'stock-position-csv', 'purchase-order-list', 'purchase-order-detail'];
         $extension = in_array($job->type, $pdfTypes, true)
             ? 'pdf'
             : (in_array($job->type, $csvTypes, true) ? 'csv' : 'xlsx');
@@ -95,7 +96,7 @@ class RunExportJob implements ShouldQueue
             'memory_limit' => ini_get('memory_limit'),
         ]);
 
-        $streamedCsv = $job->type === 'product-catalog-csv';
+        $streamedCsv = in_array($job->type, ['product-catalog-csv', 'stock-position-csv'], true);
 
         if (in_array($job->type, $pdfTypes, true) || $streamedCsv) {
             $temporaryPath = tempnam(sys_get_temp_dir(), 'cilupbah-export-');
@@ -105,12 +106,18 @@ class RunExportJob implements ShouldQueue
 
             try {
                 if ($streamedCsv) {
-                    $exportedRows = app(ProductCatalogCsvWriter::class)->write(
-                        new ProductCatalogCsvExport($params),
-                        $temporaryPath,
-                    );
+                    if ($job->type === 'stock-position-csv') {
+                        $exportedRows = app(StockPositionReportService::class)->writeCsv($params, $temporaryPath);
+                    } else {
+                        $exportedRows = app(ProductCatalogCsvWriter::class)->write(
+                            new ProductCatalogCsvExport($params),
+                            $temporaryPath,
+                        );
+                    }
                 } elseif ($job->type === 'monitor-stock-pdf') {
                     app(MonitorStockReportService::class)->writePdf($params, $temporaryPath);
+                } elseif ($job->type === 'stock-position-pdf') {
+                    app(StockPositionReportService::class)->writePdf($params, $temporaryPath);
                 } elseif ($job->type === 'picklist-pdf') {
                     app(PicklistPdfExportService::class)
                         ->write((string) ($params['picklist_id'] ?? ''), $temporaryPath);

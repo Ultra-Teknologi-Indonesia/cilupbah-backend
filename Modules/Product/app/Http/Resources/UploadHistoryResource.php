@@ -29,11 +29,8 @@ class UploadHistoryResource extends JsonResource
             'shop_name' => $shop->shop_name ?? null,
             'channel_code' => $channel->code ?? null,
             'channel_name' => $channel->name ?? null,
-            'channel_id' => $shop->channel_id ?? null,
             'store_id' => $this->channel_shop_id,
-            'active_store' => $shop ? (bool) $shop->is_active : null,
             'channel_url' => $this->channelUrl($channel, $shop),
-            'products' => $this->products(),
         ];
     }
 
@@ -76,27 +73,6 @@ class UploadHistoryResource extends JsonResource
             'detail' => null,
             'retryable' => false,
         ];
-    }
-
-    protected function products(): array
-    {
-        if (! $this->relationLoaded('product') || ! $this->product) {
-            return [];
-        }
-
-        if (! $this->product->relationLoaded('variants')) {
-            return [];
-        }
-
-        $name = $this->product->name;
-
-        return $this->product->variants
-            ->map(fn ($variant) => [
-                'item_name' => $name,
-                'item_code' => $variant->sku,
-            ])
-            ->values()
-            ->all();
     }
 
     protected function thumbnail(): ?string

@@ -102,37 +102,36 @@ class UploadHistoryFeedTest extends TestCase
                 'thumbnail',
                 'upload_date',
                 'success',
+                'status',
                 'status_message',
+                'error',
                 'can_reupload',
-                'max',
+                'shop_name',
                 'channel_code',
                 'channel_name',
-                'channel_id',
                 'store_id',
-                'active_store',
                 'channel_url',
-                'products' => [['item_name', 'item_code']],
             ]],
             'meta' => ['current_page', 'last_page', 'per_page', 'total'],
         ]);
     }
 
-    public function test_default_pagination_is_ten(): void
+    public function test_default_pagination_is_twenty(): void
     {
         $this->getJson('/api/v1/upload-histories')
             ->assertStatus(200)
-            ->assertJsonPath('meta.per_page', 10);
+            ->assertJsonPath('meta.per_page', 20);
     }
 
-    public function test_products_are_variants(): void
+    public function test_list_omits_unused_store_and_variant_payload(): void
     {
         $response = $this->getJson('/api/v1/upload-histories');
 
         $entry = collect($response->json('data'))->firstWhere('id', $this->success->id);
 
-        $this->assertCount(2, $entry['products']);
-        $this->assertEqualsCanonicalizing(['CANDY-A', 'CANDY-B'], collect($entry['products'])->pluck('item_code')->all());
-        $this->assertSame('Clear Candy Ring Magsafe', $entry['products'][0]['item_name']);
+        $this->assertArrayNotHasKey('products', $entry);
+        $this->assertArrayNotHasKey('channel_id', $entry);
+        $this->assertArrayNotHasKey('active_store', $entry);
     }
 
     public function test_status_message_and_flags(): void
@@ -158,11 +157,10 @@ class UploadHistoryFeedTest extends TestCase
         $entry = collect($this->getJson('/api/v1/upload-histories')->json('data'))
             ->firstWhere('id', $this->success->id);
 
-        $this->assertSame('Cilupbah ID Mall', $entry['max']);
+        $this->assertSame('Cilupbah ID Mall', $entry['shop_name']);
         $this->assertSame('shopee', $entry['channel_code']);
         $this->assertSame('Shopee', $entry['channel_name']);
         $this->assertSame($this->shop->id, $entry['store_id']);
-        $this->assertTrue($entry['active_store']);
         $this->assertSame('https://shopee.co.id/product/SHOP-1/EXT-1', $entry['channel_url']);
     }
 

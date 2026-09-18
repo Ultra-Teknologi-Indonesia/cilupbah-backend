@@ -4,6 +4,7 @@ namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Support\ActorName;
+use App\Support\WarehouseAccess;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -12,6 +13,7 @@ use Modules\Inventory\Http\Requests\BulkStockBySkuRequest;
 use Modules\Inventory\Http\Requests\MovementsRequest;
 use Modules\Inventory\Http\Requests\SplitItemRequest;
 use Modules\Inventory\Http\Requests\StockedItemsRequest;
+use Modules\Inventory\Http\Requests\StockPositionExportRequest;
 use Modules\Inventory\Http\Requests\ToAdjustRequest;
 use Modules\Inventory\Http\Resources\InventoryMovementResource;
 use Modules\Inventory\Http\Resources\InventoryStockResource;
@@ -20,6 +22,7 @@ use Modules\Inventory\Http\Resources\StockItemResource;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Services\MonitorStockService;
 use Modules\Inventory\Services\PurchaseCostService;
+use Modules\Report\Services\ExportManager;
 use Modules\Product\Models\ProductVariant;
 use OpenApi\Attributes as OA;
 
@@ -94,6 +97,26 @@ class InventoryController extends Controller
                 'Aksi tidak dapat diproses',
             );
         }
+    }
+
+    public function stockPositionExportAsync(
+        StockPositionExportRequest $request,
+        ExportManager $exports,
+    ): JsonResponse {
+        $params = $request->validated();
+        $params['allowed_location_ids'] = WarehouseAccess::allowedIds();
+
+        $type = $params['format'] === 'pdf'
+            ? 'stock-position-pdf'
+            : 'stock-position-csv';
+
+        $job = $exports->queue($request->user(), $type, $params);
+
+        return $this->successResponse(
+            ['export_id' => $job->id, 'status' => $job->status],
+            'Export Posisi Stok sedang disiapkan.',
+            202,
+        );
     }
 
     public function stockItemShow(string $itemId): JsonResponse

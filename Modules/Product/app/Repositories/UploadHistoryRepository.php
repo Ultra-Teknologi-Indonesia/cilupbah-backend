@@ -13,10 +13,10 @@ class UploadHistoryRepository
 {
     private const RELATIONS = [
         'product:id,name',
-        'product.variants:id,product_id,sku',
-        'product.media',
+        'product.media:id,product_id,variant_id,url,is_primary,sort_order',
         'product.channelMappings:id,product_id,channel_shop_id,channel_url,external_product_id',
-        'channelShop.channel',
+        'channelShop:id,channel_id,shop_id,shop_name',
+        'channelShop.channel:id,code,name',
     ];
 
     public function paginate(int $retentionDays = 30): LengthAwarePaginator

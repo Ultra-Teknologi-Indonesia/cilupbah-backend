@@ -62,6 +62,7 @@ class ExportManager
 
     public const PDF_TYPES = [
         'monitor-stock-pdf',
+        'stock-position-pdf',
         'picklist-pdf',
         'transfer-out-bulk-pdf',
         'putaway-bulk-pdf',
@@ -110,6 +111,8 @@ class ExportManager
         'shipment-list',
         'monitor-stock-xlsx',
         'monitor-stock-pdf',
+        'stock-position-csv',
+        'stock-position-pdf',
         'product-catalog-csv',
         'sales-list',
         'sales-product',
@@ -333,6 +336,8 @@ class ExportManager
 
             'monitor-stock-pdf' => throw new \LogicException('PDF Monitor Stok diproses langsung oleh worker.'),
 
+            'stock-position-csv', 'stock-position-pdf' => throw new \LogicException('PDF/CSV Posisi Stok diproses langsung oleh worker.'),
+
             'product-catalog-csv' => new ProductCatalogCsvExport($params),
 
             'sales-list' => new SalesListPesananExport(
@@ -550,6 +555,10 @@ class ExportManager
             'monitor-stock-xlsx' => 'monitor-stok-'.($params['tab'] ?? 'export').'-'.now()->format('Y-m-d_His').'.xlsx',
 
             'monitor-stock-pdf' => 'monitor-stok-'.($params['tab'] ?? 'export').'-'.now()->format('Y-m-d_His').'.pdf',
+
+            'stock-position-csv' => 'posisi-stok-'.now()->format('Y-m-d_His').'.csv',
+
+            'stock-position-pdf' => 'posisi-stok-'.now()->format('Y-m-d_His').'.pdf',
 
             'product-catalog-csv' => 'katalog-produk-'.now()->format('Y-m-d_His').'.csv',
 

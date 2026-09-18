@@ -394,10 +394,14 @@ class InventoryRepository
         return $query->get();
     }
 
-    public function getStockItems(int $limit = 10)
+    public function getStockItems(int $limit = 10, ?array $input = null, bool $withTotal = true)
     {
-        $locationFilter = request('filter.location_id');
-        $allowedLocationIds = WarehouseAccess::allowedIds();
+        $input ??= request()->query();
+        $filters = is_array($input['filter'] ?? null) ? $input['filter'] : [];
+        $locationFilter = $filters['location_id'] ?? $input['location_id'] ?? null;
+        $allowedLocationIds = array_key_exists('allowed_location_ids', $input)
+            ? $input['allowed_location_ids']
+            : WarehouseAccess::allowedIds();
         $transitLocationId = Location::query()
             ->where('location_code', Location::SYSTEM_TRANSIT_CODE)
             ->value('id');
@@ -406,7 +410,8 @@ class InventoryRepository
             WarehouseAccess::assert((string) $locationFilter);
         }
 
-        $metricSort = in_array(ltrim((string) request('sort', ''), '-'), [
+        $sort = (string) ($input['sort'] ?? '');
+        $metricSort = in_array(ltrim($sort, '-'), [
             'average_cost', 'total_on_hand', 'total_available',
         ], true);
 
@@ -507,7 +512,7 @@ class InventoryRepository
                 ->selectRaw('0 as sort_average_cost');
         }
 
-        $search = trim((string) request('search', ''));
+        $search = trim((string) ($input['search'] ?? ''));
         if ($search !== '') {
             $searchPattern = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search).'%';
             $variantQuery->where(fn ($query) => $query
@@ -518,7 +523,7 @@ class InventoryRepository
                 ->orWhereRaw('LOWER(p.name) LIKE LOWER(?)', [$searchPattern]));
         }
 
-        $productFilter = request('filter.product_id');
+        $productFilter = $filters['product_id'] ?? $input['product_id'] ?? null;
         if ($productFilter) {
             $variantQuery->where('pv.product_id', $productFilter);
             $bundleQuery->where('p.id', $productFilter);
@@ -536,7 +541,7 @@ class InventoryRepository
                 ->where('location_inventory.location_id', $locationFilter));
         }
 
-        $channelFilter = request('filter.channel');
+        $channelFilter = $filters['channel'] ?? $input['channel'] ?? null;
         if ($channelFilter) {
             $variantQuery->whereExists(fn ($orders) => $orders->selectRaw('1')
                 ->from('sales_order_items as soi')
@@ -551,7 +556,7 @@ class InventoryRepository
                 ->where('so.source', $channelFilter));
         }
 
-        $isBundleFilter = request('filter.is_bundle');
+        $isBundleFilter = $filters['is_bundle'] ?? $input['is_bundle'] ?? null;
         if ($isBundleFilter !== null && $isBundleFilter !== '') {
             $wantsBundle = filter_var($isBundleFilter, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
             if ($wantsBundle === true) {
@@ -562,12 +567,18 @@ class InventoryRepository
         }
 
         $indexQuery = DB::query()->fromSub($variantQuery->unionAll($bundleQuery), 'stock_entries');
-        [$sortColumn, $sortDirection] = $this->stockPositionSort();
+        [$sortColumn, $sortDirection] = $this->stockPositionSort($sort);
+        $page = max(1, (int) ($input['page'] ?? 1));
+        $perPage = max(1, min(500, (int) ($input['per_page'] ?? $limit)));
         $paginator = $indexQuery
             ->orderBy($sortColumn, $sortDirection)
             ->orderBy('entity_id')
-            ->paginate((int) request('per_page', 20))
-            ->appends(request()->query());
+            ->when(
+                $withTotal,
+                fn ($query) => $query->paginate($perPage, ['*'], 'page', $page),
+                fn ($query) => $query->simplePaginate($perPage, ['*'], 'page', $page),
+            )
+            ->appends($input);
 
         $inventoryScope = function ($query) use ($locationFilter, $transitLocationId, $allowedLocationIds) {
             if ($transitLocationId) {
@@ -603,9 +614,30 @@ class InventoryRepository
             ->values());
     }
 
-    private function stockPositionSort(): array
+    public function stockPositionExportChunks(array $input, int $chunkSize = 250): \Generator
     {
-        $sort = (string) request('sort', '');
+        $chunkSize = max(1, min(500, $chunkSize));
+        $page = 1;
+
+        do {
+            $paginator = $this->getStockItems(
+                $chunkSize,
+                [...$input, 'page' => $page, 'per_page' => $chunkSize],
+                false,
+            );
+            $items = collect($paginator->items());
+
+            if ($items->isNotEmpty()) {
+                yield $items;
+            }
+
+            $page++;
+        } while ($paginator->hasMorePages());
+    }
+
+    private function stockPositionSort(?string $sort = null): array
+    {
+        $sort = (string) ($sort ?? request('sort', ''));
         $descending = str_starts_with($sort, '-');
         $field = ltrim($sort, '-');
         $column = match ($field) {

@@ -40,6 +40,10 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('inventory/activity', [InventoryController::class, 'movements'])->name('inventory.activity.index');
     });
 
+    Route::post('inventory/stock-position/export/async', [InventoryController::class, 'stockPositionExportAsync'])
+        ->name('inventory.stock-position.export.async')
+        ->middleware('role_or_permission:owner|export-laporan-persediaan');
+
     Route::get('inventory/items/to-stock', [InventoryController::class, 'itemsToStock'])->name('inventory.items.toStock')->middleware('role_or_permission:owner|view-posisi-stok');
     Route::get('inventory/items/item-on-stock', [InventoryController::class, 'itemsOnStock'])->name('inventory.items.itemOnStock')->middleware('role_or_permission:owner|view-posisi-stok');
     Route::get('inventory/items/to-sell/{locationId}', [InventoryController::class, 'toSell'])->name('inventory.items.toSell')->middleware('role_or_permission:owner|view-posisi-stok');
