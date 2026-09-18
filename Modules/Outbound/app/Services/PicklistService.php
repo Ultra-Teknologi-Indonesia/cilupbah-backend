@@ -17,7 +17,6 @@ use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\SkuRackAssignment;
 use Modules\Inventory\Services\InventoryService;
-use Modules\Inventory\Support\StockSummary;
 use Modules\Notification\Events\TaskAssigned;
 use Modules\Outbound\Events\PicklistItemFailed;
 use Modules\Outbound\Exceptions\OutboundValidationException;
@@ -730,9 +729,7 @@ class PicklistService
             throw new OutboundValidationException("SKU ini tidak ditemukan di rak {$bin->bin_final_code}. Silahkan pilih rak lain.");
         }
 
-        $pickedNotPacked = StockSummary::pickedNotPackedByBin([$item->item_id]);
-        $pendingInBin = (int) ($pickedNotPacked[$item->item_id][$bin->id] ?? 0);
-        $available = max(0, (int) $inventory->on_hand - $pendingInBin);
+        $available = (int) $inventory->on_hand;
 
         if ($available <= 0) {
             throw new OutboundValidationException("Stok tidak cukup di rak {$bin->bin_final_code}. Tersedia: {$available}. Silahkan pilih rak lain.");
@@ -801,19 +798,13 @@ class PicklistService
             ->orderByBinMovement('lifo')
             ->get();
 
-        $pickedNotPacked = StockSummary::pickedNotPackedByBin([$item->item_id]);
-
         return $rows
             ->filter(fn ($inv) => $inv->bin !== null)
-            ->map(function ($inv) use ($pickedNotPacked, $item): array {
-                $pending = (int) ($pickedNotPacked[$item->item_id][$inv->bin_id] ?? 0);
-
-                return [
-                    'bin_id' => $inv->bin_id,
-                    'bin_code' => $inv->bin->bin_final_code,
-                    'on_hand' => max(0, (int) $inv->on_hand - $pending),
-                ];
-            })
+            ->map(fn ($inv): array => [
+                'bin_id' => $inv->bin_id,
+                'bin_code' => $inv->bin->bin_final_code,
+                'on_hand' => (int) $inv->on_hand,
+            ])
             ->filter(fn ($candidate) => $candidate['on_hand'] > 0)
             ->values();
     }
@@ -1024,9 +1015,7 @@ class PicklistService
             throw new OutboundValidationException("SKU ini tidak ditemukan di rak {$bin->bin_final_code}. Silahkan pilih rak lain.");
         }
 
-        $pickedNotPacked = StockSummary::pickedNotPackedByBin([$item->item_id]);
-        $pendingInBin = (int) ($pickedNotPacked[$item->item_id][$bin->id] ?? 0);
-        $pickable = max(0, (int) $inventory->on_hand - $pendingInBin);
+        $pickable = (int) $inventory->on_hand;
 
         if ($pickable < $qty) {
             throw new OutboundValidationException("Stok tidak cukup di rak {$bin->bin_final_code}. Tersedia: {$pickable}, dibutuhkan: {$qty}. Silahkan pilih rak lain.");
