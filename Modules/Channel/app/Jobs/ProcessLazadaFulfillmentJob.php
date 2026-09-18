@@ -49,7 +49,16 @@ class ProcessLazadaFulfillmentJob implements ShouldQueue
         $statuses = $orderService->itemStatuses($this->shopId, $this->orderId);
 
         if (array_intersect($statuses, ['pending', 'repacked'])) {
-            $orderService->fulfillPack($this->shopId, $this->orderId, $this->shippingProviderId, $this->deliveryType);
+            $packResult = $orderService->fulfillPack($this->shopId, $this->orderId, $this->shippingProviderId, $this->deliveryType);
+            $packData = $packResult['pack'] ?? [];
+            if (! empty($packData['pack_order_list'])) {
+                foreach ($packData['pack_order_list'] as $pol) {
+                    foreach ($pol['order_item_list'] ?? [] as $oil) {
+                        $this->packageId = $this->packageId ?: ($oil['package_id'] ?? null);
+                        $this->trackingNumber = $this->trackingNumber ?: ($oil['tracking_number'] ?? null);
+                    }
+                }
+            }
         } else {
             Log::info("Lazada fulfillment: order {$this->orderId} sudah melewati tahap pack, dilewati.");
         }

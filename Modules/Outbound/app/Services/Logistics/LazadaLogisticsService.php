@@ -66,6 +66,16 @@ class LazadaLogisticsService extends AbstractLogisticsService
 
     private function extractTracking(array $packData): ?string
     {
+        if (! empty($packData['pack_order_list'])) {
+            foreach ($packData['pack_order_list'] as $pol) {
+                foreach ($pol['order_item_list'] ?? [] as $oil) {
+                    if (! empty($oil['tracking_number'])) {
+                        return $oil['tracking_number'];
+                    }
+                }
+            }
+        }
+
         return $packData['tracking_number']
             ?? $packData['order_items'][0]['tracking_number']
             ?? $packData['packages'][0]['tracking_number']

@@ -89,9 +89,16 @@ class LazadaOrderOpsTest extends TestCase
         $response->assertStatus(200)
             ->assertJsonPath('data.order_item_ids', ['111', '112']);
 
-        Http::assertSent(fn ($r) => str_contains($r->url(), '/order/fulfill/pack')
-            && ($r['order_item_ids'] ?? null) === '["111","112"]'
-            && ($r['shipping_provider_id'] ?? null) === 'LEX-ID');
+        Http::assertSent(function ($r) {
+            if (! str_contains($r->url(), '/order/fulfill/pack')) {
+                return false;
+            }
+            $packReq = json_decode($r['packReq'] ?? '{}', true);
+            $packList = $packReq['pack_order_list'][0] ?? [];
+
+            return ($packReq['shipping_allocate_type'] ?? null) === 'TFS'
+                && ($packList['order_item_list'] ?? null) === [111, 112];
+        });
     }
 
     public function test_fulfill_pack_rejects_when_no_packable_items(): void

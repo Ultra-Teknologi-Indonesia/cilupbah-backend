@@ -190,10 +190,20 @@ class LazadaOrderService
             throw new \Exception("Order {$orderId} tidak punya item berstatus pending/repacked untuk di-pack.");
         }
 
+        $numericOrderItems = array_values(array_map(fn ($id) => is_numeric($id) ? (int) $id : $id, $packableIds));
+        $numericOrderId = is_numeric($orderId) ? (int) $orderId : $orderId;
+
         $params = [
-            'delivery_type' => $deliveryType,
-            'shipping_provider_id' => $shippingProviderId,
-            'order_item_ids' => json_encode($packableIds),
+            'packReq' => json_encode([
+                'pack_order_list' => [
+                    [
+                        'order_id' => $numericOrderId,
+                        'order_item_list' => $numericOrderItems,
+                    ],
+                ],
+                'delivery_type' => $deliveryType ?: 'dropship',
+                'shipping_allocate_type' => 'TFS',
+            ]),
         ];
 
         $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/order/fulfill/pack', $params, $token));
@@ -205,12 +215,39 @@ class LazadaOrderService
             'response' => $res,
         ]);
 
+        $packData = $res['data'] ?? $res['result']['data'] ?? $res['result'] ?? [];
+
+        if (! empty($packData['pack_order_list'])) {
+            $extractedTracking = null;
+            $extractedProvider = null;
+            foreach ($packData['pack_order_list'] as $pol) {
+                foreach ($pol['order_item_list'] ?? [] as $oil) {
+                    $extractedTracking = $extractedTracking ?: ($oil['tracking_number'] ?? null);
+                    $extractedProvider = $extractedProvider ?: ($oil['shipment_provider'] ?? null);
+                }
+            }
+
+            if ($extractedTracking) {
+                $orderUpdate = ['tracking_number' => $extractedTracking];
+                if ($extractedProvider) {
+                    $orderUpdate['shipping_provider'] = $extractedProvider;
+                }
+                \Modules\Sales\Models\SalesOrder::query()
+                    ->where('source', 'lazada')
+                    ->where(function ($q) use ($orderId) {
+                        $q->where('channel_order_no', (string) $orderId)
+                          ->orWhere('channel_order_no', 'LZ-' . (string) $orderId);
+                    })
+                    ->update($orderUpdate);
+            }
+        }
+
         $this->resyncLocalOrder($shopId, $orderId);
 
         return [
             'order_id' => $orderId,
             'order_item_ids' => $packableIds,
-            'pack' => $res['data'] ?? $res['result']['data'] ?? [],
+            'pack' => $packData,
         ];
     }
 
