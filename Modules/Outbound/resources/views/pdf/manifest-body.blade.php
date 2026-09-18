@@ -146,12 +146,3 @@
         </td>
     </tr>
 </table>
-
-<div class="dompdf-footer">
-    <table>
-        <tr>
-            <td>Tgl. Cetak: {{ now()->timezone('Asia/Jakarta')->format('d M Y H:i') }}</td>
-            <td class="right">Hal: <span class="page-num"></span></td>
-        </tr>
-    </table>
-</div>

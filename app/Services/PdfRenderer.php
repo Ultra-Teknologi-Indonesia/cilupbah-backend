@@ -101,7 +101,6 @@ HTML;
                 ->attach('files', $footerHtml, 'footer.html')
                 ->post(rtrim($gotenbergUrl, '/') . '/forms/chromium/convert/html', [
                     'landscape' => $isLandscape ? 'true' : 'false',
-                    'preferCssPageSize' => 'true',
                     'printBackground' => 'true',
                     'marginTop' => '0.47', // 12mm
                     'marginBottom' => '0.6', // 15mm

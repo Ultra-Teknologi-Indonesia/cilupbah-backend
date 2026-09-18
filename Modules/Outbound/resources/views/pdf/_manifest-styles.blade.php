@@ -104,21 +104,4 @@
         font-size: 10px;
         margin-top: 4px;
     }
-    .dompdf-footer {
-        position: fixed;
-        bottom: -8mm;
-        left: 0;
-        right: 0;
-        font-size: 9px;
-        color: #555;
-    }
-    .dompdf-footer table { width: 100%; border-collapse: collapse; }
-    .dompdf-footer td { padding: 0 2px; }
-    .dompdf-footer .right { text-align: right; }
-    .page-num:after { content: counter(page); }
-    @media print {
-        .dompdf-footer {
-            display: none !important;
-        }
-    }
 </style>
