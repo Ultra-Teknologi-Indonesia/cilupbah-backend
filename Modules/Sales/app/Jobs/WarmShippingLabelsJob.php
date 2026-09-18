@@ -20,7 +20,6 @@ class WarmShippingLabelsJob implements ShouldBeUnique, ShouldQueue
 
     public int $uniqueFor = 120;
 
-    /** @var list<string> */
     public readonly array $orderIds;
 
     public function __construct(array $orderIds)

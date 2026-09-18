@@ -20,7 +20,10 @@ class CleanupBulkLabelBatchesCommand extends Command
 
         $batches = BulkShippingLabelBatch::query()
             ->where('status', BulkShippingLabelBatch::STATUS_READY)
-            ->whereNotNull('merged_pdf_path')
+            ->where(function ($query): void {
+                $query->whereNotNull('merged_pdf_path')
+                    ->orWhereNotNull('print_pdf_path');
+            })
             ->whereNull('file_purged_at')
             ->where(function ($query) use ($threshold): void {
                 $query->where('finished_at', '<', $threshold)

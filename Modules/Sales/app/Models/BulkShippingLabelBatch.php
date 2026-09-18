@@ -42,6 +42,7 @@ class BulkShippingLabelBatch extends Model
         'archive_pdf_bytes',
         'archive_error',
         'archived_at',
+        'print_requested_at',
         'file_purged_at',
         'started_at',
         'finished_at',
@@ -59,6 +60,7 @@ class BulkShippingLabelBatch extends Model
         'started_at' => 'datetime',
         'finished_at' => 'datetime',
         'archived_at' => 'datetime',
+        'print_requested_at' => 'datetime',
         'file_purged_at' => 'datetime',
     ];
 

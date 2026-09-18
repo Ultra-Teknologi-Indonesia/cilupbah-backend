@@ -248,6 +248,10 @@ class BulkShippingLabelService
 
     private function recordLabelPrinted(BulkShippingLabelBatch $batch, User $user): void
     {
+        if ($batch->print_pdf_path && $batch->print_requested_at === null) {
+            $batch->update(['print_requested_at' => now()]);
+        }
+
         $batch->items()
             ->where('status', BulkShippingLabelItem::STATUS_DONE)
             ->with('order')
@@ -258,6 +262,18 @@ class BulkShippingLabelService
                 }
             });
 
+    }
+
+    public function archiveAfterPrintDelivery(BulkShippingLabelBatch $batch): void
+    {
+        if (! $batch->print_pdf_path
+            || $batch->archive_status === BulkShippingLabelBatch::ARCHIVE_ARCHIVED) {
+            return;
+        }
+
+        ArchiveBulkShippingLabelJob::dispatch($batch->id)
+            ->delay(now()->addSeconds(config('bulk-labels.archive_after_print_seconds', 30)))
+            ->afterResponse();
     }
 
     public function retryFailed(User $user, BulkShippingLabelBatch $batch): BulkShippingLabelBatch
@@ -1486,9 +1502,6 @@ class BulkShippingLabelService
 
         $batch->recomputeCounts();
 
-        if ($localFirst) {
-            ArchiveBulkShippingLabelJob::dispatch($batch->id)->afterCommit();
-        }
     }
 
     public function markCrashed(BulkShippingLabelBatch $batch): void

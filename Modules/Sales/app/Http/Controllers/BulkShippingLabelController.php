@@ -145,16 +145,11 @@ class BulkShippingLabelController extends Controller
         $hasTrackingNumber = filled($item->order?->tracking_number);
 
         return match (true) {
-            $item->status === $item_class::STATUS_PENDING && $hasTrackingNumber
-                => 'Resi sudah tersedia — menunggu pembuatan label pengiriman.',
-            $item->status === $item_class::STATUS_PENDING
-                => 'Menunggu job pembuatan label di antrean.',
-            $item->status === $item_class::STATUS_DOWNLOADING && $hasTrackingNumber
-                => 'Sedang mengambil label pengiriman dari marketplace...',
-            $item->status === $item_class::STATUS_DOWNLOADING
-                => 'Sedang mengambil nomor resi dari marketplace...',
-            $item->status === $item_class::STATUS_WAITING_AWB
-                => 'Menunggu nomor resi dari marketplace...',
+            $item->status === $item_class::STATUS_PENDING && $hasTrackingNumber => 'Resi sudah tersedia — menunggu pembuatan label pengiriman.',
+            $item->status === $item_class::STATUS_PENDING => 'Menunggu job pembuatan label di antrean.',
+            $item->status === $item_class::STATUS_DOWNLOADING && $hasTrackingNumber => 'Sedang mengambil label pengiriman dari marketplace...',
+            $item->status === $item_class::STATUS_DOWNLOADING => 'Sedang mengambil nomor resi dari marketplace...',
+            $item->status === $item_class::STATUS_WAITING_AWB => 'Menunggu nomor resi dari marketplace...',
             $item->status === $item_class::STATUS_WAITING_SHOPEE_PREP => 'Menunggu Shopee menyiapkan label...',
             $item->status === $item_class::STATUS_WAITING_LAZADA_PREP => 'Menunggu Lazada menyiapkan label...',
             $item->status === $item_class::STATUS_DONE => 'Label pengiriman berhasil dibuat.',
@@ -188,6 +183,8 @@ class BulkShippingLabelController extends Controller
         abort_unless($batch->user_id === $req->user()->id, 403);
         $file = $this->svc->downloadableFile($batch, $req->user());
         $disk = Storage::disk($file['disk']);
+
+        $this->svc->archiveAfterPrintDelivery($batch->fresh());
 
         return $disk->response(
             $file['path'],

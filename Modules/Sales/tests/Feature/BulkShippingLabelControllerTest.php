@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Modules\Sales\Enums\OrderActivityAction;
+use Modules\Sales\Jobs\ArchiveBulkShippingLabelJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelItemJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelJob;
 use Modules\Sales\Models\BulkShippingLabelBatch;
@@ -243,6 +244,7 @@ class BulkShippingLabelControllerTest extends TestCase
 
     public function test_download_pdf_streams_from_local_print_spool_before_archive(): void
     {
+        Queue::fake();
         Storage::fake('print_spool');
         Storage::fake('documents');
 
@@ -274,6 +276,10 @@ class BulkShippingLabelControllerTest extends TestCase
 
         Storage::disk('print_spool')->assertExists('bulk-labels/spool-only.pdf');
         Storage::disk('documents')->assertMissing('bulk-labels/spool-only.pdf');
+        $this->assertNotNull($batch->fresh()->print_requested_at);
+        Queue::assertPushed(ArchiveBulkShippingLabelJob::class, function (ArchiveBulkShippingLabelJob $job) use ($batch): bool {
+            return $job->batchId === $batch->id;
+        });
     }
 
     public function test_retry_failed_returns_422_when_no_recoverable(): void
