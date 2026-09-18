@@ -104,10 +104,19 @@ class SalesReturnDetailSyncService
             $update['shipping_fee_return'] = $detail['shipping_fee_return'];
         }
 
-        if ($detail['tracking_number'] !== null && $detail['tracking_number'] !== $return->return_tracking_number) {
-            $update['return_tracking_number'] = $detail['tracking_number'];
-            $update['return_carrier'] = $detail['carrier'] ?? $return->return_carrier;
-            $update['return_shipped_at'] = $detail['shipped_at'] ?? $return->return_shipped_at;
+        $tracking = $detail['tracking_number'] ?? null;
+        $carrier = $detail['carrier'] ?? null;
+        $shippedAt = $detail['shipped_at'] ?? null;
+
+        if ((! $tracking || $tracking === '') && $return->order?->tracking_number) {
+            $tracking = $return->order->tracking_number;
+            $carrier = $carrier ?: $return->order->shipping_provider;
+        }
+
+        if ($tracking !== null && $tracking !== $return->return_tracking_number) {
+            $update['return_tracking_number'] = $tracking;
+            $update['return_carrier'] = $carrier ?? $return->return_carrier;
+            $update['return_shipped_at'] = $shippedAt ?? $return->return_shipped_at;
         }
 
         $return->update($update);

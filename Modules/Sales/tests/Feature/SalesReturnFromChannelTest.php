@@ -181,4 +181,56 @@ class SalesReturnFromChannelTest extends TestCase
 
         $this->assertNull($return);
     }
+
+    public function test_return_tracking_number_and_carrier_fallback_to_order_forward_tracking(): void
+    {
+        [$orderId] = $this->seedOrder('tiktok', 'TT-RTO-ORDER-1');
+
+        DB::table('sales_orders')->where('id', $orderId)->update([
+            'tracking_number' => 'JY-ORIGIN-999',
+            'shipping_provider' => 'J&T Express',
+        ]);
+
+        $return = app(SalesReturnService::class)->createFromChannel([
+            'source' => 'tiktok',
+            'channel_order_id' => 'TT-RTO-ORDER-1',
+            'channel_return_id' => '4042358619467777603',
+            'channel_shop_id' => 'shop-10',
+            'channel_status' => 'CANCELLED',
+            'reason' => 'Pengiriman paket gagal',
+            'created_by' => 'system:tiktok-webhook',
+        ]);
+
+        $this->assertNotNull($return);
+        $this->assertSame('JY-ORIGIN-999', $return->return_tracking_number);
+        $this->assertSame('J&T Express', $return->return_carrier);
+    }
+
+    public function test_dedicated_return_tracking_has_priority_over_forward_tracking(): void
+    {
+        [$orderId] = $this->seedOrder('shopee', 'SH-RETURN-ORDER-1');
+
+        DB::table('sales_orders')->where('id', $orderId)->update([
+            'tracking_number' => 'SPX-FORWARD-12345',
+            'shipping_provider' => 'Shopee Xpress Standard',
+        ]);
+
+        $return = app(SalesReturnService::class)->createFromChannel([
+            'source' => 'shopee',
+            'channel_order_id' => 'SH-RETURN-ORDER-1',
+            'channel_return_id' => 'RET-SN-998877',
+            'channel_shop_id' => 'shop-shopee-1',
+            'channel_status' => 'RETURN_REFUND',
+            'return_tracking_number' => 'SPX-RETURN-WAYBILL-777',
+            'return_carrier' => 'Shopee Xpress Return',
+            'reason' => 'Barang rusak saat diterima',
+            'created_by' => 'system:shopee-webhook',
+        ]);
+
+        $this->assertNotNull($return);
+        // Dedicated return tracking MUST be used, NOT the forward tracking
+        $this->assertSame('SPX-RETURN-WAYBILL-777', $return->return_tracking_number);
+        $this->assertSame('Shopee Xpress Return', $return->return_carrier);
+    }
 }
+

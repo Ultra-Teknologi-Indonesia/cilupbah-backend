@@ -243,6 +243,8 @@ class SalesReturnService
             'customer_name' => $order->customer_name ?? null,
             'reason' => $reason ?: 'Cancel diterima setelah paket dikirim',
             'reason_category' => SalesReturn::REASON_CATEGORY_CANCEL_SHIPPED,
+            'return_tracking_number' => $order->tracking_number ?? null,
+            'return_carrier' => $order->shipping_provider ?? null,
             'created_by' => $createdBy,
 
             'auto_accept' => false,
@@ -309,6 +311,8 @@ class SalesReturnService
                     'source' => SalesReturn::SOURCE_MARKETPLACE,
                     'channel_return_id' => $channelReturnId,
                     'channel_shop_id' => $payload['channel_shop_id'] ?? $existingCancelledShipped->channel_shop_id,
+                    'return_tracking_number' => $payload['return_tracking_number'] ?? $payload['tracking_number'] ?? $existingCancelledShipped->return_tracking_number ?: $order->tracking_number,
+                    'return_carrier' => $payload['return_carrier'] ?? $payload['carrier'] ?? $existingCancelledShipped->return_carrier ?: $order->shipping_provider,
                     'marketplace_decision' => $this->channelDecisionFromPayload($source, $payload)
                         ?? SalesReturn::MP_DECISION_APPROVED,
                     'marketplace_decision_at' => now(),
@@ -369,6 +373,8 @@ class SalesReturnService
             'source' => SalesReturn::SOURCE_MARKETPLACE,
             'channel_return_id' => $channelReturnId,
             'channel_shop_id' => $payload['channel_shop_id'] ?? null,
+            'return_tracking_number' => $payload['return_tracking_number'] ?? $payload['tracking_number'] ?? $order->tracking_number ?? null,
+            'return_carrier' => $payload['return_carrier'] ?? $payload['carrier'] ?? $order->shipping_provider ?? null,
             'customer_name' => $order->customer_name ?? null,
             'reason' => $payload['reason'] ?? 'Retur dari marketplace',
             'channel_reason_text' => $payload['channel_reason_text'] ?? null,

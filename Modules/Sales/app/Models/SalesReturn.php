@@ -265,6 +265,32 @@ class SalesReturn extends Model
         );
     }
 
+    protected function returnTrackingNumber(): Attribute
+    {
+        return Attribute::make(
+            get: function ($value) {
+                if ($value !== null && $value !== '') {
+                    return $value;
+                }
+
+                return $this->order?->tracking_number;
+            },
+        );
+    }
+
+    protected function returnCarrier(): Attribute
+    {
+        return Attribute::make(
+            get: function ($value) {
+                if ($value !== null && $value !== '') {
+                    return $value;
+                }
+
+                return $this->order?->shipping_provider;
+            },
+        );
+    }
+
     private static function humanizeCode(string $value): string
     {
         return ucfirst(strtolower(trim(str_replace(['_', '-'], ' ', $value))));

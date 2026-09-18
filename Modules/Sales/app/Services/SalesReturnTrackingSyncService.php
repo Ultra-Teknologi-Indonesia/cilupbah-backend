@@ -19,7 +19,7 @@ class SalesReturnTrackingSyncService
             return false;
         }
 
-        $return->loadMissing('order:id,source,channel_order_no');
+        $return->loadMissing('order:id,source,channel_order_no,tracking_number,shipping_provider');
         $return->forceFill([
             'tracking_sync_status' => SalesReturn::TRACKING_SYNC_IN_PROGRESS,
             'tracking_sync_attempted_at' => now(),
@@ -48,6 +48,14 @@ class SalesReturnTrackingSyncService
             }
 
             $tracking = $result['tracking_number'] ?? null;
+            $carrier = $result['carrier'] ?? null;
+            $shippedAt = $result['shipped_at'] ?? null;
+
+            if ((! $tracking || $tracking === '') && $return->order?->tracking_number) {
+                $tracking = $return->order->tracking_number;
+                $carrier = $carrier ?: $return->order->shipping_provider;
+            }
+
             $update = [
                 'tracking_synced_at' => now(),
                 'tracking_sync_status' => $tracking
@@ -58,8 +66,8 @@ class SalesReturnTrackingSyncService
 
             if ($tracking && $tracking !== $return->return_tracking_number) {
                 $update['return_tracking_number'] = $tracking;
-                $update['return_carrier'] = $result['carrier'] ?? $return->return_carrier;
-                $update['return_shipped_at'] = $result['shipped_at'] ?? $return->return_shipped_at;
+                $update['return_carrier'] = $carrier ?? $return->return_carrier;
+                $update['return_shipped_at'] = $shippedAt ?? $return->return_shipped_at;
             }
 
             $return->forceFill($update)->saveQuietly();
