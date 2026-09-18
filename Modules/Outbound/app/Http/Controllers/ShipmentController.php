@@ -561,6 +561,9 @@ class ShipmentController extends Controller
     )]
     public function manifestPdf(string $id)
     {
+        @ini_set('memory_limit', '1024M');
+        @set_time_limit(180);
+
         $shipment = $this->shipmentService->getById($id);
 
         if (! $shipment) {
@@ -608,6 +611,9 @@ class ShipmentController extends Controller
     )]
     public function manifestExcel(string $id)
     {
+        @ini_set('memory_limit', '1024M');
+        @set_time_limit(180);
+
         $shipment = $this->shipmentService->getById($id);
 
         if (! $shipment) {
@@ -650,6 +656,9 @@ class ShipmentController extends Controller
     )]
     public function bulkManifestPdf(BulkManifestPdfRequest $request)
     {
+        @ini_set('memory_limit', '1024M');
+        @set_time_limit(180);
+
         try {
             $orderIds = $request->validated()['order_ids'];
 

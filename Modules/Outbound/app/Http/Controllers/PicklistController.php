@@ -287,6 +287,9 @@ class PicklistController extends Controller
     )]
     public function bulkPdf(BulkPicklistPdfRequest $request)
     {
+        @ini_set('memory_limit', '1024M');
+        @set_time_limit(180);
+
         try {
             $orderIds = $request->validated()['order_ids'];
 
