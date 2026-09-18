@@ -7,6 +7,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Modules\Channel\Console\Commands\AlertChannelReauth;
 use Modules\Channel\Console\Commands\AuditChannelProductActivity;
 use Modules\Channel\Console\Commands\AuditChannelSkuCoverage;
+use Modules\Channel\Console\Commands\AuditLiveChannelMappings;
 use Modules\Channel\Console\Commands\BackfillDownloadHistory;
 use Modules\Channel\Console\Commands\BackfillShopeeShopNames;
 use Modules\Channel\Console\Commands\BackfillTikTokCommercePlatform;
@@ -54,6 +55,7 @@ class ChannelServiceProvider extends ModuleServiceProvider
         AlertChannelReauth::class,
         AuditChannelProductActivity::class,
         AuditChannelSkuCoverage::class,
+        AuditLiveChannelMappings::class,
         BackfillDownloadHistory::class,
         BackfillWebhookReturnReferences::class,
         BackfillShopeeShopNames::class,

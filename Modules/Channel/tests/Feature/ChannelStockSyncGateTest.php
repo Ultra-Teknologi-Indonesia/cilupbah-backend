@@ -7,12 +7,14 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Modules\Channel\Adapters\AdapterFactory;
+use Modules\Channel\Adapters\LazadaAdapter;
 use Modules\Channel\Adapters\ShopeeAdapter;
 use Modules\Channel\Adapters\TikTokAdapter;
 use Modules\Channel\Contracts\MarketplaceAdapterInterface;
 use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Support\ChannelVariantMappingResolver;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
@@ -421,6 +423,15 @@ class ChannelStockSyncGateTest extends TestCase
 
         Http::fake([
             'open-api.tiktokglobalshop.com/product/202309/products/TT-LISTING-A/inventory/update*' => Http::response(['code' => 0], 200),
+            'open-api.tiktokglobalshop.com/product/202309/products/TT-LISTING-A*' => Http::response([
+                'code' => 0,
+                'data' => [
+                    'skus' => [[
+                        'id' => 'TT-SKU-A',
+                        'seller_sku' => 'SKU-TT-A',
+                    ]],
+                ],
+            ], 200),
         ]);
 
         $result = app(TikTokAdapter::class)->syncStock(
@@ -479,6 +490,161 @@ class ChannelStockSyncGateTest extends TestCase
         $this->assertFalse($result['success']);
         $this->assertStringContainsString('SKU TikTok belum lengkap', $result['message']);
         Http::assertNothingSent();
+    }
+
+    public function test_tiktok_stock_sync_refuses_a_remote_seller_sku_mismatch_before_posting(): void
+    {
+        config([
+            'services.tiktok.app_key' => 'test-key',
+            'services.tiktok.app_secret' => 'test-secret',
+            'services.tiktok.base_url' => 'https://open-api.tiktokglobalshop.com',
+        ]);
+
+        $tiktok = Channel::create(['code' => 'tiktok', 'name' => 'TikTok', 'is_active' => true]);
+        $shop = ChannelShop::create([
+            'channel_id' => $tiktok->id,
+            'shop_id' => 'TT-SHOP-PREFLIGHT',
+            'shop_name' => 'TikTok Preflight',
+            'shop_cipher' => 'cipher',
+            'access_token' => 'token',
+            'is_active' => true,
+        ]);
+        $product = $this->makeListedProduct([
+            ['sku' => 'SKU-TT-MASTER', 'model_id' => '111', 'sync_enabled' => true],
+        ]);
+        $variant = $product->variants->firstOrFail();
+        $listing = ProductChannelMapping::create([
+            'product_id' => $product->id,
+            'channel_shop_id' => $shop->id,
+            'external_product_id' => 'TT-LISTING-PREFLIGHT',
+            'sync_status' => 'synced',
+        ]);
+        ProductVariantChannelMapping::create([
+            'product_channel_mapping_id' => $listing->id,
+            'variant_id' => $variant->id,
+            'external_sku_id' => 'TT-SKU-PREFLIGHT',
+            'channel_seller_sku' => 'SKU-TT-MASTER',
+            'sync_enabled' => true,
+        ]);
+
+        Http::fake([
+            'open-api.tiktokglobalshop.com/product/202309/products/TT-LISTING-PREFLIGHT/inventory/update*' => Http::response(['code' => 0], 200),
+            'open-api.tiktokglobalshop.com/product/202309/products/TT-LISTING-PREFLIGHT*' => Http::response([
+                'code' => 0,
+                'data' => [
+                    'skus' => [[
+                        'id' => 'TT-SKU-PREFLIGHT',
+                        'seller_sku' => 'SKU-TT-BERUBAH',
+                    ]],
+                ],
+            ], 200),
+        ]);
+
+        $result = app(TikTokAdapter::class)->syncStock(
+            $product,
+            $shop,
+            'TT-LISTING-PREFLIGHT',
+            $listing,
+        );
+
+        $this->assertFalse($result['success']);
+        $this->assertStringContainsString('Mapping model TikTok berubah', $result['message']);
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/products/TT-LISTING-PREFLIGHT?'));
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '/inventory/update'));
+    }
+
+    public function test_lazada_stock_sync_refuses_a_remote_seller_sku_mismatch_before_posting(): void
+    {
+        config([
+            'services.lazada.app_key' => 'test-key',
+            'services.lazada.app_secret' => 'test-secret',
+            'services.lazada.base_url' => 'https://api.lazada.co.id/rest',
+        ]);
+
+        $lazada = Channel::create(['code' => 'lazada', 'name' => 'Lazada', 'is_active' => true]);
+        $shop = ChannelShop::create([
+            'channel_id' => $lazada->id,
+            'shop_id' => 'LZ-SHOP-PREFLIGHT',
+            'shop_name' => 'Lazada Preflight',
+            'access_token' => 'token',
+            'refresh_token' => 'refresh-token',
+            'is_active' => true,
+        ]);
+        $product = $this->makeListedProduct([
+            ['sku' => 'SKU-LZ-MASTER', 'model_id' => '111', 'sync_enabled' => true],
+        ]);
+        $variant = $product->variants->firstOrFail();
+        $listing = ProductChannelMapping::create([
+            'product_id' => $product->id,
+            'channel_shop_id' => $shop->id,
+            'external_product_id' => 'LZ-LISTING-PREFLIGHT',
+            'sync_status' => 'synced',
+        ]);
+        ProductVariantChannelMapping::create([
+            'product_channel_mapping_id' => $listing->id,
+            'variant_id' => $variant->id,
+            'external_sku_id' => 'LZ-SKU-PREFLIGHT',
+            'channel_seller_sku' => 'SKU-LZ-MASTER',
+            'sync_enabled' => true,
+        ]);
+
+        Http::fake([
+            'api.lazada.co.id/rest/product/item/get*' => Http::response([
+                'code' => '0',
+                'data' => [
+                    'skus' => [[
+                        'SkuId' => 'LZ-SKU-PREFLIGHT',
+                        'SellerSku' => 'SKU-LZ-BERUBAH',
+                    ]],
+                ],
+            ], 200),
+            'api.lazada.co.id/rest/product/price_quantity/update*' => Http::response([
+                'code' => '0',
+                'data' => [],
+            ], 200),
+        ]);
+
+        $result = app(LazadaAdapter::class)->syncStock(
+            $product,
+            $shop,
+            'LZ-LISTING-PREFLIGHT',
+            $listing,
+        );
+
+        $this->assertFalse($result['success']);
+        $this->assertStringContainsString('Mapping model Lazada berubah', $result['message']);
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/product/item/get'));
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '/product/price_quantity/update'));
+    }
+
+    public function test_bundle_mapping_accepts_physical_channel_seller_sku(): void
+    {
+        $category = Category::create(['name' => 'Bundle '.uniqid(), 'is_active' => true]);
+        $bundle = Product::create([
+            'category_id' => $category->id,
+            'name' => 'Bundle Test',
+            'status' => Product::STATUS_MASTER,
+            'is_active' => true,
+            'is_bundle' => true,
+        ]);
+        $variant = ProductVariant::create([
+            'product_id' => $bundle->id,
+            'sku' => '__bundle__technical-identifier',
+            'is_active' => true,
+        ]);
+        $variant->setRelation('product', $bundle);
+        $mapping = new ProductVariantChannelMapping([
+            'channel_seller_sku' => 'SKU-FISIK-MARKETPLACE',
+            'sync_enabled' => true,
+        ]);
+        $mapping->setRelation('variant', $variant);
+
+        $error = ChannelVariantMappingResolver::sellerSkuPayloadError(
+            collect([$mapping]),
+            'SKU channel',
+        );
+
+        $this->assertNull($error);
     }
 
     public function test_missing_tiktok_sku_id_stops_before_an_api_request(): void

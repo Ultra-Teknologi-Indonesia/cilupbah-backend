@@ -26,7 +26,7 @@ final class ChannelVariantMappingResolver
                 return null;
             }
 
-            $listing->loadMissing('variantMappings.variant');
+            $listing->loadMissing('variantMappings.variant.product');
 
             return $listing;
         }
@@ -35,13 +35,13 @@ final class ChannelVariantMappingResolver
             ->where('product_id', $product->id)
             ->where('channel_shop_id', $shop->id)
             ->where('external_product_id', $externalProductId)
-            ->with('variantMappings.variant')
+            ->with('variantMappings.variant.product')
             ->first();
     }
 
     public static function enabledForListing(ProductChannelMapping $listing): Collection
     {
-        $listing->loadMissing('variantMappings.variant');
+        $listing->loadMissing('variantMappings.variant.product');
 
         return $listing->variantMappings
             ->filter(static fn (ProductVariantChannelMapping $mapping): bool => (bool) $mapping->sync_enabled
@@ -108,10 +108,11 @@ final class ChannelVariantMappingResolver
         }
 
         $mismatchedSellerSkus = $mappings->filter(
-            static fn (ProductVariantChannelMapping $mapping): bool => strcasecmp(
-                trim((string) $mapping->channel_seller_sku),
-                trim((string) ($mapping->variant?->sku ?? '')),
-            ) !== 0,
+            static fn (ProductVariantChannelMapping $mapping): bool => ! self::isBundleMapping($mapping)
+                && strcasecmp(
+                    trim((string) $mapping->channel_seller_sku),
+                    trim((string) ($mapping->variant?->sku ?? '')),
+                ) !== 0,
         );
 
         if ($mismatchedSellerSkus->isNotEmpty()) {
@@ -119,6 +120,11 @@ final class ChannelVariantMappingResolver
         }
 
         return null;
+    }
+
+    public static function isBundleMapping(ProductVariantChannelMapping $mapping): bool
+    {
+        return (bool) ($mapping->variant?->product?->is_bundle ?? false);
     }
 
     public static function forShop(

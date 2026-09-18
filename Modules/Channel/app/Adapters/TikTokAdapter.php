@@ -2,10 +2,12 @@
 
 namespace Modules\Channel\Adapters;
 
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Contracts\MarketplaceAdapterInterface;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Services\ChannelLiveMappingVerifier;
 use Modules\Channel\Services\ChannelStockResolver;
 use Modules\Channel\Services\TikTokClient;
 use Modules\Channel\Services\TikTokImageUploader;
@@ -31,13 +33,16 @@ class TikTokAdapter implements MarketplaceAdapterInterface
 
     protected ChannelStockResolver $stockResolver;
 
+    protected ChannelLiveMappingVerifier $liveMappingVerifier;
+
     public function __construct(
         TikTokClient $client,
         TikTokProductMapper $outboundMapper,
         TikTokToInternalProductMapper $inboundMapper,
         TikTokImageUploader $imageUploader,
         TikTokProductService $productService,
-        ChannelStockResolver $stockResolver
+        ChannelStockResolver $stockResolver,
+        ChannelLiveMappingVerifier $liveMappingVerifier,
     ) {
         $this->client = $client;
         $this->outboundMapper = $outboundMapper;
@@ -45,6 +50,7 @@ class TikTokAdapter implements MarketplaceAdapterInterface
         $this->imageUploader = $imageUploader;
         $this->productService = $productService;
         $this->stockResolver = $stockResolver;
+        $this->liveMappingVerifier = $liveMappingVerifier;
     }
 
     public function getChannelCode(): string
@@ -368,6 +374,10 @@ class TikTokAdapter implements MarketplaceAdapterInterface
         if ($sellerSkuError !== null) {
             return ['success' => false, 'message' => $sellerSkuError];
         }
+        $remoteMappingError = $this->remoteMappingError($shop, $externalProductId, $mappings);
+        if ($remoteMappingError !== null) {
+            return ['success' => false, 'message' => $remoteMappingError];
+        }
 
         $stockByVariant = $syncStock
             ? $this->stockResolver->availableByVariant($shop, $mappings->pluck('variant'))
@@ -466,6 +476,10 @@ class TikTokAdapter implements MarketplaceAdapterInterface
         if ($sellerSkuError !== null) {
             return ['success' => false, 'message' => $sellerSkuError];
         }
+        $remoteMappingError = $this->remoteMappingError($shop, $externalProductId, $mappings);
+        if ($remoteMappingError !== null) {
+            return ['success' => false, 'message' => $remoteMappingError];
+        }
 
         $stockByVariant = $this->stockResolver->availableByVariant($shop, $mappings->pluck('variant'));
 
@@ -513,6 +527,19 @@ class TikTokAdapter implements MarketplaceAdapterInterface
     public function mapInboundProduct(array $channelData, string $shopId): array
     {
         return $this->inboundMapper->map($channelData, $shopId);
+    }
+
+    protected function remoteMappingError(
+        ChannelShop $shop,
+        string $externalProductId,
+        Collection $mappings,
+    ): ?string {
+        return $this->liveMappingVerifier->error(
+            'tiktok',
+            $shop,
+            $externalProductId,
+            $mappings,
+        );
     }
 
     public function resolveWarehouseId(ChannelShop $shop): string

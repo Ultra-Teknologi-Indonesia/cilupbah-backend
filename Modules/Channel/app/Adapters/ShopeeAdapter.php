@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Contracts\MarketplaceAdapterInterface;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Services\ChannelLiveMappingVerifier;
 use Modules\Channel\Services\ChannelStockResolver;
 use Modules\Channel\Services\ShopeeClient;
 use Modules\Channel\Services\ShopeeMediaUploader;
@@ -26,6 +27,7 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         protected ShopeeToInternalProductMapper $inboundMapper,
         protected ShopeeMediaUploader $mediaUploader,
         protected ChannelStockResolver $stockResolver,
+        protected ChannelLiveMappingVerifier $liveMappingVerifier,
     ) {}
 
     public function getChannelCode(): string
@@ -350,63 +352,12 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         string $externalProductId,
         Collection $mappings,
     ): ?string {
-        try {
-            $response = $this->client->request(
-                'GET',
-                '/api/v2/product/get_model_list',
-                ['item_id' => (int) $externalProductId],
-                $shop->access_token,
-                $shop->shop_id,
-            );
-        } catch (\Throwable $exception) {
-            Log::warning('Shopee stock push ditolak karena validasi model gagal.', [
-                'shop_id' => $shop->shop_id,
-                'external_product_id' => $externalProductId,
-                'error' => $exception->getMessage(),
-            ]);
-
-            return 'Validasi model Shopee gagal. Stok tidak dikirim agar tidak berubah pada varian yang salah.';
-        }
-
-        $models = $response['response']['model'] ?? [];
-        $modelsById = collect($models)
-            ->filter(static fn (array $model): bool => isset($model['model_id']))
-            ->keyBy(static fn (array $model): string => (string) $model['model_id']);
-
-        $invalid = [];
-
-        foreach ($mappings as $mapping) {
-            $modelId = (string) $mapping->external_sku_id;
-            $remote = $modelsById->get($modelId);
-            $remoteSku = trim((string) ($remote['model_sku'] ?? ''));
-            $masterSku = trim((string) ($mapping->variant?->sku ?? ''));
-            $storedSku = trim((string) ($mapping->channel_seller_sku ?? ''));
-
-            if ($remote === null
-                || $remoteSku === ''
-                || strcasecmp($remoteSku, $masterSku) !== 0
-                || strcasecmp($remoteSku, $storedSku) !== 0) {
-                $invalid[] = [
-                    'mapping_id' => (string) $mapping->id,
-                    'model_id' => $modelId,
-                    'remote_sku' => $remoteSku,
-                    'master_sku' => $masterSku,
-                    'stored_sku' => $storedSku,
-                ];
-            }
-        }
-
-        if ($invalid === []) {
-            return null;
-        }
-
-        Log::warning('Shopee stock push ditolak karena mapping model tidak cocok.', [
-            'shop_id' => $shop->shop_id,
-            'external_product_id' => $externalProductId,
-            'invalid_mappings' => $invalid,
-        ]);
-
-        return 'Mapping model Shopee berubah atau tidak cocok dengan SKU master. Perbarui mapping sebelum sinkronisasi stok.';
+        return $this->liveMappingVerifier->error(
+            'shopee',
+            $shop,
+            $externalProductId,
+            $mappings,
+        );
     }
 
     public function mapInboundProduct(array $channelData, string $shopId): array

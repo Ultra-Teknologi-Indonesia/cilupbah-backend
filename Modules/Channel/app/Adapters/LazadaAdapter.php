@@ -2,11 +2,13 @@
 
 namespace Modules\Channel\Adapters;
 
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Contracts\MarketplaceAdapterInterface;
 use Modules\Channel\Exceptions\TokenExpiredException;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Services\ChannelLiveMappingVerifier;
 use Modules\Channel\Services\ChannelStockResolver;
 use Modules\Channel\Services\LazadaAuthService;
 use Modules\Channel\Services\LazadaClient;
@@ -20,7 +22,6 @@ use Modules\Product\Models\ProductChannelMapping;
 
 class LazadaAdapter implements MarketplaceAdapterInterface
 {
-
     private const PRICE_QUANTITY_UPDATE_MAX_SKUS = 50;
 
     public function __construct(
@@ -30,6 +31,7 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         protected ChannelStockResolver $stockResolver,
         protected LazadaImageUploader $imageUploader,
         protected LazadaAuthService $authService,
+        protected ChannelLiveMappingVerifier $liveMappingVerifier,
     ) {}
 
     public function getChannelCode(): string
@@ -179,6 +181,10 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         if ($sellerSkuError !== null) {
             return ['success' => false, 'message' => $sellerSkuError];
         }
+        $remoteMappingError = $this->remoteMappingError($shop, $externalProductId, $mappings);
+        if ($remoteMappingError !== null) {
+            return ['success' => false, 'message' => $remoteMappingError];
+        }
 
         $stockByVariant = $syncStock
             ? $this->stockResolver->availableByVariant($shop, $mappings->pluck('variant'))
@@ -254,6 +260,10 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         if ($sellerSkuError !== null) {
             return ['success' => false, 'message' => $sellerSkuError];
         }
+        $remoteMappingError = $this->remoteMappingError($shop, $externalProductId, $mappings);
+        if ($remoteMappingError !== null) {
+            return ['success' => false, 'message' => $remoteMappingError];
+        }
 
         $stockByVariant = $this->stockResolver->availableByVariant($shop, $mappings->pluck('variant'));
 
@@ -289,6 +299,19 @@ class LazadaAdapter implements MarketplaceAdapterInterface
     public function mapInboundProduct(array $channelData, string $shopId): array
     {
         return $this->inboundMapper->map($channelData, $shopId);
+    }
+
+    protected function remoteMappingError(
+        ChannelShop $shop,
+        string $externalProductId,
+        Collection $mappings,
+    ): ?string {
+        return $this->liveMappingVerifier->error(
+            'lazada',
+            $shop,
+            $externalProductId,
+            $mappings,
+        );
     }
 
     protected function updatePriceQuantityInChunks(array $skuPayloads, ChannelShop $shop): void
