@@ -3,6 +3,7 @@
 namespace Modules\Channel\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -140,6 +141,69 @@ class ChannelStockSyncGateTest extends TestCase
 
         $this->assertFalse($result['success']);
         Http::assertNothingSent();
+    }
+
+    public function test_live_mapping_audit_scopes_findings_to_requested_marketplace_shop_id(): void
+    {
+        $product = $this->makeListedProduct([
+            ['sku' => 'SKU-AUDIT', 'model_id' => '801', 'sync_enabled' => true],
+        ]);
+        $variant = $product->variants->firstOrFail();
+        $targetListing = ProductChannelMapping::query()
+            ->where('channel_shop_id', $this->shop->id)
+            ->firstOrFail();
+
+        ProductVariantChannelMapping::create([
+            'product_channel_mapping_id' => $targetListing->id,
+            'variant_id' => $variant->id,
+            'external_sku_id' => '802',
+            'channel_seller_sku' => 'SKU-AUDIT',
+            'sync_enabled' => true,
+        ]);
+
+        $otherShop = ChannelShop::create([
+            'channel_id' => $this->shopee->id,
+            'shop_id' => 'OTHER-SHOP',
+            'shop_name' => 'Shopee lain',
+            'access_token' => 'valid-token',
+            'refresh_token' => 'refresh-token',
+            'token_expires_at' => now()->addHours(4),
+            'is_active' => true,
+        ]);
+        $otherListing = ProductChannelMapping::create([
+            'product_id' => $product->id,
+            'channel_shop_id' => $otherShop->id,
+            'external_product_id' => 'OTHER-LISTING',
+            'sync_status' => 'synced',
+        ]);
+        ProductVariantChannelMapping::create([
+            'product_channel_mapping_id' => $otherListing->id,
+            'variant_id' => $variant->id,
+            'external_sku_id' => '901',
+            'channel_seller_sku' => 'SKU-AUDIT',
+            'sync_enabled' => true,
+        ]);
+        ProductVariantChannelMapping::create([
+            'product_channel_mapping_id' => $otherListing->id,
+            'variant_id' => $variant->id,
+            'external_sku_id' => '902',
+            'channel_seller_sku' => 'SKU-AUDIT',
+            'sync_enabled' => true,
+        ]);
+
+        $exitCode = Artisan::call('channel:audit-live-mappings', [
+            '--channel' => 'shopee',
+            '--shop' => '778899',
+            '--limit' => 50,
+            '--json' => true,
+        ]);
+        $result = json_decode(Artisan::output(), true, 512, JSON_THROW_ON_ERROR);
+
+        $this->assertSame(1, $exitCode);
+        $this->assertSame(1, $result['examined_listings']);
+        $this->assertCount(1, $result['findings']);
+        $this->assertSame('778899', $result['findings'][0]['shop_id']);
+        $this->assertSame('555001', $result['findings'][0]['listing_id']);
     }
 
     public function test_price_stock_deterministic_failure_is_recorded_without_retrying(): void

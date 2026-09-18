@@ -34,10 +34,15 @@ final class AuditLiveChannelMappings extends Command
             return self::FAILURE;
         }
 
+        $shopId = trim((string) $this->option('shop'));
+
         $listings = ProductChannelMapping::query()
             ->whereNotNull('external_product_id')
-            ->whereHas('channelShop', function ($query) use ($channel): void {
+            ->whereHas('channelShop', function ($query) use ($channel, $shopId): void {
                 $query->where('is_active', true)
+                    ->when($shopId !== '', function ($shopQuery) use ($shopId): void {
+                        $shopQuery->where('shop_id', $shopId);
+                    })
                     ->whereHas('channel', function ($channelQuery) use ($channel): void {
                         $channelQuery->whereIn('code', $channel === '' ? ['shopee', 'tiktok', 'lazada'] : [$channel]);
                     });
