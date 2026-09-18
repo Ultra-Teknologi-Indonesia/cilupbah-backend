@@ -93,7 +93,7 @@ class PacklistController extends Controller
             return $this->errorResponse('Pesanan tidak ditemukan atau belum siap packing.', 404);
         }
 
-        return $this->successResponse($packlist);
+        return $this->successResponse(new PacklistDetailResource($packlist));
     }
 
     public function index(Request $request): JsonResponse

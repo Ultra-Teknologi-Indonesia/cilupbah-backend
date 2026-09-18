@@ -27,7 +27,7 @@ class PicklistRepository
             'items.product.product.media:id,product_id,variant_id,url,is_primary,sort_order',
             'items.orderItem:id,order_id,description',
             'items.order:id,salesorder_no,customer_name',
-            'items.bin:id,bin_final_code',
+            'items.bin:id,bin_code,bin_final_code',
             'location:id,location_name,location_code',
             'picker:id,name,email',
         ])
@@ -178,7 +178,7 @@ class PicklistRepository
             'items.product.media:id,variant_id,product_id,url,is_primary,sort_order,media_type',
             'items.product.product.media:id,product_id,variant_id,url,is_primary,sort_order,media_type',
             'items.bin:id,bin_final_code',
-            'items.order:id,salesorder_no,customer_name,tracking_number',
+            'items.order:id,salesorder_no,customer_name,tracking_number,source',
             'items.order.shipmentOrders:id,order_id,shipment_id',
             'items.order.shipmentOrders.shipment:id,shipment_no',
             'location:id,location_name,location_code',
@@ -292,8 +292,8 @@ class PicklistRepository
                 'product.product:id,name',
                 'product.media:id,variant_id,product_id,url,is_primary,sort_order,media_type',
                 'product.product.media:id,product_id,variant_id,url,is_primary,sort_order,media_type',
-                'bin:id,bin_final_code',
-                'order:id,salesorder_no,customer_name,tracking_number',
+                'bin:id,bin_code,bin_final_code',
+                'order:id,salesorder_no,customer_name,tracking_number,source',
                 'order.shipmentOrders:id,order_id,shipment_id',
                 'order.shipmentOrders.shipment:id,shipment_no',
             ]);

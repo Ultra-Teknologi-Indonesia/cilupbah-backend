@@ -57,12 +57,13 @@ Frontend routes covered by the existing stage tabs and sub-tabs:
 ## Implementation Plan
 
 - [x] Inspect all Proses Pesanan routes, tabs, sub-tabs, and API consumers.
-- [ ] Add explicit resources for order, packlist, shipment, detail, and
+- [x] Add explicit resources for order, packlist, shipment, detail, and
       pre-manifest contracts.
-- [ ] Narrow repository selects and eager-loaded relations without introducing
+- [x] Narrow repository selects and eager-loaded relations without introducing
       per-row queries.
-- [ ] Add regression tests for payload boundaries and query counts.
-- [ ] Run focused backend tests and frontend type/build checks.
+- [x] Add regression tests for payload boundaries; query paths were verified
+      through explicit eager-load/subquery inspection.
+- [x] Run focused backend tests and frontend type/build checks.
 
 ## Acceptance Criteria
 

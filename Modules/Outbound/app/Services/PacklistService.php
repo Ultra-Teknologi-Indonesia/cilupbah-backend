@@ -121,7 +121,7 @@ class PacklistService
             'items.orderItem.product.product.media:id,product_id,variant_id,url,is_primary,sort_order',
             'location:id,location_name,location_code',
             'packer:id,name,email',
-            'order:id,salesorder_no,customer_name',
+            'order:id,salesorder_no,customer_name,transaction_date,shipping_provider,shipping_type,channel_instant,resolved_shipment_type,source,tracking_number',
         ]);
     }
 

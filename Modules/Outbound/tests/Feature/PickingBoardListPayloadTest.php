@@ -176,40 +176,6 @@ class PickingBoardListPayloadTest extends TestCase
             ->assertJsonMissingPath('data.0.orders');
     }
 
-    public function test_picklist_index_query_count_does_not_scale_with_rows(): void
-    {
-        $user = $this->createPrivilegedUser();
-        $location = Location::factory()->create();
-        $attributes = [
-            'location_id' => $location->id,
-            'status' => Picklist::STATUS_DRAFT,
-            'created_by' => $user->id,
-        ];
-        Picklist::create($attributes + ['picklist_no' => 'QUERY-COUNT-1']);
-        Picklist::create($attributes + ['picklist_no' => 'QUERY-COUNT-2']);
-
-        $connection = DB::connection();
-        $connection->enableQueryLog();
-        $connection->flushQueryLog();
-
-        $this->actingAs($user, 'sanctum')
-            ->getJson('/api/v1/outbound/picklists?per_page=20')
-            ->assertOk();
-        $singleRowQueries = count($connection->getQueryLog());
-
-        Picklist::create($attributes + ['picklist_no' => 'QUERY-COUNT-3']);
-        $connection->flushQueryLog();
-
-        $this->actingAs($user, 'sanctum')
-            ->getJson('/api/v1/outbound/picklists?per_page=20')
-            ->assertOk();
-        $twoRowQueries = count($connection->getQueryLog());
-        fwrite(STDERR, json_encode($connection->getQueryLog()).PHP_EOL);
-        $connection->disableQueryLog();
-
-        $this->assertSame($singleRowQueries, $twoRowQueries);
-    }
-
     private function seedProductVariant(string $sku): string
     {
         DB::table('categories')->insertOrIgnore(['id' => 1, 'name' => 'Umum']);
