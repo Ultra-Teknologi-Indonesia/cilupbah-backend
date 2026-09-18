@@ -63,8 +63,38 @@ class OutboundFulfillmentRepository
         int $limit = 10,
         array $extraSelects = [],
         bool $latestFirst = false,
+        bool $lightweight = false,
     )
     {
+        if ($lightweight) {
+            $query->select([
+                'sales_orders.id',
+                'sales_orders.salesorder_no',
+                'sales_orders.channel_order_no',
+                'sales_orders.customer_name',
+                'sales_orders.shipping_full_name',
+                'sales_orders.source',
+                'sales_orders.commerce_platform',
+                'sales_orders.channel_shop_id',
+                'sales_orders.is_manual',
+                'sales_orders.status',
+                'sales_orders.is_paid',
+                'sales_orders.grand_total',
+                'sales_orders.actual_shipping_fee',
+                'sales_orders.transaction_date',
+                'sales_orders.location_id',
+                'sales_orders.tracking_number',
+                'sales_orders.shipping_provider',
+                'sales_orders.is_canceled',
+                'sales_orders.cancel_requested_at',
+                'sales_orders.ship_by_date',
+                'sales_orders.channel_instant',
+                'sales_orders.resolved_shipment_type',
+                'sales_orders.shipping_type',
+                'sales_orders.created_at',
+            ]);
+        }
+
         if (in_array('picker_name', $extraSelects, true)) {
             $query->addSelect([
                 'picker_name' => DB::table('picklists')
@@ -152,7 +182,19 @@ class OutboundFulfillmentRepository
                 ->orderByRaw('ship_by_date ASC NULLS LAST');
         }
 
-        $paginator = QueryBuilder::for($query->with(['items', 'items.product.media', 'items.product.product.media', 'location:id,location_name,location_code']))
+        $relations = $lightweight
+            ? [
+                'items:id,order_id,item_id,sku,description,qty_in_base',
+                'location:id,location_name',
+            ]
+            : [
+                'items',
+                'items.product.media',
+                'items.product.product.media',
+                'location:id,location_name,location_code',
+            ];
+
+        $paginator = QueryBuilder::for($query->with($relations))
             ->allowedFilters(
                 AllowedFilter::exact('source'),
                 AllowedFilter::exact('location_id'),
@@ -260,14 +302,6 @@ class OutboundFulfillmentRepository
             ->appends(request()->query());
 
         $labelCapabilities = (array) config('channel_print_capabilities', []);
-        $bundleComponents = $this->productRepository->bundleComponentsForVariants(
-            $paginator->getCollection()
-                ->flatMap(fn (SalesOrder $order) => $order->items->pluck('item_id'))
-                ->filter()
-                ->unique()
-                ->values()
-                ->all(),
-        );
 
         $paginator->getCollection()->transform(function (SalesOrder $order) use ($labelCapabilities): SalesOrder {
             $source = strtolower(trim((string) ($order->source ?? '')));
@@ -281,6 +315,39 @@ class OutboundFulfillmentRepository
 
             return $order;
         });
+
+        if ($lightweight) {
+            $bundleComponents = $this->productRepository->bundleComponentsForVariants(
+                $paginator->getCollection()
+                    ->flatMap(fn (SalesOrder $order) => $order->items->pluck('item_id'))
+                    ->filter()
+                    ->unique()
+                    ->values()
+                    ->all(),
+            );
+
+            $paginator->getCollection()->transform(function (SalesOrder $order) use ($bundleComponents): SalesOrder {
+                foreach ($order->items as $item) {
+                    $variantId = (string) ($item->item_id ?? '');
+                    if (array_key_exists($variantId, $bundleComponents)) {
+                        $item->setAttribute('bundle_components', $bundleComponents[$variantId]);
+                    }
+                }
+
+                return $order;
+            });
+
+            return $paginator;
+        }
+
+        $bundleComponents = $this->productRepository->bundleComponentsForVariants(
+            $paginator->getCollection()
+                ->flatMap(fn (SalesOrder $order) => $order->items->pluck('item_id'))
+                ->filter()
+                ->unique()
+                ->values()
+                ->all(),
+        );
 
         $paginator->getCollection()->transform(function (SalesOrder $order) use ($bundleComponents): SalesOrder {
             $skuSet = [];

@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Modules\Outbound\Http\Requests\ExportProcessOrdersRequest;
+use Modules\Outbound\Http\Resources\FulfillmentOrderListResource;
 use Modules\Outbound\Services\OutboundFulfillmentService;
 use Modules\Sales\Jobs\WarmShippingLabelsJob;
 use OpenApi\Attributes as OA;
@@ -54,7 +55,11 @@ class OutboundFulfillmentController extends Controller
             );
         }
 
-        return $this->successPaginatedResponse($data);
+        $payload = in_array($stage, ['ready-to-process', 'finish-pick'], true)
+            ? FulfillmentOrderListResource::collection($data)
+            : $data;
+
+        return $this->successPaginatedResponse($payload);
     }
 
     #[OA\Post(

@@ -88,7 +88,16 @@ class PicklistRepository
 
         WarehouseAccess::apply($query, 'location_id');
 
-        $query->selectRaw("picklists.*, EXISTS(
+        $query->select([
+            'picklists.id',
+            'picklists.picklist_no',
+            'picklists.location_id',
+            'picklists.picker_id',
+            'picklists.status',
+            'picklists.started_at',
+            'picklists.completed_at',
+            'picklists.created_at',
+        ])->selectRaw("EXISTS(
             SELECT 1 FROM picklist_items
             JOIN sales_orders ON sales_orders.id = picklist_items.order_id
             WHERE picklist_items.picklist_id = picklists.id
@@ -103,7 +112,7 @@ class PicklistRepository
         return $query->withCount('items')
             ->withSum('items', 'qty_ordered')
             ->withSum('items', 'qty_picked')
-            ->with(['location:id,location_name,location_code', 'picker:id,name,email', 'creator:id,name'])
+            ->with(['location:id,location_name', 'picker:id,name'])
             ->allowedFilters(
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('location_id'),
@@ -150,7 +159,7 @@ class PicklistRepository
                 'orders.salesorder_no',
                 'orders.channel_order_no',
                 'orders.tracking_number',
-                'items.product.sku',
+                'items.sku',
             )
             ->allowedSorts('created_at', 'picklist_no', 'started_at', 'completed_at', 'location_id', 'picker_id', 'status')
             ->defaultSort('-created_at')

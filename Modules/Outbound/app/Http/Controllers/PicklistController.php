@@ -24,6 +24,7 @@ use Modules\Outbound\Http\Requests\ResetPicklistAssignmentRequest;
 use Modules\Outbound\Http\Requests\ScanForPickRequest;
 use Modules\Outbound\Http\Requests\UnassignPicklistRequest;
 use Modules\Outbound\Http\Requests\UnpickItemsRequest;
+use Modules\Outbound\Http\Resources\PicklistListResource;
 use Modules\Outbound\Http\Resources\PicklistResource;
 use Modules\Outbound\Services\PicklistService;
 use Modules\Report\Services\ExportManager;
@@ -85,7 +86,7 @@ class PicklistController extends Controller
         $limit = (int) $request->query('per_page', $request->query('limit', 10));
         $data = $this->picklistService->getAllPaginated($limit);
 
-        return $this->successPaginatedResponse(PicklistResource::collection($data));
+        return $this->successPaginatedResponse(PicklistListResource::collection($data));
     }
 
     #[OA\Get(

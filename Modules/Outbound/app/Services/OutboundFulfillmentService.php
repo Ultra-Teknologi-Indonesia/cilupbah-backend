@@ -377,7 +377,15 @@ class OutboundFulfillmentService
             default => ['invoice_ref'],
         };
 
-        return $this->fulfillmentRepository->paginateStage($query, $limit, $extraSelects, $latestFirst);
+        $lightweight = in_array($stage, ['ready-to-process', 'finish-pick'], true);
+
+        return $this->fulfillmentRepository->paginateStage(
+            $query,
+            $limit,
+            $extraSelects,
+            $latestFirst,
+            $lightweight,
+        );
     }
 
     public function getBoardCounts(): array
