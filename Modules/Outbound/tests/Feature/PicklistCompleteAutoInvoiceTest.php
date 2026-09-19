@@ -209,7 +209,7 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
         $this->assertSame(1, DB::table('inventory_movements')->where('source', 'INVOICE')->count());
     }
 
-    public function test_manual_completion_updates_order_status_before_async_release(): void
+    public function test_manual_completion_finishes_invoice_and_stock_before_async_safety_job(): void
     {
         $this->actingAs($this->user);
         Queue::fake();
@@ -218,9 +218,15 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
 
         $res->assertOk();
         $this->assertSame('picked', $this->order->fresh()->status);
-        $this->assertDatabaseCount('sales_invoices', 0);
-        $this->assertDatabaseMissing('inventory_movements', [
+        $this->assertDatabaseHas('sales_invoices', [
+            'order_id' => $this->order->id,
+        ]);
+        $this->assertSame(1, (int) PicklistItemAllocation::query()
+            ->where('picklist_item_id', $this->pickItem->id)
+            ->value('physical_committed_qty'));
+        $this->assertDatabaseHas('inventory_movements', [
             'source' => 'INVOICE',
+            'qty' => -1,
         ]);
         Queue::assertPushed(ProcessPicklistCompleteJob::class, 1);
     }
@@ -341,7 +347,7 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
         ]);
     }
 
-    public function test_last_picked_item_only_queues_completion_once_without_posting_inline(): void
+    public function test_last_picked_item_finishes_completion_before_queue_safety_job(): void
     {
         Queue::fake();
 
@@ -361,9 +367,12 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
 
         Queue::assertPushed(ProcessPicklistCompleteJob::class, 1);
         $this->assertSame('picked', $this->order->fresh()->status);
-        $this->assertDatabaseCount('sales_invoices', 0);
-        $this->assertDatabaseCount('inventory_movements', 1);
-        $this->assertDatabaseMissing('inventory_movements', [
+        $this->assertDatabaseCount('sales_invoices', 1);
+        $this->assertSame(1, (int) PicklistItemAllocation::query()
+            ->where('picklist_item_id', $item->id)
+            ->value('physical_committed_qty'));
+        $this->assertDatabaseCount('inventory_movements', 2);
+        $this->assertDatabaseHas('inventory_movements', [
             'source' => 'INVOICE',
         ]);
     }

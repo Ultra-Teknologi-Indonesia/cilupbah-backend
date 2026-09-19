@@ -522,15 +522,27 @@ class PicklistService
 
             $picklist->refresh();
 
-            foreach ($picklist->items->pluck('order_id')->filter()->unique() as $orderId) {
-                $this->orderReleaseService->markOrderPickedIfComplete(
-                    $picklist,
-                    (string) $orderId,
-                );
-            }
+            $this->releaseCompletedPicklistSynchronously($picklist);
 
-            ProcessPicklistCompleteJob::dispatch($picklistId);
+            ProcessPicklistCompleteJob::dispatch($picklistId)->afterCommit();
         });
+    }
+
+    private function releaseCompletedPicklistSynchronously(Picklist $picklist): void
+    {
+        foreach ($picklist->items->pluck('order_id')->filter()->unique() as $orderId) {
+            $orderId = (string) $orderId;
+
+            $this->orderReleaseService->markOrderPickedIfComplete(
+                $picklist,
+                $orderId,
+            );
+
+            $this->orderReleaseService->releaseIfComplete(
+                $picklist,
+                $orderId,
+            );
+        }
     }
 
     private function itemAlreadyFullException(PicklistItem $item, int $current, int $ordered): UserFacingException
@@ -922,18 +934,13 @@ class PicklistService
 
             $picklist->refresh();
 
-            foreach ($picklist->items->pluck('order_id')->filter()->unique() as $orderId) {
-                $this->orderReleaseService->markOrderPickedIfComplete(
-                    $picklist,
-                    (string) $orderId,
-                );
-            }
+            $this->releaseCompletedPicklistSynchronously($picklist);
 
             return false;
         });
 
         if (! $alreadyCompleted) {
-            ProcessPicklistCompleteJob::dispatch($id);
+            ProcessPicklistCompleteJob::dispatch($id)->afterCommit();
         }
 
         return $this->picklistRepository->findById($id);
