@@ -9,6 +9,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Services\ShippingLabelPreparationDispatcher;
 
 class WarmShippingLabelsJob implements ShouldBeUnique, ShouldQueue
 {
@@ -59,11 +60,7 @@ class WarmShippingLabelsJob implements ShouldBeUnique, ShouldQueue
                     return;
                 }
 
-                match (strtolower((string) $order->source)) {
-                    'shopee' => PrepareShopeeShippingLabelJob::dispatch((string) $order->id),
-                    'tiktok' => PrepareTikTokShippingLabelJob::dispatch((string) $order->id),
-                    'lazada' => PrepareLazadaShippingLabelJob::dispatch((string) $order->id),
-                };
+                app(ShippingLabelPreparationDispatcher::class)->dispatch($order);
             });
     }
 }

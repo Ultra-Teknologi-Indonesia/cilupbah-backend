@@ -11,12 +11,13 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
+use Modules\Sales\Jobs\Concerns\UsesShippingLabelPreparationLock;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\BulkShippingLabelService;
 
 class PrepareShopeeShippingLabelJob implements ShouldBeUnique, ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, UsesShippingLabelPreparationLock;
 
     public int $tries = 3;
 
@@ -61,52 +62,153 @@ class PrepareShopeeShippingLabelJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        if (empty($order->tracking_number)) {
-            Log::info('PrepareShopeeShippingLabelJob: tracking_number kosong, skip', [
-                'order_id' => $order->id,
-                'salesorder_no' => $order->salesorder_no,
-            ]);
-
+        if ($order->shipping_label_status === 'ready') {
             return;
         }
 
-        if (in_array($order->shipping_label_status, ['ready', 'preparing', 'self_design_required'], true)) {
-            return;
-        }
+        $this->withShippingLabelPreparationLock($order, function () use ($order, $shopee): void {
+            if (empty($order->tracking_number)) {
+                Log::info('PrepareShopeeShippingLabelJob: tracking_number kosong, skip', [
+                    'order_id' => $order->id,
+                    'salesorder_no' => $order->salesorder_no,
+                ]);
 
-        $shopId = (string) $order->channel_shop_id;
-        $orderSn = (string) $order->channel_order_no;
+                return;
+            }
 
-        if ($shopId === '' || $orderSn === '') {
-            Log::warning('PrepareShopeeShippingLabelJob: channel_shop_id / channel_order_no kosong', [
-                'order_id' => $order->id,
-            ]);
+            $shopId = (string) $order->channel_shop_id;
+            $orderSn = (string) $order->channel_order_no;
 
-            return;
-        }
+            if ($shopId === '' || $orderSn === '') {
+                Log::warning('PrepareShopeeShippingLabelJob: channel_shop_id / channel_order_no kosong', [
+                    'order_id' => $order->id,
+                ]);
 
-        $order->update(['shipping_label_status' => 'preparing']);
+                return;
+            }
 
-        try {
-            $docType = $shopee->resolveSupportedDocType($shopId, $orderSn, 'THERMAL_AIR_WAYBILL');
-        } catch (\Throwable $e) {
-            $docType = 'THERMAL_AIR_WAYBILL';
-            Log::warning('PrepareShopeeShippingLabelJob: resolveSupportedDocType gagal, pakai default', [
-                'order_id' => $order->id,
-                'exception' => $e->getMessage(),
-            ]);
-        }
+            $order->update(['shipping_label_status' => 'preparing']);
 
-        if ($this->attempt === 0) {
             try {
-                $create = $shopee->createShippingDocument(
+                $docType = $shopee->resolveSupportedDocType($shopId, $orderSn, 'THERMAL_AIR_WAYBILL');
+            } catch (\Throwable $e) {
+                $docType = 'THERMAL_AIR_WAYBILL';
+                Log::warning('PrepareShopeeShippingLabelJob: resolveSupportedDocType gagal, pakai default', [
+                    'order_id' => $order->id,
+                    'exception' => $e->getMessage(),
+                ]);
+            }
+
+            if ($this->attempt === 0) {
+                try {
+                    $create = $shopee->createShippingDocument(
+                        $shopId,
+                        $orderSn,
+                        $docType,
+                        $order->tracking_number,
+                        $order->package_number ?? null
+                    );
+                } catch (\Throwable $e) {
+                    $reason = $shopee->classifyShippingLabelFailure($e);
+                    if ($reason !== null) {
+                        $this->markTerminalFailure($order, $reason);
+                        $this->notifyBulkListeners();
+
+                        return;
+                    }
+
+                    throw $e;
+                }
+
+                if (! empty($create['error'])) {
+                    $failDetail = $create['response']['result_list'][0]['fail_message']
+                        ?? $create['response']['result_list'][0]['fail_error']
+                        ?? ($create['message'] ?? null);
+
+                    $reason = $shopee->classifyShippingLabelFailure($create);
+                    if ($reason !== null) {
+                        $this->markTerminalFailure($order, $reason);
+                        $this->notifyBulkListeners();
+
+                        return;
+                    }
+
+                    $errCode = (string) $create['error'];
+                    $recoverable = str_contains($errCode, 'duplicate') || str_contains($errCode, 'already');
+
+                    if (! $recoverable) {
+                        $order->update(['shipping_label_status' => 'failed']);
+                        Log::error('PrepareShopeeShippingLabelJob: createShippingDocument gagal', [
+                            'order_id' => $order->id,
+                            'order_sn' => $orderSn,
+                            'doc_type' => $docType,
+                            'error' => $errCode,
+                            'message' => $failDetail,
+                        ]);
+                        $this->notifyBulkListeners();
+                        throw new \RuntimeException("Shopee createShippingDocument gagal: {$errCode} {$failDetail}");
+                    }
+
+                    Log::info('PrepareShopeeShippingLabelJob: createShippingDocument recoverable, lanjut check status', [
+                        'order_id' => $order->id,
+                        'order_sn' => $orderSn,
+                        'error' => $errCode,
+                    ]);
+                }
+            }
+
+            try {
+                $result = $shopee->getShippingDocumentResult(
                     $shopId,
                     $orderSn,
                     $docType,
                     $order->tracking_number,
                     $order->package_number ?? null
                 );
+                $row = $result['response']['result_list'][0] ?? [];
+                $status = strtoupper((string) ($row['status'] ?? ''));
+
+                if ($status === 'READY') {
+                    $order->update([
+                        'shipping_label_status' => 'ready',
+                        'shipping_label_doc_type' => $docType,
+                        'shipping_label_prepared_at' => now(),
+                    ]);
+                    Log::info('PrepareShopeeShippingLabelJob: shipping document READY', [
+                        'order_id' => $order->id,
+                        'order_sn' => $orderSn,
+                        'doc_type' => $docType,
+                    ]);
+
+                    $this->notifyBulkListeners();
+
+                    return;
+                }
+
+                if ($status === 'FAILED') {
+                    $reason = $shopee->classifyShippingLabelFailure($row);
+                    if ($reason !== null) {
+                        $this->markTerminalFailure($order, $reason);
+                        $this->notifyBulkListeners();
+
+                        return;
+                    }
+
+                    $order->update(['shipping_label_status' => 'failed']);
+                    Log::error('PrepareShopeeShippingLabelJob: shipping document FAILED', [
+                        'order_id' => $order->id,
+                        'order_sn' => $orderSn,
+                        'fail_error' => $row['fail_error'] ?? null,
+                        'fail_msg' => $row['fail_message'] ?? null,
+                    ]);
+                    $this->notifyBulkListeners();
+                    throw new \RuntimeException('Shopee shipping document FAILED: '.($row['fail_message'] ?? $row['fail_error'] ?? 'unknown'));
+                }
             } catch (\Throwable $e) {
+                if ($e instanceof \RuntimeException && str_contains($e->getMessage(), 'FAILED')) {
+                    throw $e;
+                }
+
                 $reason = $shopee->classifyShippingLabelFailure($e);
                 if ($reason !== null) {
                     $this->markTerminalFailure($order, $reason);
@@ -115,131 +217,32 @@ class PrepareShopeeShippingLabelJob implements ShouldBeUnique, ShouldQueue
                     return;
                 }
 
-                throw $e;
+                Log::info('PrepareShopeeShippingLabelJob: dokumen belum siap atau get result gagal, jadwalkan retry: '.$e->getMessage(), [
+                    'order_id' => $order->id,
+                    'attempt' => $this->attempt,
+                ]);
             }
 
-            if (! empty($create['error'])) {
-                $failDetail = $create['response']['result_list'][0]['fail_message']
-                    ?? $create['response']['result_list'][0]['fail_error']
-                    ?? ($create['message'] ?? null);
-
-                $reason = $shopee->classifyShippingLabelFailure($create);
-                if ($reason !== null) {
-                    $this->markTerminalFailure($order, $reason);
-                    $this->notifyBulkListeners();
-
-                    return;
-                }
-
-                $errCode = (string) $create['error'];
-                $recoverable = str_contains($errCode, 'duplicate') || str_contains($errCode, 'already');
-
-                if (! $recoverable) {
-                    $order->update(['shipping_label_status' => 'failed']);
-                    Log::error('PrepareShopeeShippingLabelJob: createShippingDocument gagal', [
-                        'order_id' => $order->id,
-                        'order_sn' => $orderSn,
-                        'doc_type' => $docType,
-                        'error' => $errCode,
-                        'message' => $failDetail,
-                    ]);
-                    $this->notifyBulkListeners();
-                    throw new \RuntimeException("Shopee createShippingDocument gagal: {$errCode} {$failDetail}");
-                }
-
-                Log::info('PrepareShopeeShippingLabelJob: createShippingDocument recoverable, lanjut check status', [
+            $nextAttempt = $this->attempt + 1;
+            if ($nextAttempt < self::MAX_GLOBAL_ATTEMPTS) {
+                $delaySeconds = self::RETRY_DELAYS[$this->attempt] ?? 30;
+                Log::info('PrepareShopeeShippingLabelJob: label belum READY, dispatch delayed retry non-blocking', [
                     'order_id' => $order->id,
                     'order_sn' => $orderSn,
-                    'error' => $errCode,
+                    'next_attempt' => $nextAttempt,
+                    'delay_sec' => $delaySeconds,
                 ]);
-            }
-        }
-
-        try {
-            $result = $shopee->getShippingDocumentResult(
-                $shopId,
-                $orderSn,
-                $docType,
-                $order->tracking_number,
-                $order->package_number ?? null
-            );
-            $row = $result['response']['result_list'][0] ?? [];
-            $status = strtoupper((string) ($row['status'] ?? ''));
-
-            if ($status === 'READY') {
-                $order->update([
-                    'shipping_label_status' => 'ready',
-                    'shipping_label_doc_type' => $docType,
-                    'shipping_label_prepared_at' => now(),
-                ]);
-                Log::info('PrepareShopeeShippingLabelJob: shipping document READY', [
-                    'order_id' => $order->id,
-                    'order_sn' => $orderSn,
-                    'doc_type' => $docType,
-                ]);
-
-                $this->notifyBulkListeners();
-
-                return;
-            }
-
-            if ($status === 'FAILED') {
-                $reason = $shopee->classifyShippingLabelFailure($row);
-                if ($reason !== null) {
-                    $this->markTerminalFailure($order, $reason);
-                    $this->notifyBulkListeners();
-
-                    return;
-                }
-
+                self::dispatch($order->id, $nextAttempt, $this->prefetch)
+                    ->delay(now()->addSeconds($delaySeconds));
+            } else {
                 $order->update(['shipping_label_status' => 'failed']);
-                Log::error('PrepareShopeeShippingLabelJob: shipping document FAILED', [
+                Log::error('PrepareShopeeShippingLabelJob: max global attempts tercapai, tandai failed', [
                     'order_id' => $order->id,
                     'order_sn' => $orderSn,
-                    'fail_error' => $row['fail_error'] ?? null,
-                    'fail_msg' => $row['fail_message'] ?? null,
                 ]);
                 $this->notifyBulkListeners();
-                throw new \RuntimeException('Shopee shipping document FAILED: '.($row['fail_message'] ?? $row['fail_error'] ?? 'unknown'));
             }
-        } catch (\Throwable $e) {
-            if ($e instanceof \RuntimeException && str_contains($e->getMessage(), 'FAILED')) {
-                throw $e;
-            }
-
-            $reason = $shopee->classifyShippingLabelFailure($e);
-            if ($reason !== null) {
-                $this->markTerminalFailure($order, $reason);
-                $this->notifyBulkListeners();
-
-                return;
-            }
-
-            Log::info('PrepareShopeeShippingLabelJob: dokumen belum siap atau get result gagal, jadwalkan retry: '.$e->getMessage(), [
-                'order_id' => $order->id,
-                'attempt' => $this->attempt,
-            ]);
-        }
-
-        $nextAttempt = $this->attempt + 1;
-        if ($nextAttempt < self::MAX_GLOBAL_ATTEMPTS) {
-            $delaySeconds = self::RETRY_DELAYS[$this->attempt] ?? 30;
-            Log::info('PrepareShopeeShippingLabelJob: label belum READY, dispatch delayed retry non-blocking', [
-                'order_id' => $order->id,
-                'order_sn' => $orderSn,
-                'next_attempt' => $nextAttempt,
-                'delay_sec' => $delaySeconds,
-            ]);
-            self::dispatch($order->id, $nextAttempt, $this->prefetch)
-                ->delay(now()->addSeconds($delaySeconds));
-        } else {
-            $order->update(['shipping_label_status' => 'failed']);
-            Log::error('PrepareShopeeShippingLabelJob: max global attempts tercapai, tandai failed', [
-                'order_id' => $order->id,
-                'order_sn' => $orderSn,
-            ]);
-            $this->notifyBulkListeners();
-        }
+        });
     }
 
     public function failed(\Throwable $exception): void

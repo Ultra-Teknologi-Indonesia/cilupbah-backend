@@ -1032,9 +1032,7 @@ class BulkShippingLabelService
             return;
         }
 
-        PrepareShopeeShippingLabelJob::dispatch($order->id)
-            ->onConnection(config('queue.routing.labels.connection', 'redis-long'))
-            ->onQueue(config('queue.routing.labels.queue', 'labels'));
+        app(ShippingLabelPreparationDispatcher::class)->dispatch($order);
         $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE]);
     }
 
@@ -1079,9 +1077,7 @@ class BulkShippingLabelService
             $result = $this->salesOrderService->getShippingLabel($order, $options);
         } catch (ShippingLabelPreparingException $e) {
 
-            PrepareLazadaShippingLabelJob::dispatch($order->id)
-                ->onConnection(config('queue.routing.labels.connection', 'redis-long'))
-                ->onQueue(config('queue.routing.labels.queue', 'labels'));
+            app(ShippingLabelPreparationDispatcher::class)->dispatch($order);
             $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE]);
 
             return;
@@ -1109,9 +1105,7 @@ class BulkShippingLabelService
             return;
         }
 
-        PrepareLazadaShippingLabelJob::dispatch($order->id)
-            ->onConnection(config('queue.routing.labels.connection', 'redis-long'))
-            ->onQueue(config('queue.routing.labels.queue', 'labels'));
+        app(ShippingLabelPreparationDispatcher::class)->dispatch($order);
         $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE]);
     }
 

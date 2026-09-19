@@ -12,12 +12,13 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Exceptions\ChannelLabelUnsupportedException;
 use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
+use Modules\Sales\Jobs\Concerns\UsesShippingLabelPreparationLock;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\BulkShippingLabelService;
 
 class PrepareLazadaShippingLabelJob implements ShouldBeUnique, ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, UsesShippingLabelPreparationLock;
 
     public int $tries = 3;
 
@@ -62,72 +63,74 @@ class PrepareLazadaShippingLabelJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        if (in_array($order->shipping_label_status, ['ready', 'preparing', 'self_design_required'], true)) {
+        if (in_array($order->shipping_label_status, ['ready', 'self_design_required'], true)) {
             return;
         }
 
-        $shopId = (string) $order->channel_shop_id;
-        $orderSn = (string) $order->channel_order_no;
+        $this->withShippingLabelPreparationLock($order, function () use ($order, $lazada): void {
+            $shopId = (string) $order->channel_shop_id;
+            $orderSn = (string) $order->channel_order_no;
 
-        if ($shopId === '' || $orderSn === '') {
-            Log::warning('PrepareLazadaShippingLabelJob: channel_shop_id / channel_order_no kosong', [
-                'order_id' => $order->id,
-            ]);
+            if ($shopId === '' || $orderSn === '') {
+                Log::warning('PrepareLazadaShippingLabelJob: channel_shop_id / channel_order_no kosong', [
+                    'order_id' => $order->id,
+                ]);
 
-            return;
-        }
-
-        $order->update(['shipping_label_status' => 'preparing']);
-
-        $document = [];
-        try {
-            $packageIds = is_array($order->channel_package_ids) ? $order->channel_package_ids : [];
-            if ($packageIds === []) {
-                $packageIds = $lazada->resolvePackageIds($shopId, $orderSn);
+                return;
             }
-            if ($packageIds !== []) {
-                $order->forceFill([
-                    'channel_package_ids' => array_values(array_unique(array_map('strval', $packageIds))),
-                ])->saveQuietly();
+
+            $order->update(['shipping_label_status' => 'preparing']);
+
+            $document = [];
+            try {
+                $packageIds = is_array($order->channel_package_ids) ? $order->channel_package_ids : [];
+                if ($packageIds === []) {
+                    $packageIds = $lazada->resolvePackageIds($shopId, $orderSn);
+                }
+                if ($packageIds !== []) {
+                    $order->forceFill([
+                        'channel_package_ids' => array_values(array_unique(array_map('strval', $packageIds))),
+                    ])->saveQuietly();
+                }
+                $document = $lazada->getPackageDocument($shopId, $packageIds, 'PDF');
+            } catch (ChannelLabelUnsupportedException $e) {
+
+                $order->update(['shipping_label_status' => 'self_design_required']);
+                Log::info('PrepareLazadaShippingLabelJob: order SOF/DBS, label via Seller Center', [
+                    'order_id' => $order->id,
+                    'order_sn' => $orderSn,
+                ]);
+                $this->notifyBulkListeners();
+
+                return;
+            } catch (\Throwable $e) {
+                Log::info('PrepareLazadaShippingLabelJob: dokumen belum siap', [
+                    'order_id' => $order->id,
+                    'order_sn' => $orderSn,
+                    'exception' => $e->getMessage(),
+                ]);
             }
-            $document = $lazada->getPackageDocument($shopId, $packageIds, 'PDF');
-        } catch (ChannelLabelUnsupportedException $e) {
 
-            $order->update(['shipping_label_status' => 'self_design_required']);
-            Log::info('PrepareLazadaShippingLabelJob: order SOF/DBS, label via Seller Center', [
-                'order_id' => $order->id,
-                'order_sn' => $orderSn,
-            ]);
-            $this->notifyBulkListeners();
+            if (! empty($document['file']) || ! empty($document['pdf_url'])) {
+                $order->update([
+                    'shipping_label_status' => 'ready',
+                    'shipping_label_doc_type' => $document['doc_type'] ?? 'PDF',
+                    'shipping_label_prepared_at' => now(),
+                    'shipping_label_raw_data' => ['channel' => 'lazada', 'document' => $document],
+                ]);
 
-            return;
-        } catch (\Throwable $e) {
-            Log::info('PrepareLazadaShippingLabelJob: dokumen belum siap', [
-                'order_id' => $order->id,
-                'order_sn' => $orderSn,
-                'exception' => $e->getMessage(),
-            ]);
-        }
+                Log::info('PrepareLazadaShippingLabelJob: shipping document READY', [
+                    'order_id' => $order->id,
+                    'order_sn' => $orderSn,
+                ]);
 
-        if (! empty($document['file']) || ! empty($document['pdf_url'])) {
-            $order->update([
-                'shipping_label_status' => 'ready',
-                'shipping_label_doc_type' => $document['doc_type'] ?? 'PDF',
-                'shipping_label_prepared_at' => now(),
-                'shipping_label_raw_data' => ['channel' => 'lazada', 'document' => $document],
-            ]);
+                $this->notifyBulkListeners();
 
-            Log::info('PrepareLazadaShippingLabelJob: shipping document READY', [
-                'order_id' => $order->id,
-                'order_sn' => $orderSn,
-            ]);
+                return;
+            }
 
-            $this->notifyBulkListeners();
-
-            return;
-        }
-
-        $this->retryOrFail($order, $orderSn);
+            $this->retryOrFail($order, $orderSn);
+        });
     }
 
     private function retryOrFail(SalesOrder $order, string $orderSn): void

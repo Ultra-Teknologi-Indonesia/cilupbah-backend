@@ -11,12 +11,13 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
+use Modules\Sales\Jobs\Concerns\UsesShippingLabelPreparationLock;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\BulkShippingLabelService;
 
 class PrepareTikTokShippingLabelJob implements ShouldBeUnique, ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, UsesShippingLabelPreparationLock;
 
     public int $tries = 3;
 
@@ -61,91 +62,93 @@ class PrepareTikTokShippingLabelJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        if (in_array($order->shipping_label_status, ['ready', 'preparing', 'self_design_required'], true)) {
+        if (in_array($order->shipping_label_status, ['ready', 'self_design_required'], true)) {
             return;
         }
 
-        if (empty($order->tracking_number)) {
-            Log::info('PrepareTikTokShippingLabelJob: tracking_number kosong, skip', [
-                'order_id' => $order->id,
-                'salesorder_no' => $order->salesorder_no,
-            ]);
+        $this->withShippingLabelPreparationLock($order, function () use ($order, $tiktok): void {
+            if (empty($order->tracking_number)) {
+                Log::info('PrepareTikTokShippingLabelJob: tracking_number kosong, skip', [
+                    'order_id' => $order->id,
+                    'salesorder_no' => $order->salesorder_no,
+                ]);
 
-            return;
-        }
+                return;
+            }
 
-        $shopId = (string) $order->channel_shop_id;
-        $orderSn = (string) $order->channel_order_no;
+            $shopId = (string) $order->channel_shop_id;
+            $orderSn = (string) $order->channel_order_no;
 
-        if ($shopId === '' || $orderSn === '') {
-            Log::warning('PrepareTikTokShippingLabelJob: channel_shop_id / channel_order_no kosong', [
-                'order_id' => $order->id,
-            ]);
+            if ($shopId === '' || $orderSn === '') {
+                Log::warning('PrepareTikTokShippingLabelJob: channel_shop_id / channel_order_no kosong', [
+                    'order_id' => $order->id,
+                ]);
 
-            return;
-        }
+                return;
+            }
 
-        $order->update(['shipping_label_status' => 'preparing']);
+            $order->update(['shipping_label_status' => 'preparing']);
 
-        $packageIds = is_array($order->channel_package_ids) ? $order->channel_package_ids : [];
-        if ($packageIds === []) {
-            try {
-                $packageIds = $tiktok->packageIdsForOrder($shopId, $orderSn);
-            } catch (\Throwable $e) {
-                $packageIds = [];
-                Log::warning('PrepareTikTokShippingLabelJob: resolve package id gagal', [
+            $packageIds = is_array($order->channel_package_ids) ? $order->channel_package_ids : [];
+            if ($packageIds === []) {
+                try {
+                    $packageIds = $tiktok->packageIdsForOrder($shopId, $orderSn);
+                } catch (\Throwable $e) {
+                    $packageIds = [];
+                    Log::warning('PrepareTikTokShippingLabelJob: resolve package id gagal', [
+                        'order_id' => $order->id,
+                        'order_sn' => $orderSn,
+                        'exception' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            if ($packageIds !== []) {
+                $order->forceFill([
+                    'channel_package_ids' => array_values(array_unique(array_map('strval', $packageIds))),
+                ])->saveQuietly();
+            }
+
+            $documents = [];
+            foreach ($packageIds as $packageId) {
+                try {
+                    $res = $tiktok->getShippingDocument($shopId, (string) $packageId, 'SHIPPING_LABEL', 'A6');
+                    $docUrl = $res['data']['doc_url'] ?? $res['data']['url'] ?? null;
+
+                    if ($docUrl) {
+                        $documents[] = ['package_id' => (string) $packageId, 'doc_url' => $docUrl];
+                    }
+                } catch (\Throwable $e) {
+
+                    Log::info('PrepareTikTokShippingLabelJob: dokumen package belum siap', [
+                        'order_id' => $order->id,
+                        'package_id' => $packageId,
+                        'exception' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            if (! empty($documents)) {
+                $order->update([
+                    'shipping_label_status' => 'ready',
+                    'shipping_label_doc_type' => 'PDF',
+                    'shipping_label_prepared_at' => now(),
+                    'shipping_label_raw_data' => ['channel' => 'tiktok', 'documents' => $documents],
+                ]);
+
+                Log::info('PrepareTikTokShippingLabelJob: shipping document READY', [
                     'order_id' => $order->id,
                     'order_sn' => $orderSn,
-                    'exception' => $e->getMessage(),
+                    'packages' => count($documents),
                 ]);
+
+                $this->notifyBulkListeners();
+
+                return;
             }
-        }
 
-        if ($packageIds !== []) {
-            $order->forceFill([
-                'channel_package_ids' => array_values(array_unique(array_map('strval', $packageIds))),
-            ])->saveQuietly();
-        }
-
-        $documents = [];
-        foreach ($packageIds as $packageId) {
-            try {
-                $res = $tiktok->getShippingDocument($shopId, (string) $packageId, 'SHIPPING_LABEL', 'A6');
-                $docUrl = $res['data']['doc_url'] ?? $res['data']['url'] ?? null;
-
-                if ($docUrl) {
-                    $documents[] = ['package_id' => (string) $packageId, 'doc_url' => $docUrl];
-                }
-            } catch (\Throwable $e) {
-
-                Log::info('PrepareTikTokShippingLabelJob: dokumen package belum siap', [
-                    'order_id' => $order->id,
-                    'package_id' => $packageId,
-                    'exception' => $e->getMessage(),
-                ]);
-            }
-        }
-
-        if (! empty($documents)) {
-            $order->update([
-                'shipping_label_status' => 'ready',
-                'shipping_label_doc_type' => 'PDF',
-                'shipping_label_prepared_at' => now(),
-                'shipping_label_raw_data' => ['channel' => 'tiktok', 'documents' => $documents],
-            ]);
-
-            Log::info('PrepareTikTokShippingLabelJob: shipping document READY', [
-                'order_id' => $order->id,
-                'order_sn' => $orderSn,
-                'packages' => count($documents),
-            ]);
-
-            $this->notifyBulkListeners();
-
-            return;
-        }
-
-        $this->retryOrFail($order, $orderSn);
+            $this->retryOrFail($order, $orderSn);
+        });
     }
 
     private function retryOrFail(SalesOrder $order, string $orderSn): void

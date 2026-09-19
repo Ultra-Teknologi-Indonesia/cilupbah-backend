@@ -129,4 +129,30 @@ class PrepareShopeeShippingLabelJobTest extends TestCase
 
         $this->assertSame('self_design_required', $order->refresh()->shipping_label_status);
     }
+
+    public function test_recovers_a_stale_preparing_order(): void
+    {
+        $order = SalesOrder::factory()->create([
+            'source' => 'shopee',
+            'channel_shop_id' => 'SHOP123',
+            'channel_order_no' => 'SN123',
+            'tracking_number' => 'AWB123',
+            'shipping_label_status' => 'preparing',
+        ]);
+
+        $shopee = Mockery::mock(ShopeeOrderService::class);
+        $shopee->shouldReceive('resolveSupportedDocType')->once()->andReturn('THERMAL_AIR_WAYBILL');
+        $shopee->shouldReceive('createShippingDocument')->once()->andReturn(['status' => 'OK']);
+        $shopee->shouldReceive('getShippingDocumentResult')->once()->andReturn([
+            'response' => [
+                'result_list' => [
+                    ['status' => 'READY'],
+                ],
+            ],
+        ]);
+
+        (new PrepareShopeeShippingLabelJob($order->id, 0))->handle($shopee);
+
+        $this->assertSame('ready', $order->refresh()->shipping_label_status);
+    }
 }

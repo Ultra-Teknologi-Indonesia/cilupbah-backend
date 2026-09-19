@@ -20,6 +20,7 @@ use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\BulkShippingLabelService;
 use Modules\Sales\Services\ShippingLabelPrefetchService;
+use Modules\Sales\Services\ShippingLabelPreparationDispatcher;
 
 class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
 {
@@ -516,16 +517,6 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
 
     private function prepareLabel(SalesOrder $order): void
     {
-        $labelStatus = SalesOrder::query()->whereKey($order->id)->value('shipping_label_status');
-        if (in_array($labelStatus, ['ready', 'preparing', 'self_design_required'], true)) {
-            return;
-        }
-
-        match (strtolower((string) $order->source)) {
-            'shopee' => PrepareShopeeShippingLabelJob::dispatch($order->id, 0, $this->prefetch),
-            'tiktok' => PrepareTikTokShippingLabelJob::dispatch($order->id, 0, $this->prefetch),
-            'lazada' => PrepareLazadaShippingLabelJob::dispatch($order->id, 0, $this->prefetch),
-            default => null,
-        };
+        app(ShippingLabelPreparationDispatcher::class)->dispatch($order, $this->prefetch);
     }
 }

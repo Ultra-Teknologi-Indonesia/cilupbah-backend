@@ -15,6 +15,34 @@ class ReapStaleBulkLabelBatches extends Command
 
     public function handle(BulkShippingLabelService $svc): int
     {
+        $recoveryMinutes = max(
+            1,
+            (int) config('bulk-labels.marketplace_wait_recovery_minutes', 5),
+        );
+        $recoveryThreshold = now()->subMinutes($recoveryMinutes);
+        $recoveredBatchIds = [];
+
+        BulkShippingLabelBatch::query()
+            ->where('status', BulkShippingLabelBatch::STATUS_PROCESSING)
+            ->whereHas('items', function ($query) use ($recoveryThreshold): void {
+                $query
+                    ->whereIn('status', [
+                        BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE,
+                        BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP,
+                        BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP,
+                        BulkShippingLabelItem::STATUS_WAITING_TIKTOK_PREP,
+                    ])
+                    ->where('updated_at', '<', $recoveryThreshold);
+            })
+            ->cursor()
+            ->each(function (BulkShippingLabelBatch $batch) use ($svc, $recoveryThreshold, &$recoveredBatchIds): void {
+                $recovered = $svc->recoverStaleMarketplaceItems($batch, $recoveryThreshold);
+                if ($recovered > 0) {
+                    $recoveredBatchIds[] = (string) $batch->id;
+                    $this->info("Recovered {$recovered} marketplace label item(s) in batch {$batch->id}.");
+                }
+            });
+
         $threshold = now()->subMinutes((int) $this->option('minutes'));
 
         $stale = BulkShippingLabelBatch::query()
@@ -34,10 +62,17 @@ class ReapStaleBulkLabelBatches extends Command
 
         if ($stale->isEmpty()) {
             $this->info('Tidak ada batch stale.');
+
             return self::SUCCESS;
         }
 
         foreach ($stale as $batch) {
+            if (in_array((string) $batch->id, $recoveredBatchIds, true)) {
+                $this->info("Skip stale finalize for recovered batch {$batch->id}.");
+
+                continue;
+            }
+
             if ($batch->started_at === null) {
                 $reset = $svc->requeueOrphanedBatch($batch);
                 $this->info("Requeued orphan batch {$batch->id} ({$reset} item).");
@@ -50,6 +85,7 @@ class ReapStaleBulkLabelBatches extends Command
         }
 
         $this->info("Reaped {$stale->count()} batch.");
+
         return self::SUCCESS;
     }
 }

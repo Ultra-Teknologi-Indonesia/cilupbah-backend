@@ -15,10 +15,10 @@ class PrepareTikTokShippingLabelJobTest extends TestCase
     private function makeOrder(array $overrides = []): SalesOrder
     {
         return SalesOrder::factory()->create(array_merge([
-            'source'           => 'tiktok',
-            'channel_shop_id'  => 'SHOP-1',
+            'source' => 'tiktok',
+            'channel_shop_id' => 'SHOP-1',
             'channel_order_no' => 'TT-ORDER-1',
-            'tracking_number'  => 'AWB123',
+            'tracking_number' => 'AWB123',
         ], $overrides));
     }
 
@@ -66,5 +66,20 @@ class PrepareTikTokShippingLabelJobTest extends TestCase
         (new PrepareTikTokShippingLabelJob($order->id))->handle(app(TikTokOrderService::class));
 
         $this->assertNull($order->refresh()->shipping_label_status);
+    }
+
+    public function test_recovers_a_stale_preparing_order(): void
+    {
+        $order = $this->makeOrder(['shipping_label_status' => 'preparing']);
+
+        $this->mock(TikTokOrderService::class, function ($m) {
+            $m->shouldReceive('packageIdsForOrder')->once()->with('SHOP-1', 'TT-ORDER-1')->andReturn(['PKG1']);
+            $m->shouldReceive('getShippingDocument')->once()->with('SHOP-1', 'PKG1', 'SHIPPING_LABEL', 'A6')
+                ->andReturn(['code' => 0, 'data' => ['doc_url' => 'https://tts/label.pdf']]);
+        });
+
+        (new PrepareTikTokShippingLabelJob($order->id))->handle(app(TikTokOrderService::class));
+
+        $this->assertSame('ready', $order->refresh()->shipping_label_status);
     }
 }

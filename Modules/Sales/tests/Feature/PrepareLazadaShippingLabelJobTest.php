@@ -17,10 +17,10 @@ class PrepareLazadaShippingLabelJobTest extends TestCase
     private function makeOrder(array $overrides = []): SalesOrder
     {
         return SalesOrder::factory()->create(array_merge([
-            'source'           => 'lazada',
-            'channel_shop_id'  => 'SELLER-1',
+            'source' => 'lazada',
+            'channel_shop_id' => 'SELLER-1',
             'channel_order_no' => 'LZD-ORDER-1',
-            'tracking_number'  => 'AWB999',
+            'tracking_number' => 'AWB999',
         ], $overrides));
     }
 
@@ -73,5 +73,23 @@ class PrepareLazadaShippingLabelJobTest extends TestCase
         (new PrepareLazadaShippingLabelJob($order->id))->handle(app(LazadaOrderService::class));
 
         $this->assertSame('self_design_required', $order->refresh()->shipping_label_status);
+    }
+
+    public function test_recovers_a_stale_preparing_order(): void
+    {
+        $order = $this->makeOrder(['shipping_label_status' => 'preparing']);
+
+        $this->mock(LazadaOrderService::class, function ($m) {
+            $m->shouldReceive('resolvePackageIds')->once()->andReturn(['FP-1']);
+            $m->shouldReceive('getPackageDocument')->once()->andReturn([
+                'file' => 'JVBERi0xLjQ=',
+                'pdf_url' => null,
+                'doc_type' => 'PDF',
+            ]);
+        });
+
+        (new PrepareLazadaShippingLabelJob($order->id))->handle(app(LazadaOrderService::class));
+
+        $this->assertSame('ready', $order->refresh()->shipping_label_status);
     }
 }

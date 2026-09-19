@@ -7,5 +7,10 @@ return [
     'archive_disk' => env('LABEL_PRINT_ARCHIVE_DISK', 'documents'),
     'archive_after_print_seconds' => max(5, (int) env('LABEL_ARCHIVE_AFTER_PRINT_SECONDS', 30)),
 
+    'marketplace_wait_recovery_minutes' => max(
+        1,
+        (int) env('LABEL_MARKETPLACE_WAIT_RECOVERY_MINUTES', 5),
+    ),
+
     'awb_request_dedupe_seconds' => (int) env('LABEL_AWB_REQUEST_DEDUPE_SECONDS', 300),
 ];
