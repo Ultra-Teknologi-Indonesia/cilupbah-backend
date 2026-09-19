@@ -12,6 +12,7 @@ use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Channel\Support\UploadErrorPresenter;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Support\ChannelOrderSideEffectGuard;
 
 class CallShopeeDriverJob implements ShouldQueue
 {
@@ -28,7 +29,7 @@ class CallShopeeDriverJob implements ShouldQueue
 
     public function handle(ShopeeOrderService $shopee): void
     {
-        $order = SalesOrder::find($this->orderId);
+        $order = ChannelOrderSideEffectGuard::active($this->orderId, 'call_driver');
         if (! $order) {
             return;
         }
@@ -71,6 +72,11 @@ class CallShopeeDriverJob implements ShouldQueue
         ]);
 
         try {
+            $order = ChannelOrderSideEffectGuard::active($order->id, 'call_driver');
+            if ($order === null) {
+                return;
+            }
+
             if ($order->channel_status === 'RETRY_SHIP') {
                 $result = $shopee->retryPickup($shopId, $orderSn);
             } else {
@@ -137,7 +143,7 @@ class CallShopeeDriverJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        $order = SalesOrder::find($this->orderId);
+        $order = ChannelOrderSideEffectGuard::active($this->orderId, 'mark_driver_call_failed');
         if ($order && $order->driver_call_status !== 'success') {
             $order->update([
                 'driver_call_status' => 'failed',

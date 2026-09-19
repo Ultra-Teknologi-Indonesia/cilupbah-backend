@@ -271,6 +271,41 @@ class SyncOrderItemsTest extends TestCase
         $this->assertSame('2026-09-15 12:00:59', (string) $order->paid_time);
     }
 
+    public function test_equal_timestamp_snapshot_cannot_reopen_a_cancelled_order(): void
+    {
+        $this->repository->upsertOrderBySalesOrderNo(
+            'LZ-CONSISTENCY-CANCELLED',
+            $this->channelOrderPayload(
+                'LZ-CONSISTENCY-CANCELLED',
+                'CHANNEL-CONSISTENCY-CANCELLED',
+                'CANCELLED',
+                'cancelled',
+                true,
+                '2026-09-15 12:01:00',
+            ),
+        );
+
+        $this->repository->upsertOrderBySalesOrderNo(
+            'LZ-CONSISTENCY-CANCELLED',
+            $this->channelOrderPayload(
+                'LZ-CONSISTENCY-CANCELLED',
+                'CHANNEL-CONSISTENCY-CANCELLED',
+                'READY_TO_SHIP',
+                'reserved',
+                true,
+                '2026-09-15 12:01:00',
+            ),
+        );
+
+        $order = SalesOrder::query()
+            ->where('salesorder_no', 'LZ-CONSISTENCY-CANCELLED')
+            ->firstOrFail();
+
+        $this->assertSame('cancelled', $order->status);
+        $this->assertTrue($order->is_canceled);
+        $this->assertSame('CANCELLED', $order->channel_status);
+    }
+
     protected function createPicklistReferencing(string $orderId, string $orderItemId, string $variantId, string $sku): void
     {
         $locationId = Str::uuid()->toString();

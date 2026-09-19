@@ -13,6 +13,7 @@ use Modules\Channel\Services\TikTokOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Channel\Support\UploadErrorPresenter;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Support\ChannelOrderSideEffectGuard;
 
 class CallTikTokDriverJob implements ShouldQueue
 {
@@ -36,7 +37,7 @@ class CallTikTokDriverJob implements ShouldQueue
 
     public function handle(TikTokOrderService $tiktok): void
     {
-        $order = SalesOrder::find($this->orderId);
+        $order = ChannelOrderSideEffectGuard::active($this->orderId, 'call_driver');
         if (! $order) {
             return;
         }
@@ -81,6 +82,11 @@ class CallTikTokDriverJob implements ShouldQueue
         ]);
 
         try {
+            $order = ChannelOrderSideEffectGuard::active($order->id, 'call_driver');
+            if ($order === null) {
+                return;
+            }
+
             $result = $tiktok->readyToShip($shopId, $orderId);
         } catch (\Throwable $e) {
             $order->update([
@@ -130,7 +136,7 @@ class CallTikTokDriverJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        $order = SalesOrder::find($this->orderId);
+        $order = ChannelOrderSideEffectGuard::active($this->orderId, 'mark_driver_call_failed');
         if ($order && $order->driver_call_status !== 'success') {
             $order->update([
                 'driver_call_status' => 'failed',

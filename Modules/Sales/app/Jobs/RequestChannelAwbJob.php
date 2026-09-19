@@ -21,6 +21,7 @@ use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\BulkShippingLabelService;
 use Modules\Sales\Services\ShippingLabelPrefetchService;
 use Modules\Sales\Services\ShippingLabelPreparationDispatcher;
+use Modules\Sales\Support\ChannelOrderSideEffectGuard;
 
 class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
 {
@@ -54,7 +55,7 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
 
     public function handle(): void
     {
-        $order = SalesOrder::find($this->orderId);
+        $order = ChannelOrderSideEffectGuard::active($this->orderId, 'request_awb');
 
         if (! $order) {
             return;
@@ -205,10 +206,12 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
             'exception' => $exception->getMessage(),
         ]);
 
-        app(BulkShippingLabelService::class)->onOrderAwbGaveUp(
-            $this->orderId,
-            BulkShippingLabelItem::REASON_AWB_TIMEOUT,
-        );
+        if (ChannelOrderSideEffectGuard::active($this->orderId, 'mark_awb_failed') !== null) {
+            app(BulkShippingLabelService::class)->onOrderAwbGaveUp(
+                $this->orderId,
+                BulkShippingLabelItem::REASON_AWB_TIMEOUT,
+            );
+        }
     }
 
     private function fetchShopeeTracking(SalesOrder $order, bool $requestMarketplace = false): bool
@@ -248,10 +251,10 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                     'tracking_number' => $preflightTracking,
                 ]);
             } elseif ($requestMarketplace) {
-                $resolved = $this->withRtsLock($order, true, function () use ($service, $shop, $order): ?array {
+                $resolved = $this->withRtsLock($order, true, function (SalesOrder $freshOrder) use ($service, $shop): ?array {
                     return $service->requestTrackingNumber(
-                        (string) $order->channel_shop_id,
-                        (string) $order->channel_order_no,
+                        (string) $freshOrder->channel_shop_id,
+                        (string) $freshOrder->channel_order_no,
                         array_filter([
                             'preferred_method' => $shop->handover_method ?? null,
                         ], static fn ($value): bool => $value !== null && $value !== ''),
@@ -265,6 +268,11 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
             $tn = is_array($resolved) ? ($resolved['tracking_number'] ?? null) : null;
 
             if ($tn) {
+                $order = ChannelOrderSideEffectGuard::active($order->id, 'persist_awb');
+                if ($order === null) {
+                    return false;
+                }
+
                 $update = ['tracking_number' => $tn];
                 if (! empty($resolved['channel_status'])) {
                     $update['channel_status'] = $resolved['channel_status'];
@@ -371,12 +379,12 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
 
                 if (! is_array($resolved) || empty($resolved['tracking_number'])) {
 
-                    $resolved = $this->withRtsLock($order, true, function () use ($service, $order): ?array {
+                    $resolved = $this->withRtsLock($order, true, function (SalesOrder $freshOrder) use ($service): ?array {
                         return $service->requestTrackingNumber(
-                            (string) $order->channel_shop_id,
-                            (string) $order->channel_order_no,
+                            (string) $freshOrder->channel_shop_id,
+                            (string) $freshOrder->channel_order_no,
                             null,
-                            is_array($order->channel_package_ids) ? $order->channel_package_ids : [],
+                            is_array($freshOrder->channel_package_ids) ? $freshOrder->channel_package_ids : [],
                         );
                     });
                 }
@@ -388,6 +396,11 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
             }
 
             if ($resolved && ! empty($resolved['tracking_number'])) {
+                $order = ChannelOrderSideEffectGuard::active($order->id, 'persist_awb');
+                if ($order === null) {
+                    return false;
+                }
+
                 $update = ['tracking_number' => $resolved['tracking_number']];
                 if (! empty($resolved['shipping_provider'])) {
                     $update['shipping_provider'] = $resolved['shipping_provider'];
@@ -424,21 +437,21 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
         try {
             $service = app(LazadaOrderService::class);
             if ($requestMarketplace) {
-                $resolved = $this->withRtsLock($order, true, function () use ($service, $order): ?array {
-                    $shippingProvider = (string) ($order->delivery_option_id ?: $order->shipping_provider ?: '');
+                $resolved = $this->withRtsLock($order, true, function (SalesOrder $freshOrder) use ($service): ?array {
+                    $shippingProvider = (string) ($freshOrder->delivery_option_id ?: $freshOrder->shipping_provider ?: '');
 
                     if ($shippingProvider === '') {
                         Log::warning('RequestChannelAwbJob: Lazada shipping_provider kosong, tidak menjalankan pack/RTS', [
-                            'order_id' => $order->id,
-                            'salesorder_no' => $order->salesorder_no,
+                            'order_id' => $freshOrder->id,
+                            'salesorder_no' => $freshOrder->salesorder_no,
                         ]);
 
                         return null;
                     }
 
                     return $service->requestTrackingNumber(
-                        (string) $order->channel_shop_id,
-                        (string) $order->channel_order_no,
+                        (string) $freshOrder->channel_shop_id,
+                        (string) $freshOrder->channel_order_no,
                         $shippingProvider,
                     );
                 });
@@ -451,9 +464,14 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
             }
 
             $fresh = SalesOrder::find($order->id);
-            $tn = (string) (($resolved['tracking_number'] ?? null) ?: ($fresh->tracking_number ?? ''));
+            $tn = (string) (($resolved['tracking_number'] ?? null) ?: ($fresh?->tracking_number ?? ''));
 
             if ($tn !== '') {
+                $order = ChannelOrderSideEffectGuard::active($order->id, 'persist_awb');
+                if ($order === null) {
+                    return false;
+                }
+
                 $update = ['tracking_number' => $tn];
                 if (! empty($resolved['shipping_provider'])) {
                     $update['shipping_provider'] = $resolved['shipping_provider'];
@@ -488,7 +506,9 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
     private function withRtsLock(SalesOrder $order, bool $enabled, callable $callback): mixed
     {
         if (! $enabled) {
-            return $callback();
+            $freshOrder = ChannelOrderSideEffectGuard::active($order->id, 'request_awb');
+
+            return $freshOrder === null ? null : $callback($freshOrder);
         }
 
         $lock = Cache::lock("rts:{$order->id}", 30);
@@ -502,7 +522,9 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
         }
 
         try {
-            return $callback();
+            $freshOrder = ChannelOrderSideEffectGuard::active($order->id, 'request_awb');
+
+            return $freshOrder === null ? null : $callback($freshOrder);
         } finally {
             optional($lock)->release();
         }

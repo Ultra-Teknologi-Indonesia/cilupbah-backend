@@ -101,10 +101,7 @@ class SyncOrderFinanceJob implements ShouldBeUnique, ShouldQueue
         );
 
         if (! $executed) {
-            // Releasing a rate-limited job consumes a Laravel queue attempt.  A large
-            // same-shop backlog could therefore exhaust its retry budget without ever
-            // reaching the marketplace API.  Persist the deferred state instead; the
-            // due-finance scheduler creates a fresh job when this short wait expires.
+
             $control->markWaiting(
                 $order->id,
                 'Menunggu giliran rate limit finance channel',
@@ -353,9 +350,6 @@ class SyncOrderFinanceJob implements ShouldBeUnique, ShouldQueue
     {
         $control = app(FinanceSyncControlService::class);
 
-        // A legacy duplicate may already have exhausted its payload retry budget while
-        // the authoritative finance state is intentionally waiting for its next check.
-        // Preserve that waiting state so the scheduler can dispatch a fresh job later.
         if ($exception instanceof MaxAttemptsExceededException
             && $control->isWaitingForRetry($this->orderId)) {
             Log::warning('SyncOrderFinanceJob legacy payload exhausted while finance sync is waiting; state preserved', [

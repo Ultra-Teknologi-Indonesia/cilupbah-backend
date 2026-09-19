@@ -118,11 +118,6 @@ class ProcessBulkReadyToShipJob implements ShouldBeUnique, ShouldQueue
         $batch->recomputeCounts();
     }
 
-    /**
-     * Claim one item durably before the external RTS side effect. Cache locks
-     * reduce duplicate dispatches, but this row lock remains authoritative if
-     * a Redis lock expires or is evicted.
-     */
     private function claimItem(string $itemId): ?BulkRtsItem
     {
         return DB::transaction(function () use ($itemId): ?BulkRtsItem {

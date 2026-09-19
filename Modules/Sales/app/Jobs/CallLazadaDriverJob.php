@@ -13,6 +13,7 @@ use Modules\Channel\Jobs\ProcessLazadaFulfillmentJob;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Channel\Support\UploadErrorPresenter;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Support\ChannelOrderSideEffectGuard;
 
 class CallLazadaDriverJob implements ShouldQueue
 {
@@ -36,7 +37,7 @@ class CallLazadaDriverJob implements ShouldQueue
 
     public function handle(): void
     {
-        $order = SalesOrder::find($this->orderId);
+        $order = ChannelOrderSideEffectGuard::active($this->orderId, 'call_driver');
         if (! $order) {
             return;
         }
@@ -116,7 +117,7 @@ class CallLazadaDriverJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        $order = SalesOrder::find($this->orderId);
+        $order = ChannelOrderSideEffectGuard::active($this->orderId, 'mark_driver_call_failed');
         if ($order && $order->driver_call_status !== 'success') {
             $order->update([
                 'driver_call_status' => 'failed',

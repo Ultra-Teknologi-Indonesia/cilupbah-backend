@@ -14,6 +14,7 @@ use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Sales\Jobs\Concerns\UsesShippingLabelPreparationLock;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\BulkShippingLabelService;
+use Modules\Sales\Support\ChannelOrderSideEffectGuard;
 
 class PrepareShopeeShippingLabelJob implements ShouldBeUnique, ShouldQueue
 {
@@ -49,7 +50,7 @@ class PrepareShopeeShippingLabelJob implements ShouldBeUnique, ShouldQueue
 
     public function handle(ShopeeOrderService $shopee): void
     {
-        $order = SalesOrder::find($this->orderId);
+        $order = ChannelOrderSideEffectGuard::active($this->orderId, 'prepare_shipping_label');
         if (! $order) {
             return;
         }
@@ -67,6 +68,11 @@ class PrepareShopeeShippingLabelJob implements ShouldBeUnique, ShouldQueue
         }
 
         $this->withShippingLabelPreparationLock($order, function () use ($order, $shopee): void {
+            $order = ChannelOrderSideEffectGuard::active($order->id, 'prepare_shipping_label');
+            if ($order === null) {
+                return;
+            }
+
             if (empty($order->tracking_number)) {
                 Log::info('PrepareShopeeShippingLabelJob: tracking_number kosong, skip', [
                     'order_id' => $order->id,
@@ -253,7 +259,7 @@ class PrepareShopeeShippingLabelJob implements ShouldBeUnique, ShouldQueue
             'exception' => $exception->getMessage(),
         ]);
 
-        $order = SalesOrder::find($this->orderId);
+        $order = ChannelOrderSideEffectGuard::active($this->orderId, 'mark_shipping_label_failed');
         if ($order && $order->shipping_label_status !== 'ready') {
             $order->update(['shipping_label_status' => 'failed']);
         }

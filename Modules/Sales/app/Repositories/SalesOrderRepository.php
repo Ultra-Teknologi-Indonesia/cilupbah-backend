@@ -834,6 +834,14 @@ class SalesOrderRepository
             $existingChannelUpdatedAt,
         );
 
+        if ($existing !== null
+            && in_array($source, self::CHANNEL_SOURCES, true)
+            && ((bool) $existing->is_canceled || $existing->status === 'cancelled')
+            && ($orderData['status'] ?? null) !== 'returned') {
+            $orderData['status'] = 'cancelled';
+            $orderData['is_canceled'] = true;
+        }
+
         if ($isStaleChannelSnapshot) {
             if (! $existingIsPaid && $incomingIsPaid) {
                 DB::table('sales_orders')
@@ -926,7 +934,17 @@ class SalesOrderRepository
             $canonicalChannelStatus = ChannelStatus::RETURNED->value;
         }
 
-        $isCanceled = (bool) ($orderData['is_canceled'] ?? false);
+        if ($existing !== null
+            && ((bool) $existing->is_canceled || $existing->status === 'cancelled')
+            && ($orderData['status'] ?? null) === 'cancelled'
+            && $canonicalChannelStatus !== ChannelStatus::CANCELLED->value) {
+            $canonicalChannelStatus = $existing->channel_status ?: $canonicalChannelStatus;
+            $orderData['channel_status_raw'] = $existing->channel_status_raw
+                ?? ($orderData['channel_status_raw'] ?? null);
+        }
+
+        $isCanceled = (bool) ($orderData['is_canceled'] ?? false)
+            || ($orderData['status'] ?? null) === 'cancelled';
 
         if (($orderData['status'] ?? null) === 'returned') {
             $isCanceled = false;
