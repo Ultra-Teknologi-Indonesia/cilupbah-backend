@@ -102,9 +102,7 @@ class SalesInvoiceService
     public function createFromOrder(array $data): SalesInvoice
     {
         return DB::transaction(function () use ($data) {
-            // Serialize invoice creation per order. This keeps the synchronous
-            // pick completion and any retry/safety job idempotent even when
-            // two requests reach the same order concurrently.
+
             $orderQuery = SalesOrder::with('items')
                 ->whereKey($data['order_id'])
                 ->lockForUpdate();

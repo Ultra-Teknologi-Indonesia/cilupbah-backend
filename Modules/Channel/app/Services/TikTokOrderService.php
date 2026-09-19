@@ -640,22 +640,68 @@ class TikTokOrderService
             $shop->access_token,
         );
 
-        $package = collect($res['data']['orders'][0]['packages'] ?? [])
-            ->first(static fn (array $row): bool => ! empty($row['tracking_number']));
-
-        if (! is_array($package)) {
+        $order = $res['data']['orders'][0] ?? null;
+        if (! is_array($order)) {
             return null;
         }
 
-                return [
-                    'tracking_number' => (string) $package['tracking_number'],
-                    'shipping_provider' => $package['shipping_provider_name']
-                        ?? $package['shipping_provider']
-                        ?? null,
-                    'channel_status' => isset($res['data']['orders'][0]['status'])
-                        ? (string) $res['data']['orders'][0]['status']
-                        : null,
-                ];
+        $packages = $order['packages'] ?? [];
+        $channelStatus = isset($order['status'])
+            ? (string) $order['status']
+            : null;
+
+        $package = collect($packages)
+            ->first(static fn (array $row): bool => ! empty($row['tracking_number']));
+
+        if (is_array($package)) {
+            return [
+                'tracking_number' => (string) $package['tracking_number'],
+                'shipping_provider' => $package['shipping_provider_name']
+                    ?? $package['shipping_provider']
+                    ?? null,
+                'channel_status' => $channelStatus,
+            ];
+        }
+
+        foreach ($packages as $package) {
+            $packageId = $package['id'] ?? null;
+            if (! $packageId) {
+                continue;
+            }
+
+            try {
+                $document = $this->getShippingDocument(
+                    (string) ($shop->shop_id ?? ''),
+                    (string) $packageId,
+                    'SHIPPING_LABEL',
+                    'A6',
+                );
+                $trackingNumber = data_get($document, 'data.tracking_number');
+
+                if ($trackingNumber !== null && $trackingNumber !== '') {
+                    Log::info('TikTok: tracking resolved from shipping document', [
+                        'order_id' => $orderId,
+                        'package_id' => (string) $packageId,
+                    ]);
+
+                    return [
+                        'tracking_number' => (string) $trackingNumber,
+                        'shipping_provider' => $package['shipping_provider_name']
+                            ?? $package['shipping_provider']
+                            ?? data_get($document, 'data.shipping_provider_name'),
+                        'channel_status' => $channelStatus,
+                    ];
+                }
+            } catch (\Throwable $e) {
+                Log::debug('TikTok: shipping document AWB fallback gagal', [
+                    'order_id' => $orderId,
+                    'package_id' => (string) $packageId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return null;
     }
 
     public function resolveTrackingNumberDirect(object $shop, string $orderId): ?array

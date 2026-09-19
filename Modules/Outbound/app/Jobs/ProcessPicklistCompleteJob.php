@@ -25,8 +25,7 @@ class ProcessPicklistCompleteJob implements ShouldBeUnique, ShouldQueue
     public function __construct(
         protected string $picklistId,
     ) {
-        // This is an idempotent safety/retry path. It must not wait behind
-        // marketplace stock synchronisation or block the warehouse path.
+
         $this->onConnection(config('queue.routing.warehouse_safety.connection', 'redis'))
             ->onQueue(config('queue.routing.warehouse_safety.queue', 'warehouse-safety'));
     }

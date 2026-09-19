@@ -212,6 +212,35 @@ class TikTokOrderOpsTest extends TestCase
             && str_contains($request->url(), '/fulfillment/202309/packages'));
     }
 
+    public function test_direct_tracking_falls_back_to_shipping_document_without_posting_ship(): void
+    {
+        $detail = $this->orderDetail('READY_TO_SHIP');
+        $detail['data']['orders'][0]['packages'][0]['tracking_number'] = null;
+
+        Http::fake([
+            self::BASE.'/order/202309/orders*' => Http::response($detail, 200),
+            self::BASE.'/fulfillment/202309/packages/PKG-1/shipping_documents*' => Http::response([
+                'code' => 0,
+                'data' => [
+                    'tracking_number' => 'TTRK-DOCUMENT-1',
+                    'doc_url' => 'https://cdn.example.test/tiktok-label.pdf',
+                ],
+            ], 200),
+        ]);
+
+        $result = app(TikTokOrderService::class)->resolveTrackingNumberDirect(
+            $this->shop,
+            self::ORDER_ID,
+        );
+
+        $this->assertSame('TTRK-DOCUMENT-1', $result['tracking_number']);
+        $this->assertSame('TikTok Logistics', $result['shipping_provider']);
+        $this->assertSame('READY_TO_SHIP', $result['channel_status']);
+        Http::assertSentCount(2);
+        Http::assertNotSent(fn ($request) => $request->method() === 'POST'
+            && str_contains($request->url(), '/ship'));
+    }
+
     public function test_decline_order_hits_cancellation_api_and_status_cancelled(): void
     {
         Http::fake([

@@ -29,8 +29,7 @@ class SyncStockToChannelsJob implements ShouldBeUniqueUntilProcessing, ShouldQue
     {
         $this->variantId = $variantId;
         $this->excludeChannelShopId = $excludeChannelShopId;
-        // Marketplace propagation is deliberately isolated from warehouse
-        // inventory/picking jobs. It remains asynchronous and idempotent.
+
         $this->onConnection(config('queue.routing.channel_stock.connection', 'redis'))
             ->onQueue(config('queue.routing.channel_stock.queue', 'channel-stock'));
     }

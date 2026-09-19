@@ -298,19 +298,51 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
             }
 
             $service = app(TikTokOrderService::class);
-            $resolved = $requestMarketplace
-                ? $this->withRtsLock($order, true, function () use ($service, $order): ?array {
-                    return $service->requestTrackingNumber(
-                        (string) $order->channel_shop_id,
+            $resolved = null;
+
+            if ($requestMarketplace) {
+                // A previous attempt may already have generated the AWB/label.
+                // Read the order and shipping document first so retries do not
+                // POST /ship again for an already-issued package.
+                try {
+                    $resolved = $service->resolveTrackingNumberDirect(
+                        $shop,
                         (string) $order->channel_order_no,
-                        null,
-                        is_array($order->channel_package_ids) ? $order->channel_package_ids : [],
                     );
-                })
-                : $service->resolveTrackingNumberDirect(
+
+                    if (is_array($resolved) && ! empty($resolved['tracking_number'])) {
+                        Log::info('RequestChannelAwbJob: TikTok AWB sudah tersedia, lewati POST /ship', [
+                            'order_id' => $order->id,
+                            'salesorder_no' => $order->salesorder_no,
+                            'tracking_number' => $resolved['tracking_number'],
+                        ]);
+                    }
+                } catch (\Throwable $e) {
+                    Log::debug('RequestChannelAwbJob: preflight TikTok tracking read gagal, lanjut request AWB', [
+                        'order_id' => $order->id,
+                        'salesorder_no' => $order->salesorder_no,
+                        'exception' => $e->getMessage(),
+                    ]);
+                    $resolved = null;
+                }
+
+                if (! is_array($resolved) || empty($resolved['tracking_number'])) {
+                    // Only genuinely missing AWB reaches the marketplace action.
+                    $resolved = $this->withRtsLock($order, true, function () use ($service, $order): ?array {
+                        return $service->requestTrackingNumber(
+                            (string) $order->channel_shop_id,
+                            (string) $order->channel_order_no,
+                            null,
+                            is_array($order->channel_package_ids) ? $order->channel_package_ids : [],
+                        );
+                    });
+                }
+            } else {
+                $resolved = $service->resolveTrackingNumberDirect(
                     $shop,
                     (string) $order->channel_order_no,
                 );
+            }
 
             if ($resolved && ! empty($resolved['tracking_number'])) {
                 $update = ['tracking_number' => $resolved['tracking_number']];
