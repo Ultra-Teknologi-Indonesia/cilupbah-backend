@@ -209,6 +209,22 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
         $this->assertSame(1, DB::table('inventory_movements')->where('source', 'INVOICE')->count());
     }
 
+    public function test_manual_completion_updates_order_status_before_async_release(): void
+    {
+        $this->actingAs($this->user);
+        Queue::fake();
+
+        $res = $this->postJson("/api/v1/outbound/picklists/{$this->picklist->id}/complete");
+
+        $res->assertOk();
+        $this->assertSame('picked', $this->order->fresh()->status);
+        $this->assertDatabaseCount('sales_invoices', 0);
+        $this->assertDatabaseMissing('inventory_movements', [
+            'source' => 'INVOICE',
+        ]);
+        Queue::assertPushed(ProcessPicklistCompleteJob::class, 1);
+    }
+
     public function test_stage_endpoint_returns_flat_paginated_data(): void
     {
         $this->actingAs($this->user);
@@ -344,6 +360,7 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
         ]);
 
         Queue::assertPushed(ProcessPicklistCompleteJob::class, 1);
+        $this->assertSame('picked', $this->order->fresh()->status);
         $this->assertDatabaseCount('sales_invoices', 0);
         $this->assertDatabaseCount('inventory_movements', 1);
         $this->assertDatabaseMissing('inventory_movements', [
@@ -364,7 +381,7 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
 
         $this->expectException(UserFacingException::class);
 
-        app(\Modules\Sales\Services\SalesOrderService::class)
+        app(SalesOrderService::class)
             ->moveToReadyToProcess([(string) $this->order->id], $this->user);
     }
 }

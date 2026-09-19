@@ -18,6 +18,46 @@ class OrderReleaseService
         protected PicklistInvoiceStockService $picklistInvoiceStockService,
     ) {}
 
+    public function markOrderPickedIfComplete(Picklist $picklist, string $orderId): bool
+    {
+        if ($picklist->status !== Picklist::STATUS_COMPLETED) {
+            return false;
+        }
+
+        $order = SalesOrder::query()
+            ->whereKey($orderId)
+            ->lockForUpdate()
+            ->first();
+
+        if (! $order || ! in_array($order->status, ['reserved', 'picked'], true)) {
+            return false;
+        }
+
+        $items = PicklistItem::query()
+            ->where('picklist_id', $picklist->id)
+            ->where('order_id', $orderId)
+            ->lockForUpdate()
+            ->get();
+
+        if ($items->isEmpty() || ! $items->every(fn ($item): bool => $item->isResolved())) {
+            return false;
+        }
+
+        $hasShortItem = $items->contains(fn ($item): bool => in_array(
+            $item->item_status,
+            [PicklistItem::STATUS_SHORT, PicklistItem::STATUS_REJECTED],
+            true,
+        ));
+
+        if ($hasShortItem || $order->status === 'picked') {
+            return false;
+        }
+
+        $order->forceFill(['status' => 'picked'])->save();
+
+        return true;
+    }
+
     public function releaseIfComplete(Picklist $picklist, string $orderId): bool
     {
 

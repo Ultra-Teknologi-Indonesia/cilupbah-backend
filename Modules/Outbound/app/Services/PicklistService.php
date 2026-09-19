@@ -42,6 +42,7 @@ class PicklistService
         protected ProductRepository $productRepository,
         protected ChannelWarehousePolicy $channelWarehousePolicy,
         protected PicklistOrderGuard $picklistOrderGuard,
+        protected OrderReleaseService $orderReleaseService,
     ) {}
 
     protected function assignedToColumn(Model $doc): string
@@ -519,6 +520,15 @@ class PicklistService
                 'completed_at' => now(),
             ]);
 
+            $picklist->refresh();
+
+            foreach ($picklist->items->pluck('order_id')->filter()->unique() as $orderId) {
+                $this->orderReleaseService->markOrderPickedIfComplete(
+                    $picklist,
+                    (string) $orderId,
+                );
+            }
+
             ProcessPicklistCompleteJob::dispatch($picklistId);
         });
     }
@@ -909,6 +919,15 @@ class PicklistService
                 'status' => Picklist::STATUS_COMPLETED,
                 'completed_at' => now(),
             ]);
+
+            $picklist->refresh();
+
+            foreach ($picklist->items->pluck('order_id')->filter()->unique() as $orderId) {
+                $this->orderReleaseService->markOrderPickedIfComplete(
+                    $picklist,
+                    (string) $orderId,
+                );
+            }
 
             return false;
         });
