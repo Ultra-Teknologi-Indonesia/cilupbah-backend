@@ -3,9 +3,13 @@
 namespace Modules\Sales\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Queue\MaxAttemptsExceededException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
 use Modules\Channel\Exceptions\TikTokApiException;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Channel\Support\TikTokErrorCatalog;
@@ -241,7 +245,7 @@ class OrderFinanceSyncTest extends TestCase
         $order = $this->makeOrder(['is_settled' => false]);
 
         DB::table('finance_sync_states')->insert([
-            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'id' => (string) Str::uuid(),
             'order_id' => $order->id,
             'status' => 'processing',
             'attempts' => 1,
@@ -304,8 +308,8 @@ class OrderFinanceSyncTest extends TestCase
 
         $control->markDeadLetter(
             $order->id,
-            new \Illuminate\Queue\MaxAttemptsExceededException('attempts exhausted'),
-            (string) \Illuminate\Support\Str::uuid(),
+            new MaxAttemptsExceededException('attempts exhausted'),
+            (string) Str::uuid(),
             4,
             ['stage' => 'job_failed'],
         );
@@ -322,6 +326,41 @@ class OrderFinanceSyncTest extends TestCase
             ->value('context');
 
         $this->assertTrue((bool) json_decode((string) $context, true)['root_cause_preserved']);
+    }
+
+    public function test_max_attempts_preserves_a_finance_sync_that_is_intentionally_waiting(): void
+    {
+        $order = $this->makeOrder(['is_settled' => false]);
+        $control = app(FinanceSyncControlService::class);
+        $this->assertTrue($control->claim($order->id));
+        $control->markWaiting($order->id, 'Data finance tersimpan tetapi belum settled', 60);
+
+        (new SyncOrderFinanceJob($order->id))->failed(new MaxAttemptsExceededException('attempts exhausted'));
+
+        $this->assertSame('waiting', $control->state($order->id)->status);
+        $this->assertDatabaseMissing('finance_sync_dead_letters', ['order_id' => $order->id]);
+    }
+
+    public function test_rate_limited_finance_job_waits_without_releasing_the_same_queue_payload(): void
+    {
+        $order = $this->makeOrder(['is_settled' => false]);
+        SalesOrderItem::create([
+            'order_id' => $order->id,
+            'item_id' => '01a00000-0000-7000-8000-000000000001',
+            'sku' => 'FINANCE-RATE-LIMIT',
+            'description' => 'Produk finance rate limit test',
+            'qty_in_base' => 1,
+            'price' => 1000,
+            'amount' => 1000,
+        ]);
+        RateLimiter::hit("finance_sync:{$order->source}:{$order->channel_shop_id}", 2);
+
+        (new SyncOrderFinanceJob($order->id))->handle(app(SalesOrderService::class));
+
+        $state = app(FinanceSyncControlService::class)->state($order->id);
+        $this->assertSame('waiting', $state->status);
+        $this->assertSame('Menunggu giliran rate limit finance channel', $state->last_error);
+        $this->assertTrue(Carbon::parse($state->next_attempt_at)->isFuture());
     }
 
     public function test_sync_job_handles_tiktok_rate_limit_36009002_gracefully(): void

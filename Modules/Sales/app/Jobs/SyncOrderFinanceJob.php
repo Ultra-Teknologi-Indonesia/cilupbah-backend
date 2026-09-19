@@ -9,6 +9,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\MaxAttemptsExceededException;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
@@ -100,7 +101,17 @@ class SyncOrderFinanceJob implements ShouldBeUnique, ShouldQueue
         );
 
         if (! $executed) {
-            $this->release(rand(2, 5));
+            // Releasing a rate-limited job consumes a Laravel queue attempt.  A large
+            // same-shop backlog could therefore exhaust its retry budget without ever
+            // reaching the marketplace API.  Persist the deferred state instead; the
+            // due-finance scheduler creates a fresh job when this short wait expires.
+            $control->markWaiting(
+                $order->id,
+                'Menunggu giliran rate limit finance channel',
+                (int) config('finance_sync.rate_limit_retry_after_minutes', 1),
+            );
+
+            return;
         }
     }
 
@@ -340,6 +351,22 @@ class SyncOrderFinanceJob implements ShouldBeUnique, ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
+        $control = app(FinanceSyncControlService::class);
+
+        // A legacy duplicate may already have exhausted its payload retry budget while
+        // the authoritative finance state is intentionally waiting for its next check.
+        // Preserve that waiting state so the scheduler can dispatch a fresh job later.
+        if ($exception instanceof MaxAttemptsExceededException
+            && $control->isWaitingForRetry($this->orderId)) {
+            Log::warning('SyncOrderFinanceJob legacy payload exhausted while finance sync is waiting; state preserved', [
+                'job' => self::class,
+                'order_id' => $this->orderId,
+                'attempt' => $this->attempts(),
+            ]);
+
+            return;
+        }
+
         Log::error('SyncOrderFinanceJob failed permanently', [
             'job' => self::class,
             'order_id' => $this->orderId,
@@ -347,7 +374,7 @@ class SyncOrderFinanceJob implements ShouldBeUnique, ShouldQueue
             'exception' => $exception->getMessage(),
         ]);
 
-        app(FinanceSyncControlService::class)->markDeadLetter(
+        $control->markDeadLetter(
             $this->orderId,
             $exception,
             $this->job?->uuid(),

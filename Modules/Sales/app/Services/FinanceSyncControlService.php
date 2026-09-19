@@ -2,6 +2,8 @@
 
 namespace Modules\Sales\Services;
 
+use Illuminate\Queue\MaxAttemptsExceededException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
@@ -248,6 +250,17 @@ final class FinanceSyncControlService
         ]);
     }
 
+    public function isWaitingForRetry(string $orderId): bool
+    {
+        $state = $this->state($orderId);
+
+        if ($state?->status !== 'waiting' || ! $state->next_attempt_at) {
+            return false;
+        }
+
+        return Carbon::parse($state->next_attempt_at)->isFuture();
+    }
+
     public function markRetryable(string $orderId, \Throwable $exception, int $delaySeconds): void
     {
         $this->update($orderId, [
@@ -266,7 +279,7 @@ final class FinanceSyncControlService
         }
 
         $previousError = trim((string) ($current?->last_error ?? ''));
-        $isAttemptsExceeded = $exception instanceof \Illuminate\Queue\MaxAttemptsExceededException;
+        $isAttemptsExceeded = $exception instanceof MaxAttemptsExceededException;
         $rootCause = $isAttemptsExceeded && $previousError !== ''
             ? $previousError
             : $exception->getMessage();
