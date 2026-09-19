@@ -77,6 +77,12 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
     {
         $code = (int) ($payload['code'] ?? -1);
 
+        // Shopee sends a final order cancellation as code 3 with
+        // data.status = CANCELLED. Keep it ahead of regular order updates.
+        if ($code === self::PUSH_ORDER_STATUS && self::isFinalCancellationPayload($payload)) {
+            return config('queue.names.channel_cancellation', 'channel-cancellation');
+        }
+
         return match ($code) {
             self::PUSH_ORDER_STATUS => config('queue.names.shopee_orders', 'shopee-orders'),
             self::PUSH_TRACKING_NO,
@@ -92,6 +98,14 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
             self::PUSH_SHOPEE_UPDATES => config('queue.names.shopee_catalog', 'shopee-catalog'),
             default => config('queue.names.shopee_webhooks', 'shopee-webhooks'),
         };
+    }
+
+    private static function isFinalCancellationPayload(array $payload): bool
+    {
+        $data = is_array($payload['data'] ?? null) ? $payload['data'] : [];
+        $status = strtoupper(trim((string) ($data['status'] ?? $data['order_status'] ?? '')));
+
+        return in_array($status, ['CANCELLED', 'CANCELED'], true);
     }
 
     public static function idempotencyKey(array $payload): string

@@ -72,6 +72,13 @@ class ProcessLazadaWebhook implements ShouldBeUnique, ShouldQueue
     {
         $messageType = (int) ($payload['message_type'] ?? -1);
 
+        // Lazada may report a final cancellation through an order,
+        // fulfillment, or completed reverse event. These need to run ahead
+        // of normal order and after-sales traffic.
+        if (self::isFinalCancellationPayload($payload, $messageType)) {
+            return config('queue.names.channel_cancellation', 'channel-cancellation');
+        }
+
         return match ($messageType) {
             self::MSG_ORDER => config('queue.names.lazada_orders', 'lazada-orders'),
             self::MSG_FULFILLMENT => config('queue.names.lazada_fulfillment', 'lazada-fulfillment'),
@@ -83,6 +90,24 @@ class ProcessLazadaWebhook implements ShouldBeUnique, ShouldQueue
             self::MSG_PRODUCT_DELETE => config('queue.names.lazada_catalog', 'lazada-catalog'),
             default => config('queue.names.lazada_webhooks', 'lazada-webhooks'),
         };
+    }
+
+    private static function isFinalCancellationPayload(array $payload, int $messageType): bool
+    {
+        $data = is_array($payload['data'] ?? null) ? $payload['data'] : [];
+        $status = strtoupper(trim((string) ($data['order_status'] ?? $data['status'] ?? '')));
+
+        if (in_array($messageType, [self::MSG_ORDER, self::MSG_FULFILLMENT], true)) {
+            return in_array($status, ['CANCELLED', 'CANCELED'], true);
+        }
+
+        if ($messageType !== self::MSG_REVERSE) {
+            return false;
+        }
+
+        $reverseStatus = strtoupper(trim((string) ($data['reverse_status'] ?? '')));
+
+        return in_array($reverseStatus, ['CANCEL_SUCCESS', 'CANCEL_REFUND_ISSUED'], true);
     }
 
     public static function idempotencyKey(array $payload): string

@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Mockery;
 use Modules\Channel\Enums\WebhookInboxStatus;
+use Modules\Channel\Jobs\ProcessLazadaWebhook;
 use Modules\Channel\Jobs\ProcessShopeeWebhook;
 use Modules\Channel\Jobs\ProcessTikTokWebhook;
 use Modules\Channel\Models\ChannelWebhookInbox;
@@ -248,6 +249,61 @@ class WebhookInboxTest extends TestCase
         $this->assertSame(
             'channel-cancellation',
             ProcessTikTokWebhook::resolveQueueName(['type' => 11]),
+        );
+    }
+
+    public function test_shopee_final_cancellation_uses_dedicated_cancellation_queue(): void
+    {
+        $this->assertSame(
+            'channel-cancellation',
+            ProcessShopeeWebhook::resolveQueueName([
+                'code' => 3,
+                'data' => ['ordersn' => '2606SHOPEE01', 'status' => 'CANCELLED'],
+            ]),
+        );
+
+        $this->assertSame(
+            'shopee-orders',
+            ProcessShopeeWebhook::resolveQueueName([
+                'code' => 3,
+                'data' => ['ordersn' => '2606SHOPEE02', 'status' => 'READY_TO_SHIP'],
+            ]),
+        );
+    }
+
+    public function test_lazada_final_cancellation_uses_dedicated_cancellation_queue(): void
+    {
+        $this->assertSame(
+            'channel-cancellation',
+            ProcessLazadaWebhook::resolveQueueName([
+                'message_type' => 0,
+                'data' => ['trade_order_id' => '900123', 'order_status' => 'CANCELED'],
+            ]),
+        );
+        $this->assertSame(
+            'channel-cancellation',
+            ProcessLazadaWebhook::resolveQueueName([
+                'message_type' => 14,
+                'data' => ['trade_order_id' => '900124', 'status' => 'CANCELLED'],
+            ]),
+        );
+        $this->assertSame(
+            'channel-cancellation',
+            ProcessLazadaWebhook::resolveQueueName([
+                'message_type' => 10,
+                'data' => ['trade_order_id' => '900125', 'reverse_status' => 'CANCEL_SUCCESS'],
+            ]),
+        );
+    }
+
+    public function test_lazada_cancellation_request_stays_in_aftersales_queue_until_final(): void
+    {
+        $this->assertSame(
+            'lazada-aftersales',
+            ProcessLazadaWebhook::resolveQueueName([
+                'message_type' => 10,
+                'data' => ['trade_order_id' => '900126', 'reverse_status' => 'CANCEL_INIT'],
+            ]),
         );
     }
 

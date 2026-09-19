@@ -20,8 +20,12 @@ pembatalan Marketplace terlambat sampai ke WMS.
 - Error infrastruktur—Redis penuh/tidak tersedia, kapasitas ditunda, dan cache
   idempotensi tidak tersedia—tidak diubah menjadi dead-letter permanen setelah
   lima percobaan. Replay terbatas laju akan melanjutkan setelah Redis sehat.
-- Pembatalan TikTok tipe 11 masuk antrean `channel-cancellation`; dua worker
-  khusus pada profil critical tidak berbagi worker dengan fulfillment.
+- Pembatalan final dari TikTok tipe 11, Shopee `code: 3` dengan
+  `data.status: CANCELLED/CANCELED`, serta Lazada dengan status final
+  `CANCELLED/CANCELED` atau reverse `CANCEL_SUCCESS/CANCEL_REFUND_ISSUED`
+  masuk antrean `channel-cancellation`; dua worker khusus pada profil critical
+  tidak berbagi worker dengan fulfillment. Permintaan Lazada `CANCEL_INIT`
+  belum membatalkan order dan tetap berada di antrean after-sales.
 - Pemeriksaan kesehatan queue berjalan setiap menit. Alarm log dipicu pada 70%,
   80%, dan 90% penggunaan Redis serta untuk inbox webhook yang tertinggal.
 
