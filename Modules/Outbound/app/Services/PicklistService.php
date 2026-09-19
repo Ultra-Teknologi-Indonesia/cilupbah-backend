@@ -872,36 +872,50 @@ class PicklistService
 
     public function complete(string $id): Picklist
     {
-        $picklist = $this->picklistRepository->findById($id);
+        $alreadyCompleted = DB::transaction(function () use ($id): bool {
+            $query = Picklist::query()
+                ->with('items')
+                ->lockForUpdate();
+            WarehouseAccess::apply($query, 'location_id');
+            $picklist = $query->find($id);
 
-        if (! $picklist) {
-            throw new \Exception('Picklist tidak ditemukan.');
-        }
-
-        if (! in_array($picklist->status, [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS])) {
-            throw new OutboundValidationException("Hanya picklist DRAFT/IN_PROGRESS yang bisa di-complete (saat ini: {$picklist->status}).");
-        }
-
-        $unfinished = $picklist->items->filter(function ($item) {
-            $picked = (int) $item->qty_picked;
-            $ordered = (int) $item->qty_ordered;
-            if ($picked >= $ordered) {
-                return false;
+            if (! $picklist) {
+                throw new \Exception('Picklist tidak ditemukan.');
             }
-            $status = $item->item_status;
 
-            return ! in_array($status, PicklistItem::resolvedStatuses(), true);
+            if ($picklist->status === Picklist::STATUS_COMPLETED) {
+                return true;
+            }
+
+            if (! in_array($picklist->status, [Picklist::STATUS_DRAFT, Picklist::STATUS_IN_PROGRESS])) {
+                throw new OutboundValidationException("Hanya picklist DRAFT/IN_PROGRESS yang bisa di-complete (saat ini: {$picklist->status}).");
+            }
+
+            $unfinished = $picklist->items->filter(function ($item) {
+                $picked = (int) $item->qty_picked;
+                $ordered = (int) $item->qty_ordered;
+                if ($picked >= $ordered) {
+                    return false;
+                }
+                $status = $item->item_status;
+
+                return ! in_array($status, PicklistItem::resolvedStatuses(), true);
+            });
+            if ($unfinished->isNotEmpty()) {
+                throw new OutboundValidationException("Masih ada {$unfinished->count()} item yang belum di-pick atau di-fail.");
+            }
+
+            $this->picklistRepository->update($id, [
+                'status' => Picklist::STATUS_COMPLETED,
+                'completed_at' => now(),
+            ]);
+
+            return false;
         });
-        if ($unfinished->isNotEmpty()) {
-            throw new OutboundValidationException("Masih ada {$unfinished->count()} item yang belum di-pick atau di-fail.");
+
+        if (! $alreadyCompleted) {
+            ProcessPicklistCompleteJob::dispatch($id);
         }
-
-        $this->picklistRepository->update($id, [
-            'status' => Picklist::STATUS_COMPLETED,
-            'completed_at' => now(),
-        ]);
-
-        ProcessPicklistCompleteJob::dispatch($id);
 
         return $this->picklistRepository->findById($id);
     }

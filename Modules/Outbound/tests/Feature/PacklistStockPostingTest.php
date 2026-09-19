@@ -43,9 +43,9 @@ class PacklistStockPostingTest extends TestCase
         ]);
         $this->assertSame(2, (int) DB::table('picklist_item_allocations')->value('physical_committed_qty'));
 
-        $this->expectException(OutboundValidationException::class);
-        app(PacklistService::class)->complete($packlistId);
+        $secondComplete = app(PacklistService::class)->complete($packlistId);
 
+        $this->assertSame(Packlist::STATUS_COMPLETED, $secondComplete->status);
         $this->assertSame(3, (int) DB::table('inventories')->where('bin_id', $binId)->value('on_hand'));
     }
 

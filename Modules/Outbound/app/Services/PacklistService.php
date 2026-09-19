@@ -377,13 +377,17 @@ class PacklistService
 
     public function complete(string $id): Packlist
     {
-        DB::transaction(function () use ($id): void {
+        $alreadyCompleted = DB::transaction(function () use ($id): bool {
             $query = Packlist::query()->with('items')->lockForUpdate();
             WarehouseAccess::apply($query, 'location_id');
             $packlist = $query->find($id);
 
             if (! $packlist) {
                 throw new \Exception('Packlist tidak ditemukan.');
+            }
+
+            if ($packlist->status === Packlist::STATUS_COMPLETED) {
+                return true;
             }
 
             if (! in_array($packlist->status, [Packlist::STATUS_DRAFT, Packlist::STATUS_IN_PROGRESS], true)) {
@@ -402,9 +406,13 @@ class PacklistService
                 'status' => Packlist::STATUS_COMPLETED,
                 'completed_at' => now(),
             ])->save();
+
+            return false;
         });
 
-        ProcessPacklistCompleteJob::dispatchSync($id);
+        if (! $alreadyCompleted) {
+            ProcessPacklistCompleteJob::dispatchSync($id);
+        }
 
         return $this->packlistRepository->findById($id);
     }

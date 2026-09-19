@@ -200,6 +200,13 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
             ->assertJsonPath('data.0.id', $this->order->id)
             ->assertJsonPath('data.0.invoice_no', $invoice->invoice_number)
             ->assertJsonPath('meta.total', 1);
+
+        $secondComplete = $this->postJson("/api/v1/outbound/picklists/{$this->picklist->id}/complete");
+
+        $secondComplete->assertOk()
+            ->assertJsonPath('data.status', Picklist::STATUS_COMPLETED);
+        $this->assertSame(1, SalesInvoice::query()->where('order_id', $this->order->id)->count());
+        $this->assertSame(1, DB::table('inventory_movements')->where('source', 'INVOICE')->count());
     }
 
     public function test_stage_endpoint_returns_flat_paginated_data(): void
