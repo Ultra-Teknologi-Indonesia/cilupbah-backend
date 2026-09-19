@@ -50,6 +50,19 @@ final class ChannelOperationLedgerTest extends TestCase
         $this->assertSame(1, ChannelOperationAttempt::query()->count());
     }
 
+    public function test_accepted_operation_has_a_durable_verification_cooldown(): void
+    {
+        $order = SalesOrder::factory()->create();
+        $claim = ChannelOperationLedger::claim($order, 'request_awb');
+        ChannelOperationLedger::markAccepted($claim['attempt']);
+
+        $attempt = $claim['attempt']->fresh();
+        $attempt->forceFill(['updated_at' => now()->subMinutes(6)])->save();
+
+        $this->assertTrue(ChannelOperationLedger::beginVerification($order->id, 'request_awb', 300));
+        $this->assertFalse(ChannelOperationLedger::beginVerification($order->id, 'request_awb', 300));
+    }
+
     public function test_uncertain_channel_cancel_is_refreshed_not_sent_a_second_time(): void
     {
         Queue::fake();

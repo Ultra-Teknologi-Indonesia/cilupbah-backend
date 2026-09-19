@@ -92,6 +92,62 @@ final class ChannelOperationLedger
         ])->save();
     }
 
+    /**
+     * A channel read can conclusively prove that a previously accepted or
+     * uncertain request succeeded. Do not create a record here: a read-only
+     * discovery of an AWB must not be represented as an external mutation.
+     */
+    public static function markSucceededWhenVerified(
+        SalesOrder $order,
+        string $operation,
+        ?array $response = null,
+    ): void {
+        DB::transaction(function () use ($order, $operation, $response): void {
+            $attempt = ChannelOperationAttempt::query()
+                ->where('order_id', $order->id)
+                ->where('operation', $operation)
+                ->lockForUpdate()
+                ->first();
+
+            if ($attempt === null || $attempt->status === ChannelOperationAttempt::STATUS_SUCCEEDED) {
+                return;
+            }
+
+            self::markSucceeded($attempt, $response);
+        });
+    }
+
+    /**
+     * Reserve a read-only verification window for an accepted asynchronous
+     * operation. The timestamp update is the durable cooldown; it prevents
+     * multiple schedulers from flooding the marketplace with status reads.
+     */
+    public static function beginVerification(
+        string $orderId,
+        string $operation,
+        int $cooldownSeconds,
+    ): bool {
+        return DB::transaction(function () use ($orderId, $operation, $cooldownSeconds): bool {
+            $attempt = ChannelOperationAttempt::query()
+                ->where('order_id', $orderId)
+                ->where('operation', $operation)
+                ->lockForUpdate()
+                ->first();
+
+            if (
+                $attempt === null
+                || $attempt->status !== ChannelOperationAttempt::STATUS_ACCEPTED
+                || $attempt->updated_at->greaterThan(now()->subSeconds($cooldownSeconds))
+            ) {
+                return false;
+            }
+
+            $attempt->touch();
+
+            return true;
+        });
+    }
+
     public static function markUncertain(ChannelOperationAttempt $attempt, \Throwable $exception): void
     {
         $attempt->forceFill([

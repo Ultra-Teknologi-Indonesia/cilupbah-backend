@@ -39,6 +39,7 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
         public readonly int $trackingAttempt = 0,
         public readonly bool $requestReadyToShip = true,
         public readonly bool $prefetch = false,
+        public readonly bool $verificationOnly = false,
     ) {
         $this->onConnection($prefetch
             ? config('shipping-label-prefetch.connection', 'redis-long')
@@ -51,7 +52,7 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
     public function uniqueId(): string
     {
 
-        return "order:{$this->orderId}:attempt:{$this->trackingAttempt}";
+        return "order:{$this->orderId}:attempt:{$this->trackingAttempt}:".($this->verificationOnly ? 'verify' : 'request');
     }
 
     public function handle(): void
@@ -104,6 +105,7 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
             ]);
 
             if (! empty($order->tracking_number)) {
+                $this->markMarketplaceAwbSucceeded($order, (string) $order->tracking_number);
                 app(BulkShippingLabelService::class)->onOrderAwbReady($order->id);
             }
 
@@ -115,6 +117,7 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
         }
 
         if (! empty($order->tracking_number)) {
+            $this->markMarketplaceAwbSucceeded($order, (string) $order->tracking_number);
             app(BulkShippingLabelService::class)->onOrderAwbReady($order->id);
             $this->prepareLabel($order);
             $this->markPrefetchAwbReady($order);
@@ -160,6 +163,10 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                     'salesorder_no' => $order->salesorder_no,
                     'source' => $source,
                 ]);
+
+                if ($this->verificationOnly) {
+                    return;
+                }
 
                 if ($this->attempts() < $this->tries) {
                     $attemptIndex = max(0, $this->attempts() - 1);
@@ -287,6 +294,7 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                     'tracking_number' => $tn,
                 ]);
 
+                $this->markMarketplaceAwbSucceeded($order, (string) $tn);
                 $this->prepareLabel($order);
                 $this->markPrefetchAwbReady($order);
 
@@ -422,6 +430,7 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                     'tracking_number' => $resolved['tracking_number'],
                 ]);
 
+                $this->markMarketplaceAwbSucceeded($order, (string) $resolved['tracking_number']);
                 $this->prepareLabel($order);
                 $this->markPrefetchAwbReady($order);
 
@@ -495,6 +504,7 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                     'marketplace_action' => $requestMarketplace,
                 ]);
 
+                $this->markMarketplaceAwbSucceeded($order, $tn);
                 $this->prepareLabel($order);
                 $this->markPrefetchAwbReady($order);
 
@@ -574,6 +584,13 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
 
             throw $exception;
         }
+    }
+
+    private function markMarketplaceAwbSucceeded(SalesOrder $order, string $trackingNumber): void
+    {
+        ChannelOperationLedger::markSucceededWhenVerified($order, 'request_awb', [
+            'tracking_number' => $trackingNumber,
+        ]);
     }
 
     private function markPrefetchAwbReady(SalesOrder $order): void

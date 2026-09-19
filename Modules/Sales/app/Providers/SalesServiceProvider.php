@@ -12,6 +12,7 @@ use Modules\Sales\Console\Commands\DispatchDueShippingLabelPrefetch;
 use Modules\Sales\Console\Commands\FinanceQueueHealth;
 use Modules\Sales\Console\Commands\PrepareShopeeLabelsBackfill;
 use Modules\Sales\Console\Commands\ReapStaleBulkLabelBatches;
+use Modules\Sales\Console\Commands\ReconcileAcceptedAwbRequests;
 use Modules\Sales\Console\Commands\ReconcileFailedDownloadOrders;
 use Modules\Sales\Console\Commands\ReconcileStaleBundleOrderItems;
 use Modules\Sales\Console\Commands\RelocateOrdersToKecil;
@@ -50,6 +51,7 @@ class SalesServiceProvider extends ModuleServiceProvider
         SyncReturnDetail::class,
         CleanupBulkLabelBatchesCommand::class,
         ReapStaleBulkLabelBatches::class,
+        ReconcileAcceptedAwbRequests::class,
         ReconcileFailedDownloadOrders::class,
         ReconcileStaleBundleOrderItems::class,
         SyncShippingStatus::class,
@@ -76,6 +78,11 @@ class SalesServiceProvider extends ModuleServiceProvider
         $schedule->command('shipping-labels:dispatch-prefetch')
             ->everyMinute()
             ->withoutOverlapping(2)
+            ->runInBackground();
+
+        $schedule->command('shipping-labels:reconcile-accepted-awb')
+            ->everyFiveMinutes()
+            ->withoutOverlapping(4)
             ->runInBackground();
     }
 }
