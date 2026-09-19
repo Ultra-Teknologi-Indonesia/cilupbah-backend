@@ -33,7 +33,7 @@ spec:
           command:
             - redis-server
             - --maxmemory
-            - "1280mb"
+            - "3584mb"
             - --maxmemory-policy
             - noeviction
             - --appendonly
@@ -56,7 +56,7 @@ spec:
               memory: "1Gi"
               cpu: "100m"
             limits:
-              memory: "2Gi"
+              memory: "4Gi"
               cpu: "500m"
           livenessProbe:
             exec:

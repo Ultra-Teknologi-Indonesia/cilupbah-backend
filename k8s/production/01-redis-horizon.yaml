@@ -33,7 +33,7 @@ spec:
           command:
             - redis-server
             - --maxmemory
-            - "640mb"
+            - "1792mb"
             - --maxmemory-policy
             # Horizon stores supervisor/control metadata here. Silent eviction can
             # make the dashboard and worker control plane inconsistent; retention

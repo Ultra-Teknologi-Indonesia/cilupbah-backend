@@ -33,7 +33,7 @@ spec:
           command:
             - redis-server
             - --maxmemory
-            - "1280mb"
+            - "1792mb"
             - --maxmemory-policy
             - noeviction
             - --appendonly
