@@ -21,6 +21,7 @@ use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\BulkShippingLabelService;
 use Modules\Sales\Services\ShippingLabelPrefetchService;
 use Modules\Sales\Services\ShippingLabelPreparationDispatcher;
+use Modules\Sales\Support\ChannelOperationLedger;
 use Modules\Sales\Support\ChannelOrderSideEffectGuard;
 
 class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
@@ -252,13 +253,15 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                 ]);
             } elseif ($requestMarketplace) {
                 $resolved = $this->withRtsLock($order, true, function (SalesOrder $freshOrder) use ($service, $shop): ?array {
-                    return $service->requestTrackingNumber(
-                        (string) $freshOrder->channel_shop_id,
-                        (string) $freshOrder->channel_order_no,
-                        array_filter([
-                            'preferred_method' => $shop->handover_method ?? null,
-                        ], static fn ($value): bool => $value !== null && $value !== ''),
-                    );
+                    return $this->requestMarketplaceAwb($freshOrder, function () use ($service, $freshOrder, $shop): array {
+                        return $service->requestTrackingNumber(
+                            (string) $freshOrder->channel_shop_id,
+                            (string) $freshOrder->channel_order_no,
+                            array_filter([
+                                'preferred_method' => $shop->handover_method ?? null,
+                            ], static fn ($value): bool => $value !== null && $value !== ''),
+                        );
+                    });
                 });
             } else {
                 $resolved = [
@@ -380,12 +383,14 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                 if (! is_array($resolved) || empty($resolved['tracking_number'])) {
 
                     $resolved = $this->withRtsLock($order, true, function (SalesOrder $freshOrder) use ($service): ?array {
-                        return $service->requestTrackingNumber(
-                            (string) $freshOrder->channel_shop_id,
-                            (string) $freshOrder->channel_order_no,
-                            null,
-                            is_array($freshOrder->channel_package_ids) ? $freshOrder->channel_package_ids : [],
-                        );
+                        return $this->requestMarketplaceAwb($freshOrder, function () use ($service, $freshOrder): array {
+                            return $service->requestTrackingNumber(
+                                (string) $freshOrder->channel_shop_id,
+                                (string) $freshOrder->channel_order_no,
+                                null,
+                                is_array($freshOrder->channel_package_ids) ? $freshOrder->channel_package_ids : [],
+                            );
+                        });
                     });
                 }
             } else {
@@ -449,11 +454,13 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                         return null;
                     }
 
-                    return $service->requestTrackingNumber(
-                        (string) $freshOrder->channel_shop_id,
-                        (string) $freshOrder->channel_order_no,
-                        $shippingProvider,
-                    );
+                    return $this->requestMarketplaceAwb($freshOrder, function () use ($service, $freshOrder, $shippingProvider): array {
+                        return $service->requestTrackingNumber(
+                            (string) $freshOrder->channel_shop_id,
+                            (string) $freshOrder->channel_order_no,
+                            $shippingProvider,
+                        );
+                    });
                 });
             } else {
                 $service->pullOrderById(
@@ -527,6 +534,45 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
             return $freshOrder === null ? null : $callback($freshOrder);
         } finally {
             optional($lock)->release();
+        }
+    }
+
+    private function requestMarketplaceAwb(SalesOrder $order, callable $callback): ?array
+    {
+        $claim = ChannelOperationLedger::claim($order, 'request_awb');
+
+        if (! $claim['should_execute']) {
+            Log::warning('RequestChannelAwbJob: request AWB tidak diulang sebelum hasil channel diverifikasi.', [
+                'order_id' => $order->id,
+                'salesorder_no' => $order->salesorder_no,
+                'ledger_status' => $claim['attempt']->status,
+            ]);
+
+            return null;
+        }
+
+        try {
+            $result = $callback();
+            $accepted = ! empty($result['shipped'])
+                || strtoupper((string) ($result['channel_status'] ?? '')) === 'PROCESSED';
+
+            if ($accepted) {
+                ChannelOperationLedger::markAccepted($claim['attempt'], [
+                    'channel_status' => $result['channel_status'] ?? null,
+                    'tracking_number' => $result['tracking_number'] ?? null,
+                ]);
+            } else {
+                ChannelOperationLedger::markRetryable(
+                    $claim['attempt'],
+                    (string) ($result['message'] ?? $result['error'] ?? 'Channel belum menerima request AWB.'),
+                );
+            }
+
+            return $result;
+        } catch (\Throwable $exception) {
+            ChannelOperationLedger::markUncertain($claim['attempt'], $exception);
+
+            throw $exception;
         }
     }
 
