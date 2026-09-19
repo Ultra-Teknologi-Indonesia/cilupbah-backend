@@ -44,9 +44,18 @@ return [
             'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
             'queue' => env('REDIS_QUEUE', 'default'),
 
-            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 420),
+            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 660),
             'block_for' => null,
 
+            'after_commit' => true,
+        ],
+
+        'redis-legacy' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_LEGACY_QUEUE_CONNECTION', 'default'),
+            'queue' => env('REDIS_LEGACY_QUEUE', 'default'),
+            'retry_after' => (int) env('REDIS_LEGACY_QUEUE_RETRY_AFTER', 420),
+            'block_for' => null,
             'after_commit' => true,
         ],
 
@@ -179,9 +188,7 @@ return [
         'enabled' => filter_var(env('QUEUE_BACKPRESSURE_ENABLED', true), FILTER_VALIDATE_BOOL),
         'channel_sync_max_depth' => max(1, min(500, (int) env('CHANNEL_SYNC_MAX_QUEUE_DEPTH', 24))),
         'channel_sync_max_memory_ratio' => max(0.50, min(0.90, (float) env('CHANNEL_SYNC_MAX_REDIS_MEMORY_RATIO', 0.70))),
-        // Webhook selalu dicatat ke database lebih dahulu. Ketika Redis mulai
-        // penuh, dispatch ditunda agar inbox menjadi penyangga yang durable
-        // daripada memaksa Redis sampai menolak command OOM.
+
         'webhook_ingress_max_depth' => max(1, min(10000, (int) env('WEBHOOK_INGRESS_MAX_QUEUE_DEPTH', 1000))),
         'webhook_ingress_max_memory_ratio' => max(0.50, min(0.90, (float) env('WEBHOOK_INGRESS_MAX_REDIS_MEMORY_RATIO', 0.70))),
         'webhook_replay_max_depth' => max(1, min(5000, (int) env('WEBHOOK_REPLAY_MAX_QUEUE_DEPTH', 500))),

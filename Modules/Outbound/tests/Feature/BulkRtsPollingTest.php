@@ -119,4 +119,75 @@ class BulkRtsPollingTest extends TestCase
         $this->assertContains($item->status, [BulkRtsItem::STATUS_SUCCESS, BulkRtsItem::STATUS_SKIPPED, BulkRtsItem::STATUS_FAILED]);
         $this->assertNotEquals(BulkRtsBatch::STATUS_PROCESSING, $batch->status);
     }
+
+    public function test_bulk_rts_job_visibility_timeout_exceeds_its_execution_timeout(): void
+    {
+        $job = new ProcessBulkReadyToShipJob('batch-1');
+
+        $this->assertGreaterThan(
+            $job->timeout + 30,
+            (int) config('queue.connections.redis.retry_after'),
+            'Redis tidak boleh menyerahkan ulang bulk RTS saat worker pertama masih berjalan.',
+        );
+    }
+
+    public function test_bulk_rts_job_uses_a_batch_scoped_idempotency_key(): void
+    {
+        $job = new ProcessBulkReadyToShipJob('batch-1');
+
+        $this->assertSame('bulk-ready-to-ship:batch-1', $job->uniqueId());
+    }
+
+    public function test_bulk_rts_job_does_not_reprocess_an_item_claimed_by_an_active_worker(): void
+    {
+        $batch = BulkRtsBatch::create([
+            'user_id' => $this->user->id,
+            'status' => BulkRtsBatch::STATUS_PROCESSING,
+            'total_count' => 1,
+            'started_at' => now(),
+        ]);
+
+        BulkRtsItem::create([
+            'batch_id' => $batch->id,
+            'order_id' => SalesOrder::factory()->create()->id,
+            'salesorder_no' => 'SO-CLAIMED',
+            'source' => 'shopee',
+            'status' => BulkRtsItem::STATUS_PROCESSING,
+        ]);
+
+        $fulfillment = $this->createMock(OutboundFulfillmentService::class);
+        $fulfillment->expects($this->never())->method('readyToShip');
+
+        (new ProcessBulkReadyToShipJob($batch->id))->handle($fulfillment);
+    }
+
+    public function test_bulk_rts_job_recovers_only_a_stale_processing_item(): void
+    {
+        $batch = BulkRtsBatch::create([
+            'user_id' => $this->user->id,
+            'status' => BulkRtsBatch::STATUS_PROCESSING,
+            'total_count' => 1,
+            'started_at' => now(),
+        ]);
+
+        $item = BulkRtsItem::create([
+            'batch_id' => $batch->id,
+            'order_id' => SalesOrder::factory()->create()->id,
+            'salesorder_no' => 'SO-STALE',
+            'source' => 'shopee',
+            'status' => BulkRtsItem::STATUS_PROCESSING,
+        ]);
+        BulkRtsItem::query()
+            ->whereKey($item->id)
+            ->update(['updated_at' => now()->subMinutes(13)]);
+
+        $fulfillment = $this->createMock(OutboundFulfillmentService::class);
+        $fulfillment->expects($this->once())
+            ->method('readyToShip')
+            ->willReturn([['status' => 'success', 'message' => 'RTS submitted']]);
+
+        (new ProcessBulkReadyToShipJob($batch->id))->handle($fulfillment);
+
+        $this->assertSame(BulkRtsItem::STATUS_SUCCESS, $item->fresh()->status);
+    }
 }

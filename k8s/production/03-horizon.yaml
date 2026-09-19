@@ -40,7 +40,7 @@ spec:
             - name: REDIS_LONG_QUEUE_RETRY_AFTER
               value: "2160"
             - name: REDIS_QUEUE_RETRY_AFTER
-              value: "420"
+              value: "660"
             - name: REDIS_QUEUE_CONNECTION
               value: "horizon"
             - name: HORIZON_PROFILE

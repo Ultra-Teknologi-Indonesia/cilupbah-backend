@@ -3,16 +3,19 @@
 namespace Modules\Outbound\Jobs;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Outbound\Models\BulkRtsBatch;
 use Modules\Outbound\Models\BulkRtsItem;
 use Modules\Outbound\Services\OutboundFulfillmentService;
 
-class ProcessBulkReadyToShipJob implements ShouldQueue
+class ProcessBulkReadyToShipJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -20,10 +23,28 @@ class ProcessBulkReadyToShipJob implements ShouldQueue
     public array $backoff = [10, 30, 60];
     public int $timeout = 600;
 
+    public int $uniqueFor = 720;
+
+    private const PROCESSING_STALE_AFTER_SECONDS = 720;
+
     public function __construct(
         public string $batchId,
     ) {
         $this->onQueue(config('queue.names.fulfillment', 'fulfillment'));
+    }
+
+    public function uniqueId(): string
+    {
+        return "bulk-ready-to-ship:{$this->batchId}";
+    }
+
+    public function middleware(): array
+    {
+        return [
+            (new WithoutOverlapping("bulk-ready-to-ship:{$this->batchId}"))
+                ->releaseAfter(30)
+                ->expireAfter(660),
+        ];
     }
 
     public function handle(OutboundFulfillmentService $fulfillmentService): void
@@ -35,7 +56,13 @@ class ProcessBulkReadyToShipJob implements ShouldQueue
         }
 
         $query = $batch->items()
-            ->whereIn('status', [BulkRtsItem::STATUS_PENDING, BulkRtsItem::STATUS_PROCESSING]);
+            ->where(function ($query): void {
+                $query->where('status', BulkRtsItem::STATUS_PENDING)
+                    ->orWhere(function ($query): void {
+                        $query->where('status', BulkRtsItem::STATUS_PROCESSING)
+                            ->where('updated_at', '<=', now()->subSeconds(self::PROCESSING_STALE_AFTER_SECONDS));
+                    });
+            });
 
         if (! $query->exists()) {
             $batch->recomputeCounts();
@@ -47,7 +74,10 @@ class ProcessBulkReadyToShipJob implements ShouldQueue
         foreach ($items->chunk(10) as $chunk) {
 
             foreach ($chunk as $item) {
-                $item->update(['status' => BulkRtsItem::STATUS_PROCESSING]);
+                $item = $this->claimItem($item->id);
+                if (! $item) {
+                    continue;
+                }
 
                 try {
                     $results = $fulfillmentService->readyToShip([(string) $item->order_id]);
@@ -86,6 +116,33 @@ class ProcessBulkReadyToShipJob implements ShouldQueue
         }
 
         $batch->recomputeCounts();
+    }
+
+    /**
+     * Claim one item durably before the external RTS side effect. Cache locks
+     * reduce duplicate dispatches, but this row lock remains authoritative if
+     * a Redis lock expires or is evicted.
+     */
+    private function claimItem(string $itemId): ?BulkRtsItem
+    {
+        return DB::transaction(function () use ($itemId): ?BulkRtsItem {
+            $item = BulkRtsItem::query()->lockForUpdate()->find($itemId);
+            if (! $item) {
+                return null;
+            }
+
+            $claimable = $item->status === BulkRtsItem::STATUS_PENDING
+                || ($item->status === BulkRtsItem::STATUS_PROCESSING
+                    && $item->updated_at?->lte(now()->subSeconds(self::PROCESSING_STALE_AFTER_SECONDS)));
+
+            if (! $claimable) {
+                return null;
+            }
+
+            $item->update(['status' => BulkRtsItem::STATUS_PROCESSING]);
+
+            return $item->fresh();
+        });
     }
 
     public function failed(\Throwable $exception): void

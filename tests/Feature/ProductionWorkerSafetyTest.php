@@ -50,6 +50,19 @@ class ProductionWorkerSafetyTest extends TestCase
         }
     }
 
+    public function test_legacy_recovery_workers_are_isolated_from_new_dispatches(): void
+    {
+        $finance = config('horizon.defaults.supervisor-legacy-channel-finance-recovery');
+        $afterSales = config('horizon.defaults.supervisor-legacy-channel-after-sales-recovery');
+
+        $this->assertSame('redis-legacy', $finance['connection']);
+        $this->assertSame(['channel-finance'], $finance['queue']);
+        $this->assertSame(1, $finance['maxProcesses']);
+        $this->assertSame('redis-legacy', $afterSales['connection']);
+        $this->assertSame(['channel-after-sales'], $afterSales['queue']);
+        $this->assertSame(1, $afterSales['maxProcesses']);
+    }
+
     public function test_production_deploy_does_not_block_on_heavy_worker_drain(): void
     {
         $workflow = file_get_contents(base_path('.github/workflows/ci-cd-production.yml'));
