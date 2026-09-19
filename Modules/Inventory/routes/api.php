@@ -11,6 +11,7 @@ use Modules\Inventory\Http\Controllers\InventorySettingController;
 use Modules\Inventory\Http\Controllers\InventorySyncSettingController;
 use Modules\Inventory\Http\Controllers\InventoryTransactionController;
 use Modules\Inventory\Http\Controllers\MonitorStockController;
+use Modules\Inventory\Http\Controllers\OrderAuditController;
 use Modules\Inventory\Http\Controllers\PutawayController;
 use Modules\Inventory\Http\Controllers\RackImportController;
 use Modules\Inventory\Http\Controllers\ReservedStockController;
@@ -24,6 +25,16 @@ use Modules\Product\Models\Product;
 use Modules\Product\Services\ProductLifecycleService;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
+    Route::get('operations/order-audit', [OrderAuditController::class, 'lookup'])
+        ->name('operations.order-audit.lookup')
+        ->middleware(['role_or_permission:owner|view-pesanan', 'throttle:30,1']);
+    Route::post('operations/order-audit/replay', [OrderAuditController::class, 'replay'])
+        ->name('operations.order-audit.replay')
+        ->middleware(['role_or_permission:owner|edit-pesanan', 'throttle:10,1']);
+    Route::post('operations/order-audit/delete', [OrderAuditController::class, 'delete'])
+        ->name('operations.order-audit.delete')
+        ->middleware(['role_or_permission:owner|delete-pesanan', 'throttle:10,1']);
+
     Route::prefix('impex/activities')->middleware('role_or_permission:owner|view-impex')->group(function () {
         Route::post('export/record', [ImpexActivityController::class, 'recordExport'])->name('impex.activities.recordExport');
         Route::get('{direction}', [ImpexActivityController::class, 'index'])->name('impex.activities.index')->where('direction', 'import|export');

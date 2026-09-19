@@ -9,6 +9,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use App\Support\WarehouseAccess;
 use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Services\ChannelWebhookService;
 use RuntimeException;
@@ -52,7 +53,7 @@ final class OrderCutoverLookupService
                 : DB::raw('NULL as '.$column);
         }
 
-        $orders = DB::table('sales_orders as so')
+        $ordersQuery = DB::table('sales_orders as so')
             ->leftJoin('channel_shops as cs', function ($join): void {
                 $join->whereRaw('cs.id::text = so.channel_shop_id');
             })
@@ -61,8 +62,9 @@ final class OrderCutoverLookupService
             ->where(function ($query) use ($reference): void {
                 $query->where('so.salesorder_no', $reference)
                     ->orWhere('so.channel_order_no', $reference);
-            })
-            ->get($select);
+            });
+        WarehouseAccess::apply($ordersQuery, 'so.location_id');
+        $orders = $ordersQuery->get($select);
 
         $webhooks = $this->findWebhookRows($reference);
         $orderReports = $orders->map(fn (object $order): array => $this->orderReport($order))->values()->all();
@@ -78,6 +80,8 @@ final class OrderCutoverLookupService
                 'location_code' => (string) ($row->location_code ?? 'unknown'),
                 'event_type' => (string) ($row->event_type ?? ''),
                 'status' => (string) $row->status,
+                'processing_state' => $this->webhookProcessingState($row),
+                'attempts' => (int) ($row->attempts ?? 0),
                 'error' => $row->error,
                 'received_at' => $row->received_at,
                 'processed_at' => $row->processed_at,
@@ -284,15 +288,18 @@ final class OrderCutoverLookupService
         }
         $needle = addcslashes($reference, '\\%_');
 
-        return DB::table('channel_webhook_inbox as wi')
+        $query = DB::table('channel_webhook_inbox as wi')
             ->leftJoin('channel_shops as cs', 'cs.shop_id', '=', 'wi.shop_id')
             ->leftJoin('locations as l', 'l.id', '=', 'cs.stock_source_location_id')
             ->whereRaw("CAST(wi.payload AS TEXT) LIKE ? ESCAPE '\\'", ['%'.$needle.'%'])
             ->orderByDesc('received_at')
             ->limit(100)
-            ->get([
+            ;
+        WarehouseAccess::apply($query, 'l.id');
+
+        return $query->get([
                 'wi.id', 'wi.channel', 'wi.shop_id', 'wi.event_type', 'wi.status', 'wi.error',
-                'wi.received_at', 'wi.processed_at', 'wi.payload', 'l.location_code',
+                'wi.received_at', 'wi.processed_at', 'wi.payload', 'wi.attempts', 'l.location_code',
                 'cs.order_sync_enabled', 'wi.next_attempt_at',
             ])
             ->filter(function (object $row) use ($reference): bool {
@@ -301,6 +308,20 @@ final class OrderCutoverLookupService
                 return is_array($payload) && in_array($reference, $this->extractOrderReferences((string) $row->channel, $payload), true);
             })
             ->values();
+    }
+
+    private function webhookProcessingState(object $row): string
+    {
+        return match (strtoupper((string) $row->status)) {
+            'PROCESSED' => 'success',
+            'FAILED' => 'failed',
+            'SKIPPED' => 'skipped',
+            'RECEIVED' => $row->next_attempt_at !== null
+                && now()->lessThan(CarbonImmutable::parse((string) $row->next_attempt_at))
+                ? 'queued'
+                : 'waiting',
+            default => 'unknown',
+        };
     }
 
     private function extractOrderReferences(string $channel, array $payload): array
