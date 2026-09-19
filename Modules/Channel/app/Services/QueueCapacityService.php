@@ -39,17 +39,14 @@ final class QueueCapacityService implements QueueCapacityReader
         $cacheKey = 'channel:queue-capacity:'.$queueConnection.':'.md5(implode('|', $queueNames));
 
         try {
-            // The cache connection is intentionally separate from the queue
-            // Redis in production. A tiny snapshot prevents every incoming
-            // webhook from executing INFO + three queue reads during a burst.
+
             return Cache::remember(
                 $cacheKey,
                 now()->addSeconds(self::SNAPSHOT_TTL_SECONDS),
                 fn (): array => $this->inspectFresh($result, $redisConnection, $queueNames),
             );
         } catch (\Throwable $exception) {
-            // Cache is an optimization only. If it is unavailable, inspect
-            // the queue directly; a queue failure still fails closed below.
+
             return $this->inspectFresh($result, $redisConnection, $queueNames, $exception);
         }
     }

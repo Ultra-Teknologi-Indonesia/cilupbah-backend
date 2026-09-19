@@ -33,8 +33,8 @@ spec:
             - secretRef:
                 name: cilupbah-env
           env:
-            # The profile has exactly two single-concurrency supervisors:
-            # redis-legacy:channel-finance and redis-legacy:channel-after-sales.
+            # The profile has three single-concurrency supervisors that drain
+            # only the queues left in the pre-isolation Redis instance.
             - name: HORIZON_PROFILE
               value: "legacy-recovery"
             - name: REDIS_QUEUE_CONNECTION

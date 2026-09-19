@@ -54,6 +54,7 @@ class ProductionWorkerSafetyTest extends TestCase
     {
         $finance = config('horizon.defaults.supervisor-legacy-channel-finance-recovery');
         $afterSales = config('horizon.defaults.supervisor-legacy-channel-after-sales-recovery');
+        $stock = config('horizon.defaults.supervisor-legacy-channel-stock-recovery');
 
         $this->assertSame('redis-legacy', $finance['connection']);
         $this->assertSame(['channel-finance'], $finance['queue']);
@@ -61,6 +62,10 @@ class ProductionWorkerSafetyTest extends TestCase
         $this->assertSame('redis-legacy', $afterSales['connection']);
         $this->assertSame(['channel-after-sales'], $afterSales['queue']);
         $this->assertSame(1, $afterSales['maxProcesses']);
+
+        $this->assertSame('redis-legacy', $stock['connection']);
+        $this->assertSame(['channel-stock'], $stock['queue']);
+        $this->assertSame(1, $stock['maxProcesses']);
     }
 
     public function test_production_deploy_does_not_block_on_heavy_worker_drain(): void

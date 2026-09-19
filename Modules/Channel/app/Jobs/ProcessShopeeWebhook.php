@@ -77,8 +77,6 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
     {
         $code = (int) ($payload['code'] ?? -1);
 
-        // Shopee sends a final order cancellation as code 3 with
-        // data.status = CANCELLED. Keep it ahead of regular order updates.
         if ($code === self::PUSH_ORDER_STATUS && self::isFinalCancellationPayload($payload)) {
             return config('queue.names.channel_cancellation', 'channel-cancellation');
         }

@@ -53,6 +53,7 @@ $supervisorProfiles = [
     'legacy-recovery' => [
         'supervisor-legacy-channel-finance-recovery',
         'supervisor-legacy-channel-after-sales-recovery',
+        'supervisor-legacy-channel-stock-recovery',
     ],
 ];
 
@@ -124,6 +125,7 @@ return [
             .config('queue.routing.channel_finance.queue', 'channel-finance') => 120,
         'redis-legacy:channel-finance' => 120,
         'redis-legacy:channel-after-sales' => 120,
+        'redis-legacy:channel-stock' => 120,
         config('queue.routing.channel_sync.connection', 'redis-channel-sync').':'
             .config('queue.routing.channel_sync.queue', 'channel-sync') => 120,
         config('queue.routing.channel_sync.connection', 'redis-channel-sync').':'
@@ -401,6 +403,20 @@ return [
             'backoff' => [60, 300, 900, 1800],
             'memory' => 256,
             'nice' => 5,
+        ],
+        'supervisor-legacy-channel-stock-recovery' => [
+            'connection' => 'redis-legacy',
+            'queue' => ['channel-stock'],
+            'balance' => 'off',
+            'minProcesses' => 1,
+            'maxProcesses' => 1,
+            'maxJobs' => 50,
+            'maxTime' => 900,
+            'timeout' => 330,
+            'tries' => 3,
+            'backoff' => [30, 120, 300],
+            'memory' => 256,
+            'nice' => 10,
         ],
         'supervisor-cutover' => [
             'connection' => config('operations.stock_cutover_console.queue_connection', 'redis-long'),

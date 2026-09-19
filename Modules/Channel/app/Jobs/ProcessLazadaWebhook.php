@@ -72,9 +72,6 @@ class ProcessLazadaWebhook implements ShouldBeUnique, ShouldQueue
     {
         $messageType = (int) ($payload['message_type'] ?? -1);
 
-        // Lazada may report a final cancellation through an order,
-        // fulfillment, or completed reverse event. These need to run ahead
-        // of normal order and after-sales traffic.
         if (self::isFinalCancellationPayload($payload, $messageType)) {
             return config('queue.names.channel_cancellation', 'channel-cancellation');
         }
