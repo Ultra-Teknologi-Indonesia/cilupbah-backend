@@ -66,4 +66,15 @@ final class ChannelOrderPullLeaseService
                 'updated_at' => now(),
             ]);
     }
+
+    public function renew(string $shopId, string $token, int $seconds): bool
+    {
+        return ChannelShop::query()
+            ->whereKey($shopId)
+            ->where('order_pull_lease_token', $token)
+            ->update([
+                'order_pull_locked_until' => now()->addSeconds($seconds),
+                'updated_at' => now(),
+            ]) === 1;
+    }
 }

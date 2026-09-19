@@ -51,6 +51,7 @@ class ShopeeOrderService
                 $orderSn = (string) ($order['order_sn'] ?? '');
                 if ($orderSn === '') {
                     $failedOrderSns[] = '(tanpa order_sn)';
+
                     continue;
                 }
 
@@ -65,6 +66,7 @@ class ShopeeOrderService
                         ]);
 
                         $failedOrderSns[] = $orderSn;
+
                         continue;
                     }
 
@@ -86,6 +88,109 @@ class ShopeeOrderService
         }
 
         return $count;
+    }
+
+    public function pullOrdersPage(string $shopId, ?int $updatedAfter, ?int $updatedBefore, array $cursor = []): OrderPullPageResult
+    {
+        if (app(ChannelSyncSettingService::class)->isPaused()) {
+            return new OrderPullPageResult(0, true);
+        }
+
+        $shop = $this->requireShop($shopId);
+        $timeFrom = $updatedAfter ?: now()->subDays(7)->timestamp;
+        $timeTo = $updatedBefore ?: now()->timestamp;
+        $windows = $this->splitTimeWindows($timeFrom, $timeTo);
+        $windowIndex = max(0, (int) ($cursor['window_index'] ?? 0));
+        $field = (string) ($cursor['field'] ?? 'create_time');
+        $pageCursor = (string) ($cursor['cursor'] ?? '');
+
+        if (! isset($windows[$windowIndex])) {
+            return new OrderPullPageResult(0, true);
+        }
+
+        [$windowFrom, $windowTo] = $windows[$windowIndex];
+        $response = $this->callWithRefresh($shop, fn (string $token) => $this->client->request(
+            'GET',
+            '/api/v2/order/get_order_list',
+            [
+                'time_range_field' => $field,
+                'time_from' => $windowFrom,
+                'time_to' => $windowTo,
+                'page_size' => 50,
+                'cursor' => $pageCursor,
+            ],
+            $token,
+            $shop->shop_id,
+        ));
+
+        $orderSns = array_values(array_filter(array_map(
+            static fn (array $row): string => (string) ($row['order_sn'] ?? ''),
+            $response['response']['order_list'] ?? [],
+        )));
+        $details = $this->fetchOrderDetails($shop, $orderSns);
+        $returned = [];
+        $count = 0;
+        $failed = [];
+        $shippingChannelTypes = $this->shippingChannelTypes($shopId);
+
+        foreach ($details as $order) {
+            $orderSn = (string) ($order['order_sn'] ?? '');
+            if ($orderSn === '') {
+                $failed[] = '(tanpa order_sn)';
+
+                continue;
+            }
+
+            $returned[] = $orderSn;
+            try {
+                $localId = $this->orderService->upsertFromChannel(
+                    $this->mapper->map($order, $shopId, $shippingChannelTypes),
+                );
+                if (! $localId) {
+                    $failed[] = $orderSn;
+
+                    continue;
+                }
+                $count++;
+            } catch (\Throwable $e) {
+                Log::error("Shopee: gagal upsert order {$orderSn}: ".$e->getMessage());
+                $failed[] = $orderSn;
+            }
+        }
+
+        $failed = array_merge($failed, array_values(array_diff($orderSns, $returned)));
+        if ($failed !== []) {
+            throw ChannelOrderPullIncompleteException::forOrders('shopee', $shopId, $failed);
+        }
+
+        $nextCursor = (string) ($response['response']['next_cursor'] ?? '');
+        $more = (bool) ($response['response']['more'] ?? false);
+        if ($more && $nextCursor !== '') {
+            return new OrderPullPageResult($count, false, [
+                'field' => $field,
+                'window_index' => $windowIndex,
+                'cursor' => $nextCursor,
+            ]);
+        }
+
+        if ($field === 'create_time') {
+            return new OrderPullPageResult($count, false, [
+                'field' => 'update_time',
+                'window_index' => $windowIndex,
+                'cursor' => '',
+            ]);
+        }
+
+        $nextWindow = $windowIndex + 1;
+        if (isset($windows[$nextWindow])) {
+            return new OrderPullPageResult($count, false, [
+                'field' => 'create_time',
+                'window_index' => $nextWindow,
+                'cursor' => '',
+            ]);
+        }
+
+        return new OrderPullPageResult($count, true);
     }
 
     public function pullOrderById(string $shopId, string $orderSn): int

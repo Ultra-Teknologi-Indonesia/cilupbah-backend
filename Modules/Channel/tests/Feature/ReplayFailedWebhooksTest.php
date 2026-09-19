@@ -4,10 +4,12 @@ namespace Modules\Channel\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Mockery;
 use Modules\Channel\Enums\WebhookInboxStatus;
 use Modules\Channel\Jobs\ProcessShopeeWebhook;
 use Modules\Channel\Jobs\ProcessTikTokWebhook;
 use Modules\Channel\Models\ChannelWebhookInbox;
+use Modules\Channel\Services\QueueCapacityReader;
 use Tests\TestCase;
 
 class ReplayFailedWebhooksTest extends TestCase
@@ -54,5 +56,46 @@ class ReplayFailedWebhooksTest extends TestCase
 
         Queue::assertPushed(ProcessShopeeWebhook::class);
         Queue::assertPushed(ProcessTikTokWebhook::class);
+    }
+
+    public function test_replay_does_not_add_work_when_operational_queues_are_at_capacity(): void
+    {
+        Queue::fake();
+
+        ChannelWebhookInbox::create([
+            'channel' => 'tiktok',
+            'shop_id' => 'TT-1',
+            'event_key' => 'tiktok:webhook:capacity-test',
+            'event_type' => '1',
+            'payload' => ['shop_id' => 'TT-1', 'type' => 1, 'data' => ['order_id' => 'TT_CAPACITY']],
+            'status' => WebhookInboxStatus::RECEIVED->value,
+            'attempts' => 0,
+            'received_at' => now()->subMinutes(30),
+        ]);
+
+        $capacity = Mockery::mock(QueueCapacityReader::class);
+        $capacity->shouldReceive('inspect')->once()->andReturn([
+            'allowed' => true,
+            'queue_connection' => 'redis',
+            'redis_connection' => 'default',
+            'queue_depth' => 500,
+            'ready' => 500,
+            'reserved' => 0,
+            'delayed' => 0,
+            'memory_used_bytes' => 100,
+            'memory_max_bytes' => 1000,
+            'memory_ratio' => 0.10,
+        ]);
+        $this->app->instance(QueueCapacityReader::class, $capacity);
+
+        $this->artisan('channel:webhooks-replay')
+            ->assertSuccessful()
+            ->expectsOutputToContain('dihentikan oleh backpressure');
+
+        Queue::assertNothingPushed();
+        $this->assertSame(
+            WebhookInboxStatus::RECEIVED,
+            ChannelWebhookInbox::query()->value('status'),
+        );
     }
 }

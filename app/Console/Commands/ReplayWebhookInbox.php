@@ -11,6 +11,7 @@ use Modules\Channel\Enums\WebhookInboxStatus;
 use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Services\ChannelSyncSettingService;
 use Modules\Channel\Services\ChannelWebhookService;
+use Modules\Channel\Services\QueueCapacityReader;
 use Modules\Sales\Jobs\AdminAlertJob;
 
 class ReplayWebhookInbox extends Command
@@ -19,8 +20,10 @@ class ReplayWebhookInbox extends Command
 
     protected $description = 'Dispatch ulang webhook masuk yang macet di status RECEIVED (safety net: job hilang/crash tanpa menandai inbox). Idempoten via jalur job normal.';
 
-    public function handle(ChannelWebhookService $webhookService): int
-    {
+    public function handle(
+        ChannelWebhookService $webhookService,
+        QueueCapacityReader $capacity,
+    ): int {
         if (app(ChannelSyncSettingService::class)->isPaused()) {
             $this->info('Sinkronisasi channel dijeda - replay webhook masuk dilewati.');
 
@@ -38,17 +41,30 @@ class ReplayWebhookInbox extends Command
             return self::SUCCESS;
         }
 
+        $maxQueueDepth = (int) config('queue.backpressure.webhook_replay_max_depth', 500);
+        $queueHealth = $capacity->inspect('redis', $this->replayQueues());
+        if ((bool) config('queue.backpressure.enabled', true)
+            && (! $queueHealth['allowed'] || $queueHealth['queue_depth'] >= $maxQueueDepth)) {
+            $reason = $queueHealth['error'] ?? "depth={$queueHealth['queue_depth']}/{$maxQueueDepth}";
+            $this->warn("Replay dihentikan oleh backpressure ({$reason}). Tidak ada webhook yang dihapus; run berikutnya akan melanjutkan.");
+
+            return self::SUCCESS;
+        }
+
         $this->deadLetterExhausted($threshold, $maxAttempts, min(100, $limit));
 
         $dispatched = 0;
         $claimed = 0;
         $batchSize = min(25, $limit);
+        $availableSlots = (bool) config('queue.backpressure.enabled', true)
+            ? max(0, $maxQueueDepth - $queueHealth['queue_depth'])
+            : $limit;
 
-        while ($claimed < $limit && microtime(true) < $deadline) {
+        while ($claimed < $limit && $availableSlots > 0 && microtime(true) < $deadline) {
             $rows = ChannelWebhookInbox::claimReplayBatch(
                 $threshold,
                 $maxAttempts,
-                min($batchSize, $limit - $claimed),
+                min($batchSize, $limit - $claimed, $availableSlots),
             );
 
             if ($rows->isEmpty()) {
@@ -71,6 +87,7 @@ class ReplayWebhookInbox extends Command
                 if ($webhookService->dispatchInbox($row)) {
                     ChannelWebhookInbox::markReplayAttemptByKey((string) $row->event_key);
                     $dispatched++;
+                    $availableSlots--;
                 }
             }
         }
@@ -78,6 +95,18 @@ class ReplayWebhookInbox extends Command
         $this->info("Claim {$claimed}, dispatch ulang {$dispatched} webhook masuk yang macet.");
 
         return self::SUCCESS;
+    }
+
+    private function replayQueues(): array
+    {
+        return array_values(array_unique([
+            (string) config('queue.names.shopee_webhooks', 'shopee-webhooks'),
+            (string) config('queue.names.tiktok_webhooks', 'tiktok-webhooks'),
+            (string) config('queue.names.lazada_webhooks', 'lazada-webhooks'),
+            (string) config('queue.names.webhook_downloads', 'webhook-downloads'),
+            (string) config('queue.names.tiktok_packages', 'tiktok-packages'),
+            (string) config('queue.names.lazada_fulfillment', 'lazada-fulfillment'),
+        ]));
     }
 
     private function deadLetterExhausted(Carbon $threshold, int $maxAttempts, int $limit): void

@@ -76,7 +76,7 @@ class BulkShippingLabelBatch extends Model
 
     public function recomputeCounts(): void
     {
-        $done = $this->items()->where('status', BulkShippingLabelItem::STATUS_DONE)->count();
+        $done = $this->items()->whereIn('status', BulkShippingLabelItem::COMPLETED_STATUSES)->count();
         $failed = $this->items()->where('status', BulkShippingLabelItem::STATUS_FAILED)->count();
         $skipped = $this->items()->where('status', BulkShippingLabelItem::STATUS_SKIPPED_INSTANT)->count();
         $this->update([

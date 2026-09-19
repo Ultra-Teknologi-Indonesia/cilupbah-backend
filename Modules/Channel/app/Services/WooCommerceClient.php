@@ -63,12 +63,25 @@ class WooCommerceClient
         return $items;
     }
 
+    public function page(ChannelShop $shop, string $path, array $query, int $page = 1, int $perPage = 100): array
+    {
+        $response = $this->send($shop, 'GET', $path, array_merge($query, [
+            'per_page' => $perPage,
+            'page' => max(1, $page),
+        ]));
+
+        return [
+            'items' => $this->decode($response, $shop, $path),
+            'total_pages' => (int) ($response->header('X-WP-TotalPages') ?: 0),
+        ];
+    }
+
     public function send(ChannelShop $shop, string $method, string $path, array $query = [], array $body = [], ?int $timeoutSeconds = null): Response
     {
         $this->assertConfigured($shop);
         $this->throttle();
 
-        $url = $this->baseUrl($shop) . '/' . ltrim($path, '/');
+        $url = $this->baseUrl($shop).'/'.ltrim($path, '/');
 
         $timeout = max(1, $timeoutSeconds ?? 30);
         $request = Http::withBasicAuth((string) $shop->consumer_key, (string) $shop->consumer_secret)
@@ -103,7 +116,7 @@ class WooCommerceClient
                 'message' => $message,
             ]);
 
-            throw new \Exception('WooCommerce API Error: ' . $message);
+            throw new \Exception('WooCommerce API Error: '.$message);
         }
 
         return is_array($data) ? $data : [];
@@ -113,7 +126,7 @@ class WooCommerceClient
     {
         $version = (string) config('services.woocommerce.api_version', 'wc/v3');
 
-        return rtrim((string) $shop->store_url, '/') . '/wp-json/' . trim($version, '/');
+        return rtrim((string) $shop->store_url, '/').'/wp-json/'.trim($version, '/');
     }
 
     protected function assertConfigured(ChannelShop $shop): void

@@ -22,6 +22,7 @@ use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelItemJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelJob;
 use Modules\Sales\Jobs\RequestChannelAwbJob;
+use Modules\Sales\Jobs\TransformBulkShippingLabelItemJob;
 use Modules\Sales\Models\BulkShippingLabelBatch;
 use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Models\SalesOrder;
@@ -157,8 +158,11 @@ class BulkShippingLabelService
             $batch->items()
                 ->whereIn('status', [
                     BulkShippingLabelItem::STATUS_DOWNLOADING,
+                    BulkShippingLabelItem::STATUS_TRANSFORMING,
+                    BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE,
                     BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP,
                     BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP,
+                    BulkShippingLabelItem::STATUS_WAITING_TIKTOK_PREP,
                 ])
                 ->update([
                     'status' => BulkShippingLabelItem::STATUS_PENDING,
@@ -189,8 +193,11 @@ class BulkShippingLabelService
         $reset = $batch->items()
             ->whereIn('status', [
                 BulkShippingLabelItem::STATUS_DOWNLOADING,
+                BulkShippingLabelItem::STATUS_TRANSFORMING,
+                BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE,
                 BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP,
                 BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP,
+                BulkShippingLabelItem::STATUS_WAITING_TIKTOK_PREP,
             ])
             ->update([
                 'status' => BulkShippingLabelItem::STATUS_PENDING,
@@ -253,7 +260,7 @@ class BulkShippingLabelService
         }
 
         $batch->items()
-            ->where('status', BulkShippingLabelItem::STATUS_DONE)
+            ->whereIn('status', BulkShippingLabelItem::COMPLETED_STATUSES)
             ->with('order')
             ->get()
             ->each(function (BulkShippingLabelItem $item) use ($user): void {
@@ -317,7 +324,8 @@ class BulkShippingLabelService
                 $item->update([
                     'status' => $status,
                     'reason' => $reason,
-                    'pdf_bytes' => null,
+                    'raw_pdf_path' => null,
+                    'ready_pdf_path' => null,
                     'updated_at' => now(),
                 ]);
 
@@ -453,6 +461,83 @@ class BulkShippingLabelService
         ProcessBulkShippingLabelItemJob::dispatch($item->batch_id, $item->id, (string) $item->order_id);
     }
 
+    public function stageDownloadedLabel(string $orderId, string $bytes): int
+    {
+        if ($bytes === '') {
+            return 0;
+        }
+
+        $disk = Storage::disk(config('bulk-labels.spool_disk', 'print_spool'));
+        $items = BulkShippingLabelItem::query()
+            ->where('order_id', $orderId)
+            ->whereIn('status', BulkShippingLabelItem::TRANSIENT_STATUSES)
+            ->get();
+
+        foreach ($items as $item) {
+            $path = "items/{$item->batch_id}/{$item->id}/raw.pdf";
+            if (! $disk->put($path, $bytes)) {
+                throw new \RuntimeException('File PDF sementara tidak dapat disimpan ke print spool.');
+            }
+            $item->update([
+                'status' => BulkShippingLabelItem::STATUS_TRANSFORMING,
+                'raw_pdf_path' => $path,
+                'ready_pdf_path' => null,
+                'downloaded_at' => now(),
+                'reason' => null,
+            ]);
+
+            TransformBulkShippingLabelItemJob::dispatch((string) $item->batch_id, (string) $item->id);
+        }
+
+        return $items->count();
+    }
+
+    public function transformDownloadedItem(BulkShippingLabelItem $item): void
+    {
+        $item->refresh();
+        if ($item->status !== BulkShippingLabelItem::STATUS_TRANSFORMING || ! $item->raw_pdf_path) {
+            return;
+        }
+
+        $disk = Storage::disk(config('bulk-labels.spool_disk', 'print_spool'));
+        if (! $disk->exists($item->raw_pdf_path)) {
+            throw new \RuntimeException('File PDF sementara tidak ditemukan.');
+        }
+
+        $raw = $disk->get($item->raw_pdf_path);
+        $batch = $item->batch()->first();
+        $sizeKey = (string) data_get($batch?->per_channel_opts, 'document_size', self::DEFAULT_SIZE);
+        $readyPath = "items/{$item->batch_id}/{$item->id}/ready.pdf";
+        $transformed = $this->normalizeToTarget($raw, $sizeKey, $item->channel);
+        $disk->put($readyPath, $transformed);
+        $disk->delete($item->raw_pdf_path);
+
+        $item->update([
+            'status' => BulkShippingLabelItem::STATUS_READY,
+            'ready_pdf_path' => $readyPath,
+            'raw_pdf_path' => null,
+            'reason' => null,
+        ]);
+
+        $this->publishBatchProgress((string) $item->batch_id);
+        $this->finalizeAffectedBatches(collect([$item]));
+    }
+
+    public function markTransformFailed(string $batchId, string $itemId, string $reason): void
+    {
+        $item = BulkShippingLabelItem::query()
+            ->whereKey($itemId)
+            ->where('batch_id', $batchId)
+            ->first();
+
+        if ($item) {
+            if ($item->raw_pdf_path) {
+                Storage::disk(config('bulk-labels.spool_disk', 'print_spool'))->delete($item->raw_pdf_path);
+            }
+            $this->fail($item, $reason);
+        }
+    }
+
     public function processPendingItem(BulkShippingLabelItem $item): bool
     {
         $order = SalesOrder::find($item->order_id);
@@ -463,9 +548,7 @@ class BulkShippingLabelService
         }
 
         $waitingStatus = match ($item->channel) {
-            self::CHANNEL_SHOPEE => BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP,
-            self::CHANNEL_TIKTOK => BulkShippingLabelItem::STATUS_WAITING_TIKTOK_PREP,
-            self::CHANNEL_LAZADA => BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP,
+            self::CHANNEL_SHOPEE, self::CHANNEL_TIKTOK, self::CHANNEL_LAZADA => BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE,
             default => null,
         };
         if ($order->shipping_label_status === 'preparing' && $waitingStatus !== null) {
@@ -851,7 +934,7 @@ class BulkShippingLabelService
             $result = $this->salesOrderService->getShippingLabel($order, $options);
         } catch (ShippingLabelPreparingException $e) {
 
-            $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP]);
+            $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE]);
 
             return;
         } catch (\RuntimeException $e) {
@@ -880,7 +963,7 @@ class BulkShippingLabelService
         PrepareShopeeShippingLabelJob::dispatch($order->id)
             ->onConnection(config('queue.routing.labels.connection', 'redis-long'))
             ->onQueue(config('queue.routing.labels.queue', 'labels'));
-        $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP]);
+        $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE]);
     }
 
     private function processTikTok(BulkShippingLabelItem $item, SalesOrder $order, array $options): void
@@ -927,7 +1010,7 @@ class BulkShippingLabelService
             PrepareLazadaShippingLabelJob::dispatch($order->id)
                 ->onConnection(config('queue.routing.labels.connection', 'redis-long'))
                 ->onQueue(config('queue.routing.labels.queue', 'labels'));
-            $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP]);
+            $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE]);
 
             return;
         } catch (\RuntimeException $e) {
@@ -957,7 +1040,7 @@ class BulkShippingLabelService
         PrepareLazadaShippingLabelJob::dispatch($order->id)
             ->onConnection(config('queue.routing.labels.connection', 'redis-long'))
             ->onQueue(config('queue.routing.labels.queue', 'labels'));
-        $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP]);
+        $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE]);
     }
 
     private function resolveLabelBytes(array $result): ?string
@@ -1005,24 +1088,16 @@ class BulkShippingLabelService
         ?SalesOrder $order = null,
     ): void {
         $orderId = (string) ($order?->id ?? $item->order_id);
-        if ($order) {
-            $this->salesOrderService->cacheShippingLabelBytes($order, $bytes);
-            if ($order->shipping_label_status !== 'ready') {
-                $order->forceFill([
-                    'shipping_label_status' => 'ready',
-                    'shipping_label_prepared_at' => now(),
-                ])->saveQuietly();
-            }
+        if ($order && $order->shipping_label_status !== 'ready') {
+            $order->forceFill([
+                'shipping_label_status' => 'ready',
+                'shipping_label_prepared_at' => now(),
+            ])->saveQuietly();
         }
 
-        $items = $this->completeOrderItems($orderId, $bytes);
-        if ($items->isEmpty()) {
-
-            $this->completeItems(collect([$item]), $bytes);
-            $items = collect([$item]);
+        if ($this->stageDownloadedLabel($orderId, $bytes) === 0) {
+            $this->stageDownloadedLabel((string) $item->order_id, $bytes);
         }
-
-        $this->finalizeAffectedBatches($items);
     }
 
     private function fail(BulkShippingLabelItem $item, string $reason): void
@@ -1068,36 +1143,7 @@ class BulkShippingLabelService
             return false;
         }
 
-        $items = $this->completeOrderItems($orderId, $bytes);
-        if ($items->isNotEmpty()) {
-            $this->finalizeAffectedBatches($items);
-        }
-
-        return $items->isNotEmpty();
-    }
-
-    private function completeOrderItems(string $orderId, string $bytes)
-    {
-        $items = BulkShippingLabelItem::query()
-            ->where('order_id', $orderId)
-            ->whereIn('status', BulkShippingLabelItem::TRANSIENT_STATUSES)
-            ->get();
-
-        $this->completeItems($items, $bytes);
-
-        return $items;
-    }
-
-    private function completeItems($items, string $bytes): void
-    {
-        foreach ($items as $sharedItem) {
-            $sharedItem->update([
-                'status' => BulkShippingLabelItem::STATUS_DONE,
-                'pdf_bytes' => $bytes,
-                'downloaded_at' => now(),
-                'reason' => null,
-            ]);
-        }
+        return $this->stageDownloadedLabel($orderId, $bytes) > 0;
     }
 
     private function failOrderItems(string $orderId, string $reason)
@@ -1188,6 +1234,7 @@ class BulkShippingLabelService
     {
         $items = BulkShippingLabelItem::where('order_id', $orderId)
             ->whereIn('status', [
+                BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE,
                 BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP,
                 BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP,
                 BulkShippingLabelItem::STATUS_WAITING_TIKTOK_PREP,
@@ -1219,6 +1266,7 @@ class BulkShippingLabelService
                     $claimed = BulkShippingLabelItem::query()
                         ->whereKey($item->id)
                         ->whereIn('status', [
+                            BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE,
                             BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP,
                             BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP,
                             BulkShippingLabelItem::STATUS_WAITING_TIKTOK_PREP,
@@ -1349,7 +1397,7 @@ class BulkShippingLabelService
     public function mergeAndPersist(BulkShippingLabelBatch $batch): void
     {
         $hasItems = $batch->items()
-            ->where('status', BulkShippingLabelItem::STATUS_DONE)
+            ->whereIn('status', BulkShippingLabelItem::COMPLETED_STATUSES)
             ->exists();
 
         if (! $hasItems) {
@@ -1366,60 +1414,35 @@ class BulkShippingLabelService
 
         $pdf = new Fpdi('P', 'mm', [$targetW, $targetH]);
         $itemsQuery = $batch->items()
-            ->where('status', BulkShippingLabelItem::STATUS_DONE)
+            ->whereIn('status', BulkShippingLabelItem::COMPLETED_STATUSES)
             ->orderBy('created_at');
 
         foreach ($itemsQuery->cursor() as $item) {
-            $pdfBytes = $item->pdf_bytes;
-            if (empty($pdfBytes)) {
-                $order = $item->order ?: SalesOrder::find($item->order_id);
-                if ($order) {
-                    $pdfBytes = $this->salesOrderService->cachedShippingLabelBytes($order);
-                }
-            }
-
-            if (empty($pdfBytes)) {
-                continue;
-            }
-
-            try {
-                $order = $item->order ?: SalesOrder::find($item->order_id);
-                $preparedBytes = $order
-                    ? $this->salesOrderService->cachedFpdiShippingLabelBytes($order, $pdfBytes)
-                    : null;
-
+            if ($item->ready_pdf_path) {
                 try {
-
-                    $pageCount = $pdf->setSourceFile(StreamReader::createByString($preparedBytes ?? $pdfBytes));
-                } catch (Throwable) {
-
-                    $preparedBytes = $this->preprocessPdfForFpdi($pdfBytes);
-                    if ($order) {
-                        $this->salesOrderService->cacheFpdiShippingLabelBytes($order, $pdfBytes, $preparedBytes);
+                    $disk = Storage::disk(config('bulk-labels.spool_disk', 'print_spool'));
+                    $readyBytes = $disk->get($item->ready_pdf_path);
+                    $pageCount = $pdf->setSourceFile(StreamReader::createByString($readyBytes));
+                    for ($p = 1; $p <= $pageCount; $p++) {
+                        $tpl = $pdf->importPage($p);
+                        $pdf->AddPage('P', [$targetW, $targetH]);
+                        $pdf->useTemplate($tpl, 0, 0, $targetW, $targetH, false);
                     }
-                    $pageCount = $pdf->setSourceFile(StreamReader::createByString($preparedBytes));
-                }
-                for ($p = 1; $p <= $pageCount; $p++) {
-                    $tpl = $pdf->importPage($p);
-                    $src = $pdf->getTemplateSize($tpl);
-                    [$x, $y, $drawW, $drawH] = $this->placementOnTarget(
-                        (float) $src['width'],
-                        (float) $src['height'],
-                        $targetW,
-                        $targetH,
-                        $item->channel,
-                    );
 
-                    $pdf->AddPage('P', [$targetW, $targetH]);
-                    $pdf->useTemplate($tpl, $x, $y, $drawW, $drawH, false);
+                    continue;
+                } catch (Throwable $e) {
+                    Log::warning('Transformed label merge failed for item', [
+                        'item_id' => $item->id,
+                        'error' => $e->getMessage(),
+                    ]);
                 }
-            } catch (Throwable $e) {
-                Log::warning('FPDI merge failed for item', [
-                    'item_id' => $item->id,
-                    'error' => $e->getMessage(),
-                ]);
-                $this->fail($item, 'merge_failed:'.substr($e->getMessage(), 0, 200));
             }
+
+            Log::error('Ready label file missing before merge', [
+                'item_id' => $item->id,
+                'batch_id' => $batch->id,
+            ]);
+            $this->fail($item, 'ready_file_missing');
         }
 
         $path = "bulk-labels/{$batch->id}.pdf";
@@ -1484,7 +1507,13 @@ class BulkShippingLabelService
             @unlink($tempPath);
         }
 
-        $batch->items()->update(['pdf_bytes' => null]);
+        $itemDisk = Storage::disk(config('bulk-labels.spool_disk', 'print_spool'));
+        foreach ($batch->items()->whereNotNull('ready_pdf_path')->cursor() as $item) {
+            if ($item->ready_pdf_path && $itemDisk->exists($item->ready_pdf_path)) {
+                $itemDisk->delete($item->ready_pdf_path);
+            }
+            $item->update(['ready_pdf_path' => null, 'raw_pdf_path' => null]);
+        }
 
         $batch->update([
             'merged_pdf_path' => $localFirst ? null : $path,

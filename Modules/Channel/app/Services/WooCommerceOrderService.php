@@ -17,7 +17,7 @@ class WooCommerceOrderService
 
     public function pullOrders(string $shopId, ?int $updatedAfter = null): int
     {
-        if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
+        if (app(ChannelSyncSettingService::class)->isPaused()) {
             return 0;
         }
 
@@ -48,11 +48,48 @@ class WooCommerceOrderService
 
                 $count++;
             } catch (\Throwable $e) {
-                Log::error("WooCommerce: gagal upsert order {$orderId}: " . $e->getMessage());
+                Log::error("WooCommerce: gagal upsert order {$orderId}: ".$e->getMessage());
             }
         }
 
         return $count;
+    }
+
+    public function pullOrdersPage(string $shopId, ?int $updatedAfter, array $cursor = []): OrderPullPageResult
+    {
+        if (app(ChannelSyncSettingService::class)->isPaused()) {
+            return new OrderPullPageResult(0, true);
+        }
+
+        $shop = $this->requireShop($shopId);
+        $after = Carbon::createFromTimestamp($updatedAfter ?: now()->subDays(7)->timestamp);
+        $page = max(1, (int) ($cursor['page'] ?? 1));
+        $response = $this->client->page($shop, 'orders', [
+            'after' => $after->toIso8601String(),
+            'orderby' => 'modified',
+            'order' => 'asc',
+        ], $page);
+
+        $count = 0;
+        foreach ($response['items'] as $order) {
+            $orderId = (string) ($order['id'] ?? '');
+            try {
+                if ($orderId !== '' && $this->orderService->upsertFromChannel($this->mapper->map($order, $shopId))) {
+                    $count++;
+                }
+            } catch (\Throwable $e) {
+                Log::error("WooCommerce: gagal upsert order {$orderId}: ".$e->getMessage());
+                throw $e;
+            }
+        }
+
+        $done = count($response['items']) === 0
+            || ($response['total_pages'] > 0 && $page >= $response['total_pages'])
+            || count($response['items']) < 100;
+
+        return $done
+            ? new OrderPullPageResult($count, true)
+            : new OrderPullPageResult($count, false, ['page' => $page + 1]);
     }
 
     public function listRecentOrderIds(string $shopId, ?int $updatedAfter = null): array
@@ -79,7 +116,7 @@ class WooCommerceOrderService
         try {
             $order = $this->client->get($shop, "orders/{$orderId}");
         } catch (\Throwable $e) {
-            Log::warning("WooCommerce: gagal ambil order {$orderId}: " . $e->getMessage());
+            Log::warning("WooCommerce: gagal ambil order {$orderId}: ".$e->getMessage());
 
             return 0;
         }
@@ -123,11 +160,11 @@ class WooCommerceOrderService
         if ($trackingNumber) {
             try {
                 $this->client->post($shop, "orders/{$orderId}/notes", [
-                    'note' => 'Resi: ' . $trackingNumber . ($shippingProvider ? ' (' . $shippingProvider . ')' : ''),
+                    'note' => 'Resi: '.$trackingNumber.($shippingProvider ? ' ('.$shippingProvider.')' : ''),
                     'customer_note' => true,
                 ]);
             } catch (\Throwable $e) {
-                Log::warning('WooCommerce: gagal tambah order note resi: ' . $e->getMessage());
+                Log::warning('WooCommerce: gagal tambah order note resi: '.$e->getMessage());
             }
         }
 
@@ -145,11 +182,11 @@ class WooCommerceOrderService
         if ($reason) {
             try {
                 $this->client->post($shop, "orders/{$orderId}/notes", [
-                    'note' => 'Dibatalkan: ' . $reason,
+                    'note' => 'Dibatalkan: '.$reason,
                     'customer_note' => false,
                 ]);
             } catch (\Throwable $e) {
-                Log::warning('WooCommerce: gagal tambah order note batal: ' . $e->getMessage());
+                Log::warning('WooCommerce: gagal tambah order note batal: '.$e->getMessage());
             }
         }
 

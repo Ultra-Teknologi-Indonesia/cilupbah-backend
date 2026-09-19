@@ -3,7 +3,6 @@
 namespace Modules\Sales\Models;
 
 use App\Traits\HasUuid7;
-use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -15,7 +14,13 @@ class BulkShippingLabelItem extends Model
 
     public const STATUS_DOWNLOADING = 'downloading';
 
+    public const STATUS_TRANSFORMING = 'transforming';
+
+    public const STATUS_READY = 'ready';
+
     public const STATUS_WAITING_AWB = 'waiting_awb';
+
+    public const STATUS_WAITING_MARKETPLACE = 'waiting_marketplace';
 
     public const STATUS_WAITING_SHOPEE_PREP = 'waiting_shopee_prep';
 
@@ -31,13 +36,21 @@ class BulkShippingLabelItem extends Model
 
     public const TERMINAL_STATUSES = [
         self::STATUS_DONE,
+        self::STATUS_READY,
         self::STATUS_FAILED,
         self::STATUS_SKIPPED_INSTANT,
+    ];
+
+    public const COMPLETED_STATUSES = [
+        self::STATUS_DONE,
+        self::STATUS_READY,
     ];
 
     public const TRANSIENT_STATUSES = [
         self::STATUS_PENDING,
         self::STATUS_DOWNLOADING,
+        self::STATUS_TRANSFORMING,
+        self::STATUS_WAITING_MARKETPLACE,
         self::STATUS_WAITING_AWB,
         self::STATUS_WAITING_SHOPEE_PREP,
         self::STATUS_WAITING_LAZADA_PREP,
@@ -47,7 +60,10 @@ class BulkShippingLabelItem extends Model
     public const ALL_STATUSES = [
         self::STATUS_PENDING,
         self::STATUS_DOWNLOADING,
+        self::STATUS_TRANSFORMING,
+        self::STATUS_READY,
         self::STATUS_WAITING_AWB,
+        self::STATUS_WAITING_MARKETPLACE,
         self::STATUS_WAITING_SHOPEE_PREP,
         self::STATUS_WAITING_LAZADA_PREP,
         self::STATUS_WAITING_TIKTOK_PREP,
@@ -105,49 +121,14 @@ class BulkShippingLabelItem extends Model
         'channel',
         'status',
         'reason',
-        'pdf_bytes',
+        'raw_pdf_path',
+        'ready_pdf_path',
         'downloaded_at',
     ];
 
     protected $casts = [
         'downloaded_at' => 'datetime',
     ];
-
-    protected $hidden = ['pdf_bytes'];
-
-    protected function pdfBytes(): Attribute
-    {
-        return Attribute::make(
-            get: function ($value) {
-                if (is_resource($value)) {
-                    rewind($value);
-                    $value = stream_get_contents($value);
-                }
-
-                if (is_string($value) && str_starts_with($value, '\\x')) {
-                    return hex2bin(substr($value, 2));
-                }
-
-                return $value;
-            },
-            set: function ($value) {
-                if (is_null($value)) {
-                    return null;
-                }
-
-                if (is_resource($value)) {
-                    rewind($value);
-                    $value = stream_get_contents($value);
-                }
-
-                if (is_string($value) && str_starts_with($value, '\\x')) {
-                    return $value;
-                }
-
-                return '\\x'.bin2hex($value);
-            },
-        )->shouldCache();
-    }
 
     public function batch(): BelongsTo
     {

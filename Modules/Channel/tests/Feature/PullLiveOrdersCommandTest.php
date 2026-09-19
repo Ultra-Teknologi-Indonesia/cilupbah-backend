@@ -7,12 +7,14 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Mockery;
 use Modules\Channel\Exceptions\ChannelOrderPullIncompleteException;
 use Modules\Channel\Jobs\PullChannelOrdersJob;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Services\ChannelOrderPullLeaseService;
+use Modules\Channel\Services\QueueCapacityReader;
 use Modules\Channel\Services\ShopeeOrderService;
 use Tests\TestCase;
 
@@ -111,6 +113,33 @@ class PullLiveOrdersCommandTest extends TestCase
 
         $this->artisan('channel:pull-orders', ['--queue' => true])->assertSuccessful();
         Queue::assertPushed(PullChannelOrdersJob::class, 1);
+    }
+
+    public function test_scheduled_pull_stops_before_enqueue_when_channel_queue_is_at_capacity(): void
+    {
+        Queue::fake();
+
+        $capacity = Mockery::mock(QueueCapacityReader::class);
+        $capacity->shouldReceive('inspect')->once()->andReturn([
+            'allowed' => true,
+            'queue_connection' => 'redis-channel-sync',
+            'redis_connection' => 'default',
+            'queue_depth' => 24,
+            'ready' => 24,
+            'reserved' => 0,
+            'delayed' => 0,
+            'memory_used_bytes' => 100,
+            'memory_max_bytes' => 1000,
+            'memory_ratio' => 0.10,
+        ]);
+        $this->app->instance(QueueCapacityReader::class, $capacity);
+
+        $this->artisan('channel:pull-orders', ['--queue' => true])
+            ->assertSuccessful()
+            ->expectsOutputToContain('ditunda oleh backpressure');
+
+        Queue::assertNothingPushed();
+        $this->assertNull($this->liveShop->fresh()->order_pull_lease_token);
     }
 
     public function test_scheduled_pull_bounds_each_shop_window_for_worker_safety(): void

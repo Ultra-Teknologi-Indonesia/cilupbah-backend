@@ -13,6 +13,7 @@ use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Services\ChannelOrderPullLeaseService;
 use Modules\Channel\Services\ChannelSyncSettingService;
 use Modules\Channel\Services\LazadaOrderService;
+use Modules\Channel\Services\QueueCapacityReader;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\TikTokOrderService;
 
@@ -36,6 +37,7 @@ class PullLiveOrdersCommand extends Command
     public function handle(
         ChannelShopRepository $shopRepository,
         ChannelOrderPullLeaseService $leases,
+        QueueCapacityReader $capacity,
     ): int {
         $isDryRun = (bool) $this->option('dry-run');
         $explicitFrom = $this->parseOption('from');
@@ -72,6 +74,7 @@ class PullLiveOrdersCommand extends Command
                 $shops,
                 $shopRepository,
                 $leases,
+                $capacity,
                 $explicitFrom,
                 $explicitTo,
                 $hours,
@@ -140,6 +143,7 @@ class PullLiveOrdersCommand extends Command
         Collection $shops,
         ChannelShopRepository $shopRepository,
         ChannelOrderPullLeaseService $leases,
+        QueueCapacityReader $capacity,
         ?Carbon $explicitFrom,
         ?Carbon $explicitTo,
         int $hours,
@@ -157,7 +161,39 @@ class PullLiveOrdersCommand extends Command
         $rows = [];
         $failed = 0;
 
+        $maxDepth = (int) config('queue.backpressure.channel_sync_max_depth', 24);
+        $maxMemoryRatio = (float) config('queue.backpressure.channel_sync_max_memory_ratio', 0.70);
+        $queueConnection = (string) config('queue.routing.channel_sync.connection', 'redis-channel-sync');
+        $queueName = (string) config('queue.routing.channel_sync.queue', 'channel-sync');
+        $health = $capacity->inspect($queueConnection, $queueName);
+
+        if ((bool) config('queue.backpressure.enabled', true)
+            && (! $health['allowed']
+                || $health['queue_depth'] >= $maxDepth
+                || ($health['memory_ratio'] !== null && $health['memory_ratio'] >= $maxMemoryRatio))) {
+            $reason = $health['error'] ?? sprintf(
+                'depth=%d/%d, memory=%s/%s',
+                $health['queue_depth'],
+                $maxDepth,
+                $health['memory_ratio'] !== null ? round($health['memory_ratio'] * 100, 1).'%' : 'n/a',
+                round($maxMemoryRatio * 100, 1).'%'
+            );
+            $this->warn("Pull order ditunda oleh backpressure ({$reason}). Tidak ada job yang dihapus; scheduler akan mencoba lagi.");
+
+            return self::SUCCESS;
+        }
+
+        $availableSlots = (bool) config('queue.backpressure.enabled', true)
+            ? max(0, $maxDepth - $health['queue_depth'])
+            : $shops->count();
+
         foreach ($shops as $shop) {
+            if ($availableSlots < 1) {
+                $rows[] = [$shop->shop_name, $shop->channel->code ?? 'unknown', '-', 'ditunda backpressure queue'];
+
+                continue;
+            }
+
             $hasPendingWindow = ! $explicitFrom
                 && ! $explicitTo
                 && $shop->order_pull_window_from
@@ -206,6 +242,7 @@ class PullLiveOrdersCommand extends Command
                 )->onQueue((string) config('queue.names.channel_sync', 'channel-sync'));
 
                 $rows[] = [$shop->shop_name, $shop->channel->code ?? 'unknown', '-', 'diantrikan'];
+                $availableSlots--;
             } catch (\Throwable $e) {
                 $shopRepository->markScheduledOrderPullFailed((string) $shop->id, $token, $e->getMessage());
                 $leases->release((string) $shop->id, $token);

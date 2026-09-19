@@ -219,8 +219,35 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
             }
 
             $service = app(ShopeeOrderService::class);
-            $resolved = $requestMarketplace
-                ? $this->withRtsLock($order, true, function () use ($service, $shop, $order): ?array {
+            $orderSn = (string) $order->channel_order_no;
+            $channelStatus = strtoupper((string) ($order->channel_status ?? 'READY_TO_SHIP'));
+
+            $readStatus = in_array($channelStatus, [
+                'READY_TO_SHIP',
+                'PROCESSED',
+                'SHIPPED',
+                'TO_CONFIRM_RECEIVE',
+                'COMPLETED',
+            ], true) ? $channelStatus : 'READY_TO_SHIP';
+
+            $preflightTracking = $service->resolveTrackingNumber(
+                $shop,
+                $orderSn,
+                $readStatus,
+            );
+
+            if (filled($preflightTracking)) {
+                $resolved = [
+                    'tracking_number' => $preflightTracking,
+                ];
+
+                Log::info('RequestChannelAwbJob: Shopee AWB sudah tersedia, lewati POST /ship_order', [
+                    'order_id' => $order->id,
+                    'salesorder_no' => $order->salesorder_no,
+                    'tracking_number' => $preflightTracking,
+                ]);
+            } elseif ($requestMarketplace) {
+                $resolved = $this->withRtsLock($order, true, function () use ($service, $shop, $order): ?array {
                     return $service->requestTrackingNumber(
                         (string) $order->channel_shop_id,
                         (string) $order->channel_order_no,
@@ -228,14 +255,12 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                             'preferred_method' => $shop->handover_method ?? null,
                         ], static fn ($value): bool => $value !== null && $value !== ''),
                     );
-                })
-                : [
-                    'tracking_number' => $service->resolveTrackingNumber(
-                        $shop,
-                        (string) $order->channel_order_no,
-                        $order->channel_status ?? 'READY_TO_SHIP',
-                    ),
+                });
+            } else {
+                $resolved = [
+                    'tracking_number' => null,
                 ];
+            }
             $tn = is_array($resolved) ? ($resolved['tracking_number'] ?? null) : null;
 
             if ($tn) {
@@ -320,9 +345,7 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
             $resolved = null;
 
             if ($requestMarketplace) {
-                // A previous attempt may already have generated the AWB/label.
-                // Read the order and shipping document first so retries do not
-                // POST /ship again for an already-issued package.
+
                 try {
                     $resolved = $service->resolveTrackingNumberDirect(
                         $shop,
@@ -346,7 +369,7 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                 }
 
                 if (! is_array($resolved) || empty($resolved['tracking_number'])) {
-                    // Only genuinely missing AWB reaches the marketplace action.
+
                     $resolved = $this->withRtsLock($order, true, function () use ($service, $order): ?array {
                         return $service->requestTrackingNumber(
                             (string) $order->channel_shop_id,

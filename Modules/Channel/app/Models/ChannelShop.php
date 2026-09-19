@@ -60,6 +60,7 @@ class ChannelShop extends Model
         'order_pull_locked_until',
         'order_pull_window_from',
         'order_pull_window_to',
+        'order_pull_cursor',
         'order_pull_attempts',
         'order_pull_next_attempt_at',
         'stock_source_mode',

@@ -172,6 +172,75 @@ class TikTokOrderService
         return $count;
     }
 
+    public function pullOrdersPage(string $shopId, ?int $updatedAfter, ?int $updatedBefore, array $cursor = []): OrderPullPageResult
+    {
+        if (app(ChannelSyncSettingService::class)->isPaused()) {
+            return new OrderPullPageResult(0, true);
+        }
+
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (! $shop || ! $shop->access_token) {
+            throw new \RuntimeException("No access token found for shop: {$shopId}");
+        }
+
+        $from = $updatedAfter ?: now()->subDays(7)->timestamp;
+        $to = $updatedBefore ?: now()->timestamp;
+        $queries = ['shop_cipher' => $shop->shop_cipher ?? '', 'page_size' => 100];
+        $body = [
+            'sort_field' => 'update_time',
+            'sort_order' => 'ASC',
+            'update_time_ge' => $from,
+            'update_time_lt' => $to,
+        ];
+        $nextPageToken = (string) ($cursor['next_page_token'] ?? '');
+        if ($nextPageToken !== '') {
+            $body['next_page_token'] = $nextPageToken;
+        }
+
+        $res = retry(
+            2,
+            function () use ($queries, $body, $shop): array {
+                $response = $this->client->request('POST', '/order/202309/orders/search', $queries, $body, $shop->access_token);
+                if (! is_array($response) || ! isset($response['data']['orders']) || ! is_array($response['data']['orders'])) {
+                    throw new TikTokOrderListUnavailableException('TikTok tidak mengembalikan daftar order yang valid.');
+                }
+
+                return $response;
+            },
+            500,
+            static fn (\Throwable $e): bool => $e instanceof TikTokOrderListUnavailableException
+                || $e instanceof ConnectionException
+                || ($e instanceof TikTokApiException && $e->isRetryable()),
+        );
+
+        $count = 0;
+        $failed = [];
+        foreach ($res['data']['orders'] as $item) {
+            $orderId = (string) ($item['id'] ?? 'unknown');
+            try {
+                $internal = $this->mapper->map($item, $shopId);
+                $internal = $this->enrichTrackingFromPackages($internal, $item, $shop->shop_cipher ?? '', $shop->access_token);
+                if (! $this->orderService->upsertFromChannel($internal)) {
+                    throw new \RuntimeException("TikTok order {$orderId} tidak menghasilkan ID lokal setelah upsert.");
+                }
+                $count++;
+            } catch (\Throwable $e) {
+                Log::error("Failed to pull order {$orderId}: ".$e->getMessage());
+                $failed[] = $orderId;
+            }
+        }
+
+        if ($failed !== []) {
+            throw ChannelOrderPullIncompleteException::forOrders('tiktok', $shopId, $failed);
+        }
+
+        $next = (string) ($res['data']['next_page_token'] ?? '');
+
+        return $next === ''
+            ? new OrderPullPageResult($count, true)
+            : new OrderPullPageResult($count, false, ['next_page_token' => $next]);
+    }
+
     public function pullOrderById(string $shopId, string $orderId): ?int
     {
         $shop = $this->shopRepository->findByShopId($shopId);

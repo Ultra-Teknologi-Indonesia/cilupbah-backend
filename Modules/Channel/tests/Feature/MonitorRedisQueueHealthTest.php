@@ -31,6 +31,7 @@ class MonitorRedisQueueHealthTest extends TestCase
             ]);
             $redis->shouldReceive('llen')->zeroOrMoreTimes()->andReturn(0);
             $redis->shouldReceive('zcard')->zeroOrMoreTimes()->andReturn(0);
+            $redis->shouldReceive('lindex')->zeroOrMoreTimes()->andReturn(null);
 
             Redis::shouldReceive('connection')->once()->with($connection)->andReturn($redis);
         }
@@ -79,6 +80,7 @@ class MonitorRedisQueueHealthTest extends TestCase
                 fn (string $key): int => $connection === 'default' && $key === 'queues:orders' ? 3 : 0,
             );
             $redis->shouldReceive('zcard')->zeroOrMoreTimes()->andReturn(0);
+            $redis->shouldReceive('lindex')->zeroOrMoreTimes()->andReturn(null);
 
             Redis::shouldReceive('connection')->once()->with($connection)->andReturn($redis);
         }
@@ -93,6 +95,65 @@ class MonitorRedisQueueHealthTest extends TestCase
             ->withArgs(fn (string $message, array $context): bool => $message === 'Queue depth above operational threshold'
                 && $context['queue'] === 'orders'
                 && $context['ready'] === 3)
+            ->once();
+    }
+
+    public function test_logs_critical_when_the_oldest_ready_job_exceeds_the_slo(): void
+    {
+        Log::spy();
+
+        config()->set('horizon.defaults', [
+            'monitor-test' => [
+                'connection' => 'redis',
+                'queue' => ['orders'],
+            ],
+        ]);
+        config()->set('queue.connections.redis.connection', 'default');
+        config()->set('queue.health.queue_ready_warning', 100);
+        config()->set('queue.health.queue_ready_critical', 2000);
+        config()->set('queue.health.queue_delayed_warning', 500);
+        config()->set('queue.health.queue_reserved_warning', 100);
+        config()->set('queue.health.queue_oldest_warning_seconds', 300);
+        config()->set('queue.health.queue_oldest_critical_seconds', 900);
+
+        $oldPayload = json_encode([
+            'pushedAt' => now()->subMinutes(20)->timestamp,
+        ]);
+
+        foreach (['default', 'long', 'finance', 'horizon'] as $connection) {
+            $redis = Mockery::mock();
+            $redis->shouldReceive('info')->once()->with('memory')->andReturn([
+                'used_memory' => 100,
+                'maxmemory' => 1000,
+                'used_memory_rss' => 125,
+                'mem_fragmentation_ratio' => 1.25,
+            ]);
+            $redis->shouldReceive('info')->once()->with('stats')->andReturn([
+                'evicted_keys' => 0,
+            ]);
+            $redis->shouldReceive('llen')->zeroOrMoreTimes()->andReturnUsing(
+                fn (string $key): int => $connection === 'default' && $key === 'queues:orders' ? 1 : 0,
+            );
+            $redis->shouldReceive('zcard')->zeroOrMoreTimes()->andReturn(0);
+            $redis->shouldReceive('lindex')->zeroOrMoreTimes()->andReturnUsing(
+                fn (string $key, int $index): ?string => $connection === 'default' && $key === 'queues:orders'
+                    ? $oldPayload
+                    : null,
+            );
+
+            Redis::shouldReceive('connection')->once()->with($connection)->andReturn($redis);
+        }
+
+        Cache::shouldReceive('driver')->zeroOrMoreTimes()->andReturnSelf();
+        Cache::shouldReceive('get')->times(4)->andReturn(null);
+        Cache::shouldReceive('forever')->times(4);
+
+        $this->assertSame(0, app(MonitorRedisQueueHealth::class)->handle());
+
+        Log::shouldHaveReceived('critical')
+            ->withArgs(fn (string $message, array $context): bool => $message === 'Queue depth above critical threshold'
+                && $context['queue'] === 'orders'
+                && $context['oldest_ready_age_seconds'] >= 1200)
             ->once();
     }
 }

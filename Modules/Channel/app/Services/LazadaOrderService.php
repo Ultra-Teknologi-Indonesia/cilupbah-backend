@@ -5,12 +5,13 @@ namespace Modules\Channel\Services;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Exceptions\ChannelCancelException;
-use Modules\Channel\Exceptions\ChannelOrderPullIncompleteException;
 use Modules\Channel\Exceptions\ChannelLabelUnsupportedException;
+use Modules\Channel\Exceptions\ChannelOrderPullIncompleteException;
 use Modules\Channel\Exceptions\TokenExpiredException;
 use Modules\Channel\Jobs\ProcessLazadaFulfillmentJob;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Sales\Jobs\RespondBuyerCancellationJob;
+use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderService;
 
 class LazadaOrderService
@@ -93,6 +94,7 @@ class LazadaOrderService
                         ]);
 
                         $failedOrderIds[] = $orderId;
+
                         continue;
                     }
 
@@ -119,6 +121,62 @@ class LazadaOrderService
         }
 
         return $count;
+    }
+
+    public function pullOrdersPage(string $shopId, ?string $updatedAfter, ?string $updatedBefore, array $cursor = []): OrderPullPageResult
+    {
+        if (app(ChannelSyncSettingService::class)->isPaused()) {
+            return new OrderPullPageResult(0, true);
+        }
+
+        $shop = $this->requireShop($shopId);
+        $updateAfter = $updatedAfter ?: now()->subDays(7)->toIso8601String();
+        $limit = 100;
+        $offset = max(0, (int) ($cursor['offset'] ?? 0));
+        $params = [
+            'sort_by' => 'updated_at',
+            'sort_direction' => 'ASC',
+            'offset' => $offset,
+            'limit' => $limit,
+            'update_after' => $updateAfter,
+        ];
+        if ($updatedBefore) {
+            $params['update_before'] = $updatedBefore;
+        }
+
+        $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/orders/get', $params, $token));
+        $orders = $res['data']['orders'] ?? null;
+        if (! is_array($orders)) {
+            throw new \RuntimeException('Lazada tidak mengembalikan daftar order yang valid.');
+        }
+        if ($orders === []) {
+            return new OrderPullPageResult(0, true);
+        }
+
+        $itemsByOrder = $this->fetchItemsForOrders($shop, array_column($orders, 'order_id'));
+        $count = 0;
+        $failed = [];
+        foreach ($orders as $order) {
+            $orderId = (string) ($order['order_id'] ?? '');
+            try {
+                if ($orderId === '' || ! array_key_exists($orderId, $itemsByOrder)) {
+                    throw new \RuntimeException('Detail item order tidak lengkap.');
+                }
+                $localId = $this->orderService->upsertFromChannel($this->mapper->map($order, $itemsByOrder[$orderId], $shopId));
+                if (! $localId) {
+                    throw new \RuntimeException('Order tidak tersimpan secara lokal setelah pull.');
+                }
+                $count++;
+            } catch (\Throwable $e) {
+                Log::error("Lazada: gagal upsert order {$orderId}: ".$e->getMessage());
+                $failed[] = $orderId ?: '(tanpa order_id)';
+            }
+        }
+        if ($failed !== []) {
+            throw ChannelOrderPullIncompleteException::forOrders('lazada', $shopId, $failed);
+        }
+
+        return new OrderPullPageResult($count, count($orders) < $limit, ['offset' => $offset + $limit]);
     }
 
     public function listRecentOrderIds(string $shopId, ?string $updatedAfter = null): array
@@ -232,11 +290,11 @@ class LazadaOrderService
                 if ($extractedProvider) {
                     $orderUpdate['shipping_provider'] = $extractedProvider;
                 }
-                \Modules\Sales\Models\SalesOrder::query()
+                SalesOrder::query()
                     ->where('source', 'lazada')
                     ->where(function ($q) use ($orderId) {
                         $q->where('channel_order_no', (string) $orderId)
-                          ->orWhere('channel_order_no', 'LZ-' . (string) $orderId);
+                            ->orWhere('channel_order_no', 'LZ-'.(string) $orderId);
                     })
                     ->update($orderUpdate);
             }
@@ -608,9 +666,9 @@ class LazadaOrderService
         }
     }
 
-    private function localOrderForChannel(string $orderId): ?\Modules\Sales\Models\SalesOrder
+    private function localOrderForChannel(string $orderId): ?SalesOrder
     {
-        return \Modules\Sales\Models\SalesOrder::query()
+        return SalesOrder::query()
             ->where('source', 'lazada')
             ->where(function ($query) use ($orderId): void {
                 $query->where('channel_order_no', $orderId)

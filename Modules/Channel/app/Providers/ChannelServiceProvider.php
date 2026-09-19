@@ -38,6 +38,8 @@ use Modules\Channel\Console\Commands\StockRollbackCommand;
 use Modules\Channel\Console\Commands\SyncTikTokAttributes;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Observers\ChannelShopObserver;
+use Modules\Channel\Services\QueueCapacityReader;
+use Modules\Channel\Services\QueueCapacityService;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
 class ChannelServiceProvider extends ModuleServiceProvider
@@ -88,6 +90,13 @@ class ChannelServiceProvider extends ModuleServiceProvider
         CleanOrderCutoverCommand::class,
         MonitorLiveQueueCommand::class,
     ];
+
+    public function register(): void
+    {
+        parent::register();
+
+        $this->app->singleton(QueueCapacityReader::class, QueueCapacityService::class);
+    }
 
     public function boot(): void
     {

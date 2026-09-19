@@ -44,8 +44,6 @@ return [
             'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
             'queue' => env('REDIS_QUEUE', 'default'),
 
-            // channel-stock workers may run for up to 330s; keep visibility
-            // above the longest worker timeout to avoid duplicate execution.
             'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 420),
             'block_for' => null,
 
@@ -169,6 +167,19 @@ return [
         'queue_ready_critical' => max(1, (int) env('QUEUE_HEALTH_READY_CRITICAL', 2000)),
         'queue_delayed_warning' => max(1, (int) env('QUEUE_HEALTH_DELAYED_WARNING', 500)),
         'queue_reserved_warning' => max(1, (int) env('QUEUE_HEALTH_RESERVED_WARNING', 100)),
+        'queue_oldest_warning_seconds' => max(60, (int) env('QUEUE_HEALTH_OLDEST_WARNING_SECONDS', 300)),
+        'queue_oldest_critical_seconds' => max(120, (int) env('QUEUE_HEALTH_OLDEST_CRITICAL_SECONDS', 900)),
+        'stale_webhook_warning' => max(1, (int) env('QUEUE_HEALTH_STALE_WEBHOOK_WARNING', 100)),
+        'failed_jobs_window_minutes' => max(1, (int) env('QUEUE_HEALTH_FAILED_JOBS_WINDOW_MINUTES', 15)),
+        'failed_jobs_warning' => max(1, (int) env('QUEUE_HEALTH_FAILED_JOBS_WARNING', 10)),
+        'failed_jobs_critical' => max(1, (int) env('QUEUE_HEALTH_FAILED_JOBS_CRITICAL', 50)),
+    ],
+
+    'backpressure' => [
+        'enabled' => filter_var(env('QUEUE_BACKPRESSURE_ENABLED', true), FILTER_VALIDATE_BOOL),
+        'channel_sync_max_depth' => max(1, min(500, (int) env('CHANNEL_SYNC_MAX_QUEUE_DEPTH', 24))),
+        'channel_sync_max_memory_ratio' => max(0.50, min(0.90, (float) env('CHANNEL_SYNC_MAX_REDIS_MEMORY_RATIO', 0.70))),
+        'webhook_replay_max_depth' => max(1, min(5000, (int) env('WEBHOOK_REPLAY_MAX_QUEUE_DEPTH', 500))),
     ],
 
     'dedicated_queues' => [

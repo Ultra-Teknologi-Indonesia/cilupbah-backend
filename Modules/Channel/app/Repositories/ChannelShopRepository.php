@@ -224,6 +224,7 @@ class ChannelShopRepository
                 'order_pull_locked_until' => null,
                 'order_pull_window_from' => null,
                 'order_pull_window_to' => null,
+                'order_pull_cursor' => null,
                 'order_pull_attempts' => 0,
                 'order_pull_next_attempt_at' => null,
             ];
@@ -237,6 +238,17 @@ class ChannelShopRepository
 
             return true;
         });
+    }
+
+    public function saveOrderPullCursor(string $id, string $leaseToken, array $cursor): bool
+    {
+        return ChannelShop::query()
+            ->whereKey($id)
+            ->where('order_pull_lease_token', $leaseToken)
+            ->update([
+                'order_pull_cursor' => json_encode($cursor, JSON_THROW_ON_ERROR),
+                'updated_at' => now(),
+            ]) === 1;
     }
 
     public function markScheduledOrderPullFailed(string $id, string $leaseToken, ?string $message): bool

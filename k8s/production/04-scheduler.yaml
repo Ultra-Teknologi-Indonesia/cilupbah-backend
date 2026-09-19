@@ -36,6 +36,26 @@ spec:
               env:
                 - name: CHANNEL_SYNC_WINDOW_MINUTES
                   value: "5"
+                - name: QUEUE_BACKPRESSURE_ENABLED
+                  value: "true"
+                - name: CHANNEL_SYNC_MAX_QUEUE_DEPTH
+                  value: "24"
+                - name: CHANNEL_SYNC_MAX_REDIS_MEMORY_RATIO
+                  value: "0.70"
+                - name: WEBHOOK_REPLAY_MAX_QUEUE_DEPTH
+                  value: "500"
+                - name: QUEUE_HEALTH_OLDEST_WARNING_SECONDS
+                  value: "300"
+                - name: QUEUE_HEALTH_OLDEST_CRITICAL_SECONDS
+                  value: "900"
+                - name: QUEUE_HEALTH_STALE_WEBHOOK_WARNING
+                  value: "100"
+                - name: QUEUE_HEALTH_FAILED_JOBS_WINDOW_MINUTES
+                  value: "15"
+                - name: QUEUE_HEALTH_FAILED_JOBS_WARNING
+                  value: "10"
+                - name: QUEUE_HEALTH_FAILED_JOBS_CRITICAL
+                  value: "50"
               resources:
                 requests:
                   memory: "256Mi"

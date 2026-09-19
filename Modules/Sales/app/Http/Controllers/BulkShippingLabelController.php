@@ -60,7 +60,10 @@ class BulkShippingLabelController extends Controller
         }]);
 
         $waitingShopee = $batch->items
-            ->where('status', BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP)
+            ->whereIn('status', [
+                BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE,
+                BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP,
+            ])
             ->count();
 
         $waitingAwb = $batch->items
@@ -129,7 +132,10 @@ class BulkShippingLabelController extends Controller
         return match ($status) {
             BulkShippingLabelItem::STATUS_PENDING => 'Menunggu Label',
             BulkShippingLabelItem::STATUS_DOWNLOADING => 'Mengambil Label',
+            BulkShippingLabelItem::STATUS_TRANSFORMING => 'Menyesuaikan Ukuran',
+            BulkShippingLabelItem::STATUS_READY => 'Siap Dicetak',
             BulkShippingLabelItem::STATUS_WAITING_AWB => 'Menunggu No. Resi',
+            BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE => 'Menunggu Marketplace',
             BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP => 'Menunggu Shopee',
             BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP => 'Menunggu Lazada',
             BulkShippingLabelItem::STATUS_DONE => 'Berhasil',
@@ -149,7 +155,10 @@ class BulkShippingLabelController extends Controller
             $item->status === $item_class::STATUS_PENDING => 'Menunggu job pembuatan label di antrean.',
             $item->status === $item_class::STATUS_DOWNLOADING && $hasTrackingNumber => 'Sedang mengambil label pengiriman dari marketplace...',
             $item->status === $item_class::STATUS_DOWNLOADING => 'Sedang mengambil nomor resi dari marketplace...',
+            $item->status === $item_class::STATUS_TRANSFORMING => 'Sedang menyesuaikan ukuran label...',
+            $item->status === $item_class::STATUS_READY => 'Label siap dicetak.',
             $item->status === $item_class::STATUS_WAITING_AWB => 'Menunggu nomor resi dari marketplace...',
+            $item->status === $item_class::STATUS_WAITING_MARKETPLACE => 'Menunggu marketplace menyiapkan label...',
             $item->status === $item_class::STATUS_WAITING_SHOPEE_PREP => 'Menunggu Shopee menyiapkan label...',
             $item->status === $item_class::STATUS_WAITING_LAZADA_PREP => 'Menunggu Lazada menyiapkan label...',
             $item->status === $item_class::STATUS_DONE => 'Label pengiriman berhasil dibuat.',

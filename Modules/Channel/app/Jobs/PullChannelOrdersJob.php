@@ -11,12 +11,15 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Services\ChannelOrderPullLeaseService;
-use Modules\Channel\Support\ChannelErrorClassifier;
+use Modules\Channel\Services\ChannelSyncSettingService;
+use Modules\Channel\Services\LazadaOrderService;
+use Modules\Channel\Services\ShopeeOrderService;
+use Modules\Channel\Services\TikTokOrderService;
+use Modules\Channel\Services\WooCommerceOrderService;
 
 final class PullChannelOrdersJob implements ShouldQueue
 {
@@ -25,7 +28,9 @@ final class PullChannelOrdersJob implements ShouldQueue
     use Queueable;
     use SerializesModels;
 
-    public int $tries = 1;
+    public int $tries = 3;
+
+    public array $backoff = [30, 120, 300];
 
     public int $timeout;
 
@@ -57,52 +62,67 @@ final class PullChannelOrdersJob implements ShouldQueue
             return;
         }
 
+        $keepLease = false;
+
         try {
-            $exitCode = Artisan::call('channel:pull-orders', [
-                '--shop' => $shop->shop_id,
-                '--from' => Carbon::parse($this->from)->toIso8601String(),
-                '--to' => Carbon::parse($this->to)->toIso8601String(),
-            ]);
-
-            if ($exitCode !== 0) {
-                throw new \RuntimeException(trim(Artisan::output()) ?: 'Channel order pull gagal.');
-            }
-
-            $completed = $shops->markScheduledOrderPullCompleted(
-                $shop->id,
-                $this->leaseToken,
-                Carbon::parse($this->to),
-            );
-
-            if (! $completed) {
-                throw new \RuntimeException('Lease pull order hilang sebelum cursor dapat disimpan.');
-            }
-
-            Log::info('Scheduled channel order pull completed.', [
-                'channel_shop_id' => $shop->id,
-                'shop_id' => $shop->shop_id,
-                'from' => $this->from,
-                'to' => $this->to,
-            ]);
-        } catch (\Throwable $e) {
-            $shops->markScheduledOrderPullFailed($shop->id, $this->leaseToken, $e->getMessage());
-
             $channel = strtolower(trim((string) ($this->channel ?: ($shop->channel?->code ?? ''))));
-            if ($channel === 'lazada' && ChannelErrorClassifier::isRetryable($channel, $e)) {
-                Log::warning('Scheduled Lazada order pull deferred after transient failure.', [
+            $cursor = [];
+            if (is_string($shop->order_pull_cursor) && $shop->order_pull_cursor !== '') {
+                $decoded = json_decode($shop->order_pull_cursor, true);
+                $cursor = is_array($decoded) ? $decoded : [];
+            }
+
+            $from = Carbon::parse($this->from);
+            $to = Carbon::parse($this->to);
+            $result = ChannelSyncSettingService::withInboundBypass(fn () => match ($channel) {
+                'shopee' => app(ShopeeOrderService::class)->pullOrdersPage($shop->shop_id, $from->timestamp, $to->timestamp, $cursor),
+                'tiktok' => app(TikTokOrderService::class)->pullOrdersPage($shop->shop_id, $from->timestamp, $to->timestamp, $cursor),
+                'lazada' => app(LazadaOrderService::class)->pullOrdersPage($shop->shop_id, $from->toIso8601String(), $to->toIso8601String(), $cursor),
+                'woocommerce' => app(WooCommerceOrderService::class)->pullOrdersPage($shop->shop_id, $from->timestamp, $cursor),
+                default => throw new \RuntimeException("Channel {$channel} belum mendukung pull order per halaman."),
+            });
+
+            if ($result->done) {
+                $completed = $shops->markScheduledOrderPullCompleted($shop->id, $this->leaseToken, $to);
+                if (! $completed) {
+                    throw new \RuntimeException('Lease pull order hilang sebelum cursor dapat disimpan.');
+                }
+
+                Log::info('Scheduled channel order pull completed.', [
                     'channel_shop_id' => $shop->id,
                     'shop_id' => $shop->shop_id,
-                    'from' => $this->from,
-                    'to' => $this->to,
-                    'error' => $e->getMessage(),
+                    'channel' => $channel,
+                    'orders' => $result->count,
                 ]);
+            } else {
+                if (! $shops->saveOrderPullCursor($shop->id, $this->leaseToken, $result->cursor)) {
+                    throw new \RuntimeException('Cursor pull order tidak dapat disimpan.');
+                }
 
-                return;
+                if (! $leases->renew($this->channelShopId, $this->leaseToken, max(60, (int) config('queue.routing.channel_sync.lease_seconds', 420)))) {
+                    throw new \RuntimeException('Lease pull order hilang sebelum halaman berikutnya diantrikan.');
+                }
+
+                self::dispatch($this->channelShopId, $this->leaseToken, $this->from, $this->to, $channel)
+                    ->onQueue((string) config('queue.names.channel_sync', 'channel-sync'));
+                $keepLease = true;
+
+                Log::info('Scheduled channel order page completed; next page queued.', [
+                    'channel_shop_id' => $shop->id,
+                    'shop_id' => $shop->shop_id,
+                    'channel' => $channel,
+                    'orders' => $result->count,
+                    'cursor' => $result->cursor,
+                ]);
             }
+        } catch (\Throwable $e) {
 
+            $shops->markScheduledOrderPullFailed($shop->id, $this->leaseToken, $e->getMessage());
             throw $e;
         } finally {
-            $leases->release($this->channelShopId, $this->leaseToken);
+            if (! $keepLease) {
+                $leases->release($this->channelShopId, $this->leaseToken);
+            }
         }
     }
 
