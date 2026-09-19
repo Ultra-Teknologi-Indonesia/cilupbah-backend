@@ -25,6 +25,9 @@ use Modules\Product\Models\Product;
 use Modules\Product\Services\ProductLifecycleService;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
+    Route::get('operations/order-audit/shops', [OrderAuditController::class, 'shops'])
+        ->name('operations.order-audit.shops')
+        ->middleware(['role_or_permission:owner|view-pesanan', 'throttle:30,1']);
     Route::get('operations/order-audit', [OrderAuditController::class, 'lookup'])
         ->name('operations.order-audit.lookup')
         ->middleware(['role_or_permission:owner|view-pesanan', 'throttle:30,1']);
@@ -34,6 +37,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('operations/order-audit/delete', [OrderAuditController::class, 'delete'])
         ->name('operations.order-audit.delete')
         ->middleware(['role_or_permission:owner|delete-pesanan', 'throttle:10,1']);
+    Route::post('operations/order-audit/marketplace-pull', [OrderAuditController::class, 'pullMarketplace'])
+        ->name('operations.order-audit.marketplace-pull')
+        ->middleware(['role_or_permission:owner|edit-pesanan', 'throttle:5,1']);
 
     Route::prefix('impex/activities')->middleware('role_or_permission:owner|view-impex')->group(function () {
         Route::post('export/record', [ImpexActivityController::class, 'recordExport'])->name('impex.activities.recordExport');

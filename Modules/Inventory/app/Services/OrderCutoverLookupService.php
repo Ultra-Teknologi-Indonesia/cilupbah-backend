@@ -11,7 +11,12 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use App\Support\WarehouseAccess;
 use Modules\Channel\Models\ChannelWebhookInbox;
+use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\ChannelWebhookService;
+use Modules\Channel\Services\LazadaOrderService;
+use Modules\Channel\Services\ShopeeOrderService;
+use Modules\Channel\Services\TikTokOrderService;
+use Modules\Channel\Services\WooCommerceOrderService;
 use RuntimeException;
 
 final class OrderCutoverLookupService
@@ -218,6 +223,78 @@ final class OrderCutoverLookupService
             'message' => $deleted === 1 ? 'Pesanan berhasil dihapus dari WMS.' : 'Pesanan tidak dihapus.',
             'audit' => $this->lookup($reference),
         ];
+    }
+
+    public function pullMarketplace(string $reference, string $channel, string $shopId): array
+    {
+        $reference = $this->normalizeReference($reference);
+        $channel = strtolower(trim($channel));
+
+        if (! in_array($channel, ['shopee', 'tiktok', 'lazada', 'woocommerce'], true)) {
+            throw new RuntimeException('Channel marketplace tidak didukung.');
+        }
+
+        $shop = ChannelShop::query()
+            ->with('channel')
+            ->where('shop_id', trim($shopId))
+            ->whereNull('disconnected_at')
+            ->where('is_active', true)
+            ->where('order_sync_enabled', true)
+            ->whereHas('channel', fn ($query) => $query->where('code', $channel))
+            ->first();
+
+        if (! $shop) {
+            throw new RuntimeException('Toko tidak aktif, tidak terhubung, atau sinkronisasi order sedang nonaktif.');
+        }
+
+        WarehouseAccess::assertOperational($shop->stock_source_location_id ? (string) $shop->stock_source_location_id : null);
+
+        $lock = Cache::lock('order-audit:marketplace-pull:'.$channel.':'.$shop->shop_id.':'.$reference, 120);
+        if (! $lock->get()) {
+            throw new RuntimeException('Pesanan sedang ditarik oleh permintaan lain. Tunggu sebentar lalu audit ulang.');
+        }
+
+        try {
+            if (DB::table('sales_orders')->where('salesorder_no', $reference)->exists()) {
+                throw new RuntimeException('Nomor yang dimasukkan adalah nomor internal WMS. Gunakan nomor pesanan marketplace untuk pull langsung.');
+            }
+
+            $alreadyExists = DB::table('sales_orders')
+                ->where('source', $channel)
+                ->where('channel_shop_id', $shop->shop_id)
+                ->where('channel_order_no', $reference)
+                ->exists();
+
+            if ($alreadyExists) {
+                return [
+                    'action' => 'marketplace_pull',
+                    'result' => 'already_in_wms',
+                    'message' => 'Pesanan sudah ada di WMS dan tidak ditarik ulang.',
+                    'audit' => $this->lookup($reference),
+                ];
+            }
+
+            $count = match ($channel) {
+                'shopee' => app(ShopeeOrderService::class)->pullOrderById($shop->shop_id, $reference),
+                'tiktok' => app(TikTokOrderService::class)->pullOrderById($shop->shop_id, $reference),
+                'lazada' => app(LazadaOrderService::class)->pullOrderById($shop->shop_id, $reference),
+                'woocommerce' => app(WooCommerceOrderService::class)->pullOrderById($shop->shop_id, $reference),
+            };
+
+            if ((int) $count < 1) {
+                throw new RuntimeException('Order tidak ditemukan di marketplace atau detail order tidak dapat diambil.');
+            }
+
+            return [
+                'action' => 'marketplace_pull',
+                'result' => 'pulled',
+                'count' => (int) $count,
+                'message' => 'Order berhasil ditarik dari marketplace ke WMS.',
+                'audit' => $this->lookup($reference),
+            ];
+        } finally {
+            $lock->release();
+        }
     }
 
     private function orderReport(object $order): array

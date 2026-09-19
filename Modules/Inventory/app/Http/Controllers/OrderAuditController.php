@@ -7,11 +7,33 @@ namespace Modules\Inventory\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Modules\Channel\Models\ChannelShop;
 use Modules\Inventory\Services\OrderCutoverLookupService;
 use RuntimeException;
 
 final class OrderAuditController extends Controller
 {
+    public function shops(): JsonResponse
+    {
+        $shops = ChannelShop::query()
+            ->with('channel:id,code,name')
+            ->where('is_active', true)
+            ->where('order_sync_enabled', true)
+            ->whereNull('disconnected_at')
+            ->whereHas('channel', fn ($query) => $query->whereIn('code', ['shopee', 'tiktok', 'lazada', 'woocommerce']))
+            ->orderBy('shop_name')
+            ->get(['id', 'channel_id', 'shop_id', 'shop_name'])
+            ->map(fn (ChannelShop $shop): array => [
+                'id' => (string) $shop->id,
+                'shop_id' => (string) $shop->shop_id,
+                'shop_name' => (string) $shop->shop_name,
+                'channel' => (string) ($shop->channel?->code ?? ''),
+                'channel_name' => (string) ($shop->channel?->name ?? $shop->channel?->code ?? ''),
+            ])->values();
+
+        return $this->successResponse($shops, 'Daftar toko untuk pull marketplace berhasil diambil.');
+    }
+
     public function lookup(Request $request, OrderCutoverLookupService $service): JsonResponse
     {
         $validated = $request->validate([
@@ -64,6 +86,34 @@ final class OrderAuditController extends Controller
                 422,
                 null,
                 'Order tidak dapat dihapus',
+            );
+        }
+    }
+
+    public function pullMarketplace(Request $request, OrderCutoverLookupService $service): JsonResponse
+    {
+        $validated = $request->validate([
+            'reference' => ['required', 'string', 'max:128'],
+            'channel' => ['required', 'in:shopee,tiktok,lazada,woocommerce'],
+            'shop_id' => ['required', 'string', 'max:128'],
+            'confirmation' => ['required', 'in:PULL-MARKETPLACE'],
+        ]);
+
+        try {
+            return $this->successResponse(
+                $service->pullMarketplace(
+                    (string) $validated['reference'],
+                    (string) $validated['channel'],
+                    (string) $validated['shop_id'],
+                ),
+                'Pull marketplace diproses.',
+            );
+        } catch (RuntimeException $exception) {
+            return $this->errorResponse(
+                $exception->getMessage(),
+                422,
+                null,
+                'Order belum dapat ditarik dari marketplace',
             );
         }
     }
