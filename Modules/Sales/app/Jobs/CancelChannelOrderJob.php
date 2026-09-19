@@ -12,6 +12,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Modules\Channel\Exceptions\ChannelCancelException;
+use Modules\Channel\Jobs\RefreshChannelOrderJob;
 use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\TikTokOrderService;
@@ -19,6 +20,7 @@ use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Notification\Services\NotificationDispatcher;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderService;
+use Modules\Sales\Support\ChannelOperationLedger;
 
 class CancelChannelOrderJob implements ShouldBeUnique, ShouldQueue
 {
@@ -69,6 +71,19 @@ class CancelChannelOrderJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
+        $claim = ChannelOperationLedger::claim($order, 'cancel_channel_order');
+        if (! $claim['should_execute']) {
+            Log::warning('CancelChannelOrderJob: cancel tidak diulang sebelum status channel diverifikasi.', [
+                'order_id' => $order->id,
+                'salesorder_no' => $order->salesorder_no,
+                'source' => $order->source,
+                'ledger_status' => $claim['attempt']->status,
+            ]);
+            $this->scheduleAuthoritativeRefresh($order);
+
+            return;
+        }
+
         try {
             $result = match ($order->source) {
                 'tiktok' => $this->cancelOnTikTok($order),
@@ -92,14 +107,25 @@ class CancelChannelOrderJob implements ShouldBeUnique, ShouldQueue
                 'channel_cancel_status' => $status,
                 'channel_cancel_error' => null,
             ])->saveQuietly();
+
+            if ($status === 'accepted') {
+                ChannelOperationLedger::markSucceeded($claim['attempt']);
+            } else {
+                ChannelOperationLedger::markAccepted($claim['attempt']);
+            }
         } catch (ChannelCancelException $e) {
             if ($e->retryable) {
+                ChannelOperationLedger::markUncertain($claim['attempt'], $e);
                 $order->forceFill([
                     'channel_cancel_status' => 'pending',
-                    'channel_cancel_error' => Str::limit($e->getMessage(), 255),
+                    'channel_cancel_error' => 'Hasil cancel belum pasti; verifikasi ulang ke channel sedang dijadwalkan.',
                 ])->saveQuietly();
-                throw $e;
+                $this->scheduleAuthoritativeRefresh($order);
+
+                return;
             }
+
+            ChannelOperationLedger::markRejected($claim['attempt'], $e->getMessage());
 
             Log::warning("CancelChannelOrderJob: penolakan final dari {$order->source}", [
                 'order_id' => $this->orderId,
@@ -117,16 +143,17 @@ class CancelChannelOrderJob implements ShouldBeUnique, ShouldQueue
 
             return;
         } catch (\Throwable $e) {
+            ChannelOperationLedger::markUncertain($claim['attempt'], $e);
             $order->forceFill([
                 'channel_cancel_status' => 'pending',
-                'channel_cancel_error' => Str::limit($e->getMessage(), 255),
+                'channel_cancel_error' => 'Hasil cancel belum pasti; verifikasi ulang ke channel sedang dijadwalkan.',
             ])->saveQuietly();
             Log::error("CancelChannelOrderJob: gagal cancel di {$order->source}", [
                 'order_id' => $this->orderId,
                 'salesorder_no' => $order->salesorder_no,
                 'exception' => $e->getMessage(),
             ]);
-            throw $e;
+            $this->scheduleAuthoritativeRefresh($order);
         }
     }
 
@@ -207,6 +234,24 @@ class CancelChannelOrderJob implements ShouldBeUnique, ShouldQueue
         } catch (\Throwable $e) {
             Log::warning('CancelChannelOrderJob: gagal kirim notifikasi kegagalan: '.$e->getMessage());
         }
+    }
+
+    private function scheduleAuthoritativeRefresh(SalesOrder $order): void
+    {
+        $channel = strtolower((string) $order->source);
+        $channelOrderId = (string) ($order->channel_order_no ?: $order->salesorder_no);
+
+        if (! in_array($channel, ['shopee', 'tiktok', 'lazada'], true)
+            || (string) $order->channel_shop_id === ''
+            || $channelOrderId === '') {
+            return;
+        }
+
+        RefreshChannelOrderJob::dispatch(
+            $channel,
+            (string) $order->channel_shop_id,
+            $channelOrderId,
+        )->delay(now()->addSeconds(30));
     }
 
     public function failed(\Throwable $exception): void

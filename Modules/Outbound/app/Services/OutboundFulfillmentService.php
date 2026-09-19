@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\ShopeeOrderService;
+use Modules\Channel\Jobs\RefreshChannelOrderJob;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Channel\Support\UploadErrorPresenter;
 use Modules\Outbound\Contracts\DriverCallResult;
@@ -31,6 +32,7 @@ use Modules\Outbound\Services\Logistics\LogisticsGateway;
 use Modules\Report\Models\ExportJob;
 use Modules\Sales\Models\SalesOrder as Order;
 use Modules\Sales\Services\SalesOrderService;
+use Modules\Sales\Support\ChannelOperationLedger;
 use Modules\Sales\Support\ChannelOrderSideEffectGuard;
 
 class OutboundFulfillmentService
@@ -185,6 +187,7 @@ class OutboundFulfillmentService
                 continue;
             }
 
+            $claim = null;
             try {
                 // The order may have been cancelled while this request was waiting for its RTS lock.
                 $activeOrder = ChannelOrderSideEffectGuard::active((string) $order->id, 'ready_to_ship');
@@ -195,14 +198,45 @@ class OutboundFulfillmentService
                 }
 
                 $order = $activeOrder;
+                $claim = ChannelOperationLedger::claim($order, 'ready_to_ship');
+                if (! $claim['should_execute']) {
+                    $message = $claim['needs_verification']
+                        ? 'RTS sebelumnya belum memiliki hasil pasti; sistem sedang menunggu verifikasi status channel.'
+                        : 'RTS sudah pernah berhasil dikirim ke channel.';
+                    if ($claim['needs_verification']) {
+                        $this->scheduleChannelOrderRefresh($order);
+                    }
+                    $results[] = $this->result($order, 'skipped', $message);
+
+                    continue;
+                }
+
                 $adapter = $this->logisticsGateway->for($order->source);
                 $outcome = $adapter->readyToShip($order);
+                $outcomeStatus = (string) ($outcome['status'] ?? 'failed');
+
+                if (in_array($outcomeStatus, ['success', 'queued'], true)) {
+                    ChannelOperationLedger::markSucceeded($claim['attempt'], [
+                        'status' => $outcomeStatus,
+                    ]);
+                } else {
+                    ChannelOperationLedger::markUncertain(
+                        $claim['attempt'],
+                        new \RuntimeException((string) ($outcome['message'] ?? 'RTS tidak memberi hasil pasti.')),
+                    );
+                    $this->scheduleChannelOrderRefresh($order);
+                }
+
                 $results[] = $this->result(
                     $order,
-                    (string) ($outcome['status'] ?? 'failed'),
+                    $outcomeStatus,
                     (string) ($outcome['message'] ?? ''),
                 );
             } catch (\Throwable $e) {
+                if ($claim !== null) {
+                    ChannelOperationLedger::markUncertain($claim['attempt'], $e);
+                    $this->scheduleChannelOrderRefresh($order);
+                }
                 Log::error('readyToShip dispatcher gagal untuk order', [
                     'order_id' => $order->id,
                     'salesorder_no' => $order->salesorder_no,
@@ -218,6 +252,24 @@ class OutboundFulfillmentService
         }
 
         return $results;
+    }
+
+    private function scheduleChannelOrderRefresh(Order $order): void
+    {
+        $channel = strtolower((string) $order->source);
+        $channelOrderId = (string) ($order->channel_order_no ?: $order->salesorder_no);
+
+        if (! in_array($channel, ['shopee', 'tiktok', 'lazada'], true)
+            || (string) $order->channel_shop_id === ''
+            || $channelOrderId === '') {
+            return;
+        }
+
+        RefreshChannelOrderJob::dispatch(
+            $channel,
+            (string) $order->channel_shop_id,
+            $channelOrderId,
+        )->delay(now()->addSeconds(30));
     }
 
     public function createBulkRtsBatch(?User $user, array $orderIds): BulkRtsBatch

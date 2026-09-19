@@ -14,6 +14,7 @@ use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Sales\Jobs\Concerns\UsesShippingLabelPreparationLock;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\BulkShippingLabelService;
+use Modules\Sales\Support\ChannelOperationLedger;
 use Modules\Sales\Support\ChannelOrderSideEffectGuard;
 
 class PrepareShopeeShippingLabelJob implements ShouldBeUnique, ShouldQueue
@@ -106,60 +107,76 @@ class PrepareShopeeShippingLabelJob implements ShouldBeUnique, ShouldQueue
             }
 
             if ($this->attempt === 0) {
-                try {
-                    $create = $shopee->createShippingDocument(
-                        $shopId,
-                        $orderSn,
-                        $docType,
-                        $order->tracking_number,
-                        $order->package_number ?? null
-                    );
-                } catch (\Throwable $e) {
-                    $reason = $shopee->classifyShippingLabelFailure($e);
-                    if ($reason !== null) {
-                        $this->markTerminalFailure($order, $reason);
-                        $this->notifyBulkListeners();
+                $claim = ChannelOperationLedger::claim($order, 'create_shipping_label');
 
-                        return;
-                    }
-
-                    throw $e;
-                }
-
-                if (! empty($create['error'])) {
-                    $failDetail = $create['response']['result_list'][0]['fail_message']
-                        ?? $create['response']['result_list'][0]['fail_error']
-                        ?? ($create['message'] ?? null);
-
-                    $reason = $shopee->classifyShippingLabelFailure($create);
-                    if ($reason !== null) {
-                        $this->markTerminalFailure($order, $reason);
-                        $this->notifyBulkListeners();
-
-                        return;
-                    }
-
-                    $errCode = (string) $create['error'];
-                    $recoverable = str_contains($errCode, 'duplicate') || str_contains($errCode, 'already');
-
-                    if (! $recoverable) {
-                        $order->update(['shipping_label_status' => 'failed']);
-                        Log::error('PrepareShopeeShippingLabelJob: createShippingDocument gagal', [
-                            'order_id' => $order->id,
-                            'order_sn' => $orderSn,
-                            'doc_type' => $docType,
-                            'error' => $errCode,
-                            'message' => $failDetail,
-                        ]);
-                        $this->notifyBulkListeners();
-                        throw new \RuntimeException("Shopee createShippingDocument gagal: {$errCode} {$failDetail}");
-                    }
-
-                    Log::info('PrepareShopeeShippingLabelJob: createShippingDocument recoverable, lanjut check status', [
+                if (! $claim['should_execute']) {
+                    Log::warning('PrepareShopeeShippingLabelJob: create document tidak diulang sebelum status channel diverifikasi.', [
                         'order_id' => $order->id,
                         'order_sn' => $orderSn,
-                        'error' => $errCode,
+                        'ledger_status' => $claim['attempt']->status,
                     ]);
+                } else {
+                    try {
+                        $create = $shopee->createShippingDocument(
+                            $shopId,
+                            $orderSn,
+                            $docType,
+                            $order->tracking_number,
+                            $order->package_number ?? null
+                        );
+                        ChannelOperationLedger::markAccepted($claim['attempt']);
+                    } catch (\Throwable $e) {
+                        $reason = $shopee->classifyShippingLabelFailure($e);
+                        if ($reason !== null) {
+                            ChannelOperationLedger::markRejected($claim['attempt'], $e->getMessage());
+                            $this->markTerminalFailure($order, $reason);
+                            $this->notifyBulkListeners();
+
+                            return;
+                        }
+
+                        ChannelOperationLedger::markUncertain($claim['attempt'], $e);
+
+                        throw $e;
+                    }
+
+                    if (! empty($create['error'])) {
+                        $failDetail = $create['response']['result_list'][0]['fail_message']
+                            ?? $create['response']['result_list'][0]['fail_error']
+                            ?? ($create['message'] ?? null);
+
+                        $reason = $shopee->classifyShippingLabelFailure($create);
+                        if ($reason !== null) {
+                            ChannelOperationLedger::markRejected($claim['attempt'], (string) $failDetail);
+                            $this->markTerminalFailure($order, $reason);
+                            $this->notifyBulkListeners();
+
+                            return;
+                        }
+
+                        $errCode = (string) $create['error'];
+                        $recoverable = str_contains($errCode, 'duplicate') || str_contains($errCode, 'already');
+
+                        if (! $recoverable) {
+                            ChannelOperationLedger::markRejected($claim['attempt'], (string) $failDetail);
+                            $order->update(['shipping_label_status' => 'failed']);
+                            Log::error('PrepareShopeeShippingLabelJob: createShippingDocument gagal', [
+                                'order_id' => $order->id,
+                                'order_sn' => $orderSn,
+                                'doc_type' => $docType,
+                                'error' => $errCode,
+                                'message' => $failDetail,
+                            ]);
+                            $this->notifyBulkListeners();
+                            throw new \RuntimeException("Shopee createShippingDocument gagal: {$errCode} {$failDetail}");
+                        }
+
+                        Log::info('PrepareShopeeShippingLabelJob: createShippingDocument recoverable, lanjut check status', [
+                            'order_id' => $order->id,
+                            'order_sn' => $orderSn,
+                            'error' => $errCode,
+                        ]);
+                    }
                 }
             }
 
@@ -185,6 +202,9 @@ class PrepareShopeeShippingLabelJob implements ShouldBeUnique, ShouldQueue
                         'order_sn' => $orderSn,
                         'doc_type' => $docType,
                     ]);
+
+                    $attempt = ChannelOperationLedger::claim($order, 'create_shipping_label')['attempt'];
+                    ChannelOperationLedger::markSucceeded($attempt);
 
                     $this->notifyBulkListeners();
 

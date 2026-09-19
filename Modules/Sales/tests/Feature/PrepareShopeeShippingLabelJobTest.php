@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Queue;
 use Mockery;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
+use Modules\Sales\Models\ChannelOperationAttempt;
 use Modules\Sales\Models\SalesOrder;
 use Tests\TestCase;
 
@@ -154,5 +155,42 @@ class PrepareShopeeShippingLabelJobTest extends TestCase
         (new PrepareShopeeShippingLabelJob($order->id, 0))->handle($shopee);
 
         $this->assertSame('ready', $order->refresh()->shipping_label_status);
+    }
+
+    public function test_uncertain_create_document_is_verified_without_posting_a_second_time(): void
+    {
+        $order = SalesOrder::factory()->create([
+            'source' => 'shopee',
+            'channel_shop_id' => 'SHOP123',
+            'channel_order_no' => 'SN-NO-DUPLICATE',
+            'tracking_number' => 'AWB123',
+        ]);
+
+        $first = Mockery::mock(ShopeeOrderService::class);
+        $first->shouldReceive('resolveSupportedDocType')->once()->andReturn('THERMAL_AIR_WAYBILL');
+        $first->shouldReceive('createShippingDocument')->once()->andThrow(new \RuntimeException('network timeout'));
+        $first->shouldReceive('classifyShippingLabelFailure')->once()->andReturnNull();
+
+        try {
+            (new PrepareShopeeShippingLabelJob($order->id, 0))->handle($first);
+            $this->fail('The first worker must fail after an uncertain remote request.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('network timeout', $exception->getMessage());
+        }
+
+        $retry = Mockery::mock(ShopeeOrderService::class);
+        $retry->shouldReceive('resolveSupportedDocType')->once()->andReturn('THERMAL_AIR_WAYBILL');
+        $retry->shouldNotReceive('createShippingDocument');
+        $retry->shouldReceive('getShippingDocumentResult')->once()->andReturn([
+            'response' => ['result_list' => [['status' => 'READY']]],
+        ]);
+
+        (new PrepareShopeeShippingLabelJob($order->id, 0))->handle($retry);
+
+        $this->assertSame('ready', $order->refresh()->shipping_label_status);
+        $this->assertSame(
+            ChannelOperationAttempt::STATUS_SUCCEEDED,
+            ChannelOperationAttempt::query()->value('status'),
+        );
     }
 }

@@ -14,6 +14,7 @@ use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Outbound\Models\ShipmentOrder;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Support\ChannelOperationLedger;
 use Modules\Sales\Support\ChannelOrderSideEffectGuard;
 
 class ProcessLazadaFulfillmentJob implements ShouldBeUnique, ShouldQueue
@@ -80,20 +81,40 @@ class ProcessLazadaFulfillmentJob implements ShouldBeUnique, ShouldQueue
 
         $statuses = $orderService->itemStatuses($this->shopId, $this->orderId);
 
+        $packAttempt = null;
+
         if (array_intersect($statuses, ['pending', 'repacked'])) {
             if (ChannelOrderSideEffectGuard::active($order->id, 'lazada_fulfillment_pack') === null) {
                 return;
             }
 
-            $packResult = $orderService->fulfillPack($this->shopId, $this->orderId, $this->shippingProviderId, $this->deliveryType);
-            $packData = $packResult['pack'] ?? [];
-            if (! empty($packData['pack_order_list'])) {
-                foreach ($packData['pack_order_list'] as $pol) {
-                    foreach ($pol['order_item_list'] ?? [] as $oil) {
-                        $this->packageId = $this->packageId ?: ($oil['package_id'] ?? null);
-                        $this->trackingNumber = $this->trackingNumber ?: ($oil['tracking_number'] ?? null);
+            $packClaim = ChannelOperationLedger::claim($order, 'lazada_fulfill_pack');
+            $packAttempt = $packClaim['attempt'];
+
+            if ($packClaim['should_execute']) {
+                try {
+                    $packResult = $orderService->fulfillPack($this->shopId, $this->orderId, $this->shippingProviderId, $this->deliveryType);
+                    ChannelOperationLedger::markAccepted($packAttempt);
+                    $packData = $packResult['pack'] ?? [];
+                    if (! empty($packData['pack_order_list'])) {
+                        foreach ($packData['pack_order_list'] as $pol) {
+                            foreach ($pol['order_item_list'] ?? [] as $oil) {
+                                $this->packageId = $this->packageId ?: ($oil['package_id'] ?? null);
+                                $this->trackingNumber = $this->trackingNumber ?: ($oil['tracking_number'] ?? null);
+                            }
+                        }
                     }
+                } catch (\Throwable $exception) {
+                    ChannelOperationLedger::markUncertain($packAttempt, $exception);
+
+                    throw $exception;
                 }
+            } else {
+                Log::warning('Lazada fulfillment: pack tidak diulang sebelum status channel diverifikasi.', [
+                    'order_id' => $order->id,
+                    'channel_order_no' => $this->orderId,
+                    'ledger_status' => $packAttempt->status,
+                ]);
             }
         } else {
             Log::info("Lazada fulfillment: order {$this->orderId} sudah melewati tahap pack, dilewati.");
@@ -107,18 +128,42 @@ class ProcessLazadaFulfillmentJob implements ShouldBeUnique, ShouldQueue
 
         $statusesAfterPack = $orderService->itemStatuses($this->shopId, $this->orderId);
 
+        if ($packAttempt !== null && array_intersect($statusesAfterPack, ['packed'])) {
+            ChannelOperationLedger::markSucceeded($packAttempt);
+        }
+
         if (array_intersect($statusesAfterPack, ['packed'])) {
             if (ChannelOrderSideEffectGuard::active($order->id, 'lazada_fulfillment_ready_to_ship') === null) {
                 return;
             }
 
-            $orderService->readyToShip(
-                $this->shopId,
-                $this->orderId,
-                $this->trackingNumber,
-                $this->packageId,
-                $this->deliveryType
-            );
+            $rtsClaim = ChannelOperationLedger::claim($order, 'lazada_ready_to_ship');
+            if (! $rtsClaim['should_execute']) {
+                Log::warning('Lazada fulfillment: RTS tidak diulang sebelum status channel diverifikasi.', [
+                    'order_id' => $order->id,
+                    'channel_order_no' => $this->orderId,
+                    'ledger_status' => $rtsClaim['attempt']->status,
+                ]);
+
+                return;
+            }
+
+            try {
+                $result = $orderService->readyToShip(
+                    $this->shopId,
+                    $this->orderId,
+                    $this->trackingNumber,
+                    $this->packageId,
+                    $this->deliveryType
+                );
+                ChannelOperationLedger::markSucceeded($rtsClaim['attempt'], [
+                    'tracking_number' => data_get($result, 'rts.tracking_number'),
+                ]);
+            } catch (\Throwable $exception) {
+                ChannelOperationLedger::markUncertain($rtsClaim['attempt'], $exception);
+
+                throw $exception;
+            }
         } else {
             Log::info("Lazada fulfillment: order {$this->orderId} sudah melewati tahap ready-to-ship, dilewati.");
         }
