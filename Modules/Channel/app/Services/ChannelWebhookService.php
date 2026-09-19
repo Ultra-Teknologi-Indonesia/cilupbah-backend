@@ -7,18 +7,19 @@ namespace Modules\Channel\Services;
 use Closure;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
-use Modules\Channel\Models\ChannelWebhookInbox;
-use Modules\Channel\Repositories\ChannelWebhookInboxRepository;
 use Modules\Channel\Jobs\ProcessLazadaWebhook;
 use Modules\Channel\Jobs\ProcessShopeeWebhook;
 use Modules\Channel\Jobs\ProcessTikTokWebhook;
 use Modules\Channel\Jobs\ProcessWooCommerceWebhook;
+use Modules\Channel\Models\ChannelWebhookInbox;
+use Modules\Channel\Repositories\ChannelWebhookInboxRepository;
 use Modules\Sales\Jobs\AdminAlertJob;
 
 final class ChannelWebhookService
 {
     public function __construct(
         private readonly ChannelWebhookInboxRepository $repository,
+        private readonly QueueCapacityReader $queueCapacity,
     ) {}
 
     public function recordFirstDelivery(
@@ -38,7 +39,7 @@ final class ChannelWebhookService
         string $reason,
         ?array $payload = null,
     ): void {
-        $eventKey = 'woocommerce:anomaly:' . md5($source . '|' . $topic . '|' . $rawBody);
+        $eventKey = 'woocommerce:anomaly:'.md5($source.'|'.$topic.'|'.$rawBody);
         $row = $this->recordFirstDelivery(
             'woocommerce',
             null,
@@ -65,6 +66,7 @@ final class ChannelWebhookService
         return $this->dispatchSafely(
             'lazada',
             ProcessLazadaWebhook::idempotencyKey($payload),
+            ProcessLazadaWebhook::resolveQueueName($payload),
             fn (): mixed => ProcessLazadaWebhook::dispatch($payload),
         );
     }
@@ -74,6 +76,7 @@ final class ChannelWebhookService
         return $this->dispatchSafely(
             'shopee',
             ProcessShopeeWebhook::idempotencyKey($payload),
+            ProcessShopeeWebhook::resolveQueueName($payload),
             fn (): mixed => ProcessShopeeWebhook::dispatch($payload),
         );
     }
@@ -83,6 +86,7 @@ final class ChannelWebhookService
         return $this->dispatchSafely(
             'tiktok',
             ProcessTikTokWebhook::idempotencyKey($payload),
+            ProcessTikTokWebhook::resolveQueueName($payload),
             fn (): mixed => ProcessTikTokWebhook::dispatch($payload)
                 ->onQueue(ProcessTikTokWebhook::resolveQueueName($payload)),
         );
@@ -93,6 +97,7 @@ final class ChannelWebhookService
         return $this->dispatchSafely(
             'woocommerce',
             ProcessWooCommerceWebhook::idempotencyKey($shopId, $topic, $payload),
+            'webhooks',
             fn (): mixed => ProcessWooCommerceWebhook::dispatch(
                 $shopId,
                 $topic,
@@ -137,8 +142,16 @@ final class ChannelWebhookService
         };
     }
 
-    private function dispatchSafely(string $channel, string $eventKey, Closure $dispatch): bool
-    {
+    private function dispatchSafely(
+        string $channel,
+        string $eventKey,
+        string $queue,
+        Closure $dispatch,
+    ): bool {
+        if (! $this->canDispatchToQueue($channel, $eventKey, $queue)) {
+            return false;
+        }
+
         try {
             $dispatch();
             ChannelWebhookInbox::markDispatchQueuedByKey($eventKey);
@@ -159,5 +172,45 @@ final class ChannelWebhookService
 
             return false;
         }
+    }
+
+    private function canDispatchToQueue(string $channel, string $eventKey, string $queue): bool
+    {
+        if (! (bool) config('queue.backpressure.enabled', true)) {
+            return true;
+        }
+
+        $maxDepth = (int) config('queue.backpressure.webhook_ingress_max_depth', 1000);
+        $maxMemoryRatio = (float) config('queue.backpressure.webhook_ingress_max_memory_ratio', 0.70);
+        $health = $this->queueCapacity->inspect('redis', $queue);
+        $memoryRatio = $health['memory_ratio'] ?? null;
+
+        if ($health['allowed']
+            && $health['queue_depth'] < $maxDepth
+            && ($memoryRatio === null || $memoryRatio < $maxMemoryRatio)) {
+            return true;
+        }
+
+        $reason = $health['error'] ?? sprintf(
+            'depth=%d/%d, memory=%s/%s',
+            (int) ($health['queue_depth'] ?? 0),
+            $maxDepth,
+            $memoryRatio === null ? 'n/a' : round($memoryRatio * 100, 1).'%',
+            round($maxMemoryRatio * 100, 1).'%',
+        );
+
+        Log::warning('Webhook queue dispatch ditunda oleh backpressure', [
+            'channel' => $channel,
+            'event_key' => $eventKey,
+            'queue' => $queue,
+            'reason' => $reason,
+        ]);
+
+        ChannelWebhookInbox::markDispatchFailedByKey(
+            $eventKey,
+            'QUEUE_CAPACITY_DEFERRED: '.$reason,
+        );
+
+        return false;
     }
 }

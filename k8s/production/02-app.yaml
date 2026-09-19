@@ -66,11 +66,17 @@ spec:
               value: "2160"
             - name: REDIS_QUEUE_RETRY_AFTER
               value: "420"
+            - name: REDIS_QUEUE_CONNECTION
+              value: "horizon"
             - name: QUEUE_BACKPRESSURE_ENABLED
               value: "true"
             - name: CHANNEL_SYNC_MAX_QUEUE_DEPTH
               value: "24"
             - name: CHANNEL_SYNC_MAX_REDIS_MEMORY_RATIO
+              value: "0.70"
+            - name: WEBHOOK_INGRESS_MAX_QUEUE_DEPTH
+              value: "1000"
+            - name: WEBHOOK_INGRESS_MAX_REDIS_MEMORY_RATIO
               value: "0.70"
             - name: WEBHOOK_REPLAY_MAX_QUEUE_DEPTH
               value: "500"

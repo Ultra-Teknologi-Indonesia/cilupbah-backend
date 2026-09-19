@@ -32,7 +32,7 @@ Schedule::command('channel:webhooks-replay --minutes=5 --limit=100 --max-seconds
     ->everyFiveMinutes()
     ->withoutOverlapping(10)
     ->onOneServer();
-Schedule::command('channel:monitor-queue-health')->everyFiveMinutes()->withoutOverlapping(10)->onOneServer();
+Schedule::command('channel:monitor-queue-health')->everyMinute()->withoutOverlapping(2)->onOneServer();
 
 Schedule::command('channel:evaluate-order-sync')->everyFifteenMinutes()->withoutOverlapping()->onOneServer();
 

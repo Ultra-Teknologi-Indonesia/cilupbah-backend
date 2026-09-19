@@ -16,7 +16,7 @@ use Modules\Sales\Jobs\AdminAlertJob;
 
 class ReplayWebhookInbox extends Command
 {
-    protected $signature = 'channel:webhooks-replay {--minutes=15 : Event RECEIVED lebih tua dari N menit dianggap macet} {--limit=500 : Maksimum event yang di-dispatch ulang per run} {--max-seconds=30 : Batas waktu kerja command agar scheduler tidak tertahan} {--max-attempts=5 : Berhenti dispatch ulang setelah N percobaan} {--max-memory-ratio=0.8 : Hentikan replay jika pemakaian Redis queue melewati rasio ini}';
+    protected $signature = 'channel:webhooks-replay {--minutes=15 : Event RECEIVED lebih tua dari N menit dianggap macet} {--limit=500 : Maksimum event yang di-dispatch ulang per run} {--max-seconds=30 : Batas waktu kerja command agar scheduler tidak tertahan} {--max-attempts=5 : Berhenti dispatch ulang setelah N percobaan untuk error bisnis} {--max-memory-ratio=0.7 : Hentikan replay jika pemakaian Redis queue melewati rasio ini}';
 
     protected $description = 'Dispatch ulang webhook masuk yang macet di status RECEIVED (safety net: job hilang/crash tanpa menandai inbox). Idempoten via jalur job normal.';
 
@@ -119,7 +119,12 @@ class ReplayWebhookInbox extends Command
                 ->where('attempts', '>=', $maxAttempts)
                 ->where(function ($query): void {
                     $query->whereNull('error')
-                        ->orWhere('error', 'not like', 'ORDER_INTAKE_DEFERRED:%');
+                        ->orWhere(function ($query): void {
+                            $query->where('error', 'not like', 'ORDER_INTAKE_DEFERRED:%')
+                                ->where('error', 'not like', 'QUEUE_CAPACITY_DEFERRED:%')
+                                ->where('error', 'not like', 'Queue dispatch gagal%')
+                                ->where('error', 'not like', 'Cache idempotensi tidak tersedia%');
+                        });
                 })
                 ->where(function ($query) use ($now): void {
                     $query->whereNull('next_attempt_at')

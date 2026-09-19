@@ -33,8 +33,9 @@ spec:
           command:
             - redis-server
             - --maxmemory
-            # Keep RSS/AOF rewrite headroom inside the 2GiB cgroup limit.
-            - "1536mb"
+            # Keep one GiB of RSS/AOF rewrite headroom inside the 4GiB cgroup
+            # limit. Queue writes are proactively throttled at 70% by the app.
+            - "3gb"
             - --maxmemory-policy
             # Horizon stores supervisor/control metadata here. Silent eviction can
             # make the dashboard and worker control plane inconsistent; retention
@@ -53,11 +54,11 @@ spec:
               mountPath: /data
           resources:
             requests:
-              memory: "1Gi"
+              memory: "2Gi"
               cpu: "250m"
             limits:
               # Redis RSS and AOF rewrite need headroom beyond maxmemory.
-              memory: "2Gi"
+              memory: "4Gi"
               cpu: "500m"
           livenessProbe:
             exec:

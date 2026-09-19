@@ -13,6 +13,13 @@ class ChannelWebhookInbox extends Model
 {
     use HasUuid7;
 
+    private const RETRYABLE_INFRASTRUCTURE_ERROR_PATTERNS = [
+        'ORDER_INTAKE_DEFERRED:%',
+        'QUEUE_CAPACITY_DEFERRED:%',
+        'Queue dispatch gagal%',
+        'Cache idempotensi tidak tersedia%',
+    ];
+
     protected $table = 'channel_webhook_inbox';
 
     protected $fillable = [
@@ -133,7 +140,11 @@ class ChannelWebhookInbox extends Model
                 ->where('received_at', '<', $threshold)
                 ->where(function ($query) use ($maxAttempts): void {
                     $query->where('attempts', '<', $maxAttempts)
-                        ->orWhere('error', 'like', 'ORDER_INTAKE_DEFERRED:%');
+                        ->orWhere(function ($query): void {
+                            foreach (self::RETRYABLE_INFRASTRUCTURE_ERROR_PATTERNS as $pattern) {
+                                $query->orWhere('error', 'like', $pattern);
+                            }
+                        });
                 })
                 ->where(function ($query): void {
                     $query->whereNull('next_attempt_at')

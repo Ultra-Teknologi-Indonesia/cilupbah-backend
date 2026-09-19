@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Modules\Channel\Services;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Redis;
 
 final class QueueCapacityService implements QueueCapacityReader
 {
+    private const SNAPSHOT_TTL_SECONDS = 2;
 
     public function inspect(string $queueConnection, string|array $queues): array
     {
@@ -34,18 +36,38 @@ final class QueueCapacityService implements QueueCapacityReader
             return $result;
         }
 
+        $cacheKey = 'channel:queue-capacity:'.$queueConnection.':'.md5(implode('|', $queueNames));
+
+        try {
+            // The cache connection is intentionally separate from the queue
+            // Redis in production. A tiny snapshot prevents every incoming
+            // webhook from executing INFO + three queue reads during a burst.
+            return Cache::remember(
+                $cacheKey,
+                now()->addSeconds(self::SNAPSHOT_TTL_SECONDS),
+                fn (): array => $this->inspectFresh($result, $redisConnection, $queueNames),
+            );
+        } catch (\Throwable $exception) {
+            // Cache is an optimization only. If it is unavailable, inspect
+            // the queue directly; a queue failure still fails closed below.
+            return $this->inspectFresh($result, $redisConnection, $queueNames, $exception);
+        }
+    }
+
+    private function inspectFresh(
+        array $result,
+        string $redisConnection,
+        array $queueNames,
+        ?\Throwable $cacheException = null,
+    ): array {
         try {
             $redis = Redis::connection($redisConnection);
 
             foreach ($queueNames as $queue) {
                 $prefix = 'queues:'.trim($queue);
-                $ready = (int) $redis->llen($prefix);
-                $delayed = (int) $redis->zcard($prefix.':delayed');
-                $reserved = (int) $redis->zcard($prefix.':reserved');
-
-                $result['ready'] += $ready;
-                $result['delayed'] += $delayed;
-                $result['reserved'] += $reserved;
+                $result['ready'] += (int) $redis->llen($prefix);
+                $result['delayed'] += (int) $redis->zcard($prefix.':delayed');
+                $result['reserved'] += (int) $redis->zcard($prefix.':reserved');
             }
 
             $result['queue_depth'] = $result['ready'] + $result['delayed'] + $result['reserved'];
@@ -56,13 +78,16 @@ final class QueueCapacityService implements QueueCapacityReader
             $result['memory_used_bytes'] = $used;
             $result['memory_max_bytes'] = $maximum;
             $result['memory_ratio'] = $maximum > 0 ? round($used / $maximum, 4) : null;
+
+            return $result;
         } catch (\Throwable $exception) {
-
             $result['allowed'] = false;
-            $result['error'] = $exception->getMessage();
-        }
+            $result['error'] = $cacheException === null
+                ? $exception->getMessage()
+                : 'cache='.$cacheException->getMessage().'; queue='.$exception->getMessage();
 
-        return $result;
+            return $result;
+        }
     }
 
     public function allows(

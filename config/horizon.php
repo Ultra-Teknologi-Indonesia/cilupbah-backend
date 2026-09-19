@@ -9,7 +9,8 @@ $supervisorProfiles = [
         'supervisor-orders',
         'supervisor-fulfillment',
         'supervisor-stock-sync',
-        'supervisor-channel-operations',
+        'supervisor-channel-cancellation',
+        'supervisor-channel-fulfillment',
         'supervisor-stock',
         'supervisor-stock-default',
         'supervisor-warehouse-safety',
@@ -73,6 +74,10 @@ $stockMaxProcesses = max(
 $channelStockMaxProcesses = max(
     1,
     min(2, (int) env('HORIZON_CHANNEL_STOCK_MAX_PROCESSES', 1)),
+);
+$channelCancellationProcesses = max(
+    1,
+    min(4, (int) env('HORIZON_CHANNEL_CANCELLATION_PROCESSES', 2)),
 );
 
 return [
@@ -278,12 +283,23 @@ return [
             'nice' => 10,
         ],
 
-        'supervisor-channel-operations' => [
+        'supervisor-channel-cancellation' => [
             'connection' => 'redis',
-            'queue' => [
-                env('QUEUE_NAME_CHANNEL_CANCELLATION', 'channel-cancellation'),
-                env('QUEUE_NAME_CHANNEL_FULFILLMENT', 'channel-fulfillment'),
-            ],
+            'queue' => [env('QUEUE_NAME_CHANNEL_CANCELLATION', 'channel-cancellation')],
+            'balance' => 'off',
+            'minProcesses' => $channelCancellationProcesses,
+            'maxProcesses' => $channelCancellationProcesses,
+            'maxJobs' => 250,
+            'maxTime' => 1800,
+            'timeout' => 60,
+            'tries' => 3,
+            'backoff' => [10, 30, 60],
+            'memory' => 128,
+            'nice' => 0,
+        ],
+        'supervisor-channel-fulfillment' => [
+            'connection' => 'redis',
+            'queue' => [env('QUEUE_NAME_CHANNEL_FULFILLMENT', 'channel-fulfillment')],
             'balance' => 'off',
             'minProcesses' => 1,
             'maxProcesses' => 1,

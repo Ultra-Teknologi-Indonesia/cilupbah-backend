@@ -98,4 +98,30 @@ class ReplayFailedWebhooksTest extends TestCase
             ChannelWebhookInbox::query()->value('status'),
         );
     }
+
+    public function test_replay_keeps_retrying_infrastructure_failures_after_five_attempts(): void
+    {
+        Queue::fake();
+
+        ChannelWebhookInbox::create([
+            'channel' => 'tiktok',
+            'shop_id' => 'TT-1',
+            'event_key' => 'tiktok:webhook:redis-oom-retry',
+            'event_type' => '1',
+            'payload' => ['type' => 1, 'shop_id' => 'TT-1', 'data' => ['order_id' => 'TT_RETRY']],
+            'status' => WebhookInboxStatus::RECEIVED,
+            'attempts' => 5,
+            'error' => "Queue dispatch gagal dan akan dicoba ulang: OOM command not allowed when used memory > 'maxmemory'.",
+            'received_at' => now()->subMinutes(30),
+            'next_attempt_at' => now()->subMinute(),
+        ]);
+
+        $this->artisan('channel:webhooks-replay', ['--minutes' => 15])
+            ->assertSuccessful();
+
+        $row = ChannelWebhookInbox::query()->where('event_key', 'tiktok:webhook:redis-oom-retry')->firstOrFail();
+        $this->assertSame(WebhookInboxStatus::RECEIVED, $row->status);
+        $this->assertSame(6, $row->attempts);
+        Queue::assertPushed(ProcessTikTokWebhook::class, 1);
+    }
 }

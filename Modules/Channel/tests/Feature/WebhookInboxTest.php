@@ -6,12 +6,14 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
+use Mockery;
 use Modules\Channel\Enums\WebhookInboxStatus;
 use Modules\Channel\Jobs\ProcessShopeeWebhook;
 use Modules\Channel\Jobs\ProcessTikTokWebhook;
 use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Repositories\ChannelWebhookInboxRepository;
 use Modules\Channel\Services\ChannelWebhookService;
+use Modules\Channel\Services\QueueCapacityReader;
 use Modules\Sales\Jobs\AdminAlertJob;
 use Tests\TestCase;
 
@@ -204,6 +206,49 @@ class WebhookInboxTest extends TestCase
         $this->assertSame(1, $row->attempts);
         $this->assertNotNull($row->next_attempt_at);
         $this->assertStringContainsString('Cache idempotensi tidak tersedia', (string) $row->error);
+    }
+
+    public function test_dispatch_is_deferred_before_queue_reaches_redis_oom(): void
+    {
+        Queue::fake();
+
+        $capacity = Mockery::mock(QueueCapacityReader::class);
+        $capacity->shouldReceive('inspect')
+            ->once()
+            ->with('redis', 'tiktok-orders')
+            ->andReturn([
+                'allowed' => true,
+                'queue_depth' => 10,
+                'memory_ratio' => 0.70,
+            ]);
+        $this->app->instance(QueueCapacityReader::class, $capacity);
+
+        $payload = ['type' => 1, 'shop_id' => 'TT1', 'data' => ['order_id' => 'O1']];
+        $row = ChannelWebhookInbox::create([
+            'channel' => 'tiktok',
+            'shop_id' => 'TT1',
+            'event_key' => ProcessTikTokWebhook::idempotencyKey($payload),
+            'event_type' => '1',
+            'payload' => $payload,
+            'status' => WebhookInboxStatus::RECEIVED,
+            'received_at' => now(),
+        ]);
+
+        $this->assertFalse(app(ChannelWebhookService::class)->dispatchInbox($row));
+        Queue::assertNothingPushed();
+
+        $row->refresh();
+        $this->assertSame(1, $row->attempts);
+        $this->assertStringStartsWith('QUEUE_CAPACITY_DEFERRED:', (string) $row->error);
+        $this->assertNotNull($row->next_attempt_at);
+    }
+
+    public function test_tiktok_cancellation_uses_dedicated_cancellation_queue(): void
+    {
+        $this->assertSame(
+            'channel-cancellation',
+            ProcessTikTokWebhook::resolveQueueName(['type' => 11]),
+        );
     }
 
     public function test_replay_claim_prevents_duplicate_selection_before_lease_expires(): void

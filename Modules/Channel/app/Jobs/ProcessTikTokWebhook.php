@@ -104,7 +104,8 @@ class ProcessTikTokWebhook implements ShouldBeUnique, ShouldQueue
         $type = (int) ($payload['type'] ?? -1);
 
         return match ($type) {
-            1, 3, 11 => config('queue.names.tiktok_orders', 'tiktok-orders'),
+            11 => config('queue.names.channel_cancellation', 'channel-cancellation'),
+            1, 3 => config('queue.names.tiktok_orders', 'tiktok-orders'),
             4 => config('queue.names.tiktok_packages', 'tiktok-packages'),
             2, 12, 64, 67 => config('queue.names.tiktok_aftersales', 'tiktok-aftersales'),
             5, 15, 37, 50 => config('queue.names.tiktok_catalog', 'tiktok-catalog'),
