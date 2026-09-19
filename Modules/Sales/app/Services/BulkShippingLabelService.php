@@ -17,8 +17,6 @@ use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Realtime\Services\RealtimeEventPublisher;
 use Modules\Sales\Exceptions\ShippingLabelPreparingException;
 use Modules\Sales\Jobs\ArchiveBulkShippingLabelJob;
-use Modules\Sales\Jobs\PrepareLazadaShippingLabelJob;
-use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelItemJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelJob;
 use Modules\Sales\Jobs\RequestChannelAwbJob;
@@ -548,10 +546,13 @@ class BulkShippingLabelService
         }
 
         $waitingStatus = match ($item->channel) {
-            self::CHANNEL_SHOPEE, self::CHANNEL_TIKTOK, self::CHANNEL_LAZADA => BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE,
+            self::CHANNEL_SHOPEE => BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP,
+            self::CHANNEL_TIKTOK => BulkShippingLabelItem::STATUS_WAITING_TIKTOK_PREP,
+            self::CHANNEL_LAZADA => BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP,
             default => null,
         };
         if ($order->shipping_label_status === 'preparing' && $waitingStatus !== null) {
+            app(ShippingLabelPreparationDispatcher::class)->dispatch($order);
             $item->update([
                 'status' => $waitingStatus,
                 'reason' => null,
@@ -572,6 +573,77 @@ class BulkShippingLabelService
         $this->processItem($item, null);
 
         return true;
+    }
+
+    public function recoverStaleMarketplaceItems(
+        BulkShippingLabelBatch $batch,
+        \DateTimeInterface $threshold,
+    ): int {
+        $items = $batch->items()
+            ->whereIn('status', [
+                BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE,
+                BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP,
+                BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP,
+                BulkShippingLabelItem::STATUS_WAITING_TIKTOK_PREP,
+            ])
+            ->where('updated_at', '<', $threshold)
+            ->with('order')
+            ->get();
+
+        $recovered = 0;
+
+        foreach ($items as $item) {
+            $order = $item->order?->fresh();
+
+            if (! $order) {
+                $this->fail($item, BulkShippingLabelItem::REASON_NO_AWB);
+                $recovered++;
+
+                continue;
+            }
+
+            if ($order->shipping_label_status === 'preparing') {
+                if (app(ShippingLabelPreparationDispatcher::class)->dispatch($order)) {
+                    $item->update(['updated_at' => now()]);
+                    $recovered++;
+                }
+
+                continue;
+            }
+
+            if ($order->shipping_label_status === 'ready') {
+                $item->update([
+                    'status' => BulkShippingLabelItem::STATUS_PENDING,
+                    'reason' => null,
+                    'updated_at' => now(),
+                ]);
+                $this->dispatchItem($item->fresh());
+                $recovered++;
+
+                continue;
+            }
+
+            if (in_array($order->shipping_label_status, ['failed', 'self_design_required'], true)) {
+                $this->onOrderLabelReady((string) $order->id);
+                $recovered++;
+
+                continue;
+            }
+
+            $item->update([
+                'status' => BulkShippingLabelItem::STATUS_PENDING,
+                'reason' => null,
+                'updated_at' => now(),
+            ]);
+            $this->dispatchItem($item->fresh());
+            $recovered++;
+        }
+
+        if ($recovered > 0) {
+            $this->publishBatchProgress((string) $batch->id);
+        }
+
+        return $recovered;
     }
 
     public function markItemCrashed(string $batchId, string $itemId): void

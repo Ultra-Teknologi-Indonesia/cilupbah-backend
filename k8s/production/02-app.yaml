@@ -21,8 +21,29 @@ spec:
       labels:
         app: cilupbah-app
     spec:
+      securityContext:
+        fsGroup: 33
+        fsGroupChangePolicy: OnRootMismatch
       imagePullSecrets:
         - name: ghcr-creds
+      initContainers:
+        - name: prepare-label-spool
+          image: ghcr.io/ultra-teknologi-indonesia/cilupbah:v1.0.0
+          command: ["sh", "-c"]
+          args:
+            - >-
+              set -eu;
+              mkdir -p /spool/items;
+              chown -R root:33 /spool;
+              find /spool -type d -exec chmod 2770 {} \;;
+              find /spool -type f -exec chmod 660 {} \;
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
+          volumeMounts:
+            - name: label-spool
+              mountPath: /spool
       containers:
         - name: app
           # tag ini akan diganti otomatis oleh workflow production-deploy.yml (kubectl set image)

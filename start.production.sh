@@ -20,6 +20,15 @@ mkdir -p storage/app/public/baseline-reports \
          bootstrap/cache 2>/dev/null || true
 chmod -R 777 storage bootstrap/cache /tmp 2>/dev/null || true
 
+# The print spool is a shared PVC mounted by PHP-FPM and the label worker.
+# Keep both processes in the same group so a directory created by one process
+# remains writable by the other after a restart or a rolling deployment.
+if [ -d storage/app/print-spool ]; then
+    chown -R www-data:www-data storage/app/print-spool 2>/dev/null || true
+    find storage/app/print-spool -type d -exec chmod 2770 {} \; 2>/dev/null || true
+    find storage/app/print-spool -type f -exec chmod 660 {} \; 2>/dev/null || true
+fi
+
 echo "==> Linking public storage..."
 php artisan storage:link --force 2>/dev/null || true
 

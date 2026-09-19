@@ -15,13 +15,39 @@ spec:
       labels:
         app: cilupbah-horizon-labels
     spec:
+      securityContext:
+        fsGroup: 33
+        fsGroupChangePolicy: OnRootMismatch
       imagePullSecrets:
         - name: ghcr-creds
+      initContainers:
+        - name: prepare-label-spool
+          image: ghcr.io/ultra-teknologi-indonesia/cilupbah:v1.0.0
+          command: ["sh", "-c"]
+          args:
+            - >-
+              set -eu;
+              mkdir -p /spool/items;
+              chown -R root:33 /spool;
+              find /spool -type d -exec chmod 2770 {} \;;
+              find /spool -type f -exec chmod 660 {} \;
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
+          volumeMounts:
+            - name: label-spool
+              mountPath: /spool
       terminationGracePeriodSeconds: 180
       containers:
         - name: horizon-labels
           image: ghcr.io/ultra-teknologi-indonesia/cilupbah:v1.0.0
-          command: ["php", "artisan", "horizon"]
+          command: ["sh", "-c"]
+          args: ["umask 0007 && exec php artisan horizon"]
+          securityContext:
+            runAsUser: 33
+            runAsGroup: 33
+            allowPrivilegeEscalation: false
           envFrom:
             - secretRef:
                 name: cilupbah-env
