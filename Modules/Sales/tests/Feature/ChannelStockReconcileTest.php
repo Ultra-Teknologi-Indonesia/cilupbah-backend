@@ -304,6 +304,34 @@ class ChannelStockReconcileTest extends TestCase
             ->sole();
         $invoiceNumber = 'INV-RECON-CANCEL-1';
 
+        $orderItem = $order->items()->firstOrFail();
+        $packlistId = Str::uuid()->toString();
+        DB::table('packlists')->insert([
+            'id' => $packlistId,
+            'packlist_no' => 'PACK-RECON-CANCEL-1',
+            'location_id' => $this->locationId,
+            'order_id' => $order->id,
+            'status' => 'COMPLETED',
+            'started_at' => now()->subMinute(),
+            'completed_at' => now(),
+            'package_count' => 1,
+            'created_by' => 'system',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('packlist_items')->insert([
+            'id' => Str::uuid()->toString(),
+            'packlist_id' => $packlistId,
+            'order_item_id' => $orderItem->id,
+            'item_id' => $this->variantId,
+            'sku' => 'SKU-RECON',
+            'qty_ordered' => 2,
+            'qty_packed' => 2,
+            'barcode_verified' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
         DB::table('sales_invoices')->insert([
             'id' => Str::uuid()->toString(),
             'invoice_number' => $invoiceNumber,

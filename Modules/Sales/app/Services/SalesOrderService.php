@@ -3671,8 +3671,14 @@ class SalesOrderService
                 ->get();
 
             foreach ($completedPacklists as $packlist) {
-                app(PacklistStockService::class)->reverse($packlist, (string) (Auth::id() ?: 'system'));
-                $restored = true;
+                $restored = app(PacklistStockService::class)->reverse(
+                    $packlist,
+                    (string) (Auth::id() ?: 'system'),
+                );
+
+                if ($restored) {
+                    break;
+                }
             }
         }
 

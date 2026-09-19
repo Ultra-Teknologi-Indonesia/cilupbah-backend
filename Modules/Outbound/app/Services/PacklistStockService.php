@@ -44,7 +44,7 @@ class PacklistStockService
         }
     }
 
-    public function reverse(Packlist $packlist, string $actor): void
+    public function reverse(Packlist $packlist, string $actor): bool
     {
         $movements = InventoryMovement::query()
             ->where('transaction_number', $packlist->packlist_no)
@@ -53,12 +53,14 @@ class PacklistStockService
             ->get();
 
         if ($movements->isEmpty()) {
-            return;
+            return false;
         }
 
         $order = SalesOrder::query()
             ->select(['id', 'salesorder_no', 'channel_order_no', 'no_ref'])
             ->find($packlist->order_id);
+
+        $restored = false;
 
         foreach ($movements as $movement) {
             $qty = abs((int) $movement->qty);
@@ -79,7 +81,10 @@ class PacklistStockService
             );
 
             $this->undoPhysicalCommitment($packlist, $movement, $qty);
+            $restored = true;
         }
+
+        return $restored;
     }
 
     private function allocationsFor(Packlist $packlist, PacklistItem $packItem): Collection
