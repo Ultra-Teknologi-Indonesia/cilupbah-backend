@@ -9,13 +9,13 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
-use Modules\Outbound\Services\OutboundFulfillmentService;
 use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\BulkShippingLabelService;
@@ -30,8 +30,6 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
     public array $backoff = [10, 30, 60];
 
     public int $uniqueFor = 900;
-
-    private const TRACKING_RETRY_DELAYS = [3, 6, 12, 30, 60];
 
     public function __construct(
         public readonly string $orderId,
@@ -53,7 +51,7 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
         return "order:{$this->orderId}:attempt:{$this->trackingAttempt}";
     }
 
-    public function handle(OutboundFulfillmentService $fulfillment): void
+    public function handle(): void
     {
         $order = SalesOrder::find($this->orderId);
 
@@ -94,6 +92,25 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
             }
         }
 
+        if (in_array($order->shipping_label_status, ['ready', 'preparing', 'self_design_required'], true)) {
+            Log::info('RequestChannelAwbJob: label sudah siap atau sedang diproses, tidak request ulang', [
+                'order_id' => $order->id,
+                'salesorder_no' => $order->salesorder_no,
+                'shipping_label_status' => $order->shipping_label_status,
+                'has_tracking' => ! empty($order->tracking_number),
+            ]);
+
+            if (! empty($order->tracking_number)) {
+                app(BulkShippingLabelService::class)->onOrderAwbReady($order->id);
+            }
+
+            if ($prefetchLock && $prefetchLock->isOwnedByCurrentProcess()) {
+                $prefetchLock->release();
+            }
+
+            return;
+        }
+
         if (! empty($order->tracking_number)) {
             app(BulkShippingLabelService::class)->onOrderAwbReady($order->id);
             $this->prepareLabel($order);
@@ -120,59 +137,25 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
         }
 
         try {
-            if ($this->trackingAttempt === 0 && $this->requestReadyToShip && $this->shouldRequestReadyToShip($order)) {
-                $results = $fulfillment->readyToShip([$order->id]);
-                $result = $results[0] ?? null;
+            $requestMarketplace = $this->trackingAttempt === 0
+                && $this->requestReadyToShip
+                && ! $this->channelAlreadyShipped($order)
+                && $this->shouldRequestReadyToShip($order);
 
-                Log::info('RequestChannelAwbJob: readyToShip dispatched', [
-                    'order_id' => $order->id,
-                    'salesorder_no' => $order->salesorder_no,
-                    'source' => $source,
-                    'status' => $result['status'] ?? 'unknown',
-                    'message' => $result['message'] ?? null,
-                ]);
-
-                if (($result['status'] ?? null) === 'failed') {
-                    throw new \RuntimeException($result['message'] ?? 'readyToShip gagal.');
-                }
-            }
-
-            $gotTracking = false;
-            if ($source === 'shopee') {
-                $gotTracking = $this->fetchShopeeTracking($order);
-            } elseif ($source === 'tiktok') {
-                $gotTracking = $this->fetchTiktokTracking($order);
-            } elseif ($source === 'lazada') {
-                $gotTracking = $this->fetchLazadaTracking($order);
-            }
+            $gotTracking = match ($source) {
+                'shopee' => $this->fetchShopeeTracking($order, $requestMarketplace),
+                'tiktok' => $this->fetchTiktokTracking($order, $requestMarketplace),
+                'lazada' => $this->fetchLazadaTracking($order, $requestMarketplace),
+                default => false,
+            };
 
             if ($gotTracking) {
                 app(BulkShippingLabelService::class)->onOrderAwbReady($order->id);
-            } elseif (isset(self::TRACKING_RETRY_DELAYS[$this->trackingAttempt])) {
-                $delay = $this->prefetch
-                    ? app(ShippingLabelPrefetchService::class)->retry(
-                        $order,
-                        $this->trackingAttempt + 1,
-                        'awb_not_ready',
-                    )
-                    : self::TRACKING_RETRY_DELAYS[$this->trackingAttempt];
-
-                if ($delay === null) {
-                    return;
-                }
-                Log::info('RequestChannelAwbJob: tracking belum tersedia, retry', [
-                    'order_id' => $order->id,
-                    'salesorder_no' => $order->salesorder_no,
-                    'next_attempt' => $this->trackingAttempt + 1,
-                    'delay_seconds' => $delay,
-                ]);
-                self::dispatch($order->id, $this->trackingAttempt + 1, false, $this->prefetch)
-                    ->delay(now()->addSeconds($delay));
             } else {
-                Log::warning('RequestChannelAwbJob: menyerah, tracking tidak kunjung terbit', [
+                Log::warning('RequestChannelAwbJob: tracking belum diterbitkan dalam satu request', [
                     'order_id' => $order->id,
                     'salesorder_no' => $order->salesorder_no,
-                    'attempts' => $this->trackingAttempt + 1,
+                    'source' => $source,
                 ]);
                 app(BulkShippingLabelService::class)->onOrderAwbGaveUp(
                     $order->id,
@@ -186,21 +169,6 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                 'source' => $source,
                 'exception' => $e->getMessage(),
             ]);
-            if ($this->prefetch) {
-                $delay = app(ShippingLabelPrefetchService::class)->retry(
-                    $order,
-                    $this->trackingAttempt + 1,
-                    'marketplace_error',
-                    $e->getMessage(),
-                );
-
-                if ($delay !== null) {
-                    self::dispatch($order->id, $this->trackingAttempt + 1, true, true)
-                        ->delay(now()->addSeconds($delay));
-                }
-
-                return;
-            }
 
             throw $e;
         } finally {
@@ -223,7 +191,7 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
         );
     }
 
-    private function fetchShopeeTracking(SalesOrder $order): bool
+    private function fetchShopeeTracking(SalesOrder $order, bool $requestMarketplace = false): bool
     {
         try {
             $shop = app(ChannelShopRepository::class)->findByShopId($order->channel_shop_id);
@@ -231,14 +199,32 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                 return false;
             }
 
-            $tn = app(ShopeeOrderService::class)->resolveTrackingNumber(
-                $shop,
-                (string) $order->channel_order_no,
-                $order->channel_status ?? 'READY_TO_SHIP'
-            );
+            $service = app(ShopeeOrderService::class);
+            $resolved = $requestMarketplace
+                ? $this->withRtsLock($order, true, function () use ($service, $shop, $order): ?array {
+                    return $service->requestTrackingNumber(
+                        (string) $order->channel_shop_id,
+                        (string) $order->channel_order_no,
+                        array_filter([
+                            'preferred_method' => $shop->handover_method ?? null,
+                        ], static fn ($value): bool => $value !== null && $value !== ''),
+                    );
+                })
+                : [
+                    'tracking_number' => $service->resolveTrackingNumber(
+                        $shop,
+                        (string) $order->channel_order_no,
+                        $order->channel_status ?? 'READY_TO_SHIP',
+                    ),
+                ];
+            $tn = is_array($resolved) ? ($resolved['tracking_number'] ?? null) : null;
 
             if ($tn) {
-                $order->update(['tracking_number' => $tn]);
+                $update = ['tracking_number' => $tn];
+                if (! empty($resolved['channel_status'])) {
+                    $update['channel_status'] = $resolved['channel_status'];
+                }
+                $order->update($update);
                 Log::info('RequestChannelAwbJob: tracking_number disimpan', [
                     'order_id' => $order->id,
                     'salesorder_no' => $order->salesorder_no,
@@ -262,11 +248,6 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
 
     private function shouldRequestReadyToShip(SalesOrder $order): bool
     {
-
-        if ($this->attempts() > 1) {
-            return true;
-        }
-
         $requestedAt = data_get($order->shipping_label_raw_data, 'bulk_label_awb.requested_at');
         $window = max(1, (int) config('bulk-labels.awb_request_dedupe_seconds', 300));
 
@@ -296,7 +277,19 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
         return true;
     }
 
-    private function fetchTiktokTracking(SalesOrder $order): bool
+    private function channelAlreadyShipped(SalesOrder $order): bool
+    {
+        return in_array(strtoupper((string) $order->channel_status), [
+            'PROCESSED',
+            'AWAITING_COLLECTION',
+            'SHIPPED',
+            'IN_TRANSIT',
+            'TO_CONFIRM_RECEIVE',
+            'COMPLETED',
+        ], true);
+    }
+
+    private function fetchTiktokTracking(SalesOrder $order, bool $requestMarketplace = false): bool
     {
         try {
             $shop = app(ChannelShopRepository::class)->findByShopId($order->channel_shop_id);
@@ -304,15 +297,28 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                 return false;
             }
 
-            $resolved = app(TikTokOrderService::class)->resolveTrackingNumber(
-                $shop,
-                (string) $order->channel_order_no
-            );
+            $service = app(TikTokOrderService::class);
+            $resolved = $requestMarketplace
+                ? $this->withRtsLock($order, true, function () use ($service, $order): ?array {
+                    return $service->requestTrackingNumber(
+                        (string) $order->channel_shop_id,
+                        (string) $order->channel_order_no,
+                        null,
+                        is_array($order->channel_package_ids) ? $order->channel_package_ids : [],
+                    );
+                })
+                : $service->resolveTrackingNumberDirect(
+                    $shop,
+                    (string) $order->channel_order_no,
+                );
 
             if ($resolved && ! empty($resolved['tracking_number'])) {
                 $update = ['tracking_number' => $resolved['tracking_number']];
                 if (! empty($resolved['shipping_provider'])) {
                     $update['shipping_provider'] = $resolved['shipping_provider'];
+                }
+                if (! empty($resolved['channel_status'])) {
+                    $update['channel_status'] = $resolved['channel_status'];
                 }
 
                 $order->update($update);
@@ -338,22 +344,55 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
         return false;
     }
 
-    private function fetchLazadaTracking(SalesOrder $order): bool
+    private function fetchLazadaTracking(SalesOrder $order, bool $requestMarketplace = false): bool
     {
         try {
-            app(LazadaOrderService::class)->pullOrderById(
-                (string) $order->channel_shop_id,
-                (string) $order->channel_order_no,
-            );
+            $service = app(LazadaOrderService::class);
+            if ($requestMarketplace) {
+                $resolved = $this->withRtsLock($order, true, function () use ($service, $order): ?array {
+                    $shippingProvider = (string) ($order->delivery_option_id ?: $order->shipping_provider ?: '');
+
+                    if ($shippingProvider === '') {
+                        Log::warning('RequestChannelAwbJob: Lazada shipping_provider kosong, tidak menjalankan pack/RTS', [
+                            'order_id' => $order->id,
+                            'salesorder_no' => $order->salesorder_no,
+                        ]);
+
+                        return null;
+                    }
+
+                    return $service->requestTrackingNumber(
+                        (string) $order->channel_shop_id,
+                        (string) $order->channel_order_no,
+                        $shippingProvider,
+                    );
+                });
+            } else {
+                $service->pullOrderById(
+                    (string) $order->channel_shop_id,
+                    (string) $order->channel_order_no,
+                );
+                $resolved = [];
+            }
 
             $fresh = SalesOrder::find($order->id);
-            $tn = (string) ($fresh->tracking_number ?? '');
+            $tn = (string) (($resolved['tracking_number'] ?? null) ?: ($fresh->tracking_number ?? ''));
 
             if ($tn !== '') {
-                Log::info('RequestChannelAwbJob: Lazada tracking_number tersimpan via pullOrderById', [
+                $update = ['tracking_number' => $tn];
+                if (! empty($resolved['shipping_provider'])) {
+                    $update['shipping_provider'] = $resolved['shipping_provider'];
+                }
+                if (! empty($resolved['channel_status'])) {
+                    $update['channel_status'] = $resolved['channel_status'];
+                }
+                $order->update($update);
+
+                Log::info('RequestChannelAwbJob: Lazada tracking_number tersimpan', [
                     'order_id' => $order->id,
                     'salesorder_no' => $order->salesorder_no,
                     'tracking_number' => $tn,
+                    'marketplace_action' => $requestMarketplace,
                 ]);
 
                 $this->prepareLabel($order);
@@ -371,6 +410,29 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
         return false;
     }
 
+    private function withRtsLock(SalesOrder $order, bool $enabled, callable $callback): mixed
+    {
+        if (! $enabled) {
+            return $callback();
+        }
+
+        $lock = Cache::lock("rts:{$order->id}", 30);
+        if (! $lock->get()) {
+            Log::info('RequestChannelAwbJob: RTS order sedang dikunci, tidak mengirim request kedua', [
+                'order_id' => $order->id,
+                'salesorder_no' => $order->salesorder_no,
+            ]);
+
+            return null;
+        }
+
+        try {
+            return $callback();
+        } finally {
+            optional($lock)->release();
+        }
+    }
+
     private function markPrefetchAwbReady(SalesOrder $order): void
     {
         if ($this->prefetch) {
@@ -380,6 +442,11 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
 
     private function prepareLabel(SalesOrder $order): void
     {
+        $labelStatus = SalesOrder::query()->whereKey($order->id)->value('shipping_label_status');
+        if (in_array($labelStatus, ['ready', 'preparing', 'self_design_required'], true)) {
+            return;
+        }
+
         match (strtolower((string) $order->source)) {
             'shopee' => PrepareShopeeShippingLabelJob::dispatch($order->id, 0, $this->prefetch),
             'tiktok' => PrepareTikTokShippingLabelJob::dispatch($order->id, 0, $this->prefetch),

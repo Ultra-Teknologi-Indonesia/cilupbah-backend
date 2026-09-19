@@ -148,6 +148,67 @@ class LazadaOrderOpsTest extends TestCase
         ])->assertStatus(422);
     }
 
+    public function test_request_tracking_number_packs_and_submits_rts(): void
+    {
+        $itemsCalls = 0;
+
+        Http::fake(function ($request) use (&$itemsCalls) {
+            if (str_contains($request->url(), '/orders/items/get')) {
+                $itemsCalls++;
+                $status = $itemsCalls <= 2 ? 'pending' : 'packed';
+
+                return Http::response([
+                    'code' => '0',
+                    'data' => [[
+                        'order_id' => 900123,
+                        'order_items' => [[
+                            'order_item_id' => 111,
+                            'package_id' => 'PKG-900123',
+                            'status' => $status,
+                            'tracking_number' => 'LZD-TRACK-900123',
+                        ]],
+                    ]],
+                ], 200);
+            }
+
+            if (str_contains($request->url(), '/order/fulfill/pack')) {
+                return Http::response([
+                    'code' => '0',
+                    'data' => [
+                        'pack_order_list' => [[
+                            'order_item_list' => [[
+                                'package_id' => 'PKG-900123',
+                                'tracking_number' => 'LZD-TRACK-900123',
+                            ]],
+                        ]],
+                    ],
+                ], 200);
+            }
+
+            if (str_contains($request->url(), '/order/package/rts')) {
+                return Http::response([
+                    'code' => '0',
+                    'data' => [
+                        'tracking_number' => 'LZD-TRACK-900123',
+                    ],
+                ], 200);
+            }
+
+            return Http::response(['code' => '0', 'data' => []], 200);
+        });
+
+        $result = app(LazadaOrderService::class)->requestTrackingNumber(
+            'LZ-100',
+            '900123',
+            'LEX-ID',
+        );
+
+        $this->assertSame('LZD-TRACK-900123', $result['tracking_number']);
+        $this->assertSame(4, $itemsCalls);
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/order/fulfill/pack'));
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/order/package/rts'));
+    }
+
     public function test_print_awb_returns_document_when_ready(): void
     {
         $this->fakeItemsForOrder([

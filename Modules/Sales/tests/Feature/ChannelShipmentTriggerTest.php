@@ -64,11 +64,12 @@ class ChannelShipmentTriggerTest extends TestCase
 
         app(SalesOrderService::class)->moveToReadyToProcess([$order]);
 
-        Queue::assertNotPushed(
+        Queue::assertPushed(
             RequestChannelAwbJob::class,
-            null,
-            'Tombol Proses tidak boleh menarik resi. Penarikan dilakukan operator di Picking tab Belum Mulai, '
-                .'supaya pesanan tidak jadi Ready To Ship di marketplace sebelum ada yang memegangnya.',
+            fn (RequestChannelAwbJob $job): bool => $job->orderId === $order
+                && $job->prefetch
+                && $job->requestReadyToShip,
+            'Order regular yang masuk Siap Proses harus mulai prefetch AWB dan label tanpa menunggu tombol manual.',
         );
 
         $this->assertNotNull(DB::table('sales_orders')->where('id', $order)->value('handed_to_warehouse_at'));
@@ -288,6 +289,11 @@ class ChannelShipmentTriggerTest extends TestCase
             'channel_order_no' => $source === 'manual' ? null : 'CH-'.substr($orderId, 0, 6),
             'shipping_provider' => $shippingProvider,
             'shipping_type' => $shippingType,
+            'channel_status' => 'READY_TO_SHIP',
+            'channel_instant' => in_array(strtolower($shippingType), ['instant', 'sameday', 'same day'], true),
+            'is_paid' => true,
+            'is_shadow' => false,
+            'is_canceled' => false,
             'status' => $status,
             'transaction_date' => now(),
             'created_at' => now(), 'updated_at' => now(),

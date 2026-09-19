@@ -31,6 +31,7 @@ class ShippingLabelPrefetchServiceTest extends TestCase
             'is_canceled' => false,
             'is_shadow' => false,
             'status' => 'reserved',
+            'channel_status' => 'READY_TO_SHIP',
             'channel_instant' => false,
             'tracking_number' => null,
             'shipping_label_status' => null,
@@ -75,6 +76,37 @@ class ShippingLabelPrefetchServiceTest extends TestCase
         Queue::assertNotPushed(RequestChannelAwbJob::class);
         $this->assertDatabaseMissing('shipping_label_prefetches', ['order_id' => $instant->id]);
         $this->assertDatabaseMissing('shipping_label_prefetches', ['order_id' => $unknown->id]);
+    }
+
+    public function test_unpaid_or_return_order_is_never_a_prefetch_candidate(): void
+    {
+        Queue::fake();
+        $service = app(ShippingLabelPrefetchService::class);
+
+        $unpaid = $this->regularOrder([
+            'channel_order_no' => 'SHP-PREFETCH-UNPAID',
+            'channel_status' => 'UNPAID',
+        ]);
+        $returned = $this->regularOrder([
+            'channel_order_no' => 'SHP-PREFETCH-RETURNED',
+            'channel_status' => 'RETURN_REQUESTED',
+        ]);
+
+        $this->assertFalse($service->schedule($unpaid));
+        $this->assertFalse($service->schedule($returned));
+        Queue::assertNotPushed(RequestChannelAwbJob::class);
+    }
+
+    public function test_processed_order_without_local_awb_can_prefetch_label_read_only(): void
+    {
+        Queue::fake();
+        $order = $this->regularOrder([
+            'channel_order_no' => 'SHP-PREFETCH-PROCESSED',
+            'channel_status' => 'PROCESSED',
+        ]);
+
+        $this->assertTrue(app(ShippingLabelPrefetchService::class)->schedule($order));
+        Queue::assertPushed(RequestChannelAwbJob::class, fn (RequestChannelAwbJob $job): bool => $job->orderId === $order->id);
     }
 
     public function test_disabled_feature_does_not_schedule_any_order(): void

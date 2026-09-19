@@ -2,10 +2,13 @@
 
 namespace Modules\Outbound\Tests\Feature;
 
+use App\Exceptions\UserFacingException;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use Modules\Outbound\Jobs\ProcessPicklistCompleteJob;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
 use Modules\Outbound\Models\PicklistItemAllocation;
@@ -313,5 +316,48 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
             'id' => $this->picklist->id,
             'status' => Picklist::STATUS_COMPLETED,
         ]);
+    }
+
+    public function test_last_picked_item_only_queues_completion_once_without_posting_inline(): void
+    {
+        Queue::fake();
+
+        $item = $this->picklist->items()->firstOrFail();
+        PicklistItemAllocation::query()
+            ->where('picklist_item_id', $item->id)
+            ->delete();
+        $item->update([
+            'qty_picked' => 0,
+            'item_status' => null,
+        ]);
+
+        app(PicklistService::class)->pickItem($this->picklist->id, $item->id, [
+            'qty_delta' => 1,
+            'bin_code' => $this->bin->bin_final_code,
+        ]);
+
+        Queue::assertPushed(ProcessPicklistCompleteJob::class, 1);
+        $this->assertDatabaseCount('sales_invoices', 0);
+        $this->assertDatabaseCount('inventory_movements', 1);
+        $this->assertDatabaseMissing('inventory_movements', [
+            'source' => 'INVOICE',
+        ]);
+    }
+
+    public function test_move_to_ready_refuses_a_completed_picklist(): void
+    {
+        $this->picklist->update([
+            'status' => Picklist::STATUS_COMPLETED,
+            'completed_at' => now(),
+        ]);
+        $this->order->update([
+            'handed_to_warehouse_at' => now(),
+            'pick_failed_at' => now(),
+        ]);
+
+        $this->expectException(UserFacingException::class);
+
+        app(\Modules\Sales\Services\SalesOrderService::class)
+            ->moveToReadyToProcess([(string) $this->order->id], $this->user);
     }
 }

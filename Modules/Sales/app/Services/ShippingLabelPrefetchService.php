@@ -28,6 +28,16 @@ class ShippingLabelPrefetchService
             return ['eligible' => false, 'reason' => $order->channel_instant === null ? 'unknown_shipping_type' : 'instant_or_sameday'];
         }
 
+        $channelStatus = strtoupper(trim((string) $order->channel_status));
+        if (! in_array($channelStatus, [
+            'READY_TO_SHIP',
+            'AWAITING_SHIPMENT',
+            'PROCESSED',
+            'AWAITING_COLLECTION',
+        ], true)) {
+            return ['eligible' => false, 'reason' => $channelStatus === '' ? 'channel_status_unknown' : 'channel_not_ready_to_ship'];
+        }
+
         if (! $order->is_paid || $order->is_shadow || $order->is_canceled || $order->cancel_requested_at !== null) {
             return ['eligible' => false, 'reason' => 'order_not_safe'];
         }
@@ -40,7 +50,14 @@ class ShippingLabelPrefetchService
             return ['eligible' => false, 'reason' => 'missing_channel_reference'];
         }
 
-        if (in_array($order->shipping_label_status, ['ready', 'self_design_required'], true)) {
+        $lazadaShippingProvider = (string) ($order->delivery_option_id ?: $order->shipping_provider ?: '');
+        if ($source === 'lazada'
+            && in_array($channelStatus, ['READY_TO_SHIP', 'AWAITING_SHIPMENT'], true)
+            && trim($lazadaShippingProvider) === '') {
+            return ['eligible' => false, 'reason' => 'missing_shipping_provider'];
+        }
+
+        if (in_array($order->shipping_label_status, ['ready', 'preparing', 'self_design_required'], true)) {
             return ['eligible' => false, 'reason' => 'label_already_ready'];
         }
 
@@ -60,6 +77,12 @@ class ShippingLabelPrefetchService
         );
 
         if (in_array($prefetch->status, [ShippingLabelPrefetch::STATUS_AWB_READY, ShippingLabelPrefetch::STATUS_SKIPPED], true)) {
+            return false;
+        }
+
+        if (! $prefetch->wasRecentlyCreated
+            && $prefetch->status === ShippingLabelPrefetch::STATUS_QUEUED
+            && $prefetch->next_attempt_at?->greaterThan(now())) {
             return false;
         }
 

@@ -500,6 +500,169 @@ class TikTokOrderService
         }
     }
 
+    public function requestTrackingNumber(
+        string $shopId,
+        string $orderId,
+        ?array $handover = null,
+        array $knownPackageIds = [],
+    ): array {
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (! $shop || ! $shop->access_token) {
+            throw new \Exception("No access token found for shop: {$shopId}");
+        }
+
+        $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
+        $packageIds = array_values(array_unique(array_filter(
+            array_map('strval', $knownPackageIds),
+            static fn (string $id): bool => $id !== '',
+        )));
+
+        if ($packageIds === []) {
+            $packageIds = $this->resolvePackageIds($shop, $orderId, $queries);
+        }
+
+        if ($packageIds === []) {
+            return [
+                'order_id' => $orderId,
+                'shipped' => false,
+                'tracking_number' => null,
+                'message' => 'TikTok belum menyediakan package_id untuk order ini.',
+                'packages' => [],
+            ];
+        }
+
+        $results = [];
+        $allOk = true;
+
+        foreach ($packageIds as $packageId) {
+            try {
+                $shipBody = ['order_id' => $orderId];
+
+                if ($handover) {
+                    if (! empty($handover['tracking_number'])) {
+                        $shipBody['tracking_number'] = $handover['tracking_number'];
+                    }
+                    if (! empty($handover['shipping_provider_id'])) {
+                        $shipBody['shipping_provider_id'] = $handover['shipping_provider_id'];
+                    }
+                }
+
+                $res = $this->client->request(
+                    'POST',
+                    "/fulfillment/202309/packages/{$packageId}/ship",
+                    $queries,
+                    $shipBody,
+                    $shop->access_token,
+                );
+
+                $results[] = [
+                    'package_id' => $packageId,
+                    'shipped' => true,
+                    'response' => $res['data'] ?? [],
+                ];
+            } catch (\Throwable $e) {
+                $allOk = false;
+                Log::error('TikTok AWB: gagal request ship package', [
+                    'shop_id' => $shopId,
+                    'order_id' => $orderId,
+                    'package_id' => $packageId,
+                    'error' => $e->getMessage(),
+                ]);
+                $results[] = [
+                    'package_id' => $packageId,
+                    'shipped' => false,
+                    'message' => $e->getMessage(),
+                ];
+            }
+        }
+
+        $someOk = collect($results)->contains('shipped', true);
+        $tracking = null;
+
+        if ($someOk) {
+            $tracking = $this->trackingFromShipResponses($results);
+            if ($tracking === null) {
+
+                $tracking = $this->resolveTrackingNumberOnce($shop, $orderId);
+            }
+
+            if ($tracking !== null && $tracking['tracking_number'] !== '') {
+                $this->orderRepository->updateTrackingByOrderNo(
+                    $orderId,
+                    $tracking['tracking_number'],
+                    $tracking['shipping_provider'],
+                );
+            }
+        }
+
+        return [
+            'order_id' => $orderId,
+            'shipped' => $allOk,
+            'tracking_number' => $tracking['tracking_number'] ?? null,
+            'shipping_provider' => $tracking['shipping_provider'] ?? null,
+
+            'channel_status' => $someOk ? 'PROCESSED' : null,
+            'message' => $allOk
+                ? 'RTS dan request resi TikTok berhasil.'
+                : ($someOk
+                    ? 'Sebagian package berhasil dikirim; sebagian gagal.'
+                    : 'Request resi TikTok gagal.'),
+            'packages' => $results,
+        ];
+    }
+
+    private function trackingFromShipResponses(array $packages): ?array
+    {
+        foreach ($packages as $package) {
+            $data = $package['response'] ?? [];
+            $trackingNumber = data_get($data, 'tracking_number')
+                ?? data_get($data, 'packages.0.tracking_number');
+
+            if ($trackingNumber !== null && $trackingNumber !== '') {
+                return [
+                    'tracking_number' => (string) $trackingNumber,
+                    'shipping_provider' => data_get($data, 'shipping_provider_name')
+                        ?? data_get($data, 'shipping_provider'),
+                ];
+            }
+        }
+
+        return null;
+    }
+
+    private function resolveTrackingNumberOnce(object $shop, string $orderId): ?array
+    {
+        $res = $this->client->request(
+            'GET',
+            '/order/202309/orders',
+            ['shop_cipher' => $shop->shop_cipher ?? '', 'ids' => $orderId],
+            [],
+            $shop->access_token,
+        );
+
+        $package = collect($res['data']['orders'][0]['packages'] ?? [])
+            ->first(static fn (array $row): bool => ! empty($row['tracking_number']));
+
+        if (! is_array($package)) {
+            return null;
+        }
+
+                return [
+                    'tracking_number' => (string) $package['tracking_number'],
+                    'shipping_provider' => $package['shipping_provider_name']
+                        ?? $package['shipping_provider']
+                        ?? null,
+                    'channel_status' => isset($res['data']['orders'][0]['status'])
+                        ? (string) $res['data']['orders'][0]['status']
+                        : null,
+                ];
+    }
+
+    public function resolveTrackingNumberDirect(object $shop, string $orderId): ?array
+    {
+        return $this->resolveTrackingNumberOnce($shop, $orderId);
+    }
+
     public function packageIdsForOrder(string $shopId, string $orderId): array
     {
         $shop = $this->shopRepository->findByShopId($shopId);

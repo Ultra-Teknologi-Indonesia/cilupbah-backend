@@ -17,7 +17,10 @@ class LazadaLogisticsService extends AbstractLogisticsService
     {
         $shopId = $order->channel_shop_id ?? $order->store?->channel_shop_id ?? null;
         $orderId = $order->channel_order_no;
-        $shippingProviderId = $order->channel_shipping_provider_code ?? $order->shipping_provider ?? null;
+        $shippingProviderId = $order->channel_shipping_provider_code
+            ?? $order->delivery_option_id
+            ?? $order->shipping_provider
+            ?? null;
 
         if (! $shopId || ! $orderId || ! $shippingProviderId) {
             return [
@@ -86,7 +89,10 @@ class LazadaLogisticsService extends AbstractLogisticsService
     {
         $shopId = (string) ($order->channel_shop_id ?? $order->store?->channel_shop_id ?? '');
         $channelOrderNo = (string) $order->channel_order_no;
-        $shippingProvider = (string) ($order->channel_shipping_provider_code ?? $order->shipping_provider ?? '');
+        $shippingProvider = (string) ($order->channel_shipping_provider_code
+            ?? $order->delivery_option_id
+            ?? $order->shipping_provider
+            ?? '');
 
         if ($shopId === '' || $channelOrderNo === '') {
             return ['status' => 'failed', 'message' => 'Lazada: channel_shop_id atau channel_order_no kosong.'];

@@ -70,7 +70,7 @@ class PrepareShopeeShippingLabelJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        if ($order->shipping_label_status === 'ready') {
+        if (in_array($order->shipping_label_status, ['ready', 'preparing', 'self_design_required'], true)) {
             return;
         }
 

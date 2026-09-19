@@ -650,6 +650,8 @@ class ShopeeOrderService
     public function shipOrder(string $shopId, string $orderSn, array $opts = []): array
     {
         $shop = $this->requireShop($shopId);
+        $syncLocal = (bool) ($opts['sync_local'] ?? true);
+        unset($opts['sync_local']);
 
         $param = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/api/v2/logistics/get_shipping_parameter', ['order_sn' => $orderSn], $token, $shop->shop_id));
 
@@ -748,15 +750,63 @@ class ShopeeOrderService
 
         $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/api/v2/logistics/ship_order', $body, $token, $shop->shop_id));
 
-        $this->resyncLocalOrder($shopId, $orderSn);
+        if ($syncLocal) {
+            $this->resyncLocalOrder($shopId, $orderSn);
+        }
+
+        $response = $res['response'] ?? [];
 
         return [
             'order_sn' => $orderSn,
             'shipped' => empty($res['error']),
             'error' => $res['error'] ?? null,
-            'response' => $res['response'] ?? [],
+            'response' => $response,
             'method' => $method,
+            'tracking_number' => $this->trackingNumberFromShipResponse($response),
         ];
+    }
+
+    public function requestTrackingNumber(string $shopId, string $orderSn, array $opts = []): array
+    {
+        $opts['sync_local'] = false;
+        $result = $this->shipOrder($shopId, $orderSn, $opts);
+
+        if (! $result['shipped']) {
+            return $result;
+        }
+
+        $trackingNumber = $result['tracking_number'] ?? null;
+        if (! $trackingNumber) {
+            $shop = $this->requireShop($shopId);
+            $trackingNumber = $this->resolveTrackingNumber(
+                $shop,
+                $orderSn,
+                'READY_TO_SHIP',
+            );
+        }
+
+        return array_merge($result, [
+            'tracking_number' => $trackingNumber,
+
+            'channel_status' => $result['shipped'] ? 'PROCESSED' : null,
+        ]);
+    }
+
+    private function trackingNumberFromShipResponse(array $response): ?string
+    {
+        $candidates = [
+            $response['tracking_number'] ?? null,
+            data_get($response, 'package_list.0.tracking_number'),
+            data_get($response, 'result_list.0.tracking_number'),
+        ];
+
+        foreach ($candidates as $candidate) {
+            if ($candidate !== null && $candidate !== '') {
+                return (string) $candidate;
+            }
+        }
+
+        return null;
     }
 
     protected function resolveHandoverMethod(array $opts, array $infoNeeded, array $addressList, array $branchList): string

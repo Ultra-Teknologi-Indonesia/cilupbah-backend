@@ -3,6 +3,7 @@
 namespace Modules\Outbound\Jobs;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -11,17 +12,23 @@ use Illuminate\Support\Facades\DB;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Services\OrderReleaseService;
 
-class ProcessPicklistCompleteJob implements ShouldQueue
+class ProcessPicklistCompleteJob implements ShouldQueue, ShouldBeUnique
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
     public array $backoff = [3, 10, 30];
+    public int $uniqueFor = 3600;
 
     public function __construct(
         protected string $picklistId,
     ) {
         $this->onQueue(config('queue.names.stock_critical'));
+    }
+
+    public function uniqueId(): string
+    {
+        return $this->picklistId;
     }
 
     public function handle(OrderReleaseService $orderReleaseService): void

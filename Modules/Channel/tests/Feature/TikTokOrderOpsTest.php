@@ -184,6 +184,34 @@ class TikTokOrderOpsTest extends TestCase
         $this->assertEquals('TTRK-1', $order->tracking_number);
     }
 
+    public function test_request_tracking_number_uses_known_package_and_reads_once(): void
+    {
+        $order = $this->seedLocalOrder('READY_TO_SHIP', 'pending');
+        $order->update(['channel_package_ids' => ['PKG-1']]);
+
+        Http::fake([
+            self::BASE.'/fulfillment/202309/packages/*/ship*' => Http::response([
+                'code' => 0,
+                'data' => ['package_id' => 'PKG-1'],
+            ], 200),
+            self::BASE.'/order/202309/orders*' => Http::response($this->orderDetail('AWAITING_COLLECTION'), 200),
+        ]);
+
+        $result = app(TikTokOrderService::class)->requestTrackingNumber(
+            'TT-700',
+            self::ORDER_ID,
+            null,
+            ['PKG-1'],
+        );
+
+        $this->assertTrue($result['shipped']);
+        $this->assertSame('TTRK-1', $result['tracking_number']);
+        $this->assertSame('TTRK-1', $order->refresh()->tracking_number);
+        Http::assertSentCount(2);
+        Http::assertNotSent(fn ($request) => $request->method() === 'GET'
+            && str_contains($request->url(), '/fulfillment/202309/packages'));
+    }
+
     public function test_decline_order_hits_cancellation_api_and_status_cancelled(): void
     {
         Http::fake([

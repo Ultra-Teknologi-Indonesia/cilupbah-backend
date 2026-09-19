@@ -287,6 +287,72 @@ class LazadaOrderService
         ];
     }
 
+    public function requestTrackingNumber(
+        string $shopId,
+        string $orderId,
+        string $shippingProviderId,
+        string $deliveryType = 'dropship',
+    ): array {
+        if (trim($shippingProviderId) === '') {
+            throw new \InvalidArgumentException('Lazada: shipping provider wajib diisi untuk pack/RTS.');
+        }
+
+        $items = $this->fetchOrderItemsWithStatus($this->requireShop($shopId), $orderId);
+        $tracking = $this->extractTrackingFromItems($items);
+        $packageId = $this->extractPackageIdFromItems($items);
+        $packableIds = $this->filterItemIdsByStatus($items, ['pending', 'repacked']);
+
+        if ($packableIds !== []) {
+            $pack = $this->fulfillPack($shopId, $orderId, $shippingProviderId, $deliveryType);
+            $packData = $pack['pack'] ?? [];
+            $tracking = $tracking ?: $this->extractTrackingFromPack($packData);
+            $packageId = $packageId ?: $this->extractPackageIdFromPack($packData);
+
+            $items = $this->fetchOrderItemsWithStatus($this->requireShop($shopId), $orderId);
+            $tracking = $tracking ?: $this->extractTrackingFromItems($items);
+            $packageId = $packageId ?: $this->extractPackageIdFromItems($items);
+        }
+
+        $packedIds = $this->filterItemIdsByStatus($items, ['packed']);
+
+        if ($packedIds === []) {
+
+            $this->resyncLocalOrder($shopId, $orderId);
+            $local = $this->localOrderForChannel($orderId);
+            $tracking = $tracking ?: $local?->tracking_number;
+
+            if ($tracking) {
+                return [
+                    'tracking_number' => (string) $tracking,
+                    'shipping_provider' => $local?->shipping_provider,
+                    'channel_status' => $local?->channel_status,
+                    'already_processed' => true,
+                ];
+            }
+
+            throw new \RuntimeException("Lazada order {$orderId} tidak berada pada status packed untuk RTS.");
+        }
+
+        $rts = $this->readyToShip($shopId, $orderId, $tracking, $packageId, $deliveryType);
+        $rtsData = $rts['rts'] ?? [];
+        $tracking = $tracking
+            ?: ($rtsData['tracking_number'] ?? $rtsData['tracking_code'] ?? null);
+
+        $local = $this->localOrderForChannel($orderId);
+        $tracking = $tracking ?: $local?->tracking_number;
+
+        if (! $tracking) {
+            throw new \RuntimeException("Lazada order {$orderId} berhasil RTS tetapi nomor resi belum dikembalikan.");
+        }
+
+        return [
+            'tracking_number' => (string) $tracking,
+            'shipping_provider' => $local?->shipping_provider,
+            'channel_status' => $local?->channel_status,
+            'already_processed' => false,
+        ];
+    }
+
     public function getOrderTrace(string $shopId, string $orderId): array
     {
         if ($orderId === '') {
@@ -540,6 +606,81 @@ class LazadaOrderService
         } catch (\Throwable $e) {
             Log::warning("Lazada: resync order {$orderId} gagal pasca aksi: ".$e->getMessage());
         }
+    }
+
+    private function localOrderForChannel(string $orderId): ?\Modules\Sales\Models\SalesOrder
+    {
+        return \Modules\Sales\Models\SalesOrder::query()
+            ->where('source', 'lazada')
+            ->where(function ($query) use ($orderId): void {
+                $query->where('channel_order_no', $orderId)
+                    ->orWhere('channel_order_no', 'LZ-'.$orderId);
+            })
+            ->first();
+    }
+
+    private function extractTrackingFromItems(array $items): ?string
+    {
+        foreach ($items as $item) {
+            $tracking = $item['tracking_number']
+                ?? $item['tracking_code']
+                ?? null;
+
+            if ($tracking !== null && $tracking !== '') {
+                return (string) $tracking;
+            }
+        }
+
+        return null;
+    }
+
+    private function extractPackageIdFromItems(array $items): ?string
+    {
+        foreach ($items as $item) {
+            $packageId = $item['package_id'] ?? null;
+
+            if ($packageId !== null && $packageId !== '') {
+                return (string) $packageId;
+            }
+        }
+
+        return null;
+    }
+
+    private function extractTrackingFromPack(array $packData): ?string
+    {
+        foreach ($packData['pack_order_list'] ?? [] as $packOrder) {
+            foreach ($packOrder['order_item_list'] ?? [] as $item) {
+                $tracking = $item['tracking_number']
+                    ?? $item['tracking_code']
+                    ?? null;
+
+                if ($tracking !== null && $tracking !== '') {
+                    return (string) $tracking;
+                }
+            }
+        }
+
+        return $packData['tracking_number']
+            ?? $packData['tracking_code']
+            ?? null;
+    }
+
+    private function extractPackageIdFromPack(array $packData): ?string
+    {
+        foreach ($packData['pack_order_list'] ?? [] as $packOrder) {
+            foreach ($packOrder['order_item_list'] ?? [] as $item) {
+                $packageId = $item['package_id'] ?? null;
+
+                if ($packageId !== null && $packageId !== '') {
+                    return (string) $packageId;
+                }
+            }
+        }
+
+        return isset($packData['package_id']) && $packData['package_id'] !== ''
+            ? (string) $packData['package_id']
+            : null;
     }
 
     protected function fetchItemsForOrders(object $shop, array $orderIds): array

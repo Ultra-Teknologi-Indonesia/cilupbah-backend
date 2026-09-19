@@ -13,7 +13,6 @@ return [
     'download_retry_attempts' => (int) env('CHANNEL_DOWNLOAD_RETRY_ATTEMPTS', 4),
     'download_max_pages' => (int) env('CHANNEL_DOWNLOAD_MAX_PAGES', 10000),
 
-    // Must outlive the product sync job timeout without leaving a permanent lock.
     'product_sync_overlap_lock_seconds' => (int) env('CHANNEL_PRODUCT_SYNC_OVERLAP_LOCK_SECONDS', 360),
 
     'search_cache_ttl_seconds' => (int) env('CHANNEL_SEARCH_CACHE_TTL_SECONDS', 30),

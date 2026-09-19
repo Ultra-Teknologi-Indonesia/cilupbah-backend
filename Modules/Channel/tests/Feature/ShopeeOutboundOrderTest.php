@@ -71,6 +71,25 @@ class ShopeeOutboundOrderTest extends TestCase
         });
     }
 
+    public function test_request_tracking_number_does_not_run_full_resync(): void
+    {
+        Http::fake([
+            'partner.shopeemobile.com/api/v2/logistics/get_shipping_parameter*' => Http::response([
+                'response' => ['pickup' => ['address_list' => [['address_id' => 123, 'time_slot_list' => [['pickup_time_id' => 'slot-1']]]]]],
+            ], 200),
+            'partner.shopeemobile.com/api/v2/logistics/ship_order*' => Http::response([
+                'response' => ['tracking_number' => 'SPX-DIRECT-001'],
+            ], 200),
+        ]);
+
+        $result = app(ShopeeOrderService::class)->requestTrackingNumber('778899', '2606SHOPEE01');
+
+        $this->assertTrue($result['shipped']);
+        $this->assertSame('SPX-DIRECT-001', $result['tracking_number']);
+        Http::assertSentCount(2);
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '/api/v2/order/get_order_detail'));
+    }
+
     public function test_cancel_order_sends_item_list_and_reason(): void
     {
         Http::fake([

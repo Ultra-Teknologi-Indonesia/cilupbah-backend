@@ -297,6 +297,26 @@ class SalesOrderService
             $count = 0;
 
             foreach ($orders as $order) {
+                $blockedPicklistItem = PicklistItem::query()
+                    ->where('order_id', $order->id)
+                    ->whereHas('picklist', fn ($query) => $query->whereNotIn('status', [
+                        Picklist::STATUS_DRAFT,
+                        Picklist::STATUS_FAILED,
+                        Picklist::STATUS_CANCELLED,
+                    ]))
+                    ->with('picklist:id,picklist_no,status')
+                    ->first();
+
+                if ($blockedPicklistItem) {
+                    $picklist = $blockedPicklistItem->picklist;
+
+                    throw new UserFacingException(
+                        'Pesanan masih memiliki proses picking',
+                        "Pesanan {$order->salesorder_no} masih terhubung ke picklist {$picklist?->picklist_no} berstatus {$picklist?->status}. Kembalikan melalui aksi pembatalan/revert picking agar stok dan picklist diproses bersama.",
+                        422,
+                    );
+                }
+
                 PicklistItem::where('order_id', $order->id)
                     ->whereHas('picklist', fn ($q) => $q->whereIn('status', [
                         Picklist::STATUS_DRAFT,
@@ -323,6 +343,24 @@ class SalesOrderService
 
             return $count;
         });
+
+        if ($count > 0) {
+            SalesOrder::query()
+                ->whereIn('id', $eligibleIds)
+                ->where('status', 'reserved')
+                ->get()
+                ->each(function (SalesOrder $order): void {
+                    try {
+                        app(ShippingLabelPrefetchService::class)->schedule($order);
+                    } catch (\Throwable $e) {
+                        Log::warning('Prefetch label gagal dijadwalkan setelah order masuk Siap Proses', [
+                            'order_id' => $order->id,
+                            'salesorder_no' => $order->salesorder_no,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                });
+        }
 
         return [
             'moved' => $count,

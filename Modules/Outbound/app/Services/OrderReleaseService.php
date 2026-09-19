@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
 use Modules\Sales\Events\OrderNeedsBuyerConfirmation;
+use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesInvoiceService;
 use Modules\Sales\Services\SalesOrderService as OrderService;
 
@@ -19,18 +20,23 @@ class OrderReleaseService
 
     public function releaseIfComplete(Picklist $picklist, string $orderId): bool
     {
-        $items = PicklistItem::with('order')
-            ->where('picklist_id', $picklist->id)
-            ->where('order_id', $orderId)
-            ->get();
 
-        if ($items->isEmpty()) {
+        $order = SalesOrder::query()
+            ->whereKey($orderId)
+            ->lockForUpdate()
+            ->first();
+
+        if (! $order || ! in_array($order->status, ['reserved', 'picked'], true)) {
             return false;
         }
 
-        $order = $items->first()->order;
+        $items = PicklistItem::query()
+            ->where('picklist_id', $picklist->id)
+            ->where('order_id', $orderId)
+            ->lockForUpdate()
+            ->get();
 
-        if (! $order || ! in_array($order->status, ['reserved', 'picked'], true)) {
+        if ($items->isEmpty()) {
             return false;
         }
 

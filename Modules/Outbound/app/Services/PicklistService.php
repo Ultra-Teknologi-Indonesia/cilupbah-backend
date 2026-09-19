@@ -490,10 +490,6 @@ class PicklistService
                 ]);
             }
 
-            if ($item->order_id) {
-                app(OrderReleaseService::class)
-                    ->releaseIfComplete($picklist, (string) $item->order_id);
-            }
         });
 
         $this->autoCompleteIfResolved($picklistId);
