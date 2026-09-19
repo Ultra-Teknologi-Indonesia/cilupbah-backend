@@ -157,6 +157,25 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                     'salesorder_no' => $order->salesorder_no,
                     'source' => $source,
                 ]);
+
+                if ($this->attempts() < $this->tries) {
+                    $attemptIndex = max(0, $this->attempts() - 1);
+                    $delay = (int) ($this->backoff[$attemptIndex] ?? end($this->backoff));
+
+                    Log::info('RequestChannelAwbJob: menjadwalkan percobaan berikutnya', [
+                        'order_id' => $order->id,
+                        'salesorder_no' => $order->salesorder_no,
+                        'source' => $source,
+                        'attempt' => $this->attempts(),
+                        'max_attempts' => $this->tries,
+                        'delay_seconds' => $delay,
+                    ]);
+
+                    $this->release($delay);
+
+                    return;
+                }
+
                 app(BulkShippingLabelService::class)->onOrderAwbGaveUp(
                     $order->id,
                     BulkShippingLabelItem::REASON_AWB_TIMEOUT,

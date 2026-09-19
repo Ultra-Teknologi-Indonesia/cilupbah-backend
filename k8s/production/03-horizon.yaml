@@ -39,6 +39,8 @@ spec:
           env:
             - name: REDIS_LONG_QUEUE_RETRY_AFTER
               value: "2160"
+            - name: REDIS_QUEUE_RETRY_AFTER
+              value: "420"
             - name: HORIZON_PROFILE
               value: "background"
             # Marketplace stock propagation is isolated from warehouse

@@ -30,6 +30,8 @@ spec:
               value: "labels"
             - name: QUEUE_LABEL_PARALLELISM
               value: "6"
+            - name: QUEUE_LABEL_PREFETCH_PARALLELISM
+              value: "1"
             - name: QUEUE_LABEL_AWB_PARALLELISM
               value: "2"
             - name: QUEUE_LABEL_ARCHIVE_PARALLELISM

@@ -21,15 +21,22 @@ class ProcessBulkShippingLabelItemJob implements ShouldBeUnique, ShouldQueue
 
     public int $timeout = 120;
 
-    public int $tries = 180;
+    public int $tries = 12;
+
+    public int $maxExceptions = 5;
+
+    public array $backoff = [5, 15, 30, 60, 120];
 
     public int $uniqueFor = 900;
+
+    public readonly \DateTimeInterface $retryDeadline;
 
     public function __construct(
         public readonly string $batchId,
         public readonly string $itemId,
         public readonly ?string $orderId = null,
     ) {
+        $this->retryDeadline = now()->addMinutes(15);
         $this->onConnection(config('queue.routing.labels.connection', 'redis-long'));
         $this->onQueue(config('queue.routing.labels.queue', 'labels'));
     }
@@ -40,6 +47,11 @@ class ProcessBulkShippingLabelItemJob implements ShouldBeUnique, ShouldQueue
         return $this->orderId !== null
             ? "order:{$this->orderId}"
             : "{$this->batchId}:{$this->itemId}";
+    }
+
+    public function retryUntil(): \DateTimeInterface
+    {
+        return $this->retryDeadline;
     }
 
     public function handle(BulkShippingLabelService $service): void
@@ -62,7 +74,7 @@ class ProcessBulkShippingLabelItemJob implements ShouldBeUnique, ShouldQueue
         $orderKey = $this->orderId ?: (string) $pendingItem->order_id;
         $lock = Cache::lock("bulk-label-order:{$orderKey}", $this->timeout + 60);
         if (! $lock->get()) {
-            $this->release(5);
+            $this->release(10);
 
             return;
         }
@@ -100,7 +112,7 @@ class ProcessBulkShippingLabelItemJob implements ShouldBeUnique, ShouldQueue
                         'updated_at' => now(),
                     ]);
 
-                $this->release(1);
+                $this->release(10);
 
                 return;
             }

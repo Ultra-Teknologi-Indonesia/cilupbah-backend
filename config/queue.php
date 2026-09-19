@@ -44,7 +44,9 @@ return [
             'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
             'queue' => env('REDIS_QUEUE', 'default'),
 
-            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 180),
+            // channel-stock workers may run for up to 330s; keep visibility
+            // above the longest worker timeout to avoid duplicate execution.
+            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 420),
             'block_for' => null,
 
             'after_commit' => true,
@@ -162,6 +164,13 @@ return [
 
     'webhook_retry_window_hours' => (int) env('WEBHOOK_RETRY_WINDOW_HOURS', 24),
 
+    'health' => [
+        'queue_ready_warning' => max(1, (int) env('QUEUE_HEALTH_READY_WARNING', 500)),
+        'queue_ready_critical' => max(1, (int) env('QUEUE_HEALTH_READY_CRITICAL', 2000)),
+        'queue_delayed_warning' => max(1, (int) env('QUEUE_HEALTH_DELAYED_WARNING', 500)),
+        'queue_reserved_warning' => max(1, (int) env('QUEUE_HEALTH_RESERVED_WARNING', 100)),
+    ],
+
     'dedicated_queues' => [
         env('QUEUE_NAME_EXPORTS_PDF', 'exports-pdf'),
         env('QUEUE_NAME_EXPORTS_SHEET', 'exports-sheet'),
@@ -237,6 +246,7 @@ return [
         'label_prefetch' => [
             'connection' => env('QUEUE_LABEL_CONNECTION', 'redis-long'),
             'queue' => env('QUEUE_NAME_LABEL_PREFETCH', 'label-prefetch'),
+            'parallelism' => max(1, min(2, (int) env('QUEUE_LABEL_PREFETCH_PARALLELISM', 1))),
         ],
 
         'label_archive' => [

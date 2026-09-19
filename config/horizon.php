@@ -6,7 +6,9 @@ use Illuminate\Support\Str;
 $supervisorProfiles = [
 
     'critical' => [
-        'supervisor-order-operations',
+        'supervisor-orders',
+        'supervisor-fulfillment',
+        'supervisor-stock-sync',
         'supervisor-channel-operations',
         'supervisor-stock',
         'supervisor-stock-default',
@@ -42,14 +44,27 @@ $supervisorProfiles = [
 
     'labels' => [
         'supervisor-labels',
+        'supervisor-label-prefetch',
         'supervisor-label-awb',
         'supervisor-label-archive',
     ],
 ];
 
-$orderOperationsProcesses = max(
+$legacyOrderOperationsProcesses = max(
     1,
     min(6, (int) env('HORIZON_ORDER_OPERATIONS_PROCESSES', 6)),
+);
+$ordersProcesses = max(
+    1,
+    min(4, (int) env('HORIZON_ORDERS_PROCESSES', min(3, $legacyOrderOperationsProcesses))),
+);
+$fulfillmentProcesses = max(
+    1,
+    min(3, (int) env('HORIZON_FULFILLMENT_PROCESSES', min(2, $legacyOrderOperationsProcesses))),
+);
+$stockSyncProcesses = max(
+    1,
+    min(2, (int) env('HORIZON_STOCK_SYNC_PROCESSES', 1)),
 );
 $stockMaxProcesses = max(
     1,
@@ -102,6 +117,9 @@ return [
         config('queue.routing.channel_sync.connection', 'redis-channel-sync').':'
             .config('queue.names.product', 'product') => 120,
         'redis:channel-fulfillment' => 60,
+        'redis:'.config('queue.names.orders', 'orders') => 60,
+        'redis:'.config('queue.names.fulfillment', 'fulfillment') => 60,
+        'redis:'.config('queue.names.stock_sync', 'stock-sync') => 60,
         'redis-long:channel-product' => 120,
         'redis-long:channel-after-sales' => 120,
         'redis-long:stock-cutover' => 300,
@@ -188,12 +206,40 @@ return [
             'nice' => 0,
         ],
 
-        'supervisor-order-operations' => [
+        'supervisor-orders' => [
             'connection' => 'redis',
-            'queue' => ['orders', 'fulfillment', 'stock-sync'],
+            'queue' => [config('queue.names.orders', 'orders')],
             'balance' => 'off',
-            'minProcesses' => $orderOperationsProcesses,
-            'maxProcesses' => $orderOperationsProcesses,
+            'minProcesses' => $ordersProcesses,
+            'maxProcesses' => $ordersProcesses,
+            'maxTime' => 3600,
+            'maxJobs' => 250,
+            'timeout' => 60,
+            'tries' => 3,
+            'backoff' => [5, 15, 30],
+            'memory' => 128,
+            'nice' => 0,
+        ],
+        'supervisor-fulfillment' => [
+            'connection' => 'redis',
+            'queue' => [config('queue.names.fulfillment', 'fulfillment')],
+            'balance' => 'off',
+            'minProcesses' => $fulfillmentProcesses,
+            'maxProcesses' => $fulfillmentProcesses,
+            'maxTime' => 3600,
+            'maxJobs' => 250,
+            'timeout' => 60,
+            'tries' => 3,
+            'backoff' => [5, 15, 30],
+            'memory' => 128,
+            'nice' => 0,
+        ],
+        'supervisor-stock-sync' => [
+            'connection' => 'redis',
+            'queue' => [config('queue.names.stock_sync', 'stock-sync')],
+            'balance' => 'off',
+            'minProcesses' => $stockSyncProcesses,
+            'maxProcesses' => $stockSyncProcesses,
             'maxTime' => 3600,
             'maxJobs' => 250,
             'timeout' => 60,
@@ -385,10 +431,7 @@ return [
         ],
         'supervisor-labels' => [
             'connection' => config('queue.routing.labels.connection', 'redis-long'),
-            'queue' => [
-                config('queue.routing.labels.queue', 'labels'),
-                config('queue.routing.label_prefetch.queue', 'label-prefetch'),
-            ],
+            'queue' => [config('queue.routing.labels.queue', 'labels')],
             'balance' => 'off',
             'minProcesses' => config('queue.routing.labels.parallelism', 4),
             'maxProcesses' => config('queue.routing.labels.parallelism', 4),
@@ -397,6 +440,19 @@ return [
             'tries' => 1,
             'memory' => 512,
             'nice' => 0,
+        ],
+        'supervisor-label-prefetch' => [
+            'connection' => config('queue.routing.label_prefetch.connection', 'redis-long'),
+            'queue' => [config('queue.routing.label_prefetch.queue', 'label-prefetch')],
+            'balance' => 'off',
+            'minProcesses' => config('queue.routing.label_prefetch.parallelism', 1),
+            'maxProcesses' => config('queue.routing.label_prefetch.parallelism', 1),
+            'maxJobs' => 100,
+            'timeout' => 180,
+            'tries' => 3,
+            'backoff' => [10, 30, 60],
+            'memory' => 256,
+            'nice' => 5,
         ],
         'supervisor-label-awb' => [
             'connection' => config('queue.routing.label_awb.connection', 'redis-long'),

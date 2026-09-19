@@ -65,6 +65,7 @@ class MonitorRedisQueueHealth extends Command
             ];
 
             $this->reportNewEvictions($connection, $kind, $evictedKeys, $context);
+            $this->monitorQueueDepths($redis, $connection, $kind);
 
             if ($ratio >= 0.9) {
                 Log::critical('Redis memory above 90 percent', $context);
@@ -79,6 +80,75 @@ class MonitorRedisQueueHealth extends Command
                 'exception' => $e::class,
                 'error' => $e->getMessage(),
             ]);
+        }
+    }
+
+    private function monitorQueueDepths(mixed $redis, string $connection, string $kind): void
+    {
+        $queues = [];
+
+        foreach (config('horizon.defaults', []) as $supervisor) {
+            $queueConnection = (string) ($supervisor['connection'] ?? 'redis');
+            $redisConnection = (string) data_get(
+                config("queue.connections.{$queueConnection}"),
+                'connection',
+                'default',
+            );
+
+            if ($redisConnection !== $connection) {
+                continue;
+            }
+
+            foreach ((array) ($supervisor['queue'] ?? []) as $queue) {
+                $queues[(string) $queue] = true;
+            }
+        }
+
+        $warningReady = (int) config('queue.health.queue_ready_warning', 500);
+        $criticalReady = (int) config('queue.health.queue_ready_critical', 2000);
+        $warningDelayed = (int) config('queue.health.queue_delayed_warning', 500);
+        $warningReserved = (int) config('queue.health.queue_reserved_warning', 100);
+
+        foreach (array_keys($queues) as $queue) {
+            try {
+                $prefix = "queues:{$queue}";
+                $ready = (int) $redis->llen($prefix);
+                $delayed = (int) $redis->zcard("{$prefix}:delayed");
+                $reserved = (int) $redis->zcard("{$prefix}:reserved");
+
+                if ($ready < $warningReady && $delayed < $warningDelayed && $reserved < $warningReserved) {
+                    continue;
+                }
+
+                $context = [
+                    'redis' => $kind,
+                    'redis_connection' => $connection,
+                    'queue' => $queue,
+                    'ready' => $ready,
+                    'delayed' => $delayed,
+                    'reserved' => $reserved,
+                    'thresholds' => [
+                        'ready_warning' => $warningReady,
+                        'ready_critical' => $criticalReady,
+                        'delayed_warning' => $warningDelayed,
+                        'reserved_warning' => $warningReserved,
+                    ],
+                ];
+
+                if ($ready >= $criticalReady) {
+                    Log::critical('Queue depth above critical threshold', $context);
+                } else {
+                    Log::warning('Queue depth above operational threshold', $context);
+                }
+            } catch (\Throwable $e) {
+                Log::error('Queue depth health check failed', [
+                    'redis' => $kind,
+                    'redis_connection' => $connection,
+                    'queue' => $queue,
+                    'exception' => $e::class,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
     }
 

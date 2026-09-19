@@ -43,6 +43,8 @@ spec:
               value: "20"
             - name: REDIS_LONG_QUEUE_RETRY_AFTER
               value: "2160"
+            - name: REDIS_QUEUE_RETRY_AFTER
+              value: "420"
             - name: LABEL_LOCAL_FIRST
               value: "true"
             - name: LABEL_PRINT_SPOOL_ROOT

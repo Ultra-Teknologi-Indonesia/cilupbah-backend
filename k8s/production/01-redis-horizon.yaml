@@ -33,7 +33,8 @@ spec:
           command:
             - redis-server
             - --maxmemory
-            - "1792mb"
+            # Keep RSS/AOF rewrite headroom inside the 2GiB cgroup limit.
+            - "1536mb"
             - --maxmemory-policy
             # Horizon stores supervisor/control metadata here. Silent eviction can
             # make the dashboard and worker control plane inconsistent; retention

@@ -107,7 +107,9 @@ class HorizonQueueCoverageTest extends TestCase
     {
         foreach ([
             'supervisor-default' => [1, 1],
-            'supervisor-order-operations' => [6, 6],
+            'supervisor-orders' => [3, 3],
+            'supervisor-fulfillment' => [2, 2],
+            'supervisor-stock-sync' => [1, 1],
             'supervisor-channel-sync' => [4, 4],
             'supervisor-product-validation' => [1, 1],
             'supervisor-channel-operations' => [1, 1],
@@ -118,6 +120,7 @@ class HorizonQueueCoverageTest extends TestCase
             'supervisor-lazada-fulfillment' => [1, 1],
             'supervisor-lazada-webhooks-background' => [1, 1],
             'supervisor-labels' => [4, 4],
+            'supervisor-label-prefetch' => [1, 1],
             'supervisor-label-awb' => [2, 2],
             'supervisor-label-archive' => [2, 2],
         ] as $name => [$minProcesses, $maxProcesses]) {
