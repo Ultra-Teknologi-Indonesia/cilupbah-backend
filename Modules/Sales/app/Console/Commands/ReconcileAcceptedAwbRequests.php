@@ -8,6 +8,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Schema;
 use Modules\Sales\Jobs\RequestChannelAwbJob;
 use Modules\Sales\Models\ChannelOperationAttempt;
+use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Support\ChannelOperationLedger;
 
 final class ReconcileAcceptedAwbRequests extends Command
@@ -38,8 +39,20 @@ final class ReconcileAcceptedAwbRequests extends Command
             ->limit($limit)
             ->pluck('order_id');
 
+        $completed = 0;
         $scheduled = 0;
         foreach ($orderIds as $orderId) {
+            $order = SalesOrder::query()->find($orderId);
+            if ($order !== null && filled($order->tracking_number)) {
+                ChannelOperationLedger::markSucceededWhenVerified($order, 'request_awb', [
+                    'tracking_number' => $order->tracking_number,
+                    'verified_from' => 'local_order',
+                ]);
+                $completed++;
+
+                continue;
+            }
+
             if (! ChannelOperationLedger::beginVerification((string) $orderId, 'request_awb', $cooldownSeconds)) {
                 continue;
             }
@@ -48,6 +61,7 @@ final class ReconcileAcceptedAwbRequests extends Command
             $scheduled++;
         }
 
+        $this->info("AWB selesai dari resi lokal: {$completed} order.");
         $this->info("Verifikasi AWB baca-saja dijadwalkan: {$scheduled} order.");
 
         return self::SUCCESS;
