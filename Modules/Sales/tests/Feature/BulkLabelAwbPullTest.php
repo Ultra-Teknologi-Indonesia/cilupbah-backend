@@ -37,6 +37,7 @@ class BulkLabelAwbPullTest extends TestCase
         parent::setUp();
         $this->seed(RoleSeeder::class);
         Storage::fake('documents');
+        Storage::fake('print_spool');
         $this->user = User::factory()->create();
     }
 
@@ -204,6 +205,50 @@ class BulkLabelAwbPullTest extends TestCase
             $secondItem->status,
             'Batch baru harus tetap pending; status downloading tidak boleh diwariskan dari batch lain.',
         );
+
+        app(BulkShippingLabelService::class)->queueBatch($secondBatch);
+
+        Queue::assertPushed(
+            ProcessBulkShippingLabelJob::class,
+            fn ($job) => $job->batchId === $secondBatch->id,
+        );
+    }
+
+    public function test_batch_baru_menggunakan_kembali_label_ready_dari_batch_sebelumnya(): void
+    {
+        Queue::fake();
+
+        $order = $this->orderWithoutAwb([
+            'tracking_number' => 'AWB-REUSE-001',
+        ]);
+        $size = BulkShippingLabelService::DEFAULT_SIZE;
+        $sourceBatch = \Modules\Sales\Models\BulkShippingLabelBatch::create([
+            'user_id' => $this->user->id,
+            'status' => \Modules\Sales\Models\BulkShippingLabelBatch::STATUS_READY,
+            'per_channel_opts' => ['document_size' => $size],
+            'total_count' => 1,
+            'done_count' => 1,
+            'failed_count' => 0,
+            'skipped_count' => 0,
+        ]);
+        $sourcePath = "items/{$sourceBatch->id}/source-item/ready.pdf";
+        Storage::disk('print_spool')->put($sourcePath, '%PDF-1.4 READY LABEL');
+        BulkShippingLabelItem::create([
+            'batch_id' => $sourceBatch->id,
+            'order_id' => $order->id,
+            'channel' => 'shopee',
+            'status' => BulkShippingLabelItem::STATUS_READY,
+            'ready_pdf_path' => $sourcePath,
+        ]);
+
+        $secondBatch = $this->createBatchFor($order);
+        $secondItem = $this->itemOf($secondBatch);
+
+        $this->assertSame(BulkShippingLabelItem::STATUS_READY, $secondItem->status);
+        $this->assertNotSame($sourcePath, $secondItem->ready_pdf_path);
+        $this->assertTrue(Storage::disk('print_spool')->exists($secondItem->ready_pdf_path));
+        $this->assertSame(1, $secondBatch->refresh()->done_count);
+        Queue::assertNotPushed(ProcessBulkShippingLabelItemJob::class);
 
         app(BulkShippingLabelService::class)->queueBatch($secondBatch);
 

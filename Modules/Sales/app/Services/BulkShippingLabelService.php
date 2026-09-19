@@ -139,8 +139,16 @@ class BulkShippingLabelService
         });
 
         foreach ($orderIds as $orderId) {
-            $this->hydrateCachedLabel($orderId);
+            $item = $batch->items()
+                ->where('order_id', $orderId)
+                ->first();
+
+            if ($item) {
+                $this->hydrateReusableLabel($item, $perChannelOpts);
+            }
         }
+
+        $batch->recomputeCounts();
 
         foreach ($awaitingAwb as $orderId) {
             RequestChannelAwbJob::dispatch($orderId);
@@ -151,30 +159,15 @@ class BulkShippingLabelService
 
     public function queueBatch(BulkShippingLabelBatch $batch): void
     {
-
-        if ($batch->started_at === null) {
-            $batch->items()
-                ->whereIn('status', [
-                    BulkShippingLabelItem::STATUS_DOWNLOADING,
-                    BulkShippingLabelItem::STATUS_TRANSFORMING,
-                    BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE,
-                    BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP,
-                    BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP,
-                    BulkShippingLabelItem::STATUS_WAITING_TIKTOK_PREP,
-                ])
-                ->update([
-                    'status' => BulkShippingLabelItem::STATUS_PENDING,
-                    'reason' => null,
-                    'updated_at' => now(),
-                ]);
-        }
-
         $hasPending = $batch->items()
             ->where('status', BulkShippingLabelItem::STATUS_PENDING)
             ->exists();
 
-        if (! $hasPending) {
+        $hasTransient = $batch->items()
+            ->whereIn('status', BulkShippingLabelItem::TRANSIENT_STATUSES)
+            ->exists();
 
+        if (! $hasPending && $hasTransient) {
             return;
         }
 
@@ -472,19 +465,7 @@ class BulkShippingLabelService
             ->get();
 
         foreach ($items as $item) {
-            $path = "items/{$item->batch_id}/{$item->id}/raw.pdf";
-            if (! $disk->put($path, $bytes)) {
-                throw new \RuntimeException('File PDF sementara tidak dapat disimpan ke print spool.');
-            }
-            $item->update([
-                'status' => BulkShippingLabelItem::STATUS_TRANSFORMING,
-                'raw_pdf_path' => $path,
-                'ready_pdf_path' => null,
-                'downloaded_at' => now(),
-                'reason' => null,
-            ]);
-
-            TransformBulkShippingLabelItemJob::dispatch((string) $item->batch_id, (string) $item->id);
+            $this->stageDownloadedLabelItem($item, $bytes, $disk);
         }
 
         return $items->count();
@@ -509,6 +490,16 @@ class BulkShippingLabelService
         $transformed = $this->normalizeToTarget($raw, $sizeKey, $item->channel);
         $disk->put($readyPath, $transformed);
         $disk->delete($item->raw_pdf_path);
+
+        $order = SalesOrder::find($item->order_id);
+        if ($order) {
+            $this->salesOrderService->cacheThermalShippingLabelBytes(
+                $order,
+                $raw,
+                $sizeKey,
+                $transformed,
+            );
+        }
 
         $item->update([
             'status' => BulkShippingLabelItem::STATUS_READY,
@@ -1154,6 +1145,14 @@ class BulkShippingLabelService
         ?SalesOrder $order = null,
     ): void {
         $orderId = (string) ($order?->id ?? $item->order_id);
+        if ($order) {
+            $this->salesOrderService->cacheShippingLabelBytes(
+                $order,
+                $bytes,
+                $order->shipping_label_doc_type,
+            );
+        }
+
         if ($order && $order->shipping_label_status !== 'ready') {
             $order->forceFill([
                 'shipping_label_status' => 'ready',
@@ -1164,6 +1163,139 @@ class BulkShippingLabelService
         if ($this->stageDownloadedLabel($orderId, $bytes) === 0) {
             $this->stageDownloadedLabel((string) $item->order_id, $bytes);
         }
+    }
+
+    private function hydrateReusableLabel(
+        BulkShippingLabelItem $item,
+        array $perChannelOpts,
+    ): bool {
+        if ($item->status !== BulkShippingLabelItem::STATUS_PENDING) {
+            return false;
+        }
+
+        $sizeKey = (string) data_get(
+            $perChannelOpts,
+            'document_size',
+            self::DEFAULT_SIZE,
+        );
+
+        $disk = Storage::disk(config('bulk-labels.spool_disk', 'print_spool'));
+        $previous = BulkShippingLabelItem::query()
+            ->with('batch:id,status,per_channel_opts')
+            ->where('order_id', $item->order_id)
+            ->where('id', '!=', $item->id)
+            ->whereIn('status', BulkShippingLabelItem::COMPLETED_STATUSES)
+            ->whereNotNull('ready_pdf_path')
+            ->whereHas('batch', function ($query): void {
+                $query->whereIn('status', [
+                    BulkShippingLabelBatch::STATUS_PROCESSING,
+                    BulkShippingLabelBatch::STATUS_READY,
+                ]);
+            })
+            ->latest('updated_at')
+            ->get()
+            ->first(function (BulkShippingLabelItem $candidate) use ($sizeKey, $disk): bool {
+                $candidateSize = (string) data_get(
+                    $candidate->batch?->per_channel_opts,
+                    'document_size',
+                    self::DEFAULT_SIZE,
+                );
+
+                return $candidateSize === $sizeKey
+                    && $candidate->ready_pdf_path !== null
+                    && $disk->exists($candidate->ready_pdf_path);
+            });
+
+        if ($previous) {
+            $targetPath = "items/{$item->batch_id}/{$item->id}/ready.pdf";
+            if ($disk->copy($previous->ready_pdf_path, $targetPath)) {
+                $item->update([
+                    'status' => BulkShippingLabelItem::STATUS_READY,
+                    'ready_pdf_path' => $targetPath,
+                    'raw_pdf_path' => null,
+                    'downloaded_at' => now(),
+                    'reason' => null,
+                ]);
+
+                return true;
+            }
+
+            Log::warning('Bulk label reuse artifact tidak dapat disalin, lanjut ke cache order', [
+                'order_id' => $item->order_id,
+                'source_path' => $previous->ready_pdf_path,
+            ]);
+        }
+
+        $order = SalesOrder::find($item->order_id);
+        if (! $order) {
+            return false;
+        }
+
+        $sourceBytes = $this->salesOrderService->cachedShippingLabelBytes($order);
+        if ($sourceBytes === null) {
+            return false;
+        }
+
+        $normalizedBytes = $this->salesOrderService->cachedThermalShippingLabelBytes(
+            $order,
+            $sourceBytes,
+            $sizeKey,
+        );
+
+        if ($normalizedBytes !== null) {
+            return $this->stageReadyLabelItem($item, $normalizedBytes, $disk);
+        }
+
+        $this->stageDownloadedLabelItem($item, $sourceBytes, $disk);
+
+        return true;
+    }
+
+    private function stageDownloadedLabelItem(
+        BulkShippingLabelItem $item,
+        string $bytes,
+        ?\Illuminate\Contracts\Filesystem\Filesystem $disk = null,
+    ): void {
+        $disk ??= Storage::disk(config('bulk-labels.spool_disk', 'print_spool'));
+        $path = "items/{$item->batch_id}/{$item->id}/raw.pdf";
+        if (! $disk->put($path, $bytes)) {
+            throw new \RuntimeException('File PDF sementara tidak dapat disimpan ke print spool.');
+        }
+
+        $item->update([
+            'status' => BulkShippingLabelItem::STATUS_TRANSFORMING,
+            'raw_pdf_path' => $path,
+            'ready_pdf_path' => null,
+            'downloaded_at' => now(),
+            'reason' => null,
+        ]);
+
+        TransformBulkShippingLabelItemJob::dispatch((string) $item->batch_id, (string) $item->id);
+    }
+
+    private function stageReadyLabelItem(
+        BulkShippingLabelItem $item,
+        string $bytes,
+        \Illuminate\Contracts\Filesystem\Filesystem $disk,
+    ): bool {
+        if ($bytes === '') {
+            return false;
+        }
+
+        $path = "items/{$item->batch_id}/{$item->id}/ready.pdf";
+        if (! $disk->put($path, $bytes)) {
+            throw new \RuntimeException('File label siap tidak dapat disimpan ke print spool.');
+        }
+
+        $item->update([
+            'status' => BulkShippingLabelItem::STATUS_READY,
+            'ready_pdf_path' => $path,
+            'raw_pdf_path' => null,
+            'downloaded_at' => now(),
+            'reason' => null,
+        ]);
+
+        return true;
     }
 
     private function fail(BulkShippingLabelItem $item, string $reason): void
