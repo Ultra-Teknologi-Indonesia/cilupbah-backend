@@ -159,6 +159,22 @@ class ChannelShipmentTriggerTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_order_yang_sudah_dibatalkan_tidak_pernah_dikirim_ready_to_ship(): void
+    {
+        $order = $this->seedOrder('shopee', status: 'packed');
+        DB::table('sales_orders')->where('id', $order)->update([
+            'status' => 'cancelled',
+            'is_canceled' => true,
+            'channel_status' => 'CANCELLED',
+        ]);
+
+        $results = app(OutboundFulfillmentService::class)->readyToShip([$order]);
+
+        $this->assertSame('skipped', $results[0]['status']);
+        $this->assertStringContainsString('dibatalkan', $results[0]['message']);
+        Http::assertNothingSent();
+    }
+
     public function test_manifest_tetap_jadi_jaring_pengaman_kalau_packing_gagal_atur_kirim(): void
     {
         $order = $this->seedOrder('shopee', status: 'packed');

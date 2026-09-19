@@ -31,6 +31,7 @@ use Modules\Outbound\Services\Logistics\LogisticsGateway;
 use Modules\Report\Models\ExportJob;
 use Modules\Sales\Models\SalesOrder as Order;
 use Modules\Sales\Services\SalesOrderService;
+use Modules\Sales\Support\ChannelOrderSideEffectGuard;
 
 class OutboundFulfillmentService
 {
@@ -156,6 +157,15 @@ class OutboundFulfillmentService
                 continue;
             }
 
+            $activeOrder = ChannelOrderSideEffectGuard::active((string) $order->id, 'ready_to_ship');
+            if ($activeOrder === null) {
+                $results[] = $this->result($order, 'skipped', 'Order sudah dibatalkan; Ready to Ship tidak dikirim ke channel.');
+
+                continue;
+            }
+
+            $order = $activeOrder;
+
             if ($skip = $this->alreadyHandledMessage((string) $order->channel_status)) {
                 $results[] = $this->result($order, 'skipped', $skip);
 
@@ -176,6 +186,15 @@ class OutboundFulfillmentService
             }
 
             try {
+                // The order may have been cancelled while this request was waiting for its RTS lock.
+                $activeOrder = ChannelOrderSideEffectGuard::active((string) $order->id, 'ready_to_ship');
+                if ($activeOrder === null) {
+                    $results[] = $this->result($order, 'skipped', 'Order sudah dibatalkan; Ready to Ship tidak dikirim ke channel.');
+
+                    continue;
+                }
+
+                $order = $activeOrder;
                 $adapter = $this->logisticsGateway->for($order->source);
                 $outcome = $adapter->readyToShip($order);
                 $results[] = $this->result(
