@@ -41,6 +41,10 @@ spec:
               value: "2160"
             - name: HORIZON_PROFILE
               value: "background"
+            # Marketplace stock propagation is isolated from warehouse
+            # critical work and starts conservatively to protect Redis/DB.
+            - name: HORIZON_CHANNEL_STOCK_MAX_PROCESSES
+              value: "1"
             - name: CHANNEL_SYNC_WINDOW_MINUTES
               value: "5"
             - name: LABEL_LOCAL_FIRST

@@ -114,6 +114,7 @@ return [
         'stock_sync' => env('QUEUE_NAME_STOCK_SYNC', 'stock-sync'),
         'stock_critical' => env('QUEUE_NAME_STOCK_CRITICAL', 'stock-critical'),
         'stock_default' => env('QUEUE_NAME_STOCK_DEFAULT', 'stock-default'),
+        'warehouse_safety' => env('QUEUE_NAME_WAREHOUSE_SAFETY', 'warehouse-safety'),
         'tracking' => env('QUEUE_NAME_TRACKING', 'tracking'),
         'imports' => env('QUEUE_NAME_IMPORTS', 'imports'),
         'sales' => env('QUEUE_NAME_SALES', 'orders'),
@@ -178,6 +179,16 @@ return [
         'stock_default' => [
             'connection' => env('QUEUE_STOCK_DEFAULT_CONNECTION', 'redis'),
             'queue' => env('QUEUE_NAME_STOCK_DEFAULT', 'stock-default'),
+        ],
+
+        'channel_stock' => [
+            'connection' => env('QUEUE_CHANNEL_STOCK_CONNECTION', 'redis'),
+            'queue' => env('QUEUE_NAME_CHANNEL_STOCK', 'channel-stock'),
+        ],
+
+        'warehouse_safety' => [
+            'connection' => env('QUEUE_WAREHOUSE_SAFETY_CONNECTION', 'redis'),
+            'queue' => env('QUEUE_NAME_WAREHOUSE_SAFETY', 'warehouse-safety'),
         ],
 
         'channel_product' => [

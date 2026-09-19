@@ -229,6 +229,10 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
             'qty' => -1,
         ]);
         Queue::assertPushed(ProcessPicklistCompleteJob::class, 1);
+        Queue::assertPushed(ProcessPicklistCompleteJob::class, function (ProcessPicklistCompleteJob $job): bool {
+            return $job->queue === config('queue.routing.warehouse_safety.queue')
+                && $job->connection === config('queue.routing.warehouse_safety.connection');
+        });
     }
 
     public function test_stage_endpoint_returns_flat_paginated_data(): void
@@ -366,6 +370,10 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
         ]);
 
         Queue::assertPushed(ProcessPicklistCompleteJob::class, 1);
+        Queue::assertPushed(ProcessPicklistCompleteJob::class, function (ProcessPicklistCompleteJob $job): bool {
+            return $job->queue === config('queue.routing.warehouse_safety.queue')
+                && $job->connection === config('queue.routing.warehouse_safety.connection');
+        });
         $this->assertSame('picked', $this->order->fresh()->status);
         $this->assertDatabaseCount('sales_invoices', 1);
         $this->assertSame(1, (int) PicklistItemAllocation::query()

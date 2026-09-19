@@ -113,10 +113,10 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
             ? config(
                 $queueTier === 'bulk'
                     ? 'queue.routing.stock_default'
-                    : 'queue.routing.stock_critical',
+                    : 'queue.routing.channel_stock',
                 [
                     'connection' => 'redis',
-                    'queue' => $queueTier === 'bulk' ? 'stock-default' : 'stock-critical',
+                    'queue' => $queueTier === 'bulk' ? 'stock-default' : 'channel-stock',
                 ],
             )
             : config('queue.routing.channel_product', [

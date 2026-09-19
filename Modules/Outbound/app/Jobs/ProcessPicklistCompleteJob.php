@@ -12,18 +12,23 @@ use Illuminate\Support\Facades\DB;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Services\OrderReleaseService;
 
-class ProcessPicklistCompleteJob implements ShouldQueue, ShouldBeUnique
+class ProcessPicklistCompleteJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
+
     public array $backoff = [3, 10, 30];
+
     public int $uniqueFor = 3600;
 
     public function __construct(
         protected string $picklistId,
     ) {
-        $this->onQueue(config('queue.names.stock_critical'));
+        // This is an idempotent safety/retry path. It must not wait behind
+        // marketplace stock synchronisation or block the warehouse path.
+        $this->onConnection(config('queue.routing.warehouse_safety.connection', 'redis'))
+            ->onQueue(config('queue.routing.warehouse_safety.queue', 'warehouse-safety'));
     }
 
     public function uniqueId(): string
@@ -35,7 +40,7 @@ class ProcessPicklistCompleteJob implements ShouldQueue, ShouldBeUnique
     {
         $picklist = Picklist::with('items.order', 'items.orderItem', 'picker')->find($this->picklistId);
 
-        if (!$picklist || $picklist->status !== Picklist::STATUS_COMPLETED) {
+        if (! $picklist || $picklist->status !== Picklist::STATUS_COMPLETED) {
             return;
         }
 

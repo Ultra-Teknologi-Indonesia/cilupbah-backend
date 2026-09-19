@@ -38,6 +38,10 @@ spec:
               value: "2160"
             - name: HORIZON_PROFILE
               value: "critical"
+            # Keep local warehouse-critical work bounded. Marketplace stock
+            # propagation is routed to the background channel-stock worker.
+            - name: HORIZON_STOCK_MAX_PROCESSES
+              value: "2"
           resources:
             requests:
               memory: "2560Mi"

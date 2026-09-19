@@ -137,6 +137,9 @@ class ChannelSyncAxesTest extends TestCase
     public function test_price_push_can_run_without_stock_push(): void
     {
         Http::fake([
+            'partner.shopeemobile.com/api/v2/product/get_model_list*' => Http::response([
+                'response' => ['model' => [['model_id' => 111, 'model_sku' => 'SKU-1']]],
+            ], 200),
             'partner.shopeemobile.com/api/v2/product/update_price*' => Http::response(['response' => []], 200),
             'partner.shopeemobile.com/api/v2/product/update_stock*' => Http::response(['response' => []], 200),
         ]);
@@ -178,16 +181,16 @@ class ChannelSyncAxesTest extends TestCase
         ]);
     }
 
-    public function test_stock_sync_uses_critical_queue_and_coalesces_duplicate_events(): void
+    public function test_stock_sync_uses_dedicated_channel_queue_and_coalesces_duplicate_events(): void
     {
         $job = new SyncProductToChannelJob('product-1', self::SHOP_ID, 'sync_stock');
 
         $this->assertSame(
-            config('queue.routing.stock_critical.connection'),
+            config('queue.routing.channel_stock.connection'),
             $job->connection,
         );
         $this->assertSame(
-            config('queue.routing.stock_critical.queue'),
+            config('queue.routing.channel_stock.queue'),
             $job->queue,
         );
         $this->assertSame(
@@ -210,7 +213,7 @@ class ChannelSyncAxesTest extends TestCase
 
         $variantJob = new SyncStockToChannelsJob('variant-1');
 
-        $this->assertSame(config('queue.routing.stock_critical.queue'), $variantJob->queue);
+        $this->assertSame(config('queue.routing.channel_stock.queue'), $variantJob->queue);
         $this->assertSame('variant-stock:variant-1:*', $variantJob->uniqueId());
     }
 

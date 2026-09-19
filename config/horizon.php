@@ -10,6 +10,7 @@ $supervisorProfiles = [
         'supervisor-channel-operations',
         'supervisor-stock',
         'supervisor-stock-default',
+        'supervisor-warehouse-safety',
         'supervisor-tracking',
         'supervisor-shopee-orders',
         'supervisor-tiktok-orders',
@@ -26,6 +27,7 @@ $supervisorProfiles = [
     'background' => [
         'supervisor-default',
         'supervisor-channel-sync',
+        'supervisor-channel-stock',
         'supervisor-product-validation',
         'supervisor-channel-finance',
         'supervisor-channel-product',
@@ -52,6 +54,10 @@ $orderOperationsProcesses = max(
 $stockMaxProcesses = max(
     1,
     min(4, (int) env('HORIZON_STOCK_MAX_PROCESSES', 4)),
+);
+$channelStockMaxProcesses = max(
+    1,
+    min(2, (int) env('HORIZON_CHANNEL_STOCK_MAX_PROCESSES', 1)),
 );
 
 return [
@@ -85,6 +91,10 @@ return [
             .config('queue.routing.stock_critical.queue', 'stock-critical') => 30,
         config('queue.routing.stock_default.connection', 'redis').':'
             .config('queue.routing.stock_default.queue', 'stock-default') => 120,
+        config('queue.routing.warehouse_safety.connection', 'redis').':'
+            .config('queue.routing.warehouse_safety.queue', 'warehouse-safety') => 30,
+        config('queue.routing.channel_stock.connection', 'redis').':'
+            .config('queue.routing.channel_stock.queue', 'channel-stock') => 120,
         config('queue.routing.channel_finance.connection', 'redis-finance').':'
             .config('queue.routing.channel_finance.queue', 'channel-finance') => 120,
         config('queue.routing.channel_sync.connection', 'redis-channel-sync').':'
@@ -226,7 +236,6 @@ return [
             'connection' => 'redis',
             'queue' => [
                 env('QUEUE_NAME_CHANNEL_CANCELLATION', 'channel-cancellation'),
-                env('QUEUE_NAME_CHANNEL_STOCK', 'channel-stock'),
                 env('QUEUE_NAME_CHANNEL_FULFILLMENT', 'channel-fulfillment'),
             ],
             'balance' => 'off',
@@ -239,6 +248,20 @@ return [
             'backoff' => [10, 30, 60],
             'memory' => 128,
             'nice' => 0,
+        ],
+        'supervisor-channel-stock' => [
+            'connection' => config('queue.routing.channel_stock.connection', 'redis'),
+            'queue' => [config('queue.routing.channel_stock.queue', 'channel-stock')],
+            'balance' => 'off',
+            'minProcesses' => $channelStockMaxProcesses,
+            'maxProcesses' => $channelStockMaxProcesses,
+            'maxJobs' => 100,
+            'maxTime' => 1800,
+            'timeout' => 330,
+            'tries' => 3,
+            'backoff' => [30, 120, 300],
+            'memory' => 256,
+            'nice' => 10,
         ],
         'supervisor-channel-finance' => [
             'connection' => config('queue.routing.channel_finance.connection', 'redis-finance'),
@@ -332,6 +355,20 @@ return [
             'backoff' => [3, 10, 30],
             'memory' => 128,
             'nice' => 0,
+        ],
+        'supervisor-warehouse-safety' => [
+            'connection' => config('queue.routing.warehouse_safety.connection', 'redis'),
+            'queue' => [config('queue.routing.warehouse_safety.queue', 'warehouse-safety')],
+            'balance' => 'off',
+            'minProcesses' => 1,
+            'maxProcesses' => 1,
+            'maxJobs' => 250,
+            'maxTime' => 3600,
+            'timeout' => 60,
+            'tries' => 3,
+            'backoff' => [3, 10, 30],
+            'memory' => 128,
+            'nice' => -5,
         ],
         'supervisor-downloads' => [
             'connection' => 'redis-long',
