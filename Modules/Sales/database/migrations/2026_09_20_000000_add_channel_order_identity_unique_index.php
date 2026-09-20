@@ -7,9 +7,7 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * PostgreSQL cannot create or drop an index concurrently in a transaction.
-     */
+
     public $withinTransaction = false;
 
     private const INDEX = 'uq_sales_orders_channel_identity';

@@ -92,11 +92,6 @@ final class ChannelOperationLedger
         ])->save();
     }
 
-    /**
-     * A channel read can conclusively prove that a previously accepted or
-     * uncertain request succeeded. Do not create a record here: a read-only
-     * discovery of an AWB must not be represented as an external mutation.
-     */
     public static function markSucceededWhenVerified(
         SalesOrder $order,
         string $operation,
@@ -117,11 +112,6 @@ final class ChannelOperationLedger
         });
     }
 
-    /**
-     * Reserve a read-only verification window for an accepted asynchronous
-     * operation. The timestamp update is the durable cooldown; it prevents
-     * multiple schedulers from flooding the marketplace with status reads.
-     */
     public static function beginVerification(
         string $orderId,
         string $operation,
