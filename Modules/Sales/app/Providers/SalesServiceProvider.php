@@ -11,6 +11,7 @@ use Modules\Sales\Console\Commands\DispatchDueFinanceSync;
 use Modules\Sales\Console\Commands\DispatchDueShippingLabelPrefetch;
 use Modules\Sales\Console\Commands\FinanceQueueHealth;
 use Modules\Sales\Console\Commands\PrepareShopeeLabelsBackfill;
+use Modules\Sales\Console\Commands\PurgeOrdersBeforeCutoff;
 use Modules\Sales\Console\Commands\ReapStaleBulkLabelBatches;
 use Modules\Sales\Console\Commands\ReconcileAcceptedAwbRequests;
 use Modules\Sales\Console\Commands\ReconcileFailedDownloadOrders;
@@ -45,6 +46,7 @@ class SalesServiceProvider extends ModuleServiceProvider
         BackfillShippedOrdersStockCommand::class,
         BackfillStatusHistory::class,
         PrepareShopeeLabelsBackfill::class,
+        PurgeOrdersBeforeCutoff::class,
         RestoreTrackingNumbers::class,
         RelocateOrdersToKecil::class,
         SyncReturnTracking::class,
