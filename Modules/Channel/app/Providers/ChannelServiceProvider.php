@@ -25,6 +25,7 @@ use Modules\Channel\Console\Commands\PullChannelShop;
 use Modules\Channel\Console\Commands\PullLiveOrdersCommand;
 use Modules\Channel\Console\Commands\PullShadowOrdersCommand;
 use Modules\Channel\Console\Commands\ReapStaleDownloadTransactions;
+use Modules\Channel\Console\Commands\RecoverChannelStockOutbox;
 use Modules\Channel\Console\Commands\RebuildLazadaCatalogSearchIndex;
 use Modules\Channel\Console\Commands\ReconcileWebhookOrders;
 use Modules\Channel\Console\Commands\RepairStaleSyncErrors;
@@ -71,6 +72,7 @@ class ChannelServiceProvider extends ModuleServiceProvider
         MonitorRedisQueueHealth::class,
         PullChannelShop::class,
         ReapStaleDownloadTransactions::class,
+        RecoverChannelStockOutbox::class,
         RebuildLazadaCatalogSearchIndex::class,
         ReportMissingChannelSku::class,
         RepairStaleSyncErrors::class,
