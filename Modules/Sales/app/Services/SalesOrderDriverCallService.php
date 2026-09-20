@@ -6,12 +6,16 @@ use App\Exceptions\UserFacingException;
 use Modules\Channel\Jobs\ProcessLazadaFulfillmentJob;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\TikTokOrderService;
+use Modules\Channel\Support\UploadErrorPresenter;
 use Modules\Sales\Exceptions\ShippingLabelPreparingException;
 use Modules\Sales\Jobs\CallLazadaDriverJob;
 use Modules\Sales\Jobs\CallShopeeDriverJob;
 use Modules\Sales\Jobs\CallTikTokDriverJob;
+use Modules\Sales\Jobs\RequestChannelAwbJob;
+use Modules\Sales\Models\ChannelOperationAttempt;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Repositories\SalesOrderRepository;
+use Modules\Sales\Support\ChannelOperationLedger;
 
 class SalesOrderDriverCallService
 {
@@ -76,33 +80,40 @@ class SalesOrderDriverCallService
                 'Panggilan driver marketplace gagal. Tambahkan ?force_label=1 untuk tetap mencetak label.',
                 422,
                 [
-                    'driver_call_status'       => $order->driver_call_status,
-                    'driver_call_message'      => $order->driver_call_message,
+                    'driver_call_status' => $order->driver_call_status,
+                    'driver_call_message' => $order->driver_call_message,
                     'driver_call_attempted_at' => optional($order->driver_call_attempted_at)?->toIso8601String(),
                 ],
             );
         }
 
         $options = array_filter([
-            'doc_type'      => $query['doc_type'] ?? null,
+            'doc_type' => $query['doc_type'] ?? null,
             'document_type' => $query['document_type'] ?? null,
             'document_size' => $query['document_size'] ?? null,
         ], fn ($v) => $v !== null && $v !== '');
 
         try {
+            $order->refresh();
+            if ($source === 'tiktok' && empty($order->tracking_number)) {
+                throw new ShippingLabelPreparingException(
+                    'Driver TikTok sudah dipanggil, tetapi tracking number belum diterbitkan. Sistem sedang menunggu resi sebelum mengambil label.'
+                );
+            }
+
             $labelResult = $this->orderService->getShippingLabel($order, $options);
         } catch (ShippingLabelPreparingException $e) {
             return [
                 'data' => [
-                    'driver_call_status'       => $order->driver_call_status,
-                    'driver_call_message'      => $order->driver_call_message,
+                    'driver_call_status' => $order->driver_call_status,
+                    'driver_call_message' => $order->driver_call_message,
                     'driver_call_attempted_at' => optional($order->driver_call_attempted_at)?->toIso8601String(),
-                    'label'           => null,
+                    'label' => null,
                     'label_preparing' => true,
-                    'label_message'   => $e->getMessage(),
+                    'label_message' => $e->getMessage(),
                 ],
                 'message' => 'Driver berhasil dipanggil, label masih disiapkan. Coba unduh dalam beberapa detik.',
-                'code'    => 202,
+                'code' => 202,
             ];
         } catch (\InvalidArgumentException|\RuntimeException $e) {
             throw new UserFacingException(
@@ -110,21 +121,21 @@ class SalesOrderDriverCallService
                 'Driver berhasil dipanggil namun label gagal diambil.',
                 422,
                 [
-                    'success'                  => $driverCallSuccess,
-                    'driver_call_status'       => $order->driver_call_status,
-                    'driver_call_message'      => $order->driver_call_message,
+                    'success' => $driverCallSuccess,
+                    'driver_call_status' => $order->driver_call_status,
+                    'driver_call_message' => $order->driver_call_message,
                     'driver_call_attempted_at' => optional($order->driver_call_attempted_at)?->toIso8601String(),
-                    'label'       => null,
+                    'label' => null,
                     'label_error' => $e->getMessage(),
-                    'detail'      => $e->getMessage(),
+                    'detail' => $e->getMessage(),
                 ],
             );
         }
 
         return [
             'data' => [
-                'driver_call_status'       => $order->driver_call_status,
-                'driver_call_message'      => $order->driver_call_message,
+                'driver_call_status' => $order->driver_call_status,
+                'driver_call_message' => $order->driver_call_message,
                 'driver_call_attempted_at' => optional($order->driver_call_attempted_at)?->toIso8601String(),
                 'label' => $labelResult,
             ],
@@ -157,9 +168,9 @@ class SalesOrderDriverCallService
         $this->retryDriverCall($order);
 
         return [
-            'data'    => ['driver_call_status' => 'pending'],
+            'data' => ['driver_call_status' => 'pending'],
             'message' => 'Panggilan driver dicoba ulang. Status akan diperbarui dalam beberapa detik.',
-            'code'    => 202,
+            'code' => 202,
         ];
     }
 
@@ -183,11 +194,19 @@ class SalesOrderDriverCallService
 
         $source = strtolower((string) $order->source);
 
+        if ($source === 'tiktok' && $order->driver_call_status === 'success') {
+            if (empty($order->tracking_number)) {
+                RequestChannelAwbJob::dispatch($order->id, 1, false, false, true)->afterCommit();
+            }
+
+            return true;
+        }
+
         return match ($source) {
             'shopee' => $this->callShopee($order),
             'tiktok' => $this->callTikTok($order),
             'lazada' => $this->callLazada($order),
-            default  => $this->markUnsupported($order, "Panggil driver untuk source '{$source}' belum didukung."),
+            default => $this->markUnsupported($order, "Panggil driver untuk source '{$source}' belum didukung."),
         };
     }
 
@@ -197,10 +216,10 @@ class SalesOrderDriverCallService
 
         if (in_array($cs, self::NON_CALLABLE_CHANNEL_STATUSES, true)) {
             return match (true) {
-                in_array($cs, ['CANCELLED', 'IN_CANCEL'], true)              => 'Pesanan sudah dibatalkan — tidak bisa panggil driver.',
-                in_array($cs, ['RETURN_REQUESTED', 'RETURNED'], true)        => 'Pesanan dalam proses retur — tidak bisa panggil driver.',
+                in_array($cs, ['CANCELLED', 'IN_CANCEL'], true) => 'Pesanan sudah dibatalkan — tidak bisa panggil driver.',
+                in_array($cs, ['RETURN_REQUESTED', 'RETURNED'], true) => 'Pesanan dalam proses retur — tidak bisa panggil driver.',
                 in_array($cs, ['SHIPPED', 'TO_CONFIRM_RECEIVE', 'COMPLETED'], true) => 'Pesanan sudah dikirim/selesai — driver tidak perlu dipanggil lagi.',
-                default                                                       => "Status '{$cs}' tidak bisa panggil driver.",
+                default => "Status '{$cs}' tidak bisa panggil driver.",
             };
         }
 
@@ -210,7 +229,7 @@ class SalesOrderDriverCallService
     public function retryDriverCall(SalesOrder $order): void
     {
         $order->update([
-            'driver_call_status'  => 'pending',
+            'driver_call_status' => 'pending',
             'driver_call_message' => null,
         ]);
 
@@ -220,7 +239,7 @@ class SalesOrderDriverCallService
             'shopee' => CallShopeeDriverJob::dispatch($order->id),
             'tiktok' => CallTikTokDriverJob::dispatch($order->id),
             'lazada' => CallLazadaDriverJob::dispatch($order->id),
-            default  => $this->markUnsupported($order, "Retry driver untuk source '{$source}' belum didukung."),
+            default => $this->markUnsupported($order, "Retry driver untuk source '{$source}' belum didukung."),
         };
     }
 
@@ -230,7 +249,7 @@ class SalesOrderDriverCallService
         $orderSn = (string) $order->channel_order_no;
 
         $order->update([
-            'driver_call_status'       => 'pending',
+            'driver_call_status' => 'pending',
             'driver_call_attempted_at' => now(),
         ]);
 
@@ -250,22 +269,22 @@ class SalesOrderDriverCallService
             if ($shipped || $alreadyShipped) {
                 $driverCallSuccess = true;
                 $order->update([
-                    'driver_call_status'   => 'success',
-                    'driver_call_message'  => null,
+                    'driver_call_status' => 'success',
+                    'driver_call_message' => null,
                     'driver_call_response' => $result,
                 ]);
             } else {
                 $driverCallMessage = $error !== '' ? $error : 'Panggilan driver Shopee gagal tanpa keterangan.';
                 $order->update([
-                    'driver_call_status'   => 'failed',
-                    'driver_call_message'  => $this->friendly('shopee', $driverCallMessage),
+                    'driver_call_status' => 'failed',
+                    'driver_call_message' => $this->friendly('shopee', $driverCallMessage),
                     'driver_call_response' => $result,
                 ]);
             }
         } catch (\Throwable $e) {
             $order->update([
-                'driver_call_status'   => 'failed',
-                'driver_call_message'  => $this->friendly('shopee', $e->getMessage()),
+                'driver_call_status' => 'failed',
+                'driver_call_message' => $this->friendly('shopee', $e->getMessage()),
                 'driver_call_response' => ['exception' => $e->getMessage(), 'class' => get_class($e)],
             ]);
         }
@@ -277,7 +296,7 @@ class SalesOrderDriverCallService
 
     private function friendly(string $source, string $raw): string
     {
-        return mb_substr(\Modules\Channel\Support\UploadErrorPresenter::fromMessage($source, $raw)['reason'], 0, 500);
+        return mb_substr(UploadErrorPresenter::fromMessage($source, $raw)['reason'], 0, 500);
     }
 
     private function callTikTok(SalesOrder $order): bool
@@ -286,35 +305,100 @@ class SalesOrderDriverCallService
         $channelOrderNo = (string) $order->channel_order_no;
 
         $order->update([
-            'driver_call_status'       => 'pending',
+            'driver_call_status' => 'pending',
             'driver_call_attempted_at' => now(),
         ]);
+
+        $claim = ChannelOperationLedger::claim($order, 'request_awb');
+        if (! $claim['should_execute']) {
+            $attempt = $claim['attempt'];
+            $isAccepted = in_array($attempt->status, [
+                ChannelOperationAttempt::STATUS_ACCEPTED,
+                ChannelOperationAttempt::STATUS_SUCCEEDED,
+            ], true);
+
+            $order->update([
+                'driver_call_status' => $isAccepted ? 'success' : 'pending',
+                'driver_call_message' => $isAccepted
+                    ? 'Permintaan TikTok sudah diterima sebelumnya. Sistem sedang menunggu tracking number.'
+                    : 'Status panggilan TikTok belum pasti. Sistem sedang memverifikasi tanpa mengirim ulang.',
+            ]);
+
+            RequestChannelAwbJob::dispatch($order->id, 1, false, false, true)->afterCommit();
+            $order->refresh();
+
+            return true;
+        }
 
         try {
             $result = $this->tiktok->readyToShip($shopId, $channelOrderNo);
             $shipped = (bool) ($result['shipped'] ?? false);
+            $handoverAccepted = (bool) ($result['accepted'] ?? false)
+                || $shipped
+                || collect($result['packages'] ?? [])->contains('shipped', true);
+            $allPackagesShipped = ! array_key_exists('all_packages_shipped', $result)
+                || (bool) $result['all_packages_shipped'];
 
-            if ($shipped) {
+            if ($handoverAccepted) {
+                if ($allPackagesShipped) {
+                    ChannelOperationLedger::markAccepted($claim['attempt'], $result);
+                } else {
+                    ChannelOperationLedger::markRetryable(
+                        $claim['attempt'],
+                        'Sebagian package TikTok belum diterima; hanya package yang tersisa akan dicoba ulang.',
+                        $result,
+                    );
+                }
+
                 $order->update([
-                    'driver_call_status'   => 'success',
-                    'driver_call_message'  => null,
+                    'driver_call_status' => $allPackagesShipped ? 'success' : 'pending',
+                    'driver_call_message' => $allPackagesShipped
+                        ? null
+                        : 'Sebagian package TikTok sudah diterima. Sistem sedang menyelesaikan package yang tersisa.',
                     'driver_call_response' => $result,
                 ]);
+
+                RequestChannelAwbJob::dispatch(
+                    $order->id,
+                    $allPackagesShipped ? 1 : 0,
+                    ! $allPackagesShipped,
+                    false,
+                    $allPackagesShipped,
+                )->afterCommit();
+                $order->refresh();
+
+                return true;
+            }
+
+            if (! empty($result['deferred'])) {
+                ChannelOperationLedger::markRetryable(
+                    $claim['attempt'],
+                    (string) ($result['message'] ?? 'Status TikTok belum dapat diverifikasi.'),
+                    $result,
+                );
+                $order->update([
+                    'driver_call_status' => 'pending',
+                    'driver_call_message' => $this->friendly('tiktok', (string) $result['message']),
+                    'driver_call_response' => $result,
+                ]);
+                CallTikTokDriverJob::dispatch($order->id)->delay(now()->addMinute());
                 $order->refresh();
 
                 return true;
             }
 
             $msg = (string) ($result['message'] ?? 'Panggilan driver TikTok gagal tanpa keterangan.');
+            ChannelOperationLedger::markRetryable($claim['attempt'], $msg, $result);
             $order->update([
-                'driver_call_status'   => 'failed',
-                'driver_call_message'  => $this->friendly('tiktok', $msg),
+                'driver_call_status' => 'failed',
+                'driver_call_message' => $this->friendly('tiktok', $msg),
                 'driver_call_response' => $result,
             ]);
         } catch (\Throwable $e) {
+            ChannelOperationLedger::markUncertain($claim['attempt'], $e);
             $order->update([
-                'driver_call_status'   => 'failed',
-                'driver_call_message'  => $this->friendly('tiktok', $e->getMessage()),
+                'driver_call_status' => 'failed',
+                'driver_call_message' => $this->friendly('tiktok', $e->getMessage()),
                 'driver_call_response' => ['exception' => $e->getMessage(), 'class' => get_class($e)],
             ]);
         }
@@ -335,8 +419,8 @@ class SalesOrderDriverCallService
 
         if ($shippingProvider === '') {
             $order->update([
-                'driver_call_status'       => 'failed',
-                'driver_call_message'      => 'Lazada: shipping_provider order kosong.',
+                'driver_call_status' => 'failed',
+                'driver_call_message' => 'Lazada: shipping_provider order kosong.',
                 'driver_call_attempted_at' => now(),
             ]);
             $order->refresh();
@@ -346,8 +430,8 @@ class SalesOrderDriverCallService
 
         if ($deliveryType === 'dropship' && $trackingNumber === null) {
             $order->update([
-                'driver_call_status'       => 'failed',
-                'driver_call_message'      => 'Lazada dropship: nomor resi (tracking_number) belum ada. Ambil resi lebih dulu sebelum panggil driver.',
+                'driver_call_status' => 'failed',
+                'driver_call_message' => 'Lazada dropship: nomor resi (tracking_number) belum ada. Ambil resi lebih dulu sebelum panggil driver.',
                 'driver_call_attempted_at' => now(),
             ]);
             $order->refresh();
@@ -356,7 +440,7 @@ class SalesOrderDriverCallService
         }
 
         $order->update([
-            'driver_call_status'       => 'pending',
+            'driver_call_status' => 'pending',
             'driver_call_attempted_at' => now(),
         ]);
 
@@ -371,8 +455,8 @@ class SalesOrderDriverCallService
             )->afterCommit();
 
             $order->update([
-                'driver_call_status'   => 'success',
-                'driver_call_message'  => null,
+                'driver_call_status' => 'success',
+                'driver_call_message' => null,
                 'driver_call_response' => ['queued' => true, 'pipeline' => 'lazada_fulfillment'],
             ]);
             $order->refresh();
@@ -380,8 +464,8 @@ class SalesOrderDriverCallService
             return true;
         } catch (\Throwable $e) {
             $order->update([
-                'driver_call_status'   => 'failed',
-                'driver_call_message'  => $this->friendly('lazada', $e->getMessage()),
+                'driver_call_status' => 'failed',
+                'driver_call_message' => $this->friendly('lazada', $e->getMessage()),
                 'driver_call_response' => ['exception' => $e->getMessage(), 'class' => get_class($e)],
             ]);
             $order->refresh();
@@ -393,8 +477,8 @@ class SalesOrderDriverCallService
     private function markUnsupported(SalesOrder $order, string $message): bool
     {
         $order->update([
-            'driver_call_status'       => 'failed',
-            'driver_call_message'      => mb_substr($message, 0, 500),
+            'driver_call_status' => 'failed',
+            'driver_call_message' => mb_substr($message, 0, 500),
             'driver_call_attempted_at' => now(),
         ]);
 

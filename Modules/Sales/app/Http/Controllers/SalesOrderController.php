@@ -8,6 +8,7 @@ use App\Traits\ApiResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Modules\Report\Services\ExportManager;
 use Modules\Sales\Enums\BuyerCancellationSyncStatus;
 use Modules\Sales\Http\Requests\AcceptOrderCancelRequest;
 use Modules\Sales\Http\Requests\BulkCancelManualOrderRequest;
@@ -40,7 +41,6 @@ use Modules\Sales\Http\Resources\ShippingLabelResource;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderDriverCallService;
 use Modules\Sales\Services\SalesOrderService;
-use Modules\Report\Services\ExportManager;
 use Modules\Sales\Support\OrderPdfPresenter;
 use OpenApi\Attributes as OA;
 
@@ -966,7 +966,9 @@ class SalesOrderController extends Controller
 
         $result = $driverCall->dispatchPrintWithDriverCall($order, $request->query());
 
-        $this->orderService->logLabelPrinted($order, $request->user());
+        if (($result['code'] ?? 200) < 300 && ! empty($result['data']['label'])) {
+            $this->orderService->logLabelPrinted($order, $request->user());
+        }
 
         return $this->successResponse($result['data'], $result['message'], $result['code']);
     }

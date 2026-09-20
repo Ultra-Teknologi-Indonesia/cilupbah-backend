@@ -9,10 +9,9 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
-use Modules\Channel\Services\TikTokOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Channel\Support\UploadErrorPresenter;
-use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Services\SalesOrderDriverCallService;
 use Modules\Sales\Support\ChannelOrderSideEffectGuard;
 
 class CallTikTokDriverJob implements ShouldQueue
@@ -35,7 +34,7 @@ class CallTikTokDriverJob implements ShouldQueue
         ];
     }
 
-    public function handle(TikTokOrderService $tiktok): void
+    public function handle(SalesOrderDriverCallService $driverCall): void
     {
         $order = ChannelOrderSideEffectGuard::active($this->orderId, 'call_driver');
         if (! $order) {
@@ -61,77 +60,29 @@ class CallTikTokDriverJob implements ShouldQueue
         }
 
         if ($order->driver_call_status === 'success') {
-            return;
-        }
-
-        $shopId = (string) $order->channel_shop_id;
-        $orderId = (string) $order->channel_order_no;
-        if ($shopId === '' || $orderId === '') {
-            $order->update([
-                'driver_call_status' => 'failed',
-                'driver_call_message' => 'channel_shop_id / channel_order_no kosong',
-                'driver_call_attempted_at' => now(),
-            ]);
-
-            return;
-        }
-
-        $order->update([
-            'driver_call_status' => 'pending',
-            'driver_call_attempted_at' => now(),
-        ]);
-
-        try {
-            $order = ChannelOrderSideEffectGuard::active($order->id, 'call_driver');
-            if ($order === null) {
-                return;
-            }
-
-            $result = $tiktok->readyToShip($shopId, $orderId);
-        } catch (\Throwable $e) {
-            $order->update([
-                'driver_call_status' => 'failed',
-                'driver_call_message' => $this->truncate(UploadErrorPresenter::fromMessage('tiktok', $e->getMessage())['reason']),
-            ]);
-            Log::error('CallTikTokDriverJob: readyToShip throw', [
-                'order_id' => $order->id,
-                'error' => $e->getMessage(),
-            ]);
-
-            if ($this->attempts() < $this->tries) {
-                throw $e;
+            if (empty($order->tracking_number)) {
+                RequestChannelAwbJob::dispatch(
+                    $order->id,
+                    1,
+                    false,
+                    false,
+                    true,
+                )->afterCommit();
             }
 
             return;
         }
 
-        $shipped = (bool) ($result['shipped'] ?? false);
+        $called = $driverCall->callDriver($order);
+        $order->refresh();
 
-        if ($shipped) {
-            $order->update([
-                'driver_call_status' => 'success',
-                'driver_call_message' => null,
-                'driver_call_response' => $result,
-            ]);
-
+        if ($called || $order->driver_call_status === 'pending') {
             return;
         }
 
-        $errMsg = (string) ($result['message'] ?? 'Panggilan driver TikTok gagal tanpa keterangan.');
-        $order->update([
-            'driver_call_status' => 'failed',
-            'driver_call_message' => $this->truncate(UploadErrorPresenter::fromMessage('tiktok', $errMsg)['reason']),
-            'driver_call_response' => $result,
-        ]);
-
-        Log::error('CallTikTokDriverJob: readyToShip gagal', [
-            'order_id' => $order->id,
-            'message' => $errMsg,
-        ]);
-
-        if ($this->attempts() < $this->tries) {
-            throw new \RuntimeException('TikTok readyToShip gagal: '.$errMsg);
-        }
+        throw new \RuntimeException(
+            'TikTok readyToShip gagal: '.((string) ($order->driver_call_message ?? 'tanpa keterangan')),
+        );
     }
 
     public function failed(\Throwable $exception): void

@@ -134,7 +134,7 @@ class PrepareTikTokShippingLabelJob implements ShouldBeUnique, ShouldQueue
                 }
             }
 
-            if (! empty($documents)) {
+            if ($packageIds !== [] && count($documents) === count($packageIds)) {
                 $order->update([
                     'shipping_label_status' => 'ready',
                     'shipping_label_doc_type' => 'PDF',
@@ -151,6 +151,15 @@ class PrepareTikTokShippingLabelJob implements ShouldBeUnique, ShouldQueue
                 $this->notifyBulkListeners();
 
                 return;
+            }
+
+            if ($documents !== []) {
+                Log::info('PrepareTikTokShippingLabelJob: sebagian dokumen package belum siap', [
+                    'order_id' => $order->id,
+                    'order_sn' => $orderSn,
+                    'ready_packages' => count($documents),
+                    'total_packages' => count($packageIds),
+                ]);
             }
 
             $this->retryOrFail($order, $orderSn);

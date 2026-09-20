@@ -14,6 +14,14 @@ final class ChannelOperationLedger
     public static function claim(SalesOrder $order, string $operation): array
     {
         return DB::transaction(function () use ($order, $operation): array {
+            // Lock the parent row first. A missing operation row cannot be
+            // locked, so this serializes two first-time claims before either
+            // process can insert the unique (order_id, operation) record.
+            SalesOrder::query()
+                ->whereKey($order->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
             $attempt = ChannelOperationAttempt::query()
                 ->where('order_id', $order->id)
                 ->where('operation', $operation)
@@ -150,11 +158,15 @@ final class ChannelOperationLedger
         ])->save();
     }
 
-    public static function markRetryable(ChannelOperationAttempt $attempt, string $reason): void
-    {
+    public static function markRetryable(
+        ChannelOperationAttempt $attempt,
+        string $reason,
+        ?array $response = null,
+    ): void {
         $attempt->forceFill([
             'status' => ChannelOperationAttempt::STATUS_RETRYABLE,
             'last_error' => Str::limit($reason, 1000),
+            'last_response' => $response,
         ])->save();
     }
 

@@ -11,6 +11,7 @@ class TikTokApiException extends \RuntimeException
         public readonly string $category,
         string $message,
         public readonly ?string $rawMessage = null,
+        public readonly ?string $requestId = null,
     ) {
         parent::__construct($message);
     }
@@ -36,6 +37,7 @@ class TikTokApiException extends \RuntimeException
             'error_code' => $this->errorCode,
             'category' => $this->category,
             'raw_message' => $this->rawMessage,
+            'request_id' => $this->requestId,
         ];
     }
 }

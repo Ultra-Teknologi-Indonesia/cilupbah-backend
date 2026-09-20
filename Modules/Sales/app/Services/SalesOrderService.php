@@ -3,10 +3,10 @@
 namespace Modules\Sales\Services;
 
 use App\Exceptions\UserFacingException;
-use Carbon\CarbonImmutable;
 use App\Models\User;
 use App\Support\ChannelWarehousePolicy;
 use App\Support\WarehouseAccess;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\UploadedFile;
@@ -23,7 +23,6 @@ use Modules\Channel\Services\ChannelDownloadService;
 use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Services\MarketplaceCancelReasonService;
 use Modules\Channel\Services\ShopeeOrderService;
-use Modules\Channel\Services\TikTokClient;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Channel\Support\ChannelOrderPullGuard;
 use Modules\Inventory\Jobs\AutoDetectStockReplenishmentJob;
@@ -1017,23 +1016,21 @@ class SalesOrderService
                 throw new \RuntimeException('Token akses TikTok Shop tidak ditemukan.');
             }
 
-            $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
-            $detailQueries = array_merge($queries, ['ids' => $channelOrderNo]);
-            $tikTokClient = app(TikTokClient::class);
-            $packageIds = $this->channelPackageIds($order);
-            if ($packageIds === []) {
-                $res = $tikTokClient->request('GET', '/order/202309/orders', $detailQueries, [], $shop->access_token);
-                foreach (($res['data']['orders'] ?? []) as $o) {
-                    foreach ($o['packages'] ?? [] as $pkg) {
-                        if (! empty($pkg['id'])) {
-                            $packageIds[] = (string) $pkg['id'];
-                        }
-                    }
-                }
-                $packageIds = array_values(array_unique($packageIds));
-                $this->persistChannelPackageIds($order, $packageIds);
+            $snapshot = $tikTokService->getOrderFulfillmentSnapshot($shop, (string) $channelOrderNo);
+            if (empty($snapshot['tracking_number']) || empty($snapshot['all_packages_shipped'])) {
+                throw new ShippingLabelPreparingException(
+                    'TikTok belum menerbitkan resi untuk semua package. Label belum dapat diambil.',
+                );
             }
 
+            $packageIds = array_values(array_unique(array_filter(
+                array_map(
+                    static fn (array $package): string => (string) ($package['id'] ?? ''),
+                    $snapshot['packages'] ?? [],
+                ),
+                static fn (string $packageId): bool => $packageId !== '',
+            )));
+            $this->persistChannelPackageIds($order, $packageIds);
             $packageId = $packageIds[0] ?? null;
 
             if (! $packageId) {
