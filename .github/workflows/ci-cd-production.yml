@@ -111,10 +111,11 @@ jobs:
             echo "==> Mengupdate image tag di file YAML temporary..."
             sed -i "s|image: ghcr.io/ultra-teknologi-indonesia/cilupbah:.*|image: $IMAGE|g" "$K8S_DIR"/*.yaml
 
-            # Scheduler lama adalah Deployment schedule:work. CronJob baru
-            # memakai nama yang sama tetapi resource type berbeda, sehingga
-            # Deployment harus dihapus eksplisit agar tidak dua scheduler aktif.
+            # Hapus bentuk scheduler lama apa pun sebelum menerapkan manifest
+            # baru; Kubernetes tidak mengubah kind CronJob <-> Deployment.
             kubectl delete deployment cilupbah-scheduler -n "$NAMESPACE" --ignore-not-found
+            kubectl delete cronjob cilupbah-scheduler -n "$NAMESPACE" \
+              --cascade=foreground --wait=true --ignore-not-found
 
             echo "==> Menjeda profil Horizon critical sebelum rollout..."
             # The old Horizon deployment may still be running with the legacy

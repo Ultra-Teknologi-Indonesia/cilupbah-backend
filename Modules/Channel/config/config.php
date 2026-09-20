@@ -16,6 +16,11 @@ return [
     'product_sync_overlap_lock_seconds' => (int) env('CHANNEL_PRODUCT_SYNC_OVERLAP_LOCK_SECONDS', 360),
 
     'stock_sync_dispatch_window_seconds' => (int) env('CHANNEL_STOCK_SYNC_DISPATCH_WINDOW_SECONDS', 50),
+    // Keep Redis prefetch close to worker capacity. PostgreSQL remains the
+    // durable outbox, so a small claim batch is safer than preloading jobs.
+    'stock_sync_dispatch_claim_limit' => max(1, min(100, (int) env('CHANNEL_STOCK_SYNC_DISPATCH_CLAIM_LIMIT', 20))),
+    // Bound marketplace mutations per shop independently from global workers.
+    'stock_sync_max_inflight_per_shop' => max(1, min(4, (int) env('CHANNEL_STOCK_SYNC_MAX_INFLIGHT_PER_SHOP', 1))),
     'stock_sync_lease_seconds' => (int) env('CHANNEL_STOCK_SYNC_LEASE_SECONDS', 600),
     'stock_sync_max_attempts' => (int) env('CHANNEL_STOCK_SYNC_MAX_ATTEMPTS', 12),
     'stock_sync_retry_backoff' => [60, 300, 900, 1800],

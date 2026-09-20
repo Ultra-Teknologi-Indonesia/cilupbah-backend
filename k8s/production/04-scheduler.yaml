@@ -1,71 +1,63 @@
-apiVersion: batch/v1
-kind: CronJob
+apiVersion: apps/v1
+kind: Deployment
 metadata:
   name: cilupbah-scheduler
   namespace: cilupbah
 spec:
-  schedule: "* * * * *"
-  # This is the primary overlap guard. Unlike Laravel cache locks it continues
-  # to work when Redis cache or CoreDNS is impaired.
-  concurrencyPolicy: Forbid
-  startingDeadlineSeconds: 30
-  successfulJobsHistoryLimit: 1
-  failedJobsHistoryLimit: 3
-  jobTemplate:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: cilupbah-scheduler
+  template:
+    metadata:
+      labels:
+        app: cilupbah-scheduler
     spec:
-      backoffLimit: 0
-      # A hung foreground scheduled command cannot grow indefinitely. Long
-      # operations must run in their dedicated bounded queue instead.
-      activeDeadlineSeconds: 900
-      ttlSecondsAfterFinished: 3600
-      template:
-        metadata:
-          labels:
-            app: cilupbah-scheduler
-        spec:
-          restartPolicy: Never
-          imagePullSecrets:
-            - name: ghcr-creds
-          containers:
-            - name: scheduler
-              image: ghcr.io/ultra-teknologi-indonesia/cilupbah:v1.0.0
-              command: ["php", "artisan", "schedule:run", "--no-interaction"]
-              envFrom:
-                - secretRef:
-                    name: cilupbah-env
-              env:
-                - name: CHANNEL_SYNC_WINDOW_MINUTES
-                  value: "5"
-                - name: REDIS_QUEUE_CONNECTION
-                  value: "horizon"
-                - name: QUEUE_BACKPRESSURE_ENABLED
-                  value: "true"
-                - name: CHANNEL_SYNC_MAX_QUEUE_DEPTH
-                  value: "24"
-                - name: CHANNEL_SYNC_MAX_REDIS_MEMORY_RATIO
-                  value: "0.70"
-                - name: WEBHOOK_INGRESS_MAX_QUEUE_DEPTH
-                  value: "1000"
-                - name: WEBHOOK_INGRESS_MAX_REDIS_MEMORY_RATIO
-                  value: "0.70"
-                - name: WEBHOOK_REPLAY_MAX_QUEUE_DEPTH
-                  value: "500"
-                - name: QUEUE_HEALTH_OLDEST_WARNING_SECONDS
-                  value: "300"
-                - name: QUEUE_HEALTH_OLDEST_CRITICAL_SECONDS
-                  value: "900"
-                - name: QUEUE_HEALTH_STALE_WEBHOOK_WARNING
-                  value: "100"
-                - name: QUEUE_HEALTH_FAILED_JOBS_WINDOW_MINUTES
-                  value: "15"
-                - name: QUEUE_HEALTH_FAILED_JOBS_WARNING
-                  value: "10"
-                - name: QUEUE_HEALTH_FAILED_JOBS_CRITICAL
-                  value: "50"
-              resources:
-                requests:
-                  memory: "256Mi"
-                  cpu: "100m"
-                limits:
-                  memory: "768Mi"
-                  cpu: "500m"
+      terminationGracePeriodSeconds: 30
+      imagePullSecrets:
+        - name: ghcr-creds
+      containers:
+        - name: scheduler
+          image: ghcr.io/ultra-teknologi-indonesia/cilupbah:v1.0.0
+          command: ["php", "artisan", "schedule:work", "--no-interaction"]
+          envFrom:
+            - secretRef:
+                name: cilupbah-env
+          env:
+            - name: CHANNEL_SYNC_WINDOW_MINUTES
+              value: "5"
+            - name: REDIS_QUEUE_CONNECTION
+              value: "horizon"
+            - name: QUEUE_BACKPRESSURE_ENABLED
+              value: "true"
+            - name: CHANNEL_SYNC_MAX_QUEUE_DEPTH
+              value: "24"
+            - name: CHANNEL_SYNC_MAX_REDIS_MEMORY_RATIO
+              value: "0.70"
+            - name: WEBHOOK_INGRESS_MAX_QUEUE_DEPTH
+              value: "1000"
+            - name: WEBHOOK_INGRESS_MAX_REDIS_MEMORY_RATIO
+              value: "0.70"
+            - name: WEBHOOK_REPLAY_MAX_QUEUE_DEPTH
+              value: "500"
+            - name: QUEUE_HEALTH_OLDEST_WARNING_SECONDS
+              value: "300"
+            - name: QUEUE_HEALTH_OLDEST_CRITICAL_SECONDS
+              value: "900"
+            - name: QUEUE_HEALTH_STALE_WEBHOOK_WARNING
+              value: "100"
+            - name: QUEUE_HEALTH_FAILED_JOBS_WINDOW_MINUTES
+              value: "15"
+            - name: QUEUE_HEALTH_FAILED_JOBS_WARNING
+              value: "10"
+            - name: QUEUE_HEALTH_FAILED_JOBS_CRITICAL
+              value: "50"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "768Mi"
+              cpu: "500m"

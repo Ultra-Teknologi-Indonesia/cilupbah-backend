@@ -31,7 +31,8 @@ $supervisorProfiles = [
         'supervisor-default',
         'supervisor-channel-sync',
         'supervisor-channel-stock',
-        'supervisor-channel-stock-outbox',
+        'supervisor-channel-stock-critical',
+        'supervisor-channel-stock-normal',
         'supervisor-product-validation',
         'supervisor-channel-finance',
         'supervisor-channel-product',
@@ -82,9 +83,13 @@ $channelStockMaxProcesses = max(
     1,
     min(2, (int) env('HORIZON_CHANNEL_STOCK_MAX_PROCESSES', 1)),
 );
-$channelStockOutboxProcesses = max(
+$channelStockCriticalProcesses = max(
     1,
-    min(2, (int) env('HORIZON_CHANNEL_STOCK_OUTBOX_PROCESSES', 1)),
+    min(2, (int) env('HORIZON_CHANNEL_STOCK_CRITICAL_PROCESSES', 1)),
+);
+$channelStockNormalProcesses = max(
+    1,
+    min(2, (int) env('HORIZON_CHANNEL_STOCK_NORMAL_PROCESSES', 1)),
 );
 $channelCancellationProcesses = max(
     1,
@@ -126,6 +131,10 @@ return [
             .config('queue.routing.warehouse_safety.queue', 'warehouse-safety') => 30,
         config('queue.routing.channel_stock.connection', 'redis').':'
             .config('queue.routing.channel_stock.queue', 'channel-stock') => 120,
+        config('queue.routing.channel_stock_critical.connection', 'redis').':'
+            .config('queue.routing.channel_stock_critical.queue', 'channel-stock-critical') => 30,
+        config('queue.routing.channel_stock_normal.connection', 'redis').':'
+            .config('queue.routing.channel_stock_normal.queue', 'channel-stock-normal') => 120,
         config('queue.routing.channel_stock_outbox.connection', 'redis').':'
             .config('queue.routing.channel_stock_outbox.queue', 'channel-stock-outbox') => 120,
         config('queue.routing.channel_finance.connection', 'redis-finance').':'
@@ -341,16 +350,33 @@ return [
             'memory' => 256,
             'nice' => 10,
         ],
-        'supervisor-channel-stock-outbox' => [
-            'connection' => config('queue.routing.channel_stock_outbox.connection', 'redis'),
-            'queue' => [config('queue.routing.channel_stock_outbox.queue', 'channel-stock-outbox')],
+        'supervisor-channel-stock-critical' => [
+            'connection' => config('queue.routing.channel_stock_critical.connection', 'redis'),
+            'queue' => [config('queue.routing.channel_stock_critical.queue', 'channel-stock-critical')],
             'balance' => 'off',
-            'minProcesses' => $channelStockOutboxProcesses,
-            'maxProcesses' => $channelStockOutboxProcesses,
+            'minProcesses' => $channelStockCriticalProcesses,
+            'maxProcesses' => $channelStockCriticalProcesses,
             'maxJobs' => 100,
             'maxTime' => 1800,
             'timeout' => 330,
-
+            'tries' => 1,
+            'memory' => 256,
+            'nice' => 10,
+        ],
+        'supervisor-channel-stock-normal' => [
+            'connection' => config('queue.routing.channel_stock_normal.connection', 'redis'),
+            // Keep the old queue here during migration so already-enqueued
+            // deliveries are not stranded when the new lanes are deployed.
+            'queue' => [
+                config('queue.routing.channel_stock_normal.queue', 'channel-stock-normal'),
+                config('queue.routing.channel_stock_outbox.queue', 'channel-stock-outbox'),
+            ],
+            'balance' => 'off',
+            'minProcesses' => $channelStockNormalProcesses,
+            'maxProcesses' => $channelStockNormalProcesses,
+            'maxJobs' => 100,
+            'maxTime' => 1800,
+            'timeout' => 330,
             'tries' => 1,
             'memory' => 256,
             'nice' => 10,

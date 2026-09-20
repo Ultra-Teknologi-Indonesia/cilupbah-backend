@@ -119,10 +119,17 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
         $this->stockOutboxVersion = $stockOutboxVersion;
 
         if ($this->isOutboxStockDelivery()) {
-            $routing = config('queue.routing.channel_stock_outbox', [
-                'connection' => 'redis',
-                'queue' => 'channel-stock-outbox',
-            ]);
+            $routing = config(
+                $queueTier === 'bulk'
+                    ? 'queue.routing.channel_stock_normal'
+                    : 'queue.routing.channel_stock_critical',
+                [
+                    'connection' => 'redis',
+                    'queue' => $queueTier === 'bulk'
+                        ? 'channel-stock-normal'
+                        : 'channel-stock-critical',
+                ],
+            );
         } elseif (self::isStockAction($action)) {
             $routing = config(
                 $queueTier === 'bulk'

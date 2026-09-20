@@ -8,13 +8,17 @@ use Modules\Channel\Services\ChannelStockSyncOutboxService;
 class DispatchChannelStockOutbox extends Command
 {
     protected $signature = 'channel:dispatch-stock-outbox
-        {--limit=1000 : Jumlah maksimum listing yang dijadwalkan pada satu putaran}';
+        {--limit= : Jumlah maksimum listing yang dijadwalkan pada satu putaran}';
 
     protected $description = 'Menjadwalkan sinkronisasi stok/price terbaru per listing sesuai kuota API channel.';
 
     public function handle(ChannelStockSyncOutboxService $outbox): int
     {
         $rawLimit = (string) $this->option('limit');
+        if ($rawLimit === '') {
+            $rawLimit = (string) config('channel.stock_sync_dispatch_claim_limit', 20);
+        }
+
         if (! ctype_digit($rawLimit) || (int) $rawLimit < 1) {
             $this->error('--limit harus berupa bilangan bulat positif.');
 

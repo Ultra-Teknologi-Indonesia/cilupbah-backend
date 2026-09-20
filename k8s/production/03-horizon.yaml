@@ -45,9 +45,15 @@ spec:
               value: "horizon"
             - name: HORIZON_PROFILE
               value: "background"
-            # Marketplace stock propagation is isolated from warehouse
-            # critical work and starts conservatively to protect Redis/DB.
-            - name: HORIZON_CHANNEL_STOCK_MAX_PROCESSES
+            # Marketplace stock propagation is isolated into two bounded
+            # lanes. Total default stock workers remain 2 (1 + 1).
+            - name: HORIZON_CHANNEL_STOCK_CRITICAL_PROCESSES
+              value: "1"
+            - name: HORIZON_CHANNEL_STOCK_NORMAL_PROCESSES
+              value: "1"
+            - name: CHANNEL_STOCK_SYNC_DISPATCH_CLAIM_LIMIT
+              value: "20"
+            - name: CHANNEL_STOCK_SYNC_MAX_INFLIGHT_PER_SHOP
               value: "1"
             - name: CHANNEL_SYNC_WINDOW_MINUTES
               value: "5"

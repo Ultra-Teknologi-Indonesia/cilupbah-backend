@@ -70,6 +70,7 @@ class ChannelStockSyncOutboxTest extends TestCase
     public function test_dispatcher_paces_jobs_per_shop_before_they_enter_redis(): void
     {
         $service = app(ChannelStockSyncOutboxService::class);
+        config(['channel.stock_sync_max_inflight_per_shop' => 3]);
         foreach (['LISTING-1', 'LISTING-2', 'LISTING-3'] as $externalId) {
             $service->request($this->listedMapping($externalId), 'sync_stock');
         }
@@ -88,6 +89,21 @@ class ChannelStockSyncOutboxTest extends TestCase
         });
 
         $this->assertSame(3, ChannelStockSyncOutbox::where('status', ChannelStockSyncOutbox::STATUS_DISPATCHING)->count());
+    }
+
+    public function test_dispatcher_does_not_claim_more_than_the_shop_inflight_budget(): void
+    {
+        $service = app(ChannelStockSyncOutboxService::class);
+        foreach (['LISTING-INFLIGHT-1', 'LISTING-INFLIGHT-2'] as $externalId) {
+            $service->request($this->listedMapping($externalId), 'sync_stock');
+        }
+
+        Queue::fake();
+        $result = $service->dispatchDue();
+
+        $this->assertSame(1, $result['claimed']);
+        $this->assertSame(1, ChannelStockSyncOutbox::where('status', ChannelStockSyncOutbox::STATUS_DISPATCHING)->count());
+        $this->assertSame(1, ChannelStockSyncOutbox::where('status', ChannelStockSyncOutbox::STATUS_PENDING)->count());
     }
 
     public function test_a_job_waiting_in_redis_cannot_write_after_a_newer_stock_change_arrives(): void

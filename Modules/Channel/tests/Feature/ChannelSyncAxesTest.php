@@ -217,6 +217,37 @@ class ChannelSyncAxesTest extends TestCase
         $this->assertSame('variant-stock:variant-1:*', $variantJob->uniqueId());
     }
 
+    public function test_outbox_stock_delivery_uses_critical_and_normal_lanes(): void
+    {
+        $critical = new SyncProductToChannelJob(
+            'product-1',
+            self::SHOP_ID,
+            'sync_stock',
+            null,
+            null,
+            null,
+            'critical',
+            'mapping-1',
+            'outbox-1',
+            1,
+        );
+        $normal = new SyncProductToChannelJob(
+            'product-1',
+            self::SHOP_ID,
+            'sync_stock',
+            null,
+            null,
+            null,
+            'bulk',
+            'mapping-2',
+            'outbox-2',
+            1,
+        );
+
+        $this->assertSame(config('queue.routing.channel_stock_critical.queue'), $critical->queue);
+        $this->assertSame(config('queue.routing.channel_stock_normal.queue'), $normal->queue);
+    }
+
     public function test_product_sync_overlap_lock_expires_after_a_bounded_period(): void
     {
         $job = new SyncProductToChannelJob('product-1', self::SHOP_ID, 'push');

@@ -131,6 +131,8 @@ return [
         'channel_sync' => env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync'),
         'channel_cancellation' => env('QUEUE_NAME_CHANNEL_CANCELLATION', 'channel-cancellation'),
         'channel_stock' => env('QUEUE_NAME_CHANNEL_STOCK', 'channel-stock'),
+        'channel_stock_critical' => env('QUEUE_NAME_CHANNEL_STOCK_CRITICAL', 'channel-stock-critical'),
+        'channel_stock_normal' => env('QUEUE_NAME_CHANNEL_STOCK_NORMAL', 'channel-stock-normal'),
         'channel_product' => env('QUEUE_NAME_CHANNEL_PRODUCT', 'channel-product'),
         'channel_finance' => env('QUEUE_NAME_CHANNEL_FINANCE', 'channel-finance'),
         'channel_after_sales' => env('QUEUE_NAME_CHANNEL_AFTER_SALES', 'channel-after-sales'),
@@ -221,6 +223,16 @@ return [
         'channel_stock' => [
             'connection' => env('QUEUE_CHANNEL_STOCK_CONNECTION', 'redis'),
             'queue' => env('QUEUE_NAME_CHANNEL_STOCK', 'channel-stock'),
+        ],
+
+        'channel_stock_critical' => [
+            'connection' => env('QUEUE_CHANNEL_STOCK_CRITICAL_CONNECTION', 'redis'),
+            'queue' => env('QUEUE_NAME_CHANNEL_STOCK_CRITICAL', 'channel-stock-critical'),
+        ],
+
+        'channel_stock_normal' => [
+            'connection' => env('QUEUE_CHANNEL_STOCK_NORMAL_CONNECTION', 'redis'),
+            'queue' => env('QUEUE_NAME_CHANNEL_STOCK_NORMAL', 'channel-stock-normal'),
         ],
 
         'channel_stock_outbox' => [

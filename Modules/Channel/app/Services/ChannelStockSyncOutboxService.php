@@ -66,15 +66,24 @@ class ChannelStockSyncOutboxService
         return $mapping === null ? null : $this->request($mapping, $action, $queueTier);
     }
 
-    public function dispatchDue(int $limit = 1000): array
+    public function dispatchDue(?int $limit = null): array
     {
-        $limit = max(1, $limit);
+        $limit = max(1, $limit ?? (int) config('channel.stock_sync_dispatch_claim_limit', 20));
         $now = now();
         $reaped = $this->reapExpiredLeases($now);
         $revived = $this->reviveStrandedPendingDeliveries($now);
         $window = max(1, (int) config('channel.stock_sync_dispatch_window_seconds', 50));
         $leaseSeconds = max(60, (int) config('channel.stock_sync_lease_seconds', 600));
         $perShopSlots = [];
+        $maxInFlightPerShop = max(1, (int) config('channel.stock_sync_max_inflight_per_shop', 1));
+        $inFlightByShop = ChannelStockSyncOutbox::query()
+            ->where('status', ChannelStockSyncOutbox::STATUS_DISPATCHING)
+            ->where('lease_expires_at', '>', $now)
+            ->select('channel_shop_id', DB::raw('count(*) as total'))
+            ->groupBy('channel_shop_id')
+            ->pluck('total', 'channel_shop_id')
+            ->map(static fn ($total): int => (int) $total)
+            ->all();
         $claimed = 0;
         $byChannel = [];
 
@@ -106,6 +115,12 @@ class ChannelStockSyncOutboxService
                 config('ratelimit.channel_api_per_second', 8),
             ));
             $shopKey = (string) $outbox->channel_shop_id;
+            $inFlight = $inFlightByShop[$shopKey] ?? 0;
+
+            if ($inFlight >= $maxInFlightPerShop) {
+                continue;
+            }
+
             $slot = $perShopSlots[$shopKey] ?? 0;
 
             if ($slot >= $rate * $window) {
@@ -132,6 +147,7 @@ class ChannelStockSyncOutboxService
 
             $delaySeconds = intdiv($slot, $rate);
             $perShopSlots[$shopKey] = $slot + 1;
+            $inFlightByShop[$shopKey] = $inFlight + 1;
 
             try {
                 SyncProductToChannelJob::dispatch(
