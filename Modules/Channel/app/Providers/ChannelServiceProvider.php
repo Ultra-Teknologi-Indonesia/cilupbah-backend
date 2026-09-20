@@ -13,8 +13,10 @@ use Modules\Channel\Console\Commands\BackfillShopeeShopNames;
 use Modules\Channel\Console\Commands\BackfillTikTokCommercePlatform;
 use Modules\Channel\Console\Commands\BackfillWebhookReturnReferences;
 use Modules\Channel\Console\Commands\CleanOrderCutoverCommand;
+use Modules\Channel\Console\Commands\DispatchChannelStockOutbox;
 use Modules\Channel\Console\Commands\EvaluateOrderSyncHealth;
 use Modules\Channel\Console\Commands\MonitorChannelSkuHealth;
+use Modules\Channel\Console\Commands\MonitorChannelStockOutbox;
 use Modules\Channel\Console\Commands\MonitorDownloadHealth;
 use Modules\Channel\Console\Commands\MonitorLiveQueueCommand;
 use Modules\Channel\Console\Commands\MonitorRedisQueueHealth;
@@ -64,6 +66,7 @@ class ChannelServiceProvider extends ModuleServiceProvider
         BackfillTikTokCommercePlatform::class,
         EvaluateOrderSyncHealth::class,
         MonitorChannelSkuHealth::class,
+        MonitorChannelStockOutbox::class,
         MonitorDownloadHealth::class,
         MonitorRedisQueueHealth::class,
         PullChannelShop::class,
@@ -88,6 +91,7 @@ class ChannelServiceProvider extends ModuleServiceProvider
         ReplayWebhookInbox::class,
         ReplayFailedWebhooksCommand::class,
         CleanOrderCutoverCommand::class,
+        DispatchChannelStockOutbox::class,
         MonitorLiveQueueCommand::class,
     ];
 

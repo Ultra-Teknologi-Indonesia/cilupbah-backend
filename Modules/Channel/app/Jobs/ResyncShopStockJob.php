@@ -7,6 +7,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Modules\Channel\Services\ChannelStockSyncOutboxService;
 use Modules\Product\Models\ProductChannelMapping;
 
 class ResyncShopStockJob implements ShouldQueue
@@ -28,19 +29,10 @@ class ResyncShopStockJob implements ShouldQueue
             ->where('sync_status', '!=', ProductChannelMapping::STATUS_DEACTIVATED)
             ->whereNotNull('external_product_id')
             ->where('external_product_id', '!=', '')
-            ->select(['id', 'product_id'])
+            ->select(['id', 'product_id', 'channel_shop_id'])
             ->chunkById(500, function ($mappings): void {
                 foreach ($mappings as $mapping) {
-                    SyncProductToChannelJob::dispatch(
-                        (string) $mapping->product_id,
-                        $this->channelShopId,
-                        'sync_stock',
-                        null,
-                        null,
-                        null,
-                        'bulk',
-                        (string) $mapping->id,
-                    );
+                    app(ChannelStockSyncOutboxService::class)->request($mapping, 'sync_stock', 'bulk');
                 }
             });
     }

@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Adapters\AdapterFactory;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\ChannelListingValidator;
+use Modules\Channel\Services\ChannelStockSyncOutboxService;
 use Modules\Channel\Services\ChannelSyncSettingService;
 use Modules\Channel\Services\LazadaAuthService;
 use Modules\Channel\Services\ShopeeAuthService;
@@ -60,6 +61,10 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
 
     public ?string $channelMappingId;
 
+    public ?string $stockOutboxId;
+
+    public ?int $stockOutboxVersion;
+
     protected string $channelCodeResolved = '';
 
     protected bool $uploadResultRecorded = false;
@@ -99,6 +104,8 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
         ?string $uploadLogId = null,
         string $queueTier = 'critical',
         ?string $channelMappingId = null,
+        ?string $stockOutboxId = null,
+        ?int $stockOutboxVersion = null,
     ) {
         $this->productId = $productId;
         $this->channelShopId = $channelShopId;
@@ -108,6 +115,8 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
         $this->uploadLogId = $uploadLogId;
         $this->queueTier = $queueTier;
         $this->channelMappingId = $channelMappingId;
+        $this->stockOutboxId = $stockOutboxId;
+        $this->stockOutboxVersion = $stockOutboxVersion;
 
         $routing = self::isStockAction($action)
             ? config(
@@ -152,6 +161,10 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
 
     public function middleware(): array
     {
+        if ($this->isOutboxStockDelivery()) {
+            return [];
+        }
+
         $listingScope = self::isStockAction($this->action)
             ? ($this->channelMappingId ?: 'all-listings')
             : 'catalog';
@@ -171,8 +184,19 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
 
     public function handle(AdapterFactory $factory): void
     {
+        $stockOutbox = app(ChannelStockSyncOutboxService::class);
+
         if (app(ChannelSyncSettingService::class)->isPaused()) {
             $this->recordSkipped('Sinkronisasi channel sedang dinonaktifkan.');
+
+            if ($this->isOutboxStockDelivery()) {
+                $stockOutbox->defer(
+                    $this->stockOutboxId,
+                    $this->stockOutboxVersion,
+                    'Sinkronisasi channel sedang dinonaktifkan.',
+                    60,
+                );
+            }
 
             return;
         }
@@ -184,6 +208,14 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
 
         if (! $product || ! $shop) {
             $this->recordUploadResult(false, 'Produk atau toko tidak ditemukan saat job upload diproses.');
+
+            if ($this->isOutboxStockDelivery()) {
+                $stockOutbox->skip(
+                    $this->stockOutboxId,
+                    $this->stockOutboxVersion,
+                    'Produk atau toko tidak ditemukan saat pengiriman stok diproses.',
+                );
+            }
 
             Log::warning('SyncProductToChannelJob skipped: Product or Shop not found.', [
                 'product_id' => $this->productId,
@@ -202,6 +234,10 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
 
             $this->recordSkipped($message);
 
+            if ($this->isOutboxStockDelivery()) {
+                $stockOutbox->skip($this->stockOutboxId, $this->stockOutboxVersion, $message);
+            }
+
             Log::info('SyncProductToChannelJob skipped: sinkronisasi untuk toko ini dimatikan.', [
                 'product_id' => $this->productId,
                 'channel_shop_id' => $this->channelShopId,
@@ -214,6 +250,11 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
                 'is_shadow_mode' => (bool) $shop->is_shadow_mode,
             ]);
 
+            return;
+        }
+
+        if ($this->isOutboxStockDelivery()
+            && ! $stockOutbox->shouldExecute($this->stockOutboxId, $this->stockOutboxVersion)) {
             return;
         }
 
@@ -248,6 +289,17 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
             Log::warning("Circuit breaker is open for {$channelCode}. Re-queuing job.", [
                 'product_id' => $this->productId,
             ]);
+            if ($this->isOutboxStockDelivery()) {
+                $stockOutbox->defer(
+                    $this->stockOutboxId,
+                    $this->stockOutboxVersion,
+                    "Circuit breaker {$channelCode} masih aktif.",
+                    300,
+                );
+
+                return;
+            }
+
             $this->release(300);
 
             return;
@@ -273,6 +325,14 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
                 'action' => $this->action,
             ]);
 
+            if ($this->isOutboxStockDelivery()) {
+                $stockOutbox->skip(
+                    $this->stockOutboxId,
+                    $this->stockOutboxVersion,
+                    'Listing tidak lagi cocok dengan produk atau toko saat diproses.',
+                );
+            }
+
             return;
         }
 
@@ -296,6 +356,14 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
                 'action' => $this->action,
             ]);
 
+            if ($this->isOutboxStockDelivery()) {
+                $stockOutbox->skip(
+                    $this->stockOutboxId,
+                    $this->stockOutboxVersion,
+                    'Listing belum terhubung ke produk marketplace.',
+                );
+            }
+
             return;
         }
 
@@ -309,6 +377,14 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
                 'action' => $this->action,
             ]);
 
+            if ($this->isOutboxStockDelivery()) {
+                $stockOutbox->skip(
+                    $this->stockOutboxId,
+                    $this->stockOutboxVersion,
+                    'Listing tidak memiliki varian master aktif yang valid.',
+                );
+            }
+
             return;
         }
 
@@ -321,6 +397,10 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
             $mapping->markAsFailed($message);
             $this->recordUploadResult(false, $message);
             $this->refreshChannelValidation();
+
+            if ($this->isOutboxStockDelivery()) {
+                $stockOutbox->fail($this->stockOutboxId, $this->stockOutboxVersion, $message);
+            }
 
             return;
         }
@@ -408,6 +488,10 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
                     $this->refreshChannelValidation();
                 }
 
+                if ($this->isOutboxStockDelivery()) {
+                    $stockOutbox->succeed($this->stockOutboxId, $this->stockOutboxVersion);
+                }
+
                 $this->resetFailureState($channelCode);
             } else {
                 $message = $result['message'] ?? 'Gagal mengeksekusi aksi';
@@ -438,6 +522,25 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
                         'reason' => $message,
                     ]);
 
+                    if ($this->isOutboxStockDelivery()) {
+                        $stockOutbox->fail($this->stockOutboxId, $this->stockOutboxVersion, $message);
+                    }
+
+                    return;
+                }
+
+                if ($this->isOutboxStockDelivery()) {
+                    $mapping->update([
+                        'sync_status' => ProductChannelMapping::STATUS_PENDING,
+                        'error_message' => $mapping->error_message,
+                    ]);
+                    $stockOutbox->defer(
+                        $this->stockOutboxId,
+                        $this->stockOutboxVersion,
+                        $message,
+                        $stockOutbox->retryDelaySeconds($this->outboxAttemptCount()),
+                    );
+
                     return;
                 }
 
@@ -454,6 +557,17 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
                 $this->refreshChannelValidation();
             }
             $this->handleFailure($channelCode);
+
+            if ($this->isOutboxStockDelivery()) {
+                $stockOutbox->defer(
+                    $this->stockOutboxId,
+                    $this->stockOutboxVersion,
+                    $e->getMessage(),
+                    $stockOutbox->retryDelaySeconds($this->outboxAttemptCount()),
+                );
+
+                return;
+            }
 
             throw $e;
         }
@@ -516,15 +630,10 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
             ->select(['id', 'product_id', 'channel_shop_id'])
             ->lazyById(100)
             ->each(function (ProductChannelMapping $mapping) use (&$dispatched): void {
-                self::dispatch(
-                    (string) $mapping->product_id,
-                    (string) $mapping->channel_shop_id,
+                app(ChannelStockSyncOutboxService::class)->request(
+                    $mapping,
                     $this->action,
-                    null,
-                    null,
-                    null,
                     $this->queueTier,
-                    (string) $mapping->id,
                 );
 
                 $dispatched++;
@@ -565,15 +674,11 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
         $log = $query->latest()->first();
 
         if (! $log) {
-            if ($success) {
-                return;
-            }
-
             $log = ProductSyncLog::record([
                 'product_id' => $this->productId,
                 'channel_shop_id' => $this->channelShopId,
                 'action' => $logAction,
-                'status' => ProductSyncLog::STATUS_FAILED,
+                'status' => $success ? ProductSyncLog::STATUS_SUCCESS : ProductSyncLog::STATUS_FAILED,
             ]);
         }
 
@@ -732,6 +837,18 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
 
     public function failed(\Throwable $exception): void
     {
+        if ($this->isOutboxStockDelivery()) {
+            $outbox = app(ChannelStockSyncOutboxService::class);
+            $outbox->defer(
+                $this->stockOutboxId,
+                $this->stockOutboxVersion,
+                $exception->getMessage(),
+                $outbox->retryDelaySeconds($this->outboxAttemptCount()),
+            );
+
+            return;
+        }
+
         $recorder = app(QueueFailureRecorder::class);
         $jobUuid = $this->job?->uuid();
         $hasOriginalFailure = $recorder->hasAttemptException($jobUuid);
@@ -775,5 +892,21 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
 
         return str_contains($message, 'maxattemptsexceeded')
             || str_contains($message, 'attempted too many times');
+    }
+
+    private function isOutboxStockDelivery(): bool
+    {
+        return self::isStockAction($this->action)
+            && $this->stockOutboxId !== null
+            && $this->stockOutboxVersion !== null;
+    }
+
+    private function outboxAttemptCount(): int
+    {
+        if (! $this->isOutboxStockDelivery()) {
+            return 1;
+        }
+
+        return app(ChannelStockSyncOutboxService::class)->attemptCount($this->stockOutboxId);
     }
 }

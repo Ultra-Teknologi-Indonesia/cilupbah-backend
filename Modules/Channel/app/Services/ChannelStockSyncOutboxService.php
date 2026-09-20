@@ -1,0 +1,366 @@
+<?php
+
+namespace Modules\Channel\Services;
+
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Modules\Channel\Jobs\SyncProductToChannelJob;
+use Modules\Channel\Models\ChannelStockSyncOutbox;
+use Modules\Product\Models\ProductChannelMapping;
+
+class ChannelStockSyncOutboxService
+{
+    public function request(ProductChannelMapping $mapping, string $action, string $queueTier = 'critical'): ChannelStockSyncOutbox
+    {
+        [$syncStock, $syncPrice] = $this->axesFor($action);
+        $now = now();
+
+        return DB::transaction(function () use ($mapping, $syncStock, $syncPrice, $queueTier, $now): ChannelStockSyncOutbox {
+            $outbox = ChannelStockSyncOutbox::query()
+                ->where('product_channel_mapping_id', $mapping->id)
+                ->lockForUpdate()
+                ->first();
+
+            if ($outbox === null) {
+                return ChannelStockSyncOutbox::create([
+                    'product_channel_mapping_id' => $mapping->id,
+                    'product_id' => $mapping->product_id,
+                    'channel_shop_id' => $mapping->channel_shop_id,
+                    'sync_stock' => $syncStock,
+                    'sync_price' => $syncPrice,
+                    'queue_tier' => $queueTier,
+                    'status' => ChannelStockSyncOutbox::STATUS_PENDING,
+                    'requested_version' => 1,
+                    'next_attempt_at' => $now,
+                ]);
+            }
+
+            $changes = [
+                'sync_stock' => $outbox->sync_stock || $syncStock,
+                'sync_price' => $outbox->sync_price || $syncPrice,
+                'queue_tier' => $this->higherPriorityTier($outbox->queue_tier, $queueTier),
+                'requested_version' => $outbox->requested_version + 1,
+                'last_error' => null,
+                'updated_at' => $now,
+            ];
+
+            if ($outbox->status !== ChannelStockSyncOutbox::STATUS_DISPATCHING) {
+                $changes += [
+                    'status' => ChannelStockSyncOutbox::STATUS_PENDING,
+                    'next_attempt_at' => $now,
+                    'lease_expires_at' => null,
+                ];
+            }
+
+            $outbox->update($changes);
+
+            return $outbox->fresh();
+        });
+    }
+
+    public function requestByMappingId(string $mappingId, string $action, string $queueTier = 'critical'): ?ChannelStockSyncOutbox
+    {
+        $mapping = ProductChannelMapping::query()->find($mappingId);
+
+        return $mapping === null ? null : $this->request($mapping, $action, $queueTier);
+    }
+
+    public function dispatchDue(int $limit = 1000): array
+    {
+        $limit = max(1, $limit);
+        $now = now();
+        $reaped = $this->reapExpiredLeases($now);
+        $window = max(1, (int) config('channel.stock_sync_dispatch_window_seconds', 50));
+        $leaseSeconds = max(60, (int) config('channel.stock_sync_lease_seconds', 600));
+        $perShopSlots = [];
+        $claimed = 0;
+        $byChannel = [];
+
+        $candidates = ChannelStockSyncOutbox::query()
+            ->join('channel_shops', 'channel_shops.id', '=', 'channel_stock_sync_outbox.channel_shop_id')
+            ->join('channels', 'channels.id', '=', 'channel_shops.channel_id')
+            ->where('channel_stock_sync_outbox.status', ChannelStockSyncOutbox::STATUS_PENDING)
+            ->whereColumn('channel_stock_sync_outbox.requested_version', '>', 'channel_stock_sync_outbox.dispatched_version')
+            ->where(function ($query) use ($now): void {
+                $query->whereNull('channel_stock_sync_outbox.next_attempt_at')
+                    ->orWhere('channel_stock_sync_outbox.next_attempt_at', '<=', $now);
+            })
+            ->orderByRaw("CASE channel_stock_sync_outbox.queue_tier WHEN 'critical' THEN 0 ELSE 1 END")
+            ->orderBy('channel_stock_sync_outbox.next_attempt_at')
+            ->orderBy('channel_stock_sync_outbox.updated_at')
+            ->limit($limit * 3)
+            ->get([
+                'channel_stock_sync_outbox.*',
+                'channels.code as channel_code',
+            ]);
+
+        foreach ($candidates as $outbox) {
+            if ($claimed >= $limit) {
+                break;
+            }
+
+            $rate = max(1, (int) config(
+                'ratelimit.channel_api_per_second_by_channel.'.$outbox->channel_code,
+                config('ratelimit.channel_api_per_second', 8),
+            ));
+            $shopKey = (string) $outbox->channel_shop_id;
+            $slot = $perShopSlots[$shopKey] ?? 0;
+
+            if ($slot >= $rate * $window) {
+                continue;
+            }
+
+            $version = (int) $outbox->requested_version;
+            $updated = ChannelStockSyncOutbox::query()
+                ->whereKey($outbox->id)
+                ->where('status', ChannelStockSyncOutbox::STATUS_PENDING)
+                ->where('requested_version', $version)
+                ->whereColumn('requested_version', '>', 'dispatched_version')
+                ->update([
+                    'status' => ChannelStockSyncOutbox::STATUS_DISPATCHING,
+                    'dispatched_version' => $version,
+                    'dispatched_at' => $now,
+                    'lease_expires_at' => $now->copy()->addSeconds($leaseSeconds),
+                    'updated_at' => $now,
+                ]);
+
+            if ($updated !== 1) {
+                continue;
+            }
+
+            $delaySeconds = intdiv($slot, $rate);
+            $perShopSlots[$shopKey] = $slot + 1;
+
+            try {
+                SyncProductToChannelJob::dispatch(
+                    (string) $outbox->product_id,
+                    (string) $outbox->channel_shop_id,
+                    $outbox->action(),
+                    null,
+                    null,
+                    null,
+                    (string) $outbox->queue_tier,
+                    (string) $outbox->product_channel_mapping_id,
+                    (string) $outbox->id,
+                    $version,
+                )->delay($now->copy()->addSeconds($delaySeconds));
+            } catch (\Throwable $exception) {
+                $this->defer($outbox->id, $version, 'Gagal menaruh pekerjaan ke antrean: '.$exception->getMessage(), 30);
+                Log::error('Gagal mengirim channel stock outbox ke queue.', [
+                    'outbox_id' => $outbox->id,
+                    'exception' => $exception::class,
+                    'error' => $exception->getMessage(),
+                ]);
+
+                continue;
+            }
+
+            $claimed++;
+            $byChannel[$outbox->channel_code] = ($byChannel[$outbox->channel_code] ?? 0) + 1;
+        }
+
+        return compact('claimed', 'reaped', 'byChannel');
+    }
+
+    public function shouldExecute(string $outboxId, int $version): bool
+    {
+        return DB::transaction(function () use ($outboxId, $version): bool {
+            $outbox = ChannelStockSyncOutbox::query()->lockForUpdate()->find($outboxId);
+
+            if ($outbox === null
+                || $outbox->status !== ChannelStockSyncOutbox::STATUS_DISPATCHING
+                || $outbox->dispatched_version !== $version) {
+                return false;
+            }
+
+            if ($outbox->requested_version !== $version) {
+                $this->makePending($outbox, now());
+
+                return false;
+            }
+
+            $maxAttempts = max(1, (int) config('channel.stock_sync_max_attempts', 12));
+            if ($outbox->attempt_count >= $maxAttempts) {
+                $outbox->update([
+                    'status' => ChannelStockSyncOutbox::STATUS_FAILED,
+                    'completed_at' => now(),
+                    'lease_expires_at' => null,
+                    'last_error' => 'Batas percobaan API tercapai. Tidak ada percobaan baru yang dikirim.',
+                ]);
+
+                return false;
+            }
+
+            $outbox->increment('attempt_count');
+
+            return true;
+        });
+    }
+
+    public function succeed(string $outboxId, int $version): void
+    {
+        DB::transaction(function () use ($outboxId, $version): void {
+            $outbox = ChannelStockSyncOutbox::query()->lockForUpdate()->find($outboxId);
+
+            if ($outbox === null || $outbox->dispatched_version !== $version) {
+                return;
+            }
+
+            if ($outbox->requested_version !== $version) {
+                $this->makePending($outbox, now());
+
+                return;
+            }
+
+            $outbox->update([
+                'sync_stock' => false,
+                'sync_price' => false,
+                'status' => ChannelStockSyncOutbox::STATUS_SUCCEEDED,
+                'completed_version' => $version,
+                'completed_at' => now(),
+                'next_attempt_at' => null,
+                'lease_expires_at' => null,
+                'last_error' => null,
+            ]);
+        });
+    }
+
+    public function defer(string $outboxId, int $version, string $reason, int $delaySeconds): void
+    {
+        DB::transaction(function () use ($outboxId, $version, $reason, $delaySeconds): void {
+            $outbox = ChannelStockSyncOutbox::query()->lockForUpdate()->find($outboxId);
+
+            if ($outbox === null || $outbox->dispatched_version !== $version) {
+                return;
+            }
+
+            if ($outbox->requested_version !== $version) {
+                $this->makePending($outbox, now());
+
+                return;
+            }
+
+            $maxAttempts = max(1, (int) config('channel.stock_sync_max_attempts', 12));
+            if ($outbox->attempt_count >= $maxAttempts) {
+                $outbox->update([
+                    'status' => ChannelStockSyncOutbox::STATUS_FAILED,
+                    'completed_at' => now(),
+                    'lease_expires_at' => null,
+                    'last_error' => $reason,
+                ]);
+
+                return;
+            }
+
+            $outbox->update([
+                'status' => ChannelStockSyncOutbox::STATUS_PENDING,
+                'next_attempt_at' => now()->addSeconds(max(1, $delaySeconds)),
+                'lease_expires_at' => null,
+                'last_error' => $reason,
+            ]);
+        });
+    }
+
+    public function fail(string $outboxId, int $version, string $reason): void
+    {
+        DB::transaction(function () use ($outboxId, $version, $reason): void {
+            $outbox = ChannelStockSyncOutbox::query()->lockForUpdate()->find($outboxId);
+
+            if ($outbox === null || $outbox->dispatched_version !== $version) {
+                return;
+            }
+
+            if ($outbox->requested_version !== $version) {
+                $this->makePending($outbox, now());
+
+                return;
+            }
+
+            $outbox->update([
+                'status' => ChannelStockSyncOutbox::STATUS_FAILED,
+                'completed_at' => now(),
+                'lease_expires_at' => null,
+                'last_error' => $reason,
+            ]);
+        });
+    }
+
+    public function skip(string $outboxId, int $version, string $reason): void
+    {
+        DB::transaction(function () use ($outboxId, $version, $reason): void {
+            $outbox = ChannelStockSyncOutbox::query()->lockForUpdate()->find($outboxId);
+
+            if ($outbox === null || $outbox->dispatched_version !== $version) {
+                return;
+            }
+
+            if ($outbox->requested_version !== $version) {
+                $this->makePending($outbox, now());
+
+                return;
+            }
+
+            $outbox->update([
+                'status' => ChannelStockSyncOutbox::STATUS_SKIPPED,
+                'completed_at' => now(),
+                'lease_expires_at' => null,
+                'last_error' => $reason,
+            ]);
+        });
+    }
+
+    public function retryDelaySeconds(int $attemptCount): int
+    {
+        $backoff = (array) config('channel.stock_sync_retry_backoff', [60, 300, 900, 1800]);
+        $index = min(max(0, $attemptCount - 1), count($backoff) - 1);
+
+        return max(1, (int) ($backoff[$index] ?? 1800));
+    }
+
+    public function attemptCount(string $outboxId): int
+    {
+        return (int) ChannelStockSyncOutbox::query()
+            ->whereKey($outboxId)
+            ->value('attempt_count');
+    }
+
+    private function reapExpiredLeases(Carbon $now): int
+    {
+        return ChannelStockSyncOutbox::query()
+            ->where('status', ChannelStockSyncOutbox::STATUS_DISPATCHING)
+            ->where('lease_expires_at', '<', $now)
+            ->update([
+                'status' => ChannelStockSyncOutbox::STATUS_PENDING,
+                'next_attempt_at' => $now,
+                'lease_expires_at' => null,
+                'last_error' => 'Lease pengiriman sebelumnya kedaluwarsa; dijadwalkan ulang dengan nilai stok terbaru.',
+                'updated_at' => $now,
+            ]);
+    }
+
+    private function makePending(ChannelStockSyncOutbox $outbox, Carbon $now): void
+    {
+        $outbox->update([
+            'status' => ChannelStockSyncOutbox::STATUS_PENDING,
+            'next_attempt_at' => $now,
+            'lease_expires_at' => null,
+            'last_error' => null,
+        ]);
+    }
+
+    private function axesFor(string $action): array
+    {
+        return match ($action) {
+            'sync_stock' => [true, false],
+            'sync_price' => [false, true],
+            'sync_price_stock' => [true, true],
+            default => throw new \InvalidArgumentException("Aksi outbox stok tidak didukung: {$action}"),
+        };
+    }
+
+    private function higherPriorityTier(string $current, string $requested): string
+    {
+        return $current === 'critical' || $requested === 'critical' ? 'critical' : 'bulk';
+    }
+}

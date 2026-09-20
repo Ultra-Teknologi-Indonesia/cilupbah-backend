@@ -15,6 +15,11 @@ return [
 
     'product_sync_overlap_lock_seconds' => (int) env('CHANNEL_PRODUCT_SYNC_OVERLAP_LOCK_SECONDS', 360),
 
+    'stock_sync_dispatch_window_seconds' => (int) env('CHANNEL_STOCK_SYNC_DISPATCH_WINDOW_SECONDS', 50),
+    'stock_sync_lease_seconds' => (int) env('CHANNEL_STOCK_SYNC_LEASE_SECONDS', 600),
+    'stock_sync_max_attempts' => (int) env('CHANNEL_STOCK_SYNC_MAX_ATTEMPTS', 12),
+    'stock_sync_retry_backoff' => [60, 300, 900, 1800],
+
     'search_cache_ttl_seconds' => (int) env('CHANNEL_SEARCH_CACHE_TTL_SECONDS', 30),
     'lazada_search_index_max_pages' => (int) env('LAZADA_SEARCH_INDEX_MAX_PAGES', 10000),
 

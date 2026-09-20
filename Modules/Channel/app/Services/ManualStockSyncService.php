@@ -3,7 +3,6 @@
 namespace Modules\Channel\Services;
 
 use Modules\Channel\Jobs\ManualStockResyncAllJob;
-use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Channel\Support\ChannelVariantMappingResolver;
 use Modules\Product\Models\ProductChannelMapping;
 
@@ -49,16 +48,7 @@ class ManualStockSyncService
                     continue;
                 }
 
-                SyncProductToChannelJob::dispatch(
-                    $mapping->product_id,
-                    $mapping->channel_shop_id,
-                    'sync_stock',
-                    null,
-                    null,
-                    null,
-                    'bulk',
-                    (string) $mapping->id,
-                );
+                app(ChannelStockSyncOutboxService::class)->request($mapping, 'sync_stock', 'bulk');
 
                 $queued++;
             }
@@ -107,16 +97,7 @@ class ManualStockSyncService
                         continue;
                     }
 
-                    SyncProductToChannelJob::dispatch(
-                        $mapping->product_id,
-                        $mapping->channel_shop_id,
-                        'sync_stock',
-                        null,
-                        null,
-                        null,
-                        'bulk',
-                        (string) $mapping->id,
-                    );
+                    app(ChannelStockSyncOutboxService::class)->request($mapping, 'sync_stock', 'bulk');
 
                     $queued++;
                 }
