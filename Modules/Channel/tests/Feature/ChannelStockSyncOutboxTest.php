@@ -142,6 +142,35 @@ class ChannelStockSyncOutboxTest extends TestCase
         });
     }
 
+    public function test_expired_dispatching_leases_can_be_reaped_without_dispatching_to_marketplace(): void
+    {
+        $mapping = $this->listedMapping('LISTING-REAP-ONLY');
+        $service = app(ChannelStockSyncOutboxService::class);
+
+        $service->request($mapping, 'sync_stock');
+        Queue::fake();
+        $service->dispatchDue();
+
+        $outbox = ChannelStockSyncOutbox::where('product_channel_mapping_id', $mapping->id)->firstOrFail();
+        $outbox->update([
+            'lease_expires_at' => now()->subMinute(),
+        ]);
+
+        $this->assertSame(1, $service->expiredDispatchingCount());
+
+        $reaped = $service->reapExpiredLeases();
+
+        $this->assertSame(1, $reaped);
+        $this->assertSame(0, $service->expiredDispatchingCount());
+        $this->assertDatabaseHas('channel_stock_sync_outbox', [
+            'id' => $outbox->id,
+            'status' => ChannelStockSyncOutbox::STATUS_PENDING,
+            'requested_version' => 2,
+            'dispatched_version' => 1,
+        ]);
+        Queue::assertPushed(SyncProductToChannelJob::class, 1);
+    }
+
     public function test_a_pending_delivery_left_by_an_old_expired_lease_is_revived_safely(): void
     {
         $mapping = $this->listedMapping('LISTING-STRANDED-PENDING');

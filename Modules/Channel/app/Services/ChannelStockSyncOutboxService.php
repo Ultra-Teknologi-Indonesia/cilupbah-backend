@@ -326,10 +326,24 @@ class ChannelStockSyncOutboxService
             ->value('attempt_count');
     }
 
-    private function reapExpiredLeases(Carbon $now): int
+    public function expiredDispatchingCount(?Carbon $now = null): int
     {
+        $now ??= now();
+
         return ChannelStockSyncOutbox::query()
             ->where('status', ChannelStockSyncOutbox::STATUS_DISPATCHING)
+            ->whereNotNull('lease_expires_at')
+            ->where('lease_expires_at', '<', $now)
+            ->count();
+    }
+
+    public function reapExpiredLeases(?Carbon $now = null): int
+    {
+        $now ??= now();
+
+        return ChannelStockSyncOutbox::query()
+            ->where('status', ChannelStockSyncOutbox::STATUS_DISPATCHING)
+            ->whereNotNull('lease_expires_at')
             ->where('lease_expires_at', '<', $now)
             ->update([
                 'status' => ChannelStockSyncOutbox::STATUS_PENDING,
