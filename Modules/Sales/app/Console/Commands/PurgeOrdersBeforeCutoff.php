@@ -19,6 +19,7 @@ final class PurgeOrdersBeforeCutoff extends Command
         {--source=* : Batasi source; dapat diulang. Kosong berarti semua source}
         {--chunk=200 : Jumlah order per transaksi, 25-500}
         {--processed-only : Hanya pilih order terminal yang seluruh proses kritisnya sudah selesai}
+        {--allow-incomplete-finance : Abaikan hanya blocker Finance; wajib bersama --processed-only}
         {--apply : Terapkan penghapusan permanen}
         {--confirm= : Token konfirmasi yang ditampilkan oleh dry-run}';
 
@@ -31,14 +32,29 @@ final class PurgeOrdersBeforeCutoff extends Command
             $sources = (array) $this->option('source');
             $chunkSize = max(25, min(500, (int) $this->option('chunk')));
             $processedOnly = (bool) $this->option('processed-only');
-            $preview = $service->preview($cutoff, $sources, $processedOnly);
+            $allowIncompleteFinance = (bool) $this->option('allow-incomplete-finance');
+
+            if ($allowIncompleteFinance && ! $processedOnly) {
+                throw new RuntimeException('--allow-incomplete-finance wajib digunakan bersama --processed-only.');
+            }
+
+            $preview = $service->preview(
+                $cutoff,
+                $sources,
+                $processedOnly,
+                $allowIncompleteFinance,
+            );
 
             $this->renderPreview($cutoff, $preview);
 
             if (! (bool) $this->option('apply')) {
                 $this->newLine();
                 $this->warn('DRY-RUN: tidak ada data yang diubah.');
-                $this->line('Untuk apply, gunakan token: '.$this->confirmationToken($cutoff, $processedOnly));
+                $this->line('Untuk apply, gunakan token: '.$this->confirmationToken(
+                    $cutoff,
+                    $processedOnly,
+                    $allowIncompleteFinance,
+                ));
 
                 return self::SUCCESS;
             }
@@ -50,7 +66,11 @@ final class PurgeOrdersBeforeCutoff extends Command
                 return self::FAILURE;
             }
 
-            $expectedToken = $this->confirmationToken($cutoff, $processedOnly);
+            $expectedToken = $this->confirmationToken(
+                $cutoff,
+                $processedOnly,
+                $allowIncompleteFinance,
+            );
             if (! hash_equals($expectedToken, (string) $this->option('confirm'))) {
                 $this->error('Token konfirmasi tidak cocok. Gunakan: --confirm='.$expectedToken);
 
@@ -63,7 +83,13 @@ final class PurgeOrdersBeforeCutoff extends Command
                 return self::SUCCESS;
             }
 
-            $result = $service->purge($cutoff, $sources, $chunkSize, $processedOnly);
+            $result = $service->purge(
+                $cutoff,
+                $sources,
+                $chunkSize,
+                $processedOnly,
+                $allowIncompleteFinance,
+            );
 
             $this->newLine();
             $this->info('PEMBERSIHAN SELESAI');
@@ -115,9 +141,13 @@ final class PurgeOrdersBeforeCutoff extends Command
     {
         $this->info('PEMBERSIHAN ORDER BERDASARKAN TANGGAL TRANSAKSI');
         $this->line('Mode       : '.((bool) $this->option('apply') ? 'APPLY' : 'DRY-RUN'));
-        $this->line('Seleksi    : '.((bool) $this->option('processed-only')
-            ? 'HANYA ORDER TERMINAL YANG PROSES KRITISNYA SUDAH SELESAI'
-            : 'SEMUA ORDER SEBELUM CUTOFF'));
+        $selection = 'SEMUA ORDER SEBELUM CUTOFF';
+        if ((bool) $this->option('processed-only')) {
+            $selection = (bool) $this->option('allow-incomplete-finance')
+                ? 'ORDER TERMINAL; FINANCE BOLEH BELUM SELESAI, PROSES KRITIS LAIN WAJIB AMAN'
+                : 'HANYA ORDER TERMINAL YANG PROSES KRITISNYA SUDAH SELESAI';
+        }
+        $this->line('Seleksi    : '.$selection);
         $this->line('Aturan     : transaction_date < '.$cutoff->format('Y-m-d H:i:s').' WIB');
         $this->line('Cutoff UTC : '.$preview['cutoff_utc']);
         $this->line('Source     : '.($preview['sources'] === [] ? 'SEMUA SOURCE (termasuk manual/internal)' : implode(', ', $preview['sources'])));
@@ -170,8 +200,16 @@ final class PurgeOrdersBeforeCutoff extends Command
         }
     }
 
-    private function confirmationToken(CarbonImmutable $cutoff, bool $processedOnly): string
+    private function confirmationToken(
+        CarbonImmutable $cutoff,
+        bool $processedOnly,
+        bool $allowIncompleteFinance,
+    ): string
     {
+        if ($processedOnly && $allowIncompleteFinance) {
+            return 'HAPUS-SELESAI-ABAIKAN-FINANCE-SEBELUM-'.$cutoff->format('Ymd-Hi');
+        }
+
         return ($processedOnly ? 'HAPUS-SELESAI-SEBELUM-' : 'HAPUS-SEBELUM-')
             .$cutoff->format('Ymd-Hi');
     }

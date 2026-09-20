@@ -73,14 +73,23 @@ final class SalesOrderCutoffPurgeService
         CarbonImmutable $cutoff,
         array $sources = [],
         bool $processedOnly = false,
+        bool $allowIncompleteFinance = false,
     ): array {
         $sources = $this->normalizeSources($sources);
         $candidate = $this->candidateQuery($cutoff, $sources);
         $candidateCount = (clone $candidate)->count();
         if ($processedOnly) {
-            $targetCount = $this->processedCandidateQuery($cutoff, $sources)->count();
+            $targetCount = $this->processedCandidateQuery(
+                $cutoff,
+                $sources,
+                $allowIncompleteFinance,
+            )->count();
             $blockedCount = max(0, $candidateCount - $targetCount);
-            $blockerDetails = $this->processedBlockerDetails($cutoff, $sources);
+            $blockerDetails = $this->processedBlockerDetails(
+                $cutoff,
+                $sources,
+                $allowIncompleteFinance,
+            );
         } else {
             $blockerDetails = $this->blockerDetails($cutoff, $sources);
             $blockedCount = $this->blockedCandidateQuery($cutoff, $sources)->count();
@@ -127,7 +136,7 @@ final class SalesOrderCutoffPurgeService
         return [
             'cutoff_utc' => $cutoff->utc()->toDateTimeString(),
             'sources' => $sources,
-            'mode' => $processedOnly ? 'processed_only' : 'strict',
+            'mode' => $this->mode($processedOnly, $allowIncompleteFinance),
             'candidate_count' => $candidateCount,
             'safe_count' => $targetCount,
             'blocked_count' => $blockedCount,
@@ -145,6 +154,7 @@ final class SalesOrderCutoffPurgeService
         array $sources = [],
         int $chunkSize = 200,
         bool $processedOnly = false,
+        bool $allowIncompleteFinance = false,
     ): array {
         if (! Schema::hasTable('sales_order_purge_runs') || ! Schema::hasTable('sales_order_purge_archives')) {
             throw new RuntimeException(
@@ -169,7 +179,12 @@ final class SalesOrderCutoffPurgeService
         $preview = null;
 
         try {
-            $preview = $this->preview($cutoff, $sources, $processedOnly);
+            $preview = $this->preview(
+                $cutoff,
+                $sources,
+                $processedOnly,
+                $allowIncompleteFinance,
+            );
             if (! $processedOnly && (int) $preview['blocked_count'] > 0) {
                 throw new RuntimeException(
                     'Apply dibatalkan: '.$preview['blocked_count'].' order memiliki jejak operasional, stok, finance, atau media.'
@@ -178,13 +193,14 @@ final class SalesOrderCutoffPurgeService
 
             $this->createAuditRun($runId, $cutoff, $sources, $preview, $startedAt);
 
-            $this->targetQuery($cutoff, $sources, $processedOnly)
+            $this->targetQuery($cutoff, $sources, $processedOnly, $allowIncompleteFinance)
                 ->select('sales_orders.id')
                 ->orderBy('sales_orders.id')
                 ->chunkById($chunkSize, function ($rows) use (
                     $cutoff,
                     $sources,
                     $processedOnly,
+                    $allowIncompleteFinance,
                     $runId,
                     &$deleted,
                     &$archived,
@@ -200,10 +216,16 @@ final class SalesOrderCutoffPurgeService
                         $cutoff,
                         $sources,
                         $processedOnly,
+                        $allowIncompleteFinance,
                         $runId,
                         $ids,
                     ): array {
-                        $lockedIds = $this->targetQuery($cutoff, $sources, $processedOnly)
+                        $lockedIds = $this->targetQuery(
+                            $cutoff,
+                            $sources,
+                            $processedOnly,
+                            $allowIncompleteFinance,
+                        )
                             ->whereIn('sales_orders.id', $ids)
                             ->lockForUpdate()
                             ->pluck('sales_orders.id')
@@ -258,13 +280,18 @@ final class SalesOrderCutoffPurgeService
                     $deletedFinanceStates += $counts[3];
                 }, 'sales_orders.id', 'id');
 
-            $remaining = $this->targetQuery($cutoff, $sources, $processedOnly)->count();
+            $remaining = $this->targetQuery(
+                $cutoff,
+                $sources,
+                $processedOnly,
+                $allowIncompleteFinance,
+            )->count();
 
             $result = [
                 'run_id' => $runId,
                 'cutoff_utc' => $cutoff->utc()->toDateTimeString(),
                 'sources' => $sources,
-                'mode' => $processedOnly ? 'processed_only' : 'strict',
+                'mode' => $this->mode($processedOnly, $allowIncompleteFinance),
                 'candidate_count' => (int) $preview['candidate_count'],
                 'deleted_count' => $deleted,
                 'archived_count' => $archived,
@@ -280,7 +307,7 @@ final class SalesOrderCutoffPurgeService
             return $result;
         } catch (Throwable $exception) {
             $this->finishAuditRun($runId, 'failed', [
-                'mode' => $processedOnly ? 'processed_only' : 'strict',
+                'mode' => $this->mode($processedOnly, $allowIncompleteFinance),
                 'candidate_count' => (int) ($preview['candidate_count'] ?? 0),
                 'deleted_count' => $deleted,
                 'archived_count' => $archived,
@@ -305,10 +332,15 @@ final class SalesOrderCutoffPurgeService
             );
     }
 
-    private function targetQuery(CarbonImmutable $cutoff, array $sources, bool $processedOnly): Builder
+    private function targetQuery(
+        CarbonImmutable $cutoff,
+        array $sources,
+        bool $processedOnly,
+        bool $allowIncompleteFinance,
+    ): Builder
     {
         return $processedOnly
-            ? $this->processedCandidateQuery($cutoff, $sources)
+            ? $this->processedCandidateQuery($cutoff, $sources, $allowIncompleteFinance)
             : $this->candidateQuery($cutoff, $sources);
     }
 
@@ -451,7 +483,11 @@ final class SalesOrderCutoffPurgeService
         }
     }
 
-    private function processedCandidateQuery(CarbonImmutable $cutoff, array $sources): Builder
+    private function processedCandidateQuery(
+        CarbonImmutable $cutoff,
+        array $sources,
+        bool $allowIncompleteFinance = false,
+    ): Builder
     {
         $query = $this->candidateQuery($cutoff, $sources)
             ->where(function (Builder $terminal): void {
@@ -459,21 +495,26 @@ final class SalesOrderCutoffPurgeService
                     ->orWhere('sales_orders.is_canceled', true);
             });
 
-        $query->whereExists(static function (Builder $state): void {
-            $state->selectRaw('1')
-                ->from('finance_sync_states as processed_finance_state')
-                ->whereColumn('processed_finance_state.order_id', 'sales_orders.id')
-                ->where('processed_finance_state.status', 'succeeded');
-        });
+        if (! $allowIncompleteFinance) {
+            $query->whereExists(static function (Builder $state): void {
+                $state->selectRaw('1')
+                    ->from('finance_sync_states as processed_finance_state')
+                    ->whereColumn('processed_finance_state.order_id', 'sales_orders.id')
+                    ->where('processed_finance_state.status', 'succeeded');
+            });
+        }
 
-        $this->addProcessedSafetyConditions($query);
+        $this->addProcessedSafetyConditions($query, $allowIncompleteFinance);
 
         return $query;
     }
 
-    private function addProcessedSafetyConditions(Builder $query): void
+    private function addProcessedSafetyConditions(
+        Builder $query,
+        bool $allowIncompleteFinance = false,
+    ): void
     {
-        if (Schema::hasTable('finance_sync_dead_letters')) {
+        if (! $allowIncompleteFinance && Schema::hasTable('finance_sync_dead_letters')) {
             $query->whereNotExists(static function (Builder $deadLetter): void {
                 $deadLetter->selectRaw('1')
                     ->from('finance_sync_dead_letters as processed_dead_letter')
@@ -742,7 +783,11 @@ final class SalesOrderCutoffPurgeService
         return $details;
     }
 
-    private function processedBlockerDetails(CarbonImmutable $cutoff, array $sources): array
+    private function processedBlockerDetails(
+        CarbonImmutable $cutoff,
+        array $sources,
+        bool $allowIncompleteFinance = false,
+    ): array
     {
         $details = [];
 
@@ -757,14 +802,16 @@ final class SalesOrderCutoffPurgeService
             });
         $this->appendBlockerDetail($details, 'order_belum_terminal', $notTerminal, true);
 
-        $financeNotSucceeded = $this->candidateQuery($cutoff, $sources)
-            ->whereNotExists(static function (Builder $state): void {
-                $state->selectRaw('1')
-                    ->from('finance_sync_states as processed_finance_state')
-                    ->whereColumn('processed_finance_state.order_id', 'sales_orders.id')
-                    ->where('processed_finance_state.status', 'succeeded');
-            });
-        $this->appendBlockerDetail($details, 'finance_belum_succeeded', $financeNotSucceeded, true);
+        if (! $allowIncompleteFinance) {
+            $financeNotSucceeded = $this->candidateQuery($cutoff, $sources)
+                ->whereNotExists(static function (Builder $state): void {
+                    $state->selectRaw('1')
+                        ->from('finance_sync_states as processed_finance_state')
+                        ->whereColumn('processed_finance_state.order_id', 'sales_orders.id')
+                        ->where('processed_finance_state.status', 'succeeded');
+                });
+            $this->appendBlockerDetail($details, 'finance_belum_succeeded', $financeNotSucceeded, true);
+        }
 
         if (Schema::hasTable('inventory_movements')) {
             $openReservation = $this->candidateQuery($cutoff, $sources)
@@ -779,7 +826,7 @@ final class SalesOrderCutoffPurgeService
             $this->appendBlockerDetail($details, 'reservasi_stok_belum_nol', $openReservation, true);
         }
 
-        if (Schema::hasTable('finance_sync_dead_letters')) {
+        if (! $allowIncompleteFinance && Schema::hasTable('finance_sync_dead_letters')) {
             $unresolvedDeadLetter = $this->candidateQuery($cutoff, $sources)
                 ->whereExists(static function (Builder $deadLetter): void {
                     $deadLetter->selectRaw('1')
@@ -790,19 +837,26 @@ final class SalesOrderCutoffPurgeService
             $this->appendBlockerDetail($details, 'finance_dead_letter_belum_selesai', $unresolvedDeadLetter, true);
         }
 
-        $eligibleIds = $this->processedCandidateQuery($cutoff, $sources)->select('sales_orders.id');
+        $eligibleIds = $this->processedCandidateQuery(
+            $cutoff,
+            $sources,
+            $allowIncompleteFinance,
+        )->select('sales_orders.id');
         $otherSafetyIssue = $this->candidateQuery($cutoff, $sources)
             ->where(function (Builder $terminal): void {
                 $terminal->whereIn('sales_orders.status', self::TERMINAL_ORDER_STATUSES)
                     ->orWhere('sales_orders.is_canceled', true);
             })
-            ->whereExists(static function (Builder $state): void {
+            ->whereNotIn('sales_orders.id', $eligibleIds);
+
+        if (! $allowIncompleteFinance) {
+            $otherSafetyIssue->whereExists(static function (Builder $state): void {
                 $state->selectRaw('1')
                     ->from('finance_sync_states as processed_finance_state')
                     ->whereColumn('processed_finance_state.order_id', 'sales_orders.id')
                     ->where('processed_finance_state.status', 'succeeded');
-            })
-            ->whereNotIn('sales_orders.id', $eligibleIds);
+            });
+        }
         $this->appendBlockerDetail(
             $details,
             'proses_awb_label_gudang_retur_atau_media_masih_aktif',
@@ -811,6 +865,17 @@ final class SalesOrderCutoffPurgeService
         );
 
         return $details;
+    }
+
+    private function mode(bool $processedOnly, bool $allowIncompleteFinance): string
+    {
+        if (! $processedOnly) {
+            return 'strict';
+        }
+
+        return $allowIncompleteFinance
+            ? 'processed_allow_incomplete_finance'
+            : 'processed_only';
     }
 
     private function appendBlockerDetail(

@@ -248,6 +248,113 @@ final class PurgeOrdersBeforeCutoffCommandTest extends TestCase
         ]);
     }
 
+    public function test_processed_only_can_ignore_finance_while_preserving_other_safety_blockers(): void
+    {
+        $financeWaiting = $this->order('FINANCE-WAITING', '2026-09-16 08:59:59');
+        $financeDeadLetter = $this->order('FINANCE-DEAD-LETTER', '2026-09-16 08:59:58');
+        $activeAwb = $this->order('ACTIVE-AWB', '2026-09-16 08:59:57');
+        $nonTerminal = $this->order('NON-TERMINAL', '2026-09-16 08:59:56', [
+            'status' => 'pending',
+            'channel_status' => 'AWAITING_SHIPMENT',
+        ]);
+
+        DB::table('finance_sync_states')->insert([
+            [
+                'id' => '019ff001-0000-7000-8000-000000000031',
+                'order_id' => $financeWaiting->id,
+                'status' => 'waiting',
+                'attempts' => 1,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'id' => '019ff001-0000-7000-8000-000000000032',
+                'order_id' => $financeDeadLetter->id,
+                'status' => 'dead_letter',
+                'attempts' => 5,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'id' => '019ff001-0000-7000-8000-000000000033',
+                'order_id' => $activeAwb->id,
+                'status' => 'waiting',
+                'attempts' => 1,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        DB::table('finance_sync_dead_letters')->insert([
+            'id' => '019ff001-0000-7000-8000-000000000034',
+            'job_uuid' => 'purge-finance-dead-letter',
+            'order_id' => $financeDeadLetter->id,
+            'source' => 'tiktok',
+            'channel_order_no' => $financeDeadLetter->channel_order_no,
+            'exception_class' => \RuntimeException::class,
+            'attempts' => 5,
+            'reason' => 'Finance lama tidak perlu dilanjutkan',
+            'failed_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('channel_operation_attempts')->insert([
+            'id' => '019ff001-0000-7000-8000-000000000035',
+            'order_id' => $activeAwb->id,
+            'operation' => 'request_awb',
+            'status' => 'accepted',
+            'attempt_count' => 1,
+            'accepted_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->artisan('orders:purge-before-cutoff', [
+            '--cutoff' => self::CUTOFF,
+            '--processed-only' => true,
+            '--allow-incomplete-finance' => true,
+            '--apply' => true,
+            '--confirm' => 'HAPUS-SELESAI-ABAIKAN-FINANCE-SEBELUM-20260916-1600',
+        ])->assertSuccessful();
+
+        foreach ([$financeWaiting, $financeDeadLetter] as $deleted) {
+            $this->assertDatabaseMissing('sales_orders', ['id' => $deleted->id]);
+            $this->assertDatabaseHas('sales_order_purge_archives', [
+                'original_order_id' => $deleted->id,
+            ]);
+            $this->assertDatabaseMissing('finance_sync_states', ['order_id' => $deleted->id]);
+        }
+
+        $this->assertDatabaseHas('finance_sync_dead_letters', [
+            'order_id' => $financeDeadLetter->id,
+        ]);
+        $this->assertNotNull(DB::table('finance_sync_dead_letters')
+            ->where('order_id', $financeDeadLetter->id)
+            ->value('resolved_at'));
+
+        $this->assertDatabaseHas('sales_orders', ['id' => $activeAwb->id]);
+        $this->assertDatabaseHas('channel_operation_attempts', [
+            'order_id' => $activeAwb->id,
+            'status' => 'accepted',
+        ]);
+        $this->assertDatabaseHas('sales_orders', ['id' => $nonTerminal->id]);
+    }
+
+    public function test_allow_incomplete_finance_requires_processed_only_mode(): void
+    {
+        $order = $this->order('INVALID-FINANCE-MODE', '2026-09-16 08:59:59');
+
+        $this->artisan('orders:purge-before-cutoff', [
+            '--cutoff' => self::CUTOFF,
+            '--allow-incomplete-finance' => true,
+        ])
+            ->expectsOutputToContain('--allow-incomplete-finance wajib digunakan bersama --processed-only.')
+            ->assertFailed();
+
+        $this->assertDatabaseHas('sales_orders', ['id' => $order->id]);
+    }
+
     private function order(string $suffix, ?string $transactionDate, array $overrides = []): SalesOrder
     {
         return SalesOrder::factory()->create(array_merge([
