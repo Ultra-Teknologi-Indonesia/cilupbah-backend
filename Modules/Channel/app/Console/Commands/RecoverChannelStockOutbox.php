@@ -8,11 +8,6 @@ use Modules\Channel\Services\ChannelStockSyncOutboxService;
 use Modules\Channel\Support\ChannelVariantMappingResolver;
 use Modules\Product\Models\ProductChannelMapping;
 
-/**
- * Rebuilds stock delivery from current local state, never from failed Redis
- * payloads. This is intentionally separate from queue:retry: a historical job
- * may contain an obsolete stock value or mapping.
- */
 class RecoverChannelStockOutbox extends Command
 {
     protected $signature = 'channel:recover-stock-outbox

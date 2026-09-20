@@ -170,8 +170,7 @@ return [
     ],
 
     'channel_order_intake' => [
-        // Orders before this point must already exist locally before channel sync may update them.
-        // The explicit WIB offset avoids ambiguity because the application stores timestamps in UTC.
+
         'cutoff_at' => env('CHANNEL_ORDER_INTAKE_CUTOFF_AT', '2026-09-16T16:00:00+07:00'),
     ],
 

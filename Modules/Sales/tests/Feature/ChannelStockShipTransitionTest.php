@@ -235,7 +235,7 @@ class ChannelStockShipTransitionTest extends TestCase
         config(['queue.channel_order_intake.cutoff_at' => '2026-09-16T16:00:00+07:00']);
 
         $data = $this->orderData('LZ-CUTOFF-BEFORE', 'AWAITING_SHIPMENT');
-        $data['transaction_date'] = '2026-09-16 08:59:59'; // 15:59:59 WIB
+        $data['transaction_date'] = '2026-09-16 08:59:59'; 
 
         try {
             $this->service->upsertFromChannel($data);
@@ -254,7 +254,7 @@ class ChannelStockShipTransitionTest extends TestCase
         config(['queue.channel_order_intake.cutoff_at' => '2026-09-16T16:00:00+07:00']);
 
         $data = $this->orderData('LZ-CUTOFF-AT', 'AWAITING_SHIPMENT');
-        $data['transaction_date'] = '2026-09-16 09:00:00'; // 16:00:00 WIB
+        $data['transaction_date'] = '2026-09-16 09:00:00'; 
 
         $this->service->upsertFromChannel($data);
 

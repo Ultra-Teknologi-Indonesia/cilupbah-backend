@@ -189,7 +189,7 @@ class OutboundFulfillmentService
 
             $claim = null;
             try {
-                // The order may have been cancelled while this request was waiting for its RTS lock.
+
                 $activeOrder = ChannelOrderSideEffectGuard::active((string) $order->id, 'ready_to_ship');
                 if ($activeOrder === null) {
                     $results[] = $this->result($order, 'skipped', 'Order sudah dibatalkan; Ready to Ship tidak dikirim ke channel.');
