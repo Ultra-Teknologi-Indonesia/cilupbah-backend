@@ -20,6 +20,7 @@ use Modules\Sales\Jobs\PrepareTikTokShippingLabelJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelItemJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelJob;
 use Modules\Sales\Jobs\RequestChannelAwbJob;
+use Modules\Sales\Jobs\RequestShopeeMassAwbJob;
 use Modules\Sales\Jobs\WarmShippingLabelsJob;
 use Modules\Sales\Models\BulkShippingLabelBatch;
 use Modules\Sales\Models\BulkShippingLabelItem;
@@ -80,8 +81,8 @@ class BulkLabelAwbPullTest extends TestCase
         );
 
         Queue::assertPushed(
-            RequestChannelAwbJob::class,
-            fn ($job) => $job->orderId === $order->id,
+            RequestShopeeMassAwbJob::class,
+            fn (RequestShopeeMassAwbJob $job): bool => $job->orderIds === [$order->id],
         );
     }
 
@@ -103,6 +104,34 @@ class BulkLabelAwbPullTest extends TestCase
         );
     }
 
+    public function test_shopee_orders_in_the_same_shop_use_one_mass_awb_job(): void
+    {
+        Queue::fake();
+
+        $first = $this->orderWithoutAwb(['channel_order_no' => 'SHOPEE-MASS-1']);
+        $second = $this->orderWithoutAwb(['channel_order_no' => 'SHOPEE-MASS-2']);
+
+        app(BulkShippingLabelService::class)->createBatch(
+            $this->user,
+            [$first->id, $second->id],
+            ['document_size' => BulkShippingLabelService::DEFAULT_SIZE],
+        );
+
+        Queue::assertPushed(RequestShopeeMassAwbJob::class, 1);
+        Queue::assertPushed(
+            RequestShopeeMassAwbJob::class,
+            function (RequestShopeeMassAwbJob $job) use ($first, $second): bool {
+                $actual = $job->orderIds;
+                $expected = [(string) $first->id, (string) $second->id];
+                sort($actual);
+                sort($expected);
+
+                return $actual === $expected;
+            },
+        );
+        Queue::assertNotPushed(RequestChannelAwbJob::class);
+    }
+
     public function test_grabexpress_instant_tanpa_awb_masuk_ke_waiting_awb(): void
     {
         Queue::fake();
@@ -119,7 +148,7 @@ class BulkLabelAwbPullTest extends TestCase
             'Order kurir instan tanpa AWB tetap masuk ke status waiting_awb untuk ditarik resinya.',
         );
 
-        Queue::assertPushed(RequestChannelAwbJob::class);
+        Queue::assertPushed(RequestShopeeMassAwbJob::class);
     }
 
     public function test_lex_id_lazada_bukan_kurir_instan(): void
@@ -185,6 +214,7 @@ class BulkLabelAwbPullTest extends TestCase
         );
 
         Queue::assertNotPushed(RequestChannelAwbJob::class);
+        Queue::assertNotPushed(RequestShopeeMassAwbJob::class);
     }
 
     public function test_batch_baru_tidak_mewarisi_status_downloading_dari_batch_orphan(): void

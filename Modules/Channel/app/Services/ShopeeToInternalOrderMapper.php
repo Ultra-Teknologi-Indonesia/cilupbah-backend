@@ -64,6 +64,7 @@ class ShopeeToInternalOrderMapper
 
         return [
             'channel_order_no' => (string) ($shopeeOrder['order_sn'] ?? ''),
+            'channel_package_ids' => $this->extractPackageIds($shopeeOrder),
             'channel_shop_id' => $shopId,
             'channel_buyer_id' => isset($shopeeOrder['buyer_user_id']) ? (string) $shopeeOrder['buyer_user_id'] : null,
 
@@ -179,6 +180,20 @@ class ShopeeToInternalOrderMapper
         $val = $shopeeOrder['pickup_code'] ?? null;
 
         return is_string($val) && trim($val) !== '' ? trim($val) : null;
+    }
+
+    private function extractPackageIds(array $shopeeOrder): array
+    {
+        $packageIds = [];
+
+        foreach ((array) ($shopeeOrder['package_list'] ?? []) as $package) {
+            $packageNumber = trim((string) ($package['package_number'] ?? ''));
+            if ($packageNumber !== '') {
+                $packageIds[] = $packageNumber;
+            }
+        }
+
+        return array_values(array_unique($packageIds));
     }
 
     private function resolveOrderWeightGram(array $shopeeOrder): ?int

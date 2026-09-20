@@ -953,78 +953,321 @@ class ShopeeOrderService
         return ! empty($addressList) ? 'pickup' : 'dropoff';
     }
 
-    public function massShipOrder(string $shopId, array $orderSns, array $opts = []): array
+    public function resolveMassPackages(string $shopId, array $orderSns): array
     {
         $shop = $this->requireShop($shopId);
+        $orderSns = array_values(array_unique(array_filter(
+            array_map(static fn ($value): string => trim((string) $value), $orderSns),
+            static fn (string $value): bool => $value !== '',
+        )));
 
+        $packagesByOrder = [];
+
+        foreach (array_chunk($orderSns, 50) as $chunk) {
+            $response = $this->callWithRefresh($shop, fn (string $token) => $this->client->request(
+                'GET',
+                '/api/v2/order/get_order_detail',
+                [
+                    'order_sn_list' => implode(',', $chunk),
+                    'response_optional_fields' => 'package_list',
+                ],
+                $token,
+                $shop->shop_id,
+            ));
+
+            foreach ((array) data_get($response, 'response.order_list', []) as $order) {
+                $orderSn = trim((string) ($order['order_sn'] ?? ''));
+                if ($orderSn === '') {
+                    continue;
+                }
+
+                $packages = [];
+                foreach ((array) ($order['package_list'] ?? []) as $package) {
+                    $packageNumber = trim((string) ($package['package_number'] ?? ''));
+                    if ($packageNumber === '') {
+                        continue;
+                    }
+
+                    $packages[$packageNumber] = [
+                        'package_number' => $packageNumber,
+                        'logistics_channel_id' => isset($package['logistics_channel_id'])
+                            ? (string) $package['logistics_channel_id']
+                            : null,
+                        'product_location_id' => isset($package['product_location_id'])
+                            ? (string) $package['product_location_id']
+                            : null,
+                    ];
+                }
+
+                $packagesByOrder[$orderSn] = array_values($packages);
+            }
+        }
+
+        return $packagesByOrder;
+    }
+
+    public function getMassTrackingNumbers(string $shopId, array $packageNumbers): array
+    {
+        $shop = $this->requireShop($shopId);
+        $packageNumbers = array_values(array_unique(array_filter(
+            array_map(static fn ($value): string => trim((string) $value), $packageNumbers),
+            static fn (string $value): bool => $value !== '',
+        )));
+
+        if ($packageNumbers === []) {
+            return ['results' => [], 'response' => []];
+        }
+
+        $response = $this->callWithRefresh($shop, fn (string $token) => $this->client->request(
+            'POST',
+            '/api/v2/logistics/get_mass_tracking_number',
+            [
+                'package_list' => array_map(
+                    static fn (string $packageNumber): array => ['package_number' => $packageNumber],
+                    $packageNumbers,
+                ),
+                'response_optional_fields' => 'first_mile_tracking_number',
+            ],
+            $token,
+            $shop->shop_id,
+        ));
+
+        $payload = (array) ($response['response'] ?? []);
+        $results = [];
+
+        foreach ((array) ($payload['success_list'] ?? []) as $row) {
+            $packageNumber = trim((string) ($row['package_number'] ?? ''));
+            if ($packageNumber === '') {
+                continue;
+            }
+
+            $results[$packageNumber] = [
+                'package_number' => $packageNumber,
+                'succeeded' => true,
+                'tracking_number' => $row['tracking_number'] ?? null,
+                'first_mile_tracking_number' => $row['first_mile_tracking_number'] ?? null,
+                'pickup_code' => $row['pickup_code'] ?? null,
+                'hint' => $row['hint'] ?? null,
+                'error' => null,
+            ];
+        }
+
+        foreach ((array) ($payload['fail_list'] ?? []) as $row) {
+            $packageNumber = trim((string) ($row['package_number'] ?? ''));
+            if ($packageNumber === '') {
+                continue;
+            }
+
+            $results[$packageNumber] = [
+                'package_number' => $packageNumber,
+                'succeeded' => false,
+                'tracking_number' => null,
+                'first_mile_tracking_number' => null,
+                'pickup_code' => null,
+                'hint' => null,
+                'error' => $row['fail_reason'] ?? $row['fail_message'] ?? $row['error'] ?? 'Shopee tidak mengembalikan nomor resi.',
+            ];
+        }
+
+        foreach ($packageNumbers as $packageNumber) {
+            $results[$packageNumber] ??= [
+                'package_number' => $packageNumber,
+                'succeeded' => false,
+                'tracking_number' => null,
+                'first_mile_tracking_number' => null,
+                'pickup_code' => null,
+                'hint' => null,
+                'error' => 'Paket tidak ada pada respons get_mass_tracking_number.',
+            ];
+        }
+
+        return ['results' => $results, 'response' => $payload];
+    }
+
+    public function massShipPackages(string $shopId, array $packageNumbers, array $opts = []): array
+    {
+        $shop = $this->requireShop($shopId);
+        $packageNumbers = array_values(array_unique(array_filter(
+            array_map(static fn ($value): string => trim((string) $value), $packageNumbers),
+            static fn (string $value): bool => $value !== '',
+        )));
+
+        if ($packageNumbers === []) {
+            return ['shipped' => false, 'error' => 'package_list kosong', 'results' => []];
+        }
+
+        $packageList = array_map(
+            static fn (string $packageNumber): array => ['package_number' => $packageNumber],
+            $packageNumbers,
+        );
+
+        $parameterBody = array_filter([
+            'package_list' => $packageList,
+            'logistics_channel_id' => $opts['logistics_channel_id'] ?? null,
+            'product_location_id' => $opts['product_location_id'] ?? null,
+        ], static fn ($value): bool => $value !== null && $value !== '');
+
+        $parameter = $this->callWithRefresh($shop, fn (string $token) => $this->client->request(
+            'POST',
+            '/api/v2/logistics/get_mass_shipping_parameter',
+            $parameterBody,
+            $token,
+            $shop->shop_id,
+        ));
+
+        $info = (array) ($parameter['response'] ?? []);
+        $infoNeeded = (array) ($info['info_needed'] ?? []);
+        $addressList = (array) data_get($info, 'pickup.address_list', []);
+        $branchList = (array) data_get($info, 'dropoff.branch_list', []);
+        $method = $this->resolveHandoverMethod($opts, $infoNeeded, $addressList, $branchList);
+
+        $body = array_filter([
+            'package_list' => $packageList,
+            'logistics_channel_id' => $opts['logistics_channel_id'] ?? null,
+            'product_location_id' => $opts['product_location_id'] ?? null,
+        ], static fn ($value): bool => $value !== null && $value !== '');
+
+        if ($method === 'pickup') {
+            $addressId = $opts['address_id'] ?? data_get($addressList, '0.address_id');
+            $pickupTimeId = $opts['pickup_time_id'] ?? data_get($addressList, '0.time_slot_list.0.pickup_time_id');
+            $body['pickup'] = (object) array_filter([
+                'address_id' => $addressId,
+                'pickup_time_id' => $pickupTimeId,
+            ], static fn ($value): bool => $value !== null && $value !== '');
+        } elseif ($method === 'dropoff') {
+            $body['dropoff'] = (object) array_filter([
+                'branch_id' => $opts['branch_id'] ?? null,
+                'sender_real_name' => $opts['sender_real_name'] ?? null,
+            ], static fn ($value): bool => $value !== null && $value !== '');
+        } elseif ($method === 'non_integrated') {
+            throw new \InvalidArgumentException('Mass shipping tidak mendukung paket non-integrated tanpa resi individual.');
+        }
+
+        $response = $this->callWithRefresh($shop, fn (string $token) => $this->client->request(
+            'POST',
+            '/api/v2/logistics/mass_ship_order',
+            $body,
+            $token,
+            $shop->shop_id,
+        ));
+
+        $payload = (array) ($response['response'] ?? []);
+        $results = [];
+
+        foreach ((array) ($payload['success_list'] ?? []) as $row) {
+            $packageNumber = trim((string) ($row['package_number'] ?? ''));
+            if ($packageNumber !== '') {
+                $results[$packageNumber] = [
+                    'package_number' => $packageNumber,
+                    'shipped' => true,
+                    'error' => null,
+                ];
+            }
+        }
+
+        foreach ((array) ($payload['fail_list'] ?? []) as $row) {
+            $packageNumber = trim((string) ($row['package_number'] ?? ''));
+            if ($packageNumber !== '') {
+                $results[$packageNumber] = [
+                    'package_number' => $packageNumber,
+                    'shipped' => false,
+                    'error' => $row['fail_reason'] ?? $row['fail_message'] ?? $row['error'] ?? 'Shopee menolak paket.',
+                ];
+            }
+        }
+
+        foreach ($packageNumbers as $packageNumber) {
+            $results[$packageNumber] ??= [
+                'package_number' => $packageNumber,
+                'shipped' => false,
+                'error' => 'Paket tidak ada pada respons mass_ship_order.',
+            ];
+        }
+
+        return [
+            'shipped' => collect($results)->contains(fn (array $result): bool => $result['shipped']),
+            'error' => $response['error'] ?? null,
+            'method' => $method,
+            'results' => $results,
+            'response' => $payload,
+        ];
+    }
+
+    public function massShipOrder(string $shopId, array $orderSns, array $opts = []): array
+    {
         $orderSns = array_values(array_filter(array_map('strval', $orderSns), fn ($v) => $v !== ''));
         if (empty($orderSns)) {
             return ['shipped' => false, 'error' => 'order_sn_list kosong', 'results' => []];
         }
 
-        $param = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('GET', '/api/v2/logistics/get_mass_shipping_parameter', [
-            'order_list' => array_map(fn ($sn) => ['order_sn' => $sn], $orderSns),
-        ], $token, $shop->shop_id));
-
-        $info = $param['response'] ?? [];
-        $infoNeeded = $info['info_needed'] ?? [];
-        $addressList = $info['pickup']['address_list'] ?? [];
-        $branchList = $info['dropoff']['branch_list'] ?? [];
-
-        $method = $this->resolveHandoverMethod($opts, $infoNeeded, $addressList, $branchList);
-
-        $body = [
-            'order_list' => array_map(fn ($sn) => ['order_sn' => $sn], $orderSns),
-        ];
-
-        if ($method === 'pickup') {
-            $addressId = $opts['address_id'] ?? ($addressList[0]['address_id'] ?? null);
-            $pickupTimeId = $opts['pickup_time_id'] ?? ($addressList[0]['time_slot_list'][0]['pickup_time_id'] ?? null);
-            $body['pickup'] = (object) array_filter([
-                'address_id' => $addressId,
-                'pickup_time_id' => $pickupTimeId,
-            ], fn ($v) => $v !== null);
-        } elseif ($method === 'dropoff') {
-            $dropoff = [];
-            foreach (['branch_id', 'sender_real_name'] as $field) {
-                if (array_key_exists($field, $opts)) {
-                    $dropoff[$field] = $opts[$field];
-                }
+        $packagesByOrder = $this->resolveMassPackages($shopId, $orderSns);
+        $packageGroups = [];
+        foreach ($packagesByOrder as $orderSn => $packages) {
+            foreach ($packages as $package) {
+                $groupKey = implode('|', [
+                    $package['logistics_channel_id'] ?? 'unknown-channel',
+                    $package['product_location_id'] ?? 'unknown-location',
+                ]);
+                $packageGroups[$groupKey][] = $package;
             }
-            $body['dropoff'] = (object) $dropoff;
         }
 
-        $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/api/v2/logistics/mass_ship_order', $body, $token, $shop->shop_id));
-
-        $response = $res['response'] ?? [];
-
-        $failByOrder = [];
-        foreach (($response['result_list'] ?? []) as $row) {
-            $sn = (string) ($row['order_sn'] ?? '');
-            if ($sn !== '' && ! empty($row['fail_error'])) {
-                $failByOrder[$sn] = $row['fail_message'] ?? $row['fail_error'];
+        $massResultsByPackage = [];
+        $responses = [];
+        $methods = [];
+        foreach ($packageGroups as $packages) {
+            foreach (array_chunk($packages, 50) as $chunk) {
+                $first = $chunk[0];
+                $groupOptions = array_merge($opts, array_filter([
+                    'logistics_channel_id' => $first['logistics_channel_id'] ?? null,
+                    'product_location_id' => $first['product_location_id'] ?? null,
+                ], static fn ($value): bool => $value !== null && $value !== ''));
+                $massResult = $this->massShipPackages(
+                    $shopId,
+                    array_column($chunk, 'package_number'),
+                    $groupOptions,
+                );
+                $massResultsByPackage = array_merge(
+                    $massResultsByPackage,
+                    (array) ($massResult['results'] ?? []),
+                );
+                $responses[] = $massResult['response'] ?? [];
+                $methods[] = $massResult['method'] ?? null;
             }
         }
 
         $results = [];
         foreach ($orderSns as $sn) {
-            $ok = ! isset($failByOrder[$sn]);
+            $orderPackages = (array) ($packagesByOrder[$sn] ?? []);
+            $packageResults = array_map(
+                fn (array $package): ?array => $massResultsByPackage[(string) $package['package_number']] ?? null,
+                $orderPackages,
+            );
+            $packageResults = array_values(array_filter($packageResults));
+            $ok = $packageResults !== []
+                && collect($packageResults)->every(fn (array $result): bool => $result['shipped']);
+            $failedPackage = collect($packageResults)->firstWhere('shipped', false);
+
             if ($ok) {
-                $this->resyncLocalOrder($shopId, $sn);
+                $this->resyncLocalOrder($shopId, (string) $sn);
             }
+
             $results[] = [
                 'order_sn' => $sn,
-                'shipped' => $ok && empty($res['error']),
-                'error' => $failByOrder[$sn] ?? ($res['error'] ?? null),
+                'shipped' => $ok,
+                'error' => ($failedPackage['error'] ?? null)
+                    ?? ($orderPackages === [] ? 'Package number Shopee tidak ditemukan.' : null),
             ];
         }
 
+        $uniqueMethods = array_values(array_unique(array_filter($methods)));
+
         return [
-            'shipped' => empty($res['error']),
-            'error' => $res['error'] ?? null,
-            'method' => $method,
+            'shipped' => collect($results)->contains(fn (array $result): bool => $result['shipped']),
+            'error' => null,
+            'method' => count($uniqueMethods) === 1 ? $uniqueMethods[0] : $uniqueMethods,
             'results' => $results,
-            'response' => $response,
+            'response' => $responses,
         ];
     }
 

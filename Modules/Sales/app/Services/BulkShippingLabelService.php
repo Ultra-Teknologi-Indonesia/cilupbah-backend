@@ -24,6 +24,7 @@ use Modules\Sales\Jobs\FinalizeBulkShippingLabelBatchJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelItemJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelJob;
 use Modules\Sales\Jobs\RequestChannelAwbJob;
+use Modules\Sales\Jobs\RequestShopeeMassAwbJob;
 use Modules\Sales\Jobs\TransformBulkShippingLabelItemJob;
 use Modules\Sales\Models\BulkShippingLabelBatch;
 use Modules\Sales\Models\BulkShippingLabelItem;
@@ -154,9 +155,7 @@ class BulkShippingLabelService
 
         $batch->recomputeCounts();
 
-        foreach ($awaitingAwb as $orderId) {
-            RequestChannelAwbJob::dispatch($orderId);
-        }
+        $this->dispatchAwaitingAwb($batch, $awaitingAwb);
 
         return $batch;
     }
@@ -338,9 +337,7 @@ class BulkShippingLabelService
             $this->hydrateCachedLabel((string) $item->order_id);
         }
 
-        foreach (array_unique($awaitingAwb) as $orderId) {
-            RequestChannelAwbJob::dispatch($orderId);
-        }
+        $this->dispatchAwaitingAwb($batch, $awaitingAwb);
 
         foreach ($toDispatch as $item) {
             $freshItem = BulkShippingLabelItem::find($item->id);
@@ -350,6 +347,44 @@ class BulkShippingLabelService
         }
 
         return $batch->fresh();
+    }
+
+    private function dispatchAwaitingAwb(BulkShippingLabelBatch $batch, array $orderIds): void
+    {
+        $orderIds = array_values(array_unique(array_map('strval', $orderIds)));
+        if ($orderIds === []) {
+            return;
+        }
+
+        $waitingOrderIds = $batch->items()
+            ->whereIn('order_id', $orderIds)
+            ->where('status', BulkShippingLabelItem::STATUS_WAITING_AWB)
+            ->pluck('order_id')
+            ->map(static fn ($id): string => (string) $id)
+            ->all();
+
+        $orders = SalesOrder::query()
+            ->whereIn('id', $waitingOrderIds)
+            ->get(['id', 'source', 'channel_shop_id']);
+
+        $shopeeOrders = $orders
+            ->filter(static fn (SalesOrder $order): bool => strtolower((string) $order->source) === self::CHANNEL_SHOPEE)
+            ->groupBy(static fn (SalesOrder $order): string => (string) $order->channel_shop_id);
+
+        $chunkSize = (int) config('bulk-labels.shopee_mass_awb_chunk_size', 50);
+        foreach ($shopeeOrders as $shopId => $shopOrders) {
+            foreach ($shopOrders->pluck('id')->map('strval')->chunk(max(1, $chunkSize)) as $chunk) {
+                RequestShopeeMassAwbJob::dispatch(
+                    (string) $batch->id,
+                    (string) $shopId,
+                    $chunk->values()->all(),
+                );
+            }
+        }
+
+        $orders
+            ->reject(static fn (SalesOrder $order): bool => strtolower((string) $order->source) === self::CHANNEL_SHOPEE)
+            ->each(static fn (SalesOrder $order) => RequestChannelAwbJob::dispatch((string) $order->id));
     }
 
     private function initialItemStatus(?SalesOrder $order, string $channel): array

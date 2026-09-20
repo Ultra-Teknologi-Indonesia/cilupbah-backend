@@ -82,6 +82,21 @@ class ShopeeOrderSyncTest extends TestCase
         $this->assertEquals(120000.0, $internal['items'][0]['amount']);
     }
 
+    public function test_mapper_persists_package_numbers_for_mass_logistics_calls(): void
+    {
+        $mapper = new ShopeeToInternalOrderMapper;
+
+        $internal = $mapper->map($this->orderDetail([
+            'package_list' => [
+                ['package_number' => 'PKG-A', 'logistics_channel_id' => 8001],
+                ['package_number' => 'PKG-B', 'logistics_channel_id' => 8001],
+                ['package_number' => 'PKG-A', 'logistics_channel_id' => 8001],
+            ],
+        ]), '778899');
+
+        $this->assertSame(['PKG-A', 'PKG-B'], $internal['channel_package_ids']);
+    }
+
     public function test_return_status_does_not_create_buyer_cancel_request(): void
     {
         $mapper = new ShopeeToInternalOrderMapper;

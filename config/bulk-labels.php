@@ -17,4 +17,7 @@ return [
     'finalize_lock_seconds' => max(120, (int) env('LABEL_FINALIZE_LOCK_SECONDS', 900)),
     'finalize_retry_delay_seconds' => max(1, (int) env('LABEL_FINALIZE_RETRY_DELAY_SECONDS', 15)),
     'awb_verification_delay_seconds' => max(15, (int) env('LABEL_AWB_VERIFICATION_DELAY_SECONDS', 60)),
+
+    'shopee_mass_awb_chunk_size' => max(1, min(100, (int) env('LABEL_SHOPEE_MASS_AWB_CHUNK_SIZE', 50))),
+    'shopee_mass_awb_verification_delays' => [2, 5, 10, 20, 30, 60],
 ];
