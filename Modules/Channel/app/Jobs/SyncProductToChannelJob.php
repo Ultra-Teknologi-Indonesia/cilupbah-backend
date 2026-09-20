@@ -367,6 +367,38 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
             return;
         }
 
+        // A listing that has not passed mapping/live-model review must never
+        // reach a marketplace stock endpoint.  The outbox is intentionally
+        // durable, so it can still contain an older delivery after an audit
+        // quarantines the mapping.  Treat these states as a permanent,
+        // operator-reviewable skip instead of retrying until attempts expire.
+        if (self::isStockAction($this->action)
+            && in_array($mapping->sync_status, [
+                ProductChannelMapping::STATUS_IN_REVIEW,
+                ProductChannelMapping::STATUS_REJECTED,
+                ProductChannelMapping::STATUS_DEACTIVATED,
+            ], true)) {
+            $reason = match ($mapping->sync_status) {
+                ProductChannelMapping::STATUS_IN_REVIEW => 'Push stok diblokir: mapping listing menunggu review SKU/model live.',
+                ProductChannelMapping::STATUS_REJECTED => 'Push stok diblokir: mapping listing ditolak dan memerlukan perbaikan.',
+                default => 'Push stok diblokir: mapping listing sudah dinonaktifkan.',
+            };
+
+            Log::notice('SyncProductToChannelJob skipped: mapping status memblokir push stok.', [
+                'product_id' => $this->productId,
+                'channel_shop_id' => $this->channelShopId,
+                'channel_mapping_id' => $mapping->id,
+                'mapping_status' => $mapping->sync_status,
+                'reason' => $reason,
+            ]);
+
+            if ($this->isOutboxStockDelivery()) {
+                $stockOutbox->skip($this->stockOutboxId, $this->stockOutboxVersion, $reason);
+            }
+
+            return;
+        }
+
         if ($this->action === 'delete' && ! $mapping->external_product_id) {
             $mapping->delete();
 

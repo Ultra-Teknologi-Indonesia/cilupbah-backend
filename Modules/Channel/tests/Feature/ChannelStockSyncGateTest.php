@@ -257,6 +257,43 @@ class ChannelStockSyncGateTest extends TestCase
         );
     }
 
+    public function test_stock_push_is_blocked_for_mapping_waiting_review_without_calling_channel(): void
+    {
+        Http::fake();
+
+        $product = $this->makeListedProduct([
+            ['sku' => 'SKU-REVIEW', 'model_id' => '444', 'sync_enabled' => true],
+        ]);
+        $mapping = ProductChannelMapping::query()
+            ->where('product_id', $product->id)
+            ->where('channel_shop_id', $this->shop->id)
+            ->firstOrFail();
+        $mapping->update([
+            'sync_status' => ProductChannelMapping::STATUS_IN_REVIEW,
+            'error_message' => 'Model live belum cocok.',
+        ]);
+
+        $factory = $this->createMock(AdapterFactory::class);
+        $factory->expects($this->never())->method('make');
+
+        (new SyncProductToChannelJob(
+            $product->id,
+            $this->shop->id,
+            'sync_stock',
+            null,
+            null,
+            null,
+            'critical',
+            $mapping->id,
+        ))->handle($factory);
+
+        Http::assertNothingSent();
+        $this->assertSame(
+            ProductChannelMapping::STATUS_IN_REVIEW,
+            $mapping->fresh()->sync_status,
+        );
+    }
+
     public function test_stock_payload_is_limited_to_the_requested_listing(): void
     {
         Http::fake([
