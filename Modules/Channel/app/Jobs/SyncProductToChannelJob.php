@@ -118,8 +118,13 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
         $this->stockOutboxId = $stockOutboxId;
         $this->stockOutboxVersion = $stockOutboxVersion;
 
-        $routing = self::isStockAction($action)
-            ? config(
+        if ($this->isOutboxStockDelivery()) {
+            $routing = config('queue.routing.channel_stock_outbox', [
+                'connection' => 'redis',
+                'queue' => 'channel-stock-outbox',
+            ]);
+        } elseif (self::isStockAction($action)) {
+            $routing = config(
                 $queueTier === 'bulk'
                     ? 'queue.routing.stock_default'
                     : 'queue.routing.channel_stock',
@@ -127,11 +132,13 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
                     'connection' => 'redis',
                     'queue' => $queueTier === 'bulk' ? 'stock-default' : 'channel-stock',
                 ],
-            )
-            : config('queue.routing.channel_product', [
+            );
+        } else {
+            $routing = config('queue.routing.channel_product', [
                 'connection' => 'redis-long',
                 'queue' => 'channel-product',
             ]);
+        }
 
         $this->onConnection($routing['connection'])
             ->onQueue($routing['queue']);
@@ -139,6 +146,15 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
 
     public function uniqueId(): string
     {
+        if ($this->isOutboxStockDelivery()) {
+            return implode(':', [
+                'product-sync',
+                'stock-outbox',
+                $this->stockOutboxId,
+                $this->stockOutboxVersion,
+            ]);
+        }
+
         $axis = self::isStockAction($this->action)
             ? 'stock:'.$this->action
             : 'catalog:'.$this->action;
@@ -161,7 +177,10 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
 
     public function middleware(): array
     {
-        if ($this->isOutboxStockDelivery()) {
+        if (self::isStockAction($this->action)) {
+            // Stock jobs, including messages created before the outbox was deployed,
+            // only write/coalesce a durable intent. API pacing happens in the outbox
+            // dispatcher, so Redis release cycles cannot consume Laravel attempts.
             return [];
         }
 
@@ -197,6 +216,18 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
                     60,
                 );
             }
+
+            return;
+        }
+
+        if (self::isStockAction($this->action)
+            && ! $this->isOutboxStockDelivery()
+            && $this->channelMappingId !== null) {
+            $stockOutbox->requestByMappingId(
+                $this->channelMappingId,
+                $this->action,
+                $this->queueTier,
+            );
 
             return;
         }

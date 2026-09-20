@@ -31,6 +31,7 @@ $supervisorProfiles = [
         'supervisor-default',
         'supervisor-channel-sync',
         'supervisor-channel-stock',
+        'supervisor-channel-stock-outbox',
         'supervisor-product-validation',
         'supervisor-channel-finance',
         'supervisor-channel-product',
@@ -81,6 +82,10 @@ $channelStockMaxProcesses = max(
     1,
     min(2, (int) env('HORIZON_CHANNEL_STOCK_MAX_PROCESSES', 1)),
 );
+$channelStockOutboxProcesses = max(
+    1,
+    min(2, (int) env('HORIZON_CHANNEL_STOCK_OUTBOX_PROCESSES', 1)),
+);
 $channelCancellationProcesses = max(
     1,
     min(4, (int) env('HORIZON_CHANNEL_CANCELLATION_PROCESSES', 2)),
@@ -121,6 +126,8 @@ return [
             .config('queue.routing.warehouse_safety.queue', 'warehouse-safety') => 30,
         config('queue.routing.channel_stock.connection', 'redis').':'
             .config('queue.routing.channel_stock.queue', 'channel-stock') => 120,
+        config('queue.routing.channel_stock_outbox.connection', 'redis').':'
+            .config('queue.routing.channel_stock_outbox.queue', 'channel-stock-outbox') => 120,
         config('queue.routing.channel_finance.connection', 'redis-finance').':'
             .config('queue.routing.channel_finance.queue', 'channel-finance') => 120,
         'redis-legacy:channel-finance' => 120,
@@ -331,6 +338,20 @@ return [
             'timeout' => 330,
             'tries' => 3,
             'backoff' => [30, 120, 300],
+            'memory' => 256,
+            'nice' => 10,
+        ],
+        'supervisor-channel-stock-outbox' => [
+            'connection' => config('queue.routing.channel_stock_outbox.connection', 'redis'),
+            'queue' => [config('queue.routing.channel_stock_outbox.queue', 'channel-stock-outbox')],
+            'balance' => 'off',
+            'minProcesses' => $channelStockOutboxProcesses,
+            'maxProcesses' => $channelStockOutboxProcesses,
+            'maxJobs' => 100,
+            'maxTime' => 1800,
+            'timeout' => 330,
+
+            'tries' => 1,
             'memory' => 256,
             'nice' => 10,
         ],

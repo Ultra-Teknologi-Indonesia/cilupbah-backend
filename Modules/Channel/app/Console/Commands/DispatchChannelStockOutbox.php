@@ -24,6 +24,7 @@ class DispatchChannelStockOutbox extends Command
         $result = $outbox->dispatchDue((int) $rawLimit);
         $this->info('Channel stock outbox diproses.');
         $this->line('Lease kedaluwarsa dipulihkan: '.$result['reaped']);
+        $this->line('Pengiriman pending lama dihidupkan kembali: '.$result['revived']);
         $this->line('Listing dijadwalkan: '.$result['claimed']);
 
         foreach ($result['byChannel'] as $channel => $total) {

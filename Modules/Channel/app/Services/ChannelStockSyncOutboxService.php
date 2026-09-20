@@ -71,6 +71,7 @@ class ChannelStockSyncOutboxService
         $limit = max(1, $limit);
         $now = now();
         $reaped = $this->reapExpiredLeases($now);
+        $revived = $this->reviveStrandedPendingDeliveries($now);
         $window = max(1, (int) config('channel.stock_sync_dispatch_window_seconds', 50));
         $leaseSeconds = max(60, (int) config('channel.stock_sync_lease_seconds', 600));
         $perShopSlots = [];
@@ -160,7 +161,7 @@ class ChannelStockSyncOutboxService
             $byChannel[$outbox->channel_code] = ($byChannel[$outbox->channel_code] ?? 0) + 1;
         }
 
-        return compact('claimed', 'reaped', 'byChannel');
+        return compact('claimed', 'reaped', 'revived', 'byChannel');
     }
 
     public function shouldExecute(string $outboxId, int $version): bool
@@ -332,9 +333,26 @@ class ChannelStockSyncOutboxService
             ->where('lease_expires_at', '<', $now)
             ->update([
                 'status' => ChannelStockSyncOutbox::STATUS_PENDING,
+
+                'requested_version' => DB::raw('requested_version + 1'),
                 'next_attempt_at' => $now,
                 'lease_expires_at' => null,
                 'last_error' => 'Lease pengiriman sebelumnya kedaluwarsa; dijadwalkan ulang dengan nilai stok terbaru.',
+                'updated_at' => $now,
+            ]);
+    }
+
+    private function reviveStrandedPendingDeliveries(Carbon $now): int
+    {
+        return ChannelStockSyncOutbox::query()
+            ->where('status', ChannelStockSyncOutbox::STATUS_PENDING)
+            ->whereColumn('requested_version', '<=', 'dispatched_version')
+            ->update([
+
+                'requested_version' => DB::raw('dispatched_version + 1'),
+                'next_attempt_at' => $now,
+                'lease_expires_at' => null,
+                'last_error' => 'Pengiriman lama tidak mendapat konfirmasi; dibuat versi baru dengan nilai stok terbaru.',
                 'updated_at' => $now,
             ]);
     }

@@ -4,6 +4,7 @@ namespace Modules\Channel\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Modules\Channel\Adapters\AdapterFactory;
 use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
@@ -109,6 +110,83 @@ class ChannelStockSyncOutboxTest extends TestCase
             'status' => ChannelStockSyncOutbox::STATUS_PENDING,
             'requested_version' => 2,
             'dispatched_version' => 1,
+        ]);
+    }
+
+    public function test_an_expired_lease_is_reissued_as_a_new_generation(): void
+    {
+        $mapping = $this->listedMapping('LISTING-EXPIRED-LEASE');
+        $service = app(ChannelStockSyncOutboxService::class);
+
+        $service->request($mapping, 'sync_stock');
+        Queue::fake();
+        $service->dispatchDue();
+
+        $outbox = ChannelStockSyncOutbox::where('product_channel_mapping_id', $mapping->id)->firstOrFail();
+        $outbox->update(['lease_expires_at' => now()->subSecond()]);
+
+        $result = $service->dispatchDue();
+
+        $this->assertSame(1, $result['reaped']);
+        $this->assertSame(1, $result['claimed']);
+        $this->assertDatabaseHas('channel_stock_sync_outbox', [
+            'id' => $outbox->id,
+            'status' => ChannelStockSyncOutbox::STATUS_DISPATCHING,
+            'requested_version' => 2,
+            'dispatched_version' => 2,
+        ]);
+        Queue::assertPushed(SyncProductToChannelJob::class, function (SyncProductToChannelJob $job) use ($outbox): bool {
+            return $job->stockOutboxId === $outbox->id
+                && $job->stockOutboxVersion === 2
+                && $job->uniqueId() === 'product-sync:stock-outbox:'.$outbox->id.':2';
+        });
+    }
+
+    public function test_a_pending_delivery_left_by_an_old_expired_lease_is_revived_safely(): void
+    {
+        $mapping = $this->listedMapping('LISTING-STRANDED-PENDING');
+        $service = app(ChannelStockSyncOutboxService::class);
+
+        $outbox = $service->request($mapping, 'sync_stock');
+        $outbox->update([
+            'status' => ChannelStockSyncOutbox::STATUS_PENDING,
+            'requested_version' => 1,
+            'dispatched_version' => 1,
+            'next_attempt_at' => now()->subSecond(),
+            'lease_expires_at' => null,
+        ]);
+
+        Queue::fake();
+        $result = $service->dispatchDue();
+
+        $this->assertSame(1, $result['revived']);
+        $this->assertSame(1, $result['claimed']);
+        $this->assertDatabaseHas('channel_stock_sync_outbox', [
+            'id' => $outbox->id,
+            'status' => ChannelStockSyncOutbox::STATUS_DISPATCHING,
+            'requested_version' => 2,
+            'dispatched_version' => 2,
+        ]);
+    }
+
+    public function test_a_legacy_listing_stock_job_is_converted_to_a_durable_outbox_request_without_calling_an_api(): void
+    {
+        $mapping = $this->listedMapping('LISTING-LEGACY-QUEUE');
+        $job = new SyncProductToChannelJob(
+            $mapping->product_id,
+            $mapping->channel_shop_id,
+            'sync_stock',
+            channelMappingId: $mapping->id,
+        );
+
+        $this->assertSame([], $job->middleware());
+        $job->handle(app(AdapterFactory::class));
+
+        $this->assertDatabaseHas('channel_stock_sync_outbox', [
+            'product_channel_mapping_id' => $mapping->id,
+            'status' => ChannelStockSyncOutbox::STATUS_PENDING,
+            'requested_version' => 1,
+            'queue_tier' => 'critical',
         ]);
     }
 

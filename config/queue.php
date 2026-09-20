@@ -224,6 +224,11 @@ return [
             'queue' => env('QUEUE_NAME_CHANNEL_STOCK', 'channel-stock'),
         ],
 
+        'channel_stock_outbox' => [
+            'connection' => env('QUEUE_CHANNEL_STOCK_OUTBOX_CONNECTION', 'redis'),
+            'queue' => env('QUEUE_NAME_CHANNEL_STOCK_OUTBOX', 'channel-stock-outbox'),
+        ],
+
         'warehouse_safety' => [
             'connection' => env('QUEUE_WAREHOUSE_SAFETY_CONNECTION', 'redis'),
             'queue' => env('QUEUE_NAME_WAREHOUSE_SAFETY', 'warehouse-safety'),
