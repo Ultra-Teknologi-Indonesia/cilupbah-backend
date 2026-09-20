@@ -115,4 +115,109 @@ class RequestChannelAwbJobTest extends TestCase
         $this->assertSame(ChannelOperationAttempt::STATUS_SUCCEEDED, $attempt->status);
         $this->assertSame('SPX-VERIFIED-AWB', $attempt->last_response['tracking_number']);
     }
+
+    public function test_recent_local_marker_does_not_skip_the_first_awb_request(): void
+    {
+        Queue::fake();
+
+        $channel = Channel::create([
+            'code' => 'shopee',
+            'name' => 'Shopee',
+            'is_active' => true,
+        ]);
+
+        ChannelShop::create([
+            'channel_id' => $channel->id,
+            'shop_id' => 'SHOP-AWB-FIRST-REQUEST',
+            'shop_name' => 'Shopee Test',
+            'access_token' => 'token',
+            'refresh_token' => 'refresh',
+            'token_expires_at' => now()->addHour(),
+            'is_active' => true,
+        ]);
+
+        $order = SalesOrder::factory()->create([
+            'source' => 'shopee',
+            'channel_shop_id' => 'SHOP-AWB-FIRST-REQUEST',
+            'channel_order_no' => 'ORDER-AWB-FIRST-REQUEST',
+            'channel_status' => 'READY_TO_SHIP',
+            'status' => 'reserved',
+            'tracking_number' => null,
+            'shipping_label_status' => null,
+            'shipping_label_raw_data' => [
+                'bulk_label_awb' => ['requested_at' => now()->toIso8601String()],
+            ],
+        ]);
+
+        $shopee = Mockery::mock(ShopeeOrderService::class);
+        $shopee->shouldReceive('resolveTrackingNumber')->once()->andReturn(null);
+        $shopee->shouldReceive('requestTrackingNumber')->once()->andReturn([
+            'shipped' => true,
+            'tracking_number' => null,
+            'channel_status' => 'PROCESSED',
+        ]);
+        $this->app->instance(ShopeeOrderService::class, $shopee);
+
+        (new RequestChannelAwbJob($order->id))->handle();
+
+        $this->assertDatabaseHas('channel_operation_attempts', [
+            'order_id' => $order->id,
+            'operation' => 'request_awb',
+            'status' => 'accepted',
+        ]);
+        Queue::assertPushed(
+            RequestChannelAwbJob::class,
+            fn (RequestChannelAwbJob $job): bool => $job->orderId === $order->id
+                && $job->verificationOnly,
+        );
+    }
+
+    public function test_awb_timeout_is_uncertain_and_moves_to_read_only_verification(): void
+    {
+        Queue::fake();
+
+        $channel = Channel::create([
+            'code' => 'shopee',
+            'name' => 'Shopee',
+            'is_active' => true,
+        ]);
+
+        ChannelShop::create([
+            'channel_id' => $channel->id,
+            'shop_id' => 'SHOP-AWB-TIMEOUT',
+            'shop_name' => 'Shopee Test',
+            'access_token' => 'token',
+            'refresh_token' => 'refresh',
+            'token_expires_at' => now()->addHour(),
+            'is_active' => true,
+        ]);
+
+        $order = SalesOrder::factory()->create([
+            'source' => 'shopee',
+            'channel_shop_id' => 'SHOP-AWB-TIMEOUT',
+            'channel_order_no' => 'ORDER-AWB-TIMEOUT',
+            'channel_status' => 'READY_TO_SHIP',
+            'status' => 'reserved',
+            'tracking_number' => null,
+            'shipping_label_status' => null,
+        ]);
+
+        $shopee = Mockery::mock(ShopeeOrderService::class);
+        $shopee->shouldReceive('resolveTrackingNumber')->once()->andReturn(null);
+        $shopee->shouldReceive('requestTrackingNumber')->once()->andThrow(new \RuntimeException('cURL error 28: timeout'));
+        $this->app->instance(ShopeeOrderService::class, $shopee);
+
+        (new RequestChannelAwbJob($order->id))->handle();
+
+        $this->assertDatabaseHas('channel_operation_attempts', [
+            'order_id' => $order->id,
+            'operation' => 'request_awb',
+            'status' => 'uncertain',
+        ]);
+        Queue::assertPushed(
+            RequestChannelAwbJob::class,
+            fn (RequestChannelAwbJob $job): bool => $job->orderId === $order->id
+                && $job->verificationOnly,
+        );
+    }
 }

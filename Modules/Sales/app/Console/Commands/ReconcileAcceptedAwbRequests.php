@@ -17,7 +17,7 @@ final class ReconcileAcceptedAwbRequests extends Command
         {--limit=100 : Maximum AWB operations scheduled per run}
         {--cooldown=300 : Minimum seconds between read-only verification attempts}';
 
-    protected $description = 'Verify accepted AWB requests without sending another marketplace request';
+    protected $description = 'Verify accepted/uncertain AWB requests without sending another marketplace request';
 
     public function handle(): int
     {
@@ -33,7 +33,10 @@ final class ReconcileAcceptedAwbRequests extends Command
 
         $orderIds = ChannelOperationAttempt::query()
             ->where('operation', 'request_awb')
-            ->where('status', ChannelOperationAttempt::STATUS_ACCEPTED)
+            ->whereIn('status', [
+                ChannelOperationAttempt::STATUS_ACCEPTED,
+                ChannelOperationAttempt::STATUS_UNCERTAIN,
+            ])
             ->where('updated_at', '<=', $cutoff)
             ->orderBy('updated_at')
             ->limit($limit)

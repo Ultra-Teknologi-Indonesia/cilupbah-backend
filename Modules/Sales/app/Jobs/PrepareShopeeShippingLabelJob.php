@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Sales\Jobs\Concerns\UsesShippingLabelPreparationLock;
+use Modules\Sales\Models\ChannelOperationAttempt;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\BulkShippingLabelService;
 use Modules\Sales\Support\ChannelOperationLedger;
@@ -137,7 +138,10 @@ class PrepareShopeeShippingLabelJob implements ShouldBeUnique, ShouldQueue
 
                         ChannelOperationLedger::markUncertain($claim['attempt'], $e);
 
-                        throw $e;
+                        $this->dispatchNextAttempt($order->id);
+                        $this->notifyBulkListeners();
+
+                        return;
                     }
 
                     if (! empty($create['error'])) {
@@ -279,12 +283,39 @@ class PrepareShopeeShippingLabelJob implements ShouldBeUnique, ShouldQueue
             'exception' => $exception->getMessage(),
         ]);
 
+        $operation = ChannelOperationAttempt::query()
+            ->where('order_id', $this->orderId)
+            ->where('operation', 'create_shipping_label')
+            ->first();
+
+        if ($operation && in_array($operation->status, [
+            ChannelOperationAttempt::STATUS_ACCEPTED,
+            ChannelOperationAttempt::STATUS_UNCERTAIN,
+        ], true)) {
+            $this->dispatchNextAttempt($this->orderId);
+            $this->notifyBulkListeners();
+
+            return;
+        }
+
         $order = ChannelOrderSideEffectGuard::active($this->orderId, 'mark_shipping_label_failed');
         if ($order && $order->shipping_label_status !== 'ready') {
             $order->update(['shipping_label_status' => 'failed']);
         }
 
         $this->notifyBulkListeners();
+    }
+
+    private function dispatchNextAttempt(string $orderId): void
+    {
+        $nextAttempt = $this->attempt + 1;
+        if ($nextAttempt >= self::MAX_GLOBAL_ATTEMPTS) {
+            return;
+        }
+
+        $delaySeconds = self::RETRY_DELAYS[$this->attempt] ?? 120;
+        self::dispatch($orderId, $nextAttempt, $this->prefetch)
+            ->delay(now()->addSeconds($delaySeconds));
     }
 
     private function notifyBulkListeners(): void

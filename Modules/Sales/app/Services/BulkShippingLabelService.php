@@ -5,6 +5,8 @@ namespace Modules\Sales\Services;
 use App\Models\User;
 use App\Support\WarehouseAccess;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Contracts\Filesystem\Filesystem;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -12,11 +14,13 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Modules\Channel\Exceptions\ShopeeApiException;
 use Modules\Channel\Services\ChannelSyncSettingService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Realtime\Services\RealtimeEventPublisher;
 use Modules\Sales\Exceptions\ShippingLabelPreparingException;
 use Modules\Sales\Jobs\ArchiveBulkShippingLabelJob;
+use Modules\Sales\Jobs\FinalizeBulkShippingLabelBatchJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelItemJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelJob;
 use Modules\Sales\Jobs\RequestChannelAwbJob;
@@ -1004,14 +1008,43 @@ class BulkShippingLabelService
             $msg = strtolower($e->getMessage());
             $latestOrder = $order->fresh();
             $persistedFailure = data_get($latestOrder?->shipping_label_raw_data, 'shipping_label_failure.reason');
-            $reason = match (true) {
+            $terminalReason = match (true) {
                 Str::contains($msg, ['parcel has been shipped', 'already shipped', 'can not print now', 'sudah dikirim']) => BulkShippingLabelItem::REASON_PARCEL_ALREADY_SHIPPED,
                 $persistedFailure === BulkShippingLabelItem::REASON_PARCEL_ALREADY_SHIPPED => BulkShippingLabelItem::REASON_PARCEL_ALREADY_SHIPPED,
                 $latestOrder?->shipping_label_status === 'self_design_required' => BulkShippingLabelItem::REASON_SELF_DESIGN,
-                default => BulkShippingLabelItem::REASON_SHOPEE_PREP_FAILED,
+                default => null,
             };
 
-            $this->fail($item, $reason);
+            if ($terminalReason !== null) {
+                $this->fail($item, $terminalReason);
+
+                return;
+            }
+
+            $transient = $e instanceof ConnectionException
+                || ($e instanceof ShopeeApiException && $e->isRetryable())
+                || Str::contains($msg, [
+                    'timeout',
+                    'timed out',
+                    'temporarily',
+                    'try again',
+                    'not ready',
+                    'belum siap',
+                    'http error [5',
+                ]);
+
+            if ($transient) {
+                app(ShippingLabelPreparationDispatcher::class)->dispatch($order);
+                $item->update([
+                    'status' => BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE,
+                    'reason' => null,
+                    'updated_at' => now(),
+                ]);
+
+                return;
+            }
+
+            $this->fail($item, BulkShippingLabelItem::REASON_SHOPEE_PREP_FAILED);
 
             return;
         }
@@ -1254,7 +1287,7 @@ class BulkShippingLabelService
     private function stageDownloadedLabelItem(
         BulkShippingLabelItem $item,
         string $bytes,
-        ?\Illuminate\Contracts\Filesystem\Filesystem $disk = null,
+        ?Filesystem $disk = null,
     ): void {
         $disk ??= Storage::disk(config('bulk-labels.spool_disk', 'print_spool'));
         $path = "items/{$item->batch_id}/{$item->id}/raw.pdf";
@@ -1276,7 +1309,7 @@ class BulkShippingLabelService
     private function stageReadyLabelItem(
         BulkShippingLabelItem $item,
         string $bytes,
-        \Illuminate\Contracts\Filesystem\Filesystem $disk,
+        Filesystem $disk,
     ): bool {
         if ($bytes === '') {
             return false;
@@ -1549,47 +1582,65 @@ class BulkShippingLabelService
 
     public function tryFinalize(BulkShippingLabelBatch $batch): void
     {
-        Cache::lock("bulk-label-finalize:{$batch->id}", 15)->block(5, function () use ($batch) {
-            $fresh = BulkShippingLabelBatch::find($batch->id);
-            if (! $fresh) {
-                return;
-            }
-            if ($fresh->status !== BulkShippingLabelBatch::STATUS_PROCESSING) {
-                return;
-            }
+        $fresh = BulkShippingLabelBatch::find($batch->id);
+        if (! $fresh || $fresh->status !== BulkShippingLabelBatch::STATUS_PROCESSING) {
+            return;
+        }
 
-            $hasTransient = $fresh->items()
-                ->whereIn('status', BulkShippingLabelItem::TRANSIENT_STATUSES)
-                ->exists();
+        if ($fresh->items()->whereIn('status', BulkShippingLabelItem::TRANSIENT_STATUSES)->exists()) {
+            return;
+        }
 
-            if ($hasTransient) {
-                return;
-            }
-
-            $this->mergeAndPersist($fresh);
-        });
+        FinalizeBulkShippingLabelBatchJob::dispatch((string) $fresh->id)
+            ->delay(now()->addSeconds((int) config('bulk-labels.finalize_retry_delay_seconds', 15)));
     }
 
     public function forceFinalize(BulkShippingLabelBatch $batch, string $reason): void
     {
-        Cache::lock("bulk-label-finalize:{$batch->id}", 15)->block(5, function () use ($batch, $reason) {
-            $fresh = BulkShippingLabelBatch::find($batch->id);
-            if (! $fresh) {
-                return;
-            }
-            if ($fresh->status !== BulkShippingLabelBatch::STATUS_PROCESSING) {
+        $fresh = BulkShippingLabelBatch::find($batch->id);
+        if (! $fresh || $fresh->status !== BulkShippingLabelBatch::STATUS_PROCESSING) {
+            return;
+        }
+
+        $fresh->items()
+            ->whereIn('status', BulkShippingLabelItem::TRANSIENT_STATUSES)
+            ->update([
+                'status' => BulkShippingLabelItem::STATUS_FAILED,
+                'reason' => $reason,
+                'updated_at' => now(),
+            ]);
+
+        FinalizeBulkShippingLabelBatchJob::dispatch((string) $fresh->id)
+            ->delay(now()->addSeconds((int) config('bulk-labels.finalize_retry_delay_seconds', 15)));
+    }
+
+    public function finalizeInWorker(string $batchId): void
+    {
+        $lock = Cache::lock(
+            "bulk-label-finalize:{$batchId}",
+            (int) config('bulk-labels.finalize_lock_seconds', 900),
+        );
+
+        if (! $lock->get()) {
+            throw new \RuntimeException('Finalisasi batch sedang dikerjakan worker lain.');
+        }
+
+        try {
+            $fresh = BulkShippingLabelBatch::find($batchId);
+            if (! $fresh || $fresh->status !== BulkShippingLabelBatch::STATUS_PROCESSING) {
                 return;
             }
 
-            $fresh->items()
-                ->whereIn('status', BulkShippingLabelItem::TRANSIENT_STATUSES)
-                ->update([
-                    'status' => BulkShippingLabelItem::STATUS_FAILED,
-                    'reason' => $reason,
-                ]);
+            if ($fresh->items()->whereIn('status', BulkShippingLabelItem::TRANSIENT_STATUSES)->exists()) {
+                return;
+            }
 
             $this->mergeAndPersist($fresh);
-        });
+        } finally {
+            if ($lock->isOwnedByCurrentProcess()) {
+                $lock->release();
+            }
+        }
     }
 
     public function mergeAndPersist(BulkShippingLabelBatch $batch): void
@@ -1615,6 +1666,8 @@ class BulkShippingLabelService
             ->whereIn('status', BulkShippingLabelItem::COMPLETED_STATUSES)
             ->orderBy('created_at');
 
+        $mergedPages = 0;
+
         foreach ($itemsQuery->cursor() as $item) {
             if ($item->ready_pdf_path) {
                 try {
@@ -1625,6 +1678,7 @@ class BulkShippingLabelService
                         $tpl = $pdf->importPage($p);
                         $pdf->AddPage('P', [$targetW, $targetH]);
                         $pdf->useTemplate($tpl, 0, 0, $targetW, $targetH, false);
+                        $mergedPages++;
                     }
 
                     continue;
@@ -1640,7 +1694,22 @@ class BulkShippingLabelService
                 'item_id' => $item->id,
                 'batch_id' => $batch->id,
             ]);
-            $this->fail($item, 'ready_file_missing');
+
+            $item->update([
+                'status' => BulkShippingLabelItem::STATUS_FAILED,
+                'reason' => 'ready_file_missing',
+                'updated_at' => now(),
+            ]);
+        }
+
+        if ($mergedPages === 0) {
+            $batch->update([
+                'status' => BulkShippingLabelBatch::STATUS_FAILED,
+                'finished_at' => now(),
+            ]);
+            $batch->recomputeCounts();
+
+            return;
         }
 
         $path = "bulk-labels/{$batch->id}.pdf";

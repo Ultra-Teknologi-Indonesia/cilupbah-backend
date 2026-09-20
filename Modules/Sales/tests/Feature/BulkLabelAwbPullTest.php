@@ -15,11 +15,13 @@ use Modules\Channel\Services\ChannelSyncSettingService;
 use Modules\Outbound\Http\Controllers\OutboundFulfillmentController;
 use Modules\Outbound\Services\OutboundFulfillmentService;
 use Modules\Sales\Http\Controllers\BulkShippingLabelController;
+use Modules\Sales\Jobs\FinalizeBulkShippingLabelBatchJob;
 use Modules\Sales\Jobs\PrepareTikTokShippingLabelJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelItemJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelJob;
 use Modules\Sales\Jobs\RequestChannelAwbJob;
 use Modules\Sales\Jobs\WarmShippingLabelsJob;
+use Modules\Sales\Models\BulkShippingLabelBatch;
 use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\BulkShippingLabelService;
@@ -222,9 +224,9 @@ class BulkLabelAwbPullTest extends TestCase
             'tracking_number' => 'AWB-REUSE-001',
         ]);
         $size = BulkShippingLabelService::DEFAULT_SIZE;
-        $sourceBatch = \Modules\Sales\Models\BulkShippingLabelBatch::create([
+        $sourceBatch = BulkShippingLabelBatch::create([
             'user_id' => $this->user->id,
-            'status' => \Modules\Sales\Models\BulkShippingLabelBatch::STATUS_READY,
+            'status' => BulkShippingLabelBatch::STATUS_READY,
             'per_channel_opts' => ['document_size' => $size],
             'total_count' => 1,
             'done_count' => 1,
@@ -466,6 +468,48 @@ class BulkLabelAwbPullTest extends TestCase
         $this->assertTrue(
             $item->isRecoverable(),
             'Resi yang belum terbit harus bisa dicoba ulang dari layar cetak massal, bukan buntu.',
+        );
+    }
+
+    public function test_finalisasi_pdf_dikirim_ke_worker_khusus_dan_tidak_memblokir_worker_awb(): void
+    {
+        Queue::fake();
+
+        $order = $this->orderWithoutAwb(['tracking_number' => 'AWB-FINALIZE-001']);
+        $batch = $this->createBatchFor($order);
+        $item = $this->itemOf($batch);
+        $item->update([
+            'status' => BulkShippingLabelItem::STATUS_READY,
+            'ready_pdf_path' => 'items/missing-ready.pdf',
+        ]);
+
+        app(BulkShippingLabelService::class)->tryFinalize($batch->fresh());
+
+        Queue::assertPushed(
+            FinalizeBulkShippingLabelBatchJob::class,
+            fn (FinalizeBulkShippingLabelBatchJob $job): bool => $job->batchId === $batch->id,
+        );
+    }
+
+    public function test_file_ready_yang_hilang_menggagalkan_item_tanpa_lock_timeout_atau_loop(): void
+    {
+        $order = $this->orderWithoutAwb(['tracking_number' => 'AWB-FINALIZE-MISSING']);
+        $batch = $this->createBatchFor($order);
+        $item = $this->itemOf($batch);
+        $item->update([
+            'status' => BulkShippingLabelItem::STATUS_READY,
+            'ready_pdf_path' => 'items/missing-ready.pdf',
+        ]);
+
+        app(BulkShippingLabelService::class)->finalizeInWorker($batch->id);
+
+        $this->assertSame(
+            BulkShippingLabelBatch::STATUS_FAILED,
+            $batch->fresh()->status,
+        );
+        $this->assertSame(
+            BulkShippingLabelItem::STATUS_FAILED,
+            $item->fresh()->status,
         );
     }
 

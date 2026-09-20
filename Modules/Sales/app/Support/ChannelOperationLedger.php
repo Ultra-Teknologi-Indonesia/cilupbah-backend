@@ -126,7 +126,10 @@ final class ChannelOperationLedger
 
             if (
                 $attempt === null
-                || $attempt->status !== ChannelOperationAttempt::STATUS_ACCEPTED
+                || ! in_array($attempt->status, [
+                    ChannelOperationAttempt::STATUS_ACCEPTED,
+                    ChannelOperationAttempt::STATUS_UNCERTAIN,
+                ], true)
                 || $attempt->updated_at->greaterThan(now()->subSeconds($cooldownSeconds))
             ) {
                 return false;

@@ -178,9 +178,7 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
     public function middleware(): array
     {
         if (self::isStockAction($this->action)) {
-            // Stock jobs, including messages created before the outbox was deployed,
-            // only write/coalesce a durable intent. API pacing happens in the outbox
-            // dispatcher, so Redis release cycles cannot consume Laravel attempts.
+
             return [];
         }
 
@@ -367,11 +365,6 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
             return;
         }
 
-        // A listing that has not passed mapping/live-model review must never
-        // reach a marketplace stock endpoint.  The outbox is intentionally
-        // durable, so it can still contain an older delivery after an audit
-        // quarantines the mapping.  Treat these states as a permanent,
-        // operator-reviewable skip instead of retrying until attempts expire.
         if (self::isStockAction($this->action)
             && in_array($mapping->sync_status, [
                 ProductChannelMapping::STATUS_IN_REVIEW,

@@ -2,7 +2,6 @@
 
 namespace Modules\Sales\Jobs;
 
-use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -17,6 +16,7 @@ use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Sales\Models\BulkShippingLabelItem;
+use Modules\Sales\Models\ChannelOperationAttempt;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\BulkShippingLabelService;
 use Modules\Sales\Services\ShippingLabelPrefetchService;
@@ -28,11 +28,15 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 3;
+    public int $tries = 8;
 
-    public array $backoff = [10, 30, 60];
+    public array $backoff = [15, 30, 60, 120, 300, 600, 900];
 
-    public int $uniqueFor = 900;
+    public int $timeout = 120;
+
+    public int $uniqueFor = 1800;
+
+    private bool $awaitingVerification = false;
 
     public function __construct(
         public readonly string $orderId,
@@ -164,7 +168,17 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                     'source' => $source,
                 ]);
 
-                if ($this->verificationOnly) {
+                if ($this->awaitingVerification || $this->verificationOnly) {
+                    if (! $this->verificationOnly) {
+                        self::dispatch(
+                            $order->id,
+                            $this->trackingAttempt + 1,
+                            false,
+                            $this->prefetch,
+                            true,
+                        )->delay(now()->addSeconds((int) config('bulk-labels.awb_verification_delay_seconds', 60)));
+                    }
+
                     return;
                 }
 
@@ -312,31 +326,6 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
 
     private function shouldRequestReadyToShip(SalesOrder $order): bool
     {
-        $requestedAt = data_get($order->shipping_label_raw_data, 'bulk_label_awb.requested_at');
-        $window = max(1, (int) config('bulk-labels.awb_request_dedupe_seconds', 300));
-
-        if ($requestedAt !== null) {
-            try {
-                if (now()->diffInSeconds(Carbon::parse($requestedAt)) < $window) {
-                    Log::info('RequestChannelAwbJob: join existing AWB preparation', [
-                        'order_id' => $order->id,
-                        'salesorder_no' => $order->salesorder_no,
-                    ]);
-
-                    return false;
-                }
-            } catch (\Throwable) {
-
-            }
-        }
-
-        $rawData = is_array($order->shipping_label_raw_data)
-            ? $order->shipping_label_raw_data
-            : [];
-        $rawData['bulk_label_awb'] = [
-            'requested_at' => now()->toIso8601String(),
-        ];
-        $order->forceFill(['shipping_label_raw_data' => $rawData])->saveQuietly();
 
         return true;
     }
@@ -552,6 +541,16 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
         $claim = ChannelOperationLedger::claim($order, 'request_awb');
 
         if (! $claim['should_execute']) {
+            $this->awaitingVerification = in_array(
+                $claim['attempt']->status,
+                [
+                    ChannelOperationAttempt::STATUS_ACCEPTED,
+                    ChannelOperationAttempt::STATUS_UNCERTAIN,
+                    ChannelOperationAttempt::STATUS_SENDING,
+                ],
+                true,
+            );
+
             Log::warning('RequestChannelAwbJob: request AWB tidak diulang sebelum hasil channel diverifikasi.', [
                 'order_id' => $order->id,
                 'salesorder_no' => $order->salesorder_no,
@@ -571,6 +570,8 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                     'channel_status' => $result['channel_status'] ?? null,
                     'tracking_number' => $result['tracking_number'] ?? null,
                 ]);
+
+                $this->awaitingVerification = empty($result['tracking_number']);
             } else {
                 ChannelOperationLedger::markRetryable(
                     $claim['attempt'],
@@ -581,6 +582,7 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
             return $result;
         } catch (\Throwable $exception) {
             ChannelOperationLedger::markUncertain($claim['attempt'], $exception);
+            $this->awaitingVerification = true;
 
             throw $exception;
         }

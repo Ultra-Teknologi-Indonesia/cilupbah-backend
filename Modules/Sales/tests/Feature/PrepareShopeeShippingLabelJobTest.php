@@ -159,6 +159,8 @@ class PrepareShopeeShippingLabelJobTest extends TestCase
 
     public function test_uncertain_create_document_is_verified_without_posting_a_second_time(): void
     {
+        Queue::fake();
+
         $order = SalesOrder::factory()->create([
             'source' => 'shopee',
             'channel_shop_id' => 'SHOP123',
@@ -171,12 +173,17 @@ class PrepareShopeeShippingLabelJobTest extends TestCase
         $first->shouldReceive('createShippingDocument')->once()->andThrow(new \RuntimeException('network timeout'));
         $first->shouldReceive('classifyShippingLabelFailure')->once()->andReturnNull();
 
-        try {
-            (new PrepareShopeeShippingLabelJob($order->id, 0))->handle($first);
-            $this->fail('The first worker must fail after an uncertain remote request.');
-        } catch (\RuntimeException $exception) {
-            $this->assertSame('network timeout', $exception->getMessage());
-        }
+        (new PrepareShopeeShippingLabelJob($order->id, 0))->handle($first);
+
+        $this->assertSame(
+            ChannelOperationAttempt::STATUS_UNCERTAIN,
+            ChannelOperationAttempt::query()->value('status'),
+        );
+        Queue::assertPushed(
+            PrepareShopeeShippingLabelJob::class,
+            fn (PrepareShopeeShippingLabelJob $job): bool => $job->orderId === $order->id
+                && $job->attempt === 1,
+        );
 
         $retry = Mockery::mock(ShopeeOrderService::class);
         $retry->shouldReceive('resolveSupportedDocType')->once()->andReturn('THERMAL_AIR_WAYBILL');
@@ -185,7 +192,7 @@ class PrepareShopeeShippingLabelJobTest extends TestCase
             'response' => ['result_list' => [['status' => 'READY']]],
         ]);
 
-        (new PrepareShopeeShippingLabelJob($order->id, 0))->handle($retry);
+        (new PrepareShopeeShippingLabelJob($order->id, 1))->handle($retry);
 
         $this->assertSame('ready', $order->refresh()->shipping_label_status);
         $this->assertSame(
