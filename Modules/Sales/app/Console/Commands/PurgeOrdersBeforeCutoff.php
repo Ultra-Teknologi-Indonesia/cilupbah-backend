@@ -18,6 +18,7 @@ final class PurgeOrdersBeforeCutoff extends Command
         {--cutoff= : Cutoff transaction_date dalam WIB, format YYYY-MM-DD HH:MM}
         {--source=* : Batasi source; dapat diulang. Kosong berarti semua source}
         {--chunk=200 : Jumlah order per transaksi, 25-500}
+        {--processed-only : Hanya pilih order terminal yang seluruh proses kritisnya sudah selesai}
         {--apply : Terapkan penghapusan permanen}
         {--confirm= : Token konfirmasi yang ditampilkan oleh dry-run}';
 
@@ -29,45 +30,48 @@ final class PurgeOrdersBeforeCutoff extends Command
             $cutoff = $this->parseCutoff((string) $this->option('cutoff'));
             $sources = (array) $this->option('source');
             $chunkSize = max(25, min(500, (int) $this->option('chunk')));
-            $preview = $service->preview($cutoff, $sources);
+            $processedOnly = (bool) $this->option('processed-only');
+            $preview = $service->preview($cutoff, $sources, $processedOnly);
 
             $this->renderPreview($cutoff, $preview);
 
             if (! (bool) $this->option('apply')) {
                 $this->newLine();
                 $this->warn('DRY-RUN: tidak ada data yang diubah.');
-                $this->line('Untuk apply, gunakan token: '.$this->confirmationToken($cutoff));
+                $this->line('Untuk apply, gunakan token: '.$this->confirmationToken($cutoff, $processedOnly));
 
                 return self::SUCCESS;
             }
 
-            if ((int) $preview['blocked_count'] > 0) {
+            if (! $processedOnly && (int) $preview['blocked_count'] > 0) {
                 $this->error('APPLY DIBATALKAN: masih ada order dengan jejak operasional/stock/finance/media.');
                 $this->line('Selesaikan blocker yang tercantum di atas, lalu jalankan dry-run ulang.');
 
                 return self::FAILURE;
             }
 
-            $expectedToken = $this->confirmationToken($cutoff);
+            $expectedToken = $this->confirmationToken($cutoff, $processedOnly);
             if (! hash_equals($expectedToken, (string) $this->option('confirm'))) {
                 $this->error('Token konfirmasi tidak cocok. Gunakan: --confirm='.$expectedToken);
 
                 return self::FAILURE;
             }
 
-            if ((int) $preview['candidate_count'] === 0) {
+            if ((int) ($processedOnly ? $preview['safe_count'] : $preview['candidate_count']) === 0) {
                 $this->info('Tidak ada order yang perlu dihapus.');
 
                 return self::SUCCESS;
             }
 
-            $result = $service->purge($cutoff, $sources, $chunkSize);
+            $result = $service->purge($cutoff, $sources, $chunkSize, $processedOnly);
 
             $this->newLine();
             $this->info('PEMBERSIHAN SELESAI');
             $this->table(['Hasil', 'Jumlah'], [
                 ['Order dihapus', $result['deleted_count']],
-                ['Order tersisa sebelum cutoff', $result['remaining_count']],
+                ['Target terpilih yang tersisa', $result['remaining_count']],
+                ['Seluruh order sebelum cutoff yang tersisa', $result['candidate_remaining_count']],
+                ['Snapshot audit tersimpan', $result['archived_count']],
                 ['Finance state dibersihkan', $result['deleted_finance_states']],
                 ['Dead letter ditandai selesai', $result['resolved_dead_letters']],
             ]);
@@ -111,6 +115,9 @@ final class PurgeOrdersBeforeCutoff extends Command
     {
         $this->info('PEMBERSIHAN ORDER BERDASARKAN TANGGAL TRANSAKSI');
         $this->line('Mode       : '.((bool) $this->option('apply') ? 'APPLY' : 'DRY-RUN'));
+        $this->line('Seleksi    : '.((bool) $this->option('processed-only')
+            ? 'HANYA ORDER TERMINAL YANG PROSES KRITISNYA SUDAH SELESAI'
+            : 'SEMUA ORDER SEBELUM CUTOFF'));
         $this->line('Aturan     : transaction_date < '.$cutoff->format('Y-m-d H:i:s').' WIB');
         $this->line('Cutoff UTC : '.$preview['cutoff_utc']);
         $this->line('Source     : '.($preview['sources'] === [] ? 'SEMUA SOURCE (termasuk manual/internal)' : implode(', ', $preview['sources'])));
@@ -133,7 +140,9 @@ final class PurgeOrdersBeforeCutoff extends Command
         }
 
         if ($preview['blockers'] !== []) {
-            $this->warn('Blocker ditemukan; apply tidak boleh dilanjutkan sebelum diperiksa.');
+            $this->warn((bool) $this->option('processed-only')
+                ? 'Order di luar syarat berikut akan ditinggalkan dan tidak dihapus.'
+                : 'Blocker ditemukan; apply tidak boleh dilanjutkan sebelum diperiksa.');
             $this->table(
                 ['Jenis blocker', 'Record', 'Order', 'Contoh order'],
                 array_map(static fn (array $row): array => [
@@ -161,8 +170,9 @@ final class PurgeOrdersBeforeCutoff extends Command
         }
     }
 
-    private function confirmationToken(CarbonImmutable $cutoff): string
+    private function confirmationToken(CarbonImmutable $cutoff, bool $processedOnly): string
     {
-        return 'HAPUS-SEBELUM-'.$cutoff->format('Ymd-Hi');
+        return ($processedOnly ? 'HAPUS-SELESAI-SEBELUM-' : 'HAPUS-SEBELUM-')
+            .$cutoff->format('Ymd-Hi');
     }
 }

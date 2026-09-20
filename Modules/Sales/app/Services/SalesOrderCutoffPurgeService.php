@@ -11,13 +11,23 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Modules\Outbound\Models\BulkRtsItem;
+use Modules\Outbound\Models\Packlist;
+use Modules\Outbound\Models\Picklist;
+use Modules\Outbound\Models\Shipment;
+use Modules\Sales\Models\BulkShippingLabelItem;
+use Modules\Sales\Models\ChannelOperationAttempt;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Models\SalesReturn;
+use Modules\Sales\Models\ShippingLabelPrefetch;
 use RuntimeException;
 use Throwable;
 
 final class SalesOrderCutoffPurgeService
 {
     private const LOCK_SECONDS = 3600;
+
+    private ?array $archiveOrderColumns = null;
 
     private const ORDER_MOVEMENT_SOURCES = [
         'ORDER',
@@ -39,6 +49,8 @@ final class SalesOrderCutoffPurgeService
         'RESERVE_EXPIRED',
     ];
 
+    private const TERMINAL_ORDER_STATUSES = ['shipped', 'cancelled', 'returned'];
+
     private const BLOCKING_RELATIONS = [
         'picklist_items' => 'order_id',
         'picklist_order_assignments' => 'order_id',
@@ -57,13 +69,23 @@ final class SalesOrderCutoffPurgeService
         'fulfillment_removals' => 'order_id',
     ];
 
-    public function preview(CarbonImmutable $cutoff, array $sources = []): array
-    {
+    public function preview(
+        CarbonImmutable $cutoff,
+        array $sources = [],
+        bool $processedOnly = false,
+    ): array {
         $sources = $this->normalizeSources($sources);
         $candidate = $this->candidateQuery($cutoff, $sources);
         $candidateCount = (clone $candidate)->count();
-        $blockerDetails = $this->blockerDetails($cutoff, $sources);
-        $blockedCount = $this->blockedCandidateQuery($cutoff, $sources)->count();
+        if ($processedOnly) {
+            $targetCount = $this->processedCandidateQuery($cutoff, $sources)->count();
+            $blockedCount = max(0, $candidateCount - $targetCount);
+            $blockerDetails = $this->processedBlockerDetails($cutoff, $sources);
+        } else {
+            $blockerDetails = $this->blockerDetails($cutoff, $sources);
+            $blockedCount = $this->blockedCandidateQuery($cutoff, $sources)->count();
+            $targetCount = max(0, $candidateCount - $blockedCount);
+        }
 
         $bySourceStatus = (clone $candidate)
             ->select(['source', 'status'])
@@ -105,8 +127,9 @@ final class SalesOrderCutoffPurgeService
         return [
             'cutoff_utc' => $cutoff->utc()->toDateTimeString(),
             'sources' => $sources,
+            'mode' => $processedOnly ? 'processed_only' : 'strict',
             'candidate_count' => $candidateCount,
-            'safe_count' => max(0, $candidateCount - $blockedCount),
+            'safe_count' => $targetCount,
             'blocked_count' => $blockedCount,
             'created_at_or_after_cutoff_count' => (clone $candidate)
                 ->where('created_at', '>=', $cutoff->utc())
@@ -117,11 +140,15 @@ final class SalesOrderCutoffPurgeService
         ];
     }
 
-    public function purge(CarbonImmutable $cutoff, array $sources = [], int $chunkSize = 200): array
-    {
-        if (! Schema::hasTable('sales_order_purge_runs')) {
+    public function purge(
+        CarbonImmutable $cutoff,
+        array $sources = [],
+        int $chunkSize = 200,
+        bool $processedOnly = false,
+    ): array {
+        if (! Schema::hasTable('sales_order_purge_runs') || ! Schema::hasTable('sales_order_purge_archives')) {
             throw new RuntimeException(
-                'Migration sales_order_purge_runs belum dijalankan; apply dibatalkan agar tidak ada penghapusan tanpa audit.'
+                'Migration audit purge order belum dijalankan; apply dibatalkan agar tidak ada penghapusan tanpa arsip.'
             );
         }
 
@@ -136,12 +163,14 @@ final class SalesOrderCutoffPurgeService
         $runId = (string) Str::uuid();
         $startedAt = now();
         $deleted = 0;
+        $archived = 0;
         $resolvedDeadLetters = 0;
         $deletedFinanceStates = 0;
+        $preview = null;
 
         try {
-            $preview = $this->preview($cutoff, $sources);
-            if ((int) $preview['blocked_count'] > 0) {
+            $preview = $this->preview($cutoff, $sources, $processedOnly);
+            if (! $processedOnly && (int) $preview['blocked_count'] > 0) {
                 throw new RuntimeException(
                     'Apply dibatalkan: '.$preview['blocked_count'].' order memiliki jejak operasional, stok, finance, atau media.'
                 );
@@ -149,27 +178,32 @@ final class SalesOrderCutoffPurgeService
 
             $this->createAuditRun($runId, $cutoff, $sources, $preview, $startedAt);
 
-            $counts = DB::transaction(function () use ($cutoff, $sources, $chunkSize): array {
-                $transactionCounts = [
-                    'deleted' => 0,
-                    'resolved_dead_letters' => 0,
-                    'deleted_finance_states' => 0,
-                ];
+            $this->targetQuery($cutoff, $sources, $processedOnly)
+                ->select('sales_orders.id')
+                ->orderBy('sales_orders.id')
+                ->chunkById($chunkSize, function ($rows) use (
+                    $cutoff,
+                    $sources,
+                    $processedOnly,
+                    $runId,
+                    &$deleted,
+                    &$archived,
+                    &$resolvedDeadLetters,
+                    &$deletedFinanceStates,
+                ): void {
+                    $ids = $rows->pluck('id')->map(static fn (mixed $id): string => (string) $id)->all();
+                    if ($ids === []) {
+                        return;
+                    }
 
-                $this->candidateQuery($cutoff, $sources)
-                    ->select('sales_orders.id')
-                    ->orderBy('sales_orders.id')
-                    ->chunkById($chunkSize, function ($rows) use (
+                    $counts = DB::transaction(function () use (
                         $cutoff,
                         $sources,
-                        &$transactionCounts,
-                    ): void {
-                        $ids = $rows->pluck('id')->map(static fn (mixed $id): string => (string) $id)->all();
-                        if ($ids === []) {
-                            return;
-                        }
-
-                        $lockedIds = $this->candidateQuery($cutoff, $sources)
+                        $processedOnly,
+                        $runId,
+                        $ids,
+                    ): array {
+                        $lockedIds = $this->targetQuery($cutoff, $sources, $processedOnly)
                             ->whereIn('sales_orders.id', $ids)
                             ->lockForUpdate()
                             ->pluck('sales_orders.id')
@@ -177,17 +211,21 @@ final class SalesOrderCutoffPurgeService
                             ->all();
 
                         if ($lockedIds === []) {
-                            return;
+                            return [0, 0, 0, 0];
                         }
 
-                        if ($this->blockedOrdersByIds($lockedIds) > 0) {
+                        if (! $processedOnly && $this->blockedOrdersByIds($lockedIds) > 0) {
                             throw new RuntimeException(
-                                'Kondisi order berubah saat apply: jejak operasional baru ditemukan. Seluruh chunk dibatalkan.'
+                                'Kondisi order berubah saat apply: jejak operasional baru ditemukan. Chunk dibatalkan.'
                             );
                         }
 
+                        $archivedInChunk = $this->archiveOrders($runId, $lockedIds);
+                        $this->deleteOrderOperationalLinks($lockedIds);
+
+                        $resolvedInChunk = 0;
                         if (Schema::hasTable('finance_sync_dead_letters')) {
-                            $transactionCounts['resolved_dead_letters'] += DB::table('finance_sync_dead_letters')
+                            $resolvedInChunk = DB::table('finance_sync_dead_letters')
                                 ->whereIn('order_id', $lockedIds)
                                 ->whereNull('resolved_at')
                                 ->update([
@@ -196,31 +234,42 @@ final class SalesOrderCutoffPurgeService
                                 ]);
                         }
 
+                        $financeInChunk = 0;
                         if (Schema::hasTable('finance_sync_states')) {
-                            $transactionCounts['deleted_finance_states'] += DB::table('finance_sync_states')
+                            $financeInChunk = DB::table('finance_sync_states')
                                 ->whereIn('order_id', $lockedIds)
                                 ->delete();
                         }
 
-                        $transactionCounts['deleted'] += DB::table('sales_orders')
+                        $deletedInChunk = DB::table('sales_orders')
                             ->whereIn('id', $lockedIds)
                             ->delete();
-                    }, 'sales_orders.id', 'id');
 
-                return $transactionCounts;
-            }, 3);
+                        if ($deletedInChunk !== count($lockedIds)) {
+                            throw new RuntimeException('Jumlah order terhapus tidak sama dengan order yang dikunci; chunk dibatalkan.');
+                        }
 
-            $deleted = $counts['deleted'];
-            $resolvedDeadLetters = $counts['resolved_dead_letters'];
-            $deletedFinanceStates = $counts['deleted_finance_states'];
+                        return [$deletedInChunk, $archivedInChunk, $resolvedInChunk, $financeInChunk];
+                    }, 3);
+
+                    $deleted += $counts[0];
+                    $archived += $counts[1];
+                    $resolvedDeadLetters += $counts[2];
+                    $deletedFinanceStates += $counts[3];
+                }, 'sales_orders.id', 'id');
+
+            $remaining = $this->targetQuery($cutoff, $sources, $processedOnly)->count();
 
             $result = [
                 'run_id' => $runId,
                 'cutoff_utc' => $cutoff->utc()->toDateTimeString(),
                 'sources' => $sources,
+                'mode' => $processedOnly ? 'processed_only' : 'strict',
                 'candidate_count' => (int) $preview['candidate_count'],
                 'deleted_count' => $deleted,
-                'remaining_count' => $this->candidateQuery($cutoff, $sources)->count(),
+                'archived_count' => $archived,
+                'remaining_count' => $remaining,
+                'candidate_remaining_count' => $this->candidateQuery($cutoff, $sources)->count(),
                 'resolved_dead_letters' => $resolvedDeadLetters,
                 'deleted_finance_states' => $deletedFinanceStates,
                 'finished_at' => now()->toIso8601String(),
@@ -230,7 +279,14 @@ final class SalesOrderCutoffPurgeService
 
             return $result;
         } catch (Throwable $exception) {
-            $this->finishAuditRun($runId, 'failed', null, $exception->getMessage());
+            $this->finishAuditRun($runId, 'failed', [
+                'mode' => $processedOnly ? 'processed_only' : 'strict',
+                'candidate_count' => (int) ($preview['candidate_count'] ?? 0),
+                'deleted_count' => $deleted,
+                'archived_count' => $archived,
+                'resolved_dead_letters' => $resolvedDeadLetters,
+                'deleted_finance_states' => $deletedFinanceStates,
+            ], $exception->getMessage());
 
             throw $exception;
         } finally {
@@ -247,6 +303,311 @@ final class SalesOrderCutoffPurgeService
                 $sources !== [],
                 static fn (Builder $query): Builder => $query->whereIn('source', $sources),
             );
+    }
+
+    private function targetQuery(CarbonImmutable $cutoff, array $sources, bool $processedOnly): Builder
+    {
+        return $processedOnly
+            ? $this->processedCandidateQuery($cutoff, $sources)
+            : $this->candidateQuery($cutoff, $sources);
+    }
+
+    private function archiveOrders(string $runId, array $orderIds): int
+    {
+        $omittedLargePayloads = [
+            'shipping_label_raw_data',
+            'finance_raw',
+            'driver_call_response',
+        ];
+        $this->archiveOrderColumns ??= array_values(array_diff(
+            Schema::getColumnListing('sales_orders'),
+            $omittedLargePayloads,
+        ));
+        $orders = DB::table('sales_orders')
+            ->whereIn('id', $orderIds)
+            ->get($this->archiveOrderColumns)
+            ->keyBy(static fn (object $row): string => (string) $row->id);
+
+        $relations = [
+            'items' => $this->groupRows('sales_order_items', 'order_id', $orderIds),
+            'status_histories' => $this->groupRows('sales_order_status_histories', 'salesorder_id', $orderIds),
+            'finance_states' => $this->groupRows('finance_sync_states', 'order_id', $orderIds),
+            'finance_dead_letters' => $this->groupRows('finance_sync_dead_letters', 'order_id', $orderIds),
+            'picklist_items' => $this->groupRows('picklist_items', 'order_id', $orderIds),
+            'packlists' => $this->groupRows('packlists', 'order_id', $orderIds),
+            'shipment_orders' => $this->groupRows('shipment_orders', 'order_id', $orderIds),
+            'invoices' => $this->groupRows('sales_invoices', 'order_id', $orderIds),
+            'returns' => $this->groupRows('sales_returns', 'order_id', $orderIds),
+            'fulfillment_removals' => $this->groupRows('fulfillment_removals', 'order_id', $orderIds),
+            'channel_operations' => $this->groupRows('channel_operation_attempts', 'order_id', $orderIds),
+            'shipping_label_prefetches' => $this->groupRows('shipping_label_prefetches', 'order_id', $orderIds),
+            'bulk_rts_items' => $this->groupRows('bulk_rts_items', 'order_id', $orderIds),
+            'order_bin_allocations' => $this->groupRows('order_bin_allocations', 'order_id', $orderIds),
+            'buyer_confirmations' => $this->groupRows('order_buyer_confirmations', 'order_id', $orderIds),
+            'settlement_adjustments' => $this->groupRows('channel_settlement_adjustments', 'order_id', $orderIds),
+            'warranties' => $this->groupRows('warranties', 'order_id', $orderIds),
+        ];
+
+        if (Schema::hasTable('bulk_shipping_label_items')) {
+            $relations['bulk_shipping_label_items'] = $this->groupRows(
+                'bulk_shipping_label_items',
+                'order_id',
+                $orderIds,
+                ['id', 'batch_id', 'order_id', 'channel', 'status', 'reason', 'downloaded_at', 'created_at', 'updated_at'],
+            );
+        }
+
+        $orderNumbers = $orders->pluck('salesorder_no')->filter()->map('strval')->values()->all();
+        $movements = $this->groupRows('inventory_movements', 'transaction_number', $orderNumbers);
+        $archivedAt = now();
+        $rows = [];
+
+        foreach ($orders as $orderId => $order) {
+            $snapshotRelations = [];
+            foreach ($relations as $name => $groupedRows) {
+                $snapshotRelations[$name] = $groupedRows[$orderId] ?? [];
+            }
+
+            $snapshotRelations['inventory_movements'] = $movements[(string) ($order->salesorder_no ?? '')] ?? [];
+
+            $rows[] = [
+                'id' => (string) Str::uuid(),
+                'run_id' => $runId,
+                'original_order_id' => $orderId,
+                'salesorder_no' => $order->salesorder_no,
+                'channel_order_no' => $order->channel_order_no,
+                'source' => $order->source,
+                'status' => $order->status,
+                'transaction_date' => $order->transaction_date,
+                'snapshot' => json_encode([
+                    'order' => (array) $order,
+                    'relations' => $snapshotRelations,
+                    'omitted_large_payloads' => $omittedLargePayloads,
+                ], JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE),
+                'archived_at' => $archivedAt,
+            ];
+        }
+
+        if ($rows !== []) {
+            DB::table('sales_order_purge_archives')->insertOrIgnore($rows);
+        }
+
+        $archivedCount = DB::table('sales_order_purge_archives')
+            ->whereIn('original_order_id', $orderIds)
+            ->count();
+
+        if ($archivedCount !== count($orderIds)) {
+            throw new RuntimeException('Snapshot audit tidak lengkap; penghapusan chunk dibatalkan.');
+        }
+
+        return $archivedCount;
+    }
+
+    private function groupRows(
+        string $table,
+        string $column,
+        array $values,
+        array $columns = ['*'],
+    ): array {
+        if ($values === [] || ! Schema::hasTable($table) || ! Schema::hasColumn($table, $column)) {
+            return [];
+        }
+
+        return DB::table($table)
+            ->whereIn($column, $values)
+            ->get($columns)
+            ->groupBy(static fn (object $row): string => (string) $row->{$column})
+            ->map(static fn ($rows): array => $rows
+                ->map(static fn (object $row): array => (array) $row)
+                ->values()
+                ->all())
+            ->all();
+    }
+
+    private function deleteOrderOperationalLinks(array $orderIds): void
+    {
+        if ($orderIds === []) {
+            return;
+        }
+
+        if (Schema::hasTable('picklist_order_assignments')) {
+            DB::table('picklist_order_assignments')->whereIn('order_id', $orderIds)->delete();
+        }
+
+        if (Schema::hasTable('picklist_items')) {
+            DB::table('picklist_items')->whereIn('order_id', $orderIds)->delete();
+        }
+
+        if (Schema::hasTable('packlists')) {
+            $packlistIds = DB::table('packlists')->whereIn('order_id', $orderIds)->pluck('id')->all();
+            if ($packlistIds !== [] && Schema::hasTable('packlist_items')) {
+                DB::table('packlist_items')->whereIn('packlist_id', $packlistIds)->delete();
+            }
+            DB::table('packlists')->whereIn('order_id', $orderIds)->delete();
+        }
+
+        if (Schema::hasTable('shipment_orders')) {
+            DB::table('shipment_orders')->whereIn('order_id', $orderIds)->delete();
+        }
+    }
+
+    private function processedCandidateQuery(CarbonImmutable $cutoff, array $sources): Builder
+    {
+        $query = $this->candidateQuery($cutoff, $sources)
+            ->where(function (Builder $terminal): void {
+                $terminal->whereIn('sales_orders.status', self::TERMINAL_ORDER_STATUSES)
+                    ->orWhere('sales_orders.is_canceled', true);
+            });
+
+        $query->whereExists(static function (Builder $state): void {
+            $state->selectRaw('1')
+                ->from('finance_sync_states as processed_finance_state')
+                ->whereColumn('processed_finance_state.order_id', 'sales_orders.id')
+                ->where('processed_finance_state.status', 'succeeded');
+        });
+
+        $this->addProcessedSafetyConditions($query);
+
+        return $query;
+    }
+
+    private function addProcessedSafetyConditions(Builder $query): void
+    {
+        if (Schema::hasTable('finance_sync_dead_letters')) {
+            $query->whereNotExists(static function (Builder $deadLetter): void {
+                $deadLetter->selectRaw('1')
+                    ->from('finance_sync_dead_letters as processed_dead_letter')
+                    ->whereColumn('processed_dead_letter.order_id', 'sales_orders.id')
+                    ->whereNull('processed_dead_letter.resolved_at');
+            });
+        }
+
+        if (Schema::hasTable('channel_operation_attempts')) {
+            $query->whereNotExists(static function (Builder $operation): void {
+                $operation->selectRaw('1')
+                    ->from('channel_operation_attempts as processed_operation')
+                    ->whereColumn('processed_operation.order_id', 'sales_orders.id')
+                    ->whereIn('processed_operation.status', [
+                        ChannelOperationAttempt::STATUS_SENDING,
+                        ChannelOperationAttempt::STATUS_ACCEPTED,
+                        ChannelOperationAttempt::STATUS_UNCERTAIN,
+                        ChannelOperationAttempt::STATUS_RETRYABLE,
+                    ]);
+            });
+        }
+
+        if (Schema::hasTable('shipping_label_prefetches')) {
+            $query->whereNotExists(static function (Builder $prefetch): void {
+                $prefetch->selectRaw('1')
+                    ->from('shipping_label_prefetches as processed_prefetch')
+                    ->whereColumn('processed_prefetch.order_id', 'sales_orders.id')
+                    ->whereNotIn('processed_prefetch.status', [
+                        ShippingLabelPrefetch::STATUS_AWB_READY,
+                        ShippingLabelPrefetch::STATUS_SKIPPED,
+                    ]);
+            });
+        }
+
+        if (Schema::hasTable('bulk_shipping_label_items')) {
+            $query->whereNotExists(static function (Builder $label): void {
+                $label->selectRaw('1')
+                    ->from('bulk_shipping_label_items as processed_label')
+                    ->whereColumn('processed_label.order_id', 'sales_orders.id')
+                    ->whereIn('processed_label.status', BulkShippingLabelItem::TRANSIENT_STATUSES);
+            });
+        }
+
+        if (Schema::hasTable('bulk_rts_items')) {
+            $query->whereNotExists(static function (Builder $rts): void {
+                $rts->selectRaw('1')
+                    ->from('bulk_rts_items as processed_rts')
+                    ->whereColumn('processed_rts.order_id', 'sales_orders.id')
+                    ->whereIn('processed_rts.status', [
+                        BulkRtsItem::STATUS_PENDING,
+                        BulkRtsItem::STATUS_PROCESSING,
+                    ]);
+            });
+        }
+
+        if (Schema::hasTable('picklist_items') && Schema::hasTable('picklists')) {
+            $query->whereNotExists(static function (Builder $picklist): void {
+                $picklist->selectRaw('1')
+                    ->from('picklist_items as processed_picklist_item')
+                    ->join('picklists as processed_picklist', 'processed_picklist.id', '=', 'processed_picklist_item.picklist_id')
+                    ->whereColumn('processed_picklist_item.order_id', 'sales_orders.id')
+                    ->whereIn('processed_picklist.status', [
+                        Picklist::STATUS_DRAFT,
+                        Picklist::STATUS_IN_PROGRESS,
+                    ]);
+            });
+        }
+
+        if (Schema::hasTable('packlists')) {
+            $query->whereNotExists(static function (Builder $packlist): void {
+                $packlist->selectRaw('1')
+                    ->from('packlists as processed_packlist')
+                    ->whereColumn('processed_packlist.order_id', 'sales_orders.id')
+                    ->whereIn('processed_packlist.status', [
+                        Packlist::STATUS_DRAFT,
+                        Packlist::STATUS_IN_PROGRESS,
+                    ]);
+            });
+        }
+
+        if (Schema::hasTable('shipment_orders') && Schema::hasTable('shipments')) {
+            $query->whereNotExists(static function (Builder $shipment): void {
+                $shipment->selectRaw('1')
+                    ->from('shipment_orders as processed_shipment_order')
+                    ->join('shipments as processed_shipment', 'processed_shipment.id', '=', 'processed_shipment_order.shipment_id')
+                    ->whereColumn('processed_shipment_order.order_id', 'sales_orders.id')
+                    ->whereIn('processed_shipment.status', [
+                        Shipment::STATUS_SCHEDULED,
+                        Shipment::STATUS_HANDED_OVER,
+                        Shipment::STATUS_IN_TRANSIT,
+                    ]);
+            });
+        }
+
+        if (Schema::hasTable('sales_returns')) {
+            $query->whereNotExists(static function (Builder $return): void {
+                $return->selectRaw('1')
+                    ->from('sales_returns as processed_return')
+                    ->whereColumn('processed_return.order_id', 'sales_orders.id')
+                    ->whereIn('processed_return.status', [
+                        SalesReturn::STATUS_PENDING,
+                        SalesReturn::STATUS_ACCEPTED,
+                    ]);
+            });
+        }
+
+        if (Schema::hasTable('order_buyer_confirmations')) {
+            $query->whereNotExists(static function (Builder $confirmation): void {
+                $confirmation->selectRaw('1')
+                    ->from('order_buyer_confirmations as processed_confirmation')
+                    ->whereColumn('processed_confirmation.order_id', 'sales_orders.id')
+                    ->whereNull('processed_confirmation.resolved_at');
+            });
+        }
+
+        if (Schema::hasTable('inventory_movements')) {
+            $query->whereNotExists(static function (Builder $movement): void {
+                $movement->selectRaw('1')
+                    ->from('inventory_movements as processed_reservation')
+                    ->whereColumn('processed_reservation.transaction_number', 'sales_orders.salesorder_no')
+                    ->whereIn('processed_reservation.source', ['ORDER_RESERVE', 'ORDER_RELEASE'])
+                    ->groupBy('processed_reservation.item_id', 'processed_reservation.location_id')
+                    ->havingRaw('SUM(processed_reservation.qty) <> 0');
+            });
+        }
+
+        if (Schema::hasTable('media')) {
+            $query->whereNotExists(static function (Builder $media): void {
+                $media->selectRaw('1')
+                    ->from('media as processed_media')
+                    ->where('processed_media.model_type', SalesOrder::class)
+                    ->whereColumn('processed_media.model_id', 'sales_orders.id');
+            });
+        }
     }
 
     private function blockedCandidateQuery(CarbonImmutable $cutoff, array $sources): Builder
@@ -377,6 +738,77 @@ final class SalesOrderCutoffPurgeService
                 ->whereIn('model_id', clone $targetIds);
             $this->appendBlockerDetail($details, 'media', $query, false, 'model_id');
         }
+
+        return $details;
+    }
+
+    private function processedBlockerDetails(CarbonImmutable $cutoff, array $sources): array
+    {
+        $details = [];
+
+        $notTerminal = $this->candidateQuery($cutoff, $sources)
+            ->where(function (Builder $status): void {
+                $status->whereNotIn('sales_orders.status', self::TERMINAL_ORDER_STATUSES)
+                    ->orWhereNull('sales_orders.status');
+            })
+            ->where(function (Builder $cancelled): void {
+                $cancelled->where('sales_orders.is_canceled', false)
+                    ->orWhereNull('sales_orders.is_canceled');
+            });
+        $this->appendBlockerDetail($details, 'order_belum_terminal', $notTerminal, true);
+
+        $financeNotSucceeded = $this->candidateQuery($cutoff, $sources)
+            ->whereNotExists(static function (Builder $state): void {
+                $state->selectRaw('1')
+                    ->from('finance_sync_states as processed_finance_state')
+                    ->whereColumn('processed_finance_state.order_id', 'sales_orders.id')
+                    ->where('processed_finance_state.status', 'succeeded');
+            });
+        $this->appendBlockerDetail($details, 'finance_belum_succeeded', $financeNotSucceeded, true);
+
+        if (Schema::hasTable('inventory_movements')) {
+            $openReservation = $this->candidateQuery($cutoff, $sources)
+                ->whereExists(static function (Builder $movement): void {
+                    $movement->selectRaw('1')
+                        ->from('inventory_movements as processed_reservation')
+                        ->whereColumn('processed_reservation.transaction_number', 'sales_orders.salesorder_no')
+                        ->whereIn('processed_reservation.source', ['ORDER_RESERVE', 'ORDER_RELEASE'])
+                        ->groupBy('processed_reservation.item_id', 'processed_reservation.location_id')
+                        ->havingRaw('SUM(processed_reservation.qty) <> 0');
+                });
+            $this->appendBlockerDetail($details, 'reservasi_stok_belum_nol', $openReservation, true);
+        }
+
+        if (Schema::hasTable('finance_sync_dead_letters')) {
+            $unresolvedDeadLetter = $this->candidateQuery($cutoff, $sources)
+                ->whereExists(static function (Builder $deadLetter): void {
+                    $deadLetter->selectRaw('1')
+                        ->from('finance_sync_dead_letters as processed_dead_letter')
+                        ->whereColumn('processed_dead_letter.order_id', 'sales_orders.id')
+                        ->whereNull('processed_dead_letter.resolved_at');
+                });
+            $this->appendBlockerDetail($details, 'finance_dead_letter_belum_selesai', $unresolvedDeadLetter, true);
+        }
+
+        $eligibleIds = $this->processedCandidateQuery($cutoff, $sources)->select('sales_orders.id');
+        $otherSafetyIssue = $this->candidateQuery($cutoff, $sources)
+            ->where(function (Builder $terminal): void {
+                $terminal->whereIn('sales_orders.status', self::TERMINAL_ORDER_STATUSES)
+                    ->orWhere('sales_orders.is_canceled', true);
+            })
+            ->whereExists(static function (Builder $state): void {
+                $state->selectRaw('1')
+                    ->from('finance_sync_states as processed_finance_state')
+                    ->whereColumn('processed_finance_state.order_id', 'sales_orders.id')
+                    ->where('processed_finance_state.status', 'succeeded');
+            })
+            ->whereNotIn('sales_orders.id', $eligibleIds);
+        $this->appendBlockerDetail(
+            $details,
+            'proses_awb_label_gudang_retur_atau_media_masih_aktif',
+            $otherSafetyIssue,
+            true,
+        );
 
         return $details;
     }
