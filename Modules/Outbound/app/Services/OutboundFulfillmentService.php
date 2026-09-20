@@ -872,14 +872,8 @@ SQL;
 
     private function finishPack()
     {
-        return Order::where('is_canceled', false)
-            ->where(function ($q) {
-                $q->where('status', 'packed')
-                    ->orWhere(function ($q2) {
-                        $q2->where('status', 'shipped')
-                            ->where('channel_status', 'SHIPPED');
-                    });
-            })
+        return Order::where('status', 'packed')
+            ->where('is_canceled', false)
             ->whereDoesntHave('shipmentOrders');
     }
 

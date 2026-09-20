@@ -121,7 +121,7 @@ class OutboundBoardCountsTest extends TestCase
             ->assertJsonPath('data.shipping.jadwal', 1);
     }
 
-    public function test_shipped_channel_orders_are_kept_in_the_correct_process_tab(): void
+    public function test_shipped_channel_orders_are_not_misclassified_as_completed_packing(): void
     {
         $viewer = User::factory()->create();
         $viewer->givePermissionTo(Permission::create([
@@ -141,10 +141,15 @@ class OutboundBoardCountsTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $readyOrder = SalesOrder::factory()->create([
+        $inTransitOrder = SalesOrder::factory()->create([
             'location_id' => $locationId,
             'status' => 'shipped',
             'channel_status' => 'SHIPPED',
+            'source' => 'shopee',
+        ]);
+        $packedOrder = SalesOrder::factory()->create([
+            'location_id' => $locationId,
+            'status' => 'packed',
             'source' => 'shopee',
         ]);
         $completedOrder = SalesOrder::factory()->create([
@@ -183,10 +188,11 @@ class OutboundBoardCountsTest extends TestCase
         $request = $this->actingAs($viewer, 'sanctum')
             ->withHeader('X-Client-Channel', 'WEB');
 
-        $request->getJson('/api/v1/outbound/orders/finish-pack?per_page=20')
+        $finishPack = $request->getJson('/api/v1/outbound/orders/finish-pack?per_page=20')
             ->assertOk()
             ->assertJsonPath('meta.total', 1)
-            ->assertJsonPath('data.0.id', $readyOrder->id);
+            ->assertJsonPath('data.0.id', $packedOrder->id);
+        $finishPack->assertJsonMissing(['id' => $inTransitOrder->id]);
 
         $request->getJson('/api/v1/outbound/orders/ready-to-ship?per_page=20')
             ->assertOk()

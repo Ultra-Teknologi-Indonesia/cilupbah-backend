@@ -229,6 +229,30 @@ class ChannelStockShipTransitionTest extends TestCase
         $this->assertSame(0, $this->movements('ORDER_SHIP'));
     }
 
+    public function test_first_channel_snapshot_records_its_current_channel_status_without_fake_packing_history(): void
+    {
+        $this->service->upsertFromChannel($this->orderData('LZ-SHIP-SNAPSHOT', 'IN_TRANSIT'));
+
+        $orderId = DB::table('sales_orders')
+            ->where('salesorder_no', 'LZ-SHIP-SNAPSHOT')
+            ->value('id');
+
+        $snapshot = DB::table('sales_order_status_histories')
+            ->where('salesorder_id', $orderId)
+            ->where('action', 'CHANNEL_STATUS')
+            ->sole();
+
+        $metadata = json_decode((string) $snapshot->metadata, true);
+
+        $this->assertSame('SHIPPED', $metadata['new_values']['channel_status']);
+        $this->assertSame('IN_TRANSIT', $metadata['new_values']['channel_status_raw']);
+        $this->assertSame('channel_initial_snapshot', $metadata['origin']);
+        $this->assertSame(0, DB::table('sales_order_status_histories')
+            ->where('salesorder_id', $orderId)
+            ->whereIn('action', ['FINISH_PICK', 'FINISH_PACK'])
+            ->count());
+    }
+
     public function test_terminal_channel_status_sets_received_date_without_observer(): void
     {
         foreach (['TO_CONFIRM_RECEIVE', 'COMPLETED'] as $index => $channelStatus) {

@@ -2881,6 +2881,7 @@ class SalesOrderService
                     'channel_status' => $channelStatus,
                     'stock_allocation' => $stockAllocation,
                 ]);
+                $this->logInitialChannelSnapshotHistory($order, $orderData);
             } else {
                 $this->logChannelStatusHistoryIfChanged(
                     $order,
@@ -3140,6 +3141,39 @@ class SalesOrderService
             ],
             'entity_no' => $order->salesorder_no,
             'origin' => 'channel_sync',
+            'wms_status' => $order->status,
+        ]);
+    }
+
+    private function logInitialChannelSnapshotHistory(SalesOrder $order, array $orderData): void
+    {
+        $channelStatus = trim((string) $order->channel_status);
+        $channelStatusRaw = trim((string) $order->channel_status_raw);
+
+        if ($channelStatus === '' && $channelStatusRaw === '') {
+            return;
+        }
+
+        $statusDescription = $channelStatus !== '' ? $channelStatus : $channelStatusRaw;
+        if ($channelStatusRaw !== '' && $channelStatusRaw !== $channelStatus) {
+            $statusDescription .= " ({$channelStatusRaw})";
+        }
+
+        $this->logStatusHistory($order, OrderActivityAction::CHANNEL_STATUS, [
+            'prev_values' => [
+                'channel_status' => null,
+                'channel_status_raw' => null,
+            ],
+            'new_values' => [
+                'channel_status' => $channelStatus ?: null,
+                'channel_status_raw' => $channelStatusRaw ?: null,
+            ],
+            'entity_no' => $order->salesorder_no,
+            'origin' => 'channel_initial_snapshot',
+            'channel_updated_at' => isset($orderData['channel_updated_at'])
+                ? (string) $orderData['channel_updated_at']
+                : null,
+            'note' => "Snapshot awal dari channel: pesanan sudah berstatus {$statusDescription} saat pertama kali disinkronkan.",
             'wms_status' => $order->status,
         ]);
     }
