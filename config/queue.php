@@ -169,6 +169,12 @@ return [
         'catalog_exports' => env('QUEUE_NAME_CATALOG_EXPORTS', 'catalog-exports'),
     ],
 
+    'channel_order_intake' => [
+        // Orders before this point must already exist locally before channel sync may update them.
+        // The explicit WIB offset avoids ambiguity because the application stores timestamps in UTC.
+        'cutoff_at' => env('CHANNEL_ORDER_INTAKE_CUTOFF_AT', '2026-09-16T16:00:00+07:00'),
+    ],
+
     'webhook_retry_window_hours' => (int) env('WEBHOOK_RETRY_WINDOW_HOURS', 24),
 
     'health' => [

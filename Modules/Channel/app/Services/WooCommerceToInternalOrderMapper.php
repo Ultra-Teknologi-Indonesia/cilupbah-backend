@@ -20,6 +20,10 @@ class WooCommerceToInternalOrderMapper
     public function map(array $order, string $shopId): array
     {
         $items = $this->mapItems($order['line_items'] ?? []);
+        $rawTransactionDate = $order['date_created'] ?? null;
+        $hasVerifiedTransactionDate = is_numeric($rawTransactionDate)
+            ? (int) $rawTransactionDate > 0
+            : (is_string($rawTransactionDate) && trim($rawTransactionDate) !== '' && strtotime($rawTransactionDate) !== false);
 
         $wooStatus = strtolower((string) ($order['status'] ?? 'pending'));
         $channelStatus = self::STATUS_MAP[$wooStatus] ?? null;
@@ -58,7 +62,8 @@ class WooCommerceToInternalOrderMapper
             'channel_buyer_id' => ! empty($order['customer_id']) ? (string) $order['customer_id'] : null,
 
             'customer_name' => $customerName !== '' ? $customerName : null,
-            'transaction_date' => $this->parseDate($order['date_created'] ?? null),
+            'transaction_date' => $this->parseDate($rawTransactionDate),
+            '_channel_transaction_date_verified' => $hasVerifiedTransactionDate,
 
             'sub_total' => $subTotal,
             'total_disc' => $totalDisc,

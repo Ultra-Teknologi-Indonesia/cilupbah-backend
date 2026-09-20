@@ -9,6 +9,7 @@ use Modules\Channel\Exceptions\ChannelOrderPullIncompleteException;
 use Modules\Channel\Exceptions\TokenExpiredException;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Outbound\Support\ChannelInstantSignal;
+use Modules\Sales\Exceptions\ChannelOrderBeforeIntakeCutoffException;
 use Modules\Sales\Services\SalesOrderService;
 
 class ShopeeOrderService
@@ -71,6 +72,8 @@ class ShopeeOrderService
                     }
 
                     $count++;
+                } catch (ChannelOrderBeforeIntakeCutoffException) {
+                    continue;
                 } catch (\Throwable $e) {
                     Log::error("Shopee: gagal upsert order {$orderSn}: ".$e->getMessage());
                     $failedOrderSns[] = $orderSn;
@@ -152,6 +155,8 @@ class ShopeeOrderService
                     continue;
                 }
                 $count++;
+            } catch (ChannelOrderBeforeIntakeCutoffException) {
+                continue;
             } catch (\Throwable $e) {
                 Log::error("Shopee: gagal upsert order {$orderSn}: ".$e->getMessage());
                 $failed[] = $orderSn;
@@ -205,7 +210,11 @@ class ShopeeOrderService
         }
 
         $internal = $this->mapper->map($order, $shopId, $this->shippingChannelTypes($shopId));
-        $orderId = $this->orderService->upsertFromChannel($internal);
+        try {
+            $orderId = $this->orderService->upsertFromChannel($internal);
+        } catch (ChannelOrderBeforeIntakeCutoffException) {
+            return 0;
+        }
 
         if (! $orderId) {
             Log::warning("Shopee: order {$orderSn} tidak tersimpan secara lokal setelah pull.", [

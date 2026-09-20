@@ -32,6 +32,7 @@ class ShopeeOrderSyncTest extends TestCase
             'services.shopee.partner_id' => '200123',
             'services.shopee.partner_key' => 'test_partner_key',
             'services.shopee.host' => 'https://partner.shopeemobile.com',
+            'queue.channel_order_intake.cutoff_at' => '',
         ]);
 
         $shopee = Channel::create(['code' => 'shopee', 'name' => 'Shopee', 'is_active' => true]);

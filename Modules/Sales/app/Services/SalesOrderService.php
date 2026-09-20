@@ -3,6 +3,7 @@
 namespace Modules\Sales\Services;
 
 use App\Exceptions\UserFacingException;
+use Carbon\CarbonImmutable;
 use App\Models\User;
 use App\Support\ChannelWarehousePolicy;
 use App\Support\WarehouseAccess;
@@ -42,6 +43,7 @@ use Modules\Sales\Enums\OrderActivityAction;
 use Modules\Sales\Enums\OrderActivityEntity;
 use Modules\Sales\Enums\SalesOrderStatus;
 use Modules\Sales\Exceptions\CannotDeleteActiveOrderException;
+use Modules\Sales\Exceptions\ChannelOrderBeforeIntakeCutoffException;
 use Modules\Sales\Exceptions\DuplicateOrderException;
 use Modules\Sales\Exceptions\InvalidStatusTransitionException;
 use Modules\Sales\Exceptions\LocationNotConfiguredException;
@@ -2711,6 +2713,16 @@ class SalesOrderService
 
             $existing = $existingQuery->lockForUpdate()->first();
 
+            if ($existing === null && $this->isNewChannelOrderBeforeIntakeCutoff($orderData)) {
+                throw new ChannelOrderBeforeIntakeCutoffException(
+                    strtolower(trim((string) ($orderData['source'] ?? 'unknown'))),
+                    (string) ($orderData['channel_shop_id'] ?? ''),
+                    (string) ($orderData['channel_order_no'] ?? ''),
+                    isset($orderData['transaction_date']) ? (string) $orderData['transaction_date'] : null,
+                    (string) config('queue.channel_order_intake.cutoff_at'),
+                );
+            }
+
             $previousStatus = $existing?->status;
             $hasBuyerCancellationRequest = ! empty($orderData['cancel_requested_at'])
                 && empty($existing?->cancel_requested_at)
@@ -2723,6 +2735,8 @@ class SalesOrderService
 
             $finalStatus = $this->resolveInternalStatus($previousStatus, $mappedStatus);
             $orderData['status'] = $finalStatus;
+
+            unset($orderData['_channel_transaction_date_verified']);
 
             $this->applyChannelReceivedDate($orderData, $existing, $channelStatus);
 
@@ -3005,10 +3019,51 @@ class SalesOrderService
             $this->stampOrderSyncHealthy($order);
 
             return $order->id;
+        } catch (ChannelOrderBeforeIntakeCutoffException $e) {
+            DB::rollBack();
+            Log::notice('sales_order.channel_intake.skipped_before_cutoff', [
+                'source' => $e->source,
+                'channel_shop_id' => $e->channelShopId,
+                'channel_order_no' => $e->channelOrderNo,
+                'transaction_date' => $e->transactionDate,
+                'cutoff_at' => $e->cutoffAt,
+            ]);
+
+            throw $e;
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Failed to upsert order: '.$e->getMessage());
             throw $e;
+        }
+    }
+
+    private function isNewChannelOrderBeforeIntakeCutoff(array $orderData): bool
+    {
+        $source = strtolower(trim((string) ($orderData['source'] ?? '')));
+        if (! in_array($source, ['shopee', 'tiktok', 'lazada', 'woocommerce'], true)) {
+            return false;
+        }
+
+        $cutoff = trim((string) config('queue.channel_order_intake.cutoff_at', ''));
+        if ($cutoff === '') {
+            return false;
+        }
+
+        if (($orderData['_channel_transaction_date_verified'] ?? true) === false) {
+            return true;
+        }
+
+        $transactionDate = $orderData['transaction_date'] ?? null;
+        if ($transactionDate === null || $transactionDate === '') {
+            return true;
+        }
+
+        try {
+            return CarbonImmutable::parse($transactionDate)->utc()->lt(
+                CarbonImmutable::parse($cutoff)->utc(),
+            );
+        } catch (\Throwable) {
+            return true;
         }
     }
 

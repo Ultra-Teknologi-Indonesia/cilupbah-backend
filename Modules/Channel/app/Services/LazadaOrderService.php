@@ -10,6 +10,7 @@ use Modules\Channel\Exceptions\ChannelOrderPullIncompleteException;
 use Modules\Channel\Exceptions\TokenExpiredException;
 use Modules\Channel\Jobs\ProcessLazadaFulfillmentJob;
 use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Sales\Exceptions\ChannelOrderBeforeIntakeCutoffException;
 use Modules\Sales\Jobs\RespondBuyerCancellationJob;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderService;
@@ -99,6 +100,8 @@ class LazadaOrderService
                     }
 
                     $count++;
+                } catch (ChannelOrderBeforeIntakeCutoffException) {
+                    continue;
                 } catch (\Throwable $e) {
                     Log::error("Lazada: gagal upsert order {$orderId}: ".$e->getMessage());
                     $failedOrderIds[] = $orderId;
@@ -167,6 +170,8 @@ class LazadaOrderService
                     throw new \RuntimeException('Order tidak tersimpan secara lokal setelah pull.');
                 }
                 $count++;
+            } catch (ChannelOrderBeforeIntakeCutoffException) {
+                continue;
             } catch (\Throwable $e) {
                 Log::error("Lazada: gagal upsert order {$orderId}: ".$e->getMessage());
                 $failed[] = $orderId ?: '(tanpa order_id)';
@@ -225,7 +230,11 @@ class LazadaOrderService
         $itemsByOrder = $this->fetchItemsForOrders($shop, [$orderId]);
 
         $internal = $this->mapper->map($order, $itemsByOrder[$orderId] ?? [], $shopId);
-        $localOrderId = $this->orderService->upsertFromChannel($internal);
+        try {
+            $localOrderId = $this->orderService->upsertFromChannel($internal);
+        } catch (ChannelOrderBeforeIntakeCutoffException) {
+            return 0;
+        }
         if (! $localOrderId) {
             Log::warning("Lazada: order {$orderId} tidak tersimpan secara lokal setelah pull.", [
                 'shop_id' => $shopId,

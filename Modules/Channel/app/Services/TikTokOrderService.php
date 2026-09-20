@@ -11,6 +11,7 @@ use Modules\Channel\Exceptions\TikTokOrderListUnavailableException;
 use Modules\Channel\Repositories\ChannelOrderRepository;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Outbound\Support\ChannelInstantSignal;
+use Modules\Sales\Exceptions\ChannelOrderBeforeIntakeCutoffException;
 use Modules\Sales\Services\SalesOrderService as OrderService;
 
 class TikTokOrderService
@@ -151,6 +152,8 @@ class TikTokOrderService
                         ));
                     }
                     $count++;
+                } catch (ChannelOrderBeforeIntakeCutoffException) {
+                    continue;
                 } catch (\Exception $e) {
                     Log::error("Failed to pull order {$item['id']}: ".$e->getMessage());
                     $failedOrderIds[] = (string) ($item['id'] ?? 'unknown');
@@ -224,6 +227,8 @@ class TikTokOrderService
                     throw new \RuntimeException("TikTok order {$orderId} tidak menghasilkan ID lokal setelah upsert.");
                 }
                 $count++;
+            } catch (ChannelOrderBeforeIntakeCutoffException) {
+                continue;
             } catch (\Throwable $e) {
                 Log::error("Failed to pull order {$orderId}: ".$e->getMessage());
                 $failed[] = $orderId;
@@ -290,6 +295,8 @@ class TikTokOrderService
                     }
                 }
                 $count++;
+            } catch (ChannelOrderBeforeIntakeCutoffException) {
+                return 0;
             } catch (\Throwable $e) {
                 Log::error("Failed to pull specific order {$item['id']}: ".$e->getMessage());
                 throw $e;

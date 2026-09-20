@@ -40,6 +40,10 @@ class LazadaToInternalOrderMapper
     public function map(array $lazadaOrder, array $orderItems, string $shopId): array
     {
         $items = $this->groupItems($orderItems);
+        $rawTransactionDate = $lazadaOrder['created_at'] ?? null;
+        $hasVerifiedTransactionDate = is_string($rawTransactionDate)
+            && trim($rawTransactionDate) !== ''
+            && strtotime($rawTransactionDate) !== false;
 
         $lazadaStatus = strtolower((string) ($lazadaOrder['statuses'][0] ?? $lazadaOrder['status'] ?? 'unpaid'));
         $channelStatus = self::STATUS_MAP[$lazadaStatus] ?? null;
@@ -77,7 +81,8 @@ class LazadaToInternalOrderMapper
             'channel_package_ids' => $this->extractPackageIds($orderItems),
             'channel_shop_id' => $shopId,
             'customer_name' => $customerName,
-            'transaction_date' => $this->parseDate($lazadaOrder['created_at'] ?? null),
+            'transaction_date' => $this->parseDate($rawTransactionDate),
+            '_channel_transaction_date_verified' => $hasVerifiedTransactionDate,
 
             'sub_total' => $subTotal,
             'total_disc' => $totalDisc,

@@ -24,6 +24,7 @@ class ShopeeToInternalOrderMapper
     public function map(array $shopeeOrder, string $shopId, array $channelShippingTypes = []): array
     {
         $items = $this->mapItems($shopeeOrder['item_list'] ?? []);
+        $hasVerifiedTransactionDate = ! empty($shopeeOrder['create_time']);
 
         $logisticsChannelId = $shopeeOrder['logistics_channel_id']
             ?? ($shopeeOrder['package_list'][0]['logistics_channel_id'] ?? null);
@@ -68,6 +69,7 @@ class ShopeeToInternalOrderMapper
 
             'customer_name' => $shopeeOrder['buyer_username'] ?? ($address['name'] ?? null),
             'transaction_date' => $this->parseTimestamp($shopeeOrder['create_time'] ?? null),
+            '_channel_transaction_date_verified' => $hasVerifiedTransactionDate,
 
             'sub_total' => $subTotal,
             'total_disc' => $totalDisc,

@@ -35,6 +35,7 @@ class TikTokToInternalOrderMapper
     public function map(array $tiktokOrder, string $shopId): array
     {
         $items = $this->mapItems($tiktokOrder['line_items'] ?? []);
+        $hasVerifiedTransactionDate = ! empty($tiktokOrder['create_time']);
 
         $rawStatus = $tiktokOrder['status'] ?? 'UNPAID';
         $channelStatus = $this->resolveChannelStatus($rawStatus, $tiktokOrder['id'] ?? '');
@@ -109,7 +110,8 @@ class TikTokToInternalOrderMapper
             'channel_shop_id' => $shopId,
             'channel_buyer_id' => isset($tiktokOrder['user_id']) ? (string) $tiktokOrder['user_id'] : null,
             'customer_name' => $this->resolveCustomerName($address['name'] ?? null, $tiktokOrder['buyer_nickname'] ?? null, $tiktokOrder['buyer_email'] ?? null),
-            'transaction_date' => isset($tiktokOrder['create_time']) ? date('Y-m-d H:i:s', $tiktokOrder['create_time']) : now(),
+            'transaction_date' => $hasVerifiedTransactionDate ? date('Y-m-d H:i:s', $tiktokOrder['create_time']) : now(),
+            '_channel_transaction_date_verified' => $hasVerifiedTransactionDate,
 
             'sub_total' => $subTotal,
             'total_disc' => $totalDisc,

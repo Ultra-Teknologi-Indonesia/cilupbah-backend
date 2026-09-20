@@ -5,6 +5,7 @@ namespace Modules\Channel\Services;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Sales\Exceptions\ChannelOrderBeforeIntakeCutoffException;
 use Modules\Sales\Services\SalesOrderService;
 
 class WooCommerceOrderService
@@ -47,6 +48,8 @@ class WooCommerceOrderService
                 }
 
                 $count++;
+            } catch (ChannelOrderBeforeIntakeCutoffException) {
+                continue;
             } catch (\Throwable $e) {
                 Log::error("WooCommerce: gagal upsert order {$orderId}: ".$e->getMessage());
             }
@@ -77,6 +80,8 @@ class WooCommerceOrderService
                 if ($orderId !== '' && $this->orderService->upsertFromChannel($this->mapper->map($order, $shopId))) {
                     $count++;
                 }
+            } catch (ChannelOrderBeforeIntakeCutoffException) {
+                continue;
             } catch (\Throwable $e) {
                 Log::error("WooCommerce: gagal upsert order {$orderId}: ".$e->getMessage());
                 throw $e;
@@ -126,7 +131,11 @@ class WooCommerceOrderService
         }
 
         $internal = $this->mapper->map($order, $shopId);
-        $localOrderId = $this->orderService->upsertFromChannel($internal);
+        try {
+            $localOrderId = $this->orderService->upsertFromChannel($internal);
+        } catch (ChannelOrderBeforeIntakeCutoffException) {
+            return 0;
+        }
         if (! $localOrderId) {
             Log::warning("WooCommerce: order {$orderId} tidak tersimpan secara lokal setelah pull.", [
                 'shop_id' => $shopId,

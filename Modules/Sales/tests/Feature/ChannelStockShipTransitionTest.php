@@ -5,6 +5,7 @@ namespace Modules\Sales\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\Sales\Exceptions\ChannelOrderBeforeIntakeCutoffException;
 use Modules\Sales\Services\SalesOrderService;
 use Tests\TestCase;
 
@@ -227,6 +228,72 @@ class ChannelStockShipTransitionTest extends TestCase
         $this->assertSame(0, $inv->on_order);
         $this->assertSame(0, $this->movements('ORDER_PICK'));
         $this->assertSame(0, $this->movements('ORDER_SHIP'));
+    }
+
+    public function test_new_channel_order_before_intake_cutoff_is_not_created(): void
+    {
+        config(['queue.channel_order_intake.cutoff_at' => '2026-09-16T16:00:00+07:00']);
+
+        $data = $this->orderData('LZ-CUTOFF-BEFORE', 'AWAITING_SHIPMENT');
+        $data['transaction_date'] = '2026-09-16 08:59:59'; // 15:59:59 WIB
+
+        try {
+            $this->service->upsertFromChannel($data);
+            $this->fail('Order sebelum cutoff tidak boleh dibuat.');
+        } catch (ChannelOrderBeforeIntakeCutoffException) {
+            $this->assertDatabaseMissing('sales_orders', [
+                'salesorder_no' => 'LZ-CUTOFF-BEFORE',
+            ]);
+            $this->assertSame(10, $this->inventory()->on_hand);
+            $this->assertSame(0, $this->inventory()->on_order);
+        }
+    }
+
+    public function test_new_channel_order_at_intake_cutoff_is_created(): void
+    {
+        config(['queue.channel_order_intake.cutoff_at' => '2026-09-16T16:00:00+07:00']);
+
+        $data = $this->orderData('LZ-CUTOFF-AT', 'AWAITING_SHIPMENT');
+        $data['transaction_date'] = '2026-09-16 09:00:00'; // 16:00:00 WIB
+
+        $this->service->upsertFromChannel($data);
+
+        $this->assertDatabaseHas('sales_orders', [
+            'salesorder_no' => 'LZ-CUTOFF-AT',
+        ]);
+    }
+
+    public function test_new_channel_order_without_verified_transaction_date_is_not_created(): void
+    {
+        config(['queue.channel_order_intake.cutoff_at' => '2026-09-16T16:00:00+07:00']);
+
+        $data = $this->orderData('LZ-CUTOFF-UNKNOWN', 'AWAITING_SHIPMENT');
+        $data['transaction_date'] = now();
+        $data['_channel_transaction_date_verified'] = false;
+
+        $this->expectException(ChannelOrderBeforeIntakeCutoffException::class);
+
+        $this->service->upsertFromChannel($data);
+    }
+
+    public function test_existing_channel_order_before_intake_cutoff_still_receives_cancel_update(): void
+    {
+        config(['queue.channel_order_intake.cutoff_at' => '']);
+
+        $data = $this->orderData('LZ-CUTOFF-EXISTING', 'AWAITING_SHIPMENT');
+        $data['transaction_date'] = '2026-09-16 08:00:00';
+        $orderId = $this->service->upsertFromChannel($data);
+
+        config(['queue.channel_order_intake.cutoff_at' => '2026-09-16T16:00:00+07:00']);
+        $data = $this->orderData('LZ-CUTOFF-EXISTING', 'CANCELLED');
+        $data['transaction_date'] = '2026-09-16 08:00:00';
+
+        $this->assertSame($orderId, $this->service->upsertFromChannel($data));
+        $this->assertDatabaseHas('sales_orders', [
+            'id' => $orderId,
+            'status' => 'cancelled',
+            'is_canceled' => true,
+        ]);
     }
 
     public function test_first_channel_snapshot_records_its_current_channel_status_without_fake_packing_history(): void
