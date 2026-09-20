@@ -16,6 +16,9 @@ class ShopeeOrderService
 {
     public const MAX_TIME_RANGE_DAYS = 14;
 
+    /** Shopee documents a hard limit of 50 rows for logistics mass endpoints. */
+    private const LOGISTICS_MASS_LIMIT = 50;
+
     private const DETAIL_FIELDS = 'recipient_address,item_list,total_amount,buyer_user_id,buyer_username,payment_method,estimated_shipping_fee,actual_shipping_fee,actual_shipping_fee_confirmed,shipping_carrier,note,pay_time,cancel_reason,buyer_cancel_reason,cancel_by,package_list,fulfillment_flag,pickup_done_time,invoice_data,order_chargeable_weight_gram,dropshipper,dropshipper_phone,split_up,return_request_due_date,ship_by_date,logistics_channel_id';
 
     public function __construct(
@@ -1018,55 +1021,60 @@ class ShopeeOrderService
             return ['results' => [], 'response' => []];
         }
 
-        $response = $this->callWithRefresh($shop, fn (string $token) => $this->client->request(
-            'POST',
-            '/api/v2/logistics/get_mass_tracking_number',
-            [
-                'package_list' => array_map(
-                    static fn (string $packageNumber): array => ['package_number' => $packageNumber],
-                    $packageNumbers,
-                ),
-                'response_optional_fields' => 'first_mile_tracking_number',
-            ],
-            $token,
-            $shop->shop_id,
-        ));
-
-        $payload = (array) ($response['response'] ?? []);
         $results = [];
+        $responses = [];
 
-        foreach ((array) ($payload['success_list'] ?? []) as $row) {
-            $packageNumber = trim((string) ($row['package_number'] ?? ''));
-            if ($packageNumber === '') {
-                continue;
+        foreach (array_chunk($packageNumbers, self::LOGISTICS_MASS_LIMIT) as $chunk) {
+            $response = $this->callWithRefresh($shop, fn (string $token) => $this->client->request(
+                'POST',
+                '/api/v2/logistics/get_mass_tracking_number',
+                [
+                    'package_list' => array_map(
+                        static fn (string $packageNumber): array => ['package_number' => $packageNumber],
+                        $chunk,
+                    ),
+                    'response_optional_fields' => 'first_mile_tracking_number',
+                ],
+                $token,
+                $shop->shop_id,
+            ));
+
+            $payload = (array) ($response['response'] ?? []);
+            $responses[] = $payload;
+
+            foreach ((array) ($payload['success_list'] ?? []) as $row) {
+                $packageNumber = trim((string) ($row['package_number'] ?? ''));
+                if ($packageNumber === '') {
+                    continue;
+                }
+
+                $results[$packageNumber] = [
+                    'package_number' => $packageNumber,
+                    'succeeded' => true,
+                    'tracking_number' => $row['tracking_number'] ?? null,
+                    'first_mile_tracking_number' => $row['first_mile_tracking_number'] ?? null,
+                    'pickup_code' => $row['pickup_code'] ?? null,
+                    'hint' => $row['hint'] ?? null,
+                    'error' => null,
+                ];
             }
 
-            $results[$packageNumber] = [
-                'package_number' => $packageNumber,
-                'succeeded' => true,
-                'tracking_number' => $row['tracking_number'] ?? null,
-                'first_mile_tracking_number' => $row['first_mile_tracking_number'] ?? null,
-                'pickup_code' => $row['pickup_code'] ?? null,
-                'hint' => $row['hint'] ?? null,
-                'error' => null,
-            ];
-        }
+            foreach ((array) ($payload['fail_list'] ?? []) as $row) {
+                $packageNumber = trim((string) ($row['package_number'] ?? ''));
+                if ($packageNumber === '') {
+                    continue;
+                }
 
-        foreach ((array) ($payload['fail_list'] ?? []) as $row) {
-            $packageNumber = trim((string) ($row['package_number'] ?? ''));
-            if ($packageNumber === '') {
-                continue;
+                $results[$packageNumber] = [
+                    'package_number' => $packageNumber,
+                    'succeeded' => false,
+                    'tracking_number' => null,
+                    'first_mile_tracking_number' => null,
+                    'pickup_code' => null,
+                    'hint' => null,
+                    'error' => $row['fail_reason'] ?? $row['fail_message'] ?? $row['error'] ?? 'Shopee tidak mengembalikan nomor resi.',
+                ];
             }
-
-            $results[$packageNumber] = [
-                'package_number' => $packageNumber,
-                'succeeded' => false,
-                'tracking_number' => null,
-                'first_mile_tracking_number' => null,
-                'pickup_code' => null,
-                'hint' => null,
-                'error' => $row['fail_reason'] ?? $row['fail_message'] ?? $row['error'] ?? 'Shopee tidak mengembalikan nomor resi.',
-            ];
         }
 
         foreach ($packageNumbers as $packageNumber) {
@@ -1081,7 +1089,7 @@ class ShopeeOrderService
             ];
         }
 
-        return ['results' => $results, 'response' => $payload];
+        return ['results' => $results, 'response' => $responses];
     }
 
     public function massShipPackages(string $shopId, array $packageNumbers, array $opts = []): array
@@ -1094,6 +1102,37 @@ class ShopeeOrderService
 
         if ($packageNumbers === []) {
             return ['shipped' => false, 'error' => 'package_list kosong', 'results' => []];
+        }
+
+        // The Shopee endpoint accepts at most 50 packages. Keep this public
+        // method safe for callers that do not go through massShipOrder().
+        if (count($packageNumbers) > self::LOGISTICS_MASS_LIMIT) {
+            $allResults = [];
+            $responses = [];
+            $methods = [];
+            $errors = [];
+
+            foreach (array_chunk($packageNumbers, self::LOGISTICS_MASS_LIMIT) as $chunk) {
+                $result = $this->massShipPackages($shopId, $chunk, $opts);
+                $allResults = array_merge($allResults, (array) ($result['results'] ?? []));
+                $responses[] = $result['response'] ?? [];
+                if (($result['method'] ?? null) !== null) {
+                    $methods[] = $result['method'];
+                }
+                if (! empty($result['error'])) {
+                    $errors[] = (string) $result['error'];
+                }
+            }
+
+            $uniqueMethods = array_values(array_unique(array_filter($methods)));
+
+            return [
+                'shipped' => collect($allResults)->contains(fn (array $result): bool => $result['shipped']),
+                'error' => $errors !== [] ? implode('; ', array_unique($errors)) : null,
+                'method' => count($uniqueMethods) === 1 ? $uniqueMethods[0] : $uniqueMethods,
+                'results' => $allResults,
+                'response' => $responses,
+            ];
         }
 
         $packageList = array_map(
@@ -1216,7 +1255,7 @@ class ShopeeOrderService
         $responses = [];
         $methods = [];
         foreach ($packageGroups as $packages) {
-            foreach (array_chunk($packages, 50) as $chunk) {
+            foreach (array_chunk($packages, self::LOGISTICS_MASS_LIMIT) as $chunk) {
                 $first = $chunk[0];
                 $groupOptions = array_merge($opts, array_filter([
                     'logistics_channel_id' => $first['logistics_channel_id'] ?? null,
@@ -1278,6 +1317,317 @@ class ShopeeOrderService
         return $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/api/v2/logistics/get_shipping_document_parameter', [
             'order_list' => [['order_sn' => $orderSn]],
         ], $token, $shop->shop_id));
+    }
+
+    /**
+     * Create shipping documents in Shopee's bulk API.
+     *
+     * The returned map is keyed by order_sn|package_number so split orders
+     * cannot overwrite each other. Every input row is represented even when
+     * Shopee omits it from result_list (partial response/failure).
+     *
+     * @param  array<int, array{order_sn:string, package_number?:string|null, tracking_number?:string|null, shipping_document_type?:string|null}>  $orders
+     * @return array{results:array<string,array<string,mixed>>,responses:array<int,array<string,mixed>>,error:?string}
+     */
+    public function createShippingDocumentsMass(string $shopId, array $orders): array
+    {
+        $shop = $this->requireShop($shopId);
+        $orders = $this->normalizeShippingDocumentRows($orders, true);
+
+        if ($orders === []) {
+            return ['results' => [], 'responses' => [], 'error' => 'order_list kosong'];
+        }
+
+        $results = [];
+        $responses = [];
+        $errors = [];
+        $byOrder = [];
+        foreach ($orders as $row) {
+            $byOrder[$row['order_sn']][] = $row;
+            $results[$this->shippingDocumentKey($row)] = [
+                'order_sn' => $row['order_sn'],
+                'package_number' => $row['package_number'] ?? null,
+                'accepted' => false,
+                'error' => 'Order tidak ada pada respons create_shipping_document.',
+                'response' => null,
+            ];
+        }
+
+        foreach (array_chunk($orders, self::LOGISTICS_MASS_LIMIT) as $chunk) {
+            $response = $this->callWithRefresh($shop, fn (string $token) => $this->client->request(
+                'POST',
+                '/api/v2/logistics/create_shipping_document',
+                ['order_list' => array_map($this->shippingDocumentCreatePayload(...), $chunk)],
+                $token,
+                $shop->shop_id,
+            ));
+            $payload = (array) ($response['response'] ?? []);
+            $responses[] = $payload;
+
+            foreach ((array) ($payload['result_list'] ?? []) as $remote) {
+                $orderSn = trim((string) ($remote['order_sn'] ?? ''));
+                if ($orderSn === '') {
+                    continue;
+                }
+
+                $packageNumber = trim((string) ($remote['package_number'] ?? ''));
+                $candidates = $byOrder[$orderSn] ?? [];
+                if ($packageNumber === '' && count($candidates) === 1) {
+                    $packageNumber = (string) ($candidates[0]['package_number'] ?? '');
+                }
+
+                // Shopee may return only order_sn for create. In that case
+                // the response is order-level; apply it to every requested
+                // package of that order rather than marking split packages
+                // as missing by position.
+                if ($packageNumber === '' && count($candidates) > 1) {
+                    $remoteError = $remote['fail_message'] ?? $remote['fail_error'] ?? $remote['error'] ?? null;
+                    foreach ($candidates as $candidate) {
+                        $results[$this->shippingDocumentKey($candidate)] = array_merge(
+                            $results[$this->shippingDocumentKey($candidate)],
+                            [
+                                'accepted' => $remoteError === null || $remoteError === '',
+                                'error' => $remoteError,
+                                'response' => $remote,
+                            ],
+                        );
+                    }
+
+                    continue;
+                }
+
+                $key = $orderSn.'|'.$packageNumber;
+                if (! isset($results[$key]) && count($candidates) === 1) {
+                    $key = $this->shippingDocumentKey($candidates[0]);
+                }
+                if (! isset($results[$key])) {
+                    continue;
+                }
+
+                $remoteError = $remote['fail_message'] ?? $remote['fail_error'] ?? $remote['error'] ?? null;
+                $results[$key] = array_merge($results[$key], [
+                    'accepted' => $remoteError === null || $remoteError === '',
+                    'error' => $remoteError,
+                    'response' => $remote,
+                ]);
+            }
+
+            if (! empty($response['error'])) {
+                $errors[] = (string) $response['error'];
+            }
+        }
+
+        return [
+            'results' => $results,
+            'responses' => $responses,
+            'error' => $errors !== [] ? implode('; ', array_unique($errors)) : null,
+        ];
+    }
+
+    /**
+     * Read document generation status for up to 50 orders per Shopee call.
+     * This method is read-only and is safe to retry after an uncertain create.
+     *
+     * @param  array<int, array{order_sn:string, package_number?:string|null}>  $orders
+     * @return array{results:array<string,array<string,mixed>>,responses:array<int,array<string,mixed>>,error:?string}
+     */
+    public function getShippingDocumentResultsMass(string $shopId, array $orders): array
+    {
+        $shop = $this->requireShop($shopId);
+        $orders = $this->normalizeShippingDocumentRows($orders, false);
+
+        if ($orders === []) {
+            return ['results' => [], 'responses' => [], 'error' => 'order_list kosong'];
+        }
+
+        $results = [];
+        $responses = [];
+        $errors = [];
+        foreach ($orders as $row) {
+            $results[$this->shippingDocumentKey($row)] = [
+                'order_sn' => $row['order_sn'],
+                'package_number' => $row['package_number'] ?? null,
+                'status' => null,
+                'ready' => false,
+                'error' => 'Order tidak ada pada respons get_shipping_document_result.',
+                'response' => null,
+            ];
+        }
+
+        foreach (array_chunk($orders, self::LOGISTICS_MASS_LIMIT) as $chunk) {
+            $response = $this->callWithRefresh($shop, fn (string $token) => $this->client->request(
+                'POST',
+                '/api/v2/logistics/get_shipping_document_result',
+                ['order_list' => array_map($this->shippingDocumentResultPayload(...), $chunk)],
+                $token,
+                $shop->shop_id,
+            ));
+            $payload = (array) ($response['response'] ?? []);
+            $responses[] = $payload;
+
+            foreach ((array) ($payload['result_list'] ?? []) as $remote) {
+                $orderSn = trim((string) ($remote['order_sn'] ?? ''));
+                if ($orderSn === '') {
+                    continue;
+                }
+                $packageNumber = trim((string) ($remote['package_number'] ?? ''));
+                $key = $orderSn.'|'.$packageNumber;
+                if (! isset($results[$key])) {
+                    $matching = array_values(array_filter(
+                        $chunk,
+                        static fn (array $row): bool => $row['order_sn'] === $orderSn,
+                    ));
+                    if (count($matching) === 1) {
+                        $key = $this->shippingDocumentKey($matching[0]);
+                    } elseif (count($matching) > 1 && $packageNumber === '') {
+                        $remoteError = $remote['fail_message'] ?? $remote['fail_error'] ?? $remote['error'] ?? null;
+                        foreach ($matching as $matchingRow) {
+                            $matchingKey = $this->shippingDocumentKey($matchingRow);
+                            $results[$matchingKey] = array_merge($results[$matchingKey], [
+                                'status' => strtoupper((string) ($remote['status'] ?? '')) ?: null,
+                                'ready' => strtoupper((string) ($remote['status'] ?? '')) === 'READY',
+                                'error' => $remoteError,
+                                'response' => $remote,
+                            ]);
+                        }
+
+                        continue;
+                    }
+                }
+                if (! isset($results[$key])) {
+                    continue;
+                }
+
+                $status = strtoupper((string) ($remote['status'] ?? ''));
+                $remoteError = $remote['fail_message'] ?? $remote['fail_error'] ?? $remote['error'] ?? null;
+                $results[$key] = array_merge($results[$key], [
+                    'status' => $status !== '' ? $status : null,
+                    'ready' => $status === 'READY',
+                    'error' => $remoteError,
+                    'response' => $remote,
+                ]);
+            }
+
+            if (! empty($response['error'])) {
+                $errors[] = (string) $response['error'];
+            }
+        }
+
+        return [
+            'results' => $results,
+            'responses' => $responses,
+            'error' => $errors !== [] ? implode('; ', array_unique($errors)) : null,
+        ];
+    }
+
+    /**
+     * Download bulk shipping documents. Shopee returns one binary artifact
+     * per request chunk (usually a PDF/ZIP), so callers must keep the chunk
+     * boundary and must not pretend the bytes belong to one order only.
+     *
+     * @param  array<int, array{order_sn:string, package_number?:string|null}>  $orders
+     * @return array{batches:array<int,array<string,mixed>>,error:?string}
+     */
+    public function downloadShippingDocumentsMass(string $shopId, array $orders, string $docType = 'NORMAL_AIR_WAYBILL'): array
+    {
+        $shop = $this->requireShop($shopId);
+        $orders = $this->normalizeShippingDocumentRows($orders, false);
+
+        if ($orders === []) {
+            return ['batches' => [], 'error' => 'order_list kosong'];
+        }
+
+        $batches = [];
+        $errors = [];
+        foreach (array_chunk($orders, self::LOGISTICS_MASS_LIMIT) as $chunk) {
+            $response = $this->callWithRefresh($shop, fn (string $token) => $this->client->requestBinary(
+                '/api/v2/logistics/download_shipping_document',
+                [
+                    'shipping_document_type' => $docType,
+                    'order_list' => array_map($this->shippingDocumentResultPayload(...), $chunk),
+                ],
+                $token,
+                $shop->shop_id,
+            ));
+            $batches[] = [
+                'orders' => $chunk,
+                'binary' => (bool) ($response['binary'] ?? false),
+                'content_type' => $response['content_type'] ?? null,
+                'content' => $response['content'] ?? null,
+                'size' => (int) ($response['size'] ?? strlen((string) ($response['content'] ?? ''))),
+                'response' => $response,
+            ];
+            if (! empty($response['error'])) {
+                $errors[] = (string) $response['error'];
+            }
+        }
+
+        return [
+            'batches' => $batches,
+            'error' => $errors !== [] ? implode('; ', array_unique($errors)) : null,
+        ];
+    }
+
+    /** @return array<int, array{order_sn:string, package_number?:string, tracking_number?:string, shipping_document_type?:string}> */
+    private function normalizeShippingDocumentRows(array $orders, bool $includeCreateFields): array
+    {
+        $normalized = [];
+        $seen = [];
+        foreach ($orders as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $orderSn = trim((string) ($row['order_sn'] ?? ''));
+            if ($orderSn === '') {
+                continue;
+            }
+            $packageNumber = trim((string) ($row['package_number'] ?? ''));
+            $key = $orderSn.'|'.$packageNumber;
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $normalizedRow = [
+                'order_sn' => $orderSn,
+            ];
+            if ($packageNumber !== '') {
+                $normalizedRow['package_number'] = $packageNumber;
+            }
+            if ($includeCreateFields) {
+                $trackingNumber = trim((string) ($row['tracking_number'] ?? ''));
+                if ($trackingNumber !== '') {
+                    $normalizedRow['tracking_number'] = $trackingNumber;
+                }
+                $docType = trim((string) ($row['shipping_document_type'] ?? 'NORMAL_AIR_WAYBILL'));
+                $normalizedRow['shipping_document_type'] = $docType !== '' ? $docType : 'NORMAL_AIR_WAYBILL';
+            }
+            $normalized[] = $normalizedRow;
+        }
+
+        return $normalized;
+    }
+
+    private function shippingDocumentCreatePayload(array $row): array
+    {
+        return array_filter([
+            'order_sn' => $row['order_sn'],
+            'package_number' => $row['package_number'] ?? null,
+            'tracking_number' => $row['tracking_number'] ?? null,
+            'shipping_document_type' => $row['shipping_document_type'] ?? 'NORMAL_AIR_WAYBILL',
+        ], static fn ($value): bool => $value !== null && $value !== '');
+    }
+
+    private function shippingDocumentResultPayload(array $row): array
+    {
+        return array_filter([
+            'order_sn' => $row['order_sn'],
+            'package_number' => $row['package_number'] ?? null,
+        ], static fn ($value): bool => $value !== null && $value !== '');
+    }
+
+    private function shippingDocumentKey(array $row): string
+    {
+        return (string) $row['order_sn'].'|'.(string) ($row['package_number'] ?? '');
     }
 
     public function resolveSupportedDocType(string $shopId, string $orderSn, string $fallback): string

@@ -188,4 +188,124 @@ final class ShopeeMassAwbApiTest extends TestCase
             return true;
         });
     }
+
+    public function test_mass_document_endpoints_chunk_at_fifty_and_preserve_package_identity(): void
+    {
+        Http::fake(function (Request $request) {
+            $path = parse_url($request->url(), PHP_URL_PATH);
+            $rows = $request->data()['order_list'] ?? [];
+
+            if ($path === '/api/v2/logistics/create_shipping_document') {
+                return Http::response([
+                    'error' => '',
+                    'response' => [
+                        'result_list' => array_map(
+                            static fn (array $row): array => [
+                                'order_sn' => $row['order_sn'],
+                                'package_number' => $row['package_number'] ?? null,
+                            ],
+                            $rows,
+                        ),
+                    ],
+                ]);
+            }
+
+            if ($path === '/api/v2/logistics/get_shipping_document_result') {
+                return Http::response([
+                    'error' => '',
+                    'response' => [
+                        'result_list' => array_map(
+                            static fn (array $row): array => [
+                                'order_sn' => $row['order_sn'],
+                                'package_number' => $row['package_number'] ?? null,
+                                'status' => 'READY',
+                            ],
+                            $rows,
+                        ),
+                    ],
+                ]);
+            }
+
+            if ($path === '/api/v2/logistics/download_shipping_document') {
+                return Http::response('%PDF-1.4 BULK LABEL', 200, [
+                    'Content-Type' => 'application/pdf',
+                ]);
+            }
+
+            return Http::response([], 404);
+        });
+
+        $orders = array_map(
+            static fn (int $index): array => [
+                'order_sn' => 'ORDER-'.$index,
+                'package_number' => 'PKG-'.$index,
+                'tracking_number' => 'AWB-'.$index,
+                'shipping_document_type' => 'THERMAL_AIR_WAYBILL',
+            ],
+            range(1, 51),
+        );
+
+        $service = app(ShopeeOrderService::class);
+        $created = $service->createShippingDocumentsMass('778899', $orders);
+        $statuses = $service->getShippingDocumentResultsMass('778899', $orders);
+        $downloaded = $service->downloadShippingDocumentsMass('778899', $orders, 'THERMAL_AIR_WAYBILL');
+
+        $this->assertCount(51, $created['results']);
+        $this->assertTrue($created['results']['ORDER-51|PKG-51']['accepted']);
+        $this->assertTrue($statuses['results']['ORDER-1|PKG-1']['ready']);
+        $this->assertTrue($statuses['results']['ORDER-51|PKG-51']['ready']);
+        $this->assertCount(2, $downloaded['batches']);
+        $this->assertSame('%PDF-1.4 BULK LABEL', $downloaded['batches'][0]['content']);
+
+        $requests = Http::recorded()->map(static fn (array $record): Request => $record[0]);
+        $createRequests = $requests->filter(
+            static fn (Request $request): bool => str_ends_with((string) parse_url($request->url(), PHP_URL_PATH), '/create_shipping_document'),
+        );
+        $resultRequests = $requests->filter(
+            static fn (Request $request): bool => str_ends_with((string) parse_url($request->url(), PHP_URL_PATH), '/get_shipping_document_result'),
+        );
+        $downloadRequests = $requests->filter(
+            static fn (Request $request): bool => str_ends_with((string) parse_url($request->url(), PHP_URL_PATH), '/download_shipping_document'),
+        );
+
+        $this->assertCount(2, $createRequests);
+        $this->assertCount(2, $resultRequests);
+        $this->assertCount(2, $downloadRequests);
+        $this->assertSame(50, count($createRequests->first()->data()['order_list']));
+        $this->assertSame(1, count($createRequests->last()->data()['order_list']));
+        $this->assertSame(50, count($resultRequests->first()->data()['order_list']));
+        $this->assertSame(50, count($downloadRequests->first()->data()['order_list']));
+    }
+
+    public function test_mass_tracking_chunks_requests_above_shopee_limit(): void
+    {
+        Http::fake(function (Request $request) {
+            $packages = $request->data()['package_list'] ?? [];
+
+            return Http::response([
+                'error' => '',
+                'response' => [
+                    'success_list' => array_map(
+                        static fn (array $row): array => [
+                            'package_number' => $row['package_number'],
+                            'tracking_number' => 'AWB-'.$row['package_number'],
+                        ],
+                        $packages,
+                    ),
+                    'fail_list' => [],
+                ],
+            ]);
+        });
+
+        $packages = array_map(static fn (int $index): string => 'PKG-'.$index, range(1, 51));
+        $result = app(ShopeeOrderService::class)->getMassTrackingNumbers('778899', $packages);
+
+        $this->assertCount(51, $result['results']);
+        $this->assertSame('AWB-PKG-51', $result['results']['PKG-51']['tracking_number']);
+
+        $requests = Http::recorded()->map(static fn (array $record): Request => $record[0]);
+        $this->assertCount(2, $requests);
+        $this->assertSame(50, count($requests[0]->data()['package_list']));
+        $this->assertSame(1, count($requests[1]->data()['package_list']));
+    }
 }
