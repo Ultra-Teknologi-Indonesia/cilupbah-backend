@@ -8,6 +8,7 @@ use Mockery;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\ShopeeOrderService;
+use Modules\Channel\Services\TikTokOrderService;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
 use Modules\Sales\Jobs\RequestChannelAwbJob;
 use Modules\Sales\Models\ChannelOperationAttempt;
@@ -172,6 +173,64 @@ class RequestChannelAwbJobTest extends TestCase
         );
     }
 
+    public function test_verification_only_awb_polling_is_scheduled_again_when_tracking_is_still_missing(): void
+    {
+        Queue::fake();
+
+        $channel = Channel::create([
+            'code' => 'shopee',
+            'name' => 'Shopee',
+            'is_active' => true,
+        ]);
+
+        ChannelShop::create([
+            'channel_id' => $channel->id,
+            'shop_id' => 'SHOP-AWB-VERIFY-RETRY',
+            'shop_name' => 'Shopee Test',
+            'access_token' => 'token',
+            'refresh_token' => 'refresh',
+            'token_expires_at' => now()->addHour(),
+            'is_active' => true,
+        ]);
+
+        $order = SalesOrder::factory()->create([
+            'source' => 'shopee',
+            'channel_shop_id' => 'SHOP-AWB-VERIFY-RETRY',
+            'channel_order_no' => 'ORDER-AWB-VERIFY-RETRY',
+            'channel_status' => 'PROCESSED',
+            'status' => 'reserved',
+            'shipping_label_status' => null,
+            'tracking_number' => null,
+        ]);
+
+        $claim = ChannelOperationLedger::claim($order, 'request_awb');
+        ChannelOperationLedger::markAccepted($claim['attempt'], [
+            'channel_status' => 'PROCESSED',
+            'tracking_number' => null,
+        ]);
+
+        $shopee = Mockery::mock(ShopeeOrderService::class);
+        $shopee->shouldReceive('resolveTrackingNumber')
+            ->once()
+            ->andReturn(null);
+        $this->app->instance(ShopeeOrderService::class, $shopee);
+
+        (new RequestChannelAwbJob(
+            $order->id,
+            1,
+            false,
+            false,
+            true,
+        ))->handle();
+
+        Queue::assertPushed(
+            RequestChannelAwbJob::class,
+            fn (RequestChannelAwbJob $job): bool => $job->orderId === $order->id
+                && $job->trackingAttempt === 2
+                && $job->verificationOnly,
+        );
+    }
+
     public function test_awb_timeout_is_uncertain_and_moves_to_read_only_verification(): void
     {
         Queue::fake();
@@ -206,6 +265,56 @@ class RequestChannelAwbJobTest extends TestCase
         $shopee->shouldReceive('resolveTrackingNumber')->once()->andReturn(null);
         $shopee->shouldReceive('requestTrackingNumber')->once()->andThrow(new \RuntimeException('cURL error 28: timeout'));
         $this->app->instance(ShopeeOrderService::class, $shopee);
+
+        (new RequestChannelAwbJob($order->id))->handle();
+
+        $this->assertDatabaseHas('channel_operation_attempts', [
+            'order_id' => $order->id,
+            'operation' => 'request_awb',
+            'status' => 'uncertain',
+        ]);
+        Queue::assertPushed(
+            RequestChannelAwbJob::class,
+            fn (RequestChannelAwbJob $job): bool => $job->orderId === $order->id
+                && $job->verificationOnly,
+        );
+    }
+
+    public function test_tiktok_preflight_error_never_posts_ship_and_moves_to_read_only_verification(): void
+    {
+        Queue::fake();
+
+        $channel = Channel::create([
+            'code' => 'tiktok',
+            'name' => 'TikTok',
+            'is_active' => true,
+        ]);
+
+        ChannelShop::create([
+            'channel_id' => $channel->id,
+            'shop_id' => 'SHOP-TIKTOK-PREFLIGHT',
+            'shop_name' => 'TikTok Test',
+            'access_token' => 'token',
+            'refresh_token' => 'refresh',
+            'token_expires_at' => now()->addHour(),
+            'is_active' => true,
+        ]);
+
+        $order = SalesOrder::factory()->create([
+            'source' => 'tiktok',
+            'channel_shop_id' => 'SHOP-TIKTOK-PREFLIGHT',
+            'channel_order_no' => 'ORDER-TIKTOK-PREFLIGHT',
+            'channel_status' => 'READY_TO_SHIP',
+            'status' => 'reserved',
+            'tracking_number' => null,
+        ]);
+
+        $tiktok = Mockery::mock(TikTokOrderService::class);
+        $tiktok->shouldReceive('getOrderFulfillmentSnapshot')
+            ->once()
+            ->andThrow(new \RuntimeException('temporary TikTok read failure'));
+        $tiktok->shouldNotReceive('requestTrackingNumber');
+        $this->app->instance(TikTokOrderService::class, $tiktok);
 
         (new RequestChannelAwbJob($order->id))->handle();
 

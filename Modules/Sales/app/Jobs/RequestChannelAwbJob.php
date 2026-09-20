@@ -28,6 +28,8 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    private const MAX_VERIFICATION_ATTEMPTS = 10;
+
     public int $tries = 8;
 
     public array $backoff = [15, 30, 60, 120, 300, 600, 900];
@@ -37,6 +39,8 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
     public int $uniqueFor = 1800;
 
     private bool $awaitingVerification = false;
+
+    private bool $requiresShipmentRetry = false;
 
     public function __construct(
         public readonly string $orderId,
@@ -149,7 +153,7 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
         try {
             $requestMarketplace = $this->trackingAttempt === 0
                 && $this->requestReadyToShip
-                && ! $this->channelAlreadyShipped($order)
+                && ($source === 'tiktok' || ! $this->channelAlreadyShipped($order))
                 && $this->shouldRequestReadyToShip($order);
 
             $gotTracking = match ($source) {
@@ -168,8 +172,23 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                     'source' => $source,
                 ]);
 
+                if ($this->requiresShipmentRetry) {
+                    $delay = (int) config('bulk-labels.awb_verification_delay_seconds', 60);
+
+                    if ($this->trackingAttempt === 0 && ! $this->verificationOnly) {
+                        $this->release($delay);
+
+                        return;
+                    }
+
+                    self::dispatch($order->id, 0, true, $this->prefetch, false)
+                        ->delay(now()->addSeconds($delay));
+
+                    return;
+                }
+
                 if ($this->awaitingVerification || $this->verificationOnly) {
-                    if (! $this->verificationOnly) {
+                    if ($this->trackingAttempt < self::MAX_VERIFICATION_ATTEMPTS) {
                         self::dispatch(
                             $order->id,
                             $this->trackingAttempt + 1,
@@ -177,6 +196,13 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                             $this->prefetch,
                             true,
                         )->delay(now()->addSeconds((int) config('bulk-labels.awb_verification_delay_seconds', 60)));
+                    } else {
+                        Log::warning('RequestChannelAwbJob: batas verifikasi cepat tercapai tanpa tracking number; rekonsiliasi terjadwal tetap membaca status tanpa POST ulang', [
+                            'order_id' => $order->id,
+                            'salesorder_no' => $order->salesorder_no,
+                            'source' => $source,
+                            'verification_attempts' => $this->trackingAttempt,
+                        ]);
                     }
 
                     return;
@@ -354,30 +380,58 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
             $resolved = null;
 
             if ($requestMarketplace) {
-
                 try {
-                    $resolved = $service->resolveTrackingNumberDirect(
+                    // A shipping document is not a valid preflight for a
+                    // READY_TO_SHIP order. TikTok returns 21042104 until the
+                    // ship request has been accepted. Read order state only,
+                    // then submit /ship when it is still awaiting shipment.
+                    $snapshot = $service->getOrderFulfillmentSnapshot(
                         $shop,
                         (string) $order->channel_order_no,
                     );
 
-                    if (is_array($resolved) && ! empty($resolved['tracking_number'])) {
+                    if (
+                        ! empty($snapshot['tracking_number'])
+                        && empty($snapshot['has_pending_package'])
+                    ) {
+                        $resolved = [
+                            'tracking_number' => $snapshot['tracking_number'],
+                            'shipping_provider' => $snapshot['shipping_provider'] ?? null,
+                            'channel_status' => $snapshot['status'] ?? null,
+                            'all_packages_shipped' => (bool) ($snapshot['all_packages_shipped'] ?? true),
+                        ];
+
                         Log::info('RequestChannelAwbJob: TikTok AWB sudah tersedia, lewati POST /ship', [
                             'order_id' => $order->id,
                             'salesorder_no' => $order->salesorder_no,
-                            'tracking_number' => $resolved['tracking_number'],
+                            'tracking_number' => $snapshot['tracking_number'],
                         ]);
+                    } elseif (
+                        empty($snapshot['has_pending_package'])
+                        && $this->tiktokAlreadyShipped($snapshot['status'] ?? null)
+                    ) {
+                        // TikTok accepted the handover but tracking is still
+                        // asynchronous. Do not send another POST /ship.
+                        $this->awaitingVerification = true;
+                        $resolved = [
+                            'tracking_number' => null,
+                            'channel_status' => $snapshot['status'] ?? null,
+                            'all_packages_shipped' => (bool) ($snapshot['all_packages_shipped'] ?? true),
+                        ];
                     }
                 } catch (\Throwable $e) {
-                    Log::debug('RequestChannelAwbJob: preflight TikTok tracking read gagal, lanjut request AWB', [
+                    Log::warning('RequestChannelAwbJob: preflight TikTok order read gagal; POST /ship dibatalkan', [
                         'order_id' => $order->id,
                         'salesorder_no' => $order->salesorder_no,
                         'exception' => $e->getMessage(),
                     ]);
-                    $resolved = null;
+                    $this->markTikTokPreflightUncertain($order, $e);
+                    $this->awaitingVerification = true;
+
+                    return false;
                 }
 
-                if (! is_array($resolved) || empty($resolved['tracking_number'])) {
+                if ($resolved === null) {
 
                     $resolved = $this->withRtsLock($order, true, function (SalesOrder $freshOrder) use ($service): ?array {
                         return $this->requestMarketplaceAwb($freshOrder, function () use ($service, $freshOrder): array {
@@ -391,10 +445,33 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                     });
                 }
             } else {
-                $resolved = $service->resolveTrackingNumberDirect(
+                $snapshot = $service->getOrderFulfillmentSnapshot(
                     $shop,
                     (string) $order->channel_order_no,
                 );
+
+                if (! empty($snapshot['tracking_number'])) {
+                    $resolved = [
+                        'tracking_number' => $snapshot['tracking_number'],
+                        'shipping_provider' => $snapshot['shipping_provider'] ?? null,
+                        'channel_status' => $snapshot['status'] ?? null,
+                        'all_packages_shipped' => (bool) ($snapshot['all_packages_shipped'] ?? true),
+                    ];
+                } elseif (
+                    empty($snapshot['has_pending_package'])
+                    && $this->tiktokAlreadyShipped($snapshot['status'] ?? null)
+                ) {
+                    $this->awaitingVerification = true;
+                    $resolved = [
+                        'tracking_number' => null,
+                        'channel_status' => $snapshot['status'] ?? null,
+                        'all_packages_shipped' => (bool) ($snapshot['all_packages_shipped'] ?? true),
+                    ];
+                } else {
+                    $resolved = null;
+                    $this->requiresShipmentRetry = $this->verificationOnly
+                        && $this->tiktokCanRequestShipment($snapshot);
+                }
             }
 
             if ($resolved && ! empty($resolved['tracking_number'])) {
@@ -419,7 +496,27 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                     'tracking_number' => $resolved['tracking_number'],
                 ]);
 
+                if (array_key_exists('all_packages_shipped', $resolved) && ! $resolved['all_packages_shipped']) {
+                    $this->requiresShipmentRetry = true;
+
+                    Log::warning('RequestChannelAwbJob: TikTok masih memiliki package yang belum di-ship', [
+                        'order_id' => $order->id,
+                        'salesorder_no' => $order->salesorder_no,
+                    ]);
+
+                    return false;
+                }
+
                 $this->markMarketplaceAwbSucceeded($order, (string) $resolved['tracking_number']);
+                if (
+                    strtolower((string) $order->source) === 'tiktok'
+                    && $order->driver_call_status === 'pending'
+                ) {
+                    $order->update([
+                        'driver_call_status' => 'success',
+                        'driver_call_message' => null,
+                    ]);
+                }
                 $this->prepareLabel($order);
                 $this->markPrefetchAwbReady($order);
 
@@ -433,6 +530,38 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
         }
 
         return false;
+    }
+
+    private function tiktokAlreadyShipped(?string $status): bool
+    {
+        return in_array(strtoupper((string) $status), [
+            'PROCESSED',
+            'AWAITING_COLLECTION',
+            'SHIPPED',
+            'IN_TRANSIT',
+            'TO_CONFIRM_RECEIVE',
+            'COMPLETED',
+        ], true);
+    }
+
+    private function tiktokCanRequestShipment(array $snapshot): bool
+    {
+        if (! empty($snapshot['has_pending_package'])) {
+            return true;
+        }
+
+        return in_array(strtoupper((string) ($snapshot['status'] ?? '')), [
+            'AWAITING_SHIPMENT',
+            'READY_TO_SHIP',
+        ], true);
+    }
+
+    private function markTikTokPreflightUncertain(SalesOrder $order, \Throwable $exception): void
+    {
+        $claim = ChannelOperationLedger::claim($order, 'request_awb');
+        if ($claim['should_execute']) {
+            ChannelOperationLedger::markUncertain($claim['attempt'], $exception);
+        }
     }
 
     private function fetchLazadaTracking(SalesOrder $order, bool $requestMarketplace = false): bool
@@ -511,7 +640,7 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
 
     private function withRtsLock(SalesOrder $order, bool $enabled, callable $callback): mixed
     {
-        if (! $enabled) {
+        if (! $enabled || strtolower((string) $order->source) === 'tiktok') {
             $freshOrder = ChannelOrderSideEffectGuard::active($order->id, 'request_awb');
 
             return $freshOrder === null ? null : $callback($freshOrder);
@@ -562,20 +691,27 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
 
         try {
             $result = $callback();
-            $accepted = ! empty($result['shipped'])
+            $accepted = ! empty($result['accepted'])
+                || ! empty($result['shipped'])
                 || strtoupper((string) ($result['channel_status'] ?? '')) === 'PROCESSED';
+            $allPackagesShipped = ! array_key_exists('all_packages_shipped', $result)
+                || ! empty($result['all_packages_shipped']);
 
-            if ($accepted) {
-                ChannelOperationLedger::markAccepted($claim['attempt'], [
-                    'channel_status' => $result['channel_status'] ?? null,
-                    'tracking_number' => $result['tracking_number'] ?? null,
-                ]);
+            if ($accepted && $allPackagesShipped) {
+                ChannelOperationLedger::markAccepted($claim['attempt'], $result);
 
                 $this->awaitingVerification = empty($result['tracking_number']);
+            } elseif ($accepted) {
+                ChannelOperationLedger::markRetryable(
+                    $claim['attempt'],
+                    'Sebagian package TikTok belum diterima; hanya package yang tersisa akan dicoba ulang.',
+                    $result,
+                );
             } else {
                 ChannelOperationLedger::markRetryable(
                     $claim['attempt'],
                     (string) ($result['message'] ?? $result['error'] ?? 'Channel belum menerima request AWB.'),
+                    $result,
                 );
             }
 

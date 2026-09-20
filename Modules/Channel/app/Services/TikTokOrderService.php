@@ -3,6 +3,7 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Exceptions\ChannelCancelException;
 use Modules\Channel\Exceptions\ChannelOrderPullIncompleteException;
@@ -486,94 +487,13 @@ class TikTokOrderService
         return $res;
     }
 
-    public function readyToShip(string $shopId, string $orderId, ?array $handover = null): array
-    {
-        $shop = $this->shopRepository->findByShopId($shopId);
-        if (! $shop || ! $shop->access_token) {
-            throw new \Exception("No access token found for shop: {$shopId}");
-        }
-
-        $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
-
-        try {
-            $packageIds = $this->resolvePackageIds($shop, $orderId, $queries);
-
-            if (empty($packageIds)) {
-                Log::warning('TikTok RTS: no package_id resolvable for order', [
-                    'shop_id' => $shopId,
-                    'order_id' => $orderId,
-                ]);
-
-                return [
-                    'order_id' => $orderId,
-                    'shipped' => false,
-                    'message' => 'Tidak ada package_id yang dapat di-resolve untuk order ini. Pastikan order sudah AWAITING_SHIPMENT dan package sudah dibuat.',
-                    'packages' => [],
-                ];
-            }
-
-            $results = [];
-            $allOk = true;
-
-            foreach ($packageIds as $packageId) {
-                try {
-                    $shipBody = ['order_id' => $orderId];
-
-                    if ($handover) {
-                        if (! empty($handover['tracking_number'])) {
-                            $shipBody['tracking_number'] = $handover['tracking_number'];
-                        }
-                        if (! empty($handover['shipping_provider_id'])) {
-                            $shipBody['shipping_provider_id'] = $handover['shipping_provider_id'];
-                        }
-                    }
-
-                    $res = $this->client->request(
-                        'POST',
-                        "/fulfillment/202309/packages/{$packageId}/ship",
-                        $queries,
-                        $shipBody,
-                        $shop->access_token
-                    );
-
-                    $results[] = ['package_id' => $packageId, 'shipped' => true, 'response' => $res['data'] ?? []];
-                } catch (\Throwable $e) {
-                    $allOk = false;
-                    Log::error('TikTok RTS: gagal ship package', [
-                        'shop_id' => $shopId,
-                        'order_id' => $orderId,
-                        'package_id' => $packageId,
-                        'error' => $e->getMessage(),
-                    ]);
-                    $results[] = ['package_id' => $packageId, 'shipped' => false, 'message' => $e->getMessage()];
-                }
-            }
-
-            $someOk = collect($results)->contains('shipped', true);
-
-            if ($allOk || $someOk) {
-                $this->resyncLocalOrder($shopId, $orderId);
-            }
-
-            $this->fetchAndStoreTracking($shop, $orderId, $queries);
-
-            return [
-                'order_id' => $orderId,
-                'shipped' => $allOk,
-                'message' => $allOk
-                    ? 'RTS berhasil.'
-                    : ($someOk ? 'Sebagian package berhasil, sebagian gagal (PARTIALLY_SHIPPING).' : 'Semua package gagal di-RTS.'),
-                'packages' => $results,
-            ];
-        } catch (\Throwable $e) {
-            Log::error('TikTok RTS: gagal', [
-                'shop_id' => $shopId,
-                'order_id' => $orderId,
-                'error' => $e->getMessage(),
-            ]);
-
-            throw $e;
-        }
+    public function readyToShip(
+        string $shopId,
+        string $orderId,
+        ?array $handover = null,
+        array $knownPackageIds = [],
+    ): array {
+        return $this->shipPackages($shopId, $orderId, $handover, $knownPackageIds, true);
     }
 
     public function requestTrackingNumber(
@@ -582,38 +502,172 @@ class TikTokOrderService
         ?array $handover = null,
         array $knownPackageIds = [],
     ): array {
+        return $this->shipPackages($shopId, $orderId, $handover, $knownPackageIds, false);
+    }
+
+    /**
+     * Sends TikTok's package ship request at most once for the same observed
+     * package state. The lock spans the read-before-write preflight and POST,
+     * so a manual driver call cannot race a bulk AWB job.
+     */
+    private function shipPackages(
+        string $shopId,
+        string $orderId,
+        ?array $handover,
+        array $knownPackageIds,
+        bool $resyncLocal,
+    ): array {
         $shop = $this->shopRepository->findByShopId($shopId);
         if (! $shop || ! $shop->access_token) {
             throw new \Exception("No access token found for shop: {$shopId}");
         }
 
         $queries = ['shop_cipher' => $shop->shop_cipher ?? ''];
-        $packageIds = array_values(array_unique(array_filter(
-            array_map('strval', $knownPackageIds),
-            static fn (string $id): bool => $id !== '',
-        )));
+        $lock = Cache::lock($this->shipmentLockKey($shopId, $orderId), 300);
+        if (! $lock->get()) {
+            return $this->deferredShipmentResult(
+                $orderId,
+                'Permintaan pengiriman TikTok untuk order ini sedang diproses. Sistem akan memeriksa hasilnya tanpa mengirim ulang.',
+            );
+        }
 
+        try {
+            try {
+                $snapshot = $this->getOrderFulfillmentSnapshot($shop, $orderId);
+            } catch (\Throwable $e) {
+                Log::warning('TikTok RTS: preflight order gagal; POST /ship tidak dikirim', [
+                    'shop_id' => $shopId,
+                    'order_id' => $orderId,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return $this->deferredShipmentResult(
+                    $orderId,
+                    'Status TikTok belum dapat diverifikasi. Sistem tidak mengirim ulang panggilan driver dan akan mencoba membaca status kembali.',
+                );
+            }
+
+            return $this->shipPackagesFromSnapshot(
+                $shop,
+                $orderId,
+                $queries,
+                $snapshot,
+                $handover,
+                $knownPackageIds,
+                $resyncLocal,
+            );
+        } finally {
+            if ($lock->isOwnedByCurrentProcess()) {
+                $lock->release();
+            }
+        }
+    }
+
+    private function shipPackagesFromSnapshot(
+        object $shop,
+        string $orderId,
+        array $queries,
+        array $snapshot,
+        ?array $handover,
+        array $knownPackageIds,
+        bool $resyncLocal,
+    ): array {
+        if (empty($snapshot['order_found'])) {
+            return $this->deferredShipmentResult(
+                $orderId,
+                'Order TikTok tidak ditemukan saat verifikasi. Sistem tidak mengirim POST /ship.',
+            );
+        }
+
+        $orderStatus = strtoupper((string) ($snapshot['status'] ?? ''));
+        $packagesById = collect($snapshot['packages'] ?? [])
+            ->filter(static fn (array $package): bool => filled($package['id'] ?? null))
+            ->keyBy(static fn (array $package): string => (string) $package['id']);
+
+        $packageIds = $this->normalizePackageIds($knownPackageIds);
         if ($packageIds === []) {
-            $packageIds = $this->resolvePackageIds($shop, $orderId, $queries);
+            $packageIds = $packagesById->keys()->all();
         }
 
         if ($packageIds === []) {
-            return [
-                'order_id' => $orderId,
-                'shipped' => false,
-                'tracking_number' => null,
-                'message' => 'TikTok belum menyediakan package_id untuk order ini.',
-                'packages' => [],
-            ];
+            if (! $this->isOrderReadyToShip($orderStatus)) {
+                return $this->notShippableResult($orderId, $orderStatus);
+            }
+
+            try {
+                $packageIds = $this->resolvePackageIds($shop, $orderId, $queries);
+            } catch (\Throwable $e) {
+                Log::warning('TikTok RTS: package belum dapat diverifikasi; POST /ship tidak dikirim', [
+                    'order_id' => $orderId,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return $this->deferredShipmentResult(
+                    $orderId,
+                    'Package TikTok belum dapat diverifikasi. Sistem tidak mengirim POST /ship sebelum statusnya terbaca.',
+                );
+            }
+        }
+
+        if ($packageIds === []) {
+            return $this->deferredShipmentResult(
+                $orderId,
+                'TikTok belum menyediakan package_id untuk order ini.',
+            );
+        }
+
+        $alreadyAcceptedIds = [];
+        $packageIdsToShip = [];
+        foreach ($packageIds as $packageId) {
+            $package = $packagesById->get($packageId);
+            $packageStatus = strtoupper((string) ($package['status'] ?? ''));
+
+            if (
+                filled($package['tracking_number'] ?? null)
+                || $this->isPackageAlreadyShipped($packageStatus)
+            ) {
+                $alreadyAcceptedIds[] = $packageId;
+
+                continue;
+            }
+
+            $packageCanBeShipped = $package !== null
+                ? ($this->isPackageReadyToShip($packageStatus)
+                    || ($packageStatus === '' && $this->isOrderReadyToShip($orderStatus)))
+                : $this->isOrderReadyToShip($orderStatus);
+
+            if (! $packageCanBeShipped) {
+                continue;
+            }
+
+            $packageIdsToShip[] = $packageId;
+        }
+
+        if ($packageIdsToShip === []) {
+            if ($alreadyAcceptedIds !== [] || $this->isOrderAlreadyShipped($orderStatus)) {
+                $this->persistSnapshotTracking($orderId, $snapshot);
+
+                return [
+                    'order_id' => $orderId,
+                    'shipped' => true,
+                    'accepted' => true,
+                    'all_packages_shipped' => true,
+                    'tracking_number' => $snapshot['tracking_number'] ?? null,
+                    'shipping_provider' => $snapshot['shipping_provider'] ?? null,
+                    'channel_status' => $snapshot['status'] ?? null,
+                    'message' => 'TikTok sudah menerima pengiriman sebelumnya; POST /ship tidak dikirim ulang.',
+                    'packages' => [],
+                    'already_accepted_package_ids' => $alreadyAcceptedIds,
+                ];
+            }
+
+            return $this->notShippableResult($orderId, $orderStatus);
         }
 
         $results = [];
-        $allOk = true;
-
-        foreach ($packageIds as $packageId) {
+        foreach ($packageIdsToShip as $packageId) {
             try {
                 $shipBody = ['order_id' => $orderId];
-
                 if ($handover) {
                     if (! empty($handover['tracking_number'])) {
                         $shipBody['tracking_number'] = $handover['tracking_number'];
@@ -637,9 +691,8 @@ class TikTokOrderService
                     'response' => $res['data'] ?? [],
                 ];
             } catch (\Throwable $e) {
-                $allOk = false;
-                Log::error('TikTok AWB: gagal request ship package', [
-                    'shop_id' => $shopId,
+                Log::error('TikTok RTS: gagal ship package', [
+                    'shop_id' => $shop->shop_id ?? null,
                     'order_id' => $orderId,
                     'package_id' => $packageId,
                     'error' => $e->getMessage(),
@@ -648,43 +701,154 @@ class TikTokOrderService
                     'package_id' => $packageId,
                     'shipped' => false,
                     'message' => $e->getMessage(),
+                    'error_code' => $e instanceof TikTokApiException ? $e->errorCode : null,
+                    'error_category' => $e instanceof TikTokApiException ? $e->category : null,
+                    'raw_message' => $e instanceof TikTokApiException ? $e->rawMessage : null,
+                    'request_id' => $e instanceof TikTokApiException ? $e->requestId : null,
                 ];
             }
         }
 
-        $someOk = collect($results)->contains('shipped', true);
-        $tracking = null;
+        $somePosted = collect($results)->contains('shipped', true);
+        $failedPackageIds = collect($results)
+            ->where('shipped', false)
+            ->pluck('package_id')
+            ->map(static fn ($id): string => (string) $id)
+            ->values()
+            ->all();
+        $allPackagesShipped = $failedPackageIds === [];
+        $tracking = $this->trackingFromShipResponses($results)
+            ?? (filled($snapshot['tracking_number'] ?? null) ? [
+                'tracking_number' => (string) $snapshot['tracking_number'],
+                'shipping_provider' => $snapshot['shipping_provider'] ?? null,
+            ] : null);
 
-        if ($someOk) {
-            $tracking = $this->trackingFromShipResponses($results);
+        if ($somePosted) {
+            if ($resyncLocal) {
+                $this->resyncLocalOrder((string) ($shop->shop_id ?? ''), $orderId);
+            }
+
             if ($tracking === null) {
-
-                $tracking = $this->resolveTrackingNumberOnce($shop, $orderId);
+                try {
+                    $tracking = $this->resolveTrackingNumberFromOrder($shop, $orderId);
+                } catch (\Throwable $e) {
+                    Log::info('TikTok RTS: request diterima, tracking belum dapat dibaca', [
+                        'order_id' => $orderId,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
             }
+        }
 
-            if ($tracking !== null && $tracking['tracking_number'] !== '') {
-                $this->orderRepository->updateTrackingByOrderNo(
-                    $orderId,
-                    $tracking['tracking_number'],
-                    $tracking['shipping_provider'],
-                );
-            }
+        if ($tracking !== null && filled($tracking['tracking_number'] ?? null)) {
+            $this->orderRepository->updateTrackingByOrderNo(
+                $orderId,
+                (string) $tracking['tracking_number'],
+                $tracking['shipping_provider'] ?? null,
+            );
         }
 
         return [
             'order_id' => $orderId,
-            'shipped' => $allOk,
+            'shipped' => $allPackagesShipped,
+            'accepted' => $somePosted || $alreadyAcceptedIds !== [],
+            'all_packages_shipped' => $allPackagesShipped,
             'tracking_number' => $tracking['tracking_number'] ?? null,
             'shipping_provider' => $tracking['shipping_provider'] ?? null,
-
-            'channel_status' => $someOk ? 'PROCESSED' : null,
-            'message' => $allOk
-                ? 'RTS dan request resi TikTok berhasil.'
-                : ($someOk
-                    ? 'Sebagian package berhasil dikirim; sebagian gagal.'
-                    : 'Request resi TikTok gagal.'),
+            'channel_status' => $somePosted ? 'PROCESSED' : ($snapshot['status'] ?? null),
+            'message' => $allPackagesShipped
+                ? 'RTS TikTok berhasil. Tracking number mungkin diterbitkan secara asynchronous.'
+                : ($somePosted
+                    ? 'Sebagian package TikTok berhasil dikirim; hanya package yang belum diterima akan dicoba ulang.'
+                    : 'TikTok belum menerima request pengiriman package.'),
             'packages' => $results,
+            'already_accepted_package_ids' => $alreadyAcceptedIds,
+            'failed_package_ids' => $failedPackageIds,
         ];
+    }
+
+    private function normalizePackageIds(array $packageIds): array
+    {
+        return array_values(array_unique(array_filter(
+            array_map('strval', $packageIds),
+            static fn (string $id): bool => $id !== '',
+        )));
+    }
+
+    private function shipmentLockKey(string $shopId, string $orderId): string
+    {
+        return 'tiktok:ship:'.hash('sha256', $shopId.'|'.$orderId);
+    }
+
+    private function deferredShipmentResult(string $orderId, string $message): array
+    {
+        return [
+            'order_id' => $orderId,
+            'shipped' => false,
+            'accepted' => false,
+            'all_packages_shipped' => false,
+            'deferred' => true,
+            'tracking_number' => null,
+            'channel_status' => null,
+            'message' => $message,
+            'packages' => [],
+        ];
+    }
+
+    private function notShippableResult(string $orderId, string $status): array
+    {
+        return [
+            'order_id' => $orderId,
+            'shipped' => false,
+            'accepted' => false,
+            'all_packages_shipped' => false,
+            'tracking_number' => null,
+            'channel_status' => $status !== '' ? $status : null,
+            'message' => $status === ''
+                ? 'Status order TikTok kosong; POST /ship tidak dikirim.'
+                : "Status TikTok {$status} belum dapat dikirim; POST /ship tidak dikirim.",
+            'packages' => [],
+        ];
+    }
+
+    private function persistSnapshotTracking(string $orderId, array $snapshot): void
+    {
+        if (! filled($snapshot['tracking_number'] ?? null)) {
+            return;
+        }
+
+        $this->orderRepository->updateTrackingByOrderNo(
+            $orderId,
+            (string) $snapshot['tracking_number'],
+            $snapshot['shipping_provider'] ?? null,
+        );
+    }
+
+    private function isOrderReadyToShip(string $status): bool
+    {
+        return in_array($status, ['AWAITING_SHIPMENT', 'READY_TO_SHIP'], true);
+    }
+
+    private function isOrderAlreadyShipped(string $status): bool
+    {
+        return in_array($status, [
+            'PROCESSED',
+            'AWAITING_COLLECTION',
+            'SHIPPED',
+            'IN_TRANSIT',
+            'TO_CONFIRM_RECEIVE',
+            'COMPLETED',
+        ], true);
+    }
+
+    private function isPackageReadyToShip(string $status): bool
+    {
+        return in_array($status, ['AWAITING_SHIPMENT', 'READY_TO_SHIP'], true);
+    }
+
+    private function isPackageAlreadyShipped(string $status): bool
+    {
+        return $this->isOrderAlreadyShipped($status);
     }
 
     private function trackingFromShipResponses(array $packages): ?array
@@ -704,6 +868,78 @@ class TikTokOrderService
         }
 
         return null;
+    }
+
+    /**
+     * Read the current TikTok order/package state without requesting a
+     * shipping document. This is intentionally safe to use for AWB polling.
+     */
+    public function getOrderFulfillmentSnapshot(object $shop, string $orderId): array
+    {
+        $res = $this->client->request(
+            'GET',
+            '/order/202309/orders',
+            ['shop_cipher' => $shop->shop_cipher ?? '', 'ids' => $orderId],
+            [],
+            $shop->access_token,
+        );
+
+        $order = $res['data']['orders'][0] ?? null;
+        if (! is_array($order)) {
+            return [
+                'order_found' => false,
+                'status' => null,
+                'packages' => [],
+                'tracking_number' => null,
+                'shipping_provider' => null,
+            ];
+        }
+
+        $packages = array_values(array_map(static function (array $package): array {
+            return [
+                'id' => isset($package['id']) ? (string) $package['id'] : null,
+                'tracking_number' => filled($package['tracking_number'] ?? null)
+                    ? (string) $package['tracking_number']
+                    : null,
+                'shipping_provider' => $package['shipping_provider_name']
+                    ?? $package['shipping_provider']
+                    ?? null,
+                'status' => $package['status'] ?? null,
+            ];
+        }, $order['packages'] ?? []));
+
+        $packageWithTracking = collect($packages)
+            ->first(static fn (array $package): bool => filled($package['tracking_number']));
+        $hasPendingPackage = collect($packages)->contains(function (array $package): bool {
+            $status = strtoupper((string) ($package['status'] ?? ''));
+
+            return $this->isPackageReadyToShip($status);
+        });
+
+        return [
+            'order_found' => true,
+            'status' => isset($order['status']) ? (string) $order['status'] : null,
+            'packages' => $packages,
+            'tracking_number' => $packageWithTracking['tracking_number'] ?? null,
+            'shipping_provider' => $packageWithTracking['shipping_provider'] ?? null,
+            'has_pending_package' => $hasPendingPackage,
+            'all_packages_shipped' => $packages !== [] && ! $hasPendingPackage,
+        ];
+    }
+
+    public function resolveTrackingNumberFromOrder(object $shop, string $orderId): ?array
+    {
+        $snapshot = $this->getOrderFulfillmentSnapshot($shop, $orderId);
+
+        if (! filled($snapshot['tracking_number'] ?? null)) {
+            return null;
+        }
+
+        return [
+            'tracking_number' => (string) $snapshot['tracking_number'],
+            'shipping_provider' => $snapshot['shipping_provider'] ?? null,
+            'channel_status' => $snapshot['status'] ?? null,
+        ];
     }
 
     private function resolveTrackingNumberOnce(object $shop, string $orderId): ?array
@@ -1447,31 +1683,6 @@ class TikTokOrderService
                     $trackingNumber = (string) $tn;
                     $shippingProvider = $pkg['shipping_provider_name'] ?? $pkg['shipping_provider'] ?? null;
                     break;
-                }
-            }
-
-            if (! $trackingNumber) {
-                foreach ($packages as $pkg) {
-                    $packageId = $pkg['id'] ?? null;
-                    if (! $packageId) {
-                        continue;
-                    }
-                    try {
-                        $shop2 = $shop;
-                        $docRes = $this->getShippingDocument((string) ($shop2->shop_id ?? ''), (string) $packageId, 'SHIPPING_LABEL');
-                        $tn = $docRes['data']['tracking_number'] ?? null;
-                        if ($tn !== null && $tn !== '') {
-                            $trackingNumber = (string) $tn;
-                            $shippingProvider = $pkg['shipping_provider_name'] ?? $pkg['shipping_provider'] ?? null;
-                            break;
-                        }
-                    } catch (\Throwable $docErr) {
-                        Log::debug('fetchAndStoreTracking: shipping document fallback gagal', [
-                            'order_id' => $orderId,
-                            'package_id' => $packageId,
-                            'error' => $docErr->getMessage(),
-                        ]);
-                    }
                 }
             }
 

@@ -96,8 +96,11 @@ class TikTokOrderOpsTest extends TestCase
         $this->assertSame('RETURN_OR_REFUND_REQUEST_PENDING', $detail['channel_status']);
     }
 
-    private function orderDetail(string $status): array
-    {
+    private function orderDetail(
+        string $status,
+        ?string $trackingNumber = 'TTRK-1',
+        ?string $packageStatus = null,
+    ): array {
         return [
             'code' => 0,
             'data' => ['orders' => [[
@@ -109,8 +112,9 @@ class TikTokOrderOpsTest extends TestCase
                 'payment' => ['total_amount' => '100000', 'original_total_product_price' => '100000'],
                 'packages' => [[
                     'id' => 'PKG-1',
-                    'tracking_number' => 'TTRK-1',
+                    'tracking_number' => $trackingNumber,
                     'shipping_provider_name' => 'TikTok Logistics',
+                    'status' => $packageStatus,
                 ]],
                 'line_items' => [[
                     'product_id' => 'P1',
@@ -164,10 +168,16 @@ class TikTokOrderOpsTest extends TestCase
 
     public function test_ship_order_hits_ship_api_and_status_becomes_packed(): void
     {
+        $ready = $this->orderDetail('AWAITING_SHIPMENT', null, 'AWAITING_SHIPMENT');
+        $accepted = $this->orderDetail('AWAITING_COLLECTION', 'TTRK-1', 'AWAITING_COLLECTION');
+
         Http::fake([
             self::BASE.'/fulfillment/202309/packages/*/ship*' => Http::response(['code' => 0, 'data' => ['package_id' => 'PKG-1']], 200),
             self::BASE.'/fulfillment/202309/packages*' => Http::response(['code' => 0, 'data' => []], 200),
-            self::BASE.'/order/202309/orders*' => Http::response($this->orderDetail('AWAITING_COLLECTION'), 200),
+            self::BASE.'/order/202309/orders*' => Http::sequence()
+                ->push($ready, 200)
+                ->push($accepted, 200)
+                ->push($accepted, 200),
         ]);
 
         $this->actingAs($this->user, 'sanctum')
@@ -194,7 +204,9 @@ class TikTokOrderOpsTest extends TestCase
                 'code' => 0,
                 'data' => ['package_id' => 'PKG-1'],
             ], 200),
-            self::BASE.'/order/202309/orders*' => Http::response($this->orderDetail('AWAITING_COLLECTION'), 200),
+            self::BASE.'/order/202309/orders*' => Http::sequence()
+                ->push($this->orderDetail('AWAITING_SHIPMENT', null, 'AWAITING_SHIPMENT'), 200)
+                ->push($this->orderDetail('AWAITING_COLLECTION', 'TTRK-1', 'AWAITING_COLLECTION'), 200),
         ]);
 
         $result = app(TikTokOrderService::class)->requestTrackingNumber(
@@ -207,9 +219,115 @@ class TikTokOrderOpsTest extends TestCase
         $this->assertTrue($result['shipped']);
         $this->assertSame('TTRK-1', $result['tracking_number']);
         $this->assertSame('TTRK-1', $order->refresh()->tracking_number);
-        Http::assertSentCount(2);
+        Http::assertSentCount(3);
         Http::assertNotSent(fn ($request) => $request->method() === 'GET'
             && str_contains($request->url(), '/fulfillment/202309/packages'));
+    }
+
+    public function test_request_tracking_number_does_not_request_shipping_document_before_tracking_exists(): void
+    {
+        $order = $this->seedLocalOrder('READY_TO_SHIP', 'pending');
+        $order->update(['channel_package_ids' => ['PKG-1']]);
+
+        $ready = $this->orderDetail('AWAITING_SHIPMENT', null, 'AWAITING_SHIPMENT');
+        $detail = $this->orderDetail('AWAITING_COLLECTION', null, 'AWAITING_COLLECTION');
+
+        Http::fake([
+            self::BASE.'/fulfillment/202309/packages/*/ship*' => Http::response([
+                'code' => 0,
+                'data' => ['package_id' => 'PKG-1'],
+            ], 200),
+            self::BASE.'/order/202309/orders*' => Http::sequence()
+                ->push($ready, 200)
+                ->push($detail, 200),
+        ]);
+
+        $result = app(TikTokOrderService::class)->requestTrackingNumber(
+            'TT-700',
+            self::ORDER_ID,
+            null,
+            ['PKG-1'],
+        );
+
+        $this->assertTrue($result['shipped']);
+        $this->assertNull($result['tracking_number']);
+        Http::assertSentCount(3);
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '/shipping_documents'));
+    }
+
+    public function test_fulfillment_snapshot_reads_order_without_shipping_document(): void
+    {
+        $detail = $this->orderDetail('AWAITING_COLLECTION');
+        $detail['data']['orders'][0]['packages'][0]['tracking_number'] = null;
+
+        Http::fake([
+            self::BASE.'/order/202309/orders*' => Http::response($detail, 200),
+        ]);
+
+        $snapshot = app(TikTokOrderService::class)->getOrderFulfillmentSnapshot(
+            $this->shop,
+            self::ORDER_ID,
+        );
+
+        $this->assertTrue($snapshot['order_found']);
+        $this->assertSame('AWAITING_COLLECTION', $snapshot['status']);
+        $this->assertNull($snapshot['tracking_number']);
+        Http::assertSentCount(1);
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '/shipping_documents'));
+    }
+
+    public function test_request_tracking_does_not_post_when_preflight_cannot_be_read(): void
+    {
+        Http::fake([
+            self::BASE.'/order/202309/orders*' => Http::response([
+                'code' => 12001000,
+                'message' => 'temporary error',
+            ], 200),
+        ]);
+
+        $result = app(TikTokOrderService::class)->requestTrackingNumber(
+            'TT-700',
+            self::ORDER_ID,
+            null,
+            ['PKG-1'],
+        );
+
+        $this->assertTrue($result['deferred']);
+        $this->assertFalse($result['shipped']);
+        Http::assertNotSent(fn ($request) => $request->method() === 'POST'
+            && str_contains($request->url(), '/ship'));
+    }
+
+    public function test_request_tracking_posts_only_the_package_still_awaiting_shipment(): void
+    {
+        $detail = $this->orderDetail('AWAITING_COLLECTION', 'TTRK-1', 'AWAITING_COLLECTION');
+        $detail['data']['orders'][0]['packages'][] = [
+            'id' => 'PKG-2',
+            'tracking_number' => null,
+            'shipping_provider_name' => 'TikTok Logistics',
+            'status' => 'AWAITING_SHIPMENT',
+        ];
+
+        Http::fake([
+            self::BASE.'/order/202309/orders*' => Http::response($detail, 200),
+            self::BASE.'/fulfillment/202309/packages/PKG-2/ship*' => Http::response([
+                'code' => 0,
+                'data' => ['package_id' => 'PKG-2'],
+            ], 200),
+        ]);
+
+        $result = app(TikTokOrderService::class)->requestTrackingNumber(
+            'TT-700',
+            self::ORDER_ID,
+            null,
+            ['PKG-1', 'PKG-2'],
+        );
+
+        $this->assertTrue($result['shipped']);
+        Http::assertSent(fn ($request) => $request->method() === 'POST'
+            && str_contains($request->url(), '/packages/PKG-2/ship'));
+        Http::assertNotSent(fn ($request) => $request->method() === 'POST'
+            && str_contains($request->url(), '/packages/PKG-1/ship'));
     }
 
     public function test_direct_tracking_falls_back_to_shipping_document_without_posting_ship(): void

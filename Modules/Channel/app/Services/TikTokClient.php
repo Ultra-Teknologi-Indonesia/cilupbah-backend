@@ -102,7 +102,7 @@ class TikTokClient
         if (is_array($data) && isset($data['code']) && $data['code'] !== 0) {
             $shopId = $queries['shop_cipher'] ?? 'unknown';
             $this->raiseApiError($data['code'], $data['message'] ?? null, $shopId, [
-                'url' => $fullUrl,
+                'path' => $path,
                 'body' => $body,
                 'http_status' => $response->status(),
                 'response' => $data,
@@ -144,6 +144,7 @@ class TikTokClient
             $resolved['category'],
             $resolved['message'],
             $resolved['raw_message'],
+            data_get($logContext, 'response.request_id'),
         );
     }
 

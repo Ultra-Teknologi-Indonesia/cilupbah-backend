@@ -5,8 +5,11 @@ namespace Modules\Channel\Support;
 class TikTokErrorCatalog
 {
     public const TOKEN = 'token';
+
     public const RETRYABLE = 'retryable';
+
     public const USER_FIXABLE = 'user_fixable';
+
     public const FATAL = 'fatal';
 
     protected const TOKEN_CODES = [40100, 40102, 40103];
@@ -15,6 +18,7 @@ class TikTokErrorCatalog
 
     protected const MAP = [
 
+        '21042104' => [self::RETRYABLE, 'TikTok belum menganggap package sudah shipped. Sistem akan menunggu status fulfillment sebelum mengambil shipping document.'],
         '12001000' => [self::RETRYABLE, 'Terjadi kesalahan pada TikTok Shop. Coba lagi nanti.'],
         '12052881' => [self::RETRYABLE, 'Terjadi kesalahan pada TikTok Shop. Coba lagi nanti.'],
         '33001002' => [self::RETRYABLE, 'Terjadi kesalahan pada TikTok Shop. Coba lagi nanti.'],
@@ -390,7 +394,7 @@ class TikTokErrorCatalog
         }
 
         $fallback = $message !== ''
-            ? 'Permintaan ditolak TikTok Shop: ' . $message
+            ? 'Permintaan ditolak TikTok Shop: '.$message
             : 'Permintaan ditolak TikTok Shop. Coba lagi atau hubungi TikTok Shop.';
 
         return self::pack($code, self::FATAL, $fallback, $message);

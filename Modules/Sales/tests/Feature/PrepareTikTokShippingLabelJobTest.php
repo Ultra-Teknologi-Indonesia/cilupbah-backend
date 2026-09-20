@@ -3,6 +3,7 @@
 namespace Modules\Sales\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Sales\Jobs\PrepareTikTokShippingLabelJob;
 use Modules\Sales\Models\SalesOrder;
@@ -81,5 +82,27 @@ class PrepareTikTokShippingLabelJobTest extends TestCase
         (new PrepareTikTokShippingLabelJob($order->id))->handle(app(TikTokOrderService::class));
 
         $this->assertSame('ready', $order->refresh()->shipping_label_status);
+    }
+
+    public function test_does_not_mark_ready_when_any_package_document_is_still_missing(): void
+    {
+        Queue::fake();
+        $order = $this->makeOrder(['channel_package_ids' => ['PKG1', 'PKG2']]);
+
+        $this->mock(TikTokOrderService::class, function ($m) {
+            $m->shouldNotReceive('packageIdsForOrder');
+            $m->shouldReceive('getShippingDocument')->with('SHOP-1', 'PKG1', 'SHIPPING_LABEL', 'A6')
+                ->andReturn(['code' => 0, 'data' => ['doc_url' => 'https://tts/label-1.pdf']]);
+            $m->shouldReceive('getShippingDocument')->with('SHOP-1', 'PKG2', 'SHIPPING_LABEL', 'A6')
+                ->andThrow(new \RuntimeException('label masih diproses'));
+        });
+
+        (new PrepareTikTokShippingLabelJob($order->id))->handle(app(TikTokOrderService::class));
+
+        $this->assertSame('not_ready', $order->refresh()->shipping_label_status);
+        Queue::assertPushed(
+            PrepareTikTokShippingLabelJob::class,
+            fn (PrepareTikTokShippingLabelJob $job): bool => $job->orderId === $order->id,
+        );
     }
 }
