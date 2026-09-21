@@ -62,12 +62,12 @@ final class RequestShopeeMassAwbJobTest extends TestCase
             ->andReturn([
                 'ORDER-MASS-A' => [[
                     'package_number' => 'PKG-A',
-                    'logistics_channel_id' => '8001',
+                    'logistics_channel_id' => 8001,
                     'product_location_id' => 'LOC-1',
                 ]],
                 'ORDER-MASS-B' => [[
                     'package_number' => 'PKG-B',
-                    'logistics_channel_id' => '8001',
+                    'logistics_channel_id' => 8001,
                     'product_location_id' => 'LOC-1',
                 ]],
             ]);
@@ -87,7 +87,7 @@ final class RequestShopeeMassAwbJobTest extends TestCase
         $shopee->shouldReceive('massShipPackages')
             ->once()
             ->with('SHOP-MASS-AWB', ['PKG-A', 'PKG-B'], [
-                'logistics_channel_id' => '8001',
+                'logistics_channel_id' => 8001,
                 'product_location_id' => 'LOC-1',
             ])
             ->andReturn(['results' => [

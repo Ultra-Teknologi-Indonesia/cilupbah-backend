@@ -69,7 +69,7 @@ final class ShopeeMassAwbApiTest extends TestCase
             ->resolveMassPackages('778899', ['ORDER-A', 'ORDER-B']);
 
         $this->assertSame('PKG-A', $result['ORDER-A'][0]['package_number']);
-        $this->assertSame('8001', $result['ORDER-A'][0]['logistics_channel_id']);
+        $this->assertSame(8001, $result['ORDER-A'][0]['logistics_channel_id']);
         $this->assertSame('LOC-A', $result['ORDER-A'][0]['product_location_id']);
         $this->assertSame('PKG-B', $result['ORDER-B'][0]['package_number']);
     }
@@ -168,7 +168,7 @@ final class ShopeeMassAwbApiTest extends TestCase
                 ['package_number' => 'PKG-A'],
                 ['package_number' => 'PKG-B'],
             ], $request->data()['package_list'] ?? null);
-            $this->assertSame('8001', $request->data()['logistics_channel_id'] ?? null);
+            $this->assertSame(8001, $request->data()['logistics_channel_id'] ?? null);
             $this->assertSame('LOC-A', $request->data()['product_location_id'] ?? null);
 
             return true;
@@ -183,6 +183,7 @@ final class ShopeeMassAwbApiTest extends TestCase
                 ['package_number' => 'PKG-A'],
                 ['package_number' => 'PKG-B'],
             ], $request->data()['package_list'] ?? null);
+            $this->assertSame(8001, $request->data()['logistics_channel_id'] ?? null);
             $this->assertSame(200000015, data_get($request->data(), 'pickup.address_id'));
 
             return true;

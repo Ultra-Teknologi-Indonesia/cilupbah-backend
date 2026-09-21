@@ -994,7 +994,7 @@ class ShopeeOrderService
                     $packages[$packageNumber] = [
                         'package_number' => $packageNumber,
                         'logistics_channel_id' => isset($package['logistics_channel_id'])
-                            ? (string) $package['logistics_channel_id']
+                            ? (int) $package['logistics_channel_id']
                             : null,
                         'product_location_id' => isset($package['product_location_id'])
                             ? (string) $package['product_location_id']
@@ -1140,9 +1140,17 @@ class ShopeeOrderService
             $packageNumbers,
         );
 
+        // Shopee documents logistics_channel_id as int64. Values sourced from
+        // get_order_detail may arrive as strings, so normalize at the API
+        // boundary before sending either mass-shipping request.
+        $logisticsChannelId = $opts['logistics_channel_id'] ?? null;
+        if ($logisticsChannelId !== null && $logisticsChannelId !== '') {
+            $logisticsChannelId = (int) $logisticsChannelId;
+        }
+
         $parameterBody = array_filter([
             'package_list' => $packageList,
-            'logistics_channel_id' => $opts['logistics_channel_id'] ?? null,
+            'logistics_channel_id' => $logisticsChannelId,
             'product_location_id' => $opts['product_location_id'] ?? null,
         ], static fn ($value): bool => $value !== null && $value !== '');
 
@@ -1162,7 +1170,7 @@ class ShopeeOrderService
 
         $body = array_filter([
             'package_list' => $packageList,
-            'logistics_channel_id' => $opts['logistics_channel_id'] ?? null,
+            'logistics_channel_id' => $logisticsChannelId,
             'product_location_id' => $opts['product_location_id'] ?? null,
         ], static fn ($value): bool => $value !== null && $value !== '');
 

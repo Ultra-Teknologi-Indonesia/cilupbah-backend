@@ -165,7 +165,7 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
                 'order' => $order,
                 'package_number' => $packageNumber,
                 'logistics_channel_id' => isset($packages[0]['logistics_channel_id'])
-                    ? (string) $packages[0]['logistics_channel_id']
+                    ? (int) $packages[0]['logistics_channel_id']
                     : null,
                 'product_location_id' => isset($packages[0]['product_location_id'])
                     ? (string) $packages[0]['product_location_id']
