@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: cilupbah-horizon-labels
+  name: cilupbah-horizon-labels-archive
   namespace: cilupbah
 spec:
   replicas: 1
@@ -9,11 +9,11 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: cilupbah-horizon-labels
+      app: cilupbah-horizon-labels-archive
   template:
     metadata:
       labels:
-        app: cilupbah-horizon-labels
+        app: cilupbah-horizon-labels-archive
     spec:
       securityContext:
         fsGroup: 33
@@ -39,7 +39,7 @@ spec:
               mountPath: /spool
       terminationGracePeriodSeconds: 180
       containers:
-        - name: horizon-labels
+        - name: horizon-labels-archive
           image: ghcr.io/ultra-teknologi-indonesia/cilupbah:v1.0.0
           command: ["sh", "-c"]
           args: ["umask 0007 && exec php artisan horizon"]
@@ -52,13 +52,7 @@ spec:
                 name: cilupbah-env
           env:
             - name: HORIZON_PROFILE
-              value: "labels-pdf"
-            - name: QUEUE_LABEL_PARALLELISM
-              value: "6"
-            - name: QUEUE_LABEL_PREFETCH_PARALLELISM
-              value: "1"
-            - name: QUEUE_LABEL_AWB_PARALLELISM
-              value: "2"
+              value: "labels-archive"
             - name: QUEUE_LABEL_ARCHIVE_PARALLELISM
               value: "2"
             - name: LABEL_LOCAL_FIRST
@@ -72,11 +66,11 @@ spec:
               mountPath: /var/www/html/storage/app/print-spool
           resources:
             requests:
-              memory: "2560Mi"
-              cpu: "1500m"
+              memory: "256Mi"
+              cpu: "100m"
             limits:
-              memory: "6Gi"
-              cpu: "3500m"
+              memory: "512Mi"
+              cpu: "500m"
           livenessProbe:
             exec:
               command: ["sh", "-c", "php artisan horizon:status | grep -q running"]

@@ -45,10 +45,19 @@ $supervisorProfiles = [
         'supervisor-lazada-webhooks-background',
     ],
 
-    'labels' => [
+    'labels-pdf' => [
         'supervisor-labels',
+    ],
+
+    'labels-prefetch' => [
         'supervisor-label-prefetch',
+    ],
+
+    'labels-awb' => [
         'supervisor-label-awb',
+    ],
+
+    'labels-archive' => [
         'supervisor-label-archive',
     ],
 
@@ -205,7 +214,7 @@ return [
 
         if (! array_key_exists($profile, $supervisorProfiles)) {
             throw new InvalidArgumentException(
-                "HORIZON_PROFILE '{$profile}' tidak dikenal. Gunakan all, critical, background, atau labels."
+                "HORIZON_PROFILE '{$profile}' tidak dikenal. Gunakan all, critical, background, labels-pdf, labels-prefetch, labels-awb, atau labels-archive."
             );
         }
 
