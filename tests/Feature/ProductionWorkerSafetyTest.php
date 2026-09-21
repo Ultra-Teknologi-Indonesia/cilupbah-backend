@@ -91,6 +91,19 @@ class ProductionWorkerSafetyTest extends TestCase
         $this->assertStringNotContainsString('target: "/tmp/cilupbah-k8s"', $workflow);
     }
 
+    public function test_production_workflow_keeps_the_version_selector(): void
+    {
+        $workflow = file_get_contents(base_path('.github/workflows/ci-cd-production.yml'));
+
+        $this->assertIsString($workflow);
+        $this->assertStringContainsString('name: CI/CD Pipeline (Production)', $workflow);
+        $this->assertStringContainsString('type: choice', $workflow);
+        $this->assertStringContainsString('options:', $workflow);
+        $this->assertStringContainsString('- latest', $workflow);
+        $this->assertStringContainsString('# BEGIN_VERSIONS', $workflow);
+        $this->assertStringContainsString('# END_VERSIONS', $workflow);
+    }
+
     public function test_shared_label_spool_init_is_constant_time(): void
     {
         foreach (['02-app.yaml', '04-horizon-labels.yaml'] as $manifest) {
