@@ -18,7 +18,6 @@ use Modules\Outbound\Support\ActiveProcessOrderScope;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
-use Modules\Sales\Models\SalesInvoice;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderItem;
 use Modules\Sales\Services\SalesOrderService;
@@ -149,7 +148,7 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
         ]);
     }
 
-    public function test_complete_picklist_generates_sales_invoice_only_when_pdf_is_requested(): void
+    public function test_complete_picklist_renders_invoice_pdf_without_persisting_sales_invoice(): void
     {
         $this->actingAs($this->user);
 
@@ -194,7 +193,6 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
             (string) $this->order->id,
         );
 
-        $this->assertSame(0, SalesInvoice::query()->where('order_id', $this->order->id)->count());
         $this->assertSame(0, DB::table('inventory_movements')->where('source', 'INVOICE')->count());
         $this->assertSame(0, (int) DB::table('inventories')->where('bin_id', $this->bin->id)->value('on_hand'));
 
@@ -202,22 +200,23 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
         $pdfRes->assertOk()
             ->assertHeader('Content-Type', 'application/pdf');
 
-        $invoice = SalesInvoice::where('order_id', $this->order->id)->firstOrFail();
-        $this->assertStringStartsWith('INV-', $invoice->invoice_number);
-        $this->assertSame('n***ng a***ni', $invoice->customer_name);
-        $this->assertEquals(65000, $invoice->total_amount);
+        $this->assertDatabaseMissing('sales_invoices', [
+            'order_id' => $this->order->id,
+        ]);
 
         $stageRes = $this->getJson('/api/v1/outbound/orders/finish-pick');
         $stageRes->assertOk()
             ->assertJsonPath('data.0.id', $this->order->id)
-            ->assertJsonPath('data.0.invoice_no', $invoice->invoice_number)
+            ->assertJsonPath('data.0.invoice_no', null)
             ->assertJsonPath('meta.total', 1);
 
         $secondComplete = $this->postJson("/api/v1/outbound/picklists/{$this->picklist->id}/complete");
 
         $secondComplete->assertOk()
             ->assertJsonPath('data.status', Picklist::STATUS_COMPLETED);
-        $this->assertSame(1, SalesInvoice::query()->where('order_id', $this->order->id)->count());
+        $this->assertDatabaseMissing('sales_invoices', [
+            'order_id' => $this->order->id,
+        ]);
         $this->assertSame(0, DB::table('inventory_movements')->where('source', 'INVOICE')->count());
     }
 

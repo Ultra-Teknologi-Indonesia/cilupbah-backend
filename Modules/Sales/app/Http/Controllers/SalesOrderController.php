@@ -41,7 +41,6 @@ use Modules\Sales\Http\Resources\ShippingLabelResource;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderDriverCallService;
 use Modules\Sales\Services\SalesOrderService;
-use Modules\Sales\Services\SalesInvoiceService;
 use Modules\Sales\Support\OrderPdfPresenter;
 use OpenApi\Attributes as OA;
 
@@ -106,7 +105,6 @@ class SalesOrderController extends Controller
 
     public function __construct(
         protected SalesOrderService $orderService,
-        protected SalesInvoiceService $invoiceService,
         protected PdfRenderer $pdf,
         protected ExportManager $exportManager,
     ) {}
@@ -1216,13 +1214,6 @@ class SalesOrderController extends Controller
             return $this->errorResponse('Pesanan tidak ditemukan', 404);
         }
 
-        // Pembuatan invoice ditunda sampai dokumen invoice memang diminta.
-        $invoice = $this->invoiceService->createFromOrder([
-            'order_id' => (string) $order->id,
-            'location_id' => (string) $order->location_id,
-            'created_by' => (string) (auth()->id() ?: 'system'),
-        ]);
-        $order->setRelation('invoices', collect([$invoice]));
         $order = OrderPdfPresenter::withShipping($order);
 
         return $this->pdf->stream('sales::pdf.invoice', ['order' => $order], "INV-{$order->salesorder_no}.pdf");
