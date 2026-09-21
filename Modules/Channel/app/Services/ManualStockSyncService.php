@@ -48,7 +48,18 @@ class ManualStockSyncService
                     continue;
                 }
 
-                app(ChannelStockSyncOutboxService::class)->request($mapping, 'sync_stock', 'bulk');
+                \Modules\Channel\Jobs\SyncProductToChannelJob::dispatch(
+                    (string) $mapping->product_id,
+                    (string) $mapping->channel_shop_id,
+                    'sync_stock',
+                    null,
+                    null,
+                    null,
+                    'critical',
+                    (string) $mapping->id,
+                    null,
+                    null
+                );
 
                 $queued++;
             }
@@ -97,7 +108,18 @@ class ManualStockSyncService
                         continue;
                     }
 
-                    app(ChannelStockSyncOutboxService::class)->request($mapping, 'sync_stock', 'bulk');
+                    \Modules\Channel\Jobs\SyncProductToChannelJob::dispatch(
+                        (string) $mapping->product_id,
+                        (string) $mapping->channel_shop_id,
+                        'sync_stock',
+                        null,
+                        null,
+                        null,
+                        'critical',
+                        (string) $mapping->id,
+                        null,
+                        null
+                    );
 
                     $queued++;
                 }
