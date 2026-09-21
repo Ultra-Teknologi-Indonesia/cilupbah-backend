@@ -129,15 +129,22 @@ $dedicatedQueueSupervisor = static function (
     array $backoff,
     int $tries = 3,
     int $nice = 0,
+    int $parallelism = 1,
+    int $maxTime = 3600,
+    int $maxJobs = 100,
 ): array {
+    $parallelism = max(1, min(6, $parallelism));
+    $maxTime = max(300, min(3600, $maxTime));
+    $maxJobs = max(10, min(250, $maxJobs));
+
     return [
         'connection' => $connection,
         'queue' => [$queue],
         'balance' => 'off',
-        'minProcesses' => 1,
-        'maxProcesses' => 1,
-        'maxTime' => 3600,
-        'maxJobs' => 100,
+        'minProcesses' => $parallelism,
+        'maxProcesses' => $parallelism,
+        'maxTime' => $maxTime,
+        'maxJobs' => $maxJobs,
         'timeout' => $timeout,
         'tries' => $tries,
         'backoff' => $backoff,
@@ -194,6 +201,9 @@ foreach (['shopee', 'tiktok', 'lazada'] as $channel) {
         [5, 15, 30, 60],
         3,
         5,
+        max(1, min(3, (int) env('QUEUE_LABEL_DOWNLOAD_PARALLELISM', 1))),
+        max(300, min(3600, (int) env('QUEUE_LABEL_DOWNLOAD_MAX_TIME', 1800))),
+        max(25, min(250, (int) env('QUEUE_LABEL_DOWNLOAD_MAX_JOBS', 100))),
     );
 }
 
@@ -204,6 +214,10 @@ $dedicatedQueueSupervisors['supervisor-label-merge'] = $dedicatedQueueSupervisor
     512,
     [10, 30, 60, 120],
     3,
+    0,
+    max(1, min(2, (int) env('QUEUE_LABEL_MERGE_PARALLELISM', 1))),
+    max(600, min(3600, (int) env('QUEUE_LABEL_MERGE_MAX_TIME', 1800))),
+    max(10, min(100, (int) env('QUEUE_LABEL_MERGE_MAX_JOBS', 25))),
 );
 
 return [
@@ -625,8 +639,8 @@ return [
             'connection' => config('queue.routing.labels.connection', 'redis-long'),
             'queue' => [config('queue.routing.labels.queue', 'labels')],
             'balance' => 'off',
-            'minProcesses' => config('queue.routing.labels.parallelism', 4),
-            'maxProcesses' => config('queue.routing.labels.parallelism', 4),
+            'minProcesses' => max(1, min(6, (int) env('QUEUE_LABEL_PARALLELISM', 4))),
+            'maxProcesses' => max(1, min(6, (int) env('QUEUE_LABEL_PARALLELISM', 4))),
             'maxJobs' => 100,
             'timeout' => 600,
             'tries' => 1,
@@ -637,8 +651,8 @@ return [
             'connection' => config('queue.routing.label_prefetch.connection', 'redis-long'),
             'queue' => [config('queue.routing.label_prefetch.queue', 'label-prefetch')],
             'balance' => 'off',
-            'minProcesses' => config('queue.routing.label_prefetch.parallelism', 1),
-            'maxProcesses' => config('queue.routing.label_prefetch.parallelism', 1),
+            'minProcesses' => max(1, min(2, (int) env('QUEUE_LABEL_PREFETCH_PARALLELISM', 1))),
+            'maxProcesses' => max(1, min(2, (int) env('QUEUE_LABEL_PREFETCH_PARALLELISM', 1))),
             'maxJobs' => 100,
             'timeout' => 180,
             'tries' => 3,
@@ -651,8 +665,8 @@ return [
 
             'queue' => [config('queue.routing.label_awb.queue', 'label-awb')],
             'balance' => 'off',
-            'minProcesses' => config('queue.routing.label_awb.parallelism', 2),
-            'maxProcesses' => config('queue.routing.label_awb.parallelism', 2),
+            'minProcesses' => max(1, min(4, (int) env('QUEUE_LABEL_AWB_PARALLELISM', 2))),
+            'maxProcesses' => max(1, min(4, (int) env('QUEUE_LABEL_AWB_PARALLELISM', 2))),
             'maxJobs' => 100,
             'timeout' => 180,
             'tries' => 3,
@@ -665,8 +679,8 @@ return [
             'queue' => [config('queue.routing.label_archive.queue', 'label-archive')],
             'balance' => 'off',
 
-            'minProcesses' => config('queue.routing.label_archive.parallelism', 2),
-            'maxProcesses' => config('queue.routing.label_archive.parallelism', 2),
+            'minProcesses' => max(1, min(3, (int) env('QUEUE_LABEL_ARCHIVE_PARALLELISM', 2))),
+            'maxProcesses' => max(1, min(3, (int) env('QUEUE_LABEL_ARCHIVE_PARALLELISM', 2))),
             'maxTime' => 1800,
             'maxJobs' => 100,
             'timeout' => config('queue.routing.label_archive.timeout', 300),

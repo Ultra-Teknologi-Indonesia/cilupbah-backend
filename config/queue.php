@@ -326,12 +326,16 @@ return [
                 'lazada' => env('QUEUE_NAME_LABEL_DOWNLOAD_LAZADA', 'label-download-lazada'),
             ],
             'parallelism' => max(1, min(3, (int) env('QUEUE_LABEL_DOWNLOAD_PARALLELISM', 1))),
+            'max_jobs' => max(25, min(250, (int) env('QUEUE_LABEL_DOWNLOAD_MAX_JOBS', 100))),
+            'max_time' => max(300, min(3600, (int) env('QUEUE_LABEL_DOWNLOAD_MAX_TIME', 1800))),
         ],
 
         'label_merge' => [
             'connection' => env('QUEUE_LABEL_MERGE_CONNECTION', 'redis-long'),
             'queue' => env('QUEUE_NAME_LABEL_MERGE', 'label-merge'),
             'parallelism' => max(1, min(2, (int) env('QUEUE_LABEL_MERGE_PARALLELISM', 1))),
+            'max_jobs' => max(10, min(100, (int) env('QUEUE_LABEL_MERGE_MAX_JOBS', 25))),
+            'max_time' => max(600, min(3600, (int) env('QUEUE_LABEL_MERGE_MAX_TIME', 1800))),
         ],
 
         'label_prefetch' => [
