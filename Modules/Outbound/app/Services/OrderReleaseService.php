@@ -7,14 +7,12 @@ use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
 use Modules\Sales\Events\OrderNeedsBuyerConfirmation;
 use Modules\Sales\Models\SalesOrder;
-use Modules\Sales\Services\SalesInvoiceService;
 use Modules\Sales\Services\SalesOrderService as OrderService;
 
 class OrderReleaseService
 {
     public function __construct(
         protected OrderService $orderService,
-        protected SalesInvoiceService $invoiceService,
         protected PicklistInvoiceStockService $picklistInvoiceStockService,
     ) {}
 
@@ -153,13 +151,10 @@ class OrderReleaseService
         }
 
         $actorId = $picklist->picker_id ? (string) $picklist->picker_id : (auth()->id() ? (string) auth()->id() : 'system');
-        $invoice = $this->invoiceService->createFromOrder([
-            'order_id' => (string) $order->id,
-            'location_id' => (string) $order->location_id,
-            'created_by' => $actorId,
-        ]);
-
-        $this->picklistInvoiceStockService->post($picklist, $order, $invoice, $actorId);
+        // Invoice dibuat secara lazy saat dokumen invoice/PDF benar-benar diminta.
+        // Finish pick tetap memotong stok fisik, menggunakan nomor pesanan sebagai
+        // referensi ledger agar tidak bergantung pada record sales_invoices.
+        $this->picklistInvoiceStockService->post($picklist, $order, $actorId);
 
         return true;
     }

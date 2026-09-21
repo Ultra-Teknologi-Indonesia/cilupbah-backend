@@ -7,7 +7,6 @@ use Modules\Outbound\Exceptions\OutboundValidationException;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItemAllocation;
 use Modules\Sales\Exceptions\InsufficientStockException;
-use Modules\Sales\Models\SalesInvoice;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\StockService;
 
@@ -17,7 +16,7 @@ class PicklistInvoiceStockService
         protected StockService $stockService,
     ) {}
 
-    public function post(Picklist $picklist, SalesOrder $order, SalesInvoice $invoice, string $actor): void
+    public function post(Picklist $picklist, SalesOrder $order, string $actor): void
     {
         $allocations = $this->allocationsFor($picklist, $order);
 
@@ -64,8 +63,8 @@ class PicklistInvoiceStockService
                     (string) $picklist->location_id,
                     (string) $allocation->bin_id,
                     $qtyToPost,
-                    (string) $invoice->invoice_number,
-                    'INVOICE',
+                    (string) $order->salesorder_no,
+                    'ORDER_COMPLETE_OUT',
                     $actor ?: 'system',
                     $transactionDate,
                     $reference,

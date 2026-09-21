@@ -288,6 +288,118 @@ class EmptyStockGuardTest extends TestCase
         $this->assertSame(1, $response->json('data.moved'));
     }
 
+    public function test_customer_replace_updates_internal_item_and_reservation(): void
+    {
+        $orderId = $this->createOrder([$this->item($this->variant->id, 5)]);
+        $this->drainOnHand($this->variant->id);
+
+        $orderItem = SalesOrder::with('items')->findOrFail($orderId)->items->firstOrFail();
+
+        $response = $this->postJson("/api/v1/sales/orders/{$orderId}/customer-decision", [
+            'decision' => 'replace',
+            'note' => 'Buyer menyetujui penggantian SKU.',
+            'replacement_item_id' => $orderItem->id,
+            'replacement_sku' => $this->variant2->sku,
+        ]);
+
+        $response->assertOk();
+
+        $updatedItem = SalesOrder::with('items')->findOrFail($orderId)->items->firstOrFail();
+        $this->assertSame($this->variant2->id, $updatedItem->item_id);
+        $this->assertSame($this->variant2->sku, $updatedItem->sku);
+        $this->assertSame(0, $this->reservedFor($this->variant->id));
+        $this->assertSame(5, $this->reservedFor($this->variant2->id));
+        $salesOrderNo = SalesOrder::findOrFail($orderId)->salesorder_no;
+        $this->assertDatabaseHas('inventory_movements', [
+            'item_id' => $this->variant->id,
+            'transaction_number' => $salesOrderNo,
+            'source' => 'ORDER_RELEASE',
+            'qty' => -5,
+        ]);
+        $this->assertDatabaseHas('inventory_movements', [
+            'item_id' => $this->variant2->id,
+            'transaction_number' => $salesOrderNo,
+            'source' => 'ORDER_RESERVE',
+            'qty' => 5,
+        ]);
+        $this->assertSame('replace', SalesOrder::findOrFail($orderId)->customer_decision->value);
+    }
+
+    public function test_customer_replace_is_atomic_when_replacement_stock_is_insufficient(): void
+    {
+        $orderId = $this->createOrder([$this->item($this->variant->id, 5)]);
+        $this->drainOnHand($this->variant->id);
+        $this->drainOnHand($this->variant2->id);
+
+        $orderItem = SalesOrder::with('items')->findOrFail($orderId)->items->firstOrFail();
+
+        $this->postJson("/api/v1/sales/orders/{$orderId}/customer-decision", [
+            'decision' => 'replace',
+            'replacement_item_id' => $orderItem->id,
+            'replacement_sku' => $this->variant2->sku,
+        ])->assertStatus(422);
+
+        $updatedItem = SalesOrder::with('items')->findOrFail($orderId)->items->firstOrFail();
+        $this->assertSame($this->variant->id, $updatedItem->item_id);
+        $this->assertSame($this->variant->sku, $updatedItem->sku);
+        $this->assertSame(5, $this->reservedFor($this->variant->id));
+        $this->assertSame(0, $this->reservedFor($this->variant2->id));
+        $this->assertNull(SalesOrder::findOrFail($orderId)->customer_decision);
+    }
+
+    public function test_customer_replace_reconciles_bundle_component_reservations(): void
+    {
+        $oldBundleProduct = Product::create([
+            'category_id' => $this->product->category_id,
+            'name' => 'Bundle Lama',
+            'sku' => 'BUNDLE-OLD',
+            'is_active' => true,
+            'is_bundle' => true,
+        ]);
+        $oldBundleVariant = ProductVariant::create([
+            'product_id' => $oldBundleProduct->id,
+            'sku' => 'BUNDLE-OLD-1',
+            'sell_price' => 100000,
+            'is_active' => true,
+        ]);
+        $oldBundleProduct->bundleItems()->create([
+            'component_variant_id' => $this->variant->id,
+            'qty' => 2,
+        ]);
+
+        $newBundleProduct = Product::create([
+            'category_id' => $this->product->category_id,
+            'name' => 'Bundle Baru',
+            'sku' => 'BUNDLE-NEW',
+            'is_active' => true,
+            'is_bundle' => true,
+        ]);
+        $newBundleVariant = ProductVariant::create([
+            'product_id' => $newBundleProduct->id,
+            'sku' => 'BUNDLE-NEW-1',
+            'sell_price' => 100000,
+            'is_active' => true,
+        ]);
+        $newBundleProduct->bundleItems()->create([
+            'component_variant_id' => $this->variant2->id,
+            'qty' => 3,
+        ]);
+
+        $orderId = $this->createOrder([$this->item($oldBundleVariant->id, 2)]);
+        $this->drainOnHand($this->variant->id);
+        $orderItem = SalesOrder::with('items')->findOrFail($orderId)->items->firstOrFail();
+
+        $this->postJson("/api/v1/sales/orders/{$orderId}/customer-decision", [
+            'decision' => 'replace',
+            'replacement_item_id' => $orderItem->id,
+            'replacement_sku' => $newBundleVariant->sku,
+        ])->assertOk();
+
+        $this->assertSame(0, $this->reservedFor($this->variant->id));
+        $this->assertSame(6, $this->reservedFor($this->variant2->id));
+        $this->assertSame($newBundleVariant->id, SalesOrder::with('items')->findOrFail($orderId)->items->firstOrFail()->item_id);
+    }
+
     public function test_edit_blocked_for_healthy_reserved_order(): void
     {
         $orderId = $this->createOrder([$this->item($this->variant->id, 5)]);

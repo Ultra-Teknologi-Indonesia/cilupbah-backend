@@ -8,6 +8,7 @@ use App\Services\ChunkedPdfMerger;
 use App\Services\PdfRenderer;
 use Illuminate\Support\Facades\Log;
 use Modules\Sales\Repositories\SalesOrderRepository;
+use Modules\Sales\Services\SalesInvoiceService;
 use setasign\Fpdi\Fpdi;
 use setasign\Fpdi\PdfParser\StreamReader;
 use Throwable;
@@ -16,6 +17,7 @@ final class BulkInvoiceService
 {
     public function __construct(
         private readonly SalesOrderRepository $salesOrderRepository,
+        private readonly SalesInvoiceService $invoiceService,
         private readonly ChunkedPdfMerger $merger,
         private readonly PdfRenderer $pdfRenderer,
     ) {}
@@ -110,6 +112,14 @@ final class BulkInvoiceService
 
     private function renderOrder(object $order): string
     {
+        // Invoice dibuat saat PDF benar-benar diminta, bukan saat finish pick.
+        $invoice = $this->invoiceService->createFromOrder([
+            'order_id' => (string) $order->id,
+            'location_id' => (string) $order->location_id,
+            'created_by' => (string) (auth()->id() ?: 'system'),
+        ]);
+        $order->setRelation('invoices', collect([$invoice]));
+
         $order->shipping = (object) [
             'full_name' => $order->shipping_full_name,
             'phone' => $order->shipping_phone,

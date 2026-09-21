@@ -3871,7 +3871,10 @@ class SalesOrderService
         }
 
         $movements = InventoryMovement::query()
-            ->whereIn('transaction_number', $invoiceNumbers)
+            ->where(function ($query) use ($invoiceNumbers, $order): void {
+                $query->whereIn('transaction_number', $invoiceNumbers)
+                    ->orWhere('transaction_number', (string) $order->salesorder_no);
+            })
             ->whereIn('source', InventoryMovementSourceMap::INVOICE_SOURCES)
             ->where('qty', '<', 0)
             ->lockForUpdate()
@@ -4165,7 +4168,15 @@ class SalesOrderService
         }
 
         return DB::transaction(function () use ($orderId, $decision, $note, $replacementSku, $replacementItemId): SalesOrder {
-            $order = $this->findAccessibleOrderOrFail($orderId);
+            // Lock the order before replacing an item. This prevents two operators
+            // from reserving the same replacement stock concurrently.
+            $orderQuery = SalesOrder::with('items')->whereKey($orderId);
+            WarehouseAccess::apply($orderQuery, 'location_id');
+            $order = $orderQuery->lockForUpdate()->first();
+
+            if (! $order) {
+                abort(404, 'Pesanan tidak ditemukan.');
+            }
 
             if ($decision === 'replace') {
                 $this->replaceEmptyStockItemWithinTransaction(
