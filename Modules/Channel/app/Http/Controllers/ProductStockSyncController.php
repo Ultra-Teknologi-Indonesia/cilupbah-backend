@@ -90,7 +90,7 @@ class ProductStockSyncController extends Controller
 
         return $this->successResponse(
             $result,
-            "Sinkronisasi stok langsung diproses ({$result['queued']} listing).",
+            "Stok {$result['queued']} listing berhasil disinkronkan.",
             202,
         );
     }
