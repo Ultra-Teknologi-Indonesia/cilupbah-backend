@@ -10,12 +10,13 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\RateLimited;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\ChannelOrderRefreshService;
+use Modules\Channel\Support\ChannelOrderLock;
 use Modules\Channel\Support\ChannelOrderPullGuard;
 use Modules\Channel\Support\WebhookFailureHandler;
-use Modules\Channel\Support\WebhookRetryPolicy;
 
 final class RefreshChannelOrderJob implements ShouldBeUnique, ShouldQueue
 {
@@ -23,13 +24,16 @@ final class RefreshChannelOrderJob implements ShouldBeUnique, ShouldQueue
     use InteractsWithQueue;
     use Queueable;
     use SerializesModels;
-    use WebhookRetryPolicy;
 
-    public array $backoff = [15, 60, 300, 900];
+    public array $backoff = [2, 5, 15, 30, 60, 120];
 
     public int $timeout = 120;
 
-    public int $uniqueFor = 120;
+    public int $tries = 8;
+
+    public int $maxExceptions = 8;
+
+    public int $uniqueFor = 600;
 
     public function __construct(
         public readonly string $channel,
@@ -50,7 +54,15 @@ final class RefreshChannelOrderJob implements ShouldBeUnique, ShouldQueue
     {
         return [
             (new RateLimited('channel_api'))->releaseAfter(5),
+            (new WithoutOverlapping(ChannelOrderLock::forOrder($this->orderId)))
+                ->releaseAfter(2)
+                ->expireAfter(180),
         ];
+    }
+
+    public function retryUntil(): \DateTimeInterface
+    {
+        return now()->addHours(2);
     }
 
     public function handle(ChannelOrderRefreshService $orders): void
@@ -98,12 +110,6 @@ final class RefreshChannelOrderJob implements ShouldBeUnique, ShouldQueue
 
     private static function resolveQueueName(string $channel): string
     {
-        return match (strtolower($channel)) {
-            'shopee' => (string) config('queue.names.shopee_orders', 'shopee-orders'),
-            'tiktok' => (string) config('queue.names.tiktok_orders', 'tiktok-orders'),
-            'lazada' => (string) config('queue.names.lazada_orders', 'lazada-orders'),
-            'woocommerce' => (string) config('queue.names.webhook_downloads', 'webhook-downloads'),
-            default => (string) config('queue.names.channel_sync', 'channel-sync'),
-        };
+        return (string) config('queue.names.channel_order_refresh', 'channel-order-refresh');
     }
 }

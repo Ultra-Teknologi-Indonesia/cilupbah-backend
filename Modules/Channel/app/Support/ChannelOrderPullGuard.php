@@ -73,14 +73,19 @@ final class ChannelOrderPullGuard
                 return true;
             } catch (\Throwable $e) {
                 Cache::forget($key);
-                throw $e;
+
+                if (! ChannelErrorClassifier::isRetryable($channel, $e)) {
+                    throw $e;
+                }
+
+                return false;
             }
         });
 
         if (! $pulled) {
 
             RefreshChannelOrderJob::dispatch($channel, $shopId, $orderId, null, $webhookEventKey)
-                ->delay(now()->addSeconds($seconds));
+                ->delay(now()->addSeconds(2));
         }
 
         return $pulled;

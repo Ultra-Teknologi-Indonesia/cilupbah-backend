@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Jobs\ProcessLazadaFulfillmentJob;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Channel\Support\UploadErrorPresenter;
+use Modules\Channel\Support\ChannelQueue;
 use Modules\Sales\Services\SalesOrderDriverCallService;
 use Modules\Sales\Support\ChannelOrderSideEffectGuard;
 
@@ -25,7 +26,7 @@ class CallLazadaDriverJob implements ShouldQueue
 
     public function __construct(public readonly string $orderId)
     {
-        $this->onQueue(config('queue.names.channel_fulfillment'));
+        $this->onQueue(ChannelQueue::for('lazada', 'fulfillment'));
     }
 
     public function middleware(): array

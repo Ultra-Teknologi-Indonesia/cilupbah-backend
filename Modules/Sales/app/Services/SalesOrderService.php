@@ -470,8 +470,7 @@ class SalesOrderService
                 $this->respondToBuyerCancellationSynchronously($result, RespondBuyerCancellationJob::ACCEPT);
                 $this->scheduleBuyerCancellationRefresh($result);
             } else {
-                CancelChannelOrderJob::dispatch($result->id, $finalReason)
-                    ->onQueue(config('queue.names.channel_cancellation'));
+                CancelChannelOrderJob::dispatch($result->id, $finalReason);
             }
 
             $this->notifyOrderCancelled($result, $finalReason, $channel, $actorId);
@@ -509,8 +508,7 @@ class SalesOrderService
                 $this->respondToBuyerCancellationSynchronously($result, RespondBuyerCancellationJob::ACCEPT);
                 $this->scheduleBuyerCancellationRefresh($result);
             } else {
-                CancelChannelOrderJob::dispatch($result->id, $finalReason)
-                    ->onQueue(config('queue.names.channel_cancellation'));
+                CancelChannelOrderJob::dispatch($result->id, $finalReason);
             }
         }
 
@@ -781,8 +779,7 @@ class SalesOrderService
             'cancel_reason' => $reason,
         ])->save();
 
-        CancelChannelOrderJob::dispatch($order->id, $reason)
-            ->onQueue(config('queue.names.channel_cancellation'));
+        CancelChannelOrderJob::dispatch($order->id, $reason);
 
         return $order->fresh();
     }
@@ -1204,9 +1201,7 @@ class SalesOrderService
                     : true;
 
                 if ($isStale) {
-                    PrepareShopeeShippingLabelJob::dispatch($order->id)
-                        ->onConnection(config('queue.routing.labels.connection', 'redis-long'))
-                        ->onQueue(config('queue.routing.labels.queue', 'labels'));
+                    PrepareShopeeShippingLabelJob::dispatch($order->id);
                     throw new ShippingLabelPreparingException(
                         'Label belum siap. Kemungkinan status pesanan di Shopee belum siap dikirim (RETRY_SHIP) — cek Seller Center. Sistem mencoba ulang, tunggu 1-2 menit.'
                     );
@@ -1218,9 +1213,7 @@ class SalesOrderService
             }
 
             if ($order->shipping_label_status === 'failed') {
-                PrepareShopeeShippingLabelJob::dispatch($order->id)
-                    ->onConnection(config('queue.routing.labels.connection', 'redis-long'))
-                    ->onQueue(config('queue.routing.labels.queue', 'labels'));
+                PrepareShopeeShippingLabelJob::dispatch($order->id);
 
                 throw new ShippingLabelPreparingException(
                     'Label sebelumnya gagal. Sedang dicoba ulang, tunggu 1-2 menit.'
@@ -1365,9 +1358,7 @@ class SalesOrderService
                 ];
             }
 
-            PrepareLazadaShippingLabelJob::dispatch($order->id)
-                ->onConnection(config('queue.routing.labels.connection', 'redis-long'))
-                ->onQueue(config('queue.routing.labels.queue', 'labels'));
+            PrepareLazadaShippingLabelJob::dispatch($order->id);
 
             throw new ShippingLabelPreparingException(
                 'Label Lazada belum siap (pesanan mungkin belum di-RTS). Sistem menyiapkan, tunggu 1-2 menit.'
@@ -1642,8 +1633,6 @@ class SalesOrderService
             ? PrepareLazadaShippingLabelJob::dispatch($order->id)
             : PrepareShopeeShippingLabelJob::dispatch($order->id);
 
-        $job->onConnection(config('queue.routing.labels.connection', 'redis-long'));
-        $job->onQueue(config('queue.routing.labels.queue', 'labels'));
     }
 
     private function markShopeeShippingLabelFailure(
@@ -3051,8 +3040,7 @@ class SalesOrderService
                     'buyer_cancel_sync_error' => null,
                 ])->saveQuietly();
 
-                AutoAcceptCancelRequestJob::dispatch($order->id)
-                    ->onQueue(config('queue.names.channel_cancellation'));
+                AutoAcceptCancelRequestJob::dispatch($order->id);
             }
 
             if ($finalStatus === 'cancelled'
@@ -4168,8 +4156,7 @@ class SalesOrderService
         }
 
         return DB::transaction(function () use ($orderId, $decision, $note, $replacementSku, $replacementItemId): SalesOrder {
-            // Lock the order before replacing an item. This prevents two operators
-            // from reserving the same replacement stock concurrently.
+
             $orderQuery = SalesOrder::with('items')->whereKey($orderId);
             WarehouseAccess::apply($orderQuery, 'location_id');
             $order = $orderQuery->lockForUpdate()->first();

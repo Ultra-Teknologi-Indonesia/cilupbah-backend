@@ -16,7 +16,7 @@ class DispatchChannelStockOutbox extends Command
     {
         $rawLimit = (string) $this->option('limit');
         if ($rawLimit === '') {
-            $rawLimit = (string) config('channel.stock_sync_dispatch_claim_limit', 20);
+            $rawLimit = (string) config('channel.stock_sync_dispatch_claim_limit', 50);
         }
 
         if (! ctype_digit($rawLimit) || (int) $rawLimit < 1) {

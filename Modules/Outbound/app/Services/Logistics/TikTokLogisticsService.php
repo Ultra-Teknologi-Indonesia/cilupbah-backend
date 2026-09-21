@@ -75,6 +75,7 @@ class TikTokLogisticsService extends AbstractLogisticsService
                 false,
                 false,
                 true,
+                'tiktok',
             )->afterCommit();
 
             return [

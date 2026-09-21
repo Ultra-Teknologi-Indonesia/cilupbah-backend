@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Exceptions\ChannelLabelUnsupportedException;
 use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
+use Modules\Channel\Support\ChannelQueue;
 use Modules\Sales\Jobs\Concerns\UsesShippingLabelPreparationLock;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\BulkShippingLabelService;
@@ -41,7 +42,7 @@ class PrepareLazadaShippingLabelJob implements ShouldBeUnique, ShouldQueue
             : config('queue.routing.labels.connection', 'redis-long'));
         $this->onQueue($prefetch
             ? config('shipping-label-prefetch.queue', 'label-prefetch')
-            : config('queue.routing.labels.queue', 'labels'));
+            : ChannelQueue::for('lazada', 'label_download'));
     }
 
     public function uniqueId(): string

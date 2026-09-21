@@ -5,18 +5,23 @@ namespace Modules\Channel\Services;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Channel\Jobs\DispatchChannelStockOutboxJob;
 use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Channel\Models\ChannelStockSyncOutbox;
 use Modules\Product\Models\ProductChannelMapping;
 
 class ChannelStockSyncOutboxService
 {
-    public function request(ProductChannelMapping $mapping, string $action, string $queueTier = 'critical'): ChannelStockSyncOutbox
-    {
+    public function request(
+        ProductChannelMapping $mapping,
+        string $action,
+        string $queueTier = 'critical',
+        bool $resetAttempts = false,
+    ): ChannelStockSyncOutbox {
         [$syncStock, $syncPrice] = $this->axesFor($action);
         $now = now();
 
-        return DB::transaction(function () use ($mapping, $syncStock, $syncPrice, $queueTier, $now): ChannelStockSyncOutbox {
+        $outbox = DB::transaction(function () use ($mapping, $syncStock, $syncPrice, $queueTier, $resetAttempts, $now): ChannelStockSyncOutbox {
             $outbox = ChannelStockSyncOutbox::query()
                 ->where('product_channel_mapping_id', $mapping->id)
                 ->lockForUpdate()
@@ -45,6 +50,13 @@ class ChannelStockSyncOutboxService
                 'updated_at' => $now,
             ];
 
+            if ($resetAttempts && $outbox->status !== ChannelStockSyncOutbox::STATUS_DISPATCHING) {
+                $changes += [
+                    'attempt_count' => 0,
+                    'completed_at' => null,
+                ];
+            }
+
             if ($outbox->status !== ChannelStockSyncOutbox::STATUS_DISPATCHING) {
                 $changes += [
                     'status' => ChannelStockSyncOutbox::STATUS_PENDING,
@@ -57,6 +69,23 @@ class ChannelStockSyncOutboxService
 
             return $outbox->fresh();
         });
+
+        $this->wakeDispatcher();
+
+        return $outbox;
+    }
+
+    public function wakeDispatcher(): void
+    {
+        try {
+            DispatchChannelStockOutboxJob::dispatch()->afterCommit();
+        } catch (\Throwable $exception) {
+
+            Log::warning('Dispatcher outbox stok gagal dijadwalkan.', [
+                'exception' => $exception::class,
+                'error' => $exception->getMessage(),
+            ]);
+        }
     }
 
     public function requestByMappingId(string $mappingId, string $action, string $queueTier = 'critical'): ?ChannelStockSyncOutbox
@@ -68,7 +97,7 @@ class ChannelStockSyncOutboxService
 
     public function dispatchDue(?int $limit = null): array
     {
-        $limit = max(1, $limit ?? (int) config('channel.stock_sync_dispatch_claim_limit', 20));
+        $limit = max(1, $limit ?? (int) config('channel.stock_sync_dispatch_claim_limit', 50));
         $now = now();
         $reaped = $this->reapExpiredLeases($now);
         $revived = $this->reviveStrandedPendingDeliveries($now);
@@ -241,6 +270,8 @@ class ChannelStockSyncOutboxService
                 'last_error' => null,
             ]);
         });
+
+        $this->wakeDispatcher();
     }
 
     public function defer(string $outboxId, int $version, string $reason, int $delaySeconds): void
@@ -277,6 +308,10 @@ class ChannelStockSyncOutboxService
                 'last_error' => $reason,
             ]);
         });
+
+        if ($delaySeconds <= 30) {
+            $this->wakeDispatcher();
+        }
     }
 
     public function fail(string $outboxId, int $version, string $reason): void
@@ -301,6 +336,8 @@ class ChannelStockSyncOutboxService
                 'last_error' => $reason,
             ]);
         });
+
+        $this->wakeDispatcher();
     }
 
     public function skip(string $outboxId, int $version, string $reason): void
@@ -325,6 +362,8 @@ class ChannelStockSyncOutboxService
                 'last_error' => $reason,
             ]);
         });
+
+        $this->wakeDispatcher();
     }
 
     public function retryDelaySeconds(int $attemptCount): int

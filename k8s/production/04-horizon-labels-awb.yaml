@@ -42,10 +42,10 @@ spec:
               value: "2160"
           resources:
             requests:
-              memory: "512Mi"
+              memory: "1Gi"
               cpu: "100m"
             limits:
-              memory: "1024Mi"
+              memory: "2Gi"
               cpu: "1000m"
           livenessProbe:
             exec:

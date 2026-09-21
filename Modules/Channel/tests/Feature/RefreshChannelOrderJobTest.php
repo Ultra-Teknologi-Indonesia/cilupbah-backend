@@ -44,9 +44,9 @@ final class RefreshChannelOrderJobTest extends TestCase
         $job->handle($orders);
 
         self::assertSame('shopee:SHOP-1:ORDER-1', $job->uniqueId());
-        self::assertSame(config('queue.names.shopee_orders'), $job->queue);
-        self::assertSame(0, $job->tries);
-        self::assertCount(1, $job->middleware());
+        self::assertSame(config('queue.names.channel_order_refresh'), $job->queue);
+        self::assertSame(8, $job->tries);
+        self::assertCount(2, $job->middleware());
     }
 
     public function test_permanent_refresh_failure_marks_the_original_webhook_failed(): void
@@ -83,6 +83,6 @@ final class RefreshChannelOrderJobTest extends TestCase
         $job = new RefreshChannelOrderJob('shopee', 'SHOP-1', 'ORDER-1', 'shopee-tracking');
 
         self::assertSame('shopee-tracking', $job->queue);
-        self::assertGreaterThanOrEqual(now()->addHours(23)->getTimestamp(), $job->retryUntil()->getTimestamp());
+        self::assertGreaterThanOrEqual(now()->addHours(1)->getTimestamp(), $job->retryUntil()->getTimestamp());
     }
 }

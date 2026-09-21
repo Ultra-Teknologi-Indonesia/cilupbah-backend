@@ -119,10 +119,16 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::prefix('inventory/sync-settings')->group(function () {
         Route::middleware('role_or_permission:owner|view-pengaturan-persediaan')->group(function () {
             Route::get('/', [InventorySyncSettingController::class, 'index'])->name('inventory.syncSettings.index');
+            Route::get('{mapping}/history', [InventorySyncSettingController::class, 'history'])
+                ->whereUuid('mapping')
+                ->name('inventory.syncSettings.history');
         });
         Route::middleware('role_or_permission:owner|edit-pengaturan-persediaan')->group(function () {
             Route::patch('/', [InventorySyncSettingController::class, 'update'])->name('inventory.syncSettings.update');
             Route::post('bulk', [InventorySyncSettingController::class, 'bulkUpdate'])->name('inventory.syncSettings.bulk');
+            Route::post('retry', [InventorySyncSettingController::class, 'retry'])
+                ->middleware('throttle:30,1')
+                ->name('inventory.syncSettings.retry');
         });
     });
 

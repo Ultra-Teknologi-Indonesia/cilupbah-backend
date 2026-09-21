@@ -6,18 +6,28 @@ use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\DB;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Models\ChannelStockSyncOutbox;
+use Modules\Channel\Support\UploadErrorPresenter;
 
 class ProductChannelMapping extends Model
 {
     use HasUuid7;
 
-    public const STATUS_PENDING = 'pending';        
-    public const STATUS_SYNCING = 'syncing';        
-    public const STATUS_IN_REVIEW = 'in_review';    
-    public const STATUS_SYNCED = 'synced';          
-    public const STATUS_REJECTED = 'rejected';      
-    public const STATUS_FAILED = 'failed';          
+    public const STATUS_PENDING = 'pending';
+
+    public const STATUS_SYNCING = 'syncing';
+
+    public const STATUS_IN_REVIEW = 'in_review';
+
+    public const STATUS_SYNCED = 'synced';
+
+    public const STATUS_REJECTED = 'rejected';
+
+    public const STATUS_FAILED = 'failed';
+
     public const STATUS_DEACTIVATED = 'deactivated';
 
     protected $fillable = [
@@ -51,6 +61,11 @@ class ProductChannelMapping extends Model
     public function variantMappings(): HasMany
     {
         return $this->hasMany(ProductVariantChannelMapping::class);
+    }
+
+    public function stockSyncOutbox(): HasOne
+    {
+        return $this->hasOne(ChannelStockSyncOutbox::class, 'product_channel_mapping_id');
     }
 
     public function scopeSynced($query)
@@ -115,12 +130,12 @@ class ProductChannelMapping extends Model
             return $message;
         }
 
-        $channelCode = (string) (\Illuminate\Support\Facades\DB::table('channel_shops')
+        $channelCode = (string) (DB::table('channel_shops')
             ->join('channels', 'channels.id', '=', 'channel_shops.channel_id')
             ->where('channel_shops.id', $this->channel_shop_id)
             ->value('channels.code') ?? '');
 
-        return \Modules\Channel\Support\UploadErrorPresenter::fromMessage($channelCode, $message)['reason'];
+        return UploadErrorPresenter::fromMessage($channelCode, $message)['reason'];
     }
 
     public function markInReview(?string $externalProductId = null): void

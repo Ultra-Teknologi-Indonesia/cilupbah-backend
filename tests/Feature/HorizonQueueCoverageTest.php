@@ -113,8 +113,9 @@ class HorizonQueueCoverageTest extends TestCase
             'supervisor-channel-sync' => [4, 4],
             'supervisor-channel-stock-critical' => [1, 1],
             'supervisor-channel-stock-normal' => [1, 1],
+            'supervisor-channel-stock-outbox' => [1, 1],
+            'supervisor-channel-order-refresh' => [1, 1],
             'supervisor-product-validation' => [1, 1],
-            'supervisor-channel-operations' => [1, 1],
             'supervisor-stock-default' => [1, 1],
             'supervisor-tiktok-packages' => [1, 2],
             'supervisor-tiktok-webhooks-background' => [1, 1],
@@ -171,6 +172,7 @@ class HorizonQueueCoverageTest extends TestCase
     public function test_channel_orders_and_operational_webhooks_are_isolated_from_background_work(): void
     {
         $expectedQueues = [
+            'supervisor-channel-order-refresh' => [config('queue.names.channel_order_refresh', 'channel-order-refresh')],
             'supervisor-shopee-orders' => [config('queue.names.shopee_orders', 'shopee-orders')],
             'supervisor-tiktok-orders' => [config('queue.names.tiktok_orders', 'tiktok-orders')],
             'supervisor-lazada-orders' => [config('queue.names.lazada_orders', 'lazada-orders')],
@@ -223,20 +225,30 @@ class HorizonQueueCoverageTest extends TestCase
             );
             $withMasterMegabytes = $workerMegabytes + (int) config('horizon.memory_limit');
 
+            $ceiling = in_array($profile, ['critical', 'background', 'labels-pdf'], true)
+                ? 6144
+                : 2048;
+
             $this->assertLessThanOrEqual(
-                5120,
+                $ceiling,
                 $withMasterMegabytes,
-                "Profil Horizon {$profile} melewati ceiling 5GiB worker+master."
+                "Profil Horizon {$profile} melewati ceiling resource pod yang ditentukan."
             );
         }
 
-        $critical = config('horizon.profiles.critical', []);
-        $background = config('horizon.profiles.background', []);
-        $labels = config('horizon.profiles.labels', []);
-        $this->assertSame([], array_intersect($critical, $background));
-        $this->assertSame([], array_intersect($labels, array_merge($critical, $background)));
+        $profiles = config('horizon.profiles', []);
+        $profileNames = array_keys($profiles);
+        foreach ($profileNames as $index => $profile) {
+            foreach (array_slice($profileNames, $index + 1) as $otherProfile) {
+                $this->assertSame(
+                    [],
+                    array_intersect($profiles[$profile], $profiles[$otherProfile]),
+                    "Supervisor {$profile} overlap dengan {$otherProfile}.",
+                );
+            }
+        }
         $expectedSupervisors = array_values(array_unique(array_keys($allSupervisors)));
-        $profileSupervisors = array_values(array_unique(array_merge($critical, $background, $labels)));
+        $profileSupervisors = array_values(array_unique(array_merge(...array_values($profiles))));
         sort($expectedSupervisors);
         sort($profileSupervisors);
         $this->assertSame(
@@ -271,10 +283,12 @@ class HorizonQueueCoverageTest extends TestCase
 
         $expected = $this->servedQueues();
 
+        $profileQueues = [];
+        foreach ($queuesByProfile as $queues) {
+            $profileQueues = array_merge($profileQueues, $queues);
+        }
         $profileQueues = array_values(array_unique(array_merge(
-            $criticalQueues,
-            $backgroundQueues,
-            $queuesByProfile['labels'] ?? [],
+            $profileQueues,
             (array) config('queue.dedicated_queues', []),
         )));
         sort($expected);
