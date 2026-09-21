@@ -215,7 +215,12 @@ class OutboundFulfillmentRepository
                 AllowedFilter::callback('shipping_provider', function ($query, $value) {
                     $values = FilterValues::list($value);
                     if (! empty($values)) {
-                        $query->whereIn('shipping_provider', $values);
+                        $query->where(function ($q) use ($values) {
+                            foreach ($values as $name) {
+                                $q->orWhere('shipping_provider', $name)
+                                  ->orWhere('shipping_provider', 'LIKE', '%'.$name.'%');
+                            }
+                        });
                     }
                 }),
                 AllowedFilter::exact('channel_shop_id'),

@@ -470,12 +470,19 @@ class OutboundFulfillmentService
     {
         $query = $this->stageQuery($stage);
 
-        return $query->reorder()
+        $raw = $query->reorder()
             ->whereNotNull('shipping_provider')
             ->where('shipping_provider', '<>', '')
             ->distinct()
             ->orderBy('shipping_provider')
-            ->pluck('shipping_provider')
+            ->pluck('shipping_provider');
+
+        return $raw
+            ->map(fn (string $name) => \Modules\Outbound\Support\CourierNameNormalizer::clean($name))
+            ->filter(fn (string $name) => $name !== '')
+            ->unique()
+            ->sort()
+            ->values()
             ->all();
     }
 
