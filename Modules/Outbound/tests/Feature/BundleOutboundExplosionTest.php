@@ -121,6 +121,26 @@ class BundleOutboundExplosionTest extends TestCase
         $this->assertNull($items->firstWhere('item_id', $bundleVar->id));
     }
 
+    public function test_picklist_with_picker_records_order_history_with_uuid(): void
+    {
+        $single = $this->variant('SINGLE-PICKER-HISTORY');
+        $order = $this->makeOrder($single, 1, 'reserved');
+
+        app(PicklistService::class)->create([
+            'order_ids' => [$order->id],
+            'location_id' => $this->locationId,
+            'picker_id' => $this->actorId,
+            'created_by' => $this->actorId,
+        ]);
+
+        $history = DB::table('sales_order_status_histories')
+            ->where('salesorder_id', $order->id)
+            ->first();
+
+        $this->assertNotNull($history);
+        $this->assertNotEmpty($history->id);
+    }
+
     public function test_packlist_explodes_bundle_into_component_lines(): void
     {
         [$a, $b, $bundleVar] = $this->makeBundle();

@@ -387,6 +387,7 @@ class PicklistService
 
         foreach ($orderIds as $orderId) {
             $histories[] = [
+                'id'            => Uuid::uuid7()->toString(),
                 'salesorder_id' => $orderId,
                 'entity_type'   => $entityType->value,
                 'action_id'     => $action->code(),
