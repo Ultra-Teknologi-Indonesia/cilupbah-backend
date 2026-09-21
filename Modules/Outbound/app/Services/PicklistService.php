@@ -28,6 +28,9 @@ use Modules\Outbound\Models\PicklistItemAllocation;
 use Modules\Outbound\Repositories\PicklistRepository;
 use Modules\Product\Repositories\ProductRepository;
 use Modules\Sales\Models\SalesOrder as Order;
+use Modules\Sales\Models\SalesOrderStatusHistory;
+use Modules\Sales\Enums\OrderActivityAction;
+use Modules\Sales\Enums\OrderActivityEntity;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 use Ramsey\Uuid\Uuid;
@@ -321,6 +324,8 @@ class PicklistService
                     $data['created_by'],
                     ['picklist_id' => $picklist->id],
                 );
+
+                $this->logPickerAssignment($picklist, $data['created_by']);
             }
 
             return $picklist;
@@ -354,7 +359,50 @@ class PicklistService
             ['picklist_id' => $id],
         );
 
+        $this->logPickerAssignment($picklist, $assignedBy);
+
         return $picklist;
+    }
+
+    protected function logPickerAssignment(Picklist $picklist, string $assignedBy): void
+    {
+        $orderIds = PicklistItem::where('picklist_id', $picklist->id)->pluck('order_id')->unique();
+        if ($orderIds->isEmpty()) {
+            return;
+        }
+
+        $assigner = null;
+        if (\Ramsey\Uuid\Uuid::isValid($assignedBy)) {
+            $assigner = User::find($assignedBy);
+        }
+
+        $email = $assigner?->email ?? 'system';
+        $name = $assigner?->name;
+
+        $histories = [];
+        $now = now();
+
+        $action = OrderActivityAction::PROCESS;
+        $entityType = OrderActivityEntity::ORDER;
+
+        foreach ($orderIds as $orderId) {
+            $histories[] = [
+                'salesorder_id' => $orderId,
+                'entity_type'   => $entityType->value,
+                'action_id'     => $action->code(),
+                'action'        => $action->value,
+                'actor_email'   => $email,
+                'actor_id'      => $assignedBy,
+                'actor_name'    => $name,
+                'metadata'      => json_encode([
+                    'entity_no' => $picklist->picklist_no,
+                    'note'      => 'Tugas picking diberikan kepada tim picking.'
+                ]),
+                'created_at'    => $now,
+            ];
+        }
+
+        SalesOrderStatusHistory::insert($histories);
     }
 
     public function start(string $id): Picklist

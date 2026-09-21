@@ -3702,6 +3702,19 @@ class SalesOrderService
         return $this->releaseStockForStatus($order, $previousStatus);
     }
 
+    public function restoreCancelledPackedOrderStock(SalesOrder $order): bool
+    {
+        if ($order->status !== 'cancelled') {
+            throw new \InvalidArgumentException(
+                'Stok hanya dapat dipulihkan untuk order berstatus cancelled.',
+            );
+        }
+
+        $order->loadMissing('items');
+
+        return $this->releaseStockForStatus($order, 'packed');
+    }
+
     public function promoteFromShadow(SalesOrder $order): bool
     {
         if (! $order->is_shadow || ! self::isPromotableFromShadow($order)) {

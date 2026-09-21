@@ -9,11 +9,14 @@ use Illuminate\Support\Str;
 use Modules\Inbound\Models\Inbound;
 use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Support\StockSummary;
+use Modules\Outbound\Models\Packlist;
+use Modules\Outbound\Services\PreManifestCancelService;
 use Modules\Sales\Exceptions\InvalidReturnStateException;
 use Modules\Sales\Jobs\SyncStockJob;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderService;
 use Modules\Sales\Services\SalesReturnService;
+use Modules\Sales\Services\StockService;
 use Modules\Warehouse\Models\Location;
 use Tests\TestCase;
 
@@ -412,7 +415,7 @@ class ChannelStockReconcileTest extends TestCase
             ->sole();
         $orderItem = $order->items->firstOrFail();
 
-        app(\Modules\Sales\Services\StockService::class)->consumeFromBin(
+        app(StockService::class)->consumeFromBin(
             'SKU-RECON',
             $this->variantId,
             $this->locationId,
@@ -467,6 +470,101 @@ class ChannelStockReconcileTest extends TestCase
         $reversalCount = $this->movements('ORDER_COMPLETE_REVERSAL');
         $this->service->upsertFromChannel($this->orderData($orderNo, 'CANCELLED'));
         $this->assertSame($reversalCount, $this->movements('ORDER_COMPLETE_REVERSAL'));
+    }
+
+    public function test_pre_manifest_dismiss_reconciles_missed_physical_restore_idempotently(): void
+    {
+        $orderNo = 'LZ-RC-PRE-MANIFEST-REPAIR';
+
+        $this->service->upsertFromChannel($this->orderData($orderNo, 'AWAITING_SHIPMENT'));
+
+        $order = SalesOrder::query()
+            ->where('salesorder_no', $orderNo)
+            ->with('items')
+            ->sole();
+        $invoiceNumber = 'INV-RECON-PRE-MANIFEST-1';
+        $packlistId = Str::uuid()->toString();
+
+        DB::table('packlists')->insert([
+            'id' => $packlistId,
+            'packlist_no' => 'PACK-RECON-PRE-MANIFEST-1',
+            'location_id' => $this->locationId,
+            'order_id' => $order->id,
+            'status' => Packlist::STATUS_COMPLETED,
+            'started_at' => now()->subMinute(),
+            'completed_at' => now(),
+            'package_count' => 1,
+            'created_by' => 'system',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('sales_invoices')->insert([
+            'id' => Str::uuid()->toString(),
+            'invoice_number' => $invoiceNumber,
+            'order_id' => $order->id,
+            'customer_name' => 'Buyer Reconcile',
+            'location_id' => $this->locationId,
+            'status' => 'OPEN',
+            'invoice_date' => now()->toDateString(),
+            'due_date' => now()->addDays(30)->toDateString(),
+            'total_amount' => 10000,
+            'paid_amount' => 0,
+            'created_by' => 'system',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('inventories')
+            ->where('item_id', $this->variantId)
+            ->where('location_id', $this->locationId)
+            ->where('bin_id', $this->binId)
+            ->update([
+                'on_hand' => 9,
+                'available' => 9,
+                'updated_at' => now(),
+            ]);
+
+        $invoiceMovement = InventoryMovement::create([
+            'item_id' => $this->variantId,
+            'location_id' => $this->locationId,
+            'bin_id' => $this->binId,
+            'transaction_number' => $invoiceNumber,
+            'reference_number' => $order->channel_order_no,
+            'source' => 'INVOICE',
+            'qty' => -1,
+            'balance' => 9,
+            'transaction_date' => now(),
+            'created_by' => 'system',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('sales_orders')->where('id', $order->id)->update([
+            'status' => 'cancelled',
+            'is_canceled' => true,
+            'handed_to_warehouse_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $preManifest = app(PreManifestCancelService::class);
+        $preManifest->dismiss($order->id, 'system:test');
+
+        $this->assertSame(10, $this->inventory()->on_hand);
+        $this->assertSame(0, $this->inventory()->on_order);
+        $this->assertDatabaseHas('inventory_movements', [
+            'source' => 'ORDER_RESTORE_CANCEL',
+            'reference_number' => (string) $invoiceMovement->id,
+            'transaction_number' => $orderNo.'-CANCEL-'.$invoiceMovement->id,
+            'qty' => 1,
+            'bin_id' => $this->binId,
+        ]);
+
+        $restoreCount = $this->movements('ORDER_RESTORE_CANCEL');
+        $preManifest->dismiss($order->id, 'system:retry');
+
+        $this->assertSame(10, $this->inventory()->on_hand);
+        $this->assertSame($restoreCount, $this->movements('ORDER_RESTORE_CANCEL'));
     }
 
     public function test_channel_cancellation_after_shipped_is_returned_without_restoring_physical_stock(): void

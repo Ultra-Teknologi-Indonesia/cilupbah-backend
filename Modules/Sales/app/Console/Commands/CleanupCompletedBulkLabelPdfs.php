@@ -24,7 +24,6 @@ class CleanupCompletedBulkLabelPdfs extends Command
             SalesOrderStatus::RETURNED->value,
         ];
 
-        // Process items in chunks to avoid memory issues
         $count = 0;
 
         BulkShippingLabelItem::query()

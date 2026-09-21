@@ -514,14 +514,6 @@ class SalesOrder extends Model implements HasMedia
             ->where('picklists.status', Picklist::STATUS_COMPLETED);
     }
 
-    /**
-     * The latest active picklist item used by the fulfillment board.
-     *
-     * UUID primary keys cannot be aggregated with PostgreSQL MAX/MIN, so the
-     * latest row is expressed as a correlated anti-join instead of
-     * latestOfMany(). This also keeps search aligned with the picklist shown
-     * in the fulfillment board and excludes old picklist history.
-     */
     public function currentPicklistItems(): HasMany
     {
         return $this->hasMany(PicklistItem::class, 'order_id')

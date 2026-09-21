@@ -929,7 +929,13 @@ class BulkShippingLabelService
 
                     continue;
                 }
-                $result = $this->salesOrderService->getShippingLabel($order, $options);
+                try {
+                    $result = $this->salesOrderService->getShippingLabel($order, $options);
+                } catch (ShippingLabelPreparingException $e) {
+                    app(ShippingLabelPreparationDispatcher::class)->dispatch($order);
+                    $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE]);
+                    continue;
+                }
 
                 $url = $result['url'] ?? ($result['doc_url'] ?? null);
                 if (! empty($url) && is_string($url)) {
@@ -1084,7 +1090,13 @@ class BulkShippingLabelService
 
     private function processTikTok(BulkShippingLabelItem $item, SalesOrder $order, array $options): void
     {
-        $result = $this->salesOrderService->getShippingLabel($order, $options);
+        try {
+            $result = $this->salesOrderService->getShippingLabel($order, $options);
+        } catch (ShippingLabelPreparingException $e) {
+            app(ShippingLabelPreparationDispatcher::class)->dispatch($order);
+            $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE]);
+            return;
+        }
 
         $bytes = $this->resolveLabelBytes($result);
         if ($bytes !== null) {

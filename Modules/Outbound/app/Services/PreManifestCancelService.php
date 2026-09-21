@@ -44,6 +44,8 @@ class PreManifestCancelService
                 throw new \Exception('Order bukan cancel setelah selesai packing sebelum manifest.');
             }
 
+            $this->orderService->restoreCancelledPackedOrderStock($order);
+
             if (empty($order->cancel_dismissed_at)) {
                 $order->cancel_dismissed_at = now();
                 $order->cancel_dismissed_by = $actorId;

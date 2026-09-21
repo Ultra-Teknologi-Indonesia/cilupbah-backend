@@ -15,8 +15,7 @@ return [
     'awb_request_dedupe_seconds' => (int) env('LABEL_AWB_REQUEST_DEDUPE_SECONDS', 300),
 
     'finalize_lock_seconds' => max(120, (int) env('LABEL_FINALIZE_LOCK_SECONDS', 900)),
-    // Finalisasi dijadwalkan langsung setelah semua item terminal.
-    // Nilai positif tetap dapat dipakai sebagai safety override saat rollout.
+
     'finalize_retry_delay_seconds' => max(0, (int) env('LABEL_FINALIZE_RETRY_DELAY_SECONDS', 0)),
     'awb_verification_delay_seconds' => max(15, (int) env('LABEL_AWB_VERIFICATION_DELAY_SECONDS', 60)),
 
