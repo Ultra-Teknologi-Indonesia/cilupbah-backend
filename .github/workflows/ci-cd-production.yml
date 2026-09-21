@@ -11,7 +11,11 @@ on:
         description: "Biarkan 'latest' = deploy versi terbaru otomatis. Isi vX.Y.Z (mis. v1.0.110) untuk rollback."
         required: true
         default: latest
-        type: string
+      type: string
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
 
 jobs:
   # ─────────────────────────────────────────────
@@ -83,7 +87,7 @@ jobs:
           username: ${{ secrets.PROD_DEPLOY_USER }}
           key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
           source: "k8s/production/*"
-          target: "/tmp/cilupbah-k8s"
+          target: "/tmp/cilupbah-k8s-${{ github.run_id }}-${{ github.run_attempt }}"
 
       - name: Deploy via SSH ke server production
         uses: appleboy/ssh-action@v1.0.0
@@ -101,14 +105,21 @@ jobs:
 
             echo "Deploying $IMAGE ke production..."
             NAMESPACE="cilupbah"
-            K8S_DIR="/tmp/cilupbah-k8s/k8s/production"
+            DEPLOY_ROOT="/tmp/cilupbah-k8s-${{ github.run_id }}-${{ github.run_attempt }}"
+            K8S_DIR="$DEPLOY_ROOT/k8s/production"
 
             cleanup() {
-              rm -rf "$K8S_DIR"
+              rm -rf "$DEPLOY_ROOT"
             }
             trap cleanup EXIT
 
             echo "==> Mengupdate image tag di file YAML temporary..."
+            if [ ! -f "$K8S_DIR/03-horizon-critical.yaml" ]; then
+              echo "Manifest critical tidak ditemukan: $K8S_DIR/03-horizon-critical.yaml"
+              echo "Isi direktori yang diterima dari SCP:"
+              find "$DEPLOY_ROOT" -maxdepth 4 -type f -print 2>/dev/null || true
+              exit 1
+            fi
             sed -i "s|image: ghcr.io/ultra-teknologi-indonesia/cilupbah:.*|image: $IMAGE|g" "$K8S_DIR"/*.yaml
 
             # Hapus bentuk scheduler lama apa pun sebelum menerapkan manifest

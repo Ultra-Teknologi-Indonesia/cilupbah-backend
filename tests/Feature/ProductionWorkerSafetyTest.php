@@ -79,6 +79,18 @@ class ProductionWorkerSafetyTest extends TestCase
         $this->assertStringContainsString('mengumpulkan diagnostik', $workflow);
     }
 
+    public function test_production_deploy_uses_isolated_manifest_directory_and_serializes_runs(): void
+    {
+        $workflow = file_get_contents(base_path('.github/workflows/ci-cd-production.yml'));
+
+        $this->assertIsString($workflow);
+        $this->assertStringContainsString('group: production-deploy', $workflow);
+        $this->assertStringContainsString('cancel-in-progress: false', $workflow);
+        $this->assertStringContainsString('/tmp/cilupbah-k8s-${{ github.run_id }}-${{ github.run_attempt }}', $workflow);
+        $this->assertStringContainsString('Manifest critical tidak ditemukan', $workflow);
+        $this->assertStringNotContainsString('target: "/tmp/cilupbah-k8s"', $workflow);
+    }
+
     public function test_shared_label_spool_init_is_constant_time(): void
     {
         foreach (['02-app.yaml', '04-horizon-labels.yaml'] as $manifest) {
