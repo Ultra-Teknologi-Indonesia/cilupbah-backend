@@ -514,6 +514,50 @@ class SalesOrder extends Model implements HasMedia
             ->where('picklists.status', Picklist::STATUS_COMPLETED);
     }
 
+    /**
+     * The latest active picklist item used by the fulfillment board.
+     *
+     * UUID primary keys cannot be aggregated with PostgreSQL MAX/MIN, so the
+     * latest row is expressed as a correlated anti-join instead of
+     * latestOfMany(). This also keeps search aligned with the picklist shown
+     * in the fulfillment board and excludes old picklist history.
+     */
+    public function currentPicklistItems(): HasMany
+    {
+        return $this->hasMany(PicklistItem::class, 'order_id')
+            ->whereHas('picklist', function ($query): void {
+                $query->whereIn('status', [
+                    Picklist::STATUS_DRAFT,
+                    Picklist::STATUS_IN_PROGRESS,
+                    Picklist::STATUS_COMPLETED,
+                ]);
+            })
+            ->whereNotExists(function ($query): void {
+                $currentCreatedAt = '(SELECT current_picklists.created_at FROM picklists AS current_picklists WHERE current_picklists.id = picklist_items.picklist_id)';
+                $currentId = '(SELECT current_picklists.id FROM picklists AS current_picklists WHERE current_picklists.id = picklist_items.picklist_id)';
+
+                $query
+                    ->selectRaw('1')
+                    ->from('picklist_items AS newer_picklist_items')
+                    ->join('picklists AS newer_picklists', 'newer_picklists.id', '=', 'newer_picklist_items.picklist_id')
+                    ->whereColumn('newer_picklist_items.order_id', 'picklist_items.order_id')
+                    ->whereIn('newer_picklists.status', [
+                        Picklist::STATUS_DRAFT,
+                        Picklist::STATUS_IN_PROGRESS,
+                        Picklist::STATUS_COMPLETED,
+                    ])
+                    ->where(function ($query) use ($currentCreatedAt, $currentId): void {
+                        $query
+                            ->whereRaw("newer_picklists.created_at > {$currentCreatedAt}")
+                            ->orWhere(function ($query) use ($currentCreatedAt, $currentId): void {
+                                $query
+                                    ->whereRaw("newer_picklists.created_at = {$currentCreatedAt}")
+                                    ->whereRaw("newer_picklists.id > {$currentId}");
+                            });
+                    });
+            });
+    }
+
     public function packlist(): HasOne
     {
         return $this->hasOne(Packlist::class, 'order_id');

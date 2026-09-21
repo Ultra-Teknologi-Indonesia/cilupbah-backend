@@ -306,7 +306,7 @@ class OutboundFulfillmentRepository
                 }),
             )
             ->allowedSearch(...array_merge(SalesOrder::SEARCH_COLUMNS, [
-                'completedPicklists.picklist_no',
+                'currentPicklistItems.picklist.picklist_no',
                 'items.sku',
                 'items.description',
             ]))

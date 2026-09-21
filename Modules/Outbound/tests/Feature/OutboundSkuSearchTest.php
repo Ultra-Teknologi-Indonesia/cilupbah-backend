@@ -2,11 +2,9 @@
 
 namespace Modules\Outbound\Tests\Feature;
 
-use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Laravel\Sanctum\Sanctum;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Services\OutboundFulfillmentService;
 use Modules\Sales\Models\SalesOrder;
@@ -29,7 +27,7 @@ class OutboundSkuSearchTest extends TestCase
 
         $order->items()->create([
             'sku' => $sku,
-            'name' => 'Test Product ' . $sku,
+            'name' => 'Test Product '.$sku,
             'quantity' => 2,
             'price' => 10000,
         ]);
@@ -93,5 +91,91 @@ class OutboundSkuSearchTest extends TestCase
         $orderNumbers = collect($result->items())->pluck('salesorder_no')->all();
         $this->assertContains('SO-DESC-001', $orderNumbers);
         $this->assertNotContains('SO-DESC-002', $orderNumbers);
+    }
+
+    public function test_stage_orders_search_by_current_picklist_number(): void
+    {
+        $locationId = (string) Str::uuid();
+        DB::table('locations')->insert([
+            'id' => $locationId,
+            'location_code' => 'LOC-PICK-'.substr($locationId, 0, 6),
+            'location_name' => 'Gudang Test Picklist',
+            'location_type' => 'WAREHOUSE',
+            'is_warehouse' => true,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $orderA = $this->createOrderWithItem('SO-PICK-001', 'SKU-PICK-001', 'picked');
+        $orderB = $this->createOrderWithItem('SO-PICK-002', 'SKU-PICK-002', 'picked');
+        $orderA->update(['location_id' => $locationId]);
+        $orderB->update(['location_id' => $locationId]);
+
+        $categoryId = DB::table('categories')->insertGetId([
+            'name' => 'Test Picklist Category',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $productId = (string) Str::uuid();
+        DB::table('products')->insert([
+            'id' => $productId,
+            'category_id' => $categoryId,
+            'name' => 'Test Picklist Product',
+            'order_type' => 'REGULER',
+            'condition' => 'NEW',
+            'is_cod_allowed' => false,
+            'danger_level' => 0,
+            'is_draft' => false,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $variantId = (string) Str::uuid();
+        DB::table('product_variants')->insert([
+            'id' => $variantId,
+            'product_id' => $productId,
+            'sku' => 'VARIANT-PICK-TEST',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $orderA->items()->update(['item_id' => $variantId]);
+        $orderB->items()->update(['item_id' => $variantId]);
+
+        $this->createCompletedPicklist($orderA, 'PICK-00000123');
+        $this->createCompletedPicklist($orderB, 'PICK-00000456');
+
+        request()->merge(['search' => '00000123']);
+
+        $result = app(OutboundFulfillmentService::class)
+            ->getOrdersByStage('finish-pick', 10);
+
+        $orderNumbers = collect($result->items())->pluck('salesorder_no')->all();
+
+        $this->assertContains('SO-PICK-001', $orderNumbers);
+        $this->assertNotContains('SO-PICK-002', $orderNumbers);
+    }
+
+    private function createCompletedPicklist(SalesOrder $order, string $picklistNo): void
+    {
+        $picklist = Picklist::create([
+            'picklist_no' => $picklistNo,
+            'location_id' => $order->location_id,
+            'status' => Picklist::STATUS_COMPLETED,
+            'completed_at' => now(),
+            'created_by' => 'system:test',
+        ]);
+
+        $item = $order->items()->firstOrFail();
+
+        $picklist->items()->create([
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+            'item_id' => $item->item_id,
+            'sku' => $item->sku,
+            'qty_ordered' => $item->qty_in_base,
+            'qty_picked' => $item->qty_in_base,
+        ]);
     }
 }
