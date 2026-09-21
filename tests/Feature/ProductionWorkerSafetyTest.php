@@ -68,13 +68,27 @@ class ProductionWorkerSafetyTest extends TestCase
         $this->assertSame(1, $stock['maxProcesses']);
     }
 
-    public function test_production_deploy_does_not_block_on_heavy_worker_drain(): void
+    public function test_production_deploy_allows_recreate_grace_period_and_reports_rollout_failures(): void
     {
         $workflow = file_get_contents(base_path('.github/workflows/ci-cd-production.yml'));
 
         $this->assertIsString($workflow);
         $this->assertStringContainsString('rollout worker berat secara asynchronous', $workflow);
         $this->assertStringContainsString('--timeout=20s', $workflow);
-        $this->assertStringContainsString('Menunggu rollout deployment/$deployment (maksimal 300 detik)', $workflow);
+        $this->assertStringContainsString('rollout_timeout=$((grace_period + 180))', $workflow);
+        $this->assertStringContainsString('mengumpulkan diagnostik', $workflow);
+    }
+
+    public function test_shared_label_spool_init_is_constant_time(): void
+    {
+        foreach (['02-app.yaml', '04-horizon-labels.yaml'] as $manifest) {
+            $yaml = file_get_contents(base_path("k8s/production/{$manifest}"));
+
+            $this->assertIsString($yaml);
+            $this->assertStringContainsString('chown root:33 /spool /spool/items;', $yaml, $manifest);
+            $this->assertStringContainsString('chmod 2770 /spool /spool/items;', $yaml, $manifest);
+            $this->assertStringNotContainsString('chown -R root:33 /spool', $yaml, $manifest);
+            $this->assertStringNotContainsString('find /spool', $yaml, $manifest);
+        }
     }
 }

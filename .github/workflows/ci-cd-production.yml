@@ -143,6 +143,46 @@ jobs:
             echo "==> Mengaktifkan profil Horizon critical..."
             kubectl apply -f "$K8S_DIR/03-horizon-critical.yaml" -n "$NAMESPACE"
 
+            rollout_deployment() {
+              deployment="$1"
+              grace_period="$(kubectl get deployment "$deployment" -n "$NAMESPACE" \
+                -o jsonpath='{.spec.template.spec.terminationGracePeriodSeconds}')"
+
+              case "$grace_period" in
+                ''|*[!0-9]*) grace_period=180 ;;
+              esac
+
+              # Recreate deployments first terminate the old pod. Leave a
+              # fixed 180s startup/settling headroom after the grace period.
+              # A fixed 300s timeout is unsafe for the 300s legacy recovery
+              # pod and for label pods that initialize the shared PVC.
+              rollout_timeout=$((grace_period + 180))
+              if [ "$rollout_timeout" -lt 300 ]; then
+                rollout_timeout=300
+              fi
+
+              echo "Menunggu rollout deployment/$deployment (grace=${grace_period}s, timeout=${rollout_timeout}s)..."
+              if kubectl rollout status "deployment/$deployment" -n "$NAMESPACE" \
+                --timeout="${rollout_timeout}s"; then
+                return 0
+              fi
+
+              echo "Rollout deployment/$deployment gagal atau timeout; mengumpulkan diagnostik..."
+              kubectl get deployment "$deployment" -n "$NAMESPACE" -o wide || true
+              kubectl get pods -n "$NAMESPACE" -l "app=$deployment" -o wide || true
+              kubectl describe deployment "$deployment" -n "$NAMESPACE" || true
+              kubectl get events -n "$NAMESPACE" --sort-by='.lastTimestamp' | tail -n 40 || true
+
+              for pod in $(kubectl get pods -n "$NAMESPACE" -l "app=$deployment" \
+                -o name 2>/dev/null); do
+                kubectl describe "$pod" -n "$NAMESPACE" || true
+                kubectl logs "$pod" -n "$NAMESPACE" --all-containers \
+                  --tail=120 --prefix 2>/dev/null || true
+              done
+
+              return 1
+            }
+
             echo "==> Menunggu rollout aplikasi dan layanan kritis..."
             DEPLOYMENTS="$(kubectl get -f "$K8S_DIR" -n "$NAMESPACE" -o name | sed -n 's#^deployment.apps/##p')"
             if [ -z "$DEPLOYMENTS" ]; then
@@ -157,8 +197,7 @@ jobs:
                   ;;
               esac
 
-              echo "Menunggu rollout deployment/$deployment (maksimal 300 detik)..."
-              kubectl rollout status "deployment/$deployment" -n "$NAMESPACE" --timeout=300s
+              rollout_deployment "$deployment"
             done
 
             echo "==> Memulai rollout worker berat secara asynchronous (graceful drain)..."

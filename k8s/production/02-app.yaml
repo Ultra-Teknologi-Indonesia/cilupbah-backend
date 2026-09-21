@@ -34,9 +34,8 @@ spec:
             - >-
               set -eu;
               mkdir -p /spool/items;
-              chown -R root:33 /spool;
-              find /spool -type d -exec chmod 2770 {} \;;
-              find /spool -type f -exec chmod 660 {} \;
+              chown root:33 /spool /spool/items;
+              chmod 2770 /spool /spool/items;
           securityContext:
             runAsUser: 0
             runAsGroup: 0
