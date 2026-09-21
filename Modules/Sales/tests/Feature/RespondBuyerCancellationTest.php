@@ -57,6 +57,46 @@ class RespondBuyerCancellationTest extends TestCase
         (new RespondBuyerCancellationJob($id, RespondBuyerCancellationJob::ACCEPT))->handle();
     }
 
+    public function test_shopee_preflight_accept_can_run_before_local_acceptance(): void
+    {
+        [$id, $orderNo] = $this->seedOrder('shopee');
+
+        $this->mock(ShopeeOrderService::class, function ($m) use ($orderNo) {
+            $m->shouldReceive('handleBuyerCancellation')
+                ->once()
+                ->with('SHOP-123', $orderNo, 'ACCEPT', false)
+                ->andReturn(['handled' => true]);
+        });
+
+        (new RespondBuyerCancellationJob($id, RespondBuyerCancellationJob::ACCEPT, true))->handle();
+
+        $order = SalesOrder::findOrFail($id);
+        $this->assertSame('succeeded', $order->buyer_cancel_sync_status);
+        $this->assertNull($order->cancel_accepted_at);
+        $this->assertSame('packed', $order->status);
+    }
+
+    public function test_shopee_preflight_rejection_is_not_treated_as_local_acceptance(): void
+    {
+        [$id, $orderNo] = $this->seedOrder('shopee');
+
+        $this->mock(ShopeeOrderService::class, function ($m) use ($orderNo) {
+            $m->shouldReceive('handleBuyerCancellation')
+                ->once()
+                ->with('SHOP-123', $orderNo, 'ACCEPT', false)
+                ->andThrow(new \RuntimeException(
+                    'Permintaan ditolak Shopee: Invalid order_status. The order status should be IN_CANCEL.',
+                ));
+        });
+
+        (new RespondBuyerCancellationJob($id, RespondBuyerCancellationJob::ACCEPT, true))->handle();
+
+        $order = SalesOrder::findOrFail($id);
+        $this->assertSame('stale', $order->buyer_cancel_sync_status);
+        $this->assertNull($order->cancel_accepted_at);
+        $this->assertSame('packed', $order->status);
+    }
+
     public function test_shopee_reject_calls_handle_buyer_cancellation_reject(): void
     {
         [$id, $orderNo] = $this->seedOrder('shopee', ['cancel_rejected_at' => now()]);

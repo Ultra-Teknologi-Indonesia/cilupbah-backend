@@ -6,6 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Sales\Jobs\AutoAcceptCancelRequestJob;
 use Modules\Sales\Jobs\RespondBuyerCancellationJob;
 use Modules\Sales\Models\SalesOrder;
@@ -210,6 +211,38 @@ class CancelRequestFlowTest extends TestCase
             fn (RespondBuyerCancellationJob $job) => $job->orderId === $orderId
                 && $job->decision === RespondBuyerCancellationJob::ACCEPT,
         );
+    }
+
+    public function test_shopee_rejection_keeps_local_order_and_stock_unchanged(): void
+    {
+        [$orderId, , , $binId] = $this->seedBaseOrder('packed', [
+            'source' => 'shopee',
+            'channel_order_no' => '2606SHOPEE-CANCEL-1',
+            'channel_shop_id' => 'SHOP-CR-1',
+        ]);
+
+        $this->mock(ShopeeOrderService::class, function ($m): void {
+            $m->shouldReceive('handleBuyerCancellation')
+                ->once()
+                ->with('SHOP-CR-1', '2606SHOPEE-CANCEL-1', 'ACCEPT', false)
+                ->andThrow(new \RuntimeException(
+                    'Permintaan ditolak Shopee: Invalid order_status. The order status should be IN_CANCEL.',
+                ));
+        });
+
+        $this->expectException(\RuntimeException::class);
+        try {
+            app(SalesOrderService::class)->acceptCancelRequest($orderId, auto: false);
+        } finally {
+            $order = SalesOrder::findOrFail($orderId);
+            $this->assertSame('packed', $order->status);
+            $this->assertFalse((bool) $order->is_canceled);
+            $this->assertNull($order->cancel_accepted_at);
+            $this->assertNotNull($order->cancel_requested_at);
+
+            $inv = DB::table('inventories')->where('bin_id', $binId)->first();
+            $this->assertSame(0, (int) $inv->on_hand);
+        }
     }
 
     public function test_post_pack_cancel_visible_in_list(): void

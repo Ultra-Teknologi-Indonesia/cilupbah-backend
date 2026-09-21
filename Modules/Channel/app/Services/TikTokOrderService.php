@@ -1098,8 +1098,11 @@ class TikTokOrderService
         return $this->client->request('GET', "/fulfillment/202309/packages/{$packageId}", $queries, [], $shop->access_token);
     }
 
-    public function acceptBuyerCancellation(string $shopId, string $orderId): array
-    {
+    public function acceptBuyerCancellation(
+        string $shopId,
+        string $orderId,
+        bool $resync = true,
+    ): array {
         $shop = $this->shopRepository->findByShopId($shopId);
         if (! $shop || ! $shop->access_token) {
             throw new \Exception("No access token found for shop: {$shopId}");
@@ -1120,7 +1123,9 @@ class TikTokOrderService
             $shop->access_token,
         );
 
-        $this->resyncLocalOrder($shopId, $orderId);
+        if ($resync) {
+            $this->resyncLocalOrder($shopId, $orderId);
+        }
 
         return $res;
     }

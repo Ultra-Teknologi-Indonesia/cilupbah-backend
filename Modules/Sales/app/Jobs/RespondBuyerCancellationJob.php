@@ -37,6 +37,7 @@ class RespondBuyerCancellationJob implements ShouldBeUnique, ShouldQueue
     public function __construct(
         public readonly string $orderId,
         public readonly string $decision,
+        public readonly bool $beforeLocalAcceptance = false,
     ) {
         $this->onQueue(config('queue.names.channel_cancellation'));
     }
@@ -74,7 +75,7 @@ class RespondBuyerCancellationJob implements ShouldBeUnique, ShouldQueue
             throw new \InvalidArgumentException('Keputusan pembatalan buyer tidak valid.');
         }
 
-        if (($accept && ! $order->cancel_accepted_at)
+        if (($accept && ! $order->cancel_accepted_at && ! $this->beforeLocalAcceptance)
             || (! $accept && ! $order->cancel_rejected_at)) {
             Log::info('RespondBuyerCancellationJob dilewati karena keputusan lokal sudah tidak aktif', [
                 'order_id' => $order->id,
@@ -202,15 +203,33 @@ class RespondBuyerCancellationJob implements ShouldBeUnique, ShouldQueue
 
     private function sendToChannel(SalesOrder $order, string $source, string $orderRef, bool $accept): mixed
     {
+        if ($source === 'shopee') {
+            $service = app(ShopeeOrderService::class);
+
+            return $this->beforeLocalAcceptance
+                ? $service->handleBuyerCancellation(
+                    $order->channel_shop_id,
+                    $orderRef,
+                    $accept ? 'ACCEPT' : 'REJECT',
+                    false,
+                )
+                : $service->handleBuyerCancellation(
+                    $order->channel_shop_id,
+                    $orderRef,
+                    $accept ? 'ACCEPT' : 'REJECT',
+                );
+        }
+
+        if ($source === 'tiktok' && $accept) {
+            $service = app(TikTokOrderService::class);
+
+            return $this->beforeLocalAcceptance
+                ? $service->acceptBuyerCancellation($order->channel_shop_id, $orderRef, false)
+                : $service->acceptBuyerCancellation($order->channel_shop_id, $orderRef);
+        }
+
         return match ($source) {
-            'shopee' => app(ShopeeOrderService::class)->handleBuyerCancellation(
-                $order->channel_shop_id,
-                $orderRef,
-                $accept ? 'ACCEPT' : 'REJECT',
-            ),
-            'tiktok' => $accept
-                ? app(TikTokOrderService::class)->acceptBuyerCancellation($order->channel_shop_id, $orderRef)
-                : app(TikTokOrderService::class)->rejectBuyerCancellation($order->channel_shop_id, $orderRef),
+            'tiktok' => app(TikTokOrderService::class)->rejectBuyerCancellation($order->channel_shop_id, $orderRef),
             'lazada' => app(LazadaOrderService::class)->respondBuyerCancellation(
                 $order->channel_shop_id,
                 $orderRef,

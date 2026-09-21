@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Modules\Channel\Exceptions\ChannelLabelUnsupportedException;
+use Modules\Channel\Jobs\RefreshChannelOrderJob;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Services\ChannelDownloadService;
 use Modules\Channel\Services\LazadaOrderService;
@@ -404,6 +405,40 @@ class SalesOrderService
         $channel = $auto ? 'auto' : 'manual';
         $finalReason = $reason ?? $order->cancel_request_reason ?? 'seller_cancel_reason_other';
 
+        $channelSource = strtolower((string) $order->source);
+        $channelFirstAcceptance = in_array($channelSource, ['shopee', 'tiktok'], true);
+
+        if ($channelFirstAcceptance) {
+            $this->respondToBuyerCancellationSynchronously(
+                $order,
+                RespondBuyerCancellationJob::ACCEPT,
+                beforeLocalAcceptance: true,
+            );
+
+            $order->refresh();
+            if ($order->buyer_cancel_sync_status === BuyerCancellationSyncStatus::STALE->value) {
+                $message = $order->buyer_cancel_sync_error
+                    ?: 'Marketplace sudah tidak menganggap order ini berada pada tahap pembatalan.';
+
+                if ($auto) {
+                    Log::notice('Pembatalan otomatis dihentikan karena status marketplace sudah berubah', [
+                        'order_id' => $order->id,
+                        'salesorder_no' => $order->salesorder_no,
+                        'source' => $channelSource,
+                        'reason' => $message,
+                    ]);
+
+                    return $order;
+                }
+
+                throw new UserFacingException(
+                    'Pembatalan belum dikonfirmasi marketplace',
+                    $message,
+                    409,
+                );
+            }
+        }
+
         if ($order->status === 'shipped') {
             $result = DB::transaction(function () use ($order, $actorId, $channel, $finalReason) {
                 app(SalesReturnService::class)->createFromCancelledShipped(
@@ -429,6 +464,7 @@ class SalesOrderService
 
             if (in_array(strtolower((string) $result->source), ['shopee', 'tiktok'], true)) {
                 $this->respondToBuyerCancellationSynchronously($result, RespondBuyerCancellationJob::ACCEPT);
+                $this->scheduleBuyerCancellationRefresh($result);
             } else {
                 CancelChannelOrderJob::dispatch($result->id, $finalReason)
                     ->onQueue(config('queue.names.channel_cancellation'));
@@ -467,6 +503,7 @@ class SalesOrderService
         if ($result->source) {
             if (in_array(strtolower((string) $result->source), ['shopee', 'tiktok'], true)) {
                 $this->respondToBuyerCancellationSynchronously($result, RespondBuyerCancellationJob::ACCEPT);
+                $this->scheduleBuyerCancellationRefresh($result);
             } else {
                 CancelChannelOrderJob::dispatch($result->id, $finalReason)
                     ->onQueue(config('queue.names.channel_cancellation'));
@@ -565,13 +602,34 @@ class SalesOrderService
         ];
     }
 
-    private function respondToBuyerCancellationSynchronously(SalesOrder $order, string $decision): void
-    {
+    private function respondToBuyerCancellationSynchronously(
+        SalesOrder $order,
+        string $decision,
+        bool $beforeLocalAcceptance = false,
+    ): void {
         if (! in_array(strtolower((string) $order->source), ['shopee', 'tiktok', 'lazada'], true)) {
             return;
         }
 
-        RespondBuyerCancellationJob::dispatchSync($order->id, $decision);
+        RespondBuyerCancellationJob::dispatchSync($order->id, $decision, $beforeLocalAcceptance);
+    }
+
+    private function scheduleBuyerCancellationRefresh(SalesOrder $order): void
+    {
+        $source = strtolower((string) $order->source);
+        $orderNo = (string) ($order->channel_order_no ?: $order->salesorder_no);
+
+        if (! in_array($source, ['shopee', 'tiktok'], true)
+            || (string) $order->channel_shop_id === ''
+            || $orderNo === '') {
+            return;
+        }
+
+        RefreshChannelOrderJob::dispatch(
+            $source,
+            (string) $order->channel_shop_id,
+            $orderNo,
+        )->delay(now()->addSeconds(5));
     }
 
     public function retryBuyerCancellationSync(string $orderId): SalesOrder

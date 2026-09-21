@@ -26,6 +26,23 @@ final class RequestShopeeMassAwbJobTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_unique_id_deduplicates_same_shop_and_orders_across_batches(): void
+    {
+        $first = new RequestShopeeMassAwbJob(
+            'BATCH-A',
+            'SHOP-MASS-AWB',
+            ['ORDER-MASS-A', 'ORDER-MASS-B'],
+        );
+
+        $second = new RequestShopeeMassAwbJob(
+            'BATCH-B',
+            'SHOP-MASS-AWB',
+            ['ORDER-MASS-B', 'ORDER-MASS-A'],
+        );
+
+        $this->assertSame($first->uniqueId(), $second->uniqueId());
+    }
+
     public function test_requests_and_reads_multiple_awbs_without_falling_back_to_single_jobs(): void
     {
         Queue::fake();

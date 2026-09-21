@@ -1923,8 +1923,12 @@ class ShopeeOrderService
         return ['order_sn' => $orderSn, 'updated' => empty($res['error']), 'error' => $res['error'] ?? null, 'response' => $res['response'] ?? []];
     }
 
-    public function handleBuyerCancellation(string $shopId, string $orderSn, string $operation): array
-    {
+    public function handleBuyerCancellation(
+        string $shopId,
+        string $orderSn,
+        string $operation,
+        bool $resync = true,
+    ): array {
         $shop = $this->requireShop($shopId);
 
         $operation = strtoupper($operation);
@@ -1937,7 +1941,9 @@ class ShopeeOrderService
             'operation' => $operation,
         ], $token, $shop->shop_id));
 
-        $this->resyncLocalOrder($shopId, $orderSn);
+        if ($resync) {
+            $this->resyncLocalOrder($shopId, $orderSn);
+        }
 
         return ['order_sn' => $orderSn, 'handled' => empty($res['error']), 'operation' => $operation, 'error' => $res['error'] ?? null, 'response' => $res['response'] ?? []];
     }

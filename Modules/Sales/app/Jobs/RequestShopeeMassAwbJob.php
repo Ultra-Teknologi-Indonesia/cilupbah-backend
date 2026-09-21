@@ -53,7 +53,6 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
 
         return implode(':', [
             'shopee-mass-awb',
-            $this->batchId,
             $this->shopId,
             hash('sha256', implode('|', $orderIds)),
             (string) $this->trackingAttempt,
