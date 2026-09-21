@@ -131,6 +131,33 @@ class QtyCorrectionAdjustmentTest extends TestCase
         ]);
     }
 
+    public function test_qty_correction_is_blocked_after_placement_is_completed(): void
+    {
+        $inbound = $this->makeReceivedInbound(100);
+        $inbound->items()->update(['putaway_qty' => 100]);
+
+        $this->expectException(UserFacingException::class);
+        $this->expectExceptionMessage('setelah semua barang selesai ditempatkan');
+
+        $this->correct($inbound->fresh('items'), 95);
+    }
+
+    public function test_received_qty_endpoint_is_blocked_after_placement_is_completed(): void
+    {
+        $inbound = $this->makeReceivedInbound(100);
+        $inbound->items()->update(['putaway_qty' => 100]);
+
+        $this->expectException(UserFacingException::class);
+        $this->expectExceptionMessage('setelah semua barang selesai ditempatkan');
+
+        app(InboundService::class)->setReceivedQty(
+            $inbound->id,
+            $inbound->fresh('items')->items->first()->id,
+            105,
+            $this->admin->id,
+        );
+    }
+
     public function test_qty_correction_auto_generates_remarks(): void
     {
         $inbound = $this->makeReceivedInbound(100);

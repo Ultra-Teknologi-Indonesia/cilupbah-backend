@@ -30,6 +30,7 @@ use Modules\Inbound\Models\InboundItem;
 use Modules\Inbound\Models\InboundParticipant;
 use Modules\Inbound\Models\InboundReceipt;
 use Modules\Inbound\Repositories\InboundRepository;
+use Modules\Inbound\Support\InboundPlacementProgress;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Models\InventoryTransfer;
@@ -105,6 +106,25 @@ class InboundService
                 ->toArray();
 
             throw new MobileSessionActiveException($active);
+        }
+    }
+
+    protected function assertReceivedQtyEditable(Inbound $inbound): void
+    {
+        $inbound->loadMissing('items');
+
+        $placementStatus = InboundPlacementProgress::summarize(
+            $inbound->items,
+            (string) $inbound->status,
+            (string) $inbound->type,
+        )['status'];
+
+        if ($placementStatus === InboundPlacementProgress::STATUS_COMPLETED) {
+            throw new UserFacingException(
+                title: 'Aksi tidak dapat diproses',
+                message: 'Qty diterima tidak dapat dikoreksi setelah semua barang selesai ditempatkan.',
+                status: 409,
+            );
         }
     }
 
@@ -1610,6 +1630,7 @@ class InboundService
             }
 
             $this->assertWebCanMutate($inbound);
+            $this->assertReceivedQtyEditable($inbound);
 
             $defaultBin = $this->binService->getDefaultBin($inbound->location_id);
             if (! $defaultBin) {
@@ -1720,6 +1741,7 @@ class InboundService
                 throw new UserFacingException(title: 'Status tidak sesuai', message: 'Inbound sudah dibatalkan.', status: 409);
             }
 
+            $this->assertReceivedQtyEditable($inbound);
             $this->assertVersionMatches($inbound, $expectedUpdatedAt);
 
             $item = $this->inboundRepository->findItemByUuidForUpdate($inboundItemId);
