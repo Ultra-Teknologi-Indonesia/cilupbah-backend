@@ -53,7 +53,11 @@ class OrderReleaseService
             return false;
         }
 
-        $order->forceFill(['status' => 'picked'])->save();
+        $this->orderService->updateOrder(
+            $order,
+            ['status' => 'picked'],
+            $picklist->picker,
+        );
 
         return true;
     }

@@ -171,6 +171,15 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
         $this->assertEquals(65000, $invoice->total_amount);
         $this->assertSame(0, (int) DB::table('inventories')->where('bin_id', $this->bin->id)->value('on_hand'));
         $this->assertSame(0, (int) DB::table('inventories')->where('bin_id', $this->bin->id)->value('on_order'));
+        $this->assertSame(0, (int) DB::table('inventories')
+            ->where('item_id', $this->variant->id)
+            ->where('location_id', $this->location->id)
+            ->whereNull('bin_id')
+            ->value('on_order'));
+        $this->assertSame(1, (int) DB::table('inventory_movements')
+            ->where('transaction_number', $this->order->salesorder_no)
+            ->where('source', 'ORDER_RELEASE')
+            ->count());
         $this->assertSame(1, (int) PicklistItemAllocation::query()
             ->where('picklist_item_id', $this->pickItem->id)
             ->value('physical_committed_qty'));
@@ -379,7 +388,12 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
         $this->assertSame(1, (int) PicklistItemAllocation::query()
             ->where('picklist_item_id', $item->id)
             ->value('physical_committed_qty'));
-        $this->assertDatabaseCount('inventory_movements', 2);
+        $this->assertDatabaseCount('inventory_movements', 3);
+        $this->assertDatabaseHas('inventory_movements', [
+            'transaction_number' => $this->order->salesorder_no,
+            'source' => 'ORDER_RELEASE',
+            'qty' => -1,
+        ]);
         $this->assertDatabaseHas('inventory_movements', [
             'source' => 'INVOICE',
         ]);

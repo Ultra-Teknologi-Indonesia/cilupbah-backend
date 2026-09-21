@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\InventoryTransfer;
+use Modules\Inventory\Models\InventoryTransferItem;
 use Modules\Inventory\Models\StockAdjustmentItem;
 use Modules\Inventory\Models\StockOpname;
 use Modules\Inventory\Models\StockRevaluationItem;
@@ -438,6 +439,90 @@ class InventoryTest extends TestCase
             'source' => 'TRANSFER_IN',
             'qty' => 20,
         ]);
+    }
+
+    public function test_transfer_in_maps_qty_per_line_when_same_variant_repeats(): void
+    {
+        $transfer = $this->makeInTransitTransfer([99, 100]);
+        $lines = $transfer->items->values();
+
+        $response = $this->postJson("/api/v1/inventory/transfers/{$transfer->id}/receive", [
+            'received_by' => 'staff-gudang',
+            'items' => [
+                ['item_id' => $this->variant->id, 'received_qty' => 99],
+                ['item_id' => $this->variant->id, 'received_qty' => 100],
+            ],
+        ]);
+
+        $response->assertOk();
+
+        $this->assertEquals(99, $lines[0]->fresh()->received_qty);
+        $this->assertEquals(100, $lines[1]->fresh()->received_qty);
+    }
+
+    public function test_transfer_in_maps_qty_when_payload_order_is_swapped(): void
+    {
+        $transfer = $this->makeInTransitTransfer([99, 100]);
+        $lines = $transfer->items->values();
+
+        $response = $this->postJson("/api/v1/inventory/transfers/{$transfer->id}/receive", [
+            'received_by' => 'staff-gudang',
+            'items' => [
+                ['item_id' => $this->variant->id, 'received_qty' => 100],
+                ['item_id' => $this->variant->id, 'received_qty' => 99],
+            ],
+        ]);
+
+        $response->assertOk();
+
+        $this->assertEquals(99, $lines[0]->fresh()->received_qty);
+        $this->assertEquals(100, $lines[1]->fresh()->received_qty);
+    }
+
+    public function test_transfer_in_still_rejects_qty_above_line_for_same_variant(): void
+    {
+        $transfer = $this->makeInTransitTransfer([99, 100]);
+        $lines = $transfer->items->values();
+
+        $response = $this->postJson("/api/v1/inventory/transfers/{$transfer->id}/receive", [
+            'received_by' => 'staff-gudang',
+            'items' => [
+                ['item_id' => $this->variant->id, 'received_qty' => 100],
+                ['item_id' => $this->variant->id, 'received_qty' => 100],
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertStringContainsString('melebihi qty kirim (99)', (string) $response->json('errors.detail'));
+
+        $this->assertEquals(0, $lines[0]->fresh()->received_qty);
+        $this->assertEquals(0, $lines[1]->fresh()->received_qty);
+    }
+
+    private function makeInTransitTransfer(array $qtys): InventoryTransfer
+    {
+        static $seq = 0;
+
+        $transfer = InventoryTransfer::create([
+            'transfer_number' => 'TRFO-TEST-'.(++$seq),
+            'source_location_id' => $this->location->id,
+            'destination_location_id' => $this->location2->id,
+            'status' => InventoryTransfer::STATUS_IN_TRANSIT,
+            'created_by' => 'admin',
+            'shipped_at' => now(),
+        ]);
+
+        foreach (array_values($qtys) as $qty) {
+            InventoryTransferItem::create([
+                'inventory_transfer_id' => $transfer->id,
+                'item_id' => $this->variant->id,
+                'qty' => $qty,
+                'received_qty' => 0,
+                'source_bin_id' => $this->binStorage->id,
+            ]);
+        }
+
+        return $transfer->load('items');
     }
 
     public function test_transfer_in_fails_on_non_transit_status(): void
