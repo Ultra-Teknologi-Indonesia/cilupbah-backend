@@ -33,6 +33,7 @@ RUN apt-get update && apt-get install -y \
     nginx \
     supervisor \
     ghostscript \
+    poppler-utils \
     libpng-dev \
     libjpeg62-turbo-dev \
     libwebp-dev \

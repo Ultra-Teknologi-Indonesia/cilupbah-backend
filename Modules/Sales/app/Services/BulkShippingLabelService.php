@@ -25,7 +25,6 @@ use Modules\Sales\Jobs\ProcessBulkShippingLabelItemJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelJob;
 use Modules\Sales\Jobs\RequestChannelAwbJob;
 use Modules\Sales\Jobs\RequestShopeeMassAwbJob;
-use Modules\Sales\Jobs\TransformBulkShippingLabelItemJob;
 use Modules\Sales\Models\BulkShippingLabelBatch;
 use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Models\SalesOrder;
@@ -522,23 +521,11 @@ class BulkShippingLabelService
             throw new \RuntimeException('File PDF sementara tidak ditemukan.');
         }
 
-        $raw = $disk->get($item->raw_pdf_path);
-        $batch = $item->batch()->first();
-        $sizeKey = (string) data_get($batch?->per_channel_opts, 'document_size', self::DEFAULT_SIZE);
         $readyPath = "items/{$item->batch_id}/{$item->id}/ready.pdf";
-        $transformed = $this->normalizeToTarget($raw, $sizeKey, $item->channel);
-        $disk->put($readyPath, $transformed);
-        $disk->delete($item->raw_pdf_path);
-
-        $order = SalesOrder::find($item->order_id);
-        if ($order) {
-            $this->salesOrderService->cacheThermalShippingLabelBytes(
-                $order,
-                $raw,
-                $sizeKey,
-                $transformed,
-            );
+        if (! $disk->copy($item->raw_pdf_path, $readyPath)) {
+            throw new \RuntimeException('File PDF sementara tidak dapat dipindahkan ke label siap.');
         }
+        $disk->delete($item->raw_pdf_path);
 
         $item->update([
             'status' => BulkShippingLabelItem::STATUS_READY,
@@ -1241,12 +1228,6 @@ class BulkShippingLabelService
             return false;
         }
 
-        $sizeKey = (string) data_get(
-            $perChannelOpts,
-            'document_size',
-            self::DEFAULT_SIZE,
-        );
-
         $disk = Storage::disk(config('bulk-labels.spool_disk', 'print_spool'));
         $previous = BulkShippingLabelItem::query()
             ->with('batch:id,status,per_channel_opts')
@@ -1262,15 +1243,8 @@ class BulkShippingLabelService
             })
             ->latest('updated_at')
             ->get()
-            ->first(function (BulkShippingLabelItem $candidate) use ($sizeKey, $disk): bool {
-                $candidateSize = (string) data_get(
-                    $candidate->batch?->per_channel_opts,
-                    'document_size',
-                    self::DEFAULT_SIZE,
-                );
-
-                return $candidateSize === $sizeKey
-                    && $candidate->ready_pdf_path !== null
+            ->first(function (BulkShippingLabelItem $candidate) use ($disk): bool {
+                return $candidate->ready_pdf_path !== null
                     && $disk->exists($candidate->ready_pdf_path);
             });
 
@@ -1304,16 +1278,6 @@ class BulkShippingLabelService
             return false;
         }
 
-        $normalizedBytes = $this->salesOrderService->cachedThermalShippingLabelBytes(
-            $order,
-            $sourceBytes,
-            $sizeKey,
-        );
-
-        if ($normalizedBytes !== null) {
-            return $this->stageReadyLabelItem($item, $normalizedBytes, $disk);
-        }
-
         $this->stageDownloadedLabelItem($item, $sourceBytes, $disk);
 
         return true;
@@ -1325,20 +1289,25 @@ class BulkShippingLabelService
         ?Filesystem $disk = null,
     ): void {
         $disk ??= Storage::disk(config('bulk-labels.spool_disk', 'print_spool'));
-        $path = "items/{$item->batch_id}/{$item->id}/raw.pdf";
+        $path = "items/{$item->batch_id}/{$item->id}/ready.pdf";
         if (! $disk->put($path, $bytes)) {
-            throw new \RuntimeException('File PDF sementara tidak dapat disimpan ke print spool.');
+            throw new \RuntimeException('File label tidak dapat disimpan ke print spool.');
+        }
+
+        if ($item->raw_pdf_path && $item->raw_pdf_path !== $path) {
+            $disk->delete($item->raw_pdf_path);
         }
 
         $item->update([
-            'status' => BulkShippingLabelItem::STATUS_TRANSFORMING,
-            'raw_pdf_path' => $path,
-            'ready_pdf_path' => null,
+            'status' => BulkShippingLabelItem::STATUS_READY,
+            'raw_pdf_path' => null,
+            'ready_pdf_path' => $path,
             'downloaded_at' => now(),
             'reason' => null,
         ]);
 
-        TransformBulkShippingLabelItemJob::dispatch((string) $item->batch_id, (string) $item->id);
+        $this->publishBatchProgress((string) $item->batch_id);
+        $this->finalizeAffectedBatches(collect([$item]));
     }
 
     private function stageReadyLabelItem(
@@ -1694,34 +1663,61 @@ class BulkShippingLabelService
             return;
         }
 
-        [$targetW, $targetH] = $this->resolveTargetSize($batch);
-
-        $pdf = new Fpdi('P', 'mm', [$targetW, $targetH]);
         $itemsQuery = $batch->items()
             ->whereIn('status', BulkShippingLabelItem::COMPLETED_STATUSES)
             ->orderBy('created_at');
 
-        $mergedPages = 0;
+        $tempDir = sys_get_temp_dir();
+        $inputPaths = [];
+        $tempInputPaths = [];
 
         foreach ($itemsQuery->cursor() as $item) {
             if ($item->ready_pdf_path) {
+                $inputPath = tempnam($tempDir, 'bulk-label-input-');
+                if ($inputPath === false) {
+                    throw new \RuntimeException('File sementara PDF label tidak dapat dibuat.');
+                }
+
+                $tempInputPaths[] = $inputPath;
+
                 try {
                     $disk = Storage::disk(config('bulk-labels.spool_disk', 'print_spool'));
-                    $readyBytes = $disk->get($item->ready_pdf_path);
-                    $pageCount = $pdf->setSourceFile(StreamReader::createByString($readyBytes));
-                    for ($p = 1; $p <= $pageCount; $p++) {
-                        $tpl = $pdf->importPage($p);
-                        $pdf->AddPage('P', [$targetW, $targetH]);
-                        $pdf->useTemplate($tpl, 0, 0, $targetW, $targetH, false);
-                        $mergedPages++;
+                    $source = $disk->readStream($item->ready_pdf_path);
+                    if (! is_resource($source)) {
+                        throw new \RuntimeException('File label siap tidak dapat dibaca.');
                     }
+
+                    $target = fopen($inputPath, 'wb');
+                    if (! is_resource($target)) {
+                        fclose($source);
+                        throw new \RuntimeException('File sementara PDF label tidak dapat ditulis.');
+                    }
+
+                    try {
+                        stream_copy_to_stream($source, $target);
+                    } finally {
+                        fclose($source);
+                        fclose($target);
+                    }
+
+                    clearstatcache(true, $inputPath);
+                    if ((int) filesize($inputPath) <= 0) {
+                        throw new \RuntimeException('File label siap kosong.');
+                    }
+
+                    $inputPaths[] = $inputPath;
 
                     continue;
                 } catch (Throwable $e) {
-                    Log::warning('Transformed label merge failed for item', [
+                    Log::warning('Label merge input failed for item', [
                         'item_id' => $item->id,
                         'error' => $e->getMessage(),
                     ]);
+                    @unlink($inputPath);
+                    $tempInputPaths = array_values(array_filter(
+                        $tempInputPaths,
+                        static fn (string $path): bool => $path !== $inputPath,
+                    ));
                 }
             }
 
@@ -1737,7 +1733,7 @@ class BulkShippingLabelService
             ]);
         }
 
-        if ($mergedPages === 0) {
+        if ($inputPaths === []) {
             $batch->update([
                 'status' => BulkShippingLabelBatch::STATUS_FAILED,
                 'finished_at' => now(),
@@ -1757,7 +1753,10 @@ class BulkShippingLabelService
         $bytes = 0;
         $localFirst = false;
         try {
-            $pdf->Output('F', $tempPath);
+            if (! $this->mergePdfFilesWithoutResize($inputPaths, $tempPath)) {
+                throw new \RuntimeException('PDF label gagal digabung tanpa resize.');
+            }
+
             clearstatcache(true, $tempPath);
             $bytes = (int) filesize($tempPath);
             if ($bytes <= 0) {
@@ -1807,6 +1806,9 @@ class BulkShippingLabelService
             }
         } finally {
             @unlink($tempPath);
+            foreach ($tempInputPaths as $tempInputPath) {
+                @unlink($tempInputPath);
+            }
         }
 
         $itemDisk = Storage::disk(config('bulk-labels.spool_disk', 'print_spool'));
@@ -1833,6 +1835,114 @@ class BulkShippingLabelService
 
         $batch->recomputeCounts();
 
+    }
+
+    /**
+     * Merge label PDFs without changing their page dimensions or contents.
+     * pdfunite/qpdf are preferred because they do not re-render every page.
+     * FPDI is retained as a no-scaling fallback for hosts without a native tool.
+     *
+     * @param  list<string>  $inputPaths
+     */
+    private function mergePdfFilesWithoutResize(array $inputPaths, string $outputPath): bool
+    {
+        if ($inputPaths === []) {
+            return false;
+        }
+
+        if (count($inputPaths) === 1) {
+            return copy($inputPaths[0], $outputPath);
+        }
+
+        @unlink($outputPath);
+
+        $pdfunite = trim((string) @shell_exec('command -v pdfunite 2>/dev/null'));
+        if ($pdfunite !== '' && $this->runPdfMergeCommand(
+            escapeshellarg($pdfunite)
+            .' '.implode(' ', array_map('escapeshellarg', $inputPaths))
+            .' '.escapeshellarg($outputPath),
+        )) {
+            return true;
+        }
+
+        @unlink($outputPath);
+        $qpdf = trim((string) @shell_exec('command -v qpdf 2>/dev/null'));
+        if ($qpdf !== '' && $this->runPdfMergeCommand(
+            escapeshellarg($qpdf)
+            .' --empty --pages '
+            .implode(' ', array_map('escapeshellarg', $inputPaths))
+            .' -- '.escapeshellarg($outputPath),
+        )) {
+            return true;
+        }
+
+        @unlink($outputPath);
+
+        return $this->mergePdfFilesWithFpdiWithoutResize($inputPaths, $outputPath);
+    }
+
+    private function runPdfMergeCommand(string $command): bool
+    {
+        $descriptors = [
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+
+        $process = @proc_open($command, $descriptors, $pipes);
+        if (! is_resource($process)) {
+            return false;
+        }
+
+        $stdout = stream_get_contents($pipes[1]);
+        $stderr = stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        $exitCode = proc_close($process);
+
+        if ($exitCode !== 0) {
+            Log::warning('Native PDF merge gagal; mencoba fallback berikutnya.', [
+                'exit_code' => $exitCode,
+                'stderr' => trim((string) $stderr),
+                'stdout' => trim((string) $stdout),
+            ]);
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * @param  list<string>  $inputPaths
+     */
+    private function mergePdfFilesWithFpdiWithoutResize(array $inputPaths, string $outputPath): bool
+    {
+        try {
+            $pdf = new Fpdi('P', 'mm');
+            foreach ($inputPaths as $inputPath) {
+                $pageCount = $pdf->setSourceFile($inputPath);
+                for ($page = 1; $page <= $pageCount; $page++) {
+                    $template = $pdf->importPage($page);
+                    $size = $pdf->getTemplateSize($template);
+                    $width = (float) $size['width'];
+                    $height = (float) $size['height'];
+                    $orientation = $width > $height ? 'L' : 'P';
+
+                    $pdf->AddPage($orientation, [$width, $height]);
+                    $pdf->useTemplate($template, 0, 0, $width, $height, false);
+                }
+            }
+
+            $pdf->Output('F', $outputPath);
+
+            return is_file($outputPath) && (int) filesize($outputPath) > 0;
+        } catch (Throwable $e) {
+            Log::error('FPDI direct PDF merge gagal.', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
     }
 
     public function markCrashed(BulkShippingLabelBatch $batch): void
