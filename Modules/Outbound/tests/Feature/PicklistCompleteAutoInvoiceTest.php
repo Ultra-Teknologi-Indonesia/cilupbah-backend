@@ -397,7 +397,7 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
             'qty' => -1,
         ]);
         $this->assertDatabaseHas('inventory_movements', [
-            'source' => 'ORDER_COMPLETE_OUT',
+            'source' => 'PICKING',
         ]);
     }
 

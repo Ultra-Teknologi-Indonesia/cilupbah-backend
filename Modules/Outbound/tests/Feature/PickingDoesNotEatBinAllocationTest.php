@@ -8,6 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use Modules\Outbound\Exceptions\OutboundValidationException;
 use Modules\Inventory\Models\SkuRackAssignment;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Outbound\Models\Picklist;
@@ -199,8 +200,114 @@ class PickingDoesNotEatBinAllocationTest extends TestCase
         );
 
         $this->assertDatabaseHas('inventory_movements', [
-            'source' => 'INVOICE',
+            'source' => 'PICKING',
             'qty' => -2,
+            'bin_id' => $binId,
+        ]);
+    }
+
+    public function test_scan_commits_physical_stock_before_picklist_completion_without_touching_reservation(): void
+    {
+        Queue::fake();
+
+        $userId = $this->seedUser();
+        $locationId = $this->seedLocation();
+        $binId = $this->seedBin($locationId, 'RACK-SCAN-1');
+        $variantId = $this->seedProductVariant('SKU-SCAN-1');
+
+        $this->seedInventory($variantId, $locationId, $binId, onHand: 10, onOrder: 2);
+        $ids = $this->seedPicklistWithItem($locationId, $variantId, 'SKU-SCAN-1', 3, $userId);
+
+        $this->actingAs(User::find($userId), 'sanctum');
+
+        app(PicklistService::class)->pickItem($ids['picklist_id'], $ids['item_id'], [
+            'qty_delta' => 1,
+            'bin_code' => 'RACK-SCAN-1',
+        ]);
+
+        $bin = DB::table('inventories')->where('bin_id', $binId)->first();
+        $allocation = DB::table('picklist_item_allocations')
+            ->where('picklist_item_id', $ids['item_id'])
+            ->first();
+
+        $this->assertSame(9, (int) $bin->on_hand);
+        $this->assertSame(2, (int) $bin->on_order);
+        $this->assertSame(1, (int) $allocation->physical_committed_qty);
+        $this->assertNotNull($allocation->movement_id);
+        $this->assertDatabaseHas('inventory_movements', [
+            'source' => 'PICKING',
+            'qty' => -1,
+            'bin_id' => $binId,
+        ]);
+        $this->assertSame(
+            Picklist::STATUS_IN_PROGRESS,
+            DB::table('picklists')->where('id', $ids['picklist_id'])->value('status'),
+        );
+    }
+
+    public function test_unpick_scan_time_allocation_restores_on_hand_without_increasing_on_order(): void
+    {
+        Queue::fake();
+
+        $userId = $this->seedUser();
+        $locationId = $this->seedLocation();
+        $binId = $this->seedBin($locationId, 'RACK-UNPICK-1');
+        $variantId = $this->seedProductVariant('SKU-UNPICK-1');
+
+        $this->seedInventory($variantId, $locationId, $binId, onHand: 10, onOrder: 2);
+        $ids = $this->seedPicklistWithItem($locationId, $variantId, 'SKU-UNPICK-1', 2, $userId);
+
+        $this->actingAs(User::find($userId), 'sanctum');
+        $service = app(PicklistService::class);
+        $service->pickItem($ids['picklist_id'], $ids['item_id'], [
+            'qty_delta' => 1,
+            'bin_code' => 'RACK-UNPICK-1',
+        ]);
+
+        $service->unpickItem($ids['picklist_id'], $ids['item_id'], 1, $userId);
+
+        $bin = DB::table('inventories')->where('bin_id', $binId)->first();
+        $this->assertSame(10, (int) $bin->on_hand);
+        $this->assertSame(2, (int) $bin->on_order);
+        $this->assertDatabaseHas('inventory_movements', [
+            'source' => 'PICKING_REVERSAL',
+            'qty' => 1,
+            'bin_id' => $binId,
+        ]);
+        $this->assertSame(
+            0,
+            (int) DB::table('picklist_items')->where('id', $ids['item_id'])->value('qty_picked'),
+        );
+    }
+
+    public function test_scan_stock_failure_rolls_back_allocation_and_qty(): void
+    {
+        Queue::fake();
+
+        $userId = $this->seedUser();
+        $locationId = $this->seedLocation();
+        $binId = $this->seedBin($locationId, 'RACK-EMPTY-1');
+        $variantId = $this->seedProductVariant('SKU-EMPTY-1');
+
+        $this->seedInventory($variantId, $locationId, $binId, onHand: 0);
+        $ids = $this->seedPicklistWithItem($locationId, $variantId, 'SKU-EMPTY-1', 1, $userId);
+
+        $this->actingAs(User::find($userId), 'sanctum');
+
+        try {
+            app(PicklistService::class)->pickItem($ids['picklist_id'], $ids['item_id'], [
+                'qty_delta' => 1,
+                'bin_code' => 'RACK-EMPTY-1',
+            ]);
+            $this->fail('Scan harus ditolak saat stok fisik kosong.');
+        } catch (OutboundValidationException $exception) {
+            $this->assertStringContainsString('Stok tidak cukup', $exception->getMessage());
+        }
+
+        $this->assertSame(0, (int) DB::table('picklist_items')->where('id', $ids['item_id'])->value('qty_picked'));
+        $this->assertDatabaseCount('picklist_item_allocations', 0);
+        $this->assertDatabaseMissing('inventory_movements', [
+            'source' => 'PICKING',
             'bin_id' => $binId,
         ]);
     }
@@ -281,4 +388,3 @@ class PickingDoesNotEatBinAllocationTest extends TestCase
         $this->assertSame(1, (int) DB::table('picklist_items')->where('id', $idsB['item_id'])->value('qty_picked'));
     }
 }
-

@@ -271,6 +271,64 @@ class StockService
         });
     }
 
+    public function restorePickedFromBin(
+        string $sku,
+        string $itemId,
+        string $locationId,
+        string $binId,
+        int $qty,
+        string $transactionNumber,
+        ?string $createdBy = null,
+        ?\DateTimeInterface $transactionDate = null,
+        ?string $referenceNumber = null,
+    ): ?InventoryMovement {
+        if ($qty <= 0) {
+            return null;
+        }
+
+        $this->inboundBinPolicy->assertConsumable($locationId, $binId, 'pengembalian stok hasil picking');
+
+        return $this->withStockLock($itemId, $locationId, function () use (
+            $itemId,
+            $locationId,
+            $binId,
+            $qty,
+            $transactionNumber,
+            $createdBy,
+            $transactionDate,
+            $referenceNumber,
+        ) {
+            return DB::transaction(function () use (
+                $itemId,
+                $locationId,
+                $binId,
+                $qty,
+                $transactionNumber,
+                $createdBy,
+                $transactionDate,
+                $referenceNumber,
+            ) {
+                $binRow = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, $binId);
+                $binRow->on_hand = (int) $binRow->on_hand + $qty;
+                $binRow->recalculateAvailable();
+                $this->inventoryRepository->updateStock($binRow);
+
+                return $this->movementRepository->create([
+                    'item_id' => $itemId,
+                    'location_id' => $locationId,
+                    'bin_id' => $binId,
+                    'transaction_number' => $transactionNumber,
+                    'reference_number' => $referenceNumber,
+                    'source' => 'PICKING_REVERSAL',
+                    'qty' => $qty,
+                    'balance' => $binRow->on_hand,
+                    'transaction_date' => $transactionDate ?: now(),
+                    'created_by' => $createdBy ?: 'system',
+                ]);
+            });
+        });
+    }
+
     private function restoreSingle(string $sku, string $itemId, string $locationId, int $qty, string $transactionNumber): void
     {
         $this->withStockLock($itemId, $locationId, function () use ($itemId, $locationId, $qty, $transactionNumber) {
