@@ -2,15 +2,25 @@
 
 namespace Modules\Channel\Support;
 
-use Modules\Channel\Exceptions\ShopeeApiException;
+use Illuminate\Http\Client\ConnectionException;
 use Modules\Channel\Exceptions\ChannelOrderNotAvailableException;
+use Modules\Channel\Exceptions\ShopeeApiException;
 use Modules\Channel\Exceptions\TikTokApiException;
 use Modules\Channel\Exceptions\TokenExpiredException;
 
 class ChannelErrorClassifier
 {
     protected const RETRYABLE_MARKERS = [
+        'could not resolve host',
+        'could not connect',
+        'connection refused',
+        'network is unreachable',
+        'curl error 6',
+        'curl error 7',
+        'curl error 28',
         'frequency',
+        'batas frekuensi',
+        'batas permintaan',
         'call limit',
         'rate limit',
         'too many request',
@@ -32,6 +42,10 @@ class ChannelErrorClassifier
     public static function isRetryable(string $channelCode, \Throwable $e): bool
     {
         if ($e instanceof ChannelOrderNotAvailableException) {
+            return true;
+        }
+
+        if ($e instanceof ConnectionException) {
             return true;
         }
 

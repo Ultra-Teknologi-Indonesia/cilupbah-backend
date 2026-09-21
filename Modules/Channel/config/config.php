@@ -15,9 +15,11 @@ return [
 
     'product_sync_overlap_lock_seconds' => (int) env('CHANNEL_PRODUCT_SYNC_OVERLAP_LOCK_SECONDS', 360),
 
+    'webhook_order_refresh_delay_seconds' => max(0, (int) env('CHANNEL_WEBHOOK_ORDER_REFRESH_DELAY_SECONDS', 0)),
+
     'stock_sync_dispatch_window_seconds' => (int) env('CHANNEL_STOCK_SYNC_DISPATCH_WINDOW_SECONDS', 50),
 
-    'stock_sync_dispatch_claim_limit' => max(1, min(100, (int) env('CHANNEL_STOCK_SYNC_DISPATCH_CLAIM_LIMIT', 20))),
+    'stock_sync_dispatch_claim_limit' => max(1, min(100, (int) env('CHANNEL_STOCK_SYNC_DISPATCH_CLAIM_LIMIT', 50))),
 
     'stock_sync_max_inflight_per_shop' => max(1, min(4, (int) env('CHANNEL_STOCK_SYNC_MAX_INFLIGHT_PER_SHOP', 1))),
     'stock_sync_lease_seconds' => (int) env('CHANNEL_STOCK_SYNC_LEASE_SECONDS', 600),

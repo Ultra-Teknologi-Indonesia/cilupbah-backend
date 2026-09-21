@@ -10,9 +10,11 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Modules\Sales\Models\BulkShippingLabelBatch;
 use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Services\BulkShippingLabelService;
+use Modules\Channel\Support\ChannelQueue;
 use Throwable;
 
 class ProcessBulkShippingLabelItemJob implements ShouldBeUnique, ShouldQueue
@@ -35,10 +37,20 @@ class ProcessBulkShippingLabelItemJob implements ShouldBeUnique, ShouldQueue
         public readonly string $batchId,
         public readonly string $itemId,
         public readonly ?string $orderId = null,
+        public readonly ?string $channel = null,
     ) {
         $this->retryDeadline = now()->addMinutes(15);
         $this->onConnection(config('queue.routing.labels.connection', 'redis-long'));
-        $this->onQueue(config('queue.routing.labels.queue', 'labels'));
+        $resolvedChannel = strtolower(trim((string) ($channel ?: (
+            Str::isUuid($itemId)
+                ? BulkShippingLabelItem::query()->whereKey($itemId)->value('channel')
+                : null
+        ))));
+        $this->onQueue(
+            ChannelQueue::isSupported($resolvedChannel)
+                ? ChannelQueue::for($resolvedChannel, 'label_download')
+                : config('queue.routing.labels.queue', 'labels'),
+        );
     }
 
     public function uniqueId(): string

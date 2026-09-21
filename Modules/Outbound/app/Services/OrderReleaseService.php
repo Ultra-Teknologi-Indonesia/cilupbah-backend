@@ -151,9 +151,7 @@ class OrderReleaseService
         }
 
         $actorId = $picklist->picker_id ? (string) $picklist->picker_id : (auth()->id() ? (string) auth()->id() : 'system');
-        // Invoice dibuat secara lazy saat dokumen invoice/PDF benar-benar diminta.
-        // Finish pick tetap memotong stok fisik, menggunakan nomor pesanan sebagai
-        // referensi ledger agar tidak bergantung pada record sales_invoices.
+
         $this->picklistInvoiceStockService->post($picklist, $order, $actorId);
 
         return true;

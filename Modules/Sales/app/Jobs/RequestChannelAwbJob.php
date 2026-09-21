@@ -10,12 +10,14 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Modules\Channel\Jobs\ProcessLazadaFulfillmentJob;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
+use Modules\Channel\Support\ChannelQueue;
 use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Models\ChannelOperationAttempt;
 use Modules\Sales\Models\SalesOrder;
@@ -49,13 +51,21 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
         public readonly bool $requestReadyToShip = true,
         public readonly bool $prefetch = false,
         public readonly bool $verificationOnly = false,
+        public readonly ?string $channel = null,
     ) {
-        $this->onConnection($prefetch
-            ? config('shipping-label-prefetch.connection', 'redis-long')
-            : config('queue.routing.labels.connection', 'redis-long'));
-        $this->onQueue($prefetch
-            ? config('shipping-label-prefetch.queue', 'label-prefetch')
-            : config('queue.routing.label_awb.queue', 'label-awb'));
+        $resolvedChannel = strtolower(trim((string) ($channel ?: (
+            Str::isUuid($orderId)
+                ? SalesOrder::query()->whereKey($orderId)->value('source')
+                : null
+        ))));
+        $polling = $verificationOnly || $trackingAttempt > 0;
+
+        $this->onConnection(config('queue.routing.'.($polling ? 'label_awb_poll' : 'label_awb_request').'.connection', 'redis-long'));
+        $this->onQueue(
+            ChannelQueue::isSupported($resolvedChannel)
+                ? ChannelQueue::for($resolvedChannel, $polling ? 'awb_poll' : 'awb_request')
+                : config('queue.routing.label_awb.queue', 'label-awb'),
+        );
     }
 
     public function uniqueId(): string

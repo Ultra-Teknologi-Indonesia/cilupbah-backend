@@ -8,6 +8,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Modules\Channel\Services\ChannelStockSyncOutboxService;
 use Modules\Channel\Support\ChannelVariantMappingResolver;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductBundleItem;
@@ -45,6 +46,7 @@ class SyncStockToChannelsJob implements ShouldBeUniqueUntilProcessing, ShouldQue
 
     public function handle(ProductRepository $productRepository): void
     {
+        $outbox = app(ChannelStockSyncOutboxService::class);
         $variant = ProductVariant::query()
             ->whereKey($this->variantId)
             ->where('is_active', true)
@@ -57,7 +59,7 @@ class SyncStockToChannelsJob implements ShouldBeUniqueUntilProcessing, ShouldQue
         }
 
         $dispatched = [];
-        $this->dispatchForProduct($variant->product, $dispatched);
+        $this->dispatchForProduct($variant->product, $dispatched, $outbox);
 
         $bundleIds = $productRepository->bundleProductIdsUsingComponent($this->variantId);
 
@@ -69,7 +71,7 @@ class SyncStockToChannelsJob implements ShouldBeUniqueUntilProcessing, ShouldQue
             ->whereIn('id', $bundleIds)
             ->where('is_active', true)
             ->get()
-            ->each(fn (Product $bundle) => $this->dispatchForProduct($bundle, $dispatched));
+            ->each(fn (Product $bundle) => $this->dispatchForProduct($bundle, $dispatched, $outbox));
 
         $siblingVariantIds = ProductBundleItem::whereIn('bundle_product_id', $bundleIds)
             ->where('component_variant_id', '!=', $this->variantId)
@@ -86,11 +88,11 @@ class SyncStockToChannelsJob implements ShouldBeUniqueUntilProcessing, ShouldQue
                 ->pluck('product')
                 ->filter()
                 ->unique('id')
-                ->each(fn (Product $prod) => $this->dispatchForProduct($prod, $dispatched));
+                ->each(fn (Product $prod) => $this->dispatchForProduct($prod, $dispatched, $outbox));
         }
     }
 
-    private function dispatchForProduct(Product $product, array &$dispatched): void
+    private function dispatchForProduct(Product $product, array &$dispatched, ChannelStockSyncOutboxService $outbox): void
     {
         if (! $product->is_active || $product->trashed()) {
             return;
@@ -126,7 +128,7 @@ class SyncStockToChannelsJob implements ShouldBeUniqueUntilProcessing, ShouldQue
 
             $dispatched[$dispatchKey] = true;
 
-            SyncProductToChannelJob::dispatch($product->id, $mapping->channel_shop_id, 'sync_stock');
+            $outbox->request($mapping, 'sync_stock', 'critical');
         }
     }
 

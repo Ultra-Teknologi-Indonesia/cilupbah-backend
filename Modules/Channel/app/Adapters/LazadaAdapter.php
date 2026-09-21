@@ -292,7 +292,11 @@ class LazadaAdapter implements MarketplaceAdapterInterface
         } catch (\Exception $e) {
             Log::error('Lazada syncStock error: '.$e->getMessage());
 
-            return ['success' => false, 'message' => $e->getMessage()];
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+                'error' => UploadErrorPresenter::fromThrowable('lazada', $e),
+            ];
         }
     }
 

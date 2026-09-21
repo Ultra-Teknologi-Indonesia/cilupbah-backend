@@ -26,7 +26,7 @@ class ProcessBulkShippingLabelJob implements ShouldQueue
     public function __construct(public string $batchId)
     {
         $this->onConnection(config('queue.routing.labels.connection', 'redis-long'));
-        $this->onQueue(config('queue.routing.labels.queue', 'labels'));
+        $this->onQueue(config('queue.routing.label_merge.queue', 'label-merge'));
     }
 
     public function handle(BulkShippingLabelService $svc): void

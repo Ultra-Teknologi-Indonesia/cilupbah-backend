@@ -2,6 +2,7 @@
 
 namespace Modules\Channel\Services;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
@@ -92,12 +93,28 @@ class ShopeeClient
         $timeout = max(1, $timeoutSeconds ?? 30);
         $connectTimeout = min(15, $timeout);
 
-        if (strtoupper($method) === 'GET') {
-            $url = $this->host . $apiPath . '?' . http_build_query(array_merge($common, $params));
-            $response = Http::timeout($timeout)->connectTimeout($connectTimeout)->get($url);
-        } else {
-            $url = $this->host . $apiPath . '?' . http_build_query($common);
-            $response = Http::asJson()->timeout($timeout)->connectTimeout($connectTimeout)->post($url, $params);
+        try {
+            if (strtoupper($method) === 'GET') {
+                $url = $this->host . $apiPath . '?' . http_build_query(array_merge($common, $params));
+                $response = Http::timeout($timeout)->connectTimeout($connectTimeout)->get($url);
+            } else {
+                $url = $this->host . $apiPath . '?' . http_build_query($common);
+                $response = Http::asJson()->timeout($timeout)->connectTimeout($connectTimeout)->post($url, $params);
+            }
+        } catch (ConnectionException $e) {
+            Log::warning('Shopee API connection failed; job may retry.', [
+                'path' => $apiPath,
+                'timeout_seconds' => $timeout,
+                'error' => $e->getMessage(),
+            ]);
+
+            throw new ShopeeApiException(
+                'error_network',
+                ShopeeErrorCatalog::RETRYABLE,
+                'Koneksi ke Shopee gagal. Sistem akan mencoba lagi otomatis.',
+                $e->getMessage(),
+                $e->getMessage(),
+            );
         }
 
         $data = $response->json() ?? [];
@@ -117,7 +134,17 @@ class ShopeeClient
                 'message' => $message,
             ]);
 
-            throw new \RuntimeException('Shopee API HTTP Error [' . $response->status() . ']: ' . $message);
+            $status = $response->status();
+            $retryable = $status === 408 || $status === 425 || $status === 429 || $status >= 500;
+
+            throw new ShopeeApiException(
+                'http_'.$status,
+                $retryable ? ShopeeErrorCatalog::RETRYABLE : ShopeeErrorCatalog::FATAL,
+                $retryable
+                    ? 'Shopee sedang tidak dapat memproses permintaan. Sistem akan mencoba lagi otomatis.'
+                    : 'Shopee menolak permintaan HTTP ('.$status.').',
+                (string) $message,
+            );
         }
 
         return $data;

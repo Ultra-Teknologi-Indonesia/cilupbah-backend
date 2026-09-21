@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Support\WarehouseAccess;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Filesystem\Filesystem;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -100,8 +101,9 @@ class BulkShippingLabelService
         }
 
         $awaitingAwb = [];
+        $ordersById = new EloquentCollection;
 
-        $batch = DB::transaction(function () use ($user, $orderIds, $perChannelOpts, &$awaitingAwb) {
+        $batch = DB::transaction(function () use ($user, $orderIds, $perChannelOpts, &$awaitingAwb, &$ordersById) {
             $batch = BulkShippingLabelBatch::create([
                 'user_id' => $user->id,
                 'status' => BulkShippingLabelBatch::STATUS_PROCESSING,
@@ -117,6 +119,7 @@ class BulkShippingLabelService
             $orders = $ordersQuery
                 ->get()
                 ->keyBy('id');
+            $ordersById = new EloquentCollection($orders->all());
 
             foreach ($orderIds as $orderId) {
                 $order = $orders->get($orderId);
@@ -142,15 +145,12 @@ class BulkShippingLabelService
             return $batch->fresh();
         });
 
-        foreach ($orderIds as $orderId) {
-            $item = $batch->items()
-                ->where('order_id', $orderId)
-                ->first();
+        $items = $batch->items()
+            ->whereIn('order_id', $orderIds)
+            ->get()
+            ->keyBy('order_id');
 
-            if ($item) {
-                $this->hydrateReusableLabel($item, $perChannelOpts);
-            }
-        }
+        $this->hydrateReusableLabels($items, $ordersById);
 
         $batch->recomputeCounts();
 
@@ -383,7 +383,14 @@ class BulkShippingLabelService
 
         $orders
             ->reject(static fn (SalesOrder $order): bool => strtolower((string) $order->source) === self::CHANNEL_SHOPEE)
-            ->each(static fn (SalesOrder $order) => RequestChannelAwbJob::dispatch((string) $order->id));
+            ->each(static fn (SalesOrder $order) => RequestChannelAwbJob::dispatch(
+                (string) $order->id,
+                0,
+                true,
+                false,
+                false,
+                strtolower((string) $order->source),
+            ));
     }
 
     private function initialItemStatus(?SalesOrder $order, string $channel): array
@@ -439,6 +446,7 @@ class BulkShippingLabelService
     public function processPendingItems(BulkShippingLabelBatch $batch, ?array $perChannelOpts): void
     {
         $pending = $batch->items()
+            ->with('order')
             ->where('status', BulkShippingLabelItem::STATUS_PENDING)
             ->get();
 
@@ -487,7 +495,12 @@ class BulkShippingLabelService
 
     public function dispatchItem(BulkShippingLabelItem $item): void
     {
-        ProcessBulkShippingLabelItemJob::dispatch($item->batch_id, $item->id, (string) $item->order_id);
+        ProcessBulkShippingLabelItemJob::dispatch(
+            $item->batch_id,
+            $item->id,
+            (string) $item->order_id,
+            strtolower((string) $item->channel),
+        );
     }
 
     public function stageDownloadedLabel(string $orderId, string $bytes): int
@@ -555,7 +568,9 @@ class BulkShippingLabelService
 
     public function processPendingItem(BulkShippingLabelItem $item): bool
     {
-        $order = SalesOrder::find($item->order_id);
+        $order = $item->relationLoaded('order')
+            ? $item->order
+            : SalesOrder::find($item->order_id);
         if (! $order) {
             $this->fail($item, BulkShippingLabelItem::REASON_NO_AWB);
 
@@ -918,12 +933,16 @@ class BulkShippingLabelService
     private function processTikTokBatch($items, ?array $perChannelOpts): void
     {
         $options = $this->resolveChannelOptions(self::CHANNEL_TIKTOK);
+        $orders = SalesOrder::query()
+            ->whereIn('id', $items->pluck('order_id')->unique()->values())
+            ->get()
+            ->keyBy('id');
 
         $urlMap = [];
         foreach ($items as $item) {
             try {
                 $item->update(['status' => BulkShippingLabelItem::STATUS_DOWNLOADING]);
-                $order = SalesOrder::find($item->order_id);
+                $order = $orders->get($item->order_id);
                 if (! $order) {
                     $this->fail($item, BulkShippingLabelItem::REASON_NO_AWB);
 
@@ -934,6 +953,7 @@ class BulkShippingLabelService
                 } catch (ShippingLabelPreparingException $e) {
                     app(ShippingLabelPreparationDispatcher::class)->dispatch($order);
                     $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE]);
+
                     continue;
                 }
 
@@ -990,7 +1010,7 @@ class BulkShippingLabelService
 
                     continue;
                 }
-                $this->succeed($item, $response->body(), SalesOrder::find($item->order_id));
+                $this->succeed($item, $response->body(), $orders->get($item->order_id));
             }
         }
     }
@@ -999,7 +1019,9 @@ class BulkShippingLabelService
     {
         try {
             $item->update(['status' => BulkShippingLabelItem::STATUS_DOWNLOADING]);
-            $order = SalesOrder::find($item->order_id);
+            $order = $item->relationLoaded('order')
+                ? $item->order
+                : SalesOrder::find($item->order_id);
             if (! $order) {
                 $this->fail($item, BulkShippingLabelItem::REASON_NO_AWB);
 
@@ -1095,6 +1117,7 @@ class BulkShippingLabelService
         } catch (ShippingLabelPreparingException $e) {
             app(ShippingLabelPreparationDispatcher::class)->dispatch($order);
             $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE]);
+
             return;
         }
 
@@ -1232,19 +1255,24 @@ class BulkShippingLabelService
         }
     }
 
-    private function hydrateReusableLabel(
-        BulkShippingLabelItem $item,
-        array $perChannelOpts,
-    ): bool {
-        if ($item->status !== BulkShippingLabelItem::STATUS_PENDING) {
-            return false;
+    private function hydrateReusableLabels(
+        EloquentCollection $items,
+        EloquentCollection $orders,
+    ): void {
+        $pendingItems = $items->filter(
+            static fn (BulkShippingLabelItem $item): bool => $item->status === BulkShippingLabelItem::STATUS_PENDING,
+        );
+
+        if ($pendingItems->isEmpty()) {
+            return;
         }
 
-        $disk = Storage::disk(config('bulk-labels.spool_disk', 'print_spool'));
-        $previous = BulkShippingLabelItem::query()
+        $orderIds = $pendingItems->pluck('order_id')->map('strval')->values();
+        $currentItemIds = $pendingItems->pluck('id')->values();
+        $candidatesByOrder = BulkShippingLabelItem::query()
             ->with('batch:id,status,per_channel_opts')
-            ->where('order_id', $item->order_id)
-            ->where('id', '!=', $item->id)
+            ->whereIn('order_id', $orderIds)
+            ->whereNotIn('id', $currentItemIds)
             ->whereIn('status', BulkShippingLabelItem::COMPLETED_STATUSES)
             ->whereNotNull('ready_pdf_path')
             ->whereHas('batch', function ($query): void {
@@ -1253,46 +1281,49 @@ class BulkShippingLabelService
                     BulkShippingLabelBatch::STATUS_READY,
                 ]);
             })
-            ->latest('updated_at')
+            ->orderByDesc('updated_at')
             ->get()
-            ->first(function (BulkShippingLabelItem $candidate) use ($disk): bool {
-                return $candidate->ready_pdf_path !== null
-                    && $disk->exists($candidate->ready_pdf_path);
-            });
+            ->groupBy('order_id');
 
-        if ($previous) {
-            $targetPath = "items/{$item->batch_id}/{$item->id}/ready.pdf";
-            if ($disk->copy($previous->ready_pdf_path, $targetPath)) {
-                $item->update([
-                    'status' => BulkShippingLabelItem::STATUS_READY,
-                    'ready_pdf_path' => $targetPath,
-                    'raw_pdf_path' => null,
-                    'downloaded_at' => now(),
-                    'reason' => null,
+        $disk = Storage::disk(config('bulk-labels.spool_disk', 'print_spool'));
+
+        foreach ($pendingItems as $item) {
+            $previous = $candidatesByOrder
+                ->get($item->order_id, collect())
+                ->first(static fn (BulkShippingLabelItem $candidate): bool => $candidate->ready_pdf_path !== null
+                    && $disk->exists($candidate->ready_pdf_path),
+                );
+
+            if ($previous) {
+                $targetPath = "items/{$item->batch_id}/{$item->id}/ready.pdf";
+                if ($disk->copy($previous->ready_pdf_path, $targetPath)) {
+                    $item->update([
+                        'status' => BulkShippingLabelItem::STATUS_READY,
+                        'ready_pdf_path' => $targetPath,
+                        'raw_pdf_path' => null,
+                        'downloaded_at' => now(),
+                        'reason' => null,
+                    ]);
+
+                    continue;
+                }
+
+                Log::warning('Bulk label reuse artifact tidak dapat disalin, lanjut ke cache order', [
+                    'order_id' => $item->order_id,
+                    'source_path' => $previous->ready_pdf_path,
                 ]);
-
-                return true;
             }
 
-            Log::warning('Bulk label reuse artifact tidak dapat disalin, lanjut ke cache order', [
-                'order_id' => $item->order_id,
-                'source_path' => $previous->ready_pdf_path,
-            ]);
+            $order = $orders->get($item->order_id);
+            if (! $order) {
+                continue;
+            }
+
+            $sourceBytes = $this->salesOrderService->cachedShippingLabelBytes($order);
+            if ($sourceBytes !== null) {
+                $this->stageDownloadedLabelItem($item, $sourceBytes, $disk);
+            }
         }
-
-        $order = SalesOrder::find($item->order_id);
-        if (! $order) {
-            return false;
-        }
-
-        $sourceBytes = $this->salesOrderService->cachedShippingLabelBytes($order);
-        if ($sourceBytes === null) {
-            return false;
-        }
-
-        $this->stageDownloadedLabelItem($item, $sourceBytes, $disk);
-
-        return true;
     }
 
     private function stageDownloadedLabelItem(

@@ -128,8 +128,26 @@ return [
         'channel_finance' => env('QUEUE_NAME_CHANNEL_FINANCE', 'channel-finance'),
         'channel_after_sales' => env('QUEUE_NAME_CHANNEL_AFTER_SALES', 'channel-after-sales'),
         'channel_fulfillment' => env('QUEUE_NAME_CHANNEL_FULFILLMENT', 'channel-fulfillment'),
+        'channel_order_refresh' => env('QUEUE_NAME_CHANNEL_ORDER_REFRESH', 'channel-order-refresh'),
+        'shopee_cancellation' => env('QUEUE_NAME_SHOPEE_CANCELLATION', 'shopee-cancellation'),
+        'tiktok_cancellation' => env('QUEUE_NAME_TIKTOK_CANCELLATION', 'tiktok-cancellation'),
+        'lazada_cancellation' => env('QUEUE_NAME_LAZADA_CANCELLATION', 'lazada-cancellation'),
+        'shopee_fulfillment' => env('QUEUE_NAME_SHOPEE_FULFILLMENT', 'shopee-fulfillment'),
+        'tiktok_fulfillment' => env('QUEUE_NAME_TIKTOK_FULFILLMENT', 'tiktok-fulfillment'),
+        'lazada_fulfillment' => env('QUEUE_NAME_LAZADA_FULFILLMENT', 'lazada-fulfillment'),
         'labels' => env('QUEUE_NAME_LABELS', 'labels'),
         'label_prefetch' => env('QUEUE_NAME_LABEL_PREFETCH', 'label-prefetch'),
+        'label_awb_request_shopee' => env('QUEUE_NAME_LABEL_AWB_REQUEST_SHOPEE', 'label-awb-request-shopee'),
+        'label_awb_request_tiktok' => env('QUEUE_NAME_LABEL_AWB_REQUEST_TIKTOK', 'label-awb-request-tiktok'),
+        'label_awb_request_lazada' => env('QUEUE_NAME_LABEL_AWB_REQUEST_LAZADA', 'label-awb-request-lazada'),
+        'label_awb_poll_shopee' => env('QUEUE_NAME_LABEL_AWB_POLL_SHOPEE', 'label-awb-poll-shopee'),
+        'label_awb_poll_tiktok' => env('QUEUE_NAME_LABEL_AWB_POLL_TIKTOK', 'label-awb-poll-tiktok'),
+        'label_awb_poll_lazada' => env('QUEUE_NAME_LABEL_AWB_POLL_LAZADA', 'label-awb-poll-lazada'),
+        'label_download_shopee' => env('QUEUE_NAME_LABEL_DOWNLOAD_SHOPEE', 'label-download-shopee'),
+        'label_download_tiktok' => env('QUEUE_NAME_LABEL_DOWNLOAD_TIKTOK', 'label-download-tiktok'),
+        'label_download_lazada' => env('QUEUE_NAME_LABEL_DOWNLOAD_LAZADA', 'label-download-lazada'),
+        'label_merge' => env('QUEUE_NAME_LABEL_MERGE', 'label-merge'),
+        'label_archive' => env('QUEUE_NAME_LABEL_ARCHIVE', 'label-archive'),
         'qr_labels' => env('QUEUE_NAME_QR_LABELS', 'qr-labels'),
 
         'shopee_orders' => env('QUEUE_NAME_SHOPEE_ORDERS', 'shopee-orders'),
@@ -147,7 +165,6 @@ return [
         'tiktok_webhooks' => env('QUEUE_NAME_TIKTOK_WEBHOOKS', 'tiktok-webhooks'),
 
         'lazada_orders' => env('QUEUE_NAME_LAZADA_ORDERS', 'lazada-orders'),
-        'lazada_fulfillment' => env('QUEUE_NAME_LAZADA_FULFILLMENT', 'lazada-fulfillment'),
         'lazada_catalog' => env('QUEUE_NAME_LAZADA_CATALOG', 'lazada-catalog'),
         'lazada_aftersales' => env('QUEUE_NAME_LAZADA_AFTERSALES', 'lazada-aftersales'),
         'lazada_webhooks' => env('QUEUE_NAME_LAZADA_WEBHOOKS', 'lazada-webhooks'),
@@ -277,6 +294,48 @@ return [
             'queue' => env('QUEUE_NAME_LABEL_AWB', 'label-awb'),
 
             'parallelism' => max(1, min(4, (int) env('QUEUE_LABEL_AWB_PARALLELISM', 2))),
+        ],
+
+        'label_awb_request' => [
+            'connection' => env('QUEUE_LABEL_AWB_REQUEST_CONNECTION', 'redis-long'),
+            'queues' => [
+                'shopee' => env('QUEUE_NAME_LABEL_AWB_REQUEST_SHOPEE', 'label-awb-request-shopee'),
+                'tiktok' => env('QUEUE_NAME_LABEL_AWB_REQUEST_TIKTOK', 'label-awb-request-tiktok'),
+                'lazada' => env('QUEUE_NAME_LABEL_AWB_REQUEST_LAZADA', 'label-awb-request-lazada'),
+            ],
+            'parallelism' => max(1, min(3, (int) env('QUEUE_LABEL_AWB_REQUEST_PARALLELISM', 1))),
+        ],
+
+        'label_awb_poll' => [
+            'connection' => env('QUEUE_LABEL_AWB_POLL_CONNECTION', 'redis-long'),
+            'queues' => [
+                'shopee' => env('QUEUE_NAME_LABEL_AWB_POLL_SHOPEE', 'label-awb-poll-shopee'),
+                'tiktok' => env('QUEUE_NAME_LABEL_AWB_POLL_TIKTOK', 'label-awb-poll-tiktok'),
+                'lazada' => env('QUEUE_NAME_LABEL_AWB_POLL_LAZADA', 'label-awb-poll-lazada'),
+            ],
+            'parallelism' => max(1, min(3, (int) env('QUEUE_LABEL_AWB_POLL_PARALLELISM', 1))),
+            'max_attempts' => max(1, min(12, (int) env('QUEUE_LABEL_AWB_POLL_MAX_ATTEMPTS', 10))),
+            'delays' => [2, 5, 10, 20, 30, 60],
+        ],
+
+        'label_download' => [
+            'connection' => env('QUEUE_LABEL_DOWNLOAD_CONNECTION', 'redis-long'),
+            'queues' => [
+                'shopee' => env('QUEUE_NAME_LABEL_DOWNLOAD_SHOPEE', 'label-download-shopee'),
+                'tiktok' => env('QUEUE_NAME_LABEL_DOWNLOAD_TIKTOK', 'label-download-tiktok'),
+                'lazada' => env('QUEUE_NAME_LABEL_DOWNLOAD_LAZADA', 'label-download-lazada'),
+            ],
+            'parallelism' => max(1, min(3, (int) env('QUEUE_LABEL_DOWNLOAD_PARALLELISM', 1))),
+            'max_jobs' => max(25, min(250, (int) env('QUEUE_LABEL_DOWNLOAD_MAX_JOBS', 100))),
+            'max_time' => max(300, min(3600, (int) env('QUEUE_LABEL_DOWNLOAD_MAX_TIME', 1800))),
+        ],
+
+        'label_merge' => [
+            'connection' => env('QUEUE_LABEL_MERGE_CONNECTION', 'redis-long'),
+            'queue' => env('QUEUE_NAME_LABEL_MERGE', 'label-merge'),
+            'parallelism' => max(1, min(2, (int) env('QUEUE_LABEL_MERGE_PARALLELISM', 1))),
+            'max_jobs' => max(10, min(100, (int) env('QUEUE_LABEL_MERGE_MAX_JOBS', 25))),
+            'max_time' => max(600, min(3600, (int) env('QUEUE_LABEL_MERGE_MAX_TIME', 1800))),
         ],
 
         'label_prefetch' => [

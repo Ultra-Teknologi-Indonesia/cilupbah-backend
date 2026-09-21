@@ -219,7 +219,7 @@ class SalesOrderDriverCallService
                     'driver_call_status' => 'pending',
                     'driver_call_message' => 'Permintaan TikTok sudah diterima, tetapi tracking number belum tersedia. Sistem sedang menunggu resi.',
                 ]);
-                RequestChannelAwbJob::dispatch($order->id, 1, false, false, true)->afterCommit();
+                RequestChannelAwbJob::dispatch($order->id, 1, false, false, true, $source)->afterCommit();
             }
 
             return true;
@@ -248,6 +248,8 @@ class SalesOrderDriverCallService
 
     private function queuePrerequisites(SalesOrder $order): array
     {
+        $source = strtolower((string) $order->source);
+
         $order->update([
             'driver_call_status' => 'pending',
             'driver_call_message' => filled($order->tracking_number)
@@ -263,6 +265,7 @@ class SalesOrderDriverCallService
                 true,
                 false,
                 false,
+                $source,
             )->afterCommit();
         } else {
             app(ShippingLabelPreparationDispatcher::class)->dispatch($order);
@@ -418,7 +421,7 @@ class SalesOrderDriverCallService
                         : 'Status panggilan TikTok belum pasti. Sistem sedang memverifikasi tanpa mengirim ulang.'),
             ]);
 
-            RequestChannelAwbJob::dispatch($order->id, 1, false, false, true)->afterCommit();
+            RequestChannelAwbJob::dispatch($order->id, 1, false, false, true, 'tiktok')->afterCommit();
             $order->refresh();
 
             return true;
@@ -461,6 +464,7 @@ class SalesOrderDriverCallService
                     ! $allPackagesShipped,
                     false,
                     $allPackagesShipped,
+                    'tiktok',
                 )->afterCommit();
                 $order->refresh();
 

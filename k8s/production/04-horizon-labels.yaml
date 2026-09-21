@@ -54,7 +54,19 @@ spec:
             - name: HORIZON_PROFILE
               value: "labels-pdf"
             - name: QUEUE_LABEL_PARALLELISM
-              value: "6"
+              value: "4"
+            - name: QUEUE_LABEL_DOWNLOAD_PARALLELISM
+              value: "2"
+            - name: QUEUE_LABEL_DOWNLOAD_MAX_JOBS
+              value: "100"
+            - name: QUEUE_LABEL_DOWNLOAD_MAX_TIME
+              value: "1800"
+            - name: QUEUE_LABEL_MERGE_PARALLELISM
+              value: "1"
+            - name: QUEUE_LABEL_MERGE_MAX_JOBS
+              value: "25"
+            - name: QUEUE_LABEL_MERGE_MAX_TIME
+              value: "1800"
             - name: QUEUE_LABEL_PREFETCH_PARALLELISM
               value: "1"
             - name: QUEUE_LABEL_AWB_PARALLELISM

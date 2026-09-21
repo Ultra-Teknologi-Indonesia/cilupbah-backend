@@ -34,9 +34,9 @@ class WebhookQueueTieringTest extends TestCase
     {
 
         $this->assertSame('tiktok-orders', ProcessTikTokWebhook::resolveQueueName(['type' => 1]));
-        $this->assertSame('tiktok-orders', ProcessTikTokWebhook::resolveQueueName(['type' => 11]));
+        $this->assertSame('tiktok-cancellation', ProcessTikTokWebhook::resolveQueueName(['type' => 11]));
 
-        $this->assertSame('tiktok-packages', ProcessTikTokWebhook::resolveQueueName(['type' => 4]));
+        $this->assertSame('tiktok-fulfillment', ProcessTikTokWebhook::resolveQueueName(['type' => 4]));
 
         $this->assertSame('tiktok-aftersales', ProcessTikTokWebhook::resolveQueueName(['type' => 2]));
         $this->assertSame('tiktok-aftersales', ProcessTikTokWebhook::resolveQueueName(['type' => 64]));
@@ -93,6 +93,6 @@ class WebhookQueueTieringTest extends TestCase
         }
 
         $refreshMiddleware = (new RefreshChannelOrderJob('tiktok', 'shop-1', 'order-1'))->middleware();
-        $this->assertCount(1, $refreshMiddleware);
+        $this->assertCount(2, $refreshMiddleware);
     }
 }

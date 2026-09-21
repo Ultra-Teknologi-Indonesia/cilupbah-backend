@@ -11,6 +11,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
+use Modules\Channel\Support\ChannelQueue;
 use Modules\Sales\Jobs\Concerns\UsesShippingLabelPreparationLock;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\BulkShippingLabelService;
@@ -40,7 +41,7 @@ class PrepareTikTokShippingLabelJob implements ShouldBeUnique, ShouldQueue
             : config('queue.routing.labels.connection', 'redis-long'));
         $this->onQueue($prefetch
             ? config('shipping-label-prefetch.queue', 'label-prefetch')
-            : config('queue.routing.labels.queue', 'labels'));
+            : ChannelQueue::for('tiktok', 'label_download'));
     }
 
     public function uniqueId(): string

@@ -13,6 +13,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\ShopeeOrderService;
+use Modules\Channel\Support\ChannelQueue;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Models\ChannelOperationAttempt;
@@ -43,7 +44,12 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
         public readonly bool $verificationOnly = false,
     ) {
         $this->onConnection(config('queue.routing.label_awb.connection', 'redis-long'));
-        $this->onQueue(config('queue.routing.label_awb.queue', 'label-awb'));
+        $this->onQueue(ChannelQueue::for(
+            'shopee',
+            $this->verificationOnly || $this->trackingAttempt > 0
+                ? 'awb_poll'
+                : 'awb_request',
+        ));
     }
 
     public function uniqueId(): string
@@ -99,7 +105,7 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
         [$massOrders, $fallbackOrders] = $this->mapSinglePackageOrders($orders, $packagesByOrder);
 
         foreach ($fallbackOrders as $order) {
-            RequestChannelAwbJob::dispatch((string) $order->id);
+            RequestChannelAwbJob::dispatch((string) $order->id, 0, true, false, false, 'shopee');
         }
 
         if ($massOrders->isEmpty()) {
@@ -294,7 +300,7 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
                     }
 
                     ChannelOperationLedger::markRetryable($attempt, $reason);
-                    RequestChannelAwbJob::dispatch((string) $entry['order']->id)
+                    RequestChannelAwbJob::dispatch((string) $entry['order']->id, 0, true, false, false, 'shopee')
                         ->delay(now()->addSeconds(5));
                 }
             } catch (Throwable $exception) {

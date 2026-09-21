@@ -5,10 +5,10 @@ namespace Modules\Channel\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
-use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Channel\Jobs\SyncStockToChannelsJob;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Models\ChannelStockSyncOutbox;
 use Modules\Channel\Services\ChannelStockResolver;
 use Modules\Inventory\Models\Inventory;
 use Modules\Product\Models\Category;
@@ -149,12 +149,12 @@ class InternalBundleStockSyncTest extends TestCase
 
         (new SyncStockToChannelsJob($this->dogVariant->id))->handle(app(ProductRepository::class));
 
-        Queue::assertPushed(
-            SyncProductToChannelJob::class,
-            fn ($job) => $job->productId === $this->standingVariant->product_id
-                && $job->channelShopId === $this->shop->id
-                && $job->action === 'sync_stock'
-        );
+        $this->assertDatabaseHas('channel_stock_sync_outbox', [
+            'product_id' => $this->standingVariant->product_id,
+            'channel_shop_id' => $this->shop->id,
+            'status' => ChannelStockSyncOutbox::STATUS_PENDING,
+            'sync_stock' => true,
+        ]);
     }
 
     public function test_selling_standing_cascades_reservation_to_internal_dog(): void

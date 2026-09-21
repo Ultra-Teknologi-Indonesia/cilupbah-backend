@@ -5,6 +5,7 @@ namespace Modules\Channel\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Modules\Channel\Adapters\AdapterFactory;
+use Modules\Channel\Jobs\DispatchChannelStockOutboxJob;
 use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
@@ -65,6 +66,15 @@ class ChannelStockSyncOutboxTest extends TestCase
 
         $outbox = ChannelStockSyncOutbox::where('product_channel_mapping_id', $mapping->id)->firstOrFail();
         $this->assertSame('sync_price_stock', $outbox->action());
+    }
+
+    public function test_stock_request_wakes_the_dedicated_outbox_dispatcher(): void
+    {
+        Queue::fake();
+        $this->app->make(ChannelStockSyncOutboxService::class)
+            ->request($this->listedMapping('LISTING-WAKE'), 'sync_stock');
+
+        Queue::assertPushed(DispatchChannelStockOutboxJob::class);
     }
 
     public function test_dispatcher_paces_jobs_per_shop_before_they_enter_redis(): void

@@ -343,7 +343,11 @@ class ShopeeAdapter implements MarketplaceAdapterInterface
         } catch (\Exception $e) {
             Log::error('Shopee syncStock error: '.$e->getMessage());
 
-            return ['success' => false, 'message' => $e->getMessage()];
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+                'error' => UploadErrorPresenter::fromThrowable('shopee', $e),
+            ];
         }
     }
 

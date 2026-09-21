@@ -104,9 +104,9 @@ class ProcessTikTokWebhook implements ShouldBeUnique, ShouldQueue
         $type = (int) ($payload['type'] ?? -1);
 
         return match ($type) {
-            11 => config('queue.names.channel_cancellation', 'channel-cancellation'),
+            11 => config('queue.names.tiktok_cancellation', 'tiktok-cancellation'),
             1, 3 => config('queue.names.tiktok_orders', 'tiktok-orders'),
-            4 => config('queue.names.tiktok_packages', 'tiktok-packages'),
+            4 => config('queue.names.tiktok_fulfillment', 'tiktok-fulfillment'),
             2, 12, 64, 67 => config('queue.names.tiktok_aftersales', 'tiktok-aftersales'),
             5, 15, 37, 50 => config('queue.names.tiktok_catalog', 'tiktok-catalog'),
             default => config('queue.names.tiktok_webhooks', 'tiktok-webhooks'),
@@ -332,9 +332,9 @@ class ProcessTikTokWebhook implements ShouldBeUnique, ShouldQueue
             'tiktok',
             $shopId,
             $orderId,
-            (string) config('queue.names.tiktok_orders', 'tiktok-orders'),
+            null,
             $eventKey,
-        )->delay(now()->addSeconds(2));
+        )->delay(now()->addSeconds((int) config('channel.webhook_order_refresh_delay_seconds', 0)));
 
         $this->recordTikTokTrackingEvent($orderId, $data);
     }

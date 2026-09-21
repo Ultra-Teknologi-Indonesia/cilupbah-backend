@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Log;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderService;
 use Modules\Sales\Services\SalesOrderSettingService;
+use Modules\Channel\Support\ChannelQueue;
 
 class AutoAcceptCancelRequestJob implements ShouldQueue
 {
@@ -24,7 +25,10 @@ class AutoAcceptCancelRequestJob implements ShouldQueue
     public function __construct(
         protected string $orderId,
     ) {
-        $this->onQueue(config('queue.names.channel_cancellation'));
+        $channel = strtolower((string) SalesOrder::query()->whereKey($orderId)->value('source'));
+        $this->onQueue(ChannelQueue::isSupported($channel)
+            ? ChannelQueue::for($channel, 'cancellation')
+            : config('queue.names.channel_cancellation', 'channel-cancellation'));
     }
 
     public function middleware(): array

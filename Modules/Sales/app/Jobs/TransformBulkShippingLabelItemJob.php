@@ -36,7 +36,7 @@ final class TransformBulkShippingLabelItemJob implements ShouldBeUnique, ShouldQ
     ) {
 
         $this->onConnection(config('queue.routing.labels.connection', 'redis-long'));
-        $this->onQueue(config('queue.routing.labels.queue', 'labels'));
+        $this->onQueue(config('queue.routing.label_merge.queue', 'label-merge'));
     }
 
     public function uniqueId(): string
