@@ -50,24 +50,6 @@ class ProductionWorkerSafetyTest extends TestCase
         }
     }
 
-    public function test_legacy_recovery_workers_are_isolated_from_new_dispatches(): void
-    {
-        $finance = config('horizon.defaults.supervisor-legacy-channel-finance-recovery');
-        $afterSales = config('horizon.defaults.supervisor-legacy-channel-after-sales-recovery');
-        $stock = config('horizon.defaults.supervisor-legacy-channel-stock-recovery');
-
-        $this->assertSame('redis-legacy', $finance['connection']);
-        $this->assertSame(['channel-finance'], $finance['queue']);
-        $this->assertSame(1, $finance['maxProcesses']);
-        $this->assertSame('redis-legacy', $afterSales['connection']);
-        $this->assertSame(['channel-after-sales'], $afterSales['queue']);
-        $this->assertSame(1, $afterSales['maxProcesses']);
-
-        $this->assertSame('redis-legacy', $stock['connection']);
-        $this->assertSame(['channel-stock'], $stock['queue']);
-        $this->assertSame(1, $stock['maxProcesses']);
-    }
-
     public function test_production_deploy_allows_recreate_grace_period_and_reports_rollout_failures(): void
     {
         $workflow = file_get_contents(base_path('.github/workflows/ci-cd-production.yml'));
@@ -115,5 +97,20 @@ class ProductionWorkerSafetyTest extends TestCase
             $this->assertStringNotContainsString('chown -R root:33 /spool', $yaml, $manifest);
             $this->assertStringNotContainsString('find /spool', $yaml, $manifest);
         }
+    }
+
+    public function test_legacy_recovery_worker_is_decommissioned(): void
+    {
+        $this->assertFileDoesNotExist(base_path('k8s/production/03-horizon-legacy-queue-recovery.yaml'));
+        $this->assertArrayNotHasKey('redis-legacy', config('queue.connections'));
+        $this->assertArrayNotHasKey('legacy-recovery', config('horizon.profiles'));
+
+        $workflow = file_get_contents(base_path('.github/workflows/ci-cd-production.yml'));
+
+        $this->assertIsString($workflow);
+        $this->assertStringContainsString(
+            'kubectl delete deployment cilupbah-horizon-legacy-queue-recovery',
+            $workflow,
+        );
     }
 }

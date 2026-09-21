@@ -50,15 +50,6 @@ return [
             'after_commit' => true,
         ],
 
-        'redis-legacy' => [
-            'driver' => 'redis',
-            'connection' => env('REDIS_LEGACY_QUEUE_CONNECTION', 'default'),
-            'queue' => env('REDIS_LEGACY_QUEUE', 'default'),
-            'retry_after' => (int) env('REDIS_LEGACY_QUEUE_RETRY_AFTER', 420),
-            'block_for' => null,
-            'after_commit' => true,
-        ],
-
         'redis-channel-sync' => [
             'driver' => 'redis',
             'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),

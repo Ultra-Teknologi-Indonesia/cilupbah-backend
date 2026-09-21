@@ -52,11 +52,6 @@ $supervisorProfiles = [
         'supervisor-label-archive',
     ],
 
-    'legacy-recovery' => [
-        'supervisor-legacy-channel-finance-recovery',
-        'supervisor-legacy-channel-after-sales-recovery',
-        'supervisor-legacy-channel-stock-recovery',
-    ],
 ];
 
 $legacyOrderOperationsProcesses = max(
@@ -139,9 +134,6 @@ return [
             .config('queue.routing.channel_stock_outbox.queue', 'channel-stock-outbox') => 120,
         config('queue.routing.channel_finance.connection', 'redis-finance').':'
             .config('queue.routing.channel_finance.queue', 'channel-finance') => 120,
-        'redis-legacy:channel-finance' => 120,
-        'redis-legacy:channel-after-sales' => 120,
-        'redis-legacy:channel-stock' => 120,
         config('queue.routing.channel_sync.connection', 'redis-channel-sync').':'
             .config('queue.routing.channel_sync.queue', 'channel-sync') => 120,
         config('queue.routing.channel_sync.connection', 'redis-channel-sync').':'
@@ -213,7 +205,7 @@ return [
 
         if (! array_key_exists($profile, $supervisorProfiles)) {
             throw new InvalidArgumentException(
-                "HORIZON_PROFILE '{$profile}' tidak dikenal. Gunakan all, critical, background, labels, atau legacy-recovery."
+                "HORIZON_PROFILE '{$profile}' tidak dikenal. Gunakan all, critical, background, atau labels."
             );
         }
 
@@ -421,48 +413,6 @@ return [
             'backoff' => [30, 120, 300, 600, 1200],
             'memory' => 256,
             'nice' => 0,
-        ],
-        'supervisor-legacy-channel-finance-recovery' => [
-            'connection' => 'redis-legacy',
-            'queue' => ['channel-finance'],
-            'balance' => 'off',
-            'minProcesses' => 1,
-            'maxProcesses' => 1,
-            'maxJobs' => 50,
-            'maxTime' => 900,
-            'timeout' => 240,
-            'tries' => 5,
-            'backoff' => [30, 120, 300, 900, 1800],
-            'memory' => 256,
-            'nice' => 5,
-        ],
-        'supervisor-legacy-channel-after-sales-recovery' => [
-            'connection' => 'redis-legacy',
-            'queue' => ['channel-after-sales'],
-            'balance' => 'off',
-            'minProcesses' => 1,
-            'maxProcesses' => 1,
-            'maxJobs' => 50,
-            'maxTime' => 900,
-            'timeout' => 150,
-            'tries' => 8,
-            'backoff' => [60, 300, 900, 1800],
-            'memory' => 256,
-            'nice' => 5,
-        ],
-        'supervisor-legacy-channel-stock-recovery' => [
-            'connection' => 'redis-legacy',
-            'queue' => ['channel-stock'],
-            'balance' => 'off',
-            'minProcesses' => 1,
-            'maxProcesses' => 1,
-            'maxJobs' => 50,
-            'maxTime' => 900,
-            'timeout' => 330,
-            'tries' => 3,
-            'backoff' => [30, 120, 300],
-            'memory' => 256,
-            'nice' => 10,
         ],
         'supervisor-cutover' => [
             'connection' => config('operations.stock_cutover_console.queue_connection', 'redis-long'),

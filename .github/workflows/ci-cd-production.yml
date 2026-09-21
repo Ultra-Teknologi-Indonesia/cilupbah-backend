@@ -142,6 +142,12 @@ jobs:
             kubectl delete cronjob cilupbah-scheduler -n "$NAMESPACE" \
               --cascade=foreground --wait=true --ignore-not-found
 
+            # Legacy recovery queues were audited empty in production. Remove
+            # the retired worker before applying the active manifests so an
+            # old deployment cannot block rollout or return on a later deploy.
+            kubectl delete deployment cilupbah-horizon-legacy-queue-recovery \
+              -n "$NAMESPACE" --cascade=foreground --wait=false --ignore-not-found
+
             echo "==> Menjeda profil Horizon critical sebelum rollout..."
             # The old Horizon deployment may still be running with the legacy
             # all-supervisor profile. Stop the new critical pool first so two
