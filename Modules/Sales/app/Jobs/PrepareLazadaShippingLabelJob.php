@@ -125,6 +125,10 @@ class PrepareLazadaShippingLabelJob implements ShouldBeUnique, ShouldQueue
                     'shipping_label_raw_data' => ['channel' => 'lazada', 'document' => $document],
                 ]);
 
+                if ($order->driver_call_status === 'pending') {
+                    CallLazadaDriverJob::dispatch($order->id)->afterCommit();
+                }
+
                 Log::info('PrepareLazadaShippingLabelJob: shipping document READY', [
                     'order_id' => $order->id,
                     'order_sn' => $orderSn,

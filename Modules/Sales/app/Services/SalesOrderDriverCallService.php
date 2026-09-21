@@ -16,6 +16,7 @@ use Modules\Sales\Models\ChannelOperationAttempt;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Repositories\SalesOrderRepository;
 use Modules\Sales\Support\ChannelOperationLedger;
+use Modules\Sales\Support\DriverCallReadiness;
 
 class SalesOrderDriverCallService
 {
@@ -72,6 +73,11 @@ class SalesOrderDriverCallService
 
         $forceLabel = (bool) ($query['force_label'] ?? false);
 
+        $order->refresh();
+        if (! DriverCallReadiness::ready($order)) {
+            return $this->queuePrerequisites($order);
+        }
+
         $driverCallSuccess = $this->callDriver($order);
 
         if (! $driverCallSuccess && ! $forceLabel) {
@@ -97,11 +103,18 @@ class SalesOrderDriverCallService
             $order->refresh();
             if ($source === 'tiktok' && empty($order->tracking_number)) {
                 throw new ShippingLabelPreparingException(
-                    'Driver TikTok sudah dipanggil, tetapi tracking number belum diterbitkan. Sistem sedang menunggu resi sebelum mengambil label.'
+                    'Permintaan pengiriman TikTok sudah diterima, tetapi tracking number belum diterbitkan. Sistem sedang menunggu resi sebelum mengambil label.'
                 );
             }
 
             $labelResult = $this->orderService->getShippingLabel($order, $options);
+            $order->refresh();
+
+            if ($driverCallSuccess && ! DriverCallReadiness::ready($order)) {
+                throw new ShippingLabelPreparingException(
+                    'Tracking atau shipping label belum tervalidasi. Sistem belum menandai driver sebagai berhasil.',
+                );
+            }
         } catch (ShippingLabelPreparingException $e) {
             return [
                 'data' => [
@@ -112,7 +125,7 @@ class SalesOrderDriverCallService
                     'label_preparing' => true,
                     'label_message' => $e->getMessage(),
                 ],
-                'message' => 'Driver berhasil dipanggil, label masih disiapkan. Coba unduh dalam beberapa detik.',
+                'message' => 'Permintaan pengiriman diterima, tetapi resi belum tersedia. Label masih disiapkan; coba unduh lagi dalam beberapa detik.',
                 'code' => 202,
             ];
         } catch (\InvalidArgumentException|\RuntimeException $e) {
@@ -140,7 +153,9 @@ class SalesOrderDriverCallService
                 'label' => $labelResult,
             ],
             'message' => $driverCallSuccess
-                ? 'Driver terpanggil dan label siap diunduh.'
+                ? ($order->driver_call_status === 'success'
+                    ? 'Driver terpanggil dan label siap diunduh.'
+                    : 'Label siap diunduh. Panggilan driver masih diproses oleh marketplace.')
                 : 'Label siap; panggilan driver gagal — silakan retry.',
             'code' => 200,
         ];
@@ -194,8 +209,16 @@ class SalesOrderDriverCallService
 
         $source = strtolower((string) $order->source);
 
+        if (! $this->deferIfNotReady($order)) {
+            return true;
+        }
+
         if ($source === 'tiktok' && $order->driver_call_status === 'success') {
             if (empty($order->tracking_number)) {
+                $order->update([
+                    'driver_call_status' => 'pending',
+                    'driver_call_message' => 'Permintaan TikTok sudah diterima, tetapi tracking number belum tersedia. Sistem sedang menunggu resi.',
+                ]);
                 RequestChannelAwbJob::dispatch($order->id, 1, false, false, true)->afterCommit();
             }
 
@@ -208,6 +231,54 @@ class SalesOrderDriverCallService
             'lazada' => $this->callLazada($order),
             default => $this->markUnsupported($order, "Panggil driver untuk source '{$source}' belum didukung."),
         };
+    }
+
+    public function deferIfNotReady(SalesOrder $order): bool
+    {
+        $order->refresh();
+
+        if (DriverCallReadiness::ready($order)) {
+            return true;
+        }
+
+        $this->queuePrerequisites($order);
+
+        return false;
+    }
+
+    private function queuePrerequisites(SalesOrder $order): array
+    {
+        $order->update([
+            'driver_call_status' => 'pending',
+            'driver_call_message' => filled($order->tracking_number)
+                ? 'Shipping label belum siap. Driver belum dipanggil.'
+                : 'Tracking number belum tersedia. Sistem mengambil resi terlebih dahulu; driver belum dipanggil.',
+            'driver_call_attempted_at' => now(),
+        ]);
+
+        if (blank($order->tracking_number)) {
+            RequestChannelAwbJob::dispatch(
+                $order->id,
+                0,
+                true,
+                false,
+                false,
+            )->afterCommit();
+        } else {
+            app(ShippingLabelPreparationDispatcher::class)->dispatch($order);
+        }
+
+        return [
+            'data' => [
+                'driver_call_status' => 'pending',
+                'driver_call_message' => $order->driver_call_message,
+                'driver_call_attempted_at' => optional($order->driver_call_attempted_at)?->toIso8601String(),
+                'label' => null,
+                'label_preparing' => true,
+            ],
+            'message' => 'Tracking dan shipping label harus siap sebelum driver dipanggil. Sistem sedang menyiapkannya.',
+            'code' => 202,
+        ];
     }
 
     private function guardCallable(SalesOrder $order): ?string
@@ -247,6 +318,25 @@ class SalesOrderDriverCallService
     {
         $shopId = (string) $order->channel_shop_id;
         $orderSn = (string) $order->channel_order_no;
+
+        if (
+            filled($order->tracking_number)
+            && in_array(strtoupper((string) $order->channel_status), [
+                'PROCESSED',
+                'AWAITING_COLLECTION',
+                'SHIPPED',
+                'IN_TRANSIT',
+                'TO_CONFIRM_RECEIVE',
+                'COMPLETED',
+            ], true)
+        ) {
+            $order->update([
+                'driver_call_status' => 'success',
+                'driver_call_message' => null,
+            ]);
+
+            return true;
+        }
 
         $order->update([
             'driver_call_status' => 'pending',
@@ -316,12 +406,18 @@ class SalesOrderDriverCallService
                 ChannelOperationAttempt::STATUS_ACCEPTED,
                 ChannelOperationAttempt::STATUS_SUCCEEDED,
             ], true);
+            $hasTracking = filled($order->tracking_number);
 
             $order->update([
-                'driver_call_status' => $isAccepted ? 'success' : 'pending',
-                'driver_call_message' => $isAccepted
-                    ? 'Permintaan TikTok sudah diterima sebelumnya. Sistem sedang menunggu tracking number.'
-                    : 'Status panggilan TikTok belum pasti. Sistem sedang memverifikasi tanpa mengirim ulang.',
+                // TikTok may acknowledge POST /ship before it publishes the
+                // tracking number. That is not a completed driver call from
+                // the warehouse's point of view yet.
+                'driver_call_status' => $isAccepted && $hasTracking ? 'success' : 'pending',
+                'driver_call_message' => $isAccepted && $hasTracking
+                    ? null
+                    : ($isAccepted
+                        ? 'Permintaan TikTok sudah diterima, tetapi tracking number belum tersedia. Sistem sedang memverifikasi tanpa mengirim ulang.'
+                        : 'Status panggilan TikTok belum pasti. Sistem sedang memverifikasi tanpa mengirim ulang.'),
             ]);
 
             RequestChannelAwbJob::dispatch($order->id, 1, false, false, true)->afterCommit();
@@ -338,6 +434,7 @@ class SalesOrderDriverCallService
                 || collect($result['packages'] ?? [])->contains('shipped', true);
             $allPackagesShipped = ! array_key_exists('all_packages_shipped', $result)
                 || (bool) $result['all_packages_shipped'];
+            $hasTracking = filled($result['tracking_number'] ?? null) || filled($order->tracking_number);
 
             if ($handoverAccepted) {
                 if ($allPackagesShipped) {
@@ -351,10 +448,12 @@ class SalesOrderDriverCallService
                 }
 
                 $order->update([
-                    'driver_call_status' => $allPackagesShipped ? 'success' : 'pending',
-                    'driver_call_message' => $allPackagesShipped
+                    'driver_call_status' => $allPackagesShipped && $hasTracking ? 'success' : 'pending',
+                    'driver_call_message' => $allPackagesShipped && $hasTracking
                         ? null
-                        : 'Sebagian package TikTok sudah diterima. Sistem sedang menyelesaikan package yang tersisa.',
+                        : ($hasTracking
+                            ? 'Sebagian package TikTok sudah diterima. Sistem sedang menyelesaikan package yang tersisa.'
+                            : 'Permintaan TikTok diterima, tetapi tracking number belum tersedia. Sistem sedang menunggu resi.'),
                     'driver_call_response' => $result,
                 ]);
 
@@ -455,8 +554,8 @@ class SalesOrderDriverCallService
             )->afterCommit();
 
             $order->update([
-                'driver_call_status' => 'success',
-                'driver_call_message' => null,
+                'driver_call_status' => 'pending',
+                'driver_call_message' => 'Shipping label sudah siap. Panggilan driver Lazada sedang diproses.',
                 'driver_call_response' => ['queued' => true, 'pipeline' => 'lazada_fulfillment'],
             ]);
             $order->refresh();

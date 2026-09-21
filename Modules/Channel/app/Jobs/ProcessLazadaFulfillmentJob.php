@@ -16,6 +16,7 @@ use Modules\Outbound\Models\ShipmentOrder;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Support\ChannelOperationLedger;
 use Modules\Sales\Support\ChannelOrderSideEffectGuard;
+use Modules\Sales\Support\DriverCallReadiness;
 
 class ProcessLazadaFulfillmentJob implements ShouldBeUnique, ShouldQueue
 {
@@ -159,6 +160,18 @@ class ProcessLazadaFulfillmentJob implements ShouldBeUnique, ShouldQueue
                 ChannelOperationLedger::markSucceeded($rtsClaim['attempt'], [
                     'tracking_number' => data_get($result, 'rts.tracking_number'),
                 ]);
+
+                $order->refresh();
+                if (DriverCallReadiness::ready($order) && $order->driver_call_status === 'pending') {
+                    $order->update([
+                        'driver_call_status' => 'success',
+                        'driver_call_message' => null,
+                        'driver_call_response' => [
+                            'pipeline' => 'lazada_fulfillment',
+                            'status' => 'ready_to_ship_completed',
+                        ],
+                    ]);
+                }
             } catch (\Throwable $exception) {
                 ChannelOperationLedger::markUncertain($rtsClaim['attempt'], $exception);
 
@@ -166,6 +179,18 @@ class ProcessLazadaFulfillmentJob implements ShouldBeUnique, ShouldQueue
             }
         } else {
             Log::info("Lazada fulfillment: order {$this->orderId} sudah melewati tahap ready-to-ship, dilewati.");
+        }
+
+        $order->refresh();
+        if (DriverCallReadiness::ready($order) && $order->driver_call_status === 'pending') {
+            $order->update([
+                'driver_call_status' => 'success',
+                'driver_call_message' => null,
+                'driver_call_response' => [
+                    'pipeline' => 'lazada_fulfillment',
+                    'status' => 'already_ready_to_ship',
+                ],
+            ]);
         }
     }
 

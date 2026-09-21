@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Jobs\ProcessLazadaFulfillmentJob;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Channel\Support\UploadErrorPresenter;
-use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Services\SalesOrderDriverCallService;
 use Modules\Sales\Support\ChannelOrderSideEffectGuard;
 
 class CallLazadaDriverJob implements ShouldQueue
@@ -35,7 +35,7 @@ class CallLazadaDriverJob implements ShouldQueue
         ];
     }
 
-    public function handle(): void
+    public function handle(SalesOrderDriverCallService $driverCall): void
     {
         $order = ChannelOrderSideEffectGuard::active($this->orderId, 'call_driver');
         if (! $order) {
@@ -57,6 +57,10 @@ class CallLazadaDriverJob implements ShouldQueue
                 'shipping_provider' => $order->shipping_provider,
             ]);
 
+            return;
+        }
+
+        if (! $driverCall->deferIfNotReady($order)) {
             return;
         }
 
@@ -94,8 +98,8 @@ class CallLazadaDriverJob implements ShouldQueue
             );
 
             $order->update([
-                'driver_call_status' => 'success',
-                'driver_call_message' => null,
+                'driver_call_status' => 'pending',
+                'driver_call_message' => 'Shipping label sudah siap. Panggilan driver Lazada sedang diproses.',
                 'driver_call_response' => ['queued' => true, 'pipeline' => 'lazada_fulfillment'],
             ]);
         } catch (\Throwable $e) {

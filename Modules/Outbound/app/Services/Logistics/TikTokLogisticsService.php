@@ -2,8 +2,12 @@
 
 namespace Modules\Outbound\Services\Logistics;
 
+use Illuminate\Support\Facades\Log;
+use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Channel\Services\TikTokOrderService;
 use Modules\Outbound\Contracts\DriverCallResult;
 use Modules\Outbound\Models\Shipment;
+use Modules\Sales\Jobs\RequestChannelAwbJob;
 use Modules\Sales\Models\SalesOrder;
 
 class TikTokLogisticsService extends AbstractLogisticsService
@@ -40,22 +44,45 @@ class TikTokLogisticsService extends AbstractLogisticsService
             $handover = ['tracking_number' => $tracking, 'shipping_provider_id' => $providerId];
         }
 
-        $service = app(\Modules\Channel\Services\TikTokOrderService::class);
+        $service = app(TikTokOrderService::class);
         $result = $service->readyToShip((string) $shopId, (string) $orderId, $handover);
 
-        if (empty($result['shipped'])) {
+        $accepted = ! empty($result['accepted']) || ! empty($result['shipped']);
+
+        if (! $accepted) {
             return [
                 'status' => DriverCallResult::STATUS_FAILED,
                 'message' => $result['message'] ?? 'TikTok menolak permintaan pickup.',
             ];
         }
 
-        $trackingNumber = null;
+        $trackingNumber = $result['tracking_number'] ?? null;
         foreach ($result['packages'] ?? [] as $pkg) {
             if (! empty($pkg['tracking_number'])) {
                 $trackingNumber = $pkg['tracking_number'];
                 break;
             }
+        }
+
+        $order->refresh();
+        $trackingNumber ??= $order->tracking_number ?: null;
+
+        if (! $trackingNumber) {
+            // TikTok can accept POST /ship before publishing the tracking
+            // number. Keep the driver call pending and poll the accepted
+            // shipment; never report a driver success without an AWB.
+            RequestChannelAwbJob::dispatch(
+                $order->id,
+                1,
+                false,
+                false,
+                true,
+            )->afterCommit();
+
+            return [
+                'status' => DriverCallResult::STATUS_PENDING,
+                'message' => 'Permintaan TikTok diterima, tetapi tracking number belum tersedia. Sistem sedang menunggu resi.',
+            ];
         }
 
         return [
@@ -68,7 +95,7 @@ class TikTokLogisticsService extends AbstractLogisticsService
     {
         if (strtoupper((string) $order->fulfillment_type) === 'FULFILLMENT_BY_TIKTOK') {
             return [
-                'status'  => 'failed',
+                'status' => 'failed',
                 'message' => 'TikTok: order ini FULFILLMENT_BY_TIKTOK (FBT) — RTS dikelola oleh TikTok, bukan seller.',
             ];
         }
@@ -81,7 +108,7 @@ class TikTokLogisticsService extends AbstractLogisticsService
         }
 
         try {
-            $service = app(\Modules\Channel\Services\TikTokOrderService::class);
+            $service = app(TikTokOrderService::class);
             $rts = $service->readyToShip((string) $shopId, $channelOrderNo);
 
             if (! empty($rts['shipped'])) {
@@ -97,28 +124,36 @@ class TikTokLogisticsService extends AbstractLogisticsService
     public function getTrackingStatus(string $orderId): array
     {
         $order = SalesOrder::query()->find($orderId);
-        if (! $order) return [];
+        if (! $order) {
+            return [];
+        }
 
         $shopId = $order->channel_shop_id ?? $order->store?->channel_shop_id ?? null;
         $channelOrderNo = $order->channel_order_no;
-        if (! $shopId || ! $channelOrderNo) return [];
+        if (! $shopId || ! $channelOrderNo) {
+            return [];
+        }
 
-        $service = app(\Modules\Channel\Services\TikTokOrderService::class);
+        $service = app(TikTokOrderService::class);
         try {
-            $shop = app(\Modules\Channel\Repositories\ChannelShopRepository::class)
+            $shop = app(ChannelShopRepository::class)
                 ->findByShopId((string) $shopId);
-            if (! $shop) return [];
+            if (! $shop) {
+                return [];
+            }
 
             $service->fetchAndStoreTracking($shop, (string) $channelOrderNo, ['shop_cipher' => $shop->shop_cipher ?? '']);
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning('TikTok fetchAndStoreTracking gagal: ' . $e->getMessage(), [
+            Log::warning('TikTok fetchAndStoreTracking gagal: '.$e->getMessage(), [
                 'order_id' => $orderId,
             ]);
         }
 
         $order->refresh();
         $channelStatus = strtoupper((string) ($order->channel_status ?? ''));
-        if ($channelStatus === '') return [];
+        if ($channelStatus === '') {
+            return [];
+        }
 
         return [[
             'event_type' => strtolower($channelStatus),

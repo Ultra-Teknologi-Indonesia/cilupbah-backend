@@ -5,8 +5,13 @@ namespace Modules\Outbound\Contracts;
 class DriverCallResult
 {
     public const STATUS_SUCCESS = 'success';
+
     public const STATUS_FAILED = 'failed';
+
+    public const STATUS_PENDING = 'pending';
+
     public const STATUS_NOT_SUPPORTED = 'not_supported';
+
     public const STATUS_SKIPPED = 'skipped';
 
     public function __construct(
@@ -16,10 +21,13 @@ class DriverCallResult
     public function summary(): array
     {
         $success = 0;
+        $pending = 0;
         $failed = [];
         foreach ($this->results as $r) {
             if (($r['status'] ?? null) === self::STATUS_SUCCESS) {
                 $success++;
+            } elseif (($r['status'] ?? null) === self::STATUS_PENDING) {
+                $pending++;
             } else {
                 $failed[] = [
                     'order_id' => $r['order_id'] ?? null,
@@ -31,6 +39,7 @@ class DriverCallResult
 
         return [
             'success' => $success,
+            'pending' => $pending,
             'failed' => $failed,
         ];
     }

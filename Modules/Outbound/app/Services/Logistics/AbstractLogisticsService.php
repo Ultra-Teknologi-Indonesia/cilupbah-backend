@@ -12,7 +12,6 @@ use Modules\Sales\Models\SalesOrder;
 
 abstract class AbstractLogisticsService implements MarketPlaceLogisticsInterface
 {
-
     abstract protected function driverCallMethod(): string;
 
     abstract protected function callSingle(SalesOrder $order, int $shipperId): array;
@@ -40,7 +39,7 @@ abstract class AbstractLogisticsService implements MarketPlaceLogisticsInterface
     public function readyToShip(SalesOrder $order): array
     {
         return [
-            'status'  => 'failed',
+            'status' => 'failed',
             'message' => sprintf(
                 "Ready-to-ship belum diimplementasikan untuk source '%s'.",
                 strtolower((string) $order->source),
@@ -66,12 +65,14 @@ abstract class AbstractLogisticsService implements MarketPlaceLogisticsInterface
                     'status' => DriverCallResult::STATUS_FAILED,
                     'message' => 'Pesanan tidak ditemukan.',
                 ];
+
                 continue;
             }
 
             if ($guard = $this->guardCallable($order)) {
                 $this->persistFailure($order, ['message' => $guard]);
                 $results[] = ['order_id' => $id, 'status' => DriverCallResult::STATUS_FAILED, 'message' => $guard];
+
                 continue;
             }
 
@@ -81,6 +82,8 @@ abstract class AbstractLogisticsService implements MarketPlaceLogisticsInterface
 
                 if ($status === DriverCallResult::STATUS_SUCCESS) {
                     $this->persistSuccess($order, $shipperId, $outcome);
+                } elseif ($status === DriverCallResult::STATUS_PENDING) {
+                    $this->persistPending($order, $outcome);
                 } else {
                     $this->persistFailure($order, $outcome);
                 }
@@ -93,7 +96,7 @@ abstract class AbstractLogisticsService implements MarketPlaceLogisticsInterface
                     'error' => $e->getMessage(),
                 ]);
                 $this->persistFailure($order, [
-                    'message'  => $e->getMessage(),
+                    'message' => $e->getMessage(),
                     'response' => ['exception' => $e->getMessage(), 'class' => get_class($e)],
                 ]);
                 $results[] = [
@@ -116,18 +119,28 @@ abstract class AbstractLogisticsService implements MarketPlaceLogisticsInterface
         }
 
         return match (true) {
-            in_array($cs, ['CANCELLED', 'IN_CANCEL'], true)                    => 'Pesanan sudah dibatalkan — tidak bisa panggil driver.',
-            in_array($cs, ['RETURN_REQUESTED', 'RETURNED'], true)              => 'Pesanan dalam proses retur — tidak bisa panggil driver.',
-            default                                                            => 'Pesanan sudah dikirim/selesai — driver tidak perlu dipanggil lagi.',
+            in_array($cs, ['CANCELLED', 'IN_CANCEL'], true) => 'Pesanan sudah dibatalkan — tidak bisa panggil driver.',
+            in_array($cs, ['RETURN_REQUESTED', 'RETURNED'], true) => 'Pesanan dalam proses retur — tidak bisa panggil driver.',
+            default => 'Pesanan sudah dikirim/selesai — driver tidak perlu dipanggil lagi.',
         };
     }
 
     protected function persistFailure(SalesOrder $order, array $outcome): void
     {
         $order->forceFill([
-            'driver_call_status'       => 'failed',
-            'driver_call_message'      => isset($outcome['message']) ? mb_substr((string) $outcome['message'], 0, 500) : null,
-            'driver_call_response'     => $outcome['response'] ?? $outcome,
+            'driver_call_status' => 'failed',
+            'driver_call_message' => isset($outcome['message']) ? mb_substr((string) $outcome['message'], 0, 500) : null,
+            'driver_call_response' => $outcome['response'] ?? $outcome,
+            'driver_call_attempted_at' => now(),
+        ])->save();
+    }
+
+    protected function persistPending(SalesOrder $order, array $outcome): void
+    {
+        $order->forceFill([
+            'driver_call_status' => 'pending',
+            'driver_call_message' => isset($outcome['message']) ? mb_substr((string) $outcome['message'], 0, 500) : null,
+            'driver_call_response' => $outcome['response'] ?? $outcome,
             'driver_call_attempted_at' => now(),
         ])->save();
     }

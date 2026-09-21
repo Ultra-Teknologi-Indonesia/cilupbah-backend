@@ -10,6 +10,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Modules\Channel\Jobs\ProcessLazadaFulfillmentJob;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Services\ShopeeOrderService;
@@ -577,6 +578,24 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                             'order_id' => $freshOrder->id,
                             'salesorder_no' => $freshOrder->salesorder_no,
                         ]);
+
+                        return null;
+                    }
+
+                    if (
+                        $freshOrder->driver_call_status === 'pending'
+                        && $freshOrder->shipping_label_status !== 'ready'
+                    ) {
+                        ProcessLazadaFulfillmentJob::dispatch(
+                            (string) $freshOrder->channel_shop_id,
+                            (string) $freshOrder->channel_order_no,
+                            $shippingProvider,
+                            'dropship',
+                            $freshOrder->tracking_number ?: null,
+                            null,
+                        )->afterCommit();
+
+                        $this->awaitingVerification = true;
 
                         return null;
                     }
