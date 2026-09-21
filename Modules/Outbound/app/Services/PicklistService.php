@@ -15,6 +15,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Models\Inventory;
+use Modules\Inventory\Models\InventoryMovement;
 use Modules\Inventory\Models\SkuRackAssignment;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Notification\Events\TaskAssigned;
@@ -31,6 +32,8 @@ use Modules\Sales\Models\SalesOrder as Order;
 use Modules\Sales\Models\SalesOrderStatusHistory;
 use Modules\Sales\Enums\OrderActivityAction;
 use Modules\Sales\Enums\OrderActivityEntity;
+use Modules\Sales\Exceptions\InsufficientStockException;
+use Modules\Sales\Services\StockService;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 use Ramsey\Uuid\Uuid;
@@ -46,6 +49,7 @@ class PicklistService
         protected ChannelWarehousePolicy $channelWarehousePolicy,
         protected PicklistOrderGuard $picklistOrderGuard,
         protected OrderReleaseService $orderReleaseService,
+        protected StockService $stockService,
     ) {}
 
     protected function assignedToColumn(Model $doc): string
@@ -511,7 +515,7 @@ class PicklistService
 
             if ($delta > 0) {
                 $this->assertInventoryForPick($item, (string) $picklist->location_id, $bin);
-                $this->commitPickAllocation($picklist, $item, $bin, $delta, $userId);
+                $this->commitPickAllocation($picklist, $item, $bin, $delta, $userId, $pickOrder);
 
                 $this->picklistRepository->updateItem($itemId, [
                     'qty_picked' => $target,
@@ -1092,7 +1096,14 @@ class PicklistService
         });
     }
 
-    private function commitPickAllocation(Picklist $picklist, PicklistItem $item, LocationBin $bin, int $qty, string $userId): void
+    private function commitPickAllocation(
+        Picklist $picklist,
+        PicklistItem $item,
+        LocationBin $bin,
+        int $qty,
+        string $userId,
+        ?Order $order = null,
+    ): void
     {
         if ($qty <= 0) {
             return;
@@ -1116,15 +1127,41 @@ class PicklistService
             throw new OutboundValidationException("Stok tidak cukup di rak {$bin->bin_final_code}. Tersedia: {$pickable}, dibutuhkan: {$qty}. Silahkan pilih rak lain.");
         }
 
+        try {
+            $movement = $this->stockService->consumeFromBin(
+                (string) $item->sku,
+                (string) $item->item_id,
+                (string) $picklist->location_id,
+                (string) $bin->id,
+                $qty,
+                $this->pickTransactionNumber($picklist, $item, $order),
+                'PICKING',
+                $userId ?: 'system',
+                now(),
+                $this->orderReference($order),
+            );
+        } catch (InsufficientStockException $exception) {
+            throw new OutboundValidationException($exception->getMessage(), 422, $exception);
+        }
+
         PicklistItemAllocation::create([
             'picklist_item_id' => $item->id,
             'bin_id' => $bin->id,
             'qty' => $qty,
             'picked_at' => now(),
             'picked_by' => $userId ?: null,
-            'physical_committed_qty' => 0,
-            'movement_id' => null,
+            'physical_committed_qty' => $qty,
+            'movement_id' => $movement?->id,
         ]);
+    }
+
+    private function pickTransactionNumber(Picklist $picklist, PicklistItem $item, ?Order $order): string
+    {
+        $orderNumber = trim((string) ($order?->salesorder_no ?? ''));
+
+        return $orderNumber !== ''
+            ? $orderNumber
+            : $picklist->picklist_no.'-ITEM-'.$item->id;
     }
 
     private function reversePickAllocations(
@@ -1183,15 +1220,33 @@ class PicklistService
             $physicalQty = min($reversedQty, (int) $allocation->physical_committed_qty);
 
             if ($physicalQty > 0) {
-                $this->inventoryService->reversePick([
-                    'item_id' => $item->item_id,
-                    'location_id' => $picklist->location_id,
-                    'bin_id' => $allocation->bin_id,
-                    'qty' => $physicalQty,
-                    'transaction_number' => $picklist->picklist_no.$suffix,
-                    'reference_number' => $referenceNumber,
-                    'created_by' => $userId ?: 'system',
-                ]);
+                $movementSource = $allocation->movement_id
+                    ? InventoryMovement::query()->whereKey($allocation->movement_id)->value('source')
+                    : null;
+
+                if ($movementSource === 'PICKING') {
+                    $this->stockService->restorePickedFromBin(
+                        (string) $item->sku,
+                        (string) $item->item_id,
+                        (string) $picklist->location_id,
+                        (string) $allocation->bin_id,
+                        $physicalQty,
+                        $picklist->picklist_no.$suffix,
+                        $userId ?: 'system',
+                        now(),
+                        $referenceNumber,
+                    );
+                } else {
+                    $this->inventoryService->reversePick([
+                        'item_id' => $item->item_id,
+                        'location_id' => $picklist->location_id,
+                        'bin_id' => $allocation->bin_id,
+                        'qty' => $physicalQty,
+                        'transaction_number' => $picklist->picklist_no.$suffix,
+                        'reference_number' => $referenceNumber,
+                        'created_by' => $userId ?: 'system',
+                    ]);
+                }
             }
 
             $allocation->qty = (int) $allocation->qty - $reversedQty;
