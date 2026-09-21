@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Channel\Support\UploadErrorPresenter;
-use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Services\SalesOrderDriverCallService;
 use Modules\Sales\Support\ChannelOrderSideEffectGuard;
 
 class CallShopeeDriverJob implements ShouldQueue
@@ -27,7 +27,7 @@ class CallShopeeDriverJob implements ShouldQueue
         $this->onQueue(config('queue.names.channel_fulfillment'));
     }
 
-    public function handle(ShopeeOrderService $shopee): void
+    public function handle(ShopeeOrderService $shopee, SalesOrderDriverCallService $driverCall): void
     {
         $order = ChannelOrderSideEffectGuard::active($this->orderId, 'call_driver');
         if (! $order) {
@@ -45,6 +45,29 @@ class CallShopeeDriverJob implements ShouldQueue
                 'source' => $order->source,
                 'shipping_type' => $order->shipping_type,
                 'shipping_provider' => $order->shipping_provider,
+            ]);
+
+            return;
+        }
+
+        if (! $driverCall->deferIfNotReady($order)) {
+            return;
+        }
+
+        if (
+            filled($order->tracking_number)
+            && in_array(strtoupper((string) $order->channel_status), [
+                'PROCESSED',
+                'AWAITING_COLLECTION',
+                'SHIPPED',
+                'IN_TRANSIT',
+                'TO_CONFIRM_RECEIVE',
+                'COMPLETED',
+            ], true)
+        ) {
+            $order->update([
+                'driver_call_status' => 'success',
+                'driver_call_message' => null,
             ]);
 
             return;

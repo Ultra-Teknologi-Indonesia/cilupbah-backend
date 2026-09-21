@@ -201,6 +201,11 @@ class PrepareShopeeShippingLabelJob implements ShouldBeUnique, ShouldQueue
                         'shipping_label_doc_type' => $docType,
                         'shipping_label_prepared_at' => now(),
                     ]);
+
+                    if ($order->driver_call_status === 'pending') {
+                        CallShopeeDriverJob::dispatch($order->id)->afterCommit();
+                    }
+
                     Log::info('PrepareShopeeShippingLabelJob: shipping document READY', [
                         'order_id' => $order->id,
                         'order_sn' => $orderSn,

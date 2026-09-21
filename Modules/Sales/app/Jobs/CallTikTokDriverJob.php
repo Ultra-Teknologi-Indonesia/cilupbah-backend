@@ -59,8 +59,16 @@ class CallTikTokDriverJob implements ShouldQueue
             return;
         }
 
+        if (! $driverCall->deferIfNotReady($order)) {
+            return;
+        }
+
         if ($order->driver_call_status === 'success') {
             if (empty($order->tracking_number)) {
+                $order->update([
+                    'driver_call_status' => 'pending',
+                    'driver_call_message' => 'Permintaan TikTok sudah diterima, tetapi tracking number belum tersedia. Sistem sedang menunggu resi.',
+                ]);
                 RequestChannelAwbJob::dispatch(
                     $order->id,
                     1,

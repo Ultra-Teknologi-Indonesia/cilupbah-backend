@@ -142,6 +142,10 @@ class PrepareTikTokShippingLabelJob implements ShouldBeUnique, ShouldQueue
                     'shipping_label_raw_data' => ['channel' => 'tiktok', 'documents' => $documents],
                 ]);
 
+                if ($order->driver_call_status === 'pending') {
+                    CallTikTokDriverJob::dispatch($order->id)->afterCommit();
+                }
+
                 Log::info('PrepareTikTokShippingLabelJob: shipping document READY', [
                     'order_id' => $order->id,
                     'order_sn' => $orderSn,

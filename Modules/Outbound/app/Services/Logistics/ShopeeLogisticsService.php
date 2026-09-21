@@ -3,6 +3,7 @@
 namespace Modules\Outbound\Services\Logistics;
 
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Outbound\Contracts\DriverCallResult;
 use Modules\Outbound\Models\Shipment;
 use Modules\Sales\Models\SalesOrder;
@@ -25,7 +26,25 @@ class ShopeeLogisticsService extends AbstractLogisticsService
             ];
         }
 
-        $service = app(\Modules\Channel\Services\ShopeeOrderService::class);
+        if (
+            filled($order->tracking_number)
+            && in_array(strtoupper((string) $order->channel_status), [
+                'PROCESSED',
+                'AWAITING_COLLECTION',
+                'SHIPPED',
+                'IN_TRANSIT',
+                'TO_CONFIRM_RECEIVE',
+                'COMPLETED',
+            ], true)
+        ) {
+            return [
+                'status' => DriverCallResult::STATUS_SUCCESS,
+                'tracking_number' => $order->tracking_number,
+                'message' => 'Shopee shipment sudah diterima sebelumnya; API driver tidak dikirim ulang.',
+            ];
+        }
+
+        $service = app(ShopeeOrderService::class);
 
         $opts = array_filter([
             'preferred_method' => $this->preferredHandover($shopId),
@@ -62,7 +81,7 @@ class ShopeeLogisticsService extends AbstractLogisticsService
             ];
         }
 
-        $service = app(\Modules\Channel\Services\ShopeeOrderService::class);
+        $service = app(ShopeeOrderService::class);
         $result = $service->updateShippingOrder($shopId, $orderSn, [
             'address_id' => $addressId,
             'pickup_time_id' => $pickupTimeId,
@@ -104,17 +123,22 @@ class ShopeeLogisticsService extends AbstractLogisticsService
     public function getTrackingStatus(string $orderId): array
     {
         $order = SalesOrder::query()->find($orderId);
-        if (! $order) return [];
+        if (! $order) {
+            return [];
+        }
 
         $shopId = $this->resolveShopId($order);
         $orderSn = $order->channel_order_no;
-        if (! $shopId || ! $orderSn) return [];
+        if (! $shopId || ! $orderSn) {
+            return [];
+        }
 
-        $service = app(\Modules\Channel\Services\ShopeeOrderService::class);
+        $service = app(ShopeeOrderService::class);
         $info = $service->getTrackingInfo((string) $shopId, (string) $orderSn);
 
         return array_map(function ($entry) {
             $desc = (string) ($entry['description'] ?? '');
+
             return [
                 'event_type' => strtolower((string) ($entry['logistics_status'] ?? 'polled_update')),
                 'driver_name' => self::parseDriverName($desc),
@@ -128,10 +152,13 @@ class ShopeeLogisticsService extends AbstractLogisticsService
 
     public static function parseDriverName(string $description): ?string
     {
-        if ($description === '') return null;
+        if ($description === '') {
+            return null;
+        }
         if (preg_match('/driver[:\s]+([A-Za-z0-9\.\-\s]{2,40})/i', $description, $m)) {
             return trim($m[1]);
         }
+
         return null;
     }
 
@@ -144,7 +171,7 @@ class ShopeeLogisticsService extends AbstractLogisticsService
             return ['status' => 'failed', 'message' => 'Shopee: channel_shop_id atau channel_order_no kosong.'];
         }
 
-        $service = app(\Modules\Channel\Services\ShopeeOrderService::class);
+        $service = app(ShopeeOrderService::class);
 
         try {
             if ($order->channel_status === 'RETRY_SHIP') {
@@ -154,7 +181,7 @@ class ShopeeLogisticsService extends AbstractLogisticsService
                 }
                 $err = is_array($result) ? ($result['error'] ?? null) : null;
 
-                return ['status' => 'failed', 'message' => 'Shopee: gagal retry pickup' . ($err ? " ({$err})" : '') . '.'];
+                return ['status' => 'failed', 'message' => 'Shopee: gagal retry pickup'.($err ? " ({$err})" : '').'.'];
             }
 
             $result = $service->shipOrder((string) $shopId, $orderSn, [
@@ -168,7 +195,7 @@ class ShopeeLogisticsService extends AbstractLogisticsService
             }
             $err = is_array($result) ? ($result['error'] ?? null) : null;
 
-            return ['status' => 'failed', 'message' => 'Shopee: gagal ship_order' . ($err ? " ({$err})" : '') . '.'];
+            return ['status' => 'failed', 'message' => 'Shopee: gagal ship_order'.($err ? " ({$err})" : '').'.'];
         } catch (\Throwable $e) {
             return ['status' => 'failed', 'message' => $e->getMessage()];
         }

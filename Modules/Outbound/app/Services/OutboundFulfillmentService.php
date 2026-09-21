@@ -11,8 +11,8 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Jobs\RefreshChannelOrderJob;
+use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Channel\Support\UploadErrorPresenter;
 use Modules\Outbound\Contracts\DriverCallResult;
@@ -31,6 +31,7 @@ use Modules\Outbound\Repositories\ShipmentRepository;
 use Modules\Outbound\Services\Logistics\LogisticsGateway;
 use Modules\Report\Models\ExportJob;
 use Modules\Sales\Models\SalesOrder as Order;
+use Modules\Sales\Services\SalesOrderDriverCallService;
 use Modules\Sales\Services\SalesOrderService;
 use Modules\Sales\Support\ChannelOperationLedger;
 use Modules\Sales\Support\ChannelOrderSideEffectGuard;
@@ -53,6 +54,7 @@ class OutboundFulfillmentService
         protected LogisticsGateway $logisticsGateway,
         protected ChannelWarehousePolicy $channelWarehousePolicy,
         protected PicklistOrderGuard $picklistOrderGuard,
+        protected SalesOrderDriverCallService $driverCallService,
     ) {}
 
     public function queueProcessOrdersExport(User $user, array $filters): ExportJob
@@ -94,7 +96,16 @@ class OutboundFulfillmentService
         $orders = Order::query()
             ->whereIn('id', $orderIds)
             ->tap(fn ($query) => WarehouseAccess::apply($query, 'location_id'))
-            ->get(['id', 'source', 'driver_call_status', 'channel_shop_id', 'salesorder_no']);
+            ->get([
+                'id',
+                'source',
+                'driver_call_status',
+                'channel_shop_id',
+                'salesorder_no',
+                'is_instant',
+                'tracking_number',
+                'shipping_label_status',
+            ]);
 
         $blocked = [];
         $groupedFresh = [];
@@ -108,6 +119,39 @@ class OutboundFulfillmentService
                 ];
 
                 continue;
+            }
+
+            if (! $order->is_instant) {
+                $blocked[] = [
+                    'order_id' => (string) $order->id,
+                    'status' => DriverCallResult::STATUS_SKIPPED,
+                    'message' => 'Pesanan bukan Instant / Same Day; driver marketplace tidak dipanggil.',
+                ];
+
+                continue;
+            }
+
+            if (in_array(strtolower((string) $order->source), ['shopee', 'tiktok', 'lazada'], true)) {
+                if ($order->driver_call_status === 'success') {
+                    $blocked[] = [
+                        'order_id' => (string) $order->id,
+                        'status' => DriverCallResult::STATUS_SUCCESS,
+                        'message' => 'Driver sudah diproses sebelumnya.',
+                    ];
+
+                    continue;
+                }
+
+                if (! $this->driverCallService->deferIfNotReady($order)) {
+                    $blocked[] = [
+                        'order_id' => (string) $order->id,
+                        'status' => DriverCallResult::STATUS_PENDING,
+                        'message' => $order->driver_call_message
+                            ?? 'Tracking dan shipping label belum siap; driver belum dipanggil.',
+                    ];
+
+                    continue;
+                }
             }
 
             $key = strtolower((string) ($order->source ?? 'manual')) ?: 'manual';
@@ -708,10 +752,10 @@ SQL;
                 ->orWhere('tracking_number', $orderNo);
         })
             ->with([
-            'items.product:id,sku,product_id',
-            'items.product.product:id,name',
-            'location:id,location_name,location_code',
-        ]);
+                'items.product:id,sku,product_id',
+                'items.product.product:id,name',
+                'location:id,location_name,location_code',
+            ]);
         WarehouseAccess::apply($query, 'location_id');
 
         return $query->first();
