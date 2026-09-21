@@ -78,7 +78,7 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
         $code = (int) ($payload['code'] ?? -1);
 
         if ($code === self::PUSH_ORDER_STATUS && self::isFinalCancellationPayload($payload)) {
-            return config('queue.names.channel_cancellation', 'channel-cancellation');
+            return config('queue.names.shopee_cancellation', 'shopee-cancellation');
         }
 
         return match ($code) {
@@ -248,9 +248,9 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
             'shopee',
             $shopId,
             $orderSn,
-            (string) config('queue.names.shopee_tracking', 'shopee-tracking'),
+            null,
             $eventKey,
-        )->delay(now()->addSeconds(2));
+        )->delay(now()->addSeconds((int) config('channel.webhook_order_refresh_delay_seconds', 0)));
     }
 
     protected function deferOrderEvent(string $shopId, string $orderId): void
@@ -371,7 +371,7 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
             'shopee',
             $shopId,
             $orderSn,
-            (string) config('queue.names.shopee_orders', 'shopee-orders'),
+            null,
             $eventKey,
         )->delay(now()->addSeconds(2));
 

@@ -383,7 +383,14 @@ class BulkShippingLabelService
 
         $orders
             ->reject(static fn (SalesOrder $order): bool => strtolower((string) $order->source) === self::CHANNEL_SHOPEE)
-            ->each(static fn (SalesOrder $order) => RequestChannelAwbJob::dispatch((string) $order->id));
+            ->each(static fn (SalesOrder $order) => RequestChannelAwbJob::dispatch(
+                (string) $order->id,
+                0,
+                true,
+                false,
+                false,
+                strtolower((string) $order->source),
+            ));
     }
 
     private function initialItemStatus(?SalesOrder $order, string $channel): array
@@ -488,7 +495,12 @@ class BulkShippingLabelService
 
     public function dispatchItem(BulkShippingLabelItem $item): void
     {
-        ProcessBulkShippingLabelItemJob::dispatch($item->batch_id, $item->id, (string) $item->order_id);
+        ProcessBulkShippingLabelItemJob::dispatch(
+            $item->batch_id,
+            $item->id,
+            (string) $item->order_id,
+            strtolower((string) $item->channel),
+        );
     }
 
     public function stageDownloadedLabel(string $orderId, string $bytes): int
@@ -1243,15 +1255,6 @@ class BulkShippingLabelService
         }
     }
 
-    /**
-     * Reuse labels for a newly-created batch with bounded database work.
-     *
-     * The old implementation queried the current batch item and reusable
-     * candidates once per order. A 50-order batch therefore performed many
-     * repeated queries before workers could start. Candidates are now loaded
-     * once and grouped by order; only the local storage existence check runs
-     * per candidate.
-     */
     private function hydrateReusableLabels(
         EloquentCollection $items,
         EloquentCollection $orders,

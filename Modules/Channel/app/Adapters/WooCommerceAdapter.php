@@ -330,7 +330,11 @@ class WooCommerceAdapter implements MarketplaceAdapterInterface
         } catch (\Exception $e) {
             Log::error('WooCommerce syncStock error: '.$e->getMessage());
 
-            return ['success' => false, 'message' => $e->getMessage()];
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+                'error' => UploadErrorPresenter::fromMessage('woocommerce', $e->getMessage()),
+            ];
         }
     }
 

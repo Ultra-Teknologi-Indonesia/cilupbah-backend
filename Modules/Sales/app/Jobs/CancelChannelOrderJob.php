@@ -17,6 +17,8 @@ use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
+use Modules\Channel\Support\ChannelOrderLock;
+use Modules\Channel\Support\ChannelQueue;
 use Modules\Notification\Services\NotificationDispatcher;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderService;
@@ -36,7 +38,10 @@ class CancelChannelOrderJob implements ShouldBeUnique, ShouldQueue
         public readonly string $orderId,
         public readonly string $cancelReason,
     ) {
-        $this->onQueue(config('queue.names.channel_cancellation'));
+        $channel = strtolower((string) SalesOrder::query()->whereKey($orderId)->value('source'));
+        $this->onQueue(ChannelQueue::isSupported($channel)
+            ? ChannelQueue::for($channel, 'cancellation')
+            : config('queue.names.channel_cancellation', 'channel-cancellation'));
     }
 
     public function uniqueId(): string
@@ -47,8 +52,8 @@ class CancelChannelOrderJob implements ShouldBeUnique, ShouldQueue
     public function middleware(): array
     {
         return [
-            (new WithoutOverlapping("channel-cancel:{$this->orderId}"))
-                ->releaseAfter(30)
+            (new WithoutOverlapping(ChannelOrderLock::forOrder($this->orderId)))
+                ->releaseAfter(5)
                 ->expireAfter(600),
         ];
     }

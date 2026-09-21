@@ -34,7 +34,7 @@ Schedule::command('channel:webhooks-replay --minutes=5 --limit=100 --max-seconds
     ->onOneServer();
 Schedule::command('channel:monitor-queue-health')->everyMinute()->withoutOverlapping(2)->onOneServer();
 Schedule::command('channel:reap-stock-outbox-leases')->everyTenSeconds()->withoutOverlapping(1)->onOneServer();
-Schedule::command('channel:dispatch-stock-outbox')->everyTenSeconds()->withoutOverlapping(1)->onOneServer();
+Schedule::command('channel:dispatch-stock-outbox')->everyThirtySeconds()->withoutOverlapping(1)->onOneServer();
 
 Schedule::command('channel:evaluate-order-sync')->everyFifteenMinutes()->withoutOverlapping()->onOneServer();
 

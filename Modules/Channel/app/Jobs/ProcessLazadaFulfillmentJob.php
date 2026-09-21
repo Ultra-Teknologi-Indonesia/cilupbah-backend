@@ -12,6 +12,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
+use Modules\Channel\Support\ChannelQueue;
 use Modules\Outbound\Models\ShipmentOrder;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Support\ChannelOperationLedger;
@@ -38,7 +39,7 @@ class ProcessLazadaFulfillmentJob implements ShouldBeUnique, ShouldQueue
         public ?string $trackingNumber = null,
         public ?string $packageId = null,
     ) {
-        $this->onQueue(config('queue.names.channel_fulfillment'));
+        $this->onQueue(ChannelQueue::for('lazada', 'fulfillment'));
     }
 
     public function middleware(): array

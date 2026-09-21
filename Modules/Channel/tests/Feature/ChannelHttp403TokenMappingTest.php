@@ -3,6 +3,7 @@
 namespace Modules\Channel\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Modules\Channel\Exceptions\ShopeeApiException;
 use Modules\Channel\Exceptions\TikTokApiException;
@@ -10,6 +11,7 @@ use Modules\Channel\Exceptions\TokenExpiredException;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\LazadaClient;
+use Modules\Channel\Services\ShopeeClient;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\TikTokClient;
 use Tests\TestCase;
@@ -78,7 +80,7 @@ class ChannelHttp403TokenMappingTest extends TestCase
         $this->assertEquals('new-refresh-token', $shop->refresh_token);
     }
 
-    public function test_shopee_error_http_tanpa_kode_error_tetap_runtime_exception(): void
+    public function test_shopee_error_http_tanpa_kode_error_menjadi_retryable_channel_exception(): void
     {
         $this->makeShopeeShop();
 
@@ -86,10 +88,13 @@ class ChannelHttp403TokenMappingTest extends TestCase
             'partner.shopeemobile.com/api/v2/logistics/get_channel_list*' => Http::response('bad gateway', 502),
         ]);
 
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Shopee API HTTP Error [502]');
-
-        app(ShopeeOrderService::class)->getLogistics('778899');
+        try {
+            app(ShopeeOrderService::class)->getLogistics('778899');
+            $this->fail('Expected a retryable Shopee API exception.');
+        } catch (ShopeeApiException $e) {
+            $this->assertTrue($e->isRetryable());
+            $this->assertSame('http_502', $e->errorCode);
+        }
     }
 
     public function test_shopee_http_429_selalu_retryable(): void
@@ -111,6 +116,23 @@ class ChannelHttp403TokenMappingTest extends TestCase
         }
     }
 
+    public function test_shopee_connection_error_is_retryable(): void
+    {
+        Http::fake([
+            'partner.shopeemobile.com/*' => static function (): never {
+                throw new ConnectionException('cURL error 28: Operation timed out');
+            },
+        ]);
+
+        try {
+            (new ShopeeClient)->request('GET', '/api/v2/order/get_order_detail', [], 'token', '778899');
+            $this->fail('Expected a retryable Shopee API exception.');
+        } catch (ShopeeApiException $e) {
+            $this->assertTrue($e->isRetryable());
+            $this->assertSame('error_network', $e->errorCode);
+        }
+    }
+
     public function test_tiktok_401_kode_token_dipetakan_jadi_token_expired(): void
     {
         Http::fake([
@@ -125,16 +147,19 @@ class ChannelHttp403TokenMappingTest extends TestCase
         (new TikTokClient)->request('GET', '/order/202309/orders', [], [], 'stale-token');
     }
 
-    public function test_tiktok_error_http_tanpa_kode_tetap_runtime_exception(): void
+    public function test_tiktok_error_http_tanpa_kode_menjadi_retryable_channel_exception(): void
     {
         Http::fake([
             'open-api.tiktokglobalshop.com/*' => Http::response('gateway timeout', 504),
         ]);
 
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('TikTok API HTTP Error [504]');
-
-        (new TikTokClient)->request('GET', '/order/202309/orders', [], [], 'stale-token');
+        try {
+            (new TikTokClient)->request('GET', '/order/202309/orders', [], [], 'stale-token');
+            $this->fail('Expected a retryable TikTok API exception.');
+        } catch (TikTokApiException $e) {
+            $this->assertTrue($e->isRetryable());
+            $this->assertSame('http_504', $e->errorCode);
+        }
     }
 
     public function test_tiktok_http_429_selalu_retryable(): void
@@ -151,6 +176,23 @@ class ChannelHttp403TokenMappingTest extends TestCase
             $this->fail('Expected a retryable TikTok API exception.');
         } catch (TikTokApiException $e) {
             $this->assertTrue($e->isRetryable());
+        }
+    }
+
+    public function test_tiktok_connection_error_is_retryable(): void
+    {
+        Http::fake([
+            'open-api.tiktokglobalshop.com/*' => static function (): never {
+                throw new ConnectionException('cURL error 6: Could not resolve host');
+            },
+        ]);
+
+        try {
+            (new TikTokClient)->request('GET', '/order/202309/orders', [], [], 'token');
+            $this->fail('Expected a retryable TikTok API exception.');
+        } catch (TikTokApiException $e) {
+            $this->assertTrue($e->isRetryable());
+            $this->assertSame('error_network', $e->errorCode);
         }
     }
 

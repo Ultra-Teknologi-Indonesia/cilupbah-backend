@@ -27,7 +27,7 @@ class WarmShippingLabelsJob implements ShouldBeUnique, ShouldQueue
     {
         $this->orderIds = array_values(array_unique(array_filter(array_map('strval', $orderIds))));
         $this->onConnection(config('queue.routing.labels.connection', 'redis-long'));
-        $this->onQueue(config('queue.routing.labels.queue', 'labels'));
+        $this->onQueue(config('queue.routing.label_merge.queue', 'label-merge'));
     }
 
     public function uniqueId(): string
@@ -55,7 +55,14 @@ class WarmShippingLabelsJob implements ShouldBeUnique, ShouldQueue
                 }
 
                 if (empty($order->tracking_number)) {
-                    RequestChannelAwbJob::dispatch((string) $order->id, 0, false);
+                    RequestChannelAwbJob::dispatch(
+                        (string) $order->id,
+                        0,
+                        false,
+                        false,
+                        false,
+                        strtolower((string) $order->source),
+                    );
 
                     return;
                 }

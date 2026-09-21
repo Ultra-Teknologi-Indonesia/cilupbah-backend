@@ -253,6 +253,8 @@ class ChannelSyncAxesTest extends TestCase
         $job = new SyncProductToChannelJob('product-1', self::SHOP_ID, 'push');
         $middleware = $job->middleware();
 
+        $this->assertSame(0, $job->tries);
+        $this->assertNull($job->maxExceptions);
         $this->assertInstanceOf(WithoutOverlapping::class, $middleware[1]);
         $this->assertSame(60, $middleware[1]->releaseAfter);
         $this->assertSame(config('channel.product_sync_overlap_lock_seconds'), $middleware[1]->expiresAfter);

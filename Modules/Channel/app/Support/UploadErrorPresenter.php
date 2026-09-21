@@ -4,6 +4,7 @@ namespace Modules\Channel\Support;
 
 use Illuminate\Queue\MaxAttemptsExceededException;
 use Modules\Channel\Exceptions\ShopeeApiException;
+use Modules\Channel\Exceptions\TikTokApiException;
 use Modules\Channel\Exceptions\TokenExpiredException;
 
 class UploadErrorPresenter
@@ -49,8 +50,10 @@ class UploadErrorPresenter
             return self::build(self::TOKEN, $channelCode, $e->getMessage(), null);
         }
 
-        if ($e instanceof ShopeeApiException) {
-            $detail = $e->errorInfo ?: $e->rawMessage;
+        if ($e instanceof ShopeeApiException || $e instanceof TikTokApiException) {
+            $detail = $e instanceof ShopeeApiException
+                ? ($e->errorInfo ?: $e->rawMessage)
+                : $e->rawMessage;
 
             return self::build($e->category, $channelCode, $e->getMessage(), $detail);
         }

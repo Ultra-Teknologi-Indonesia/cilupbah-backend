@@ -174,6 +174,25 @@ jobs:
             echo "==> Mengaktifkan profil Horizon critical..."
             kubectl apply -f "$K8S_DIR/03-horizon-critical.yaml" -n "$NAMESPACE"
 
+            echo "==> Memastikan semua deployment Horizon memuat image dan konfigurasi terbaru..."
+            # Applying an unchanged manifest does not recreate a Deployment.
+            # Force a graceful restart so deploys that reuse the same image tag
+            # (for example, latest) cannot leave an old Horizon process alive.
+            for horizon in \
+              cilupbah-horizon \
+              cilupbah-horizon-critical \
+              cilupbah-horizon-labels \
+              cilupbah-horizon-labels-awb \
+              cilupbah-horizon-labels-prefetch \
+              cilupbah-horizon-labels-archive
+            do
+              if kubectl get deployment "$horizon" -n "$NAMESPACE" >/dev/null 2>&1; then
+                kubectl rollout restart "deployment/$horizon" -n "$NAMESPACE"
+              else
+                echo "Deployment $horizon belum ada; dilewati."
+              fi
+            done
+
             rollout_deployment() {
               deployment="$1"
               grace_period="$(kubectl get deployment "$deployment" -n "$NAMESPACE" \

@@ -73,7 +73,7 @@ class ProcessLazadaWebhook implements ShouldBeUnique, ShouldQueue
         $messageType = (int) ($payload['message_type'] ?? -1);
 
         if (self::isFinalCancellationPayload($payload, $messageType)) {
-            return config('queue.names.channel_cancellation', 'channel-cancellation');
+            return config('queue.names.lazada_cancellation', 'lazada-cancellation');
         }
 
         return match ($messageType) {

@@ -233,7 +233,7 @@ class ShopeeWebhookTest extends TestCase
             return $job->channel === 'shopee'
                 && $job->shopId === '778899'
                 && $job->orderId === 'TRACKING-ORDER'
-                && $job->queue === config('queue.names.shopee_tracking');
+                && $job->queue === config('queue.names.channel_order_refresh');
         });
     }
 

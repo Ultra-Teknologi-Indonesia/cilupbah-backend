@@ -4,6 +4,7 @@ namespace Modules\Channel\Services;
 
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -79,22 +80,37 @@ class TikTokClient
         $timeout = max(1, $timeoutSeconds ?? 30);
         $http = Http::withHeaders($headers)->timeout($timeout)->connectTimeout(min(15, $timeout));
 
-        if ($isMultipart) {
-            foreach ($files as $name => $fileData) {
-                $http = $http->attach($name, $fileData['contents'], $fileData['filename']);
+        try {
+            if ($isMultipart) {
+                foreach ($files as $name => $fileData) {
+                    $http = $http->attach($name, $fileData['contents'], $fileData['filename']);
+                }
+                $response = $http->post($fullUrl, $body);
+            } elseif ($requestMethod === 'get') {
+                $response = $http->get($fullUrl);
+            } elseif ($requestMethod === 'put') {
+                $jsonBody = empty($body) ? '{}' : json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                $response = $http->withBody($jsonBody, 'application/json')->put($fullUrl);
+            } elseif ($requestMethod === 'delete') {
+                $jsonBody = empty($body) ? '{}' : json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                $response = $http->withBody($jsonBody, 'application/json')->delete($fullUrl);
+            } else {
+                $jsonBody = empty($body) ? '{}' : json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                $response = $http->withBody($jsonBody, 'application/json')->post($fullUrl);
             }
-            $response = $http->post($fullUrl, $body);
-        } elseif ($requestMethod === 'get') {
-            $response = $http->get($fullUrl);
-        } elseif ($requestMethod === 'put') {
-            $jsonBody = empty($body) ? '{}' : json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-            $response = $http->withBody($jsonBody, 'application/json')->put($fullUrl);
-        } elseif ($requestMethod === 'delete') {
-            $jsonBody = empty($body) ? '{}' : json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-            $response = $http->withBody($jsonBody, 'application/json')->delete($fullUrl);
-        } else {
-            $jsonBody = empty($body) ? '{}' : json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-            $response = $http->withBody($jsonBody, 'application/json')->post($fullUrl);
+        } catch (ConnectionException $e) {
+            Log::warning('TikTok API connection failed; job may retry.', [
+                'path' => $path,
+                'timeout_seconds' => $timeout,
+                'error' => $e->getMessage(),
+            ]);
+
+            throw new TikTokApiException(
+                'error_network',
+                TikTokErrorCatalog::RETRYABLE,
+                'Koneksi ke TikTok Shop gagal. Sistem akan mencoba lagi otomatis.',
+                $e->getMessage(),
+            );
         }
 
         $data = $response->json();
@@ -118,7 +134,17 @@ class TikTokClient
                 'message' => $message,
             ]);
 
-            throw new \RuntimeException('TikTok API HTTP Error ['.$response->status().']: '.$message);
+            $status = $response->status();
+            $retryable = $status === 408 || $status === 425 || $status === 429 || $status >= 500;
+
+            throw new TikTokApiException(
+                'http_'.$status,
+                $retryable ? TikTokErrorCatalog::RETRYABLE : TikTokErrorCatalog::FATAL,
+                $retryable
+                    ? 'TikTok Shop sedang tidak dapat memproses permintaan. Sistem akan mencoba lagi otomatis.'
+                    : 'TikTok Shop menolak permintaan HTTP ('.$status.').',
+                (string) $message,
+            );
         }
 
         return $data;

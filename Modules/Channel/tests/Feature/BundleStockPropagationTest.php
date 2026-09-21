@@ -9,6 +9,7 @@ use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Channel\Jobs\SyncStockToChannelsJob;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Models\ChannelStockSyncOutbox;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductVariant;
@@ -73,12 +74,12 @@ class BundleStockPropagationTest extends TestCase
         Queue::fake();
         (new SyncStockToChannelsJob($component->id))->handle(app(ProductRepository::class));
 
-        Queue::assertPushed(
-            SyncProductToChannelJob::class,
-            fn ($job) => $job->productId === $bundleVar->product_id
-                && $job->channelShopId === $shopId
-                && $job->action === 'sync_stock'
-        );
+        $this->assertDatabaseHas('channel_stock_sync_outbox', [
+            'product_id' => $bundleVar->product_id,
+            'channel_shop_id' => $shopId,
+            'status' => ChannelStockSyncOutbox::STATUS_PENDING,
+            'sync_stock' => true,
+        ]);
     }
 
     public function test_job_no_propagation_when_variant_not_a_component(): void

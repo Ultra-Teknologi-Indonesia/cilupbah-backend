@@ -520,6 +520,7 @@ class TikTokAdapter implements MarketplaceAdapterInterface
             return [
                 'success' => false,
                 'message' => $e->getMessage(),
+                'error' => UploadErrorPresenter::fromThrowable('tiktok', $e),
             ];
         }
     }

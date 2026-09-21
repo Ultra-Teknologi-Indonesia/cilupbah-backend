@@ -85,8 +85,7 @@ class ProcessPacklistCompleteJob implements ShouldQueue
                 $source === 'shopee'
                 && ! in_array($order->shipping_label_status, ['ready', 'self_design_required', 'preparing'], true)
             ) {
-                PrepareShopeeShippingLabelJob::dispatch($order->id)
-                    ->onQueue(config('queue.routing.labels.queue', 'labels'));
+                PrepareShopeeShippingLabelJob::dispatch($order->id);
             }
         } catch (\Throwable $e) {
             Log::error('ProcessPacklistCompleteJob: gagal dispatch permintaan resi ke channel', [

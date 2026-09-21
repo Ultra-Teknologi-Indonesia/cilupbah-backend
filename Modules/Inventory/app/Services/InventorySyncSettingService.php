@@ -2,49 +2,96 @@
 
 namespace Modules\Inventory\Services;
 
+use DomainException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Services\ChannelStockSyncOutboxService;
+use Modules\Channel\Support\ChannelVariantMappingResolver;
+use Modules\Inventory\Repositories\InventorySyncSettingRepository;
+use Modules\Inventory\Support\StockSummary;
+use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductVariant;
 use Modules\Product\Models\ProductVariantChannelMapping;
+use Modules\Product\Support\BundleStock;
 
 class InventorySyncSettingService
 {
+    public function __construct(
+        protected InventorySyncSettingRepository $repository,
+    ) {}
+
     public function filtersFrom(array $input): array
     {
+        $queryFilters = is_array($input['filter'] ?? null) ? $input['filter'] : [];
+
         return array_filter([
-            'search'          => $input['search'] ?? null,
-            'channel_code'    => $input['channel_code'] ?? null,
-            'channel_shop_id' => $input['channel_shop_id'] ?? null,
+            'search' => $input['search'] ?? null,
+            'channel_code' => $queryFilters['channel_code'] ?? $input['channel_code'] ?? null,
+            'channel_shop_id' => $queryFilters['channel_shop_id'] ?? $input['channel_shop_id'] ?? null,
         ], fn ($v) => $v !== null && $v !== '');
     }
 
-    public function matrix(array $filters, int $perPage): LengthAwarePaginator
+    public function matrix(array $filters, int $perPage, ?Request $request = null): LengthAwarePaginator
     {
-        $shopIds = $this->scopedShopIds($filters);
+        $paginator = $this->repository->paginateMatrix($perPage, $request);
+        $this->attachInternalStock($paginator);
 
-        return ProductVariant::query()
-            ->whereHas('product', fn ($query) => $query->whereNull('deleted_at'))
-            ->with([
-                'product:id,name,is_bundle',
-                'options.attribute:id,name',
-                'media',
-                'product.media',
-                'channelMappings' => fn ($q) => $q->with('channelMapping:id,channel_shop_id,sync_status'),
-            ])
-            ->when(! empty($filters['search']), function ($query) use ($filters) {
-                $term = '%' . $filters['search'] . '%';
-                $query->where(function ($q) use ($term) {
-                    $q->where('sku', 'ilike', $term)
-                        ->orWhereHas('product', fn ($p) => $p->where('name', 'ilike', $term));
-                });
-            })
-            ->when($shopIds !== null, function ($query) use ($shopIds) {
-                $query->whereHas('channelMappings.channelMapping', fn ($q) => $q->whereIn('channel_shop_id', $shopIds));
-            })
-            ->orderBy('sku')
-            ->paginate($perPage);
+        return $paginator;
+    }
+
+    public function history(
+        ProductChannelMapping $mapping,
+        int $perPage,
+        ?Request $request = null,
+    ): LengthAwarePaginator {
+        return $this->repository->paginateHistory(
+            (string) $mapping->product_id,
+            (string) $mapping->channel_shop_id,
+            $perPage,
+            $request,
+        );
+    }
+
+    public function retryMapping(string $mappingId): array
+    {
+        $mapping = ProductChannelMapping::query()
+            ->with(['product:id,is_active', 'channelShop:id,is_active,disconnected_at', 'variantMappings'])
+            ->findOrFail($mappingId);
+
+        if (! $mapping->product?->is_active) {
+            throw new DomainException('Produk sudah tidak aktif.');
+        }
+
+        if (! $mapping->channelShop?->is_active || $mapping->channelShop?->disconnected_at !== null) {
+            throw new DomainException('Toko channel tidak aktif atau sudah terputus.');
+        }
+
+        if (blank($mapping->external_product_id)) {
+            throw new DomainException('Listing belum memiliki ID produk di channel.');
+        }
+
+        if ($mapping->variantMappings->isNotEmpty()
+            && ChannelVariantMappingResolver::hasEnabledMappings($mapping)
+            && ChannelVariantMappingResolver::enabledForListing($mapping)->isEmpty()) {
+            throw new DomainException('Tidak ada varian master aktif yang dapat disinkronkan.');
+        }
+
+        $outbox = app(ChannelStockSyncOutboxService::class)->request(
+            $mapping,
+            'sync_stock',
+            'critical',
+            true,
+        );
+
+        return [
+            'mapping_id' => $mapping->id,
+            'outbox_id' => $outbox->id,
+            'status' => $outbox->status,
+            'requested_version' => $outbox->requested_version,
+        ];
     }
 
     public function storesCatalog(array $filters): array
@@ -59,8 +106,8 @@ class InventorySyncSettingService
             ->get()
             ->map(fn (ChannelShop $shop) => [
                 'channel_shop_id' => $shop->id,
-                'shop_name'       => $shop->shop_name,
-                'channel_code'    => $shop->channel?->code,
+                'shop_name' => $shop->shop_name,
+                'channel_code' => $shop->channel?->code,
             ])
             ->all();
     }
@@ -132,7 +179,7 @@ class InventorySyncSettingService
                 }
             })
             ->when(! empty($filters['search']), function ($q) use ($filters) {
-                $term = '%' . $filters['search'] . '%';
+                $term = '%'.$filters['search'].'%';
                 $q->whereHas('variant', function ($v) use ($term) {
                     $v->where('sku', 'ilike', $term)
                         ->orWhereHas('product', fn ($p) => $p->where('name', 'ilike', $term));
@@ -167,6 +214,47 @@ class InventorySyncSettingService
                 SyncProductToChannelJob::dispatch($productId, $shopId, 'sync_stock');
             }
         }
+    }
+
+    private function attachInternalStock(LengthAwarePaginator $paginator): void
+    {
+        $variants = $paginator->getCollection();
+        $stockByVariant = StockSummary::forItems($variants->pluck('id')->map(fn ($id) => (string) $id)->all());
+
+        foreach ($variants as $variant) {
+            $variant->setAttribute('internal_stock', $stockByVariant[(string) $variant->id] ?? $this->emptyStock());
+        }
+
+        $bundles = $variants
+            ->filter(fn (ProductVariant $variant): bool => (bool) $variant->product?->is_bundle)
+            ->values();
+
+        if ($bundles->isEmpty()) {
+            return;
+        }
+
+        $bundles->load([
+            'product.bundleItems.component:id,product_id',
+            'product.bundleItems.component.inventories:id,item_id,location_id,bin_id,on_hand,on_order',
+            'product.bundleItems.component.inventories.bin:id,location_id,is_inbound',
+            'product.bundleItems.component.inventories.location:id,location_code,location_name',
+        ]);
+
+        foreach ($bundles as $variant) {
+            $variant->setAttribute(
+                'internal_stock',
+                BundleStock::derive($variant->product) ?? $this->emptyStock(),
+            );
+        }
+    }
+
+    private function emptyStock(): array
+    {
+        return [
+            'on_hand' => 0,
+            'on_order' => 0,
+            'available' => 0,
+        ];
     }
 
     private function scopedShopIds(array $filters): ?array

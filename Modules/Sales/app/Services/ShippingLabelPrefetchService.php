@@ -100,7 +100,14 @@ class ShippingLabelPrefetchService
             'last_error' => null,
         ])->save();
 
-        RequestChannelAwbJob::dispatch((string) $order->id, 0, true, true)->afterCommit();
+        RequestChannelAwbJob::dispatch(
+            (string) $order->id,
+            0,
+            true,
+            true,
+            false,
+            strtolower((string) $order->source),
+        )->afterCommit();
 
         return true;
     }

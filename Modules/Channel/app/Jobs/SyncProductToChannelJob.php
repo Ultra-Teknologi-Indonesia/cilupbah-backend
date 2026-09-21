@@ -35,13 +35,13 @@ class SyncProductToChannelJob implements ShouldBeUniqueUntilProcessing, ShouldQu
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 12;
+    public int $tries = 0;
 
     public int $timeout = 300;
 
     public array $backoff = [60, 300, 900, 1800];
 
-    public int $maxExceptions = 5;
+    public ?int $maxExceptions = null;
 
     public int $uniqueFor = 900;
 
