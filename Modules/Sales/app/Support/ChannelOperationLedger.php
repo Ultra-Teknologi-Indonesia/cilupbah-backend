@@ -14,9 +14,7 @@ final class ChannelOperationLedger
     public static function claim(SalesOrder $order, string $operation): array
     {
         return DB::transaction(function () use ($order, $operation): array {
-            // Lock the parent row first. A missing operation row cannot be
-            // locked, so this serializes two first-time claims before either
-            // process can insert the unique (order_id, operation) record.
+
             SalesOrder::query()
                 ->whereKey($order->id)
                 ->lockForUpdate()

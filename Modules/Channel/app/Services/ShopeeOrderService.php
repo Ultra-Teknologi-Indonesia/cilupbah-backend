@@ -16,7 +16,6 @@ class ShopeeOrderService
 {
     public const MAX_TIME_RANGE_DAYS = 14;
 
-    /** Shopee documents a hard limit of 50 rows for logistics mass endpoints. */
     private const LOGISTICS_MASS_LIMIT = 50;
 
     private const DETAIL_FIELDS = 'recipient_address,item_list,total_amount,buyer_user_id,buyer_username,payment_method,estimated_shipping_fee,actual_shipping_fee,actual_shipping_fee_confirmed,shipping_carrier,note,pay_time,cancel_reason,buyer_cancel_reason,cancel_by,package_list,fulfillment_flag,pickup_done_time,invoice_data,order_chargeable_weight_gram,dropshipper,dropshipper_phone,split_up,return_request_due_date,ship_by_date,logistics_channel_id';
@@ -1104,8 +1103,6 @@ class ShopeeOrderService
             return ['shipped' => false, 'error' => 'package_list kosong', 'results' => []];
         }
 
-        // The Shopee endpoint accepts at most 50 packages. Keep this public
-        // method safe for callers that do not go through massShipOrder().
         if (count($packageNumbers) > self::LOGISTICS_MASS_LIMIT) {
             $allResults = [];
             $responses = [];
@@ -1140,9 +1137,6 @@ class ShopeeOrderService
             $packageNumbers,
         );
 
-        // Shopee documents logistics_channel_id as int64. Values sourced from
-        // get_order_detail may arrive as strings, so normalize at the API
-        // boundary before sending either mass-shipping request.
         $logisticsChannelId = $opts['logistics_channel_id'] ?? null;
         if ($logisticsChannelId !== null && $logisticsChannelId !== '') {
             $logisticsChannelId = (int) $logisticsChannelId;
@@ -1327,16 +1321,6 @@ class ShopeeOrderService
         ], $token, $shop->shop_id));
     }
 
-    /**
-     * Create shipping documents in Shopee's bulk API.
-     *
-     * The returned map is keyed by order_sn|package_number so split orders
-     * cannot overwrite each other. Every input row is represented even when
-     * Shopee omits it from result_list (partial response/failure).
-     *
-     * @param  array<int, array{order_sn:string, package_number?:string|null, tracking_number?:string|null, shipping_document_type?:string|null}>  $orders
-     * @return array{results:array<string,array<string,mixed>>,responses:array<int,array<string,mixed>>,error:?string}
-     */
     public function createShippingDocumentsMass(string $shopId, array $orders): array
     {
         $shop = $this->requireShop($shopId);
@@ -1384,10 +1368,6 @@ class ShopeeOrderService
                     $packageNumber = (string) ($candidates[0]['package_number'] ?? '');
                 }
 
-                // Shopee may return only order_sn for create. In that case
-                // the response is order-level; apply it to every requested
-                // package of that order rather than marking split packages
-                // as missing by position.
                 if ($packageNumber === '' && count($candidates) > 1) {
                     $remoteError = $remote['fail_message'] ?? $remote['fail_error'] ?? $remote['error'] ?? null;
                     foreach ($candidates as $candidate) {
@@ -1432,13 +1412,6 @@ class ShopeeOrderService
         ];
     }
 
-    /**
-     * Read document generation status for up to 50 orders per Shopee call.
-     * This method is read-only and is safe to retry after an uncertain create.
-     *
-     * @param  array<int, array{order_sn:string, package_number?:string|null}>  $orders
-     * @return array{results:array<string,array<string,mixed>>,responses:array<int,array<string,mixed>>,error:?string}
-     */
     public function getShippingDocumentResultsMass(string $shopId, array $orders): array
     {
         $shop = $this->requireShop($shopId);
@@ -1528,14 +1501,6 @@ class ShopeeOrderService
         ];
     }
 
-    /**
-     * Download bulk shipping documents. Shopee returns one binary artifact
-     * per request chunk (usually a PDF/ZIP), so callers must keep the chunk
-     * boundary and must not pretend the bytes belong to one order only.
-     *
-     * @param  array<int, array{order_sn:string, package_number?:string|null}>  $orders
-     * @return array{batches:array<int,array<string,mixed>>,error:?string}
-     */
     public function downloadShippingDocumentsMass(string $shopId, array $orders, string $docType = 'NORMAL_AIR_WAYBILL'): array
     {
         $shop = $this->requireShop($shopId);
@@ -1576,7 +1541,6 @@ class ShopeeOrderService
         ];
     }
 
-    /** @return array<int, array{order_sn:string, package_number?:string, tracking_number?:string, shipping_document_type?:string}> */
     private function normalizeShippingDocumentRows(array $orders, bool $includeCreateFields): array
     {
         $normalized = [];

@@ -409,9 +409,7 @@ class SalesOrderDriverCallService
             $hasTracking = filled($order->tracking_number);
 
             $order->update([
-                // TikTok may acknowledge POST /ship before it publishes the
-                // tracking number. That is not a completed driver call from
-                // the warehouse's point of view yet.
+
                 'driver_call_status' => $isAccepted && $hasTracking ? 'success' : 'pending',
                 'driver_call_message' => $isAccepted && $hasTracking
                     ? null

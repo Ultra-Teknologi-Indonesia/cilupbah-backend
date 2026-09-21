@@ -505,11 +505,6 @@ class TikTokOrderService
         return $this->shipPackages($shopId, $orderId, $handover, $knownPackageIds, false);
     }
 
-    /**
-     * Sends TikTok's package ship request at most once for the same observed
-     * package state. The lock spans the read-before-write preflight and POST,
-     * so a manual driver call cannot race a bulk AWB job.
-     */
     private function shipPackages(
         string $shopId,
         string $orderId,
@@ -870,10 +865,6 @@ class TikTokOrderService
         return null;
     }
 
-    /**
-     * Read the current TikTok order/package state without requesting a
-     * shipping document. This is intentionally safe to use for AWB polling.
-     */
     public function getOrderFulfillmentSnapshot(object $shop, string $orderId): array
     {
         $res = $this->client->request(
@@ -908,6 +899,11 @@ class TikTokOrderService
             ];
         }, $order['packages'] ?? []));
 
+        $orderStatus = isset($order['status']) ? (string) $order['status'] : null;
+        if ($this->isOrderAlreadyShipped(strtoupper((string) $orderStatus))) {
+            $packages = $this->hydrateTrackingFromShippingDocuments($shop, $packages, $orderId);
+        }
+
         $packageWithTracking = collect($packages)
             ->first(static fn (array $package): bool => filled($package['tracking_number']));
         $hasPendingPackage = collect($packages)->contains(function (array $package): bool {
@@ -918,13 +914,46 @@ class TikTokOrderService
 
         return [
             'order_found' => true,
-            'status' => isset($order['status']) ? (string) $order['status'] : null,
+            'status' => $orderStatus,
             'packages' => $packages,
             'tracking_number' => $packageWithTracking['tracking_number'] ?? null,
             'shipping_provider' => $packageWithTracking['shipping_provider'] ?? null,
             'has_pending_package' => $hasPendingPackage,
             'all_packages_shipped' => $packages !== [] && ! $hasPendingPackage,
         ];
+    }
+
+    private function hydrateTrackingFromShippingDocuments(object $shop, array $packages, string $orderId): array
+    {
+        foreach ($packages as $index => $package) {
+            if (! empty($package['tracking_number']) || empty($package['id'])) {
+                continue;
+            }
+
+            try {
+                $document = $this->getShippingDocument(
+                    (string) ($shop->shop_id ?? ''),
+                    (string) $package['id'],
+                    'SHIPPING_LABEL',
+                    'A6',
+                );
+                $trackingNumber = data_get($document, 'data.tracking_number');
+
+                if (filled($trackingNumber)) {
+                    $packages[$index]['tracking_number'] = (string) $trackingNumber;
+                    $packages[$index]['shipping_provider'] ??=
+                        data_get($document, 'data.shipping_provider_name');
+                }
+            } catch (\Throwable $e) {
+                Log::debug('TikTok: shipping document belum menyediakan AWB', [
+                    'order_id' => $orderId,
+                    'package_id' => (string) $package['id'],
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $packages;
     }
 
     public function resolveTrackingNumberFromOrder(object $shop, string $orderId): ?array
@@ -1005,7 +1034,7 @@ class TikTokOrderService
                     ];
                 }
             } catch (\Throwable $e) {
-                Log::debug('TikTok: shipping document AWB fallback gagal', [
+                Log::debug('TikTok: shipping document belum menyediakan AWB', [
                     'order_id' => $orderId,
                     'package_id' => (string) $packageId,
                     'error' => $e->getMessage(),

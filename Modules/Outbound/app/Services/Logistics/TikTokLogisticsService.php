@@ -68,9 +68,7 @@ class TikTokLogisticsService extends AbstractLogisticsService
         $trackingNumber ??= $order->tracking_number ?: null;
 
         if (! $trackingNumber) {
-            // TikTok can accept POST /ship before publishing the tracking
-            // number. Keep the driver call pending and poll the accepted
-            // shipment; never report a driver success without an AWB.
+
             RequestChannelAwbJob::dispatch(
                 $order->id,
                 1,

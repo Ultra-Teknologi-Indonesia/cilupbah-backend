@@ -382,10 +382,7 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
 
             if ($requestMarketplace) {
                 try {
-                    // A shipping document is not a valid preflight for a
-                    // READY_TO_SHIP order. TikTok returns 21042104 until the
-                    // ship request has been accepted. Read order state only,
-                    // then submit /ship when it is still awaiting shipment.
+
                     $snapshot = $service->getOrderFulfillmentSnapshot(
                         $shop,
                         (string) $order->channel_order_no,
@@ -411,8 +408,7 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                         empty($snapshot['has_pending_package'])
                         && $this->tiktokAlreadyShipped($snapshot['status'] ?? null)
                     ) {
-                        // TikTok accepted the handover but tracking is still
-                        // asynchronous. Do not send another POST /ship.
+
                         $this->awaitingVerification = true;
                         $resolved = [
                             'tracking_number' => null,

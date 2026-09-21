@@ -365,8 +365,7 @@ return [
         ],
         'supervisor-channel-stock-normal' => [
             'connection' => config('queue.routing.channel_stock_normal.connection', 'redis'),
-            // Keep the old queue here during migration so already-enqueued
-            // deliveries are not stranded when the new lanes are deployed.
+
             'queue' => [
                 config('queue.routing.channel_stock_normal.queue', 'channel-stock-normal'),
                 config('queue.routing.channel_stock_outbox.queue', 'channel-stock-outbox'),
