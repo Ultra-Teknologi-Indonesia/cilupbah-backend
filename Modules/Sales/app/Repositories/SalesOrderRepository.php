@@ -126,13 +126,17 @@ class SalesOrderRepository
             $query = $this->scopeExcludeHandedToWarehouse($query);
         }
 
+        $orderSearchColumns = array_merge(SalesOrder::SEARCH_COLUMNS, [
+            'shipmentOrders.tracking_number',
+        ]);
+
         $searchBy = request('search_by');
         if ($searchBy === 'sku') {
             $query->allowedSearch('items.sku', 'items.description');
         } elseif ($searchBy === 'order') {
-            $query->allowedSearch(...SalesOrder::SEARCH_COLUMNS);
+            $query->allowedSearch(...$orderSearchColumns);
         } else {
-            $query->allowedSearch(...array_merge(SalesOrder::SEARCH_COLUMNS, [
+            $query->allowedSearch(...array_merge($orderSearchColumns, [
                 'items.sku',
                 'items.description',
             ]));

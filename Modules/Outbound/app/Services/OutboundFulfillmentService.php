@@ -663,7 +663,7 @@ SQL;
             ->count();
 
         $pickedToday = $this->pickedOrdersCount($todayStart, $now);
-        $pickedYest = $this->pickedOrdersCount($yesterdayStart, $yesterdaySameTime);
+        $pickedYest = $this->pickedOrdersCount($yesterdayStart, $todayStart);
 
         return [
             'today' => $todayCount,
@@ -694,8 +694,8 @@ SQL;
         $query = $this->orderService->monitoringOrdersQuery()
             ->whereHas('picklistItems', function ($q) use ($range) {
                 $q->whereHas('picklist', function ($pq) use ($range) {
-                    $pq->where('status', Picklist::STATUS_COMPLETED)
-                        ->whereBetween('completed_at', $range);
+                    $pq->whereNotIn('status', [Picklist::STATUS_FAILED, Picklist::STATUS_CANCELLED])
+                        ->whereBetween('created_at', $range);
                 });
             });
 

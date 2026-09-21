@@ -26,23 +26,23 @@ class SalesOrderUniversalSearchTest extends TestCase
     {
         $locationId = Str::uuid()->toString();
         DB::table('locations')->insert([
-            'id'            => $locationId,
-            'location_code' => 'LOC-' . Str::upper(Str::random(6)),
+            'id' => $locationId,
+            'location_code' => 'LOC-'.Str::upper(Str::random(6)),
             'location_name' => 'Gudang Utama',
             'location_type' => 'WAREHOUSE',
-            'created_at'    => now(),
-            'updated_at'    => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         $order = SalesOrder::create(array_merge([
-            'salesorder_no'    => 'SO-' . Str::upper(Str::random(8)),
-            'channel_order_no' => 'TT-' . rand(100000000000, 999999999999),
-            'customer_name'    => 'Pelanggan Setia',
-            'source'           => 'tiktok',
-            'location_id'      => $locationId,
-            'status'           => 'shipped',
-            'is_paid'          => true,
-            'tracking_number'  => 'RESI-' . Str::upper(Str::random(8)),
+            'salesorder_no' => 'SO-'.Str::upper(Str::random(8)),
+            'channel_order_no' => 'TT-'.rand(100000000000, 999999999999),
+            'customer_name' => 'Pelanggan Setia',
+            'source' => 'tiktok',
+            'location_id' => $locationId,
+            'status' => 'shipped',
+            'is_paid' => true,
+            'tracking_number' => 'RESI-'.Str::upper(Str::random(8)),
             'transaction_date' => now(),
         ], $orderAttributes));
 
@@ -66,19 +66,19 @@ class SalesOrderUniversalSearchTest extends TestCase
             DB::table('product_variants')->insert([
                 'id' => $itemId,
                 'product_id' => $productId,
-                'sku' => $item['sku'] ?? 'SKU-' . Str::upper(Str::random(6)),
+                'sku' => $item['sku'] ?? 'SKU-'.Str::upper(Str::random(6)),
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
 
             SalesOrderItem::create(array_merge([
-                'order_id'    => $order->id,
-                'item_id'     => $itemId,
-                'sku'         => 'SKU-' . Str::upper(Str::random(6)),
+                'order_id' => $order->id,
+                'item_id' => $itemId,
+                'sku' => 'SKU-'.Str::upper(Str::random(6)),
                 'description' => 'Produk Deskripsi',
                 'qty_in_base' => 1,
-                'price'       => 50000,
-                'amount'      => 50000,
+                'price' => 50000,
+                'amount' => 50000,
             ], $item));
         }
 
@@ -157,6 +157,51 @@ class SalesOrderUniversalSearchTest extends TestCase
             ->getJson('/api/v1/sales?q=RESI-JX-99887766')
             ->assertOk();
         $this->assertSame($order2->id, $res2->json('data.0.id'));
+    }
+
+    public function test_search_finds_instant_order_by_shipment_tracking_number(): void
+    {
+        $targetOrder = $this->createTestOrder([
+            'tracking_number' => null,
+            'channel_instant' => true,
+            'resolved_shipment_type' => 'SAME_DAY',
+        ]);
+        $otherOrder = $this->createTestOrder([
+            'tracking_number' => null,
+            'channel_instant' => true,
+            'resolved_shipment_type' => 'SAME_DAY',
+        ]);
+
+        $shipmentId = Str::uuid()->toString();
+        DB::table('shipments')->insert([
+            'id' => $shipmentId,
+            'shipment_no' => 'SHP-'.Str::upper(Str::random(8)),
+            'location_id' => $targetOrder->location_id,
+            'shipment_type' => 'SAME_DAY',
+            'shipment_date' => now()->toDateString(),
+            'status' => 'SCHEDULED',
+            'created_by' => 'test',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('shipment_orders')->insert([
+            'id' => Str::uuid()->toString(),
+            'shipment_id' => $shipmentId,
+            'order_id' => $targetOrder->id,
+            'tracking_number' => 'GK-11-893203567',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $res = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/sales?q=GK-11-893203567')
+            ->assertOk();
+
+        $data = $res->json('data');
+        $this->assertCount(1, $data);
+        $this->assertSame($targetOrder->id, $data[0]['id']);
+        $this->assertNotSame($otherOrder->id, $data[0]['id']);
     }
 
     public function test_explicit_search_by_sku_only_matches_items(): void
