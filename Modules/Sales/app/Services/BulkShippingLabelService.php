@@ -1595,8 +1595,7 @@ class BulkShippingLabelService
             return;
         }
 
-        FinalizeBulkShippingLabelBatchJob::dispatch((string) $fresh->id)
-            ->delay(now()->addSeconds((int) config('bulk-labels.finalize_retry_delay_seconds', 15)));
+        $this->dispatchFinalizeJob($fresh);
     }
 
     public function forceFinalize(BulkShippingLabelBatch $batch, string $reason): void
@@ -1614,8 +1613,17 @@ class BulkShippingLabelService
                 'updated_at' => now(),
             ]);
 
-        FinalizeBulkShippingLabelBatchJob::dispatch((string) $fresh->id)
-            ->delay(now()->addSeconds((int) config('bulk-labels.finalize_retry_delay_seconds', 15)));
+        $this->dispatchFinalizeJob($fresh);
+    }
+
+    private function dispatchFinalizeJob(BulkShippingLabelBatch $batch): void
+    {
+        $pending = FinalizeBulkShippingLabelBatchJob::dispatch((string) $batch->id);
+        $delay = max(0, (int) config('bulk-labels.finalize_retry_delay_seconds', 0));
+
+        if ($delay > 0) {
+            $pending->delay(now()->addSeconds($delay));
+        }
     }
 
     public function finalizeInWorker(string $batchId): void

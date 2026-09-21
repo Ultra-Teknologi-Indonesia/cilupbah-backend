@@ -504,6 +504,7 @@ class BulkLabelAwbPullTest extends TestCase
     public function test_finalisasi_pdf_dikirim_ke_worker_khusus_dan_tidak_memblokir_worker_awb(): void
     {
         Queue::fake();
+        config()->set('bulk-labels.finalize_retry_delay_seconds', 0);
 
         $order = $this->orderWithoutAwb(['tracking_number' => 'AWB-FINALIZE-001']);
         $batch = $this->createBatchFor($order);
@@ -517,7 +518,8 @@ class BulkLabelAwbPullTest extends TestCase
 
         Queue::assertPushed(
             FinalizeBulkShippingLabelBatchJob::class,
-            fn (FinalizeBulkShippingLabelBatchJob $job): bool => $job->batchId === $batch->id,
+            fn (FinalizeBulkShippingLabelBatchJob $job): bool => $job->batchId === $batch->id
+                && $job->delay === null,
         );
     }
 
