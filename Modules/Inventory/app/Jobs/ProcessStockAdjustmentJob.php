@@ -20,6 +20,7 @@ use Modules\Inventory\Models\StockAdjustmentItem;
 use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Support\MovingAverageCost;
+use Modules\Inventory\Support\PendingPickStockGuard;
 use Modules\Inventory\Support\StockAdjustmentRule;
 use Modules\Warehouse\Services\BinOccupancyGuard;
 use Modules\Warehouse\Services\InboundBinPolicy;
@@ -115,6 +116,14 @@ class ProcessStockAdjustmentJob implements ShouldQueue
                         systemQty: (int) $preOnHand,
                         differenceQty: (int) $delta,
                         actualQty: (int) ($preOnHand + $delta),
+                    );
+
+                    app(PendingPickStockGuard::class)->assertResultIsSafe(
+                        itemId: (string) $item->item_id,
+                        locationId: (string) $adjustment->location_id,
+                        binId: $item->bin_id ? (string) $item->bin_id : null,
+                        resultingOnHand: (int) ($preOnHand + $delta),
+                        operation: 'Penyesuaian stok',
                     );
 
                     if ($delta > 0 && $itemUnitCost > 0) {

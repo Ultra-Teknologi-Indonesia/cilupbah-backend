@@ -7,8 +7,14 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Services\InventoryService;
+use Modules\Inventory\Services\StockAdjustmentService;
+use Modules\Outbound\Models\Picklist;
+use Modules\Outbound\Models\PicklistItem;
+use Modules\Outbound\Models\PicklistItemAllocation;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
+use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Models\SalesOrderItem;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 use Tests\TestCase;
@@ -102,5 +108,72 @@ class AdjustmentNegativeStockTest extends TestCase
             'qty' => 158,
             'balance' => 0,
         ]);
+    }
+
+    public function test_negative_adjustment_cannot_remove_stock_still_pending_from_pick(): void
+    {
+        $ctx = $this->seedFixture(1);
+        $order = SalesOrder::factory()->create([
+            'location_id' => $ctx['location']->id,
+            'status' => 'reserved',
+        ]);
+        $orderItem = SalesOrderItem::create([
+            'order_id' => $order->id,
+            'item_id' => $ctx['variant']->id,
+            'sku' => $ctx['variant']->sku,
+            'qty_in_base' => 1,
+        ]);
+        $picklist = Picklist::create([
+            'picklist_no' => 'PICK-ADJ-GUARD',
+            'location_id' => $ctx['location']->id,
+            'status' => Picklist::STATUS_IN_PROGRESS,
+            'created_by' => 'tester',
+        ]);
+        $pickItem = PicklistItem::create([
+            'picklist_id' => $picklist->id,
+            'order_id' => $order->id,
+            'order_item_id' => $orderItem->id,
+            'item_id' => $ctx['variant']->id,
+            'sku' => $ctx['variant']->sku,
+            'qty_ordered' => 1,
+            'qty_picked' => 1,
+        ]);
+        $allocation = PicklistItemAllocation::create([
+            'picklist_item_id' => $pickItem->id,
+            'bin_id' => $ctx['bin']->id,
+            'qty' => 1,
+            'physical_committed_qty' => 0,
+            'picked_at' => now(),
+        ]);
+
+        try {
+            app(StockAdjustmentService::class)->create([
+                'transaction_date' => now()->toDateString(),
+                'location_id' => $ctx['location']->id,
+                'created_by' => 'tester',
+                'items' => [[
+                    'item_id' => $ctx['variant']->id,
+                    'bin_id' => $ctx['bin']->id,
+                    'actual_qty' => 0,
+                ]],
+            ]);
+            $this->fail('Expected a pending-pick guard exception.');
+        } catch (\App\Exceptions\UserFacingException $exception) {
+            $this->assertSame('Stok sedang dipakai picking', $exception->getTitle());
+            $this->assertStringContainsString('belum finish pick', $exception->getMessage());
+            $this->assertSame(1, $exception->getErrors()['pending_pick_qty']);
+        }
+
+        $allocation->update(['physical_committed_qty' => 1]);
+
+        $result = app(InventoryService::class)->adjust([
+            'item_id' => $ctx['variant']->id,
+            'location_id' => $ctx['location']->id,
+            'bin_id' => $ctx['bin']->id,
+            'qty' => -1,
+            'created_by' => 'tester',
+        ]);
+
+        $this->assertSame(0, (int) $result->on_hand);
     }
 }

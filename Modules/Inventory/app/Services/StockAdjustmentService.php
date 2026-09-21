@@ -19,6 +19,7 @@ use Modules\Inventory\Repositories\InventoryMovementRepository;
 use Modules\Inventory\Repositories\InventoryRepository;
 use Modules\Inventory\Repositories\StockAdjustmentRepository;
 use Modules\Inventory\Support\InventoryOnHandGuard;
+use Modules\Inventory\Support\PendingPickStockGuard;
 use Modules\Inventory\Support\StockAdjustmentCalculation;
 use Modules\Inventory\Support\StockAdjustmentRule;
 use Modules\Product\Models\ProductVariant;
@@ -184,6 +185,14 @@ class StockAdjustmentService
                     $item->item_id,
                     $adjustment->location_id,
                     $item->bin_id,
+                );
+
+                app(PendingPickStockGuard::class)->assertResultIsSafe(
+                    itemId: (string) $item->item_id,
+                    locationId: (string) $adjustment->location_id,
+                    binId: $item->bin_id ? (string) $item->bin_id : null,
+                    resultingOnHand: (int) $inventory->on_hand + (int) $revertDelta,
+                    operation: 'Pembaruan penyesuaian stok',
                 );
 
                 $inventory->on_hand = $this->onHandGuard->resultAfterDelta(
@@ -424,6 +433,14 @@ class StockAdjustmentService
                     $item->item_id,
                     $adjustment->location_id,
                     $item->bin_id,
+                );
+
+                app(PendingPickStockGuard::class)->assertResultIsSafe(
+                    itemId: (string) $item->item_id,
+                    locationId: (string) $adjustment->location_id,
+                    binId: $item->bin_id ? (string) $item->bin_id : null,
+                    resultingOnHand: (int) $inventory->on_hand + (int) $revertDelta,
+                    operation: 'Penghapusan penyesuaian stok',
                 );
 
                 $inventory->on_hand = $this->onHandGuard->resultAfterDelta(
@@ -731,6 +748,13 @@ class StockAdjustmentService
             $item->item_id,
             $adjustment->location_id,
             $item->bin_id,
+        );
+        app(PendingPickStockGuard::class)->assertResultIsSafe(
+            itemId: (string) $item->item_id,
+            locationId: (string) $adjustment->location_id,
+            binId: $item->bin_id ? (string) $item->bin_id : null,
+            resultingOnHand: (int) $inventory->on_hand - $delta,
+            operation: 'Pembaruan penyesuaian stok',
         );
         $inventory->on_hand = $this->onHandGuard->resultAfterDelta(
             (int) $inventory->on_hand,

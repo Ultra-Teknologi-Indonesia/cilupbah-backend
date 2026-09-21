@@ -29,6 +29,7 @@ use Modules\Inventory\Repositories\InventoryTransferRepository;
 use Modules\Inventory\Support\InventoryMovementSourceMap;
 use Modules\Inventory\Support\KronologiReversalNetter;
 use Modules\Inventory\Support\MovingAverageCost;
+use Modules\Inventory\Support\PendingPickStockGuard;
 use Modules\Inventory\Support\StockAdjustmentRule;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
@@ -430,6 +431,14 @@ class InventoryService
                     status: 422,
                 );
             }
+
+            app(PendingPickStockGuard::class)->assertResultIsSafe(
+                itemId: (string) $inventory->item_id,
+                locationId: (string) $inventory->location_id,
+                binId: $inventory->bin_id ? (string) $inventory->bin_id : null,
+                resultingOnHand: (int) $calculation->actualQty,
+                operation: 'Penyesuaian stok',
+            );
 
             $inventory->on_hand = $calculation->actualQty;
             $this->inventoryRepository->updateStock($inventory);
