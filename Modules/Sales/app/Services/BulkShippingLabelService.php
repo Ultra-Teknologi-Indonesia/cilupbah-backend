@@ -1837,13 +1837,6 @@ class BulkShippingLabelService
 
     }
 
-    /**
-     * Merge label PDFs without changing their page dimensions or contents.
-     * pdfunite/qpdf are preferred because they do not re-render every page.
-     * FPDI is retained as a no-scaling fallback for hosts without a native tool.
-     *
-     * @param  list<string>  $inputPaths
-     */
     private function mergePdfFilesWithoutResize(array $inputPaths, string $outputPath): bool
     {
         if ($inputPaths === []) {
@@ -1912,9 +1905,6 @@ class BulkShippingLabelService
         return true;
     }
 
-    /**
-     * @param  list<string>  $inputPaths
-     */
     private function mergePdfFilesWithFpdiWithoutResize(array $inputPaths, string $outputPath): bool
     {
         try {

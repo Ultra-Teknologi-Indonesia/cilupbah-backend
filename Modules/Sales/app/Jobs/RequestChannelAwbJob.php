@@ -174,7 +174,7 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                 ]);
 
                 if ($this->requiresShipmentRetry) {
-                    $delay = (int) config('bulk-labels.awb_verification_delay_seconds', 60);
+                    $delay = $this->verificationDelaySeconds();
 
                     if ($this->trackingAttempt === 0 && ! $this->verificationOnly) {
                         $this->release($delay);
@@ -196,7 +196,7 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                             false,
                             $this->prefetch,
                             true,
-                        )->delay(now()->addSeconds((int) config('bulk-labels.awb_verification_delay_seconds', 60)));
+                        )->delay(now()->addSeconds($this->verificationDelaySeconds()));
                     } else {
                         Log::warning('RequestChannelAwbJob: batas verifikasi cepat tercapai tanpa tracking number; rekonsiliasi terjadwal tetap membaca status tanpa POST ulang', [
                             'order_id' => $order->id,
@@ -355,6 +355,22 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
     {
 
         return true;
+    }
+
+    private function verificationDelaySeconds(): int
+    {
+        $delays = array_values((array) config(
+            'bulk-labels.awb_verification_delays',
+            [2, 5, 10, 20, 30, 60],
+        ));
+
+        if ($delays === []) {
+            return max(1, (int) config('bulk-labels.awb_verification_delay_seconds', 60));
+        }
+
+        $index = min($this->trackingAttempt, count($delays) - 1);
+
+        return max(1, (int) $delays[$index]);
     }
 
     private function channelAlreadyShipped(SalesOrder $order): bool

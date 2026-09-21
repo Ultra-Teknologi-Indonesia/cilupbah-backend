@@ -83,7 +83,7 @@ class SalesServiceProvider extends ModuleServiceProvider
             ->runInBackground();
 
         $schedule->command('shipping-labels:reconcile-accepted-awb')
-            ->everyFiveMinutes()
+            ->everyMinute()
             ->withoutOverlapping(4)
             ->runInBackground();
     }

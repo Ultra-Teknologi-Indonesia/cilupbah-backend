@@ -15,7 +15,7 @@ final class ReconcileAcceptedAwbRequests extends Command
 {
     protected $signature = 'shipping-labels:reconcile-accepted-awb
         {--limit=100 : Maximum AWB operations scheduled per run}
-        {--cooldown=300 : Minimum seconds between read-only verification attempts}';
+        {--cooldown=60 : Minimum seconds between read-only verification attempts}';
 
     protected $description = 'Verify accepted/uncertain AWB requests without sending another marketplace request';
 
@@ -28,7 +28,7 @@ final class ReconcileAcceptedAwbRequests extends Command
         }
 
         $limit = max(1, (int) $this->option('limit'));
-        $cooldownSeconds = max(60, (int) $this->option('cooldown'));
+        $cooldownSeconds = max(15, (int) $this->option('cooldown'));
         $cutoff = now()->subSeconds($cooldownSeconds);
 
         $orderIds = ChannelOperationAttempt::query()
