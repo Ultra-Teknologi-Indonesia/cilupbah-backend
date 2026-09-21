@@ -16,6 +16,8 @@ class SetCustomerDecisionRequest extends FormRequest
         return [
             'decision' => 'required|string|in:waiting,cancel,replace',
             'note'     => 'nullable|string|max:500',
+            'replacement_sku' => 'nullable|required_if:decision,replace|string|max:100',
+            'replacement_item_id' => 'nullable|required_if:decision,replace|uuid',
         ];
     }
 }

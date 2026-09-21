@@ -1115,7 +1115,13 @@ class SalesOrderController extends Controller
         $validated = $request->validated();
 
         try {
-            $order = $this->orderService->setCustomerDecision($id, $validated['decision'], $validated['note'] ?? null);
+            $order = $this->orderService->setCustomerDecision(
+                $id,
+                $validated['decision'],
+                $validated['note'] ?? null,
+                $validated['replacement_sku'] ?? null,
+                $validated['replacement_item_id'] ?? null,
+            );
 
             return $this->successResponse(new SalesOrderResource($order), 'Keputusan buyer tersimpan');
         } catch (\InvalidArgumentException $e) {

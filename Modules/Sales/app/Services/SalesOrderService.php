@@ -45,6 +45,7 @@ use Modules\Sales\Enums\SalesOrderStatus;
 use Modules\Sales\Exceptions\CannotDeleteActiveOrderException;
 use Modules\Sales\Exceptions\ChannelOrderBeforeIntakeCutoffException;
 use Modules\Sales\Exceptions\DuplicateOrderException;
+use Modules\Sales\Exceptions\InsufficientStockException;
 use Modules\Sales\Exceptions\InvalidStatusTransitionException;
 use Modules\Sales\Exceptions\LocationNotConfiguredException;
 use Modules\Sales\Exceptions\ProductNotMappableException;
@@ -63,6 +64,9 @@ use Modules\Sales\Repositories\SalesOrderRepository;
 use Modules\Sales\Support\OrderTotals;
 use Modules\Sales\Support\SalesOrderDataNormalizer;
 use Modules\Sales\Support\ShadowOrderGuard;
+use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductVariant;
+use Modules\Product\Support\TechnicalSku;
 use Modules\Warehouse\Models\Location;
 
 class SalesOrderService
@@ -4144,31 +4148,51 @@ class SalesOrderService
         });
     }
 
-    public function setCustomerDecision(string $orderId, string $decision, ?string $note = null): SalesOrder
-    {
+    public function setCustomerDecision(
+        string $orderId,
+        string $decision,
+        ?string $note = null,
+        ?string $replacementSku = null,
+        ?string $replacementItemId = null,
+    ): SalesOrder {
         if (! in_array($decision, self::CUSTOMER_DECISIONS, true)) {
             throw new \InvalidArgumentException('Keputusan pembeli tidak valid.');
         }
 
-        $order = $this->findAccessibleOrderOrFail($orderId);
-
-        $updates = [
-            'customer_decision' => $decision,
-            'decision_at' => now(),
-            'decision_by' => Auth::id() ?: null,
-            'contact_note' => $note ?? $order->contact_note,
-        ];
-
-        if ($decision === 'cancel' && empty($order->cancel_requested_at)) {
-            $updates['cancel_requested_at'] = now();
-            $updates['cancel_requested_by'] = Auth::id() ?: null;
-            $updates['cancel_channel'] = 'manual';
-            $updates['cancel_request_reason'] = $note ?? $order->cancel_request_reason ?? 'Pembeli tidak menghendaki (stok kosong).';
+        if ($decision === 'replace'
+            && (trim((string) $replacementSku) === '' || trim((string) $replacementItemId) === '')) {
+            throw new \InvalidArgumentException('SKU pengganti dan item yang diganti wajib diisi.');
         }
 
-        $order->update($updates);
+        return DB::transaction(function () use ($orderId, $decision, $note, $replacementSku, $replacementItemId): SalesOrder {
+            $order = $this->findAccessibleOrderOrFail($orderId);
 
-        return $order->fresh();
+            if ($decision === 'replace') {
+                $this->replaceEmptyStockItemWithinTransaction(
+                    $order,
+                    (string) $replacementItemId,
+                    (string) $replacementSku,
+                );
+            }
+
+            $updates = [
+                'customer_decision' => $decision,
+                'decision_at' => now(),
+                'decision_by' => Auth::id() ?: null,
+                'contact_note' => $note ?? $order->contact_note,
+            ];
+
+            if ($decision === 'cancel' && empty($order->cancel_requested_at)) {
+                $updates['cancel_requested_at'] = now();
+                $updates['cancel_requested_by'] = Auth::id() ?: null;
+                $updates['cancel_channel'] = 'manual';
+                $updates['cancel_request_reason'] = $note ?? $order->cancel_request_reason ?? 'Pembeli tidak menghendaki (stok kosong).';
+            }
+
+            $order->update($updates);
+
+            return $order->fresh(['items']);
+        });
     }
 
     public function updateOrderItem(string $orderId, string $itemId, array $data): SalesOrder
@@ -4177,73 +4201,138 @@ class SalesOrderService
             $orderQuery = SalesOrder::with('items')->whereKey($orderId);
             WarehouseAccess::apply($orderQuery, 'location_id');
             $order = $orderQuery->firstOrFail();
-            $this->assertEditableInternally($order);
-
-            $item = $order->items->firstWhere('id', $itemId);
-            if (! $item) {
-                throw new \InvalidArgumentException('Item pesanan tidak ditemukan.');
-            }
-
-            $reservesStock = $order->status === 'reserved' && $item->item_id;
-            $oldItemId = $item->item_id;
-            $oldSku = $item->sku ?? "item:{$item->item_id}";
-            $oldQty = (int) $item->qty_in_base;
-
-            $updates = array_intersect_key($data, array_flip(['sku', 'description', 'qty_in_base', 'price', 'disc', 'disc_amount', 'tax_amount']));
-
-            if (array_key_exists('sku', $updates) && $updates['sku'] !== null && $updates['sku'] !== $item->sku) {
-                $newItemId = DB::table('product_variants')->where('sku', $updates['sku'])->value('id');
-                if (! $newItemId) {
-                    throw new \InvalidArgumentException("SKU {$updates['sku']} tidak ditemukan di master produk.");
-                }
-                $updates['item_id'] = $newItemId;
-            }
-
-            if ($updates) {
-                $qty = (float) ($updates['qty_in_base'] ?? $item->qty_in_base);
-                $price = (float) ($updates['price'] ?? $item->price);
-                $discAmount = (float) ($updates['disc_amount'] ?? $item->disc_amount);
-                $taxAmount = (float) ($updates['tax_amount'] ?? $item->tax_amount);
-                $updates['amount'] = ($price * $qty) - $discAmount + $taxAmount;
-
-                $prevSnapshot = collect(array_keys($updates))
-                    ->mapWithKeys(fn ($k) => [$k => $item->{$k}])
-                    ->all();
-
-                $item->update($updates);
-
-                $this->logFieldChange(
-                    $order,
-                    'FIELD_CHANGED',
-                    $prevSnapshot,
-                    $updates,
-                    null,
-                    null,
-                    null,
-                    $item->refresh(),
-                );
-            }
-
-            if ($reservesStock) {
-                $item->refresh();
-                $newItemId = $item->item_id;
-                $newSku = $item->sku ?? "item:{$newItemId}";
-                $newQty = (int) $item->qty_in_base;
-
-                $changed = $oldItemId !== $newItemId || $oldSku !== $newSku || $oldQty !== $newQty;
-                if ($changed) {
-                    $locationId = $this->resolveLocationId($order);
-                    $this->stockService->cancel($oldSku, $oldItemId, $locationId, $oldQty, $order->salesorder_no);
-                    if ($newItemId) {
-                        $this->stockService->reserve($newSku, $newItemId, $locationId, $newQty, $order->salesorder_no, false);
-                    }
-                }
-            }
-
-            $this->recomputeOrderTotals($order->fresh(['items']));
+            $this->updateOrderItemWithinTransaction($order, $itemId, $data);
 
             return $order->fresh(['items']);
         });
+    }
+
+    private function replaceEmptyStockItemWithinTransaction(
+        SalesOrder $order,
+        string $orderItemId,
+        string $replacementSku,
+    ): void {
+        $this->assertEditableInternally($order);
+
+        $item = $order->items->firstWhere('id', $orderItemId);
+        if (! $item) {
+            throw new \InvalidArgumentException('Item pesanan yang diganti tidak ditemukan.');
+        }
+
+        $replacementSku = trim($replacementSku);
+        if (TechnicalSku::isTechnical($replacementSku)) {
+            throw new \InvalidArgumentException('SKU teknis bundle tidak dapat dipilih sebagai SKU pengganti.');
+        }
+
+        $replacement = ProductVariant::query()
+            ->where('sku', $replacementSku)
+            ->where('is_active', true)
+            ->whereHas('product', fn ($query) => $query
+                ->whereNull('deleted_at')
+                ->where('is_active', true)
+                ->where('status', Product::STATUS_MASTER))
+            ->first();
+
+        if (! $replacement) {
+            throw new \InvalidArgumentException("SKU {$replacementSku} tidak ditemukan di master produk aktif.");
+        }
+
+        if ((string) $replacement->id === (string) $item->item_id) {
+            throw new \InvalidArgumentException('SKU pengganti harus berbeda dari SKU pesanan saat ini.');
+        }
+
+        try {
+            $this->updateOrderItemWithinTransaction(
+                $order,
+                $orderItemId,
+                ['sku' => $replacementSku],
+                true,
+            );
+        } catch (InsufficientStockException $exception) {
+            throw new UserFacingException(
+                'Stok SKU pengganti tidak mencukupi',
+                $exception->getMessage(),
+                422,
+                [
+                    'sku' => $exception->getSku(),
+                    'available' => $exception->getAvailable(),
+                    'requested' => $exception->getRequested(),
+                ],
+                $exception,
+            );
+        }
+    }
+
+    private function updateOrderItemWithinTransaction(
+        SalesOrder $order,
+        string $itemId,
+        array $data,
+        bool $enforceReserve = false,
+    ): void {
+        $this->assertEditableInternally($order);
+
+        $item = $order->items->firstWhere('id', $itemId);
+        if (! $item) {
+            throw new \InvalidArgumentException('Item pesanan tidak ditemukan.');
+        }
+
+        $reservesStock = $order->status === 'reserved' && $item->item_id;
+        $oldItemId = $item->item_id;
+        $oldSku = $item->sku ?? "item:{$item->item_id}";
+        $oldQty = (int) $item->qty_in_base;
+
+        $updates = array_intersect_key($data, array_flip(['sku', 'description', 'qty_in_base', 'price', 'disc', 'disc_amount', 'tax_amount']));
+
+        if (array_key_exists('sku', $updates) && $updates['sku'] !== null && $updates['sku'] !== $item->sku) {
+            $newItemId = DB::table('product_variants')->where('sku', $updates['sku'])->value('id');
+            if (! $newItemId) {
+                throw new \InvalidArgumentException("SKU {$updates['sku']} tidak ditemukan di master produk.");
+            }
+            $updates['item_id'] = $newItemId;
+        }
+
+        if ($updates) {
+            $qty = (float) ($updates['qty_in_base'] ?? $item->qty_in_base);
+            $price = (float) ($updates['price'] ?? $item->price);
+            $discAmount = (float) ($updates['disc_amount'] ?? $item->disc_amount);
+            $taxAmount = (float) ($updates['tax_amount'] ?? $item->tax_amount);
+            $updates['amount'] = ($price * $qty) - $discAmount + $taxAmount;
+
+            $prevSnapshot = collect(array_keys($updates))
+                ->mapWithKeys(fn ($k) => [$k => $item->{$k}])
+                ->all();
+
+            $item->update($updates);
+
+            $this->logFieldChange(
+                $order,
+                'FIELD_CHANGED',
+                $prevSnapshot,
+                $updates,
+                null,
+                null,
+                null,
+                $item->refresh(),
+            );
+        }
+
+        if ($reservesStock) {
+            $item->refresh();
+            $newItemId = $item->item_id;
+            $newSku = $item->sku ?? "item:{$newItemId}";
+            $newQty = (int) $item->qty_in_base;
+
+            $changed = $oldItemId !== $newItemId || $oldSku !== $newSku || $oldQty !== $newQty;
+            if ($changed) {
+                $locationId = $this->resolveLocationId($order);
+                $this->stockService->cancel($oldSku, $oldItemId, $locationId, $oldQty, $order->salesorder_no);
+                if ($newItemId) {
+                    $this->stockService->reserve($newSku, $newItemId, $locationId, $newQty, $order->salesorder_no, $enforceReserve);
+                }
+            }
+        }
+
+        $this->recomputeOrderTotals($order->fresh(['items']));
     }
 
     public function deleteOrderItem(string $orderId, string $itemId): SalesOrder
