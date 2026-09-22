@@ -14,7 +14,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Services\ChannelDownloadService;
-use Modules\Channel\Services\ChannelSyncSettingService;
 use Modules\Channel\Services\ChannelWebhookAuditService;
 use Modules\Channel\Services\LazadaAuthService;
 use Modules\Channel\Services\LazadaOrderService;
@@ -145,10 +144,6 @@ class ProcessLazadaWebhook implements ShouldBeUnique, ShouldQueue
         LazadaAuthService $authService,
         ?ChannelWebhookAuditService $webhookAudit = null,
     ): void {
-        if (app(ChannelSyncSettingService::class)->isPaused()) {
-            return;
-        }
-
         $sellerId = (string) ($this->payload['seller_id'] ?? '');
         $messageType = (int) ($this->payload['message_type'] ?? -1);
         $data = $this->payload['data'] ?? [];

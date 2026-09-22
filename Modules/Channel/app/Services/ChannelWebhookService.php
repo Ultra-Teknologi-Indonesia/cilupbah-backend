@@ -66,27 +66,29 @@ final class ChannelWebhookService
         );
     }
 
-    public function dispatchLazada(array $payload): bool
+    public function dispatchLazada(array $payload, bool $allowWhilePaused = false): bool
     {
         return $this->dispatchSafely(
             'lazada',
             ProcessLazadaWebhook::idempotencyKey($payload),
             ProcessLazadaWebhook::resolveQueueName($payload),
             fn (): mixed => ProcessLazadaWebhook::dispatch($payload),
+            $allowWhilePaused,
         );
     }
 
-    public function dispatchShopee(array $payload): bool
+    public function dispatchShopee(array $payload, bool $allowWhilePaused = false): bool
     {
         return $this->dispatchSafely(
             'shopee',
             ProcessShopeeWebhook::idempotencyKey($payload),
             ProcessShopeeWebhook::resolveQueueName($payload),
             fn (): mixed => ProcessShopeeWebhook::dispatch($payload),
+            $allowWhilePaused,
         );
     }
 
-    public function dispatchTikTok(array $payload): bool
+    public function dispatchTikTok(array $payload, bool $allowWhilePaused = false): bool
     {
         return $this->dispatchSafely(
             'tiktok',
@@ -94,11 +96,16 @@ final class ChannelWebhookService
             ProcessTikTokWebhook::resolveQueueName($payload),
             fn (): mixed => ProcessTikTokWebhook::dispatch($payload)
                 ->onQueue(ProcessTikTokWebhook::resolveQueueName($payload)),
+            $allowWhilePaused,
         );
     }
 
-    public function dispatchWooCommerce(string $shopId, string $topic, array $payload): bool
-    {
+    public function dispatchWooCommerce(
+        string $shopId,
+        string $topic,
+        array $payload,
+        bool $allowWhilePaused = false,
+    ): bool {
         return $this->dispatchSafely(
             'woocommerce',
             ProcessWooCommerceWebhook::idempotencyKey($shopId, $topic, $payload),
@@ -109,12 +116,14 @@ final class ChannelWebhookService
                 (string) $payload['id'],
                 $payload,
             ),
+            $allowWhilePaused,
         );
     }
 
     public function dispatchInbox(ChannelWebhookInbox $row): bool
     {
         $payload = (array) $row->payload;
+        $allowWhilePaused = $this->isAcceptedBeforePause($row);
 
         try {
             Cache::forget((string) $row->event_key);
@@ -135,16 +144,26 @@ final class ChannelWebhookService
         }
 
         return match (strtolower((string) $row->channel)) {
-            'lazada' => $this->dispatchLazada($payload),
-            'shopee' => $this->dispatchShopee($payload),
-            'tiktok' => $this->dispatchTikTok($payload),
+            'lazada' => $this->dispatchLazada($payload, $allowWhilePaused),
+            'shopee' => $this->dispatchShopee($payload, $allowWhilePaused),
+            'tiktok' => $this->dispatchTikTok($payload, $allowWhilePaused),
             'woocommerce' => $this->dispatchWooCommerce(
                 (string) $row->shop_id,
                 (string) $row->event_type,
                 $payload,
+                $allowWhilePaused,
             ),
             default => false,
         };
+    }
+
+    private function isAcceptedBeforePause(ChannelWebhookInbox $row): bool
+    {
+        $pausedAt = app(ChannelSyncSettingService::class)->current()->paused_at;
+
+        return $pausedAt !== null
+            && $row->received_at !== null
+            && $row->received_at->lessThanOrEqualTo($pausedAt);
     }
 
     private function dispatchSafely(
@@ -152,8 +171,9 @@ final class ChannelWebhookService
         string $eventKey,
         string $queue,
         Closure $dispatch,
+        bool $allowWhilePaused = false,
     ): bool {
-        if ($this->isPaused()) {
+        if ($this->isPaused() && ! $allowWhilePaused) {
             return false;
         }
 

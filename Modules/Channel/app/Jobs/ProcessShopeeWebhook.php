@@ -14,7 +14,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Services\ChannelDownloadService;
-use Modules\Channel\Services\ChannelSyncSettingService;
 use Modules\Channel\Services\ChannelWebhookAuditService;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Support\ChannelOrderIntakeGate;
@@ -147,10 +146,6 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
         ChannelDownloadService $downloadService,
         ?ChannelWebhookAuditService $webhookAudit = null,
     ): void {
-        if (app(ChannelSyncSettingService::class)->isPaused()) {
-            return;
-        }
-
         $shopId = (string) ($this->payload['shop_id'] ?? '');
         $code = (int) ($this->payload['code'] ?? -1);
         $data = $this->payload['data'] ?? [];

@@ -70,7 +70,9 @@ final class RefreshChannelOrderJob implements ShouldBeUnique, ShouldQueue
         ChannelOrderRefreshService $orders,
         ChannelSyncSettingService $settings,
     ): void {
-        if ($settings->isPaused()) {
+        $allowWhilePaused = $this->webhookEventKey !== null && $this->webhookEventKey !== '';
+
+        if ($settings->isPaused() && ! $allowWhilePaused) {
             Log::info('Delayed channel order refresh skipped while channel sync is paused.', [
                 'channel' => $this->channel,
                 'shop_id' => $this->shopId,
@@ -80,7 +82,12 @@ final class RefreshChannelOrderJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        $pulled = $orders->refresh($this->channel, $this->shopId, $this->orderId);
+        $pulled = $orders->refresh(
+            $this->channel,
+            $this->shopId,
+            $this->orderId,
+            $allowWhilePaused,
+        );
 
         ChannelOrderPullGuard::requirePersisted(
             $this->channel,

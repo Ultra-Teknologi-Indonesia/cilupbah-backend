@@ -16,9 +16,13 @@ final class ChannelOrderRefreshService
         private readonly ChannelSyncSettingService $settings,
     ) {}
 
-    public function refresh(string $channel, string $shopId, string $orderId): int
-    {
-        if ($this->settings->isPaused()) {
+    public function refresh(
+        string $channel,
+        string $shopId,
+        string $orderId,
+        bool $allowWhilePaused = false,
+    ): int {
+        if ($this->settings->isPaused() && ! $allowWhilePaused) {
             return 0;
         }
 

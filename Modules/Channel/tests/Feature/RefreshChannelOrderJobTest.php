@@ -89,6 +89,43 @@ final class RefreshChannelOrderJobTest extends TestCase
         self::assertTrue(app(ChannelSyncSettingService::class)->isPaused());
     }
 
+    public function test_it_finishes_a_webhook_refresh_that_was_already_accepted_before_pause(): void
+    {
+        SalesOrder::factory()->create([
+            'source' => 'shopee',
+            'channel_shop_id' => 'SHOP-1',
+            'channel_order_no' => 'ORDER-1',
+        ]);
+
+        app(ChannelSyncSettingService::class)->setEnabled(false);
+
+        $shopee = \Mockery::mock(ShopeeOrderService::class);
+        $shopee->shouldReceive('pullOrderById')
+            ->once()
+            ->with('SHOP-1', 'ORDER-1')
+            ->andReturn(1);
+
+        $orders = new ChannelOrderRefreshService(
+            $shopee,
+            \Mockery::mock(TikTokOrderService::class),
+            \Mockery::mock(LazadaOrderService::class),
+            \Mockery::mock(WooCommerceOrderService::class),
+            app(ChannelSyncSettingService::class),
+        );
+
+        $job = new RefreshChannelOrderJob(
+            'shopee',
+            'SHOP-1',
+            'ORDER-1',
+            null,
+            'webhook-event-1',
+        );
+
+        $job->handle($orders, app(ChannelSyncSettingService::class));
+
+        self::assertTrue(app(ChannelSyncSettingService::class)->isPaused());
+    }
+
     public function test_permanent_refresh_failure_marks_the_original_webhook_failed(): void
     {
         Queue::fake();
