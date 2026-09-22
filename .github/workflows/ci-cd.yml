@@ -189,6 +189,7 @@ jobs:
             set -e
 
             cd ${{ secrets.STAGING_DEPLOY_PATH }}
+            git config --global --add safe.directory ${{ secrets.STAGING_DEPLOY_PATH }}
 
             # 1. Update file docker-compose.staging.yml dari repository
             PREVIOUS_COMMIT=$(git rev-parse HEAD || echo "")
