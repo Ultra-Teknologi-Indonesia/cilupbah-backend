@@ -151,7 +151,7 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
         if (ChannelFulfillmentGuard::blocks($order->channel_shop_id, 'ready_to_ship', $order->salesorder_no)) {
             app(BulkShippingLabelService::class)->onOrderAwbGaveUp(
                 $order->id,
-                BulkShippingLabelItem::REASON_CHANNEL_SYNC_PAUSED,
+                BulkShippingLabelItem::REASON_FULFILLMENT_DISABLED,
             );
 
             if ($prefetchLock && $prefetchLock->isOwnedByCurrentProcess()) {

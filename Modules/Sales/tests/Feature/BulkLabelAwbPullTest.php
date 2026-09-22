@@ -314,7 +314,7 @@ class BulkLabelAwbPullTest extends TestCase
         );
     }
 
-    public function test_sinkronisasi_channel_mati_ditandai_gagal_bukan_menggantung(): void
+    public function test_sinkronisasi_global_mati_tidak_menghalangi_penarikan_awb_fulfillment(): void
     {
         Queue::fake();
 
@@ -325,13 +325,40 @@ class BulkLabelAwbPullTest extends TestCase
         $item = $this->itemOf($batch);
 
         $this->assertSame(
-            BulkShippingLabelItem::STATUS_FAILED,
+            BulkShippingLabelItem::STATUS_WAITING_AWB,
             $item->status,
-            'Kalau sinkronisasi mati, item harus gagal dengan alasan jelas — bukan menunggu selamanya.',
+            'Global sync hanya mematikan order/webhook/stok/katalog; fulfillment tetap boleh meminta AWB.',
         );
-        $this->assertSame(BulkShippingLabelItem::REASON_CHANNEL_SYNC_PAUSED, $item->reason);
+        $this->assertNull($item->reason);
 
-        Queue::assertNotPushed(RequestChannelAwbJob::class);
+        Queue::assertPushed(RequestShopeeMassAwbJob::class);
+    }
+
+    public function test_item_lama_yang_gagal_saat_global_pause_bisa_di_retry_tanpa_mengaktifkan_sync_global(): void
+    {
+        Queue::fake();
+
+        app(ChannelSyncSettingService::class)->setEnabled(false);
+
+        $order = $this->orderWithoutAwb();
+        $batch = $this->createBatchFor($order);
+        $item = $this->itemOf($batch);
+        $item->update([
+            'status' => BulkShippingLabelItem::STATUS_FAILED,
+            'reason' => BulkShippingLabelItem::REASON_CHANNEL_SYNC_PAUSED,
+        ]);
+        $batch->update(['status' => BulkShippingLabelBatch::STATUS_FAILED]);
+        $batch->recomputeCounts();
+
+        app(BulkShippingLabelService::class)->retryFailed($this->user, $batch);
+
+        $this->assertFalse(
+            app(ChannelSyncSettingService::class)->isEnabled(),
+            'Retry AWB tidak boleh mengaktifkan global sync.',
+        );
+        $this->assertSame(BulkShippingLabelItem::STATUS_WAITING_AWB, $item->refresh()->status);
+        $this->assertNull($item->reason);
+        Queue::assertPushed(RequestShopeeMassAwbJob::class);
     }
 
     public function test_resi_yang_datang_mengantrikan_item_untuk_diproses_idempotent(): void

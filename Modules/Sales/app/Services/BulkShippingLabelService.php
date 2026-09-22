@@ -16,7 +16,6 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Modules\Channel\Exceptions\ShopeeApiException;
-use Modules\Channel\Services\ChannelSyncSettingService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Realtime\Services\RealtimeEventPublisher;
 use Modules\Sales\Exceptions\ShippingLabelPreparingException;
@@ -418,19 +417,15 @@ class BulkShippingLabelService
             return [BulkShippingLabelItem::STATUS_FAILED, BulkShippingLabelItem::REASON_NO_AWB];
         }
 
-        if ($this->channelFulfillmentPaused($order)) {
-            return [BulkShippingLabelItem::STATUS_FAILED, BulkShippingLabelItem::REASON_CHANNEL_SYNC_PAUSED];
+        if ($this->channelFulfillmentBlocked($order)) {
+            return [BulkShippingLabelItem::STATUS_FAILED, BulkShippingLabelItem::REASON_FULFILLMENT_DISABLED];
         }
 
         return [BulkShippingLabelItem::STATUS_WAITING_AWB, null];
     }
 
-    public function channelFulfillmentPaused(SalesOrder $order): bool
+    public function channelFulfillmentBlocked(SalesOrder $order): bool
     {
-        if (app(ChannelSyncSettingService::class)->isPaused()) {
-            return true;
-        }
-
         return ChannelFulfillmentGuard::blocks(
             $order->channel_shop_id,
             'ready_to_ship',

@@ -231,7 +231,7 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
             }
 
             if (ChannelFulfillmentGuard::blocks($order->channel_shop_id, 'ready_to_ship', $order->salesorder_no)) {
-                $bulkLabels->onOrderAwbGaveUp((string) $order->id, BulkShippingLabelItem::REASON_CHANNEL_SYNC_PAUSED);
+                $bulkLabels->onOrderAwbGaveUp((string) $order->id, BulkShippingLabelItem::REASON_FULFILLMENT_DISABLED);
 
                 continue;
             }

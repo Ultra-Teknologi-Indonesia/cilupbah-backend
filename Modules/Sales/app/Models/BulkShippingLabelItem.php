@@ -100,6 +100,8 @@ class BulkShippingLabelItem extends Model
 
     public const REASON_CHANNEL_SYNC_PAUSED = 'channel_sync_paused';
 
+    public const REASON_FULFILLMENT_DISABLED = 'fulfillment_push_disabled';
+
     public const REASON_PARCEL_ALREADY_SHIPPED = 'parcel_already_shipped';
 
     public const RECOVERABLE_REASONS = [
@@ -113,6 +115,8 @@ class BulkShippingLabelItem extends Model
         self::REASON_STALE_BATCH_REAPED,
         self::REASON_NO_AWB,
         self::REASON_AWB_TIMEOUT,
+        self::REASON_CHANNEL_SYNC_PAUSED,
+        self::REASON_FULFILLMENT_DISABLED,
     ];
 
     protected $fillable = [

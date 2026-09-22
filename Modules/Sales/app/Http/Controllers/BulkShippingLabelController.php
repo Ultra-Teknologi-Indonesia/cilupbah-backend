@@ -176,6 +176,7 @@ class BulkShippingLabelController extends Controller
                 $item->reason === $item_class::REASON_NO_AWB => 'No. Resi belum tersedia dari marketplace. Coba lagi.',
                 $item->reason === $item_class::REASON_AWB_TIMEOUT => 'Marketplace belum menerbitkan No. Resi setelah beberapa kali dicoba. Coba lagi.',
                 $item->reason === $item_class::REASON_CHANNEL_SYNC_PAUSED => 'Sinkronisasi ke marketplace sedang dimatikan, No. Resi tidak bisa ditarik. Hubungi admin.',
+                $item->reason === $item_class::REASON_FULFILLMENT_DISABLED => 'Penarikan resi untuk toko ini sedang dimatikan. Aktifkan fulfillment lalu coba lagi.',
                 $item->reason === $item_class::REASON_LAZADA_PREP_FAILED => 'Lazada gagal menyiapkan label. Coba lagi.',
                 $item->reason === $item_class::REASON_LAZADA_PREP_TIMEOUT => 'Timeout menunggu Lazada. Coba lagi.',
                 $item->reason === $item_class::REASON_LAZADA_DECODE_FAILED => 'File label dari Lazada rusak. Coba lagi.',
