@@ -4,13 +4,17 @@ namespace Modules\Sales\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Redis;
 use Mockery;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
+use Modules\Sales\Jobs\ProcessBulkShippingLabelItemJob;
 use Modules\Sales\Jobs\RequestChannelAwbJob;
+use Modules\Sales\Models\BulkShippingLabelBatch;
+use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Models\ChannelOperationAttempt;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Support\ChannelOperationLedger;
@@ -66,6 +70,49 @@ class RequestChannelAwbJobTest extends TestCase
 
         $this->assertSame('SPX-ALREADY-ISSUED', $order->tracking_number);
         Queue::assertPushed(PrepareShopeeShippingLabelJob::class);
+    }
+
+    public function test_ready_label_wakes_waiting_marketplace_batch_items(): void
+    {
+        Queue::fake();
+
+        $order = SalesOrder::factory()->create([
+            'source' => 'shopee',
+            'channel_shop_id' => 'SHOP-LABEL-READY-WAKE',
+            'channel_order_no' => 'ORDER-LABEL-READY-WAKE',
+            'channel_status' => 'PROCESSED',
+            'status' => 'reserved',
+            'tracking_number' => 'SPX-LABEL-READY',
+            'shipping_label_status' => 'ready',
+        ]);
+
+        $user = \App\Models\User::factory()->create();
+        $batch = BulkShippingLabelBatch::create([
+            'user_id' => $user->id,
+            'status' => BulkShippingLabelBatch::STATUS_PROCESSING,
+            'total_count' => 1,
+            'done_count' => 0,
+            'failed_count' => 0,
+        ]);
+        $item = BulkShippingLabelItem::create([
+            'batch_id' => $batch->id,
+            'order_id' => $order->id,
+            'channel' => 'shopee',
+            'status' => BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE,
+        ]);
+
+        $redis = Mockery::mock();
+        $redis->shouldReceive('xadd')->once()->andReturn('1-0');
+        Redis::shouldReceive('connection')->once()->with('default')->andReturn($redis);
+
+        (new RequestChannelAwbJob($order->id))->handle();
+
+        $this->assertSame(BulkShippingLabelItem::STATUS_PENDING, $item->refresh()->status);
+        Queue::assertPushed(
+            ProcessBulkShippingLabelItemJob::class,
+            fn (ProcessBulkShippingLabelItemJob $job): bool => $job->batchId === $batch->id
+                && $job->itemId === $item->id,
+        );
     }
 
     public function test_verified_awb_completes_an_accepted_marketplace_request(): void

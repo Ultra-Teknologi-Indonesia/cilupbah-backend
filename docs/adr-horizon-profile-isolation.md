@@ -1,52 +1,65 @@
-# ADR: Profil Horizon Terpisah untuk Antrean Critical dan Background
+# ADR: Pool Horizon Berdasarkan Kapabilitas Operasional
 
 Status: Accepted
-Tanggal: 2026-09-14
+Tanggal: 2026-09-22
+
+## Konteks
+
+Satu deployment `critical` sebelumnya melayani order masuk, fulfillment,
+tarik resi, stok, pembatalan, dan tracking. Ketika satu alur marketplace
+melambat, worker PHP yang tetap hidup mengonsumsi RAM dan pekerjaan lain ikut
+menunggu. Menambah semua worker sekaligus tidak aman karena kuota API tiap
+marketplace dan toko berbeda.
 
 ## Keputusan
 
-Horizon production dijalankan sebagai dua Deployment dengan queue yang tidak
-overlap:
+Setiap kapabilitas operasional memiliki profil Horizon dan Deployment sendiri:
 
-- `critical`: order, webhook operasional, tracking, fulfillment, dan stok;
-- `background`: katalog, finance, after-sales, export/download, label, dan
-  pekerjaan cutover.
+- `order-intake`: order internal, order Shopee/TikTok/Lazada, dan refresh order;
+- `fulfillment`: fulfillment umum dan per marketplace/package;
+- `stock`: kalkulasi stok, warehouse safety, outbox, serta push stok;
+- `marketplace-ops`: pembatalan, tracking, dan webhook operasional non-order;
+- `labels-awb`: request dan polling resi per marketplace;
+- `labels-pdf`: download dokumen label per marketplace dan penggabungan PDF;
+- `background`: katalog, finance, after-sales, ekspor, serta tugas non-operasional.
+- `maintenance`: cutover, QR label, dan download generik yang dapat berat di memori.
 
-Profil critical memiliki worker minimum yang tetap hangat dan autoscaling
-berdasarkan ukuran antrean. Batas maksimum tetap eksplisit per supervisor,
-`balanceMaxShift=1`, dan cooldown pendek agar burst naik bertahap tanpa
-lonjakan CPU/RAM.
+Satu deployment hanya menjalankan satu profil dan profil tidak boleh memiliki
+supervisor yang overlap. Queue Redis tetap menjadi sumber kerja yang durable.
+Pada rollout, deployment generic lama dihentikan hingga nol sebelum pool baru
+diterapkan, sehingga dua master tidak mengeksekusi side effect marketplace yang
+sama.
 
-Pod API memiliki HPA yang dibatasi 2--3 replika berdasarkan CPU dan RAM, dengan
-scale-down yang ditunda. Dengan demikian endpoint webhook tetap dapat menerima
-burst tanpa menjadikan worker queue sebagai proses HTTP sinkron.
+Supervisor memakai satu worker hangat dan dapat tumbuh sampai ceiling yang
+dibatasi. Untuk AWB dan label, ceiling ini berlaku per marketplace; tidak
+berarti request API dapat dikirim tanpa batas. Lock per order/package serta
+rate limit marketplace tetap menjadi pagar utama terhadap duplikasi dan 429.
 
-## Batas keselamatan
+## Alternatif yang dipertimbangkan
 
-Setiap profil mempunyai ceiling worker+master sekitar 4 GiB dan pod limit 5
-GiB. Nilai `memory` Horizon tetap menjadi batas daur ulang worker; pod limit
-menjadi pagar terakhir terhadap OOM. Worker juga didaur ulang dengan
-`maxJobs`/`maxTime` yang sudah ada.
+- **Satu `critical` besar dengan worker maksimum** — ditolak; tidak memberi
+  isolasi, baseline RAM tinggi, dan satu antrean lambat mengganggu yang lain.
+- **Satu pod permanen per job individual** — ditolak; terlalu banyak master
+  Horizon, mahal di RAM, dan sulit dioperasikan. Unit isolasi yang tepat adalah
+  kapabilitas bisnis, bukan satu instance job.
+- **Memecah aplikasi menjadi microservice sekarang** — ditunda; modular monolith
+  Laravel + queue terpisah memberi isolasi yang dibutuhkan dengan risiko rilis
+  dan biaya operasi jauh lebih kecil.
 
-Dua profil memakai `Recreate`, bukan menjalankan dua master critical secara
-bersamaan. Queue Redis tetap persisten sehingga pekerjaan tidak hilang saat
-rollout, sementara risiko side effect ganda dari job non-idempotent tidak
-ditambah.
+## Konsekuensi
 
-## Dampak operasional
+- Positif: resi/label, stok, fulfillment, dan order tidak saling menyumbat.
+- Positif: worker idle turun ke baseline kecil, sedangkan burst hanya terjadi
+  pada pool yang memiliki backlog.
+- Positif: batas RAM dan CPU dapat disetel per domain berdasarkan hasil load test.
+- Negatif: jumlah Deployment dan dashboard yang perlu dipantau bertambah.
+- Negatif: kapasitas tidak boleh dinaikkan melebihi kuota API marketplace.
 
-Burst event marketplace tidak lagi menunggu katalog/export. Jika kapasitas
-critical penuh, antrean tetap bertambah secara terukur dan dapat diawasi
-melalui panjang antrean, queue wait, failed jobs, throttling CPU, dan memory
-events. Konfigurasi ini mengurangi risiko OOM/5xx; angka nol absolut tetap
-tidak dapat dijanjikan tanpa load test dan kapasitas marketplace/API yang
-memadai.
+## Verifikasi rilis
 
-## Rollout dan verifikasi
-
-1. Deploy image dan dua manifest Horizon.
-2. Pastikan kedua pod `Ready` dan masing-masing memuat profil yang benar.
-3. Pastikan setiap queue dilayani tepat satu profil dan tidak ada queue yang
-   tertinggal.
-4. Pantau pending queue, oldest job age, failed jobs, Redis memory/eviction,
-   cgroup `oom_kill`, dan CPU throttling sebelum menaikkan batas lagi.
+1. Pastikan setiap profil Horizon hanya memuat supervisor miliknya.
+2. Pastikan queue prioritas dilayani tepat satu pool dan tidak ada pending job
+   tanpa worker.
+3. Pantau umur job tertua, depth ready/delayed/reserved, failed job, API 429,
+   cgroup OOM, CPU throttling, dan RSS per pool.
+4. Load test per channel/toko sebelum menaikkan concurrency ceiling.

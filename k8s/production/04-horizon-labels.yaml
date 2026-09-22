@@ -84,11 +84,11 @@ spec:
               mountPath: /var/www/html/storage/app/print-spool
           resources:
             requests:
-              memory: "2560Mi"
+              memory: "1Gi"
               cpu: "500m"
             limits:
-              memory: "6Gi"
-              cpu: "3500m"
+              memory: "5Gi"
+              cpu: "2500m"
           livenessProbe:
             exec:
               command: ["sh", "-c", "php artisan horizon:status | grep -q running"]

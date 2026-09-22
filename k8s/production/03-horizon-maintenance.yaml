@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cilupbah-horizon-maintenance
+  namespace: cilupbah
+  labels:
+    app: cilupbah-horizon-maintenance
+    component: queue-maintenance
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: cilupbah-horizon-maintenance
+  template:
+    metadata:
+      labels:
+        app: cilupbah-horizon-maintenance
+        component: queue-maintenance
+    spec:
+      terminationGracePeriodSeconds: 180
+      imagePullSecrets:
+        - name: ghcr-creds
+      containers:
+        - name: horizon-maintenance
+          image: ghcr.io/ultra-teknologi-indonesia/cilupbah:v1.0.0
+          command: ["php", "artisan", "horizon"]
+          envFrom:
+            - secretRef:
+                name: cilupbah-env
+          env:
+            - name: REDIS_LONG_QUEUE_RETRY_AFTER
+              value: "2160"
+            - name: HORIZON_PROFILE
+              value: "maintenance"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "100m"
+            limits:
+              memory: "2Gi"
+              cpu: "1"
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "php artisan horizon:status | grep -q running"]
+            initialDelaySeconds: 60
+            periodSeconds: 60
+            timeoutSeconds: 15
+            failureThreshold: 3

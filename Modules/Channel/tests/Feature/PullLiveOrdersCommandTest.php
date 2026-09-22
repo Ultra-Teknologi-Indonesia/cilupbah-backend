@@ -234,9 +234,6 @@ class PullLiveOrdersCommandTest extends TestCase
             $to->toIso8601String(),
         ))->handle($leases, app(ChannelShopRepository::class));
 
-        // Shopee pull is deliberately two-phase (create_time then update_time)
-        // even when the first page is empty. The lease must remain held while
-        // the continuation job is queued, then be released on the final page.
         $this->assertNotNull($this->liveShop->fresh()->order_pull_lease_token);
 
         (new PullChannelOrdersJob(

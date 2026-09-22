@@ -1162,12 +1162,6 @@ class ReportRepository
             ->orderByDesc('sales_order_items.sku');
     }
 
-    /**
-     * Convert report date filters entered in the business timezone to UTC bounds.
-     * The upper bound is exclusive so a date-only filter includes the complete day.
-     *
-     * @return array{0: ?CarbonImmutable, 1: ?CarbonImmutable}
-     */
     private function businessDateRange(?string $from, ?string $to): array
     {
         $timezone = (string) config('app.business_timezone', 'Asia/Jakarta');

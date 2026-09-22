@@ -125,4 +125,34 @@ class ProductionWorkerSafetyTest extends TestCase
             $workflow,
         );
     }
+
+    public function test_operational_capabilities_are_deployed_in_separate_horizon_pools(): void
+    {
+        foreach ([
+            '03-horizon-order-intake.yaml' => 'order-intake',
+            '03-horizon-fulfillment.yaml' => 'fulfillment',
+            '03-horizon-stock.yaml' => 'stock',
+            '03-horizon-critical.yaml' => 'marketplace-ops',
+            '04-horizon-labels-awb.yaml' => 'labels-awb',
+            '04-horizon-labels.yaml' => 'labels-pdf',
+        ] as $manifest => $profile) {
+            $yaml = file_get_contents(base_path("k8s/production/{$manifest}"));
+
+            $this->assertIsString($yaml);
+            $this->assertStringContainsString('type: Recreate', $yaml, $manifest);
+            $this->assertStringContainsString('name: HORIZON_PROFILE', $yaml, $manifest);
+            $this->assertStringContainsString("value: \"{$profile}\"", $yaml, $manifest);
+        }
+
+        $workflow = file_get_contents(base_path('.github/workflows/ci-cd-production.yml'));
+
+        $this->assertIsString($workflow);
+        foreach ([
+            'cilupbah-horizon-order-intake',
+            'cilupbah-horizon-fulfillment',
+            'cilupbah-horizon-stock',
+        ] as $deployment) {
+            $this->assertStringContainsString($deployment, $workflow);
+        }
+    }
 }

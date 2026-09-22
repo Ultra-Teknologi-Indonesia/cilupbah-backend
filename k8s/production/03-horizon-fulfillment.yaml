@@ -1,59 +1,50 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: cilupbah-horizon-critical
+  name: cilupbah-horizon-fulfillment
   namespace: cilupbah
   labels:
-    app: cilupbah-horizon-critical
-    component: queue-marketplace-ops
+    app: cilupbah-horizon-fulfillment
+    component: queue-fulfillment
 spec:
   replicas: 1
   revisionHistoryLimit: 2
-  # Do not overlap two critical Horizon masters during rollout. Redis queue
-  # reservations remain safe, while this avoids duplicate side effects for
-  # non-idempotent marketplace operations.
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: cilupbah-horizon-critical
+      app: cilupbah-horizon-fulfillment
   template:
     metadata:
       labels:
-        app: cilupbah-horizon-critical
-        component: queue-marketplace-ops
+        app: cilupbah-horizon-fulfillment
+        component: queue-fulfillment
     spec:
       terminationGracePeriodSeconds: 180
       imagePullSecrets:
         - name: ghcr-creds
       containers:
-        - name: horizon-critical
+        - name: horizon-fulfillment
           image: ghcr.io/ultra-teknologi-indonesia/cilupbah:v1.0.0
           command: ["php", "artisan", "horizon"]
           envFrom:
             - secretRef:
                 name: cilupbah-env
           env:
-            - name: REDIS_LONG_QUEUE_RETRY_AFTER
-              value: "2160"
-            - name: REDIS_QUEUE_RETRY_AFTER
-              value: "660"
             - name: REDIS_QUEUE_CONNECTION
               value: "horizon"
+            - name: REDIS_QUEUE_RETRY_AFTER
+              value: "660"
             - name: HORIZON_PROFILE
-              value: "marketplace-ops"
-            - name: HORIZON_CHANNEL_CANCELLATION_PROCESSES
-              value: "2"
-            # Cancellation remains responsive but must not affect order intake,
-            # fulfillment, AWB, label download, or stock propagation.
+              value: "fulfillment"
+            - name: HORIZON_FULFILLMENT_PROCESSES
+              value: "3"
           resources:
             requests:
               memory: "768Mi"
               cpu: "500m"
             limits:
-              # Only cancellation/tracking/webhook operations remain here.
-              # Order intake, fulfillment and stock have their own pools.
-              memory: "3Gi"
+              memory: "2Gi"
               cpu: "2"
           livenessProbe:
             exec:

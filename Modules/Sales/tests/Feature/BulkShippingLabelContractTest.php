@@ -152,6 +152,31 @@ class BulkShippingLabelContractTest extends TestCase
         );
     }
 
+    public function test_tiktok_label_yang_sudah_dipersiapkan_tidak_fetch_ulang_ke_marketplace(): void
+    {
+        Http::fake();
+
+        $order = SalesOrder::factory()->create([
+            'source' => 'tiktok',
+            'channel_shop_id' => 'SHOP-1',
+            'channel_order_no' => 'TT-ORDER-1',
+            'shipping_label_status' => 'ready',
+            'shipping_label_raw_data' => [
+                'channel' => 'tiktok',
+                'documents' => [[
+                    'package_id' => 'PKG-1',
+                    'doc_url' => 'https://tts.example/label.pdf',
+                ]],
+            ],
+        ]);
+
+        $result = app(SalesOrderService::class)->getShippingLabel($order);
+
+        $this->assertSame('https://tts.example/label.pdf', $result['url']);
+        $this->assertTrue($result['cached']);
+        Http::assertNothingSent();
+    }
+
     public function test_lazada_label_url_harus_jadi_done(): void
     {
         Http::fake(['*' => Http::response('%PDF-1.4 LAZADA LABEL', 200)]);
