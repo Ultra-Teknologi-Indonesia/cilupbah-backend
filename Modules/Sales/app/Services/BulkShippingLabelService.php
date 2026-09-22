@@ -22,6 +22,7 @@ use Modules\Realtime\Services\RealtimeEventPublisher;
 use Modules\Sales\Exceptions\ShippingLabelPreparingException;
 use Modules\Sales\Jobs\ArchiveBulkShippingLabelJob;
 use Modules\Sales\Jobs\FinalizeBulkShippingLabelBatchJob;
+use Modules\Sales\Jobs\PrepareShopeeShippingLabelBatchJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelItemJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelJob;
 use Modules\Sales\Jobs\RequestChannelAwbJob;
@@ -480,15 +481,63 @@ class BulkShippingLabelService
         }
 
         $count = 0;
+        $shopeeGroups = [];
         $batch->items()
             ->where('status', BulkShippingLabelItem::STATUS_PENDING)
             ->orderBy('created_at')
-            ->select(['id', 'batch_id', 'order_id'])
-            ->cursor()
-            ->each(function (BulkShippingLabelItem $item) use (&$count): void {
-                $this->dispatchItem($item);
-                $count++;
+            ->with('order')
+            ->get()
+            ->each(function (BulkShippingLabelItem $item) use (&$count, &$shopeeGroups): void {
+                $order = $item->order;
+                $isShopeeMassEligible = $item->channel === self::CHANNEL_SHOPEE
+                    && $order
+                    && filled($order->tracking_number)
+                    && ! in_array($order->shipping_label_status, ['ready', 'preparing'], true)
+                    && filled($order->channel_shop_id)
+                    && filled($order->shipping_provider);
+
+                if (! $isShopeeMassEligible) {
+                    $this->dispatchItem($item);
+                    $count++;
+
+                    return;
+                }
+
+                $docType = $order->shipping_label_doc_type
+                    ?: $this->resolveChannelOptions(self::CHANNEL_SHOPEE)['document_type'];
+                $groupKey = implode('|', [
+                    (string) $order->channel_shop_id,
+                    strtolower(trim((string) $order->shipping_provider)),
+                    $docType,
+                ]);
+
+                $shopeeGroups[$groupKey] ??= [
+                    'shop_id' => (string) $order->channel_shop_id,
+                    'doc_type' => $docType,
+                    'items' => [],
+                ];
+                $shopeeGroups[$groupKey]['items'][] = $item;
             });
+
+        $chunkSize = max(1, min(
+            50,
+            (int) config('bulk-labels.shopee_mass_label_chunk_size', 50),
+        ));
+
+        foreach ($shopeeGroups as $group) {
+            foreach (array_chunk($group['items'], $chunkSize) as $chunk) {
+                PrepareShopeeShippingLabelBatchJob::dispatch(
+                    (string) $batch->id,
+                    (string) $group['shop_id'],
+                    array_map(
+                        static fn (BulkShippingLabelItem $item): string => (string) $item->id,
+                        $chunk,
+                    ),
+                    (string) $group['doc_type'],
+                );
+                $count++;
+            }
+        }
 
         return $count;
     }
@@ -520,6 +569,64 @@ class BulkShippingLabelService
         }
 
         return $items->count();
+    }
+
+    public function stageShopeeMassDownloadedLabel(
+        string $batchId,
+        array $itemIds,
+        string $bytes,
+    ): int {
+        $itemIds = array_values(array_unique(array_map('strval', $itemIds)));
+        if ($itemIds === [] || $bytes === '') {
+            return 0;
+        }
+
+        $items = BulkShippingLabelItem::query()
+            ->where('batch_id', $batchId)
+            ->whereIn('id', $itemIds)
+            ->whereIn('status', [
+                BulkShippingLabelItem::STATUS_PENDING,
+                BulkShippingLabelItem::STATUS_DOWNLOADING,
+            ])
+            ->get();
+
+        if ($items->isEmpty()) {
+            return 0;
+        }
+
+        $disk = Storage::disk(config('bulk-labels.spool_disk', 'print_spool'));
+        $path = 'items/'.$batchId.'/shopee-mass-'.hash('sha256', implode('|', $itemIds)).'.pdf';
+        if (! $disk->put($path, $bytes)) {
+            throw new \RuntimeException('File label Shopee mass tidak dapat disimpan ke print spool.');
+        }
+
+        $updated = BulkShippingLabelItem::query()
+            ->where('batch_id', $batchId)
+            ->whereIn('id', $items->pluck('id')->all())
+            ->whereIn('status', [
+                BulkShippingLabelItem::STATUS_PENDING,
+                BulkShippingLabelItem::STATUS_DOWNLOADING,
+            ])
+            ->update([
+                'status' => BulkShippingLabelItem::STATUS_READY,
+                'raw_pdf_path' => null,
+                'ready_pdf_path' => $path,
+                'downloaded_at' => now(),
+                'reason' => null,
+                'updated_at' => now(),
+            ]);
+
+        if ($updated > 0) {
+            $this->publishBatchProgress($batchId);
+            $this->finalizeAffectedBatches($items);
+        }
+
+        return $updated;
+    }
+
+    public function failBulkLabelItem(BulkShippingLabelItem $item, string $reason): void
+    {
+        $this->fail($item, $reason);
     }
 
     public function transformDownloadedItem(BulkShippingLabelItem $item): void
@@ -1724,6 +1831,10 @@ class BulkShippingLabelService
 
         foreach ($itemsQuery->cursor() as $item) {
             if ($item->ready_pdf_path) {
+                if (isset($inputPaths[$item->ready_pdf_path])) {
+                    continue;
+                }
+
                 $inputPath = tempnam($tempDir, 'bulk-label-input-');
                 if ($inputPath === false) {
                     throw new \RuntimeException('File sementara PDF label tidak dapat dibuat.');
@@ -1756,7 +1867,7 @@ class BulkShippingLabelService
                         throw new \RuntimeException('File label siap kosong.');
                     }
 
-                    $inputPaths[] = $inputPath;
+                    $inputPaths[$item->ready_pdf_path] = $inputPath;
 
                     continue;
                 } catch (Throwable $e) {
@@ -1783,6 +1894,8 @@ class BulkShippingLabelService
                 'updated_at' => now(),
             ]);
         }
+
+        $inputPaths = array_values($inputPaths);
 
         if ($inputPaths === []) {
             $batch->update([

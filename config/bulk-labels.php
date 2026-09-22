@@ -31,4 +31,5 @@ return [
 
     'shopee_mass_awb_chunk_size' => max(1, min(100, (int) env('LABEL_SHOPEE_MASS_AWB_CHUNK_SIZE', 50))),
     'shopee_mass_awb_verification_delays' => [2, 5, 10, 20, 30, 60],
+    'shopee_mass_label_chunk_size' => max(1, min(50, (int) env('LABEL_SHOPEE_MASS_LABEL_CHUNK_SIZE', 50))),
 ];
