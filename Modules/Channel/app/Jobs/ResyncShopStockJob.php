@@ -8,6 +8,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Modules\Channel\Services\ChannelStockSyncOutboxService;
+use Modules\Channel\Services\ChannelSyncSettingService;
 use Modules\Product\Models\ProductChannelMapping;
 
 class ResyncShopStockJob implements ShouldQueue
@@ -25,6 +26,10 @@ class ResyncShopStockJob implements ShouldQueue
 
     public function handle(): void
     {
+        if (app(ChannelSyncSettingService::class)->isPaused()) {
+            return;
+        }
+
         ProductChannelMapping::where('channel_shop_id', $this->channelShopId)
             ->where('sync_status', '!=', ProductChannelMapping::STATUS_DEACTIVATED)
             ->whereNotNull('external_product_id')

@@ -11,9 +11,16 @@ class ChannelSyncSetting extends Model
 
     protected $fillable = [
         'sync_enabled',
+        'paused_at',
+        'resumed_at',
+        'auto_paused_on',
+        'pause_reason',
     ];
 
     protected $casts = [
         'sync_enabled' => 'boolean',
+        'paused_at' => 'immutable_datetime',
+        'resumed_at' => 'immutable_datetime',
+        'auto_paused_on' => 'immutable_date',
     ];
 }

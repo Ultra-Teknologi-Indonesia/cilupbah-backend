@@ -9,6 +9,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\ManualStockSyncService;
+use Modules\Channel\Services\ChannelSyncSettingService;
 
 class ManualStockResyncAllJob implements ShouldQueue
 {
@@ -22,6 +23,10 @@ class ManualStockResyncAllJob implements ShouldQueue
 
     public function handle(ManualStockSyncService $service): void
     {
+        if (app(ChannelSyncSettingService::class)->isPaused()) {
+            return;
+        }
+
         $queued = $service->dispatchAll($this->filters);
 
         Log::info('ManualStockResyncAllJob: sync stok massal diantrekan', [

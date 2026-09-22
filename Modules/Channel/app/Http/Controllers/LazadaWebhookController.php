@@ -52,6 +52,10 @@ class LazadaWebhookController extends Controller
             return $this->successResponse(['received' => true], 'OK');
         }
 
+        if ($this->webhookService->isPaused()) {
+            return $this->successResponse(['received' => true, 'discarded' => true], 'Sinkronisasi channel sedang dijeda');
+        }
+
         if (! $this->isFirstDelivery($payload)) {
             return $this->successResponse(['received' => true, 'duplicate' => true], 'OK');
         }

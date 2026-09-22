@@ -80,6 +80,12 @@ class ShopeeWebhookController extends Controller
                 return response('', 200);
             }
 
+            if ($this->webhookService->isPaused()) {
+                $result = 'discarded_while_paused_200';
+
+                return response('', 200);
+            }
+
             if (! $this->isFirstDelivery($payload)) {
                 $result = 'duplicate_200';
 

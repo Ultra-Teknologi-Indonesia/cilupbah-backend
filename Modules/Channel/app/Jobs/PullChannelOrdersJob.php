@@ -62,6 +62,13 @@ final class PullChannelOrdersJob implements ShouldQueue
             return;
         }
 
+        $settings = app(ChannelSyncSettingService::class);
+        if ($settings->isPaused()) {
+            $leases->release($this->channelShopId, $this->leaseToken);
+
+            return;
+        }
+
         $keepLease = false;
 
         try {
@@ -72,7 +79,7 @@ final class PullChannelOrdersJob implements ShouldQueue
                 $cursor = is_array($decoded) ? $decoded : [];
             }
 
-            $from = Carbon::parse($this->from);
+            $from = $settings->effectiveInboundStart(Carbon::parse($this->from));
             $to = Carbon::parse($this->to);
             $result = ChannelSyncSettingService::withInboundBypass(fn () => match ($channel) {
                 'shopee' => app(ShopeeOrderService::class)->pullOrdersPage($shop->shop_id, $from->timestamp, $to->timestamp, $cursor),

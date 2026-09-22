@@ -19,7 +19,7 @@ class ChannelSyncSettingController extends Controller
     public function show(): JsonResponse
     {
         return $this->successResponse(
-            ['sync_enabled' => $this->service->isEnabled()],
+            $this->service->status(),
             'Pengaturan sinkronisasi channel berhasil diambil'
         );
     }
@@ -29,7 +29,7 @@ class ChannelSyncSettingController extends Controller
         $setting = $this->service->setEnabled((bool) $request->validated()['sync_enabled']);
 
         return $this->successResponse(
-            ['sync_enabled' => (bool) $setting->sync_enabled],
+            $this->service->status(),
             $setting->sync_enabled
                 ? 'Sinkronisasi channel diaktifkan'
                 : 'Sinkronisasi channel dijeda'

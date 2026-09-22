@@ -9,6 +9,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Modules\Channel\Services\ChannelStockSyncOutboxService;
+use Modules\Channel\Services\ChannelSyncSettingService;
 use Modules\Channel\Support\ChannelVariantMappingResolver;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductBundleItem;
@@ -46,6 +47,10 @@ class SyncStockToChannelsJob implements ShouldBeUniqueUntilProcessing, ShouldQue
 
     public function handle(ProductRepository $productRepository): void
     {
+        if (app(ChannelSyncSettingService::class)->isPaused()) {
+            return;
+        }
+
         $outbox = app(ChannelStockSyncOutboxService::class);
         $variant = ProductVariant::query()
             ->whereKey($this->variantId)

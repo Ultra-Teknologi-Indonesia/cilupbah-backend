@@ -32,6 +32,11 @@ final class ChannelWebhookService
         return $this->repository->recordFirstDelivery($channel, $shopId, $eventKey, $eventType, $payload);
     }
 
+    public function isPaused(): bool
+    {
+        return app(ChannelSyncSettingService::class)->isPaused();
+    }
+
     public function quarantine(
         string $topic,
         string $source,
@@ -148,6 +153,10 @@ final class ChannelWebhookService
         string $queue,
         Closure $dispatch,
     ): bool {
+        if ($this->isPaused()) {
+            return false;
+        }
+
         if (! $this->canDispatchToQueue($channel, $eventKey, $queue)) {
             return false;
         }

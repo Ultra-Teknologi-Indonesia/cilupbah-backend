@@ -40,6 +40,12 @@ class PullLiveOrdersCommand extends Command
         QueueCapacityReader $capacity,
     ): int {
         $isDryRun = (bool) $this->option('dry-run');
+        $settings = app(ChannelSyncSettingService::class);
+        if ($settings->isPaused()) {
+            $this->info('Sinkronisasi channel dijeda — pull order dibuang tanpa memanggil marketplace.');
+
+            return self::SUCCESS;
+        }
         $explicitFrom = $this->parseOption('from');
         $explicitTo = $this->parseOption('to');
         $hours = max(1, (int) $this->option('hours'));
@@ -89,6 +95,7 @@ class PullLiveOrdersCommand extends Command
                 $channelCode = $shop->channel->code ?? 'unknown';
                 $windowEnd = $explicitTo ?: $runStartedAt->copy();
                 $windowStart = $explicitFrom ?: $windowEnd->copy()->subHours($hours);
+                $windowStart = app(ChannelSyncSettingService::class)->effectiveInboundStart($windowStart);
 
                 $this->line("Menarik order {$shop->shop_name} ({$channelCode}) {$this->formatWindow($windowStart, $windowEnd)}");
 
@@ -204,7 +211,8 @@ class PullLiveOrdersCommand extends Command
                     ? $shop->order_pull_window_from->copy()
                     : ($shop->last_order_synced_at
                         ? $shop->last_order_synced_at->copy()->subMinutes($overlapMinutes)
-                        : $windowEnd->copy()->subHours($hours)));
+                    : $windowEnd->copy()->subHours($hours)));
+            $windowStart = app(ChannelSyncSettingService::class)->effectiveInboundStart($windowStart);
 
             $requestedWindowEnd = $hasPendingWindow
                 ? $shop->order_pull_window_to->copy()

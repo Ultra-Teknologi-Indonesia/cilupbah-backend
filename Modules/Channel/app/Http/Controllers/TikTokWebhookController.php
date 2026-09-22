@@ -62,6 +62,10 @@ class TikTokWebhookController extends Controller
 
         $payload = $request->all();
 
+        if ($this->webhookService->isPaused()) {
+            return $this->successResponse(['code' => 0, 'discarded' => true], 'Sinkronisasi channel sedang dijeda');
+        }
+
         $recorded = $this->webhookService->recordFirstDelivery(
             'tiktok',
             isset($payload['shop_id']) ? (string) $payload['shop_id'] : null,

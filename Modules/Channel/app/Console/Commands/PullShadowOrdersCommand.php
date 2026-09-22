@@ -22,7 +22,7 @@ class PullShadowOrdersCommand extends Command
         {--full : Abaikan cursor, tarik ulang sejak cutoff shadow toko}
         {--dry-run : Jalankan jalur kode sebenarnya lalu rollback, tanpa menyimpan}';
 
-    protected $description = 'Menarik order marketplace untuk toko Shadow Mode secara inkremental (walaupun sync global mati).';
+    protected $description = 'Menarik order marketplace untuk toko Shadow Mode secara inkremental dengan tetap menghormati pause global.';
 
     public const OVERLAP_MINUTES = 30;
 
@@ -35,6 +35,11 @@ class PullShadowOrdersCommand extends Command
     public function handle(ChannelShopRepository $shopRepository): int
     {
         $isDryRun = (bool) $this->option('dry-run');
+        if (app(ChannelSyncSettingService::class)->isPaused()) {
+            $this->info('Sinkronisasi channel dijeda — pull shadow order dibuang tanpa memanggil marketplace.');
+
+            return self::SUCCESS;
+        }
         $explicitFrom = $this->parseOption('from');
         $explicitTo = $this->parseOption('to');
         $isFull = (bool) $this->option('full');
@@ -66,6 +71,7 @@ class PullShadowOrdersCommand extends Command
                 $channelCode = $shop->channel->code ?? 'unknown';
                 $windowEnd = $explicitTo ?: $runStartedAt->copy();
                 $windowStart = $explicitFrom ?: $this->resolveWindowStart($shop, $windowEnd, $isFull);
+                $windowStart = app(ChannelSyncSettingService::class)->effectiveInboundStart($windowStart);
 
                 if ($shop->shadow_started_at && $windowStart->lessThan($shop->shadow_started_at)) {
                     $this->warn("   Jendela dipangkas ke cutoff toko ({$shop->shadow_started_at->setTimezone(self::TIMEZONE)->format('d/m/Y H:i')} WIB).");

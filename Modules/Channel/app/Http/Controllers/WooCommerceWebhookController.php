@@ -79,6 +79,10 @@ class WooCommerceWebhookController extends Controller
             }
         }
 
+        if ($this->webhookService->isPaused()) {
+            return response('', 200);
+        }
+
         $payload = json_decode($rawBody, true);
 
         if (! is_array($payload) || empty($payload['id'])) {

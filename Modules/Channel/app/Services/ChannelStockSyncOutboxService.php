@@ -18,6 +18,10 @@ class ChannelStockSyncOutboxService
         string $queueTier = 'critical',
         bool $resetAttempts = false,
     ): ChannelStockSyncOutbox {
+        if (app(ChannelSyncSettingService::class)->isPaused()) {
+            throw new \RuntimeException('Sinkronisasi channel sedang dijeda; push stok tidak diantrikan.');
+        }
+
         [$syncStock, $syncPrice] = $this->axesFor($action);
         $now = now();
 
@@ -97,6 +101,10 @@ class ChannelStockSyncOutboxService
 
     public function dispatchDue(?int $limit = null): array
     {
+        if (app(ChannelSyncSettingService::class)->isPaused()) {
+            return ['claimed' => 0, 'reaped' => 0, 'revived' => 0, 'byChannel' => []];
+        }
+
         $limit = max(1, $limit ?? (int) config('channel.stock_sync_dispatch_claim_limit', 50));
         $now = now();
         $reaped = $this->reapExpiredLeases($now);

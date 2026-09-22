@@ -9,6 +9,7 @@ use Modules\Channel\Console\Commands\AuditChannelProductActivity;
 use Modules\Channel\Console\Commands\AuditChannelSkuCoverage;
 use Modules\Channel\Console\Commands\AuditLiveChannelMappings;
 use Modules\Channel\Console\Commands\AuditOrderWebhooks;
+use Modules\Channel\Console\Commands\AutoPauseChannelSyncCommand;
 use Modules\Channel\Console\Commands\BackfillDownloadHistory;
 use Modules\Channel\Console\Commands\BackfillShopeeShopNames;
 use Modules\Channel\Console\Commands\BackfillTikTokCommercePlatform;
@@ -64,6 +65,7 @@ class ChannelServiceProvider extends ModuleServiceProvider
         AuditChannelSkuCoverage::class,
         AuditLiveChannelMappings::class,
         AuditOrderWebhooks::class,
+        AutoPauseChannelSyncCommand::class,
         BackfillDownloadHistory::class,
         BackfillWebhookReturnReferences::class,
         BackfillShopeeShopNames::class,
