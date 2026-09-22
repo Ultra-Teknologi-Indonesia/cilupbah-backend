@@ -5,8 +5,8 @@ metadata:
   namespace: cilupbah
 spec:
   replicas: 1
-  # This instance owns only background supervisors. The critical profile is
-  # deployed separately so catalog/export work cannot delay marketplace events.
+  # This instance owns only non-operational background supervisors. Every
+  # marketplace-critical capability has its own Deployment.
   strategy:
     type: Recreate
   selector:
@@ -25,13 +25,13 @@ spec:
           command: ["php", "artisan", "horizon"]
           resources:
             requests:
-              memory: "2560Mi"
-              cpu: "750m"
+              memory: "1Gi"
+              cpu: "500m"
             limits:
-              # Background supervisors have a bounded worker budget plus
-              # Horizon/master overhead; this cap prevents fan-out growth.
-              memory: "6Gi"
-              # Keep CPU available for critical queues, API and Redis.
+              # Non-operational work must remain bounded so it cannot take
+              # capacity reserved for order, fulfillment, AWB, and stock.
+              memory: "2Gi"
+              # Keep CPU available for operational queues, API and Redis.
               cpu: "2500m"
           envFrom:
             - secretRef:
@@ -45,16 +45,6 @@ spec:
               value: "horizon"
             - name: HORIZON_PROFILE
               value: "background"
-            # Marketplace stock propagation is isolated into two bounded
-            # lanes. Total default stock workers remain 2 (1 + 1).
-            - name: HORIZON_CHANNEL_STOCK_CRITICAL_PROCESSES
-              value: "1"
-            - name: HORIZON_CHANNEL_STOCK_NORMAL_PROCESSES
-              value: "1"
-            - name: CHANNEL_STOCK_SYNC_DISPATCH_CLAIM_LIMIT
-              value: "20"
-            - name: CHANNEL_STOCK_SYNC_MAX_INFLIGHT_PER_SHOP
-              value: "1"
             - name: CHANNEL_SYNC_WINDOW_MINUTES
               value: "5"
             - name: LABEL_LOCAL_FIRST

@@ -1,58 +1,55 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: cilupbah-horizon-critical
+  name: cilupbah-horizon-order-intake
   namespace: cilupbah
   labels:
-    app: cilupbah-horizon-critical
-    component: queue-marketplace-ops
+    app: cilupbah-horizon-order-intake
+    component: queue-order-intake
 spec:
   replicas: 1
   revisionHistoryLimit: 2
-  # Do not overlap two critical Horizon masters during rollout. Redis queue
-  # reservations remain safe, while this avoids duplicate side effects for
-  # non-idempotent marketplace operations.
   strategy:
+    # A single Horizon master owns each queue. Pending Redis jobs remain
+    # durable during this short handover and are safe to resume afterwards.
     type: Recreate
   selector:
     matchLabels:
-      app: cilupbah-horizon-critical
+      app: cilupbah-horizon-order-intake
   template:
     metadata:
       labels:
-        app: cilupbah-horizon-critical
-        component: queue-marketplace-ops
+        app: cilupbah-horizon-order-intake
+        component: queue-order-intake
     spec:
       terminationGracePeriodSeconds: 180
       imagePullSecrets:
         - name: ghcr-creds
       containers:
-        - name: horizon-critical
+        - name: horizon-order-intake
           image: ghcr.io/ultra-teknologi-indonesia/cilupbah:v1.0.0
           command: ["php", "artisan", "horizon"]
           envFrom:
             - secretRef:
                 name: cilupbah-env
           env:
-            - name: REDIS_LONG_QUEUE_RETRY_AFTER
-              value: "2160"
-            - name: REDIS_QUEUE_RETRY_AFTER
-              value: "660"
             - name: REDIS_QUEUE_CONNECTION
               value: "horizon"
+            - name: REDIS_QUEUE_RETRY_AFTER
+              value: "660"
             - name: HORIZON_PROFILE
-              value: "marketplace-ops"
-            - name: HORIZON_CHANNEL_CANCELLATION_PROCESSES
+              value: "order-intake"
+            # Warm one worker per flow; Horizon grows up to these ceilings
+            # only while the order queues contain work.
+            - name: HORIZON_ORDERS_PROCESSES
+              value: "3"
+            - name: HORIZON_CHANNEL_ORDER_REFRESH_PROCESSES
               value: "2"
-            # Cancellation remains responsive but must not affect order intake,
-            # fulfillment, AWB, label download, or stock propagation.
           resources:
             requests:
-              memory: "768Mi"
+              memory: "1Gi"
               cpu: "500m"
             limits:
-              # Only cancellation/tracking/webhook operations remain here.
-              # Order intake, fulfillment and stock have their own pools.
               memory: "3Gi"
               cpu: "2"
           livenessProbe:

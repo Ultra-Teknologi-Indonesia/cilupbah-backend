@@ -103,12 +103,10 @@ class HorizonQueueCoverageTest extends TestCase
         $this->assertSame(1, $supervisor['maxProcesses'] ?? null);
     }
 
-    public function test_multi_queue_supervisors_use_a_bounded_shared_worker_pool(): void
+    public function test_supervisors_have_bounded_baselines_and_elastic_operational_capacity(): void
     {
         foreach ([
             'supervisor-default' => [1, 1],
-            'supervisor-orders' => [3, 3],
-            'supervisor-fulfillment' => [2, 2],
             'supervisor-stock-sync' => [1, 1],
             'supervisor-channel-sync' => [4, 4],
             'supervisor-channel-order-recovery' => [4, 4],
@@ -125,7 +123,7 @@ class HorizonQueueCoverageTest extends TestCase
             'supervisor-lazada-webhooks-background' => [1, 1],
             'supervisor-labels' => [4, 4],
             'supervisor-label-prefetch' => [1, 1],
-            'supervisor-label-awb' => [2, 2],
+            'supervisor-label-awb' => [1, 1],
             'supervisor-label-archive' => [2, 2],
         ] as $name => [$minProcesses, $maxProcesses]) {
             $supervisor = config("horizon.defaults.{$name}");
@@ -144,8 +142,10 @@ class HorizonQueueCoverageTest extends TestCase
         $this->assertSame(3, $tracking['balanceCooldown'] ?? null);
 
         foreach ([
-            'supervisor-shopee-orders' => [2, 4],
-            'supervisor-tiktok-orders' => [2, 4],
+            'supervisor-orders' => [1, 3],
+            'supervisor-fulfillment' => [1, 2],
+            'supervisor-shopee-orders' => [1, 4],
+            'supervisor-tiktok-orders' => [1, 4],
             'supervisor-lazada-orders' => [1, 2],
             'supervisor-shopee-webhooks-operational' => [2, 2],
             'supervisor-tiktok-webhooks-operational' => [2, 3],
@@ -168,6 +168,18 @@ class HorizonQueueCoverageTest extends TestCase
         $this->assertSame(4, $stock['maxProcesses'] ?? null);
         $this->assertSame(1, $stock['balanceMaxShift'] ?? null);
         $this->assertSame(5, $stock['balanceCooldown'] ?? null);
+
+        foreach (['shopee', 'tiktok', 'lazada'] as $channel) {
+            $request = config("horizon.defaults.supervisor-label-awb-request-{$channel}");
+            $this->assertSame('auto', $request['balance'] ?? null);
+            $this->assertSame(1, $request['minProcesses'] ?? null);
+            $this->assertSame(2, $request['maxProcesses'] ?? null);
+
+            $download = config("horizon.defaults.supervisor-label-download-{$channel}");
+            $this->assertSame('auto', $download['balance'] ?? null);
+            $this->assertSame(1, $download['minProcesses'] ?? null);
+            $this->assertSame(2, $download['maxProcesses'] ?? null);
+        }
     }
 
     public function test_channel_orders_and_operational_webhooks_are_isolated_from_background_work(): void
@@ -226,9 +238,19 @@ class HorizonQueueCoverageTest extends TestCase
             );
             $withMasterMegabytes = $workerMegabytes + (int) config('horizon.memory_limit');
 
-            $ceiling = in_array($profile, ['critical', 'background', 'labels-pdf'], true)
-                ? 6144
-                : 2048;
+            $ceiling = [
+                'order-intake' => 3072,
+                'fulfillment' => 2048,
+                'stock' => 3072,
+                'marketplace-ops' => 3072,
+                'background' => 3072,
+                'labels-pdf' => 5120,
+                'labels-prefetch' => 1024,
+                'labels-awb' => 2560,
+                'labels-archive' => 512,
+                'maintenance' => 2048,
+                'order-recovery' => 2048,
+            ][$profile] ?? 2048;
 
             $this->assertLessThanOrEqual(
                 $ceiling,
@@ -273,14 +295,16 @@ class HorizonQueueCoverageTest extends TestCase
             )));
         }
 
-        $criticalQueues = $queuesByProfile['critical'] ?? [];
-        $backgroundQueues = $queuesByProfile['background'] ?? [];
-
-        $this->assertSame(
-            [],
-            array_values(array_intersect($criticalQueues, $backgroundQueues)),
-            'Queue critical dan background tidak boleh overlap karena bisa memproses side effect bersamaan.'
-        );
+        $profileNames = array_keys($queuesByProfile);
+        foreach ($profileNames as $index => $profile) {
+            foreach (array_slice($profileNames, $index + 1) as $otherProfile) {
+                $this->assertSame(
+                    [],
+                    array_values(array_intersect($queuesByProfile[$profile], $queuesByProfile[$otherProfile])),
+                    "Queue {$profile} dan {$otherProfile} tidak boleh overlap karena bisa memproses side effect bersamaan.",
+                );
+            }
+        }
 
         $expected = $this->servedQueues();
 
