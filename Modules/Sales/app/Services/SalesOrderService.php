@@ -1067,6 +1067,21 @@ class SalesOrderService
         }
 
         if ($source === 'tiktok') {
+            $storedDocuments = data_get($order->shipping_label_raw_data, 'documents', []);
+            if (is_array($storedDocuments)) {
+                foreach ($storedDocuments as $storedDocument) {
+                    $storedUrl = $storedDocument['doc_url'] ?? $storedDocument['url'] ?? null;
+                    if (is_string($storedUrl) && $storedUrl !== '') {
+                        return [
+                            'type' => 'url',
+                            'url' => $storedUrl,
+                            'source' => 'tiktok',
+                            'cached' => true,
+                        ];
+                    }
+                }
+            }
+
             $tikTokService = app(TikTokOrderService::class);
             $shopRepo = app(ChannelShopRepository::class);
             $shop = $shopRepo->findByShopId($shopId);

@@ -21,7 +21,6 @@ class ChannelSyncSettingService
 
     public const AUTO_PAUSE_REASON = 'auto_schedule';
 
-    /** @deprecated Inbound pulls must respect the global pause gate. */
     public static function withInboundBypass(callable $callback): mixed
     {
         return $callback();

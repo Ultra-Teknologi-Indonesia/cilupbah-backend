@@ -135,9 +135,6 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                 app(BulkShippingLabelService::class)->onOrderAwbReady($order->id);
             }
 
-            // The label-preparation job may have completed before this AWB
-            // worker ran. Wake waiting marketplace items as well so an order
-            // that is already ready cannot leave its bulk batches processing.
             if ($order->shipping_label_status === 'ready') {
                 app(BulkShippingLabelService::class)->onOrderLabelReady($order->id);
             }

@@ -11,11 +11,6 @@ use Modules\Outbound\Support\InstantOrderClassifier;
 class CourierMappingService
 {
 
-    /**
-     * Marketplace service labels do not identify the physical courier.
-     * Some channel APIs return these values when the actual carrier is not
-     * exposed in the order/package response.
-     */
     private const GENERIC_SHIPPING_SERVICE_NAMES = [
         'standard shipping',
         'standard delivery',

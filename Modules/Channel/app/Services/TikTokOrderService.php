@@ -902,6 +902,7 @@ class TikTokOrderService
         $orderStatus = isset($order['status']) ? (string) $order['status'] : null;
         if ($this->isOrderAlreadyShipped(strtoupper((string) $orderStatus))) {
             $packages = $this->hydrateTrackingFromShippingDocuments($shop, $packages, $orderId);
+            $packages = $this->hydrateTrackingFromPackageDetails($shop, $packages, $orderId);
         }
 
         $packageWithTracking = collect($packages)
@@ -946,6 +947,39 @@ class TikTokOrderService
                 }
             } catch (\Throwable $e) {
                 Log::debug('TikTok: shipping document belum menyediakan AWB', [
+                    'order_id' => $orderId,
+                    'package_id' => (string) $package['id'],
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $packages;
+    }
+
+    private function hydrateTrackingFromPackageDetails(object $shop, array $packages, string $orderId): array
+    {
+        foreach ($packages as $index => $package) {
+            if (! empty($package['tracking_number']) || empty($package['id'])) {
+                continue;
+            }
+
+            try {
+                $detail = $this->getPackageDetail(
+                    (string) ($shop->shop_id ?? ''),
+                    (string) $package['id'],
+                );
+                $trackingNumber = data_get($detail, 'data.tracking_number')
+                    ?? data_get($detail, 'data.last_mile_tracking_number');
+
+                if (filled($trackingNumber)) {
+                    $packages[$index]['tracking_number'] = (string) $trackingNumber;
+                    $packages[$index]['shipping_provider'] ??=
+                        data_get($detail, 'data.shipping_provider_name')
+                        ?? data_get($detail, 'data.shipping_provider');
+                }
+            } catch (\Throwable $e) {
+                Log::debug('TikTok: package detail belum menyediakan AWB', [
                     'order_id' => $orderId,
                     'package_id' => (string) $package['id'],
                     'error' => $e->getMessage(),

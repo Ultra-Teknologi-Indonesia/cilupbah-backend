@@ -291,6 +291,36 @@ class TikTokOrderOpsTest extends TestCase
         Http::assertSent(fn ($request) => str_contains($request->url(), '/shipping_documents'));
     }
 
+    public function test_fulfillment_snapshot_falls_back_to_package_detail_for_awb(): void
+    {
+        $detail = $this->orderDetail('AWAITING_COLLECTION');
+        $detail['data']['orders'][0]['packages'][0]['tracking_number'] = null;
+
+        Http::fake([
+            self::BASE.'/order/202309/orders*' => Http::response($detail, 200),
+            self::BASE.'/fulfillment/202309/packages/PKG-1/shipping_documents*' => Http::response([
+                'code' => 0,
+                'data' => [],
+            ], 200),
+            self::BASE.'/fulfillment/202309/packages/PKG-1*' => Http::response([
+                'code' => 0,
+                'data' => [
+                    'tracking_number' => 'TTRK-PACKAGE-1',
+                    'shipping_provider_name' => 'TikTok Logistics',
+                ],
+            ], 200),
+        ]);
+
+        $snapshot = app(TikTokOrderService::class)->getOrderFulfillmentSnapshot(
+            $this->shop,
+            self::ORDER_ID,
+        );
+
+        $this->assertSame('TTRK-PACKAGE-1', $snapshot['tracking_number']);
+        $this->assertSame('TikTok Logistics', $snapshot['shipping_provider']);
+        Http::assertSentCount(3);
+    }
+
     public function test_request_tracking_does_not_post_when_preflight_cannot_be_read(): void
     {
         Http::fake([
