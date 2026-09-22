@@ -13,10 +13,15 @@ final class ChannelOrderRefreshService
         private readonly TikTokOrderService $tiktok,
         private readonly LazadaOrderService $lazada,
         private readonly WooCommerceOrderService $woocommerce,
+        private readonly ChannelSyncSettingService $settings,
     ) {}
 
     public function refresh(string $channel, string $shopId, string $orderId): int
     {
+        if ($this->settings->isPaused()) {
+            return 0;
+        }
+
         $pulled = match (strtolower($channel)) {
             'shopee' => $this->shopee->pullOrderById($shopId, $orderId),
             'tiktok' => $this->tiktok->pullOrderById($shopId, $orderId),

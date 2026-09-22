@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Modules\Channel\Tests\Feature;
 
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Modules\Channel\Enums\WebhookInboxStatus;
 use Modules\Channel\Jobs\RefreshChannelOrderJob;
 use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Services\ChannelOrderRefreshService;
+use Modules\Channel\Services\ChannelSyncSettingService;
 use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\TikTokOrderService;
@@ -19,6 +22,21 @@ use Tests\TestCase;
 
 final class RefreshChannelOrderJobTest extends TestCase
 {
+    use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Cache::forget(ChannelSyncSettingService::CACHE_KEY);
+        app(ChannelSyncSettingService::class)->setEnabled(true);
+    }
+
+    protected function tearDown(): void
+    {
+        Cache::forget(ChannelSyncSettingService::CACHE_KEY);
+        parent::tearDown();
+    }
+
     public function test_it_refreshes_the_order_using_the_latest_channel_detail(): void
     {
         SalesOrder::factory()->create([
@@ -38,15 +56,37 @@ final class RefreshChannelOrderJobTest extends TestCase
             \Mockery::mock(TikTokOrderService::class),
             \Mockery::mock(LazadaOrderService::class),
             \Mockery::mock(WooCommerceOrderService::class),
+            app(ChannelSyncSettingService::class),
         );
 
         $job = new RefreshChannelOrderJob('shopee', 'SHOP-1', 'ORDER-1');
-        $job->handle($orders);
+        $job->handle($orders, app(ChannelSyncSettingService::class));
 
         self::assertSame('shopee:SHOP-1:ORDER-1', $job->uniqueId());
         self::assertSame(config('queue.names.channel_order_refresh'), $job->queue);
         self::assertSame(8, $job->tries);
         self::assertCount(2, $job->middleware());
+    }
+
+    public function test_it_skips_refresh_while_channel_sync_is_paused(): void
+    {
+        app(ChannelSyncSettingService::class)->setEnabled(false);
+
+        $shopee = \Mockery::mock(ShopeeOrderService::class);
+        $shopee->shouldReceive('pullOrderById')->never();
+
+        $orders = new ChannelOrderRefreshService(
+            $shopee,
+            \Mockery::mock(TikTokOrderService::class),
+            \Mockery::mock(LazadaOrderService::class),
+            \Mockery::mock(WooCommerceOrderService::class),
+            app(ChannelSyncSettingService::class),
+        );
+
+        $job = new RefreshChannelOrderJob('shopee', 'SHOP-1', 'ORDER-1');
+        $job->handle($orders, app(ChannelSyncSettingService::class));
+
+        self::assertTrue(app(ChannelSyncSettingService::class)->isPaused());
     }
 
     public function test_permanent_refresh_failure_marks_the_original_webhook_failed(): void

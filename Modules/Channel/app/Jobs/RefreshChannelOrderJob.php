@@ -14,6 +14,7 @@ use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\ChannelOrderRefreshService;
+use Modules\Channel\Services\ChannelSyncSettingService;
 use Modules\Channel\Support\ChannelOrderLock;
 use Modules\Channel\Support\ChannelOrderPullGuard;
 use Modules\Channel\Support\WebhookFailureHandler;
@@ -65,8 +66,20 @@ final class RefreshChannelOrderJob implements ShouldBeUnique, ShouldQueue
         return now()->addHours(2);
     }
 
-    public function handle(ChannelOrderRefreshService $orders): void
-    {
+    public function handle(
+        ChannelOrderRefreshService $orders,
+        ChannelSyncSettingService $settings,
+    ): void {
+        if ($settings->isPaused()) {
+            Log::info('Delayed channel order refresh skipped while channel sync is paused.', [
+                'channel' => $this->channel,
+                'shop_id' => $this->shopId,
+                'order_id' => $this->orderId,
+            ]);
+
+            return;
+        }
+
         $pulled = $orders->refresh($this->channel, $this->shopId, $this->orderId);
 
         ChannelOrderPullGuard::requirePersisted(
