@@ -14,6 +14,7 @@ class ChannelSyncSetting extends Model
         'paused_at',
         'resumed_at',
         'auto_paused_on',
+        'auto_pause_at',
         'pause_reason',
     ];
 
@@ -22,5 +23,6 @@ class ChannelSyncSetting extends Model
         'paused_at' => 'immutable_datetime',
         'resumed_at' => 'immutable_datetime',
         'auto_paused_on' => 'immutable_date',
+        'auto_pause_at' => 'immutable_datetime',
     ];
 }

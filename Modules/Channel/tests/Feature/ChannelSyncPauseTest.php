@@ -66,4 +66,19 @@ final class ChannelSyncPauseTest extends TestCase
             $service->effectiveInboundStart($requested)->toIso8601String(),
         );
     }
+
+    public function test_auto_pause_is_one_time_even_after_manual_resume(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-22 12:00:01', 'Asia/Jakarta'));
+        $service = app(ChannelSyncSettingService::class);
+
+        self::assertTrue($service->autoPauseIfDue());
+
+        $service->setEnabled(true);
+
+        Carbon::setTestNow(Carbon::parse('2026-09-23 12:00:01', 'Asia/Jakarta'));
+
+        self::assertFalse($service->autoPauseIfDue());
+        self::assertTrue($service->isEnabled());
+    }
 }

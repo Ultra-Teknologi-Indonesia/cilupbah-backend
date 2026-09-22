@@ -27,7 +27,15 @@ class ChannelSyncSettingService
 
     public function current(): ChannelSyncSetting
     {
-        return ChannelSyncSetting::query()->firstOrCreate([], ['sync_enabled' => true]);
+        $setting = ChannelSyncSetting::query()->firstOrCreate([], ['sync_enabled' => true]);
+
+        if (! $setting->auto_pause_at) {
+            $setting->forceFill([
+                'auto_pause_at' => $this->configuredAutoPauseAt(),
+            ])->save();
+        }
+
+        return $setting->refresh();
     }
 
     public function isEnabled(): bool
@@ -59,20 +67,18 @@ class ChannelSyncSettingService
     {
         $setting = $this->current();
         $localNow = Carbon::now(config('channel.sync_timezone', self::TIMEZONE));
-        $autoPauseAt = Carbon::createFromFormat(
-            'Y-m-d H:i',
-            $localNow->format('Y-m-d').' '.config('channel.sync_auto_pause_at', '12:00'),
-            config('channel.sync_timezone', self::TIMEZONE),
-        );
+        $autoPauseAt = $setting->auto_pause_at;
 
         return [
             'sync_enabled' => (bool) $setting->sync_enabled,
             'paused_at' => $setting->paused_at?->toIso8601String(),
             'resumed_at' => $setting->resumed_at?->toIso8601String(),
             'pause_reason' => $setting->pause_reason,
-            'auto_pause_at' => $autoPauseAt->toIso8601String(),
+            'auto_pause_at' => $autoPauseAt?->toIso8601String(),
             'auto_pause_timezone' => config('channel.sync_timezone', self::TIMEZONE),
-            'auto_pause_due' => $localNow->greaterThanOrEqualTo($autoPauseAt),
+            'auto_pause_due' => $autoPauseAt !== null
+                && $localNow->greaterThanOrEqualTo($autoPauseAt)
+                && $setting->auto_paused_on === null,
         ];
     }
 
@@ -98,34 +104,34 @@ class ChannelSyncSettingService
 
     public function autoPauseIfDue(): bool
     {
-        $timezone = config('channel.sync_timezone', self::TIMEZONE);
-        $localNow = Carbon::now($timezone);
-        $autoPauseAt = Carbon::createFromFormat(
-            'Y-m-d H:i',
-            $localNow->format('Y-m-d').' '.config('channel.sync_auto_pause_at', '12:00'),
-            $timezone,
-        );
+        $setting = $this->current();
+        $autoPauseAt = $setting->auto_pause_at;
 
-        if ($localNow->lessThan($autoPauseAt)) {
+        if (! $autoPauseAt
+            || now()->lessThan($autoPauseAt)
+            || $setting->auto_paused_on !== null) {
             return false;
         }
 
         $didPause = false;
-        DB::transaction(function () use ($localNow, &$didPause): void {
+        DB::transaction(function () use (&$didPause): void {
             $setting = ChannelSyncSetting::query()->lockForUpdate()->firstOrCreate(
                 [],
                 ['sync_enabled' => true],
             );
 
             if (! $setting->sync_enabled
-                || $setting->auto_paused_on?->toDateString() === $localNow->toDateString()) {
+                || $setting->auto_paused_on !== null
+                || ! $setting->auto_pause_at
+                || now()->lessThan($setting->auto_pause_at)) {
                 return;
             }
 
+            $timezone = config('channel.sync_timezone', self::TIMEZONE);
             $setting->forceFill([
                 'sync_enabled' => false,
                 'paused_at' => now(),
-                'auto_paused_on' => $localNow->toDateString(),
+                'auto_paused_on' => Carbon::now($timezone)->toDateString(),
                 'pause_reason' => self::AUTO_PAUSE_REASON,
             ])->save();
             $didPause = true;
@@ -136,5 +142,17 @@ class ChannelSyncSettingService
         }
 
         return $didPause;
+    }
+
+    private function configuredAutoPauseAt(): Carbon
+    {
+        $timezone = config('channel.sync_timezone', self::TIMEZONE);
+        $localNow = Carbon::now($timezone);
+
+        return Carbon::createFromFormat(
+            'Y-m-d H:i',
+            $localNow->format('Y-m-d').' '.config('channel.sync_auto_pause_time', '12:00'),
+            $timezone,
+        );
     }
 }
