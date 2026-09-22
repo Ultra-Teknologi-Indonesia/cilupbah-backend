@@ -60,6 +60,13 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
         ))));
         $polling = $verificationOnly || $trackingAttempt > 0;
 
+        if ($this->prefetch) {
+            $this->onConnection(config('shipping-label-prefetch.connection', 'redis-long'));
+            $this->onQueue(config('shipping-label-prefetch.queue', 'label-prefetch'));
+
+            return;
+        }
+
         $this->onConnection(config('queue.routing.'.($polling ? 'label_awb_poll' : 'label_awb_request').'.connection', 'redis-long'));
         $this->onQueue(
             ChannelQueue::isSupported($resolvedChannel)
@@ -126,6 +133,13 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
             if (! empty($order->tracking_number)) {
                 $this->markMarketplaceAwbSucceeded($order, (string) $order->tracking_number);
                 app(BulkShippingLabelService::class)->onOrderAwbReady($order->id);
+            }
+
+            // The label-preparation job may have completed before this AWB
+            // worker ran. Wake waiting marketplace items as well so an order
+            // that is already ready cannot leave its bulk batches processing.
+            if ($order->shipping_label_status === 'ready') {
+                app(BulkShippingLabelService::class)->onOrderLabelReady($order->id);
             }
 
             if ($prefetchLock && $prefetchLock->isOwnedByCurrentProcess()) {
