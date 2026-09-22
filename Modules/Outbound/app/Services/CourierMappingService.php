@@ -11,6 +11,22 @@ use Modules\Outbound\Support\InstantOrderClassifier;
 class CourierMappingService
 {
 
+    /**
+     * Marketplace service labels do not identify the physical courier.
+     * Some channel APIs return these values when the actual carrier is not
+     * exposed in the order/package response.
+     */
+    private const GENERIC_SHIPPING_SERVICE_NAMES = [
+        'standard shipping',
+        'standard delivery',
+        'regular shipping',
+        'regular delivery',
+        'economy shipping',
+        'economy delivery',
+        'express shipping',
+        'express delivery',
+    ];
+
     private array $codeAliases = [
         'j&t express' => 'jnt',
         'j&t' => 'jnt',
@@ -142,6 +158,11 @@ class CourierMappingService
             return '';
         }
 
+        if (in_array($this->channelCodeFor($order), ['shopee', 'tiktok', 'lazada'], true)
+            && $this->isGenericShippingServiceName($providerName)) {
+            return '';
+        }
+
         if ($this->channelCodeFor($order) === 'lazada'
             && preg_match('/pickup\s*:\s*(.+?)(?:,\s*delivery\s*:|$)/i', $providerName, $matches)) {
             $pickupCourier = trim((string) ($matches[1] ?? ''));
@@ -152,6 +173,13 @@ class CourierMappingService
         }
 
         return $this->resolveCode($providerName);
+    }
+
+    private function isGenericShippingServiceName(string $providerName): bool
+    {
+        $normalized = strtolower(trim((string) preg_replace('/\s+/', ' ', $providerName)));
+
+        return in_array($normalized, self::GENERIC_SHIPPING_SERVICE_NAMES, true);
     }
 
     private ?array $courierCodeMap = null;

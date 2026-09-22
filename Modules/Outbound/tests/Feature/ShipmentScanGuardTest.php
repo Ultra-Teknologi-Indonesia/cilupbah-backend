@@ -103,6 +103,26 @@ class ShipmentScanGuardTest extends TestCase
         app(ShipmentService::class)->scanAndAddOrder($shipmentId, $no);
     }
 
+    public function test_allows_marketplace_generic_shipping_service_when_channel_hides_actual_courier(): void
+    {
+        Bus::fake();
+        $loc = $this->seedLocation();
+        $shipmentId = $this->seedShipment($loc, 'J&T', 'REGULAR');
+        [$orderId, $no] = $this->seedPackedOrder(
+            $loc,
+            'Standard shipping',
+            channelInstant: false,
+            source: 'tiktok',
+        );
+
+        app(ShipmentService::class)->scanAndAddOrder($shipmentId, $no);
+
+        $this->assertDatabaseHas('shipment_orders', [
+            'shipment_id' => $shipmentId,
+            'order_id' => $orderId,
+        ]);
+    }
+
     public function test_allows_lazada_pickup_courier_when_delivery_courier_differs(): void
     {
         Bus::fake();

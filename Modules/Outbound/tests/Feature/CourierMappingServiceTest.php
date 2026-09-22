@@ -185,6 +185,14 @@ class CourierMappingServiceTest extends TestCase
         $this->assertSame('', $this->service->resolveCode('   '));
     }
 
+    public function test_generic_marketplace_shipping_service_does_not_resolve_as_courier(): void
+    {
+        $this->assertSame('', $this->service->resolveOrderCourierCode((object) [
+            'source' => 'tiktok',
+            'shipping_provider' => 'Standard shipping',
+        ]));
+    }
+
     public function test_resolve_courier_id_matches_master_regardless_of_code_scheme(): void
     {
 
