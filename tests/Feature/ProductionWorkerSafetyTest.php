@@ -57,8 +57,20 @@ class ProductionWorkerSafetyTest extends TestCase
         $this->assertIsString($workflow);
         $this->assertStringContainsString('rollout worker berat secara asynchronous', $workflow);
         $this->assertStringContainsString('--timeout=20s', $workflow);
-        $this->assertStringContainsString('rollout_timeout=$((grace_period + 180))', $workflow);
+        $this->assertStringContainsString("jsonpath='{.spec.progressDeadlineSeconds}'", $workflow);
+        $this->assertStringContainsString('rollout_timeout=$((progress_deadline + 120))', $workflow);
+        $this->assertStringContainsString('--timeout=180s', $workflow);
         $this->assertStringContainsString('mengumpulkan diagnostik', $workflow);
+    }
+
+    public function test_app_rollout_has_startup_headroom_for_bootstrap(): void
+    {
+        $yaml = file_get_contents(base_path('k8s/production/02-app.yaml'));
+
+        $this->assertIsString($yaml);
+        $this->assertStringContainsString('progressDeadlineSeconds: 600', $yaml);
+        $this->assertStringContainsString('startupProbe:', $yaml);
+        $this->assertStringContainsString('failureThreshold: 60', $yaml);
     }
 
     public function test_production_deploy_uses_isolated_manifest_directory_and_serializes_runs(): void

@@ -40,9 +40,13 @@ final class PullChannelOrdersJob implements ShouldQueue
         public readonly string $from,
         public readonly string $to,
         public readonly ?string $channel = null,
+        public readonly bool $recovery = false,
+        public readonly ?string $recoveryTo = null,
     ) {
-        $this->onConnection(config('queue.routing.channel_sync.connection', 'redis-channel-sync'));
-        $this->timeout = max(60, min(240, (int) config('queue.routing.channel_sync.job_timeout', 210)));
+        $routingKey = $this->recovery ? 'channel_order_recovery' : 'channel_sync';
+        $this->onConnection((string) config("queue.routing.{$routingKey}.connection", 'redis-channel-sync'));
+        $this->onQueue((string) config("queue.routing.{$routingKey}.queue", 'channel-sync'));
+        $this->timeout = max(60, min(240, (int) config("queue.routing.{$routingKey}.job_timeout", 210)));
     }
 
     public function middleware(): array
@@ -63,7 +67,7 @@ final class PullChannelOrdersJob implements ShouldQueue
         }
 
         $settings = app(ChannelSyncSettingService::class);
-        if ($settings->isPaused()) {
+        if ($settings->isPaused() && ! $this->recovery) {
             $leases->release($this->channelShopId, $this->leaseToken);
 
             return;
@@ -79,52 +83,135 @@ final class PullChannelOrdersJob implements ShouldQueue
                 $cursor = is_array($decoded) ? $decoded : [];
             }
 
-            $from = $settings->effectiveInboundStart(Carbon::parse($this->from));
+            $from = Carbon::parse($this->from);
+            if (! $this->recovery) {
+                $from = $settings->effectiveInboundStart($from);
+            }
             $to = Carbon::parse($this->to);
-            $result = ChannelSyncSettingService::withInboundBypass(fn () => match ($channel) {
+            $pullPage = fn () => match ($channel) {
                 'shopee' => app(ShopeeOrderService::class)->pullOrdersPage($shop->shop_id, $from->timestamp, $to->timestamp, $cursor),
                 'tiktok' => app(TikTokOrderService::class)->pullOrdersPage($shop->shop_id, $from->timestamp, $to->timestamp, $cursor),
                 'lazada' => app(LazadaOrderService::class)->pullOrdersPage($shop->shop_id, $from->toIso8601String(), $to->toIso8601String(), $cursor),
                 'woocommerce' => app(WooCommerceOrderService::class)->pullOrdersPage($shop->shop_id, $from->timestamp, $cursor),
                 default => throw new \RuntimeException("Channel {$channel} belum mendukung pull order per halaman."),
-            });
+            };
+            $result = $this->recovery
+                ? ChannelSyncSettingService::withInboundRecoveryBypass($pullPage)
+                : $pullPage();
 
             if ($result->done) {
-                $completed = $shops->markScheduledOrderPullCompleted($shop->id, $this->leaseToken, $to);
-                if (! $completed) {
-                    throw new \RuntimeException('Lease pull order hilang sebelum cursor dapat disimpan.');
-                }
+                $recoveryTo = $this->recoveryTo ? Carbon::parse($this->recoveryTo) : null;
 
-                Log::info('Scheduled channel order pull completed.', [
-                    'channel_shop_id' => $shop->id,
-                    'shop_id' => $shop->shop_id,
-                    'channel' => $channel,
-                    'orders' => $result->count,
-                ]);
+                if ($this->recovery && $recoveryTo && $to->lessThan($recoveryTo)) {
+                    $nextFrom = $to->copy();
+                    $nextTo = $nextFrom->copy()->addMinutes((int) config(
+                        'queue.routing.channel_order_recovery.window_minutes',
+                        5,
+                    ));
+                    if ($nextTo->greaterThan($recoveryTo)) {
+                        $nextTo = $recoveryTo->copy();
+                    }
+
+                    if (! $shops->advanceScheduledOrderRecoveryWindow(
+                        $shop->id,
+                        $this->leaseToken,
+                        $nextFrom,
+                        $nextTo,
+                    )) {
+                        throw new \RuntimeException('Lease recovery hilang sebelum jendela berikutnya diantrikan.');
+                    }
+
+                    if (! $leases->renew(
+                        $this->channelShopId,
+                        $this->leaseToken,
+                        (int) config('queue.routing.channel_order_recovery.lease_seconds', 600),
+                    )) {
+                        throw new \RuntimeException('Lease recovery hilang sebelum jendela berikutnya diantrikan.');
+                    }
+
+                    self::dispatch(
+                        $this->channelShopId,
+                        $this->leaseToken,
+                        $nextFrom->toIso8601String(),
+                        $nextTo->toIso8601String(),
+                        $channel,
+                        true,
+                        $recoveryTo->toIso8601String(),
+                    )->onQueue($this->queueName());
+                    $keepLease = true;
+
+                    Log::info('Recovery channel order window completed; next window queued.', [
+                        'channel_shop_id' => $shop->id,
+                        'shop_id' => $shop->shop_id,
+                        'channel' => $channel,
+                        'orders' => $result->count,
+                        'window_from' => $from->toIso8601String(),
+                        'window_to' => $to->toIso8601String(),
+                        'next_window_to' => $nextTo->toIso8601String(),
+                    ]);
+                } else {
+                    $completed = $this->recovery
+                        ? $shops->markScheduledOrderRecoveryCompleted($shop->id, $this->leaseToken)
+                        : $shops->markScheduledOrderPullCompleted($shop->id, $this->leaseToken, $to);
+                    if (! $completed) {
+                        throw new \RuntimeException('Lease pull order hilang sebelum cursor dapat disimpan.');
+                    }
+
+                    Log::info($this->recovery
+                        ? 'Recovery channel order pull completed.'
+                        : 'Scheduled channel order pull completed.', [
+                            'channel_shop_id' => $shop->id,
+                            'shop_id' => $shop->shop_id,
+                            'channel' => $channel,
+                            'orders' => $result->count,
+                        ]);
+                }
             } else {
                 if (! $shops->saveOrderPullCursor($shop->id, $this->leaseToken, $result->cursor)) {
                     throw new \RuntimeException('Cursor pull order tidak dapat disimpan.');
                 }
 
-                if (! $leases->renew($this->channelShopId, $this->leaseToken, max(60, (int) config('queue.routing.channel_sync.lease_seconds', 420)))) {
+                $leaseSeconds = $this->recovery
+                    ? (int) config('queue.routing.channel_order_recovery.lease_seconds', 600)
+                    : (int) config('queue.routing.channel_sync.lease_seconds', 420);
+                if (! $leases->renew($this->channelShopId, $this->leaseToken, max(60, $leaseSeconds))) {
                     throw new \RuntimeException('Lease pull order hilang sebelum halaman berikutnya diantrikan.');
                 }
 
-                self::dispatch($this->channelShopId, $this->leaseToken, $this->from, $this->to, $channel)
-                    ->onQueue((string) config('queue.names.channel_sync', 'channel-sync'));
+                self::dispatch(
+                    $this->channelShopId,
+                    $this->leaseToken,
+                    $this->from,
+                    $this->to,
+                    $channel,
+                    $this->recovery,
+                    $this->recoveryTo,
+                )->onQueue($this->queueName());
                 $keepLease = true;
 
-                Log::info('Scheduled channel order page completed; next page queued.', [
-                    'channel_shop_id' => $shop->id,
-                    'shop_id' => $shop->shop_id,
-                    'channel' => $channel,
-                    'orders' => $result->count,
-                    'cursor' => $result->cursor,
-                ]);
+                Log::info($this->recovery
+                    ? 'Recovery channel order page completed; next page queued.'
+                    : 'Scheduled channel order page completed; next page queued.', [
+                        'channel_shop_id' => $shop->id,
+                        'shop_id' => $shop->shop_id,
+                        'channel' => $channel,
+                        'orders' => $result->count,
+                        'cursor' => $result->cursor,
+                    ]);
             }
         } catch (\Throwable $e) {
-
             $shops->markScheduledOrderPullFailed($shop->id, $this->leaseToken, $e->getMessage());
+
+            if ($this->isLazadaRateLimit($channel ?? '', $e->getMessage())) {
+                Log::warning('Lazada order pull ditunda karena rate limit channel.', [
+                    'channel_shop_id' => $shop->id,
+                    'shop_id' => $shop->shop_id,
+                    'message' => $e->getMessage(),
+                ]);
+
+                return;
+            }
+
             throw $e;
         } finally {
             if (! $keepLease) {
@@ -145,5 +232,22 @@ final class PullChannelOrdersJob implements ShouldQueue
         }
 
         app(ChannelOrderPullLeaseService::class)->release($this->channelShopId, $this->leaseToken);
+    }
+
+    private function queueName(): string
+    {
+        return (string) config(
+            'queue.routing.'.($this->recovery ? 'channel_order_recovery' : 'channel_sync').'.queue',
+            $this->recovery ? 'channel-order-recovery' : 'channel-sync',
+        );
+    }
+
+    private function isLazadaRateLimit(string $channel, string $message): bool
+    {
+        if ($channel !== 'lazada') {
+            return false;
+        }
+
+        return preg_match('/api access frequency|apicalllimit|too many requests|rate limit/i', $message) === 1;
     }
 }

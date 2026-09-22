@@ -67,6 +67,22 @@ final class ChannelSyncPauseTest extends TestCase
         );
     }
 
+    public function test_recovery_bypass_is_scoped_and_does_not_reenable_global_sync(): void
+    {
+        $service = app(ChannelSyncSettingService::class);
+        $service->setEnabled(false);
+
+        self::assertTrue($service->isPaused());
+
+        ChannelSyncSettingService::withInboundRecoveryBypass(function () use ($service): void {
+            self::assertFalse($service->isPaused());
+            self::assertFalse($service->isEnabled());
+        });
+
+        self::assertTrue($service->isPaused());
+        self::assertFalse(ChannelSyncSetting::query()->value('sync_enabled'));
+    }
+
     public function test_auto_pause_is_one_time_even_after_manual_resume(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-09-22 12:00:01', 'Asia/Jakarta'));

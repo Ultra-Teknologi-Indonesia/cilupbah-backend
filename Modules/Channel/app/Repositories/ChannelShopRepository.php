@@ -240,6 +240,55 @@ class ChannelShopRepository
         });
     }
 
+    public function advanceScheduledOrderRecoveryWindow(
+        string $id,
+        string $leaseToken,
+        \DateTimeInterface $windowFrom,
+        \DateTimeInterface $windowTo,
+    ): bool {
+        return ChannelShop::query()
+            ->whereKey($id)
+            ->where('order_pull_lease_token', $leaseToken)
+            ->update([
+                'order_pull_window_from' => $windowFrom,
+                'order_pull_window_to' => $windowTo,
+                'order_pull_cursor' => null,
+                'order_pull_attempts' => 0,
+                'order_pull_next_attempt_at' => null,
+                'updated_at' => now(),
+            ]) === 1;
+    }
+
+    public function markScheduledOrderRecoveryCompleted(string $id, string $leaseToken): bool
+    {
+        return DB::transaction(function () use ($id, $leaseToken): bool {
+            $shop = ChannelShop::query()
+                ->whereKey($id)
+                ->where('order_pull_lease_token', $leaseToken)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $shop) {
+                return false;
+            }
+
+            $shop->forceFill([
+                'order_sync_status' => ChannelShop::ORDER_SYNC_NORMAL,
+                'last_order_error' => null,
+                'last_order_error_at' => null,
+                'order_pull_lease_token' => null,
+                'order_pull_locked_until' => null,
+                'order_pull_window_from' => null,
+                'order_pull_window_to' => null,
+                'order_pull_cursor' => null,
+                'order_pull_attempts' => 0,
+                'order_pull_next_attempt_at' => null,
+            ])->save();
+
+            return true;
+        });
+    }
+
     public function saveOrderPullCursor(string $id, string $leaseToken, array $cursor): bool
     {
         return ChannelShop::query()

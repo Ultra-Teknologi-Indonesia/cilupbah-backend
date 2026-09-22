@@ -11,6 +11,8 @@ use Modules\Channel\Models\ChannelSyncSetting;
 
 class ChannelSyncSettingService
 {
+    private static int $inboundRecoveryBypassDepth = 0;
+
     public const CACHE_KEY = 'channel_sync_enabled';
 
     public const TIMEZONE = 'Asia/Jakarta';
@@ -23,6 +25,17 @@ class ChannelSyncSettingService
     public static function withInboundBypass(callable $callback): mixed
     {
         return $callback();
+    }
+
+    public static function withInboundRecoveryBypass(callable $callback): mixed
+    {
+        self::$inboundRecoveryBypassDepth++;
+
+        try {
+            return $callback();
+        } finally {
+            self::$inboundRecoveryBypassDepth = max(0, self::$inboundRecoveryBypassDepth - 1);
+        }
     }
 
     public function current(): ChannelSyncSetting
@@ -49,7 +62,7 @@ class ChannelSyncSettingService
 
     public function isPaused(): bool
     {
-        return ! $this->isEnabled();
+        return ! $this->isEnabled() && self::$inboundRecoveryBypassDepth === 0;
     }
 
     public function effectiveInboundStart(CarbonInterface $requestedStart): Carbon

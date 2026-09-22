@@ -120,6 +120,7 @@ return [
         'sales' => env('QUEUE_NAME_SALES', 'orders'),
 
         'channel_sync' => env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync'),
+        'channel_order_recovery' => env('QUEUE_NAME_CHANNEL_ORDER_RECOVERY', 'channel-order-recovery'),
         'channel_cancellation' => env('QUEUE_NAME_CHANNEL_CANCELLATION', 'channel-cancellation'),
         'channel_stock' => env('QUEUE_NAME_CHANNEL_STOCK', 'channel-stock'),
         'channel_stock_critical' => env('QUEUE_NAME_CHANNEL_STOCK_CRITICAL', 'channel-stock-critical'),
@@ -278,6 +279,18 @@ return [
             'job_timeout' => max(60, min(240, (int) env('CHANNEL_SYNC_JOB_TIMEOUT', 210))),
 
             'max_attempts' => max(1, min(8, (int) env('CHANNEL_SYNC_MAX_ATTEMPTS', 8))),
+        ],
+
+        'channel_order_recovery' => [
+            'connection' => env('QUEUE_CHANNEL_ORDER_RECOVERY_CONNECTION', 'redis-channel-sync'),
+            'queue' => env('QUEUE_NAME_CHANNEL_ORDER_RECOVERY', 'channel-order-recovery'),
+            'parallelism' => max(1, min(4, (int) env('CHANNEL_ORDER_RECOVERY_PARALLELISM', 4))),
+            'max_depth' => max(4, min(32, (int) env('CHANNEL_ORDER_RECOVERY_MAX_DEPTH', 8))),
+            'max_memory_ratio' => max(0.50, min(0.90, (float) env('CHANNEL_ORDER_RECOVERY_MAX_MEMORY_RATIO', 0.70))),
+            'window_minutes' => max(5, min(30, (int) env('CHANNEL_ORDER_RECOVERY_WINDOW_MINUTES', 5))),
+            'lease_seconds' => max(420, min(900, (int) env('CHANNEL_ORDER_RECOVERY_LEASE_SECONDS', 600))),
+            'job_timeout' => max(60, min(240, (int) env('CHANNEL_ORDER_RECOVERY_JOB_TIMEOUT', 210))),
+            'max_attempts' => max(1, min(8, (int) env('CHANNEL_ORDER_RECOVERY_MAX_ATTEMPTS', 3))),
         ],
 
         'labels' => [

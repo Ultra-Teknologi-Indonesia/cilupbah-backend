@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Modules\Channel\Services;
 
-use Illuminate\Support\Str;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use Modules\Channel\Models\ChannelShop;
 
 final class ChannelOrderPullLeaseService
@@ -15,8 +15,8 @@ final class ChannelOrderPullLeaseService
         int $seconds,
         Carbon $windowFrom,
         Carbon $windowTo,
-    ): ?string
-    {
+        ?int $maxAttempts = null,
+    ): ?string {
         $token = (string) Str::uuid();
         $now = now();
 
@@ -36,7 +36,7 @@ final class ChannelOrderPullLeaseService
             ->where(
                 'order_pull_attempts',
                 '<',
-                (int) config('queue.routing.channel_sync.max_attempts', 8),
+                $maxAttempts ?? (int) config('queue.routing.channel_sync.max_attempts', 8),
             )
             ->update([
                 'order_pull_lease_token' => $token,

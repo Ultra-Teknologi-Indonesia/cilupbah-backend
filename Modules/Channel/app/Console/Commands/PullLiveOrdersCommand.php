@@ -28,6 +28,7 @@ class PullLiveOrdersCommand extends Command
         {--overlap-minutes=5 : Overlap aman dari sinkronisasi terakhir saat --queue}
         {--lease-seconds=420 : Durasi maksimum satu toko boleh memiliki pull aktif saat --queue}
         {--include-shadow : Sertakan juga toko berstatus shadow mode}
+        {--recovery : Tarik rentang historis saat sinkronisasi global dijeda melalui queue recovery terpisah}
         {--dry-run : Jalankan jalur kode sebenarnya lalu rollback tanpa menyimpan}';
 
     protected $description = 'Tarik pesanan marketplace secara inkremental sebagai jaring pengaman webhook yang terlewat.';
@@ -40,8 +41,21 @@ class PullLiveOrdersCommand extends Command
         QueueCapacityReader $capacity,
     ): int {
         $isDryRun = (bool) $this->option('dry-run');
+        $isRecovery = (bool) $this->option('recovery');
         $settings = app(ChannelSyncSettingService::class);
-        if ($settings->isPaused()) {
+        if ($isRecovery && ! (bool) $this->option('queue')) {
+            $this->error('--recovery hanya dapat digunakan bersama --queue agar proses tetap terbatas dan dapat dilanjutkan.');
+
+            return self::FAILURE;
+        }
+
+        if ($isRecovery && (! $this->option('from') || ! $this->option('to'))) {
+            $this->error('--recovery wajib menggunakan --from dan --to untuk membatasi rentang historis.');
+
+            return self::FAILURE;
+        }
+
+        if ($settings->isPaused() && ! $isRecovery) {
             $this->info('Sinkronisasi channel dijeda — pull order dibuang tanpa memanggil marketplace.');
 
             return self::SUCCESS;
@@ -84,6 +98,7 @@ class PullLiveOrdersCommand extends Command
                 $explicitFrom,
                 $explicitTo,
                 $hours,
+                $isRecovery,
             );
         }
 
@@ -154,24 +169,28 @@ class PullLiveOrdersCommand extends Command
         ?Carbon $explicitFrom,
         ?Carbon $explicitTo,
         int $hours,
+        bool $isRecovery = false,
     ): int {
-        $leaseSeconds = min(
-            900,
-            max(
-                (int) config('queue.routing.channel_sync.lease_seconds', 420),
-                (int) $this->option('lease-seconds'),
-            ),
-        );
-        $windowMinutes = (int) config('queue.routing.channel_sync.window_minutes', 10);
+        $routingKey = $isRecovery ? 'channel_order_recovery' : 'channel_sync';
+        $routing = (array) config("queue.routing.{$routingKey}", []);
+        $leaseSeconds = min(900, max(
+            (int) ($routing['lease_seconds'] ?? 420),
+            (int) $this->option('lease-seconds'),
+        ));
+        $windowMinutes = (int) ($routing['window_minutes'] ?? 10);
         $overlapMinutes = min(30, max(1, (int) $this->option('overlap-minutes')));
         $windowEnd = $explicitTo ?: now();
         $rows = [];
         $failed = 0;
 
-        $maxDepth = (int) config('queue.backpressure.channel_sync_max_depth', 24);
-        $maxMemoryRatio = (float) config('queue.backpressure.channel_sync_max_memory_ratio', 0.70);
-        $queueConnection = (string) config('queue.routing.channel_sync.connection', 'redis-channel-sync');
-        $queueName = (string) config('queue.routing.channel_sync.queue', 'channel-sync');
+        $maxDepth = $isRecovery
+            ? (int) ($routing['max_depth'] ?? 8)
+            : (int) config('queue.backpressure.channel_sync_max_depth', 24);
+        $maxMemoryRatio = $isRecovery
+            ? (float) ($routing['max_memory_ratio'] ?? 0.70)
+            : (float) config('queue.backpressure.channel_sync_max_memory_ratio', 0.70);
+        $queueConnection = (string) ($routing['connection'] ?? 'redis-channel-sync');
+        $queueName = (string) ($routing['queue'] ?? 'channel-sync');
         $health = $capacity->inspect($queueConnection, $queueName);
 
         if ((bool) config('queue.backpressure.enabled', true)
@@ -190,9 +209,12 @@ class PullLiveOrdersCommand extends Command
             return self::SUCCESS;
         }
 
-        $availableSlots = (bool) config('queue.backpressure.enabled', true)
-            ? max(0, $maxDepth - $health['queue_depth'])
+        $configuredParallelism = $isRecovery
+            ? (int) ($routing['parallelism'] ?? 4)
             : $shops->count();
+        $availableSlots = (bool) config('queue.backpressure.enabled', true)
+            ? min($configuredParallelism, max(0, $maxDepth - $health['queue_depth']))
+            : min($configuredParallelism, $shops->count());
 
         foreach ($shops as $shop) {
             if ($availableSlots < 1) {
@@ -201,18 +223,28 @@ class PullLiveOrdersCommand extends Command
                 continue;
             }
 
-            $hasPendingWindow = ! $explicitFrom
-                && ! $explicitTo
-                && $shop->order_pull_window_from
-                && $shop->order_pull_window_to;
+            $hasPendingWindow = $shop->order_pull_window_from
+                && $shop->order_pull_window_to
+                && (
+                    (! $isRecovery && ! $explicitFrom && ! $explicitTo)
+                    || ($isRecovery
+                        && $shop->order_sync_status === ChannelShop::ORDER_SYNC_PROBLEM
+                        && (int) $shop->order_pull_attempts > 0
+                        && $explicitFrom
+                        && $explicitTo
+                        && $shop->order_pull_window_from->greaterThanOrEqualTo($explicitFrom)
+                        && $shop->order_pull_window_to->lessThanOrEqualTo($explicitTo))
+                );
 
-            $windowStart = $explicitFrom
-                ?: ($hasPendingWindow
-                    ? $shop->order_pull_window_from->copy()
-                    : ($shop->last_order_synced_at
+            $windowStart = $hasPendingWindow
+                ? $shop->order_pull_window_from->copy()
+                : ($explicitFrom
+                    ?: ($shop->last_order_synced_at
                         ? $shop->last_order_synced_at->copy()->subMinutes($overlapMinutes)
-                    : $windowEnd->copy()->subHours($hours)));
-            $windowStart = app(ChannelSyncSettingService::class)->effectiveInboundStart($windowStart);
+                        : $windowEnd->copy()->subHours($hours)));
+            if (! $isRecovery) {
+                $windowStart = app(ChannelSyncSettingService::class)->effectiveInboundStart($windowStart);
+            }
 
             $requestedWindowEnd = $hasPendingWindow
                 ? $shop->order_pull_window_to->copy()
@@ -229,9 +261,19 @@ class PullLiveOrdersCommand extends Command
                 continue;
             }
 
-            $token = $leases->acquire($shop, $leaseSeconds, $windowStart, $shopWindowEnd);
+            $token = $leases->acquire(
+                $shop,
+                $leaseSeconds,
+                $windowStart,
+                $shopWindowEnd,
+                $isRecovery
+                    ? (int) ($routing['max_attempts'] ?? 3)
+                    : (int) config('queue.routing.channel_sync.max_attempts', 8),
+            );
             if ($token === null) {
-                $maxAttempts = (int) config('queue.routing.channel_sync.max_attempts', 8);
+                $maxAttempts = $isRecovery
+                    ? (int) ($routing['max_attempts'] ?? 3)
+                    : (int) config('queue.routing.channel_sync.max_attempts', 8);
                 $status = (int) $shop->order_pull_attempts >= $maxAttempts
                     ? 'dikarantiina setelah batas retry'
                     : 'masih diproses';
@@ -247,7 +289,9 @@ class PullLiveOrdersCommand extends Command
                     $windowStart->toIso8601String(),
                     $shopWindowEnd->toIso8601String(),
                     (string) ($shop->channel->code ?? 'channel'),
-                )->onQueue((string) config('queue.names.channel_sync', 'channel-sync'));
+                    $isRecovery,
+                    $isRecovery ? $windowEnd->toIso8601String() : null,
+                )->onQueue($queueName);
 
                 $rows[] = [$shop->shop_name, $shop->channel->code ?? 'unknown', '-', 'diantrikan'];
                 $availableSlots--;

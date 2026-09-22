@@ -197,23 +197,42 @@ jobs:
               deployment="$1"
               grace_period="$(kubectl get deployment "$deployment" -n "$NAMESPACE" \
                 -o jsonpath='{.spec.template.spec.terminationGracePeriodSeconds}')"
+              progress_deadline="$(kubectl get deployment "$deployment" -n "$NAMESPACE" \
+                -o jsonpath='{.spec.progressDeadlineSeconds}')"
 
               case "$grace_period" in
                 ''|*[!0-9]*) grace_period=180 ;;
               esac
+              case "$progress_deadline" in
+                ''|*[!0-9]*) progress_deadline=600 ;;
+              esac
 
-              # Recreate deployments first terminate the old pod. Leave a
-              # fixed 180s startup/settling headroom after the grace period.
-              # A fixed 300s timeout is unsafe for the 300s legacy recovery
-              # pod and for label pods that initialize the shared PVC.
-              rollout_timeout=$((grace_period + 180))
+              # Wait for both Kubernetes' own progress deadline and the pod's
+              # graceful termination window, plus a settling buffer. A fixed
+              # 300s timeout can report a false failure while the rollout is
+              # still converging (especially app startup and PVC workers).
+              rollout_timeout=$((progress_deadline + 120))
+              grace_timeout=$((grace_period + 180))
+              if [ "$grace_timeout" -gt "$rollout_timeout" ]; then
+                rollout_timeout="$grace_timeout"
+              fi
               if [ "$rollout_timeout" -lt 300 ]; then
                 rollout_timeout=300
               fi
 
-              echo "Menunggu rollout deployment/$deployment (grace=${grace_period}s, timeout=${rollout_timeout}s)..."
+              echo "Menunggu rollout deployment/$deployment (grace=${grace_period}s, progress-deadline=${progress_deadline}s, timeout=${rollout_timeout}s)..."
               if kubectl rollout status "deployment/$deployment" -n "$NAMESPACE" \
                 --timeout="${rollout_timeout}s"; then
+                return 0
+              fi
+
+              # A timeout can race with the final readiness transition. Give
+              # Kubernetes one short convergence window before collecting
+              # diagnostics and failing the deployment.
+              echo "Rollout deployment/$deployment belum selesai; menunggu konvergensi akhir 180s..."
+              if kubectl rollout status "deployment/$deployment" -n "$NAMESPACE" \
+                --timeout=180s; then
+                echo "Rollout deployment/$deployment selesai pada retry konvergensi."
                 return 0
               fi
 

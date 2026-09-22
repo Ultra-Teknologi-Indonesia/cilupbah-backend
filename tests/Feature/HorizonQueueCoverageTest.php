@@ -111,6 +111,7 @@ class HorizonQueueCoverageTest extends TestCase
             'supervisor-fulfillment' => [2, 2],
             'supervisor-stock-sync' => [1, 1],
             'supervisor-channel-sync' => [4, 4],
+            'supervisor-channel-order-recovery' => [4, 4],
             'supervisor-channel-stock-critical' => [1, 1],
             'supervisor-channel-stock-normal' => [1, 1],
             'supervisor-channel-stock-outbox' => [1, 1],

@@ -4,7 +4,7 @@ namespace Modules\Channel\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Mockery;
@@ -12,8 +12,11 @@ use Modules\Channel\Exceptions\ChannelOrderPullIncompleteException;
 use Modules\Channel\Jobs\PullChannelOrdersJob;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Models\ChannelSyncSetting;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Services\ChannelOrderPullLeaseService;
+use Modules\Channel\Services\ChannelSyncSettingService;
+use Modules\Channel\Services\LazadaOrderService;
 use Modules\Channel\Services\QueueCapacityReader;
 use Modules\Channel\Services\ShopeeOrderService;
 use Tests\TestCase;
@@ -61,6 +64,12 @@ class PullLiveOrdersCommandTest extends TestCase
             'is_shadow_mode' => true,
             'stock_push_enabled' => false,
         ]);
+    }
+
+    protected function tearDown(): void
+    {
+        Cache::forget(ChannelSyncSettingService::CACHE_KEY);
+        parent::tearDown();
     }
 
     private function fakeEmptyOrderList(): void
@@ -113,6 +122,45 @@ class PullLiveOrdersCommandTest extends TestCase
 
         $this->artisan('channel:pull-orders', ['--queue' => true])->assertSuccessful();
         Queue::assertPushed(PullChannelOrdersJob::class, 1);
+    }
+
+    public function test_recovery_pull_can_run_while_global_sync_is_paused_on_its_own_queue(): void
+    {
+        Queue::fake();
+
+        $setting = ChannelSyncSetting::query()->firstOrCreate([], ['sync_enabled' => true]);
+        $setting->forceFill([
+            'sync_enabled' => false,
+            'paused_at' => now(),
+            'pause_reason' => ChannelSyncSettingService::MANUAL_PAUSE_REASON,
+        ])->save();
+        Cache::forget(ChannelSyncSettingService::CACHE_KEY);
+
+        $this->artisan('channel:pull-orders', [
+            '--queue' => true,
+            '--recovery' => true,
+            '--from' => '2026-09-21 00:00',
+            '--to' => '2026-09-22 12:00',
+            '--shop' => '112233',
+        ])->assertSuccessful();
+
+        Queue::assertPushed(PullChannelOrdersJob::class, function (PullChannelOrdersJob $job): bool {
+            return $job->recovery
+                && $job->recoveryTo !== null
+                && $job->queue === config('queue.routing.channel_order_recovery.queue')
+                && $job->connection === config('queue.routing.channel_order_recovery.connection')
+                && Carbon::parse($job->from)->equalTo(Carbon::parse('2026-09-21 00:00', 'Asia/Jakarta'))
+                && Carbon::parse($job->to)->diffInMinutes(Carbon::parse($job->from)) <= 5;
+        });
+    }
+
+    public function test_recovery_requires_a_bounded_explicit_time_range(): void
+    {
+        $this->artisan('channel:pull-orders', [
+            '--queue' => true,
+            '--recovery' => true,
+        ])->assertFailed()
+            ->expectsOutputToContain('--recovery wajib menggunakan --from dan --to');
     }
 
     public function test_scheduled_pull_stops_before_enqueue_when_channel_queue_is_at_capacity(): void
@@ -171,12 +219,25 @@ class PullLiveOrdersCommandTest extends TestCase
     public function test_leased_pull_job_releases_store_after_success(): void
     {
         $this->fakeEmptyOrderList();
+        Queue::fake();
         $leases = app(ChannelOrderPullLeaseService::class);
         $from = now()->subMinutes(10);
         $to = now();
         $token = $leases->acquire($this->liveShop, 300, $from, $to);
 
         $this->assertNotNull($token);
+
+        (new PullChannelOrdersJob(
+            $this->liveShop->id,
+            $token,
+            $from->toIso8601String(),
+            $to->toIso8601String(),
+        ))->handle($leases, app(ChannelShopRepository::class));
+
+        // Shopee pull is deliberately two-phase (create_time then update_time)
+        // even when the first page is empty. The lease must remain held while
+        // the continuation job is queued, then be released on the final page.
+        $this->assertNotNull($this->liveShop->fresh()->order_pull_lease_token);
 
         (new PullChannelOrdersJob(
             $this->liveShop->id,
@@ -249,9 +310,11 @@ class PullLiveOrdersCommandTest extends TestCase
         $to = now();
         $token = $leases->acquire($shop, 300, $from, $to);
 
-        Artisan::shouldReceive('call')
-            ->once()
-            ->andThrow(new \RuntimeException('Lazada API Error: Api access frequency exceeds the limit. this ban will last 1 seconds'));
+        $this->mock(LazadaOrderService::class, function ($mock): void {
+            $mock->shouldReceive('pullOrdersPage')
+                ->once()
+                ->andThrow(new \RuntimeException('Lazada API Error: Api access frequency exceeds the limit. this ban will last 1 seconds'));
+        });
 
         (new PullChannelOrdersJob(
             $shop->id,
@@ -277,7 +340,7 @@ class PullLiveOrdersCommandTest extends TestCase
         $token = $leases->acquire($this->liveShop, 300, $from, $to);
 
         $this->mock(ShopeeOrderService::class, function ($mock): void {
-            $mock->shouldReceive('pullOrders')
+            $mock->shouldReceive('pullOrdersPage')
                 ->once()
                 ->andThrow(ChannelOrderPullIncompleteException::forOrders(
                     'shopee',

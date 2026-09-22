@@ -5,6 +5,10 @@ metadata:
   namespace: cilupbah
 spec:
   replicas: 3
+  # App startup performs Laravel cache generation before PHP-FPM listens on
+  # port 8000. Give Kubernetes enough time to observe a slow but healthy boot
+  # instead of marking the rollout as failed prematurely.
+  progressDeadlineSeconds: 600
   # ── Zero-downtime deploy ──
   # maxUnavailable: 0 → pod lama WAJIB tetap Running sampai pod baru Ready.
   # maxSurge: 1     → hanya 1 pod ekstra (hemat RAM) selama transisi.
@@ -111,6 +115,16 @@ spec:
             preStop:
               exec:
                 command: ["/bin/sleep", "5"]
+          # The entrypoint prepares Laravel and starts supervisord before the
+          # HTTP port exists. This probe gates readiness/liveness during that
+          # startup window without changing request handling after boot.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 60
           # ── Readiness: kapan pod menerima traffic ──
           readinessProbe:
             httpGet:

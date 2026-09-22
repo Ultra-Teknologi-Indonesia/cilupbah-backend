@@ -78,6 +78,10 @@ $supervisorProfiles = [
         'supervisor-label-archive',
     ],
 
+    'order-recovery' => [
+        'supervisor-channel-order-recovery',
+    ],
+
 ];
 
 $legacyOrderOperationsProcesses = max(
@@ -119,6 +123,10 @@ $channelCancellationProcesses = max(
 $channelOrderRefreshProcesses = max(
     1,
     min(2, (int) env('HORIZON_CHANNEL_ORDER_REFRESH_PROCESSES', 1)),
+);
+$orderRecoveryProcesses = max(
+    1,
+    min(4, (int) env('HORIZON_ORDER_RECOVERY_PROCESSES', 4)),
 );
 
 $dedicatedQueueSupervisor = static function (
@@ -265,6 +273,8 @@ return [
             .config('queue.routing.channel_finance.queue', 'channel-finance') => 120,
         config('queue.routing.channel_sync.connection', 'redis-channel-sync').':'
             .config('queue.routing.channel_sync.queue', 'channel-sync') => 120,
+        config('queue.routing.channel_order_recovery.connection', 'redis-channel-sync').':'
+            .config('queue.routing.channel_order_recovery.queue', 'channel-order-recovery') => 120,
         config('queue.routing.channel_sync.connection', 'redis-channel-sync').':'
             .config('queue.names.product', 'product') => 120,
         'redis:channel-fulfillment' => 60,
@@ -334,7 +344,7 @@ return [
 
         if (! array_key_exists($profile, $supervisorProfiles)) {
             throw new InvalidArgumentException(
-                "HORIZON_PROFILE '{$profile}' tidak dikenal. Gunakan all, critical, background, labels-pdf, labels-prefetch, labels-awb, atau labels-archive."
+                "HORIZON_PROFILE '{$profile}' tidak dikenal. Gunakan all, critical, background, order-recovery, labels-pdf, labels-prefetch, labels-awb, atau labels-archive."
             );
         }
 
@@ -413,6 +423,20 @@ return [
             'backoff' => [5, 15, 30],
             'memory' => 192,
             'nice' => 0,
+        ],
+        'supervisor-channel-order-recovery' => [
+            'connection' => config('queue.routing.channel_order_recovery.connection', 'redis-channel-sync'),
+            'queue' => [config('queue.routing.channel_order_recovery.queue', 'channel-order-recovery')],
+            'balance' => 'off',
+            'minProcesses' => $orderRecoveryProcesses,
+            'maxProcesses' => $orderRecoveryProcesses,
+            'maxTime' => 1800,
+            'maxJobs' => 100,
+            'timeout' => 240,
+            'tries' => 3,
+            'backoff' => [10, 30, 60],
+            'memory' => 192,
+            'nice' => 10,
         ],
         'supervisor-product-validation' => [
             'connection' => config('queue.routing.channel_sync.connection', 'redis-channel-sync'),

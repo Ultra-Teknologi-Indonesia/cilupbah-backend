@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cilupbah-horizon-order-recovery
+  namespace: cilupbah
+  labels:
+    app: cilupbah-horizon-order-recovery
+    component: queue-order-recovery
+spec:
+  # Kept dormant during normal operation. Scale to one pod only for an
+  # explicitly approved historical order recovery run.
+  replicas: 0
+  revisionHistoryLimit: 2
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: cilupbah-horizon-order-recovery
+  template:
+    metadata:
+      labels:
+        app: cilupbah-horizon-order-recovery
+        component: queue-order-recovery
+    spec:
+      terminationGracePeriodSeconds: 180
+      imagePullSecrets:
+        - name: ghcr-creds
+      containers:
+        - name: horizon-order-recovery
+          image: ghcr.io/ultra-teknologi-indonesia/cilupbah:v1.0.0
+          command: ["php", "artisan", "horizon"]
+          envFrom:
+            - secretRef:
+                name: cilupbah-env
+          env:
+            - name: HORIZON_PROFILE
+              value: "order-recovery"
+            - name: HORIZON_ORDER_RECOVERY_PROCESSES
+              value: "4"
+            - name: QUEUE_CHANNEL_ORDER_RECOVERY_CONNECTION
+              value: "redis-channel-sync"
+            - name: QUEUE_NAME_CHANNEL_ORDER_RECOVERY
+              value: "channel-order-recovery"
+            - name: CHANNEL_ORDER_RECOVERY_PARALLELISM
+              value: "4"
+            - name: CHANNEL_ORDER_RECOVERY_MAX_DEPTH
+              value: "8"
+            - name: CHANNEL_ORDER_RECOVERY_MAX_MEMORY_RATIO
+              value: "0.70"
+            - name: CHANNEL_ORDER_RECOVERY_WINDOW_MINUTES
+              value: "5"
+            - name: CHANNEL_ORDER_RECOVERY_LEASE_SECONDS
+              value: "600"
+            - name: CHANNEL_ORDER_RECOVERY_JOB_TIMEOUT
+              value: "210"
+            - name: CHANNEL_ORDER_RECOVERY_MAX_ATTEMPTS
+              value: "3"
+            - name: REDIS_LONG_QUEUE_RETRY_AFTER
+              value: "2160"
+            - name: REDIS_QUEUE_RETRY_AFTER
+              value: "660"
+            - name: REDIS_QUEUE_CONNECTION
+              value: "horizon"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "2Gi"
+              cpu: "1500m"
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "php artisan horizon:status | grep -q running"]
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 15
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "php artisan horizon:status | grep -q running"]
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 15
+            failureThreshold: 3
