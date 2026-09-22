@@ -5,6 +5,7 @@ namespace Tests\Feature\Report;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Report\Exports\SalesListPesananExport;
@@ -132,6 +133,26 @@ class SalesListReportTest extends TestCase
 
         $this->assertCount(1, $rows);
         $this->assertSame($inRange->id, $rows->first()->id);
+    }
+
+    public function test_date_range_is_interpreted_in_business_timezone(): void
+    {
+        $inside = $this->order([
+            'salesorder_no' => 'SO-WIB-MIDNIGHT',
+            'transaction_date' => CarbonImmutable::create(2026, 7, 1, 0, 30, 0, 'Asia/Jakarta')->utc(),
+        ]);
+        $outside = $this->order([
+            'salesorder_no' => 'SO-WIB-BEFORE',
+            'transaction_date' => CarbonImmutable::create(2026, 6, 30, 23, 59, 59, 'Asia/Jakarta')->utc(),
+        ]);
+
+        $orderIds = app(SalesListReportService::class)
+            ->query(['from' => '2026-07-01', 'to' => '2026-07-01'])
+            ->pluck('id')
+            ->all();
+
+        $this->assertContains($inside->id, $orderIds);
+        $this->assertNotContains($outside->id, $orderIds);
     }
 
     public function test_excludes_orders_with_undownloaded_sku(): void

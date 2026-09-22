@@ -1100,14 +1100,16 @@ class ReportRepository
 
     public function salesListQuery(array $filters): \Illuminate\Database\Eloquent\Builder
     {
-        $from = $filters['from'] ?? null;
-        $to = $filters['to'] ?? null;
+        [$from, $to] = $this->businessDateRange(
+            $filters['from'] ?? null,
+            $filters['to'] ?? null,
+        );
         $locationIds = $filters['location_ids'] ?? [];
 
         return SalesOrder::query()
             ->excludeShadow()
-            ->when($from, fn ($q, $v) => $q->where('sales_orders.transaction_date', '>=', $v.' 00:00:00'))
-            ->when($to, fn ($q, $v) => $q->where('sales_orders.transaction_date', '<=', $v.' 23:59:59.999999'))
+            ->when($from, fn ($q, $v) => $q->where('sales_orders.transaction_date', '>=', $v))
+            ->when($to, fn ($q, $v) => $q->where('sales_orders.transaction_date', '<', $v))
             ->when(! empty($locationIds), fn ($q) => $q->whereIn('sales_orders.location_id', $locationIds))
             ->whereNotExists(fn ($q) => $q
                 ->select(DB::raw(1))
@@ -1126,16 +1128,18 @@ class ReportRepository
 
     public function salesProductQuery(array $filters): \Illuminate\Database\Eloquent\Builder
     {
-        $from = $filters['from'] ?? null;
-        $to = $filters['to'] ?? null;
+        [$from, $to] = $this->businessDateRange(
+            $filters['from'] ?? null,
+            $filters['to'] ?? null,
+        );
         $locationIds = $filters['location_ids'] ?? [];
         $itemIds = $filters['item_ids'] ?? [];
 
         return SalesOrderItem::query()
             ->join('sales_orders', 'sales_orders.id', '=', 'sales_order_items.order_id')
             ->where(fn ($q) => $q->where('sales_orders.is_shadow', false)->orWhereNull('sales_orders.is_shadow'))
-            ->when($from, fn ($q, $v) => $q->where('sales_orders.transaction_date', '>=', $v.' 00:00:00'))
-            ->when($to, fn ($q, $v) => $q->where('sales_orders.transaction_date', '<=', $v.' 23:59:59.999999'))
+            ->when($from, fn ($q, $v) => $q->where('sales_orders.transaction_date', '>=', $v))
+            ->when($to, fn ($q, $v) => $q->where('sales_orders.transaction_date', '<', $v))
             ->when(! empty($locationIds), fn ($q) => $q->whereIn('sales_orders.location_id', $locationIds))
             ->when(! empty($itemIds), fn ($q) => $q->whereIn('sales_order_items.item_id', $itemIds))
             ->whereNotNull('sales_order_items.item_id')
@@ -1156,6 +1160,43 @@ class ReportRepository
             ) AS shop_label')
             ->orderByDesc('sales_orders.transaction_date')
             ->orderByDesc('sales_order_items.sku');
+    }
+
+    /**
+     * Convert report date filters entered in the business timezone to UTC bounds.
+     * The upper bound is exclusive so a date-only filter includes the complete day.
+     *
+     * @return array{0: ?CarbonImmutable, 1: ?CarbonImmutable}
+     */
+    private function businessDateRange(?string $from, ?string $to): array
+    {
+        $timezone = (string) config('app.business_timezone', 'Asia/Jakarta');
+
+        $fromDate = $from !== null && trim($from) !== ''
+            ? CarbonImmutable::parse(trim($from), $timezone)
+            : null;
+        $toDate = $to !== null && trim($to) !== ''
+            ? CarbonImmutable::parse(trim($to), $timezone)
+            : null;
+
+        $fromBoundary = $fromDate
+            ? (self::isDateOnly($from) ? $fromDate->startOfDay() : $fromDate)->utc()
+            : null;
+
+        $toBoundary = null;
+        if ($toDate) {
+            $toBoundary = self::isDateOnly($to)
+                ? $toDate->startOfDay()->addDay()
+                : $toDate->addMicrosecond();
+            $toBoundary = $toBoundary->utc();
+        }
+
+        return [$fromBoundary, $toBoundary];
+    }
+
+    private static function isDateOnly(?string $value): bool
+    {
+        return $value !== null && preg_match('/^\d{4}-\d{2}-\d{2}$/', trim($value)) === 1;
     }
 
     public function salesReturnQuery(array $filters): \Illuminate\Database\Eloquent\Builder
