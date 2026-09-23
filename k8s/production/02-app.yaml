@@ -65,6 +65,14 @@ spec:
             # at the old default of 3 connections.
             - name: REALTIME_MAX_ACTIVE_CONNECTIONS
               value: "20"
+            - name: REALTIME_STREAM_MAX_SECONDS
+              value: "55"
+            - name: REALTIME_HEARTBEAT_SECONDS
+              value: "10"
+            - name: REALTIME_ACTIVE_LEASE_TTL_SECONDS
+              value: "75"
+            - name: REALTIME_RETRY_MILLISECONDS
+              value: "2000"
             - name: REDIS_LONG_QUEUE_RETRY_AFTER
               value: "2160"
             - name: REDIS_QUEUE_RETRY_AFTER

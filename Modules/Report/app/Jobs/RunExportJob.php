@@ -2,6 +2,7 @@
 
 namespace Modules\Report\Jobs;
 
+use App\Services\XlsxRenderer;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -9,7 +10,6 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use App\Services\XlsxRenderer;
 use Modules\Inventory\Services\PutawayBulkPdfExportService;
 use Modules\Inventory\Services\StockAdjustmentBulkPdfExportService;
 use Modules\Inventory\Services\TransferBulkPdfExportService;
@@ -34,9 +34,9 @@ class RunExportJob implements ShouldQueue
 
     public int $timeout = 900;
 
-    public int $tries = 2;
+    public int $tries = 3;
 
-    public array $backoff = [30, 120];
+    public array $backoff = [30, 120, 300];
 
     public bool $failOnTimeout = true;
 
@@ -154,7 +154,7 @@ class RunExportJob implements ShouldQueue
             } else {
 
                 $export = $manager->build($job->type, $params);
-                $exportedRows = app(\App\Services\XlsxRenderer::class)->save($export, $temporaryPath);
+                $exportedRows = app(XlsxRenderer::class)->save($export, $temporaryPath);
             }
 
             $stream = fopen($temporaryPath, 'rb');

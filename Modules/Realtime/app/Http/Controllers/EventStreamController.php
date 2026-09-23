@@ -88,7 +88,8 @@ final class EventStreamController extends Controller
 
         $key = 'realtime-stream:'.$request->user()->id;
         try {
-            if (RateLimiter::tooManyAttempts($key, 12)) {
+            $maximumAttempts = max(1, (int) config('realtime.max_connection_attempts_per_minute', 6));
+            if (RateLimiter::tooManyAttempts($key, $maximumAttempts)) {
                 return response()->json([
                     'message' => 'Terlalu banyak koneksi realtime. Coba lagi sebentar.',
                 ], 429, ['Retry-After' => (string) RateLimiter::availableIn($key)]);
@@ -113,16 +114,12 @@ final class EventStreamController extends Controller
         $streamKey = $this->publisher->streamKey($userId);
         $lastEventId = $data['last_event_id'] ?? null;
 
-        $terminalEvents = [];
+        $snapshotEvents = [];
         $activeTopics = $topics;
 
         if ($exportIds !== []) {
-            $terminalExports = ExportJob::query()
+            $exports = ExportJob::query()
                 ->whereIn('id', $exportIds)
-                ->whereIn('status', [
-                    ExportJob::STATUS_READY,
-                    ExportJob::STATUS_FAILED,
-                ])
                 ->get([
                     'id',
                     'type',
@@ -134,9 +131,9 @@ final class EventStreamController extends Controller
                     'error',
                 ]);
 
-            foreach ($terminalExports as $export) {
+            foreach ($exports as $export) {
                 $topic = 'export:'.$export->id;
-                $terminalEvents[] = [
+                $snapshotEvents[] = [
                     'event' => 'export.progress',
                     'data' => [
                         'export_id' => (string) $export->id,
@@ -151,17 +148,15 @@ final class EventStreamController extends Controller
                         'finished_at' => $export->finished_at?->toIso8601String(),
                     ],
                 ];
-                $activeTopics = array_values(array_diff($activeTopics, [$topic]));
+                if ($export->isTerminal()) {
+                    $activeTopics = array_values(array_diff($activeTopics, [$topic]));
+                }
             }
         }
 
         if ($batchIds !== []) {
-            $terminalBatches = BulkShippingLabelBatch::query()
+            $batches = BulkShippingLabelBatch::query()
                 ->whereIn('id', $batchIds)
-                ->whereIn('status', [
-                    BulkShippingLabelBatch::STATUS_READY,
-                    BulkShippingLabelBatch::STATUS_FAILED,
-                ])
                 ->get([
                     'id',
                     'status',
@@ -175,9 +170,9 @@ final class EventStreamController extends Controller
                     'finished_at',
                 ]);
 
-            foreach ($terminalBatches as $batch) {
+            foreach ($batches as $batch) {
                 $topic = 'bulk-label:'.$batch->id;
-                $terminalEvents[] = [
+                $snapshotEvents[] = [
                     'event' => 'bulk-label.progress',
                     'data' => [
                         'batch_id' => (string) $batch->id,
@@ -192,86 +187,98 @@ final class EventStreamController extends Controller
                         'finished_at' => $batch->finished_at?->toIso8601String(),
                     ],
                 ];
-                $activeTopics = array_values(array_diff($activeTopics, [$topic]));
+                if (in_array($batch->status, [
+                    BulkShippingLabelBatch::STATUS_READY,
+                    BulkShippingLabelBatch::STATUS_FAILED,
+                ], true)) {
+                    $activeTopics = array_values(array_diff($activeTopics, [$topic]));
+                }
             }
         }
 
         $response = new StreamedResponse(function () use (
             $streamKey,
             $activeTopics,
-            $terminalEvents,
+            $snapshotEvents,
             $lastEventId,
             $lease,
         ): void {
             try {
-            @ini_set('output_buffering', 'off');
-            @ini_set('zlib.output_compression', '0');
+                @ini_set('output_buffering', 'off');
+                @ini_set('zlib.output_compression', '0');
 
-            $cursor = $lastEventId ?: '$';
-            $deadline = microtime(true) + max(5, (int) config('realtime.stream_max_seconds', 20));
-            $heartbeatSeconds = max(2, (int) config('realtime.heartbeat_seconds', 8));
-            $lastOutput = microtime(true);
+                $cursor = $lastEventId ?: '$';
+                $deadline = microtime(true) + max(5, (int) config('realtime.stream_max_seconds', 20));
+                $heartbeatSeconds = max(2, (int) config('realtime.heartbeat_seconds', 8));
+                $lastOutput = microtime(true);
 
-            echo "retry: 5000\n\n";
-            @ob_flush();
-            flush();
+                echo 'retry: '.max(1000, (int) config('realtime.retry_milliseconds', 2000))."\n\n";
+                @ob_flush();
+                flush();
 
-            $this->writeEvent('connected', [
-                'server_time' => now()->toIso8601String(),
-            ]);
+                $this->writeEvent('connected', [
+                    'server_time' => now()->toIso8601String(),
+                ]);
 
-            foreach ($terminalEvents as $terminalEvent) {
-                $this->writeEvent($terminalEvent['event'], $terminalEvent['data']);
-            }
+                foreach ($snapshotEvents as $snapshotEvent) {
+                    $this->writeEvent($snapshotEvent['event'], $snapshotEvent['data']);
+                }
 
-            if ($activeTopics === []) {
-                return;
-            }
+                if ($activeTopics === []) {
+                    return;
+                }
 
-            while (! connection_aborted() && microtime(true) < $deadline) {
-                try {
-                    $entries = Redis::connection(config('realtime.redis_connection', 'default'))
-                        ->xread(
-                            [$streamKey => $cursor],
-                            max(1, (int) config('realtime.max_events_per_read', 50)),
-                            max(1000, (int) config('realtime.read_block_milliseconds', 4000)),
+                while (! connection_aborted() && microtime(true) < $deadline) {
+                    if (! $this->connectionLimiter->renew($lease)) {
+                        $this->writeEvent('realtime.error', [
+                            'retryable' => true,
+                        ]);
+                        break;
+                    }
+
+                    try {
+                        $entries = Redis::connection(config('realtime.redis_connection', 'default'))
+                            ->xread(
+                                [$streamKey => $cursor],
+                                max(1, (int) config('realtime.max_events_per_read', 50)),
+                                max(1000, (int) config('realtime.read_block_milliseconds', 4000)),
+                            );
+                    } catch (\Throwable $e) {
+                        report($e);
+                        $this->writeEvent('realtime.error', [
+                            'retryable' => true,
+                        ]);
+                        break;
+                    }
+
+                    $published = false;
+                    foreach ($this->normaliseEntries($entries, $streamKey) as $entry) {
+                        $cursor = $entry['id'];
+                        if (! in_array($entry['topic'], $activeTopics, true)) {
+                            continue;
+                        }
+
+                        $payload = json_decode($entry['payload'], true);
+                        if (! is_array($payload)) {
+                            continue;
+                        }
+
+                        $this->writeEvent(
+                            $entry['event_type'],
+                            $payload,
+                            $entry['id'],
                         );
-                } catch (\Throwable $e) {
-                    report($e);
-                    $this->writeEvent('realtime.error', [
-                        'retryable' => true,
-                    ]);
-                    break;
-                }
-
-                $published = false;
-                foreach ($this->normaliseEntries($entries, $streamKey) as $entry) {
-                    $cursor = $entry['id'];
-                    if (! in_array($entry['topic'], $activeTopics, true)) {
-                        continue;
+                        $published = true;
+                        $lastOutput = microtime(true);
                     }
 
-                    $payload = json_decode($entry['payload'], true);
-                    if (! is_array($payload)) {
-                        continue;
+                    if (! $published && microtime(true) - $lastOutput >= $heartbeatSeconds) {
+                        echo ': heartbeat '.now()->toIso8601String()."\n\n";
+                        @ob_flush();
+                        flush();
+                        $lastOutput = microtime(true);
                     }
-
-                    $this->writeEvent(
-                        $entry['event_type'],
-                        $payload,
-                        $entry['id'],
-                    );
-                    $published = true;
-                    $lastOutput = microtime(true);
                 }
-
-                if (! $published && microtime(true) - $lastOutput >= $heartbeatSeconds) {
-                    echo ': heartbeat '.now()->toIso8601String()."\n\n";
-                    @ob_flush();
-                    flush();
-                    $lastOutput = microtime(true);
-                }
-            }
             } finally {
                 $this->connectionLimiter->release($lease);
             }

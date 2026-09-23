@@ -17,6 +17,7 @@ return [
     'pdf_queue' => env('QUEUE_NAME_EXPORTS_PDF', 'exports-pdf'),
     'pdf_memory_limit' => env('EXPORT_PDF_MEMORY_LIMIT', '1536M'),
     'pdf_timeout' => max(120, (int) env('EXPORT_PDF_TIMEOUT', 900)),
+    'qr_pdf_chunk_size' => max(100, (int) env('QR_PDF_CHUNK_SIZE', 250)),
 
     'pdf_max_rows' => (int) env('EXPORT_PDF_MAX_ROWS', 0),
     'sheet_connection' => env('EXPORT_SHEET_QUEUE_CONNECTION'),

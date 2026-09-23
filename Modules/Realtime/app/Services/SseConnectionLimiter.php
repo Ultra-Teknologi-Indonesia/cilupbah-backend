@@ -24,6 +24,22 @@ redis.call('EXPIRE', KEYS[1], ttl)
 return 1
 LUA;
 
+    private const RENEW_SCRIPT = <<<'LUA'
+local now = tonumber(ARGV[1])
+local member = ARGV[2]
+local expires = tonumber(ARGV[3])
+local ttl = tonumber(ARGV[4])
+
+redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now)
+if redis.call('ZSCORE', KEYS[1], member) == false then
+    return 0
+end
+
+redis.call('ZADD', KEYS[1], expires, member)
+redis.call('EXPIRE', KEYS[1], ttl)
+return 1
+LUA;
+
     public function acquire(): ?string
     {
         $maximum = max(1, (int) config('realtime.max_active_connections', 3));
@@ -65,6 +81,35 @@ LUA;
         } catch (\Throwable $e) {
 
             report($e);
+        }
+    }
+
+    public function renew(?string $token): bool
+    {
+        if ($token === null) {
+            return false;
+        }
+
+        $ttl = max(10, (int) config('realtime.active_lease_ttl_seconds', 75));
+        $now = time();
+
+        try {
+            $renewed = Redis::connection(config('realtime.redis_connection', 'default'))
+                ->eval(
+                    self::RENEW_SCRIPT,
+                    1,
+                    $this->key(),
+                    (string) $now,
+                    $token,
+                    (string) ($now + $ttl),
+                    (string) $ttl,
+                );
+
+            return (int) $renewed === 1;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return false;
         }
     }
 

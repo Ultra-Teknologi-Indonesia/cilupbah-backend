@@ -20,11 +20,11 @@ class GenerateBinQrPdfJobTest extends TestCase
         $job = new GenerateBinQrPdfJob('qr-job-id');
 
         $this->assertSame(
-            config('queue.routing.qr_labels.connection', 'redis-long'),
+            config('exports.pdf_connection') ?: config('exports.connection', 'redis-long'),
             $job->connection,
         );
         $this->assertSame(
-            config('queue.routing.qr_labels.queue', 'qr-labels'),
+            config('exports.pdf_queue', 'exports-pdf'),
             $job->queue,
         );
     }
@@ -63,7 +63,7 @@ class GenerateBinQrPdfJobTest extends TestCase
             $jobs[4]->queue,
         );
         $this->assertSame(
-            config('queue.names.sales', 'orders'),
+            config('queue.names.imports', 'imports'),
             $jobs[5]->queue,
         );
         $this->assertSame(config('webhook.queue', 'webhooks'), $jobs[6]->queue);

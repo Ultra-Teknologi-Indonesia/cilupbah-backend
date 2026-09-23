@@ -65,6 +65,39 @@
         }
         @endif
 
+        /* Thermal 50x50 */
+        @if($paper === 'thermal_50x50')
+        @page { margin: 2mm; }
+        body { font-size: 7pt; }
+        .label {
+            width: 46mm;
+            height: 46mm;
+            text-align: center;
+            padding: 1mm 0;
+        }
+        .label .loc-name {
+            font-size: 7pt;
+            font-weight: bold;
+            line-height: 1.1;
+            margin: 0 0 1mm 0;
+            word-wrap: break-word;
+        }
+        .label .qr {
+            width: 31mm;
+            height: 31mm;
+            margin: 0 auto;
+        }
+        .label .qr img { width: 100%; height: 100%; }
+        .label .bin-code {
+            font-family: DejaVu Sans Mono, monospace;
+            font-size: 8pt;
+            font-weight: bold;
+            margin-top: 1mm;
+            word-wrap: break-word;
+            line-height: 1.1;
+        }
+        @endif
+
         /* Thermal 80x40 */
         @if($paper === 'thermal_80x40')
         @page { margin: 2mm; }

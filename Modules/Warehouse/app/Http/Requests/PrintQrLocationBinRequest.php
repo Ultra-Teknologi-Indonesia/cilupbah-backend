@@ -17,7 +17,7 @@ class PrintQrLocationBinRequest extends FormRequest
     {
         return [
             'bin_ids' => 'nullable|string',
-            'paper' => 'nullable|string|in:thermal_50x40,thermal_80x40,a4_single,a4_multi',
+            'paper' => 'nullable|string|in:thermal_50x40,thermal_50x50,thermal_80x40,a4_single,a4_multi',
         ];
     }
 
@@ -42,7 +42,10 @@ class PrintQrLocationBinRequest extends FormRequest
 
         foreach ($ids as $id) {
             if (! preg_match('/^[0-9a-f\-]{32,36}$/i', $id)) {
-                $responder = new class { use ApiResponse; };
+                $responder = new class
+                {
+                    use ApiResponse;
+                };
                 throw new HttpResponseException(
                     $responder->errorResponse("ID bin tidak valid: {$id}", 422)
                 );

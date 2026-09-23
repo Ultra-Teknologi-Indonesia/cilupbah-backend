@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Report\Tests\Unit;
 
+use App\Exceptions\PdfRenderException;
 use App\Services\PdfRenderer;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -13,10 +14,8 @@ final class PdfRendererTest extends TestCase
 {
     public function test_gotenberg_receives_the_requested_custom_thermal_page_size(): void
     {
-        $previousEnv = $_ENV['GOTENBERG_URL'] ?? null;
-        $previousServer = $_SERVER['GOTENBERG_URL'] ?? null;
-        $_ENV['GOTENBERG_URL'] = 'http://gotenberg.test';
-        $_SERVER['GOTENBERG_URL'] = 'http://gotenberg.test';
+        $previousUrl = config('pdf.gotenberg.url');
+        config(['pdf.gotenberg.url' => 'http://gotenberg.test']);
 
         try {
             $requestBody = '';
@@ -43,16 +42,26 @@ final class PdfRendererTest extends TestCase
             $this->assertStringContainsString('49.989mm 49.989mm', $requestBody);
             Http::assertSentCount(1);
         } finally {
-            if ($previousEnv === null) {
-                unset($_ENV['GOTENBERG_URL']);
-            } else {
-                $_ENV['GOTENBERG_URL'] = $previousEnv;
-            }
-            if ($previousServer === null) {
-                unset($_SERVER['GOTENBERG_URL']);
-            } else {
-                $_SERVER['GOTENBERG_URL'] = $previousServer;
-            }
+            config(['pdf.gotenberg.url' => $previousUrl]);
+        }
+    }
+
+    public function test_pdf_rendering_never_falls_back_to_dompdf_when_gotenberg_is_unavailable(): void
+    {
+        $previousUrl = config('pdf.gotenberg.url');
+        config(['pdf.gotenberg.url' => null]);
+
+        try {
+            $this->expectException(PdfRenderException::class);
+            $this->expectExceptionMessage('belum dikonfigurasi');
+
+            app(PdfRenderer::class)->bytes('report::pdf.barcode', [
+                'cells' => [],
+                'mode' => 'tanpa_harga',
+                'paper' => 'thermal_50x50',
+            ]);
+        } finally {
+            config(['pdf.gotenberg.url' => $previousUrl]);
         }
     }
 }
