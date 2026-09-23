@@ -244,10 +244,9 @@ class PacklistController extends Controller
         requestBody: new OA\RequestBody(
             required: true,
             content: new OA\JsonContent(
-                required: ['qty_packed'],
+                required: ['scan_event_id'],
                 properties: [
-                    new OA\Property(property: 'qty_packed', type: 'integer', minimum: 0),
-                    new OA\Property(property: 'barcode_verified', type: 'boolean', nullable: true),
+                    new OA\Property(property: 'scan_event_id', type: 'string', format: 'uuid'),
                 ]
             )
         ),
@@ -257,9 +256,9 @@ class PacklistController extends Controller
     )]
     public function packItem(string $id, string $itemId, PackItemRequest $request): JsonResponse
     {
-        $this->packlistService->packItem($id, $itemId, $request->validated());
+        $result = $this->packlistService->packItem($id, $itemId, $request->validated());
 
-        return $this->successResponse(null, 'Item berhasil di-pack.');
+        return $this->successResponse($result, 'Item berhasil di-pack.');
     }
 
     public function unpackItem(string $id, string $itemId, UnpackItemRequest $request): JsonResponse

@@ -14,8 +14,7 @@ class PackItemRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'qty_packed' => 'required|integer|min:0',
-            'barcode_verified' => 'nullable|boolean',
+            'scan_event_id' => 'required|uuid',
         ];
     }
 }

@@ -12,6 +12,7 @@ use Modules\Outbound\Exceptions\OutboundValidationException;
 use Modules\Outbound\Jobs\ProcessPacklistCompleteJob;
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\PacklistItem;
+use Modules\Outbound\Models\PacklistItemScanEvent;
 use Modules\Outbound\Models\ShipmentOrder;
 use Modules\Outbound\Repositories\PacklistRepository;
 use Modules\Product\Repositories\ProductRepository;
@@ -265,43 +266,80 @@ class PacklistService
         return $this->packlistRepository->findById($id);
     }
 
-    public function packItem(string $packlistId, string $itemId, array $data): void
+    public function packItem(string $packlistId, string $itemId, array $data): array
     {
-        $packlist = $this->packlistRepository->findById($packlistId);
+        return DB::transaction(function () use ($packlistId, $itemId, $data): array {
+            $packlistQuery = Packlist::query()->lockForUpdate();
+            WarehouseAccess::apply($packlistQuery, 'location_id');
+            $packlist = $packlistQuery->find($packlistId);
 
-        if (! $packlist) {
-            throw new \Exception('Packlist tidak ditemukan.');
-        }
+            if (! $packlist) {
+                throw new \Exception('Packlist tidak ditemukan.');
+            }
 
-        if (! in_array($packlist->status, [Packlist::STATUS_DRAFT, Packlist::STATUS_IN_PROGRESS])) {
-            throw new \Exception("Packlist tidak bisa di-pack (status saat ini: {$packlist->status}).");
-        }
+            if (! in_array($packlist->status, [Packlist::STATUS_DRAFT, Packlist::STATUS_IN_PROGRESS], true)) {
+                throw new \Exception("Packlist tidak bisa di-pack (status saat ini: {$packlist->status}).");
+            }
 
-        $packOrderQuery = Order::whereKey($packlist->order_id);
-        WarehouseAccess::apply($packOrderQuery, 'location_id');
-        $packOrder = $packOrderQuery->first();
-        if ($packOrder && $packOrder->is_canceled) {
-            throw new UserFacingException(
-                title: 'Pesanan Dibatalkan',
-                message: "Pesanan {$packOrder->salesorder_no} sudah DIBATALKAN — tidak bisa dipacking.",
-                status: 422,
-                errors: ['code' => 'order_canceled'],
-            );
-        }
+            $packOrderQuery = Order::whereKey($packlist->order_id);
+            WarehouseAccess::apply($packOrderQuery, 'location_id');
+            $packOrder = $packOrderQuery->first();
+            if ($packOrder && $packOrder->is_canceled) {
+                throw new UserFacingException(
+                    title: 'Pesanan Dibatalkan',
+                    message: "Pesanan {$packOrder->salesorder_no} sudah DIBATALKAN — tidak bisa dipacking.",
+                    status: 422,
+                    errors: ['code' => 'order_canceled'],
+                );
+            }
 
-        $item = $packlist->items->firstWhere('id', $itemId);
-        if (! $item) {
-            throw new \Exception('Item packlist tidak ditemukan.');
-        }
+            $item = PacklistItem::query()
+                ->where('packlist_id', $packlist->id)
+                ->lockForUpdate()
+                ->find($itemId);
+            if (! $item) {
+                throw new \Exception('Item packlist tidak ditemukan.');
+            }
 
-        if ($data['qty_packed'] > $item->qty_ordered) {
-            throw new \Exception("Qty packed ({$data['qty_packed']}) melebihi qty ordered ({$item->qty_ordered}).");
-        }
+            $event = PacklistItemScanEvent::query()->find($data['scan_event_id']);
+            if ($event) {
+                if ($event->packlist_id !== $packlist->id || $event->packlist_item_id !== $item->id) {
+                    throw new OutboundValidationException('ID scan sudah digunakan untuk item packing lain.');
+                }
 
-        $this->packlistRepository->updateItem($itemId, [
-            'qty_packed' => $data['qty_packed'],
-            'barcode_verified' => $data['barcode_verified'] ?? $item->barcode_verified,
-        ]);
+                return [
+                    'scan_event_id' => $event->id,
+                    'qty_packed' => (int) $event->qty_after,
+                    'duplicate' => true,
+                ];
+            }
+
+            $qtyBefore = (int) $item->qty_packed;
+            if ($qtyBefore >= (int) $item->qty_ordered) {
+                throw new OutboundValidationException("Qty {$item->sku} sudah lengkap.");
+            }
+
+            $qtyAfter = $qtyBefore + 1;
+            $item->forceFill([
+                'qty_packed' => $qtyAfter,
+                'barcode_verified' => true,
+            ])->save();
+
+            PacklistItemScanEvent::query()->create([
+                'id' => $data['scan_event_id'],
+                'packlist_id' => $packlist->id,
+                'packlist_item_id' => $item->id,
+                'scanned_by' => Auth::id(),
+                'qty_before' => $qtyBefore,
+                'qty_after' => $qtyAfter,
+            ]);
+
+            return [
+                'scan_event_id' => $data['scan_event_id'],
+                'qty_packed' => $qtyAfter,
+                'duplicate' => false,
+            ];
+        });
     }
 
     public function unpackItem(string $packlistId, string $itemId, ?int $qty): void
@@ -369,8 +407,6 @@ class PacklistService
         if (! $item) {
             throw new OutboundValidationException("Barcode/SKU '{$barcode}' tidak ditemukan dalam packlist ini.");
         }
-
-        $this->packlistRepository->updateItem($item->id, ['barcode_verified' => true]);
 
         return ['item_id' => $item->id, 'sku' => $item->sku, 'verified' => true];
     }

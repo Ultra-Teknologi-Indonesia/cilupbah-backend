@@ -90,6 +90,50 @@ class PacklistStockPostingTest extends TestCase
         $this->assertDatabaseMissing('inventory_movements', ['source' => 'PACKING']);
     }
 
+    public function test_pack_scan_is_audited_once_and_cannot_overpack(): void
+    {
+        Queue::fake();
+
+        [$userId, , , , , , $packlistId] = $this->seedScenario();
+        $this->actingAs(User::findOrFail($userId));
+        $packlistItemId = DB::table('packlist_items')->where('packlist_id', $packlistId)->value('id');
+        DB::table('packlist_items')->where('id', $packlistItemId)->update([
+            'qty_packed' => 0,
+            'barcode_verified' => false,
+        ]);
+
+        $firstEventId = Str::uuid()->toString();
+        $first = app(PacklistService::class)->packItem($packlistId, $packlistItemId, [
+            'scan_event_id' => $firstEventId,
+        ]);
+        $retry = app(PacklistService::class)->packItem($packlistId, $packlistItemId, [
+            'scan_event_id' => $firstEventId,
+        ]);
+
+        $this->assertSame(1, $first['qty_packed']);
+        $this->assertFalse($first['duplicate']);
+        $this->assertSame(1, $retry['qty_packed']);
+        $this->assertTrue($retry['duplicate']);
+        $this->assertSame(1, DB::table('packlist_item_scan_events')->count());
+
+        $second = app(PacklistService::class)->packItem($packlistId, $packlistItemId, [
+            'scan_event_id' => Str::uuid()->toString(),
+        ]);
+
+        $this->assertSame(2, $second['qty_packed']);
+        $this->assertDatabaseHas('packlist_item_scan_events', [
+            'packlist_id' => $packlistId,
+            'packlist_item_id' => $packlistItemId,
+            'qty_before' => 1,
+            'qty_after' => 2,
+        ]);
+
+        $this->expectException(OutboundValidationException::class);
+        app(PacklistService::class)->packItem($packlistId, $packlistItemId, [
+            'scan_event_id' => Str::uuid()->toString(),
+        ]);
+    }
+
     private function seedScenario(int $onHand = 3, int $physicalCommittedQty = 2): array
     {
         $userId = Str::uuid()->toString();
