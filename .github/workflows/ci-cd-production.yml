@@ -192,27 +192,6 @@ jobs:
               echo "KEDA belum terpasang; ScaledObject dilewati. Pool kritis tetap aman, autoscaling idle non-kritis belum aktif."
             fi
 
-            echo "==> Memastikan semua deployment Horizon memuat image dan konfigurasi terbaru..."
-            # Applying an unchanged manifest does not recreate a Deployment.
-            # Force a graceful restart so deploys that reuse the same image tag
-            # (for example, latest) cannot leave an old Horizon process alive.
-            for horizon in \
-              cilupbah-horizon \
-              cilupbah-horizon-critical \
-              cilupbah-horizon-order-intake \
-              cilupbah-horizon-fulfillment \
-              cilupbah-horizon-stock \
-              cilupbah-horizon-maintenance \
-              cilupbah-horizon-labels \
-              cilupbah-horizon-labels-awb
-            do
-              if kubectl get deployment "$horizon" -n "$NAMESPACE" >/dev/null 2>&1; then
-                kubectl rollout restart "deployment/$horizon" -n "$NAMESPACE"
-              else
-                echo "Deployment $horizon belum ada; dilewati."
-              fi
-            done
-
             rollout_deployment() {
               deployment="$1"
               grace_period="$(kubectl get deployment "$deployment" -n "$NAMESPACE" \
@@ -241,8 +220,9 @@ jobs:
               fi
 
               echo "Menunggu rollout deployment/$deployment (grace=${grace_period}s, progress-deadline=${progress_deadline}s, timeout=${rollout_timeout}s)..."
-              if kubectl rollout status "deployment/$deployment" -n "$NAMESPACE" \
-                --timeout="${rollout_timeout}s"; then
+              if timeout "${rollout_timeout}s" kubectl rollout status \
+                "deployment/$deployment" -n "$NAMESPACE" \
+                --request-timeout=30s --timeout="${rollout_timeout}s"; then
                 return 0
               fi
 
@@ -250,8 +230,9 @@ jobs:
               # Kubernetes one short convergence window before collecting
               # diagnostics and failing the deployment.
               echo "Rollout deployment/$deployment belum selesai; menunggu konvergensi akhir 180s..."
-              if kubectl rollout status "deployment/$deployment" -n "$NAMESPACE" \
-                --timeout=180s; then
+              if timeout 180s kubectl rollout status \
+                "deployment/$deployment" -n "$NAMESPACE" \
+                --request-timeout=30s --timeout=180s; then
                 echo "Rollout deployment/$deployment selesai pada retry konvergensi."
                 return 0
               fi
@@ -272,54 +253,66 @@ jobs:
               return 1
             }
 
-            echo "==> Menunggu rollout aplikasi dan layanan kritis..."
-            DEPLOYMENTS=""
-            for manifest in "$K8S_DIR"/*.yaml; do
-              if [ "$(basename "$manifest")" = "08-keda-autoscaling.yaml" ]; then
-                continue
-              fi
-              deployment_names="$(kubectl get -f "$manifest" -n "$NAMESPACE" -o name 2>/dev/null \
-                | sed -n 's#^deployment.apps/##p')"
-              if [ -n "$deployment_names" ]; then
-                DEPLOYMENTS="$DEPLOYMENTS $deployment_names"
-              fi
-            done
-            if [ -z "$DEPLOYMENTS" ]; then
-              echo "Tidak ada Deployment yang ditemukan dari manifest production."
-              exit 1
-            fi
-
-            for deployment in $DEPLOYMENTS; do
-              case "$deployment" in
-                cilupbah-import-worker|cilupbah-export-worker|cilupbah-catalog-export-worker|cilupbah-pdf-export-worker)
-                  continue
-                  ;;
-              esac
-
-              rollout_deployment "$deployment"
-            done
-
-            echo "==> Memulai rollout worker berat secara asynchronous (graceful drain)..."
+            echo "==> Menunggu rollout aplikasi dan jalur operasional..."
+            # The image tag is immutable. `kubectl apply` already starts a
+            # rollout when the version changes, so do not force-restart every
+            # Horizon deployment. A forced restart turns a no-op deploy into
+            # a full Recreate drain and can make SSH wait for 17-31 minutes.
+            #
+            # Only deployments that must be ready before the deploy is marked
+            # successful are waited synchronously. Long-running/background
+            # pools are checked below and are allowed to drain in Kubernetes.
             for deployment in \
+              cilupbah-pgbouncer \
+              cilupbah-redis \
+              cilupbah-redis-cache \
+              cilupbah-redis-finance \
+              cilupbah-redis-horizon \
+              cilupbah-redis-long \
+              cilupbah-gotenberg \
+              cilupbah-app \
+              cilupbah-scheduler \
+              cilupbah-horizon-critical \
+              cilupbah-horizon-order-intake \
+              cilupbah-horizon-fulfillment \
+              cilupbah-horizon-stock \
+              cilupbah-horizon-labels-awb \
+              cilupbah-horizon-labels
+            do
+              if kubectl get deployment "$deployment" -n "$NAMESPACE" \
+                --request-timeout=30s >/dev/null 2>&1; then
+                rollout_deployment "$deployment"
+              else
+                echo "Deployment $deployment belum ada; dilewati."
+              fi
+            done
+
+            echo "==> Memulai drain asynchronous untuk worker long-running..."
+            for deployment in \
+              cilupbah-horizon \
+              cilupbah-horizon-maintenance \
               cilupbah-import-worker \
               cilupbah-export-worker \
               cilupbah-catalog-export-worker \
               cilupbah-pdf-export-worker
             do
-              if ! kubectl get deployment "$deployment" -n "$NAMESPACE" >/dev/null 2>&1; then
+              if ! kubectl get deployment "$deployment" -n "$NAMESPACE" \
+                --request-timeout=30s >/dev/null 2>&1; then
                 echo "Worker $deployment tidak ada; dilewati."
                 continue
               fi
 
               # Recreate + terminationGracePeriodSeconds intentionally keeps
-              # one heavy worker per queue and lets its current job drain.
-              # Do only a short health check here; waiting for the full drain
-              # would make every deploy take up to 31 minutes.
-              if kubectl rollout status "deployment/$deployment" -n "$NAMESPACE" --timeout=20s; then
+              # one worker per queue and lets its current job drain. Never
+              # wait for the full drain here: Redis keeps pending jobs and
+              # Kubernetes owns the asynchronous convergence.
+              if timeout 20s kubectl rollout status "deployment/$deployment" \
+                -n "$NAMESPACE" --request-timeout=30s --timeout=15s; then
                 echo "Worker $deployment sudah siap."
               else
                 echo "Worker $deployment masih graceful-draining; rollout dilanjutkan oleh Kubernetes."
                 kubectl get deployment "$deployment" -n "$NAMESPACE" \
+                  --request-timeout=30s \
                   -o custom-columns='NAME:.metadata.name,READY:.status.readyReplicas,UPDATED:.status.updatedReplicas,AVAILABLE:.status.availableReplicas,UNAVAILABLE:.status.unavailableReplicas' \
                   --no-headers || true
               fi

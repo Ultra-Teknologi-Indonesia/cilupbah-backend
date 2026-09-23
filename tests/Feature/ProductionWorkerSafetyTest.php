@@ -117,12 +117,15 @@ class ProductionWorkerSafetyTest extends TestCase
         $workflow = file_get_contents(base_path('.github/workflows/ci-cd-production.yml'));
 
         $this->assertIsString($workflow);
-        $this->assertStringContainsString('rollout worker berat secara asynchronous', $workflow);
-        $this->assertStringContainsString('--timeout=20s', $workflow);
+        $this->assertStringContainsString('drain asynchronous untuk worker long-running', $workflow);
+        $this->assertStringContainsString('--timeout=15s', $workflow);
         $this->assertStringContainsString("jsonpath='{.spec.progressDeadlineSeconds}'", $workflow);
         $this->assertStringContainsString('rollout_timeout=$((progress_deadline + 120))', $workflow);
         $this->assertStringContainsString('--timeout=180s', $workflow);
         $this->assertStringContainsString('mengumpulkan diagnostik', $workflow);
+        $this->assertStringContainsString('cilupbah-horizon-maintenance', $workflow);
+        $this->assertStringContainsString('--request-timeout=30s', $workflow);
+        $this->assertStringNotContainsString('kubectl rollout restart', $workflow);
     }
 
     public function test_app_rollout_has_startup_headroom_for_bootstrap(): void
