@@ -9,6 +9,9 @@ metadata:
 spec:
   replicas: 1
   revisionHistoryLimit: 2
+  # maintenance-heavy allows jobs up to 30 minutes; keep enough drain time
+  # when KEDA scales the idle deployment back to zero.
+  progressDeadlineSeconds: 2400
   strategy:
     type: Recreate
   selector:
@@ -20,7 +23,7 @@ spec:
         app: cilupbah-horizon-maintenance
         component: queue-maintenance
     spec:
-      terminationGracePeriodSeconds: 180
+      terminationGracePeriodSeconds: 1860
       imagePullSecrets:
         - name: ghcr-creds
       containers:

@@ -176,8 +176,21 @@ jobs:
 
             echo "==> Mengaplikasikan pool queue yang terpisah ke Kubernetes..."
             for manifest in "$K8S_DIR"/*.yaml; do
+              # KEDA resources are applied separately below because the CRD is
+              # an optional cluster capability, not an application manifest.
+              if [ "$(basename "$manifest")" = "08-keda-autoscaling.yaml" ]; then
+                continue
+              fi
               kubectl apply -f "$manifest" -n "$NAMESPACE"
             done
+
+            if kubectl api-resources --api-group=keda.sh --no-headers 2>/dev/null \
+              | grep -Eq '(^|[[:space:]])scaledobjects([[:space:]]|$)'; then
+              echo "==> KEDA terdeteksi; mengaktifkan autoscaling berbasis backlog Redis..."
+              kubectl apply -f "$K8S_DIR/08-keda-autoscaling.yaml" -n "$NAMESPACE"
+            else
+              echo "KEDA belum terpasang; ScaledObject dilewati. Pool kritis tetap aman, autoscaling idle non-kritis belum aktif."
+            fi
 
             echo "==> Memastikan semua deployment Horizon memuat image dan konfigurasi terbaru..."
             # Applying an unchanged manifest does not recreate a Deployment.
@@ -260,7 +273,17 @@ jobs:
             }
 
             echo "==> Menunggu rollout aplikasi dan layanan kritis..."
-            DEPLOYMENTS="$(kubectl get -f "$K8S_DIR" -n "$NAMESPACE" -o name | sed -n 's#^deployment.apps/##p')"
+            DEPLOYMENTS=""
+            for manifest in "$K8S_DIR"/*.yaml; do
+              if [ "$(basename "$manifest")" = "08-keda-autoscaling.yaml" ]; then
+                continue
+              fi
+              deployment_names="$(kubectl get -f "$manifest" -n "$NAMESPACE" -o name 2>/dev/null \
+                | sed -n 's#^deployment.apps/##p')"
+              if [ -n "$deployment_names" ]; then
+                DEPLOYMENTS="$DEPLOYMENTS $deployment_names"
+              fi
+            done
             if [ -z "$DEPLOYMENTS" ]; then
               echo "Tidak ada Deployment yang ditemukan dari manifest production."
               exit 1

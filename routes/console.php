@@ -15,7 +15,6 @@ Schedule::command('lazada:refresh-tokens --hours=48')->everyFifteenMinutes()->wi
 
 Schedule::command('channel:alert-reauth')->hourly()->withoutOverlapping(10)->onOneServer();
 Schedule::command('channel:auto-pause-sync')->everyMinute()->withoutOverlapping(1)->onOneServer();
-Schedule::command('channel:auto-pause-sync')->everyMinute()->withoutOverlapping(1)->onOneServer();
 
 Schedule::command('products:poll-review-status')->everyThirtyMinutes()->withoutOverlapping()->onOneServer();
 

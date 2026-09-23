@@ -1,0 +1,119 @@
+# Optional cluster capability: install KEDA before applying this manifest.
+# The production workflow detects the CRD and skips this file when KEDA is not
+# installed, so the queue topology remains deployable during the migration.
+# Critical pools intentionally do not appear here: they keep one warm pod for
+# low-latency order, AWB, label, fulfillment, and stock operations.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: cilupbah-horizon-background
+  namespace: cilupbah
+  labels:
+    app: cilupbah-horizon
+    component: queue-autoscaling
+spec:
+  scaleTargetRef:
+    name: cilupbah-horizon
+  pollingInterval: 15
+  cooldownPeriod: 300
+  minReplicaCount: 0
+  maxReplicaCount: 2
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 0
+          selectPolicy: Max
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 30
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          selectPolicy: Min
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 120
+  triggers:
+    - type: redis
+      metadata:
+        address: redis:6379
+        listName: queues:webhooks
+        listLength: "25"
+        activationListLength: "1"
+    - type: redis
+      metadata:
+        address: redis:6379
+        listName: queues:default
+        listLength: "25"
+        activationListLength: "1"
+    - type: redis
+      metadata:
+        address: redis:6379
+        listName: queues:notifications
+        listLength: "25"
+        activationListLength: "1"
+    - type: redis
+      metadata:
+        address: redis-long:6379
+        listName: queues:channel-product
+        listLength: "10"
+        activationListLength: "1"
+    - type: redis
+      metadata:
+        address: redis-long:6379
+        listName: queues:channel-after-sales
+        listLength: "10"
+        activationListLength: "1"
+    - type: redis
+      metadata:
+        address: redis-finance:6379
+        listName: queues:channel-finance
+        listLength: "10"
+        activationListLength: "1"
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: cilupbah-horizon-maintenance
+  namespace: cilupbah
+  labels:
+    app: cilupbah-horizon-maintenance
+    component: queue-autoscaling
+spec:
+  scaleTargetRef:
+    name: cilupbah-horizon-maintenance
+  pollingInterval: 30
+  # The maintenance pool contains jobs with up to 30 minutes of runtime.
+  # Redis moves an active job to :reserved, so the scaler cannot infer active
+  # work from a ready-list length alone. Keep the cooldown longer than the
+  # maximum job timeout before allowing scale-to-zero.
+  cooldownPeriod: 2400
+  minReplicaCount: 0
+  maxReplicaCount: 1
+  triggers:
+    - type: redis
+      metadata:
+        address: redis-long:6379
+        listName: queues:downloads
+        listLength: "10"
+        activationListLength: "1"
+    - type: redis
+      metadata:
+        address: redis-long:6379
+        listName: queues:stock-cutover
+        listLength: "2"
+        activationListLength: "1"
+    - type: redis
+      metadata:
+        address: redis-long:6379
+        listName: queues:order-cutover
+        listLength: "2"
+        activationListLength: "1"
+    - type: redis
+      metadata:
+        address: redis-long:6379
+        listName: queues:qr-labels
+        listLength: "5"
+        activationListLength: "1"
