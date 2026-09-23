@@ -44,10 +44,57 @@ class ProductionWorkerSafetyTest extends TestCase
             $this->assertStringContainsString('type: Recreate', $yaml, $manifest);
             $this->assertStringContainsString("terminationGracePeriodSeconds: {$grace}", $yaml, $manifest);
             $this->assertStringContainsString("progressDeadlineSeconds: {$deadline}", $yaml, $manifest);
-            $this->assertStringContainsString('--max-jobs=100', $yaml, $manifest);
-            $this->assertDoesNotMatchRegularExpression('/--max-jobs=1(?:\D|$)/', $yaml, $manifest);
+            $this->assertMatchesRegularExpression('/--max-jobs=(?:[2-9][0-9]|[1-9][0-9]{2,})\b/', $yaml, $manifest);
             $this->assertStringContainsString('--max-time=', $yaml, $manifest);
         }
+    }
+
+    public function test_optional_keda_scaling_is_backlog_driven_and_never_scales_critical_pools_to_zero(): void
+    {
+        $yaml = file_get_contents(base_path('k8s/production/08-keda-autoscaling.yaml'));
+        $background = file_get_contents(base_path('k8s/production/03-horizon.yaml'));
+        $maintenance = file_get_contents(base_path('k8s/production/03-horizon-maintenance.yaml'));
+
+        $this->assertIsString($yaml);
+        $this->assertIsString($background);
+        $this->assertIsString($maintenance);
+        $this->assertStringContainsString('kind: ScaledObject', $yaml);
+        $this->assertStringContainsString('name: cilupbah-horizon', $yaml);
+        $this->assertStringContainsString('name: cilupbah-horizon-maintenance', $yaml);
+        $this->assertStringContainsString('minReplicaCount: 0', $yaml);
+        $this->assertStringContainsString('type: redis', $yaml);
+        $this->assertStringContainsString('address: redis:6379', $yaml);
+        $this->assertStringContainsString('address: redis-long:6379', $yaml);
+        $this->assertStringContainsString('address: redis-finance:6379', $yaml);
+        $this->assertStringContainsString('listName: queues:default', $yaml);
+        $this->assertStringContainsString('listName: queues:downloads', $yaml);
+        $this->assertStringContainsString('cooldownPeriod: 2400', $yaml);
+        $this->assertStringContainsString('terminationGracePeriodSeconds: 360', $background);
+        $this->assertStringContainsString('terminationGracePeriodSeconds: 1860', $maintenance);
+
+        foreach ([
+            'cilupbah-horizon-order-intake',
+            'cilupbah-horizon-fulfillment',
+            'cilupbah-horizon-stock',
+            'cilupbah-horizon-labels-awb',
+            'cilupbah-horizon-labels',
+        ] as $criticalDeployment) {
+            $this->assertStringNotContainsString(
+                "name: {$criticalDeployment}",
+                $yaml,
+                "{$criticalDeployment} tidak boleh scale-to-zero melalui KEDA.",
+            );
+        }
+    }
+
+    public function test_production_workflow_applies_keda_only_when_the_cluster_supports_it(): void
+    {
+        $workflow = file_get_contents(base_path('.github/workflows/ci-cd-production.yml'));
+
+        $this->assertIsString($workflow);
+        $this->assertStringContainsString('08-keda-autoscaling.yaml', $workflow);
+        $this->assertStringContainsString('api-resources --api-group=keda.sh', $workflow);
+        $this->assertStringContainsString('KEDA belum terpasang', $workflow);
     }
 
     public function test_production_deploy_allows_recreate_grace_period_and_reports_rollout_failures(): void

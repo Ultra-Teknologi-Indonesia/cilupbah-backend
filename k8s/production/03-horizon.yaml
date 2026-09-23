@@ -5,6 +5,9 @@ metadata:
   namespace: cilupbah
 spec:
   replicas: 1
+  # Background jobs can run for several minutes. KEDA may scale this
+  # deployment to zero, but a pod must drain gracefully before termination.
+  terminationGracePeriodSeconds: 360
   # This instance owns only non-operational background supervisors. Every
   # marketplace-critical capability has its own Deployment.
   strategy:
