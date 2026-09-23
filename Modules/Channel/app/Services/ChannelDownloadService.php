@@ -13,9 +13,10 @@ use Modules\Channel\Contracts\ChunkedDownloadable;
 use Modules\Channel\Jobs\DownloadProductsJob;
 use Modules\Channel\Jobs\DownloadSingleProductJob;
 use Modules\Channel\Jobs\ProcessDownloadChunkJob;
-use Modules\Channel\Models\DownloadTransaction;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Models\DownloadTransaction;
 use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Channel\Repositories\DownloadTransactionRepository;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductSyncLog;
 
@@ -23,6 +24,7 @@ class ChannelDownloadService
 {
     public function __construct(
         protected ChannelShopRepository $channelShopRepository,
+        protected DownloadTransactionRepository $downloadTransactionRepository,
     ) {}
 
     public function download(string $channel, string $shopId, ?string $executedBy = null): DownloadTransaction
@@ -30,7 +32,7 @@ class ChannelDownloadService
         $this->assertSupported($channel);
         $channelShopId = $this->requireChannelShopId($shopId, $channel);
 
-        $debounceKey = 'channel_full_pull_debounce:' . strtolower($channel) . ":{$shopId}";
+        $debounceKey = 'channel_full_pull_debounce:'.strtolower($channel).":{$shopId}";
         if (! Cache::add($debounceKey, true, 10)) {
             $recent = DownloadTransaction::where('channel_shop_id', $channelShopId)
                 ->whereIn('state', [DownloadTransaction::STATE_QUEUED, DownloadTransaction::STATE_DOWNLOADING])
@@ -178,7 +180,7 @@ class ChannelDownloadService
 
             if (! ($remoteResult['ok'] ?? false)) {
                 $channelCode = strtolower($shop->channel->code ?? '');
-                Log::warning("Unified channel search error for shop {$shop->shop_id} ({$channelCode}): " . ($remoteResult['error'] ?? 'Unknown error'), [
+                Log::warning("Unified channel search error for shop {$shop->shop_id} ({$channelCode}): ".($remoteResult['error'] ?? 'Unknown error'), [
                     'shop_id' => $shop->shop_id,
                     'channel' => $channelCode,
                     'exception' => $remoteResult['exception'] ?? null,
@@ -192,6 +194,7 @@ class ChannelDownloadService
                     'error_code' => $remoteResult['error_code'] ?? 'UPSTREAM_ERROR',
                     'retryable' => (bool) ($remoteResult['retryable'] ?? true),
                 ];
+
                 continue;
             }
 
@@ -222,17 +225,17 @@ class ChannelDownloadService
         $shopIdMap = $shops->pluck('id', 'shop_id')->all();
 
         $existingMappings = ProductChannelMapping::with(['product' => fn ($query) => $query
-                ->withTrashed()
-                ->select('id', 'name', 'sku', 'is_bundle', 'is_active', 'deleted_at')])
+            ->withTrashed()
+            ->select('id', 'name', 'sku', 'is_bundle', 'is_active', 'deleted_at')])
             ->whereIn('channel_shop_id', $shops->pluck('id'))
             ->whereIn('external_product_id', $allExtIds)
             ->whereHas('product', fn ($query) => $query->withTrashed())
             ->get()
-            ->groupBy(fn ($m) => $m->channel_shop_id . ':' . $m->external_product_id);
+            ->groupBy(fn ($m) => $m->channel_shop_id.':'.$m->external_product_id);
 
         foreach ($allItems as &$it) {
             $dbShopId = $shopIdMap[$it['shop_id']] ?? null;
-            $mappingKey = $dbShopId ? ($dbShopId . ':' . ($it['external_product_id'] ?? '')) : null;
+            $mappingKey = $dbShopId ? ($dbShopId.':'.($it['external_product_id'] ?? '')) : null;
             $mappings = $mappingKey ? $existingMappings->get($mappingKey, collect()) : collect();
 
             $it = $this->decorateDownloadStatus($it, $mappings);
@@ -284,8 +287,8 @@ class ChannelDownloadService
 
             if (! empty($ids)) {
                 $downloaded = ProductChannelMapping::with(['product' => fn ($query) => $query
-                        ->withTrashed()
-                        ->select('id', 'name', 'sku', 'is_bundle', 'is_active', 'deleted_at')])
+                    ->withTrashed()
+                    ->select('id', 'name', 'sku', 'is_bundle', 'is_active', 'deleted_at')])
                     ->where('channel_shop_id', $channelShopId)
                     ->whereIn('external_product_id', $ids)
                     ->whereHas('product', fn ($query) => $query->withTrashed())
@@ -450,7 +453,7 @@ class ChannelDownloadService
 
     protected function searchCacheKey(string $channel, string $shopId, string $query): string
     {
-        return 'channel_catalog_search:v3:' . strtolower($channel) . ':' . $shopId . ':' . sha1(mb_strtolower(trim($query)));
+        return 'channel_catalog_search:v3:'.strtolower($channel).':'.$shopId.':'.sha1(mb_strtolower(trim($query)));
     }
 
     protected function searchRemoteShop(string $channel, string $shopId, string $query, int $limit): array
@@ -548,7 +551,7 @@ class ChannelDownloadService
 
     public function downloadProductDebounced(string $channel, string $shopId, string $externalProductId, int $seconds = 20): bool
     {
-        $key = 'channel_pull_debounce:' . strtolower($channel) . ":{$shopId}:{$externalProductId}";
+        $key = 'channel_pull_debounce:'.strtolower($channel).":{$shopId}:{$externalProductId}";
 
         if (! Cache::add($key, true, $seconds)) {
             return true;
@@ -622,6 +625,16 @@ class ChannelDownloadService
         }
 
         return $puller->downloadProductIds($shopId, $externalIds);
+    }
+
+    public function recordDownloadedProducts(DownloadTransaction $transaction, array $externalProductIds): void
+    {
+        $this->downloadTransactionRepository->recordDownloadedProducts($transaction, $externalProductIds);
+    }
+
+    public function recordDownloadedProductsUpdatedSince(DownloadTransaction $transaction): void
+    {
+        $this->downloadTransactionRepository->recordDownloadedProductsUpdatedSince($transaction);
     }
 
     public function dispatchBatched(DownloadTransaction $transaction, string $channel, string $shopId): void

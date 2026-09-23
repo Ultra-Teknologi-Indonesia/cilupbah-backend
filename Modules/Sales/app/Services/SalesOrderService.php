@@ -165,8 +165,16 @@ class SalesOrderService
         return $this->orderRepository->paginateStatusHistory($salesOrderId, $perPage);
     }
 
-    public function getTabCounts(): array
+    public function getTabCounts(array $params = []): array
     {
+        $hasFilters = filled($params['q'] ?? null)
+            || filled($params['search'] ?? null)
+            || ! empty($params['couriers'] ?? [])
+            || ! empty($params['filter'] ?? []);
+
+        if ($hasFilters) {
+            return $this->orderRepository->getTabCounts();
+        }
 
         $cacheKey = 'sales:tab-counts:u:'.(auth()->id() ?? 'guest');
 
@@ -2602,7 +2610,6 @@ class SalesOrderService
     private function forgetOrderTabCounts(): void
     {
         Cache::forget('sales:tab-counts:u:'.(auth()->id() ?? 'guest'));
-        $this->orderRepository->forgetTabCounts();
     }
 
     private function freshOrderWithItems(SalesOrder $order): SalesOrder

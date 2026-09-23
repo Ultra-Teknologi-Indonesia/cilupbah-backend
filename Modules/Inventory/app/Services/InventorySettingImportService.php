@@ -6,9 +6,10 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\Inventory\Jobs\RefreshStockReplenishmentJob;
+use Modules\Inventory\Services\RackImport\RackAssignmentService;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
-use Modules\Inventory\Services\RackImport\RackAssignmentService;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
 use Modules\Warehouse\Services\BinMultiSkuRuleService;
@@ -306,6 +307,10 @@ class InventorySettingImportService
                     ->update([$column => (int) $value]);
             }
         });
+
+        if ($column === 'safe_stock') {
+            RefreshStockReplenishmentJob::dispatch()->afterCommit();
+        }
 
         return ['applied' => $updates->count(), 'skipped' => 0];
     }

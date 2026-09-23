@@ -11,6 +11,7 @@ use Modules\Channel\Http\Resources\DownloadFailuresResource;
 use Modules\Channel\Http\Resources\DownloadTransactionResource;
 use Modules\Channel\Models\DownloadTransaction;
 use Modules\Channel\Services\DownloadTransactionService;
+use Modules\Product\Models\Product;
 
 class DownloadTransactionController extends Controller
 {
@@ -49,11 +50,11 @@ class DownloadTransactionController extends Controller
             return $this->errorResponse('Transaksi download tidak ditemukan', 404);
         }
 
-        $products = $this->service->paginateShopProducts($transaction->channel_shop_id);
+        $products = $this->service->paginateProducts($transaction);
 
         $items = $products->getCollection()->map(function ($product) {
             $mapping = $product->relationLoaded('channelMappings') ? $product->channelMappings->first() : null;
-            $isMaster = $product->status === \Modules\Product\Models\Product::STATUS_MASTER;
+            $isMaster = $product->status === Product::STATUS_MASTER;
             $thumbnail = $product->relationLoaded('media')
                 ? optional($product->media->firstWhere('is_primary', true) ?? $product->media->first())->url
                 : null;

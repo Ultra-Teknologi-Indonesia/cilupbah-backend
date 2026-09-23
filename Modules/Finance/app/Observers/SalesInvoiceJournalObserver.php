@@ -12,22 +12,30 @@ class SalesInvoiceJournalObserver
 {
     public function created(SalesInvoice $invoice): void
     {
+        if ($invoice->status === SalesInvoice::STATUS_DRAFT) {
+            return;
+        }
+
         $this->synchronize($invoice);
     }
 
     public function synchronize(SalesInvoice $invoice): void
     {
+        if ($invoice->status === SalesInvoice::STATUS_DRAFT) {
+            return;
+        }
+
         try {
             app(AutoJournalService::class)->forSalesInvoice($invoice);
         } catch (\Throwable $e) {
-            Log::warning('AutoJournal SalesInvoice gagal: ' . $e->getMessage(), ['invoice' => $invoice->invoice_number]);
+            Log::warning('AutoJournal SalesInvoice gagal: '.$e->getMessage(), ['invoice' => $invoice->invoice_number]);
         }
 
         try {
             $this->snapshotCogs($invoice);
             app(AutoJournalService::class)->forSalesInvoiceCogs($invoice->refresh());
         } catch (\Throwable $e) {
-            Log::warning('AutoJournal COGS gagal: ' . $e->getMessage(), ['invoice' => $invoice->invoice_number]);
+            Log::warning('AutoJournal COGS gagal: '.$e->getMessage(), ['invoice' => $invoice->invoice_number]);
         }
     }
 
@@ -44,7 +52,7 @@ class SalesInvoiceJournalObserver
 
             SalesInvoiceItem::where('id', $item->id)->update([
                 'cogs_per_unit' => $avg,
-                'total_cogs'    => $totalCogs,
+                'total_cogs' => $totalCogs,
             ]);
         }
     }

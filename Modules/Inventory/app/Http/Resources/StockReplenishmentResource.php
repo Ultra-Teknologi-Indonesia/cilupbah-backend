@@ -48,8 +48,10 @@ class StockReplenishmentResource extends JsonResource
                 'suggested_qty' => (int) $it->suggested_qty,
                 'reason' => $it->reason,
                 'reason_detail' => [
-                    'type' => 'stock_shortage',
-                    'label' => 'Kekurangan stok dari pesanan aktif',
+                    'type' => $this->source === 'AUTO' ? 'auto_safe_stock' : 'stock_shortage',
+                    'label' => $this->source === 'AUTO'
+                        ? 'Pengisian otomatis ke batas stok aman'
+                        : 'Kekurangan stok dari pesanan aktif',
                     'demand_qty' => (int) $it->demand_qty,
                     'available_qty' => (int) $it->available_qty,
                     'in_flight_qty' => (int) $it->in_flight_qty,

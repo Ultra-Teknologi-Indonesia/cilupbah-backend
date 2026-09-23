@@ -281,6 +281,7 @@ class StockService
         ?string $createdBy = null,
         ?\DateTimeInterface $transactionDate = null,
         ?string $referenceNumber = null,
+        string $source = 'PICKING_REVERSAL',
     ): ?InventoryMovement {
         if ($qty <= 0) {
             return null;
@@ -297,6 +298,7 @@ class StockService
             $createdBy,
             $transactionDate,
             $referenceNumber,
+            $source,
         ) {
             return DB::transaction(function () use (
                 $itemId,
@@ -307,6 +309,7 @@ class StockService
                 $createdBy,
                 $transactionDate,
                 $referenceNumber,
+                $source,
             ) {
                 $binRow = $this->inventoryRepository->findOrCreateForUpdate($itemId, $locationId, $binId);
                 $binRow->on_hand = (int) $binRow->on_hand + $qty;
@@ -319,7 +322,7 @@ class StockService
                     'bin_id' => $binId,
                     'transaction_number' => $transactionNumber,
                     'reference_number' => $referenceNumber,
-                    'source' => 'PICKING_REVERSAL',
+                    'source' => $source,
                     'qty' => $qty,
                     'balance' => $binRow->on_hand,
                     'transaction_date' => $transactionDate ?: now(),

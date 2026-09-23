@@ -3,6 +3,7 @@
 namespace Modules\Inventory\Services;
 
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Modules\Inventory\Jobs\RefreshStockReplenishmentJob;
 use Modules\Product\Models\ProductVariant;
 use Modules\Product\Support\TechnicalSku;
 
@@ -55,6 +56,10 @@ class InventorySettingService
         }
 
         $variant->save();
+
+        if (array_key_exists('safe_stock', $data)) {
+            RefreshStockReplenishmentJob::dispatch()->afterCommit();
+        }
 
         return $variant->fresh();
     }

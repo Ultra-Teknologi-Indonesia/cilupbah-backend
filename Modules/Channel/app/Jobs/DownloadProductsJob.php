@@ -7,8 +7,10 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\DB;
 use Modules\Channel\Models\DownloadTransaction;
 use Modules\Channel\Services\ChannelDownloadService;
+use Sentry\SentrySdk;
 
 class DownloadProductsJob implements ShouldQueue
 {
@@ -36,7 +38,7 @@ class DownloadProductsJob implements ShouldQueue
     {
         @ini_set('memory_limit', '256M');
 
-        $hub = \Sentry\SentrySdk::getCurrentHub();
+        $hub = SentrySdk::getCurrentHub();
         $hub->getTransaction()?->setSampled(false);
         $hub->setSpan(null);
 
@@ -45,7 +47,7 @@ class DownloadProductsJob implements ShouldQueue
             return;
         }
 
-        $catalogPullEnabled = \Illuminate\Support\Facades\DB::table('channel_shops')
+        $catalogPullEnabled = DB::table('channel_shops')
             ->where('shop_id', $this->shopId)
             ->value('catalog_pull_enabled');
 
@@ -74,6 +76,7 @@ class DownloadProductsJob implements ShouldQueue
         };
 
         $count = $service->pull($this->channel, $this->shopId, $onProgress);
+        $service->recordDownloadedProductsUpdatedSince($transaction);
 
         $transaction->markDone($count, $lastFailed);
     }

@@ -148,7 +148,7 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
         ]);
     }
 
-    public function test_complete_picklist_renders_invoice_pdf_without_persisting_sales_invoice(): void
+    public function test_complete_picklist_persists_invoice_and_renders_pdf_on_demand(): void
     {
         $this->actingAs($this->user);
 
@@ -163,9 +163,7 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
         $this->order->refresh();
         $this->assertSame('picked', $this->order->status);
 
-        $this->assertDatabaseMissing('sales_invoices', [
-            'order_id' => $this->order->id,
-        ]);
+        $this->assertDatabaseHas('sales_invoices', ['order_id' => $this->order->id]);
         $this->assertSame(0, (int) DB::table('inventories')->where('bin_id', $this->bin->id)->value('on_hand'));
         $this->assertSame(0, (int) DB::table('inventories')->where('bin_id', $this->bin->id)->value('on_order'));
         $this->assertSame(0, (int) DB::table('inventories')
@@ -200,23 +198,19 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
         $pdfRes->assertOk()
             ->assertHeader('Content-Type', 'application/pdf');
 
-        $this->assertDatabaseMissing('sales_invoices', [
-            'order_id' => $this->order->id,
-        ]);
+        $this->assertDatabaseHas('sales_invoices', ['order_id' => $this->order->id]);
 
         $stageRes = $this->getJson('/api/v1/outbound/orders/finish-pick');
         $stageRes->assertOk()
             ->assertJsonPath('data.0.id', $this->order->id)
-            ->assertJsonPath('data.0.invoice_no', null)
             ->assertJsonPath('meta.total', 1);
+        $this->assertNotEmpty($stageRes->json('data.0.invoice_no'));
 
         $secondComplete = $this->postJson("/api/v1/outbound/picklists/{$this->picklist->id}/complete");
 
         $secondComplete->assertOk()
             ->assertJsonPath('data.status', Picklist::STATUS_COMPLETED);
-        $this->assertDatabaseMissing('sales_invoices', [
-            'order_id' => $this->order->id,
-        ]);
+        $this->assertDatabaseHas('sales_invoices', ['order_id' => $this->order->id]);
         $this->assertSame(0, DB::table('inventory_movements')->where('source', 'INVOICE')->count());
     }
 
@@ -229,8 +223,9 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
 
         $res->assertOk();
         $this->assertSame('picked', $this->order->fresh()->status);
-        $this->assertDatabaseMissing('sales_invoices', [
+        $this->assertDatabaseHas('sales_invoices', [
             'order_id' => $this->order->id,
+            'status' => 'OPEN',
         ]);
         $this->assertSame(1, (int) PicklistItemAllocation::query()
             ->where('picklist_item_id', $this->pickItem->id)
@@ -386,7 +381,7 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
                 && $job->connection === config('queue.routing.warehouse_safety.connection');
         });
         $this->assertSame('picked', $this->order->fresh()->status);
-        $this->assertDatabaseCount('sales_invoices', 0);
+        $this->assertDatabaseCount('sales_invoices', 1);
         $this->assertSame(1, (int) PicklistItemAllocation::query()
             ->where('picklist_item_id', $item->id)
             ->value('physical_committed_qty'));
@@ -397,7 +392,7 @@ class PicklistCompleteAutoInvoiceTest extends TestCase
             'qty' => -1,
         ]);
         $this->assertDatabaseHas('inventory_movements', [
-            'source' => 'PICKING',
+            'source' => 'INVOICE',
         ]);
     }
 

@@ -38,6 +38,7 @@ use Modules\Sales\Http\Requests\UpdateSalesOrderRequest;
 use Modules\Sales\Http\Requests\UploadCourierIdPhotoRequest;
 use Modules\Sales\Http\Resources\SalesOrderResource;
 use Modules\Sales\Http\Resources\ShippingLabelResource;
+use Modules\Sales\Models\SalesInvoice;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\SalesOrderDriverCallService;
 use Modules\Sales\Services\SalesOrderService;
@@ -137,9 +138,9 @@ class SalesOrderController extends Controller
         return $this->successPaginatedResponse($orders);
     }
 
-    public function counts()
+    public function counts(Request $request)
     {
-        return $this->successResponse($this->orderService->getTabCounts());
+        return $this->successResponse($this->orderService->getTabCounts($request->query()));
     }
 
     public function shippingProviders(Request $request)
@@ -1215,8 +1216,12 @@ class SalesOrderController extends Controller
         }
 
         $order = OrderPdfPresenter::withShipping($order);
+        $invoiceNumber = $order->invoices
+            ->first(fn ($invoice) => $invoice->status !== SalesInvoice::STATUS_CANCELLED)
+            ?->invoice_number
+            ?? ('INV-'.$order->salesorder_no);
 
-        return $this->pdf->stream('sales::pdf.invoice', ['order' => $order], "INV-{$order->salesorder_no}.pdf");
+        return $this->pdf->stream('sales::pdf.invoice', ['order' => $order], "{$invoiceNumber}.pdf");
     }
 
     public function breakdown(string $id)

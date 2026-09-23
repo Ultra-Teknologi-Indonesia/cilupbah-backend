@@ -44,13 +44,15 @@ class ProcessDownloadChunkJob implements ShouldQueue
         $result = $service->downloadChunk($this->channel, $this->shopId, $this->externalIds);
 
         DownloadTransaction::whereKey($this->transactionId)->update([
-            'total_downloaded' => DB::raw('total_downloaded + ' . (int) $result['downloaded']),
-            'total_failed' => DB::raw('total_failed + ' . (int) $result['failed']),
+            'total_downloaded' => DB::raw('total_downloaded + '.(int) $result['downloaded']),
+            'total_failed' => DB::raw('total_failed + '.(int) $result['failed']),
             'updated_at' => now(),
         ]);
 
         $transaction = DownloadTransaction::find($this->transactionId);
         if ($transaction) {
+            $service->recordDownloadedProducts($transaction, $this->externalIds);
+
             $total = max(1, (int) $transaction->all_product);
             $processed = (int) $transaction->total_downloaded + (int) $transaction->total_failed;
             $transaction->update(['progress_percent' => min(99, (int) round($processed / $total * 100))]);

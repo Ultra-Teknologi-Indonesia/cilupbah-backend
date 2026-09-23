@@ -20,7 +20,9 @@
 
     $printDate = now()->locale('id')->translatedFormat('d F Y, H:i');
 
-    $invoice = $order->invoices->first() ?? null;
+    $invoice = $order->invoices
+        ->first(fn ($candidate) => $candidate->status !== \Modules\Sales\Models\SalesInvoice::STATUS_CANCELLED)
+        ?? null;
     $invoiceNo = $invoice?->invoice_number ?? $order->invoice_no ?? ('INV-' . $order->salesorder_no);
     $shopName = $order->channelShop?->shop_name ?? $order->shop_name ?? 'i-CASE OFFICIAL';
 

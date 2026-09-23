@@ -8,9 +8,9 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
-use Modules\Outbound\Exceptions\OutboundValidationException;
 use Modules\Inventory\Models\SkuRackAssignment;
 use Modules\Inventory\Repositories\InventoryRepository;
+use Modules\Outbound\Exceptions\OutboundValidationException;
 use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Repositories\PicklistRepository;
 use Modules\Outbound\Services\PicklistService;
@@ -200,7 +200,7 @@ class PickingDoesNotEatBinAllocationTest extends TestCase
         );
 
         $this->assertDatabaseHas('inventory_movements', [
-            'source' => 'PICKING',
+            'source' => 'INVOICE',
             'qty' => -2,
             'bin_id' => $binId,
         ]);
@@ -234,8 +234,12 @@ class PickingDoesNotEatBinAllocationTest extends TestCase
         $this->assertSame(2, (int) $bin->on_order);
         $this->assertSame(1, (int) $allocation->physical_committed_qty);
         $this->assertNotNull($allocation->movement_id);
+        $this->assertDatabaseHas('sales_invoices', [
+            'order_id' => DB::table('picklist_items')->where('id', $ids['item_id'])->value('order_id'),
+            'status' => 'DRAFT',
+        ]);
         $this->assertDatabaseHas('inventory_movements', [
-            'source' => 'PICKING',
+            'source' => 'INVOICE',
             'qty' => -1,
             'bin_id' => $binId,
         ]);
@@ -270,7 +274,7 @@ class PickingDoesNotEatBinAllocationTest extends TestCase
         $this->assertSame(10, (int) $bin->on_hand);
         $this->assertSame(2, (int) $bin->on_order);
         $this->assertDatabaseHas('inventory_movements', [
-            'source' => 'PICKING_REVERSAL',
+            'source' => 'ORDER_COMPLETE_REVERSAL',
             'qty' => 1,
             'bin_id' => $binId,
         ]);
@@ -307,7 +311,7 @@ class PickingDoesNotEatBinAllocationTest extends TestCase
         $this->assertSame(0, (int) DB::table('picklist_items')->where('id', $ids['item_id'])->value('qty_picked'));
         $this->assertDatabaseCount('picklist_item_allocations', 0);
         $this->assertDatabaseMissing('inventory_movements', [
-            'source' => 'PICKING',
+            'source' => 'INVOICE',
             'bin_id' => $binId,
         ]);
     }

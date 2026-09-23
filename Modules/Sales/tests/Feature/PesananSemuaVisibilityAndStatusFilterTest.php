@@ -173,6 +173,26 @@ class PesananSemuaVisibilityAndStatusFilterTest extends TestCase
         $this->assertContains('SO-BELUM-PROSES', $nos);
     }
 
+    public function test_filtered_tab_counts_match_the_filtered_order_table(): void
+    {
+        $user = $this->createPrivilegedUser();
+        $this->seedOrder('SO-SHOPEE-COUNT', ['source' => 'shopee']);
+        $this->seedOrder('SO-TIKTOK-COUNT', ['source' => 'tiktok']);
+
+        $counts = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/sales/counts?filter[channel]=shopee')
+            ->assertOk()
+            ->json('data');
+
+        $table = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/sales?tab=ready-to-process&filter[channel]=shopee')
+            ->assertOk();
+
+        $this->assertSame(1, $counts['all']);
+        $this->assertSame($table->json('meta.total'), $counts['ready-to-process']);
+        $this->assertSame(1, $counts['ready-to-process']);
+    }
+
     public function test_ready_to_process_tab_still_excludes_handed_to_warehouse_orders(): void
     {
         $user = $this->createPrivilegedUser();

@@ -5,8 +5,13 @@ namespace Modules\Channel\Repositories;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Modules\Channel\Models\DownloadTransaction;
+use Modules\Channel\Models\DownloadTransactionProduct;
+use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductSyncLog;
+use Ramsey\Uuid\Uuid;
 use Spatie\QueryBuilder\AllowedFilter;
+use Spatie\QueryBuilder\AllowedSort;
 use Spatie\QueryBuilder\QueryBuilder;
 
 class DownloadTransactionRepository
@@ -52,29 +57,88 @@ class DownloadTransactionRepository
             ->get(['payload', 'error_message', 'created_at']);
     }
 
-    public function paginateShopProducts(string $channelShopId): LengthAwarePaginator
+    public function paginateTransactionProducts(DownloadTransaction $transaction): LengthAwarePaginator
     {
-        return QueryBuilder::for(\Modules\Product\Models\Product::class)
-            ->whereIn('status', [
-                \Modules\Product\Models\Product::STATUS_MASTER,
-                \Modules\Product\Models\Product::STATUS_DOWNLOAD,
+        return QueryBuilder::for(Product::class)
+            ->select('products.*')
+            ->distinct()
+            ->join(
+                'download_transaction_products',
+                'download_transaction_products.product_id',
+                '=',
+                'products.id',
+            )
+            ->where('download_transaction_products.download_transaction_id', $transaction->id)
+            ->whereIn('products.status', [
+                Product::STATUS_MASTER,
+                Product::STATUS_DOWNLOAD,
             ])
-            ->whereHas('channelMappings', fn ($query) => $query->where('channel_shop_id', $channelShopId))
             ->with([
                 'media',
-                'channelMappings' => fn ($query) => $query->where('channel_shop_id', $channelShopId),
+                'channelMappings' => fn ($query) => $query->where('channel_shop_id', $transaction->channel_shop_id),
             ])
             ->allowedFilters(
                 AllowedFilter::callback('is_master', function ($query, $value) {
                     filter_var($value, FILTER_VALIDATE_BOOLEAN)
-                        ? $query->where('status', \Modules\Product\Models\Product::STATUS_MASTER)
-                        : $query->where('status', '!=', \Modules\Product\Models\Product::STATUS_MASTER);
+                        ? $query->where('products.status', Product::STATUS_MASTER)
+                        : $query->where('products.status', '!=', Product::STATUS_MASTER);
                 }),
             )
             ->allowedSearch('name', 'sku')
-            ->defaultSort('-updated_at')
-            ->allowedSorts('name', 'updated_at')
+            ->defaultSort('-products.updated_at')
+            ->allowedSorts(
+                AllowedSort::field('name', 'products.name'),
+                AllowedSort::field('updated_at', 'products.updated_at'),
+            )
             ->paginate(request('per_page', 20))
             ->appends(request()->query());
+    }
+
+    public function recordDownloadedProducts(DownloadTransaction $transaction, array $externalProductIds): void
+    {
+        $externalProductIds = array_values(array_unique(array_filter(array_map(
+            static fn ($id): string => trim((string) $id),
+            $externalProductIds,
+        ))));
+
+        if ($externalProductIds === []) {
+            return;
+        }
+
+        $mappings = ProductChannelMapping::query()
+            ->where('channel_shop_id', $transaction->channel_shop_id)
+            ->whereIn('external_product_id', $externalProductIds)
+            ->get(['product_id', 'external_product_id']);
+
+        if ($mappings->isEmpty()) {
+            return;
+        }
+
+        $now = now();
+        $rows = $mappings->map(static fn (ProductChannelMapping $mapping): array => [
+            'id' => Uuid::uuid7()->toString(),
+            'download_transaction_id' => $transaction->id,
+            'product_id' => $mapping->product_id,
+            'external_product_id' => $mapping->external_product_id,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ])->all();
+
+        DownloadTransactionProduct::query()->upsert(
+            $rows,
+            ['download_transaction_id', 'product_id', 'external_product_id'],
+            ['updated_at'],
+        );
+    }
+
+    public function recordDownloadedProductsUpdatedSince(DownloadTransaction $transaction): void
+    {
+        $externalProductIds = ProductChannelMapping::query()
+            ->where('channel_shop_id', $transaction->channel_shop_id)
+            ->where('updated_at', '>=', $transaction->created_at)
+            ->pluck('external_product_id')
+            ->all();
+
+        $this->recordDownloadedProducts($transaction, $externalProductIds);
     }
 }

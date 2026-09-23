@@ -7,6 +7,7 @@ use Modules\Outbound\Models\Picklist;
 use Modules\Outbound\Models\PicklistItem;
 use Modules\Sales\Events\OrderNeedsBuyerConfirmation;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Services\SalesInvoiceService;
 use Modules\Sales\Services\SalesOrderService as OrderService;
 
 class OrderReleaseService
@@ -14,6 +15,7 @@ class OrderReleaseService
     public function __construct(
         protected OrderService $orderService,
         protected PicklistInvoiceStockService $picklistInvoiceStockService,
+        protected SalesInvoiceService $salesInvoiceService,
     ) {}
 
     public function markOrderPickedIfComplete(Picklist $picklist, string $orderId): bool
@@ -124,6 +126,8 @@ class OrderReleaseService
         }
 
         if ($shortItems->isNotEmpty()) {
+            $this->salesInvoiceService->cancelDraftForOrder((string) $order->id);
+
             DB::table('sales_orders')
                 ->where('id', $order->id)
                 ->update([
@@ -151,6 +155,15 @@ class OrderReleaseService
         }
 
         $actorId = $picklist->picker_id ? (string) $picklist->picker_id : (auth()->id() ? (string) auth()->id() : 'system');
+
+        $invoice = $this->salesInvoiceService->finalizeForOrder((string) $order->id);
+        if (! $invoice) {
+            $invoice = $this->salesInvoiceService->createFromOrder([
+                'order_id' => (string) $order->id,
+                'location_id' => (string) $order->location_id,
+                'created_by' => $actorId,
+            ]);
+        }
 
         $this->picklistInvoiceStockService->post($picklist, $order, $actorId);
 

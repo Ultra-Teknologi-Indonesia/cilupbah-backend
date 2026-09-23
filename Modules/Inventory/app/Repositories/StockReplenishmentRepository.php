@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Models\StockReplenishmentRequest;
 use Modules\Inventory\Models\StockReplenishmentRequestItem;
 use Modules\Inventory\Support\StockSummary;
+use Modules\Product\Models\ProductVariant;
+use Modules\Product\Support\TechnicalSku;
 
 class StockReplenishmentRepository
 {
@@ -72,8 +74,7 @@ class StockReplenishmentRepository
     {
         $query = StockReplenishmentRequest::with(self::DETAIL_RELATIONS)
             ->withCount('items')
-            ->withSum('items', 'qty')
-            ;
+            ->withSum('items', 'qty');
         $this->applyLocationScope($query);
 
         return $query->find($id);
@@ -107,6 +108,7 @@ class StockReplenishmentRepository
         $query = StockReplenishmentRequestItem::query()
             ->where('stock_replenishment_request_items.request_id', $requestId)
             ->with([
+                'request:id,source',
                 'variant.media' => fn ($q) => $q->orderBy('sort_order'),
                 'variant.product.media' => fn ($q) => $q
                     ->whereNull('variant_id')
@@ -326,6 +328,87 @@ class StockReplenishmentRepository
             ->keyBy('item_id');
     }
 
+    public function autoFillCandidatesForLocation(string $locationId): Collection
+    {
+        WarehouseAccess::assert($locationId);
+
+        $inventory = DB::table('inventories as i')
+            ->leftJoin('location_bins as b', 'b.id', '=', 'i.bin_id')
+            ->where('i.location_id', $locationId)
+            ->groupBy('i.item_id')
+            ->select('i.item_id')
+            ->selectRaw(StockSummary::placedOnHandSql('i', 'b').' as placed_on_hand')
+            ->selectRaw(StockSummary::onOrderSql('i').' as on_order');
+
+        return TechnicalSku::exclude(ProductVariant::query(), 'product_variants.sku')
+            ->join('products', 'products.id', '=', 'product_variants.product_id')
+            ->leftJoinSub($inventory, 'inventory', 'inventory.item_id', '=', 'product_variants.id')
+            ->where('products.is_stored', true)
+            ->where('products.is_bundle', false)
+            ->whereNull('products.deleted_at')
+            ->where('product_variants.is_active', true)
+            ->where('product_variants.safe_stock', '>', 0)
+            ->whereRaw('COALESCE(inventory.placed_on_hand, 0) <= 0')
+            ->orderBy('product_variants.sku')
+            ->get([
+                'product_variants.id as item_id',
+                'product_variants.sku',
+                'product_variants.safe_stock',
+                DB::raw('COALESCE(inventory.placed_on_hand, 0) as on_hand'),
+                DB::raw('(COALESCE(inventory.placed_on_hand, 0) - COALESCE(inventory.on_order, 0)) as available'),
+                DB::raw('GREATEST(product_variants.safe_stock - COALESCE(inventory.placed_on_hand, 0), 0) as target_qty'),
+            ])
+            ->keyBy('item_id');
+    }
+
+    public function pendingItemIdsForRoute(
+        string $fromLocationId,
+        string $toLocationId,
+        ?array $sources = null,
+    ): Collection {
+        WarehouseAccess::assert($fromLocationId);
+        WarehouseAccess::assert($toLocationId);
+
+        return DB::table('stock_replenishment_request_items as ri')
+            ->join('stock_replenishment_requests as r', 'r.id', '=', 'ri.request_id')
+            ->where('r.from_location_id', $fromLocationId)
+            ->where('r.to_location_id', $toLocationId)
+            ->where('r.status', StockReplenishmentRequest::STATUS_PENDING)
+            ->when($sources !== null, fn ($query) => $query->whereIn('r.source', $sources))
+            ->pluck('ri.item_id');
+    }
+
+    public function acceptedItemIdsForRoute(string $fromLocationId, string $toLocationId): Collection
+    {
+        WarehouseAccess::assert($fromLocationId);
+        WarehouseAccess::assert($toLocationId);
+
+        return DB::table('stock_replenishment_request_items as ri')
+            ->join('stock_replenishment_requests as r', 'r.id', '=', 'ri.request_id')
+            ->where('r.from_location_id', $fromLocationId)
+            ->where('r.to_location_id', $toLocationId)
+            ->where('r.status', StockReplenishmentRequest::STATUS_ACCEPTED)
+            ->pluck('ri.item_id');
+    }
+
+    public function manualTransferInTransitItemIds(string $fromLocationId, string $toLocationId): Collection
+    {
+        WarehouseAccess::assert($fromLocationId);
+        WarehouseAccess::assert($toLocationId);
+
+        return DB::table('inventory_transfer_items as ti')
+            ->join('inventory_transfers as t', 't.id', '=', 'ti.inventory_transfer_id')
+            ->where('t.source_location_id', $fromLocationId)
+            ->where('t.destination_location_id', $toLocationId)
+            ->where('t.status', 'IN_TRANSIT')
+            ->whereNotExists(function ($query) {
+                $query->selectRaw('1')
+                    ->from('stock_replenishment_requests as r')
+                    ->whereColumn('r.transfer_out_id', 't.id');
+            })
+            ->pluck('ti.item_id');
+    }
+
     public function shortagesForLocation(string $locationId, ?array $itemIds = null): Collection
     {
         $demand = $this->demandForLocation($locationId, $itemIds);
@@ -361,8 +444,11 @@ class StockReplenishmentRepository
         });
     }
 
-    public function pendingForRouteForUpdate(string $fromLocationId, string $toLocationId): Collection
-    {
+    public function pendingForRouteForUpdate(
+        string $fromLocationId,
+        string $toLocationId,
+        ?array $sources = null,
+    ): Collection {
         WarehouseAccess::assert($fromLocationId);
         WarehouseAccess::assert($toLocationId);
 
@@ -370,6 +456,7 @@ class StockReplenishmentRepository
             ->where('from_location_id', $fromLocationId)
             ->where('to_location_id', $toLocationId)
             ->where('status', StockReplenishmentRequest::STATUS_PENDING)
+            ->when($sources !== null, fn ($query) => $query->whereIn('source', $sources))
             ->orderBy('requested_at')
             ->lockForUpdate()
             ->get();
@@ -385,5 +472,4 @@ class StockReplenishmentRepository
             });
         }
     }
-
 }

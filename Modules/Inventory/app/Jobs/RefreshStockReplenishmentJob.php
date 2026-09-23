@@ -31,7 +31,7 @@ class RefreshStockReplenishmentJob implements ShouldBeUnique, ShouldQueue
 
     public function handle(StockReplenishmentService $service): void
     {
-        $service->reconcileAutoBatch();
+        $service->autoDetect();
     }
 
     public function failed(\Throwable $exception): void

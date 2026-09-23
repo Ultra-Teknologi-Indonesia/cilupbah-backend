@@ -9,9 +9,13 @@ class StockReplenishmentItemResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        $isAutoFill = $this->relationLoaded('request')
+            && $this->request?->source === 'AUTO';
         $reasonDetail = [
-            'type' => 'stock_shortage',
-            'label' => 'Kekurangan stok dari pesanan aktif',
+            'type' => $isAutoFill ? 'auto_safe_stock' : 'stock_shortage',
+            'label' => $isAutoFill
+                ? 'Pengisian otomatis ke batas stok aman'
+                : 'Kekurangan stok dari pesanan aktif',
             'demand_qty' => (int) $this->demand_qty,
             'available_qty' => (int) $this->available_qty,
             'in_flight_qty' => (int) $this->in_flight_qty,

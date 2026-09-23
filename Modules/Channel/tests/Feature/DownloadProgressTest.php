@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Models\DownloadTransaction;
+use Modules\Channel\Models\DownloadTransactionProduct;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductMedia;
@@ -106,6 +107,7 @@ class DownloadProgressTest extends TestCase
             'external_product_id' => 'EXT-PRD-1',
             'sync_status' => 'synced',
         ]);
+        $this->markDownloaded($trx, $product, 'EXT-PRD-1');
 
         $response = $this->getJson("/api/v1/download-transactions/{$trx->id}");
 
@@ -151,6 +153,7 @@ class DownloadProgressTest extends TestCase
             'external_product_id' => 'EXT-MASTER-CODE',
             'sync_status' => 'synced',
         ]);
+        $this->markDownloaded($trx, $product, 'EXT-MASTER-CODE');
 
         $item = $this->getJson("/api/v1/download-transactions/{$trx->id}")
             ->json('data.products.0');
@@ -170,9 +173,11 @@ class DownloadProgressTest extends TestCase
 
         $master = Product::create(['name' => 'Master Case', 'category_id' => 1, 'status' => Product::STATUS_MASTER, 'is_active' => true]);
         ProductChannelMapping::create(['product_id' => $master->id, 'channel_shop_id' => $this->shop->id, 'external_product_id' => 'EXT-M', 'sync_status' => 'synced']);
+        $this->markDownloaded($trx, $master, 'EXT-M');
 
         $belum = Product::create(['name' => 'Belum Case', 'category_id' => 1, 'status' => Product::STATUS_DOWNLOAD, 'is_active' => true]);
         ProductChannelMapping::create(['product_id' => $belum->id, 'channel_shop_id' => $this->shop->id, 'external_product_id' => 'EXT-D', 'sync_status' => 'synced']);
+        $this->markDownloaded($trx, $belum, 'EXT-D');
 
         $items = collect($this->getJson("/api/v1/download-transactions/{$trx->id}")->json('data.products'))
             ->keyBy('item_name');
@@ -192,5 +197,37 @@ class DownloadProgressTest extends TestCase
     {
         $this->getJson('/api/v1/download-transactions/00000000-0000-0000-0000-000000000000')
             ->assertStatus(404);
+    }
+
+    public function test_detail_only_returns_products_recorded_for_the_transaction(): void
+    {
+        $trx = DownloadTransaction::create([
+            'channel_shop_id' => $this->shop->id,
+            'state' => 'done',
+            'all_product' => 1,
+            'total_downloaded' => 1,
+            'progress_percent' => 100,
+        ]);
+        $downloaded = Product::create(['name' => 'Produk Transaksi Ini', 'category_id' => 1, 'status' => Product::STATUS_DOWNLOAD, 'is_active' => true]);
+        $other = Product::create(['name' => 'Produk Download Lama', 'category_id' => 1, 'status' => Product::STATUS_DOWNLOAD, 'is_active' => true]);
+
+        ProductChannelMapping::create(['product_id' => $downloaded->id, 'channel_shop_id' => $this->shop->id, 'external_product_id' => 'EXT-NEW', 'sync_status' => 'synced']);
+        ProductChannelMapping::create(['product_id' => $other->id, 'channel_shop_id' => $this->shop->id, 'external_product_id' => 'EXT-OLD', 'sync_status' => 'synced']);
+        $this->markDownloaded($trx, $downloaded, 'EXT-NEW');
+
+        $response = $this->getJson("/api/v1/download-transactions/{$trx->id}");
+
+        $response->assertOk()
+            ->assertJsonPath('data.count', 1)
+            ->assertJsonPath('data.products.0.item_name', 'Produk Transaksi Ini');
+    }
+
+    private function markDownloaded(DownloadTransaction $transaction, Product $product, string $externalProductId): void
+    {
+        DownloadTransactionProduct::create([
+            'download_transaction_id' => $transaction->id,
+            'product_id' => $product->id,
+            'external_product_id' => $externalProductId,
+        ]);
     }
 }

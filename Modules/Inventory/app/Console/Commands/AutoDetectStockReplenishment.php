@@ -10,7 +10,7 @@ class AutoDetectStockReplenishment extends Command
     protected $signature = 'replenishment:auto-detect
         {--dry-run : Hanya tampilkan preview, tidak mengubah request pending}';
 
-    protected $description = 'Sinkronkan baris request restock yang sudah dipilih dari Monitor Stok.';
+    protected $description = 'Sinkronkan pengisian otomatis stok habis ke batas stok aman dan request Monitor Stok.';
 
     public function handle(StockReplenishmentService $service): int
     {

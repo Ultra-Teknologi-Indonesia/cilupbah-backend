@@ -73,7 +73,9 @@ class SalesInvoiceService
 
             $invoice->total_amount = $invoice->items()->sum('subtotal');
             $invoice->save();
-            SalesInvoiceFinalized::dispatch($invoice->refresh());
+            if ($invoice->status !== SalesInvoice::STATUS_DRAFT) {
+                SalesInvoiceFinalized::dispatch($invoice->refresh());
+            }
 
             return $invoice->load('items');
         });
@@ -111,7 +113,8 @@ class SalesInvoiceService
 
             $existingQuery = SalesInvoice::where('order_id', $order->id)
                 ->where('status', '!=', SalesInvoice::STATUS_CANCELLED)
-                ->with('items');
+                ->with('items')
+                ->lockForUpdate();
             WarehouseAccess::apply($existingQuery, 'location_id');
             $existing = $existingQuery->first();
 
@@ -131,7 +134,7 @@ class SalesInvoiceService
                 'order_id' => $order->id,
                 'customer_name' => $order->customer_name,
                 'location_id' => $data['location_id'] ?? $order->location_id,
-                'status' => SalesInvoice::STATUS_OPEN,
+                'status' => $data['status'] ?? SalesInvoice::STATUS_OPEN,
                 'invoice_date' => now()->toDateString(),
                 'due_date' => $data['due_date'] ?? now()->addDays(30)->toDateString(),
                 'total_amount' => 0,
@@ -156,10 +159,83 @@ class SalesInvoiceService
 
             $invoice->total_amount = $invoice->items()->sum('subtotal');
             $invoice->save();
-            SalesInvoiceFinalized::dispatch($invoice->refresh());
+            if ($invoice->status !== SalesInvoice::STATUS_DRAFT) {
+                SalesInvoiceFinalized::dispatch($invoice->refresh());
+            }
 
             return $invoice->load('items');
         });
+    }
+
+    public function ensureDraftFromOrder(SalesOrder $order, string $createdBy): SalesInvoice
+    {
+        return DB::transaction(function () use ($order, $createdBy): SalesInvoice {
+            $existing = SalesInvoice::query()
+                ->where('order_id', $order->id)
+                ->whereIn('status', [
+                    SalesInvoice::STATUS_DRAFT,
+                    SalesInvoice::STATUS_OPEN,
+                    SalesInvoice::STATUS_PAID,
+                ])
+                ->with('items')
+                ->lockForUpdate()
+                ->first();
+
+            if ($existing) {
+                return $existing;
+            }
+
+            return $this->createFromOrder([
+                'order_id' => (string) $order->id,
+                'location_id' => (string) $order->location_id,
+                'created_by' => $createdBy,
+                'status' => SalesInvoice::STATUS_DRAFT,
+            ]);
+        });
+    }
+
+    public function finalizeForOrder(string $orderId): ?SalesInvoice
+    {
+        return DB::transaction(function () use ($orderId): ?SalesInvoice {
+            $invoice = SalesInvoice::query()
+                ->where('order_id', $orderId)
+                ->whereIn('status', [
+                    SalesInvoice::STATUS_DRAFT,
+                    SalesInvoice::STATUS_OPEN,
+                    SalesInvoice::STATUS_PAID,
+                ])
+                ->with('items')
+                ->lockForUpdate()
+                ->orderByDesc('created_at')
+                ->first();
+
+            if (! $invoice) {
+                return null;
+            }
+
+            if ($invoice->status === SalesInvoice::STATUS_DRAFT) {
+                $invoice->forceFill(['status' => SalesInvoice::STATUS_OPEN])->save();
+                SalesInvoiceFinalized::dispatch($invoice->refresh());
+            }
+
+            return $invoice->fresh('items');
+        });
+    }
+
+    public function cancelDraftForOrder(string $orderId): void
+    {
+        SalesInvoice::query()
+            ->where('order_id', $orderId)
+            ->where('status', SalesInvoice::STATUS_DRAFT)
+            ->update(['status' => SalesInvoice::STATUS_CANCELLED]);
+    }
+
+    public function hasFinalizedForOrder(string $orderId): bool
+    {
+        return SalesInvoice::query()
+            ->where('order_id', $orderId)
+            ->whereIn('status', [SalesInvoice::STATUS_OPEN, SalesInvoice::STATUS_PAID])
+            ->exists();
     }
 
     public function createFromOrderWithPayment(array $data): array

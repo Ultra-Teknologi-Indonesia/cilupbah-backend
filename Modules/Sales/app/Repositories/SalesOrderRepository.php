@@ -6,7 +6,6 @@ use App\Exceptions\UserFacingException;
 use App\Support\WarehouseAccess;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Outbound\Services\CourierMappingService;
@@ -70,14 +69,22 @@ class SalesOrderRepository
 
     public function getPaginatedOrders()
     {
+        $query = $this->filteredOrdersQuery()
+            ->withStockShortfallFlag()
+            ->with(self::LIST_RELATIONS);
 
+        return $this->applyListTabScope($query, request('tab'), request('sub'))
+            ->paginate(request('per_page', 20))
+            ->appends(request()->query());
+    }
+
+    protected function filteredOrdersQuery(): QueryBuilder
+    {
         if ($legacySort = $this->mapLegacySort()) {
             request()->merge(['sort' => $legacySort]);
         }
 
         $query = QueryBuilder::for(SalesOrder::class)
-            ->withStockShortfallFlag()
-            ->with(self::LIST_RELATIONS)
             ->allowedFilters(
                 AllowedFilter::callback('item_id', fn ($q, $value) => $q->whereHas('items', fn ($q2) => $q2->whereIn('item_id', (array) $value))),
                 AllowedFilter::exact('channel', 'source'),
@@ -104,28 +111,6 @@ class SalesOrderRepository
             $query->excludeShadow();
         }
 
-        $tab = request('tab');
-        $sub = request('sub');
-        if ($tab && $tab !== 'all') {
-            $query = $this->applyTabScope($query, $tab, $sub);
-
-            if ($tab !== 'failed') {
-                $query = $this->scopeExcludeFailedDownload($query);
-            }
-        } else {
-
-            if (! filled(request()->input('filter.status'))) {
-                $query = $this->applyTabScope($query, 'all');
-            }
-
-            $query = $this->scopeExcludeFailedDownload($query);
-        }
-
-        if ($tab && $tab !== 'all') {
-
-            $query = $this->scopeExcludeHandedToWarehouse($query);
-        }
-
         $orderSearchColumns = array_merge(SalesOrder::SEARCH_COLUMNS, [
             'shipmentOrders.tracking_number',
         ]);
@@ -150,9 +135,26 @@ class SalesOrderRepository
 
         WarehouseAccess::apply($query, 'sales_orders.location_id');
 
-        return $query
-            ->paginate(request('per_page', 20))
-            ->appends(request()->query());
+        return $query;
+    }
+
+    protected function applyListTabScope($query, ?string $tab, ?string $sub = null)
+    {
+        if ($tab && $tab !== 'all') {
+            $query = $this->applyTabScope($query, $tab, $sub);
+
+            if ($tab !== 'failed') {
+                $query = $this->scopeExcludeFailedDownload($query);
+            }
+
+            return $this->scopeExcludeHandedToWarehouse($query);
+        }
+
+        if (! filled(request()->input('filter.status'))) {
+            $query = $this->applyTabScope($query, 'all');
+        }
+
+        return $this->scopeExcludeFailedDownload($query);
     }
 
     protected function mapLegacySort(): ?string
@@ -166,62 +168,29 @@ class SalesOrderRepository
         return (request('sort_dir', 'desc') === 'asc' ? '' : '-').$sortBy;
     }
 
-    public function getTabCounts(?string $locationId = null): array
+    public function getTabCounts(): array
     {
-        $scopeKey = implode(',', WarehouseAccess::allowedIds() ?? ['all']);
-        $cacheKey = 'sales_order_tab_counts:'.($locationId ?? 'all').':'.$scopeKey;
+        $baseQuery = $this->filteredOrdersQuery();
+        $count = fn (string $tab) => $this->applyListTabScope(clone $baseQuery, $tab)->count();
 
-        return Cache::remember($cacheKey, 15, function () use ($locationId) {
-            $emptyStockItemConstraint = fn ($q) => $q->whereRaw(SalesOrder::shortfallItemWhereRaw());
-
-            return [
-                'all' => $this->withLocation($this->scopeExcludeFailedDownload(SalesOrder::query()), $locationId)->count(),
-                'unpaid' => $this->visibleOrders($locationId)->where('status', 'pending')->where('is_paid', false)->count(),
-                'failed' => $this->withLocation($this->scopeFailedDownload(SalesOrder::query()), $locationId)->count(),
-                'ready-to-process' => $this->readyToProcessQuery($locationId)->count(),
-                'empty-stock' => $this->visibleOrders($locationId)->where('status', 'reserved')
-                    ->whereNull('pick_failed_at')
-                    ->whereHas('items', $emptyStockItemConstraint)
-                    ->count(),
-                'failed-pick' => $this->visibleOrders($locationId)->where('status', 'reserved')
-                    ->whereNotNull('pick_failed_at')
-                    ->count(),
-                'cancellation' => $this->visibleOrders($locationId)
-                    ->where(function ($q) {
-                        $q->whereIn('channel_status', ['IN_CANCEL', 'Request Cancel', 'Order Request Cancel'])
-                            ->orWhereIn('channel_status_raw', ['IN_CANCEL', 'REQUEST_CANCEL', 'AWAITING_CANCEL'])
-                            ->orWhere(function ($subQ) {
-                                $subQ->whereNotNull('cancel_requested_at')
-                                    ->whereNull('cancel_accepted_at')
-                                    ->whereNull('cancel_rejected_at')
-                                    ->whereNotIn('status', ['cancelled', 'shipped', 'completed']);
-                            });
-                    })
-                    ->where('status', '!=', 'cancelled')
-                    ->count(),
-                'cancellation_post_pack' => $this->visibleOrders($locationId)
-                    ->whereNotNull('handed_to_warehouse_at')
-                    ->where(function ($q) {
-                        $q->whereIn('channel_status', ['IN_CANCEL', 'Request Cancel', 'Order Request Cancel'])
-                            ->orWhereIn('channel_status_raw', ['IN_CANCEL', 'REQUEST_CANCEL', 'AWAITING_CANCEL'])
-                            ->orWhere(function ($subQ) {
-                                $subQ->whereNotNull('cancel_requested_at')
-                                    ->whereNotIn('status', ['cancelled', 'shipped', 'completed']);
-                            });
-                    })
-                    ->where('status', '!=', 'cancelled')
-                    ->count(),
-                'channel-cancel' => $this->visibleOrders($locationId)
-                    ->whereIn('channel_cancel_status', ['pending', 'failed'])->count(),
-                'returned' => $this->visibleOrders($locationId)->whereHas('returns')->count(),
-            ];
-        });
-    }
-
-    public function forgetTabCounts(?string $locationId = null): void
-    {
-        $scopeKey = implode(',', WarehouseAccess::allowedIds() ?? ['all']);
-        Cache::forget('sales_order_tab_counts:'.($locationId ?? 'all').':'.$scopeKey);
+        return [
+            'all' => $count('all'),
+            'unpaid' => $count('unpaid'),
+            'failed' => $count('failed'),
+            'ready-to-process' => $count('ready-to-process'),
+            'in-transit' => $count('in-transit'),
+            'completed' => $count('completed'),
+            'empty-stock' => $count('empty-stock'),
+            'failed-pick' => $count('failed-pick'),
+            'cancellation' => $count('cancellation'),
+            'cancellation_post_pack' => $this->applyListTabScope(
+                clone $baseQuery,
+                'cancellation',
+                'post_pack',
+            )->count(),
+            'channel-cancel' => $count('channel-cancel'),
+            'returned' => $count('returned'),
+        ];
     }
 
     public function readyToProcessQuery(?string $locationId = null): Builder

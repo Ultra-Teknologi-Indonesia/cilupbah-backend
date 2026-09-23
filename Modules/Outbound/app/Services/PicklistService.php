@@ -28,11 +28,12 @@ use Modules\Outbound\Models\PicklistItem;
 use Modules\Outbound\Models\PicklistItemAllocation;
 use Modules\Outbound\Repositories\PicklistRepository;
 use Modules\Product\Repositories\ProductRepository;
-use Modules\Sales\Models\SalesOrder as Order;
-use Modules\Sales\Models\SalesOrderStatusHistory;
 use Modules\Sales\Enums\OrderActivityAction;
 use Modules\Sales\Enums\OrderActivityEntity;
 use Modules\Sales\Exceptions\InsufficientStockException;
+use Modules\Sales\Models\SalesOrder as Order;
+use Modules\Sales\Models\SalesOrderStatusHistory;
+use Modules\Sales\Services\SalesInvoiceService;
 use Modules\Sales\Services\StockService;
 use Modules\Warehouse\Models\Location;
 use Modules\Warehouse\Models\LocationBin;
@@ -50,6 +51,7 @@ class PicklistService
         protected PicklistOrderGuard $picklistOrderGuard,
         protected OrderReleaseService $orderReleaseService,
         protected StockService $stockService,
+        protected SalesInvoiceService $salesInvoiceService,
     ) {}
 
     protected function assignedToColumn(Model $doc): string
@@ -376,7 +378,7 @@ class PicklistService
         }
 
         $assigner = null;
-        if (\Ramsey\Uuid\Uuid::isValid($assignedBy)) {
+        if (Uuid::isValid($assignedBy)) {
             $assigner = User::find($assignedBy);
         }
 
@@ -391,19 +393,19 @@ class PicklistService
 
         foreach ($orderIds as $orderId) {
             $histories[] = [
-                'id'            => Uuid::uuid7()->toString(),
+                'id' => Uuid::uuid7()->toString(),
                 'salesorder_id' => $orderId,
-                'entity_type'   => $entityType->value,
-                'action_id'     => $action->code(),
-                'action'        => $action->value,
-                'actor_email'   => $email,
-                'actor_id'      => $assignedBy,
-                'actor_name'    => $name,
-                'metadata'      => json_encode([
+                'entity_type' => $entityType->value,
+                'action_id' => $action->code(),
+                'action' => $action->value,
+                'actor_email' => $email,
+                'actor_id' => $assignedBy,
+                'actor_name' => $name,
+                'metadata' => json_encode([
                     'entity_no' => $picklist->picklist_no,
-                    'note'      => 'Tugas picking diberikan kepada tim picking.'
+                    'note' => 'Tugas picking diberikan kepada tim picking.',
                 ]),
-                'created_at'    => $now,
+                'created_at' => $now,
             ];
         }
 
@@ -516,6 +518,9 @@ class PicklistService
 
             if ($delta > 0) {
                 $this->assertInventoryForPick($item, (string) $picklist->location_id, $bin);
+                if ($pickOrder) {
+                    $this->salesInvoiceService->ensureDraftFromOrder($pickOrder, $userId);
+                }
                 $this->commitPickAllocation($picklist, $item, $bin, $delta, $userId, $pickOrder);
 
                 $this->picklistRepository->updateItem($itemId, [
@@ -672,6 +677,13 @@ class PicklistService
 
                 if (! $item) {
                     throw new OutboundValidationException('Item picklist tidak ditemukan.');
+                }
+
+                if ($item->order_id && $this->salesInvoiceService->hasFinalizedForOrder((string) $item->order_id)) {
+                    $orderNo = $orderReferences->get($item->order_id)?->salesorder_no ?? (string) $item->order_id;
+                    throw new OutboundValidationException(
+                        "Pesanan {$orderNo} sudah memiliki invoice final. Koreksi picking harus dilakukan melalui pembatalan invoice yang sesuai."
+                    );
                 }
 
                 $qtyRev = $qty ?? (int) $item->qty_picked;
@@ -1104,8 +1116,7 @@ class PicklistService
         int $qty,
         string $userId,
         ?Order $order = null,
-    ): void
-    {
+    ): void {
         if ($qty <= 0) {
             return;
         }
@@ -1136,7 +1147,7 @@ class PicklistService
                 (string) $bin->id,
                 $qty,
                 $this->pickTransactionNumber($picklist, $item, $order),
-                'PICKING',
+                'INVOICE',
                 $userId ?: 'system',
                 now(),
                 $this->orderReference($order),
@@ -1225,7 +1236,7 @@ class PicklistService
                     ? InventoryMovement::query()->whereKey($allocation->movement_id)->value('source')
                     : null;
 
-                if ($movementSource === 'PICKING') {
+                if (in_array($movementSource, ['PICKING', 'INVOICE'], true)) {
                     $this->stockService->restorePickedFromBin(
                         (string) $item->sku,
                         (string) $item->item_id,
@@ -1236,6 +1247,7 @@ class PicklistService
                         $userId ?: 'system',
                         now(),
                         $referenceNumber,
+                        $movementSource === 'INVOICE' ? 'ORDER_COMPLETE_REVERSAL' : 'PICKING_REVERSAL',
                     );
                 } else {
                     $this->inventoryService->reversePick([

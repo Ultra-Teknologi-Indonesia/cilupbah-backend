@@ -2,9 +2,11 @@
 
 namespace Modules\Channel\Models;
 
+use App\Models\User;
 use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
 
 class DownloadTransaction extends Model
@@ -12,8 +14,11 @@ class DownloadTransaction extends Model
     use HasUuid7;
 
     public const STATE_QUEUED = 'queued';
+
     public const STATE_DOWNLOADING = 'downloading';
+
     public const STATE_DONE = 'done';
+
     public const STATE_FAILED = 'failed';
 
     protected $fillable = [
@@ -41,7 +46,7 @@ class DownloadTransaction extends Model
         static::creating(function (DownloadTransaction $transaction) {
             if (empty($transaction->trx_no)) {
                 $next = DB::selectOne("SELECT nextval('download_transactions_trx_seq') AS n")->n;
-                $transaction->trx_no = 'DWNLD-' . str_pad((string) $next, 7, '0', STR_PAD_LEFT);
+                $transaction->trx_no = 'DWNLD-'.str_pad((string) $next, 7, '0', STR_PAD_LEFT);
             }
         });
     }
@@ -53,7 +58,12 @@ class DownloadTransaction extends Model
 
     public function executor(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\User::class, 'executed_by');
+        return $this->belongsTo(User::class, 'executed_by');
+    }
+
+    public function products(): HasMany
+    {
+        return $this->hasMany(DownloadTransactionProduct::class);
     }
 
     public function markDownloading(int $allProduct = 0): void

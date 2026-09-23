@@ -26,9 +26,9 @@ final class DownloadTransactionService
         return $this->repository->find($id);
     }
 
-    public function paginateShopProducts(string $channelShopId): LengthAwarePaginator
+    public function paginateProducts(DownloadTransaction $transaction): LengthAwarePaginator
     {
-        return $this->repository->paginateShopProducts($channelShopId);
+        return $this->repository->paginateTransactionProducts($transaction);
     }
 
     public function failures(DownloadTransaction $transaction): DownloadFailureReport

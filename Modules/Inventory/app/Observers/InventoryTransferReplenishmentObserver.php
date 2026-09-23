@@ -8,6 +8,11 @@ use Modules\Inventory\Models\StockReplenishmentRequest;
 
 class InventoryTransferReplenishmentObserver
 {
+    public function created(InventoryTransfer $transfer): void
+    {
+        RefreshStockReplenishmentJob::dispatch($transfer->destination_location_id)->afterCommit();
+    }
+
     public function updated(InventoryTransfer $transfer): void
     {
         if (! $transfer->wasChanged('status')) {
@@ -27,14 +32,13 @@ class InventoryTransferReplenishmentObserver
                     'done_at' => now(),
                 ]));
 
-            RefreshStockReplenishmentJob::dispatch($transfer->destination_location_id)->afterCommit();
         }
 
         if ($transfer->status === InventoryTransfer::STATUS_CANCELLED) {
             self::cancelLinkedRequests($transfer, detachTransfer: false);
-
-            RefreshStockReplenishmentJob::dispatch($transfer->destination_location_id)->afterCommit();
         }
+
+        RefreshStockReplenishmentJob::dispatch($transfer->destination_location_id)->afterCommit();
     }
 
     public function deleting(InventoryTransfer $transfer): void

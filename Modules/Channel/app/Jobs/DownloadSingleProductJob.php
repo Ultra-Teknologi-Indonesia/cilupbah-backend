@@ -45,6 +45,7 @@ class DownloadSingleProductJob implements ShouldQueue
         $transaction->markDownloading(1);
 
         $service->downloadProduct($this->channel, $this->shopId, $this->externalProductId);
+        $service->recordDownloadedProducts($transaction, [$this->externalProductId]);
 
         $transaction->markDone(1, 0);
     }

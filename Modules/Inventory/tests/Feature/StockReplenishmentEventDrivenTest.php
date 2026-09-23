@@ -171,6 +171,196 @@ class StockReplenishmentEventDrivenTest extends TestCase
         $this->assertFalse($monitor->contains('id', $variant->id));
     }
 
+    public function test_auto_fill_creates_one_pending_request_at_safe_stock_when_placed_stock_is_zero(): void
+    {
+        $variant = $this->makeVariant('AUTO-SAFE-001');
+        $variant->update(['min_stock' => 99, 'safe_stock' => 12]);
+        $this->makeInventory($variant, 0, 0);
+
+        $result = app(StockReplenishmentService::class)->autoDetect();
+
+        $request = StockReplenishmentRequest::query()
+            ->where('source', StockReplenishmentRequest::SOURCE_AUTO)
+            ->where('status', StockReplenishmentRequest::STATUS_PENDING)
+            ->firstOrFail();
+        $item = $request->items()->firstOrFail();
+
+        $this->assertSame($request->id, $result['request']?->id);
+        $this->assertSame(1, StockReplenishmentRequest::where('status', StockReplenishmentRequest::STATUS_PENDING)->count());
+        $this->assertSame($variant->id, $item->item_id);
+        $this->assertSame(12, (int) $item->qty);
+        $this->assertSame(12, (int) $item->suggested_qty);
+        $this->assertSame(12, (int) $item->demand_qty);
+    }
+
+    public function test_auto_fill_restores_negative_placed_stock_up_to_safe_stock(): void
+    {
+        $variant = $this->makeVariant('AUTO-SAFE-NEGATIVE');
+        $variant->update(['safe_stock' => 8]);
+        $this->makeInventory($variant, -3, 0);
+
+        app(StockReplenishmentService::class)->autoDetect();
+
+        $item = StockReplenishmentRequest::where('source', StockReplenishmentRequest::SOURCE_AUTO)
+            ->firstOrFail()
+            ->items()
+            ->firstOrFail();
+
+        $this->assertSame(11, (int) $item->qty);
+        $this->assertSame(8, (int) $item->demand_qty);
+    }
+
+    public function test_auto_fill_ignores_safe_stock_zero_and_stock_that_is_already_placed(): void
+    {
+        $noSafeStock = $this->makeVariant('AUTO-SAFE-000');
+        $noSafeStock->update(['safe_stock' => 0]);
+        $this->makeInventory($noSafeStock, 0, 0);
+
+        $placedStock = $this->makeVariant('AUTO-SAFE-PLACED');
+        $placedStock->update(['safe_stock' => 12]);
+        $this->makeInventory($placedStock, 1, 0);
+
+        app(StockReplenishmentService::class)->autoDetect();
+
+        $this->assertSame(0, StockReplenishmentRequest::where('source', StockReplenishmentRequest::SOURCE_AUTO)->count());
+    }
+
+    public function test_auto_fill_cancels_when_stock_is_placed_in_destination_warehouse(): void
+    {
+        $variant = $this->makeVariant('AUTO-PUTAWAY-001');
+        $variant->update(['safe_stock' => 7]);
+        $this->makeInventory($variant, 0, 0);
+        $service = app(StockReplenishmentService::class);
+        $service->autoDetect();
+
+        $request = StockReplenishmentRequest::where('source', StockReplenishmentRequest::SOURCE_AUTO)
+            ->firstOrFail();
+
+        Inventory::where('item_id', $variant->id)
+            ->where('location_id', $this->small->id)
+            ->update(['on_hand' => 1, 'available' => 1]);
+        $service->autoDetect();
+
+        $this->assertSame(StockReplenishmentRequest::STATUS_CANCELLED, $request->fresh()->status);
+        $this->assertSame(0, $request->fresh()->items()->count());
+        $this->assertSame(
+            'Semua SKU tidak lagi memenuhi aturan pengisian otomatis.',
+            $request->fresh()->cancel_reason,
+        );
+    }
+
+    public function test_auto_fill_does_not_duplicate_a_pending_manual_monitor_request(): void
+    {
+        $variant = $this->makeVariant('AUTO-MANUAL-GUARD-001');
+        $variant->update(['safe_stock' => 6]);
+        $this->makeInventory($variant, 0, 0);
+        $this->makeOrder($variant, 1);
+
+        $this->actingAs($this->createPrivilegedUser(), 'sanctum')
+            ->postJson('/api/v1/inventory/stock-replenishment/queue', [
+                'item_ids' => [$variant->id],
+            ])
+            ->assertSuccessful();
+
+        app(StockReplenishmentService::class)->autoDetect();
+
+        $this->assertSame(1, StockReplenishmentRequest::where('status', StockReplenishmentRequest::STATUS_PENDING)->count());
+        $this->assertSame(0, StockReplenishmentRequest::where('source', StockReplenishmentRequest::SOURCE_AUTO)->count());
+    }
+
+    public function test_manual_transfer_in_transit_cancels_auto_fill_and_reopens_it_when_reverted(): void
+    {
+        $variant = $this->makeVariant('AUTO-MANUAL-TRANSFER-001');
+        $variant->update(['safe_stock' => 6]);
+        $this->makeInventory($variant, 0, 0);
+        Inventory::create([
+            'item_id' => $variant->id,
+            'location_id' => $this->main->id,
+            'bin_id' => $this->mainBin->id,
+            'on_hand' => 10,
+            'on_order' => 0,
+            'available' => 10,
+            'avg_cost' => 100,
+        ]);
+
+        $replenishment = app(StockReplenishmentService::class);
+        $replenishment->autoDetect();
+        $autoRequest = StockReplenishmentRequest::where('source', StockReplenishmentRequest::SOURCE_AUTO)
+            ->firstOrFail();
+
+        $inventory = app(InventoryService::class);
+        $transfer = $inventory->createDraft([
+            'source_location_id' => $this->main->id,
+            'destination_location_id' => $this->small->id,
+            'created_by' => 'tester',
+        ]);
+        $inventory->addDraftItem($transfer->id, [
+            'item_id' => $variant->id,
+            'qty' => 1,
+            'source_bin_id' => $this->mainBin->id,
+        ]);
+        $inventory->approveTransfer($transfer->id, ['approved_by' => 'tester']);
+        $inventory->shipTransfer($transfer->id, ['shipped_by' => 'tester']);
+
+        $replenishment->autoDetect();
+
+        $this->assertSame(StockReplenishmentRequest::STATUS_CANCELLED, $autoRequest->fresh()->status);
+        $this->assertSame(0, $autoRequest->fresh()->items()->count());
+
+        $inventory->revertToDraft($transfer->id, ['actor' => 'tester']);
+        $replenishment->autoDetect();
+
+        $this->assertSame(1, StockReplenishmentRequest::query()
+            ->where('source', StockReplenishmentRequest::SOURCE_AUTO)
+            ->where('status', StockReplenishmentRequest::STATUS_PENDING)
+            ->count());
+    }
+
+    public function test_accepting_an_auto_fill_revalidates_after_manual_transfer_is_sent(): void
+    {
+        $variant = $this->makeVariant('AUTO-ACCEPT-GUARD-001');
+        $variant->update(['safe_stock' => 6]);
+        $this->makeInventory($variant, 0, 0);
+        Inventory::create([
+            'item_id' => $variant->id,
+            'location_id' => $this->main->id,
+            'bin_id' => $this->mainBin->id,
+            'on_hand' => 10,
+            'on_order' => 0,
+            'available' => 10,
+            'avg_cost' => 100,
+        ]);
+
+        $replenishment = app(StockReplenishmentService::class);
+        $replenishment->autoDetect();
+        $autoRequest = StockReplenishmentRequest::where('source', StockReplenishmentRequest::SOURCE_AUTO)
+            ->firstOrFail();
+
+        $inventory = app(InventoryService::class);
+        $transfer = $inventory->createDraft([
+            'source_location_id' => $this->main->id,
+            'destination_location_id' => $this->small->id,
+            'created_by' => 'tester',
+        ]);
+        $inventory->addDraftItem($transfer->id, [
+            'item_id' => $variant->id,
+            'qty' => 1,
+            'source_bin_id' => $this->mainBin->id,
+        ]);
+        $inventory->approveTransfer($transfer->id, ['approved_by' => 'tester']);
+        $inventory->shipTransfer($transfer->id, ['shipped_by' => 'tester']);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Antrian otomatis sudah tidak membutuhkan pengisian stok.');
+
+        try {
+            $replenishment->accept($autoRequest->id);
+        } finally {
+            $this->assertSame(StockReplenishmentRequest::STATUS_CANCELLED, $autoRequest->fresh()->status);
+            $this->assertSame(1, InventoryTransfer::count());
+        }
+    }
+
     public function test_reconciliation_is_idempotent_and_reacts_to_order_cancellation(): void
     {
         $variant = $this->makeVariant('EVT-002');

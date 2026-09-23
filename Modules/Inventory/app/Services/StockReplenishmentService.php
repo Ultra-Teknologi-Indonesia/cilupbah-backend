@@ -5,6 +5,7 @@ namespace Modules\Inventory\Services;
 use App\Models\User;
 use App\Support\WarehouseAccess;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Models\StockReplenishmentRequest;
@@ -89,9 +90,13 @@ class StockReplenishmentService
 
         $result = DB::transaction(function () use ($fromId, $toId, $itemIds): array {
             $this->lockRoute($fromId, $toId);
+            $queuedAutomatically = $this->repository
+                ->pendingItemIdsForRoute($fromId, $toId, [StockReplenishmentRequest::SOURCE_AUTO])
+                ->all();
             $shortages = $this->repository
                 ->shortagesForLocation($toId, $itemIds)
-                ->filter(fn ($row): bool => (int) $row->on_hand <= 0);
+                ->filter(fn ($row): bool => (int) $row->on_hand <= 0)
+                ->except($queuedAutomatically);
 
             if ($shortages->isEmpty()) {
                 $request = $this->repository
@@ -143,6 +148,15 @@ class StockReplenishmentService
 
             if ($request->status !== StockReplenishmentRequest::STATUS_PENDING) {
                 throw new \RuntimeException('Permintaan sudah tidak dalam status pending.');
+            }
+
+            if ($request->source === StockReplenishmentRequest::SOURCE_AUTO) {
+                $this->synchronizeAutoRequestBeforeAccept($request);
+                $request->refresh()->load('items');
+
+                if ($request->status !== StockReplenishmentRequest::STATUS_PENDING || $request->items->isEmpty()) {
+                    throw new \RuntimeException('Antrian otomatis sudah tidak membutuhkan pengisian stok.');
+                }
             }
 
             $actorName = Auth::user()?->name;
@@ -257,6 +271,10 @@ class StockReplenishmentService
         return DB::transaction(function () use ($id, $itemId, $payload) {
             $request = $this->lockPendingRequest($id);
 
+            if ($request->source === StockReplenishmentRequest::SOURCE_AUTO) {
+                throw new \RuntimeException('Item pengisian otomatis mengikuti batas stok aman dan tidak dapat diubah manual.');
+            }
+
             $item = $request->items()->where('id', $itemId)->firstOrFail();
 
             $item->update([
@@ -272,6 +290,10 @@ class StockReplenishmentService
     {
         DB::transaction(function () use ($id, $itemId) {
             $request = $this->lockPendingRequest($id);
+
+            if ($request->source === StockReplenishmentRequest::SOURCE_AUTO) {
+                throw new \RuntimeException('Item pengisian otomatis dikelola oleh sistem.');
+            }
 
             $request->items()->where('id', $itemId)->firstOrFail()->delete();
 
@@ -311,7 +333,104 @@ class StockReplenishmentService
 
     public function autoDetect(bool $dryRun = false): array
     {
-        return $this->reconcileAutoBatch($dryRun);
+        $autoFill = $this->reconcileAutoFillBatch($dryRun);
+        $monitor = $this->reconcileAutoBatch($dryRun);
+
+        return array_merge($autoFill, [
+            'monitor_shortages' => $monitor['shortages'] ?? [],
+            'monitor_request' => $monitor['request'] ?? null,
+        ]);
+    }
+
+    public function reconcileAutoFillBatch(bool $dryRun = false): array
+    {
+        $kecilId = Location::getSmallWarehouseId();
+        $pusatId = Location::getMainWarehouseId();
+
+        if (! $kecilId || ! $pusatId) {
+            return [
+                'shortages' => [],
+                'request' => null,
+                'skipped' => true,
+                'reason' => 'Gudang Kecil / Gudang Pusat belum di-seed',
+            ];
+        }
+
+        $created = false;
+        $changed = false;
+        $request = DB::transaction(function () use ($pusatId, $kecilId, $dryRun, &$created, &$changed): ?StockReplenishmentRequest {
+            $this->lockRoute($pusatId, $kecilId);
+
+            $candidates = $this->autoFillCandidates($pusatId, $kecilId);
+            if ($dryRun) {
+                return null;
+            }
+
+            $pending = $this->repository->pendingForRouteForUpdate(
+                $pusatId,
+                $kecilId,
+                [StockReplenishmentRequest::SOURCE_AUTO],
+            );
+
+            if ($pending->isEmpty() && $candidates->isEmpty()) {
+                return null;
+            }
+
+            [$request, $created] = $this->getOrCreatePendingBatch(
+                $pusatId,
+                $kecilId,
+                StockReplenishmentRequest::SOURCE_AUTO,
+                null,
+                'Dibuat otomatis ketika stok yang sudah ditempatkan habis.',
+            );
+
+            foreach ($candidates as $candidate) {
+                $changed = $this->upsertAutoFillItem($request, $candidate) || $changed;
+            }
+
+            $removed = $request->items()
+                ->whereNotIn('item_id', $candidates->keys()->all())
+                ->delete();
+            $changed = $changed || $removed > 0;
+
+            if ($request->items()->doesntExist()) {
+                $request->update([
+                    'status' => StockReplenishmentRequest::STATUS_CANCELLED,
+                    'cancelled_at' => now(),
+                    'cancel_reason' => 'Semua SKU tidak lagi memenuhi aturan pengisian otomatis.',
+                    'batch_key' => null,
+                    'last_reconciled_at' => now(),
+                ]);
+
+                return $request->fresh(['items', 'fromLocation', 'toLocation', 'transferOut']);
+            }
+
+            $request->update(['last_reconciled_at' => now()]);
+
+            return $request->fresh(['items', 'fromLocation', 'toLocation', 'transferOut']);
+        });
+
+        $shortages = $this->autoFillCandidates($pusatId, $kecilId)
+            ->map(fn ($candidate): array => [
+                'item_id' => $candidate->item_id,
+                'sku' => $candidate->sku,
+                'qty' => (int) $candidate->target_qty,
+                'needed' => (int) $candidate->target_qty,
+                'available' => (int) $candidate->available,
+                'in_flight' => 0,
+            ])
+            ->values()
+            ->all();
+
+        if ($request && ($created || $changed)) {
+            $this->notifyQueueChanged($request, 'stock_replenishment_auto_detected');
+        }
+
+        return [
+            'shortages' => $shortages,
+            'request' => $request,
+            'skipped' => false,
+        ];
     }
 
     public function reconcileAutoBatch(bool $dryRun = false): array
@@ -353,7 +472,15 @@ class StockReplenishmentService
         ): ?StockReplenishmentRequest {
             $this->lockRoute($pusatId, $kecilId);
 
-            $pending = $this->repository->pendingForRouteForUpdate($pusatId, $kecilId);
+            $pending = $this->repository->pendingForRouteForUpdate(
+                $pusatId,
+                $kecilId,
+                [
+                    StockReplenishmentRequest::SOURCE_MANUAL,
+                    StockReplenishmentRequest::SOURCE_MONITOR,
+                    StockReplenishmentRequest::SOURCE_MIXED,
+                ],
+            );
             if ($pending->isEmpty()) {
                 return null;
             }
@@ -426,7 +553,11 @@ class StockReplenishmentService
         ?string $requestedByUserId,
         ?string $note,
     ): array {
-        $pending = $this->repository->pendingForRouteForUpdate($fromLocationId, $toLocationId);
+        $pending = $this->repository->pendingForRouteForUpdate(
+            $fromLocationId,
+            $toLocationId,
+            $this->pendingSourcesFor($source),
+        );
         $request = $pending->first();
 
         if ($request) {
@@ -454,7 +585,7 @@ class StockReplenishmentService
             $mergedSource = $this->mergedSource($request->source, $source);
             $request->update([
                 'source' => $mergedSource,
-                'batch_key' => $this->routeBatchKey($fromLocationId, $toLocationId),
+                'batch_key' => $this->routeBatchKey($fromLocationId, $toLocationId, $source),
             ]);
 
             return [$request->fresh(['items']), false];
@@ -466,7 +597,7 @@ class StockReplenishmentService
             'to_location_id' => $toLocationId,
             'status' => StockReplenishmentRequest::STATUS_PENDING,
             'source' => $source,
-            'batch_key' => $this->routeBatchKey($fromLocationId, $toLocationId),
+            'batch_key' => $this->routeBatchKey($fromLocationId, $toLocationId, $source),
             'requested_at' => now(),
             'note' => $note,
         ]);
@@ -474,9 +605,24 @@ class StockReplenishmentService
         return [$request, true];
     }
 
-    private function routeBatchKey(string $fromLocationId, string $toLocationId): string
+    private function routeBatchKey(string $fromLocationId, string $toLocationId, string $source): string
     {
-        return "route:{$fromLocationId}:{$toLocationId}";
+        $kind = $source === StockReplenishmentRequest::SOURCE_AUTO ? 'auto' : 'manual';
+
+        return "route:{$fromLocationId}:{$toLocationId}:{$kind}";
+    }
+
+    private function pendingSourcesFor(string $source): array
+    {
+        if ($source === StockReplenishmentRequest::SOURCE_AUTO) {
+            return [StockReplenishmentRequest::SOURCE_AUTO];
+        }
+
+        return [
+            StockReplenishmentRequest::SOURCE_MANUAL,
+            StockReplenishmentRequest::SOURCE_MONITOR,
+            StockReplenishmentRequest::SOURCE_MIXED,
+        ];
     }
 
     private function mergedSource(?string $current, string $incoming): string
@@ -526,6 +672,93 @@ class StockReplenishmentService
         $item->update($values);
 
         return $changed;
+    }
+
+    private function autoFillCandidates(string $fromLocationId, string $toLocationId): Collection
+    {
+        $blockedItemIds = $this->repository
+            ->pendingItemIdsForRoute($fromLocationId, $toLocationId, [
+                StockReplenishmentRequest::SOURCE_MANUAL,
+                StockReplenishmentRequest::SOURCE_MONITOR,
+                StockReplenishmentRequest::SOURCE_MIXED,
+            ])
+            ->merge($this->repository->acceptedItemIdsForRoute($fromLocationId, $toLocationId))
+            ->merge($this->repository->manualTransferInTransitItemIds($fromLocationId, $toLocationId))
+            ->unique()
+            ->all();
+
+        return $this->repository
+            ->autoFillCandidatesForLocation($toLocationId)
+            ->except($blockedItemIds);
+    }
+
+    private function upsertAutoFillItem(
+        StockReplenishmentRequest $request,
+        object $candidate,
+    ): bool {
+        $item = $request->items()
+            ->where('item_id', $candidate->item_id)
+            ->lockForUpdate()
+            ->first();
+
+        $safeStock = (int) $candidate->safe_stock;
+        $targetQty = (int) $candidate->target_qty;
+        $values = [
+            'sku' => $candidate->sku,
+            'qty' => $targetQty,
+            'demand_qty' => $safeStock,
+            'available_qty' => (int) $candidate->available,
+            'in_flight_qty' => 0,
+            'suggested_qty' => $targetQty,
+            'reason' => "Stok ditempatkan habis. Isi hingga batas stok aman {$safeStock}.",
+        ];
+
+        if (! $item) {
+            $request->items()->create(array_merge([
+                'item_id' => $candidate->item_id,
+            ], $values));
+
+            return true;
+        }
+
+        $changed = collect($values)->contains(
+            fn ($value, $key): bool => (string) $item->{$key} !== (string) $value,
+        );
+        $item->update($values);
+
+        return $changed;
+    }
+
+    private function synchronizeAutoRequestBeforeAccept(StockReplenishmentRequest $request): void
+    {
+        $this->lockRoute($request->from_location_id, $request->to_location_id);
+
+        $candidates = $this->autoFillCandidates(
+            $request->from_location_id,
+            $request->to_location_id,
+        );
+
+        foreach ($candidates as $candidate) {
+            $this->upsertAutoFillItem($request, $candidate);
+        }
+
+        $request->items()
+            ->whereNotIn('item_id', $candidates->keys()->all())
+            ->delete();
+
+        if ($request->items()->doesntExist()) {
+            $request->update([
+                'status' => StockReplenishmentRequest::STATUS_CANCELLED,
+                'cancelled_at' => now(),
+                'cancel_reason' => 'Semua SKU tidak lagi memenuhi aturan pengisian otomatis.',
+                'batch_key' => null,
+                'last_reconciled_at' => now(),
+            ]);
+
+            return;
+        }
+
+        $request->update(['last_reconciled_at' => now()]);
     }
 
     private function notifyQueueChanged(
