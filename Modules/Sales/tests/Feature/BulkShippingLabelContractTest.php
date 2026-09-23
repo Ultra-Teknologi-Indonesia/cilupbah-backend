@@ -217,6 +217,13 @@ class BulkShippingLabelContractTest extends TestCase
             'channel_shop_id' => 'SHOP-BULK-DOCUMENTS',
             'channel_order_no' => 'ORDER-SHOPEE-1',
             'tracking_number' => 'SPX-1',
+            'channel_package_ids' => ['PKG-SHOPEE-1A', 'PKG-SHOPEE-1B'],
+            'shipping_label_raw_data' => [
+                'package_tracking_numbers' => [
+                    'PKG-SHOPEE-1A' => 'SPX-1A',
+                    'PKG-SHOPEE-1B' => 'SPX-1B',
+                ],
+            ],
         ]);
         $second = SalesOrder::factory()->create([
             'source' => 'shopee',
@@ -233,12 +240,21 @@ class BulkShippingLabelContractTest extends TestCase
         $shopee->shouldReceive('createShippingDocumentsMass')
             ->once()
             ->with('SHOP-BULK-DOCUMENTS', Mockery::on(function (array $rows): bool {
-                return count($rows) === 2
-                    && collect($rows)->pluck('order_sn')->sort()->values()->all() === ['ORDER-SHOPEE-1', 'ORDER-SHOPEE-2'];
+                return count($rows) === 3
+                    && collect($rows)->pluck('package_number')->filter()->sort()->values()->all() === [
+                        'PKG-SHOPEE-1A',
+                        'PKG-SHOPEE-1B',
+                    ]
+                    && collect($rows)->pluck('order_sn')->filter()->sort()->values()->all() === [
+                        'ORDER-SHOPEE-1',
+                        'ORDER-SHOPEE-1',
+                        'ORDER-SHOPEE-2',
+                    ];
             }))
             ->andReturn([
                 'results' => [
-                    'ORDER-SHOPEE-1|' => ['accepted' => true, 'response' => ['order_sn' => 'ORDER-SHOPEE-1']],
+                    'ORDER-SHOPEE-1|PKG-SHOPEE-1A' => ['accepted' => true, 'response' => ['order_sn' => 'ORDER-SHOPEE-1']],
+                    'ORDER-SHOPEE-1|PKG-SHOPEE-1B' => ['accepted' => true, 'response' => ['order_sn' => 'ORDER-SHOPEE-1']],
                     'ORDER-SHOPEE-2|' => ['accepted' => true, 'response' => ['order_sn' => 'ORDER-SHOPEE-2']],
                 ],
             ]);
@@ -246,7 +262,8 @@ class BulkShippingLabelContractTest extends TestCase
             ->once()
             ->andReturn([
                 'results' => [
-                    'ORDER-SHOPEE-1|' => ['ready' => false, 'status' => 'PROCESSING'],
+                    'ORDER-SHOPEE-1|PKG-SHOPEE-1A' => ['ready' => false, 'status' => 'PROCESSING'],
+                    'ORDER-SHOPEE-1|PKG-SHOPEE-1B' => ['ready' => false, 'status' => 'PROCESSING'],
                     'ORDER-SHOPEE-2|' => ['ready' => false, 'status' => 'PROCESSING'],
                 ],
             ]);

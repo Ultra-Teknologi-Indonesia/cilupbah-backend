@@ -81,6 +81,10 @@ final class RequestShopeeMassAwbJobTest extends TestCase
                     'package_number' => 'PKG-A',
                     'logistics_channel_id' => 8001,
                     'product_location_id' => 'LOC-1',
+                ], [
+                    'package_number' => 'PKG-A2',
+                    'logistics_channel_id' => 8001,
+                    'product_location_id' => 'LOC-1',
                 ]],
                 'ORDER-MASS-B' => [[
                     'package_number' => 'PKG-B',
@@ -89,26 +93,22 @@ final class RequestShopeeMassAwbJobTest extends TestCase
                 ]],
             ]);
         $shopee->shouldReceive('getMassTrackingNumbers')
-            ->twice()
-            ->with('SHOP-MASS-AWB', ['PKG-A', 'PKG-B'])
-            ->andReturn(
-                ['results' => [
-                    'PKG-A' => ['tracking_number' => null],
-                    'PKG-B' => ['tracking_number' => null],
-                ]],
-                ['results' => [
-                    'PKG-A' => ['tracking_number' => 'SPX-A', 'pickup_code' => '1111'],
-                    'PKG-B' => ['tracking_number' => 'SPX-B', 'pickup_code' => '2222'],
-                ]],
-            );
+            ->once()
+            ->with('SHOP-MASS-AWB', ['PKG-A', 'PKG-A2', 'PKG-B'])
+            ->andReturn(['results' => [
+                'PKG-A' => ['tracking_number' => 'SPX-A', 'pickup_code' => '1111'],
+                'PKG-A2' => ['tracking_number' => 'SPX-A2', 'pickup_code' => '1111'],
+                'PKG-B' => ['tracking_number' => 'SPX-B', 'pickup_code' => '2222'],
+            ]]);
         $shopee->shouldReceive('massShipPackages')
             ->once()
-            ->with('SHOP-MASS-AWB', ['PKG-A', 'PKG-B'], [
+            ->with('SHOP-MASS-AWB', ['PKG-A', 'PKG-A2', 'PKG-B'], [
                 'logistics_channel_id' => 8001,
                 'product_location_id' => 'LOC-1',
             ])
             ->andReturn(['results' => [
                 'PKG-A' => ['shipped' => true, 'error' => null],
+                'PKG-A2' => ['shipped' => true, 'error' => null],
                 'PKG-B' => ['shipped' => true, 'error' => null],
             ]]);
         $this->app->instance(ShopeeOrderService::class, $shopee);
@@ -125,8 +125,12 @@ final class RequestShopeeMassAwbJobTest extends TestCase
 
         $this->assertSame('SPX-A', $first->fresh()->tracking_number);
         $this->assertSame('SPX-B', $second->fresh()->tracking_number);
-        $this->assertSame(['PKG-A'], $first->fresh()->channel_package_ids);
+        $this->assertSame(['PKG-A', 'PKG-A2'], $first->fresh()->channel_package_ids);
         $this->assertSame(['PKG-B'], $second->fresh()->channel_package_ids);
+        $this->assertSame([
+            'PKG-A' => 'SPX-A',
+            'PKG-A2' => 'SPX-A2',
+        ], data_get($first->fresh()->shipping_label_raw_data, 'package_tracking_numbers'));
 
         $this->assertSame(2, ChannelOperationAttempt::query()
             ->where('operation', 'request_awb')

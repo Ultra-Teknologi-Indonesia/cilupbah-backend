@@ -13,8 +13,8 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Services\ShopeeOrderService;
-use Modules\Channel\Support\ChannelQueue;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
+use Modules\Channel\Support\ChannelQueue;
 use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Models\ChannelOperationAttempt;
 use Modules\Sales\Models\SalesOrder;
@@ -89,10 +89,14 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
         foreach ($orders->whereNotNull('tracking_number')->filter(
             fn (SalesOrder $order): bool => filled($order->tracking_number),
         ) as $order) {
-            $this->completeOrder($order, (string) $order->tracking_number, null, $bulkLabels, $labelDispatcher);
+            if (! $this->hasUntrackedPackages($order)) {
+                $this->completeOrder($order, (string) $order->tracking_number, null, $bulkLabels, $labelDispatcher);
+            }
         }
 
-        $orders = $orders->filter(fn (SalesOrder $order): bool => blank($order->tracking_number))->values();
+        $orders = $orders->filter(
+            fn (SalesOrder $order): bool => blank($order->tracking_number) || $this->hasUntrackedPackages($order),
+        )->values();
         if ($orders->isEmpty()) {
             return;
         }
@@ -102,7 +106,7 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
             $orders->pluck('channel_order_no')->map(static fn ($value): string => (string) $value)->all(),
         );
 
-        [$massOrders, $fallbackOrders] = $this->mapSinglePackageOrders($orders, $packagesByOrder);
+        [$massOrders, $fallbackOrders] = $this->mapMassPackageOrders($orders, $packagesByOrder);
 
         foreach ($fallbackOrders as $order) {
             RequestChannelAwbJob::dispatch((string) $order->id, 0, true, false, false, 'shopee');
@@ -112,12 +116,17 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        $remaining = $this->readTrackingNumbers(
-            $shopee,
-            $massOrders,
-            $bulkLabels,
-            $labelDispatcher,
-        );
+        if ($this->verificationOnly) {
+            $remaining = $this->readTrackingNumbers($shopee, $massOrders, $bulkLabels, $labelDispatcher);
+        } else {
+            $alreadyShipped = $massOrders
+                ->filter(fn (array $entry): bool => $this->channelAlreadyShipped($entry['order']))
+                ->values();
+            $this->readTrackingNumbers($shopee, $alreadyShipped, $bulkLabels, $labelDispatcher);
+            $remaining = $massOrders
+                ->reject(fn (array $entry): bool => $this->channelAlreadyShipped($entry['order']))
+                ->values();
+        }
 
         if ($remaining->isEmpty()) {
             return;
@@ -143,7 +152,7 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
         }
     }
 
-    private function mapSinglePackageOrders(Collection $orders, array $packagesByOrder): array
+    private function mapMassPackageOrders(Collection $orders, array $packagesByOrder): array
     {
         $massOrders = collect();
         $fallbackOrders = collect();
@@ -152,30 +161,44 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
             $orderSn = (string) $order->channel_order_no;
             $packages = array_values((array) ($packagesByOrder[$orderSn] ?? []));
 
-            if (count($packages) !== 1) {
+            if ($packages === []) {
                 $fallbackOrders->push($order);
 
                 continue;
             }
 
-            $packageNumber = (string) ($packages[0]['package_number'] ?? '');
-            if ($packageNumber === '') {
+            $mappedPackages = collect($packages)
+                ->map(function (array $package): array {
+                    return [
+                        'package_number' => trim((string) ($package['package_number'] ?? '')),
+                        'logistics_channel_id' => isset($package['logistics_channel_id'])
+                            ? (int) $package['logistics_channel_id']
+                            : null,
+                        'product_location_id' => isset($package['product_location_id'])
+                            ? (string) $package['product_location_id']
+                            : null,
+                    ];
+                })
+                ->filter(static fn (array $package): bool => $package['package_number'] !== '')
+                ->values();
+
+            if ($mappedPackages->count() !== count($packages)) {
                 $fallbackOrders->push($order);
 
                 continue;
             }
 
-            $order->forceFill(['channel_package_ids' => [$packageNumber]])->saveQuietly();
-            $massOrders->push([
-                'order' => $order,
-                'package_number' => $packageNumber,
-                'logistics_channel_id' => isset($packages[0]['logistics_channel_id'])
-                    ? (int) $packages[0]['logistics_channel_id']
-                    : null,
-                'product_location_id' => isset($packages[0]['product_location_id'])
-                    ? (string) $packages[0]['product_location_id']
-                    : null,
-            ]);
+            $order->forceFill([
+                'channel_package_ids' => $mappedPackages
+                    ->pluck('package_number')
+                    ->unique()
+                    ->values()
+                    ->all(),
+            ])->saveQuietly();
+
+            foreach ($mappedPackages as $package) {
+                $massOrders->push(['order' => $order] + $package);
+            }
         }
 
         return [$massOrders, $fallbackOrders];
@@ -187,30 +210,72 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
         BulkShippingLabelService $bulkLabels,
         ShippingLabelPreparationDispatcher $labelDispatcher,
     ): Collection {
+        if ($massOrders->isEmpty()) {
+            return collect();
+        }
+
         $result = $shopee->getMassTrackingNumbers(
             $this->shopId,
-            $massOrders->pluck('package_number')->all(),
+            $massOrders->pluck('package_number')->unique()->values()->all(),
         );
         $trackingByPackage = (array) ($result['results'] ?? []);
 
-        return $massOrders->filter(function (array $entry) use ($trackingByPackage, $bulkLabels, $labelDispatcher): bool {
-            $tracking = (array) ($trackingByPackage[$entry['package_number']] ?? []);
-            $trackingNumber = trim((string) ($tracking['tracking_number'] ?? ''));
+        return $massOrders
+            ->groupBy(static fn (array $entry): string => (string) $entry['order']->id)
+            ->flatMap(function (Collection $entries) use ($trackingByPackage, $bulkLabels, $labelDispatcher): Collection {
+                $order = $entries->first()['order']->fresh();
+                if ($order === null) {
+                    return $entries;
+                }
 
-            if ($trackingNumber === '') {
-                return true;
-            }
+                $rawData = is_array($order->shipping_label_raw_data)
+                    ? $order->shipping_label_raw_data
+                    : [];
+                $packageTrackingNumbers = (array) ($rawData['package_tracking_numbers'] ?? []);
+                $pickupCode = null;
 
-            $this->completeOrder(
-                $entry['order'],
-                $trackingNumber,
-                isset($tracking['pickup_code']) ? (string) $tracking['pickup_code'] : null,
-                $bulkLabels,
-                $labelDispatcher,
-            );
+                foreach ($entries as $entry) {
+                    $tracking = (array) ($trackingByPackage[$entry['package_number']] ?? []);
+                    $trackingNumber = trim((string) ($tracking['tracking_number'] ?? ''));
+                    if ($trackingNumber !== '') {
+                        $packageTrackingNumbers[$entry['package_number']] = $trackingNumber;
+                    }
+                    if ($pickupCode === null && filled($tracking['pickup_code'] ?? null)) {
+                        $pickupCode = (string) $tracking['pickup_code'];
+                    }
+                }
 
-            return false;
-        })->values();
+                if ($packageTrackingNumbers !== []) {
+                    $rawData['package_tracking_numbers'] = $packageTrackingNumbers;
+                    $order->forceFill(['shipping_label_raw_data' => $rawData])->saveQuietly();
+                }
+
+                $packageNumbers = array_values(array_filter(array_map(
+                    'strval',
+                    (array) $order->channel_package_ids,
+                )));
+                $allPackagesTracked = $packageNumbers !== []
+                    && collect($packageNumbers)->every(
+                        static fn (string $packageNumber): bool => filled($packageTrackingNumbers[$packageNumber] ?? null),
+                    );
+
+                if (! $allPackagesTracked) {
+                    return $entries;
+                }
+
+                $primaryTracking = (string) ($packageTrackingNumbers[$packageNumbers[0]] ?? '');
+                $this->completeOrder(
+                    $order,
+                    $primaryTracking,
+                    $pickupCode,
+                    $bulkLabels,
+                    $labelDispatcher,
+                    $packageTrackingNumbers,
+                );
+
+                return collect();
+            })
+            ->values();
     }
 
     private function requestMassShipment(
@@ -220,7 +285,8 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
     ): Collection {
         $verificationEntries = collect();
         $requestEntries = collect();
-        $claimsByPackage = [];
+        $claimsByOrder = [];
+        $resultEntriesByOrder = [];
 
         foreach ($massOrders as $entry) {
 
@@ -242,6 +308,13 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
                 continue;
             }
 
+            $orderId = (string) $order->id;
+            if (isset($claimsByOrder[$orderId])) {
+                $requestEntries->push($entry);
+
+                continue;
+            }
+
             $claim = ChannelOperationLedger::claim($order, 'request_awb');
             if (! $claim['should_execute']) {
                 if (in_array($claim['attempt']->status, [
@@ -255,7 +328,7 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
                 continue;
             }
 
-            $claimsByPackage[$entry['package_number']] = $claim['attempt'];
+            $claimsByOrder[$orderId] = $claim['attempt'];
             $requestEntries->push($entry);
         }
 
@@ -279,35 +352,22 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
                 foreach ($entries as $entry) {
                     $packageNumber = $entry['package_number'];
                     $packageResult = (array) ($resultsByPackage[$packageNumber] ?? []);
-                    $attempt = $claimsByPackage[$packageNumber];
-
-                    if (! empty($packageResult['shipped'])) {
-                        ChannelOperationLedger::markAccepted($attempt, [
-                            'package_number' => $packageNumber,
-                            'mass_request' => true,
-                        ]);
-                        $verificationEntries->push($entry);
-
-                        continue;
-                    }
-
-                    $reason = (string) ($packageResult['error'] ?? 'Shopee tidak mengembalikan hasil mass shipping.');
-                    if ($packageResult === []) {
-                        ChannelOperationLedger::markUncertain($attempt, new \RuntimeException($reason));
-                        $verificationEntries->push($entry);
-
-                        continue;
-                    }
-
-                    ChannelOperationLedger::markRetryable($attempt, $reason);
-                    RequestChannelAwbJob::dispatch((string) $entry['order']->id, 0, true, false, false, 'shopee')
-                        ->delay(now()->addSeconds(5));
+                    $resultEntriesByOrder[(string) $entry['order']->id][] = [
+                        'entry' => $entry,
+                        'result' => $packageResult,
+                    ];
                 }
             } catch (Throwable $exception) {
                 foreach ($entries as $entry) {
-                    $attempt = $claimsByPackage[$entry['package_number']];
-                    ChannelOperationLedger::markUncertain($attempt, $exception);
-                    $verificationEntries->push($entry);
+                    $resultEntriesByOrder[(string) $entry['order']->id][] = [
+                        'entry' => $entry,
+                        'result' => [
+                            'package_number' => $entry['package_number'],
+                            'shipped' => false,
+                            'uncertain' => true,
+                            'error' => $exception->getMessage(),
+                        ],
+                    ];
                 }
 
                 Log::warning('RequestShopeeMassAwbJob: mass_ship_order tidak pasti, pindah ke verifikasi baca-saja.', [
@@ -319,6 +379,50 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
             }
         }
 
+        foreach ($resultEntriesByOrder as $orderId => $packageResults) {
+            $attempt = $claimsByOrder[$orderId] ?? null;
+            $entries = collect($packageResults)->pluck('entry');
+            $results = collect($packageResults)->pluck('result');
+            $allShipped = $results->isNotEmpty() && $results->every(
+                static fn (array $result): bool => ! empty($result['shipped']),
+            );
+
+            if ($attempt === null) {
+                $verificationEntries = $verificationEntries->merge($entries);
+
+                continue;
+            }
+
+            if ($allShipped) {
+                ChannelOperationLedger::markAccepted($attempt, [
+                    'packages' => $entries->pluck('package_number')->values()->all(),
+                    'mass_request' => true,
+                ]);
+                $verificationEntries = $verificationEntries->merge($entries);
+
+                continue;
+            }
+
+            $failedResult = $results->first(static fn (array $result): bool => empty($result['shipped']));
+            $reason = (string) ($failedResult['error'] ?? 'Shopee tidak mengembalikan hasil mass shipping.');
+            if ($results->contains(static fn (array $result): bool => ! empty($result['uncertain']))) {
+                ChannelOperationLedger::markUncertain($attempt, new \RuntimeException($reason));
+                $verificationEntries = $verificationEntries->merge($entries);
+
+                continue;
+            }
+
+            ChannelOperationLedger::markRetryable($attempt, $reason);
+            self::dispatch(
+                $this->batchId,
+                $this->shopId,
+                [$orderId],
+                $this->trackingAttempt + 1,
+                false,
+            )->delay(now()->addSeconds(5));
+            $verificationEntries = $verificationEntries->merge($entries);
+        }
+
         return $verificationEntries->unique('package_number')->values();
     }
 
@@ -328,6 +432,7 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
         ?string $pickupCode,
         BulkShippingLabelService $bulkLabels,
         ShippingLabelPreparationDispatcher $labelDispatcher,
+        array $packageTrackingNumbers = [],
     ): void {
         $fresh = ChannelOrderSideEffectGuard::active((string) $order->id, 'persist_mass_awb');
         if ($fresh === null) {
@@ -346,6 +451,13 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
         }
 
         $updates = ['tracking_number' => $trackingNumber];
+        if ($packageTrackingNumbers !== []) {
+            $rawData = is_array($fresh->shipping_label_raw_data)
+                ? $fresh->shipping_label_raw_data
+                : [];
+            $rawData['package_tracking_numbers'] = $packageTrackingNumbers;
+            $updates['shipping_label_raw_data'] = $rawData;
+        }
         if ($pickupCode !== null && $pickupCode !== '') {
             $updates['pickup_code'] = $pickupCode;
         }
@@ -372,7 +484,7 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
             self::dispatch(
                 $this->batchId,
                 $this->shopId,
-                $remaining->pluck('order.id')->map(static fn ($id): string => (string) $id)->all(),
+                $remaining->pluck('order.id')->map(static fn ($id): string => (string) $id)->unique()->values()->all(),
                 $this->trackingAttempt + 1,
                 true,
             )->delay(now()->addSeconds(max(1, (int) $delays[$this->trackingAttempt])));
@@ -380,7 +492,7 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        foreach ($remaining as $entry) {
+        foreach ($remaining->unique(static fn (array $entry): string => (string) $entry['order']->id) as $entry) {
             $bulkLabels->onOrderAwbGaveUp(
                 (string) $entry['order']->id,
                 BulkShippingLabelItem::REASON_AWB_TIMEOUT,
@@ -398,5 +510,27 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
             'TO_CONFIRM_RECEIVE',
             'COMPLETED',
         ], true);
+    }
+
+    private function hasUntrackedPackages(SalesOrder $order): bool
+    {
+        $packageNumbers = array_values(array_filter(array_map(
+            'strval',
+            (array) $order->channel_package_ids,
+        )));
+
+        if (count($packageNumbers) <= 1) {
+            return false;
+        }
+
+        $trackedPackages = (array) data_get(
+            is_array($order->shipping_label_raw_data) ? $order->shipping_label_raw_data : [],
+            'package_tracking_numbers',
+            [],
+        );
+
+        return ! collect($packageNumbers)->every(
+            static fn (string $packageNumber): bool => filled($trackedPackages[$packageNumber] ?? null),
+        );
     }
 }

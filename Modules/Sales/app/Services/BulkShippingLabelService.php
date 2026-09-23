@@ -556,6 +556,8 @@ class BulkShippingLabelService
 
             $rows = [];
             $claimed = [];
+            $claimsByOrder = [];
+            $blockedOrders = [];
             foreach ($shopItems as $item) {
                 $order = $orders->get($item->order_id);
                 if (! $order || ! filled($order->tracking_number) || ! filled($order->channel_order_no)) {
@@ -570,28 +572,33 @@ class BulkShippingLabelService
                     continue;
                 }
 
-                $claim = ChannelOperationLedger::claim($order, 'create_shipping_label');
-                if (! $claim['should_execute']) {
-                    $order->forceFill(['shipping_label_status' => 'preparing'])->saveQuietly();
-                    PrepareShopeeShippingLabelJob::dispatch((string) $order->id, 1);
-
+                $orderId = (string) $order->id;
+                if (isset($blockedOrders[$orderId])) {
                     continue;
                 }
 
-                $row = array_filter([
-                    'order_sn' => (string) $order->channel_order_no,
-                    'package_number' => $order->package_number ?: null,
-                    'tracking_number' => (string) $order->tracking_number,
-                    'shipping_document_type' => $order->shipping_label_doc_type ?: 'THERMAL_AIR_WAYBILL',
-                ], static fn ($value): bool => $value !== null && $value !== '');
-                $key = (string) $row['order_sn'].'|'.(string) ($row['package_number'] ?? '');
-                $rows[] = $row;
-                $claimed[$key] = [
-                    'item' => $item,
-                    'order' => $order,
-                    'attempt' => $claim['attempt'],
-                    'doc_type' => (string) $row['shipping_document_type'],
-                ];
+                if (! isset($claimsByOrder[$orderId])) {
+                    $claim = ChannelOperationLedger::claim($order, 'create_shipping_label');
+                    if (! $claim['should_execute']) {
+                        $blockedOrders[$orderId] = true;
+                        $order->forceFill(['shipping_label_status' => 'preparing'])->saveQuietly();
+                        PrepareShopeeShippingLabelJob::dispatch($orderId, 1);
+
+                        continue;
+                    }
+                    $claimsByOrder[$orderId] = $claim['attempt'];
+                }
+
+                foreach ($this->shopeeShippingDocumentRows($order) as $row) {
+                    $key = (string) $row['order_sn'].'|'.(string) ($row['package_number'] ?? '');
+                    $rows[] = $row;
+                    $claimed[$key] = [
+                        'item' => $item,
+                        'order' => $order,
+                        'attempt' => $claimsByOrder[$orderId],
+                        'doc_type' => (string) $row['shipping_document_type'],
+                    ];
+                }
             }
 
             if ($rows === []) {
@@ -617,40 +624,60 @@ class BulkShippingLabelService
                 continue;
             }
 
+            $states = [];
             foreach ($claimed as $key => $entry) {
+                $orderId = (string) $entry['order']->id;
+                $states[$orderId] ??= [
+                    'item' => $entry['item'],
+                    'order' => $entry['order'],
+                    'attempt' => $entry['attempt'],
+                    'doc_type' => $entry['doc_type'],
+                    'ready' => [],
+                    'retry' => false,
+                    'terminal' => false,
+                    'retry_marked' => false,
+                ];
+
+                if ($states[$orderId]['terminal']) {
+                    continue;
+                }
+
                 $createResult = $created['results'][$key] ?? null;
                 $checkResult = $checked['results'][$key] ?? null;
                 $createError = (string) ($createResult['error'] ?? '');
                 $checkError = (string) ($checkResult['error'] ?? '');
 
                 if (($createResult['accepted'] ?? false) === true) {
-                    ChannelOperationLedger::markAccepted($entry['attempt'], $createResult['response'] ?? null);
+
                 } elseif ($createError !== '') {
+                    if ($states[$orderId]['terminal']) {
+                        continue;
+                    }
                     $reason = $shopee->classifyShippingLabelFailure($createResult);
                     if ($reason !== null) {
-                        ChannelOperationLedger::markRejected($entry['attempt'], $createError);
+                        if (! $states[$orderId]['terminal']) {
+                            ChannelOperationLedger::markRejected($entry['attempt'], $createError);
+                        }
                         $this->markShopeeBatchFailure($entry['order'], $reason, $createError);
                         $this->fail($entry['item'], $reason);
+                        $states[$orderId]['terminal'] = true;
 
                         continue;
                     }
 
-                    ChannelOperationLedger::markRetryable($entry['attempt'], $createError, $createResult['response'] ?? null);
-                    PrepareShopeeShippingLabelJob::dispatch((string) $entry['order']->id, 0);
+                    if (! $states[$orderId]['retry_marked']) {
+                        ChannelOperationLedger::markRetryable($entry['attempt'], $createError, $createResult['response'] ?? null);
+                        $states[$orderId]['retry_marked'] = true;
+                    }
+                    $states[$orderId]['retry'] = true;
 
                     continue;
                 } else {
-                    ChannelOperationLedger::markAccepted($entry['attempt']);
+                    $states[$orderId]['retry'] = true;
                 }
 
                 if (($checkResult['ready'] ?? false) === true) {
-                    $entry['order']->forceFill([
-                        'shipping_label_status' => 'ready',
-                        'shipping_label_doc_type' => $entry['doc_type'],
-                        'shipping_label_prepared_at' => now(),
-                    ])->saveQuietly();
-                    ChannelOperationLedger::markSucceeded($entry['attempt'], $checkResult['response'] ?? null);
-                    $this->dispatchItem($entry['item']);
+                    $states[$orderId]['ready'][$key] = true;
 
                     continue;
                 }
@@ -658,18 +685,80 @@ class BulkShippingLabelService
                 if (strtoupper((string) ($checkResult['status'] ?? '')) === 'FAILED' || $checkError !== '') {
                     $reason = $shopee->classifyShippingLabelFailure($checkResult);
                     if ($reason !== null) {
-                        ChannelOperationLedger::markRejected($entry['attempt'], $checkError ?: 'Shopee shipping document FAILED');
+                        if (! $states[$orderId]['terminal']) {
+                            ChannelOperationLedger::markRejected($entry['attempt'], $checkError ?: 'Shopee shipping document FAILED');
+                        }
                         $this->markShopeeBatchFailure($entry['order'], $reason, $checkError);
                         $this->fail($entry['item'], $reason);
+                        $states[$orderId]['terminal'] = true;
 
                         continue;
                     }
                 }
 
-                $entry['order']->forceFill(['shipping_label_status' => 'preparing'])->saveQuietly();
-                PrepareShopeeShippingLabelJob::dispatch((string) $entry['order']->id, 1);
+                $states[$orderId]['retry'] = true;
+            }
+
+            foreach ($states as $state) {
+                if ($state['terminal']) {
+                    continue;
+                }
+
+                $packageCount = count(array_filter(
+                    $claimed,
+                    static fn (array $entry): bool => (string) $entry['order']->id === (string) $state['order']->id,
+                ));
+                if ($state['retry'] || count($state['ready']) < $packageCount) {
+                    $state['order']->forceFill(['shipping_label_status' => 'preparing'])->saveQuietly();
+                    PrepareShopeeShippingLabelJob::dispatch((string) $state['order']->id, 1);
+
+                    continue;
+                }
+
+                $state['order']->forceFill([
+                    'shipping_label_status' => 'ready',
+                    'shipping_label_doc_type' => $state['doc_type'],
+                    'shipping_label_prepared_at' => now(),
+                ])->saveQuietly();
+                ChannelOperationLedger::markSucceeded($state['attempt']);
+                $this->dispatchItem($state['item']);
             }
         }
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function shopeeShippingDocumentRows(SalesOrder $order): array
+    {
+        $base = [
+            'order_sn' => (string) $order->channel_order_no,
+            'tracking_number' => (string) $order->tracking_number,
+            'shipping_document_type' => $order->shipping_label_doc_type ?: 'THERMAL_AIR_WAYBILL',
+        ];
+        $packageNumbers = array_values(array_unique(array_filter(array_map(
+            'strval',
+            (array) $order->channel_package_ids,
+        ))));
+        $packageTrackingNumbers = (array) data_get(
+            is_array($order->shipping_label_raw_data) ? $order->shipping_label_raw_data : [],
+            'package_tracking_numbers',
+            [],
+        );
+
+        if (count($packageNumbers) <= 1) {
+            return [$base + (isset($packageNumbers[0]) ? ['package_number' => $packageNumbers[0]] : [])];
+        }
+
+        return array_map(
+            static fn (string $packageNumber): array => array_filter([
+                'order_sn' => $base['order_sn'],
+                'package_number' => $packageNumber,
+                'tracking_number' => $packageTrackingNumbers[$packageNumber] ?? null,
+                'shipping_document_type' => $base['shipping_document_type'],
+            ], static fn ($value): bool => $value !== null && $value !== ''),
+            $packageNumbers,
+        );
     }
 
     private function markShopeeBatchFailure(SalesOrder $order, string $reason, string $message): void
