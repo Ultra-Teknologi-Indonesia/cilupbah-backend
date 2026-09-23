@@ -33,7 +33,7 @@ class InboundPlacementProgressTest extends TestCase
                 'putaway_qty' => $putaway,
                 'reserved_qty' => max(0, $received - $putaway),
             ],
-        ], Inbound::STATUS_COMPLETED, Inbound::TYPE_PURCHASE_ORDER);
+        ], Inbound::STATUS_COMPLETED);
 
         $this->assertSame($expectedStatus, $summary['status']);
         $this->assertSame(max(0, $received - $putaway), $summary['pending_qty']);
@@ -48,7 +48,7 @@ class InboundPlacementProgressTest extends TestCase
         $this->assertSame(InboundPlacementProgress::STATUS_CANCELLED, $summary['status']);
     }
 
-    public function test_retur_lama_memakai_expected_qty_sebagai_fallback_terbatas(): void
+    public function test_retur_yang_belum_diterima_tidak_memiliki_qty_penempatan(): void
     {
         $summary = InboundPlacementProgress::summarize([
             (object) [
@@ -57,11 +57,11 @@ class InboundPlacementProgressTest extends TestCase
                 'putaway_qty' => 1,
                 'reserved_qty' => 2,
             ],
-        ], Inbound::STATUS_RECEIVED, Inbound::TYPE_SALES_RETURN);
+        ], Inbound::STATUS_RECEIVED);
 
-        $this->assertSame(3, $summary['received_qty']);
-        $this->assertSame(2, $summary['pending_qty']);
-        $this->assertSame(InboundPlacementProgress::STATUS_PARTIAL, $summary['status']);
+        $this->assertSame(0, $summary['received_qty']);
+        $this->assertSame(0, $summary['pending_qty']);
+        $this->assertSame(InboundPlacementProgress::STATUS_NOT_STARTED, $summary['status']);
     }
 
     public function test_decorator_mempertahankan_status_lama_dan_menambah_kontrak_baru(): void

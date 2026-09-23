@@ -2,7 +2,6 @@
 
 namespace Modules\Inbound\Support;
 
-use Illuminate\Support\Collection;
 use Modules\Inbound\Models\Inbound;
 
 final class InboundPlacementProgress
@@ -21,7 +20,7 @@ final class InboundPlacementProgress
             ? $inbound->items
             : $inbound->items()->get(['expected_qty', 'received_qty', 'putaway_qty', 'reserved_qty']);
 
-        $summary = self::summarize($items, (string) $inbound->status, (string) $inbound->type);
+        $summary = self::summarize($items, (string) $inbound->status);
 
         $inbound->setAttribute('receiving_status', (string) $inbound->status);
         $inbound->setAttribute('placement_status', $summary['status']);
@@ -40,20 +39,9 @@ final class InboundPlacementProgress
     public static function summarize(
         iterable $items,
         string $receivingStatus,
-        string $inboundType = '',
     ): array {
         $rows = collect($items);
-        $isSalesReturn = strtoupper($inboundType) === Inbound::TYPE_SALES_RETURN;
-
-        $received = (int) $rows->sum(function ($item) use ($isSalesReturn): int {
-            $actual = (int) ($item->received_qty ?? 0);
-
-            if ($isSalesReturn && $actual === 0) {
-                return (int) ($item->expected_qty ?? 0);
-            }
-
-            return $actual;
-        });
+        $received = (int) $rows->sum(fn ($item): int => (int) ($item->received_qty ?? 0));
         $putaway = (int) $rows->sum(fn ($item): int => (int) ($item->putaway_qty ?? 0));
         $reserved = (int) $rows->sum(fn ($item): int => (int) ($item->reserved_qty ?? 0));
         $pending = max(0, $received - $putaway);

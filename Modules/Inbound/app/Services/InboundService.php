@@ -116,7 +116,6 @@ class InboundService
         $placementStatus = InboundPlacementProgress::summarize(
             $inbound->items,
             (string) $inbound->status,
-            (string) $inbound->type,
         )['status'];
 
         if ($placementStatus === InboundPlacementProgress::STATUS_COMPLETED) {
