@@ -581,6 +581,8 @@ class ReportService
             'tanggal' => $row->tanggal,
             'lokasi_asal' => $row->location_source,
             'lokasi_tujuan' => $row->location_destination,
+            'lokator_asal' => $row->locator_source,
+            'lokator_tujuan' => $row->locator_destination,
             'sku' => $row->sku,
             'nama_barang' => $row->product_name,
             'qty' => (float) $row->qty,

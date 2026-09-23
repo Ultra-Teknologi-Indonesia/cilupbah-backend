@@ -728,6 +728,8 @@ class ReportRepository
             ->leftJoin('products as p', 'p.id', '=', 'v.product_id')
             ->leftJoin('locations as ls', 'ls.id', '=', 't.source_location_id')
             ->leftJoin('locations as ld', 'ld.id', '=', 't.destination_location_id')
+            ->leftJoin('location_bins as lbs', 'lbs.id', '=', 'i.source_bin_id')
+            ->leftJoin('location_bins as lbd', 'lbd.id', '=', 'i.destination_bin_id')
             ->select([
                 't.transfer_number',
                 't.receive_number',
@@ -736,6 +738,8 @@ class ReportRepository
                 'i.item_notes',
                 'ls.location_name as location_source',
                 'ld.location_name as location_destination',
+                DB::raw('COALESCE(lbs.bin_final_code, lbs.bin_code) as locator_source'),
+                DB::raw('COALESCE(lbd.bin_final_code, lbd.bin_code) as locator_destination'),
                 'v.sku',
                 'p.name as product_name',
             ])

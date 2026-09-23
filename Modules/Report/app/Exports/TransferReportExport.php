@@ -48,6 +48,8 @@ class TransferReportExport implements FromQuery, WithChunkReading, WithHeadings,
                 'No Transfer Asal',
                 'Lokasi Asal',
                 'Lokasi Tujuan',
+                'Lokator Asal',
+                'Lokator Tujuan',
                 'SKU',
                 'Nama Barang',
                 'Qty Diterima',
@@ -60,6 +62,8 @@ class TransferReportExport implements FromQuery, WithChunkReading, WithHeadings,
             'Tanggal',
             'Lokasi Asal',
             'Lokasi Tujuan',
+            'Lokator Asal',
+            'Lokator Tujuan',
             'SKU',
             'Nama Barang',
             'Qty',
@@ -77,6 +81,8 @@ class TransferReportExport implements FromQuery, WithChunkReading, WithHeadings,
                 $row->transfer_number,
                 $row->location_source,
                 $row->location_destination,
+                $row->locator_source,
+                $row->locator_destination,
                 $row->sku,
                 $row->product_name,
                 $row->qty ?? 0,
@@ -89,6 +95,8 @@ class TransferReportExport implements FromQuery, WithChunkReading, WithHeadings,
             $this->toDate($row->tanggal),
             $row->location_source,
             $row->location_destination,
+            $row->locator_source,
+            $row->locator_destination,
             $row->sku,
             $row->product_name,
             $row->qty ?? 0,
@@ -99,8 +107,8 @@ class TransferReportExport implements FromQuery, WithChunkReading, WithHeadings,
     public function columnFormats(): array
     {
         return $this->isMasuk
-            ? ['B' => self::DATE_FORMAT, 'C' => self::DATE_FORMAT, 'I' => NumberFormat::FORMAT_NUMBER]
-            : ['B' => self::DATE_FORMAT, 'G' => NumberFormat::FORMAT_NUMBER];
+            ? ['B' => self::DATE_FORMAT, 'C' => self::DATE_FORMAT, 'K' => NumberFormat::FORMAT_NUMBER]
+            : ['B' => self::DATE_FORMAT, 'I' => NumberFormat::FORMAT_NUMBER];
     }
 
     public function styles(Worksheet $sheet): array

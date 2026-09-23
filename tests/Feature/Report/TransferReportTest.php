@@ -9,6 +9,7 @@ use Modules\Inventory\Models\InventoryTransferItem;
 use Modules\Product\Models\Product;
 use Modules\Product\Models\ProductVariant;
 use Modules\Report\Services\ReportService;
+use Modules\Warehouse\Models\LocationBin;
 use Modules\Warehouse\Models\Location;
 use App\Models\Role;
 use Tests\TestCase;
@@ -24,6 +25,10 @@ class TransferReportTest extends TestCase
     private ProductVariant $ripple;
 
     private ProductVariant $jelly;
+
+    private LocationBin $sourceBin;
+
+    private LocationBin $destinationBin;
 
     private ReportService $service;
 
@@ -46,6 +51,17 @@ class TransferReportTest extends TestCase
         $this->kecil = Location::create([
             'location_code' => 'RPT-KECIL', 'location_name' => 'Gudang Kecil',
             'location_type' => 'warehouse', 'is_warehouse' => true, 'is_active' => true,
+        ]);
+        $this->sourceBin = LocationBin::create([
+            'location_id' => $this->pusat->id,
+            'bin_code' => 'A-01',
+            'bin_final_code' => 'PST-A-01',
+        ]);
+        $this->destinationBin = LocationBin::create([
+            'location_id' => $this->kecil->id,
+            'bin_code' => 'IN-01',
+            'bin_final_code' => 'GKC-IN-01',
+            'is_inbound' => true,
         ]);
 
         $categoryId = \DB::table('categories')->insertGetId([
@@ -99,6 +115,8 @@ class TransferReportTest extends TestCase
                 'qty' => $item['qty'],
                 'received_qty' => $item['received_qty'] ?? 0,
                 'item_notes' => $item['item_notes'] ?? null,
+                'source_bin_id' => $item['source_bin_id'] ?? $this->sourceBin->id,
+                'destination_bin_id' => $item['destination_bin_id'] ?? $this->destinationBin->id,
             ]);
         }
 
@@ -117,7 +135,7 @@ class TransferReportTest extends TestCase
         );
     }
 
-    public function test_transfer_keluar_menghasilkan_delapan_kolom_dengan_qty_dikirim(): void
+    public function test_transfer_keluar_menghasilkan_sepuluh_kolom_dengan_lokator_dan_qty_dikirim(): void
     {
         $this->seedReceivedTransfer();
 
@@ -128,17 +146,19 @@ class TransferReportTest extends TestCase
         $this->assertCount(1, $rows);
         $this->assertSame([
             'no_transfer', 'tanggal', 'lokasi_asal', 'lokasi_tujuan',
-            'sku', 'nama_barang', 'qty', 'catatan',
+            'lokator_asal', 'lokator_tujuan', 'sku', 'nama_barang', 'qty', 'catatan',
         ], array_keys($rows[0]));
 
         $this->assertSame('TRFO-000092057', $rows[0]['no_transfer']);
         $this->assertSame('Pusat', $rows[0]['lokasi_asal']);
         $this->assertSame('Gudang Kecil', $rows[0]['lokasi_tujuan']);
+        $this->assertSame('PST-A-01', $rows[0]['lokator_asal']);
+        $this->assertSame('GKC-IN-01', $rows[0]['lokator_tujuan']);
         $this->assertSame('RIPPLE-BLACK-IP-16-PRO', $rows[0]['sku']);
         $this->assertSame(20.0, $rows[0]['qty']);
     }
 
-    public function test_transfer_masuk_menghasilkan_sepuluh_kolom_dengan_nomor_trfi_dan_transfer_asal(): void
+    public function test_transfer_masuk_menghasilkan_dua_belas_kolom_dengan_nomor_trfi_dan_transfer_asal(): void
     {
         $this->seedReceivedTransfer();
 
@@ -149,11 +169,14 @@ class TransferReportTest extends TestCase
         $this->assertCount(1, $rows);
         $this->assertSame([
             'no_terima', 'tanggal_terima', 'no_transfer_asal', 'tanggal',
-            'lokasi_asal', 'lokasi_tujuan', 'sku', 'nama_barang', 'qty', 'catatan',
+            'lokasi_asal', 'lokasi_tujuan', 'lokator_asal', 'lokator_tujuan',
+            'sku', 'nama_barang', 'qty', 'catatan',
         ], array_keys($rows[0]));
 
         $this->assertSame('TRFI-000092058', $rows[0]['no_terima']);
         $this->assertSame('TRFO-000092057', $rows[0]['no_transfer_asal']);
+        $this->assertSame('PST-A-01', $rows[0]['lokator_asal']);
+        $this->assertSame('GKC-IN-01', $rows[0]['lokator_tujuan']);
     }
 
     public function test_kolom_tanggal_identik_antara_laporan_masuk_dan_keluar(): void
@@ -382,7 +405,11 @@ class TransferReportTest extends TestCase
 
         $this->assertSame('No Terima', $sheet->getCell('A1')->getValue());
         $this->assertSame('Tanggal Terima', $sheet->getCell('C1')->getValue());
-        $this->assertSame('Catatan', $sheet->getCell('J1')->getValue());
+        $this->assertSame('Lokator Asal', $sheet->getCell('G1')->getValue());
+        $this->assertSame('Lokator Tujuan', $sheet->getCell('H1')->getValue());
+        $this->assertSame('PST-A-01', $sheet->getCell('G2')->getValue());
+        $this->assertSame('GKC-IN-01', $sheet->getCell('H2')->getValue());
+        $this->assertSame('Catatan', $sheet->getCell('L1')->getValue());
 
         $tanggal = $sheet->getCell('B2')->getValue();
         $tanggalTerima = $sheet->getCell('C2')->getValue();
