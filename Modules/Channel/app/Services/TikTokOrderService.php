@@ -558,9 +558,7 @@ class TikTokOrderService
 
         try {
             try {
-                // RequestChannelAwbJob has already verified this exact snapshot before
-                // acquiring its order-side-effect lock. Reuse it so one AWB request does
-                // not read the same TikTok order twice before POST /ship.
+
                 $snapshot = $verifiedSnapshot ?? $this->getOrderFulfillmentSnapshot($shop, $orderId);
             } catch (\Throwable $e) {
                 Log::warning('TikTok RTS: preflight order gagal; POST /ship tidak dikirim', [

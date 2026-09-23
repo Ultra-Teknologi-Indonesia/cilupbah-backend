@@ -255,9 +255,6 @@ class LazadaOrderService
     ): array {
         $shop = $this->requireShop($shopId);
 
-        // requestTrackingNumber has already read the items to decide whether the
-        // order is packable. Reusing that result avoids an identical GET
-        // /orders/items/get immediately before POST /order/fulfill/pack.
         $items = $verifiedItems ?? $this->fetchOrderItemsWithStatus($shop, $orderId);
         $packableIds = $this->filterItemIdsByStatus($items, ['pending', 'repacked']);
 
@@ -336,9 +333,6 @@ class LazadaOrderService
     ): array {
         $shop = $this->requireShop($shopId);
 
-        // After pack we deliberately read once again because Lazada must confirm
-        // the transition to PACKED before RTS. Callers that already hold that
-        // post-pack result can pass it through instead of reading it a second time.
         $items = $verifiedItems ?? $this->fetchOrderItemsWithStatus($shop, $orderId);
         $readyIds = $this->filterItemIdsByStatus($items, ['packed']);
 

@@ -262,8 +262,7 @@ class TikTokOrderOpsTest extends TestCase
 
         $this->assertTrue($result['shipped']);
         $this->assertSame('TTRK-1', $result['tracking_number']);
-        // POST /ship plus one post-request verification read. The supplied
-        // preflight snapshot prevents a duplicate pre-POST order read.
+
         Http::assertSentCount(2);
     }
 
