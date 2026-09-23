@@ -87,6 +87,21 @@ class ProductionWorkerSafetyTest extends TestCase
         }
     }
 
+    public function test_background_grace_period_is_nested_under_pod_template(): void
+    {
+        $yaml = file_get_contents(base_path('k8s/production/03-horizon.yaml'));
+
+        $this->assertIsString($yaml);
+        $this->assertMatchesRegularExpression(
+            '/    spec:\n(?:      #[^\n]*\n)*      terminationGracePeriodSeconds: 360/',
+            $yaml,
+        );
+        $this->assertStringNotContainsString(
+            "spec:\n  replicas: 1\n  terminationGracePeriodSeconds:",
+            $yaml,
+        );
+    }
+
     public function test_production_workflow_applies_keda_only_when_the_cluster_supports_it(): void
     {
         $workflow = file_get_contents(base_path('.github/workflows/ci-cd-production.yml'));
