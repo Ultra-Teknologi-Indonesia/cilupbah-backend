@@ -42,18 +42,16 @@ spec:
               value: "horizon"
             - name: HORIZON_PROFILE
               value: "marketplace-ops"
-            - name: HORIZON_CHANNEL_CANCELLATION_PROCESSES
-              value: "2"
-            # Cancellation remains responsive but must not affect order intake,
-            # fulfillment, AWB, label download, or stock propagation.
+            - name: HORIZON_MARKETPLACE_CONTROL_MAX_PROCESSES
+              value: "4"
+            - name: HORIZON_MARKETPLACE_WEBHOOK_MAX_PROCESSES
+              value: "5"
           resources:
             requests:
               memory: "768Mi"
               cpu: "500m"
             limits:
-              # Only cancellation/tracking/webhook operations remain here.
-              # Order intake, fulfillment and stock have their own pools.
-              memory: "3Gi"
+              memory: "2560Mi"
               cpu: "2"
           livenessProbe:
             exec:

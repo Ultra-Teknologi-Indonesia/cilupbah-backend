@@ -37,28 +37,20 @@ spec:
               value: "660"
             - name: HORIZON_PROFILE
               value: "stock"
-            # Stock is coalesced in the outbox; these are concurrency ceilings,
-            # not a permission to send duplicate writes to a marketplace.
-            - name: HORIZON_STOCK_MAX_PROCESSES
+            - name: HORIZON_STOCK_URGENT_MAX_PROCESSES
               value: "4"
-            - name: HORIZON_CHANNEL_STOCK_MAX_PROCESSES
+            - name: HORIZON_STOCK_PROPAGATION_MAX_PROCESSES
               value: "3"
-            - name: HORIZON_CHANNEL_STOCK_CRITICAL_PROCESSES
-              value: "2"
-            - name: HORIZON_CHANNEL_STOCK_NORMAL_PROCESSES
-              value: "2"
-            - name: HORIZON_CHANNEL_STOCK_OUTBOX_PROCESSES
-              value: "2"
             - name: CHANNEL_STOCK_SYNC_DISPATCH_CLAIM_LIMIT
               value: "50"
             - name: CHANNEL_STOCK_SYNC_MAX_INFLIGHT_PER_SHOP
               value: "1"
           resources:
             requests:
-              memory: "1Gi"
+              memory: "768Mi"
               cpu: "500m"
             limits:
-              memory: "3Gi"
+              memory: "2560Mi"
               cpu: "2500m"
           livenessProbe:
             exec:

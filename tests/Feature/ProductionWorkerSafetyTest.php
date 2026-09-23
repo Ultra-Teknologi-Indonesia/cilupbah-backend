@@ -114,8 +114,12 @@ class ProductionWorkerSafetyTest extends TestCase
     public function test_legacy_recovery_worker_is_decommissioned(): void
     {
         $this->assertFileDoesNotExist(base_path('k8s/production/03-horizon-legacy-queue-recovery.yaml'));
+        $this->assertFileDoesNotExist(base_path('k8s/production/03-horizon-order-recovery.yaml'));
+        $this->assertFileDoesNotExist(base_path('k8s/production/04-horizon-labels-prefetch.yaml'));
+        $this->assertFileDoesNotExist(base_path('k8s/production/04-horizon-labels-archive.yaml'));
         $this->assertArrayNotHasKey('redis-legacy', config('queue.connections'));
         $this->assertArrayNotHasKey('legacy-recovery', config('horizon.profiles'));
+        $this->assertArrayNotHasKey('order-recovery', config('horizon.profiles'));
 
         $workflow = file_get_contents(base_path('.github/workflows/ci-cd-production.yml'));
 
@@ -124,6 +128,8 @@ class ProductionWorkerSafetyTest extends TestCase
             'kubectl delete deployment cilupbah-horizon-legacy-queue-recovery',
             $workflow,
         );
+        $this->assertStringContainsString('cilupbah-horizon-labels-prefetch', $workflow);
+        $this->assertStringContainsString('cilupbah-horizon-labels-archive', $workflow);
     }
 
     public function test_operational_capabilities_are_deployed_in_separate_horizon_pools(): void

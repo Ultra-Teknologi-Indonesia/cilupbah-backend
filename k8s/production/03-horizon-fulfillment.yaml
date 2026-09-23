@@ -37,14 +37,14 @@ spec:
               value: "660"
             - name: HORIZON_PROFILE
               value: "fulfillment"
-            - name: HORIZON_FULFILLMENT_PROCESSES
-              value: "3"
+            - name: HORIZON_FULFILLMENT_MAX_PROCESSES
+              value: "5"
           resources:
             requests:
-              memory: "768Mi"
+              memory: "512Mi"
               cpu: "500m"
             limits:
-              memory: "2Gi"
+              memory: "1536Mi"
               cpu: "2"
           livenessProbe:
             exec:

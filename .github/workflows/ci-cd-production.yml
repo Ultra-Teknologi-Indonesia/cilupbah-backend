@@ -148,6 +148,18 @@ jobs:
             kubectl delete deployment cilupbah-horizon-legacy-queue-recovery \
               -n "$NAMESPACE" --cascade=foreground --wait=false --ignore-not-found
 
+            # These low-priority label queues are now served by the labels PDF
+            # pool. Delete their old masters explicitly: removing a manifest
+            # alone would leave idle PHP workers consuming memory forever.
+            for retired_horizon in \
+              cilupbah-horizon-labels-prefetch \
+              cilupbah-horizon-labels-archive \
+              cilupbah-horizon-order-recovery
+            do
+              kubectl delete deployment "$retired_horizon" \
+                -n "$NAMESPACE" --cascade=foreground --wait=false --ignore-not-found
+            done
+
             echo "==> Menguras master Horizon lama sebelum memisahkan queue..."
             # The previous generic deployments own queues that are moved to
             # dedicated pools below. Stop them first; Redis preserves pending
@@ -179,9 +191,7 @@ jobs:
               cilupbah-horizon-stock \
               cilupbah-horizon-maintenance \
               cilupbah-horizon-labels \
-              cilupbah-horizon-labels-awb \
-              cilupbah-horizon-labels-prefetch \
-              cilupbah-horizon-labels-archive
+              cilupbah-horizon-labels-awb
             do
               if kubectl get deployment "$horizon" -n "$NAMESPACE" >/dev/null 2>&1; then
                 kubectl rollout restart "deployment/$horizon" -n "$NAMESPACE"

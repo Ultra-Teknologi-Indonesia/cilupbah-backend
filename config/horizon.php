@@ -3,1068 +3,448 @@
 use App\Http\Middleware\HorizonBasicAuth;
 use Illuminate\Support\Str;
 
-$supervisorProfiles = [
+$sameConnection = static function (string $pool, array $connections): string {
+    $connections = array_values(array_unique(array_filter($connections)));
 
-    // A Horizon deployment owns one business capability only. This prevents a
-    // slow marketplace API or a large stock push from consuming the workers
-    // that acknowledge and record newly arriving orders.
-    'order-intake' => [
-        'supervisor-orders',
-        'supervisor-channel-sync',
-        'supervisor-shopee-orders',
-        'supervisor-tiktok-orders',
-        'supervisor-lazada-orders',
-        'supervisor-channel-order-refresh',
-    ],
+    if (count($connections) !== 1) {
+        throw new LogicException(
+            "Pool Horizon '{$pool}' hanya dapat menggabungkan queue pada satu koneksi Redis: "
+            .implode(', ', $connections),
+        );
+    }
 
-    'fulfillment' => [
-        'supervisor-fulfillment',
-        'supervisor-channel-fulfillment',
-        'supervisor-shopee-fulfillment',
-        'supervisor-tiktok-fulfillment',
-        'supervisor-lazada-fulfillment',
-        'supervisor-tiktok-packages',
-    ],
+    return $connections[0];
+};
 
-    'stock' => [
-        'supervisor-stock-sync',
-        'supervisor-stock',
-        'supervisor-stock-default',
-        'supervisor-warehouse-safety',
-        'supervisor-channel-stock',
-        'supervisor-channel-stock-critical',
-        'supervisor-channel-stock-normal',
-        'supervisor-channel-stock-outbox',
-    ],
-
-    // Marketplace operational events are deliberately distinct from order
-    // intake: cancellation/tracking bursts must never delay new orders.
-    'marketplace-ops' => [
-        'supervisor-channel-cancellation',
-        'supervisor-shopee-cancellation',
-        'supervisor-tiktok-cancellation',
-        'supervisor-lazada-cancellation',
-        'supervisor-tracking',
-        'supervisor-tiktok-webhooks-operational',
-        'supervisor-shopee-webhooks-operational',
-        'supervisor-shopee-tracking-ingress',
-        'supervisor-shopee-tracking',
-        'supervisor-lazada-webhooks-operational',
-    ],
-
-    'background' => [
-        'supervisor-default',
-        'supervisor-product-validation',
-        'supervisor-channel-finance',
-        'supervisor-channel-product',
-        'supervisor-channel-after-sales',
-        'supervisor-tiktok-webhooks-background',
-        'supervisor-shopee-webhooks-background',
-        'supervisor-lazada-webhooks-background',
-    ],
-
-    'labels-pdf' => [
-        'supervisor-labels',
-        'supervisor-label-merge',
-        'supervisor-label-download-shopee',
-        'supervisor-label-download-tiktok',
-        'supervisor-label-download-lazada',
-    ],
-
-    'labels-prefetch' => [
-        'supervisor-label-prefetch',
-    ],
-
-    'labels-awb' => [
-        'supervisor-label-awb',
-        'supervisor-label-awb-request-shopee',
-        'supervisor-label-awb-request-tiktok',
-        'supervisor-label-awb-request-lazada',
-        'supervisor-label-awb-poll-shopee',
-        'supervisor-label-awb-poll-tiktok',
-        'supervisor-label-awb-poll-lazada',
-    ],
-
-    'labels-archive' => [
-        'supervisor-label-archive',
-    ],
-
-    // Console cutover, QR generation, and generic downloads are intentionally
-    // isolated: they can be memory-heavy but are never allowed to consume the
-    // operational pools.
-    'maintenance' => [
-        'supervisor-cutover',
-        'supervisor-downloads',
-        'supervisor-qr-labels',
-    ],
-
-    'order-recovery' => [
-        'supervisor-channel-order-recovery',
-    ],
-
-];
-
-$legacyOrderOperationsProcesses = max(
-    1,
-    min(6, (int) env('HORIZON_ORDER_OPERATIONS_PROCESSES', 6)),
-);
-$ordersProcesses = max(
-    1,
-    min(4, (int) env('HORIZON_ORDERS_PROCESSES', min(3, $legacyOrderOperationsProcesses))),
-);
-$fulfillmentProcesses = max(
-    1,
-    min(3, (int) env('HORIZON_FULFILLMENT_PROCESSES', min(2, $legacyOrderOperationsProcesses))),
-);
-$stockSyncProcesses = max(
-    1,
-    min(2, (int) env('HORIZON_STOCK_SYNC_PROCESSES', 1)),
-);
-$stockMaxProcesses = max(
-    1,
-    min(4, (int) env('HORIZON_STOCK_MAX_PROCESSES', 4)),
-);
-$channelStockMaxProcesses = max(
-    1,
-    min(2, (int) env('HORIZON_CHANNEL_STOCK_MAX_PROCESSES', 1)),
-);
-$channelStockCriticalProcesses = max(
-    1,
-    min(2, (int) env('HORIZON_CHANNEL_STOCK_CRITICAL_PROCESSES', 1)),
-);
-$channelStockNormalProcesses = max(
-    1,
-    min(2, (int) env('HORIZON_CHANNEL_STOCK_NORMAL_PROCESSES', 1)),
-);
-$channelCancellationProcesses = max(
-    1,
-    min(4, (int) env('HORIZON_CHANNEL_CANCELLATION_PROCESSES', 2)),
-);
-$channelOrderRefreshProcesses = max(
-    1,
-    min(2, (int) env('HORIZON_CHANNEL_ORDER_REFRESH_PROCESSES', 1)),
-);
-$orderRecoveryProcesses = max(
-    1,
-    min(4, (int) env('HORIZON_ORDER_RECOVERY_PROCESSES', 4)),
-);
-$labelAwbRequestMaxProcesses = max(
-    1,
-    min(3, (int) env('QUEUE_LABEL_AWB_REQUEST_PARALLELISM', 2)),
-);
-$labelAwbPollMaxProcesses = max(
-    1,
-    min(2, (int) env('QUEUE_LABEL_AWB_POLL_PARALLELISM', 1)),
-);
-$labelDownloadMaxProcesses = max(
-    1,
-    min(3, (int) env('QUEUE_LABEL_DOWNLOAD_PARALLELISM', 2)),
-);
-$labelMergeMaxProcesses = max(
-    1,
-    min(2, (int) env('QUEUE_LABEL_MERGE_PARALLELISM', 1)),
-);
-
-$dedicatedQueueSupervisor = static function (
+$pool = static function (
     string $connection,
-    string $queue,
+    array $queues,
+    int $minProcesses,
+    int $maxProcesses,
     int $timeout,
     int $memory,
-    array $backoff,
     int $tries = 3,
+    array $backoff = [5, 15, 30],
     int $nice = 0,
-    int $minProcesses = 1,
-    int $maxProcesses = 1,
-    int $maxTime = 3600,
+    int $maxTime = 1800,
     int $maxJobs = 100,
 ): array {
-    $minProcesses = max(1, min(6, $minProcesses));
-    $maxProcesses = max($minProcesses, min(6, $maxProcesses));
-    $maxTime = max(300, min(3600, $maxTime));
-    $maxJobs = max(10, min(250, $maxJobs));
+    $minProcesses = max(1, min(4, $minProcesses));
+    $maxProcesses = max($minProcesses, min(12, $maxProcesses));
 
     return [
         'connection' => $connection,
-        'queue' => [$queue],
-        'balance' => $maxProcesses > $minProcesses ? 'auto' : 'off',
+        'queue' => array_values(array_unique($queues)),
+        'balance' => 'auto',
         'autoScalingStrategy' => 'size',
         'minProcesses' => $minProcesses,
         'maxProcesses' => $maxProcesses,
-        'maxTime' => $maxTime,
-        'maxJobs' => $maxJobs,
+        'balanceMaxShift' => 1,
+        'balanceCooldown' => 5,
+        'maxTime' => max(300, min(3600, $maxTime)),
+        'maxJobs' => max(10, min(250, $maxJobs)),
         'timeout' => $timeout,
         'tries' => $tries,
         'backoff' => $backoff,
         'memory' => $memory,
-        'balanceMaxShift' => 1,
-        'balanceCooldown' => 5,
         'nice' => $nice,
     ];
 };
 
-$dedicatedQueueSupervisors = [];
-foreach (['shopee', 'tiktok', 'lazada'] as $channel) {
-    $dedicatedQueueSupervisors["supervisor-{$channel}-cancellation"] = $dedicatedQueueSupervisor(
-        'redis',
-        env('QUEUE_NAME_'.strtoupper($channel).'_CANCELLATION', "{$channel}-cancellation"),
-        90,
-        128,
-        [10, 30, 60],
-        5,
-    );
+$q = static fn (string $key, string $default): string => (string) config("queue.names.{$key}", $default);
+$route = static fn (string $key, string $field, string $default): string => (string) config("queue.routing.{$key}.{$field}", $default);
 
-    $dedicatedQueueSupervisors["supervisor-{$channel}-fulfillment"] = $dedicatedQueueSupervisor(
+$orderSyncConnection = $sameConnection('order-sync', [
+    $route('channel_sync', 'connection', 'redis-channel-sync'),
+    $route('channel_order_recovery', 'connection', 'redis-channel-sync'),
+]);
+$stockUrgentConnection = $sameConnection('stock-urgent', [
+    'redis',
+    $route('stock_critical', 'connection', 'redis'),
+    $route('warehouse_safety', 'connection', 'redis'),
+    $route('channel_stock_critical', 'connection', 'redis'),
+    $route('channel_stock_outbox', 'connection', 'redis'),
+]);
+$stockPropagationConnection = $sameConnection('stock-propagation', [
+    $route('stock_default', 'connection', 'redis'),
+    $route('channel_stock', 'connection', 'redis'),
+    $route('channel_stock_normal', 'connection', 'redis'),
+]);
+$labelRenderConnection = $sameConnection('label-render', [
+    $route('labels', 'connection', 'redis-long'),
+    $route('label_merge', 'connection', 'redis-long'),
+]);
+$labelMaintenanceConnection = $sameConnection('label-maintenance', [
+    $route('label_prefetch', 'connection', 'redis-long'),
+    $route('label_archive', 'connection', 'redis-long'),
+]);
+
+$supervisors = [
+    'supervisor-order-intake' => $pool(
         'redis',
-        env('QUEUE_NAME_'.strtoupper($channel).'_FULFILLMENT', "{$channel}-fulfillment"),
+        [$q('orders', 'orders'), $q('shopee_orders', 'shopee-orders'), $q('tiktok_orders', 'tiktok-orders'), $q('lazada_orders', 'lazada-orders'), $q('channel_order_refresh', 'channel-order-refresh')],
+        1,
+        max(4, min(10, (int) env('HORIZON_ORDER_INTAKE_MAX_PROCESSES', 6))),
         120,
-        128,
-        [10, 30, 60],
+        192,
         3,
-    );
-
-    $dedicatedQueueSupervisors["supervisor-label-awb-request-{$channel}"] = $dedicatedQueueSupervisor(
-        env('QUEUE_LABEL_AWB_REQUEST_CONNECTION', 'redis-long'),
-        env('QUEUE_NAME_LABEL_AWB_REQUEST_'.strtoupper($channel), "label-awb-request-{$channel}"),
+        [5, 15, 30, 60],
+        0,
+        1800,
+        250,
+    ),
+    'supervisor-order-sync-recovery' => $pool(
+        $orderSyncConnection,
+        [$route('channel_sync', 'queue', 'channel-sync'), $route('channel_order_recovery', 'queue', 'channel-order-recovery'), $q('product', 'product')],
+        1,
+        max(2, min(6, (int) env('HORIZON_ORDER_SYNC_MAX_PROCESSES', 4))),
+        270,
+        192,
+        3,
+        [10, 30, 60, 120],
+        0,
+        1800,
+        100,
+    ),
+    'supervisor-fulfillment' => $pool(
+        'redis',
+        [$q('fulfillment', 'fulfillment'), $q('channel_fulfillment', 'channel-fulfillment'), $q('shopee_fulfillment', 'shopee-fulfillment'), $q('tiktok_fulfillment', 'tiktok-fulfillment'), $q('lazada_fulfillment', 'lazada-fulfillment'), $q('tiktok_packages', 'tiktok-packages')],
+        1,
+        max(3, min(8, (int) env('HORIZON_FULFILLMENT_MAX_PROCESSES', 5))),
         180,
         192,
-        [5, 15, 30, 60],
         3,
-        5,
+        [10, 30, 60],
+        0,
+        1800,
+        250,
+    ),
+    'supervisor-stock-urgent' => $pool(
+        $stockUrgentConnection,
+        [$q('stock_sync', 'stock-sync'), $route('stock_critical', 'queue', 'stock-critical'), $route('warehouse_safety', 'queue', 'warehouse-safety'), $route('channel_stock_critical', 'queue', 'channel-stock-critical'), $route('channel_stock_outbox', 'queue', 'channel-stock-outbox')],
         1,
-        $labelAwbRequestMaxProcesses,
-    );
-
-    $dedicatedQueueSupervisors["supervisor-label-awb-poll-{$channel}"] = $dedicatedQueueSupervisor(
-        env('QUEUE_LABEL_AWB_POLL_CONNECTION', 'redis-long'),
-        env('QUEUE_NAME_LABEL_AWB_POLL_'.strtoupper($channel), "label-awb-poll-{$channel}"),
+        max(3, min(8, (int) env('HORIZON_STOCK_URGENT_MAX_PROCESSES', 4))),
+        330,
+        256,
+        3,
+        [3, 10, 30, 120],
+        0,
+        1800,
+        100,
+    ),
+    'supervisor-stock-propagation' => $pool(
+        $stockPropagationConnection,
+        [$route('stock_default', 'queue', 'stock-default'), $route('channel_stock', 'queue', 'channel-stock'), $route('channel_stock_normal', 'queue', 'channel-stock-normal')],
+        1,
+        max(2, min(6, (int) env('HORIZON_STOCK_PROPAGATION_MAX_PROCESSES', 3))),
+        330,
+        256,
+        3,
+        [30, 120, 300],
+        10,
+        1800,
+        100,
+    ),
+    'supervisor-marketplace-control' => $pool(
+        'redis',
+        [$q('channel_cancellation', 'channel-cancellation'), $q('shopee_cancellation', 'shopee-cancellation'), $q('tiktok_cancellation', 'tiktok-cancellation'), $q('lazada_cancellation', 'lazada-cancellation'), $q('tracking', 'tracking'), $q('shopee_tracking_events', 'shopee-tracking-events'), $q('shopee_tracking', 'shopee-tracking')],
+        1,
+        max(3, min(8, (int) env('HORIZON_MARKETPLACE_CONTROL_MAX_PROCESSES', 4))),
+        180,
+        192,
+        3,
+        [5, 15, 60],
+        0,
+        1800,
+        250,
+    ),
+    'supervisor-marketplace-webhooks' => $pool(
+        'redis',
+        [$q('tiktok_webhooks', 'tiktok-webhooks'), $q('shopee_webhooks', 'shopee-webhooks'), $q('lazada_webhooks', 'lazada-webhooks')],
+        1,
+        max(4, min(10, (int) env('HORIZON_MARKETPLACE_WEBHOOK_MAX_PROCESSES', 5))),
         120,
-        128,
-        [2, 5, 15, 30, 60],
-        8,
-        5,
+        192,
+        3,
+        [10, 60, 300],
+        0,
+        1800,
+        250,
+    ),
+    'supervisor-background-redis' => $pool(
+        'redis',
+        [env('WEBHOOK_QUEUE', 'webhooks'), 'default', 'notifications', $q('failed_jobs', 'failed-jobs'), $q('tiktok_aftersales', 'tiktok-aftersales'), $q('tiktok_catalog', 'tiktok-catalog'), $q('shopee_aftersales', 'shopee-aftersales'), $q('shopee_catalog', 'shopee-catalog'), $q('webhook_downloads', 'webhook-downloads'), $q('lazada_aftersales', 'lazada-aftersales'), $q('lazada_catalog', 'lazada-catalog')],
         1,
-        $labelAwbPollMaxProcesses,
-    );
-
-    $dedicatedQueueSupervisors["supervisor-label-download-{$channel}"] = $dedicatedQueueSupervisor(
-        env('QUEUE_LABEL_DOWNLOAD_CONNECTION', 'redis-long'),
-        env('QUEUE_NAME_LABEL_DOWNLOAD_'.strtoupper($channel), "label-download-{$channel}"),
+        max(2, min(6, (int) env('HORIZON_BACKGROUND_REDIS_MAX_PROCESSES', 3))),
+        180,
+        192,
+        3,
+        [30, 120, 300],
+        10,
+        1800,
+        100,
+    ),
+    'supervisor-background-long' => $pool(
+        $sameConnection('background-long', [$route('channel_product', 'connection', 'redis-long'), $route('channel_after_sales', 'connection', 'redis-long')]),
+        [$route('channel_product', 'queue', 'channel-product'), $route('channel_after_sales', 'queue', 'channel-after-sales')],
+        1,
+        max(2, min(4, (int) env('HORIZON_BACKGROUND_LONG_MAX_PROCESSES', 2))),
+        330,
+        256,
+        3,
+        [30, 120, 300],
+        10,
+        1800,
+        100,
+    ),
+    'supervisor-background-finance' => $pool(
+        $route('channel_finance', 'connection', 'redis-finance'),
+        [$route('channel_finance', 'queue', 'channel-finance')],
+        1,
+        1,
+        240,
+        256,
+        5,
+        [30, 120, 300, 900, 1800],
+        10,
+        1800,
+        100,
+    ),
+    'supervisor-label-render' => $pool(
+        $labelRenderConnection,
+        [$route('labels', 'queue', 'labels'), $route('label_merge', 'queue', 'label-merge')],
+        1,
+        max(2, min(6, (int) env('HORIZON_LABEL_RENDER_MAX_PROCESSES', 3))),
+        600,
+        512,
+        1,
+        [10, 30, 60, 120],
+        0,
+        1800,
+        50,
+    ),
+    'supervisor-label-download-shopee' => $pool(
+        $route('label_download', 'connection', 'redis-long'),
+        [$q('label_download_shopee', 'label-download-shopee')],
+        1,
+        max(2, min(4, (int) env('HORIZON_LABEL_DOWNLOAD_MAX_PROCESSES', 2))),
         180,
         256,
-        [5, 15, 30, 60],
         3,
+        [5, 15, 30, 60],
         5,
+        1800,
+        100,
+    ),
+    'supervisor-label-download-tiktok' => $pool(
+        $route('label_download', 'connection', 'redis-long'),
+        [$q('label_download_tiktok', 'label-download-tiktok')],
         1,
-        $labelDownloadMaxProcesses,
-        max(300, min(3600, (int) env('QUEUE_LABEL_DOWNLOAD_MAX_TIME', 1800))),
-        max(25, min(250, (int) env('QUEUE_LABEL_DOWNLOAD_MAX_JOBS', 100))),
+        max(2, min(4, (int) env('HORIZON_LABEL_DOWNLOAD_MAX_PROCESSES', 2))),
+        180,
+        256,
+        3,
+        [5, 15, 30, 60],
+        5,
+        1800,
+        100,
+    ),
+    'supervisor-label-download-lazada' => $pool(
+        $route('label_download', 'connection', 'redis-long'),
+        [$q('label_download_lazada', 'label-download-lazada')],
+        1,
+        max(2, min(4, (int) env('HORIZON_LABEL_DOWNLOAD_MAX_PROCESSES', 2))),
+        180,
+        256,
+        3,
+        [5, 15, 30, 60],
+        5,
+        1800,
+        100,
+    ),
+    'supervisor-label-maintenance' => $pool(
+        $labelMaintenanceConnection,
+        [$route('label_prefetch', 'queue', 'label-prefetch'), $route('label_archive', 'queue', 'label-archive')],
+        1,
+        1,
+        300,
+        256,
+        5,
+        [10, 30, 120, 300],
+        10,
+        1800,
+        100,
+    ),
+    'supervisor-label-awb' => $pool(
+        $route('label_awb', 'connection', 'redis-long'),
+        [$route('label_awb', 'queue', 'label-awb')],
+        1,
+        1,
+        180,
+        256,
+        3,
+        [10, 30, 60],
+        5,
+        1800,
+        100,
+    ),
+];
+
+foreach (['shopee', 'tiktok', 'lazada'] as $channel) {
+    $upper = strtoupper($channel);
+    $requestConnection = (string) env('QUEUE_LABEL_AWB_REQUEST_CONNECTION', 'redis-long');
+    $pollConnection = (string) env('QUEUE_LABEL_AWB_POLL_CONNECTION', 'redis-long');
+
+    // Request and polling deliberately retain different retry budgets. A poll
+    // may wait for channel-side fulfilment longer, while repeatedly sending a
+    // fresh request too many times can produce duplicate marketplace effects.
+    $supervisors["supervisor-label-awb-request-{$channel}"] = $pool(
+        $requestConnection,
+        [(string) env("QUEUE_NAME_LABEL_AWB_REQUEST_{$upper}", "label-awb-request-{$channel}")],
+        1,
+        max(2, min(4, (int) env('HORIZON_LABEL_AWB_REQUEST_MAX_PROCESSES', 2))),
+        180,
+        192,
+        3,
+        [5, 15, 30, 60],
+        5,
+        1800,
+        100,
+    );
+    $supervisors["supervisor-label-awb-poll-{$channel}"] = $pool(
+        $pollConnection,
+        [(string) env("QUEUE_NAME_LABEL_AWB_POLL_{$upper}", "label-awb-poll-{$channel}")],
+        1,
+        max(1, min(3, (int) env('HORIZON_LABEL_AWB_POLL_MAX_PROCESSES', 1))),
+        120,
+        128,
+        8,
+        [2, 5, 15, 30, 60],
+        5,
+        1800,
+        100,
     );
 }
 
-$dedicatedQueueSupervisors['supervisor-label-merge'] = $dedicatedQueueSupervisor(
-    env('QUEUE_LABEL_MERGE_CONNECTION', 'redis-long'),
-    env('QUEUE_NAME_LABEL_MERGE', 'label-merge'),
-    600,
-    512,
-    [10, 30, 60, 120],
-    3,
-    0,
-    1,
-    $labelMergeMaxProcesses,
-    max(600, min(3600, (int) env('QUEUE_LABEL_MERGE_MAX_TIME', 1800))),
-    max(10, min(100, (int) env('QUEUE_LABEL_MERGE_MAX_JOBS', 25))),
-);
+$supervisors += [
+    'supervisor-maintenance-heavy' => $pool(
+        $sameConnection('maintenance-heavy', [(string) config('operations.stock_cutover_console.queue_connection', 'redis-long'), (string) config('operations.order_cutover_console.queue_connection', 'redis-long'), $route('qr_labels', 'connection', 'redis-long')]),
+        [(string) config('operations.stock_cutover_console.queue', 'stock-cutover'), (string) config('operations.order_cutover_console.queue', 'order-cutover'), $route('qr_labels', 'queue', 'qr-labels')],
+        1,
+        1,
+        1800,
+        1024,
+        1,
+        [60, 300, 900],
+        10,
+        1800,
+        20,
+    ),
+    'supervisor-maintenance-downloads' => $pool(
+        'redis-long',
+        [$q('downloads', 'downloads')],
+        1,
+        1,
+        900,
+        256,
+        3,
+        [10, 30, 60],
+        10,
+        1800,
+        100,
+    ),
+];
+
+$supervisorProfiles = [
+    'order-intake' => ['supervisor-order-intake', 'supervisor-order-sync-recovery'],
+    'fulfillment' => ['supervisor-fulfillment'],
+    'stock' => ['supervisor-stock-urgent', 'supervisor-stock-propagation'],
+    'marketplace-ops' => ['supervisor-marketplace-control', 'supervisor-marketplace-webhooks'],
+    'background' => ['supervisor-background-redis', 'supervisor-background-long', 'supervisor-background-finance'],
+    'labels-pdf' => ['supervisor-label-render', 'supervisor-label-download-shopee', 'supervisor-label-download-tiktok', 'supervisor-label-download-lazada', 'supervisor-label-maintenance'],
+    'labels-awb' => ['supervisor-label-awb', 'supervisor-label-awb-request-shopee', 'supervisor-label-awb-request-tiktok', 'supervisor-label-awb-request-lazada', 'supervisor-label-awb-poll-shopee', 'supervisor-label-awb-poll-tiktok', 'supervisor-label-awb-poll-lazada'],
+    'maintenance' => ['supervisor-maintenance-heavy', 'supervisor-maintenance-downloads'],
+];
 
 $marketplaceLabelWaits = [];
 foreach (['shopee', 'tiktok', 'lazada'] as $channel) {
-    $upperChannel = strtoupper($channel);
-    $marketplaceLabelWaits[
-        env('QUEUE_LABEL_AWB_REQUEST_CONNECTION', 'redis-long').':'
-            .env("QUEUE_NAME_LABEL_AWB_REQUEST_{$upperChannel}", "label-awb-request-{$channel}")
-    ] = 60;
-    $marketplaceLabelWaits[
-        env('QUEUE_LABEL_AWB_POLL_CONNECTION', 'redis-long').':'
-            .env("QUEUE_NAME_LABEL_AWB_POLL_{$upperChannel}", "label-awb-poll-{$channel}")
-    ] = 90;
-    $marketplaceLabelWaits[
-        env('QUEUE_LABEL_DOWNLOAD_CONNECTION', 'redis-long').':'
-            .env("QUEUE_NAME_LABEL_DOWNLOAD_{$upperChannel}", "label-download-{$channel}")
-    ] = 60;
+    $upper = strtoupper($channel);
+    $marketplaceLabelWaits[(string) env('QUEUE_LABEL_AWB_REQUEST_CONNECTION', 'redis-long').':'.(string) env("QUEUE_NAME_LABEL_AWB_REQUEST_{$upper}", "label-awb-request-{$channel}")] = 60;
+    $marketplaceLabelWaits[(string) env('QUEUE_LABEL_AWB_POLL_CONNECTION', 'redis-long').':'.(string) env("QUEUE_NAME_LABEL_AWB_POLL_{$upper}", "label-awb-poll-{$channel}")] = 90;
+    $marketplaceLabelWaits[(string) env('QUEUE_LABEL_DOWNLOAD_CONNECTION', 'redis-long').':'.$q("label_download_{$channel}", "label-download-{$channel}")] = 60;
 }
 
 return [
-
     'name' => env('HORIZON_NAME'),
-
     'domain' => env('HORIZON_DOMAIN'),
-
     'path' => env('HORIZON_PATH', 'horizon'),
-
     'use' => env('HORIZON_REDIS_CONNECTION', 'default'),
-
-    'prefix' => env(
-        'HORIZON_PREFIX',
-        Str::slug(env('APP_NAME', 'laravel'), '_').'_horizon:'
-    ),
-
+    'prefix' => env('HORIZON_PREFIX', Str::slug(env('APP_NAME', 'laravel'), '_').'_horizon:'),
     'middleware' => ['web', HorizonBasicAuth::class],
-
-    'allowed_emails' => array_values(array_filter(array_map(
-        'trim',
-        explode(',', (string) env('HORIZON_ALLOWED_EMAILS', ''))
-    ))),
-
+    'allowed_emails' => array_values(array_filter(array_map('trim', explode(',', (string) env('HORIZON_ALLOWED_EMAILS', ''))))),
     'waits' => [
         ...$marketplaceLabelWaits,
         'redis:default' => 60,
         'redis:tracking' => 60,
         'redis:channel-cancellation' => 30,
-        'redis:channel-stock' => 60,
-        config('queue.routing.stock_critical.connection', 'redis').':'
-            .config('queue.routing.stock_critical.queue', 'stock-critical') => 30,
-        config('queue.routing.stock_default.connection', 'redis').':'
-            .config('queue.routing.stock_default.queue', 'stock-default') => 120,
-        config('queue.routing.warehouse_safety.connection', 'redis').':'
-            .config('queue.routing.warehouse_safety.queue', 'warehouse-safety') => 30,
-        config('queue.routing.channel_stock.connection', 'redis').':'
-            .config('queue.routing.channel_stock.queue', 'channel-stock') => 120,
-        config('queue.routing.channel_stock_critical.connection', 'redis').':'
-            .config('queue.routing.channel_stock_critical.queue', 'channel-stock-critical') => 30,
-        config('queue.routing.channel_stock_normal.connection', 'redis').':'
-            .config('queue.routing.channel_stock_normal.queue', 'channel-stock-normal') => 120,
-        config('queue.routing.channel_stock_outbox.connection', 'redis').':'
-            .config('queue.routing.channel_stock_outbox.queue', 'channel-stock-outbox') => 120,
-        config('queue.routing.channel_finance.connection', 'redis-finance').':'
-            .config('queue.routing.channel_finance.queue', 'channel-finance') => 120,
-        config('queue.routing.channel_sync.connection', 'redis-channel-sync').':'
-            .config('queue.routing.channel_sync.queue', 'channel-sync') => 120,
-        config('queue.routing.channel_order_recovery.connection', 'redis-channel-sync').':'
-            .config('queue.routing.channel_order_recovery.queue', 'channel-order-recovery') => 120,
-        config('queue.routing.channel_sync.connection', 'redis-channel-sync').':'
-            .config('queue.names.product', 'product') => 120,
         'redis:channel-fulfillment' => 60,
-        'redis:'.config('queue.names.orders', 'orders') => 60,
-        'redis:'.config('queue.names.fulfillment', 'fulfillment') => 60,
-        'redis:'.config('queue.names.stock_sync', 'stock-sync') => 60,
-        'redis-long:channel-product' => 120,
-        'redis-long:channel-after-sales' => 120,
+        'redis:channel-stock' => 120,
+        'redis:'.$q('orders', 'orders') => 60,
+        'redis:'.$q('fulfillment', 'fulfillment') => 60,
+        'redis:'.$q('stock_sync', 'stock-sync') => 60,
+        $orderSyncConnection.':'.$route('channel_sync', 'queue', 'channel-sync') => 120,
+        $orderSyncConnection.':'.$route('channel_order_recovery', 'queue', 'channel-order-recovery') => 120,
+        $labelRenderConnection.':'.$route('labels', 'queue', 'labels') => 60,
+        $labelRenderConnection.':'.$route('label_merge', 'queue', 'label-merge') => 60,
+        $labelMaintenanceConnection.':'.$route('label_prefetch', 'queue', 'label-prefetch') => 300,
+        $labelMaintenanceConnection.':'.$route('label_archive', 'queue', 'label-archive') => 120,
         'redis-long:stock-cutover' => 300,
         'redis-long:order-cutover' => 300,
         'redis-long:qr-labels' => 300,
-        config('queue.routing.label_archive.connection', 'redis-long').':'
-            .config('queue.routing.label_archive.queue', 'label-archive') => 120,
-        config('queue.routing.label_awb.connection', 'redis-long').':'
-            .config('queue.routing.label_awb.queue', 'label-awb') => 60,
-        config('queue.routing.label_prefetch.connection', 'redis-long').':'
-            .config('queue.routing.label_prefetch.queue', 'label-prefetch') => 300,
-        'redis:shopee-tracking-events' => 30,
-        'redis:shopee-tracking' => 60,
     ],
-
-    'trim' => [
-
-        'recent' => 15,
-        'pending' => 30,
-        'completed' => 15,
-        'recent_failed' => 720,
-        'failed' => 1440,
-        'monitored' => 720,
-    ],
-
-    'silenced' => [
-
-    ],
-
-    'silenced_tags' => [
-
-    ],
-
-    'metrics' => [
-        'trim_snapshots' => [
-            'job' => 24,
-            'queue' => 24,
-        ],
-    ],
-
-    'notifications' => [
-        'slack_webhook' => env('HORIZON_SLACK_WEBHOOK'),
-        'slack_channel' => env('HORIZON_SLACK_CHANNEL'),
-        'mail' => env('HORIZON_MAIL_TO'),
-    ],
-
+    'trim' => ['recent' => 15, 'pending' => 30, 'completed' => 15, 'recent_failed' => 720, 'failed' => 1440, 'monitored' => 720],
+    'silenced' => [],
+    'silenced_tags' => [],
+    'metrics' => ['trim_snapshots' => ['job' => 24, 'queue' => 24]],
+    'notifications' => ['slack_webhook' => env('HORIZON_SLACK_WEBHOOK'), 'slack_channel' => env('HORIZON_SLACK_CHANNEL'), 'mail' => env('HORIZON_MAIL_TO')],
     'fast_termination' => false,
-
     'memory_limit' => 192,
-
+    'resident_process_budget_mb' => 128,
+    'profile_memory_requests_mb' => [
+        'order-intake' => 768,
+        'fulfillment' => 512,
+        'stock' => 768,
+        'marketplace-ops' => 768,
+        'background' => 1024,
+        'labels-pdf' => 1536,
+        'labels-awb' => 2048,
+        'maintenance' => 768,
+    ],
+    'profile_memory_limits_mb' => [
+        'order-intake' => 2560,
+        'fulfillment' => 1536,
+        'stock' => 2560,
+        'marketplace-ops' => 2560,
+        'background' => 2048,
+        'labels-pdf' => 5120,
+        'labels-awb' => 3072,
+        'maintenance' => 2048,
+    ],
     'profiles' => $supervisorProfiles,
-
     'active_profile' => env('HORIZON_PROFILE', 'all'),
-
-    'defaults' => (function (array $supervisors) use ($supervisorProfiles): array {
+    'defaults' => (function (array $definitions) use ($supervisorProfiles): array {
         $profile = strtolower(trim((string) env('HORIZON_PROFILE', 'all')));
 
         if ($profile === 'all') {
-            return $supervisors;
+            return $definitions;
         }
 
         if (! array_key_exists($profile, $supervisorProfiles)) {
-            throw new InvalidArgumentException(
-                "HORIZON_PROFILE '{$profile}' tidak dikenal. Gunakan all, order-intake, fulfillment, stock, marketplace-ops, background, maintenance, order-recovery, labels-pdf, labels-prefetch, labels-awb, atau labels-archive."
-            );
+            throw new InvalidArgumentException("HORIZON_PROFILE '{$profile}' tidak dikenal.");
         }
 
-        $allowed = array_flip($supervisorProfiles[$profile]);
-
-        return array_intersect_key($supervisors, $allowed);
-    })([
-        'supervisor-default' => [
-            'connection' => 'redis',
-            'queue' => [env('WEBHOOK_QUEUE', 'webhooks'), 'default', 'notifications', 'failed-jobs'],
-
-            'balance' => 'off',
-            'minProcesses' => 1,
-            'maxProcesses' => 1,
-            'maxTime' => 3600,
-            'maxJobs' => 250,
-            'memory' => 128,
-            'tries' => 1,
-            'timeout' => 60,
-            'nice' => 0,
-        ],
-
-        'supervisor-orders' => [
-            'connection' => 'redis',
-            'queue' => [config('queue.names.orders', 'orders')],
-            'balance' => 'auto',
-            'autoScalingStrategy' => 'size',
-            'minProcesses' => 1,
-            'maxProcesses' => $ordersProcesses,
-            'maxTime' => 3600,
-            'maxJobs' => 250,
-            'timeout' => 60,
-            'tries' => 3,
-            'backoff' => [5, 15, 30],
-            'memory' => 128,
-            'balanceMaxShift' => 1,
-            'balanceCooldown' => 5,
-            'nice' => 0,
-        ],
-        'supervisor-fulfillment' => [
-            'connection' => 'redis',
-            'queue' => [config('queue.names.fulfillment', 'fulfillment')],
-            'balance' => 'auto',
-            'autoScalingStrategy' => 'size',
-            'minProcesses' => 1,
-            'maxProcesses' => $fulfillmentProcesses,
-            'maxTime' => 3600,
-            'maxJobs' => 250,
-            'timeout' => 60,
-            'tries' => 3,
-            'backoff' => [5, 15, 30],
-            'memory' => 128,
-            'balanceMaxShift' => 1,
-            'balanceCooldown' => 5,
-            'nice' => 0,
-        ],
-        'supervisor-stock-sync' => [
-            'connection' => 'redis',
-            'queue' => [config('queue.names.stock_sync', 'stock-sync')],
-            'balance' => $stockSyncProcesses > 1 ? 'auto' : 'off',
-            'autoScalingStrategy' => 'size',
-            'minProcesses' => 1,
-            'maxProcesses' => $stockSyncProcesses,
-            'maxTime' => 3600,
-            'maxJobs' => 250,
-            'timeout' => 60,
-            'tries' => 3,
-            'backoff' => [5, 15, 30],
-            'memory' => 128,
-            'balanceMaxShift' => 1,
-            'balanceCooldown' => 5,
-            'nice' => 0,
-        ],
-        'supervisor-channel-sync' => [
-            'connection' => config('queue.routing.channel_sync.connection', 'redis-channel-sync'),
-            'queue' => [env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync')],
-            'balance' => 'off',
-
-            'minProcesses' => 4,
-            'maxProcesses' => 4,
-            'maxTime' => 3600,
-            'maxJobs' => 250,
-            'timeout' => 270,
-            'tries' => 1,
-            'backoff' => [5, 15, 30],
-            'memory' => 192,
-            'nice' => 0,
-        ],
-        'supervisor-channel-order-recovery' => [
-            'connection' => config('queue.routing.channel_order_recovery.connection', 'redis-channel-sync'),
-            'queue' => [config('queue.routing.channel_order_recovery.queue', 'channel-order-recovery')],
-            'balance' => 'off',
-            'minProcesses' => $orderRecoveryProcesses,
-            'maxProcesses' => $orderRecoveryProcesses,
-            'maxTime' => 1800,
-            'maxJobs' => 100,
-            'timeout' => 240,
-            'tries' => 3,
-            'backoff' => [10, 30, 60],
-            'memory' => 192,
-            'nice' => 10,
-        ],
-        'supervisor-product-validation' => [
-            'connection' => config('queue.routing.channel_sync.connection', 'redis-channel-sync'),
-            'queue' => [env('QUEUE_NAME_PRODUCT', 'product')],
-            'balance' => 'off',
-            'minProcesses' => 1,
-            'maxProcesses' => 1,
-            'maxTime' => 1800,
-            'maxJobs' => 250,
-            'timeout' => 180,
-            'tries' => 3,
-            'backoff' => [30, 120, 300],
-            'memory' => 192,
-            'nice' => 10,
-        ],
-
-        'supervisor-channel-cancellation' => [
-            'connection' => 'redis',
-            'queue' => [env('QUEUE_NAME_CHANNEL_CANCELLATION', 'channel-cancellation')],
-            'balance' => 'off',
-            'minProcesses' => $channelCancellationProcesses,
-            'maxProcesses' => $channelCancellationProcesses,
-            'maxJobs' => 250,
-            'maxTime' => 1800,
-            'timeout' => 60,
-            'tries' => 3,
-            'backoff' => [10, 30, 60],
-            'memory' => 128,
-            'nice' => 0,
-        ],
-        'supervisor-channel-fulfillment' => [
-            'connection' => 'redis',
-            'queue' => [env('QUEUE_NAME_CHANNEL_FULFILLMENT', 'channel-fulfillment')],
-            'balance' => 'off',
-            'minProcesses' => 1,
-            'maxProcesses' => 1,
-            'maxJobs' => 250,
-            'maxTime' => 1800,
-            'timeout' => 60,
-            'tries' => 3,
-            'backoff' => [10, 30, 60],
-            'memory' => 128,
-            'nice' => 0,
-        ],
-        'supervisor-channel-stock' => [
-            'connection' => config('queue.routing.channel_stock.connection', 'redis'),
-            'queue' => [config('queue.routing.channel_stock.queue', 'channel-stock')],
-            'balance' => $channelStockMaxProcesses > 1 ? 'auto' : 'off',
-            'autoScalingStrategy' => 'size',
-            'minProcesses' => 1,
-            'maxProcesses' => $channelStockMaxProcesses,
-            'maxJobs' => 100,
-            'maxTime' => 1800,
-            'timeout' => 330,
-            'tries' => 3,
-            'backoff' => [30, 120, 300],
-            'memory' => 256,
-            'balanceMaxShift' => 1,
-            'balanceCooldown' => 5,
-            'nice' => 10,
-        ],
-        'supervisor-channel-stock-critical' => [
-            'connection' => config('queue.routing.channel_stock_critical.connection', 'redis'),
-            'queue' => [config('queue.routing.channel_stock_critical.queue', 'channel-stock-critical')],
-            'balance' => $channelStockCriticalProcesses > 1 ? 'auto' : 'off',
-            'autoScalingStrategy' => 'size',
-            'minProcesses' => 1,
-            'maxProcesses' => $channelStockCriticalProcesses,
-            'maxJobs' => 100,
-            'maxTime' => 1800,
-            'timeout' => 330,
-            'tries' => 1,
-            'memory' => 256,
-            'balanceMaxShift' => 1,
-            'balanceCooldown' => 5,
-            'nice' => 10,
-        ],
-        'supervisor-channel-stock-normal' => [
-            'connection' => config('queue.routing.channel_stock_normal.connection', 'redis'),
-
-            'queue' => [
-                config('queue.routing.channel_stock_normal.queue', 'channel-stock-normal'),
-            ],
-            'balance' => $channelStockNormalProcesses > 1 ? 'auto' : 'off',
-            'autoScalingStrategy' => 'size',
-            'minProcesses' => 1,
-            'maxProcesses' => $channelStockNormalProcesses,
-            'maxJobs' => 100,
-            'maxTime' => 1800,
-            'timeout' => 330,
-            'tries' => 1,
-            'memory' => 256,
-            'balanceMaxShift' => 1,
-            'balanceCooldown' => 5,
-            'nice' => 10,
-        ],
-        'supervisor-channel-stock-outbox' => [
-            'connection' => config('queue.routing.channel_stock_outbox.connection', 'redis'),
-            'queue' => [config('queue.routing.channel_stock_outbox.queue', 'channel-stock-outbox')],
-            'balance' => 'off',
-            'minProcesses' => max(1, min(2, (int) env('HORIZON_CHANNEL_STOCK_OUTBOX_PROCESSES', 1))),
-            'maxProcesses' => max(1, min(2, (int) env('HORIZON_CHANNEL_STOCK_OUTBOX_PROCESSES', 1))),
-            'maxJobs' => 250,
-            'maxTime' => 1800,
-            'timeout' => 30,
-            'tries' => 3,
-            'backoff' => [1, 5, 15],
-            'memory' => 128,
-            'nice' => 0,
-        ],
-        'supervisor-channel-finance' => [
-            'connection' => config('queue.routing.channel_finance.connection', 'redis-finance'),
-            'queue' => [config('queue.routing.channel_finance.queue', 'channel-finance')],
-            'balance' => 'off',
-            'minProcesses' => 1,
-            'maxProcesses' => 1,
-            'maxJobs' => 100,
-            'maxTime' => 1800,
-            'timeout' => 240,
-            'tries' => 5,
-            'backoff' => [30, 120, 300, 900, 1800],
-            'memory' => 256,
-            'nice' => 5,
-        ],
-        'supervisor-channel-product' => [
-            'connection' => config('queue.routing.channel_product.connection', 'redis-long'),
-            'queue' => [config('queue.routing.channel_product.queue', 'channel-product')],
-            'balance' => 'off',
-            'minProcesses' => 1,
-            'maxProcesses' => 1,
-            'maxJobs' => 100,
-            'maxTime' => 1800,
-            'timeout' => 330,
-            'tries' => 3,
-            'backoff' => [30, 120, 300],
-            'memory' => 256,
-            'nice' => 10,
-        ],
-        'supervisor-channel-after-sales' => [
-            'connection' => config('queue.routing.channel_after_sales.connection', 'redis-long'),
-            'queue' => [config('queue.routing.channel_after_sales.queue', 'channel-after-sales')],
-            'balance' => 'off',
-            'minProcesses' => 1,
-            'maxProcesses' => 1,
-            'maxJobs' => 100,
-            'maxTime' => 1800,
-            'timeout' => 150,
-            'tries' => 5,
-            'backoff' => [30, 120, 300, 600, 1200],
-            'memory' => 256,
-            'nice' => 0,
-        ],
-        'supervisor-cutover' => [
-            'connection' => config('operations.stock_cutover_console.queue_connection', 'redis-long'),
-
-            'queue' => [
-                config('operations.stock_cutover_console.queue', 'stock-cutover'),
-                config('operations.order_cutover_console.queue', 'order-cutover'),
-            ],
-            'balance' => 'off',
-            'minProcesses' => 1,
-            'maxProcesses' => 1,
-            'maxJobs' => 1,
-            'maxTime' => 1800,
-            'timeout' => 1800,
-            'tries' => 1,
-            'backoff' => [60, 300, 900],
-            'memory' => 1024,
-            'nice' => 10,
-        ],
-        'supervisor-stock' => [
-            'connection' => config('queue.routing.stock_critical.connection', 'redis'),
-
-            'queue' => [config('queue.routing.stock_critical.queue', 'stock-critical')],
-            'balance' => 'auto',
-            'autoScalingStrategy' => 'size',
-            'minProcesses' => 1,
-            'maxProcesses' => $stockMaxProcesses,
-            'maxTime' => 3600,
-            'maxJobs' => 250,
-            'timeout' => 60,
-            'tries' => 3,
-            'backoff' => [3, 10, 30],
-            'memory' => 128,
-            'balanceMaxShift' => 1,
-            'balanceCooldown' => 5,
-            'nice' => 0,
-        ],
-        'supervisor-stock-default' => [
-            'connection' => config('queue.routing.stock_default.connection', 'redis'),
-
-            'queue' => [config('queue.routing.stock_default.queue', 'stock-default')],
-            'balance' => 'off',
-            'minProcesses' => 1,
-            'maxProcesses' => 1,
-            'maxTime' => 3600,
-            'maxJobs' => 250,
-            'timeout' => 60,
-            'tries' => 3,
-            'backoff' => [3, 10, 30],
-            'memory' => 128,
-            'nice' => 0,
-        ],
-        'supervisor-warehouse-safety' => [
-            'connection' => config('queue.routing.warehouse_safety.connection', 'redis'),
-            'queue' => [config('queue.routing.warehouse_safety.queue', 'warehouse-safety')],
-            'balance' => 'off',
-            'minProcesses' => 1,
-            'maxProcesses' => 1,
-            'maxJobs' => 250,
-            'maxTime' => 3600,
-            'timeout' => 60,
-            'tries' => 3,
-            'backoff' => [3, 10, 30],
-            'memory' => 128,
-
-            'nice' => 0,
-        ],
-        'supervisor-downloads' => [
-            'connection' => 'redis-long',
-            'queue' => ['downloads'],
-            'balance' => 'off',
-            'minProcesses' => 1,
-            'maxProcesses' => 1,
-            'maxJobs' => 100,
-            'timeout' => 900,
-            'tries' => 3,
-            'backoff' => [10, 30, 60],
-            'memory' => 256,
-            'nice' => 0,
-        ],
-        'supervisor-labels' => [
-            'connection' => config('queue.routing.labels.connection', 'redis-long'),
-            'queue' => [config('queue.routing.labels.queue', 'labels')],
-            'balance' => 'off',
-            'minProcesses' => max(1, min(6, (int) env('QUEUE_LABEL_PARALLELISM', 4))),
-            'maxProcesses' => max(1, min(6, (int) env('QUEUE_LABEL_PARALLELISM', 4))),
-            'maxJobs' => 100,
-            'timeout' => 600,
-            'tries' => 1,
-            'memory' => 512,
-            'nice' => 0,
-        ],
-        'supervisor-label-prefetch' => [
-            'connection' => config('queue.routing.label_prefetch.connection', 'redis-long'),
-            'queue' => [config('queue.routing.label_prefetch.queue', 'label-prefetch')],
-            'balance' => 'off',
-            'minProcesses' => max(1, min(2, (int) env('QUEUE_LABEL_PREFETCH_PARALLELISM', 1))),
-            'maxProcesses' => max(1, min(2, (int) env('QUEUE_LABEL_PREFETCH_PARALLELISM', 1))),
-            'maxJobs' => 100,
-            'timeout' => 180,
-            'tries' => 3,
-            'backoff' => [10, 30, 60],
-            'memory' => 256,
-            'nice' => 5,
-        ],
-        'supervisor-label-awb' => [
-            'connection' => config('queue.routing.label_awb.connection', 'redis-long'),
-
-            'queue' => [config('queue.routing.label_awb.queue', 'label-awb')],
-            'balance' => 'off',
-            'minProcesses' => max(1, min(4, (int) env('QUEUE_LABEL_AWB_PARALLELISM', 1))),
-            'maxProcesses' => max(1, min(4, (int) env('QUEUE_LABEL_AWB_PARALLELISM', 1))),
-            'maxJobs' => 100,
-            'timeout' => 180,
-            'tries' => 3,
-            'backoff' => [10, 30, 60],
-            'memory' => 256,
-            'nice' => 5,
-        ],
-        'supervisor-label-archive' => [
-            'connection' => config('queue.routing.label_archive.connection', 'redis-long'),
-            'queue' => [config('queue.routing.label_archive.queue', 'label-archive')],
-            'balance' => 'off',
-
-            'minProcesses' => max(1, min(3, (int) env('QUEUE_LABEL_ARCHIVE_PARALLELISM', 2))),
-            'maxProcesses' => max(1, min(3, (int) env('QUEUE_LABEL_ARCHIVE_PARALLELISM', 2))),
-            'maxTime' => 1800,
-            'maxJobs' => 100,
-            'timeout' => config('queue.routing.label_archive.timeout', 300),
-            'tries' => config('queue.routing.label_archive.tries', 5),
-            'backoff' => [10, 30, 120, 300],
-            'memory' => 128,
-            'nice' => 10,
-        ],
-        'supervisor-qr-labels' => [
-            'connection' => config('queue.routing.qr_labels.connection', 'redis-long'),
-            'queue' => [config('queue.routing.qr_labels.queue', 'qr-labels')],
-            'balance' => 'off',
-            'minProcesses' => 1,
-            'maxProcesses' => 1,
-            'maxJobs' => 20,
-            'timeout' => 1800,
-            'tries' => 1,
-            'memory' => 512,
-            'nice' => 5,
-        ],
-        'supervisor-tracking' => [
-            'connection' => 'redis',
-            'queue' => [config('queue.names.tracking', 'tracking')],
-            'balance' => 'off',
-            'minProcesses' => 1,
-            'maxProcesses' => 1,
-            'maxJobs' => 250,
-            'timeout' => 120,
-            'tries' => 2,
-            'backoff' => [10, 60],
-            'memory' => 128,
-            'nice' => 5,
-        ],
-
-        'supervisor-shopee-orders' => [
-            'connection' => 'redis',
-            'queue' => [config('queue.names.shopee_orders', 'shopee-orders')],
-
-            'balance' => 'auto',
-            'autoScalingStrategy' => 'size',
-            'minProcesses' => 1,
-            'maxProcesses' => 4,
-            'maxJobs' => 250,
-            'timeout' => 120,
-            'tries' => 3,
-            'backoff' => [10, 60, 300],
-            'memory' => 128,
-            'balanceMaxShift' => 1,
-            'balanceCooldown' => 5,
-            'nice' => 0,
-        ],
-        'supervisor-tiktok-orders' => [
-            'connection' => 'redis',
-            'queue' => [config('queue.names.tiktok_orders', 'tiktok-orders')],
-            'balance' => 'auto',
-            'autoScalingStrategy' => 'size',
-            'minProcesses' => 1,
-
-            'maxProcesses' => 4,
-            'maxJobs' => 250,
-            'timeout' => 120,
-            'tries' => 3,
-            'backoff' => [10, 60, 300],
-            'memory' => 128,
-            'balanceMaxShift' => 1,
-            'balanceCooldown' => 5,
-            'nice' => 0,
-        ],
-        'supervisor-lazada-orders' => [
-            'connection' => 'redis',
-            'queue' => [config('queue.names.lazada_orders', 'lazada-orders')],
-            'balance' => 'auto',
-            'autoScalingStrategy' => 'size',
-            'minProcesses' => 1,
-            'maxProcesses' => 2,
-            'maxJobs' => 250,
-            'timeout' => 120,
-            'tries' => 3,
-            'backoff' => [10, 60, 300],
-            'memory' => 128,
-            'balanceMaxShift' => 1,
-            'balanceCooldown' => 5,
-            'nice' => 0,
-        ],
-        'supervisor-channel-order-refresh' => [
-            'connection' => 'redis',
-            'queue' => [config('queue.names.channel_order_refresh', 'channel-order-refresh')],
-            'balance' => $channelOrderRefreshProcesses > 1 ? 'auto' : 'off',
-            'autoScalingStrategy' => 'size',
-            'minProcesses' => 1,
-            'maxProcesses' => $channelOrderRefreshProcesses,
-            'maxTime' => 1800,
-            'maxJobs' => 250,
-            'timeout' => 120,
-            'tries' => 8,
-            'backoff' => [2, 5, 15, 30, 60, 120],
-            'memory' => 128,
-            'balanceMaxShift' => 1,
-            'balanceCooldown' => 5,
-            'nice' => 0,
-        ],
-        'supervisor-tiktok-webhooks-operational' => [
-            'connection' => 'redis',
-
-            'queue' => [env('QUEUE_NAME_TIKTOK_WEBHOOKS', 'tiktok-webhooks')],
-            'balance' => 'auto',
-            'autoScalingStrategy' => 'size',
-            'minProcesses' => 2,
-            'maxProcesses' => 3,
-            'maxJobs' => 250,
-            'timeout' => 120,
-            'tries' => 3,
-            'backoff' => [10, 60, 300],
-            'memory' => 128,
-            'balanceMaxShift' => 1,
-            'balanceCooldown' => 5,
-            'nice' => 0,
-        ],
-        'supervisor-tiktok-packages' => [
-            'connection' => 'redis',
-            'queue' => [env('QUEUE_NAME_TIKTOK_PACKAGES', 'tiktok-packages')],
-            'balance' => 'off',
-            'minProcesses' => 1,
-            'maxProcesses' => 2,
-            'maxJobs' => 250,
-            'timeout' => 120,
-            'tries' => 3,
-            'backoff' => [10, 60, 300],
-            'memory' => 128,
-            'nice' => 0,
-        ],
-        'supervisor-tiktok-webhooks-background' => [
-            'connection' => 'redis',
-            'queue' => [
-                env('QUEUE_NAME_TIKTOK_AFTERSALES', 'tiktok-aftersales'),
-                env('QUEUE_NAME_TIKTOK_CATALOG', 'tiktok-catalog'),
-            ],
-            'balance' => 'off',
-            'minProcesses' => 1,
-            'maxProcesses' => 1,
-            'maxJobs' => 250,
-            'timeout' => 120,
-            'tries' => 3,
-            'backoff' => [10, 60, 300],
-            'memory' => 128,
-            'nice' => 5,
-        ],
-        'supervisor-shopee-webhooks-operational' => [
-            'connection' => 'redis',
-            'queue' => [env('QUEUE_NAME_SHOPEE_WEBHOOKS', 'shopee-webhooks')],
-            'balance' => 'auto',
-            'autoScalingStrategy' => 'size',
-            'minProcesses' => 2,
-            'maxProcesses' => 2,
-            'maxJobs' => 250,
-            'timeout' => 120,
-            'tries' => 3,
-            'backoff' => [10, 60, 300],
-            'memory' => 128,
-            'balanceMaxShift' => 1,
-            'balanceCooldown' => 5,
-            'nice' => 0,
-        ],
-        'supervisor-shopee-tracking' => [
-            'connection' => 'redis',
-            'queue' => [env('QUEUE_NAME_SHOPEE_TRACKING', 'shopee-tracking')],
-            'balance' => 'auto',
-            'autoScalingStrategy' => 'size',
-
-            'minProcesses' => 2,
-            'maxProcesses' => 3,
-            'maxJobs' => 250,
-            'timeout' => 120,
-            'tries' => 3,
-            'backoff' => [10, 60, 300],
-            'memory' => 128,
-            'balanceMaxShift' => 1,
-            'balanceCooldown' => 3,
-            'nice' => 0,
-        ],
-
-        'supervisor-shopee-tracking-ingress' => [
-            'connection' => 'redis',
-            'queue' => [env('QUEUE_NAME_SHOPEE_TRACKING_EVENTS', 'shopee-tracking-events')],
-            'balance' => 'off',
-            'minProcesses' => 1,
-            'maxProcesses' => 1,
-            'maxTime' => 3600,
-            'maxJobs' => 250,
-            'timeout' => 30,
-            'tries' => 3,
-            'backoff' => [5, 15, 60],
-            'memory' => 128,
-            'nice' => 0,
-        ],
-        'supervisor-shopee-webhooks-background' => [
-            'connection' => 'redis',
-            'queue' => [
-                env('QUEUE_NAME_SHOPEE_AFTERSALES', 'shopee-aftersales'),
-                env('QUEUE_NAME_SHOPEE_CATALOG', 'shopee-catalog'),
-                env('QUEUE_NAME_WEBHOOK_DOWNLOADS', 'webhook-downloads'),
-            ],
-            'balance' => 'off',
-            'minProcesses' => 1,
-            'maxProcesses' => 1,
-            'maxJobs' => 250,
-            'timeout' => 120,
-            'tries' => 3,
-            'backoff' => [10, 60, 300],
-            'memory' => 128,
-            'nice' => 5,
-        ],
-        'supervisor-lazada-webhooks-operational' => [
-            'connection' => 'redis',
-            'queue' => [env('QUEUE_NAME_LAZADA_WEBHOOKS', 'lazada-webhooks')],
-            'balance' => 'auto',
-            'autoScalingStrategy' => 'size',
-            'minProcesses' => 1,
-            'maxProcesses' => 2,
-            'maxJobs' => 250,
-            'timeout' => 120,
-            'tries' => 3,
-            'backoff' => [10, 60, 300],
-            'memory' => 128,
-            'balanceMaxShift' => 1,
-            'balanceCooldown' => 5,
-            'nice' => 0,
-        ],
-        'supervisor-lazada-fulfillment' => [
-            'connection' => 'redis',
-            'queue' => [env('QUEUE_NAME_LAZADA_FULFILLMENT', 'lazada-fulfillment')],
-            'balance' => 'off',
-            'minProcesses' => 1,
-            'maxProcesses' => 1,
-            'maxJobs' => 250,
-            'timeout' => 120,
-            'tries' => 3,
-            'backoff' => [10, 60, 300],
-            'memory' => 128,
-            'nice' => 0,
-        ],
-        'supervisor-lazada-webhooks-background' => [
-            'connection' => 'redis',
-            'queue' => [
-                env('QUEUE_NAME_LAZADA_AFTERSALES', 'lazada-aftersales'),
-                env('QUEUE_NAME_LAZADA_CATALOG', 'lazada-catalog'),
-            ],
-            'balance' => 'off',
-            'minProcesses' => 1,
-            'maxProcesses' => 1,
-            'maxJobs' => 250,
-            'timeout' => 120,
-            'tries' => 3,
-            'backoff' => [10, 60, 300],
-            'memory' => 128,
-            'nice' => 5,
-        ],
-        ...$dedicatedQueueSupervisors,
-    ]),
-
-    'environments' => [
-
-        'production' => [],
-        'staging' => [],
-        'local' => [],
-    ],
-
-    'watch' => [
-        'app',
-        'bootstrap',
-        'config/**/*.php',
-        'database/**/*.php',
-        'public/**/*.php',
-        'resources/**/*.php',
-        'routes',
-        'composer.lock',
-        'composer.json',
-        '.env',
-    ],
+        return array_intersect_key($definitions, array_flip($supervisorProfiles[$profile]));
+    })($supervisors),
+    'environments' => ['production' => [], 'staging' => [], 'local' => []],
+    'watch' => ['app', 'bootstrap', 'config/**/*.php', 'database/**/*.php', 'public/**/*.php', 'resources/**/*.php', 'routes', 'composer.lock', 'composer.json', '.env'],
 ];
