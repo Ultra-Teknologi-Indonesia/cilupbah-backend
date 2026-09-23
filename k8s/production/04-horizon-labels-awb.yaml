@@ -36,22 +36,18 @@ spec:
           env:
             - name: HORIZON_PROFILE
               value: "labels-awb"
-            - name: QUEUE_LABEL_AWB_PARALLELISM
+            - name: HORIZON_LABEL_AWB_REQUEST_MAX_PROCESSES
+              value: "2"
+            - name: HORIZON_LABEL_AWB_POLL_MAX_PROCESSES
               value: "1"
-            # Each marketplace has an independent queue. Keep one warm worker
-            # per channel and burst only when a real AWB backlog exists.
-            - name: QUEUE_LABEL_AWB_REQUEST_PARALLELISM
-              value: "2"
-            - name: QUEUE_LABEL_AWB_POLL_PARALLELISM
-              value: "2"
             - name: REDIS_LONG_QUEUE_RETRY_AFTER
               value: "2160"
           resources:
             requests:
-              memory: "1Gi"
+              memory: "2Gi"
               cpu: "100m"
             limits:
-              memory: "2500Mi"
+              memory: "3Gi"
               cpu: "1500m"
           livenessProbe:
             exec:

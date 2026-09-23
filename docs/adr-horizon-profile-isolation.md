@@ -1,6 +1,6 @@
 # ADR: Pool Horizon Berdasarkan Kapabilitas Operasional
 
-Status: Accepted
+Status: Superseded by `adr-horizon-pooled-worker-architecture.md`
 Tanggal: 2026-09-22
 
 ## Konteks
@@ -13,7 +13,8 @@ marketplace dan toko berbeda.
 
 ## Keputusan
 
-Setiap kapabilitas operasional memiliki profil Horizon dan Deployment sendiri:
+Dokumen ini mencatat keputusan awal bahwa setiap kapabilitas operasional
+memiliki profil Horizon dan Deployment sendiri:
 
 - `order-intake`: order internal, order Shopee/TikTok/Lazada, dan refresh order;
 - `fulfillment`: fulfillment umum dan per marketplace/package;
@@ -46,11 +47,12 @@ rate limit marketplace tetap menjadi pagar utama terhadap duplikasi dan 429.
   Laravel + queue terpisah memberi isolasi yang dibutuhkan dengan risiko rilis
   dan biaya operasi jauh lebih kecil.
 
-## Konsekuensi
+## Konsekuensi historis
 
 - Positif: resi/label, stok, fulfillment, dan order tidak saling menyumbat.
-- Positif: worker idle turun ke baseline kecil, sedangkan burst hanya terjadi
-  pada pool yang memiliki backlog.
+- Negatif yang ditemukan setelah audit RSS: satu supervisor permanen per queue
+  tetap membentuk baseline RAM tinggi walaupun worker hanya satu. Desain ini
+  digantikan oleh pool queue berdasarkan kapabilitas dan koneksi Redis.
 - Positif: batas RAM dan CPU dapat disetel per domain berdasarkan hasil load test.
 - Negatif: jumlah Deployment dan dashboard yang perlu dipantau bertambah.
 - Negatif: kapasitas tidak boleh dinaikkan melebihi kuota API marketplace.

@@ -53,25 +53,9 @@ spec:
           env:
             - name: HORIZON_PROFILE
               value: "labels-pdf"
-            - name: QUEUE_LABEL_PARALLELISM
-              value: "4"
-            - name: QUEUE_LABEL_DOWNLOAD_PARALLELISM
-              value: "2"
-            - name: QUEUE_LABEL_DOWNLOAD_MAX_JOBS
-              value: "100"
-            - name: QUEUE_LABEL_DOWNLOAD_MAX_TIME
-              value: "1800"
-            - name: QUEUE_LABEL_MERGE_PARALLELISM
-              value: "1"
-            - name: QUEUE_LABEL_MERGE_MAX_JOBS
-              value: "25"
-            - name: QUEUE_LABEL_MERGE_MAX_TIME
-              value: "1800"
-            - name: QUEUE_LABEL_PREFETCH_PARALLELISM
-              value: "1"
-            - name: QUEUE_LABEL_AWB_PARALLELISM
-              value: "2"
-            - name: QUEUE_LABEL_ARCHIVE_PARALLELISM
+            - name: HORIZON_LABEL_RENDER_MAX_PROCESSES
+              value: "3"
+            - name: HORIZON_LABEL_DOWNLOAD_MAX_PROCESSES
               value: "2"
             - name: LABEL_LOCAL_FIRST
               value: "true"
@@ -84,7 +68,7 @@ spec:
               mountPath: /var/www/html/storage/app/print-spool
           resources:
             requests:
-              memory: "1Gi"
+              memory: "1536Mi"
               cpu: "500m"
             limits:
               memory: "5Gi"

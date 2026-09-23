@@ -8,317 +8,201 @@ class HorizonQueueCoverageTest extends TestCase
 {
     private function servedQueues(): array
     {
-        $served = [];
-        foreach (config('horizon.defaults', []) as $supervisor) {
-            $served = array_merge($served, (array) ($supervisor['queue'] ?? []));
-        }
+        $served = collect(config('horizon.defaults', []))
+            ->pluck('queue')
+            ->flatten()
+            ->merge(config('queue.dedicated_queues', []))
+            ->unique()
+            ->values()
+            ->all();
 
-        $served = array_merge($served, (array) config('queue.dedicated_queues', []));
+        sort($served);
 
-        return array_values(array_unique($served));
+        return $served;
     }
 
-    public function test_all_named_queues_are_served_by_horizon(): void
+    public function test_all_named_queues_are_served_by_a_worker_pool(): void
     {
         $served = $this->servedQueues();
+        $required = array_merge(
+            array_values(config('queue.names', [])),
+            [
+                'default',
+                config('webhook.queue', 'webhooks'),
+                config('operations.stock_cutover_console.queue', 'stock-cutover'),
+                config('operations.order_cutover_console.queue', 'order-cutover'),
+            ],
+        );
 
-        $used = array_values(config('queue.names', []));
-        $used[] = 'default';
-        $used[] = config('webhook.queue', 'webhooks');
-        $used[] = config('operations.stock_cutover_console.queue', 'stock-cutover');
-        $used[] = config('operations.order_cutover_console.queue', 'order-cutover');
-
-        foreach (array_unique($used) as $queue) {
+        foreach (array_unique($required) as $queue) {
             $this->assertContains(
                 $queue,
                 $served,
-                "Queue '{$queue}' tidak dilayani supervisor Horizon mana pun — job akan menumpuk tanpa diproses."
+                "Queue '{$queue}' tidak dilayani pool worker mana pun.",
             );
         }
     }
 
-    public function test_every_job_class_queue_is_served(): void
+    public function test_every_explicit_job_queue_is_served(): void
     {
         $served = $this->servedQueues();
-
         $jobFiles = array_merge(
             glob(base_path('Modules/*/app/Jobs/*.php')) ?: [],
             glob(base_path('app/Jobs/*.php')) ?: [],
         );
 
-        $this->assertNotEmpty($jobFiles, 'Tidak ada file job ditemukan — cek path glob.');
-
         foreach ($jobFiles as $file) {
-            $src = file_get_contents($file);
+            $source = file_get_contents($file);
 
-            if (! preg_match("/onQueue\((?:config\('([^']+)'(?:\s*,\s*'([^']+)')?\)|'([^']+)')\)/", $src, $m)) {
+            if (! preg_match_all("/onQueue\\((?:config\\('([^']+)'(?:\\s*,\\s*'([^']+)')?\\)|'([^']+)')\\)/", $source, $matches, PREG_SET_ORDER)) {
                 continue;
             }
 
-            $queue = $m[3] ?? null;
-            if (! $queue) {
-                $queue = config($m[1], $m[2] ?? null);
-            }
+            foreach ($matches as $match) {
+                $queue = $match[3] ?? null;
+                if (! $queue) {
+                    $queue = config($match[1], $match[2] ?? null);
+                }
 
-            $this->assertNotNull($queue, "Queue untuk job {$file} tidak ter-resolve.");
-            $this->assertContains(
-                $queue,
-                $served,
-                basename($file)." memakai queue '{$queue}' yang tidak dilayani supervisor Horizon."
-            );
+                $this->assertNotNull($queue, "Queue {$file} tidak dapat di-resolve.");
+                $this->assertContains($queue, $served, basename($file)." memakai queue '{$queue}' tanpa worker.");
+            }
         }
     }
 
-    public function test_supervisor_connections_exist_and_use_redis(): void
+    public function test_pooled_supervisors_use_existing_redis_connections_and_recycle(): void
     {
         $connections = config('queue.connections', []);
 
         foreach (config('horizon.defaults', []) as $name => $supervisor) {
             $connection = $supervisor['connection'] ?? 'redis';
 
-            $this->assertArrayHasKey($connection, $connections, "Supervisor {$name}: connection '{$connection}' tidak ada di config/queue.php.");
-            $this->assertEquals('redis', $connections[$connection]['driver'] ?? null, "Supervisor {$name}: Horizon hanya bisa memproses driver redis.");
+            $this->assertArrayHasKey($connection, $connections, "{$name}: koneksi {$connection} tidak ada.");
+            $this->assertSame('redis', $connections[$connection]['driver'] ?? null, "{$name}: Horizon hanya mendukung Redis.");
+            $this->assertSame('auto', $supervisor['balance'] ?? null, "{$name}: pool harus autoscale berdasarkan backlog.");
+            $this->assertSame('size', $supervisor['autoScalingStrategy'] ?? null, "{$name}: autoscaler harus memakai ukuran antrean.");
+            $this->assertSame(1, $supervisor['minProcesses'] ?? null, "{$name}: idle baseline harus satu worker.");
+            $this->assertGreaterThanOrEqual(1, $supervisor['maxProcesses'] ?? 0, "{$name}: tidak memiliki kapasitas worker.");
+            $this->assertGreaterThanOrEqual(300, $supervisor['maxTime'] ?? 0, "{$name}: worker harus recycle berkala.");
+            $this->assertGreaterThanOrEqual(10, $supervisor['maxJobs'] ?? 0, "{$name}: worker harus recycle berdasarkan jumlah job.");
         }
     }
 
-    public function test_cutover_queues_share_a_single_low_concurrency_supervisor(): void
+    public function test_awb_and_label_downloads_keep_marketplace_bulkheads(): void
     {
-        $supervisor = config('horizon.defaults.supervisor-cutover');
-
-        $this->assertIsArray($supervisor);
-        $this->assertSame(
-            config('operations.stock_cutover_console.queue_connection', 'redis-long'),
-            $supervisor['connection'] ?? null,
-        );
-        $this->assertContains(
-            config('operations.stock_cutover_console.queue', 'stock-cutover'),
-            (array) ($supervisor['queue'] ?? []),
-        );
-        $this->assertContains(
-            config('operations.order_cutover_console.queue', 'order-cutover'),
-            (array) ($supervisor['queue'] ?? []),
-        );
-        $this->assertSame('off', $supervisor['balance'] ?? null);
-        $this->assertSame(1, $supervisor['minProcesses'] ?? null);
-        $this->assertSame(1, $supervisor['maxProcesses'] ?? null);
-    }
-
-    public function test_supervisors_have_bounded_baselines_and_elastic_operational_capacity(): void
-    {
-        foreach ([
-            'supervisor-default' => [1, 1],
-            'supervisor-stock-sync' => [1, 1],
-            'supervisor-channel-sync' => [4, 4],
-            'supervisor-channel-order-recovery' => [4, 4],
-            'supervisor-channel-stock-critical' => [1, 1],
-            'supervisor-channel-stock-normal' => [1, 1],
-            'supervisor-channel-stock-outbox' => [1, 1],
-            'supervisor-channel-order-refresh' => [1, 1],
-            'supervisor-product-validation' => [1, 1],
-            'supervisor-stock-default' => [1, 1],
-            'supervisor-tiktok-packages' => [1, 2],
-            'supervisor-tiktok-webhooks-background' => [1, 1],
-            'supervisor-shopee-webhooks-background' => [1, 1],
-            'supervisor-lazada-fulfillment' => [1, 1],
-            'supervisor-lazada-webhooks-background' => [1, 1],
-            'supervisor-labels' => [4, 4],
-            'supervisor-label-prefetch' => [1, 1],
-            'supervisor-label-awb' => [1, 1],
-            'supervisor-label-archive' => [2, 2],
-        ] as $name => [$minProcesses, $maxProcesses]) {
-            $supervisor = config("horizon.defaults.{$name}");
-
-            $this->assertSame('off', $supervisor['balance'] ?? null, "{$name} harus memakai pool bersama.");
-            $this->assertSame($minProcesses, $supervisor['minProcesses'] ?? null, "{$name} min worker tidak sesuai.");
-            $this->assertSame($maxProcesses, $supervisor['maxProcesses'] ?? null, "{$name} max worker tidak sesuai.");
-        }
-
-        $tracking = config('horizon.defaults.supervisor-shopee-tracking');
-        $this->assertSame('auto', $tracking['balance'] ?? null);
-        $this->assertSame('size', $tracking['autoScalingStrategy'] ?? null);
-        $this->assertSame(2, $tracking['minProcesses'] ?? null);
-        $this->assertSame(3, $tracking['maxProcesses'] ?? null);
-        $this->assertSame(1, $tracking['balanceMaxShift'] ?? null);
-        $this->assertSame(3, $tracking['balanceCooldown'] ?? null);
-
-        foreach ([
-            'supervisor-orders' => [1, 3],
-            'supervisor-fulfillment' => [1, 2],
-            'supervisor-shopee-orders' => [1, 4],
-            'supervisor-tiktok-orders' => [1, 4],
-            'supervisor-lazada-orders' => [1, 2],
-            'supervisor-shopee-webhooks-operational' => [2, 2],
-            'supervisor-tiktok-webhooks-operational' => [2, 3],
-            'supervisor-lazada-webhooks-operational' => [1, 2],
-        ] as $name => [$minProcesses, $maxProcesses]) {
-            $supervisor = config("horizon.defaults.{$name}");
-
-            $this->assertSame('auto', $supervisor['balance'] ?? null, "{$name} harus autoscale.");
-            $this->assertSame('size', $supervisor['autoScalingStrategy'] ?? null, "{$name} harus scale berdasarkan ukuran antrean.");
-            $this->assertSame($minProcesses, $supervisor['minProcesses'] ?? null, "{$name} minimum worker tidak sesuai.");
-            $this->assertSame($maxProcesses, $supervisor['maxProcesses'] ?? null, "{$name} maksimum worker harus dibatasi.");
-            $this->assertSame(1, $supervisor['balanceMaxShift'] ?? null, "{$name} scale step terlalu besar.");
-            $this->assertSame(5, $supervisor['balanceCooldown'] ?? null, "{$name} cooldown autoscale tidak sesuai.");
-        }
-
-        $stock = config('horizon.defaults.supervisor-stock');
-        $this->assertSame('auto', $stock['balance'] ?? null);
-        $this->assertSame('size', $stock['autoScalingStrategy'] ?? null);
-        $this->assertSame(1, $stock['minProcesses'] ?? null);
-        $this->assertSame(4, $stock['maxProcesses'] ?? null);
-        $this->assertSame(1, $stock['balanceMaxShift'] ?? null);
-        $this->assertSame(5, $stock['balanceCooldown'] ?? null);
-
         foreach (['shopee', 'tiktok', 'lazada'] as $channel) {
             $request = config("horizon.defaults.supervisor-label-awb-request-{$channel}");
-            $this->assertSame('auto', $request['balance'] ?? null);
-            $this->assertSame(1, $request['minProcesses'] ?? null);
-            $this->assertSame(2, $request['maxProcesses'] ?? null);
+            $this->assertSame([
+                config("queue.names.label_awb_request_{$channel}"),
+            ], $request['queue'] ?? null);
+            $this->assertSame(3, $request['tries'] ?? null);
+
+            $poll = config("horizon.defaults.supervisor-label-awb-poll-{$channel}");
+            $this->assertSame([
+                config("queue.names.label_awb_poll_{$channel}"),
+            ], $poll['queue'] ?? null);
+            $this->assertSame(8, $poll['tries'] ?? null);
 
             $download = config("horizon.defaults.supervisor-label-download-{$channel}");
-            $this->assertSame('auto', $download['balance'] ?? null);
-            $this->assertSame(1, $download['minProcesses'] ?? null);
-            $this->assertSame(2, $download['maxProcesses'] ?? null);
-        }
-    }
-
-    public function test_channel_orders_and_operational_webhooks_are_isolated_from_background_work(): void
-    {
-        $expectedQueues = [
-            'supervisor-channel-order-refresh' => [config('queue.names.channel_order_refresh', 'channel-order-refresh')],
-            'supervisor-shopee-orders' => [config('queue.names.shopee_orders', 'shopee-orders')],
-            'supervisor-tiktok-orders' => [config('queue.names.tiktok_orders', 'tiktok-orders')],
-            'supervisor-lazada-orders' => [config('queue.names.lazada_orders', 'lazada-orders')],
-            'supervisor-tiktok-packages' => [
-                env('QUEUE_NAME_TIKTOK_PACKAGES', 'tiktok-packages'),
-            ],
-            'supervisor-tiktok-webhooks-operational' => [
-                env('QUEUE_NAME_TIKTOK_WEBHOOKS', 'tiktok-webhooks'),
-            ],
-            'supervisor-tiktok-webhooks-background' => [
-                env('QUEUE_NAME_TIKTOK_AFTERSALES', 'tiktok-aftersales'),
-                env('QUEUE_NAME_TIKTOK_CATALOG', 'tiktok-catalog'),
-            ],
-            'supervisor-shopee-webhooks-operational' => [
-                env('QUEUE_NAME_SHOPEE_WEBHOOKS', 'shopee-webhooks'),
-            ],
-            'supervisor-shopee-tracking' => [
-                env('QUEUE_NAME_SHOPEE_TRACKING', 'shopee-tracking'),
-            ],
-            'supervisor-shopee-webhooks-background' => [
-                env('QUEUE_NAME_SHOPEE_AFTERSALES', 'shopee-aftersales'),
-                env('QUEUE_NAME_SHOPEE_CATALOG', 'shopee-catalog'),
-                env('QUEUE_NAME_WEBHOOK_DOWNLOADS', 'webhook-downloads'),
-            ],
-            'supervisor-lazada-webhooks-operational' => [
-                env('QUEUE_NAME_LAZADA_WEBHOOKS', 'lazada-webhooks'),
-            ],
-            'supervisor-lazada-fulfillment' => [
-                env('QUEUE_NAME_LAZADA_FULFILLMENT', 'lazada-fulfillment'),
-            ],
-            'supervisor-lazada-webhooks-background' => [
-                env('QUEUE_NAME_LAZADA_AFTERSALES', 'lazada-aftersales'),
-                env('QUEUE_NAME_LAZADA_CATALOG', 'lazada-catalog'),
-            ],
-        ];
-
-        foreach ($expectedQueues as $supervisor => $queues) {
-            $this->assertSame($queues, config("horizon.defaults.{$supervisor}.queue"));
-        }
-    }
-
-    public function test_production_worker_memory_ceiling_leaves_pod_headroom(): void
-    {
-        $allSupervisors = config('horizon.defaults', []);
-
-        foreach (config('horizon.profiles', []) as $profile => $names) {
-            $workerMegabytes = collect($names)->sum(
-                fn (string $name): int => (int) ($allSupervisors[$name]['maxProcesses'] ?? 0)
-                    * (int) ($allSupervisors[$name]['memory'] ?? 0),
-            );
-            $withMasterMegabytes = $workerMegabytes + (int) config('horizon.memory_limit');
-
-            $ceiling = [
-                'order-intake' => 3072,
-                'fulfillment' => 2048,
-                'stock' => 3072,
-                'marketplace-ops' => 3072,
-                'background' => 3072,
-                'labels-pdf' => 5120,
-                'labels-prefetch' => 1024,
-                'labels-awb' => 2560,
-                'labels-archive' => 512,
-                'maintenance' => 2048,
-                'order-recovery' => 2048,
-            ][$profile] ?? 2048;
-
-            $this->assertLessThanOrEqual(
-                $ceiling,
-                $withMasterMegabytes,
-                "Profil Horizon {$profile} melewati ceiling resource pod yang ditentukan."
-            );
+            $this->assertSame([
+                config("queue.names.label_download_{$channel}"),
+            ], $download['queue'] ?? null);
         }
 
-        $profiles = config('horizon.profiles', []);
-        $profileNames = array_keys($profiles);
-        foreach ($profileNames as $index => $profile) {
-            foreach (array_slice($profileNames, $index + 1) as $otherProfile) {
-                $this->assertSame(
-                    [],
-                    array_intersect($profiles[$profile], $profiles[$otherProfile]),
-                    "Supervisor {$profile} overlap dengan {$otherProfile}.",
-                );
-            }
-        }
-        $expectedSupervisors = array_values(array_unique(array_keys($allSupervisors)));
-        $profileSupervisors = array_values(array_unique(array_merge(...array_values($profiles))));
-        sort($expectedSupervisors);
-        sort($profileSupervisors);
-        $this->assertSame(
-            $expectedSupervisors,
-            $profileSupervisors,
-            'Setiap supervisor harus berada tepat di satu profil production.'
+        $this->assertNotSame(
+            config('horizon.defaults.supervisor-label-awb-request-shopee.queue'),
+            config('horizon.defaults.supervisor-label-awb-request-tiktok.queue'),
         );
     }
 
-    public function test_production_profiles_cover_queues_without_overlap(): void
+    public function test_profiles_are_disjoint_and_reduce_permanent_supervisor_count(): void
     {
-        $allSupervisors = config('horizon.defaults', []);
-        $queuesByProfile = [];
+        $profiles = config('horizon.profiles', []);
+        $definitions = config('horizon.defaults', []);
+        $names = array_merge(...array_values($profiles));
 
-        foreach (config('horizon.profiles', []) as $profile => $names) {
-            $queuesByProfile[$profile] = array_values(array_unique(array_merge(
-                ...array_map(
-                    fn (string $name): array => (array) ($allSupervisors[$name]['queue'] ?? []),
-                    $names,
-                ),
-            )));
+        $this->assertCount(count(array_unique($names)), $names, 'Supervisor tidak boleh dimiliki lebih dari satu pool.');
+        $definitionNames = array_keys($definitions);
+        sort($definitionNames);
+        sort($names);
+        $this->assertSame($definitionNames, $names);
+        $this->assertCount(24, $definitions, 'Baseline production harus membatasi supervisor permanen menjadi 24.');
+        $this->assertLessThanOrEqual(24, count($definitions));
+
+        $queuesByProfile = [];
+        foreach ($profiles as $profile => $profileNames) {
+            $queuesByProfile[$profile] = collect($profileNames)
+                ->flatMap(fn (string $name): array => $definitions[$name]['queue'])
+                ->unique()
+                ->values()
+                ->all();
         }
 
-        $profileNames = array_keys($queuesByProfile);
-        foreach ($profileNames as $index => $profile) {
-            foreach (array_slice($profileNames, $index + 1) as $otherProfile) {
-                $this->assertSame(
-                    [],
-                    array_values(array_intersect($queuesByProfile[$profile], $queuesByProfile[$otherProfile])),
-                    "Queue {$profile} dan {$otherProfile} tidak boleh overlap karena bisa memproses side effect bersamaan.",
-                );
+        foreach ($queuesByProfile as $profile => $queues) {
+            foreach ($queuesByProfile as $otherProfile => $otherQueues) {
+                if ($profile >= $otherProfile) {
+                    continue;
+                }
+
+                $this->assertSame([], array_values(array_intersect($queues, $otherQueues)));
             }
         }
+    }
 
-        $expected = $this->servedQueues();
+    public function test_manifest_memory_requests_cover_measured_idle_process_budget(): void
+    {
+        $definitions = config('horizon.defaults', []);
+        $processBudget = (int) config('horizon.resident_process_budget_mb');
+        $requests = config('horizon.profile_memory_requests_mb', []);
 
-        $profileQueues = [];
-        foreach ($queuesByProfile as $queues) {
-            $profileQueues = array_merge($profileQueues, $queues);
+        foreach (config('horizon.profiles', []) as $profile => $names) {
+            $minimumProcesses = count($names) + 1;
+            $maximumWorkerMemory = 0;
+            foreach ($names as $name) {
+                $minimumProcesses += (int) $definitions[$name]['minProcesses'];
+                $maximumWorkerMemory += (int) $definitions[$name]['maxProcesses']
+                    * (int) $definitions[$name]['memory'];
+            }
+
+            $this->assertGreaterThanOrEqual(
+                $minimumProcesses * $processBudget,
+                (int) ($requests[$profile] ?? 0),
+                "Request memori {$profile} tidak menutup master, supervisor, dan worker idle.",
+            );
+            $this->assertGreaterThanOrEqual(
+                $maximumWorkerMemory + ((count($names) + 1) * $processBudget),
+                (int) config("horizon.profile_memory_limits_mb.{$profile}"),
+                "Limit memori {$profile} lebih kecil dari burst worker yang dikonfigurasi.",
+            );
         }
-        $profileQueues = array_values(array_unique(array_merge(
-            $profileQueues,
-            (array) config('queue.dedicated_queues', []),
-        )));
-        sort($expected);
-        sort($profileQueues);
 
-        $this->assertSame($expected, $profileQueues);
+        foreach ([
+            'order-intake' => ['03-horizon-order-intake.yaml', '768Mi', '2560Mi'],
+            'fulfillment' => ['03-horizon-fulfillment.yaml', '512Mi', '1536Mi'],
+            'stock' => ['03-horizon-stock.yaml', '768Mi', '2560Mi'],
+            'marketplace-ops' => ['03-horizon-critical.yaml', '768Mi', '2560Mi'],
+            'background' => ['03-horizon.yaml', '1Gi', '2Gi'],
+            'labels-pdf' => ['04-horizon-labels.yaml', '1536Mi', '5Gi'],
+            'labels-awb' => ['04-horizon-labels-awb.yaml', '2Gi', '3Gi'],
+            'maintenance' => ['03-horizon-maintenance.yaml', '768Mi', '2Gi'],
+        ] as $profile => [$manifest, $request, $limit]) {
+            $yaml = file_get_contents(base_path("k8s/production/{$manifest}"));
+            $this->assertStringContainsString("memory: \"{$request}\"", $yaml, $manifest);
+            $this->assertStringContainsString("memory: \"{$limit}\"", $yaml, $manifest);
+            $this->assertSame(
+                $this->megabytes($limit),
+                (int) config("horizon.profile_memory_limits_mb.{$profile}"),
+                "Limit {$profile} harus selaras dengan manifest.",
+            );
+        }
+    }
+
+    private function megabytes(string $value): int
+    {
+        return match (true) {
+            str_ends_with($value, 'Gi') => (int) $value * 1024,
+            str_ends_with($value, 'Mi') => (int) $value,
+            default => throw new \InvalidArgumentException("Satuan memori {$value} tidak didukung."),
+        };
     }
 }

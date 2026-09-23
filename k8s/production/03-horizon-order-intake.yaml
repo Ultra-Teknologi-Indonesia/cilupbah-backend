@@ -39,18 +39,16 @@ spec:
               value: "660"
             - name: HORIZON_PROFILE
               value: "order-intake"
-            # Warm one worker per flow; Horizon grows up to these ceilings
-            # only while the order queues contain work.
-            - name: HORIZON_ORDERS_PROCESSES
-              value: "3"
-            - name: HORIZON_CHANNEL_ORDER_REFRESH_PROCESSES
-              value: "2"
+            - name: HORIZON_ORDER_INTAKE_MAX_PROCESSES
+              value: "6"
+            - name: HORIZON_ORDER_SYNC_MAX_PROCESSES
+              value: "4"
           resources:
             requests:
-              memory: "1Gi"
+              memory: "768Mi"
               cpu: "500m"
             limits:
-              memory: "3Gi"
+              memory: "2560Mi"
               cpu: "2"
           livenessProbe:
             exec:
