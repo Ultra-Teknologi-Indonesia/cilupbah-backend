@@ -1079,8 +1079,7 @@ class SalesOrderService
                 if ($storedUrls !== []) {
                     return [
                         'type' => 'url',
-                        // Keep the first URL for callers that only understand one
-                        // document, while bulk processing consumes every package URL.
+
                         'url' => $storedUrls[0],
                         'urls' => $storedUrls,
                         'source' => 'tiktok',

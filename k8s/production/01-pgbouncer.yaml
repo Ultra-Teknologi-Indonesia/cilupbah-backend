@@ -1,0 +1,146 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cilupbah-pgbouncer
+  namespace: cilupbah
+  labels:
+    app: cilupbah-pgbouncer
+    component: database-connection-pool
+spec:
+  replicas: 2
+  revisionHistoryLimit: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: cilupbah-pgbouncer
+  template:
+    metadata:
+      labels:
+        app: cilupbah-pgbouncer
+        component: database-connection-pool
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: pgbouncer
+          image: edoburu/pgbouncer:v1.25.2-p0
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          env:
+            # This Secret intentionally contains the original PostgreSQL
+            # endpoint. It must remain separate from cilupbah-env, because the
+            # application's DB_HOST will be changed to this Service.
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: cilupbah-pgbouncer-upstream
+                  key: DB_HOST
+            - name: DB_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: cilupbah-pgbouncer-upstream
+                  key: DB_PORT
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: cilupbah-pgbouncer-upstream
+                  key: DB_NAME
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: cilupbah-pgbouncer-upstream
+                  key: DB_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cilupbah-pgbouncer-upstream
+                  key: DB_PASSWORD
+            - name: LISTEN_PORT
+              value: "6432"
+            - name: AUTH_TYPE
+              value: "scram-sha-256"
+            - name: POOL_MODE
+              value: "transaction"
+            - name: MAX_CLIENT_CONN
+              value: "150"
+            # Two replicas × 35 backend connections = 70 application
+            # connections at the PostgreSQL layer, leaving headroom below the
+            # current PostgreSQL max_connections=100.
+            - name: DEFAULT_POOL_SIZE
+              value: "25"
+            - name: RESERVE_POOL_SIZE
+              value: "5"
+            - name: RESERVE_POOL_TIMEOUT
+              value: "5"
+            - name: MAX_DB_CONNECTIONS
+              value: "35"
+            - name: MAX_PREPARED_STATEMENTS
+              value: "0"
+            - name: QUERY_WAIT_TIMEOUT
+              value: "30"
+            - name: SERVER_IDLE_TIMEOUT
+              value: "60"
+            - name: SERVER_LIFETIME
+              value: "3600"
+            - name: IGNORE_STARTUP_PARAMETERS
+              value: "extra_float_digits"
+          ports:
+            - name: pgbouncer
+              containerPort: 6432
+              protocol: TCP
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "300m"
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - >-
+                  pg_isready -h 127.0.0.1 -p 6432
+                  -U "$DB_USER" -d "$DB_NAME"
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - >-
+                  pg_isready -h 127.0.0.1 -p 6432
+                  -U "$DB_USER" -d "$DB_NAME"
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cilupbah-pgbouncer
+  namespace: cilupbah
+  labels:
+    app: cilupbah-pgbouncer
+    component: database-connection-pool
+spec:
+  type: ClusterIP
+  selector:
+    app: cilupbah-pgbouncer
+  ports:
+    - name: pgbouncer
+      port: 6432
+      targetPort: 6432
+      protocol: TCP

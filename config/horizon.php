@@ -295,9 +295,6 @@ foreach (['shopee', 'tiktok', 'lazada'] as $channel) {
     $requestConnection = (string) env('QUEUE_LABEL_AWB_REQUEST_CONNECTION', 'redis-long');
     $pollConnection = (string) env('QUEUE_LABEL_AWB_POLL_CONNECTION', 'redis-long');
 
-    // Request and polling deliberately retain different retry budgets. A poll
-    // may wait for channel-side fulfilment longer, while repeatedly sending a
-    // fresh request too many times can produce duplicate marketplace effects.
     $supervisors["supervisor-label-awb-request-{$channel}"] = $pool(
         $requestConnection,
         [(string) env("QUEUE_NAME_LABEL_AWB_REQUEST_{$upper}", "label-awb-request-{$channel}")],

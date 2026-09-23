@@ -492,12 +492,6 @@ class BulkShippingLabelService
         $this->tryFinalize($batch);
     }
 
-    /**
-     * Starts a queued bulk-label batch without turning every TikTok document
-     * into a separate job. Shopee and Lazada keep item isolation here because
-     * their download APIs may return a combined PDF with no reliable page-to-
-     * order mapping; dispatching them individually preserves label correctness.
-     */
     public function processQueuedBatch(BulkShippingLabelBatch $batch): void
     {
         $pending = $batch->items()
@@ -524,13 +518,6 @@ class BulkShippingLabelService
         $this->tryFinalize($batch);
     }
 
-    /**
-     * Starts and checks Shopee label generation by shop in bulk. The document
-     * download deliberately remains one order at a time: Shopee returns a
-     * combined PDF and does not provide a safe page-to-order mapping.
-     *
-     * @param  Collection<int, BulkShippingLabelItem>  $items
-     */
     private function prepareShopeeItems(Collection $items): void
     {
         if ($items->isEmpty()) {
@@ -726,9 +713,6 @@ class BulkShippingLabelService
         }
     }
 
-    /**
-     * @return list<array<string, mixed>>
-     */
     private function shopeeShippingDocumentRows(SalesOrder $order): array
     {
         $base = [
@@ -1493,7 +1477,6 @@ class BulkShippingLabelService
             : 'tiktok_no_label');
     }
 
-    /** @return list<string> */
     private function labelUrls(array $result): array
     {
         $urls = $result['urls'] ?? [];
@@ -1509,7 +1492,6 @@ class BulkShippingLabelService
         return array_values(array_unique(array_filter($urls, static fn ($url): bool => is_string($url) && $url !== '')));
     }
 
-    /** @param list<string> $documents */
     private function mergePdfBytes(array $documents): string
     {
         if (count($documents) === 1) {

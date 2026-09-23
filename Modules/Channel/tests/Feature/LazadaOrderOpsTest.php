@@ -204,9 +204,7 @@ class LazadaOrderOpsTest extends TestCase
         );
 
         $this->assertSame('LZD-TRACK-900123', $result['tracking_number']);
-        // One read before pack and one post-pack confirmation are sufficient.
-        // requestTrackingNumber passes both snapshots to the following action
-        // instead of rereading /orders/items/get immediately before each POST.
+
         $this->assertSame(2, $itemsCalls);
         Http::assertSent(fn ($request) => str_contains($request->url(), '/order/fulfill/pack'));
         Http::assertSent(fn ($request) => str_contains($request->url(), '/order/package/rts'));
