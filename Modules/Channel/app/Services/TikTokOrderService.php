@@ -513,6 +513,27 @@ class TikTokOrderService
         );
     }
 
+    public function requestTrackingNumbersMass(string $shopId, array $packageIds): array
+    {
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (! $shop || ! $shop->access_token) {
+            throw new \Exception("No access token found for shop: {$shopId}");
+        }
+
+        $packageIds = $this->normalizePackageIds($packageIds);
+        if ($packageIds === []) {
+            return [];
+        }
+
+        return $this->shipPackagesInBatch(
+            $shop,
+            'mass-awb',
+            ['shop_cipher' => $shop->shop_cipher ?? ''],
+            $packageIds,
+            null,
+        );
+    }
+
     private function shipPackages(
         string $shopId,
         string $orderId,
@@ -671,50 +692,13 @@ class TikTokOrderService
             return $this->notShippableResult($orderId, $orderStatus);
         }
 
-        $results = [];
-        foreach ($packageIdsToShip as $packageId) {
-            try {
-                $shipBody = ['order_id' => $orderId];
-                if ($handover) {
-                    if (! empty($handover['tracking_number'])) {
-                        $shipBody['tracking_number'] = $handover['tracking_number'];
-                    }
-                    if (! empty($handover['shipping_provider_id'])) {
-                        $shipBody['shipping_provider_id'] = $handover['shipping_provider_id'];
-                    }
-                }
-
-                $res = $this->client->request(
-                    'POST',
-                    "/fulfillment/202309/packages/{$packageId}/ship",
-                    $queries,
-                    $shipBody,
-                    $shop->access_token,
-                );
-
-                $results[] = [
-                    'package_id' => $packageId,
-                    'shipped' => true,
-                    'response' => $res['data'] ?? [],
-                ];
-            } catch (\Throwable $e) {
-                Log::error('TikTok RTS: gagal ship package', [
-                    'shop_id' => $shop->shop_id ?? null,
-                    'order_id' => $orderId,
-                    'package_id' => $packageId,
-                    'error' => $e->getMessage(),
-                ]);
-                $results[] = [
-                    'package_id' => $packageId,
-                    'shipped' => false,
-                    'message' => $e->getMessage(),
-                    'error_code' => $e instanceof TikTokApiException ? $e->errorCode : null,
-                    'error_category' => $e instanceof TikTokApiException ? $e->category : null,
-                    'raw_message' => $e instanceof TikTokApiException ? $e->rawMessage : null,
-                    'request_id' => $e instanceof TikTokApiException ? $e->requestId : null,
-                ];
-            }
-        }
+        $results = $this->shipPackagesInBatch(
+            $shop,
+            $orderId,
+            $queries,
+            $packageIdsToShip,
+            $handover,
+        );
 
         $somePosted = collect($results)->contains('shipped', true);
         $failedPackageIds = collect($results)
@@ -772,6 +756,123 @@ class TikTokOrderService
             'already_accepted_package_ids' => $alreadyAcceptedIds,
             'failed_package_ids' => $failedPackageIds,
         ];
+    }
+
+    private function shipPackagesInBatch(
+        object $shop,
+        string $orderId,
+        array $queries,
+        array $packageIds,
+        ?array $handover,
+    ): array {
+        try {
+            $response = $this->client->request(
+                'POST',
+                '/fulfillment/202309/packages/ship',
+                $queries,
+                [
+                    'packages' => array_map(
+                        fn (string $packageId): array => $this->batchShipPackagePayload($packageId, $handover),
+                        $packageIds,
+                    ),
+                ],
+                $shop->access_token,
+            );
+
+            $errorsByPackageId = collect(data_get($response, 'data.errors', []))
+                ->filter(static fn ($error): bool => is_array($error) && filled(data_get($error, 'detail.package_id')))
+                ->keyBy(static fn (array $error): string => (string) data_get($error, 'detail.package_id'));
+
+            return array_map(function (string $packageId) use ($errorsByPackageId, $response): array {
+                $error = $errorsByPackageId->get($packageId);
+
+                if (is_array($error)) {
+                    return [
+                        'package_id' => $packageId,
+                        'shipped' => false,
+                        'message' => (string) ($error['message'] ?? 'TikTok menolak package pada batch shipment.'),
+                        'error_code' => $error['code'] ?? null,
+                        'request_id' => $response['request_id'] ?? null,
+                    ];
+                }
+
+                return [
+                    'package_id' => $packageId,
+                    'shipped' => true,
+                    'response' => $response['data'] ?? [],
+                    'request_id' => $response['request_id'] ?? null,
+                ];
+            }, $packageIds);
+        } catch (\Throwable $e) {
+            Log::error('TikTok RTS: batch ship packages gagal', [
+                'shop_id' => $shop->shop_id ?? null,
+                'order_id' => $orderId,
+                'package_ids' => $packageIds,
+                'error' => $e->getMessage(),
+            ]);
+
+            return array_map(static function (string $packageId) use ($e): array {
+                return [
+                    'package_id' => $packageId,
+                    'shipped' => false,
+                    'message' => $e->getMessage(),
+                    'error_code' => $e instanceof TikTokApiException ? $e->errorCode : null,
+                    'error_category' => $e instanceof TikTokApiException ? $e->category : null,
+                    'raw_message' => $e instanceof TikTokApiException ? $e->rawMessage : null,
+                    'request_id' => $e instanceof TikTokApiException ? $e->requestId : null,
+                ];
+            }, $packageIds);
+        }
+    }
+
+    private function batchShipPackagePayload(string $packageId, ?array $handover): array
+    {
+        $payload = ['id' => $packageId];
+        if ($handover === null) {
+            return $payload;
+        }
+
+        $method = strtoupper((string) (
+            $handover['handover_method']
+            ?? $handover['method']
+            ?? $handover['preferred_method']
+            ?? ''
+        ));
+        $method = match ($method) {
+            'DROPOFF', 'DROP_OFF' => 'DROP_OFF',
+            'PICKUP' => 'PICKUP',
+            default => null,
+        };
+
+        if ($method !== null) {
+            $payload['handover_method'] = $method;
+        }
+
+        $trackingNumber = trim((string) ($handover['tracking_number'] ?? ''));
+        $shippingProviderId = trim((string) ($handover['shipping_provider_id'] ?? ''));
+        if (($trackingNumber === '') !== ($shippingProviderId === '')) {
+            throw new \InvalidArgumentException(
+                'TikTok seller shipping membutuhkan tracking_number dan shipping_provider_id secara bersamaan.',
+            );
+        }
+
+        if ($trackingNumber !== '') {
+            $payload['self_shipment'] = [
+                'tracking_number' => $trackingNumber,
+                'shipping_provider_id' => $shippingProviderId,
+            ];
+        }
+
+        $pickupSlot = $handover['pickup_slot'] ?? null;
+        if (is_array($pickupSlot)
+            && isset($pickupSlot['start_time'], $pickupSlot['end_time'])) {
+            $payload['pickup_slot'] = [
+                'start_time' => (int) $pickupSlot['start_time'],
+                'end_time' => (int) $pickupSlot['end_time'],
+            ];
+        }
+
+        return $payload;
     }
 
     private function normalizePackageIds(array $packageIds): array

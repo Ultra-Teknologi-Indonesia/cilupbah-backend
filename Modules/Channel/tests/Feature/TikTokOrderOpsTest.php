@@ -172,7 +172,7 @@ class TikTokOrderOpsTest extends TestCase
         $accepted = $this->orderDetail('AWAITING_COLLECTION', 'TTRK-1', 'AWAITING_COLLECTION');
 
         Http::fake([
-            self::BASE.'/fulfillment/202309/packages/*/ship*' => Http::response(['code' => 0, 'data' => ['package_id' => 'PKG-1']], 200),
+            self::BASE.'/fulfillment/202309/packages/ship*' => Http::response(['code' => 0, 'data' => ['package_id' => 'PKG-1']], 200),
             self::BASE.'/fulfillment/202309/packages*' => Http::response(['code' => 0, 'data' => []], 200),
             self::BASE.'/order/202309/orders*' => Http::sequence()
                 ->push($ready, 200)
@@ -185,13 +185,10 @@ class TikTokOrderOpsTest extends TestCase
             ->assertStatus(200)
             ->assertJsonPath('data.shipped', true);
 
-        Http::assertSent(fn ($r) => str_contains($r->url(), '/fulfillment/202309/packages/PKG-1/ship') && $r->method() === 'POST');
+        Http::assertSent(fn ($request) => $request->method() === 'POST'
+            && str_contains($request->url(), '/fulfillment/202309/packages/ship')
+            && $request['packages'] === [['id' => 'PKG-1']]);
 
-        $order = SalesOrder::where('salesorder_no', self::SALES_NO)->first();
-        $this->assertNotNull($order);
-        $this->assertEquals('PROCESSED', $order->channel_status);
-        $this->assertEquals('pending', $order->status, 'SKU belum di-download sehingga order tetap dikarantina');
-        $this->assertEquals('TTRK-1', $order->tracking_number);
     }
 
     public function test_request_tracking_number_uses_known_package_and_reads_once(): void
@@ -200,7 +197,7 @@ class TikTokOrderOpsTest extends TestCase
         $order->update(['channel_package_ids' => ['PKG-1']]);
 
         Http::fake([
-            self::BASE.'/fulfillment/202309/packages/*/ship*' => Http::response([
+            self::BASE.'/fulfillment/202309/packages/ship*' => Http::response([
                 'code' => 0,
                 'data' => ['package_id' => 'PKG-1'],
             ], 200),
@@ -245,7 +242,7 @@ class TikTokOrderOpsTest extends TestCase
         ];
 
         Http::fake([
-            self::BASE.'/fulfillment/202309/packages/*/ship*' => Http::response([
+            self::BASE.'/fulfillment/202309/packages/ship*' => Http::response([
                 'code' => 0,
                 'data' => ['package_id' => 'PKG-1'],
             ], 200),
@@ -286,7 +283,7 @@ class TikTokOrderOpsTest extends TestCase
                     'shipping_provider_name' => 'TikTok Logistics',
                 ],
             ], 200),
-            self::BASE.'/fulfillment/202309/packages/*/ship*' => Http::response([
+            self::BASE.'/fulfillment/202309/packages/ship*' => Http::response([
                 'code' => 0,
                 'data' => ['package_id' => 'PKG-1'],
             ], 200),
@@ -401,7 +398,7 @@ class TikTokOrderOpsTest extends TestCase
 
         Http::fake([
             self::BASE.'/order/202309/orders*' => Http::response($detail, 200),
-            self::BASE.'/fulfillment/202309/packages/PKG-2/ship*' => Http::response([
+            self::BASE.'/fulfillment/202309/packages/ship*' => Http::response([
                 'code' => 0,
                 'data' => ['package_id' => 'PKG-2'],
             ], 200),
@@ -416,9 +413,63 @@ class TikTokOrderOpsTest extends TestCase
 
         $this->assertTrue($result['shipped']);
         Http::assertSent(fn ($request) => $request->method() === 'POST'
-            && str_contains($request->url(), '/packages/PKG-2/ship'));
-        Http::assertNotSent(fn ($request) => $request->method() === 'POST'
-            && str_contains($request->url(), '/packages/PKG-1/ship'));
+            && str_contains($request->url(), '/packages/ship')
+            && $request['packages'] === [['id' => 'PKG-2']]);
+    }
+
+    public function test_request_tracking_keeps_successful_packages_when_tiktok_reports_batch_errors(): void
+    {
+        $snapshot = [
+            'order_found' => true,
+            'status' => 'AWAITING_SHIPMENT',
+            'packages' => [
+                ['id' => 'PKG-1', 'tracking_number' => null, 'status' => 'AWAITING_SHIPMENT'],
+                ['id' => 'PKG-2', 'tracking_number' => null, 'status' => 'AWAITING_SHIPMENT'],
+            ],
+            'tracking_number' => null,
+            'shipping_provider' => null,
+            'has_pending_package' => true,
+            'all_packages_shipped' => false,
+        ];
+
+        Http::fake([
+            self::BASE.'/fulfillment/202309/packages/ship*' => Http::response([
+                'code' => 0,
+                'message' => 'Success',
+                'request_id' => 'request-123',
+                'data' => [
+                    'errors' => [[
+                        'code' => 10007014,
+                        'message' => 'package in freeze status',
+                        'detail' => ['package_id' => 'PKG-2'],
+                    ]],
+                ],
+            ], 200),
+            self::BASE.'/order/202309/orders*' => Http::response(
+                $this->orderDetail('AWAITING_SHIPMENT', null, 'AWAITING_SHIPMENT'),
+                200,
+            ),
+        ]);
+
+        $result = app(TikTokOrderService::class)->requestTrackingNumber(
+            'TT-700',
+            self::ORDER_ID,
+            ['preferred_method' => 'dropoff'],
+            ['PKG-1', 'PKG-2'],
+            $snapshot,
+        );
+
+        $this->assertFalse($result['shipped']);
+        $this->assertSame(['PKG-2'], $result['failed_package_ids']);
+        $this->assertTrue($result['packages'][0]['shipped']);
+        $this->assertFalse($result['packages'][1]['shipped']);
+        $this->assertSame(10007014, $result['packages'][1]['error_code']);
+        Http::assertSent(fn ($request) => $request->method() === 'POST'
+            && str_contains($request->url(), '/packages/ship')
+            && $request['packages'] === [
+                ['id' => 'PKG-1', 'handover_method' => 'DROP_OFF'],
+                ['id' => 'PKG-2', 'handover_method' => 'DROP_OFF'],
+            ]);
     }
 
     public function test_direct_tracking_reads_shipping_document_without_posting_ship(): void

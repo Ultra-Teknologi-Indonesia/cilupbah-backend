@@ -21,6 +21,7 @@ use Modules\Sales\Jobs\ProcessBulkShippingLabelItemJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelJob;
 use Modules\Sales\Jobs\RequestChannelAwbJob;
 use Modules\Sales\Jobs\RequestShopeeMassAwbJob;
+use Modules\Sales\Jobs\RequestTikTokMassAwbJob;
 use Modules\Sales\Jobs\WarmShippingLabelsJob;
 use Modules\Sales\Models\BulkShippingLabelBatch;
 use Modules\Sales\Models\BulkShippingLabelItem;
@@ -127,6 +128,42 @@ class BulkLabelAwbPullTest extends TestCase
                 sort($expected);
 
                 return $actual === $expected;
+            },
+        );
+        Queue::assertNotPushed(RequestChannelAwbJob::class);
+    }
+
+    public function test_tiktok_orders_in_the_same_shop_use_one_mass_awb_job(): void
+    {
+        Queue::fake();
+
+        $first = $this->orderWithoutAwb([
+            'source' => 'tiktok',
+            'channel_order_no' => 'TIKTOK-MASS-1',
+            'channel_shop_id' => 'TIKTOK-MASS-SHOP',
+        ]);
+        $second = $this->orderWithoutAwb([
+            'source' => 'tiktok',
+            'channel_order_no' => 'TIKTOK-MASS-2',
+            'channel_shop_id' => 'TIKTOK-MASS-SHOP',
+        ]);
+
+        app(BulkShippingLabelService::class)->createBatch(
+            $this->user,
+            [$first->id, $second->id],
+            ['document_size' => BulkShippingLabelService::DEFAULT_SIZE],
+        );
+
+        Queue::assertPushed(RequestTikTokMassAwbJob::class, 1);
+        Queue::assertPushed(
+            RequestTikTokMassAwbJob::class,
+            function (RequestTikTokMassAwbJob $job) use ($first, $second): bool {
+                $actual = $job->orderIds;
+                $expected = [(string) $first->id, (string) $second->id];
+                sort($actual);
+                sort($expected);
+
+                return $job->shopId === 'TIKTOK-MASS-SHOP' && $actual === $expected;
             },
         );
         Queue::assertNotPushed(RequestChannelAwbJob::class);

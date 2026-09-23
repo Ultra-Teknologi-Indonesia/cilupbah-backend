@@ -28,6 +28,7 @@ use Modules\Sales\Jobs\ProcessBulkShippingLabelItemJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelJob;
 use Modules\Sales\Jobs\RequestChannelAwbJob;
 use Modules\Sales\Jobs\RequestShopeeMassAwbJob;
+use Modules\Sales\Jobs\RequestTikTokMassAwbJob;
 use Modules\Sales\Models\BulkShippingLabelBatch;
 use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Models\SalesOrder;
@@ -384,8 +385,27 @@ class BulkShippingLabelService
             }
         }
 
+        $tiktokOrders = $orders
+            ->filter(static fn (SalesOrder $order): bool => strtolower((string) $order->source) === self::CHANNEL_TIKTOK)
+            ->groupBy(static fn (SalesOrder $order): string => (string) $order->channel_shop_id);
+
+        $tiktokChunkSize = (int) config('bulk-labels.tiktok_mass_awb_chunk_size', 50);
+        foreach ($tiktokOrders as $shopId => $shopOrders) {
+            foreach ($shopOrders->pluck('id')->map('strval')->chunk(max(1, $tiktokChunkSize)) as $chunk) {
+                RequestTikTokMassAwbJob::dispatch(
+                    (string) $batch->id,
+                    (string) $shopId,
+                    $chunk->values()->all(),
+                );
+            }
+        }
+
         $orders
-            ->reject(static fn (SalesOrder $order): bool => strtolower((string) $order->source) === self::CHANNEL_SHOPEE)
+            ->reject(static fn (SalesOrder $order): bool => in_array(
+                strtolower((string) $order->source),
+                [self::CHANNEL_SHOPEE, self::CHANNEL_TIKTOK],
+                true,
+            ))
             ->each(static fn (SalesOrder $order) => RequestChannelAwbJob::dispatch(
                 (string) $order->id,
                 0,
