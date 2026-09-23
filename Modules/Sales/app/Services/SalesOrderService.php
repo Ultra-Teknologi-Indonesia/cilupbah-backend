@@ -38,6 +38,9 @@ use Modules\Outbound\Models\ShipmentOrder;
 use Modules\Outbound\Services\FulfillmentCleanupService;
 use Modules\Outbound\Services\OutboundFulfillmentService;
 use Modules\Outbound\Services\PacklistStockService;
+use Modules\Product\Models\Product;
+use Modules\Product\Models\ProductVariant;
+use Modules\Product\Support\TechnicalSku;
 use Modules\Sales\Enums\BuyerCancellationSyncStatus;
 use Modules\Sales\Enums\OrderActivityAction;
 use Modules\Sales\Enums\OrderActivityEntity;
@@ -64,9 +67,6 @@ use Modules\Sales\Repositories\SalesOrderRepository;
 use Modules\Sales\Support\OrderTotals;
 use Modules\Sales\Support\SalesOrderDataNormalizer;
 use Modules\Sales\Support\ShadowOrderGuard;
-use Modules\Product\Models\Product;
-use Modules\Product\Models\ProductVariant;
-use Modules\Product\Support\TechnicalSku;
 use Modules\Warehouse\Models\Location;
 
 class SalesOrderService
@@ -1069,16 +1069,23 @@ class SalesOrderService
         if ($source === 'tiktok') {
             $storedDocuments = data_get($order->shipping_label_raw_data, 'documents', []);
             if (is_array($storedDocuments)) {
-                foreach ($storedDocuments as $storedDocument) {
-                    $storedUrl = $storedDocument['doc_url'] ?? $storedDocument['url'] ?? null;
-                    if (is_string($storedUrl) && $storedUrl !== '') {
-                        return [
-                            'type' => 'url',
-                            'url' => $storedUrl,
-                            'source' => 'tiktok',
-                            'cached' => true,
-                        ];
-                    }
+                $storedUrls = array_values(array_unique(array_filter(array_map(
+                    static fn (mixed $storedDocument): ?string => is_array($storedDocument)
+                        ? ($storedDocument['doc_url'] ?? $storedDocument['url'] ?? null)
+                        : null,
+                    $storedDocuments,
+                ), static fn ($url): bool => is_string($url) && $url !== '')));
+
+                if ($storedUrls !== []) {
+                    return [
+                        'type' => 'url',
+                        // Keep the first URL for callers that only understand one
+                        // document, while bulk processing consumes every package URL.
+                        'url' => $storedUrls[0],
+                        'urls' => $storedUrls,
+                        'source' => 'tiktok',
+                        'cached' => true,
+                    ];
                 }
             }
 
@@ -1105,28 +1112,44 @@ class SalesOrderService
                 static fn (string $packageId): bool => $packageId !== '',
             )));
             $this->persistChannelPackageIds($order, $packageIds);
-            $packageId = $packageIds[0] ?? null;
-
-            if (! $packageId) {
+            if ($packageIds === []) {
                 throw new \RuntimeException('Package ID tidak ditemukan untuk pesanan TikTok ini.');
             }
 
             $documentType = $options['document_type'] ?? 'SHIPPING_LABEL';
             $documentSize = $options['document_size'] ?? 'A6';
-            $result = $tikTokService->getShippingLabel($shopId, $packageId, $documentType, $documentSize);
-            $docUrl = $result['data']['doc_url'] ?? ($result['data']['document_url'] ?? null);
+            $documents = [];
+            foreach ($packageIds as $packageId) {
+                $result = $tikTokService->getShippingLabel($shopId, $packageId, $documentType, $documentSize);
+                $docUrl = $result['data']['doc_url'] ?? ($result['data']['document_url'] ?? null);
+                if (is_string($docUrl) && $docUrl !== '') {
+                    $documents[] = [
+                        'package_id' => $packageId,
+                        'doc_url' => $docUrl,
+                    ];
+                }
+            }
 
-            if ($docUrl) {
+            $urls = array_values(array_unique(array_column($documents, 'doc_url')));
+            if ($urls !== []) {
+                $rawData = is_array($order->shipping_label_raw_data)
+                    ? $order->shipping_label_raw_data
+                    : [];
+                $rawData['channel'] = 'tiktok';
+                $rawData['documents'] = $documents;
+                $order->forceFill(['shipping_label_raw_data' => $rawData])->saveQuietly();
+
                 return [
                     'type' => 'url',
-                    'url' => $docUrl,
+                    'url' => $urls[0],
+                    'urls' => $urls,
                     'source' => 'tiktok',
                 ];
             }
 
             return [
                 'type' => 'raw',
-                'data' => $result,
+                'data' => [],
                 'source' => 'tiktok',
             ];
         }

@@ -6,8 +6,11 @@ use App\Models\User;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Mockery;
+use Modules\Channel\Services\ShopeeOrderService;
+use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
 use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\BulkShippingLabelService;
@@ -175,6 +178,85 @@ class BulkShippingLabelContractTest extends TestCase
         $this->assertSame('https://tts.example/label.pdf', $result['url']);
         $this->assertTrue($result['cached']);
         Http::assertNothingSent();
+    }
+
+    public function test_tiktok_multi_package_keeps_all_cached_document_urls(): void
+    {
+        Http::fake();
+
+        $order = SalesOrder::factory()->create([
+            'source' => 'tiktok',
+            'channel_shop_id' => 'SHOP-1',
+            'channel_order_no' => 'TT-ORDER-MULTI',
+            'shipping_label_status' => 'ready',
+            'shipping_label_raw_data' => [
+                'channel' => 'tiktok',
+                'documents' => [
+                    ['package_id' => 'PKG-1', 'doc_url' => 'https://tts.example/one.pdf'],
+                    ['package_id' => 'PKG-2', 'doc_url' => 'https://tts.example/two.pdf'],
+                ],
+            ],
+        ]);
+
+        $result = app(SalesOrderService::class)->getShippingLabel($order);
+
+        $this->assertSame('https://tts.example/one.pdf', $result['url']);
+        $this->assertSame([
+            'https://tts.example/one.pdf',
+            'https://tts.example/two.pdf',
+        ], $result['urls']);
+        Http::assertNothingSent();
+    }
+
+    public function test_queued_shopee_batch_creates_and_checks_documents_in_bulk(): void
+    {
+        Queue::fake();
+
+        $first = SalesOrder::factory()->create([
+            'source' => 'shopee',
+            'channel_shop_id' => 'SHOP-BULK-DOCUMENTS',
+            'channel_order_no' => 'ORDER-SHOPEE-1',
+            'tracking_number' => 'SPX-1',
+        ]);
+        $second = SalesOrder::factory()->create([
+            'source' => 'shopee',
+            'channel_shop_id' => 'SHOP-BULK-DOCUMENTS',
+            'channel_order_no' => 'ORDER-SHOPEE-2',
+            'tracking_number' => 'SPX-2',
+        ]);
+        $batch = app(BulkShippingLabelService::class)->createBatch($this->user, [
+            $first->id,
+            $second->id,
+        ], []);
+
+        $shopee = Mockery::mock(ShopeeOrderService::class);
+        $shopee->shouldReceive('createShippingDocumentsMass')
+            ->once()
+            ->with('SHOP-BULK-DOCUMENTS', Mockery::on(function (array $rows): bool {
+                return count($rows) === 2
+                    && collect($rows)->pluck('order_sn')->sort()->values()->all() === ['ORDER-SHOPEE-1', 'ORDER-SHOPEE-2'];
+            }))
+            ->andReturn([
+                'results' => [
+                    'ORDER-SHOPEE-1|' => ['accepted' => true, 'response' => ['order_sn' => 'ORDER-SHOPEE-1']],
+                    'ORDER-SHOPEE-2|' => ['accepted' => true, 'response' => ['order_sn' => 'ORDER-SHOPEE-2']],
+                ],
+            ]);
+        $shopee->shouldReceive('getShippingDocumentResultsMass')
+            ->once()
+            ->andReturn([
+                'results' => [
+                    'ORDER-SHOPEE-1|' => ['ready' => false, 'status' => 'PROCESSING'],
+                    'ORDER-SHOPEE-2|' => ['ready' => false, 'status' => 'PROCESSING'],
+                ],
+            ]);
+        $this->app->instance(ShopeeOrderService::class, $shopee);
+
+        app(BulkShippingLabelService::class)->processQueuedBatch($batch);
+
+        $this->assertSame('preparing', $first->refresh()->shipping_label_status);
+        $this->assertSame('preparing', $second->refresh()->shipping_label_status);
+        Queue::assertPushed(PrepareShopeeShippingLabelJob::class, 2);
     }
 
     public function test_lazada_label_url_harus_jadi_done(): void
