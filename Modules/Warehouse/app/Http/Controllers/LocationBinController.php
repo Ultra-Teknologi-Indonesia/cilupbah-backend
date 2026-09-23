@@ -10,10 +10,10 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Warehouse\Http\Requests\AssignSkuLocationBinRequest;
 use Modules\Warehouse\Http\Requests\BulkUpdateLocationBinRequest;
+use Modules\Warehouse\Http\Requests\GenerateLocationBinRequest;
 use Modules\Warehouse\Http\Requests\MoveSkuLocationBinRequest;
 use Modules\Warehouse\Http\Requests\PrintQrLocationBinRequest;
 use Modules\Warehouse\Http\Requests\RemoveSkuLocationBinRequest;
-use Modules\Warehouse\Http\Requests\GenerateLocationBinRequest;
 use Modules\Warehouse\Http\Requests\StoreLocationBinRequest;
 use Modules\Warehouse\Http\Requests\UniformApplyLocationBinRequest;
 use Modules\Warehouse\Http\Resources\BinQrItemResource;
@@ -22,8 +22,8 @@ use Modules\Warehouse\Services\BinImportTemplateService;
 use Modules\Warehouse\Services\BinLayoutImporter;
 use Modules\Warehouse\Services\BinQrPrintService;
 use Modules\Warehouse\Services\LocationBinService;
-use PhpOffice\PhpSpreadsheet\Writer\Xlsx as XlsxWriter;
 use OpenApi\Attributes as OA;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx as XlsxWriter;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
@@ -442,6 +442,8 @@ class LocationBinController extends Controller
 
     public const PAPER_THERMAL_50X40 = 'thermal_50x40';
 
+    public const PAPER_THERMAL_50X50 = 'thermal_50x50';
+
     public const PAPER_THERMAL_80X40 = 'thermal_80x40';
 
     public const PAPER_A4_SINGLE = 'a4_single';
@@ -458,7 +460,7 @@ class LocationBinController extends Controller
         parameters: [
             new OA\Parameter(name: 'locationId', in: 'path', required: true, description: 'ID lokasi', schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'bin_ids', in: 'query', required: false, description: 'CSV daftar UUID bin (opsional, default semua bin di lokasi)', schema: new OA\Schema(type: 'string')),
-            new OA\Parameter(name: 'paper', in: 'query', required: false, schema: new OA\Schema(type: 'string', enum: ['thermal_50x40', 'thermal_80x40', 'a4_single', 'a4_multi'], default: 'thermal_50x40')),
+            new OA\Parameter(name: 'paper', in: 'query', required: false, schema: new OA\Schema(type: 'string', enum: ['thermal_50x40', 'thermal_50x50', 'thermal_80x40', 'a4_single', 'a4_multi'], default: 'thermal_50x40')),
         ],
         responses: [
             new OA\Response(response: 200, description: 'PDF stream', content: new OA\MediaType(mediaType: 'application/pdf')),
@@ -530,8 +532,9 @@ class LocationBinController extends Controller
 
         try {
             $job = $this->qrPrintService->createJob($locationId, $opts);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             report($e);
+
             return $this->errorResponse(
                 'Gagal membuat job print QR.',
                 500,
@@ -550,6 +553,7 @@ class LocationBinController extends Controller
     {
         return match ($paper) {
             self::PAPER_THERMAL_50X40 => [0, 0, 141.7, 113.4],
+            self::PAPER_THERMAL_50X50 => [0, 0, 141.7, 141.7],
             self::PAPER_THERMAL_80X40 => [0, 0, 226.8, 113.4],
             default => 'a4',
         };
@@ -559,6 +563,7 @@ class LocationBinController extends Controller
     {
         return match ($paper) {
             self::PAPER_THERMAL_50X40 => 200,
+            self::PAPER_THERMAL_50X50 => 220,
             self::PAPER_THERMAL_80X40 => 220,
             self::PAPER_A4_SINGLE => 600,
             self::PAPER_A4_MULTI => 220,

@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use Barryvdh\DomPDF\Facade\Pdf;
+use App\Exceptions\PdfRenderException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\View;
@@ -12,12 +12,7 @@ class PdfRenderer
 {
     public function bytes(string $view, array $data = [], string|array $paper = 'a4', string $orientation = 'portrait'): string
     {
-        $gotenbergPdf = $this->renderViaGotenberg($view, $data, $paper, $orientation);
-        if ($gotenbergPdf !== null) {
-            return $gotenbergPdf;
-        }
-
-        return $this->make($view, $data, $paper, $orientation)->output();
+        return $this->renderViaGotenberg($view, $data, $paper, $orientation);
     }
 
     public function save(string $view, array $data, string $path, string|array $paper = 'a4', string $orientation = 'portrait'): void
@@ -53,11 +48,11 @@ class PdfRenderer
             : $this->stream($view, $data, $filename, $paper, $orientation);
     }
 
-    protected function renderViaGotenberg(string $view, array $data, string|array $paper, string $orientation): ?string
+    protected function renderViaGotenberg(string $view, array $data, string|array $paper, string $orientation): string
     {
-        $gotenbergUrl = env('GOTENBERG_URL');
-        if (! $gotenbergUrl) {
-            return null;
+        $gotenbergUrl = rtrim((string) config('pdf.gotenberg.url'), '/');
+        if ($gotenbergUrl === '') {
+            throw new PdfRenderException('Layanan PDF belum dikonfigurasi.');
         }
 
         try {
@@ -67,7 +62,8 @@ class PdfRenderer
 
             $html = $this->withGotenbergPageSize($html, $pageSize);
 
-            $response = Http::timeout(60)
+            $response = Http::connectTimeout((int) config('pdf.gotenberg.connect_timeout_seconds', 5))
+                ->timeout((int) config('pdf.gotenberg.timeout_seconds', 60))
                 ->attach('files', $html, 'index.html')
                 ->post(rtrim($gotenbergUrl, '/').'/forms/chromium/convert/html', [
                     'paperWidth' => $pageSize['width'],
@@ -77,16 +73,27 @@ class PdfRenderer
                     'printBackground' => 'true',
                 ]);
 
-            if ($response->successful()) {
+            if ($response->successful() && $response->body() !== '') {
                 return $response->body();
             }
 
-            Log::warning('Gotenberg conversion failed, falling back to Dompdf: '.substr($response->body(), 0, 500));
-        } catch (\Throwable $e) {
-            Log::warning('Gotenberg unreachable, falling back to Dompdf: '.$e->getMessage());
-        }
+            Log::warning('Gotenberg conversion failed.', [
+                'status' => $response->status(),
+                'response' => substr($response->body(), 0, 500),
+            ]);
 
-        return null;
+            throw new PdfRenderException('Layanan PDF sedang sibuk. Silakan coba lagi.');
+        } catch (\Throwable $e) {
+            if ($e instanceof PdfRenderException) {
+                throw $e;
+            }
+
+            Log::warning('Gotenberg is unreachable.', [
+                'exception' => $e->getMessage(),
+            ]);
+
+            throw new PdfRenderException('Layanan PDF tidak dapat dihubungi. Silakan coba lagi.', previous: $e);
+        }
     }
 
     protected function gotenbergPageSize(string|array $paper): array
@@ -146,10 +153,5 @@ class PdfRenderer
     protected function millimetres(float $millimetres): string
     {
         return number_format($millimetres, 3, '.', '').'mm';
-    }
-
-    protected function make(string $view, array $data, string|array $paper, string $orientation)
-    {
-        return Pdf::loadView($view, $data)->setPaper($paper, $orientation);
     }
 }

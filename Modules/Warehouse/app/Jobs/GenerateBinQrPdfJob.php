@@ -22,21 +22,21 @@ class GenerateBinQrPdfJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 1;
+    public int $tries = 3;
+
+    public array $backoff = [30, 120, 300];
 
     public int $timeout = 1800;
 
-    private const CHUNK_SIZE = 100;
-
     public function __construct(public readonly string $jobId)
     {
-        $this->onConnection(config('queue.routing.qr_labels.connection', 'redis-long'));
-        $this->onQueue(config('queue.routing.qr_labels.queue', 'qr-labels'));
+        $this->onConnection(config('exports.pdf_connection') ?: config('exports.connection', 'redis-long'));
+        $this->onQueue(config('exports.pdf_queue', 'exports-pdf'));
     }
 
     public function handle(QrCodeGenerator $qrCodeGenerator, PdfRenderer $pdfRenderer): void
     {
-        ini_set('memory_limit', (string) config('queue.routing.qr_labels.memory_limit', '512M'));
+        ini_set('memory_limit', (string) config('exports.pdf_memory_limit', '1536M'));
         set_time_limit($this->timeout);
 
         $printJob = QrPrintJob::find($this->jobId);
@@ -63,8 +63,9 @@ class GenerateBinQrPdfJob implements ShouldQueue
 
         $printJob->update([
             'status' => QrPrintJob::STATUS_PROCESSING,
-            'started_at' => now(),
+            'started_at' => $printJob->started_at ?? now(),
             'processed_bins' => 0,
+            'error_message' => null,
         ]);
 
         $temporaryFiles = [];
@@ -75,8 +76,7 @@ class GenerateBinQrPdfJob implements ShouldQueue
 
             $query = LocationBin::where('location_id', $printJob->location_id)
                 ->whereNotNull('bin_final_code')
-                ->where('bin_final_code', '!=', '')
-                ->orderBy('bin_final_code');
+                ->where('bin_final_code', '!=', '');
 
             $binIds = $printJob->bin_ids;
             if (is_array($binIds) && count($binIds) > 0) {
@@ -88,7 +88,7 @@ class GenerateBinQrPdfJob implements ShouldQueue
             $processed = 0;
             $paperConfig = $this->resolvePaper($paper);
 
-            $query->chunk(self::CHUNK_SIZE, function ($chunk) use (&$mergedPdf, &$hasPages, &$temporaryFiles, &$processed, $qrSize, $printJob, $qrCodeGenerator, $location, $paper, $paperConfig, $pdfRenderer) {
+            $query->chunkById((int) config('exports.qr_pdf_chunk_size', 250), function ($chunk) use (&$mergedPdf, &$hasPages, &$temporaryFiles, &$processed, $qrSize, $printJob, $qrCodeGenerator, $location, $paper, $paperConfig, $pdfRenderer) {
                 $items = [];
 
                 foreach ($chunk as $bin) {
@@ -184,11 +184,6 @@ class GenerateBinQrPdfJob implements ShouldQueue
                 'job_id' => $printJob->id,
                 'exception' => $e->getMessage(),
             ]);
-            $printJob->update([
-                'status' => QrPrintJob::STATUS_FAILED,
-                'error_message' => substr($e->getMessage(), 0, 1000),
-                'completed_at' => now(),
-            ]);
             throw $e;
         } finally {
             foreach ($temporaryFiles as $temporaryFile) {
@@ -215,6 +210,7 @@ class GenerateBinQrPdfJob implements ShouldQueue
     {
         return match ($paper) {
             'thermal_50x40' => [0, 0, 141.7, 113.4],
+            'thermal_50x50' => [0, 0, 141.7, 141.7],
             'thermal_80x40' => [0, 0, 226.8, 113.4],
             default => 'a4',
         };
@@ -224,6 +220,7 @@ class GenerateBinQrPdfJob implements ShouldQueue
     {
         return match ($paper) {
             'thermal_50x40' => 200,
+            'thermal_50x50' => 220,
             'thermal_80x40' => 220,
             'a4_single' => 600,
             'a4_multi' => 220,

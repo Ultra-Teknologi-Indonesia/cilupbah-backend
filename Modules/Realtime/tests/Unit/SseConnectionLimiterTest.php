@@ -56,4 +56,25 @@ class SseConnectionLimiterTest extends TestCase
 
         $this->assertNull(app(SseConnectionLimiter::class)->acquire());
     }
+
+    public function test_renew_extends_an_existing_lease_without_acquiring_another_slot(): void
+    {
+        $redis = \Mockery::mock();
+        $redis->shouldReceive('eval')
+            ->once()
+            ->withArgs(function (string $script, int $numberOfKeys, mixed ...$arguments): bool {
+                return $script !== ''
+                    && $numberOfKeys === 1
+                    && count($arguments) === 5
+                    && $arguments[0] === 'realtime:sse:active';
+            })
+            ->andReturn(1);
+
+        Redis::shouldReceive('connection')
+            ->once()
+            ->with('default')
+            ->andReturn($redis);
+
+        $this->assertTrue(app(SseConnectionLimiter::class)->renew('lease-token'));
+    }
 }

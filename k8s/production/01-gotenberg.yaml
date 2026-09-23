@@ -4,7 +4,13 @@ metadata:
   name: cilupbah-gotenberg
   namespace: cilupbah
 spec:
-  replicas: 1
+  replicas: 2
+  revisionHistoryLimit: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: cilupbah-gotenberg
@@ -13,18 +19,57 @@ spec:
       labels:
         app: cilupbah-gotenberg
     spec:
+      terminationGracePeriodSeconds: 150
       containers:
         - name: gotenberg
-          image: gotenberg/gotenberg:8
+          image: gotenberg/gotenberg:8-chromium
           ports:
             - containerPort: 3000
+          env:
+            - name: CHROMIUM_AUTO_START
+              value: "true"
+            - name: CHROMIUM_MAX_CONCURRENCY
+              value: "2"
+            - name: CHROMIUM_MAX_QUEUE_SIZE
+              value: "8"
+            - name: CHROMIUM_RESTART_AFTER
+              value: "50"
+            - name: GOTENBERG_GRACEFUL_SHUTDOWN_DURATION
+              value: "120s"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
           resources:
             requests:
-              memory: "256Mi"
-              cpu: "100m"
+              memory: "512Mi"
+              cpu: "500m"
             limits:
-              memory: "1Gi"
+              memory: "1536Mi"
               cpu: "1000m"
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cilupbah-gotenberg
+  namespace: cilupbah
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: cilupbah-gotenberg
 ---
 apiVersion: v1
 kind: Service

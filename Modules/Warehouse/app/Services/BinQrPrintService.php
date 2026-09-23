@@ -17,6 +17,7 @@ class BinQrPrintService
 {
     public const array VALID_PAPERS = [
         'thermal_50x40',
+        'thermal_50x50',
         'thermal_80x40',
         'a4_single',
         'a4_multi',

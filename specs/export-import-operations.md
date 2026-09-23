@@ -3,12 +3,16 @@
 ## Runtime model
 
 All large data exports are submitted as an `export_jobs` record and processed
-asynchronously. The API returns `202` and an `export_id`; the frontend polls
-the status endpoint and downloads only after the job is ready.
+asynchronously. The API returns `202` and an `export_id`; the frontend opens
+one authenticated SSE stream for progress and downloads only after the terminal
+`ready` event. It does not poll the status endpoint repeatedly.
 
 Queues are isolated by workload:
 
-- `exports-pdf`: one PDF job at a time, 1.5 GiB PHP limit, 2 GiB pod limit.
+- `exports-pdf`: two isolated PDF workers, 1.5 GiB PHP limit, 3 GiB pod limit.
+  QR-rack PDFs share this bounded queue so they cannot consume Horizon or an
+  operational queue. Each QR job streams database records by primary key and
+  renders bounded chunks through Gotenberg.
 - `exports-sheet`: one XLSX/CSV job at a time, 768 MiB PHP limit, 1 GiB pod limit.
 - `catalog-exports`: one catalog CSV job at a time, 512 MiB PHP limit, 1 GiB pod limit.
 - `imports`: one import job at a time, 1 GiB PHP limit, 1.5 GiB pod limit.
@@ -16,6 +20,14 @@ Queues are isolated by workload:
 Every dedicated worker stays alive and recycles after a bounded number of jobs
 or its maximum runtime. This bounds memory retained by PhpSpreadsheet/PDF
 libraries without causing a Kubernetes Deployment to restart after every job.
+
+## PDF rendering boundary
+
+All application PDF rendering uses the Gotenberg Chromium service. It runs at
+two replicas with two browser conversions per replica and a bounded internal
+queue. A renderer failure is retried by the dedicated export/QR job with
+backoff; it never falls back to Dompdf inside the PHP worker. This keeps a
+transient renderer outage from converting into uncontrolled PHP memory use.
 
 ## Redis separation
 
