@@ -501,8 +501,16 @@ class TikTokOrderService
         string $orderId,
         ?array $handover = null,
         array $knownPackageIds = [],
+        ?array $verifiedSnapshot = null,
     ): array {
-        return $this->shipPackages($shopId, $orderId, $handover, $knownPackageIds, false);
+        return $this->shipPackages(
+            $shopId,
+            $orderId,
+            $handover,
+            $knownPackageIds,
+            false,
+            $verifiedSnapshot,
+        );
     }
 
     private function shipPackages(
@@ -511,6 +519,7 @@ class TikTokOrderService
         ?array $handover,
         array $knownPackageIds,
         bool $resyncLocal,
+        ?array $verifiedSnapshot = null,
     ): array {
         $shop = $this->shopRepository->findByShopId($shopId);
         if (! $shop || ! $shop->access_token) {
@@ -528,7 +537,10 @@ class TikTokOrderService
 
         try {
             try {
-                $snapshot = $this->getOrderFulfillmentSnapshot($shop, $orderId);
+                // RequestChannelAwbJob has already verified this exact snapshot before
+                // acquiring its order-side-effect lock. Reuse it so one AWB request does
+                // not read the same TikTok order twice before POST /ship.
+                $snapshot = $verifiedSnapshot ?? $this->getOrderFulfillmentSnapshot($shop, $orderId);
             } catch (\Throwable $e) {
                 Log::warning('TikTok RTS: preflight order gagal; POST /ship tidak dikirim', [
                     'shop_id' => $shopId,

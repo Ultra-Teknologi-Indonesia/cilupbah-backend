@@ -467,13 +467,14 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
 
                 if ($resolved === null) {
 
-                    $resolved = $this->withRtsLock($order, true, function (SalesOrder $freshOrder) use ($service): ?array {
-                        return $this->requestMarketplaceAwb($freshOrder, function () use ($service, $freshOrder): array {
+                    $resolved = $this->withRtsLock($order, true, function (SalesOrder $freshOrder) use ($service, $snapshot): ?array {
+                        return $this->requestMarketplaceAwb($freshOrder, function () use ($service, $freshOrder, $snapshot): array {
                             return $service->requestTrackingNumber(
                                 (string) $freshOrder->channel_shop_id,
                                 (string) $freshOrder->channel_order_no,
                                 null,
                                 is_array($freshOrder->channel_package_ids) ? $freshOrder->channel_package_ids : [],
+                                $snapshot,
                             );
                         });
                     });

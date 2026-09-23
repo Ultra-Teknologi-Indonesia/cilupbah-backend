@@ -44,7 +44,11 @@ class ProcessBulkShippingLabelJob implements ShouldQueue
 
         try {
 
-            $svc->dispatchPendingItems($batch);
+            // Keep item jobs for channels whose API returns a combined document that
+            // cannot yet be mapped safely per order. TikTok document URLs are
+            // independently addressable, so process them as one bounded batch and
+            // use the existing parallel downloader.
+            $svc->processQueuedBatch($batch);
             $batch->recomputeCounts();
             $svc->tryFinalize($batch);
         } catch (Throwable $e) {

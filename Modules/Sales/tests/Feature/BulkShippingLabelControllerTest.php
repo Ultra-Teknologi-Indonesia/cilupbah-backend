@@ -39,7 +39,7 @@ class BulkShippingLabelControllerTest extends TestCase
         Bus::fake();
 
         $order = SalesOrder::factory()->create([
-            'source' => 'shopee',
+            'source' => 'lazada',
             'tracking_number' => 'AWB123',
         ]);
 
@@ -81,7 +81,7 @@ class BulkShippingLabelControllerTest extends TestCase
         $item = BulkShippingLabelItem::create([
             'batch_id' => $batch->id,
             'order_id' => $order->id,
-            'channel' => 'shopee',
+            'channel' => 'lazada',
             'status' => BulkShippingLabelItem::STATUS_PENDING,
         ]);
 

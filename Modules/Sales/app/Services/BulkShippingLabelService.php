@@ -8,6 +8,7 @@ use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -16,11 +17,13 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Modules\Channel\Exceptions\ShopeeApiException;
+use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Realtime\Services\RealtimeEventPublisher;
 use Modules\Sales\Exceptions\ShippingLabelPreparingException;
 use Modules\Sales\Jobs\ArchiveBulkShippingLabelJob;
 use Modules\Sales\Jobs\FinalizeBulkShippingLabelBatchJob;
+use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelItemJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelJob;
 use Modules\Sales\Jobs\RequestChannelAwbJob;
@@ -28,6 +31,7 @@ use Modules\Sales\Jobs\RequestShopeeMassAwbJob;
 use Modules\Sales\Models\BulkShippingLabelBatch;
 use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Support\ChannelOperationLedger;
 use setasign\Fpdi\Fpdi;
 use setasign\Fpdi\PdfParser\StreamReader;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -466,6 +470,207 @@ class BulkShippingLabelService
         $batch->recomputeCounts();
 
         $this->tryFinalize($batch);
+    }
+
+    /**
+     * Starts a queued bulk-label batch without turning every TikTok document
+     * into a separate job. Shopee and Lazada keep item isolation here because
+     * their download APIs may return a combined PDF with no reliable page-to-
+     * order mapping; dispatching them individually preserves label correctness.
+     */
+    public function processQueuedBatch(BulkShippingLabelBatch $batch): void
+    {
+        $pending = $batch->items()
+            ->with('order')
+            ->where('status', BulkShippingLabelItem::STATUS_PENDING)
+            ->get();
+
+        $this->prepareShopeeItems($pending->where('channel', self::CHANNEL_SHOPEE)->values());
+
+        foreach ($pending->where('channel', self::CHANNEL_LAZADA) as $item) {
+            $this->dispatchItem($item);
+        }
+
+        foreach ($pending->whereNotIn('channel', self::SUPPORTED_CHANNELS) as $item) {
+            $this->fail($item, BulkShippingLabelItem::REASON_CHANNEL_UNSUPPORTED);
+        }
+
+        $tikTokItems = $pending->where('channel', self::CHANNEL_TIKTOK)->values();
+        if ($tikTokItems->isNotEmpty()) {
+            $this->processTikTokBatch($tikTokItems, $batch->per_channel_opts);
+        }
+
+        $batch->recomputeCounts();
+        $this->tryFinalize($batch);
+    }
+
+    /**
+     * Starts and checks Shopee label generation by shop in bulk. The document
+     * download deliberately remains one order at a time: Shopee returns a
+     * combined PDF and does not provide a safe page-to-order mapping.
+     *
+     * @param  Collection<int, BulkShippingLabelItem>  $items
+     */
+    private function prepareShopeeItems(Collection $items): void
+    {
+        if ($items->isEmpty()) {
+            return;
+        }
+
+        $orders = SalesOrder::query()
+            ->whereIn('id', $items->pluck('order_id')->unique()->values())
+            ->get()
+            ->keyBy('id');
+        $shopee = app(ShopeeOrderService::class);
+
+        foreach ($items->groupBy(static function (BulkShippingLabelItem $item) use ($orders): string {
+            return (string) ($orders->get($item->order_id)?->channel_shop_id ?? '');
+        }) as $shopId => $shopItems) {
+            if ($shopId === '') {
+                foreach ($shopItems as $item) {
+                    $this->fail($item, BulkShippingLabelItem::REASON_NO_AWB);
+                }
+
+                continue;
+            }
+
+            $rows = [];
+            $claimed = [];
+            foreach ($shopItems as $item) {
+                $order = $orders->get($item->order_id);
+                if (! $order || ! filled($order->tracking_number) || ! filled($order->channel_order_no)) {
+                    $this->fail($item, BulkShippingLabelItem::REASON_NO_AWB);
+
+                    continue;
+                }
+
+                if ($order->shipping_label_status === 'ready') {
+                    $this->dispatchItem($item);
+
+                    continue;
+                }
+
+                $claim = ChannelOperationLedger::claim($order, 'create_shipping_label');
+                if (! $claim['should_execute']) {
+                    $order->forceFill(['shipping_label_status' => 'preparing'])->saveQuietly();
+                    PrepareShopeeShippingLabelJob::dispatch((string) $order->id, 1);
+
+                    continue;
+                }
+
+                $row = array_filter([
+                    'order_sn' => (string) $order->channel_order_no,
+                    'package_number' => $order->package_number ?: null,
+                    'tracking_number' => (string) $order->tracking_number,
+                    'shipping_document_type' => $order->shipping_label_doc_type ?: 'THERMAL_AIR_WAYBILL',
+                ], static fn ($value): bool => $value !== null && $value !== '');
+                $key = (string) $row['order_sn'].'|'.(string) ($row['package_number'] ?? '');
+                $rows[] = $row;
+                $claimed[$key] = [
+                    'item' => $item,
+                    'order' => $order,
+                    'attempt' => $claim['attempt'],
+                    'doc_type' => (string) $row['shipping_document_type'],
+                ];
+            }
+
+            if ($rows === []) {
+                continue;
+            }
+
+            try {
+                $created = $shopee->createShippingDocumentsMass($shopId, $rows);
+                $checked = $shopee->getShippingDocumentResultsMass($shopId, $rows);
+            } catch (Throwable $e) {
+                foreach ($claimed as $entry) {
+                    ChannelOperationLedger::markUncertain($entry['attempt'], $e);
+                    $entry['order']->forceFill(['shipping_label_status' => 'preparing'])->saveQuietly();
+                    PrepareShopeeShippingLabelJob::dispatch((string) $entry['order']->id, 1);
+                }
+
+                Log::warning('Shopee bulk label prepare failed; switched to status verification', [
+                    'shop_id' => $shopId,
+                    'orders' => count($claimed),
+                    'error' => $e->getMessage(),
+                ]);
+
+                continue;
+            }
+
+            foreach ($claimed as $key => $entry) {
+                $createResult = $created['results'][$key] ?? null;
+                $checkResult = $checked['results'][$key] ?? null;
+                $createError = (string) ($createResult['error'] ?? '');
+                $checkError = (string) ($checkResult['error'] ?? '');
+
+                if (($createResult['accepted'] ?? false) === true) {
+                    ChannelOperationLedger::markAccepted($entry['attempt'], $createResult['response'] ?? null);
+                } elseif ($createError !== '') {
+                    $reason = $shopee->classifyShippingLabelFailure($createResult);
+                    if ($reason !== null) {
+                        ChannelOperationLedger::markRejected($entry['attempt'], $createError);
+                        $this->markShopeeBatchFailure($entry['order'], $reason, $createError);
+                        $this->fail($entry['item'], $reason);
+
+                        continue;
+                    }
+
+                    ChannelOperationLedger::markRetryable($entry['attempt'], $createError, $createResult['response'] ?? null);
+                    PrepareShopeeShippingLabelJob::dispatch((string) $entry['order']->id, 0);
+
+                    continue;
+                } else {
+                    ChannelOperationLedger::markAccepted($entry['attempt']);
+                }
+
+                if (($checkResult['ready'] ?? false) === true) {
+                    $entry['order']->forceFill([
+                        'shipping_label_status' => 'ready',
+                        'shipping_label_doc_type' => $entry['doc_type'],
+                        'shipping_label_prepared_at' => now(),
+                    ])->saveQuietly();
+                    ChannelOperationLedger::markSucceeded($entry['attempt'], $checkResult['response'] ?? null);
+                    $this->dispatchItem($entry['item']);
+
+                    continue;
+                }
+
+                if (strtoupper((string) ($checkResult['status'] ?? '')) === 'FAILED' || $checkError !== '') {
+                    $reason = $shopee->classifyShippingLabelFailure($checkResult);
+                    if ($reason !== null) {
+                        ChannelOperationLedger::markRejected($entry['attempt'], $checkError ?: 'Shopee shipping document FAILED');
+                        $this->markShopeeBatchFailure($entry['order'], $reason, $checkError);
+                        $this->fail($entry['item'], $reason);
+
+                        continue;
+                    }
+                }
+
+                $entry['order']->forceFill(['shipping_label_status' => 'preparing'])->saveQuietly();
+                PrepareShopeeShippingLabelJob::dispatch((string) $entry['order']->id, 1);
+            }
+        }
+    }
+
+    private function markShopeeBatchFailure(SalesOrder $order, string $reason, string $message): void
+    {
+        $rawData = is_array($order->shipping_label_raw_data)
+            ? $order->shipping_label_raw_data
+            : [];
+        $rawData['shipping_label_failure'] = array_filter([
+            'reason' => $reason,
+            'message' => $message,
+            'at' => now()->toISOString(),
+        ], static fn ($value): bool => $value !== null && $value !== '');
+
+        $order->forceFill([
+            'shipping_label_status' => $reason === ShopeeOrderService::LABEL_FAILURE_SELF_DESIGN
+                ? 'self_design_required'
+                : 'failed',
+            'shipping_label_doc_type' => null,
+            'shipping_label_prepared_at' => now(),
+            'shipping_label_raw_data' => $rawData,
+        ])->saveQuietly();
     }
 
     public function dispatchPendingItems(BulkShippingLabelBatch $batch): int
@@ -952,10 +1157,9 @@ class BulkShippingLabelService
                     continue;
                 }
 
-                $url = $result['url'] ?? ($result['doc_url'] ?? null);
-                if (! empty($url) && is_string($url)) {
-
-                    $urlMap[$item->id] = $url;
+                $urls = $this->labelUrls($result);
+                if ($urls !== []) {
+                    $urlMap[$item->id] = $urls;
 
                     continue;
                 }
@@ -980,12 +1184,21 @@ class BulkShippingLabelService
             return;
         }
 
-        foreach (array_chunk($urlMap, self::TIKTOK_PARALLEL_LANES, true) as $chunk) {
+        $downloads = [];
+        foreach ($urlMap as $itemId => $urls) {
+            foreach ($urls as $index => $url) {
+                $downloads["{$itemId}:{$index}"] = $url;
+            }
+        }
+
+        $downloadedBytes = [];
+        $failedDownloads = [];
+        foreach (array_chunk($downloads, self::TIKTOK_PARALLEL_LANES, true) as $chunk) {
             $responses = Http::pool(function ($pool) use ($chunk) {
                 $reqs = [];
-                foreach ($chunk as $itemId => $url) {
-                    $reqs[$itemId] = $pool
-                        ->as((string) $itemId)
+                foreach ($chunk as $downloadKey => $url) {
+                    $reqs[$downloadKey] = $pool
+                        ->as((string) $downloadKey)
                         ->timeout(self::TIKTOK_DOWNLOAD_TIMEOUT)
                         ->retry(self::TIKTOK_DOWNLOAD_RETRIES, 500)
                         ->get($url);
@@ -994,19 +1207,36 @@ class BulkShippingLabelService
                 return $reqs;
             });
 
-            foreach ($chunk as $itemId => $_url) {
-                $item = $items->firstWhere('id', $itemId);
-                if (! $item) {
-                    continue;
-                }
-                $response = $responses[$itemId] ?? null;
+            foreach ($chunk as $downloadKey => $_url) {
+                [$itemId] = explode(':', (string) $downloadKey, 2);
+                $response = $responses[$downloadKey] ?? null;
                 if ($response instanceof Throwable || $response === null || ! $response->successful()) {
-                    $this->fail($item, 'tiktok_download_failed');
+                    $failedDownloads[$itemId] = true;
 
                     continue;
                 }
-                $this->succeed($item, $response->body(), $orders->get($item->order_id));
+                $downloadedBytes[$itemId][] = $response->body();
             }
+        }
+
+        foreach ($urlMap as $itemId => $urls) {
+            $item = $items->firstWhere('id', $itemId);
+            if (! $item) {
+                continue;
+            }
+
+            $bytes = $downloadedBytes[$itemId] ?? [];
+            if (isset($failedDownloads[$itemId]) || count($bytes) !== count($urls)) {
+                $this->fail($item, 'tiktok_download_failed');
+
+                continue;
+            }
+
+            $this->succeed(
+                $item,
+                $this->mergePdfBytes($bytes),
+                $orders->get($item->order_id),
+            );
         }
     }
 
@@ -1123,14 +1353,21 @@ class BulkShippingLabelService
             return;
         }
 
-        $url = $result['url'] ?? ($result['doc_url'] ?? null);
-        if (! empty($url) && is_string($url)) {
+        $urls = $this->labelUrls($result);
+        if ($urls !== []) {
             try {
-                $response = Http::timeout(self::TIKTOK_DOWNLOAD_TIMEOUT)
-                    ->retry(self::TIKTOK_DOWNLOAD_RETRIES, 500)
-                    ->get($url);
-                if ($response->successful()) {
-                    $this->succeed($item, $response->body(), $order);
+                $documents = [];
+                foreach ($urls as $url) {
+                    $response = Http::timeout(self::TIKTOK_DOWNLOAD_TIMEOUT)
+                        ->retry(self::TIKTOK_DOWNLOAD_RETRIES, 500)
+                        ->get($url);
+                    if (! $response->successful()) {
+                        throw new \RuntimeException('TikTok document download failed.');
+                    }
+                    $documents[] = $response->body();
+                }
+                if ($documents !== []) {
+                    $this->succeed($item, $this->mergePdfBytes($documents), $order);
 
                     return;
                 }
@@ -1142,9 +1379,54 @@ class BulkShippingLabelService
             }
         }
 
-        $this->fail($item, ! empty($url)
+        $this->fail($item, $urls !== []
             ? 'tiktok_download_failed'
             : 'tiktok_no_label');
+    }
+
+    /** @return list<string> */
+    private function labelUrls(array $result): array
+    {
+        $urls = $result['urls'] ?? [];
+        if (! is_array($urls)) {
+            $urls = [];
+        }
+
+        $singleUrl = $result['url'] ?? ($result['doc_url'] ?? null);
+        if (is_string($singleUrl) && $singleUrl !== '') {
+            $urls[] = $singleUrl;
+        }
+
+        return array_values(array_unique(array_filter($urls, static fn ($url): bool => is_string($url) && $url !== '')));
+    }
+
+    /** @param list<string> $documents */
+    private function mergePdfBytes(array $documents): string
+    {
+        if (count($documents) === 1) {
+            return $documents[0];
+        }
+
+        try {
+            $pdf = new Fpdi;
+            foreach ($documents as $document) {
+                $pageCount = $pdf->setSourceFile(StreamReader::createByString($document));
+                for ($page = 1; $page <= $pageCount; $page++) {
+                    $template = $pdf->importPage($page);
+                    $size = $pdf->getTemplateSize($template);
+                    $pdf->AddPage($size['orientation'], [$size['width'], $size['height']]);
+                    $pdf->useTemplate($template);
+                }
+            }
+
+            return $pdf->Output('S');
+        } catch (Throwable $e) {
+            Log::warning('TikTok label multi-package PDF merge gagal', [
+                'documents' => count($documents),
+                'error' => $e->getMessage(),
+            ]);
+            throw new \RuntimeException('Label TikTok multi-package tidak dapat digabungkan.', 0, $e);
+        }
     }
 
     private function processLazada(BulkShippingLabelItem $item, SalesOrder $order, array $options): void

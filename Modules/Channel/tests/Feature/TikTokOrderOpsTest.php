@@ -224,6 +224,52 @@ class TikTokOrderOpsTest extends TestCase
             && str_contains($request->url(), '/fulfillment/202309/packages'));
     }
 
+    public function test_request_tracking_number_reuses_the_verified_preflight_snapshot(): void
+    {
+        $order = $this->seedLocalOrder('READY_TO_SHIP', 'pending');
+        $order->update(['channel_package_ids' => ['PKG-1']]);
+
+        $snapshot = [
+            'order_found' => true,
+            'status' => 'AWAITING_SHIPMENT',
+            'packages' => [[
+                'id' => 'PKG-1',
+                'tracking_number' => null,
+                'shipping_provider' => 'TikTok Logistics',
+                'status' => 'AWAITING_SHIPMENT',
+            ]],
+            'tracking_number' => null,
+            'shipping_provider' => null,
+            'has_pending_package' => true,
+            'all_packages_shipped' => false,
+        ];
+
+        Http::fake([
+            self::BASE.'/fulfillment/202309/packages/*/ship*' => Http::response([
+                'code' => 0,
+                'data' => ['package_id' => 'PKG-1'],
+            ], 200),
+            self::BASE.'/order/202309/orders*' => Http::response(
+                $this->orderDetail('AWAITING_COLLECTION', 'TTRK-1', 'AWAITING_COLLECTION'),
+                200,
+            ),
+        ]);
+
+        $result = app(TikTokOrderService::class)->requestTrackingNumber(
+            'TT-700',
+            self::ORDER_ID,
+            null,
+            ['PKG-1'],
+            $snapshot,
+        );
+
+        $this->assertTrue($result['shipped']);
+        $this->assertSame('TTRK-1', $result['tracking_number']);
+        // POST /ship plus one post-request verification read. The supplied
+        // preflight snapshot prevents a duplicate pre-POST order read.
+        Http::assertSentCount(2);
+    }
+
     public function test_request_tracking_number_reads_shipping_document_when_tracking_is_not_in_order_detail(): void
     {
         $order = $this->seedLocalOrder('READY_TO_SHIP', 'pending');

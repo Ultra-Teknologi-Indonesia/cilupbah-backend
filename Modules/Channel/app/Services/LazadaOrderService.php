@@ -246,11 +246,19 @@ class LazadaOrderService
         return 1;
     }
 
-    public function fulfillPack(string $shopId, string $orderId, string $shippingProviderId, string $deliveryType = 'dropship'): array
-    {
+    public function fulfillPack(
+        string $shopId,
+        string $orderId,
+        string $shippingProviderId,
+        string $deliveryType = 'dropship',
+        ?array $verifiedItems = null,
+    ): array {
         $shop = $this->requireShop($shopId);
 
-        $items = $this->fetchOrderItemsWithStatus($shop, $orderId);
+        // requestTrackingNumber has already read the items to decide whether the
+        // order is packable. Reusing that result avoids an identical GET
+        // /orders/items/get immediately before POST /order/fulfill/pack.
+        $items = $verifiedItems ?? $this->fetchOrderItemsWithStatus($shop, $orderId);
         $packableIds = $this->filterItemIdsByStatus($items, ['pending', 'repacked']);
 
         if (empty($packableIds)) {
@@ -318,11 +326,20 @@ class LazadaOrderService
         ];
     }
 
-    public function readyToShip(string $shopId, string $orderId, ?string $trackingNumber = null, ?string $packageId = null, string $deliveryType = 'dropship'): array
-    {
+    public function readyToShip(
+        string $shopId,
+        string $orderId,
+        ?string $trackingNumber = null,
+        ?string $packageId = null,
+        string $deliveryType = 'dropship',
+        ?array $verifiedItems = null,
+    ): array {
         $shop = $this->requireShop($shopId);
 
-        $items = $this->fetchOrderItemsWithStatus($shop, $orderId);
+        // After pack we deliberately read once again because Lazada must confirm
+        // the transition to PACKED before RTS. Callers that already hold that
+        // post-pack result can pass it through instead of reading it a second time.
+        $items = $verifiedItems ?? $this->fetchOrderItemsWithStatus($shop, $orderId);
         $readyIds = $this->filterItemIdsByStatus($items, ['packed']);
 
         if (empty($readyIds)) {
@@ -370,7 +387,13 @@ class LazadaOrderService
         $packableIds = $this->filterItemIdsByStatus($items, ['pending', 'repacked']);
 
         if ($packableIds !== []) {
-            $pack = $this->fulfillPack($shopId, $orderId, $shippingProviderId, $deliveryType);
+            $pack = $this->fulfillPack(
+                $shopId,
+                $orderId,
+                $shippingProviderId,
+                $deliveryType,
+                $items,
+            );
             $packData = $pack['pack'] ?? [];
             $tracking = $tracking ?: $this->extractTrackingFromPack($packData);
             $packageId = $packageId ?: $this->extractPackageIdFromPack($packData);
@@ -400,7 +423,14 @@ class LazadaOrderService
             throw new \RuntimeException("Lazada order {$orderId} tidak berada pada status packed untuk RTS.");
         }
 
-        $rts = $this->readyToShip($shopId, $orderId, $tracking, $packageId, $deliveryType);
+        $rts = $this->readyToShip(
+            $shopId,
+            $orderId,
+            $tracking,
+            $packageId,
+            $deliveryType,
+            $items,
+        );
         $rtsData = $rts['rts'] ?? [];
         $tracking = $tracking
             ?: ($rtsData['tracking_number'] ?? $rtsData['tracking_code'] ?? null);
