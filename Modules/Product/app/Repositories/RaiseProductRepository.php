@@ -127,6 +127,27 @@ class RaiseProductRepository
             ->update(['start_time' => now(), 'end_time' => null, 'is_success' => null]);
     }
 
+    public function hasPendingRaise(string $raiseProductId, ?array $detailIds): bool
+    {
+        return RaiseProductDetail::query()
+            ->where('raise_product_id', $raiseProductId)
+            ->where('is_active', true)
+            ->when($detailIds, fn ($query) => $query->whereIn('id', $detailIds))
+            ->whereNull('end_time')
+            ->whereNull('is_success')
+            ->whereNotNull('start_time')
+            ->exists();
+    }
+
+    public function hasRaiseableDetails(string $raiseProductId, ?array $detailIds): bool
+    {
+        return RaiseProductDetail::query()
+            ->where('raise_product_id', $raiseProductId)
+            ->where('is_active', true)
+            ->when($detailIds, fn ($query) => $query->whereIn('id', $detailIds))
+            ->exists();
+    }
+
     public function detailsToRaise(string $raiseProductId, ?array $detailIds): Collection
     {
         return RaiseProductDetail::query()

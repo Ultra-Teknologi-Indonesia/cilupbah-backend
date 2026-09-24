@@ -25,6 +25,7 @@ class RaiseProductJob implements ShouldQueue
     {
 
         if (app(\Modules\Channel\Services\ChannelSyncSettingService::class)->isPaused()) {
+            $service->markRaisePaused($this->raiseProductId, $this->detailIds);
             return;
         }
 

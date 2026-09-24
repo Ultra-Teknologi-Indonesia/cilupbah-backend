@@ -166,6 +166,51 @@ class RaiseProductManageTest extends TestCase
         Queue::assertPushed(RaiseProductJob::class);
     }
 
+    public function test_raise_rejects_when_no_active_product_is_selected(): void
+    {
+        Queue::fake();
+
+        $shop = $this->makeShop('SHOP-Q-EMPTY');
+        $raise = RaiseProduct::create(['channel_shop_id' => $shop->id, 'is_active' => true]);
+        $mapping = $this->makeMapping($shop, '123456789');
+        RaiseProductDetail::create([
+            'raise_product_id' => $raise->id,
+            'product_channel_mapping_id' => $mapping->id,
+            'is_active' => false,
+        ]);
+
+        $response = $this->postJson("/api/v1/raise-products/{$raise->id}/raise");
+
+        $response->assertStatus(422)
+            ->assertJsonPath('message', 'Tidak ada produk aktif yang siap dinaikkan.');
+        Queue::assertNothingPushed();
+    }
+
+    public function test_raise_rejects_duplicate_request_while_previous_job_is_pending(): void
+    {
+        Queue::fake();
+
+        $shop = $this->makeShop('SHOP-Q-PENDING');
+        $raise = RaiseProduct::create(['channel_shop_id' => $shop->id, 'is_active' => true]);
+        $mapping = $this->makeMapping($shop, '123456790');
+        $detail = RaiseProductDetail::create([
+            'raise_product_id' => $raise->id,
+            'product_channel_mapping_id' => $mapping->id,
+            'is_active' => true,
+            'start_time' => now(),
+            'end_time' => null,
+            'is_success' => null,
+        ]);
+
+        $response = $this->postJson("/api/v1/raise-products/{$raise->id}/raise");
+
+        $response->assertStatus(422)
+            ->assertJsonPath('message', 'Produk yang dipilih masih dalam proses dinaikkan. Tunggu sampai proses sebelumnya selesai.');
+        Queue::assertNothingPushed();
+        $detail->refresh();
+        $this->assertNull($detail->end_time);
+    }
+
     public function test_execute_raise_marks_success(): void
     {
         $shop = $this->makeShop('SHOP-E-1');

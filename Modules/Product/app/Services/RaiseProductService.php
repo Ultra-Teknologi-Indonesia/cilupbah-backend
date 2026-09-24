@@ -6,6 +6,7 @@ use DomainException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Modules\Channel\Services\ShopeeProductService;
+use Modules\Channel\Support\ShopeeBoostErrorCatalog;
 use Modules\Product\Jobs\RaiseProductJob;
 use Modules\Product\Models\RaiseProduct;
 use Modules\Product\Models\RaiseProductDetail;
@@ -114,6 +115,14 @@ class RaiseProductService
     {
         $this->repository->find($raiseProductId);
 
+        if (! $this->repository->hasRaiseableDetails($raiseProductId, $detailIds)) {
+            throw new DomainException('Tidak ada produk aktif yang siap dinaikkan.');
+        }
+
+        if ($this->repository->hasPendingRaise($raiseProductId, $detailIds)) {
+            throw new DomainException('Produk yang dipilih masih dalam proses dinaikkan. Tunggu sampai proses sebelumnya selesai.');
+        }
+
         $this->repository->markRaiseStart($raiseProductId, $detailIds);
 
         RaiseProductJob::dispatch($raiseProductId, $detailIds)->afterCommit();
@@ -151,8 +160,9 @@ class RaiseProductService
         try {
             $results = $this->shopee->boostItem($shopId, $extIds);
         } catch (\Exception $e) {
+            $reason = ShopeeBoostErrorCatalog::exceptionMessage($e);
             foreach ($details as $detail) {
-                $this->repository->markRaiseResult($detail, false, 'Gagal menghubungi Shopee: '.$e->getMessage());
+                $this->repository->markRaiseResult($detail, false, $reason);
             }
 
             return;
@@ -168,6 +178,18 @@ class RaiseProductService
                     $result['success'] ? now()->addHours(4) : now()
                 );
             }
+        }
+    }
+
+    public function markRaisePaused(string $raiseProductId, ?array $detailIds = null): void
+    {
+        $details = $this->repository->detailsToRaise($raiseProductId, $detailIds);
+        foreach ($details as $detail) {
+            $this->repository->markRaiseResult(
+                $detail,
+                false,
+                'Proses kenaikan produk sedang dijeda oleh pengaturan sinkronisasi. Jalankan lagi setelah sinkronisasi diaktifkan.',
+            );
         }
     }
 }

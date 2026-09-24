@@ -9,6 +9,7 @@ use Modules\Channel\Exceptions\TokenExpiredException;
 use Modules\Channel\Repositories\ChannelProductRepository;
 use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Support\ChannelModelLinker;
+use Modules\Channel\Support\ShopeeBoostErrorCatalog;
 use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductSyncLog;
 use Modules\Product\Models\ProductVariantChannelMapping;
@@ -805,20 +806,96 @@ class ShopeeProductService implements ChunkedDownloadable
 
     public function boostItem(string $shopId, array $itemIds): array
     {
-        $shop = $this->requireShop($shopId);
         $results = [];
 
-        foreach (array_chunk($itemIds, 5) as $chunk) {
-            $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/api/v2/product/boost_item', [
-                'item_id_list' => array_map('intval', $chunk),
-            ], $token, $shop->shop_id));
-
-            $failures = $res['response']['failures'] ?? [];
-            foreach ($chunk as $itemId) {
-                $failure = collect($failures)->firstWhere('item_id', (int) $itemId);
+        try {
+            $shop = $this->requireShop($shopId);
+        } catch (\Throwable $e) {
+            $reason = ShopeeBoostErrorCatalog::exceptionMessage($e);
+            foreach ($itemIds as $itemId) {
                 $results[(string) $itemId] = [
-                    'success' => $failure === null,
-                    'reason' => $failure['failed_reason'] ?? null,
+                    'success' => false,
+                    'reason' => $reason,
+                ];
+            }
+
+            return $results;
+        }
+
+        foreach (array_chunk($itemIds, 5) as $chunk) {
+            $validIds = [];
+            foreach ($chunk as $itemId) {
+                $key = (string) $itemId;
+                if (! preg_match('/^[1-9]\d*$/', $key) || filter_var($key, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false) {
+                    $results[$key] = [
+                        'success' => false,
+                        'reason' => ShopeeBoostErrorCatalog::INVALID_ITEM_ID,
+                    ];
+                    continue;
+                }
+
+                $validIds[$key] = (int) $key;
+            }
+
+            if ($validIds === []) {
+                continue;
+            }
+
+            try {
+                $res = $this->callWithRefresh($shop, fn (string $token) => $this->client->request('POST', '/api/v2/product/boost_item', [
+                    'item_id_list' => array_values($validIds),
+                ], $token, $shop->shop_id));
+            } catch (\Throwable $e) {
+                $reason = ShopeeBoostErrorCatalog::exceptionMessage($e);
+                foreach ($validIds as $itemId) {
+                    $results[(string) $itemId] = [
+                        'success' => false,
+                        'reason' => $reason,
+                    ];
+                }
+
+                continue;
+            }
+
+            $response = $res['response'] ?? null;
+            if (! is_array($response)) {
+                foreach ($validIds as $itemId) {
+                    $results[(string) $itemId] = [
+                        'success' => false,
+                        'reason' => ShopeeBoostErrorCatalog::MISSING_RESULT,
+                    ];
+                }
+
+                continue;
+            }
+
+            $successIds = $response['success_list']['item_id_list'] ?? [];
+            $successIds = is_array($successIds)
+                ? collect($successIds)
+                    ->filter(fn ($id) => is_int($id) || is_string($id))
+                    ->map(fn ($id) => (string) $id)
+                    ->all()
+                : [];
+            $failures = is_array($response['failure_list'] ?? null) ? $response['failure_list'] : [];
+            $failuresById = collect($failures)
+                ->filter(fn ($failure) => is_array($failure) && isset($failure['item_id']))
+                ->mapWithKeys(fn (array $failure) => [
+                    (string) $failure['item_id'] => ShopeeBoostErrorCatalog::failureReason($failure['failed_reason'] ?? null),
+                ]);
+
+            foreach ($validIds as $itemId) {
+                $key = (string) $itemId;
+                if (in_array($key, $successIds, true)) {
+                    $results[$key] = [
+                        'success' => true,
+                        'reason' => 'Produk berhasil dinaikkan di Shopee.',
+                    ];
+                    continue;
+                }
+
+                $results[$key] = [
+                    'success' => false,
+                    'reason' => $failuresById->get($key, ShopeeBoostErrorCatalog::MISSING_RESULT),
                 ];
             }
         }

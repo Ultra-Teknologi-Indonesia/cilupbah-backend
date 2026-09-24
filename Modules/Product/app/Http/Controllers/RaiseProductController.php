@@ -176,6 +176,13 @@ class RaiseProductController extends Controller
             $raiseProduct = $this->service->raise($id, $validated['detail_ids'] ?? null);
         } catch (ModelNotFoundException) {
             return $this->errorResponse('Data naikkan produk tidak ditemukan', 404);
+        } catch (DomainException $e) {
+            return $this->errorResponse(
+                $e->getMessage(),
+                422,
+                null,
+                'Aksi tidak dapat diproses',
+            );
         }
 
         return $this->successResponse(
