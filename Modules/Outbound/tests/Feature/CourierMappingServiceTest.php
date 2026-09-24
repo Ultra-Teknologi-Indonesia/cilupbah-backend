@@ -2,7 +2,9 @@
 
 namespace Modules\Outbound\Tests\Feature;
 
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Modules\Outbound\Models\Courier;
 use Modules\Outbound\Models\CourierChannelMapping;
 use Modules\Outbound\Services\CourierMappingService;
@@ -219,6 +221,37 @@ class CourierMappingServiceTest extends TestCase
         Courier::create(['name' => 'JNE', 'code' => 'JNE', 'is_active' => false]);
 
         $this->assertNull($this->service->resolveCourierId('JNE Cashless'));
+    }
+
+    public function test_active_courier_lookup_uses_a_boolean_predicate(): void
+    {
+        $capturedSql = [];
+
+        DB::listen(function (QueryExecuted $query) use (&$capturedSql): void {
+            if (str_contains(strtolower($query->sql), 'from "couriers"')) {
+                $capturedSql[] = $query->sql;
+            }
+        });
+
+        Courier::create(['name' => 'JNE', 'code' => 'JNE', 'is_active' => true]);
+
+        $this->assertNotNull($this->service->resolveCourierId('JNE Cashless'));
+        $this->assertNotEmpty($capturedSql);
+        $this->assertTrue(
+            collect($capturedSql)->contains(
+                fn (string $sql): bool => str_contains(strtoupper($sql), '"IS_ACTIVE" IS TRUE')
+            )
+        );
+    }
+
+    public function test_postgres_boolean_bindings_remain_boolean_values(): void
+    {
+        $courier = Courier::create(['name' => 'JNE', 'code' => 'JNE', 'is_active' => true]);
+
+        $this->assertSame(1, Courier::query()
+            ->whereKey($courier->getKey())
+            ->where('is_active', true)
+            ->count());
     }
 
     public function test_authoritative_channel_instant_signal_overrides_name_regex(): void

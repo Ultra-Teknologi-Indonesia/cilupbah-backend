@@ -2,12 +2,14 @@
 
 namespace App\Providers;
 
+use App\Database\PostgresConnection;
 use App\Models\PersonalAccessToken;
 use App\Support\AllowedSearch;
 use App\Support\OriginalExceptionFailedJobProvider;
 use App\Support\QueueFailureRecorder;
 use Illuminate\Cache\RateLimiter;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Database\Connection;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
@@ -25,6 +27,10 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        Connection::resolverFor('pgsql', function ($connection, $database, $prefix, $config) {
+            return new PostgresConnection($connection, $database, $prefix, $config);
+        });
+
         $this->app->extend('queue.failer', function ($failer, $app) {
             $config = $app['config']['queue.failed'];
 
