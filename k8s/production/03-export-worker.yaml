@@ -11,8 +11,12 @@ spec:
   replicas: 2
   revisionHistoryLimit: 2
   progressDeadlineSeconds: 1500
+  minReadySeconds: 10
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: cilupbah-export-worker
@@ -33,29 +37,17 @@ spec:
             - sh
             - -c
             - |
-              exec php artisan queue:work redis-long \
-                --queue=exports-sheet --sleep=3 --tries=2 --backoff=30 \
-                --timeout=780 --memory=768 --max-jobs=100 --max-time=3600
+              exec /usr/local/bin/queue-worker.sh redis-long \
+                --queue=exports-sheet --sleep=1 --tries=2 --backoff=30 \
+                --timeout=780 --memory=768 --max-jobs=100 --max-time=720
           envFrom:
             - secretRef:
                 name: cilupbah-env
           env:
             - name: REDIS_LONG_QUEUE_RETRY_AFTER
               value: "2160"
-          livenessProbe:
-            exec:
-              command: ["sh", "-c", "kill -0 1"]
-            initialDelaySeconds: 30
-            periodSeconds: 30
-            timeoutSeconds: 5
-            failureThreshold: 3
-          readinessProbe:
-            exec:
-              command: ["sh", "-c", "kill -0 1"]
-            initialDelaySeconds: 10
-            periodSeconds: 15
-            timeoutSeconds: 5
-            failureThreshold: 3
+            - name: QUEUE_WORKER_STARTUP_JITTER_MAX_SECONDS
+              value: "45"
           resources:
             requests:
               memory: "512Mi"

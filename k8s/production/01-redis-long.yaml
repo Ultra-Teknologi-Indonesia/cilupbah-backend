@@ -34,7 +34,7 @@ spec:
           command:
             - redis-server
             - --maxmemory
-            - "3584mb"
+            - "3gb"
             - --maxmemory-policy
             - noeviction
             - --appendonly
@@ -45,6 +45,8 @@ spec:
             - "100"
             - --auto-aof-rewrite-min-size
             - 64mb
+            - --activedefrag
+            - "yes"
             - --dir
             - /data
           ports:

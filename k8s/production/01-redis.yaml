@@ -34,11 +34,12 @@ spec:
         - name: redis
           image: redis:7-alpine
           # Redis ini menyimpan queue dan metadata Horizon. Queue tidak boleh dievict.
-          # Headroom antara maxmemory dan cgroup limit diperlukan untuk allocator/AOF.
+          # Keep 1 GiB below the cgroup limit for allocator and AOF rewrite
+          # copy-on-write overhead. Queue data is never silently evicted.
           command:
             - redis-server
             - --maxmemory
-            - "3584mb"
+            - "3gb"
             - --maxmemory-policy
             - noeviction
             - --appendonly
@@ -49,6 +50,8 @@ spec:
             - "100"
             - --auto-aof-rewrite-min-size
             - 64mb
+            - --activedefrag
+            - "yes"
             - --dir
             - /data
           ports:

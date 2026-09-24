@@ -46,6 +46,8 @@ spec:
             - "yes"
             - --appendfsync
             - everysec
+            - --activedefrag
+            - "yes"
             - --dir
             - /data
           ports:

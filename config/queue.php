@@ -45,7 +45,9 @@ return [
             'queue' => env('REDIS_QUEUE', 'default'),
 
             'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 660),
-            'block_for' => null,
+            // Block instead of polling every --sleep interval. This lowers
+            // Redis CPU usage and wakes workers immediately for new jobs.
+            'block_for' => max(1, min(10, (int) env('REDIS_QUEUE_BLOCK_FOR', 5))),
 
             'after_commit' => true,
         ],
@@ -55,7 +57,7 @@ return [
             'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
             'queue' => env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync'),
             'retry_after' => (int) env('REDIS_CHANNEL_SYNC_RETRY_AFTER', 360),
-            'block_for' => null,
+            'block_for' => max(1, min(10, (int) env('REDIS_CHANNEL_SYNC_BLOCK_FOR', 5))),
             'after_commit' => true,
         ],
 
@@ -65,7 +67,7 @@ return [
             'queue' => env('REDIS_LONG_QUEUE', 'downloads'),
 
             'retry_after' => (int) env('REDIS_LONG_QUEUE_RETRY_AFTER', 2160),
-            'block_for' => null,
+            'block_for' => max(1, min(10, (int) env('REDIS_LONG_QUEUE_BLOCK_FOR', 5))),
             'after_commit' => true,
         ],
 
@@ -75,7 +77,7 @@ return [
             'queue' => env('REDIS_FINANCE_QUEUE', 'channel-finance'),
 
             'retry_after' => (int) env('REDIS_FINANCE_QUEUE_RETRY_AFTER', 360),
-            'block_for' => null,
+            'block_for' => max(1, min(10, (int) env('REDIS_FINANCE_QUEUE_BLOCK_FOR', 5))),
             'after_commit' => true,
         ],
 

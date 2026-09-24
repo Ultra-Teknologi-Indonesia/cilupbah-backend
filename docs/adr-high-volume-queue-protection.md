@@ -24,8 +24,15 @@ auditable, but must not consume replay slots or repeatedly raise live alarms.
   node needs capacity for live orders.
 - KEDA observes the Redis backend actually used by Laravel Horizon and keeps
   one background replica warm. It may grow only to three replicas on this node.
-- Recycle dedicated export/import workers after 3,600 seconds or their existing
-  max-jobs threshold, rather than restarting idle workers every 10–15 minutes.
+- Use bounded per-queue recycle windows (catalog 10 minutes, sheet 12 minutes,
+  PDF 15 minutes, import 29 minutes) plus max-jobs and memory guardrails. A
+  bounded startup jitter prevents replicas from recycling together.
+- Use RollingUpdate with `maxUnavailable: 0` for Horizon and dedicated CLI
+  workers. Redis keeps pending jobs durable while the replacement starts, and
+  startup/liveness probes are used only for Horizon masters; CLI workers rely
+  on their PID and Laravel's timeout handling instead of a fake readiness probe.
+- Use Redis blocking pops (`block_for=5`) so idle workers do not poll every few
+  seconds and new bursts are consumed immediately.
 - Ignore webhook replay and stale-event alerts before WEBHOOK_REPLAY_AFTER.
   This is a migration boundary, not a deletion.
 - Replay new stuck webhooks every minute after two minutes, with a bounded

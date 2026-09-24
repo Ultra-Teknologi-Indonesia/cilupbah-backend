@@ -204,7 +204,7 @@ class MonitorRedisQueueHealth extends Command
                 $delayed = (int) $redis->zcard("{$prefix}:delayed");
                 $reserved = (int) $redis->zcard("{$prefix}:reserved");
 
-                $oldestReadyAt = $this->extractPushedAt($redis->lindex($prefix, -1));
+                $oldestReadyAt = $this->extractPushedAt($redis->lindex($prefix, 0));
                 $oldestReadyAge = $oldestReadyAt === null
                     ? null
                     : max(0, now()->getTimestamp() - $oldestReadyAt);

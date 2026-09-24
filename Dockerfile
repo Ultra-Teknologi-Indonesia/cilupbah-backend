@@ -101,11 +101,13 @@ COPY --from=frontend /app/public/build ./public/build
 COPY start.sh /usr/local/bin/start.sh
 COPY start.staging.sh /usr/local/bin/start.staging.sh
 COPY start.production.sh /usr/local/bin/start.production.sh
+COPY docker/queue-worker.sh /usr/local/bin/queue-worker.sh
 
 RUN chmod +x \
     /usr/local/bin/start.sh \
     /usr/local/bin/start.staging.sh \
-    /usr/local/bin/start.production.sh
+    /usr/local/bin/start.production.sh \
+    /usr/local/bin/queue-worker.sh
 
 # Laravel writable directories
 RUN mkdir -p \

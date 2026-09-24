@@ -256,7 +256,7 @@ jobs:
             # The image tag is immutable. `kubectl apply` already starts a
             # rollout when the version changes, so do not force-restart every
             # Horizon deployment. A forced restart turns a no-op deploy into
-            # a full Recreate drain and can make SSH wait for 17-31 minutes.
+            # a full long-running drain and can make SSH wait for 17-31 minutes.
             #
             # Only deployments that must be ready before the deploy is marked
             # successful are waited synchronously. Long-running/background
@@ -301,10 +301,10 @@ jobs:
                 continue
               fi
 
-              # Recreate + terminationGracePeriodSeconds intentionally keeps
-              # one worker per queue and lets its current job drain. Never
-              # wait for the full drain here: Redis keeps pending jobs and
-              # Kubernetes owns the asynchronous convergence.
+              # RollingUpdate keeps the previous worker available until the
+              # replacement is started. terminationGracePeriodSeconds lets a
+              # current job drain; Redis keeps pending jobs durable, so never
+              # force a fixed short rollout timeout for long-running queues.
               if timeout 20s kubectl rollout status "deployment/$deployment" \
                 -n "$NAMESPACE" --request-timeout=30s --timeout=15s; then
                 echo "Worker $deployment sudah siap."

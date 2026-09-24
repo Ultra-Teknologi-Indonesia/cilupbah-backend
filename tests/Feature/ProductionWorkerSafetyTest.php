@@ -41,7 +41,9 @@ class ProductionWorkerSafetyTest extends TestCase
             $yaml = file_get_contents(base_path("k8s/production/{$manifest}"));
 
             $this->assertIsString($yaml);
-            $this->assertStringContainsString('type: Recreate', $yaml, $manifest);
+            $this->assertStringContainsString('type: RollingUpdate', $yaml, $manifest);
+            $this->assertStringContainsString('maxUnavailable: 0', $yaml, $manifest);
+            $this->assertStringContainsString('maxSurge: 1', $yaml, $manifest);
             $this->assertStringContainsString("terminationGracePeriodSeconds: {$grace}", $yaml, $manifest);
             $this->assertStringContainsString("progressDeadlineSeconds: {$deadline}", $yaml, $manifest);
             $this->assertMatchesRegularExpression('/--max-jobs=(?:[2-9][0-9]|[1-9][0-9]{2,})\b/', $yaml, $manifest);
@@ -114,7 +116,7 @@ class ProductionWorkerSafetyTest extends TestCase
         $this->assertStringContainsString('KEDA belum terpasang', $workflow);
     }
 
-    public function test_production_deploy_allows_recreate_grace_period_and_reports_rollout_failures(): void
+    public function test_production_deploy_allows_grace_period_and_reports_rollout_failures(): void
     {
         $workflow = file_get_contents(base_path('.github/workflows/ci-cd-production.yml'));
 
@@ -233,7 +235,9 @@ class ProductionWorkerSafetyTest extends TestCase
             $yaml = file_get_contents(base_path("k8s/production/{$manifest}"));
 
             $this->assertIsString($yaml);
-            $this->assertStringContainsString('type: Recreate', $yaml, $manifest);
+            $this->assertStringContainsString('type: RollingUpdate', $yaml, $manifest);
+            $this->assertStringContainsString('maxUnavailable: 0', $yaml, $manifest);
+            $this->assertStringContainsString('maxSurge: 1', $yaml, $manifest);
             $this->assertStringContainsString('name: HORIZON_PROFILE', $yaml, $manifest);
             $this->assertStringContainsString("value: \"{$profile}\"", $yaml, $manifest);
         }
@@ -247,6 +251,57 @@ class ProductionWorkerSafetyTest extends TestCase
             'cilupbah-horizon-stock',
         ] as $deployment) {
             $this->assertStringContainsString($deployment, $workflow);
+        }
+    }
+
+    public function test_cli_workers_use_jittered_entrypoint_and_do_not_advertise_fake_readiness(): void
+    {
+        $script = file_get_contents(base_path('docker/queue-worker.sh'));
+
+        $this->assertIsString($script);
+        $this->assertStringContainsString('QUEUE_WORKER_STARTUP_JITTER_MAX_SECONDS', $script);
+        $this->assertStringContainsString('exec php artisan queue:work "$@"', $script);
+
+        foreach ([
+            '03-import-worker.yaml',
+            '03-export-worker.yaml',
+            '03-catalog-export-worker.yaml',
+            '03-pdf-export-worker.yaml',
+        ] as $manifest) {
+            $yaml = file_get_contents(base_path("k8s/production/{$manifest}"));
+            $this->assertStringContainsString('/usr/local/bin/queue-worker.sh', $yaml, $manifest);
+            $this->assertStringNotContainsString('readinessProbe:', $yaml, $manifest);
+            $this->assertStringNotContainsString('kill -0 1', $yaml, $manifest);
+        }
+    }
+
+    public function test_redis_queue_consumers_block_instead_of_polling(): void
+    {
+        foreach (['redis', 'redis-channel-sync', 'redis-long', 'redis-finance'] as $connection) {
+            $this->assertGreaterThan(
+                0,
+                (int) config("queue.connections.{$connection}.block_for"),
+                "{$connection} harus memakai blocking pop agar burst queue tidak terlambat.",
+            );
+        }
+    }
+
+    public function test_durable_redis_pools_keep_aof_rewrite_headroom(): void
+    {
+        foreach ([
+            '01-redis.yaml' => '"3gb"',
+            '01-redis-long.yaml' => '"3gb"',
+            '01-redis-horizon.yaml' => '"3gb"',
+            '01-redis-finance.yaml' => '"1536mb"',
+        ] as $manifest => $maxMemory) {
+            $yaml = file_get_contents(base_path("k8s/production/{$manifest}"));
+
+            $this->assertIsString($yaml);
+            $this->assertStringContainsString('- --maxmemory', $yaml, $manifest);
+            $this->assertStringContainsString("- {$maxMemory}", $yaml, $manifest);
+            $this->assertStringContainsString('- --maxmemory-policy', $yaml, $manifest);
+            $this->assertStringContainsString('- noeviction', $yaml, $manifest);
+            $this->assertStringContainsString('- --activedefrag', $yaml, $manifest);
         }
     }
 }

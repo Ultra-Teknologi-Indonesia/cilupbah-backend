@@ -5,8 +5,12 @@ metadata:
   namespace: cilupbah
 spec:
   replicas: 1
+  minReadySeconds: 10
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: cilupbah-horizon-labels
@@ -74,13 +78,19 @@ spec:
             limits:
               memory: "5Gi"
               cpu: "2500m"
+          startupProbe:
+            exec:
+              command: ["sh", "-c", "php artisan horizon:status | grep -q running"]
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 30
           livenessProbe:
             exec:
               command: ["sh", "-c", "php artisan horizon:status | grep -q running"]
             initialDelaySeconds: 60
             periodSeconds: 60
-            timeoutSeconds: 15
-            failureThreshold: 3
+            timeoutSeconds: 10
+            failureThreshold: 5
       volumes:
         - name: label-spool
           persistentVolumeClaim:

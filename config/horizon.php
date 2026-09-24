@@ -39,8 +39,9 @@ $pool = static function (
         'autoScalingStrategy' => 'size',
         'minProcesses' => $minProcesses,
         'maxProcesses' => $maxProcesses,
-        'balanceMaxShift' => 1,
-        'balanceCooldown' => 5,
+
+        'balanceMaxShift' => max(1, min(3, (int) env('HORIZON_BALANCE_MAX_SHIFT', 2))),
+        'balanceCooldown' => max(1, min(30, (int) env('HORIZON_BALANCE_COOLDOWN', 3))),
         'maxTime' => max(300, min(3600, $maxTime)),
         'maxJobs' => max(10, min(250, $maxJobs)),
         'timeout' => $timeout,

@@ -156,4 +156,57 @@ class MonitorRedisQueueHealthTest extends TestCase
                 && $context['oldest_ready_age_seconds'] >= 1200)
             ->once();
     }
+
+    public function test_uses_the_leftmost_ready_job_as_the_oldest_job(): void
+    {
+        Log::spy();
+
+        config()->set('horizon.defaults', [
+            'monitor-test' => [
+                'connection' => 'redis',
+                'queue' => ['orders'],
+            ],
+        ]);
+        config()->set('queue.connections.redis.connection', 'default');
+        config()->set('queue.health.queue_ready_warning', 100);
+        config()->set('queue.health.queue_oldest_warning_seconds', 300);
+        config()->set('queue.health.queue_oldest_critical_seconds', 900);
+
+        $oldPayload = json_encode(['pushedAt' => now()->subMinutes(20)->timestamp]);
+        $newPayload = json_encode(['pushedAt' => now()->subSeconds(10)->timestamp]);
+
+        foreach (['default', 'long', 'finance', 'horizon'] as $connection) {
+            $redis = Mockery::mock();
+            $redis->shouldReceive('info')->once()->with('memory')->andReturn([
+                'used_memory' => 100,
+                'maxmemory' => 1000,
+                'used_memory_rss' => 125,
+                'mem_fragmentation_ratio' => 1.25,
+            ]);
+            $redis->shouldReceive('info')->once()->with('stats')->andReturn(['evicted_keys' => 0]);
+            $redis->shouldReceive('llen')->zeroOrMoreTimes()->andReturnUsing(
+                fn (string $key): int => $connection === 'default' && $key === 'queues:orders' ? 2 : 0,
+            );
+            $redis->shouldReceive('zcard')->zeroOrMoreTimes()->andReturn(0);
+            $redis->shouldReceive('lindex')->zeroOrMoreTimes()->andReturnUsing(
+                fn (string $key, int $index): ?string => $connection === 'default' && $key === 'queues:orders'
+                    ? ($index === 0 ? $oldPayload : $newPayload)
+                    : null,
+            );
+
+            Redis::shouldReceive('connection')->once()->with($connection)->andReturn($redis);
+        }
+
+        Cache::shouldReceive('driver')->zeroOrMoreTimes()->andReturnSelf();
+        Cache::shouldReceive('get')->times(4)->andReturn(null);
+        Cache::shouldReceive('forever')->times(4);
+
+        $this->assertSame(0, app(MonitorRedisQueueHealth::class)->handle());
+
+        Log::shouldHaveReceived('critical')
+            ->withArgs(fn (string $message, array $context): bool => $message === 'Queue depth above critical threshold'
+                && $context['queue'] === 'orders'
+                && $context['oldest_ready_age_seconds'] >= 1200)
+            ->once();
+    }
 }

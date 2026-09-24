@@ -9,8 +9,12 @@ spec:
   replicas: 2
   revisionHistoryLimit: 2
   progressDeadlineSeconds: 1200
+  minReadySeconds: 10
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: cilupbah-catalog-export-worker
@@ -30,30 +34,18 @@ spec:
             - sh
             - -c
             - |
-              exec php artisan queue:work "${CATALOG_EXPORT_QUEUE_CONNECTION:-redis-long}" \
+              exec /usr/local/bin/queue-worker.sh "${CATALOG_EXPORT_QUEUE_CONNECTION:-redis-long}" \
                 --queue="${QUEUE_NAME_CATALOG_EXPORTS:-catalog-exports}" \
-                --sleep=3 --tries=2 --backoff=10 --timeout=660 \
-                --memory=512 --max-jobs=100 --max-time=3600
+                --sleep=1 --tries=2 --backoff=10 --timeout=660 \
+                --memory=512 --max-jobs=100 --max-time=600
           envFrom:
             - secretRef:
                 name: cilupbah-env
           env:
             - name: REDIS_LONG_QUEUE_RETRY_AFTER
               value: "2160"
-          livenessProbe:
-            exec:
-              command: ["sh", "-c", "kill -0 1"]
-            initialDelaySeconds: 30
-            periodSeconds: 30
-            timeoutSeconds: 5
-            failureThreshold: 3
-          readinessProbe:
-            exec:
-              command: ["sh", "-c", "kill -0 1"]
-            initialDelaySeconds: 10
-            periodSeconds: 15
-            timeoutSeconds: 5
-            failureThreshold: 3
+            - name: QUEUE_WORKER_STARTUP_JITTER_MAX_SECONDS
+              value: "45"
           resources:
             requests:
               memory: "384Mi"

@@ -8,9 +8,13 @@ metadata:
     component: queue-stock
 spec:
   replicas: 1
+  minReadySeconds: 10
   revisionHistoryLimit: 2
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: cilupbah-horizon-stock
@@ -53,17 +57,16 @@ spec:
             limits:
               memory: "2560Mi"
               cpu: "2500m"
+          startupProbe:
+            exec:
+              command: ["sh", "-c", "php artisan horizon:status | grep -q running"]
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 30
           livenessProbe:
             exec:
               command: ["sh", "-c", "php artisan horizon:status | grep -q running"]
             initialDelaySeconds: 60
             periodSeconds: 30
-            timeoutSeconds: 15
-            failureThreshold: 3
-          readinessProbe:
-            exec:
-              command: ["sh", "-c", "php artisan horizon:status | grep -q running"]
-            initialDelaySeconds: 30
-            periodSeconds: 15
-            timeoutSeconds: 15
-            failureThreshold: 3
+            timeoutSeconds: 10
+            failureThreshold: 5
