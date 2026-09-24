@@ -9,7 +9,6 @@ use Tests\TestCase;
 
 class RoutePermissionCoverageTest extends TestCase
 {
-
     private const VENDOR_PREFIXES = [
         'horizon', 'telescope', '_ignition', 'sanctum',
         'api/documentation', 'docs', 'oauth', 'up', 'storage',
@@ -38,9 +37,6 @@ class RoutePermissionCoverageTest extends TestCase
         'api/v1/profile/sessions',
         'api/v1/profile/sessions/revoke-others',
         'api/v1/profile/sessions/{id}/revoke',
-
-        'api/v1/reports/exports/{export}',
-        'api/v1/reports/exports/{export}/download',
 
         'api/v1/regions/countries',
         'api/v1/regions/provinces',
@@ -131,7 +127,7 @@ class RoutePermissionCoverageTest extends TestCase
                 }
             }
             if (! $authenticated) {
-                continue; 
+                continue;
             }
 
             if (in_array($route->uri(), self::SELF_SERVICE, true)) {

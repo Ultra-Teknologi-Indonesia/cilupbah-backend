@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Report\Repositories;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Modules\Report\Models\ExportJob;
@@ -41,12 +42,15 @@ final class ExportJobRepository
                     }
 
                     $typeMatches = ExportCatalog::typesMatchingSearch($search);
-                    $prefix = $this->escapeLike($search);
+                    $prefix = $this->escapeLike($search).'%';
+                    $operator = $query->getConnection()->getDriverName() === 'pgsql'
+                        ? 'ilike'
+                        : 'like';
 
-                    $query->where(function (Builder $searchQuery) use ($prefix, $typeMatches): void {
+                    $query->where(function (Builder $searchQuery) use ($operator, $prefix, $typeMatches): void {
                         $searchQuery
-                            ->where('file_name', 'like', $prefix.'%')
-                            ->orWhere('id', 'like', $prefix.'%');
+                            ->where('file_name', $operator, $prefix)
+                            ->orWhere('id', 'like', $prefix);
 
                         if ($typeMatches !== []) {
                             $searchQuery->orWhereIn('type', $typeMatches);
@@ -73,10 +77,15 @@ final class ExportJobRepository
                     }
                 }),
                 AllowedFilter::callback('created_from', static function (Builder $query, mixed $value): void {
-                    $query->whereDate('created_at', '>=', (string) $value);
+                    $from = self::dateAtWibStart((string) $value);
+
+                    $query->where('created_at', '>=', $from->utc());
                 }),
                 AllowedFilter::callback('created_to', static function (Builder $query, mixed $value): void {
-                    $query->whereDate('created_at', '<=', (string) $value);
+
+                    $until = self::dateAtWibStart((string) $value)->addDay()->utc();
+
+                    $query->where('created_at', '<', $until);
                 }),
             )
             ->allowedSorts(
@@ -105,5 +114,14 @@ final class ExportJobRepository
     private function escapeLike(string $value): string
     {
         return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
+    }
+
+    private static function dateAtWibStart(string $date): CarbonImmutable
+    {
+        return CarbonImmutable::createFromFormat(
+            '!Y-m-d',
+            $date,
+            (string) config('app.business_timezone', 'Asia/Jakarta'),
+        )->startOfDay();
     }
 }

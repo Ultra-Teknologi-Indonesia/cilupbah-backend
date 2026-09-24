@@ -3,13 +3,14 @@
 ## Flow
 
 Report export trigger -> existing `ExportManager` -> `RunExportJob` on the
-existing sheet/PDF/catalog queue -> private `documents` storage -> `export_jobs`
+existing sheet/PDF/catalog queue -> private S3-compatible R2 storage -> `export_jobs`
 metadata -> Download Report list endpoint -> authenticated artifact download.
 
 The frontend submits an export and immediately shows a queued toast. It does
 not wait for the binary or auto-download report exports. The existing shared
-SSE stream emits terminal events; the Download Report query is invalidated when
-the event arrives or when the page is opened again.
+SSE stream emits terminal events; the Download Report query is explicitly
+refetched when the event arrives, by the Refresh button, or when the page is
+opened again. This flow does not use React Query invalidation.
 
 ## Backend boundaries
 
@@ -27,11 +28,17 @@ the event arrives or when the page is opened again.
 ## Safety and performance
 
 - All list filters are validated against enums/allowlists; search is bounded to
-  100 characters and uses escaped prefix matching.
+  100 characters and uses escaped, case-insensitive prefix matching on
+  `file_name`, plus catalog label/type and UUID prefix matching.
+- `created_from` and `created_to` are calendar dates in WIB (`Asia/Jakarta`).
+  The repository converts the start of each WIB day to UTC and uses an exclusive
+  next-day boundary for `created_to`, so selected dates include 00:00:00 through
+  23:59:59.999999 WIB.
 - List queries are scoped by authenticated `user_id`, paginated in one query,
-  and use user/date/status indexes. No per-row storage or status requests are
-  made by the frontend.
+  and use user/date/status/type indexes. No per-row storage or status requests
+  are made by the frontend.
 - Download ownership is checked server-side and expired files return HTTP 410.
 - Failed job messages are sanitized before being returned through REST or SSE.
-- The new `view-laporan-download` permission protects the history page while
-  existing export permissions remain responsible for each report trigger.
+- The `view-laporan-download` permission protects list, detail, and download
+  endpoints, while existing export permissions remain responsible for each
+  report trigger.

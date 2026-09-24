@@ -6,8 +6,12 @@ use Modules\Report\Http\Controllers\ReportController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
-    Route::get('reports/exports/{export}', [ExportJobController::class, 'show'])->name('reports.exports.show');
-    Route::get('reports/exports/{export}/download', [ExportJobController::class, 'download'])->name('reports.exports.download');
+    Route::get('reports/exports/{export}', [ExportJobController::class, 'show'])
+        ->middleware('role_or_permission:owner|view-laporan-download')
+        ->name('reports.exports.show');
+    Route::get('reports/exports/{export}/download', [ExportJobController::class, 'download'])
+        ->middleware('role_or_permission:owner|view-laporan-download')
+        ->name('reports.exports.download');
     Route::get('reports/exports', [ExportJobController::class, 'index'])
         ->middleware('role_or_permission:owner|view-laporan-download')
         ->name('reports.exports.index');
