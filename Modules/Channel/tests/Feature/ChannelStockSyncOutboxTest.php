@@ -3,6 +3,7 @@
 namespace Modules\Channel\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Modules\Channel\Adapters\AdapterFactory;
 use Modules\Channel\Jobs\DispatchChannelStockOutboxJob;
@@ -75,6 +76,63 @@ class ChannelStockSyncOutboxTest extends TestCase
             ->request($this->listedMapping('LISTING-WAKE'), 'sync_stock');
 
         Queue::assertPushed(DispatchChannelStockOutboxJob::class);
+    }
+
+    public function test_superseded_stock_delivery_immediately_wakes_the_latest_version(): void
+    {
+        Queue::fake();
+        $service = app(ChannelStockSyncOutboxService::class);
+        $mapping = $this->listedMapping('LATEST-WAKE');
+        $outbox = $service->request($mapping, 'sync_stock');
+        $service->dispatchDue();
+        $service->request($mapping, 'sync_stock');
+        Queue::fake();
+
+        // The prior wake job has been consumed; its unique marker must not
+        // suppress the new wake when the stale stock job is finally executed.
+        $this->travel(6)->seconds();
+
+        $this->assertFalse($service->shouldExecute($outbox->id, 1));
+        Queue::assertPushed(DispatchChannelStockOutboxJob::class);
+    }
+
+    public function test_saturated_shop_cannot_hide_another_shops_due_stock(): void
+    {
+        Queue::fake();
+        $service = app(ChannelStockSyncOutboxService::class);
+        $first = $service->request($this->listedMapping('BUSY-ACTIVE'), 'sync_stock');
+        $service->dispatchDue(1);
+        $this->assertSame(ChannelStockSyncOutbox::STATUS_DISPATCHING, $first->fresh()->status);
+
+        foreach (range(1, 4) as $index) {
+            $service->request($this->listedMapping('BUSY-PENDING-'.$index), 'sync_stock');
+        }
+        $otherShop = $this->shop->replicate();
+        $otherShop->shop_id = 'OTHER-SHOP';
+        $otherShop->save();
+        $this->shop = $otherShop;
+        $eligible = $service->request($this->listedMapping('OTHER-READY'), 'sync_stock');
+        Queue::fake();
+
+        $this->assertSame(1, $service->dispatchDue(1)['claimed']);
+        Queue::assertPushed(SyncProductToChannelJob::class, fn ($job): bool => $job->stockOutboxId === $eligible->id);
+    }
+
+    public function test_scheduler_and_wake_job_cannot_spend_the_same_shop_budget_concurrently(): void
+    {
+        Queue::fake();
+        $service = app(ChannelStockSyncOutboxService::class);
+        $service->request($this->listedMapping('DISPATCH-LOCK'), 'sync_stock');
+        $lock = Cache::lock('channel-stock-outbox:dispatch', 60);
+        $this->assertTrue($lock->get());
+        try {
+            $this->assertSame(0, $service->dispatchDue()['claimed']);
+            Queue::assertNotPushed(SyncProductToChannelJob::class);
+        } finally {
+            $lock->release();
+        }
+
+        $this->assertSame(1, $service->dispatchDue()['claimed']);
     }
 
     public function test_dispatcher_paces_jobs_per_shop_before_they_enter_redis(): void

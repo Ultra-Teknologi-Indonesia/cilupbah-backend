@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Modules\Channel\Jobs;
 
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldBeUnique;
+use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -19,7 +19,9 @@ use Modules\Channel\Support\ChannelOrderLock;
 use Modules\Channel\Support\ChannelOrderPullGuard;
 use Modules\Channel\Support\WebhookFailureHandler;
 
-final class RefreshChannelOrderJob implements ShouldBeUnique, ShouldQueue
+// Coalesce pending reads, but allow a newer event to queue another read while
+// this one is executing. WithoutOverlapping still serializes order writes.
+final class RefreshChannelOrderJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
 {
     use Dispatchable;
     use InteractsWithQueue;

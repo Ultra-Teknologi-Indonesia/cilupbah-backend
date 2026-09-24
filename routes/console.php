@@ -29,13 +29,14 @@ Schedule::command('channel:pull-orders --queue --hours=1 --overlap-minutes=5')
     ->withoutOverlapping(5)
     ->onOneServer();
 
-Schedule::command('channel:webhooks-replay --minutes=2 --limit=300 --max-seconds=40')
-    ->everyMinute()
+Schedule::command('channel:webhooks-replay --minutes=2 --limit=300 --max-seconds=8')
+    ->everyTenSeconds()
     ->withoutOverlapping(2)
-    ->onOneServer();
+    ->onOneServer()
+    ->runInBackground();
 Schedule::command('channel:monitor-queue-health')->everyMinute()->withoutOverlapping(2)->onOneServer();
 Schedule::command('channel:reap-stock-outbox-leases')->everyTenSeconds()->withoutOverlapping(1)->onOneServer();
-Schedule::command('channel:dispatch-stock-outbox')->everyThirtySeconds()->withoutOverlapping(1)->onOneServer();
+Schedule::command('channel:dispatch-stock-outbox')->everyFiveSeconds()->withoutOverlapping(1)->onOneServer()->runInBackground();
 
 Schedule::command('channel:evaluate-order-sync')->everyFifteenMinutes()->withoutOverlapping()->onOneServer();
 

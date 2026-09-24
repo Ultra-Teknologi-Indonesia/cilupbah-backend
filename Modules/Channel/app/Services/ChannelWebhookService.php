@@ -120,10 +120,28 @@ final class ChannelWebhookService
         );
     }
 
-    public function dispatchInbox(ChannelWebhookInbox $row): bool
+    public function dispatchInbox(ChannelWebhookInbox $row, array &$dispatchedPerQueue = []): bool
     {
         $payload = (array) $row->payload;
         $allowWhilePaused = $this->isAcceptedBeforePause($row);
+        $queue = match (strtolower((string) $row->channel)) {
+            'lazada' => ProcessLazadaWebhook::resolveQueueName($payload),
+            'shopee' => ProcessShopeeWebhook::resolveQueueName($payload),
+            'tiktok' => ProcessTikTokWebhook::resolveQueueName($payload),
+            'woocommerce' => 'webhooks',
+            default => null,
+        };
+
+        // Recovery shares the destination's budget, not the sum of unrelated
+        // queues. A catalog backlog must not block payment/cancellation intake.
+        if ($queue === null || ! $this->canDispatchToQueue(
+            (string) $row->channel,
+            (string) $row->event_key,
+            $queue,
+            max(0, (int) config('queue.backpressure.webhook_replay_max_depth', 500) - ($dispatchedPerQueue[$queue] ?? 0)),
+        )) {
+            return false;
+        }
 
         try {
             Cache::forget((string) $row->event_key);
@@ -143,7 +161,7 @@ final class ChannelWebhookService
             return false;
         }
 
-        return match (strtolower((string) $row->channel)) {
+        $dispatched = match (strtolower((string) $row->channel)) {
             'lazada' => $this->dispatchLazada($payload, $allowWhilePaused),
             'shopee' => $this->dispatchShopee($payload, $allowWhilePaused),
             'tiktok' => $this->dispatchTikTok($payload, $allowWhilePaused),
@@ -155,6 +173,12 @@ final class ChannelWebhookService
             ),
             default => false,
         };
+
+        if ($dispatched) {
+            $dispatchedPerQueue[$queue] = ($dispatchedPerQueue[$queue] ?? 0) + 1;
+        }
+
+        return $dispatched;
     }
 
     private function isAcceptedBeforePause(ChannelWebhookInbox $row): bool
@@ -203,13 +227,16 @@ final class ChannelWebhookService
         }
     }
 
-    private function canDispatchToQueue(string $channel, string $eventKey, string $queue): bool
+    private function canDispatchToQueue(string $channel, string $eventKey, string $queue, ?int $maxDepth = null): bool
     {
         if (! (bool) config('queue.backpressure.enabled', true)) {
             return true;
         }
 
-        $maxDepth = (int) config('queue.backpressure.webhook_ingress_max_depth', 1000);
+        $maxDepth = min(
+            $maxDepth ?? PHP_INT_MAX,
+            (int) config('queue.backpressure.webhook_ingress_max_depth', 1000),
+        );
         $maxMemoryRatio = (float) config('queue.backpressure.webhook_ingress_max_memory_ratio', 0.70);
         $health = $this->queueCapacity->inspect('redis', $queue);
         $memoryRatio = $health['memory_ratio'] ?? null;

@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 namespace Modules\Channel\Tests\Feature;
 
+use Illuminate\Bus\UniqueLock;
+use Illuminate\Contracts\Cache\Repository as CacheRepository;
+use Illuminate\Contracts\Queue\Job;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Queue\CallQueuedHandler;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Modules\Channel\Enums\WebhookInboxStatus;
@@ -66,6 +70,37 @@ final class RefreshChannelOrderJobTest extends TestCase
         self::assertSame(config('queue.names.channel_order_refresh'), $job->queue);
         self::assertSame(8, $job->tries);
         self::assertCount(2, $job->middleware());
+    }
+
+    public function test_a_new_status_event_during_an_active_refresh_is_not_discarded(): void
+    {
+        Queue::fake();
+        SalesOrder::factory()->create([
+            'source' => 'shopee', 'channel_shop_id' => 'SHOP-1', 'channel_order_no' => 'ORDER-1',
+        ]);
+        $shopee = \Mockery::mock(ShopeeOrderService::class);
+        $shopee->shouldReceive('pullOrderById')->once()->andReturnUsing(function (): int {
+            // Payment/cancellation arrives after the current API read began.
+            RefreshChannelOrderJob::dispatch('shopee', 'SHOP-1', 'ORDER-1', null, 'latest-event');
+
+            return 1;
+        });
+        $this->app->instance(ChannelOrderRefreshService::class, new ChannelOrderRefreshService(
+            $shopee,
+            \Mockery::mock(TikTokOrderService::class),
+            \Mockery::mock(LazadaOrderService::class),
+            \Mockery::mock(WooCommerceOrderService::class),
+            app(ChannelSyncSettingService::class),
+        ));
+        $command = new RefreshChannelOrderJob('shopee', 'SHOP-1', 'ORDER-1');
+        $this->assertTrue((new UniqueLock(app(CacheRepository::class)))->acquire($command));
+        $queuedJob = \Mockery::mock(Job::class);
+        $queuedJob->shouldReceive('isReleased', 'hasFailed', 'isDeletedOrReleased')->andReturn(false);
+        $queuedJob->shouldReceive('delete')->once();
+
+        app(CallQueuedHandler::class)->call($queuedJob, ['command' => serialize($command)]);
+
+        Queue::assertPushed(RefreshChannelOrderJob::class, fn ($job): bool => $job->webhookEventKey === 'latest-event');
     }
 
     public function test_it_skips_refresh_while_channel_sync_is_paused(): void

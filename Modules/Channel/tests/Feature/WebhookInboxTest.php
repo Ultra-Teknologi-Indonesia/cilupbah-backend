@@ -27,6 +27,32 @@ class WebhookInboxTest extends TestCase
         return app(ChannelWebhookInboxRepository::class);
     }
 
+    public function test_capacity_deferral_remains_eligible_within_seconds_after_repeated_pressure(): void
+    {
+        $this->freezeTime();
+        $row = $this->repo()->recordFirstDelivery('shopee', 'SH1', 'capacity-fast', '3', []);
+
+        for ($attempt = 0; $attempt < 8; $attempt++) {
+            ChannelWebhookInbox::markDispatchFailedByKey($row->event_key, 'QUEUE_CAPACITY_DEFERRED: depth=1000/1000');
+        }
+
+        $this->assertTrue($row->fresh()->next_attempt_at->lessThanOrEqualTo(now()->addSeconds(10)));
+        $this->travel(10)->seconds();
+        $claimed = ChannelWebhookInbox::claimReplayBatch(now()->subMinutes(2), 5, 10);
+        $this->assertSame([$row->id], $claimed->pluck('id')->all());
+        $this->assertCount(0, ChannelWebhookInbox::claimReplayBatch(now()->subMinutes(2), 5, 10));
+    }
+
+    public function test_fast_recovery_does_not_reclaim_a_webhook_already_queued(): void
+    {
+        $row = $this->repo()->recordFirstDelivery('shopee', 'SH1', 'capacity-queued', '3', []);
+        ChannelWebhookInbox::markDispatchFailedByKey($row->event_key, 'QUEUE_CAPACITY_DEFERRED: full');
+        ChannelWebhookInbox::markDispatchQueuedByKey($row->event_key);
+        $this->travel(15)->seconds();
+
+        $this->assertCount(0, ChannelWebhookInbox::claimReplayBatch(now()->subMinutes(2), 5, 10));
+    }
+
     public function test_record_first_delivery_is_idempotent(): void
     {
         $first = $this->repo()->recordFirstDelivery('shopee', 'SH1', 'evt-1', '3', ['a' => 1]);
@@ -247,7 +273,7 @@ class WebhookInboxTest extends TestCase
     public function test_tiktok_cancellation_uses_dedicated_cancellation_queue(): void
     {
         $this->assertSame(
-            'channel-cancellation',
+            'tiktok-cancellation',
             ProcessTikTokWebhook::resolveQueueName(['type' => 11]),
         );
     }
@@ -255,7 +281,7 @@ class WebhookInboxTest extends TestCase
     public function test_shopee_final_cancellation_uses_dedicated_cancellation_queue(): void
     {
         $this->assertSame(
-            'channel-cancellation',
+            'shopee-cancellation',
             ProcessShopeeWebhook::resolveQueueName([
                 'code' => 3,
                 'data' => ['ordersn' => '2606SHOPEE01', 'status' => 'CANCELLED'],
@@ -274,21 +300,21 @@ class WebhookInboxTest extends TestCase
     public function test_lazada_final_cancellation_uses_dedicated_cancellation_queue(): void
     {
         $this->assertSame(
-            'channel-cancellation',
+            'lazada-cancellation',
             ProcessLazadaWebhook::resolveQueueName([
                 'message_type' => 0,
                 'data' => ['trade_order_id' => '900123', 'order_status' => 'CANCELED'],
             ]),
         );
         $this->assertSame(
-            'channel-cancellation',
+            'lazada-cancellation',
             ProcessLazadaWebhook::resolveQueueName([
                 'message_type' => 14,
                 'data' => ['trade_order_id' => '900124', 'status' => 'CANCELLED'],
             ]),
         );
         $this->assertSame(
-            'channel-cancellation',
+            'lazada-cancellation',
             ProcessLazadaWebhook::resolveQueueName([
                 'message_type' => 10,
                 'data' => ['trade_order_id' => '900125', 'reverse_status' => 'CANCEL_SUCCESS'],

@@ -216,6 +216,7 @@ return [
         'webhook_ingress_max_depth' => max(1, min(10000, (int) env('WEBHOOK_INGRESS_MAX_QUEUE_DEPTH', 1000))),
         'webhook_ingress_max_memory_ratio' => max(0.50, min(0.90, (float) env('WEBHOOK_INGRESS_MAX_REDIS_MEMORY_RATIO', 0.70))),
         'webhook_replay_max_depth' => max(1, min(5000, (int) env('WEBHOOK_REPLAY_MAX_QUEUE_DEPTH', 500))),
+        'webhook_capacity_retry_seconds' => max(5, min(30, (int) env('WEBHOOK_CAPACITY_RETRY_SECONDS', 10))),
     ],
 
     'dedicated_queues' => [

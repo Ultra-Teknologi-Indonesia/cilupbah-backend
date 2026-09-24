@@ -3,7 +3,7 @@
 namespace Modules\Sales\Jobs;
 
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldBeUnique;
+use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -11,13 +11,13 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Modules\Channel\Support\ChannelQueue;
 use Modules\Sales\Models\BulkShippingLabelBatch;
 use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Services\BulkShippingLabelService;
-use Modules\Channel\Support\ChannelQueue;
 use Throwable;
 
-class ProcessBulkShippingLabelItemJob implements ShouldBeUnique, ShouldQueue
+class ProcessBulkShippingLabelItemJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -124,7 +124,9 @@ class ProcessBulkShippingLabelItemJob implements ShouldBeUnique, ShouldQueue
                         'updated_at' => now(),
                     ]);
 
-                $this->release(10);
+                // The shop limiter normally expires in one second. Do not add
+                // a fixed ten-second wait after a single exhausted slot.
+                $this->release(max(1, (int) config('queue.routing.labels.rate_limit_decay_seconds', 1)));
 
                 return;
             }

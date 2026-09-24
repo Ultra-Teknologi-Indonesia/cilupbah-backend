@@ -5,12 +5,14 @@ namespace Modules\Sales\Tests\Feature;
 use App\Models\User;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Mockery;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
+use Modules\Sales\Jobs\ProcessBulkShippingLabelItemJob;
 use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\BulkShippingLabelService;
@@ -28,6 +30,7 @@ class BulkShippingLabelContractTest extends TestCase
         parent::setUp();
         $this->seed(RoleSeeder::class);
         Storage::fake('documents');
+        Storage::fake('print_spool');
         $this->user = User::factory()->create();
     }
 
@@ -56,6 +59,32 @@ class BulkShippingLabelContractTest extends TestCase
         ]);
 
         return [$batch, $order];
+    }
+
+    public function test_ready_notification_during_preparation_dispatch_is_not_lost(): void
+    {
+        Queue::fake();
+        [$batch, $order] = $this->seedBatch('shopee');
+        $order->update(['shipping_label_status' => 'preparing']);
+        $item = $batch->items()->firstOrFail();
+        $service = app(BulkShippingLabelService::class);
+        $originalBus = Bus::getFacadeRoot();
+        $bus = Mockery::mock($originalBus);
+        Bus::swap($bus);
+        $bus->shouldReceive('dispatch')->andReturnUsing(fn ($job) => $originalBus->dispatch($job))->byDefault();
+        $bus->shouldReceive('dispatch')
+            ->with(Mockery::type(PrepareShopeeShippingLabelJob::class))
+            ->once()->andReturnUsing(function () use ($order, $service): bool {
+                $order->update(['shipping_label_status' => 'ready']);
+                $service->onOrderLabelReady($order->id);
+
+                return true;
+            });
+
+        $service->processPendingItem($item);
+
+        $this->assertSame(BulkShippingLabelItem::STATUS_PENDING, $item->fresh()->status);
+        Queue::assertPushed(ProcessBulkShippingLabelItemJob::class);
     }
 
     public function test_thermal_cache_hanya_dipakai_untuk_file_asal_dan_ukuran_yang_sama(): void
@@ -109,7 +138,7 @@ class BulkShippingLabelContractTest extends TestCase
         $this->assertNull($service->cachedFpdiShippingLabelBytes($order, '%PDF-1.4 new-label'));
     }
 
-    public function test_shopee_label_yang_sudah_terunduh_harus_jadi_done(): void
+    public function test_shopee_label_yang_sudah_terunduh_siap_untuk_merge(): void
     {
         [$batch] = $this->seedBatch('shopee');
 
@@ -125,13 +154,14 @@ class BulkShippingLabelContractTest extends TestCase
         $item = BulkShippingLabelItem::where('batch_id', $batch->id)->firstOrFail();
 
         $this->assertSame(
-            BulkShippingLabelItem::STATUS_DONE,
+            BulkShippingLabelItem::STATUS_READY,
             $item->status,
-            'Label Shopee sudah terunduh tapi item tidak DONE (status: '.$item->status.').',
+            'Label Shopee harus siap untuk proses merge.',
         );
+        Storage::disk('print_spool')->assertExists($item->ready_pdf_path);
     }
 
-    public function test_tiktok_label_url_harus_jadi_done(): void
+    public function test_tiktok_label_url_siap_untuk_merge(): void
     {
         Http::fake(['*' => Http::response('%PDF-1.4 TIKTOK LABEL', 200)]);
 
@@ -148,11 +178,12 @@ class BulkShippingLabelContractTest extends TestCase
         $item = BulkShippingLabelItem::where('batch_id', $batch->id)->firstOrFail();
 
         $this->assertSame(
-            BulkShippingLabelItem::STATUS_DONE,
+            BulkShippingLabelItem::STATUS_READY,
             $item->status,
-            'Label TikTok tersedia di key "url" tapi item tidak DONE '
+            'Label TikTok tersedia di key "url" tapi item belum READY '
                 .'(status: '.$item->status.', alasan: '.($item->reason ?? '-').').',
         );
+        Storage::disk('print_spool')->assertExists($item->ready_pdf_path);
     }
 
     public function test_tiktok_label_yang_sudah_dipersiapkan_tidak_fetch_ulang_ke_marketplace(): void
@@ -276,7 +307,7 @@ class BulkShippingLabelContractTest extends TestCase
         Queue::assertPushed(PrepareShopeeShippingLabelJob::class, 2);
     }
 
-    public function test_lazada_label_url_harus_jadi_done(): void
+    public function test_lazada_label_url_siap_untuk_merge(): void
     {
         Http::fake(['*' => Http::response('%PDF-1.4 LAZADA LABEL', 200)]);
 
@@ -293,10 +324,11 @@ class BulkShippingLabelContractTest extends TestCase
         $item = BulkShippingLabelItem::where('batch_id', $batch->id)->firstOrFail();
 
         $this->assertSame(
-            BulkShippingLabelItem::STATUS_DONE,
+            BulkShippingLabelItem::STATUS_READY,
             $item->status,
             'Kontrol Lazada ikut gagal — periksa infrastruktur test, bukan kontrak.',
         );
+        Storage::disk('print_spool')->assertExists($item->ready_pdf_path);
     }
 
     public function test_spx_sameday_tetap_dicetak_labelnya(): void
@@ -315,10 +347,11 @@ class BulkShippingLabelContractTest extends TestCase
         $item = BulkShippingLabelItem::where('batch_id', $batch->id)->firstOrFail();
 
         $this->assertSame(
-            BulkShippingLabelItem::STATUS_DONE,
+            BulkShippingLabelItem::STATUS_READY,
             $item->status,
             'SPX Sameday punya resi normal — labelnya harus tetap dicetak, bukan dilewati.',
         );
+        Storage::disk('print_spool')->assertExists($item->ready_pdf_path);
     }
 
     public function test_kurir_instan_tetap_diproses_labelnya(): void

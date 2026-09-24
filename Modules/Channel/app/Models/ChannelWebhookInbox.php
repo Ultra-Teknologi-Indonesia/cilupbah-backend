@@ -78,7 +78,11 @@ class ChannelWebhookInbox extends Model
             }
 
             $attempts = (int) $row->attempts + 1;
-            $delaySeconds = min(3600, 30 * (2 ** min($attempts - 1, 7)));
+            // Capacity pressure is not a business failure. Once capacity returns,
+            // do not leave paid/cancelled orders waiting behind an hour of backoff.
+            $delaySeconds = str_starts_with($message, 'QUEUE_CAPACITY_DEFERRED:')
+                ? max(5, min(30, (int) config('queue.backpressure.webhook_capacity_retry_seconds', 10)))
+                : min(3600, 30 * (2 ** min($attempts - 1, 7)));
 
             $row->update([
                 'attempts' => $attempts,
@@ -138,7 +142,10 @@ class ChannelWebhookInbox extends Model
         return DB::transaction(function () use ($threshold, $maxAttempts, $limit, $replayAfter, $leaseSeconds): Collection {
             $query = static::query()
                 ->where('status', WebhookInboxStatus::RECEIVED)
-                ->where('received_at', '<', $threshold)
+                ->where(function ($query) use ($threshold): void {
+                    $query->where('received_at', '<', $threshold)
+                        ->orWhere('error', 'like', 'QUEUE_CAPACITY_DEFERRED:%');
+                })
                 ->where(function ($query) use ($maxAttempts): void {
                     $query->where('attempts', '<', $maxAttempts)
                         ->orWhere(function ($query): void {
@@ -157,6 +164,8 @@ class ChannelWebhookInbox extends Model
             }
 
             $rows = $query
+                // A repeatedly full lane moves behind other due retries.
+                ->orderBy('next_attempt_at')
                 ->orderBy('received_at')
                 ->limit($limit)
                 ->lock('FOR UPDATE SKIP LOCKED')

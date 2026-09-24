@@ -3,6 +3,7 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Jobs\DispatchChannelStockOutboxJob;
@@ -101,6 +102,22 @@ class ChannelStockSyncOutboxService
 
     public function dispatchDue(?int $limit = null): array
     {
+        // Scheduler and immediate wake jobs share the same per-shop budget.
+        // Serialize selection so two dispatchers cannot both spend the last slot.
+        $lock = Cache::lock('channel-stock-outbox:dispatch', 60);
+        if (! $lock->get()) {
+            return ['claimed' => 0, 'reaped' => 0, 'revived' => 0, 'byChannel' => []];
+        }
+
+        try {
+            return $this->dispatchDueWithinLock($limit);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function dispatchDueWithinLock(?int $limit): array
+    {
         if (app(ChannelSyncSettingService::class)->isPaused()) {
             return ['claimed' => 0, 'reaped' => 0, 'revived' => 0, 'byChannel' => []];
         }
@@ -123,11 +140,16 @@ class ChannelStockSyncOutboxService
             ->all();
         $claimed = 0;
         $byChannel = [];
+        $saturatedShops = array_keys(array_filter(
+            $inFlightByShop,
+            static fn (int $count): bool => $count >= $maxInFlightPerShop,
+        ));
 
         $candidates = ChannelStockSyncOutbox::query()
             ->join('channel_shops', 'channel_shops.id', '=', 'channel_stock_sync_outbox.channel_shop_id')
             ->join('channels', 'channels.id', '=', 'channel_shops.channel_id')
             ->where('channel_stock_sync_outbox.status', ChannelStockSyncOutbox::STATUS_PENDING)
+            ->whereNotIn('channel_stock_sync_outbox.channel_shop_id', $saturatedShops)
             ->whereColumn('channel_stock_sync_outbox.requested_version', '>', 'channel_stock_sync_outbox.dispatched_version')
             ->where(function ($query) use ($now): void {
                 $query->whereNull('channel_stock_sync_outbox.next_attempt_at')
@@ -442,6 +464,8 @@ class ChannelStockSyncOutboxService
             'lease_expires_at' => null,
             'last_error' => null,
         ]);
+
+        $this->wakeDispatcher();
     }
 
     private function axesFor(string $action): array

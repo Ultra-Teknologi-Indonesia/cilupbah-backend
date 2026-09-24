@@ -11,7 +11,6 @@ use Modules\Channel\Enums\WebhookInboxStatus;
 use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Services\ChannelSyncSettingService;
 use Modules\Channel\Services\ChannelWebhookService;
-use Modules\Channel\Services\QueueCapacityReader;
 use Modules\Sales\Jobs\AdminAlertJob;
 
 class ReplayWebhookInbox extends Command
@@ -22,7 +21,6 @@ class ReplayWebhookInbox extends Command
 
     public function handle(
         ChannelWebhookService $webhookService,
-        QueueCapacityReader $capacity,
     ): int {
         if (app(ChannelSyncSettingService::class)->isPaused()) {
             $this->info('Sinkronisasi channel dijeda - replay webhook masuk dilewati.');
@@ -42,30 +40,18 @@ class ReplayWebhookInbox extends Command
             return self::SUCCESS;
         }
 
-        $maxQueueDepth = (int) config('queue.backpressure.webhook_replay_max_depth', 500);
-        $queueHealth = $capacity->inspect('redis', $this->replayQueues());
-        if ((bool) config('queue.backpressure.enabled', true)
-            && (! $queueHealth['allowed'] || $queueHealth['queue_depth'] >= $maxQueueDepth)) {
-            $reason = $queueHealth['error'] ?? "depth={$queueHealth['queue_depth']}/{$maxQueueDepth}";
-            $this->warn("Replay dihentikan oleh backpressure ({$reason}). Tidak ada webhook yang dihapus; run berikutnya akan melanjutkan.");
-
-            return self::SUCCESS;
-        }
-
         $this->deadLetterExhausted($threshold, $maxAttempts, min(100, $limit), $replayAfter);
 
         $dispatched = 0;
+        $dispatchedPerQueue = [];
         $claimed = 0;
         $batchSize = min(25, $limit);
-        $availableSlots = (bool) config('queue.backpressure.enabled', true)
-            ? max(0, $maxQueueDepth - $queueHealth['queue_depth'])
-            : $limit;
 
-        while ($claimed < $limit && $availableSlots > 0 && microtime(true) < $deadline) {
+        while ($claimed < $limit && microtime(true) < $deadline) {
             $rows = ChannelWebhookInbox::claimReplayBatch(
                 $threshold,
                 $maxAttempts,
-                min($batchSize, $limit - $claimed, $availableSlots),
+                min($batchSize, $limit - $claimed),
                 $replayAfter,
             );
 
@@ -76,9 +62,8 @@ class ReplayWebhookInbox extends Command
             $claimed += $rows->count();
 
             foreach ($rows as $row) {
-                if (microtime(true) >= $deadline) {
-                    break 2;
-                }
+                // Finish this small claimed batch before checking the budget;
+                // abandoning rows here leaves undispatched work leased for 10m.
 
                 if (! in_array(strtolower((string) $row->channel), ['lazada', 'shopee', 'tiktok', 'woocommerce'], true)) {
                     $row->markFailed('Channel webhook tidak dikenal saat replay.');
@@ -86,10 +71,9 @@ class ReplayWebhookInbox extends Command
                     continue;
                 }
 
-                if ($webhookService->dispatchInbox($row)) {
+                if ($webhookService->dispatchInbox($row, $dispatchedPerQueue)) {
                     ChannelWebhookInbox::markReplayAttemptByKey((string) $row->event_key);
                     $dispatched++;
-                    $availableSlots--;
                 }
             }
         }
@@ -97,18 +81,6 @@ class ReplayWebhookInbox extends Command
         $this->info("Claim {$claimed}, dispatch ulang {$dispatched} webhook masuk yang macet.");
 
         return self::SUCCESS;
-    }
-
-    private function replayQueues(): array
-    {
-        return array_values(array_unique([
-            (string) config('queue.names.shopee_webhooks', 'shopee-webhooks'),
-            (string) config('queue.names.tiktok_webhooks', 'tiktok-webhooks'),
-            (string) config('queue.names.lazada_webhooks', 'lazada-webhooks'),
-            (string) config('queue.names.webhook_downloads', 'webhook-downloads'),
-            (string) config('queue.names.tiktok_packages', 'tiktok-packages'),
-            (string) config('queue.names.lazada_fulfillment', 'lazada-fulfillment'),
-        ]));
     }
 
     private function deadLetterExhausted(Carbon $threshold, int $maxAttempts, int $limit, ?Carbon $replayAfter): void

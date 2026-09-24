@@ -877,11 +877,16 @@ class BulkShippingLabelService
             default => null,
         };
         if ($order->shipping_label_status === 'preparing' && $waitingStatus !== null) {
-            app(ShippingLabelPreparationDispatcher::class)->dispatch($order);
+            // Subscribe before waking preparation: a fast worker may publish
+            // readiness before dispatch() returns to this worker.
             $item->update([
                 'status' => $waitingStatus,
                 'reason' => null,
             ]);
+            app(ShippingLabelPreparationDispatcher::class)->dispatch($order);
+            if (in_array($order->fresh()?->shipping_label_status, ['ready', 'failed', 'self_design_required'], true)) {
+                $this->onOrderLabelReady((string) $order->id);
+            }
             $this->publishBatchProgress($item->batch_id);
 
             return true;

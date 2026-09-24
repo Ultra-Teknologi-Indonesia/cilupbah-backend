@@ -90,7 +90,7 @@ class ReplayFailedWebhooksTest extends TestCase
 
         $this->artisan('channel:webhooks-replay')
             ->assertSuccessful()
-            ->expectsOutputToContain('dihentikan oleh backpressure');
+            ->expectsOutputToContain('dispatch ulang 0');
 
         Queue::assertNothingPushed();
         $this->assertSame(
@@ -123,5 +123,54 @@ class ReplayFailedWebhooksTest extends TestCase
         $this->assertSame(WebhookInboxStatus::RECEIVED, $row->status);
         $this->assertSame(6, $row->attempts);
         Queue::assertPushed(ProcessTikTokWebhook::class, 1);
+    }
+
+    public function test_replay_checks_the_destination_lane_instead_of_blocking_all_channels(): void
+    {
+        Queue::fake();
+        ChannelWebhookInbox::create([
+            'channel' => 'tiktok', 'shop_id' => 'TT-1',
+            'event_key' => 'tiktok:webhook:independent-lane', 'event_type' => '1',
+            'payload' => ['type' => 1, 'shop_id' => 'TT-1', 'data' => ['order_id' => 'TT_LANE']],
+            'status' => WebhookInboxStatus::RECEIVED,
+            'received_at' => now()->subMinutes(30),
+        ]);
+        $capacity = Mockery::mock(QueueCapacityReader::class);
+        $capacity->shouldReceive('inspect')->andReturnUsing(function ($connection, $queues): array {
+            // An unrelated catalog/fulfillment backlog must not stop this lane.
+            return [
+                'allowed' => true, 'queue_depth' => is_array($queues) ? 1000 : 0,
+                'memory_ratio' => 0.1,
+            ];
+        });
+        $this->app->instance(QueueCapacityReader::class, $capacity);
+
+        $this->artisan('channel:webhooks-replay')->assertSuccessful();
+
+        Queue::assertPushed(ProcessTikTokWebhook::class, 1);
+    }
+
+    public function test_replay_cannot_spend_a_cached_capacity_slot_twice(): void
+    {
+        Queue::fake();
+        foreach ([1, 2] as $index) {
+            ChannelWebhookInbox::create([
+                'channel' => 'tiktok', 'shop_id' => 'TT-1',
+                'event_key' => 'capacity-slot-'.$index, 'event_type' => '1',
+                'payload' => ['type' => 1, 'shop_id' => 'TT-1', 'data' => ['order_id' => 'SLOT-'.$index]],
+                'status' => WebhookInboxStatus::RECEIVED,
+                'received_at' => now()->subMinutes(30),
+            ]);
+        }
+        $capacity = Mockery::mock(QueueCapacityReader::class);
+        $capacity->shouldReceive('inspect')->andReturn([
+            'allowed' => true, 'queue_depth' => 499, 'memory_ratio' => 0.1,
+        ]);
+        $this->app->instance(QueueCapacityReader::class, $capacity);
+
+        $this->artisan('channel:webhooks-replay')->assertSuccessful();
+
+        Queue::assertPushed(ProcessTikTokWebhook::class, 1);
+        $this->assertSame(1, ChannelWebhookInbox::where('error', 'like', 'QUEUE_CAPACITY_DEFERRED:%')->count());
     }
 }

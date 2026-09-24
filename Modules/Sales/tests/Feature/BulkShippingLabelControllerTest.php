@@ -99,6 +99,30 @@ class BulkShippingLabelControllerTest extends TestCase
             ->assertJsonValidationErrors('order_ids');
     }
 
+    public function test_local_label_rate_limit_retries_after_its_window_not_ten_seconds(): void
+    {
+        Queue::fake();
+        config(['queue.routing.labels.rate_limit_decay_seconds' => 1]);
+        $order = SalesOrder::factory()->create(['source' => 'shopee', 'tracking_number' => 'AWB-RATE']);
+        $batch = BulkShippingLabelBatch::create([
+            'user_id' => $this->user->id, 'status' => BulkShippingLabelBatch::STATUS_PROCESSING,
+            'total_count' => 1, 'done_count' => 0, 'failed_count' => 0,
+        ]);
+        $item = BulkShippingLabelItem::create([
+            'batch_id' => $batch->id, 'order_id' => $order->id,
+            'channel' => 'shopee', 'status' => BulkShippingLabelItem::STATUS_PENDING,
+        ]);
+        $service = \Mockery::mock(BulkShippingLabelService::class);
+        $service->shouldReceive('processPendingItem')->once()->andReturn(false);
+        $job = (new ProcessBulkShippingLabelItemJob($batch->id, $item->id, $order->id, 'shopee'))
+            ->withFakeQueueInteractions();
+
+        $job->handle($service);
+
+        $job->assertReleased(1);
+        $this->assertSame(BulkShippingLabelItem::STATUS_PENDING, $item->fresh()->status);
+    }
+
     public function test_non_owner_gets_403_on_show(): void
     {
         $owner = User::factory()->create();

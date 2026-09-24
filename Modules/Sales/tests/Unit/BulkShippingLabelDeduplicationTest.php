@@ -2,6 +2,12 @@
 
 namespace Modules\Sales\Tests\Unit;
 
+use Illuminate\Bus\UniqueLock;
+use Illuminate\Contracts\Cache\Repository;
+use Illuminate\Contracts\Queue\Job;
+use Illuminate\Queue\CallQueuedHandler;
+use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Queue;
 use Modules\Sales\Jobs\PrepareLazadaShippingLabelJob;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
 use Modules\Sales\Jobs\PrepareTikTokShippingLabelJob;
@@ -11,6 +17,25 @@ use Tests\TestCase;
 
 class BulkShippingLabelDeduplicationTest extends TestCase
 {
+    public function test_label_ready_can_schedule_a_continuation_while_previous_job_finishes(): void
+    {
+        Queue::fake();
+        $command = new ProcessBulkShippingLabelItemJob('batch-a', 'item-a', 'order-1', 'shopee');
+        $this->assertTrue((new UniqueLock(app(Repository::class)))->acquire($command));
+        $bus = \Mockery::mock(Bus::getFacadeRoot());
+        Bus::swap($bus);
+        $bus->shouldReceive('dispatchNow')->once()->andReturnUsing(function (): void {
+            ProcessBulkShippingLabelItemJob::dispatch('batch-a', 'item-a', 'order-1', 'shopee');
+        });
+        $queuedJob = \Mockery::mock(Job::class);
+        $queuedJob->shouldReceive('isReleased', 'hasFailed', 'isDeletedOrReleased')->andReturn(false);
+        $queuedJob->shouldReceive('delete')->once();
+
+        app(CallQueuedHandler::class)->call($queuedJob, ['command' => serialize($command)]);
+
+        Queue::assertPushed(ProcessBulkShippingLabelItemJob::class, 1);
+    }
+
     public function test_order_level_jobs_share_an_idempotency_key(): void
     {
         $first = new ProcessBulkShippingLabelItemJob('batch-a', 'item-a', 'order-1');
