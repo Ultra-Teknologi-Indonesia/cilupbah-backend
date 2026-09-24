@@ -48,6 +48,7 @@
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
+        <env name="EXPORTS_DISK" value="documents"/>
         <env name="HORIZON_PROFILE" value="all"/>
         <env name="REDIS_QUEUE_RETRY_AFTER" value="660"/>
         <env name="SESSION_DRIVER" value="array"/>

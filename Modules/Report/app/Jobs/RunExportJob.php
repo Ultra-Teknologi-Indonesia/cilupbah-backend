@@ -54,7 +54,7 @@ class RunExportJob implements ShouldQueue
     {
         $job = ExportJob::find($this->exportJobId);
 
-        if (! $job || $job->status === ExportJob::STATUS_READY) {
+        if (! $job || $job->status !== ExportJob::STATUS_QUEUED) {
             return;
         }
 
@@ -73,36 +73,54 @@ class RunExportJob implements ShouldQueue
         ini_set('memory_limit', (string) $memoryLimit);
         set_time_limit($timeout);
 
-        $job->update([
-            'status' => ExportJob::STATUS_PROCESSING,
-            'started_at' => $job->started_at ?? now(),
-        ]);
+        $claimed = ExportJob::query()
+            ->whereKey($job->id)
+            ->where('status', ExportJob::STATUS_QUEUED)
+            ->update([
+                'status' => ExportJob::STATUS_PROCESSING,
+                'started_at' => $job->started_at ?? now(),
+            ]);
 
-        $params = $job->params ?? [];
-        $fileName = $manager->filename($job->type, $params);
-        $diskName = config('filesystems.disks.documents') ? 'documents' : config('filesystems.default', 'local');
-        $pdfTypes = ExportManager::PDF_TYPES;
-        $csvTypes = ['product-catalog-csv', 'stock-position-csv', 'purchase-order-list', 'purchase-order-detail'];
-        $isPdf = in_array($job->type, $pdfTypes, true);
-        $isCsv = in_array($job->type, $csvTypes, true) || ($params['format'] ?? null) === 'csv';
-        $extension = $isPdf ? 'pdf' : ($isCsv ? 'csv' : 'xlsx');
-        $path = "exports/{$job->id}.{$extension}";
-        $exportedRows = null;
-
-        Log::info('export.started', [
-            'export_id' => $job->id,
-            'type' => $job->type,
-            'profile' => $profile,
-            'queue' => $job->queue_name ?? $routing['queue'],
-            'memory_limit' => ini_get('memory_limit'),
-        ]);
-
-        $temporaryPath = tempnam(sys_get_temp_dir(), 'cilupbah-export-');
-        if ($temporaryPath === false) {
-            throw new \RuntimeException('Tidak dapat membuat berkas sementara untuk export.');
+        if ($claimed !== 1) {
+            return;
         }
 
+        $job->refresh();
+
+        $diskName = (string) config('exports.disk', 's3');
+        $path = null;
+        $fileName = null;
+        $exportedRows = null;
+        $temporaryPath = null;
+
         try {
+            $params = $job->params ?? [];
+            $fileName = $manager->filename($job->type, $params);
+            $diskConfig = config("filesystems.disks.{$diskName}", []);
+            if (! app()->environment('testing') && ($diskConfig['driver'] ?? null) !== 's3') {
+                throw new \RuntimeException('Penyimpanan export wajib menggunakan object storage S3/R2.');
+            }
+
+            $pdfTypes = ExportManager::PDF_TYPES;
+            $csvTypes = ['product-catalog-csv', 'stock-position-csv', 'purchase-order-list', 'purchase-order-detail'];
+            $isPdf = in_array($job->type, $pdfTypes, true);
+            $isCsv = in_array($job->type, $csvTypes, true) || ($params['format'] ?? null) === 'csv';
+            $extension = $isPdf ? 'pdf' : ($isCsv ? 'csv' : 'xlsx');
+            $path = "exports/{$job->id}.{$extension}";
+
+            Log::info('export.started', [
+                'export_id' => $job->id,
+                'type' => $job->type,
+                'profile' => $profile,
+                'queue' => $job->queue_name ?? $routing['queue'],
+                'memory_limit' => ini_get('memory_limit'),
+            ]);
+
+            $temporaryPath = tempnam(sys_get_temp_dir(), 'cilupbah-export-');
+            if ($temporaryPath === false) {
+                throw new \RuntimeException('Tidak dapat membuat berkas sementara untuk export.');
+            }
+
             if ($isCsv) {
                 if ($job->type === 'stock-position-csv') {
                     $exportedRows = app(StockPositionReportService::class)->writeCsv($params, $temporaryPath);
@@ -163,12 +181,30 @@ class RunExportJob implements ShouldQueue
             }
 
             try {
-                Storage::disk($diskName)->put($path, $stream);
+                $disk = Storage::disk($diskName);
+                $stored = $disk->put($path, $stream);
+                if ($stored === false || ! $disk->exists($path)) {
+                    throw new \RuntimeException('Gagal menyimpan hasil export ke object storage.');
+                }
             } finally {
                 fclose($stream);
             }
+        } catch (Throwable $exception) {
+            if ($this->attempts() < $this->tries) {
+                ExportJob::query()
+                    ->whereKey($job->id)
+                    ->where('status', ExportJob::STATUS_PROCESSING)
+                    ->update([
+                        'status' => ExportJob::STATUS_QUEUED,
+                        'started_at' => null,
+                    ]);
+            }
+
+            throw $exception;
         } finally {
-            @unlink($temporaryPath);
+            if (is_string($temporaryPath)) {
+                @unlink($temporaryPath);
+            }
         }
 
         $job->update([
@@ -176,6 +212,7 @@ class RunExportJob implements ShouldQueue
             'file_disk' => $diskName,
             'file_path' => $path,
             'file_name' => $fileName,
+            'file_size' => Storage::disk($diskName)->size($path),
             'finished_at' => now(),
         ]);
 

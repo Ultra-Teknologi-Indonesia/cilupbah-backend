@@ -27,9 +27,12 @@ class CleanupExportJobsCommand extends Command
             ->chunkById(200, function ($jobs) use (&$purged) {
                 foreach ($jobs as $job) {
                     try {
-                        $deleted = Storage::disk($job->file_disk ?? 'local')->delete($job->file_path);
-                        if (! $deleted) {
-                            throw new \RuntimeException("Tidak dapat menghapus file export {$job->file_path}.");
+                        $disk = Storage::disk($job->file_disk ?? config('exports.disk', 's3'));
+                        if ($disk->exists($job->file_path)) {
+                            $deleted = $disk->delete($job->file_path);
+                            if (! $deleted) {
+                                throw new \RuntimeException("Tidak dapat menghapus file export {$job->file_path}.");
+                            }
                         }
                     } catch (\Throwable $exception) {
                         report($exception);
@@ -40,6 +43,10 @@ class CleanupExportJobsCommand extends Command
                     $job->update([
                         'file_path' => null,
                         'file_purged_at' => now(),
+                    ]);
+                    logger()->info('export.file_purged', [
+                        'export_id' => $job->id,
+                        'user_id' => $job->user_id,
                     ]);
                     $purged++;
                 }

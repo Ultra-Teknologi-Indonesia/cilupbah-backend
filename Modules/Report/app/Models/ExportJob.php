@@ -19,6 +19,8 @@ class ExportJob extends Model
 
     public const STATUS_FAILED = 'failed';
 
+    public const STATUS_EXPIRED = 'expired';
+
     protected $table = 'export_jobs';
 
     protected $fillable = [
@@ -31,6 +33,7 @@ class ExportJob extends Model
         'file_disk',
         'file_path',
         'file_name',
+        'file_size',
         'file_purged_at',
         'error',
         'started_at',
@@ -42,6 +45,7 @@ class ExportJob extends Model
         'started_at' => 'datetime',
         'finished_at' => 'datetime',
         'file_purged_at' => 'datetime',
+        'file_size' => 'integer',
     ];
 
     public function user(): BelongsTo
@@ -61,6 +65,15 @@ class ExportJob extends Model
 
     public function isTerminal(): bool
     {
-        return in_array($this->status, [self::STATUS_READY, self::STATUS_FAILED], true);
+        return in_array($this->effectiveStatus(), [self::STATUS_READY, self::STATUS_FAILED, self::STATUS_EXPIRED], true);
+    }
+
+    public function effectiveStatus(): string
+    {
+        if ($this->file_purged_at !== null) {
+            return self::STATUS_EXPIRED;
+        }
+
+        return $this->status;
     }
 }

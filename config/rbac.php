@@ -150,6 +150,7 @@ return [
                 ['key' => 'laporan-gudang', 'label' => 'Laporan Gudang', 'actions' => ['view', 'export']],
                 ['key' => 'laporan-retur', 'label' => 'Laporan Retur', 'actions' => ['view', 'export']],
                 ['key' => 'laporan-stok-minus', 'label' => 'Riwayat Stok Minus', 'actions' => ['view', 'export']],
+                ['key' => 'laporan-download', 'label' => 'Download Report', 'actions' => ['view']],
             ],
         ],
     ],
@@ -161,19 +162,19 @@ return [
         'kepala gudang' => [
             'group:gudang:*', 'group:persediaan:*',
             'produk:view', 'pesanan:view', 'dashboard:view',
-            'laporan-gudang:*', 'laporan-persediaan:*',
+            'laporan-gudang:*', 'laporan-persediaan:*', 'laporan-download:view',
         ],
 
         'leader outbound' => [
             'group:gudang:*',
             'pesanan:*', 'posisi-stok:view', 'dashboard:view',
-            'laporan-gudang:*',
+            'laporan-gudang:*', 'laporan-download:view',
         ],
 
         'leader inbound' => [
             'group:gudang:*',
             'produk:view', 'posisi-stok:view', 'dashboard:view',
-            'laporan-persediaan:*',
+            'laporan-persediaan:*', 'laporan-download:view',
         ],
 
         'picker' => [
@@ -204,7 +205,7 @@ return [
         'purchasing' => [
             'group:pembelian:*',
             'produk:view', 'produk:create', 'produk:edit',
-            'posisi-stok:view', 'dashboard:view', 'laporan-pembelian:*',
+            'posisi-stok:view', 'dashboard:view', 'laporan-pembelian:*', 'laporan-download:view',
         ],
 
         'warehouse' => [

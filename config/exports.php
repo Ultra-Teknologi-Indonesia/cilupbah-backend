@@ -1,6 +1,9 @@
 <?php
 
 return [
+
+    'disk' => env('EXPORTS_DISK', env('APP_ENV') === 'testing' ? 'documents' : 's3'),
+
     'connection' => env('EXPORT_QUEUE_CONNECTION', 'redis-long'),
     'queue' => env('QUEUE_NAME_EXPORTS_SHEET', env('QUEUE_NAME_EXPORTS', 'exports-sheet')),
     'memory_limit' => env('EXPORT_SHEET_MEMORY_LIMIT', '768M'),

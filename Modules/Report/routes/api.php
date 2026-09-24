@@ -8,6 +8,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
     Route::get('reports/exports/{export}', [ExportJobController::class, 'show'])->name('reports.exports.show');
     Route::get('reports/exports/{export}/download', [ExportJobController::class, 'download'])->name('reports.exports.download');
+    Route::get('reports/exports', [ExportJobController::class, 'index'])
+        ->middleware('role_or_permission:owner|view-laporan-download')
+        ->name('reports.exports.index');
 
     Route::middleware('role_or_permission:owner|view-laporan-persediaan')->group(function () {
         Route::get('reports/putaway', [ReportController::class, 'putaway'])->name('reports.putaway');

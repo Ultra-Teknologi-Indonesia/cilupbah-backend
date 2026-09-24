@@ -15,10 +15,10 @@ use Modules\Purchase\Repositories\PurchaseOrderExportRepository;
 use Modules\Report\Exports\CustomerListExport;
 use Modules\Report\Exports\InventoryStockReportExport;
 use Modules\Report\Exports\NegativeStockReportExport;
+use Modules\Report\Exports\PenyesuaianStokExport;
 use Modules\Report\Exports\PicklistDetailExport;
 use Modules\Report\Exports\PicklistDetailPhotoExport;
 use Modules\Report\Exports\PickListReportExport;
-use Modules\Report\Exports\PenyesuaianStokExport;
 use Modules\Report\Exports\RincianPendapatanExport;
 use Modules\Report\Exports\RincianPendapatanPerBarangExport;
 use Modules\Report\Exports\SalesListPesananExport;
@@ -30,6 +30,7 @@ use Modules\Report\Exports\TransferReportExport;
 use Modules\Report\Jobs\RunExportJob;
 use Modules\Report\Models\ExportJob;
 use Modules\Report\Repositories\ReportRepository;
+use Modules\Report\Support\ExportCatalog;
 use Modules\Sales\Exports\CancelledOrdersExport;
 use Modules\Sales\Exports\SalesOrdersExport;
 use Modules\Sales\Exports\SalesReturnReportExport;
@@ -38,7 +39,6 @@ use Modules\Sales\Services\OrderSettlementService;
 
 class ExportManager
 {
-
     public const TABULAR_PDF_TYPES = [
         'negative-stock-pdf' => 'negative-stock',
         'transfer-pdf' => 'transfer',
@@ -175,6 +175,13 @@ class ExportManager
 
         RunExportJob::dispatch($job->id, $routing['connection'], $routing['queue'])->afterCommit();
 
+        logger()->info('export.queued', [
+            'export_id' => $job->id,
+            'user_id' => $user->id,
+            'type' => $type,
+            'queue' => $routing['queue'],
+        ]);
+
         return $job;
     }
 
@@ -200,11 +207,21 @@ class ExportManager
         return [
             'id' => $job->id,
             'type' => $job->type,
-            'status' => $job->status,
+            'label' => ExportCatalog::label($job->type),
+            'category' => ExportCatalog::category($job->type),
+            'format' => ExportCatalog::format($job->type),
+            'status' => $job->effectiveStatus(),
             'queue' => $job->queue_name,
             'file_name' => $job->file_name,
-            'file_available' => $job->file_path !== null && $job->file_purged_at === null,
+            'file_size' => $job->file_size,
+            'created_at' => $job->created_at?->toIso8601String(),
+            'started_at' => $job->started_at?->toIso8601String(),
+            'finished_at' => $job->finished_at?->toIso8601String(),
+            'file_available' => $job->isReady() && $job->file_path !== null && $job->file_purged_at === null,
             'file_purged_at' => $job->file_purged_at?->toIso8601String(),
+            'expires_at' => ($job->isReady() || $job->file_purged_at !== null)
+                ? $job->finished_at?->copy()->addHours(max(1, (int) config('file-retention.export_hours', 168)))->toIso8601String()
+                : null,
             'error' => $job->isFailed()
                 ? (str_starts_with((string) $job->error, 'PDF dibatasi')
                     ? $job->error

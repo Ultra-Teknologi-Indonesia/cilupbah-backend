@@ -5,13 +5,6 @@ namespace Modules\Channel\Support;
 use Modules\Channel\Exceptions\ShopeeApiException;
 use Modules\Channel\Exceptions\TokenExpiredException;
 
-/**
- * User-facing messages for the Shopee boost_item endpoint.
- *
- * Shopee returns per-item failures as free-form English text instead of a
- * stable error code. Keep that text out of the UI and translate known cases
- * using keyword matching with a safe Indonesian fallback.
- */
 final class ShopeeBoostErrorCatalog
 {
     public const INVALID_ITEM_ID = 'ID produk Shopee tidak valid. Sinkronkan produk terlebih dahulu lalu coba lagi.';
