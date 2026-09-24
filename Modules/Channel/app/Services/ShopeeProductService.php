@@ -869,7 +869,10 @@ class ShopeeProductService implements ChunkedDownloadable
                 continue;
             }
 
-            $successIds = $response['success_list']['item_id_list'] ?? [];
+            $successList = $response['success_list'] ?? [];
+            $successIds = is_array($successList) && array_key_exists('item_id_list', $successList)
+                ? $successList['item_id_list']
+                : $successList;
             $successIds = is_array($successIds)
                 ? collect($successIds)
                     ->filter(fn ($id) => is_int($id) || is_string($id))
