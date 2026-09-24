@@ -61,11 +61,13 @@ class ProductionWorkerSafetyTest extends TestCase
         $this->assertStringContainsString('kind: ScaledObject', $yaml);
         $this->assertStringContainsString('name: cilupbah-horizon', $yaml);
         $this->assertStringContainsString('name: cilupbah-horizon-maintenance', $yaml);
-        $this->assertStringContainsString('minReplicaCount: 0', $yaml);
+        $this->assertStringContainsString('minReplicaCount: 1', $yaml);
+        $this->assertStringContainsString('maxReplicaCount: 3', $yaml);
+        $this->assertStringContainsString('pollingInterval: 5', $yaml);
         $this->assertStringContainsString('type: redis', $yaml);
-        $this->assertStringContainsString('address: redis:6379', $yaml);
-        $this->assertStringContainsString('address: redis-long:6379', $yaml);
-        $this->assertStringContainsString('address: redis-finance:6379', $yaml);
+        $this->assertStringContainsString('address: redis-horizon.cilupbah.svc.cluster.local:6379', $yaml);
+        $this->assertStringContainsString('address: redis-long.cilupbah.svc.cluster.local:6379', $yaml);
+        $this->assertStringContainsString('address: redis-finance.cilupbah.svc.cluster.local:6379', $yaml);
         $this->assertStringContainsString('listName: queues:default', $yaml);
         $this->assertStringContainsString('listName: queues:downloads', $yaml);
         $this->assertStringContainsString('cooldownPeriod: 2400', $yaml);
@@ -93,7 +95,7 @@ class ProductionWorkerSafetyTest extends TestCase
 
         $this->assertIsString($yaml);
         $this->assertMatchesRegularExpression(
-            '/    spec:\n(?:      #[^\n]*\n)*      terminationGracePeriodSeconds: 360/',
+            '/    spec:\n(?:      (?:priorityClassName: cilupbah-batch|#[^\n]*)\n)*      terminationGracePeriodSeconds: 360/',
             $yaml,
         );
         $this->assertStringNotContainsString(
@@ -126,16 +128,37 @@ class ProductionWorkerSafetyTest extends TestCase
         $this->assertStringContainsString('cilupbah-horizon-maintenance', $workflow);
         $this->assertStringContainsString('--request-timeout=30s', $workflow);
         $this->assertStringNotContainsString('kubectl rollout restart', $workflow);
+        $this->assertStringNotContainsString('for horizon in cilupbah-horizon cilupbah-horizon-critical', $workflow);
+    }
+
+    public function test_production_manifests_prioritize_online_work_over_recoverable_batches(): void
+    {
+        $priorities = file_get_contents(base_path('k8s/production/00-priority-classes.yaml'));
+        $orderIntake = file_get_contents(base_path('k8s/production/03-horizon-order-intake.yaml'));
+        $stock = file_get_contents(base_path('k8s/production/03-horizon-stock.yaml'));
+        $export = file_get_contents(base_path('k8s/production/03-export-worker.yaml'));
+
+        $this->assertIsString($priorities);
+        $this->assertStringContainsString('name: cilupbah-platform-critical', $priorities);
+        $this->assertStringContainsString('name: cilupbah-online-critical', $priorities);
+        $this->assertStringContainsString('name: cilupbah-batch', $priorities);
+        $this->assertStringContainsString('priorityClassName: cilupbah-online-critical', $orderIntake);
+        $this->assertStringContainsString('priorityClassName: cilupbah-online-critical', $stock);
+        $this->assertStringContainsString('priorityClassName: cilupbah-batch', $export);
     }
 
     public function test_app_rollout_has_startup_headroom_for_bootstrap(): void
     {
         $yaml = file_get_contents(base_path('k8s/production/02-app.yaml'));
+        $autoscaling = file_get_contents(base_path('k8s/production/07-app-autoscaling.yaml'));
 
         $this->assertIsString($yaml);
+        $this->assertIsString($autoscaling);
         $this->assertStringContainsString('progressDeadlineSeconds: 600', $yaml);
         $this->assertStringContainsString('startupProbe:', $yaml);
         $this->assertStringContainsString('failureThreshold: 60', $yaml);
+        $this->assertStringContainsString('maxReplicas: 6', $autoscaling);
+        $this->assertStringContainsString('minAvailable: 2', $autoscaling);
     }
 
     public function test_production_deploy_uses_isolated_manifest_directory_and_serializes_runs(): void

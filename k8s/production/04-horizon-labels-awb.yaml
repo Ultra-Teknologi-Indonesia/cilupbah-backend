@@ -15,6 +15,7 @@ spec:
       labels:
         app: cilupbah-horizon-labels-awb
     spec:
+      priorityClassName: cilupbah-online-critical
       securityContext:
         fsGroup: 33
         fsGroupChangePolicy: OnRootMismatch

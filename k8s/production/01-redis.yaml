@@ -29,6 +29,7 @@ spec:
       labels:
         app: cilupbah-redis
     spec:
+      priorityClassName: cilupbah-platform-critical
       containers:
         - name: redis
           image: redis:7-alpine

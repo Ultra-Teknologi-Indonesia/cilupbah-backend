@@ -22,6 +22,7 @@ spec:
         app: cilupbah-horizon-order-intake
         component: queue-order-intake
     spec:
+      priorityClassName: cilupbah-online-critical
       terminationGracePeriodSeconds: 180
       imagePullSecrets:
         - name: ghcr-creds

@@ -9,15 +9,18 @@ spec:
     kind: Deployment
     name: cilupbah-app
   minReplicas: 3
-  maxReplicas: 4
+  # Six API pods still fit within the node request budget and leave room for
+  # the warm operational pools. Beyond this point a second node is required;
+  # pretending to scale further would increase OOM risk, not throughput.
+  maxReplicas: 6
   behavior:
     scaleUp:
       stabilizationWindowSeconds: 0
       selectPolicy: Max
       policies:
         - type: Pods
-          value: 1
-          periodSeconds: 60
+          value: 2
+          periodSeconds: 30
         - type: Percent
           value: 100
           periodSeconds: 60
@@ -50,7 +53,7 @@ metadata:
   name: cilupbah-app
   namespace: cilupbah
 spec:
-  minAvailable: 1
+  minAvailable: 2
   selector:
     matchLabels:
       app: cilupbah-app

@@ -17,6 +17,7 @@ spec:
       labels:
         app: cilupbah-horizon
     spec:
+      priorityClassName: cilupbah-batch
       # Background jobs can run for several minutes. KEDA may scale this
       # deployment to zero, but a pod must drain gracefully before termination.
       terminationGracePeriodSeconds: 360

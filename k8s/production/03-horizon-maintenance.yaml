@@ -23,6 +23,7 @@ spec:
         app: cilupbah-horizon-maintenance
         component: queue-maintenance
     spec:
+      priorityClassName: cilupbah-batch
       terminationGracePeriodSeconds: 1860
       imagePullSecrets:
         - name: ghcr-creds

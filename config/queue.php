@@ -187,6 +187,11 @@ return [
 
     'webhook_retry_window_hours' => (int) env('WEBHOOK_RETRY_WINDOW_HOURS', 24),
 
+    // Events received before a completed channel cutover are historical data.
+    // They remain in the inbox for audit/retention, but must never consume the
+    // live replay capacity or make the new platform look unhealthy.
+    'webhook_replay_after' => env('WEBHOOK_REPLAY_AFTER'),
+
     'health' => [
         'queue_ready_warning' => max(1, (int) env('QUEUE_HEALTH_READY_WARNING', 500)),
         'queue_ready_critical' => max(1, (int) env('QUEUE_HEALTH_READY_CRITICAL', 2000)),
@@ -194,6 +199,7 @@ return [
         'queue_reserved_warning' => max(1, (int) env('QUEUE_HEALTH_RESERVED_WARNING', 100)),
         'queue_oldest_warning_seconds' => max(60, (int) env('QUEUE_HEALTH_OLDEST_WARNING_SECONDS', 300)),
         'queue_oldest_critical_seconds' => max(120, (int) env('QUEUE_HEALTH_OLDEST_CRITICAL_SECONDS', 900)),
+        'stale_webhook_minutes' => max(1, min(60, (int) env('QUEUE_HEALTH_STALE_WEBHOOK_MINUTES', 15))),
         'stale_webhook_warning' => max(1, (int) env('QUEUE_HEALTH_STALE_WEBHOOK_WARNING', 100)),
         'failed_jobs_window_minutes' => max(1, (int) env('QUEUE_HEALTH_FAILED_JOBS_WINDOW_MINUTES', 15)),
         'failed_jobs_warning' => max(1, (int) env('QUEUE_HEALTH_FAILED_JOBS_WARNING', 10)),

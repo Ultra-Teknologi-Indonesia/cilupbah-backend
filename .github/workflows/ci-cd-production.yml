@@ -160,12 +160,11 @@ jobs:
                 -n "$NAMESPACE" --cascade=foreground --wait=false --ignore-not-found
             done
 
-            echo "==> Menguras master Horizon lama sebelum memisahkan queue..."
-            # The previous generic deployments own queues that are moved to
-            # dedicated pools below. Stop them first; Redis preserves pending
-            # jobs, while this prevents two masters executing a marketplace
-            # side effect during the topology migration.
-            for horizon in cilupbah-horizon cilupbah-horizon-critical; do
+            echo "==> Menguras master Horizon generik lama sebelum menerapkan pool..."
+            # Only the legacy generic master is stopped. The critical pool
+            # already owns its dedicated queues, so scaling it to zero on every
+            # deployment creates an avoidable processing gap during traffic.
+            for horizon in cilupbah-horizon; do
               if kubectl get deployment "$horizon" -n "$NAMESPACE" >/dev/null 2>&1; then
                 kubectl scale "deployment/$horizon" --replicas=0 -n "$NAMESPACE"
                 kubectl rollout status "deployment/$horizon" -n "$NAMESPACE" --timeout=360s

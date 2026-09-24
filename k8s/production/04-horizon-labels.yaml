@@ -15,6 +15,7 @@ spec:
       labels:
         app: cilupbah-horizon-labels
     spec:
+      priorityClassName: cilupbah-online-support
       securityContext:
         fsGroup: 33
         fsGroupChangePolicy: OnRootMismatch

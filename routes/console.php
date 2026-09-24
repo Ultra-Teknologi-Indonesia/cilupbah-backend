@@ -29,9 +29,9 @@ Schedule::command('channel:pull-orders --queue --hours=1 --overlap-minutes=5')
     ->withoutOverlapping(5)
     ->onOneServer();
 
-Schedule::command('channel:webhooks-replay --minutes=5 --limit=100 --max-seconds=30')
-    ->everyFiveMinutes()
-    ->withoutOverlapping(10)
+Schedule::command('channel:webhooks-replay --minutes=2 --limit=300 --max-seconds=40')
+    ->everyMinute()
+    ->withoutOverlapping(2)
     ->onOneServer();
 Schedule::command('channel:monitor-queue-health')->everyMinute()->withoutOverlapping(2)->onOneServer();
 Schedule::command('channel:reap-stock-outbox-leases')->everyTenSeconds()->withoutOverlapping(1)->onOneServer();

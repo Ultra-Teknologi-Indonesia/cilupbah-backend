@@ -23,6 +23,7 @@ spec:
         app: cilupbah-horizon-critical
         component: queue-marketplace-ops
     spec:
+      priorityClassName: cilupbah-online-critical
       terminationGracePeriodSeconds: 180
       imagePullSecrets:
         - name: ghcr-creds

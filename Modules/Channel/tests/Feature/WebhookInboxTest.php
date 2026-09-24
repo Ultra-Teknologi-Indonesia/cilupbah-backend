@@ -321,4 +321,28 @@ class WebhookInboxTest extends TestCase
         $this->assertCount(1, $first);
         $this->assertCount(0, $second);
     }
+
+    public function test_replay_claim_ignores_historical_events_before_the_cutover(): void
+    {
+        ChannelWebhookInbox::create([
+            'channel' => 'shopee', 'shop_id' => 'SH1', 'event_key' => 'historical-cutover-event',
+            'event_type' => '3', 'payload' => ['shop_id' => 'SH1'],
+            'status' => WebhookInboxStatus::RECEIVED, 'received_at' => now()->subDays(2),
+        ]);
+        ChannelWebhookInbox::create([
+            'channel' => 'shopee', 'shop_id' => 'SH1', 'event_key' => 'live-cutover-event',
+            'event_type' => '3', 'payload' => ['shop_id' => 'SH1'],
+            'status' => WebhookInboxStatus::RECEIVED, 'received_at' => now()->subMinutes(30),
+        ]);
+
+        $claimed = ChannelWebhookInbox::claimReplayBatch(
+            now()->subMinutes(15),
+            5,
+            10,
+            now()->subDay(),
+        );
+
+        $this->assertCount(1, $claimed);
+        $this->assertSame('live-cutover-event', $claimed->first()->event_key);
+    }
 }

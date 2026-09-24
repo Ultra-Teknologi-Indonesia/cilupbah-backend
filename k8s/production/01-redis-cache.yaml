@@ -15,6 +15,7 @@ spec:
       labels:
         app: cilupbah-redis-cache
     spec:
+      priorityClassName: cilupbah-online-support
       containers:
         - name: redis-cache
           image: redis:7-alpine

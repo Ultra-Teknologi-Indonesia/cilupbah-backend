@@ -23,6 +23,7 @@ spec:
         app: cilupbah-pgbouncer
         component: database-connection-pool
     spec:
+      priorityClassName: cilupbah-platform-critical
       terminationGracePeriodSeconds: 30
       containers:
         - name: pgbouncer

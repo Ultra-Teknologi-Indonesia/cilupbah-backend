@@ -17,6 +17,7 @@ spec:
       labels:
         app: cilupbah-pdf-export-worker
     spec:
+      priorityClassName: cilupbah-batch
       imagePullSecrets:
         - name: ghcr-creds
       terminationGracePeriodSeconds: 1020
@@ -29,7 +30,7 @@ spec:
             - |
               exec php artisan queue:work redis-long \
                 --queue=exports-pdf --sleep=3 --tries=3 --backoff=30 \
-                --timeout=960 --memory=1536 --max-jobs=50 --max-time=900
+                --timeout=960 --memory=1536 --max-jobs=50 --max-time=3600
           envFrom:
             - secretRef:
                 name: cilupbah-env

@@ -3,6 +3,7 @@
 namespace Modules\Channel\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -30,26 +31,34 @@ class MonitorRedisQueueHealth extends Command
         $snapshot['redis'][] = $this->monitorRedis('horizon', 'horizon');
 
         $staleThreshold = (int) config('queue.health.stale_webhook_warning', 100);
-        $stale = DB::table('channel_webhook_inbox')
+        $staleMinutes = (int) config('queue.health.stale_webhook_minutes', 15);
+        $replayAfter = $this->replayAfter();
+        $staleQuery = DB::table('channel_webhook_inbox')
             ->where('status', WebhookInboxStatus::RECEIVED->value)
-            ->where('received_at', '<', now()->subMinutes(15))
-            ->selectRaw('count(*) as total, min(received_at) as oldest')
-            ->first();
+            ->where('received_at', '<', now()->subMinutes($staleMinutes));
+
+        if ($replayAfter !== null) {
+            $staleQuery->where('received_at', '>=', $replayAfter);
+        }
+
+        $stale = $staleQuery->selectRaw('count(*) as total, min(received_at) as oldest')->first();
 
         $staleTotal = (int) ($stale->total ?? 0);
         $snapshot['webhook_inbox'] = [
             'stale_received' => $staleTotal,
             'oldest_received_at' => $stale->oldest,
-            'threshold_minutes' => 15,
+            'threshold_minutes' => $staleMinutes,
             'warning_threshold' => $staleThreshold,
+            'replay_after' => $replayAfter?->toIso8601String(),
         ];
 
         if ($staleTotal >= $staleThreshold) {
             Log::warning('Webhook inbox has stale RECEIVED events', [
                 'total' => $staleTotal,
                 'oldest_received_at' => $stale->oldest,
-                'threshold_minutes' => 15,
+                'threshold_minutes' => $staleMinutes,
                 'warning_threshold' => $staleThreshold,
+                'replay_after' => $replayAfter?->toIso8601String(),
             ]);
         }
 
@@ -137,6 +146,26 @@ class MonitorRedisQueueHealth extends Command
                 'error' => $e::class,
                 'queues' => [],
             ];
+        }
+    }
+
+    private function replayAfter(): ?Carbon
+    {
+        $value = trim((string) config('queue.webhook_replay_after', ''));
+
+        if ($value === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value);
+        } catch (\Throwable $exception) {
+            Log::error('Webhook replay cutoff is invalid; historical events remain monitored', [
+                'value' => $value,
+                'exception' => $exception::class,
+            ]);
+
+            return null;
         }
     }
 

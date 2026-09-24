@@ -31,6 +31,7 @@ class ReplayWebhookInbox extends Command
         }
 
         $threshold = now()->subMinutes((int) $this->option('minutes'));
+        $replayAfter = $this->replayAfter();
         $maxAttempts = (int) $this->option('max-attempts');
         $limit = min(500, max(1, (int) $this->option('limit')));
         $deadline = microtime(true) + min(120, max(1, (int) $this->option('max-seconds')));
@@ -51,7 +52,7 @@ class ReplayWebhookInbox extends Command
             return self::SUCCESS;
         }
 
-        $this->deadLetterExhausted($threshold, $maxAttempts, min(100, $limit));
+        $this->deadLetterExhausted($threshold, $maxAttempts, min(100, $limit), $replayAfter);
 
         $dispatched = 0;
         $claimed = 0;
@@ -65,6 +66,7 @@ class ReplayWebhookInbox extends Command
                 $threshold,
                 $maxAttempts,
                 min($batchSize, $limit - $claimed, $availableSlots),
+                $replayAfter,
             );
 
             if ($rows->isEmpty()) {
@@ -109,11 +111,11 @@ class ReplayWebhookInbox extends Command
         ]));
     }
 
-    private function deadLetterExhausted(Carbon $threshold, int $maxAttempts, int $limit): void
+    private function deadLetterExhausted(Carbon $threshold, int $maxAttempts, int $limit, ?Carbon $replayAfter): void
     {
-        $exhausted = DB::transaction(function () use ($threshold, $maxAttempts, $limit) {
+        $exhausted = DB::transaction(function () use ($threshold, $maxAttempts, $limit, $replayAfter) {
             $now = now();
-            $rows = ChannelWebhookInbox::query()
+            $query = ChannelWebhookInbox::query()
                 ->where('status', WebhookInboxStatus::RECEIVED)
                 ->where('received_at', '<', $threshold)
                 ->where('attempts', '>=', $maxAttempts)
@@ -129,7 +131,13 @@ class ReplayWebhookInbox extends Command
                 ->where(function ($query) use ($now): void {
                     $query->whereNull('next_attempt_at')
                         ->orWhere('next_attempt_at', '<=', $now);
-                })
+                });
+
+            if ($replayAfter !== null) {
+                $query->where('received_at', '>=', $replayAfter);
+            }
+
+            $rows = $query
                 ->orderBy('received_at')
                 ->limit($limit)
                 ->lock('FOR UPDATE SKIP LOCKED')
@@ -190,6 +198,26 @@ class ReplayWebhookInbox extends Command
             $this->warn('Tidak dapat membaca kapasitas Redis queue: '.$e->getMessage());
 
             return false;
+        }
+    }
+
+    private function replayAfter(): ?Carbon
+    {
+        $value = trim((string) config('queue.webhook_replay_after', ''));
+
+        if ($value === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value);
+        } catch (\Throwable $exception) {
+            Log::error('Webhook replay cutoff is invalid; historical events remain eligible for replay', [
+                'value' => $value,
+                'exception' => $exception::class,
+            ]);
+
+            return null;
         }
     }
 }

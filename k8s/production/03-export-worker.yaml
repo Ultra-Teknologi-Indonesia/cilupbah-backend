@@ -22,6 +22,7 @@ spec:
         app: cilupbah-export-worker
         component: cilupbah-export-worker
     spec:
+      priorityClassName: cilupbah-batch
       terminationGracePeriodSeconds: 960
       imagePullSecrets:
         - name: ghcr-creds
@@ -34,7 +35,7 @@ spec:
             - |
               exec php artisan queue:work redis-long \
                 --queue=exports-sheet --sleep=3 --tries=2 --backoff=30 \
-                --timeout=780 --memory=768 --max-jobs=100 --max-time=720
+                --timeout=780 --memory=768 --max-jobs=100 --max-time=3600
           envFrom:
             - secretRef:
                 name: cilupbah-env

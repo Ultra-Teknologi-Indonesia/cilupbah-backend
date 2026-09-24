@@ -27,6 +27,7 @@ spec:
       labels:
         app: cilupbah-redis-finance
     spec:
+      priorityClassName: cilupbah-platform-critical
       containers:
         - name: redis-finance
           image: redis:7-alpine

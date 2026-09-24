@@ -132,10 +132,11 @@ class ChannelWebhookInbox extends Model
         \DateTimeInterface $threshold,
         int $maxAttempts,
         int $limit,
+        ?\DateTimeInterface $replayAfter = null,
         int $leaseSeconds = 600,
     ): Collection {
-        return DB::transaction(function () use ($threshold, $maxAttempts, $limit, $leaseSeconds): Collection {
-            $rows = static::query()
+        return DB::transaction(function () use ($threshold, $maxAttempts, $limit, $replayAfter, $leaseSeconds): Collection {
+            $query = static::query()
                 ->where('status', WebhookInboxStatus::RECEIVED)
                 ->where('received_at', '<', $threshold)
                 ->where(function ($query) use ($maxAttempts): void {
@@ -149,7 +150,13 @@ class ChannelWebhookInbox extends Model
                 ->where(function ($query): void {
                     $query->whereNull('next_attempt_at')
                         ->orWhere('next_attempt_at', '<=', now());
-                })
+                });
+
+            if ($replayAfter !== null) {
+                $query->where('received_at', '>=', $replayAfter);
+            }
+
+            $rows = $query
                 ->orderBy('received_at')
                 ->limit($limit)
                 ->lock('FOR UPDATE SKIP LOCKED')

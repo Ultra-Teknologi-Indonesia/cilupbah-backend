@@ -14,10 +14,13 @@ metadata:
 spec:
   scaleTargetRef:
     name: cilupbah-horizon
-  pollingInterval: 15
+  # Webhook/background work must not wait for the old 15-second polling
+  # window. A warm replica handles the first jobs immediately; KEDA adds
+  # capacity within five seconds when backlog rises.
+  pollingInterval: 5
   cooldownPeriod: 300
-  minReplicaCount: 0
-  maxReplicaCount: 2
+  minReplicaCount: 1
+  maxReplicaCount: 3
   advanced:
     horizontalPodAutoscalerConfig:
       behavior:
@@ -38,19 +41,19 @@ spec:
   triggers:
     - type: redis
       metadata:
-        address: redis.cilupbah.svc.cluster.local:6379
+        address: redis-horizon.cilupbah.svc.cluster.local:6379
         listName: queues:webhooks
         listLength: "25"
         activationListLength: "1"
     - type: redis
       metadata:
-        address: redis.cilupbah.svc.cluster.local:6379
+        address: redis-horizon.cilupbah.svc.cluster.local:6379
         listName: queues:default
         listLength: "25"
         activationListLength: "1"
     - type: redis
       metadata:
-        address: redis.cilupbah.svc.cluster.local:6379
+        address: redis-horizon.cilupbah.svc.cluster.local:6379
         listName: queues:notifications
         listLength: "25"
         activationListLength: "1"

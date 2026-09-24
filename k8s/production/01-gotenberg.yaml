@@ -19,6 +19,7 @@ spec:
       labels:
         app: cilupbah-gotenberg
     spec:
+      priorityClassName: cilupbah-online-support
       terminationGracePeriodSeconds: 150
       containers:
         - name: gotenberg

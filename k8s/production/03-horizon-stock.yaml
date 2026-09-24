@@ -20,6 +20,7 @@ spec:
         app: cilupbah-horizon-stock
         component: queue-stock
     spec:
+      priorityClassName: cilupbah-online-critical
       terminationGracePeriodSeconds: 180
       imagePullSecrets:
         - name: ghcr-creds

@@ -1,0 +1,34 @@
+# Under node memory pressure Kubernetes must protect the order, stock, and
+# webhook path before it protects reports/imports. These values remain below
+# Kubernetes system priorities and apply only within this application cluster.
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: cilupbah-platform-critical
+value: 100000
+globalDefault: false
+description: Redis, PgBouncer, scheduler, and state required to accept work safely.
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: cilupbah-online-critical
+value: 90000
+globalDefault: false
+description: HTTP ingress and order, stock, fulfillment, webhook, and AWB workers.
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: cilupbah-online-support
+value: 40000
+globalDefault: false
+description: Label rendering and supporting online operations.
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: cilupbah-batch
+value: 1000
+globalDefault: false
+description: Recoverable reports, imports, and other low-priority batch workloads.
