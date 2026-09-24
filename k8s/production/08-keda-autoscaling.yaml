@@ -38,37 +38,37 @@ spec:
   triggers:
     - type: redis
       metadata:
-        address: redis:6379
+        address: redis.cilupbah.svc.cluster.local:6379
         listName: queues:webhooks
         listLength: "25"
         activationListLength: "1"
     - type: redis
       metadata:
-        address: redis:6379
+        address: redis.cilupbah.svc.cluster.local:6379
         listName: queues:default
         listLength: "25"
         activationListLength: "1"
     - type: redis
       metadata:
-        address: redis:6379
+        address: redis.cilupbah.svc.cluster.local:6379
         listName: queues:notifications
         listLength: "25"
         activationListLength: "1"
     - type: redis
       metadata:
-        address: redis-long:6379
+        address: redis-long.cilupbah.svc.cluster.local:6379
         listName: queues:channel-product
         listLength: "10"
         activationListLength: "1"
     - type: redis
       metadata:
-        address: redis-long:6379
+        address: redis-long.cilupbah.svc.cluster.local:6379
         listName: queues:channel-after-sales
         listLength: "10"
         activationListLength: "1"
     - type: redis
       metadata:
-        address: redis-finance:6379
+        address: redis-finance.cilupbah.svc.cluster.local:6379
         listName: queues:channel-finance
         listLength: "10"
         activationListLength: "1"
@@ -95,25 +95,25 @@ spec:
   triggers:
     - type: redis
       metadata:
-        address: redis-long:6379
+        address: redis-long.cilupbah.svc.cluster.local:6379
         listName: queues:downloads
         listLength: "10"
         activationListLength: "1"
     - type: redis
       metadata:
-        address: redis-long:6379
+        address: redis-long.cilupbah.svc.cluster.local:6379
         listName: queues:stock-cutover
         listLength: "2"
         activationListLength: "1"
     - type: redis
       metadata:
-        address: redis-long:6379
+        address: redis-long.cilupbah.svc.cluster.local:6379
         listName: queues:order-cutover
         listLength: "2"
         activationListLength: "1"
     - type: redis
       metadata:
-        address: redis-long:6379
+        address: redis-long.cilupbah.svc.cluster.local:6379
         listName: queues:qr-labels
         listLength: "5"
         activationListLength: "1"
