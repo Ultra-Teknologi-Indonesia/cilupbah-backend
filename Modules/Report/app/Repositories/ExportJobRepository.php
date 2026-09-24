@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Report\Repositories;
 
-use Carbon\CarbonImmutable;
+use App\Support\BusinessDateRange;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Modules\Report\Models\ExportJob;
@@ -77,13 +77,12 @@ final class ExportJobRepository
                     }
                 }),
                 AllowedFilter::callback('created_from', static function (Builder $query, mixed $value): void {
-                    $from = self::dateAtWibStart((string) $value);
+                    $from = BusinessDateRange::start((string) $value);
 
-                    $query->where('created_at', '>=', $from->utc());
+                    $query->where('created_at', '>=', $from);
                 }),
                 AllowedFilter::callback('created_to', static function (Builder $query, mixed $value): void {
-
-                    $until = self::dateAtWibStart((string) $value)->addDay()->utc();
+                    $until = BusinessDateRange::endExclusive((string) $value);
 
                     $query->where('created_at', '<', $until);
                 }),
@@ -114,14 +113,5 @@ final class ExportJobRepository
     private function escapeLike(string $value): string
     {
         return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
-    }
-
-    private static function dateAtWibStart(string $date): CarbonImmutable
-    {
-        return CarbonImmutable::createFromFormat(
-            '!Y-m-d',
-            $date,
-            (string) config('app.business_timezone', 'Asia/Jakarta'),
-        )->startOfDay();
     }
 }

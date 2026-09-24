@@ -2,8 +2,8 @@
 
 namespace Modules\Report\Repositories;
 
+use App\Support\BusinessDateRange;
 use App\Support\WarehouseAccess;
-use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
@@ -54,12 +54,14 @@ class ReportRepository
 
     public function putaway(array $filters): Model|LengthAwarePaginator
     {
+        [$from, $to] = BusinessDateRange::bounds($filters['date_from'] ?? null, $filters['date_to'] ?? null);
+
         $query = Putaway::with(['items.product:id,product_id,sku', 'items.product.product:id,name', 'location:id,location_name,location_code'])
             ->tap(fn ($q) => WarehouseAccess::apply($q, 'location_id'))
             ->when($filters['location_id'] ?? null, fn ($q, $v) => $q->where('location_id', $v))
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
-            ->when($filters['date_from'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '>=', $v))
-            ->when($filters['date_to'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '<=', $v))
+            ->when($from, fn ($q, $v) => $q->where('created_at', '>=', $v))
+            ->when($to, fn ($q, $v) => $q->where('created_at', '<', $v))
             ->orderByDesc('created_at');
 
         if ($id = $filters['id'] ?? null) {
@@ -71,13 +73,15 @@ class ReportRepository
 
     public function receiveBill(array $filters): Model|LengthAwarePaginator
     {
+        [$from, $to] = BusinessDateRange::bounds($filters['date_from'] ?? null, $filters['date_to'] ?? null);
+
         $query = Inbound::with(['items.variant:id,product_id,sku', 'items.variant.product:id,name', 'location:id,location_name,location_code'])
             ->where('type', Inbound::TYPE_PURCHASE_ORDER)
             ->tap(fn ($q) => WarehouseAccess::apply($q, 'location_id'))
             ->when($filters['location_id'] ?? null, fn ($q, $v) => $q->where('location_id', $v))
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
-            ->when($filters['date_from'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '>=', $v))
-            ->when($filters['date_to'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '<=', $v))
+            ->when($from, fn ($q, $v) => $q->where('created_at', '>=', $v))
+            ->when($to, fn ($q, $v) => $q->where('created_at', '<', $v))
             ->orderByDesc('created_at');
 
         if ($id = $filters['id'] ?? null) {
@@ -89,13 +93,15 @@ class ReportRepository
 
     public function adjustment(array $filters): Model|LengthAwarePaginator
     {
+        [$from, $to] = BusinessDateRange::bounds($filters['date_from'] ?? null, $filters['date_to'] ?? null);
+
         $query = StockAdjustment::with(['items.product:id,product_id,sku', 'items.product.product:id,name', 'location:id,location_name,location_code'])
             ->excludeInboundQtyCorrections()
             ->tap(fn ($q) => WarehouseAccess::apply($q, 'location_id'))
             ->when($filters['location_id'] ?? null, fn ($q, $v) => $q->where('location_id', $v))
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
-            ->when($filters['date_from'] ?? null, fn ($q, $v) => $q->whereDate('transaction_date', '>=', $v))
-            ->when($filters['date_to'] ?? null, fn ($q, $v) => $q->whereDate('transaction_date', '<=', $v))
+            ->when($from, fn ($q, $v) => $q->where('transaction_date', '>=', $v))
+            ->when($to, fn ($q, $v) => $q->where('transaction_date', '<', $v))
             ->orderByDesc('transaction_date');
 
         if ($id = $filters['id'] ?? null) {
@@ -107,12 +113,14 @@ class ReportRepository
 
     public function stockOpname(array $filters): Model|LengthAwarePaginator
     {
+        [$from, $to] = BusinessDateRange::bounds($filters['date_from'] ?? null, $filters['date_to'] ?? null);
+
         $query = StockOpname::with(['items.product:id,product_id,sku', 'items.product.product:id,name', 'location:id,location_name,location_code'])
             ->tap(fn ($q) => WarehouseAccess::apply($q, 'location_id'))
             ->when($filters['location_id'] ?? null, fn ($q, $v) => $q->where('location_id', $v))
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
-            ->when($filters['date_from'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '>=', $v))
-            ->when($filters['date_to'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '<=', $v))
+            ->when($from, fn ($q, $v) => $q->where('created_at', '>=', $v))
+            ->when($to, fn ($q, $v) => $q->where('created_at', '<', $v))
             ->orderByDesc('created_at');
 
         if ($id = $filters['id'] ?? null) {
@@ -169,13 +177,15 @@ class ReportRepository
 
     public function consign(array $filters): Model|LengthAwarePaginator
     {
+        [$from, $to] = BusinessDateRange::bounds($filters['date_from'] ?? null, $filters['date_to'] ?? null);
+
         $query = Inbound::with(['items.variant:id,product_id,sku', 'items.variant.product:id,name', 'location:id,location_name,location_code'])
             ->where('type', Inbound::TYPE_CONSIGNMENT)
             ->tap(fn ($q) => WarehouseAccess::apply($q, 'location_id'))
             ->when($filters['location_id'] ?? null, fn ($q, $v) => $q->where('location_id', $v))
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
-            ->when($filters['date_from'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '>=', $v))
-            ->when($filters['date_to'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '<=', $v))
+            ->when($from, fn ($q, $v) => $q->where('created_at', '>=', $v))
+            ->when($to, fn ($q, $v) => $q->where('created_at', '<', $v))
             ->orderByDesc('created_at');
 
         if ($id = $filters['id'] ?? null) {
@@ -187,13 +197,15 @@ class ReportRepository
 
     public function itemReceiveNotPlace(array $filters): LengthAwarePaginator
     {
+        [$from, $to] = BusinessDateRange::bounds($filters['date_from'] ?? null, $filters['date_to'] ?? null);
+
         $query = Inbound::with(['items.variant:id,product_id,sku', 'items.variant.product:id,name', 'location:id,location_name,location_code'])
             ->whereIn('status', [Inbound::STATUS_RECEIVED, Inbound::STATUS_PUTAWAY_IN_PROGRESS])
             ->whereHas('items', fn ($q) => $q->whereColumn('putaway_qty', '<', 'received_qty'))
             ->tap(fn ($q) => WarehouseAccess::apply($q, 'location_id'))
             ->when($filters['location_id'] ?? null, fn ($q, $v) => $q->where('location_id', $v))
-            ->when($filters['date_from'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '>=', $v))
-            ->when($filters['date_to'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '<=', $v))
+            ->when($from, fn ($q, $v) => $q->where('created_at', '>=', $v))
+            ->when($to, fn ($q, $v) => $q->where('created_at', '<', $v))
             ->orderByDesc('created_at');
 
         return $this->paginate($query);
@@ -201,6 +213,7 @@ class ReportRepository
 
     public function pickList(array $filters): Model|LengthAwarePaginator
     {
+        [$from, $to] = BusinessDateRange::bounds($filters['date_from'] ?? null, $filters['date_to'] ?? null);
         $orderIds = $filters['order_ids'] ?? null;
 
         $with = [
@@ -223,8 +236,8 @@ class ReportRepository
             ->tap(fn ($q) => WarehouseAccess::apply($q, 'location_id'))
             ->when($filters['location_id'] ?? null, fn ($q, $v) => $q->where('location_id', $v))
             ->when($filters['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
-            ->when($filters['date_from'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '>=', $v))
-            ->when($filters['date_to'] ?? null, fn ($q, $v) => $q->whereDate('created_at', '<=', $v))
+            ->when($from, fn ($q, $v) => $q->where('created_at', '>=', $v))
+            ->when($to, fn ($q, $v) => $q->where('created_at', '<', $v))
             ->when(! empty($orderIds), fn ($q) => $q->whereHas('items', fn ($q2) => $q2->whereIn('order_id', $orderIds)))
             ->orderByDesc('created_at');
 
@@ -259,8 +272,7 @@ class ReportRepository
 
     public function shipmentListQuery(array $filters): Builder
     {
-        $from = $filters['from'] ?? null;
-        $to = $filters['to'] ?? null;
+        [$from, $to] = BusinessDateRange::bounds($filters['from'] ?? null, $filters['to'] ?? null);
         $courierIds = $filters['courier_ids'] ?? [];
         $statusMp = $filters['status_mp'] ?? null;
 
@@ -279,8 +291,8 @@ class ReportRepository
                 ->from('sales_order_items as soi')
                 ->whereColumn('soi.order_id', 'so.id')
                 ->whereNull('soi.item_id'))
-            ->when($from, fn ($q, $v) => $q->where('so.transaction_date', '>=', $v.' 00:00:00'))
-            ->when($to, fn ($q, $v) => $q->where('so.transaction_date', '<=', $v.' 23:59:59.999999'))
+            ->when($from, fn ($q, $v) => $q->where('so.transaction_date', '>=', $v))
+            ->when($to, fn ($q, $v) => $q->where('so.transaction_date', '<', $v))
             ->when(! empty($courierIds), fn ($q) => $q->whereIn('so.courier_id', $courierIds))
 
             ->when($statusMp, function ($q, $v) {
@@ -315,12 +327,10 @@ class ReportRepository
 
     public function orderPerformanceRows(string $type, array $filters): array
     {
-        $from = ! empty($filters['from'])
-            ? CarbonImmutable::parse((string) $filters['from'])->startOfDay()->toDateTimeString()
-            : null;
-        $toExclusive = ! empty($filters['to'])
-            ? CarbonImmutable::parse((string) $filters['to'])->addDay()->startOfDay()->toDateTimeString()
-            : null;
+        [$from, $toExclusive] = BusinessDateRange::bounds(
+            $filters['from'] ?? null,
+            $filters['to'] ?? null,
+        );
         $locationIds = WarehouseAccess::constrain(empty($filters['location_ids']) ? null : $filters['location_ids']);
 
         $query = match ($type) {
@@ -487,8 +497,7 @@ class ReportRepository
 
     public function putawayPerformanceRows(array $filters): array
     {
-        $from = ($filters['from'] ?? null) ? $filters['from'].' 00:00:00' : null;
-        $to = ($filters['to'] ?? null) ? $filters['to'].' 23:59:59.999999' : null;
+        [$from, $to] = BusinessDateRange::bounds($filters['from'] ?? null, $filters['to'] ?? null);
         $locationIds = WarehouseAccess::constrain(empty($filters['location_ids']) ? null : $filters['location_ids']);
 
         $items = DB::table('putaway_items')
@@ -516,7 +525,7 @@ class ReportRepository
             'r',
         )
             ->when($from, fn ($q, $v) => $q->where('tanggal_raw', '>=', $v))
-            ->when($to, fn ($q, $v) => $q->where('tanggal_raw', '<=', $v))
+            ->when($to, fn ($q, $v) => $q->where('tanggal_raw', '<', $v))
             ->when($locationIds !== null, fn ($q) => $q->whereIn('location_id', $locationIds))
             ->orderBy('lokasi')
             ->orderBy('grup')
@@ -528,6 +537,7 @@ class ReportRepository
     public function putawayItemRows(string $date, string $locationId, array $putawayIds = []): array
     {
         WarehouseAccess::assert($locationId);
+        [$from, $to] = BusinessDateRange::bounds($date, $date);
 
         $sumber = DB::table('putaway_item_sources as pis')
             ->join('inbound_items as ii', 'ii.id', '=', 'pis.inbound_item_id')
@@ -545,7 +555,17 @@ class ReportRepository
             ->leftJoin('putaway_placements as pp', 'pp.putaway_item_id', '=', 'pit.id')
             ->leftJoin('location_bins as lb', 'lb.id', '=', DB::raw('COALESCE(pp.bin_id, pit.destination_bin_id)'))
             ->where('p.location_id', $locationId)
-            ->whereRaw('DATE(COALESCE(p.started_at, p.created_at)) = ?', [$date])
+            ->where(function ($query) use ($from, $to): void {
+                $query->where(function ($started) use ($from, $to): void {
+                    $started->whereNotNull('p.started_at')
+                        ->where('p.started_at', '>=', $from)
+                        ->where('p.started_at', '<', $to);
+                })->orWhere(function ($created) use ($from, $to): void {
+                    $created->whereNull('p.started_at')
+                        ->where('p.created_at', '>=', $from)
+                        ->where('p.created_at', '<', $to);
+                });
+            })
             ->when(! empty($putawayIds), fn ($q) => $q->whereIn('p.id', $putawayIds))
             ->select([
                 'p.id as putaway_id',
@@ -570,18 +590,28 @@ class ReportRepository
     public function putawayLookup(string $date, string $locationId): \Illuminate\Support\Collection
     {
         WarehouseAccess::assert($locationId);
+        [$from, $to] = BusinessDateRange::bounds($date, $date);
 
         return DB::table('putaways')
             ->where('location_id', $locationId)
-            ->whereRaw('DATE(COALESCE(started_at, created_at)) = ?', [$date])
+            ->where(function ($query) use ($from, $to): void {
+                $query->where(function ($started) use ($from, $to): void {
+                    $started->whereNotNull('started_at')
+                        ->where('started_at', '>=', $from)
+                        ->where('started_at', '<', $to);
+                })->orWhere(function ($created) use ($from, $to): void {
+                    $created->whereNull('started_at')
+                        ->where('created_at', '>=', $from)
+                        ->where('created_at', '<', $to);
+                });
+            })
             ->orderBy('putaway_no')
             ->get(['id', 'putaway_no']);
     }
 
     public function shipmentByCourierRows(array $filters): array
     {
-        $from = ($filters['from'] ?? null) ? $filters['from'].' 00:00:00' : null;
-        $to = ($filters['to'] ?? null) ? $filters['to'].' 23:59:59.999999' : null;
+        [$from, $to] = BusinessDateRange::bounds($filters['from'] ?? null, $filters['to'] ?? null);
         $locationIds = WarehouseAccess::constrain(empty($filters['location_ids']) ? null : $filters['location_ids']);
         $providerExpression = "NULLIF(BTRIM(s.courier_name), '')";
         $trackingExpression = "COALESCE(NULLIF(BTRIM(shso.tracking_number), ''), NULLIF(BTRIM(so.tracking_number), ''))";
@@ -604,8 +634,8 @@ class ReportRepository
                 ->from('sales_order_items as soi')
                 ->whereColumn('soi.order_id', 'so.id')
                 ->whereNull('soi.item_id'))
-            ->when($from, fn ($qb, $v) => $qb->whereDate('s.created_at', '>=', $v))
-            ->when($to, fn ($qb, $v) => $qb->whereDate('s.created_at', '<=', $v))
+            ->when($from, fn ($qb, $v) => $qb->where('s.created_at', '>=', $v))
+            ->when($to, fn ($qb, $v) => $qb->where('s.created_at', '<', $v))
             ->when($locationIds !== null, fn ($qb) => $qb->whereIn('s.location_id', $locationIds))
             ->select([
                 's.created_at as tanggal',
@@ -646,8 +676,7 @@ class ReportRepository
 
     public function pickListRowsQuery(array $filters): Builder
     {
-        $from = $filters['from'] ?? null;
-        $to = $filters['to'] ?? null;
+        [$from, $to] = BusinessDateRange::bounds($filters['from'] ?? null, $filters['to'] ?? null);
 
         $query = DB::table('picklist_items as pi')
             ->join('picklists as p', 'p.id', '=', 'pi.picklist_id')
@@ -660,8 +689,8 @@ class ReportRepository
             ->leftJoin('channels as ch', 'ch.id', '=', 'cs.channel_id')
             ->tap(fn ($q) => WarehouseAccess::apply($q, 'p.location_id'))
             ->whereNotIn('p.status', [Picklist::STATUS_DRAFT, Picklist::STATUS_CANCELLED])
-            ->when($from, fn ($q, $v) => $q->where('p.created_at', '>=', $v.' 00:00:00'))
-            ->when($to, fn ($q, $v) => $q->where('p.created_at', '<=', $v.' 23:59:59.999999'))
+            ->when($from, fn ($q, $v) => $q->where('p.created_at', '>=', $v))
+            ->when($to, fn ($q, $v) => $q->where('p.created_at', '<', $v))
             ->select([
                 'so.salesorder_no',
                 'p.picklist_no',
@@ -715,8 +744,7 @@ class ReportRepository
     public function transferQuery(array $filters): Builder
     {
         $isMasuk = ($filters['jenis'] ?? 'keluar') === 'masuk';
-        $from = $filters['from'] ?? null;
-        $to = $filters['to'] ?? null;
+        [$from, $to] = BusinessDateRange::bounds($filters['from'] ?? null, $filters['to'] ?? null);
         $itemIds = $filters['item_ids'] ?? [];
 
         $dateColumn = $isMasuk ? 't.received_at' : 't.shipped_at';
@@ -765,8 +793,8 @@ class ReportRepository
             ]);
         }
 
-        $query->when($from, fn ($q, $v) => $q->where($dateColumn, '>=', $v.' 00:00:00'))
-            ->when($to, fn ($q, $v) => $q->where($dateColumn, '<=', $v.' 23:59:59.999999'));
+        $query->when($from, fn ($q, $v) => $q->where($dateColumn, '>=', $v))
+            ->when($to, fn ($q, $v) => $q->where($dateColumn, '<', $v));
 
         if (! empty($itemIds)) {
             $query->whereIn('i.item_id', $itemIds);
@@ -777,14 +805,19 @@ class ReportRepository
 
     public function hppAggregates(string $dateFrom, string $dateTo, ?string $locationId = null): array
     {
-        $periodStart = CarbonImmutable::parse($dateFrom)->startOfDay();
-        $periodEnd = CarbonImmutable::parse($dateTo)->endOfDay();
+        $periodStart = BusinessDateRange::start($dateFrom);
+        $periodEndExclusive = BusinessDateRange::endExclusive($dateTo);
+
+        if ($periodStart === null || $periodEndExclusive === null) {
+            throw new \InvalidArgumentException('Rentang tanggal HPP wajib diisi.');
+        }
+
         $persediaanAwal = $this->inventoryValueAsOf(
-            $periodStart->subSecond()->toDateTimeString(),
+            $periodStart->subMicrosecond()->toDateTimeString(),
             $locationId,
         );
         $persediaanAkhir = $this->inventoryValueAsOf(
-            $periodEnd->toDateTimeString(),
+            $periodEndExclusive->subMicrosecond()->toDateTimeString(),
             $locationId,
         );
 
@@ -802,7 +835,8 @@ class ReportRepository
                 $join->on('po_cost.purchase_order_id', '=', 'inbound.source_id')
                     ->on('po_cost.item_id', '=', 'im.item_id');
             })
-            ->whereBetween('im.transaction_date', [$dateFrom.' 00:00:00', $dateTo.' 23:59:59.999999'])
+            ->where('im.transaction_date', '>=', $periodStart)
+            ->where('im.transaction_date', '<', $periodEndExclusive)
             ->where('im.source', 'PURCHASE')
             ->where('im.qty', '>', 0)
             ->when($locationId, fn ($query, string $id) => $query->where('im.location_id', $id))
@@ -822,7 +856,8 @@ class ReportRepository
                 'return_purchase_cost',
                 fn ($join) => $join->on('return_purchase_cost.item_id', '=', 'im.item_id'),
             )
-            ->whereBetween('im.transaction_date', [$dateFrom.' 00:00:00', $dateTo.' 23:59:59.999999'])
+            ->where('im.transaction_date', '>=', $periodStart)
+            ->where('im.transaction_date', '<', $periodEndExclusive)
             ->whereIn('im.source', ['PURCHASE_RETURN', 'PURCHASE_REVERSAL'])
             ->where('im.qty', '<', 0)
             ->whereRaw("COALESCE({$returnCostSql}, return_purchase_cost.average_cost, 0) > 0")
@@ -974,14 +1009,16 @@ class ReportRepository
 
     public function penyesuaianAdjustments(string $startDate, string $endDate, array $productIds, array $locationIds): Collection
     {
+        [$from, $to] = BusinessDateRange::bounds($startDate, $endDate);
+
         return StockAdjustment::with([
             'items' => fn ($q) => $q->when(! empty($productIds), fn ($q2) => $q2->whereIn('item_id', $productIds)),
             'items.product:id,product_id,sku',
             'items.product.product:id,name',
         ])
             ->excludeInboundQtyCorrections()
-            ->whereDate('transaction_date', '>=', $startDate)
-            ->whereDate('transaction_date', '<=', $endDate)
+            ->where('transaction_date', '>=', $from)
+            ->where('transaction_date', '<', $to)
             ->when(! empty($locationIds), fn ($q) => $q->whereIn('location_id', $locationIds))
             ->orderBy('transaction_date')
             ->get();
@@ -989,13 +1026,15 @@ class ReportRepository
 
     public function penyesuaianStokLinesQuery(string $startDate, string $endDate, array $productIds, array $locationIds): Builder
     {
+        [$from, $to] = BusinessDateRange::bounds($startDate, $endDate);
+
         return DB::table('stock_adjustment_items as sai')
             ->join('stock_adjustments as sa', 'sa.id', '=', 'sai.stock_adjustment_id')
             ->leftJoin('product_variants as pv', 'pv.id', '=', 'sai.item_id')
             ->leftJoin('products as p', 'p.id', '=', 'pv.product_id')
             ->whereNull('sa.deleted_at')
-            ->whereDate('sa.transaction_date', '>=', $startDate)
-            ->whereDate('sa.transaction_date', '<=', $endDate)
+            ->where('sa.transaction_date', '>=', $from)
+            ->where('sa.transaction_date', '<', $to)
             ->whereNotExists(fn (Builder $query) => $query
                 ->selectRaw('1')
                 ->from('inbound_receipts')
@@ -1028,8 +1067,7 @@ class ReportRepository
 
     public function negativeStockHistoryQuery(array $filters): Builder
     {
-        $from = $filters['from'] ?? null;
-        $to = $filters['to'] ?? null;
+        [$from, $to] = BusinessDateRange::bounds($filters['from'] ?? null, $filters['to'] ?? null);
         $locationId = $filters['location_id'] ?? null;
         $search = $filters['search'] ?? null;
         $stillNegative = ! empty($filters['still_negative']);
@@ -1041,8 +1079,8 @@ class ReportRepository
             ->selectRaw('MIN(balance) AS min_balance')
             ->selectRaw('COUNT(*) AS negative_movements_count')
             ->where('balance', '<', 0)
-            ->when($from, fn ($q, $v) => $q->where('transaction_date', '>=', $v.' 00:00:00'))
-            ->when($to, fn ($q, $v) => $q->where('transaction_date', '<=', $v.' 23:59:59.999999'))
+            ->when($from, fn ($q, $v) => $q->where('transaction_date', '>=', $v))
+            ->when($to, fn ($q, $v) => $q->where('transaction_date', '<', $v))
             ->when($locationId, fn ($q, $v) => $q->where('location_id', $v))
             ->groupBy('item_id', 'location_id', 'bin_id');
 
@@ -1168,39 +1206,12 @@ class ReportRepository
 
     private function businessDateRange(?string $from, ?string $to): array
     {
-        $timezone = (string) config('app.business_timezone', 'Asia/Jakarta');
-
-        $fromDate = $from !== null && trim($from) !== ''
-            ? CarbonImmutable::parse(trim($from), $timezone)
-            : null;
-        $toDate = $to !== null && trim($to) !== ''
-            ? CarbonImmutable::parse(trim($to), $timezone)
-            : null;
-
-        $fromBoundary = $fromDate
-            ? (self::isDateOnly($from) ? $fromDate->startOfDay() : $fromDate)->utc()
-            : null;
-
-        $toBoundary = null;
-        if ($toDate) {
-            $toBoundary = self::isDateOnly($to)
-                ? $toDate->startOfDay()->addDay()
-                : $toDate->addMicrosecond();
-            $toBoundary = $toBoundary->utc();
-        }
-
-        return [$fromBoundary, $toBoundary];
-    }
-
-    private static function isDateOnly(?string $value): bool
-    {
-        return $value !== null && preg_match('/^\d{4}-\d{2}-\d{2}$/', trim($value)) === 1;
+        return BusinessDateRange::bounds($from, $to);
     }
 
     public function salesReturnQuery(array $filters): \Illuminate\Database\Eloquent\Builder
     {
-        $from = $filters['from'] ?? null;
-        $to = $filters['to'] ?? null;
+        [$from, $to] = BusinessDateRange::bounds($filters['from'] ?? null, $filters['to'] ?? null);
         $locationIds = $filters['location_ids'] ?? [];
 
         $line = fn (string $col) => "(SELECT {$col} FROM sales_order_items soi
@@ -1209,8 +1220,8 @@ class ReportRepository
 
         return SalesReturnItem::query()
             ->join('sales_returns', 'sales_returns.id', '=', 'sales_return_items.sales_return_id')
-            ->when($from, fn ($q, $v) => $q->where('sales_returns.created_at', '>=', $v.' 00:00:00'))
-            ->when($to, fn ($q, $v) => $q->where('sales_returns.created_at', '<=', $v.' 23:59:59.999999'))
+            ->when($from, fn ($q, $v) => $q->where('sales_returns.created_at', '>=', $v))
+            ->when($to, fn ($q, $v) => $q->where('sales_returns.created_at', '<', $v))
             ->when(! empty($locationIds), fn ($q) => $q->whereIn('sales_returns.location_id', $locationIds))
             ->select('sales_return_items.*')
             ->addSelect([
@@ -1268,16 +1279,15 @@ class ReportRepository
         )';
     }
 
-    public function rincianPendapatanQuery(array $filters): \Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Query\Builder
+    public function rincianPendapatanQuery(array $filters): \Illuminate\Database\Eloquent\Builder|Builder
     {
-        $from = $filters['from'] ?? null;
-        $to = $filters['to'] ?? null;
+        [$from, $to] = BusinessDateRange::bounds($filters['from'] ?? null, $filters['to'] ?? null);
 
         return SalesInvoice::query()
             ->join('sales_orders', 'sales_orders.id', '=', 'sales_invoices.order_id')
             ->tap(fn ($q) => WarehouseAccess::apply($q, 'sales_orders.location_id'))
-            ->when($from, fn ($q, $v) => $q->where('sales_orders.transaction_date', '>=', $v.' 00:00:00'))
-            ->when($to, fn ($q, $v) => $q->where('sales_orders.transaction_date', '<=', $v.' 23:59:59.999999'))
+            ->when($from, fn ($q, $v) => $q->where('sales_orders.transaction_date', '>=', $v))
+            ->when($to, fn ($q, $v) => $q->where('sales_orders.transaction_date', '<', $v))
             ->select('sales_invoices.id', 'sales_invoices.invoice_number as invoice_no')
             ->addSelect([
                 'sales_orders.salesorder_no as so_no',
@@ -1303,18 +1313,17 @@ class ReportRepository
             ->orderBy('sales_invoices.invoice_number');
     }
 
-    public function rincianPendapatanPerBarangQuery(array $filters): \Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Query\Builder
+    public function rincianPendapatanPerBarangQuery(array $filters): \Illuminate\Database\Eloquent\Builder|Builder
     {
-        $from = $filters['from'] ?? null;
-        $to = $filters['to'] ?? null;
+        [$from, $to] = BusinessDateRange::bounds($filters['from'] ?? null, $filters['to'] ?? null);
         $itemIds = $filters['item_ids'] ?? [];
 
         return SalesInvoiceItem::query()
             ->join('sales_invoices', 'sales_invoices.id', '=', 'sales_invoice_items.sales_invoice_id')
             ->join('sales_orders', 'sales_orders.id', '=', 'sales_invoices.order_id')
             ->tap(fn ($q) => WarehouseAccess::apply($q, 'sales_orders.location_id'))
-            ->when($from, fn ($q, $v) => $q->where('sales_orders.transaction_date', '>=', $v.' 00:00:00'))
-            ->when($to, fn ($q, $v) => $q->where('sales_orders.transaction_date', '<=', $v.' 23:59:59.999999'))
+            ->when($from, fn ($q, $v) => $q->where('sales_orders.transaction_date', '>=', $v))
+            ->when($to, fn ($q, $v) => $q->where('sales_orders.transaction_date', '<', $v))
             ->when(! empty($itemIds), fn ($q) => $q->whereIn('sales_invoice_items.item_id', $itemIds))
             ->select('sales_invoice_items.*')
             ->addSelect([
@@ -1343,13 +1352,12 @@ class ReportRepository
 
     public function customerListQuery(array $filters): \Illuminate\Database\Eloquent\Builder
     {
-        $from = $filters['from'] ?? null;
-        $to = $filters['to'] ?? null;
+        [$from, $to] = BusinessDateRange::bounds($filters['from'] ?? null, $filters['to'] ?? null);
 
         return Contact::query()
             ->customers()
-            ->when($from, fn ($q, $v) => $q->where('contacts.created_at', '>=', $v.' 00:00:00'))
-            ->when($to, fn ($q, $v) => $q->where('contacts.created_at', '<=', $v.' 23:59:59.999999'))
+            ->when($from, fn ($q, $v) => $q->where('contacts.created_at', '>=', $v))
+            ->when($to, fn ($q, $v) => $q->where('contacts.created_at', '<', $v))
             ->select('contacts.*')
             ->selectRaw('(SELECT name FROM contact_categories WHERE contact_categories.id = contacts.category_id LIMIT 1) AS category_name')
             ->orderByDesc('contacts.created_at')

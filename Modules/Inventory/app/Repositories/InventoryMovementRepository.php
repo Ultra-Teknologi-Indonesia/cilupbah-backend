@@ -3,6 +3,7 @@
 namespace Modules\Inventory\Repositories;
 
 use App\Exceptions\UserFacingException;
+use App\Support\BusinessDateRange;
 use App\Support\WarehouseAccess;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
@@ -866,10 +867,10 @@ SQL;
                     });
                 }),
                 AllowedFilter::callback('date_from', function ($query, $value) {
-                    $query->whereDate('transaction_date', '>=', $value);
+                    $query->where('transaction_date', '>=', BusinessDateRange::start((string) $value));
                 }),
                 AllowedFilter::callback('date_to', function ($query, $value) {
-                    $query->whereDate('transaction_date', '<=', $value);
+                    $query->where('transaction_date', '<', BusinessDateRange::endExclusive((string) $value));
                 })
             )
             ->allowedSorts(

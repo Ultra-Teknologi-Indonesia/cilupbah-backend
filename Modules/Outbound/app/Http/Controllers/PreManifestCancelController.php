@@ -2,11 +2,12 @@
 
 namespace Modules\Outbound\Http\Controllers;
 
+use App\Facades\Xlsx;
 use App\Http\Controllers\Controller;
+use App\Support\BusinessDateRange;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use App\Facades\Xlsx;
 use Modules\Outbound\Http\Resources\PreManifestCancelResource;
 use Modules\Outbound\Services\PreManifestCancelService;
 use Modules\Sales\Exports\CancelledOrdersExport;
@@ -147,7 +148,7 @@ class PreManifestCancelController extends Controller
             'source' => 'nullable|string|max:50',
         ]);
 
-        $today = now()->toDateString();
+        $today = BusinessDateRange::today();
         $dateFrom = $validated['date_from'] ?? $today;
         $dateTo = $validated['date_to'] ?? $today;
 

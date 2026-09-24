@@ -2,6 +2,7 @@
 
 namespace Modules\Product\Repositories;
 
+use App\Support\BusinessDateRange;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Modules\Product\Models\ProductSyncLog;
@@ -35,8 +36,8 @@ class UploadHistoryRepository
                 AllowedFilter::callback('status', fn ($query, $value) => $query->where('product_sync_logs.status', $value)),
                 AllowedFilter::callback('channel', fn ($query, $value) => $query->whereHas('channelShop.channel', fn ($channel) => $channel->where('code', $value))),
                 AllowedFilter::callback('shop_id', fn ($query, $value) => $query->whereHas('channelShop', fn ($shop) => $shop->where('shop_id', $value))),
-                AllowedFilter::callback('date_from', fn ($query, $value) => $query->whereDate('product_sync_logs.created_at', '>=', $value)),
-                AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('product_sync_logs.created_at', '<=', $value)),
+                AllowedFilter::callback('date_from', fn ($query, $value) => $query->where('product_sync_logs.created_at', '>=', BusinessDateRange::start((string) $value))),
+                AllowedFilter::callback('date_to', fn ($query, $value) => $query->where('product_sync_logs.created_at', '<', BusinessDateRange::endExclusive((string) $value))),
             )
             ->allowedSorts(
                 AllowedSort::field('created_at', 'product_sync_logs.created_at'),
@@ -58,8 +59,8 @@ class UploadHistoryRepository
             ->allowedFilters(
                 AllowedFilter::callback('channel', fn ($query, $value) => $query->whereHas('channelShop.channel', fn ($channel) => $channel->where('code', $value))),
                 AllowedFilter::callback('shop_id', fn ($query, $value) => $query->whereHas('channelShop', fn ($shop) => $shop->where('shop_id', $value))),
-                AllowedFilter::callback('date_from', fn ($query, $value) => $query->whereDate('product_sync_logs.created_at', '>=', $value)),
-                AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('product_sync_logs.created_at', '<=', $value)),
+                AllowedFilter::callback('date_from', fn ($query, $value) => $query->where('product_sync_logs.created_at', '>=', BusinessDateRange::start((string) $value))),
+                AllowedFilter::callback('date_to', fn ($query, $value) => $query->where('product_sync_logs.created_at', '<', BusinessDateRange::endExclusive((string) $value))),
             )
             ->allowedSorts(
                 AllowedSort::field('created_at', 'product_sync_logs.created_at'),

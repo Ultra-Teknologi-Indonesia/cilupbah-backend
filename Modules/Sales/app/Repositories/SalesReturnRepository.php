@@ -2,18 +2,18 @@
 
 namespace Modules\Sales\Repositories;
 
+use App\Support\BusinessDateRange;
 use App\Support\WarehouseAccess;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Modules\Sales\Models\SalesReturn;
 use Modules\Sales\Models\SalesReturnItem;
-use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\AllowedSort;
+use Spatie\QueryBuilder\QueryBuilder;
 
 class SalesReturnRepository
 {
-
     private const SEARCH_COLUMNS = [
         'sales_returns.return_number',
         'sales_returns.customer_name',
@@ -62,8 +62,8 @@ class SalesReturnRepository
                 'channels.code as channel',
                 'channels.name as channel_name',
             ])
-            ->unique(fn ($shop): string => $shop->channel . '|' . $shop->value)
-            ->sortBy(fn ($shop): string => strtolower($shop->channel_name . ' ' . $shop->label))
+            ->unique(fn ($shop): string => $shop->channel.'|'.$shop->value)
+            ->sortBy(fn ($shop): string => strtolower($shop->channel_name.' '.$shop->label))
             ->values();
 
         return ['reasons' => $reasons, 'shops' => $shops];
@@ -129,8 +129,8 @@ class SalesReturnRepository
                 });
             }),
             AllowedFilter::exact('reason_category', 'sales_returns.reason_category'),
-            AllowedFilter::callback('date_from', fn ($query, $value) => $query->whereDate('sales_returns.created_at', '>=', $value)),
-            AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('sales_returns.created_at', '<=', $value)),
+            AllowedFilter::callback('date_from', fn ($query, $value) => $query->where('sales_returns.created_at', '>=', BusinessDateRange::start((string) $value))),
+            AllowedFilter::callback('date_to', fn ($query, $value) => $query->where('sales_returns.created_at', '<', BusinessDateRange::endExclusive((string) $value))),
         ];
 
         if ($includeStatus) {
@@ -164,14 +164,16 @@ class SalesReturnRepository
 
     public function getReportPaginated(array $filters, int $limit = 10)
     {
+        [$from, $to] = BusinessDateRange::bounds($filters['date_from'] ?? null, $filters['date_to'] ?? null);
+
         $query = QueryBuilder::for(SalesReturn::class)
             ->with([
                 'order:id,salesorder_no,channel_order_no,customer_name',
                 'location:id,location_name',
                 'settlement.refunds',
             ])
-            ->when(! empty($filters['date_from']), fn ($q) => $q->whereDate('created_at', '>=', $filters['date_from']))
-            ->when(! empty($filters['date_to']), fn ($q) => $q->whereDate('created_at', '<=', $filters['date_to']))
+            ->when($from, fn ($q, $v) => $q->where('created_at', '>=', $v))
+            ->when($to, fn ($q, $v) => $q->where('created_at', '<', $v))
             ->when(! empty($filters['location_id']), fn ($q) => $q->where('location_id', $filters['location_id']))
             ->when(! empty($filters['channel_shop_id']), fn ($q) => $q->where('channel_shop_id', $filters['channel_shop_id']))
             ->when(! empty($filters['status']), fn ($q) => $q->where('status', $filters['status']))
@@ -225,8 +227,7 @@ class SalesReturnRepository
     public function findByIdForUpdate(string $id): ?SalesReturn
     {
         $query = SalesReturn::with('items')
-            ->lockForUpdate()
-            ;
+            ->lockForUpdate();
         WarehouseAccess::apply($query, 'location_id');
 
         return $query->find($id);
@@ -249,8 +250,7 @@ class SalesReturnRepository
     public function existsMarketplaceForOrder(string $orderId): bool
     {
         $query = SalesReturn::where('order_id', $orderId)
-            ->where('source', SalesReturn::SOURCE_MARKETPLACE)
-            ;
+            ->where('source', SalesReturn::SOURCE_MARKETPLACE);
         WarehouseAccess::apply($query, 'location_id');
 
         return $query->exists();

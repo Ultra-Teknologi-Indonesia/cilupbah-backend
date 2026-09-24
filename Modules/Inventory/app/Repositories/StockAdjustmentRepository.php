@@ -2,13 +2,15 @@
 
 namespace Modules\Inventory\Repositories;
 
-use App\Support\WarehouseAccess;
 use App\Exceptions\UserFacingException;
+use App\Support\BusinessDateRange;
+use App\Support\WarehouseAccess;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Request;
 use Modules\Inventory\Models\StockAdjustment;
 use Modules\Inventory\Models\StockAdjustmentItem;
-use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
-use Illuminate\Http\Request;
+use Spatie\QueryBuilder\QueryBuilder;
 
 class StockAdjustmentRepository
 {
@@ -36,8 +38,8 @@ class StockAdjustmentRepository
             ->allowedFilters(
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::exact('is_beginning_balance'),
-                AllowedFilter::callback('date_from', fn ($query, $value) => $query->whereDate('transaction_date', '>=', $value)),
-                AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('transaction_date', '<=', $value)),
+                AllowedFilter::callback('date_from', fn ($query, $value) => $query->where('transaction_date', '>=', BusinessDateRange::start((string) $value))),
+                AllowedFilter::callback('date_to', fn ($query, $value) => $query->where('transaction_date', '<', BusinessDateRange::endExclusive((string) $value))),
             )
             ->allowedSorts('transaction_date', 'created_at', 'adjustment_no', 'created_by', 'id')
             ->defaultSort('-transaction_date');
@@ -49,7 +51,7 @@ class StockAdjustmentRepository
             ->appends(request()->query());
     }
 
-    public function getQueryForExport(Request $request): \Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Query\Builder
+    public function getQueryForExport(Request $request): Builder|\Illuminate\Database\Query\Builder
     {
         $query = StockAdjustmentItem::query()
             ->join('stock_adjustments', 'stock_adjustment_items.stock_adjustment_id', '=', 'stock_adjustments.id')
@@ -65,12 +67,12 @@ class StockAdjustmentRepository
                     ->where('inbound_receipts.condition', 'ADJUSTMENT');
             })
             ->whereNull('product_variants.deleted_at')
-            ->when($request->filled('filter[location_id]'), fn($q) => $q->where('stock_adjustments.location_id', $request->input('filter[location_id]')))
-            ->when($request->filled('filter[date_from]'), fn($q) => $q->whereDate('stock_adjustments.transaction_date', '>=', $request->input('filter[date_from]')))
-            ->when($request->filled('filter[date_to]'), fn($q) => $q->whereDate('stock_adjustments.transaction_date', '<=', $request->input('filter[date_to]')))
+            ->when($request->filled('filter[location_id]'), fn ($q) => $q->where('stock_adjustments.location_id', $request->input('filter[location_id]')))
+            ->when($request->filled('filter[date_from]'), fn ($q) => $q->where('stock_adjustments.transaction_date', '>=', BusinessDateRange::start((string) $request->input('filter[date_from]'))))
+            ->when($request->filled('filter[date_to]'), fn ($q) => $q->where('stock_adjustments.transaction_date', '<', BusinessDateRange::endExclusive((string) $request->input('filter[date_to]'))))
             ->when($request->filled('search'), function ($q) use ($request) {
                 $term = trim((string) $request->input('search'));
-                $escaped = addcslashes($term, "\\%_");
+                $escaped = addcslashes($term, '\\%_');
                 $pattern = "%{$escaped}%";
 
                 return $q->where(function ($searchQuery) use ($pattern) {
@@ -163,7 +165,7 @@ class StockAdjustmentRepository
                 'product.product:id,name',
                 'product.media',
                 'product.product.media',
-                'bin:id,bin_final_code'
+                'bin:id,bin_final_code',
             ])
             ->allowedSearch('notes', 'product.sku')
             ->allowedSorts('created_at', 'id')
@@ -228,11 +230,11 @@ class StockAdjustmentRepository
 
         $last = StockAdjustment::withTrashed()
             ->whereRaw("adjustment_no ~ '^ADJ-[0-9]+$'")
-            ->orderByRaw("CAST(SUBSTRING(adjustment_no FROM 5) AS INTEGER) DESC")
+            ->orderByRaw('CAST(SUBSTRING(adjustment_no FROM 5) AS INTEGER) DESC')
             ->value('adjustment_no');
 
         $seq = $last ? ((int) substr($last, strlen($prefix)) + 1) : 1;
 
-        return $prefix . str_pad((string) $seq, 9, '0', STR_PAD_LEFT);
+        return $prefix.str_pad((string) $seq, 9, '0', STR_PAD_LEFT);
     }
 }

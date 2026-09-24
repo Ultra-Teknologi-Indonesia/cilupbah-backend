@@ -2,6 +2,7 @@
 
 namespace Modules\Inventory\Repositories;
 
+use App\Support\BusinessDateRange;
 use App\Support\WarehouseAccess;
 use Modules\Inventory\Models\BinTransfer;
 use Modules\Inventory\Models\BinTransferReceipt;
@@ -30,10 +31,10 @@ class BinTransferRepository
         }
 
         if (! empty($filters['date_from'])) {
-            $query->whereDate('transfer_date', '>=', $filters['date_from']);
+            $query->where('transfer_date', '>=', $filters['date_from']);
         }
         if (! empty($filters['date_to'])) {
-            $query->whereDate('transfer_date', '<=', $filters['date_to']);
+            $query->where('transfer_date', '<=', $filters['date_to']);
         }
 
         if (! empty($filters['search'])) {
@@ -88,10 +89,10 @@ class BinTransferRepository
         }
 
         if (! empty($filters['date_from'])) {
-            $query->whereDate('bin_transfer_receipts.received_at', '>=', $filters['date_from']);
+            $query->where('bin_transfer_receipts.received_at', '>=', BusinessDateRange::start((string) $filters['date_from']));
         }
         if (! empty($filters['date_to'])) {
-            $query->whereDate('bin_transfer_receipts.received_at', '<=', $filters['date_to']);
+            $query->where('bin_transfer_receipts.received_at', '<', BusinessDateRange::endExclusive((string) $filters['date_to']));
         }
 
         WarehouseAccess::apply($query, 'bin_transfer_receipts.location_id');

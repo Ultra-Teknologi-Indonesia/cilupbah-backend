@@ -2,12 +2,13 @@
 
 namespace Modules\Inventory\Repositories;
 
+use App\Support\BusinessDateRange;
 use App\Support\WarehouseAccess;
+use Illuminate\Database\Eloquent\Collection;
 use Modules\Inventory\Models\ReservedStock;
 use Modules\Inventory\Models\ReservedStockItem;
-use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
-use Illuminate\Database\Eloquent\Collection;
+use Spatie\QueryBuilder\QueryBuilder;
 
 class ReservedStockRepository
 {
@@ -20,8 +21,8 @@ class ReservedStockRepository
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::exact('is_active'),
-                AllowedFilter::callback('date_from', fn ($query, $value) => $query->whereDate('start_date', '>=', $value)),
-                AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('start_date', '<=', $value)),
+                AllowedFilter::callback('date_from', fn ($query, $value) => $query->where('start_date', '>=', BusinessDateRange::start((string) $value))),
+                AllowedFilter::callback('date_to', fn ($query, $value) => $query->where('start_date', '<', BusinessDateRange::endExclusive((string) $value))),
             )
             ->allowedSorts('start_date', 'end_date', 'created_at', 'reserved_stock_no', 'status')
             ->defaultSort('-created_at');
@@ -96,6 +97,6 @@ class ReservedStockRepository
             $seq = 1;
         }
 
-        return $prefix . str_pad($seq, 4, '0', STR_PAD_LEFT);
+        return $prefix.str_pad($seq, 4, '0', STR_PAD_LEFT);
     }
 }

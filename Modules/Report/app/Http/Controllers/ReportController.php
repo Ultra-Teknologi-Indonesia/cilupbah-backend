@@ -2,12 +2,13 @@
 
 namespace Modules\Report\Http\Controllers;
 
+use App\Facades\Xlsx;
 use App\Http\Controllers\Controller;
 use App\Services\PdfRenderer;
+use App\Support\BusinessDateRange;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use App\Facades\Xlsx;
 use Modules\Report\Exports\CustomerListExport;
 use Modules\Report\Exports\NegativeStockReportExport;
 use Modules\Report\Exports\PicklistDetailPhotoExport;
@@ -586,7 +587,7 @@ class ReportController extends Controller
         $filename = sprintf(
             'riwayat-stok-minus_%s_%s.xlsx',
             $validated['from'] ?? 'semua',
-            $validated['to'] ?? now()->format('Y-m-d'),
+            $validated['to'] ?? BusinessDateRange::today(),
         );
 
         return Xlsx::download($export, $filename);
@@ -989,7 +990,7 @@ class ReportController extends Controller
         $filename = sprintf(
             'Daftar-Penjualan_%s_%s.xlsx',
             $validated['from'] ?? 'semua',
-            $validated['to'] ?? now()->format('Y-m-d'),
+            $validated['to'] ?? BusinessDateRange::today(),
         );
 
         return Xlsx::download(new SalesListPesananExport($query), $filename);
@@ -1039,7 +1040,7 @@ class ReportController extends Controller
         $filename = sprintf(
             'Daftar-Penjualan-Produk_%s_%s.xlsx',
             $validated['from'] ?? 'semua',
-            $validated['to'] ?? now()->format('Y-m-d'),
+            $validated['to'] ?? BusinessDateRange::today(),
         );
 
         return Xlsx::download(new SalesProductExport($query), $filename);
@@ -1066,7 +1067,7 @@ class ReportController extends Controller
         $filename = sprintf(
             'Daftar-Retur-Penjualan_%s_%s.xlsx',
             $validated['from'] ?? 'semua',
-            $validated['to'] ?? now()->format('Y-m-d'),
+            $validated['to'] ?? BusinessDateRange::today(),
         );
 
         return Xlsx::download(new SalesReturnExport($query), $filename);
@@ -1100,7 +1101,7 @@ class ReportController extends Controller
             'Rincian-Pendapatan%s_%s_%s.xlsx',
             $mode === RincianPendapatanReportService::MODE_PER_BARANG ? '-Barang' : '',
             $validated['from'] ?? 'semua',
-            $validated['to'] ?? now()->format('Y-m-d'),
+            $validated['to'] ?? BusinessDateRange::today(),
         );
 
         return Xlsx::download($export, $filename);
@@ -1126,7 +1127,7 @@ class ReportController extends Controller
         $filename = sprintf(
             'Daftar-Pelanggan_%s_%s.xlsx',
             $validated['from'] ?? 'semua',
-            $validated['to'] ?? now()->format('Y-m-d'),
+            $validated['to'] ?? BusinessDateRange::today(),
         );
 
         return Xlsx::download(new CustomerListExport($query), $filename);

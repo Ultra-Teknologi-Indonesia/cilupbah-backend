@@ -2,19 +2,21 @@
 
 namespace Modules\Inventory\Repositories;
 
-use App\Models\User;
 use App\Exceptions\UserFacingException;
+use App\Models\User;
+use App\Support\BusinessDateRange;
 use App\Support\SearchExpression;
 use App\Support\WarehouseAccess;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
+use Illuminate\Support\Collection;
 use Modules\Inventory\Models\Inventory;
 use Modules\Inventory\Models\Putaway;
 use Modules\Inventory\Models\PutawayItem;
 use Modules\Inventory\Support\PutawayReferenceNumberSort;
 use Modules\Warehouse\Models\LocationBin;
-use Illuminate\Support\Collection;
-use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
+use Spatie\QueryBuilder\AllowedSort;
+use Spatie\QueryBuilder\QueryBuilder;
 
 class PutawayRepository
 {
@@ -73,12 +75,12 @@ class PutawayRepository
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::exact('assigned_to'),
                 AllowedFilter::exact('source_type'),
-                AllowedFilter::callback('date_from', fn ($query, $value) => $query->whereDate('created_at', '>=', $value)),
-                AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('created_at', '<=', $value)),
+                AllowedFilter::callback('date_from', fn ($query, $value) => $query->where('created_at', '>=', BusinessDateRange::start((string) $value))),
+                AllowedFilter::callback('date_to', fn ($query, $value) => $query->where('created_at', '<', BusinessDateRange::endExclusive((string) $value))),
             )
             ->allowedSorts(
                 'created_at', 'started_at', 'completed_at', 'putaway_no', 'status',
-                \Spatie\QueryBuilder\AllowedSort::custom('no_pembelian', new PutawayReferenceNumberSort()),
+                AllowedSort::custom('no_pembelian', new PutawayReferenceNumberSort),
             );
 
         $this->applySearch($query);
@@ -86,7 +88,7 @@ class PutawayRepository
         $query
             ->defaultSort('-created_at');
 
-        \App\Support\WarehouseAccess::apply($query);
+        WarehouseAccess::apply($query);
 
         return $query
             ->paginate(request('per_page', $limit))
@@ -100,12 +102,12 @@ class PutawayRepository
             ->allowedFilters(
                 AllowedFilter::exact('location_id'),
                 AllowedFilter::exact('assigned_to'),
-                AllowedFilter::callback('date_from', fn ($query, $value) => $query->whereDate('created_at', '>=', $value)),
-                AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('created_at', '<=', $value)),
+                AllowedFilter::callback('date_from', fn ($query, $value) => $query->where('created_at', '>=', BusinessDateRange::start((string) $value))),
+                AllowedFilter::callback('date_to', fn ($query, $value) => $query->where('created_at', '<', BusinessDateRange::endExclusive((string) $value))),
             )
             ->allowedSorts(
                 'created_at', 'started_at', 'completed_at', 'putaway_no', 'status',
-                \Spatie\QueryBuilder\AllowedSort::custom('no_pembelian', new PutawayReferenceNumberSort()),
+                AllowedSort::custom('no_pembelian', new PutawayReferenceNumberSort),
             );
 
         $this->applySearch($query);
@@ -113,7 +115,7 @@ class PutawayRepository
         $query
             ->defaultSort('-created_at');
 
-        \App\Support\WarehouseAccess::apply($query);
+        WarehouseAccess::apply($query);
 
         return $query
             ->paginate(request('per_page', $limit))
@@ -129,7 +131,7 @@ class PutawayRepository
         }
 
         $putawaysTable = $query->getModel()->getTable();
-        $usersTable = (new User())->getTable();
+        $usersTable = (new User)->getTable();
 
         $query->where(function (EloquentBuilder $search) use ($term, $putawaysTable, $usersTable): void {
             $search
@@ -300,14 +302,14 @@ class PutawayRepository
 
     public function generatePutawayNo(): string
     {
-        $prefix = "PUT-";
+        $prefix = 'PUT-';
 
         $last = Putaway::whereRaw("putaway_no ~ '^PUT-[0-9]+$'")
-            ->orderByRaw("CAST(SUBSTRING(putaway_no FROM 5) AS INTEGER) DESC")
+            ->orderByRaw('CAST(SUBSTRING(putaway_no FROM 5) AS INTEGER) DESC')
             ->value('putaway_no');
 
         $seq = $last ? ((int) substr($last, strlen($prefix)) + 1) : 1;
 
-        return $prefix . str_pad((string) $seq, 9, '0', STR_PAD_LEFT);
+        return $prefix.str_pad((string) $seq, 9, '0', STR_PAD_LEFT);
     }
 }

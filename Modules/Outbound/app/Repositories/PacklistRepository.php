@@ -2,6 +2,7 @@
 
 namespace Modules\Outbound\Repositories;
 
+use App\Support\BusinessDateRange;
 use App\Support\WarehouseAccess;
 use Modules\Outbound\Models\Packlist;
 use Modules\Outbound\Models\PacklistItem;
@@ -43,12 +44,12 @@ class PacklistRepository
                 }),
                 AllowedFilter::callback('date_from', function ($query, $value) {
                     if ($value) {
-                        $query->whereHas('order', fn ($q) => $q->whereDate('transaction_date', '>=', $value));
+                        $query->whereHas('order', fn ($q) => $q->where('transaction_date', '>=', BusinessDateRange::start((string) $value)));
                     }
                 }),
                 AllowedFilter::callback('date_to', function ($query, $value) {
                     if ($value) {
-                        $query->whereHas('order', fn ($q) => $q->whereDate('transaction_date', '<=', $value));
+                        $query->whereHas('order', fn ($q) => $q->where('transaction_date', '<', BusinessDateRange::endExclusive((string) $value)));
                     }
                 }),
                 AllowedFilter::callback('label_printed', function ($query, $value) {

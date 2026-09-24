@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Models;
 
+use App\Support\BusinessDateRange;
 use App\Traits\HasUuid7;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
@@ -367,22 +368,22 @@ class SalesOrder extends Model implements HasMedia
 
     public function scopeWhereDateFrom($query, $date)
     {
-        return $query->whereDate('transaction_date', '>=', $date);
+        return $query->where('transaction_date', '>=', BusinessDateRange::start((string) $date));
     }
 
     public function scopeWhereDateTo($query, $date)
     {
-        return $query->whereDate('transaction_date', '<=', $date);
+        return $query->where('transaction_date', '<', BusinessDateRange::endExclusive((string) $date));
     }
 
     public function scopeWhereSettledFrom($query, $date)
     {
-        return $query->whereDate('settled_at', '>=', $date);
+        return $query->where('settled_at', '>=', BusinessDateRange::start((string) $date));
     }
 
     public function scopeWhereSettledTo($query, $date)
     {
-        return $query->whereDate('settled_at', '<=', $date);
+        return $query->where('settled_at', '<', BusinessDateRange::endExclusive((string) $date));
     }
 
     public function isManual(): bool

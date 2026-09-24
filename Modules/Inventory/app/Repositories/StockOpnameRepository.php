@@ -2,12 +2,14 @@
 
 namespace Modules\Inventory\Repositories;
 
+use App\Support\BusinessDateRange;
+use App\Support\WarehouseAccess;
+use Illuminate\Database\Eloquent\Collection;
 use Modules\Inventory\Models\StockOpname;
 use Modules\Inventory\Models\StockOpnameItem;
 use Modules\Warehouse\Models\LocationBin;
-use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
-use Illuminate\Database\Eloquent\Collection;
+use Spatie\QueryBuilder\QueryBuilder;
 
 class StockOpnameRepository
 {
@@ -19,13 +21,13 @@ class StockOpnameRepository
             ->allowedFilters(
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('location_id'),
-                AllowedFilter::callback('date_from', fn ($query, $value) => $query->whereDate('created_at', '>=', $value)),
-                AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('created_at', '<=', $value)),
+                AllowedFilter::callback('date_from', fn ($query, $value) => $query->where('created_at', '>=', BusinessDateRange::start((string) $value))),
+                AllowedFilter::callback('date_to', fn ($query, $value) => $query->where('created_at', '<', BusinessDateRange::endExclusive((string) $value))),
             )
             ->allowedSorts('created_at', 'opname_no', 'finalized_at')
             ->defaultSort('-created_at');
 
-        \App\Support\WarehouseAccess::apply($query);
+        WarehouseAccess::apply($query);
 
         return $query
             ->paginate(request('per_page', $limit))
@@ -43,7 +45,7 @@ class StockOpnameRepository
             'location:id,location_name,location_code',
             'zone:id,zone_code,zone_name',
         ]);
-        \App\Support\WarehouseAccess::apply($query, 'location_id');
+        WarehouseAccess::apply($query, 'location_id');
 
         return $query->find($id);
     }
@@ -66,7 +68,7 @@ class StockOpnameRepository
     public function updateStatus(string $id, string $status, array $extra = []): bool
     {
         $query = StockOpname::where('id', $id);
-        \App\Support\WarehouseAccess::apply($query, 'location_id');
+        WarehouseAccess::apply($query, 'location_id');
 
         return $query->update(array_merge(['status' => $status], $extra)) > 0;
     }
@@ -79,7 +81,7 @@ class StockOpnameRepository
     public function delete(string $id): bool
     {
         $query = StockOpname::where('id', $id);
-        \App\Support\WarehouseAccess::apply($query, 'location_id');
+        WarehouseAccess::apply($query, 'location_id');
 
         return $query->delete() > 0;
     }
@@ -99,7 +101,7 @@ class StockOpnameRepository
             $seq = 1;
         }
 
-        return $prefix . str_pad($seq, 4, '0', STR_PAD_LEFT);
+        return $prefix.str_pad($seq, 4, '0', STR_PAD_LEFT);
     }
 
     public function getItemsPaginated(string $opnameId, int $limit = 10)
@@ -148,19 +150,19 @@ class StockOpnameRepository
             ])
             ->join('location_bins', 'stock_opname_items.bin_id', '=', 'location_bins.id');
 
-        if (!empty($rackFilters['floor_code'])) {
+        if (! empty($rackFilters['floor_code'])) {
             $query->where('location_bins.floor_code', $rackFilters['floor_code']);
         }
 
-        if (!empty($rackFilters['row_code'])) {
+        if (! empty($rackFilters['row_code'])) {
             $query->where('location_bins.row_code', $rackFilters['row_code']);
         }
 
-        if (!empty($rackFilters['column_code'])) {
+        if (! empty($rackFilters['column_code'])) {
             $query->where('location_bins.column_code', $rackFilters['column_code']);
         }
 
-        if (!empty($rackFilters['bin_id'])) {
+        if (! empty($rackFilters['bin_id'])) {
             $query->where('stock_opname_items.bin_id', $rackFilters['bin_id']);
         }
 

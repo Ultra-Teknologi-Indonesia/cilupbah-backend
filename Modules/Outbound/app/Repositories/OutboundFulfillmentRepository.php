@@ -3,6 +3,7 @@
 namespace Modules\Outbound\Repositories;
 
 use App\Models\User;
+use App\Support\BusinessDateRange;
 use Illuminate\Contracts\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -218,7 +219,7 @@ class OutboundFulfillmentRepository
                         $query->where(function ($q) use ($values) {
                             foreach ($values as $name) {
                                 $q->orWhere('shipping_provider', $name)
-                                  ->orWhere('shipping_provider', 'LIKE', '%'.$name.'%');
+                                    ->orWhere('shipping_provider', 'LIKE', '%'.$name.'%');
                             }
                         });
                     }
@@ -293,12 +294,12 @@ class OutboundFulfillmentRepository
 
                 AllowedFilter::callback('date_from', function ($query, $value) {
                     if ($value) {
-                        $query->whereDate('transaction_date', '>=', $value);
+                        $query->where('transaction_date', '>=', BusinessDateRange::start((string) $value));
                     }
                 }),
                 AllowedFilter::callback('date_to', function ($query, $value) {
                     if ($value) {
-                        $query->whereDate('transaction_date', '<=', $value);
+                        $query->where('transaction_date', '<', BusinessDateRange::endExclusive((string) $value));
                     }
                 }),
 

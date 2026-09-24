@@ -3,6 +3,7 @@
 namespace Modules\Sales\Services;
 
 use App\Models\User;
+use App\Support\BusinessDateRange;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
@@ -39,7 +40,7 @@ class SalesReturnService
     public function prepareExport(string $type, array $filters, $userId = null): array
     {
         if ($type === 'channel_online') {
-            $dateFrom = $filters['date_from'] ?? now()->toDateString();
+            $dateFrom = $filters['date_from'] ?? BusinessDateRange::today();
             $dateTo = $filters['date_to'] ?? $dateFrom;
 
             $export = new ReturnChannelOnlineExport(
@@ -66,7 +67,7 @@ class SalesReturnService
                 marketplaceDecision: $filters['marketplace_decision'] ?? null,
             );
 
-            $filename = sprintf('laporan-retur-%s-%s.xlsx', $dateFrom ?? 'semua', $dateTo ?? now()->toDateString());
+            $filename = sprintf('laporan-retur-%s-%s.xlsx', $dateFrom ?? 'semua', $dateTo ?? BusinessDateRange::today());
             $label = 'Export Laporan Retur';
         }
 
@@ -547,7 +548,7 @@ class SalesReturnService
                     'location_id' => $this->settings->restockLocationId() ?? $return->location_id,
                     'reference_number' => $return->return_number,
                     'source_id' => $return->id,
-                    'expected_date' => now()->toDateString(),
+                    'expected_date' => BusinessDateRange::today(),
                     'created_by' => $data['processed_by'],
                     'items' => $inboundItems,
                 ]);
@@ -653,8 +654,9 @@ class SalesReturnService
 
     public function buildChannelOnlinePutawayReport(?string $dateFrom, ?string $dateTo, ?string $locationId, ?string $status): array
     {
-        $dateFrom = $dateFrom ?: now()->toDateString();
+        $dateFrom = $dateFrom ?: BusinessDateRange::today();
         $dateTo = $dateTo ?: $dateFrom;
+        [$from, $to] = BusinessDateRange::bounds($dateFrom, $dateTo);
 
         $returns = SalesReturn::query()
             ->when($status, function ($q, $s) {
@@ -666,13 +668,13 @@ class SalesReturnService
             }, function ($q) {
                 $q->whereIn('status', [SalesReturn::STATUS_ACCEPTED, SalesReturn::STATUS_COMPLETED]);
             })
-            ->where(function ($q) use ($dateFrom, $dateTo, $status) {
+            ->where(function ($q) use ($status) {
                 if ($status === 'unprocessed') {
-                    $q->whereDate('created_at', '>=', $dateFrom)
-                        ->whereDate('created_at', '<=', $dateTo);
+                    $q->where('created_at', '>=', $from)
+                        ->where('created_at', '<', $to);
                 } else {
-                    $q->whereDate('processed_at', '>=', $dateFrom)
-                        ->whereDate('processed_at', '<=', $dateTo);
+                    $q->where('processed_at', '>=', $from)
+                        ->where('processed_at', '<', $to);
                 }
             })
             ->when($locationId, fn ($q) => $q->where('location_id', $locationId))

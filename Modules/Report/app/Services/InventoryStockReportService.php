@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\Report\Services;
 
+use App\Support\BusinessDateRange;
 use App\Support\WarehouseAccess;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
@@ -328,13 +329,18 @@ final class InventoryStockReportService
 
     private function historicalQuery(array $filters): Builder
     {
-        $asOf = $filters['as_of_date'].' 23:59:59';
+        $asOf = BusinessDateRange::endExclusive((string) $filters['as_of_date']);
+
+        if ($asOf === null) {
+            throw new \InvalidArgumentException('Tanggal snapshot stok wajib diisi.');
+        }
+
         $purchaseCosts = $this->purchaseCostService->averageCostSubquery();
         $placedBalance = 'COALESCE(SUM(CASE WHEN b.id IS NOT NULL AND b.is_inbound = false THEN snapshot.balance ELSE 0 END), 0)';
         $variantName = $this->variantNameSql();
 
         $latest = DB::table('inventory_movements as im')
-            ->where('im.transaction_date', '<=', $asOf)
+            ->where('im.transaction_date', '<', $asOf)
             ->select([
                 'im.id',
                 'im.item_id',

@@ -3,47 +3,47 @@
 namespace Modules\Report\Services;
 
 use App\Services\PdfRenderer;
+use App\Support\BusinessDateRange;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
-use SimpleSoftwareIO\QrCode\Facades\QrCode;
+use Illuminate\Database\Query\Builder;
 use Modules\Report\Repositories\ReportRepository;
-use Modules\Sales\Enums\ChannelStatus;
-use Modules\Sales\Support\ChannelStatusNormalizer;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Support\ChannelStatusNormalizer;
+use SimpleSoftwareIO\QrCode\Facades\QrCode;
 
 class ReportService
 {
-
     public const ORDER_STATUS_LABELS = [
-        'pending'                    => 'Menunggu',
-        'unpaid'                     => 'Belum Dibayar',
-        'paid'                       => 'Dibayar',
-        'reserved'                   => 'Siap Proses',
-        'processing'                 => 'Diproses',
-        'picked'                     => 'Dipick',
-        'packed'                     => 'Dikemas - Siap Dikirim',
-        'ready'                      => 'Siap Kirim',
-        'ready to ship'              => 'Siap Kirim',
+        'pending' => 'Menunggu',
+        'unpaid' => 'Belum Dibayar',
+        'paid' => 'Dibayar',
+        'reserved' => 'Siap Proses',
+        'processing' => 'Diproses',
+        'picked' => 'Dipick',
+        'packed' => 'Dikemas - Siap Dikirim',
+        'ready' => 'Siap Kirim',
+        'ready to ship' => 'Siap Kirim',
         'awaiting buyer confirmation' => 'Menunggu Konfirmasi Pembeli',
-        'shipped'                    => 'Dikirim',
-        'completed'                  => 'Selesai',
-        'cancelled'                  => 'Dibatalkan',
-        'canceled'                   => 'Dibatalkan',
-        'request cancel'             => 'Permintaan Batal',
-        'returned'                   => 'Diretur',
+        'shipped' => 'Dikirim',
+        'completed' => 'Selesai',
+        'cancelled' => 'Dibatalkan',
+        'canceled' => 'Dibatalkan',
+        'request cancel' => 'Permintaan Batal',
+        'returned' => 'Diretur',
     ];
 
     public const CHANNEL_STATUS_LABELS = [
-        'UNPAID'             => 'Belum Dibayar',
-        'READY_TO_SHIP'      => 'Siap Kirim',
-        'PROCESSED'          => 'Diproses',
-        'SHIPPED'            => 'Dikirim',
+        'UNPAID' => 'Belum Dibayar',
+        'READY_TO_SHIP' => 'Siap Kirim',
+        'PROCESSED' => 'Diproses',
+        'SHIPPED' => 'Dikirim',
         'TO_CONFIRM_RECEIVE' => 'Menunggu Konfirmasi Terima',
-        'COMPLETED'          => 'Selesai',
-        'CANCELLED'          => 'Dibatalkan',
-        'RETURN_REQUESTED'   => 'Pengajuan Retur',
-        'RETURNED'           => 'Diretur',
-        'IN_CANCEL'          => 'Proses Pembatalan',
-        'UNKNOWN'            => 'Tidak Diketahui',
+        'COMPLETED' => 'Selesai',
+        'CANCELLED' => 'Dibatalkan',
+        'RETURN_REQUESTED' => 'Pengajuan Retur',
+        'RETURNED' => 'Diretur',
+        'IN_CANCEL' => 'Proses Pembatalan',
+        'UNKNOWN' => 'Tidak Diketahui',
     ];
 
     public function __construct(
@@ -93,26 +93,26 @@ class ReportService
             $orders = $this->repository->invoiceFallbackOrders($orderIds);
 
             $wrapped['data'] = $orders->map(fn ($order) => [
-                'invoice_number' => 'INV-' . $order->salesorder_no,
-                'invoice_date'   => $order->transaction_date ?? now()->toDateString(),
-                'status'         => $order->is_paid ? 'PAID' : 'OPEN',
-                'customer_name'  => $order->customer_name,
-                'total_amount'   => $order->grand_total,
-                'paid_amount'    => $order->is_paid ? $order->grand_total : 0,
-                'order'          => [
-                    'id'              => $order->id,
-                    'salesorder_no'   => $order->salesorder_no,
-                    'customer_name'   => $order->customer_name,
+                'invoice_number' => 'INV-'.$order->salesorder_no,
+                'invoice_date' => $order->transaction_date ?? BusinessDateRange::today(),
+                'status' => $order->is_paid ? 'PAID' : 'OPEN',
+                'customer_name' => $order->customer_name,
+                'total_amount' => $order->grand_total,
+                'paid_amount' => $order->is_paid ? $order->grand_total : 0,
+                'order' => [
+                    'id' => $order->id,
+                    'salesorder_no' => $order->salesorder_no,
+                    'customer_name' => $order->customer_name,
                     'shipping_full_name' => $order->shipping_full_name,
-                    'shipping_address'   => $order->shipping_address,
-                    'shipping_city'      => $order->shipping_city,
+                    'shipping_address' => $order->shipping_address,
+                    'shipping_city' => $order->shipping_city,
                 ],
                 'items' => $order->items->map(fn ($item) => [
-                    'sku'         => $item->sku,
+                    'sku' => $item->sku,
                     'description' => $item->description,
                     'qty_in_base' => $item->qty_in_base,
-                    'price'       => $item->price,
-                    'amount'      => $item->amount ?: ($item->qty_in_base * $item->price),
+                    'price' => $item->price,
+                    'amount' => $item->amount ?: ($item->qty_in_base * $item->price),
                 ])->toArray(),
             ])->toArray();
         }
@@ -133,6 +133,7 @@ class ReportService
             $inbound->setRelation('items', $inbound->items->filter(
                 fn ($item) => $item->putaway_qty < $item->received_qty
             )->values());
+
             return $inbound;
         });
 
@@ -157,35 +158,35 @@ class ReportService
     {
         $agg = $this->repository->hppAggregates($dateFrom, $dateTo, $locationId);
 
-        $persediaanAwal     = $agg['persediaan_awal'];
-        $persediaanAkhir    = $agg['persediaan_akhir'];
-        $pembelianBruto     = $agg['pembelian_bruto'];
-        $ongkosAngkut       = $agg['ongkos_angkut'];
-        $potonganPembelian  = $agg['potongan_pembelian'];
-        $returPembelian     = $agg['retur_pembelian'];
-        $hppPeriode         = $agg['hpp_periode'];
+        $persediaanAwal = $agg['persediaan_awal'];
+        $persediaanAkhir = $agg['persediaan_akhir'];
+        $pembelianBruto = $agg['pembelian_bruto'];
+        $ongkosAngkut = $agg['ongkos_angkut'];
+        $potonganPembelian = $agg['potongan_pembelian'];
+        $returPembelian = $agg['retur_pembelian'];
+        $hppPeriode = $agg['hpp_periode'];
 
         $pembelianBersih = $pembelianBruto + $ongkosAngkut - $returPembelian - $potonganPembelian;
-        $hpp             = $persediaanAwal + $pembelianBersih - $persediaanAkhir;
+        $hpp = $persediaanAwal + $pembelianBersih - $persediaanAkhir;
 
         return [
-            'report_type'  => 'hpp',
+            'report_type' => 'hpp',
             'generated_at' => now()->toIso8601String(),
-            'period'       => [
-                'date_from'   => $dateFrom,
-                'date_to'     => $dateTo,
+            'period' => [
+                'date_from' => $dateFrom,
+                'date_to' => $dateTo,
                 'location_id' => $locationId,
             ],
             'data' => [
-                'persediaan_awal'   => round($persediaanAwal, 2),
-                'pembelian_bruto'   => round($pembelianBruto, 2),
-                'ongkos_angkut'     => round($ongkosAngkut, 2),
-                'retur_pembelian'   => round($returPembelian, 2),
-                'potongan_pembelian'=> round($potonganPembelian, 2),
-                'pembelian_bersih'  => round($pembelianBersih, 2),
-                'barang_tersedia'   => round($persediaanAwal + $pembelianBersih, 2),
-                'persediaan_akhir'  => round($persediaanAkhir, 2),
-                'hpp'               => round($hpp, 2),
+                'persediaan_awal' => round($persediaanAwal, 2),
+                'pembelian_bruto' => round($pembelianBruto, 2),
+                'ongkos_angkut' => round($ongkosAngkut, 2),
+                'retur_pembelian' => round($returPembelian, 2),
+                'potongan_pembelian' => round($potonganPembelian, 2),
+                'pembelian_bersih' => round($pembelianBersih, 2),
+                'barang_tersedia' => round($persediaanAwal + $pembelianBersih, 2),
+                'persediaan_akhir' => round($persediaanAkhir, 2),
+                'hpp' => round($hpp, 2),
                 'hpp_periode_snapshot' => round($hppPeriode, 2),
             ],
         ];
@@ -287,7 +288,7 @@ class ReportService
                 ->errorCorrection('M')
                 ->generate($content);
 
-            return 'data:image/svg+xml;base64,' . base64_encode((string) $svg);
+            return 'data:image/svg+xml;base64,'.base64_encode((string) $svg);
         } catch (\Throwable $e) {
             report($e);
 
@@ -384,12 +385,12 @@ class ReportService
         ];
     }
 
-    public function pickListRowsQuery(array $filters): \Illuminate\Database\Query\Builder
+    public function pickListRowsQuery(array $filters): Builder
     {
         return $this->repository->pickListRowsQuery($filters);
     }
 
-    public function pickListDetailQuery(string $picklistId, ?array $orderIds = null): \Illuminate\Database\Query\Builder
+    public function pickListDetailQuery(string $picklistId, ?array $orderIds = null): Builder
     {
         return $this->repository->pickListDetailQuery(
             $picklistId,
@@ -397,12 +398,12 @@ class ReportService
         );
     }
 
-    public function negativeStockQuery(array $filters): \Illuminate\Database\Query\Builder
+    public function negativeStockQuery(array $filters): Builder
     {
         return $this->repository->negativeStockHistoryQuery($filters);
     }
 
-    public function shipmentListQuery(array $filters): \Illuminate\Database\Query\Builder
+    public function shipmentListQuery(array $filters): Builder
     {
         return $this->repository->shipmentListQuery($filters);
     }
@@ -418,9 +419,9 @@ class ReportService
     }
 
     private const CHANNEL_LABELS = [
-        'shopee'      => 'Shopee',
-        'tiktok'      => 'TikTok',
-        'lazada'      => 'Lazada',
+        'shopee' => 'Shopee',
+        'tiktok' => 'TikTok',
+        'lazada' => 'Lazada',
         'woocommerce' => 'WooCommerce',
     ];
 
@@ -446,7 +447,7 @@ class ReportService
         foreach (ChannelStatusNormalizer::catalog() as $channel => $statuses) {
             foreach (array_unique(array_map(fn ($s) => $s->value, $statuses)) as $canonical) {
                 $options[] = [
-                    'value' => $channel . '::' . $canonical,
+                    'value' => $channel.'::'.$canonical,
                     'label' => self::statusMpLabel($channel, $canonical),
                     'sort' => [$lifecycle[$canonical] ?? 99, self::CHANNEL_LABELS[$channel] ?? $channel],
                 ];
@@ -470,7 +471,7 @@ class ReportService
             return $status;
         }
 
-        return $status . ' — ' . (self::CHANNEL_LABELS[$source] ?? ucfirst($source));
+        return $status.' — '.(self::CHANNEL_LABELS[$source] ?? ucfirst($source));
     }
 
     public static function channelStatusLabel(?string $channelStatus): ?string
@@ -568,7 +569,7 @@ class ReportService
             ->all();
     }
 
-    public function transferQuery(array $filters): \Illuminate\Database\Query\Builder
+    public function transferQuery(array $filters): Builder
     {
         return $this->repository->transferQuery($filters);
     }

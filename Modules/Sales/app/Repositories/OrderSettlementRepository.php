@@ -2,8 +2,9 @@
 
 namespace Modules\Sales\Repositories;
 
-use Modules\Sales\Models\SalesOrder;
+use App\Support\BusinessDateRange;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
+use Modules\Sales\Models\SalesOrder;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
 
@@ -79,17 +80,25 @@ class OrderSettlementRepository
         if (array_key_exists('is_settled', $filters) && $filters['is_settled'] !== null && $filters['is_settled'] !== '') {
             $query->where('is_settled', filter_var($filters['is_settled'], FILTER_VALIDATE_BOOLEAN));
         }
-        if (! empty($filters['date_from'])) {
-            $query->whereDate('transaction_date', '>=', $filters['date_from']);
+        [$transactionFrom, $transactionTo] = BusinessDateRange::bounds(
+            $filters['date_from'] ?? null,
+            $filters['date_to'] ?? null,
+        );
+        [$settledFrom, $settledTo] = BusinessDateRange::bounds(
+            $filters['settled_from'] ?? null,
+            $filters['settled_to'] ?? null,
+        );
+        if ($transactionFrom) {
+            $query->where('transaction_date', '>=', $transactionFrom);
         }
-        if (! empty($filters['date_to'])) {
-            $query->whereDate('transaction_date', '<=', $filters['date_to']);
+        if ($transactionTo) {
+            $query->where('transaction_date', '<', $transactionTo);
         }
-        if (! empty($filters['settled_from'])) {
-            $query->whereDate('settled_at', '>=', $filters['settled_from']);
+        if ($settledFrom) {
+            $query->where('settled_at', '>=', $settledFrom);
         }
-        if (! empty($filters['settled_to'])) {
-            $query->whereDate('settled_at', '<=', $filters['settled_to']);
+        if ($settledTo) {
+            $query->where('settled_at', '<', $settledTo);
         }
 
         return $query;
@@ -107,22 +116,22 @@ class OrderSettlementRepository
         $row = $this->base()
             ->selectRaw(
                 'COALESCE(SUM(gross_amount), 0) AS total_gross,'
-                . ' COALESCE(SUM('
-                . '   COALESCE(commission_fee,0) + COALESCE(service_fee,0) + COALESCE(transaction_fee,0)'
-                . ' + COALESCE(affiliate_commission,0) + COALESCE(order_processing_fee,0)'
-                . ' + COALESCE(seller_shipping_borne,0) + COALESCE(total_tax,0)'
-                . ' + COALESCE(seller_voucher,0) + COALESCE(platform_voucher,0) + COALESCE(payment_voucher,0)'
-                . '   ), 0) AS total_fee,'
-                . ' COALESCE(SUM(settlement_amount), 0) AS total_settlement,'
-                . ' COUNT(*) FILTER (WHERE is_settled = false) AS unsettled_count'
+                .' COALESCE(SUM('
+                .'   COALESCE(commission_fee,0) + COALESCE(service_fee,0) + COALESCE(transaction_fee,0)'
+                .' + COALESCE(affiliate_commission,0) + COALESCE(order_processing_fee,0)'
+                .' + COALESCE(seller_shipping_borne,0) + COALESCE(total_tax,0)'
+                .' + COALESCE(seller_voucher,0) + COALESCE(platform_voucher,0) + COALESCE(payment_voucher,0)'
+                .'   ), 0) AS total_fee,'
+                .' COALESCE(SUM(settlement_amount), 0) AS total_settlement,'
+                .' COUNT(*) FILTER (WHERE is_settled = false) AS unsettled_count'
             )
             ->first();
 
         return [
-            'total_gross'      => (float) ($row->total_gross ?? 0),
-            'total_fee'        => (float) ($row->total_fee ?? 0),
+            'total_gross' => (float) ($row->total_gross ?? 0),
+            'total_fee' => (float) ($row->total_fee ?? 0),
             'total_settlement' => (float) ($row->total_settlement ?? 0),
-            'unsettled_count'  => (int) ($row->unsettled_count ?? 0),
+            'unsettled_count' => (int) ($row->unsettled_count ?? 0),
         ];
     }
 }

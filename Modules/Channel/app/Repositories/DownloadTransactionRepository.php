@@ -2,6 +2,7 @@
 
 namespace Modules\Channel\Repositories;
 
+use App\Support\BusinessDateRange;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Modules\Channel\Models\DownloadTransaction;
@@ -29,8 +30,8 @@ class DownloadTransactionRepository
                 AllowedFilter::exact('state'),
                 AllowedFilter::callback('channel', fn ($query, $value) => $query->whereHas('channelShop.channel', fn ($channel) => $channel->where('code', $value))),
                 AllowedFilter::callback('shop_id', fn ($query, $value) => $query->whereHas('channelShop', fn ($shop) => $shop->where('shop_id', $value))),
-                AllowedFilter::callback('date_from', fn ($query, $value) => $query->whereDate('created_at', '>=', $value)),
-                AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('created_at', '<=', $value)),
+                AllowedFilter::callback('date_from', fn ($query, $value) => $query->where('created_at', '>=', BusinessDateRange::start((string) $value))),
+                AllowedFilter::callback('date_to', fn ($query, $value) => $query->where('created_at', '<', BusinessDateRange::endExclusive((string) $value))),
             )
             ->allowedSorts('created_at', 'trx_no')
             ->defaultSort('-created_at')

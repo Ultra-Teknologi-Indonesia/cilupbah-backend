@@ -2,11 +2,12 @@
 
 namespace Modules\Inventory\Repositories;
 
+use App\Support\BusinessDateRange;
 use App\Support\WarehouseAccess;
 use Modules\Inventory\Models\StockRevaluation;
 use Modules\Inventory\Models\StockRevaluationItem;
-use Spatie\QueryBuilder\QueryBuilder;
 use Spatie\QueryBuilder\AllowedFilter;
+use Spatie\QueryBuilder\QueryBuilder;
 
 class StockRevaluationRepository
 {
@@ -18,8 +19,8 @@ class StockRevaluationRepository
             ->allowedFilters(
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('location_id'),
-                AllowedFilter::callback('date_from', fn ($query, $value) => $query->whereDate('created_at', '>=', $value)),
-                AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('created_at', '<=', $value)),
+                AllowedFilter::callback('date_from', fn ($query, $value) => $query->where('created_at', '>=', BusinessDateRange::start((string) $value))),
+                AllowedFilter::callback('date_to', fn ($query, $value) => $query->where('created_at', '<', BusinessDateRange::endExclusive((string) $value))),
             )
             ->allowedSorts('created_at', 'revaluation_no', 'approved_at')
             ->defaultSort('-created_at');
@@ -72,6 +73,6 @@ class StockRevaluationRepository
 
         $seq = $last ? (int) substr($last, -4) + 1 : 1;
 
-        return $prefix . str_pad($seq, 4, '0', STR_PAD_LEFT);
+        return $prefix.str_pad($seq, 4, '0', STR_PAD_LEFT);
     }
 }

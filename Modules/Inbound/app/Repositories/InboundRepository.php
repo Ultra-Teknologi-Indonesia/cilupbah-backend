@@ -3,6 +3,7 @@
 namespace Modules\Inbound\Repositories;
 
 use App\Models\User;
+use App\Support\BusinessDateRange;
 use App\Support\SearchExpression;
 use App\Support\WarehouseAccess;
 use Illuminate\Database\Eloquent\Builder;
@@ -38,8 +39,8 @@ class InboundRepository
                 AllowedFilter::exact('type'),
                 AllowedFilter::exact('status'),
                 AllowedFilter::exact('source_type'),
-                AllowedFilter::callback('date_from', fn ($query, $value) => $query->whereDate('created_at', '>=', $value)),
-                AllowedFilter::callback('date_to', fn ($query, $value) => $query->whereDate('created_at', '<=', $value)),
+                AllowedFilter::callback('date_from', fn ($query, $value) => $query->where('created_at', '>=', BusinessDateRange::start((string) $value))),
+                AllowedFilter::callback('date_to', fn ($query, $value) => $query->where('created_at', '<', BusinessDateRange::endExclusive((string) $value))),
             )
             ->allowedSorts('expected_date', 'created_at', 'transaction_number', 'reference_number', 'status', 'type')
             ->defaultSort('-expected_date')

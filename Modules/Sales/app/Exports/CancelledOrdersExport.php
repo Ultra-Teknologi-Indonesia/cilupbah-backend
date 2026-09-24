@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Exports;
 
+use App\Support\BusinessDateRange;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromQuery;
@@ -27,6 +28,8 @@ class CancelledOrdersExport implements FromQuery, ShouldAutoSize, WithChunkReadi
 
     public function query(): Builder
     {
+        [$from, $to] = BusinessDateRange::bounds($this->dateFrom, $this->dateTo);
+
         $binsByOrder = PicklistItem::query()
             ->leftJoin('location_bins', 'location_bins.id', '=', 'picklist_items.bin_id')
             ->whereNotNull('picklist_items.bin_id')
@@ -55,17 +58,18 @@ class CancelledOrdersExport implements FromQuery, ShouldAutoSize, WithChunkReadi
                     ->where('status', Packlist::STATUS_COMPLETED));
         }
 
-        if ($this->dateFrom) {
-            $query->where(function ($q) {
-                $q->whereDate('cancel_accepted_at', '>=', $this->dateFrom)
-                    ->orWhereDate('cancel_requested_at', '>=', $this->dateFrom);
-            });
-        }
-
-        if ($this->dateTo) {
-            $query->where(function ($q) {
-                $q->whereDate('cancel_accepted_at', '<=', $this->dateTo)
-                    ->orWhereDate('cancel_requested_at', '<=', $this->dateTo);
+        if ($from || $to) {
+            $query->where(function ($q) use ($from, $to): void {
+                foreach (['cancel_accepted_at', 'cancel_requested_at'] as $column) {
+                    $q->orWhere(function ($event) use ($column, $from, $to): void {
+                        if ($from) {
+                            $event->where($column, '>=', $from);
+                        }
+                        if ($to) {
+                            $event->where($column, '<', $to);
+                        }
+                    });
+                }
             });
         }
 

@@ -3,6 +3,7 @@
 namespace Modules\Report\Services;
 
 use App\Models\User;
+use App\Support\BusinessDateRange;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Modules\Inventory\Exports\RackAllocationExport;
@@ -473,7 +474,7 @@ class ExportManager
             'negative-stock' => sprintf(
                 'riwayat-stok-minus_%s_%s.xlsx',
                 $params['from'] ?? 'semua',
-                $params['to'] ?? now()->format('Y-m-d'),
+                $params['to'] ?? BusinessDateRange::today(),
             ),
 
             'transfer' => sprintf(
@@ -510,10 +511,10 @@ class ExportManager
 
             'putaway-list' => sprintf(
                 'Daftar-Penempatan-Barang_%s.xlsx',
-                $params['date'] ?? now()->format('Y-m-d'),
+                $params['date'] ?? BusinessDateRange::today(),
             ),
 
-            'putaway-list-pdf' => sprintf('Daftar-Penempatan-Barang_%s.pdf', $params['date'] ?? now()->format('Y-m-d')),
+            'putaway-list-pdf' => sprintf('Daftar-Penempatan-Barang_%s.pdf', $params['date'] ?? BusinessDateRange::today()),
 
             'shipment-by-courier' => sprintf(
                 'Laporan-Pengiriman-Ekspedisi-%s_%s_%s.xlsx',
@@ -541,7 +542,7 @@ class ExportManager
             'picklist-list' => sprintf(
                 'daftar-picklist_%s_%s.xlsx',
                 $params['from'] ?? 'semua',
-                $params['to'] ?? now()->format('Y-m-d'),
+                $params['to'] ?? BusinessDateRange::today(),
             ),
 
             'picklist-detail' => sprintf(
@@ -560,13 +561,13 @@ class ExportManager
             'inventory-stock' => sprintf(
                 'persediaan-barang-%s.xlsx',
                 ($params['report_type'] ?? 'per-lokasi') === 'as_of_date'
-                    ? 'per-tanggal-'.($params['as_of_date'] ?? now()->toDateString())
+                    ? 'per-tanggal-'.($params['as_of_date'] ?? BusinessDateRange::today())
                     : 'per-lokasi',
             ),
 
             'inventory-rack' => sprintf(
                 'persediaan-per-rak-%s.xlsx',
-                now()->format('Y-m-d'),
+                BusinessDateRange::today(),
             ),
 
             'monitor-stock-xlsx' => 'monitor-stok-'.($params['tab'] ?? 'export').'-'.now()->format('Y-m-d_His').'.xlsx',
@@ -579,34 +580,34 @@ class ExportManager
 
             'product-catalog-csv' => 'katalog-produk-'.now()->format('Y-m-d_His').'.csv',
 
-            'sales-list' => sprintf('Daftar-Penjualan_%s_%s.xlsx', $params['from'] ?? 'semua', $params['to'] ?? now()->format('Y-m-d')),
-            'sales-product' => sprintf('Daftar-Penjualan-Produk_%s_%s.xlsx', $params['from'] ?? 'semua', $params['to'] ?? now()->format('Y-m-d')),
-            'sales-return' => sprintf('Daftar-Retur-Penjualan_%s_%s.xlsx', $params['from'] ?? 'semua', $params['to'] ?? now()->format('Y-m-d')),
-            'sales-income' => sprintf('Rincian-Pendapatan_%s_%s.xlsx', $params['from'] ?? 'semua', $params['to'] ?? now()->format('Y-m-d')),
-            'customer-list' => sprintf('Daftar-Pelanggan_%s_%s.xlsx', $params['from'] ?? 'semua', $params['to'] ?? now()->format('Y-m-d')),
-            'sales-orders' => 'pesanan-'.($params['tab'] ?? 'semua').'-'.now()->format('Ymd-His').'.xlsx',
-            'cancelled-orders' => 'cancel-orders-'.($params['date_from'] ?? 'all').'-'.($params['date_to'] ?? now()->format('Y-m-d')).'.xlsx',
+            'sales-list' => sprintf('Daftar-Penjualan_%s_%s.xlsx', $params['from'] ?? 'semua', $params['to'] ?? BusinessDateRange::today()),
+            'sales-product' => sprintf('Daftar-Penjualan-Produk_%s_%s.xlsx', $params['from'] ?? 'semua', $params['to'] ?? BusinessDateRange::today()),
+            'sales-return' => sprintf('Daftar-Retur-Penjualan_%s_%s.xlsx', $params['from'] ?? 'semua', $params['to'] ?? BusinessDateRange::today()),
+            'sales-income' => sprintf('Rincian-Pendapatan_%s_%s.xlsx', $params['from'] ?? 'semua', $params['to'] ?? BusinessDateRange::today()),
+            'customer-list' => sprintf('Daftar-Pelanggan_%s_%s.xlsx', $params['from'] ?? 'semua', $params['to'] ?? BusinessDateRange::today()),
+            'sales-orders' => 'pesanan-'.($params['tab'] ?? 'semua').'-'.BusinessDateRange::now()->format('Ymd-His').'.xlsx',
+            'cancelled-orders' => 'cancel-orders-'.($params['date_from'] ?? 'all').'-'.($params['date_to'] ?? BusinessDateRange::today()).'.xlsx',
             'sales-return-detail' => sprintf(
                 'laporan-retur-%s-%s.xlsx',
                 $params['date_from'] ?? 'semua',
-                $params['date_to'] ?? now()->format('Y-m-d'),
+                $params['date_to'] ?? BusinessDateRange::today(),
             ),
-            'settlement' => 'laporan-settlement-'.now()->format('Ymd-His').'.xlsx',
-            'purchase-order-list' => 'purchase-orders-list-'.now()->format('Y-m-d-His').'.csv',
-            'purchase-order-detail' => 'purchase-orders-details-'.now()->format('Y-m-d-His').'.csv',
-            'rack-allocation' => 'alokasi-rak-'.now()->format('Ymd-His').'.xlsx',
-            'stock-adjustment' => 'koreksi-stok-'.now()->format('Ymd').'.xlsx',
+            'settlement' => 'laporan-settlement-'.BusinessDateRange::now()->format('Ymd-His').'.xlsx',
+            'purchase-order-list' => 'purchase-orders-list-'.BusinessDateRange::now()->format('Y-m-d-His').'.csv',
+            'purchase-order-detail' => 'purchase-orders-details-'.BusinessDateRange::now()->format('Y-m-d-His').'.csv',
+            'rack-allocation' => 'alokasi-rak-'.BusinessDateRange::now()->format('Ymd-His').'.xlsx',
+            'stock-adjustment' => 'koreksi-stok-'.BusinessDateRange::now()->format('Ymd').'.xlsx',
             'stock-adjustment-report' => sprintf(
                 'Daftar-Penyesuaian-Stok_%s_%s.xlsx',
-                $params['start_date'] ?? 'semua', $params['end_date'] ?? now()->format('Y-m-d'),
+                $params['start_date'] ?? 'semua', $params['end_date'] ?? BusinessDateRange::today(),
             ),
 
             'penyesuaian-stok-pdf' => sprintf(
                 'Daftar-Penyesuaian-Stok_%s_%s.pdf',
-                $params['start_date'] ?? 'semua', $params['end_date'] ?? now()->format('Y-m-d'),
+                $params['start_date'] ?? 'semua', $params['end_date'] ?? BusinessDateRange::today(),
             ),
 
-            'transfer-out-bulk-pdf' => 'Surat-Jalan-Bulk-'.now()->format('Y-m-d_His').'.pdf',
+            'transfer-out-bulk-pdf' => 'Surat-Jalan-Bulk-'.BusinessDateRange::now()->format('Y-m-d_His').'.pdf',
 
             'putaway-bulk-pdf' => 'Putaway-Bulk-'.now()->format('Y-m-d_His').'.pdf',
 

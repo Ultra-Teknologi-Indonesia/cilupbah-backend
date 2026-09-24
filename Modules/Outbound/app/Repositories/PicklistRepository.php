@@ -3,6 +3,7 @@
 namespace Modules\Outbound\Repositories;
 
 use App\Exceptions\UserFacingException;
+use App\Support\BusinessDateRange;
 use App\Support\WarehouseAccess;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -132,12 +133,12 @@ class PicklistRepository
                 }),
                 AllowedFilter::callback('date_from', function ($query, $value) {
                     if ($value) {
-                        $query->whereHas('items.order', fn ($q) => $q->whereDate('transaction_date', '>=', $value));
+                        $query->whereHas('items.order', fn ($q) => $q->where('transaction_date', '>=', BusinessDateRange::start((string) $value)));
                     }
                 }),
                 AllowedFilter::callback('date_to', function ($query, $value) {
                     if ($value) {
-                        $query->whereHas('items.order', fn ($q) => $q->whereDate('transaction_date', '<=', $value));
+                        $query->whereHas('items.order', fn ($q) => $q->where('transaction_date', '<', BusinessDateRange::endExclusive((string) $value)));
                     }
                 }),
                 AllowedFilter::callback('label_printed', function ($query, $value) {

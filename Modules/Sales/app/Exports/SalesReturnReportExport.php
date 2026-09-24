@@ -2,17 +2,18 @@
 
 namespace Modules\Sales\Exports;
 
+use App\Support\BusinessDateRange;
 use Illuminate\Database\Eloquent\Builder;
 use Maatwebsite\Excel\Concerns\FromQuery;
-use Maatwebsite\Excel\Concerns\WithChunkReading;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
+use Maatwebsite\Excel\Concerns\WithChunkReading;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
 use Maatwebsite\Excel\Concerns\WithStyles;
 use Modules\Sales\Models\SalesReturn;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-class SalesReturnReportExport implements FromQuery, WithChunkReading, WithHeadings, WithMapping, WithStyles, ShouldAutoSize
+class SalesReturnReportExport implements FromQuery, ShouldAutoSize, WithChunkReading, WithHeadings, WithMapping, WithStyles
 {
     public function __construct(
         private readonly ?string $dateFrom,
@@ -27,6 +28,8 @@ class SalesReturnReportExport implements FromQuery, WithChunkReading, WithHeadin
 
     public function query(): Builder
     {
+        [$from, $to] = BusinessDateRange::bounds($this->dateFrom, $this->dateTo);
+
         $q = SalesReturn::query()
             ->with([
                 'order:id,salesorder_no,channel_order_no,customer_name',
@@ -34,11 +37,11 @@ class SalesReturnReportExport implements FromQuery, WithChunkReading, WithHeadin
                 'settlement.refunds',
             ]);
 
-        if ($this->dateFrom) {
-            $q->whereDate('created_at', '>=', $this->dateFrom);
+        if ($from) {
+            $q->where('created_at', '>=', $from);
         }
-        if ($this->dateTo) {
-            $q->whereDate('created_at', '<=', $this->dateTo);
+        if ($to) {
+            $q->where('created_at', '<', $to);
         }
         if ($this->locationId) {
             $q->where('location_id', $this->locationId);
