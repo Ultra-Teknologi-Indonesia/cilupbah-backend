@@ -39,7 +39,7 @@ class PrepareLazadaShippingLabelJob implements ShouldBeUnique, ShouldQueue
     ) {
         $this->onConnection($prefetch
             ? config('shipping-label-prefetch.connection', 'redis-long')
-            : config('queue.routing.labels.connection', 'redis-long'));
+            : config('queue.routing.label_download.connection', 'redis-label-download'));
         $this->onQueue($prefetch
             ? config('shipping-label-prefetch.queue', 'label-prefetch')
             : ChannelQueue::for('lazada', 'label_download'));

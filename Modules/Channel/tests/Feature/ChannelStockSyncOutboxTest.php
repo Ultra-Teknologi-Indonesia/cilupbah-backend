@@ -3,7 +3,9 @@
 namespace Modules\Channel\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Modules\Channel\Adapters\AdapterFactory;
 use Modules\Channel\Jobs\DispatchChannelStockOutboxJob;
@@ -301,6 +303,73 @@ class ChannelStockSyncOutboxTest extends TestCase
             'requested_version' => 1,
             'queue_tier' => 'critical',
         ]);
+    }
+
+    public function test_successful_stock_updates_do_not_exhaust_the_retry_budget(): void
+    {
+        Queue::fake();
+        config(['channel.stock_sync_max_attempts' => 12]);
+        $mapping = $this->listedMapping('SUCCESS-BUDGET');
+        $service = app(ChannelStockSyncOutboxService::class);
+        for ($cycle = 1; $cycle <= 13; $cycle++) {
+            $outbox = $service->request($mapping, 'sync_stock');
+            $service->dispatchDue();
+            $version = $outbox->fresh()->dispatched_version;
+            $this->assertTrue($service->shouldExecute($outbox->id, $version), "Delivery {$cycle}");
+            $service->succeed($outbox->id, $version);
+            $this->assertSame(0, $outbox->fresh()->attempt_count);
+        }
+    }
+
+    public function test_recovery_honors_backoff_and_reissues_only_when_due(): void
+    {
+        Queue::fake();
+        $this->travelTo(Carbon::parse('2026-09-24T10:00:00Z'));
+        $timezone = date_default_timezone_get();
+        date_default_timezone_set('UTC');
+        try {
+            DB::statement("SET LOCAL TIME ZONE 'UTC'");
+            $service = app(ChannelStockSyncOutboxService::class);
+            $outbox = $service->request($this->listedMapping('BACKOFF'), 'sync_stock');
+            $service->dispatchDue();
+            $this->assertTrue($service->shouldExecute($outbox->id, 1));
+            $service->defer($outbox->id, 1, 'Rate limit', 300);
+            $this->assertSame(0, $service->dispatchDue()['claimed']);
+            $this->travel(300)->seconds();
+            $this->assertSame(1, $service->dispatchDue()['claimed']);
+            $this->assertSame(2, $outbox->fresh()->dispatched_version);
+            $this->assertSame(1, $outbox->fresh()->attempt_count);
+        } finally {
+            date_default_timezone_set($timezone);
+        }
+    }
+
+    public function test_superseded_success_resets_failures_but_keeps_latest_stock_pending(): void
+    {
+        Queue::fake();
+        $service = app(ChannelStockSyncOutboxService::class);
+        $mapping = $this->listedMapping('SUCCESS-LATEST');
+        $outbox = $service->request($mapping, 'sync_stock');
+        $service->dispatchDue();
+        $this->assertTrue($service->shouldExecute($outbox->id, 1));
+        $service->request($mapping, 'sync_stock');
+        $service->succeed($outbox->id, 1);
+        $this->assertSame(0, $outbox->fresh()->attempt_count);
+        $this->assertSame(ChannelStockSyncOutbox::STATUS_PENDING, $outbox->fresh()->status);
+        $this->assertTrue($outbox->fresh()->sync_stock);
+    }
+
+    public function test_retry_budget_still_stops_repeated_failures(): void
+    {
+        Queue::fake();
+        config(['channel.stock_sync_max_attempts' => 2]);
+        $service = app(ChannelStockSyncOutboxService::class);
+        $outbox = $service->request($this->listedMapping('FAILURE-BUDGET'), 'sync_stock');
+        $service->dispatchDue();
+        $outbox->update(['attempt_count' => 2]);
+        $service->defer($outbox->id, 1, 'API unavailable', 60);
+        $this->assertSame(ChannelStockSyncOutbox::STATUS_FAILED, $outbox->fresh()->status);
+        $this->assertSame(0, $service->dispatchDue()['claimed']);
     }
 
     private function listedMapping(string $externalId): ProductChannelMapping

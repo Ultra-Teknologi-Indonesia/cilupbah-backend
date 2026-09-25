@@ -1,0 +1,476 @@
+#!/usr/bin/env python3
+"""Kubernetes offline load lab. No production writes, secrets, or queue resets."""
+import argparse
+import base64
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import time
+
+ROOT = Path(__file__).resolve().parents[1]
+ASSETS = ROOT / 'tests/Load/flash-sale'
+LABEL = {'app.kubernetes.io/part-of': 'cilupbah-flash-simulation'}
+PROFILES = {
+    'order-intake': ('cilupbah-horizon-order-intake', 360),
+    'stock': ('cilupbah-horizon-stock', 390),
+    'labels-awb': ('cilupbah-horizon-labels-awb', 240),
+    'labels-pdf': ('cilupbah-horizon-labels', 660),
+    'background': ('cilupbah-horizon', 390),
+    'fulfillment': ('cilupbah-horizon-fulfillment', 240),
+    'marketplace-ops': ('cilupbah-horizon-critical', 240),
+}
+
+
+def kubectl(*args, data=None, timeout=60):
+    result = subprocess.run(['kubectl', '--request-timeout=30s', *args], input=data,
+                            text=True, capture_output=True, timeout=timeout)
+    if result.returncode:
+        raise RuntimeError(f"kubectl {' '.join(args[:4])}: {result.stderr.strip()}")
+    return result.stdout
+
+
+def copy_image_pull_secret(source_namespace, target_namespace, name):
+    """Copy only the registry secret payload into the isolated test namespace.
+
+    The secret is never printed, saved in the generated manifest, or copied to
+    any production resource. An explicit opt-out (--pull-secret '') is allowed
+    for public images or images already cached on the node.
+    """
+    if not name:
+        return
+    source = get('secret', name, source_namespace)
+    payload = {
+        'apiVersion': 'v1',
+        'kind': 'Secret',
+        'type': source.get('type', 'Opaque'),
+        'metadata': {'name': name, 'namespace': target_namespace},
+        'data': source.get('data', {}),
+    }
+    if not payload['data']:
+        raise RuntimeError(f'Secret {source_namespace}/{name} has no data; refusing to create an empty pull secret.')
+    kubectl('apply', '-f', '-', data=json.dumps(payload))
+
+
+def get(kind, name=None, namespace=None):
+    args = (['-n', namespace] if namespace else []) + ['get', kind]
+    if name:
+        args.append(name)
+    return json.loads(kubectl(*args, '-o', 'json'))
+
+
+def validate_namespace(value):
+    if not re.fullmatch(r'cilupbah-sim-[a-z0-9][a-z0-9-]{0,35}', value):
+        raise ValueError('Namespace must be a NEW cilupbah-sim-* namespace, not production.')
+    return value
+
+
+def quantity(value):
+    match = re.fullmatch(r'([0-9.]+)([a-zA-Z]*)', value)
+    if not match:
+        raise ValueError(value)
+    units = {'': 1, 'n': 1e-9, 'u': 1e-6, 'm': .001, 'Ki': 1024, 'Mi': 1024**2, 'Gi': 1024**3,
+             'Ti': 1024**4, 'K': 1000, 'M': 1000**2, 'G': 1000**3}
+    return float(match[1]) * units[match[2]]
+
+
+def audit(namespace):
+    deployments = get('deployments', namespace=namespace)['items']
+    selected = []
+    for deployment in deployments:
+        spec = deployment['spec']
+        containers = []
+        for c in spec['template']['spec']['containers']:
+            # Strict allowlist: never export envFrom or credential values.
+            safe = {e['name']: e['value'] for e in c.get('env', []) if 'value' in e and
+                    (e['name'].startswith('HORIZON_') and e['name'] not in ('HORIZON_PASSWORD', 'HORIZON_USERNAME')
+                     or e['name'] in ('REDIS_QUEUE_RETRY_AFTER', 'REDIS_LONG_QUEUE_RETRY_AFTER'))}
+            containers.append({'name': c['name'], 'image': c['image'], 'resources': c.get('resources', {}), 'tuning': safe})
+        selected.append({'name': deployment['metadata']['name'], 'replicas': spec.get('replicas', 1),
+                         'grace': spec['template']['spec'].get('terminationGracePeriodSeconds', 30),
+                         'strategy': spec.get('strategy'), 'containers': containers})
+    code = "require 'vendor/autoload.php'; $a=require 'bootstrap/app.php'; $a->make(Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap(); echo json_encode(['workers'=>config('horizon.queue_health_supervisors',config('horizon.defaults')),'routing'=>config('queue.routing'),'backpressure'=>config('queue.backpressure'),'api_limits'=>config('ratelimit.channel_api_per_second_by_channel')]);"
+    effective = json.loads(kubectl('-n', namespace, 'exec', 'deploy/cilupbah-horizon-order-intake', '--', 'php', '-r', code))
+    return {'captured_at': time.time(), 'source_namespace': namespace, 'deployments': selected, 'effective': effective,
+            'nodes': get('nodes'), 'node_metrics': json.loads(kubectl('get', '--raw', '/apis/metrics.k8s.io/v1beta1/nodes'))}
+
+
+def manifests(args, audit_data):
+    ns = validate_namespace(args.namespace)
+    docs = []
+
+    def add(kind, name, spec=None, **fields):
+        api = {'Deployment': 'apps/v1', 'Job': 'batch/v1', 'NetworkPolicy': 'networking.k8s.io/v1'}.get(kind, 'v1')
+        obj = {'apiVersion': api, 'kind': kind, 'metadata': {'name': name, 'namespace': ns, 'labels': LABEL}, **fields}
+        if spec is not None:
+            obj['spec'] = spec
+        docs.append(obj)
+        return obj
+
+    docs.append({'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': ns, 'labels': LABEL}})
+    # Same-namespace traffic only. DNS may reach kube-dns, but no external IPs,
+    # production namespaces, node services, API server, or host network.
+    add('NetworkPolicy', 'offline-only', {
+        'podSelector': {}, 'policyTypes': ['Ingress', 'Egress'],
+        'ingress': [{'from': [{'podSelector': {}}]}],
+        'egress': [{'to': [{'podSelector': {}}]},
+                   {'to': [{'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': 'kube-system'}},
+                            'podSelector': {'matchLabels': {'k8s-app': 'kube-dns'}}}],
+                    'ports': [{'protocol': 'UDP', 'port': 53}, {'protocol': 'TCP', 'port': 53}]}],
+    })
+    add('PersistentVolumeClaim', 'data', {'accessModes': ['ReadWriteOnce'], 'storageClassName': args.storage_class,
+                                        'resources': {'requests': {'storage': args.disk}}})
+    files = {p.name: p.read_text() for p in ASSETS.iterdir() if p.suffix in ('.php', '.py') and not p.name.startswith('test_')}
+    # Empty .env masks any environment file baked into an application image.
+    files['empty.env'] = ''
+    add('ConfigMap', 'harness', data=files)
+    env = {
+        'APP_ENV': 'simulation', 'APP_DEBUG': 'false', 'APP_URL': 'http://app:8000',
+        'APP_KEY': 'base64:'+base64.b64encode(os.urandom(32)).decode(),
+        'APP_CONFIG_CACHE': '/tmp/simulation-config.php', 'APP_ROUTES_CACHE': '/tmp/simulation-routes.php',
+        'DB_CONNECTION': 'pgsql', 'DB_HOST': 'pgbouncer', 'DB_PORT': '6432',
+        'DB_DATABASE': 'cilupbah_simulation', 'DB_USERNAME': 'simulation', 'DB_PASSWORD': 'simulation-only',
+        'DB_URL': '', 'QUEUE_CONNECTION': 'redis', 'CACHE_STORE': 'redis', 'SESSION_DRIVER': 'array',
+        'REDIS_HOST': 'redis', 'REDIS_PORT': '6379', 'REDIS_PREFIX': 'simulation:',
+        'REDIS_LONG_HOST': 'redis-long', 'REDIS_FINANCE_HOST': 'redis-finance', 'REDIS_CACHE_HOST': 'redis-cache',
+        'REDIS_HORIZON_HOST': 'redis-horizon', 'HORIZON_REDIS_CONNECTION': 'horizon_store',
+        'REDIS_QUEUE_CONNECTION': 'default', 'REDIS_LONG_CONNECTION': 'long', 'REDIS_FINANCE_CONNECTION': 'finance',
+        'FILESYSTEM_DISK': 'local', 'DOCUMENTS_DISK_DRIVER': 'local', 'MAIL_MAILER': 'log',
+        'BROADCAST_CONNECTION': 'log', 'LOG_CHANNEL': 'stderr', 'LOG_LEVEL': 'warning',
+        'SHOPEE_PARTNER_ID': '1', 'SHOPEE_PARTNER_KEY': 'simulation-only',
+        'SHOPEE_HOST': 'http://marketplace:8080', 'SHOPEE_PUSH_URL': 'http://app:8000/api/v1/shopee/webhook',
+        'TIKTOK_BASE_URL': 'http://marketplace:8080', 'LAZADA_BASE_URL': 'http://marketplace:8080',
+        'LABEL_ASYNC_SHOPEE_PREPARATION': 'true', 'LABEL_LOCAL_FIRST': 'true',
+        'CHANNEL_ORDER_INTAKE_CUTOFF_AT': '', 'SENTRY_LARAVEL_DSN': '', 'SENTRY_DSN': '',
+        'SIM_NAMESPACE': ns, 'SIM_COUNT': str(args.count), 'SIM_SECONDS': str(args.seconds),
+        'SIM_SHOPS': str(args.shops), 'SIM_SKUS': str(args.skus), 'SIM_BULK': str(args.bulk),
+        'SIM_PRODUCERS': str(args.producers), 'SIM_LATENCY_MS': str(args.latency_ms),
+        'SIM_FAIL_EVERY': str(args.fail_every), 'RATE_LIMIT_SHOPEE_API_PER_SECOND': str(args.shopee_api_rate),
+    }
+    add('ConfigMap', 'environment', data=env)
+
+    def service(name, port, target=None):
+        add('Service', name, {'selector': {'sim-role': target or name}, 'ports': [{'port': port, 'targetPort': port}]})
+
+    def workload(name, image, command, memory, cpu, *, app=False, extra=None, replicas=1, grace=60, job=False):
+        mounts = [{'name': 'harness', 'mountPath': '/sim', 'readOnly': True}, {'name': 'data', 'mountPath': '/data'}]
+        if app:
+            mounts += [{'name': 'harness', 'mountPath': '/var/www/html/.env', 'subPath': 'empty.env', 'readOnly': True},
+                       {'name': 'data', 'mountPath': '/var/www/html/storage/app/documents', 'subPath': 'documents'},
+                       {'name': 'data', 'mountPath': '/var/www/html/storage/app/print-spool', 'subPath': 'spool'}]
+        container = {'name': name, 'image': image, 'imagePullPolicy': 'IfNotPresent', 'command': command,
+                     'envFrom': [{'configMapRef': {'name': 'environment'}}], 'env': extra or [], 'volumeMounts': mounts,
+                     'resources': {'requests': {'cpu': '100m', 'memory': '128Mi'}, 'limits': {'cpu': cpu, 'memory': memory}}}
+        if name == 'postgres':
+            container['readinessProbe'] = {'exec': {'command': ['pg_isready', '-U', 'simulation', '-d', 'cilupbah_simulation']}, 'periodSeconds': 5}
+        elif name == 'pgbouncer':
+            container['readinessProbe'] = {'exec': {'command': ['sh', '-c', 'pg_isready -h 127.0.0.1 -p 6432 -U simulation -d cilupbah_simulation']}, 'periodSeconds': 5}
+        elif name.startswith('redis'):
+            container['readinessProbe'] = {'exec': {'command': ['redis-cli', 'ping']}, 'periodSeconds': 5}
+        elif name == 'marketplace':
+            container['readinessProbe'] = {'httpGet': {'path': '/health', 'port': 8080}, 'periodSeconds': 5}
+        elif name == 'app':
+            container['readinessProbe'] = {'httpGet': {'path': '/api/v1/shopee/webhook', 'port': 8000}, 'periodSeconds': 10, 'timeoutSeconds': 5}
+        pod = {'automountServiceAccountToken': False, 'nodeSelector': {'kubernetes.io/hostname': args.node},
+               'terminationGracePeriodSeconds': grace, 'containers': [container],
+               'volumes': [{'name': 'harness', 'configMap': {'name': 'harness'}}, {'name': 'data', 'persistentVolumeClaim': {'claimName': 'data'}}]}
+        if args.pull_secret:
+            pod['imagePullSecrets'] = [{'name': args.pull_secret}]
+        template = {'metadata': {'labels': {**LABEL, 'sim-role': name}}, 'spec': pod}
+        if job:
+            return add('Job', name, {'backoffLimit': 0, 'template': {**template, 'spec': {**pod, 'restartPolicy': 'Never'}}})
+        return add('Deployment', name, {'replicas': replicas, 'selector': {'matchLabels': {'sim-role': name}},
+                                       'strategy': {'type': 'Recreate'}, 'template': template})
+
+    workload('postgres', 'postgres:15-alpine', ['docker-entrypoint.sh', 'postgres', '-c', 'max_connections=100'], '3Gi', '2', extra=[
+        {'name': 'POSTGRES_DB', 'value': 'cilupbah_simulation'}, {'name': 'POSTGRES_USER', 'value': 'simulation'},
+        {'name': 'POSTGRES_PASSWORD', 'value': 'simulation-only'}, {'name': 'PGDATA', 'value': '/data/postgres'}])
+    service('postgres', 5432)
+    workload('pgbouncer', 'edoburu/pgbouncer:v1.25.2-p0', ['/entrypoint.sh', '/usr/bin/pgbouncer', '/etc/pgbouncer/pgbouncer.ini'], '256Mi', '300m', extra=[
+        {'name': k, 'value': v} for k, v in {'DB_HOST': 'postgres', 'DB_PORT': '5432', 'DB_NAME': 'cilupbah_simulation',
+            'DB_USER': 'simulation', 'DB_PASSWORD': 'simulation-only', 'LISTEN_PORT': '6432', 'AUTH_TYPE': 'scram-sha-256',
+            'POOL_MODE': 'transaction', 'MAX_CLIENT_CONN': '150', 'DEFAULT_POOL_SIZE': '25', 'RESERVE_POOL_SIZE': '5',
+            'MAX_DB_CONNECTIONS': '35', 'MAX_PREPARED_STATEMENTS': '0', 'QUERY_WAIT_TIMEOUT': '30',
+            'IGNORE_STARTUP_PARAMETERS': 'extra_float_digits'}.items()], replicas=2)
+    # Retain the upstream image entrypoint: its path is image-owned, not guessed.
+    docs[-1]['spec']['template']['spec']['containers'][0].pop('command')
+    service('pgbouncer', 6432)
+    for name, limit, maxmem in [('redis', '2Gi', '1gb'), ('redis-long', '2Gi', '1gb'), ('redis-finance', '512Mi', '256mb'),
+                                ('redis-cache', '512Mi', '256mb'), ('redis-horizon', '512Mi', '256mb')]:
+        workload(name, 'redis:7.4', ['sh', '-c', f'mkdir -p /data/{name} && exec redis-server --dir /data/{name} --appendonly yes --appendfsync everysec --maxmemory {maxmem} --maxmemory-policy noeviction'], limit, '1')
+        service(name, 6379)
+    workload('marketplace', 'python:3.12-slim', ['python', '/sim/marketplace.py'], '1Gi', '2')
+    service('marketplace', 8080)
+    workload('app', args.image, ['/usr/local/bin/start.production.sh'], '1536Mi', '2', app=True)
+    service('app', 8000)
+    by_name = {d['name']: d for d in audit_data['deployments']}
+    for profile, (source, grace) in PROFILES.items():
+        original = by_name.get(source)
+        if not original:
+            raise ValueError(f'Missing source deployment {source}; audit required before copying worker budgets.')
+        tuning = original['containers'][0]['tuning']
+        tuning = {k: v for k, v in tuning.items() if k.startswith('HORIZON_') and k.endswith('_MAX_PROCESSES')}
+        limits = original['containers'][0]['resources']['limits']
+        obj = workload('worker-'+profile, args.image, ['php', 'artisan', 'horizon'], limits['memory'], limits['cpu'], app=True,
+                       extra=[{'name': k, 'value': v} for k, v in {**tuning, 'HORIZON_PROFILE': profile}.items()], grace=grace)
+        obj['spec']['template']['spec']['containers'][0]['resources'] = original['containers'][0]['resources']
+    workload('coordinator', args.image, ['php', '/sim/console.php', 'coordinate'], '768Mi', '1', app=True)
+    init = workload('initialize', args.image, ['sh', '-c', 'mkdir -p /data/documents /data/spool && chmod 0777 /data/documents /data/spool && exec php /sim/console.php init'], '1Gi', '1', app=True, job=True,
+                    extra=[{'name': 'DB_HOST', 'value': 'postgres'}, {'name': 'DB_PORT', 'value': '5432'}])
+    init['spec']['activeDeadlineSeconds'] = 1800
+    producer = workload('producer', args.image, ['php', '/sim/console.php', 'feed'], '512Mi', '1', app=True, job=True,
+                        extra=[{'name': 'JOB_COMPLETION_INDEX', 'valueFrom': {'fieldRef': {'fieldPath': "metadata.annotations['batch.kubernetes.io/job-completion-index']"}}}])
+    producer['spec'].update({'completionMode': 'Indexed', 'completions': args.producers, 'parallelism': args.producers,
+                             'suspend': True, 'activeDeadlineSeconds': args.seconds + 600})
+    return docs
+
+
+def apply(objects):
+    kubectl('apply', '-f', '-', data=json.dumps({'apiVersion': 'v1', 'kind': 'List', 'items': objects}))
+
+
+def wait_for(predicate, seconds, label):
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if predicate():
+            return
+        time.sleep(5)
+    raise RuntimeError('Timed out: '+label)
+
+
+def exec_php(ns, mode):
+    output = kubectl('-n', ns, 'exec', 'deploy/app', '--', 'php', '/sim/console.php', mode, timeout=180)
+    for line in reversed(output.splitlines()):
+        try:
+            return json.loads(line)
+        except json.JSONDecodeError:
+            pass
+    raise RuntimeError('No JSON returned from '+mode)
+
+
+def is_complete(snapshot, count):
+    cases = snapshot['cases']
+    ready = sum(int(b['labels']) for b in snapshot['batches'] if b['status'] == 'ready' and int(b['failed'] or 0) == 0)
+    unfinished = sum(int(i['total']) for i in snapshot['inbox'] if i['status'] != 'PROCESSED')
+    stock_bad = sum(int(i['total']) for i in snapshot['stock'] if i['status'] != 'succeeded')
+    outstanding = sum(q['ready']+q['delayed']+q['reserved'] for q in snapshot['queues'].values())
+    return (int(cases['offered']) == count and int(cases['http_accepted']) == count
+            and int(cases['stock_requested']) == count and int(cases['producer_errors']) == 0
+            and snapshot['orders'] == count and snapshot['awb_ready'] == count and ready == count
+            and unfinished == 0 and stock_bad == 0 and snapshot['failed_jobs'] == 0 and outstanding == 0)
+
+
+def sample(ns):
+    return {'time': time.time(), 'application': exec_php(ns, 'snapshot'),
+            'pod_metrics': json.loads(kubectl('get', '--raw', f'/apis/metrics.k8s.io/v1beta1/namespaces/{ns}/pods')),
+            'node_metrics': json.loads(kubectl('get', '--raw', '/apis/metrics.k8s.io/v1beta1/nodes')),
+            'pods': get('pods', namespace=ns),
+            'disk': json.loads(kubectl('-n', ns, 'exec', 'deploy/marketplace', '--', 'python', '-c',
+                "import shutil,json; d=shutil.disk_usage('/data'); print(json.dumps({'total':d.total,'used':d.used,'free':d.free}))"))}
+
+
+def summarize_samples(path):
+    """Streaming aggregation: never load a 24-hour metrics file into RAM."""
+    peaks = {}
+    queue_peaks = {'ready': 0, 'delayed': 0, 'reserved': 0, 'oldest_ready_seconds': 0}
+    deferred_peak = restarts = 0
+    oom = set()
+    first_backlog = last_backlog = None
+    with path.open() as stream:
+        for line in stream:
+            record = json.loads(line)
+            app = record['application']
+            deferred_peak = max(deferred_peak, app['inbox_deferred'])
+            sums = {k: sum(q[k] for q in app['queues'].values()) for k in ('ready', 'delayed', 'reserved')}
+            for k in sums:
+                queue_peaks[k] = max(queue_peaks[k], sums[k])
+            queue_peaks['oldest_ready_seconds'] = max(queue_peaks['oldest_ready_seconds'],
+                max((q['oldest_ready_seconds'] or 0 for q in app['queues'].values()), default=0))
+            backlog = sum(sums.values())
+            first_backlog = backlog if first_backlog is None else first_backlog
+            last_backlog = backlog
+            for pod in record['pod_metrics']['items']:
+                for c in pod['containers']:
+                    key = pod['metadata']['name']+'/'+c['name']
+                    peak = peaks.setdefault(key, {'cpu_cores': 0, 'memory_bytes': 0})
+                    peak['cpu_cores'] = max(peak['cpu_cores'], quantity(c['usage']['cpu']))
+                    peak['memory_bytes'] = max(peak['memory_bytes'], quantity(c['usage']['memory']))
+            current_restarts = 0
+            for pod in record['pods']['items']:
+                for c in pod.get('status', {}).get('containerStatuses', []):
+                    current_restarts += c.get('restartCount', 0)
+                    if c.get('lastState', {}).get('terminated', {}).get('reason') == 'OOMKilled':
+                        oom.add(pod['metadata']['name'])
+            restarts = max(restarts, current_restarts)
+    return {'pod_sampled_peaks': peaks, 'queue_peaks': queue_peaks, 'deferred_peak': deferred_peak,
+            'restarts_peak': restarts, 'oom_pods': sorted(oom), 'first_backlog': first_backlog, 'last_backlog': last_backlog,
+            'measurement_note': 'Metrics-server samples, not instantaneous CPU/RSS maxima. Inspect samples.jsonl for slopes and draining.'}
+
+
+def stop(ns):
+    validate_namespace(ns)
+    if get('namespace', ns)['metadata'].get('labels', {}).get('app.kubernetes.io/part-of') != LABEL['app.kubernetes.io/part-of']:
+        raise RuntimeError('Namespace is not owned by the simulation harness.')
+    kubectl('-n', ns, 'patch', 'job', 'producer', '--type=merge', '-p', '{"spec":{"suspend":true}}')
+    for role in ['coordinator'] + ['worker-'+p for p in PROFILES]:
+        kubectl('-n', ns, 'scale', 'deployment', role, '--replicas=0')
+    print('Simulation producers/workers stopped; database, Redis and evidence retained. No production changes.')
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('action', choices=['audit', 'plan', 'run', 'report', 'stop'])
+    parser.add_argument('--source-namespace', default='cilupbah')
+    parser.add_argument('--namespace', default='cilupbah-sim-'+time.strftime('%Y%m%d-%H%M%S'))
+    parser.add_argument('--image')
+    parser.add_argument('--node')
+    parser.add_argument('--count', type=int, default=1000, help='Target EACH: orders, AWB, labels, stock sync requests')
+    parser.add_argument('--seconds', type=int, default=600)
+    parser.add_argument('--drain-seconds', type=int, default=1800)
+    parser.add_argument('--shops', type=int, default=20)
+    parser.add_argument('--skus', type=int, default=100)
+    parser.add_argument('--bulk', type=int, default=100)
+    parser.add_argument('--producers', type=int, default=4)
+    parser.add_argument('--latency-ms', type=int, default=100)
+    parser.add_argument('--fail-every', type=int, default=0)
+    parser.add_argument('--shopee-api-rate', type=int, default=4, help='Simulator experiment only, NOT permission to exceed marketplace quotas')
+    parser.add_argument('--storage-class', default='local-path')
+    parser.add_argument('--pull-secret', default='ghcr-creds', help='Registry pull secret copied from source namespace; empty for public/cached image')
+    parser.add_argument('--disk', default='100Gi')
+    parser.add_argument('--output', default='flash-sale-results')
+    parser.add_argument('--ack-shared-node-risk', action='store_true')
+    args = parser.parse_args()
+    ns = validate_namespace(args.namespace)
+    directory = Path(args.output) / ns
+    directory.mkdir(parents=True, exist_ok=True)
+    def save(name, value):
+        (directory / name).write_text(json.dumps(value, indent=2))
+    if args.action == 'stop':
+        stop(ns)
+        return
+    if args.action == 'report':
+        result = exec_php(ns, 'report')
+        save('application-final.json', result)
+        print(json.dumps(result, indent=2))
+        return
+    baseline = audit(args.source_namespace)
+    save('source-audit.json', baseline)
+    if args.action == 'audit':
+        print(f'Read-only audit saved: {directory}/source-audit.json')
+        return
+    if not args.image or not args.node:
+        parser.error('--image (image built from this checkout) and --node are required')
+    if not 1 <= args.count <= 10_000_000 or min(args.seconds, args.shops, args.skus, args.producers, args.shopee_api_rate) < 1 or not 1 <= args.bulk <= 200 or min(args.fail_every, args.latency_ms, args.drain_seconds) < 0:
+        parser.error('Invalid workload size; bulk 1..200, count 1..10000000, positive dimensions required')
+    objects = manifests(args, baseline)
+    save('manifest.json', objects)
+    if args.action == 'plan':
+        print(f'Plan only; no cluster mutations. Review {directory}/manifest.json')
+        return
+    if not args.ack_shared_node_risk:
+        parser.error('Use a dedicated test node, or explicitly acknowledge resource contention with --ack-shared-node-risk')
+    existing = get('namespaces')['items']
+    if any(n['metadata']['name'] == ns for n in existing):
+        raise RuntimeError('Run refuses existing namespace. Use a new namespace; data is never reset.')
+    # Preflight metrics must be available. Namespace isolation does not isolate hardware.
+    node = next(n for n in baseline['nodes']['items'] if n['metadata']['labels'].get('kubernetes.io/hostname') == args.node)
+    current = next(n for n in baseline['node_metrics']['items'] if n['metadata']['name'] == node['metadata']['name'])
+    available = quantity(node['status']['allocatable']['memory']) - quantity(current['usage']['memory'])
+    requested = sum(quantity(c['resources']['requests']['memory']) * o['spec'].get('replicas', o['spec'].get('parallelism', 1))
+                    for o in objects if o['kind'] in ('Deployment', 'Job') for c in o['spec']['template']['spec']['containers'])
+    if available < requested * 1.3:
+        raise RuntimeError('Insufficient current node memory for baseline requests + 30% margin. Use a dedicated node.')
+    first = [o for o in objects if o['kind'] not in ('Deployment', 'Job')]
+    apply(first)
+    copy_image_pull_secret(args.source_namespace, ns, args.pull_secret)
+    platforms = [o for o in objects if o['kind'] == 'Deployment' and o['metadata']['name'] not in ['app', 'coordinator'] and not o['metadata']['name'].startswith('worker-')]
+    apply(platforms)
+    for o in platforms:
+        name = o['metadata']['name']
+        wait_for(lambda: get('deployment', name, ns)['status'].get('availableReplicas', 0) > 0, 300, name)
+    # Active proof of network isolation, before any application data exists.
+    # Public DNS succeeding does not mean egress succeeds. Also test cross-namespace pod traffic.
+    prod_pods = get('pods', namespace=args.source_namespace)['items']
+    prod_ip = next((p['status'].get('podIP') for p in prod_pods if p['metadata']['name'].startswith('cilupbah-app-') and p['status'].get('podIP')), None)
+    if not prod_ip:
+        raise RuntimeError('Cannot verify cross-namespace isolation without a source app pod IP.')
+    probe = "import socket; targets=[('1.1.1.1',443),('"+prod_ip+"',8000)];\nfor host,port in targets:\n try:\n  s=socket.create_connection((host,port),3); s.close(); raise SystemExit('UNSAFE: egress allowed to '+host)\n except (OSError,TimeoutError): pass\nprint('egress-blocked')"
+    kubectl('-n', ns, 'exec', 'deploy/marketplace', '--', 'python', '-c', probe)
+    initialize = next(o for o in objects if o['kind'] == 'Job' and o['metadata']['name'] == 'initialize')
+    apply([initialize])
+    def initialized():
+        status = get('job', 'initialize', ns)['status']
+        if status.get('failed'):
+            raise RuntimeError(kubectl('-n', ns, 'logs', 'job/initialize', '--tail=80'))
+        return status.get('succeeded', 0) == 1
+    wait_for(initialized, 1800, 'database initialization')
+    online = [o for o in objects if o['kind'] == 'Deployment' and o not in platforms]
+    apply(online)
+    for o in online:
+        name = o['metadata']['name']
+        wait_for(lambda: get('deployment', name, ns)['status'].get('availableReplicas', 0) > 0, 300, name)
+    save('effective-worker-config.json', exec_php(ns, 'config'))
+    producer = next(o for o in objects if o['kind'] == 'Job' and o['metadata']['name'] == 'producer')
+    start = time.time()+30
+    producer['spec']['suspend'] = False
+    producer['spec']['template']['spec']['containers'][0]['env'].append({'name': 'SIM_START_AT', 'value': str(start)})
+    apply([producer])
+    print(f'Running {ns}: {args.count:,} targets EACH over {args.seconds}s; output {directory}', flush=True)
+    deadline = start + args.seconds + args.drain_seconds
+    completed = False
+    samples = 0
+    try:
+        with (directory / 'samples.jsonl').open('a') as log:
+            while time.time() < deadline:
+                record = sample(ns)
+                log.write(json.dumps(record)+'\n')
+                log.flush()
+                samples += 1
+                if record['disk']['free'] < 5 * 1024**3 or record['disk']['used'] / record['disk']['total'] > .90:
+                    raise RuntimeError('Safety stop: shared filesystem below 5GiB free or above 90% used.')
+                for metric in record['node_metrics']['items']:
+                    if metric['metadata']['name'] == node['metadata']['name'] and quantity(metric['usage']['memory']) > quantity(node['status']['allocatable']['memory']) * .90:
+                        raise RuntimeError('Safety stop: node memory exceeds 90%; production shares this hardware.')
+                app = record['application']
+                print(json.dumps({'time': app['time'], 'orders': app['orders'], 'awb': app['awb_ready'],
+                                  'deferred': app['inbox_deferred'], 'failed': app['failed_jobs'], 'queues': {k: v for k, v in app['queues'].items() if sum(v[x] for x in ('ready','delayed','reserved'))}}), flush=True)
+                if is_complete(app, args.count):
+                    completed = True
+                    break
+                time.sleep(15)
+        final = exec_php(ns, 'report')
+        files = exec_php(ns, 'verify-files')
+        mock = json.loads(kubectl('-n', ns, 'exec', 'deploy/marketplace', '--', 'python', '-c',
+                                 "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8080/metrics').read().decode())"))
+        save('application-final.json', final)
+        save('file-verification.json', files)
+        save('marketplace-final.json', mock)
+        resources = summarize_samples(directory / 'samples.jsonl')
+        save('resource-summary.json', resources)
+        completed = completed and files['invalid'] == 0 and final['missing_orders'] == 0 and final['incomplete_stock_versions'] == 0
+        save('summary.json', {'completed': completed, 'target_each': args.count, 'samples': samples,
+                              'elapsed_seconds': time.time()-start, 'channel': 'shopee',
+                              'stock_target_kind': 'sync_requests_not_guaranteed_API_calls',
+                              'stock_api_calls': mock['calls'].get('/api/v2/product/update_stock', 0),
+                              'no_deferred_observed': resources['deferred_peak'] == 0,
+                              'oom_observed': bool(resources['oom_pods']),
+                              'scope': 'real Laravel jobs + synthetic Shopee contracts; no production certification',
+                              'result': 'COMPLETED_REQUIRES_REVIEW' if completed else 'INCOMPLETE'})
+        print(f'Report saved to {directory}. No automated claim of enterprise readiness.')
+    except (Exception, KeyboardInterrupt):
+        stop(ns)
+        raise
+    if not completed:
+        stop(ns)
+        raise SystemExit(1)
+    stop(ns)
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (RuntimeError, ValueError, subprocess.TimeoutExpired) as error:
+        print(str(error), file=sys.stderr)
+        raise SystemExit(2)

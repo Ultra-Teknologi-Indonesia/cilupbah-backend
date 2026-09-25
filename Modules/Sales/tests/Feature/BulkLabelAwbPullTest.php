@@ -4,6 +4,8 @@ namespace Modules\Sales\Tests\Feature;
 
 use App\Models\User;
 use Database\Seeders\RoleSeeder;
+use Illuminate\Bus\UniqueLock;
+use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Queue;
@@ -85,6 +87,23 @@ class BulkLabelAwbPullTest extends TestCase
             RequestShopeeMassAwbJob::class,
             fn (RequestShopeeMassAwbJob $job): bool => $job->orderIds === [$order->id],
         );
+    }
+
+    public function test_reused_batch_can_resume_awb_dispatch_without_creating_another_batch(): void
+    {
+        Queue::fake();
+        $order = $this->orderWithoutAwb();
+        $batch = $this->createBatchFor($order);
+        $job = Queue::pushed(RequestShopeeMassAwbJob::class)->first();
+        (new UniqueLock(app(Repository::class)))->release($job);
+        Queue::fake();
+
+        $same = $this->createBatchFor($order);
+
+        $this->assertSame($batch->id, $same->id);
+        Queue::assertPushed(RequestShopeeMassAwbJob::class, 1);
+        $this->createBatchFor($order);
+        Queue::assertPushed(RequestShopeeMassAwbJob::class, 1);
     }
 
     public function test_nomor_pesanan_marketplace_bukan_bukti_punya_resi(): void
@@ -254,7 +273,7 @@ class BulkLabelAwbPullTest extends TestCase
         Queue::assertNotPushed(RequestShopeeMassAwbJob::class);
     }
 
-    public function test_batch_baru_tidak_mewarisi_status_downloading_dari_batch_orphan(): void
+    public function test_permintaan_berbeda_tidak_mewarisi_status_downloading_dari_batch_orphan(): void
     {
         Queue::fake();
 
@@ -266,7 +285,12 @@ class BulkLabelAwbPullTest extends TestCase
             'status' => BulkShippingLabelItem::STATUS_DOWNLOADING,
         ]);
 
-        $secondBatch = $this->createBatchFor($order);
+        // A genuinely different print request gets its own items. An identical
+        // request now intentionally rejoins the active batch instead.
+        $secondBatch = app(BulkShippingLabelService::class)->createBatch($this->user, [$order->id], [
+            'document_size' => BulkShippingLabelService::SIZE_100X150,
+        ]);
+        $this->assertNotSame($firstBatch->id, $secondBatch->id);
         $secondItem = $this->itemOf($secondBatch);
 
         $this->assertSame(

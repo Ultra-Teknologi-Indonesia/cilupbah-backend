@@ -1457,15 +1457,17 @@ class SalesOrderRepository
             ->join('product_variants as pv', 'pv.id', '=', 'pvcm.variant_id')
             ->join('products as p', 'p.id', '=', 'pv.product_id')
             ->where('cs.shop_id', $externalShopId)
-            ->whereIn('pcm.external_product_id', array_keys($listingIds))
+            // PHP coerces numeric string array keys to integers. Marketplace
+            // identifiers/SKUs remain text, including under emulated prepares.
+            ->whereIn('pcm.external_product_id', array_map('strval', array_keys($listingIds)))
             ->where('pcm.sync_status', 'synced')
             ->where('pv.is_active', true)
             ->whereNull('pv.deleted_at')
             ->where('p.is_active', true)
             ->whereNull('p.deleted_at')
             ->where(function ($q) use ($skus): void {
-                $q->whereIn(DB::raw('LOWER(TRIM(pvcm.channel_seller_sku))'), array_keys($skus))
-                    ->orWhereIn(DB::raw('LOWER(TRIM(pv.sku))'), array_keys($skus));
+                $q->whereIn(DB::raw('LOWER(TRIM(pvcm.channel_seller_sku))'), array_map('strval', array_keys($skus)))
+                    ->orWhereIn(DB::raw('LOWER(TRIM(pv.sku))'), array_map('strval', array_keys($skus)));
             })
             ->orderBy('pcm.id')
             ->orderBy('pvcm.id')

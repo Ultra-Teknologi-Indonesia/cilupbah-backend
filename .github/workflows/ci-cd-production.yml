@@ -110,7 +110,7 @@ jobs:
           username: ${{ secrets.PROD_DEPLOY_USER }}
           key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
           timeout: 20m
-          command_timeout: 20m
+          command_timeout: 45m
           script: |
             set -e
 
@@ -136,9 +136,19 @@ jobs:
             fi
             sed -i "s|image: ghcr.io/ultra-teknologi-indonesia/cilupbah:.*|image: $IMAGE|g" "$K8S_DIR"/*.yaml
 
-            # Hapus bentuk scheduler lama apa pun sebelum menerapkan manifest
-            # baru; Kubernetes tidak mengubah kind CronJob <-> Deployment.
-            kubectl delete deployment cilupbah-scheduler -n "$NAMESPACE" --ignore-not-found
+            # Expand schema with the NEW image before any new application or
+            # worker can query it. Failure leaves the running release intact.
+            migration_job=$(kubectl create -f "$K8S_DIR/01-database-migration.yaml" \
+              -n "$NAMESPACE" -o jsonpath='{.metadata.name}')
+            if ! kubectl wait --for=condition=complete "job/$migration_job" \
+              -n "$NAMESPACE" --timeout=930s; then
+              kubectl logs "job/$migration_job" -n "$NAMESPACE" --all-containers --tail=150 || true
+              echo "Migrasi gagal; rollout aplikasi dibatalkan."
+              exit 1
+            fi
+
+            # Retire only the old CronJob. Keep the current Deployment alive
+            # until its replacement is ready; it drives durable recovery work.
             kubectl delete cronjob cilupbah-scheduler -n "$NAMESPACE" \
               --cascade=foreground --wait=true --ignore-not-found
 
@@ -166,6 +176,12 @@ jobs:
             # deployment creates an avoidable processing gap during traffic.
             for horizon in cilupbah-horizon; do
               if kubectl get deployment "$horizon" -n "$NAMESPACE" >/dev/null 2>&1; then
+                active_profile=$(kubectl get deployment "$horizon" -n "$NAMESPACE" \
+                  -o 'jsonpath={.spec.template.spec.containers[0].env[?(@.name=="HORIZON_PROFILE")].value}')
+                if [ "$active_profile" = "background" ]; then
+                  echo "Pool background sudah terisolasi; gunakan graceful rollout tanpa scale-to-zero."
+                  continue
+                fi
                 kubectl scale "deployment/$horizon" --replicas=0 -n "$NAMESPACE"
                 kubectl rollout status "deployment/$horizon" -n "$NAMESPACE" --timeout=360s
               else
@@ -177,7 +193,8 @@ jobs:
             for manifest in "$K8S_DIR"/*.yaml; do
               # KEDA resources are applied separately below because the CRD is
               # an optional cluster capability, not an application manifest.
-              if [ "$(basename "$manifest")" = "08-keda-autoscaling.yaml" ]; then
+              if [ "$(basename "$manifest")" = "08-keda-autoscaling.yaml" ] \
+                || [ "$(basename "$manifest")" = "01-database-migration.yaml" ]; then
                 continue
               fi
               kubectl apply -f "$manifest" -n "$NAMESPACE"
@@ -316,11 +333,5 @@ jobs:
                   --no-headers || true
               fi
             done
-
-            # Migrasi DB: explicit gated deploy step (sesuai catatan di start.production.sh).
-            # Dijalankan dari pod app yang sudah ter-rollout (punya file migrasi versi baru).
-            # Migrasi fitur ini additive (kolom nullable + tabel baru) → aman.
-            echo "==> Menjalankan migrasi database..."
-            kubectl exec deploy/cilupbah-app -n $NAMESPACE -- php artisan migrate --force
 
             echo "Production deployment success: $VERSION"

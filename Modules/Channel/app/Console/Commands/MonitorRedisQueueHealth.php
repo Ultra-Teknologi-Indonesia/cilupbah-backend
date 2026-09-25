@@ -29,6 +29,14 @@ class MonitorRedisQueueHealth extends Command
         $snapshot['redis'][] = $this->monitorRedis('long', 'long_queue');
         $snapshot['redis'][] = $this->monitorRedis('finance', 'finance_queue');
         $snapshot['redis'][] = $this->monitorRedis('horizon', 'horizon');
+        $known = ['default', 'long', 'finance', 'horizon'];
+        foreach (config('queue.connections', []) as $connection) {
+            $name = $connection['connection'] ?? null;
+            if (($connection['driver'] ?? null) === 'redis' && is_string($name) && ! in_array($name, $known, true)) {
+                $snapshot['redis'][] = $this->monitorRedis($name, 'queue');
+                $known[] = $name;
+            }
+        }
 
         $staleThreshold = (int) config('queue.health.stale_webhook_warning', 100);
         $staleMinutes = (int) config('queue.health.stale_webhook_minutes', 15);
@@ -173,7 +181,7 @@ class MonitorRedisQueueHealth extends Command
     {
         $queues = [];
 
-        foreach (config('horizon.defaults', []) as $supervisor) {
+        foreach (array_replace(config('horizon.queue_health_supervisors', []), config('horizon.defaults', [])) as $supervisor) {
             $queueConnection = (string) ($supervisor['connection'] ?? 'redis');
             $redisConnection = (string) data_get(
                 config("queue.connections.{$queueConnection}"),

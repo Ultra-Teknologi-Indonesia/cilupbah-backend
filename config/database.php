@@ -3,7 +3,7 @@
 use Illuminate\Support\Str;
 use Pdo\Mysql;
 
-return [
+$configuration = [
 
     'default' => env('DB_CONNECTION', 'sqlite'),
 
@@ -167,7 +167,7 @@ return [
             'backoff_cap' => env('REDIS_BACKOFF_CAP', 1000),
         ],
 
-        'horizon' => [
+        'horizon_store' => [
             'url' => env('REDIS_HORIZON_URL'),
             'host' => env('REDIS_HORIZON_HOST', env('REDIS_QUEUE_HOST', env('REDIS_HOST', '127.0.0.1'))),
             'username' => env('REDIS_HORIZON_USERNAME', env('REDIS_QUEUE_USERNAME', env('REDIS_USERNAME'))),
@@ -183,3 +183,19 @@ return [
     ],
 
 ];
+
+// Preserve the exact legacy endpoint AND key prefix during rolling deploys.
+// Laravel owns the name "horizon" and overwrites that connection at boot.
+// Old deployments used that runtime connection for application queues.
+$horizonSource = (string) env('HORIZON_REDIS_CONNECTION', 'default');
+$horizonSource = $horizonSource === 'horizon' ? 'horizon_store' : $horizonSource;
+if (! isset($configuration['redis'][$horizonSource])) {
+    throw new LogicException('Unknown HORIZON_REDIS_CONNECTION: '.$horizonSource);
+}
+$configuration['redis']['queue_legacy'] = $configuration['redis'][$horizonSource];
+$configuration['redis']['queue_legacy']['options']['prefix'] = env(
+    'HORIZON_PREFIX',
+    Str::slug((string) env('APP_NAME', 'laravel'), '_').'_horizon:',
+) ?: 'horizon:';
+
+return $configuration;

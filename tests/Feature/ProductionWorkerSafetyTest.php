@@ -2,10 +2,72 @@
 
 namespace Tests\Feature;
 
+use Laravel\Horizon\Horizon;
+use Modules\Sales\Jobs\ProcessBulkShippingLabelItemJob;
 use Tests\TestCase;
 
 class ProductionWorkerSafetyTest extends TestCase
 {
+    public function test_schema_expansion_is_gated_before_production_rollout(): void
+    {
+        $workflow = file_get_contents(base_path('.github/workflows/ci-cd-production.yml'));
+        $migration = strpos($workflow, 'migration_job=$(kubectl create');
+        $rollout = strpos($workflow, 'kubectl apply -f "$manifest"');
+        $this->assertNotFalse($migration);
+        $this->assertNotFalse($rollout);
+        $this->assertLessThan($rollout, $migration);
+        $this->assertStringContainsString('kubectl wait --for=condition=complete', $workflow);
+        $this->assertStringContainsString('Migrasi gagal; rollout aplikasi dibatalkan.', $workflow);
+        $manifest = file_get_contents(base_path('k8s/production/01-database-migration.yaml'));
+        $this->assertStringContainsString('backoffLimit: 0', $manifest);
+        $this->assertStringContainsString('activeDeadlineSeconds: 900', $manifest);
+        $this->assertStringContainsString('"migrate", "--force"', $manifest);
+    }
+
+    public function test_label_redelivery_keeps_the_same_redis_keys_but_precedes_the_retry_deadline(): void
+    {
+        $connection = config('queue.routing.label_download.connection');
+        $this->assertSame(config('queue.connections.redis-long.connection'), config("queue.connections.{$connection}.connection"));
+        $this->assertGreaterThan(210, config("queue.connections.{$connection}.retry_after"));
+        $this->assertLessThan(900, config("queue.connections.{$connection}.retry_after"));
+        $job = new ProcessBulkShippingLabelItemJob('batch', 'item', 'order', 'shopee');
+        $this->assertSame($connection, $job->connection);
+    }
+
+    public function test_critical_pods_allow_active_jobs_to_finish_before_forced_shutdown(): void
+    {
+        foreach ([
+            '03-horizon-order-intake.yaml' => 'order-intake',
+            '03-horizon-stock.yaml' => 'stock',
+            '03-horizon-fulfillment.yaml' => 'fulfillment',
+            '03-horizon-critical.yaml' => 'marketplace-ops',
+            '04-horizon-labels.yaml' => 'labels-pdf',
+            '04-horizon-labels-awb.yaml' => 'labels-awb',
+        ] as $manifest => $profile) {
+            $yaml = file_get_contents(base_path("k8s/production/{$manifest}"));
+            preg_match('/terminationGracePeriodSeconds: (\d+)/', $yaml, $match);
+            $this->assertNotEmpty($match, $manifest);
+            foreach (config("horizon.profiles.{$profile}") as $supervisor) {
+                $timeout = config("horizon.queue_health_supervisors.{$supervisor}.timeout");
+                $this->assertGreaterThanOrEqual($timeout + 30, (int) $match[1], $supervisor);
+            }
+        }
+    }
+
+    public function test_legacy_queue_alias_preserves_horizon_runtime_endpoint_and_prefix(): void
+    {
+        $database = require base_path('config/database.php');
+        $horizon = require base_path('config/horizon.php');
+        $expected = $database['redis'][$horizon['use']];
+        $expected['options']['prefix'] = $horizon['prefix'] ?: 'horizon:';
+        $this->assertSame($expected, $database['redis']['queue_legacy']);
+        $this->assertArrayNotHasKey('horizon', $database['redis']);
+        $before = config('database.redis.queue_legacy');
+        Horizon::use($horizon['use']);
+        $this->assertSame($before, config('database.redis.queue_legacy'));
+        $this->assertSame(config('database.redis.horizon'), $before);
+    }
+
     public function test_long_queue_visibility_timeout_exceeds_worker_timeout(): void
     {
         $this->assertGreaterThan(
@@ -161,6 +223,49 @@ class ProductionWorkerSafetyTest extends TestCase
         $this->assertStringContainsString('failureThreshold: 60', $yaml);
         $this->assertStringContainsString('maxReplicas: 6', $autoscaling);
         $this->assertStringContainsString('minAvailable: 2', $autoscaling);
+    }
+
+    public function test_horizon_pools_wait_for_redis_before_starting(): void
+    {
+        foreach ([
+            '03-horizon.yaml',
+            '03-horizon-critical.yaml',
+            '03-horizon-fulfillment.yaml',
+            '03-horizon-maintenance.yaml',
+            '03-horizon-order-intake.yaml',
+            '03-horizon-stock.yaml',
+            '04-horizon-labels.yaml',
+            '04-horizon-labels-awb.yaml',
+        ] as $manifest) {
+            $yaml = file_get_contents(base_path("k8s/production/{$manifest}"));
+
+            $this->assertIsString($yaml);
+            $this->assertStringContainsString('name: wait-for-redis', $yaml, $manifest);
+            $this->assertStringContainsString('fsockopen($host,$port', $yaml, $manifest);
+            $this->assertStringContainsString('sleep 2', $yaml, $manifest);
+        }
+    }
+
+    public function test_redis_has_startup_and_fast_readiness_probes(): void
+    {
+        $yaml = file_get_contents(base_path('k8s/production/01-redis.yaml'));
+
+        $this->assertIsString($yaml);
+        $this->assertStringContainsString('startupProbe:', $yaml);
+        $this->assertStringContainsString('periodSeconds: 2', $yaml);
+        $this->assertStringContainsString('initialDelaySeconds: 2', $yaml);
+    }
+
+    public function test_app_supervisor_shutdown_is_group_aware(): void
+    {
+        $supervisor = file_get_contents(base_path('docker/supervisor/supervisord.conf'));
+        $app = file_get_contents(base_path('k8s/production/02-app.yaml'));
+
+        $this->assertIsString($supervisor);
+        $this->assertIsString($app);
+        $this->assertSame(2, substr_count($supervisor, 'stopasgroup=true'));
+        $this->assertSame(2, substr_count($supervisor, 'killasgroup=true'));
+        $this->assertStringContainsString('terminationGracePeriodSeconds: 60', $app);
     }
 
     public function test_production_deploy_uses_isolated_manifest_directory_and_serializes_runs(): void

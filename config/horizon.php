@@ -369,14 +369,16 @@ foreach (['shopee', 'tiktok', 'lazada'] as $channel) {
     $upper = strtoupper($channel);
     $marketplaceLabelWaits[(string) env('QUEUE_LABEL_AWB_REQUEST_CONNECTION', 'redis-long').':'.(string) env("QUEUE_NAME_LABEL_AWB_REQUEST_{$upper}", "label-awb-request-{$channel}")] = 60;
     $marketplaceLabelWaits[(string) env('QUEUE_LABEL_AWB_POLL_CONNECTION', 'redis-long').':'.(string) env("QUEUE_NAME_LABEL_AWB_POLL_{$upper}", "label-awb-poll-{$channel}")] = 90;
-    $marketplaceLabelWaits[(string) env('QUEUE_LABEL_DOWNLOAD_CONNECTION', 'redis-long').':'.$q("label_download_{$channel}", "label-download-{$channel}")] = 60;
+    $marketplaceLabelWaits[$route('label_download', 'connection', 'redis-label-download').':'.$q("label_download_{$channel}", "label-download-{$channel}")] = 60;
 }
 
 return [
     'name' => env('HORIZON_NAME'),
     'domain' => env('HORIZON_DOMAIN'),
     'path' => env('HORIZON_PATH', 'horizon'),
-    'use' => env('HORIZON_REDIS_CONNECTION', 'default'),
+    'use' => env('HORIZON_REDIS_CONNECTION', 'default') === 'horizon'
+        ? 'horizon_store'
+        : env('HORIZON_REDIS_CONNECTION', 'default'),
     'prefix' => env('HORIZON_PREFIX', Str::slug(env('APP_NAME', 'laravel'), '_').'_horizon:'),
     'middleware' => ['web', HorizonBasicAuth::class],
     'allowed_emails' => array_values(array_filter(array_map('trim', explode(',', (string) env('HORIZON_ALLOWED_EMAILS', ''))))),
@@ -429,6 +431,7 @@ return [
         'maintenance' => 2048,
     ],
     'profiles' => $supervisorProfiles,
+    'queue_health_supervisors' => $supervisors,
     'active_profile' => env('HORIZON_PROFILE', 'all'),
     'defaults' => (function (array $definitions) use ($supervisorProfiles): array {
         $profile = strtolower(trim((string) env('HORIZON_PROFILE', 'all')));

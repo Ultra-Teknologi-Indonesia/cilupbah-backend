@@ -1,5 +1,11 @@
 <?php
 
+$redisConnection = static function (string $variable, string $default): string {
+    $connection = (string) env($variable, $default);
+
+    return $connection === 'horizon' ? 'queue_legacy' : $connection;
+};
+
 return [
 
     'default' => env('QUEUE_CONNECTION', 'redis'),
@@ -41,7 +47,7 @@ return [
 
         'redis' => [
             'driver' => 'redis',
-            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'connection' => $redisConnection('REDIS_QUEUE_CONNECTION', 'default'),
             'queue' => env('REDIS_QUEUE', 'default'),
 
             'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 660),
@@ -54,16 +60,28 @@ return [
 
         'redis-channel-sync' => [
             'driver' => 'redis',
-            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'connection' => $redisConnection('REDIS_QUEUE_CONNECTION', 'default'),
             'queue' => env('QUEUE_NAME_CHANNEL_SYNC', 'channel-sync'),
             'retry_after' => (int) env('REDIS_CHANNEL_SYNC_RETRY_AFTER', 360),
             'block_for' => max(1, min(10, (int) env('REDIS_CHANNEL_SYNC_BLOCK_FOR', 5))),
             'after_commit' => true,
         ],
 
+        // Same Redis database/prefix as redis-long, with a shorter reservation
+        // lease for label downloads. A killed 120s job must not wait 36 minutes
+        // (the import queue lease) and expire its own 15-minute retry deadline.
+        'redis-label-download' => [
+            'driver' => 'redis',
+            'connection' => $redisConnection('REDIS_LONG_CONNECTION', 'long'),
+            'queue' => env('QUEUE_NAME_LABEL_DOWNLOAD_SHOPEE', 'label-download-shopee'),
+            'retry_after' => 240,
+            'block_for' => 5,
+            'after_commit' => true,
+        ],
+
         'redis-long' => [
             'driver' => 'redis',
-            'connection' => env('REDIS_LONG_CONNECTION', 'long'),
+            'connection' => $redisConnection('REDIS_LONG_CONNECTION', 'long'),
             'queue' => env('REDIS_LONG_QUEUE', 'downloads'),
 
             'retry_after' => (int) env('REDIS_LONG_QUEUE_RETRY_AFTER', 2160),
@@ -73,7 +91,7 @@ return [
 
         'redis-finance' => [
             'driver' => 'redis',
-            'connection' => env('REDIS_FINANCE_CONNECTION', 'finance'),
+            'connection' => $redisConnection('REDIS_FINANCE_CONNECTION', 'finance'),
             'queue' => env('REDIS_FINANCE_QUEUE', 'channel-finance'),
 
             'retry_after' => (int) env('REDIS_FINANCE_QUEUE_RETRY_AFTER', 360),
@@ -341,7 +359,7 @@ return [
         ],
 
         'label_download' => [
-            'connection' => env('QUEUE_LABEL_DOWNLOAD_CONNECTION', 'redis-long'),
+            'connection' => env('QUEUE_LABEL_DOWNLOAD_CONNECTION', 'redis-label-download'),
             'queues' => [
                 'shopee' => env('QUEUE_NAME_LABEL_DOWNLOAD_SHOPEE', 'label-download-shopee'),
                 'tiktok' => env('QUEUE_NAME_LABEL_DOWNLOAD_TIKTOK', 'label-download-tiktok'),

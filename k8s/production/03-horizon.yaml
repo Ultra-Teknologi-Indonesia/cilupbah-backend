@@ -27,6 +27,22 @@ spec:
       terminationGracePeriodSeconds: 360
       imagePullSecrets:
         - name: ghcr-creds
+      initContainers:
+        - name: wait-for-redis
+          image: ghcr.io/ultra-teknologi-indonesia/cilupbah:v1.0.0
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: cilupbah-env
+          command: ["sh", "-c"]
+          args:
+            - >-
+              set -eu;
+              until php -r '$host=getenv("REDIS_HOST") ?: "redis";
+              $port=(int) (getenv("REDIS_PORT") ?: 6379);
+              $socket=@fsockopen($host,$port,$errno,$errstr,2);
+              if (!$socket) exit(1); fclose($socket);';
+              do echo "Waiting for Redis"; sleep 2; done
       containers:
         - name: horizon
           image: ghcr.io/ultra-teknologi-indonesia/cilupbah:v1.0.0

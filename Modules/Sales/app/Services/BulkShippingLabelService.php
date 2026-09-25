@@ -23,6 +23,7 @@ use Modules\Realtime\Services\RealtimeEventPublisher;
 use Modules\Sales\Exceptions\ShippingLabelPreparingException;
 use Modules\Sales\Jobs\ArchiveBulkShippingLabelJob;
 use Modules\Sales\Jobs\FinalizeBulkShippingLabelBatchJob;
+use Modules\Sales\Jobs\PrepareBulkShopeeShippingLabelsJob;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelItemJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelJob;
@@ -32,6 +33,7 @@ use Modules\Sales\Jobs\RequestTikTokMassAwbJob;
 use Modules\Sales\Models\BulkShippingLabelBatch;
 use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Repositories\BulkShippingLabelRequestRepository;
 use Modules\Sales\Support\ChannelOperationLedger;
 use setasign\Fpdi\Fpdi;
 use setasign\Fpdi\PdfParser\StreamReader;
@@ -106,48 +108,81 @@ class BulkShippingLabelService
 
         $awaitingAwb = [];
         $ordersById = new EloquentCollection;
-
-        $batch = DB::transaction(function () use ($user, $orderIds, $perChannelOpts, &$awaitingAwb, &$ordersById) {
-            $batch = BulkShippingLabelBatch::create([
-                'user_id' => $user->id,
-                'status' => BulkShippingLabelBatch::STATUS_PROCESSING,
-                'per_channel_opts' => $perChannelOpts,
-                'total_count' => count($orderIds),
-                'done_count' => 0,
-                'failed_count' => 0,
-                'skipped_count' => 0,
-            ]);
-
-            $ordersQuery = SalesOrder::whereIn('id', $orderIds);
-            WarehouseAccess::apply($ordersQuery, 'location_id');
-            $orders = $ordersQuery
-                ->get()
-                ->keyBy('id');
-            $ordersById = new EloquentCollection($orders->all());
-
-            foreach ($orderIds as $orderId) {
-                $order = $orders->get($orderId);
-                $channel = $order?->source ?? self::CHANNEL_MANUAL;
-
-                [$status, $reason] = $this->initialItemStatus($order, $channel);
-
-                if ($status === BulkShippingLabelItem::STATUS_WAITING_AWB) {
-                    $awaitingAwb[] = $orderId;
+        $canonicalize = function (array $value) use (&$canonicalize): array {
+            if (! array_is_list($value)) {
+                ksort($value);
+            }
+            foreach ($value as &$entry) {
+                if (is_array($entry)) {
+                    $entry = $canonicalize($entry);
                 }
-
-                BulkShippingLabelItem::create([
-                    'batch_id' => $batch->id,
-                    'order_id' => $orderId,
-                    'channel' => $channel,
-                    'status' => $status,
-                    'reason' => $reason,
-                ]);
             }
 
-            $batch->recomputeCounts();
+            return $value;
+        };
+        $accessIds = WarehouseAccess::allowedIds();
+        if ($accessIds !== null) {
+            sort($accessIds);
+        }
+        // Preserve requested print order. A changed warehouse access scope or
+        // document option must never reuse another request's batch.
+        $requestKey = hash('sha256', json_encode([$orderIds, $canonicalize($perChannelOpts), $accessIds], JSON_THROW_ON_ERROR));
 
-            return $batch->fresh();
-        });
+        [$batch, $created] = app(BulkShippingLabelRequestRepository::class)->firstOrCreateActive(
+            (string) $user->id,
+            $requestKey,
+            function () use ($user, $orderIds, $perChannelOpts, $requestKey, &$awaitingAwb, &$ordersById) {
+                $batch = BulkShippingLabelBatch::create([
+                    'user_id' => $user->id,
+                    'request_key' => $requestKey,
+                    'status' => BulkShippingLabelBatch::STATUS_PROCESSING,
+                    'per_channel_opts' => $perChannelOpts,
+                    'total_count' => count($orderIds),
+                    'done_count' => 0,
+                    'failed_count' => 0,
+                    'skipped_count' => 0,
+                ]);
+
+                $ordersQuery = SalesOrder::whereIn('id', $orderIds);
+                WarehouseAccess::apply($ordersQuery, 'location_id');
+                $orders = $ordersQuery
+                    ->get()
+                    ->keyBy('id');
+                $ordersById = new EloquentCollection($orders->all());
+
+                foreach ($orderIds as $orderId) {
+                    $order = $orders->get($orderId);
+                    $channel = $order?->source ?? self::CHANNEL_MANUAL;
+
+                    [$status, $reason] = $this->initialItemStatus($order, $channel);
+
+                    if ($status === BulkShippingLabelItem::STATUS_WAITING_AWB) {
+                        $awaitingAwb[] = $orderId;
+                    }
+
+                    BulkShippingLabelItem::create([
+                        'batch_id' => $batch->id,
+                        'order_id' => $orderId,
+                        'channel' => $channel,
+                        'status' => $status,
+                        'reason' => $reason,
+                    ]);
+                }
+
+                $batch->recomputeCounts();
+
+                return $batch->fresh();
+            },
+        );
+
+        if (! $created) {
+            // A previous request may have committed the batch but failed to
+            // enqueue AWB work. Unique jobs/operation ledger suppress work
+            // already queued or accepted by the channel.
+            $this->dispatchAwaitingAwb($batch, $orderIds);
+
+            return $batch;
+        }
 
         $items = $batch->items()
             ->whereIn('order_id', $orderIds)
@@ -494,28 +529,43 @@ class BulkShippingLabelService
 
     public function processQueuedBatch(BulkShippingLabelBatch $batch): void
     {
-        $pending = $batch->items()
-            ->with('order')
-            ->where('status', BulkShippingLabelItem::STATUS_PENDING)
-            ->get();
+        app(BulkShippingLabelRequestRepository::class)->eachPendingChunk((string) $batch->id, function (Collection $pending) use ($batch): void {
+            // Keep marketplace I/O out of the PDF merge pool, while retaining
+            // Shopee's bulk endpoint rather than creating one API call per order.
+            if (config('bulk-labels.async_shopee_preparation', false)) {
+                foreach ($pending->where('channel', self::CHANNEL_SHOPEE)->groupBy('order.channel_shop_id') as $shopItems) {
+                    foreach ($shopItems->chunk(50) as $chunk) {
+                        PrepareBulkShopeeShippingLabelsJob::dispatch((string) $batch->id, $chunk->pluck('id')->all());
+                    }
+                }
+            } else {
+                // Rolling-deploy compatibility: old workers cannot deserialize
+                // PrepareBulkShopeeShippingLabelsJob until their image is updated.
+                $this->prepareShopeeItems($pending->where('channel', self::CHANNEL_SHOPEE));
+            }
 
-        $this->prepareShopeeItems($pending->where('channel', self::CHANNEL_SHOPEE)->values());
+            foreach ($pending->whereIn('channel', [self::CHANNEL_LAZADA, self::CHANNEL_TIKTOK]) as $item) {
+                $this->dispatchItem($item);
+            }
 
-        foreach ($pending->where('channel', self::CHANNEL_LAZADA) as $item) {
-            $this->dispatchItem($item);
-        }
-
-        foreach ($pending->whereNotIn('channel', self::SUPPORTED_CHANNELS) as $item) {
-            $this->fail($item, BulkShippingLabelItem::REASON_CHANNEL_UNSUPPORTED);
-        }
-
-        $tikTokItems = $pending->where('channel', self::CHANNEL_TIKTOK)->values();
-        if ($tikTokItems->isNotEmpty()) {
-            $this->processTikTokBatch($tikTokItems, $batch->per_channel_opts);
-        }
+            foreach ($pending->whereNotIn('channel', self::SUPPORTED_CHANNELS) as $item) {
+                $this->fail($item, BulkShippingLabelItem::REASON_CHANNEL_UNSUPPORTED);
+            }
+        });
 
         $batch->recomputeCounts();
         $this->tryFinalize($batch);
+    }
+
+    public function prepareShopeeChunk(string $batchId, array $itemIds): void
+    {
+        $items = app(BulkShippingLabelRequestRepository::class)->shopeePreparationItems($batchId, $itemIds);
+        $this->prepareShopeeItems($items);
+        $batch = app(BulkShippingLabelRequestRepository::class)->findBatch($batchId);
+        if ($batch) {
+            $batch->recomputeCounts();
+            $this->tryFinalize($batch);
+        }
     }
 
     private function prepareShopeeItems(Collection $items): void
@@ -523,6 +573,11 @@ class BulkShippingLabelService
         if ($items->isEmpty()) {
             return;
         }
+
+        // Subscribe before any API call or wake-up: a preparation callback
+        // can arrive on a different worker before the bulk request returns.
+        $requests = app(BulkShippingLabelRequestRepository::class);
+        $items = $items->filter(fn (BulkShippingLabelItem $item): bool => $requests->subscribeShopeePreparation($item));
 
         $orders = SalesOrder::query()
             ->whereIn('id', $items->pluck('order_id')->unique()->values())
@@ -554,7 +609,9 @@ class BulkShippingLabelService
                 }
 
                 if ($order->shipping_label_status === 'ready') {
-                    $this->dispatchItem($item);
+                    if ($requests->releaseShopeePreparation($item)) {
+                        $this->dispatchItem($item);
+                    }
 
                     continue;
                 }
@@ -708,7 +765,9 @@ class BulkShippingLabelService
                     'shipping_label_prepared_at' => now(),
                 ])->saveQuietly();
                 ChannelOperationLedger::markSucceeded($state['attempt']);
-                $this->dispatchItem($state['item']);
+                if ($requests->releaseShopeePreparation($state['item'])) {
+                    $this->dispatchItem($state['item']);
+                }
             }
         }
     }
@@ -1249,8 +1308,7 @@ class BulkShippingLabelService
                 try {
                     $result = $this->salesOrderService->getShippingLabel($order, $options);
                 } catch (ShippingLabelPreparingException $e) {
-                    app(ShippingLabelPreparationDispatcher::class)->dispatch($order);
-                    $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE]);
+                    $this->waitForMarketplace($item, $order);
 
                     continue;
                 }
@@ -1374,7 +1432,7 @@ class BulkShippingLabelService
             $result = $this->salesOrderService->getShippingLabel($order, $options);
         } catch (ShippingLabelPreparingException $e) {
 
-            $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE]);
+            $this->waitForMarketplace($item, $order);
 
             return;
         } catch (\RuntimeException $e) {
@@ -1407,12 +1465,7 @@ class BulkShippingLabelService
                 ]);
 
             if ($transient) {
-                app(ShippingLabelPreparationDispatcher::class)->dispatch($order);
-                $item->update([
-                    'status' => BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE,
-                    'reason' => null,
-                    'updated_at' => now(),
-                ]);
+                $this->waitForMarketplace($item, $order);
 
                 return;
             }
@@ -1429,8 +1482,7 @@ class BulkShippingLabelService
             return;
         }
 
-        app(ShippingLabelPreparationDispatcher::class)->dispatch($order);
-        $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE]);
+        $this->waitForMarketplace($item, $order);
     }
 
     private function processTikTok(BulkShippingLabelItem $item, SalesOrder $order, array $options): void
@@ -1438,8 +1490,7 @@ class BulkShippingLabelService
         try {
             $result = $this->salesOrderService->getShippingLabel($order, $options);
         } catch (ShippingLabelPreparingException $e) {
-            app(ShippingLabelPreparationDispatcher::class)->dispatch($order);
-            $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE]);
+            $this->waitForMarketplace($item, $order);
 
             return;
         }
@@ -1531,8 +1582,7 @@ class BulkShippingLabelService
             $result = $this->salesOrderService->getShippingLabel($order, $options);
         } catch (ShippingLabelPreparingException $e) {
 
-            app(ShippingLabelPreparationDispatcher::class)->dispatch($order);
-            $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE]);
+            $this->waitForMarketplace($item, $order);
 
             return;
         } catch (\RuntimeException $e) {
@@ -1559,8 +1609,17 @@ class BulkShippingLabelService
             return;
         }
 
+        $this->waitForMarketplace($item, $order);
+    }
+
+    private function waitForMarketplace(BulkShippingLabelItem $item, SalesOrder $order): void
+    {
+        $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE, 'reason' => null]);
         app(ShippingLabelPreparationDispatcher::class)->dispatch($order);
-        $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE]);
+        // Includes a completion that raced with registration of this waiter.
+        if (in_array($order->fresh()?->shipping_label_status, ['ready', 'failed', 'self_design_required'], true)) {
+            $this->onOrderLabelReady((string) $order->id);
+        }
     }
 
     private function resolveLabelBytes(array $result): ?string

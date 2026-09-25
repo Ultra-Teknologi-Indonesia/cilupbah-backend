@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Log;
 use Modules\Channel\Jobs\DispatchChannelStockOutboxJob;
 use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Channel\Models\ChannelStockSyncOutbox;
+use Modules\Channel\Repositories\ChannelStockSyncOutboxRepository;
 use Modules\Product\Models\ProductChannelMapping;
 
 class ChannelStockSyncOutboxService
@@ -27,6 +28,9 @@ class ChannelStockSyncOutboxService
         $now = now();
 
         $outbox = DB::transaction(function () use ($mapping, $syncStock, $syncPrice, $queueTier, $resetAttempts, $now): ChannelStockSyncOutbox {
+            // Lock an existing parent as well: a missing outbox row cannot be
+            // locked, and two first requests must not race the unique index.
+            app(ChannelStockSyncOutboxRepository::class)->lockMapping((string) $mapping->id);
             $outbox = ChannelStockSyncOutbox::query()
                 ->where('product_channel_mapping_id', $mapping->id)
                 ->lockForUpdate()
@@ -55,7 +59,8 @@ class ChannelStockSyncOutboxService
                 'updated_at' => $now,
             ];
 
-            if ($resetAttempts && $outbox->status !== ChannelStockSyncOutbox::STATUS_DISPATCHING) {
+            if (($resetAttempts || $outbox->status === ChannelStockSyncOutbox::STATUS_SUCCEEDED)
+                && $outbox->status !== ChannelStockSyncOutbox::STATUS_DISPATCHING) {
                 $changes += [
                     'attempt_count' => 0,
                     'completed_at' => null,
@@ -284,6 +289,7 @@ class ChannelStockSyncOutboxService
             }
 
             if ($outbox->requested_version !== $version) {
+                $outbox->update(['attempt_count' => 0]);
                 $this->makePending($outbox, now());
 
                 return;
@@ -294,6 +300,7 @@ class ChannelStockSyncOutboxService
                 'sync_price' => false,
                 'status' => ChannelStockSyncOutbox::STATUS_SUCCEEDED,
                 'completed_version' => $version,
+                'attempt_count' => 0,
                 'completed_at' => now(),
                 'next_attempt_at' => null,
                 'lease_expires_at' => null,
@@ -446,6 +453,9 @@ class ChannelStockSyncOutboxService
         return ChannelStockSyncOutbox::query()
             ->where('status', ChannelStockSyncOutbox::STATUS_PENDING)
             ->whereColumn('requested_version', '<=', 'dispatched_version')
+            ->where(function ($query) use ($now): void {
+                $query->whereNull('next_attempt_at')->orWhere('next_attempt_at', '<=', $now);
+            })
             ->update([
 
                 'requested_version' => DB::raw('dispatched_version + 1'),

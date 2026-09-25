@@ -6,6 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Modules\Channel\Exceptions\ChannelOrderPullIncompleteException;
 use Modules\Channel\Jobs\ProcessShopeeWebhook;
 use Modules\Channel\Models\Channel;
@@ -14,6 +15,7 @@ use Modules\Channel\Services\ChannelDownloadService;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\ShopeeToInternalOrderMapper;
 use Modules\Channel\Tests\Support\SeedsCatalogVariant;
+use Modules\Sales\Jobs\SyncOrderFinanceJob;
 use Modules\Sales\Models\SalesOrder;
 use Tests\TestCase;
 
@@ -25,6 +27,8 @@ class ShopeeOrderSyncTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        Http::preventStrayRequests();
+        Cache::put('shopee:shipping_channel_types:v2:778899', [], 3600);
 
         $this->seedCatalogVariant('SKU-TAS');
 
@@ -365,6 +369,39 @@ class ShopeeOrderSyncTest extends TestCase
         );
 
         $this->assertNotNull(SalesOrder::where('salesorder_no', 'SP-2606SHOPEE01')->first());
+    }
+
+    public function test_critical_refresh_defers_finance_without_an_inline_escrow_request(): void
+    {
+        Queue::fake();
+        Http::preventStrayRequests();
+        Http::fake([
+            'partner.shopeemobile.com/api/v2/order/get_order_detail*' => Http::response([
+                'response' => ['order_list' => [$this->orderDetail(['order_status' => 'READY_TO_SHIP'])]],
+            ]),
+        ]);
+
+        $this->assertSame(1, app(ShopeeOrderService::class)->pullOrderById('778899', '2606SHOPEE01', deferFinance: true));
+        $order = SalesOrder::where('channel_order_no', '2606SHOPEE01')->firstOrFail();
+        $this->assertTrue((bool) $order->is_paid);
+        Http::assertNotSent(fn ($request): bool => str_contains($request->url(), 'get_escrow_detail'));
+        Queue::assertPushed(SyncOrderFinanceJob::class);
+    }
+
+    public function test_numeric_sku_and_listing_ids_remain_text_in_postgresql_queries(): void
+    {
+        Queue::fake();
+        $this->seedCatalogVariant('123456');
+        $detail = $this->orderDetail();
+        $detail['item_list'][0]['model_sku'] = '123456';
+        Http::fake([
+            'partner.shopeemobile.com/api/v2/order/get_order_detail*' => Http::response([
+                'response' => ['order_list' => [$detail]],
+            ]),
+        ]);
+
+        $this->assertSame(1, app(ShopeeOrderService::class)->pullOrderById('778899', '2606SHOPEE01', deferFinance: true));
+        $this->assertDatabaseHas('sales_order_items', ['sku' => '123456', 'channel_product_id' => '555100']);
     }
 
     public function test_single_pull_quarantines_order_when_sku_is_not_downloaded(): void

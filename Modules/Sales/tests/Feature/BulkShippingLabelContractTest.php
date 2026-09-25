@@ -11,12 +11,14 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Mockery;
 use Modules\Channel\Services\ShopeeOrderService;
+use Modules\Sales\Jobs\PrepareBulkShopeeShippingLabelsJob;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelItemJob;
 use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\BulkShippingLabelService;
 use Modules\Sales\Services\SalesOrderService;
+use Modules\Warehouse\Models\Location;
 use Tests\TestCase;
 
 class BulkShippingLabelContractTest extends TestCase
@@ -32,6 +34,105 @@ class BulkShippingLabelContractTest extends TestCase
         Storage::fake('documents');
         Storage::fake('print_spool');
         $this->user = User::factory()->create();
+    }
+
+    public function test_identical_active_request_reuses_batch_but_changed_options_do_not(): void
+    {
+        Queue::fake();
+        [$batch, $order] = $this->seedBatch('lazada');
+        $service = app(BulkShippingLabelService::class);
+        $same = $service->createBatch($this->user, [$order->id], $batch->per_channel_opts);
+        $this->assertSame($batch->id, $same->id);
+        $different = $service->createBatch($this->user, [$order->id], ['document_size' => BulkShippingLabelService::SIZE_100X150]);
+        $this->assertNotSame($batch->id, $different->id);
+        $otherUser = $service->createBatch(User::factory()->create(), [$order->id], $batch->per_channel_opts);
+        $this->assertNotSame($batch->id, $otherUser->id);
+    }
+
+    public function test_rejoining_active_request_does_not_reset_an_in_progress_download(): void
+    {
+        Queue::fake();
+        [$batch, $order] = $this->seedBatch('lazada');
+        $item = $batch->items()->firstOrFail();
+        $item->update(['status' => BulkShippingLabelItem::STATUS_DOWNLOADING]);
+        $same = app(BulkShippingLabelService::class)->createBatch($this->user, [$order->id], $batch->per_channel_opts);
+        $this->assertSame($batch->id, $same->id);
+        $this->assertSame(BulkShippingLabelItem::STATUS_DOWNLOADING, $item->fresh()->status);
+    }
+
+    public function test_changed_warehouse_scope_cannot_reuse_a_previously_authorized_batch(): void
+    {
+        Queue::fake();
+        $firstLocation = Location::factory()->create();
+        $otherLocation = Location::factory()->create();
+        $this->user->syncLocations([$firstLocation->id]);
+        $this->actingAs($this->user);
+        $order = SalesOrder::factory()->create(['source' => 'lazada', 'tracking_number' => 'AWB-SCOPE', 'location_id' => $firstLocation->id]);
+        $service = app(BulkShippingLabelService::class);
+        $first = $service->createBatch($this->user, [$order->id], []);
+        $this->user->syncLocations([$otherLocation->id]);
+        $second = $service->createBatch($this->user, [$order->id], []);
+        $this->assertNotSame($first->id, $second->id);
+        $this->assertSame(BulkShippingLabelItem::STATUS_FAILED, $second->items()->firstOrFail()->status);
+    }
+
+    public function test_transient_job_exception_restores_pending_and_can_retry(): void
+    {
+        Queue::fake();
+        [$batch, $order] = $this->seedBatch('lazada');
+        $item = $batch->items()->firstOrFail();
+        $calls = 0;
+        $service = Mockery::mock(BulkShippingLabelService::class);
+        $service->shouldReceive('processPendingItem')->andReturnUsing(function () use (&$calls): bool {
+            if (++$calls === 1) {
+                throw new \RuntimeException('Temporary connection failure');
+            }
+
+            return true;
+        });
+        $service->shouldReceive('tryFinalize')->once();
+        try {
+            (new ProcessBulkShippingLabelItemJob($batch->id, $item->id, $order->id, 'lazada'))->handle($service);
+            $this->fail('Expected transient exception');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('Temporary connection failure', $exception->getMessage());
+        }
+        $this->assertSame(BulkShippingLabelItem::STATUS_PENDING, $item->fresh()->status);
+        (new ProcessBulkShippingLabelItemJob($batch->id, $item->id, $order->id, 'lazada'))->handle($service);
+        $this->assertSame(2, $calls);
+    }
+
+    public function test_redelivered_job_reclaims_downloading_after_worker_died(): void
+    {
+        Queue::fake();
+        [$batch, $order] = $this->seedBatch('lazada');
+        $item = $batch->items()->firstOrFail();
+        $item->update(['status' => BulkShippingLabelItem::STATUS_DOWNLOADING]);
+        $service = Mockery::mock(BulkShippingLabelService::class);
+        $service->shouldReceive('processPendingItem')->once()->andReturnTrue();
+        $service->shouldReceive('tryFinalize')->once();
+        (new ProcessBulkShippingLabelItemJob($batch->id, $item->id, $order->id, 'lazada'))->handle($service);
+        $this->assertSame(BulkShippingLabelItem::STATUS_DOWNLOADING, $item->fresh()->status);
+    }
+
+    public function test_exception_after_completion_does_not_reopen_ready_item(): void
+    {
+        Queue::fake();
+        [$batch, $order] = $this->seedBatch('lazada');
+        $item = $batch->items()->firstOrFail();
+        $service = Mockery::mock(BulkShippingLabelService::class);
+        $service->shouldReceive('processPendingItem')->once()->andReturnUsing(function () use ($item): bool {
+            $item->update(['status' => BulkShippingLabelItem::STATUS_READY]);
+            throw new \RuntimeException('Notification unavailable');
+        });
+        try {
+            (new ProcessBulkShippingLabelItemJob($batch->id, $item->id, $order->id, 'lazada'))->handle($service);
+            $this->fail('Expected notification failure');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('Notification unavailable', $exception->getMessage());
+        }
+        $this->assertSame(BulkShippingLabelItem::STATUS_READY, $item->fresh()->status);
+        (new ProcessBulkShippingLabelItemJob($batch->id, $item->id, $order->id, 'lazada'))->handle($service);
     }
 
     private function fakeLabelService(array $returnShape): BulkShippingLabelService
@@ -242,6 +343,7 @@ class BulkShippingLabelContractTest extends TestCase
     public function test_queued_shopee_batch_creates_and_checks_documents_in_bulk(): void
     {
         Queue::fake();
+        config(['bulk-labels.async_shopee_preparation' => true]);
 
         $first = SalesOrder::factory()->create([
             'source' => 'shopee',
@@ -301,6 +403,11 @@ class BulkShippingLabelContractTest extends TestCase
         $this->app->instance(ShopeeOrderService::class, $shopee);
 
         app(BulkShippingLabelService::class)->processQueuedBatch($batch);
+
+        Queue::assertPushed(PrepareBulkShopeeShippingLabelsJob::class, 1);
+        $preparation = Queue::pushed(PrepareBulkShopeeShippingLabelsJob::class)->first();
+        $this->assertSame(config('queue.names.label_download_shopee'), $preparation->queue);
+        $preparation->handle(app(BulkShippingLabelService::class));
 
         $this->assertSame('preparing', $first->refresh()->shipping_label_status);
         $this->assertSame('preparing', $second->refresh()->shipping_label_status);

@@ -30,3 +30,6 @@ graphify/
 # Override compose per-server (berisi password DB) — hanya ada di VPS, jangan commit
 docker-compose.prod-local.yml
 
+# Offline capacity test artifacts can be large and contain synthetic payloads.
+/flash-sale-results/
+/scripts/__pycache__/

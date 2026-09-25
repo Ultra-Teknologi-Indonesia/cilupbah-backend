@@ -14,6 +14,22 @@ class MonitorRedisQueueHealthTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_monitor_in_an_intake_pod_also_checks_other_profiles_on_the_legacy_alias(): void
+    {
+        config(['horizon.defaults' => [], 'horizon.queue_health_supervisors' => [
+            'stock-profile' => ['connection' => 'redis', 'queue' => ['stock-default']],
+            'labels-profile' => ['connection' => 'redis-label-download', 'queue' => ['label-download-shopee']],
+        ], 'queue.connections.redis.connection' => 'queue_legacy']);
+        $redis = Mockery::mock();
+        $redis->shouldReceive('llen')->once()->with('queues:stock-default')->andReturn(0);
+        $redis->shouldReceive('zcard')->twice()->andReturn(0);
+        $redis->shouldReceive('lindex')->once()->andReturnNull();
+        $method = new \ReflectionMethod(MonitorRedisQueueHealth::class, 'monitorQueueDepths');
+        $snapshot = $method->invoke(app(MonitorRedisQueueHealth::class), $redis, 'queue_legacy', 'queue');
+        $this->assertArrayHasKey('stock-default', $snapshot);
+        $this->assertArrayNotHasKey('label-download-shopee', $snapshot);
+    }
+
     public function test_logs_historical_redis_evictions_once_without_repeating_alerts(): void
     {
         Log::spy();

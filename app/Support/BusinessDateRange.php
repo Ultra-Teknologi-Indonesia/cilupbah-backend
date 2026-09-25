@@ -13,13 +13,6 @@ final class BusinessDateRange
         return (string) config('app.business_timezone', 'Asia/Jakarta');
     }
 
-    /**
-     * Return today's calendar date in the business timezone.
-     *
-     * Date-only request defaults must not use the PHP process timezone (which
-     * may be UTC in production), otherwise a late-night WIB request can be
-     * assigned to the previous calendar day.
-     */
     public static function today(): string
     {
         return CarbonImmutable::now(self::timezone())->toDateString();

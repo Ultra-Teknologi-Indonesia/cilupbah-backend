@@ -243,6 +243,11 @@ jobs:
             }
             pull_image
 
+            # Additive schema must exist before the new app/worker image serves
+            # requests. A migration failure keeps the running release intact.
+            docker compose -p "$COMPOSE_PROJECT" -f "$COMPOSE_FILE" run --rm \
+              --entrypoint php app artisan migrate --force
+
             # 5. Restart container dengan image baru
             docker compose -p "$COMPOSE_PROJECT" -f "$COMPOSE_FILE" up -d --remove-orphans
 
@@ -255,9 +260,6 @@ jobs:
             sleep 20
             docker exec cilupbah-staging php artisan view:cache
             sleep 20
-
-            # 7. Jalankan Migrasi Database
-            docker exec cilupbah-staging php artisan migrate --force
 
             # 8. Cek & Jalankan Seeder (opsional berdasarkan file changes)
             HAS_SEEDER_CHANGE=$(git diff --name-only "$PREVIOUS_COMMIT" "$CURRENT_COMMIT" | grep -ci '/seeders/' || true)

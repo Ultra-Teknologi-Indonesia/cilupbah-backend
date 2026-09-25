@@ -2,6 +2,9 @@
 
 return [
 
+    // Enable after every label worker runs the image containing the new job.
+    'async_shopee_preparation' => (bool) env('LABEL_ASYNC_SHOPEE_PREPARATION', false),
+
     'local_first' => (bool) env('LABEL_LOCAL_FIRST', true),
     'spool_disk' => env('LABEL_PRINT_SPOOL_DISK', 'print_spool'),
     'archive_disk' => env('LABEL_PRINT_ARCHIVE_DISK', 'documents'),

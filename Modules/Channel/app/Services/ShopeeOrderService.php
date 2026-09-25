@@ -200,7 +200,7 @@ class ShopeeOrderService
         return new OrderPullPageResult($count, true);
     }
 
-    public function pullOrderById(string $shopId, string $orderSn): int
+    public function pullOrderById(string $shopId, string $orderSn, bool $deferFinance = false): int
     {
         $shop = $this->requireShop($shopId);
 
@@ -226,14 +226,17 @@ class ShopeeOrderService
             return 0;
         }
 
-        try {
-            $escrowRaw = $this->getEscrowDetail($shopId, $orderSn);
-            if (! empty($escrowRaw)) {
-                $finance = app(ShopeeEscrowMapper::class)->map($escrowRaw);
-                $this->orderService->updateOrderFinance($orderId, $finance);
+        // upsertFromChannel already persists/schedules eligible finance work.
+        // Webhook workers must not make the same API call a second time inline.
+        if (! $deferFinance) {
+            try {
+                $escrowRaw = $this->getEscrowDetail($shopId, $orderSn);
+                if (! empty($escrowRaw)) {
+                    $finance = app(ShopeeEscrowMapper::class)->map($escrowRaw);
+                    $this->orderService->updateOrderFinance($orderId, $finance);
+                }
+            } catch (\Throwable $e) {
             }
-        } catch (\Throwable $e) {
-
         }
 
         $this->shopRepository->markIntegrationHealthy($shop->id);

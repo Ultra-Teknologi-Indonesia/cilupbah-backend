@@ -27,7 +27,7 @@ final class ChannelOrderRefreshService
         }
 
         $pulled = match (strtolower($channel)) {
-            'shopee' => $this->shopee->pullOrderById($shopId, $orderId),
+            'shopee' => $this->shopee->pullOrderById($shopId, $orderId, deferFinance: true),
             'tiktok' => $this->tiktok->pullOrderById($shopId, $orderId),
             'lazada' => $this->lazada->pullOrderById($shopId, $orderId),
             'woocommerce' => $this->woocommerce->pullOrderById($shopId, $orderId),

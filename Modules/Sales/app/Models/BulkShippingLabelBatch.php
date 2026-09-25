@@ -28,6 +28,7 @@ class BulkShippingLabelBatch extends Model
 
     protected $fillable = [
         'user_id',
+        'request_key',
         'status',
         'per_channel_opts',
         'total_count',

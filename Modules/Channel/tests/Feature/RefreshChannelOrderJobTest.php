@@ -52,7 +52,7 @@ final class RefreshChannelOrderJobTest extends TestCase
         $shopee = \Mockery::mock(ShopeeOrderService::class);
         $shopee->shouldReceive('pullOrderById')
             ->once()
-            ->with('SHOP-1', 'ORDER-1')
+            ->with('SHOP-1', 'ORDER-1', true)
             ->andReturn(1);
 
         $orders = new ChannelOrderRefreshService(
@@ -137,7 +137,7 @@ final class RefreshChannelOrderJobTest extends TestCase
         $shopee = \Mockery::mock(ShopeeOrderService::class);
         $shopee->shouldReceive('pullOrderById')
             ->once()
-            ->with('SHOP-1', 'ORDER-1')
+            ->with('SHOP-1', 'ORDER-1', true)
             ->andReturn(1);
 
         $orders = new ChannelOrderRefreshService(

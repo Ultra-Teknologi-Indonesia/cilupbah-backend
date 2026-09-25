@@ -40,12 +40,14 @@ class ProcessBulkShippingLabelItemJob implements ShouldBeUniqueUntilProcessing, 
         public readonly ?string $channel = null,
     ) {
         $this->retryDeadline = now()->addMinutes(15);
-        $this->onConnection(config('queue.routing.labels.connection', 'redis-long'));
         $resolvedChannel = strtolower(trim((string) ($channel ?: (
             Str::isUuid($itemId)
                 ? BulkShippingLabelItem::query()->whereKey($itemId)->value('channel')
                 : null
         ))));
+        $this->onConnection(ChannelQueue::isSupported($resolvedChannel)
+            ? config('queue.routing.label_download.connection', 'redis-label-download')
+            : config('queue.routing.labels.connection', 'redis-long'));
         $this->onQueue(
             ChannelQueue::isSupported($resolvedChannel)
                 ? ChannelQueue::for($resolvedChannel, 'label_download')
@@ -76,7 +78,7 @@ class ProcessBulkShippingLabelItemJob implements ShouldBeUniqueUntilProcessing, 
         $pendingItem = BulkShippingLabelItem::query()
             ->whereKey($this->itemId)
             ->where('batch_id', $this->batchId)
-            ->where('status', BulkShippingLabelItem::STATUS_PENDING)
+            ->whereIn('status', [BulkShippingLabelItem::STATUS_PENDING, BulkShippingLabelItem::STATUS_DOWNLOADING])
             ->first();
 
         if (! $pendingItem) {
@@ -95,7 +97,7 @@ class ProcessBulkShippingLabelItemJob implements ShouldBeUniqueUntilProcessing, 
             $item = BulkShippingLabelItem::query()
                 ->whereKey($this->itemId)
                 ->where('batch_id', $this->batchId)
-                ->where('status', BulkShippingLabelItem::STATUS_PENDING)
+                ->whereIn('status', [BulkShippingLabelItem::STATUS_PENDING, BulkShippingLabelItem::STATUS_DOWNLOADING])
                 ->first();
 
             if (! $item) {
@@ -104,7 +106,7 @@ class ProcessBulkShippingLabelItemJob implements ShouldBeUniqueUntilProcessing, 
 
             $claimed = BulkShippingLabelItem::query()
                 ->whereKey($item->id)
-                ->where('status', BulkShippingLabelItem::STATUS_PENDING)
+                ->whereIn('status', [BulkShippingLabelItem::STATUS_PENDING, BulkShippingLabelItem::STATUS_DOWNLOADING])
                 ->update([
                     'status' => BulkShippingLabelItem::STATUS_DOWNLOADING,
                     'updated_at' => now(),
@@ -132,6 +134,15 @@ class ProcessBulkShippingLabelItemJob implements ShouldBeUniqueUntilProcessing, 
             }
             $batch->recomputeCounts();
             $service->tryFinalize($batch);
+        } catch (Throwable $exception) {
+            // Only undo this job's claim, never a ready/waiting/transforming
+            // transition published concurrently by a preparation callback.
+            BulkShippingLabelItem::query()
+                ->whereKey($this->itemId)
+                ->where('batch_id', $this->batchId)
+                ->where('status', BulkShippingLabelItem::STATUS_DOWNLOADING)
+                ->update(['status' => BulkShippingLabelItem::STATUS_PENDING, 'updated_at' => now()]);
+            throw $exception;
         } finally {
             $lock->release();
         }

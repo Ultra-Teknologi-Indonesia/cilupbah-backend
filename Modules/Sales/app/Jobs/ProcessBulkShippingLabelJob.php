@@ -3,6 +3,7 @@
 namespace Modules\Sales\Jobs;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -12,7 +13,7 @@ use Modules\Sales\Models\BulkShippingLabelBatch;
 use Modules\Sales\Services\BulkShippingLabelService;
 use Throwable;
 
-class ProcessBulkShippingLabelJob implements ShouldQueue
+class ProcessBulkShippingLabelJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable;
     use InteractsWithQueue;
@@ -23,6 +24,13 @@ class ProcessBulkShippingLabelJob implements ShouldQueue
 
     public int $tries = 1;
 
+    public int $uniqueFor = 900;
+
+    public function uniqueId(): string
+    {
+        return $this->batchId;
+    }
+
     public function __construct(public string $batchId)
     {
         $this->onConnection(config('queue.routing.labels.connection', 'redis-long'));
@@ -32,7 +40,7 @@ class ProcessBulkShippingLabelJob implements ShouldQueue
     public function handle(BulkShippingLabelService $svc): void
     {
         $batch = BulkShippingLabelBatch::find($this->batchId);
-        if (! $batch) {
+        if (! $batch || $batch->status !== BulkShippingLabelBatch::STATUS_PROCESSING) {
             Log::warning('ProcessBulkShippingLabelJob: batch not found', ['batch_id' => $this->batchId]);
 
             return;

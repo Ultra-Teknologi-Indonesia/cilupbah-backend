@@ -26,6 +26,9 @@ spec:
         app: cilupbah-app
     spec:
       priorityClassName: cilupbah-online-critical
+      # Allow supervisord to stop PHP-FPM and Nginx as a process group.
+      # This prevents Kubernetes from escalating a normal rollout to SIGKILL.
+      terminationGracePeriodSeconds: 60
       securityContext:
         fsGroup: 33
         fsGroupChangePolicy: OnRootMismatch
