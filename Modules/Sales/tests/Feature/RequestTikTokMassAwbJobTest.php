@@ -17,6 +17,7 @@ use Modules\Sales\Models\ChannelOperationAttempt;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\BulkShippingLabelService;
 use Modules\Sales\Services\ShippingLabelPreparationDispatcher;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 final class RequestTikTokMassAwbJobTest extends TestCase
@@ -31,7 +32,19 @@ final class RequestTikTokMassAwbJobTest extends TestCase
         $this->assertSame($first->uniqueId(), $second->uniqueId());
     }
 
-    public function test_preflights_orders_then_ships_their_packages_in_one_request(): void
+    public static function preflightCases(): array
+    {
+        return [
+            'both ready' => ['ready', 2],
+            'missing order' => ['missing', 1],
+            'cancelled upstream' => ['cancelled', 1],
+            'batch unavailable' => ['unavailable', 0],
+            'cancelled locally during preflight' => ['local_cancel', 1],
+        ];
+    }
+
+    #[DataProvider('preflightCases')]
+    public function test_preflights_orders_then_ships_only_verified_packages_in_one_request(string $scenario, int $accepted): void
     {
         Queue::fake();
 
@@ -52,19 +65,45 @@ final class RequestTikTokMassAwbJobTest extends TestCase
         $second = $this->createOrder('TIKTOK-MASS-B', 'PKG-B');
 
         $tiktok = Mockery::mock(TikTokOrderService::class);
-        $tiktok->shouldReceive('getOrderFulfillmentSnapshot')
-            ->twice()
-            ->andReturn(
-                $this->snapshot('PKG-A'),
-                $this->snapshot('PKG-B'),
-            );
-        $tiktok->shouldReceive('requestTrackingNumbersMass')
+        $tiktok->shouldNotReceive('getOrderFulfillmentSnapshot');
+        $tiktok->shouldReceive('getOrderFulfillmentSnapshots')
             ->once()
-            ->with('SHOP-TIKTOK-MASS', ['PKG-A', 'PKG-B'])
-            ->andReturn([
-                ['package_id' => 'PKG-A', 'shipped' => true],
-                ['package_id' => 'PKG-B', 'shipped' => true],
-            ]);
+            ->withArgs(fn ($shop, array $ids): bool => $shop->shop_id === 'SHOP-TIKTOK-MASS'
+                && count($ids) === 2 && in_array('TIKTOK-MASS-A', $ids, true) && in_array('TIKTOK-MASS-B', $ids, true))
+            ->andReturnUsing(function () use ($scenario, $second): array {
+                if ($scenario === 'unavailable') {
+                    throw new \RuntimeException('Channel unavailable');
+                }
+                if ($scenario === 'local_cancel') {
+                    $second->forceFill(['status' => 'cancelled', 'channel_status' => 'CANCELLED'])->save();
+                }
+
+                // Deliberately reverse the response order; matching must use order IDs.
+                return match ($scenario) {
+                    'missing' => ['TIKTOK-MASS-A' => $this->snapshot('PKG-A')],
+                    'cancelled' => [
+                        'TIKTOK-MASS-B' => ['order_found' => true, 'status' => 'CANCELLED', 'packages' => []],
+                        'TIKTOK-MASS-A' => $this->snapshot('PKG-A'),
+                    ],
+                    default => [
+                        'TIKTOK-MASS-B' => $this->snapshot('PKG-B'),
+                        'TIKTOK-MASS-A' => $this->snapshot('PKG-A'),
+                    ],
+                };
+            });
+        if ($accepted > 0) {
+            $expectedPackages = $accepted === 2 ? ['PKG-A', 'PKG-B'] : ['PKG-A'];
+            $tiktok->shouldReceive('requestTrackingNumbersMass')
+                ->once()
+                ->withArgs(function (string $shopId, array $packages) use ($expectedPackages): bool {
+                    sort($packages);
+
+                    return $shopId === 'SHOP-TIKTOK-MASS' && $packages === $expectedPackages;
+                })
+                ->andReturn(array_map(static fn (string $id): array => ['package_id' => $id, 'shipped' => true], $expectedPackages));
+        } else {
+            $tiktok->shouldNotReceive('requestTrackingNumbersMass');
+        }
 
         (new RequestTikTokMassAwbJob(
             'BATCH-MASS',
@@ -77,7 +116,7 @@ final class RequestTikTokMassAwbJobTest extends TestCase
             app(ShippingLabelPreparationDispatcher::class),
         );
 
-        $this->assertSame(2, ChannelOperationAttempt::query()
+        $this->assertSame($accepted, ChannelOperationAttempt::query()
             ->where('operation', 'request_awb')
             ->where('status', ChannelOperationAttempt::STATUS_ACCEPTED)
             ->count());
@@ -85,7 +124,7 @@ final class RequestTikTokMassAwbJobTest extends TestCase
             RequestChannelAwbJob::class,
             fn (RequestChannelAwbJob $job): bool => $job->verificationOnly && $job->trackingAttempt === 1,
         );
-        Queue::assertPushed(RequestChannelAwbJob::class, 2);
+        Queue::assertPushed(RequestChannelAwbJob::class, $scenario === 'local_cancel' ? 1 : 2);
     }
 
     private function createOrder(string $channelOrderNo, string $packageId): SalesOrder

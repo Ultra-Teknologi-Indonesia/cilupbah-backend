@@ -986,7 +986,62 @@ class TikTokOrderService
             $shop->access_token,
         );
 
-        $order = $res['data']['orders'][0] ?? null;
+        return $this->fulfillmentSnapshotFromOrder($shop, $orderId, $res['data']['orders'][0] ?? null);
+    }
+
+    /**
+     * Batch preflight only: missing/unreadable orders must be verified separately.
+     * Do not fan out into document/package API calls while preparing a mass shipment.
+     *
+     * @param  array<string>  $orderIds
+     * @return array<string, array>
+     */
+    public function getOrderFulfillmentSnapshots(object $shop, array $orderIds): array
+    {
+        $orderIds = array_values(array_unique(array_filter(array_map('strval', $orderIds),
+            static fn (string $id): bool => trim($id) !== '',
+        )));
+        $snapshots = [];
+
+        foreach (array_chunk($orderIds, 50) as $chunk) {
+            try {
+                $res = $this->client->request(
+                    'GET',
+                    '/order/202309/orders',
+                    ['shop_cipher' => $shop->shop_cipher ?? '', 'ids' => implode(',', $chunk)],
+                    [],
+                    $shop->access_token,
+                );
+
+                foreach ($res['data']['orders'] ?? [] as $order) {
+                    // TikTok's current contract uses `id`; accept the legacy
+                    // `order_id` alias as well so a versioned response cannot
+                    // silently turn a real order into a missing preflight.
+                    $orderId = (string) ($order['id'] ?? $order['order_id'] ?? '');
+                    if (! in_array($orderId, $chunk, true)) {
+                        continue;
+                    }
+
+                    $snapshots[$orderId] = $this->fulfillmentSnapshotFromOrder($shop, $orderId, $order, false);
+                }
+            } catch (\Throwable $exception) {
+                Log::warning('TikTok: batch preflight gagal; order perlu verifikasi baca-saja.', [
+                    'shop_id' => $shop->shop_id ?? null,
+                    'order_count' => count($chunk),
+                    'exception' => $exception->getMessage(),
+                ]);
+            }
+        }
+
+        return $snapshots;
+    }
+
+    private function fulfillmentSnapshotFromOrder(
+        object $shop,
+        string $orderId,
+        ?array $order,
+        bool $hydrateTracking = true,
+    ): array {
         if (! is_array($order)) {
             return [
                 'order_found' => false,
@@ -1011,7 +1066,7 @@ class TikTokOrderService
         }, $order['packages'] ?? []));
 
         $orderStatus = isset($order['status']) ? (string) $order['status'] : null;
-        if ($this->isOrderAlreadyShipped(strtoupper((string) $orderStatus))) {
+        if ($hydrateTracking && $this->isOrderAlreadyShipped(strtoupper((string) $orderStatus))) {
             $packages = $this->hydrateTrackingFromShippingDocuments($shop, $packages, $orderId);
             $packages = $this->hydrateTrackingFromPackageDetails($shop, $packages, $orderId);
         }

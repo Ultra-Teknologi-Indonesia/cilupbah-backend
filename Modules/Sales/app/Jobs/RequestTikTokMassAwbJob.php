@@ -81,7 +81,7 @@ final class RequestTikTokMassAwbJob implements ShouldBeUnique, ShouldQueue
             ->get()
             ->values();
 
-        $entries = [];
+        $candidates = [];
         foreach ($orders as $order) {
             $fresh = ChannelOrderSideEffectGuard::active((string) $order->id, 'request_mass_awb');
             if ($fresh === null) {
@@ -100,13 +100,48 @@ final class RequestTikTokMassAwbJob implements ShouldBeUnique, ShouldQueue
                 continue;
             }
 
-            try {
-                $snapshot = $tiktok->getOrderFulfillmentSnapshot($shop, (string) $fresh->channel_order_no);
-            } catch (Throwable $exception) {
-                Log::warning('RequestTikTokMassAwbJob: preflight gagal; pindah ke verifikasi baca-saja.', [
-                    'order_id' => $fresh->id,
-                    'exception' => $exception->getMessage(),
-                ]);
+            $candidates[] = $fresh;
+        }
+
+        if ($candidates === []) {
+            return;
+        }
+
+        try {
+            $snapshots = $tiktok->getOrderFulfillmentSnapshots(
+                $shop,
+                array_map(static fn (SalesOrder $order): string => (string) $order->channel_order_no, $candidates),
+            );
+        } catch (Throwable $exception) {
+            Log::warning('RequestTikTokMassAwbJob: preflight batch gagal; pindah ke verifikasi baca-saja.', [
+                'batch_id' => $this->batchId,
+                'exception' => $exception->getMessage(),
+            ]);
+            $snapshots = [];
+        }
+
+        $entries = [];
+        foreach ($candidates as $order) {
+            // A webhook may cancel the order or persist its AWB during the batch request.
+            $fresh = ChannelOrderSideEffectGuard::active((string) $order->id, 'request_mass_awb');
+            if ($fresh === null) {
+                continue;
+            }
+
+            if (filled($fresh->tracking_number)) {
+                $this->completeOrder($fresh, (string) $fresh->tracking_number, $bulkLabels, $labelDispatcher);
+
+                continue;
+            }
+
+            if (ChannelFulfillmentGuard::blocks($fresh->channel_shop_id, 'ready_to_ship', $fresh->salesorder_no)) {
+                $bulkLabels->onOrderAwbGaveUp((string) $fresh->id, BulkShippingLabelItem::REASON_FULFILLMENT_DISABLED);
+
+                continue;
+            }
+
+            $snapshot = $snapshots[(string) $fresh->channel_order_no] ?? null;
+            if (! ($snapshot['order_found'] ?? false)) {
                 $this->dispatchVerification($fresh);
 
                 continue;

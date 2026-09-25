@@ -53,6 +53,82 @@ class TikTokOrderOpsTest extends TestCase
         ]);
     }
 
+    public function test_batch_preflight_matches_ids_and_does_not_fetch_documents_for_shipped_orders(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            self::BASE.'/order/202309/orders*' => Http::response([
+                'code' => 0,
+                'data' => ['orders' => [
+                    ['id' => 'B', 'status' => 'AWAITING_COLLECTION', 'packages' => [['id' => 'PKG-B']]],
+                    ['id' => 'A', 'status' => 'AWAITING_SHIPMENT', 'packages' => [['id' => 'PKG-A']]],
+                    ['id' => 'UNREQUESTED', 'status' => 'AWAITING_SHIPMENT', 'packages' => []],
+                ]],
+            ]),
+        ]);
+
+        $snapshots = app(TikTokOrderService::class)->getOrderFulfillmentSnapshots($this->shop, ['A', 'B', 'MISSING', 'A', '']);
+
+        $this->assertCount(2, $snapshots);
+        $this->assertSame('PKG-A', $snapshots['A']['packages'][0]['id']);
+        $this->assertSame('AWAITING_COLLECTION', $snapshots['B']['status']);
+        $this->assertNull($snapshots['B']['tracking_number']);
+        $this->assertArrayNotHasKey('MISSING', $snapshots);
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($request): bool => $request->method() === 'GET' && $request['ids'] === 'A,B,MISSING');
+    }
+
+    public function test_batch_preflight_chunks_at_fifty_orders(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            self::BASE.'/order/202309/orders*' => function ($request) {
+                return Http::response(['code' => 0, 'data' => ['orders' => array_map(
+                    static fn (string $id): array => ['id' => $id, 'status' => 'AWAITING_SHIPMENT', 'packages' => []],
+                    explode(',', $request['ids']),
+                )]]);
+            },
+        ]);
+
+        $ids = array_map(static fn (int $id): string => 'ORDER-'.$id, range(1, 51));
+        $snapshots = app(TikTokOrderService::class)->getOrderFulfillmentSnapshots($this->shop, $ids);
+
+        $this->assertCount(51, $snapshots);
+        Http::assertSentCount(2);
+        Http::assertSent(fn ($request): bool => count(explode(',', $request['ids'])) === 50);
+        Http::assertSent(fn ($request): bool => $request['ids'] === 'ORDER-51');
+    }
+
+    public function test_batch_preflight_continues_after_an_unreadable_chunk(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            self::BASE.'/order/202309/orders*' => function ($request) {
+                if ($request['ids'] !== 'ORDER-51') {
+                    throw new \RuntimeException('Preflight temporarily unavailable');
+                }
+
+                return Http::response(['code' => 0, 'data' => ['orders' => [
+                    ['id' => 'ORDER-51', 'status' => 'AWAITING_SHIPMENT', 'packages' => []],
+                ]]]);
+            },
+        ]);
+
+        $ids = array_map(static fn (int $id): string => 'ORDER-'.$id, range(1, 51));
+        $snapshots = app(TikTokOrderService::class)->getOrderFulfillmentSnapshots($this->shop, $ids);
+
+        $this->assertSame(['ORDER-51'], array_keys($snapshots));
+    }
+
+    public function test_empty_batch_preflight_does_not_call_channel(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake();
+
+        $this->assertSame([], app(TikTokOrderService::class)->getOrderFulfillmentSnapshots($this->shop, []));
+        Http::assertNothingSent();
+    }
+
     public function test_fetch_return_detail_parses_tiktok_money_objects(): void
     {
         $returnId = '4041827037794371092';
