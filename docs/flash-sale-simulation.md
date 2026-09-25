@@ -54,6 +54,50 @@ python3 scripts/flash-sale-test audit \
 
 Hasil tersimpan di `flash-sale-results/<timestamp>/source-audit.json`. Periksa khususnya `effective.workers`, `effective.routing`, `effective.backpressure`, `node_metrics`, dan limit worker.
 
+### Perintah langsung dari server Kubernetes
+
+Jika source code repository sudah ada di host `deploy`, gunakan wrapper berikut.
+Wrapper membaca image yang sedang dipakai `cilupbah-app` dan node production
+secara otomatis, lalu meneruskan pekerjaan ke harness yang membuat namespace
+`cilupbah-sim-*`. Ia tidak pernah mengubah namespace `cilupbah`.
+
+```bash
+cd /path/ke/cilupbah-be
+chmod +x scripts/flash-sale-kubectl
+./scripts/flash-sale-kubectl audit
+```
+
+Untuk mulai smoke test baru (1.000 target untuk masing-masing order, AWB,
+label, dan push stok), jalankan setelah audit:
+
+```bash
+cd /path/ke/cilupbah-be
+./scripts/flash-sale-kubectl run \
+  --namespace "cilupbah-sim-smoke-$(date +%Y%m%d-%H%M%S)" \
+  --count 1000 \
+  --seconds 600 \
+  --drain-seconds 1800 \
+  --shops 20 \
+  --skus 100 \
+  --bulk 100 \
+  --producers 4 \
+  --pull-secret ghcr-creds \
+  --ack-shared-node-risk
+```
+
+`--ack-shared-node-risk` wajib karena cluster saat ini memakai node yang sama
+untuk production dan simulasi. Untuk menguji tanpa membuat resource, ganti
+`run` menjadi `plan`. Untuk menghentikan test tanpa menghapus bukti, gunakan:
+
+```bash
+./scripts/flash-sale-kubectl stop \
+  --namespace cilupbah-sim-smoke-YYYYMMDD-HHMMSS
+```
+
+Perintah tersebut dijalankan dari host yang memiliki akses `kubectl`, bukan
+dari dalam pod aplikasi. API marketplace tidak dipanggil; traffic hanya menuju
+simulator lokal di namespace simulasi.
+
 ## Tahap 2 — buat rencana tanpa membuat resource
 
 Gunakan image aplikasi yang memang tersedia di registry cluster. Contoh:

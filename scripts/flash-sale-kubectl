@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# Run the isolated flash-sale harness from the Kubernetes administration host.
+# This wrapper deliberately reads the deployed production image and node; it
+# never executes the load against the production namespace.
+
+ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
+SOURCE_NAMESPACE="${SOURCE_NAMESPACE:-cilupbah}"
+OUTPUT_DIR="${OUTPUT_DIR:-flash-sale-results}"
+ACTION="${1:-run}"
+if [[ $# -gt 0 ]]; then
+  shift
+fi
+
+if ! command -v kubectl >/dev/null 2>&1; then
+  echo 'kubectl tidak ditemukan. Jalankan command ini di host administrasi K3s.' >&2
+  exit 2
+fi
+if ! command -v python3 >/dev/null 2>&1; then
+  echo 'python3 tidak ditemukan. Pasang Python 3 di host administrasi K3s.' >&2
+  exit 2
+fi
+
+case "$SOURCE_NAMESPACE" in
+  cilupbah) ;;
+  *)
+    echo "SOURCE_NAMESPACE harus cilupbah untuk mencegah salah target: $SOURCE_NAMESPACE" >&2
+    exit 2
+    ;;
+esac
+
+CONTEXT="$(kubectl config current-context)"
+if [[ -z "$CONTEXT" ]]; then
+  echo 'kubectl tidak memiliki current-context.' >&2
+  exit 2
+fi
+
+if ! kubectl --request-timeout=30s -n "$SOURCE_NAMESPACE" get deployment/cilupbah-app >/dev/null; then
+  echo "Deployment $SOURCE_NAMESPACE/cilupbah-app tidak ditemukan atau context tidak benar ($CONTEXT)." >&2
+  exit 2
+fi
+
+if [[ -z "${IMAGE:-}" ]]; then
+  IMAGE="$(kubectl --request-timeout=30s -n "$SOURCE_NAMESPACE" get deployment/cilupbah-app \
+    -o jsonpath='{.spec.template.spec.containers[?(@.name=="app")].image}')"
+fi
+if [[ -z "${NODE:-}" ]]; then
+  NODE="$(kubectl --request-timeout=30s -n "$SOURCE_NAMESPACE" get pods \
+    -l app=cilupbah-app -o jsonpath='{.items[0].spec.nodeName}')"
+fi
+
+if [[ -z "$IMAGE" || -z "$NODE" ]]; then
+  echo "Tidak dapat membaca image ($IMAGE) atau node ($NODE) dari deployment production." >&2
+  exit 2
+fi
+
+echo "Kubernetes context : $CONTEXT"
+echo "Source namespace   : $SOURCE_NAMESPACE"
+echo "Simulation image   : $IMAGE"
+echo "Simulation node    : $NODE"
+
+case "$ACTION" in
+  audit)
+    exec python3 scripts/flash-sale-test audit \
+      --source-namespace "$SOURCE_NAMESPACE" \
+      --output "$OUTPUT_DIR" \
+      "$@"
+    ;;
+  plan|run)
+    exec python3 scripts/flash-sale-test "$ACTION" \
+      --source-namespace "$SOURCE_NAMESPACE" \
+      --image "$IMAGE" \
+      --node "$NODE" \
+      --output "$OUTPUT_DIR" \
+      "$@"
+    ;;
+  stop|report)
+    exec python3 scripts/flash-sale-test "$ACTION" \
+      --source-namespace "$SOURCE_NAMESPACE" \
+      --output "$OUTPUT_DIR" \
+      "$@"
+    ;;
+  *)
+    cat >&2 <<'USAGE'
+Usage: scripts/flash-sale-kubectl {audit|plan|run|report|stop} [options]
+
+The command must run on the Kubernetes administration host. `plan` and `run`
+use the image currently deployed by cilupbah-app and always create/use only a
+new cilupbah-sim-* namespace. For `run` on the production node, explicitly add
+--ack-shared-node-risk after reviewing the resource contention risk.
+USAGE
+    exit 2
+    ;;
+esac
