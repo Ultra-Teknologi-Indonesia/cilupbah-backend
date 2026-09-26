@@ -31,6 +31,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('operations/order-audit', [OrderAuditController::class, 'lookup'])
         ->name('operations.order-audit.lookup')
         ->middleware(['role_or_permission:owner|view-pesanan', 'throttle:30,1']);
+    Route::get('operations/order-audit/report', [OrderAuditController::class, 'report'])
+        ->name('operations.order-audit.report')
+        ->middleware(['role_or_permission:owner|view-pesanan', 'throttle:30,1']);
     Route::post('operations/order-audit/replay', [OrderAuditController::class, 'replay'])
         ->name('operations.order-audit.replay')
         ->middleware(['role_or_permission:owner|edit-pesanan', 'throttle:10,1']);

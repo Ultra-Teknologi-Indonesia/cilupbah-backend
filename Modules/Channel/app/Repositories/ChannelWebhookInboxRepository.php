@@ -26,6 +26,8 @@ class ChannelWebhookInboxRepository
             'event_key' => $eventKey,
             'event_type' => $eventType,
             'channel_return_id' => ChannelWebhookReferenceExtractor::returnId($channel, $payload),
+            'order_reference' => ChannelWebhookReferenceExtractor::orderReference($channel, $payload),
+            'marketplace_status' => ChannelWebhookReferenceExtractor::marketplaceStatus($channel, $payload),
             'payload' => json_encode($payload),
             'status' => WebhookInboxStatus::RECEIVED->value,
             'attempts' => 0,
@@ -45,6 +47,8 @@ class ChannelWebhookInboxRepository
                     'processed_at' => null,
                     'next_attempt_at' => null,
                     'channel_return_id' => ChannelWebhookReferenceExtractor::returnId($channel, $payload),
+                    'order_reference' => ChannelWebhookReferenceExtractor::orderReference($channel, $payload),
+                    'marketplace_status' => ChannelWebhookReferenceExtractor::marketplaceStatus($channel, $payload),
                     'payload' => $payload,
                     'received_at' => $now,
                 ]);

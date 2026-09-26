@@ -5,14 +5,20 @@ declare(strict_types=1);
 namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Inventory\Http\Requests\OrderAuditReportRequest;
+use Modules\Inventory\Http\Resources\OrderAuditReportResource;
+use Modules\Inventory\Services\OrderAuditReportService;
 use Modules\Inventory\Services\OrderCutoverLookupService;
 use RuntimeException;
 
 final class OrderAuditController extends Controller
 {
+    use ApiResponse;
+
     public function shops(): JsonResponse
     {
         $shops = ChannelShop::query()
@@ -43,6 +49,23 @@ final class OrderAuditController extends Controller
         return $this->successResponse(
             $service->lookup((string) $validated['reference']),
             'Audit pesanan berhasil diambil.',
+        );
+    }
+
+    public function report(OrderAuditReportRequest $request, OrderAuditReportService $service): JsonResponse
+    {
+        $result = $service->paginate();
+
+        return $this->successResponse(
+            (new OrderAuditReportResource($result))->resolve($request),
+            'Audit pesanan berhasil diambil.',
+            200,
+            [
+                'current_page' => $result->paginator->currentPage(),
+                'last_page' => $result->paginator->lastPage(),
+                'per_page' => $result->paginator->perPage(),
+                'total' => $result->paginator->total(),
+            ],
         );
     }
 

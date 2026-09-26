@@ -64,4 +64,35 @@ final class OrderAuditApiTest extends TestCase
             ])
             ->assertForbidden();
     }
+
+    public function test_authorized_viewer_can_read_paginated_order_audit_report(): void
+    {
+        $viewer = User::factory()->create();
+        $viewer->givePermissionTo(Permission::create([
+            'name' => 'view-pesanan',
+            'guard_name' => 'web',
+        ]));
+
+        $this->actingAs($viewer, 'sanctum')
+            ->withHeader('X-Client-Channel', 'WEB')
+            ->getJson('/api/v1/operations/order-audit/report?filter[date_from]=2026-09-01&filter[date_to]=2026-09-26&per_page=20')
+            ->assertOk()
+            ->assertJsonStructure([
+                'status',
+                'message',
+                'data' => [
+                    'summary' => [
+                        'marketplace_total',
+                        'wms_total',
+                        'matched_total',
+                        'missing_total',
+                        'status_mismatch_total',
+                        'last_sync_at',
+                        'last_checked_at',
+                    ],
+                    'items',
+                ],
+                'meta' => ['current_page', 'last_page', 'per_page', 'total'],
+            ]);
+    }
 }
