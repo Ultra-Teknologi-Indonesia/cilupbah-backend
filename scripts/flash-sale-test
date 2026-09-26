@@ -369,8 +369,11 @@ def pod_request_memory(pod):
 
 
 def node_requested_memory(node_name):
+    # Scheduling capacity is node-wide. `kubectl get pods` without --all-namespaces
+    # silently reads only the caller's default namespace and can falsely report zero.
+    pods = json.loads(kubectl('get', 'pods', '--all-namespaces', '-o', 'json'))['items']
     total = 0
-    for pod in get('pods')['items']:
+    for pod in pods:
         if pod.get('spec', {}).get('nodeName') != node_name:
             continue
         if pod.get('metadata', {}).get('deletionTimestamp'):

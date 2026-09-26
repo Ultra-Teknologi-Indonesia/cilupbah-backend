@@ -1,5 +1,6 @@
 import importlib.machinery
 import importlib.util
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -128,6 +129,16 @@ class HarnessTest(unittest.TestCase):
             },
         }
         self.assertEqual(2 * 1024**3 + 16 * 1024**2, runner.pod_request_memory(pod))
+
+    def test_scheduler_memory_reads_every_namespace(self):
+        payload = {'items': [{
+            'metadata': {'namespace': 'cilupbah'},
+            'spec': {'nodeName': 'test-node', 'containers': [{'resources': {'requests': {'memory': '1Gi'}}}]},
+            'status': {'phase': 'Running'},
+        }]}
+        with patch.object(runner, 'kubectl', return_value=json.dumps(payload)) as kubectl:
+            self.assertEqual(1024**3, runner.node_requested_memory('test-node'))
+        kubectl.assert_called_once_with('get', 'pods', '--all-namespaces', '-o', 'json')
 
     def test_preflight_rejects_active_simulation_and_unschedulable_memory(self):
         args = SimpleNamespace(namespace='cilupbah-sim-test', image='test:latest', node='test-node',
