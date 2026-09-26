@@ -8,9 +8,11 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Mockery;
+use Modules\Channel\Exceptions\ShopeeApiException;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\ShopeeOrderService;
+use Modules\Channel\Support\ShopeeErrorCatalog;
 use Modules\Sales\Jobs\CollectShopeeLabelPreparationJob;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
 use Modules\Sales\Jobs\RequestChannelAwbJob;
@@ -141,6 +143,182 @@ final class RequestShopeeMassAwbJobTest extends TestCase
         Queue::assertNotPushed(RequestChannelAwbJob::class);
         Queue::assertNotPushed(PrepareShopeeShippingLabelJob::class);
         Queue::assertPushed(CollectShopeeLabelPreparationJob::class, 1);
+    }
+
+    public function test_verification_uses_saved_package_numbers_without_refetching_order_details(): void
+    {
+        Queue::fake();
+
+        $batch = BulkShippingLabelBatch::create([
+            'user_id' => User::factory()->create()->id,
+            'status' => BulkShippingLabelBatch::STATUS_PROCESSING,
+            'per_channel_opts' => [],
+            'total_count' => 1,
+            'done_count' => 0,
+            'failed_count' => 0,
+            'skipped_count' => 0,
+        ]);
+        $order = $this->createWaitingOrder($batch, 'ORDER-SAVED', 'PKG-SAVED');
+
+        $shopee = Mockery::mock(ShopeeOrderService::class);
+        $shopee->shouldNotReceive('resolveMassPackages');
+        $shopee->shouldNotReceive('massShipPackages');
+        $shopee->shouldReceive('getMassTrackingNumbers')
+            ->once()
+            ->with('SHOP-MASS-AWB', ['PKG-SAVED'])
+            ->andReturn(['results' => [
+                'PKG-SAVED' => ['tracking_number' => 'SPX-SAVED'],
+            ]]);
+        $this->app->instance(ShopeeOrderService::class, $shopee);
+
+        (new RequestShopeeMassAwbJob(
+            (string) $batch->id,
+            'SHOP-MASS-AWB',
+            [(string) $order->id],
+            1,
+            true,
+        ))->handle(
+            $shopee,
+            app(BulkShippingLabelService::class),
+            app(ShippingLabelPreparationDispatcher::class),
+        );
+
+        $this->assertSame('SPX-SAVED', $order->fresh()->tracking_number);
+        Queue::assertNotPushed(RequestChannelAwbJob::class);
+    }
+
+    public function test_local_admission_limit_retries_mass_ship_without_marking_it_uncertain(): void
+    {
+        Queue::fake();
+
+        $batch = BulkShippingLabelBatch::create([
+            'user_id' => User::factory()->create()->id,
+            'status' => BulkShippingLabelBatch::STATUS_PROCESSING,
+            'per_channel_opts' => [],
+            'total_count' => 2,
+            'done_count' => 0,
+            'failed_count' => 0,
+            'skipped_count' => 0,
+        ]);
+        $order = $this->createWaitingOrder($batch, 'ORDER-LIMIT', 'PKG-LIMIT');
+        $second = $this->createWaitingOrder($batch, 'ORDER-LIMIT-2', 'PKG-LIMIT-2');
+
+        $shopee = Mockery::mock(ShopeeOrderService::class);
+        $shopee->shouldReceive('resolveMassPackages')
+            ->once()
+            ->andReturn([
+                'ORDER-LIMIT' => [[
+                    'package_number' => 'PKG-LIMIT',
+                    'logistics_channel_id' => 8001,
+                ]],
+                'ORDER-LIMIT-2' => [[
+                    'package_number' => 'PKG-LIMIT-2',
+                    'logistics_channel_id' => 8001,
+                ]],
+            ]);
+        $massShipCalls = 0;
+        $shopee->shouldReceive('massShipPackages')
+            ->twice()
+            ->andReturnUsing(function () use (&$massShipCalls): array {
+                $massShipCalls++;
+                if ($massShipCalls === 1) {
+                    throw new ShopeeApiException(
+                        'local_rate_limit',
+                        ShopeeErrorCatalog::RETRYABLE,
+                        'Antrean akses Shopee sedang penuh.',
+                    );
+                }
+
+                return ['results' => [
+                    'PKG-LIMIT' => ['shipped' => true],
+                    'PKG-LIMIT-2' => ['shipped' => true],
+                ]];
+            });
+        $shopee->shouldReceive('getMassTrackingNumbers')
+            ->once()
+            ->andReturn(['results' => [
+                'PKG-LIMIT' => ['tracking_number' => 'SPX-LIMIT'],
+                'PKG-LIMIT-2' => ['tracking_number' => 'SPX-LIMIT-2'],
+            ]]);
+        $this->app->instance(ShopeeOrderService::class, $shopee);
+
+        $job = (new RequestShopeeMassAwbJob(
+            (string) $batch->id,
+            'SHOP-MASS-AWB',
+            [(string) $order->id, (string) $second->id],
+        ))->withFakeQueueInteractions();
+        $job->handle(
+            $shopee,
+            app(BulkShippingLabelService::class),
+            app(ShippingLabelPreparationDispatcher::class),
+        );
+
+        $this->assertSame(ChannelOperationAttempt::STATUS_RETRYABLE, ChannelOperationAttempt::query()
+            ->where('order_id', $order->id)
+            ->where('operation', 'request_awb')
+            ->value('status'));
+        $this->assertSame(ChannelOperationAttempt::STATUS_RETRYABLE, ChannelOperationAttempt::query()
+            ->where('order_id', $second->id)
+            ->where('operation', 'request_awb')
+            ->value('status'));
+        $job->assertReleased(2);
+        Queue::assertNotPushed(RequestShopeeMassAwbJob::class);
+
+        (new RequestShopeeMassAwbJob(
+            (string) $batch->id,
+            'SHOP-MASS-AWB',
+            [(string) $order->id, (string) $second->id],
+        ))->handle(
+            $shopee,
+            app(BulkShippingLabelService::class),
+            app(ShippingLabelPreparationDispatcher::class),
+        );
+
+        $this->assertSame('SPX-LIMIT', $order->fresh()->tracking_number);
+        $this->assertSame('SPX-LIMIT-2', $second->fresh()->tracking_number);
+    }
+
+    public function test_already_shipped_order_without_awb_is_polled_without_shipping_it_again(): void
+    {
+        Queue::fake();
+
+        $batch = BulkShippingLabelBatch::create([
+            'user_id' => User::factory()->create()->id,
+            'status' => BulkShippingLabelBatch::STATUS_PROCESSING,
+            'per_channel_opts' => [],
+            'total_count' => 1,
+            'done_count' => 0,
+            'failed_count' => 0,
+            'skipped_count' => 0,
+        ]);
+        $order = $this->createWaitingOrder($batch, 'ORDER-SHIPPED', 'PKG-SHIPPED');
+        $order->forceFill(['channel_status' => 'PROCESSED'])->saveQuietly();
+
+        $shopee = Mockery::mock(ShopeeOrderService::class);
+        $shopee->shouldReceive('resolveMassPackages')
+            ->once()
+            ->andReturn(['ORDER-SHIPPED' => [['package_number' => 'PKG-SHIPPED']]]);
+        $shopee->shouldReceive('getMassTrackingNumbers')
+            ->once()
+            ->with('SHOP-MASS-AWB', ['PKG-SHIPPED'])
+            ->andReturn(['results' => ['PKG-SHIPPED' => ['tracking_number' => null]]]);
+        $shopee->shouldNotReceive('massShipPackages');
+        $this->app->instance(ShopeeOrderService::class, $shopee);
+
+        (new RequestShopeeMassAwbJob(
+            (string) $batch->id,
+            'SHOP-MASS-AWB',
+            [(string) $order->id],
+        ))->handle(
+            $shopee,
+            app(BulkShippingLabelService::class),
+            app(ShippingLabelPreparationDispatcher::class),
+        );
+
+        Queue::assertPushed(RequestShopeeMassAwbJob::class, fn (RequestShopeeMassAwbJob $job): bool => $job->orderIds === [(string) $order->id]
+            && $job->trackingAttempt === 1
+            && $job->verificationOnly,
+        );
     }
 
     private function createWaitingOrder(

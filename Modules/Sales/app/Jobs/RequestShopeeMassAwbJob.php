@@ -11,7 +11,9 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Modules\Channel\Exceptions\ShopeeApiException;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Channel\Support\ChannelQueue;
@@ -28,13 +30,20 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 3;
+    public int $tries = 0;
 
     public array $backoff = [10, 30, 60];
 
     public int $timeout = 150;
 
-    public int $uniqueFor = 600;
+    public int $uniqueFor = 7200;
+
+    private bool $releasedForLocalRateLimit = false;
+
+    public function retryUntil(): \DateTimeInterface
+    {
+        return now()->addHours(2);
+    }
 
     public function __construct(
         public readonly string $batchId,
@@ -110,10 +119,77 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        $packagesByOrder = $shopee->resolveMassPackages(
-            $this->shopId,
-            $orders->pluck('channel_order_no')->map(static fn ($value): string => (string) $value)->all(),
-        );
+        $packagesByOrder = [];
+        $ordersWithoutPackages = $orders;
+        $alreadyShippedPending = collect();
+        if ($this->verificationOnly) {
+            $ordersWithoutPackages = $orders->filter(function (SalesOrder $order) use (&$packagesByOrder): bool {
+                $packageNumbers = array_values(array_unique(array_filter(array_map(
+                    static fn ($value): string => trim((string) $value),
+                    (array) $order->channel_package_ids,
+                ))));
+                if ($packageNumbers === []) {
+                    return true;
+                }
+
+                $packagesByOrder[(string) $order->channel_order_no] = array_map(
+                    static fn (string $packageNumber): array => ['package_number' => $packageNumber],
+                    $packageNumbers,
+                );
+
+                return false;
+            });
+        } else {
+            try {
+                $cached = Cache::get($this->massPackageCacheKey());
+            } catch (Throwable $exception) {
+                Log::warning('RequestShopeeMassAwbJob: snapshot paket tidak dapat dibaca; menggunakan data channel.', [
+                    'shop_id' => $this->shopId,
+                    'exception' => $exception->getMessage(),
+                ]);
+                $cached = null;
+            }
+            if (is_array($cached)) {
+                $ordersWithoutPackages = $orders->filter(function (SalesOrder $order) use (&$packagesByOrder, $cached): bool {
+                    $orderSn = (string) $order->channel_order_no;
+                    $packages = $cached[$orderSn] ?? null;
+                    if (! is_array($packages) || $packages === []) {
+                        return true;
+                    }
+
+                    $packagesByOrder[$orderSn] = $packages;
+
+                    return false;
+                });
+            }
+        }
+
+        if ($ordersWithoutPackages->isNotEmpty()) {
+            try {
+                $packagesByOrder += $shopee->resolveMassPackages(
+                    $this->shopId,
+                    $ordersWithoutPackages->pluck('channel_order_no')->map(static fn ($value): string => (string) $value)->all(),
+                );
+                if (! $this->verificationOnly && $packagesByOrder !== []) {
+                    try {
+                        Cache::put($this->massPackageCacheKey(), $packagesByOrder, now()->addMinutes(2));
+                    } catch (Throwable $exception) {
+                        Log::warning('RequestShopeeMassAwbJob: snapshot paket tidak dapat disimpan.', [
+                            'shop_id' => $this->shopId,
+                            'exception' => $exception->getMessage(),
+                        ]);
+                    }
+                }
+            } catch (ShopeeApiException $exception) {
+                if ($exception->errorCode !== 'local_rate_limit') {
+                    throw $exception;
+                }
+
+                $this->release(1);
+
+                return;
+            }
+        }
 
         [$massOrders, $fallbackOrders] = $this->mapMassPackageOrders($orders, $packagesByOrder);
 
@@ -126,39 +202,100 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
         }
 
         if ($this->verificationOnly) {
-            $remaining = $this->readTrackingNumbers($shopee, $massOrders, $bulkLabels, $labelDispatcher);
+            try {
+                $remaining = $this->readTrackingNumbers($shopee, $massOrders, $bulkLabels, $labelDispatcher);
+            } catch (ShopeeApiException $exception) {
+                if ($exception->errorCode !== 'local_rate_limit') {
+                    throw $exception;
+                }
+
+                $this->release(1);
+
+                return;
+            }
         } else {
             $alreadyShipped = $massOrders
                 ->filter(fn (array $entry): bool => $this->channelAlreadyShipped($entry['order']))
                 ->values();
-            $this->readTrackingNumbers($shopee, $alreadyShipped, $bulkLabels, $labelDispatcher);
+            if ($alreadyShipped->isNotEmpty()) {
+                try {
+                    $alreadyShippedPending = $this->readTrackingNumbers(
+                        $shopee,
+                        $alreadyShipped,
+                        $bulkLabels,
+                        $labelDispatcher,
+                    );
+                } catch (ShopeeApiException $exception) {
+                    if ($exception->errorCode !== 'local_rate_limit') {
+                        throw $exception;
+                    }
+
+                    $this->release(1);
+
+                    return;
+                }
+            }
             $remaining = $massOrders
                 ->reject(fn (array $entry): bool => $this->channelAlreadyShipped($entry['order']))
                 ->values();
         }
 
         if ($remaining->isEmpty()) {
+            if ($alreadyShippedPending->isNotEmpty()) {
+                $this->scheduleVerificationOrFail($alreadyShippedPending, $bulkLabels);
+            }
+
             return;
         }
 
         if (! $this->verificationOnly) {
             $remaining = $this->requestMassShipment($shopee, $remaining, $bulkLabels);
 
-            if ($remaining->isEmpty()) {
+            if ($this->releasedForLocalRateLimit) {
                 return;
             }
 
-            $remaining = $this->readTrackingNumbers(
-                $shopee,
-                $remaining,
-                $bulkLabels,
-                $labelDispatcher,
-            );
+            if ($remaining->isEmpty()) {
+                if ($alreadyShippedPending->isNotEmpty()) {
+                    $this->scheduleVerificationOrFail($alreadyShippedPending, $bulkLabels);
+                }
+
+                return;
+            }
+
+            try {
+                $remaining = $this->readTrackingNumbers(
+                    $shopee,
+                    $remaining,
+                    $bulkLabels,
+                    $labelDispatcher,
+                );
+            } catch (ShopeeApiException $exception) {
+                if ($exception->errorCode !== 'local_rate_limit') {
+                    throw $exception;
+                }
+
+                $this->scheduleVerificationOrFail(
+                    $remaining->merge($alreadyShippedPending)->unique('package_number')->values(),
+                    $bulkLabels,
+                );
+
+                return;
+            }
         }
 
-        if ($remaining->isNotEmpty()) {
-            $this->scheduleVerificationOrFail($remaining, $bulkLabels);
+        $pending = $remaining->merge($alreadyShippedPending)->unique('package_number')->values();
+        if ($pending->isNotEmpty()) {
+            $this->scheduleVerificationOrFail($pending, $bulkLabels);
         }
+    }
+
+    private function massPackageCacheKey(): string
+    {
+        $orderIds = $this->orderIds;
+        sort($orderIds);
+
+        return 'shopee:mass-awb-packages:'.hash('sha256', $this->shopId.'|'.implode('|', $orderIds));
     }
 
     private function mapMassPackageOrders(Collection $orders, array $packagesByOrder): array
@@ -197,13 +334,10 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
                 continue;
             }
 
-            $order->forceFill([
-                'channel_package_ids' => $mappedPackages
-                    ->pluck('package_number')
-                    ->unique()
-                    ->values()
-                    ->all(),
-            ])->saveQuietly();
+            $packageNumbers = $mappedPackages->pluck('package_number')->unique()->values()->all();
+            if ((array) $order->channel_package_ids !== $packageNumbers) {
+                $order->forceFill(['channel_package_ids' => $packageNumbers])->saveQuietly();
+            }
 
             foreach ($mappedPackages as $package) {
                 $massOrders->push(['order' => $order] + $package);
@@ -367,24 +501,35 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
                     ];
                 }
             } catch (Throwable $exception) {
+                $locallyLimited = $exception instanceof ShopeeApiException
+                    && $exception->errorCode === 'local_rate_limit';
                 foreach ($entries as $entry) {
                     $resultEntriesByOrder[(string) $entry['order']->id][] = [
                         'entry' => $entry,
                         'result' => [
                             'package_number' => $entry['package_number'],
                             'shipped' => false,
-                            'uncertain' => true,
+                            'uncertain' => ! $locallyLimited,
+                            'rate_limited' => $locallyLimited,
                             'error' => $exception->getMessage(),
                         ],
                     ];
                 }
 
-                Log::warning('RequestShopeeMassAwbJob: mass_ship_order tidak pasti, pindah ke verifikasi baca-saja.', [
-                    'batch_id' => $this->batchId,
-                    'shop_id' => $this->shopId,
-                    'packages' => $packageNumbers,
-                    'exception' => $exception->getMessage(),
-                ]);
+                if ($locallyLimited) {
+                    Log::info('RequestShopeeMassAwbJob: batas akses lokal penuh; permintaan massal dijadwalkan ulang.', [
+                        'batch_id' => $this->batchId,
+                        'shop_id' => $this->shopId,
+                        'package_count' => count($packageNumbers),
+                    ]);
+                } else {
+                    Log::warning('RequestShopeeMassAwbJob: mass_ship_order tidak pasti, pindah ke verifikasi baca-saja.', [
+                        'batch_id' => $this->batchId,
+                        'shop_id' => $this->shopId,
+                        'packages' => $packageNumbers,
+                        'exception' => $exception->getMessage(),
+                    ]);
+                }
             }
         }
 
@@ -414,6 +559,12 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
 
             $failedResult = $results->first(static fn (array $result): bool => empty($result['shipped']));
             $reason = (string) ($failedResult['error'] ?? 'Shopee tidak mengembalikan hasil mass shipping.');
+            if ($results->contains(static fn (array $result): bool => ! empty($result['rate_limited']))) {
+                ChannelOperationLedger::markRetryable($attempt, $reason);
+                $this->releasedForLocalRateLimit = true;
+
+                continue;
+            }
             if ($results->contains(static fn (array $result): bool => ! empty($result['uncertain']))) {
                 ChannelOperationLedger::markUncertain($attempt, new \RuntimeException($reason));
                 $verificationEntries = $verificationEntries->merge($entries);
@@ -430,6 +581,10 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
                 false,
             )->delay(now()->addSeconds(5));
             $verificationEntries = $verificationEntries->merge($entries);
+        }
+
+        if ($this->releasedForLocalRateLimit) {
+            $this->release(2);
         }
 
         return $verificationEntries->unique('package_number')->values();
