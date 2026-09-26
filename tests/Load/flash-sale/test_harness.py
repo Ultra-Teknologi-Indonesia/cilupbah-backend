@@ -4,6 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from marketplace import Marketplace, pdf
 
@@ -127,6 +128,27 @@ class HarnessTest(unittest.TestCase):
             },
         }
         self.assertEqual(2 * 1024**3 + 16 * 1024**2, runner.pod_request_memory(pod))
+
+    def test_preflight_rejects_active_simulation_and_unschedulable_memory(self):
+        args = SimpleNamespace(namespace='cilupbah-sim-test', image='test:latest', node='test-node',
+                               source_namespace='cilupbah')
+        baseline = {
+            'nodes': {'items': [{'metadata': {'name': 'test-node', 'labels': {'kubernetes.io/hostname': 'test-node'}},
+                                 'status': {'allocatable': {'memory': '4Gi'},
+                                            'conditions': [{'type': 'Ready', 'status': 'True'}]}}]},
+            'node_metrics': {'items': [{'metadata': {'name': 'test-node'}, 'usage': {'memory': '1Gi'}}]},
+        }
+        objects = [{'kind': 'Deployment', 'spec': {'replicas': 1, 'template': {'spec': {'containers': [
+            {'resources': {'requests': {'memory': '1Gi'}}},
+        ]}}}}]
+        health = {'missing_deployments': [], 'unavailable_deployments': [], 'live_oom_pods': []}
+        with patch.object(runner, 'node_requested_memory', return_value=int(3.5 * 1024**3)), \
+             patch.object(runner, 'production_health', return_value=health), \
+             patch.object(runner, 'active_simulation_namespaces', return_value=['cilupbah-sim-old']):
+            report = runner.preflight_report(args, baseline, objects)
+        self.assertFalse(report['passed'])
+        self.assertIn('cilupbah-sim-old', ' '.join(report['issues']))
+        self.assertIn('Memori yang dapat dijadwalkan', ' '.join(report['issues']))
 
     def test_contract_assertions_reject_missing_replay_or_oversized_batch(self):
         args = SimpleNamespace(count=100, webhook_duplicate_every=10, channel_batch_size=50)

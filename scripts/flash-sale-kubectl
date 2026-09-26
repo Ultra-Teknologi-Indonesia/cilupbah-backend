@@ -69,7 +69,7 @@ case "$ACTION" in
       --output "$OUTPUT_DIR" \
       "$@"
     ;;
-  plan|run)
+  preflight|plan|run)
     exec python3 scripts/flash-sale-test "$ACTION" \
       --source-namespace "$SOURCE_NAMESPACE" \
       --image "$IMAGE" \
@@ -85,12 +85,14 @@ case "$ACTION" in
     ;;
   *)
     cat >&2 <<'USAGE'
-Usage: scripts/flash-sale-kubectl {audit|plan|run|report|stop} [options]
+Usage: scripts/flash-sale-kubectl {audit|preflight|plan|run|report|stop} [options]
 
-The command must run on the Kubernetes administration host. `plan` and `run`
-use the image currently deployed by cilupbah-app and always create/use only a
-new cilupbah-sim-* namespace. For `run` on the production node, explicitly add
---ack-shared-node-risk after reviewing the resource contention risk.
+The command must run on the Kubernetes administration host. `preflight` is
+read-only: it verifies production worker availability, the deployed AWB
+optimisation, active simulations, and both actual/schedulable node memory.
+`plan` and `run` use the image currently deployed by cilupbah-app and always
+create/use only a new cilupbah-sim-* namespace. For `run` on the production
+node, explicitly add --ack-shared-node-risk after a passing preflight.
 USAGE
     exit 2
     ;;

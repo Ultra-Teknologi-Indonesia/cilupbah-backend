@@ -77,8 +77,32 @@ chmod +x scripts/flash-sale-kubectl
 ./scripts/flash-sale-kubectl audit
 ```
 
+Sebelum test, jalankan preflight dengan dimensi yang **sama persis**. Ia hanya
+membaca cluster: memeriksa image production sudah memuat jalur AWB tanpa fetch
+berulang, worker kritis Available, tidak ada simulasi aktif lain, serta RAM
+aktual dan RAM scheduler. Jika tidak lulus, jangan lanjutkan `run`; tidak ada
+namespace, queue, database, atau request marketplace yang dibuat.
+
+```bash
+cd /path/ke/cilupbah-be
+./scripts/flash-sale-kubectl preflight \
+  --namespace "cilupbah-sim-preflight-$(date +%Y%m%d-%H%M%S)" \
+  --count 1000 --seconds 600 --drain-seconds 1800 \
+  --shops 1 --skus 1 --channel-batch-size 50 --label-selection-size 100 \
+  --label-selection-mode shop_grouped \
+  --traffic-profile flash_burst --burst-seconds 60 \
+  --webhook-duplicate-every 20 \
+  --awb-ready-after-ms 3000 --document-ready-after-ms 2000 --async-slow-every 10 \
+  --producers 4 --pull-secret ghcr-creds
+```
+
+`--shops 1 --skus 1` sengaja menjadi skenario paling berat untuk satu toko dan
+satu SKU: memilih 100 order membuat dua request channel valid berukuran 50 dan
+perubahan stok saling berebut pada SKU yang sama. Sesudah lulus, gunakan
+dimensi yang sama pada smoke test berikut.
+
 Untuk mulai smoke test baru (1.000 target untuk masing-masing order, AWB,
-label, dan push stok), jalankan setelah audit:
+label, dan push stok):
 
 ```bash
 cd /path/ke/cilupbah-be
@@ -87,9 +111,12 @@ cd /path/ke/cilupbah-be
   --count 1000 \
   --seconds 600 \
   --drain-seconds 1800 \
-  --shops 20 \
-  --skus 100 \
+  --shops 1 --skus 1 \
   --channel-batch-size 50 --label-selection-size 100 \
+  --label-selection-mode shop_grouped \
+  --traffic-profile flash_burst --burst-seconds 60 \
+  --webhook-duplicate-every 20 \
+  --awb-ready-after-ms 3000 --document-ready-after-ms 2000 --async-slow-every 10 \
   --producers 4 \
   --pull-secret ghcr-creds \
   --ack-shared-node-risk
