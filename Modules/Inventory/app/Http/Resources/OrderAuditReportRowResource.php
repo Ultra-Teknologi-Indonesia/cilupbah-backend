@@ -9,9 +9,6 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 final class OrderAuditReportRowResource extends JsonResource
 {
-    /**
-     * @return array<string, mixed>
-     */
     public function toArray(Request $request): array
     {
         return [
@@ -26,6 +23,19 @@ final class OrderAuditReportRowResource extends JsonResource
             'internal_status' => $this->internal_status,
             'wms_status' => $this->wms_status,
             'channel_status_raw' => $this->channel_status_raw,
+            'tracking_number' => $this->tracking_number,
+            'shipping_label_status' => $this->shipping_label_status,
+            'shipping_label_prepared_at' => $this->shipping_label_prepared_at,
+            'bulk_label_batch_id' => $this->bulk_label_batch_id,
+            'bulk_label_batch_status' => $this->bulk_label_batch_status,
+            'bulk_label_item_status' => $this->bulk_label_item_status,
+            'bulk_label_item_reason' => $this->bulk_label_item_reason,
+            'bulk_label_batch_total' => $this->bulk_label_batch_total,
+            'bulk_label_batch_done' => $this->bulk_label_batch_done,
+            'bulk_label_batch_failed' => $this->bulk_label_batch_failed,
+            'bulk_label_batch_created_at' => $this->bulk_label_batch_created_at,
+            'bulk_label_batch_count' => $this->bulk_label_batch_count,
+            'recovery_state' => $this->recovery_state,
             'match_state' => $this->match_state,
             'inbox_status' => $this->inbox_status,
             'attempts' => (int) $this->attempts,

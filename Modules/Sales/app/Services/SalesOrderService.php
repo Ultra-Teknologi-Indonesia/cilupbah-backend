@@ -1041,10 +1041,10 @@ class SalesOrderService
         return $order->fresh();
     }
 
-    public function requestAwb(array $data): array
+    public function requestAwb(array $data, bool $scheduleRecovery = true): array
     {
         $fulfillmentService = app(OutboundFulfillmentService::class);
-        $results = $fulfillmentService->readyToShip([$data['order_id']]);
+        $results = $fulfillmentService->readyToShip([$data['order_id']], $scheduleRecovery);
 
         if (empty($results)) {
             return ['order_id' => $data['order_id'], 'status' => 'failed', 'message' => 'Tidak ada hasil dari proses pengiriman.'];
@@ -1059,7 +1059,7 @@ class SalesOrderService
         return $result;
     }
 
-    public function getShippingLabel(SalesOrder $order, array $options = []): array
+    public function getShippingLabel(SalesOrder $order, array $options = [], bool $scheduleRecovery = true): array
     {
         $source = $order->source;
         $shopId = $order->channel_shop_id;
@@ -1239,9 +1239,13 @@ class SalesOrderService
                     : true;
 
                 if ($isStale) {
-                    PrepareShopeeShippingLabelJob::dispatch($order->id);
+                    if ($scheduleRecovery) {
+                        PrepareShopeeShippingLabelJob::dispatch($order->id);
+                    }
                     throw new ShippingLabelPreparingException(
-                        'Label belum siap. Kemungkinan status pesanan di Shopee belum siap dikirim (RETRY_SHIP) — cek Seller Center. Sistem mencoba ulang, tunggu 1-2 menit.'
+                        $scheduleRecovery
+                            ? 'Label belum siap. Kemungkinan status pesanan di Shopee belum siap dikirim (RETRY_SHIP) — cek Seller Center. Sistem mencoba ulang, tunggu 1-2 menit.'
+                            : 'Label belum siap. Kemungkinan status pesanan di Shopee belum siap dikirim (RETRY_SHIP). Coba lagi setelah Shopee menerbitkan label.'
                     );
                 }
 
@@ -1251,10 +1255,14 @@ class SalesOrderService
             }
 
             if ($order->shipping_label_status === 'failed') {
-                PrepareShopeeShippingLabelJob::dispatch($order->id);
+                if ($scheduleRecovery) {
+                    PrepareShopeeShippingLabelJob::dispatch($order->id);
+                }
 
                 throw new ShippingLabelPreparingException(
-                    'Label sebelumnya gagal. Sedang dicoba ulang, tunggu 1-2 menit.'
+                    $scheduleRecovery
+                        ? 'Label sebelumnya gagal. Sedang dicoba ulang, tunggu 1-2 menit.'
+                        : 'Label sebelumnya gagal. Jalankan proses langsung lagi setelah status marketplace siap.'
                 );
             }
 
@@ -1399,10 +1407,14 @@ class SalesOrderService
                 ];
             }
 
-            PrepareLazadaShippingLabelJob::dispatch($order->id);
+            if ($scheduleRecovery) {
+                PrepareLazadaShippingLabelJob::dispatch($order->id);
+            }
 
             throw new ShippingLabelPreparingException(
-                'Label Lazada belum siap (pesanan mungkin belum di-RTS). Sistem menyiapkan, tunggu 1-2 menit.'
+                $scheduleRecovery
+                    ? 'Label Lazada belum siap (pesanan mungkin belum di-RTS). Sistem menyiapkan, tunggu 1-2 menit.'
+                    : 'Label Lazada belum siap (pesanan mungkin belum di-RTS). Coba lagi setelah Lazada menerbitkan label.'
             );
         }
 
@@ -1696,8 +1708,11 @@ class SalesOrderService
         return $this->orderRepository->findForBreakdown($id);
     }
 
-    public function prepareShippingLabelDocument(SalesOrder $order, ?string $requestedSize): array
-    {
+    public function prepareShippingLabelDocument(
+        SalesOrder $order,
+        ?string $requestedSize,
+        bool $scheduleRecovery = true,
+    ): array {
         if ($order->isManual()) {
             throw new UserFacingException(
                 'Aksi tidak dapat diproses',
@@ -1729,7 +1744,7 @@ class SalesOrderService
         ], true) ? $requestedSize : BulkShippingLabelService::DEFAULT_SIZE;
 
         try {
-            $result = $this->getShippingLabel($order, $options);
+            $result = $this->getShippingLabel($order, $options, $scheduleRecovery);
 
             $rawBytes = $this->extractLabelBytes($result);
             if ($rawBytes === null) {

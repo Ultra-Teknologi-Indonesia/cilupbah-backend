@@ -14,7 +14,6 @@ use RuntimeException;
 use setasign\Fpdi\Fpdi;
 use setasign\Fpdi\PdfParser\StreamReader;
 
-/** Downloads an already prepared document; never arranges shipping or pickup. */
 final class ShopeeReadyLabelDownloader
 {
     public function __construct(private readonly ShopeeOrderService $shopee) {}
@@ -25,7 +24,7 @@ final class ShopeeReadyLabelDownloader
         if ($packages === [] && filled($order->package_number)) {
             $packages = [(string) $order->package_number];
         }
-        // Never silently select the first package of a split order.
+
         if (count($packages) > 50) {
             throw new RuntimeException('Pesanan memiliki lebih dari 50 paket. Unduh dokumen paket melalui Seller Center; dokumen sebagian tidak diterbitkan.');
         }
@@ -43,7 +42,7 @@ final class ShopeeReadyLabelDownloader
             }
         } catch (ShopeeApiException $exception) {
             if (str_replace('.', '_', $exception->errorCode) === 'logistics_shipping_document_should_print_first') {
-                // Explicit channel evidence permits renewing the document, not re-shipping.
+
                 $lock = Cache::lock('shipping-label:prepare:'.$order->id, 240);
                 if ($lock->get()) {
                     try {

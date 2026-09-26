@@ -58,7 +58,7 @@ final class BulkMarketplaceLabelDownloadService
                     continue;
                 }
                 $packages = array_values(array_unique(array_filter(array_map('strval', (array) $order->channel_package_ids))));
-                // Multi-package orders need per-package evidence, not an assumed page order.
+
                 if (count($packages) > 1 || ($channel === 'lazada' && count($packages) !== 1)) {
                     continue;
                 }
@@ -96,8 +96,7 @@ final class BulkMarketplaceLabelDownloadService
                             $this->repository->markLabelReady($fresh, $type);
                         }
                     } catch (Throwable $exception) {
-                        // No unidentified page is attached to an order. Existing individual jobs
-                        // retain their own bounded retries and channel error classification.
+
                         Log::warning('Bulk label download using individual fallback', [
                             'batch_id' => $batchId, 'channel' => $channel,
                             'items' => count($chunk), 'exception' => $exception::class,

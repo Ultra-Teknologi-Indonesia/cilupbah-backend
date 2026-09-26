@@ -10,7 +10,7 @@ use Symfony\Component\Process\Process;
 
 final class MarketplaceLabelPdfSplitter
 {
-    /** Split only after every page has exactly one verifiable order identity. */
+
     public function split(string $bytes, array $identities): array
     {
         if ($identities === [] || count($identities) > 50 || ! str_starts_with($bytes, '%PDF-')
@@ -34,8 +34,7 @@ final class MarketplaceLabelPdfSplitter
             }
             $command = ['pdftotext', '-layout', '-enc', 'UTF-8', $path, '-'];
             if (PHP_OS_FAMILY === 'Linux') {
-                // Native parsing shares the pod budget. Bound its address space and CPU,
-                // independently from PHP's memory_limit; all arguments remain positional.
+
                 $command = ['sh', '-c', 'ulimit -v 131072 || exit 70; ulimit -t 10 || exit 70; exec "$@"', 'label-text', ...$command];
             }
             $process = new Process($command);

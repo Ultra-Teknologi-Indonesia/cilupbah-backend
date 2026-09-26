@@ -8,6 +8,7 @@ use App\Support\WarehouseAccess;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Query\Builder as QueryBuilderContract;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\DTO\OrderAuditReportResult;
 use Modules\Inventory\DTO\OrderAuditReportSummary;
@@ -28,6 +29,7 @@ final class OrderAuditReportRepository
             ->allowedSorts('latest_received_at', 'order_reference', 'match_state', 'internal_order_no')
             ->paginate($this->perPage())
             ->appends(request()->query());
+        $this->attachLatestBulkBatch($paginator->getCollection());
 
         return new OrderAuditReportResult($summary, $paginator);
     }
@@ -43,6 +45,7 @@ final class OrderAuditReportRepository
                 AllowedFilter::callback('channel', static fn (EloquentBuilder $query, mixed $value): EloquentBuilder => $query->where('order_audits.channel', (string) $value)),
                 AllowedFilter::callback('shop_id', static fn (EloquentBuilder $query, mixed $value): EloquentBuilder => $query->where('order_audits.shop_id', (string) $value)),
                 AllowedFilter::callback('status', static fn (EloquentBuilder $query, mixed $value): EloquentBuilder => $query->whereIn('order_audits.match_state', array_values(array_intersect((array) $value, self::STATUSES)))),
+                AllowedFilter::callback('inbox_status', static fn (EloquentBuilder $query, mixed $value): EloquentBuilder => $query->where('order_audits.inbox_status', strtoupper((string) $value))),
                 AllowedFilter::callback('date_from', fn (EloquentBuilder $query, mixed $value): EloquentBuilder => $query->where('order_audits.latest_received_at', '>=', $this->dateFrom((string) $value))),
                 AllowedFilter::callback('date_to', fn (EloquentBuilder $query, mixed $value): EloquentBuilder => $query->where('order_audits.latest_received_at', '<', $this->dateTo((string) $value))),
             );
@@ -114,6 +117,9 @@ final class OrderAuditReportRepository
                 'so.status as internal_status',
                 'so.channel_status as wms_status',
                 'so.channel_status_raw',
+                'so.tracking_number',
+                'so.shipping_label_status',
+                'so.shipping_label_prepared_at',
                 'so.transaction_date as wms_transaction_date',
                 'so.updated_at as wms_updated_at',
             ])
@@ -126,6 +132,15 @@ final class OrderAuditReportRepository
                         THEN 'status_mismatch'
                     ELSE 'match'
                 END AS match_state
+            SQL)
+            ->selectRaw(<<<'SQL'
+                CASE
+                    WHEN so.id IS NULL THEN 'missing_order'
+                    WHEN NULLIF(TRIM(COALESCE(so.tracking_number, '')), '') IS NULL THEN 'waiting_awb'
+                    WHEN so.shipping_label_status = 'ready' THEN 'ready'
+                    WHEN so.shipping_label_status IN ('failed', 'self_design_required') THEN 'failed'
+                    ELSE 'waiting_label'
+                END AS recovery_state
             SQL);
     }
 
@@ -155,6 +170,85 @@ final class OrderAuditReportRepository
         );
     }
 
+    private function attachLatestBulkBatch(Collection $rows): void
+    {
+        $rows->each(static function (object $row): void {
+            $row->bulk_label_batch_id = null;
+            $row->bulk_label_batch_status = null;
+            $row->bulk_label_item_status = null;
+            $row->bulk_label_item_reason = null;
+            $row->bulk_label_batch_total = null;
+            $row->bulk_label_batch_done = null;
+            $row->bulk_label_batch_failed = null;
+            $row->bulk_label_batch_created_at = null;
+            $row->bulk_label_batch_count = 0;
+        });
+
+        $orderIds = $rows
+            ->pluck('wms_id')
+            ->filter()
+            ->map(static fn (mixed $id): string => (string) $id)
+            ->unique()
+            ->values();
+
+        if ($orderIds->isEmpty()) {
+            return;
+        }
+
+        $ranked = DB::query()
+            ->from('bulk_shipping_label_items as bli')
+            ->join('bulk_shipping_label_batches as blb', 'blb.id', '=', 'bli.batch_id')
+            ->whereIn('bli.order_id', $orderIds->all())
+            ->select([
+                'bli.order_id',
+                'bli.batch_id',
+                'bli.status as batch_item_status',
+                'bli.reason as batch_item_reason',
+                'blb.status as batch_status',
+                'blb.created_at as batch_created_at',
+            ])
+            ->selectRaw('COUNT(*) OVER (PARTITION BY bli.order_id) AS batch_membership_count')
+            ->selectRaw('ROW_NUMBER() OVER (PARTITION BY bli.order_id ORDER BY blb.created_at DESC, bli.created_at DESC, bli.id DESC) AS batch_row_number');
+
+        $memberships = DB::query()
+            ->fromSub($ranked, 'ranked_batch_memberships')
+            ->where('batch_row_number', 1)
+            ->get()
+            ->keyBy(static fn (object $row): string => (string) $row->order_id);
+        $batchIds = $memberships
+            ->pluck('batch_id')
+            ->filter()
+            ->map(static fn (mixed $id): string => (string) $id)
+            ->unique()
+            ->values();
+        $progressQuery = DB::table('bulk_shipping_label_items as progress_item')
+            ->join('sales_orders as progress_order', 'progress_order.id', '=', 'progress_item.order_id')
+            ->whereIn('progress_item.batch_id', $batchIds->all())
+            ->groupBy('progress_item.batch_id')
+            ->select('progress_item.batch_id')
+            ->selectRaw('COUNT(*) AS batch_total_count')
+            ->selectRaw("SUM(CASE WHEN progress_item.status IN ('ready', 'done') THEN 1 ELSE 0 END) AS batch_done_count")
+            ->selectRaw("SUM(CASE WHEN progress_item.status = 'failed' THEN 1 ELSE 0 END) AS batch_failed_count");
+        WarehouseAccess::apply($progressQuery, 'progress_order.location_id');
+        $progress = $progressQuery
+            ->get()
+            ->keyBy(static fn (object $row): string => (string) $row->batch_id);
+
+        $rows->each(static function (object $row) use ($memberships, $progress): void {
+            $membership = $row->wms_id !== null ? $memberships->get((string) $row->wms_id) : null;
+            $batchProgress = $membership !== null ? $progress->get((string) $membership->batch_id) : null;
+            $row->bulk_label_batch_id = $membership?->batch_id;
+            $row->bulk_label_batch_status = $membership?->batch_status;
+            $row->bulk_label_item_status = $membership?->batch_item_status;
+            $row->bulk_label_item_reason = $membership?->batch_item_reason;
+            $row->bulk_label_batch_total = $batchProgress !== null ? (int) $batchProgress->batch_total_count : null;
+            $row->bulk_label_batch_done = $batchProgress !== null ? (int) $batchProgress->batch_done_count : null;
+            $row->bulk_label_batch_failed = $batchProgress !== null ? (int) $batchProgress->batch_failed_count : null;
+            $row->bulk_label_batch_created_at = $membership?->batch_created_at;
+            $row->bulk_label_batch_count = $membership !== null ? (int) $membership->batch_membership_count : 0;
+        });
+    }
+
     private function dateFrom(string $value): CarbonImmutable
     {
         return CarbonImmutable::createFromFormat('!Y-m-d', $value, 'Asia/Jakarta')->utc();
@@ -167,6 +261,6 @@ final class OrderAuditReportRepository
 
     private function perPage(): int
     {
-        return max(1, min((int) request()->integer('per_page', 20), 100));
+        return max(1, min((int) request()->integer('per_page', 20), 200));
     }
 }

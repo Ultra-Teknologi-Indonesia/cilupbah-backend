@@ -758,8 +758,7 @@ class BulkShippingLabelService
                             ChannelOperationLedger::markUncertain($entry['attempt'], new \RuntimeException($createError));
                         } else {
                             ChannelOperationLedger::markRetryable($entry['attempt'], $createError, $createResult['response']);
-                            // An explicit rejection gets fresh document parameters. A missing
-                            // response is only polled, never assumed safe to create again.
+
                             $states[$orderId]['individual_prepare'] = true;
                         }
                         $states[$orderId]['retry_marked'] = true;
@@ -938,6 +937,51 @@ class BulkShippingLabelService
         }
 
         return $items->count();
+    }
+
+    public function stageReadyLabelForBatchItem(string $batchId, string $orderId, string $bytes): bool
+    {
+        if ($bytes === '') {
+            return false;
+        }
+
+        $item = BulkShippingLabelItem::query()
+            ->where('batch_id', $batchId)
+            ->where('order_id', $orderId)
+            ->where('status', '!=', BulkShippingLabelItem::STATUS_SKIPPED_INSTANT)
+            ->first();
+
+        if ($item === null) {
+            return false;
+        }
+
+        $disk = Storage::disk(config('bulk-labels.spool_disk', 'print_spool'));
+        if ($item->isTerminal() && $item->ready_pdf_path && $disk->exists($item->ready_pdf_path)) {
+            return true;
+        }
+
+        if (! $this->stageReadyLabelItem($item, $bytes, $disk)) {
+            return false;
+        }
+
+        $this->publishBatchProgress($batchId);
+
+        return true;
+    }
+
+    public function finalizeSynchronouslyIfReady(string $batchId): bool
+    {
+        $batch = BulkShippingLabelBatch::find($batchId);
+        if ($batch === null || $batch->status !== BulkShippingLabelBatch::STATUS_PROCESSING) {
+            return false;
+        }
+        if ($batch->items()->whereIn('status', BulkShippingLabelItem::TRANSIENT_STATUSES)->exists()) {
+            return false;
+        }
+
+        $this->finalizeInWorker($batchId);
+
+        return true;
     }
 
     public function transformDownloadedItem(BulkShippingLabelItem $item): void

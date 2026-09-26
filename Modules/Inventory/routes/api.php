@@ -12,6 +12,7 @@ use Modules\Inventory\Http\Controllers\InventorySyncSettingController;
 use Modules\Inventory\Http\Controllers\InventoryTransactionController;
 use Modules\Inventory\Http\Controllers\MonitorStockController;
 use Modules\Inventory\Http\Controllers\OrderAuditController;
+use Modules\Inventory\Http\Controllers\OrderRecoveryController;
 use Modules\Inventory\Http\Controllers\PutawayController;
 use Modules\Inventory\Http\Controllers\RackImportController;
 use Modules\Inventory\Http\Controllers\ReservedStockController;
@@ -43,6 +44,16 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('operations/order-audit/marketplace-pull', [OrderAuditController::class, 'pullMarketplace'])
         ->name('operations.order-audit.marketplace-pull')
         ->middleware(['role_or_permission:owner|edit-pesanan', 'throttle:5,1']);
+    Route::post('operations/order-recovery/sync', [OrderRecoveryController::class, 'sync'])
+        ->name('operations.order-recovery.sync')
+        ->middleware(['role_or_permission:owner|edit-pesanan', 'throttle:6,1']);
+    Route::post('operations/order-recovery/import', [OrderRecoveryController::class, 'import'])
+        ->name('operations.order-recovery.import')
+        ->middleware(['role_or_permission:owner|edit-pesanan', 'throttle:3,1']);
+    Route::post('operations/order-recovery/batches/{batch}/sync', [OrderRecoveryController::class, 'syncBatch'])
+        ->whereUuid('batch')
+        ->name('operations.order-recovery.batch.sync')
+        ->middleware(['role_or_permission:owner|edit-pesanan', 'throttle:3,1']);
 
     Route::prefix('impex/activities')->middleware('role_or_permission:owner|view-impex')->group(function () {
         Route::post('export/record', [ImpexActivityController::class, 'recordExport'])->name('impex.activities.recordExport');

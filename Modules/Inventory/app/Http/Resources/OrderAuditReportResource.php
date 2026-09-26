@@ -15,12 +15,9 @@ final class OrderAuditReportResource extends JsonResource
         parent::__construct($resource);
     }
 
-    /**
-     * @return array<string, mixed>
-     */
     public function toArray(Request $request): array
     {
-        /** @var OrderAuditReportResult $result */
+
         $result = $this->resource;
 
         return [

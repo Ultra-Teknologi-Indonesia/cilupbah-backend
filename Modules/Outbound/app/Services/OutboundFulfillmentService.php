@@ -182,7 +182,7 @@ class OutboundFulfillmentService
         return $aggregate;
     }
 
-    public function readyToShip(array $orderIds): array
+    public function readyToShip(array $orderIds, bool $scheduleRecovery = true): array
     {
         $results = [];
 
@@ -248,7 +248,9 @@ class OutboundFulfillmentService
                         ? 'RTS sebelumnya belum memiliki hasil pasti; sistem sedang menunggu verifikasi status channel.'
                         : 'RTS sudah pernah berhasil dikirim ke channel.';
                     if ($claim['needs_verification']) {
-                        $this->scheduleChannelOrderRefresh($order);
+                        if ($scheduleRecovery) {
+                            $this->scheduleChannelOrderRefresh($order);
+                        }
                     }
                     $results[] = $this->result($order, 'skipped', $message);
 
@@ -268,7 +270,9 @@ class OutboundFulfillmentService
                         $claim['attempt'],
                         new \RuntimeException((string) ($outcome['message'] ?? 'RTS tidak memberi hasil pasti.')),
                     );
-                    $this->scheduleChannelOrderRefresh($order);
+                    if ($scheduleRecovery) {
+                        $this->scheduleChannelOrderRefresh($order);
+                    }
                 }
 
                 $results[] = $this->result(
@@ -279,7 +283,9 @@ class OutboundFulfillmentService
             } catch (\Throwable $e) {
                 if ($claim !== null) {
                     ChannelOperationLedger::markUncertain($claim['attempt'], $e);
-                    $this->scheduleChannelOrderRefresh($order);
+                    if ($scheduleRecovery) {
+                        $this->scheduleChannelOrderRefresh($order);
+                    }
                 }
                 Log::error('readyToShip dispatcher gagal untuk order', [
                     'order_id' => $order->id,
