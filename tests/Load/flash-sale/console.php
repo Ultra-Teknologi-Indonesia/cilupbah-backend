@@ -29,7 +29,14 @@ $count = (int) getenv('SIM_COUNT');
 $shops = (int) getenv('SIM_SHOPS');
 $skus = (int) getenv('SIM_SKUS');
 $duration = (int) getenv('SIM_SECONDS');
-if ($count < 1 || $shops < 1 || $skus < 1 || $duration < 1) {
+$trafficProfile = (string) getenv('SIM_TRAFFIC_PROFILE');
+$burstSeconds = (int) getenv('SIM_BURST_SECONDS');
+$selectionSize = (int) getenv('SIM_LABEL_SELECTION_SIZE');
+$selectionMode = (string) getenv('SIM_LABEL_SELECTION_MODE');
+if ($count < 1 || $shops < 1 || $skus < 1 || $duration < 1 || $selectionSize < 1
+    || ! in_array($trafficProfile, ['steady', 'flash_burst'], true)
+    || ! in_array($selectionMode, ['mixed', 'shop_grouped'], true)
+    || ($trafficProfile === 'flash_burst' && ($burstSeconds < 1 || $burstSeconds > $duration))) {
     throw new RuntimeException('Invalid workload dimensions.');
 }
 
@@ -77,9 +84,11 @@ switch ($mode) {
         $shard = (int) getenv('JOB_COMPLETION_INDEX');
         $shards = (int) getenv('SIM_PRODUCERS');
         $start = (float) getenv('SIM_START_AT');
+        $duplicateEvery = (int) getenv('SIM_WEBHOOK_DUPLICATE_EVERY');
+        $window = $trafficProfile === 'flash_burst' ? $burstSeconds : $duration;
         $url = 'http://app:8000/api/v1/shopee/webhook';
         for ($seq = $shard + 1; $seq <= $count; $seq += $shards) {
-            $due = $start + ($seq - 1) * $duration / $count;
+            $due = $start + ($seq - 1) * $window / $count;
             while (($remaining = $due - microtime(true)) > 0) {
                 usleep((int) (min(1, $remaining) * 1000000));
             }
@@ -96,10 +105,12 @@ switch ($mode) {
                     'data' => ['ordersn' => sprintf('SIM%012d', $seq), 'status' => 'READY_TO_SHIP', 'update_time' => time()]], JSON_THROW_ON_ERROR);
                 $response = Http::timeout(15)->withHeaders(['Authorization' => ShopeeSignature::pushSign($url, $payload, 'simulation-only')])
                     ->withBody($payload, 'application/json')->post($url);
-                $repository->update($seq, [
-                    'http_status' => $response->status(),
-                    'webhook_accepted_at' => now(),
-                ]);
+                $repository->recordWebhookAttempt($seq, $response->status());
+                if ($duplicateEvery > 0 && $seq % $duplicateEvery === 0) {
+                    $duplicate = Http::timeout(15)->withHeaders(['Authorization' => ShopeeSignature::pushSign($url, $payload, 'simulation-only')])
+                        ->withBody($payload, 'application/json')->post($url);
+                    $repository->recordWebhookAttempt($seq, $duplicate->status());
+                }
                 $requestedAt = now();
                 $outbox = app(ChannelStockSyncOutboxService::class)->request($repository->mapping($shop, $sku), 'sync_stock');
                 $repository->update($seq, ['outbox_id' => $outbox->id, 'stock_version' => $outbox->requested_version, 'stock_requested_at' => $requestedAt]);
@@ -107,6 +118,7 @@ switch ($mode) {
                 $repository->update($seq, ['error' => substr($error->getMessage(), 0, 2000)]);
             }
         }
+        $repository->markProducerCompleted($shard);
         emit(['producer_completed' => $shard]);
         break;
     case 'coordinate':
@@ -114,8 +126,9 @@ switch ($mode) {
         $labels = app(BulkShippingLabelService::class);
         $tick = 0;
         while (true) {
-            $rows = $repository->unbatched((int) getenv('SIM_BULK'));
-            if ($rows->isNotEmpty()) {
+            $rows = $repository->unbatched($selectionSize, $selectionMode);
+
+            if ($rows->count() >= $selectionSize || ($rows->isNotEmpty() && $repository->producersCompleted((int) getenv('SIM_PRODUCERS')))) {
                 $batch = $labels->createBatch($user, $rows->pluck('id')->all(), ['document_size' => BulkShippingLabelService::DEFAULT_SIZE]);
                 $repository->attachBatch($rows->pluck('seq')->all(), (string) $batch->id);
                 $labels->queueBatch($batch);

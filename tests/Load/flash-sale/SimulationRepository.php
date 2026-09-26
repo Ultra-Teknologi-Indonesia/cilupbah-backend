@@ -28,6 +28,8 @@ final class SimulationRepository
             seq bigint PRIMARY KEY, order_no varchar(40) UNIQUE NOT NULL,
             offered_at timestamptz NOT NULL, sent_at timestamptz, webhook_accepted_at timestamptz, http_status integer,
             lag_seconds double precision NOT NULL DEFAULT 0,
+            webhook_attempts integer NOT NULL DEFAULT 0,
+            webhook_accepted_attempts integer NOT NULL DEFAULT 0,
             batch_id uuid, requested_at timestamptz,
             outbox_id uuid, stock_version bigint, stock_requested_at timestamptz,
             error text, awb_at timestamptz
@@ -35,6 +37,7 @@ final class SimulationRepository
         DB::statement('CREATE INDEX simulation_unbatched ON simulation_cases(seq) WHERE batch_id IS NULL');
         DB::statement('CREATE INDEX simulation_batch ON simulation_cases(batch_id)');
         DB::statement('CREATE INDEX simulation_outbox ON simulation_cases(outbox_id, stock_version)');
+        DB::statement('CREATE TABLE simulation_producers (shard integer PRIMARY KEY, completed_at timestamptz NOT NULL)');
         DB::statement('CREATE TABLE simulation_catalog (shop_number integer, sku integer, mapping_id uuid NOT NULL, PRIMARY KEY(shop_number, sku))');
         DB::statement('CREATE TABLE simulation_meta (key text PRIMARY KEY, value text NOT NULL)');
         DB::unprepared("CREATE FUNCTION simulation_awb_time() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -96,6 +99,31 @@ final class SimulationRepository
         DB::table('simulation_cases')->where('seq', $seq)->update($changes);
     }
 
+    public function recordWebhookAttempt(int $seq, int $httpStatus): void
+    {
+        DB::table('simulation_cases')->where('seq', $seq)->update([
+            'http_status' => $httpStatus,
+            'webhook_accepted_at' => now(),
+            'webhook_attempts' => DB::raw('webhook_attempts + 1'),
+            'webhook_accepted_attempts' => DB::raw(sprintf(
+                'webhook_accepted_attempts + %d',
+                $httpStatus >= 200 && $httpStatus < 300 ? 1 : 0,
+            )),
+        ]);
+    }
+
+    public function markProducerCompleted(int $shard): void
+    {
+        DB::table('simulation_producers')->upsert([
+            ['shard' => $shard, 'completed_at' => now()],
+        ], ['shard'], ['completed_at']);
+    }
+
+    public function producersCompleted(int $expected): bool
+    {
+        return DB::table('simulation_producers')->count() === $expected;
+    }
+
     public function mapping(int $shop, int $sku): ProductChannelMapping
     {
         return ProductChannelMapping::findOrFail(DB::table('simulation_catalog')->where('shop_number', $shop)->where('sku', $sku)->value('mapping_id'));
@@ -106,11 +134,22 @@ final class SimulationRepository
         return User::findOrFail(DB::table('simulation_meta')->where('key', 'user_id')->value('value'));
     }
 
-    public function unbatched(int $limit): Collection
+    public function unbatched(int $limit, string $selectionMode): Collection
     {
-        return DB::table('simulation_cases as c')->join('sales_orders as o', 'o.channel_order_no', '=', 'c.order_no')
-            ->where('o.source', 'shopee')->whereNull('c.batch_id')->orderBy('c.seq')
-            ->limit($limit)->get(['c.seq', 'o.id']);
+        $query = DB::table('simulation_cases as c')
+            ->join('sales_orders as o', 'o.channel_order_no', '=', 'c.order_no')
+            ->where('o.source', 'shopee')
+            ->whereNull('c.batch_id')
+            ->orderBy('c.seq');
+
+        if ($selectionMode === 'shop_grouped') {
+            $shopId = (clone $query)->value('o.channel_shop_id');
+            if ($shopId !== null) {
+                $query->where('o.channel_shop_id', $shopId);
+            }
+        }
+
+        return $query->limit($limit)->get(['c.seq', 'o.id']);
     }
 
     public function attachBatch(array $seqs, string $batch): void
@@ -122,9 +161,11 @@ final class SimulationRepository
     {
         $result = [
             'time' => now()->toIso8601String(),
-            'cases' => DB::selectOne('SELECT count(*) AS offered, count(*) FILTER (WHERE http_status=200) AS http_accepted,
+            'cases' => DB::selectOne('SELECT count(*) AS offered, count(*) FILTER (WHERE webhook_accepted_attempts > 0) AS http_accepted,
                 count(batch_id) AS label_requested, count(outbox_id) AS stock_requested,
-                count(*) FILTER (WHERE error IS NOT NULL OR http_status<>200) AS producer_errors,
+                coalesce(sum(webhook_attempts), 0) AS webhook_attempts,
+                coalesce(sum(webhook_accepted_attempts), 0) AS webhook_accepted_attempts,
+                count(*) FILTER (WHERE error IS NOT NULL OR webhook_accepted_attempts = 0) AS producer_errors,
                 coalesce(max(lag_seconds),0) AS producer_max_lag_seconds FROM simulation_cases'),
             'orders' => DB::table('sales_orders')->where('source', 'shopee')->count(),
             'awb_ready' => DB::table('sales_orders')->whereNotNull('tracking_number')->where('tracking_number', '<>', '')->count(),

@@ -2,7 +2,17 @@
 
 Paket ini menjalankan aplikasi Laravel, PostgreSQL, PgBouncer, Redis, Horizon, job AWB, job unduh label, dan pembuatan PDF secara nyata. Yang diganti hanya marketplace dengan simulator lokal. Simulator tidak mempunyai kredensial marketplace dan namespace Kubernetes-nya dibatasi agar hanya berkomunikasi di dalam namespace simulasi.
 
-Simulasi ini menguji **Shopee contract**. Jalur bisnis lintas channel tetap sama, tetapi ini bukan klaim kapasitas TikTok atau Lazada.
+Simulasi ini menguji **Shopee contract**. Jalur bisnis lintas channel tetap sama, tetapi ini bukan klaim kapasitas TikTok atau Lazada. Tidak ada request yang keluar ke marketplace: kebijakan jaringan memblokir egress dan simulator lokal menolak endpoint yang tidak dikenal.
+
+## Bentuk beban yang diuji
+
+Harness sengaja memisahkan tiga alur yang di dunia nyata terjadi pada waktu berbeda:
+
+- **Webhook burst**: channel mengirim pesanan sangat rapat. Opsi `--traffic-profile flash_burst` membuat seluruh target masuk dalam `--burst-seconds`, bukan tersebar rata selama satu hari.
+- **Push stok SKU yang sama**: kecilkan `--skus` (bahkan `1`) agar banyak pesanan mengubah mapping stok yang sama. Hasil hanya lulus jika outbox mencapai versi terakhir setiap pesanan; jumlah HTTP stock call boleh lebih sedikit karena koalesensi adalah perilaku yang benar.
+- **Modal ambil resi/cetak label**: `--label-selection-size` meniru sekali klik user. Seleksi dibuat setelah ukuran pilihan tercapai, bukan setiap timer 200 ms. Setiap request Shopee tetap dibatasi `--channel-batch-size 50`; satu modal 100 order dapat menjadi 50+50 sesuai shop.
+
+`--label-selection-mode shop_grouped` adalah jalur throughput optimal per toko. Jalankan juga `mixed` untuk meniru user yang memilih order dari beberapa toko; batch channel akan lebih kecil karena API channel harus dipisah per toko. Itu perilaku nyata, bukan kegagalan harness.
 
 ## Prasyarat
 
@@ -79,7 +89,7 @@ cd /path/ke/cilupbah-be
   --drain-seconds 1800 \
   --shops 20 \
   --skus 100 \
-  --bulk 100 \
+  --channel-batch-size 50 --label-selection-size 100 \
   --producers 4 \
   --pull-secret ghcr-creds \
   --ack-shared-node-risk
@@ -116,7 +126,7 @@ python3 scripts/flash-sale-test plan \
   --seconds 600 \
   --shops 20 \
   --skus 100 \
-  --bulk 100 \
+  --channel-batch-size 50 --label-selection-size 100 \
   --producers 4 \
   --pull-secret "$PULL_SECRET"
 ```
@@ -138,7 +148,7 @@ python3 scripts/flash-sale-test run \
   --drain-seconds 1800 \
   --shops 20 \
   --skus 100 \
-  --bulk 100 \
+  --channel-batch-size 50 --label-selection-size 100 \
   --producers 4 \
   --pull-secret "$PULL_SECRET" \
   --ack-shared-node-risk
@@ -157,7 +167,7 @@ python3 scripts/flash-sale-test run \
   --drain-seconds 3600 \
   --shops 50 \
   --skus 500 \
-  --bulk 100 \
+  --channel-batch-size 50 --label-selection-size 100 \
   --producers 4 \
   --pull-secret "$PULL_SECRET" \
   --ack-shared-node-risk
@@ -178,7 +188,7 @@ python3 scripts/flash-sale-test run \
   --drain-seconds 21600 \
   --shops 200 \
   --skus 5000 \
-  --bulk 100 \
+  --channel-batch-size 50 --label-selection-size 100 \
   --producers 8 \
   --pull-secret "$PULL_SECRET" \
   --ack-shared-node-risk
@@ -186,7 +196,7 @@ python3 scripts/flash-sale-test run \
 
 Untuk meniru flash sale sepuluh menit, gunakan `--seconds 600` dan tetap beri `--drain-seconds` yang cukup. Ini adalah lonjakan yang jauh lebih berat daripada satu juta yang tersebar selama sehari.
 
-Jangan menaikkan `--shopee-api-rate` untuk menyimpulkan batas production. Nilai bawaan mengikuti konfigurasi channel saat audit (umumnya 4 request/detik). Simulator hanya membantu mengukur antrean internal; batas marketplace sungguhan tetap berlaku di luar tes ini.
+Jangan menaikkan `--shopee-api-rate` untuk menyimpulkan batas production. Nilai bawaan mengikuti konfigurasi channel saat audit (umumnya 4 request/detik). Simulator hanya membantu mengukur antrean internal; batas marketplace sungguhan tetap berlaku di luar tes ini. `--channel-batch-size` ditolak jika lebih dari 50, sehingga benchmark tidak dapat lolos dengan request Shopee yang tidak valid.
 
 ## Gangguan yang dapat disimulasikan
 
@@ -197,6 +207,17 @@ Tambahkan opsi berikut pada smoke test atau test 10k:
 ```
 
 Artinya simulator menunggu 250 ms dan mengembalikan 429 setiap panggilan ke-100. Ini menguji retry, idempotensi, status `delayed`, dan pemulihan. Ini bukan error sungguhan dari marketplace.
+
+Untuk alur async dan duplikasi webhook yang lebih dekat ke flash sale, gunakan misalnya:
+
+```bash
+--traffic-profile flash_burst --burst-seconds 60 \
+--webhook-duplicate-every 20 \
+--awb-ready-after-ms 3000 --document-ready-after-ms 2000 \
+--async-slow-every 10
+```
+
+Contoh ini membuat 10% order lebih lambat empat kali lipat. Ini membuktikan order/label yang lambat tidak menghapus atau menggandakan order lain; ia tidak mengklaim waktu respons asli channel.
 
 ## Isi laporan
 
@@ -210,7 +231,10 @@ Setiap run membuat folder `flash-sale-results/<namespace>/`:
 - `marketplace-final.json` — jumlah panggilan simulator, shipment, dokumen, unduhan, dan nilai stok terbaru.
 - `resource-summary.json` — puncak CPU/memori per container, puncak ready/delayed/reserved, umur job tertua, deferred peak, restart, dan OOM.
 - `file-verification.json` — pemeriksaan PDF dengan `pdfinfo` dan jumlah halaman.
+- `contract-assertions.json` — bukti jumlah replay webhook yang diharapkan, batas batch channel, dan validitas PDF; kegagalan salah satu assertion membuat run `INCOMPLETE`.
 - `summary.json` — hasil akhir.
+
+`marketplace-final.json.batch_sizes` menunjukkan ukuran request terbesar per endpoint. Tidak boleh ada endpoint massal melewati 50. `application-final.json.cases.webhook_attempts` dan `webhook_accepted_attempts` menunjukkan replay webhook; jumlah pesanan final tetap harus sama dengan `--count`, bukan jumlah attempt.
 
 `summary.completed=true` hanya jika seluruh target masuk, tidak ada pesanan hilang, AWB dan label selesai, PDF valid, stock outbox sudah konvergen ke versi terakhir, failed jobs nol, dan antrean `ready + delayed + reserved` menjadi nol. Queue yang kosong tanpa pemeriksaan database **tidak** dianggap lulus.
 
@@ -226,7 +250,7 @@ menjawab risiko yang berbeda.
 ./scripts/flash-sale-kubectl run \
   --namespace "cilupbah-sim-20k-day-$(date +%Y%m%d-%H%M%S)" \
   --count 20000 --seconds 86400 --drain-seconds 7200 \
-  --shops 50 --skus 500 --bulk 100 --producers 4 \
+  --shops 50 --skus 500 --channel-batch-size 50 --label-selection-size 100 --producers 4 \
   --pull-secret ghcr-creds --ack-shared-node-risk
 ```
 
@@ -264,4 +288,4 @@ Penghapusan namespace menghapus database, Redis, PVC, dan file sintetis run ters
 
 ## Batas kesimpulan
 
-Run ini membuktikan kapasitas dan ketepatan alur pada spesifikasi node yang dipakai, dengan kontrak marketplace sintetis. Ia tidak membuktikan kuota, latency, atau ketersediaan API marketplace sungguhan, dan tidak menghilangkan risiko single-node. Hasil satu juta harus dibaca bersama CPU, memori, database/PgBouncer, disk, queue drain, retry, dan konsistensi data—bukan hanya waktu producer selesai.
+Run ini membuktikan kapasitas dan ketepatan alur pada spesifikasi node yang dipakai, dengan kontrak marketplace sintetis. Ia tidak membuktikan kuota, latency, atau ketersediaan API marketplace sungguhan, dan tidak menghilangkan risiko single-node. Hasil satu juta harus dibaca bersama CPU, memori, database/PgBouncer, disk, queue drain, retry, dan konsistensi data—bukan hanya waktu producer selesai. Jalankan hanya memakai image yang benar-benar memuat commit harness ini; wrapper sengaja mengambil image deployment saat ini dan tidak boleh dipakai sebagai bukti untuk kode yang belum dibuild/deploy.

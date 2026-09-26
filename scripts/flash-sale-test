@@ -153,9 +153,21 @@ def manifests(args, audit_data):
         'LABEL_ASYNC_SHOPEE_PREPARATION': 'true', 'LABEL_LOCAL_FIRST': 'true',
         'CHANNEL_ORDER_INTAKE_CUTOFF_AT': '', 'SENTRY_LARAVEL_DSN': '', 'SENTRY_DSN': '',
         'SIM_NAMESPACE': ns, 'SIM_COUNT': str(args.count), 'SIM_SECONDS': str(args.seconds),
-        'SIM_SHOPS': str(args.shops), 'SIM_SKUS': str(args.skus), 'SIM_BULK': str(args.bulk),
+        'SIM_SHOPS': str(args.shops), 'SIM_SKUS': str(args.skus),
+        'SIM_CHANNEL_BATCH_SIZE': str(args.channel_batch_size),
+        'SIM_LABEL_SELECTION_SIZE': str(args.label_selection_size),
+        'SIM_LABEL_SELECTION_MODE': args.label_selection_mode,
+        'SIM_TRAFFIC_PROFILE': args.traffic_profile,
+        'SIM_BURST_SECONDS': str(args.burst_seconds),
+        'SIM_WEBHOOK_DUPLICATE_EVERY': str(args.webhook_duplicate_every),
         'SIM_PRODUCERS': str(args.producers), 'SIM_LATENCY_MS': str(args.latency_ms),
-        'SIM_FAIL_EVERY': str(args.fail_every), 'RATE_LIMIT_SHOPEE_API_PER_SECOND': str(args.shopee_api_rate),
+        'SIM_FAIL_EVERY': str(args.fail_every),
+        'SIM_AWB_READY_AFTER_MS': str(args.awb_ready_after_ms),
+        'SIM_DOCUMENT_READY_AFTER_MS': str(args.document_ready_after_ms),
+        'SIM_ASYNC_SLOW_EVERY': str(args.async_slow_every),
+        'LABEL_SHOPEE_MASS_AWB_CHUNK_SIZE': str(args.channel_batch_size),
+        'LABEL_TIKTOK_MASS_AWB_CHUNK_SIZE': str(args.channel_batch_size),
+        'RATE_LIMIT_SHOPEE_API_PER_SECOND': str(args.shopee_api_rate),
     }
     add('ConfigMap', 'environment', data=env)
 
@@ -280,6 +292,26 @@ def is_complete(snapshot, count):
             and unfinished == 0 and stock_bad == 0 and snapshot['failed_jobs'] == 0 and outstanding == 0)
 
 
+def contract_assertions(final, mock, args, files):
+    """Assertions that cannot be inferred from an empty queue alone."""
+    batch_sizes = mock.get('batch_sizes', {})
+    oversized = {
+        path: values['max'] for path, values in batch_sizes.items()
+        if values['max'] > args.channel_batch_size
+    }
+    expected_attempts = args.count + (args.count // args.webhook_duplicate_every if args.webhook_duplicate_every else 0)
+    actual_attempts = int(final['cases']['webhook_attempts'])
+    return {
+        'webhook_attempts_expected': expected_attempts,
+        'webhook_attempts_actual': actual_attempts,
+        'webhook_attempts_match': actual_attempts == expected_attempts,
+        'oversized_channel_requests': oversized,
+        'channel_batch_limit_respected': not oversized,
+        'pdf_files_checked': int(files['checked']),
+        'pdf_files_valid': int(files['invalid']) == 0,
+    }
+
+
 def sample(ns):
     return {'time': time.time(), 'application': exec_php(ns, 'snapshot'),
             'pod_metrics': json.loads(kubectl('get', '--raw', f'/apis/metrics.k8s.io/v1beta1/namespaces/{ns}/pods')),
@@ -327,13 +359,44 @@ def summarize_samples(path):
             'measurement_note': 'Metrics-server samples, not instantaneous CPU/RSS maxima. Inspect samples.jsonl for slopes and draining.'}
 
 
+def pod_request_memory(pod):
+    """Match Kubernetes scheduling semantics: app sum versus init-container max."""
+    spec = pod.get('spec', {})
+    app = sum(quantity(c.get('resources', {}).get('requests', {}).get('memory', '0')) for c in spec.get('containers', []))
+    init = max((quantity(c.get('resources', {}).get('requests', {}).get('memory', '0')) for c in spec.get('initContainers', [])), default=0)
+    overhead = quantity(spec.get('overhead', {}).get('memory', '0'))
+    return max(app, init) + overhead
+
+
+def node_requested_memory(node_name):
+    total = 0
+    for pod in get('pods')['items']:
+        if pod.get('spec', {}).get('nodeName') != node_name:
+            continue
+        if pod.get('metadata', {}).get('deletionTimestamp'):
+            continue
+        if pod.get('status', {}).get('phase') in ('Succeeded', 'Failed'):
+            continue
+        total += pod_request_memory(pod)
+    return total
+
+
 def stop(ns):
     validate_namespace(ns)
-    if get('namespace', ns)['metadata'].get('labels', {}).get('app.kubernetes.io/part-of') != LABEL['app.kubernetes.io/part-of']:
+    try:
+        namespace = get('namespace', ns)
+    except RuntimeError:
+        print('Simulation namespace does not exist; nothing to stop.')
+        return
+    if namespace['metadata'].get('labels', {}).get('app.kubernetes.io/part-of') != LABEL['app.kubernetes.io/part-of']:
         raise RuntimeError('Namespace is not owned by the simulation harness.')
-    kubectl('-n', ns, 'patch', 'job', 'producer', '--type=merge', '-p', '{"spec":{"suspend":true}}')
+    jobs = {job['metadata']['name'] for job in get('jobs', namespace=ns)['items']}
+    if 'producer' in jobs:
+        kubectl('-n', ns, 'patch', 'job', 'producer', '--type=merge', '-p', '{"spec":{"suspend":true}}')
+    deployments = {deployment['metadata']['name'] for deployment in get('deployments', namespace=ns)['items']}
     for role in ['coordinator'] + ['worker-'+p for p in PROFILES]:
-        kubectl('-n', ns, 'scale', 'deployment', role, '--replicas=0')
+        if role in deployments:
+            kubectl('-n', ns, 'scale', 'deployment', role, '--replicas=0')
     print('Simulation producers/workers stopped; database, Redis and evidence retained. No production changes.')
 
 
@@ -349,10 +412,26 @@ def main():
     parser.add_argument('--drain-seconds', type=int, default=1800)
     parser.add_argument('--shops', type=int, default=20)
     parser.add_argument('--skus', type=int, default=100)
-    parser.add_argument('--bulk', type=int, default=100)
+    parser.add_argument('--channel-batch-size', '--bulk', dest='channel_batch_size', type=int, default=50,
+                        help='Hard maximum per synthetic Shopee request; must not exceed official limit 50')
+    parser.add_argument('--label-selection-size', type=int, default=100,
+                        help='Number of ready orders selected once in the print modal (1..500)')
+    parser.add_argument('--label-selection-mode', choices=['shop_grouped', 'mixed'], default='shop_grouped',
+                        help='shop_grouped models an efficient per-shop selection; mixed models arbitrary user selection')
+    parser.add_argument('--traffic-profile', choices=['steady', 'flash_burst'], default='steady')
+    parser.add_argument('--burst-seconds', type=int, default=60,
+                        help='For flash_burst, duration of the incoming webhook spike; must be <= --seconds')
+    parser.add_argument('--webhook-duplicate-every', type=int, default=0,
+                        help='Replay every Nth webhook to prove idempotency; 0 disables replay')
     parser.add_argument('--producers', type=int, default=4)
     parser.add_argument('--latency-ms', type=int, default=100)
     parser.add_argument('--fail-every', type=int, default=0)
+    parser.add_argument('--awb-ready-after-ms', type=int, default=0,
+                        help='Synthetic channel delay after Ship before AWB can be polled')
+    parser.add_argument('--document-ready-after-ms', type=int, default=0,
+                        help='Synthetic channel delay after document creation before label download')
+    parser.add_argument('--async-slow-every', type=int, default=0,
+                        help='Make every Nth synthetic order four times slower in async channel readiness; 0 disables')
     parser.add_argument('--shopee-api-rate', type=int, default=4, help='Simulator experiment only, NOT permission to exceed marketplace quotas')
     parser.add_argument('--storage-class', default='local-path')
     parser.add_argument('--pull-secret', default='ghcr-creds', help='Registry pull secret copied from source namespace; empty for public/cached image')
@@ -380,8 +459,14 @@ def main():
         return
     if not args.image or not args.node:
         parser.error('--image (image built from this checkout) and --node are required')
-    if not 1 <= args.count <= 10_000_000 or min(args.seconds, args.shops, args.skus, args.producers, args.shopee_api_rate) < 1 or not 1 <= args.bulk <= 200 or min(args.fail_every, args.latency_ms, args.drain_seconds) < 0:
-        parser.error('Invalid workload size; bulk 1..200, count 1..10000000, positive dimensions required')
+    if (not 1 <= args.count <= 10_000_000
+            or min(args.seconds, args.shops, args.skus, args.producers, args.shopee_api_rate, args.burst_seconds) < 1
+            or not 1 <= args.channel_batch_size <= 50
+            or not 1 <= args.label_selection_size <= 500
+            or args.burst_seconds > args.seconds
+            or min(args.fail_every, args.latency_ms, args.drain_seconds, args.webhook_duplicate_every,
+                   args.awb_ready_after_ms, args.document_ready_after_ms, args.async_slow_every) < 0):
+        parser.error('Invalid workload dimensions; channel batch is 1..50, modal selection is 1..500, and burst must fit within duration')
     objects = manifests(args, baseline)
     save('manifest.json', objects)
     if args.action == 'plan':
@@ -400,6 +485,9 @@ def main():
                     for o in objects if o['kind'] in ('Deployment', 'Job') for c in o['spec']['template']['spec']['containers'])
     if available < requested * 1.3:
         raise RuntimeError('Insufficient current node memory for baseline requests + 30% margin. Use a dedicated node.')
+    schedulable = quantity(node['status']['allocatable']['memory']) - node_requested_memory(node['metadata']['name'])
+    if schedulable < requested:
+        raise RuntimeError('Insufficient schedulable node memory for simulation requests. Existing pod requests would leave pods Pending; use a dedicated node or free declared capacity.')
     first = [o for o in objects if o['kind'] not in ('Deployment', 'Job')]
     apply(first)
     copy_image_pull_secret(args.source_namespace, ns, args.pull_secret)
@@ -467,13 +555,18 @@ def main():
         save('marketplace-final.json', mock)
         resources = summarize_samples(directory / 'samples.jsonl')
         save('resource-summary.json', resources)
-        completed = completed and files['invalid'] == 0 and final['missing_orders'] == 0 and final['incomplete_stock_versions'] == 0
+        assertions = contract_assertions(final, mock, args, files)
+        save('contract-assertions.json', assertions)
+        completed = (completed and assertions['webhook_attempts_match'] and assertions['channel_batch_limit_respected']
+                     and assertions['pdf_files_valid'] and final['missing_orders'] == 0
+                     and final['incomplete_stock_versions'] == 0)
         save('summary.json', {'completed': completed, 'target_each': args.count, 'samples': samples,
                               'elapsed_seconds': time.time()-start, 'channel': 'shopee',
                               'stock_target_kind': 'sync_requests_not_guaranteed_API_calls',
                               'stock_api_calls': mock['calls'].get('/api/v2/product/update_stock', 0),
                               'no_deferred_observed': resources['deferred_peak'] == 0,
                               'oom_observed': bool(resources['oom_pods']),
+                              'contract_assertions': assertions,
                               'scope': 'real Laravel jobs + synthetic Shopee contracts; no production certification',
                               'result': 'COMPLETED_REQUIRES_REVIEW' if completed else 'INCOMPLETE'})
         print(f'Report saved to {directory}. No automated claim of enterprise readiness.')

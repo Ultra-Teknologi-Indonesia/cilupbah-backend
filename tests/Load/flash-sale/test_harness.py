@@ -41,6 +41,19 @@ class HarnessTest(unittest.TestCase):
         self.assertIn(b'/Count 1', content)
         self.assertEqual(1, self.mock.handle('/metrics', {}, {})[1]['downloads'])
 
+    def test_channel_batch_limit_and_async_readiness_are_enforced(self):
+        delayed = Marketplace(str(Path(self.temp.name) / 'delayed.sqlite'), 0, 0, 50, 60_000, 60_000)
+        packages = [{'package_number': f'PKGSIM{i:012d}'} for i in range(1, 52)]
+        self.assertEqual(422, delayed.handle('/api/v2/logistics/mass_ship_order', {}, {'package_list': packages})[0])
+        package = [{'package_number': 'PKGSIM000000000001'}]
+        self.assertEqual(200, delayed.handle('/api/v2/logistics/mass_ship_order', {}, {'package_list': package})[0])
+        tracking = delayed.handle('/api/v2/logistics/get_mass_tracking_number', {}, {'package_list': package})[1]
+        self.assertEqual([], tracking['response']['success_list'])
+        order = [{'order_sn': 'SIM000000000001'}]
+        delayed.handle('/api/v2/logistics/create_shipping_document', {}, {'order_list': order})
+        self.assertEqual('PROCESSING', delayed.handle('/api/v2/logistics/get_shipping_document_result', {}, {'order_list': order})[1]
+                                      ['response']['result_list'][0]['status'])
+
     def test_stock_ledger_retains_latest_value(self):
         for stock in [30, 12]:
             self.mock.handle('/api/v2/product/update_stock', {'shop_id': ['1']}, {'item_id': 2, 'stock_list': [{'seller_stock': [{'stock': stock}]}]})
@@ -60,8 +73,11 @@ class HarnessTest(unittest.TestCase):
 
     def test_manifests_never_reference_production_secrets_or_hosts(self):
         args = SimpleNamespace(namespace='cilupbah-sim-test', image='test:latest', node='test-node', count=100,
-                               seconds=60, shops=2, skus=3, bulk=50, producers=2, latency_ms=100,
-                               fail_every=0, storage_class='local-path', disk='10Gi', shopee_api_rate=4,
+                               seconds=60, shops=2, skus=3, channel_batch_size=50, label_selection_size=100,
+                               label_selection_mode='shop_grouped', traffic_profile='flash_burst', burst_seconds=30,
+                               webhook_duplicate_every=10, producers=2, latency_ms=100, fail_every=0,
+                               awb_ready_after_ms=1000, document_ready_after_ms=1000, async_slow_every=10,
+                               storage_class='local-path', disk='10Gi', shopee_api_rate=4,
                                pull_secret='ghcr-creds')
         baseline = {'deployments': [{'name': name, 'containers': [{'resources': {'limits': {'cpu': '1', 'memory': '1Gi'},
                     'requests': {'cpu': '100m', 'memory': '128Mi'}}, 'tuning': {}}]} for name, _ in runner.PROFILES.values()]}
@@ -87,6 +103,11 @@ class HarnessTest(unittest.TestCase):
         awb_resources = awb['spec']['template']['spec']['containers'][0]['resources']
         self.assertEqual('512Mi', awb_resources['requests']['memory'])
         self.assertEqual('1Gi', awb_resources['limits']['memory'])
+        environment = next(m for m in manifests if m['kind'] == 'ConfigMap' and m['metadata']['name'] == 'environment')['data']
+        self.assertEqual('50', environment['SIM_CHANNEL_BATCH_SIZE'])
+        self.assertEqual('100', environment['SIM_LABEL_SELECTION_SIZE'])
+        self.assertEqual('flash_burst', environment['SIM_TRAFFIC_PROFILE'])
+        self.assertEqual('10', environment['SIM_WEBHOOK_DUPLICATE_EVERY'])
 
     def test_empty_queue_does_not_hide_missing_work(self):
         snapshot = {'cases': {'offered': 100, 'http_accepted': 100, 'stock_requested': 100, 'producer_errors': 0},
@@ -96,6 +117,25 @@ class HarnessTest(unittest.TestCase):
         snapshot['orders'] = 100
         snapshot['queues'] = {'x': {'ready': 0, 'delayed': 1, 'reserved': 0}}
         self.assertFalse(runner.is_complete(snapshot, 100))
+
+    def test_scheduler_memory_counts_declared_requests(self):
+        pod = {
+            'spec': {
+                'containers': [{'resources': {'requests': {'memory': '256Mi'}}}, {'resources': {'requests': {'memory': '512Mi'}}}],
+                'initContainers': [{'resources': {'requests': {'memory': '2Gi'}}}],
+                'overhead': {'memory': '16Mi'},
+            },
+        }
+        self.assertEqual(2 * 1024**3 + 16 * 1024**2, runner.pod_request_memory(pod))
+
+    def test_contract_assertions_reject_missing_replay_or_oversized_batch(self):
+        args = SimpleNamespace(count=100, webhook_duplicate_every=10, channel_batch_size=50)
+        final = {'cases': {'webhook_attempts': 109}}
+        mock = {'batch_sizes': {'/api/v2/logistics/mass_ship_order': {'max': 51}}}
+        result = runner.contract_assertions(final, mock, args, {'checked': 2, 'invalid': 0})
+        self.assertFalse(result['webhook_attempts_match'])
+        self.assertFalse(result['channel_batch_limit_respected'])
+        self.assertEqual(51, result['oversized_channel_requests']['/api/v2/logistics/mass_ship_order'])
 
 
 if __name__ == '__main__':

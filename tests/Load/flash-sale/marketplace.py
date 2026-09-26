@@ -37,16 +37,22 @@ def pdf(labels):
 
 
 class Marketplace:
-    def __init__(self, path, latency_ms=100, fail_every=0):
+    def __init__(self, path, latency_ms=100, fail_every=0, channel_batch_size=50,
+                 awb_ready_after_ms=0, document_ready_after_ms=0, slow_every=0):
         self.path, self.latency_ms, self.fail_every = path, latency_ms, fail_every
+        self.channel_batch_size = channel_batch_size
+        self.awb_ready_after_ms = awb_ready_after_ms
+        self.document_ready_after_ms = document_ready_after_ms
+        self.slow_every = slow_every
         with self.connect() as db:
             db.executescript('''
                 PRAGMA journal_mode=WAL;
                 CREATE TABLE IF NOT EXISTS calls(path TEXT PRIMARY KEY, total INTEGER NOT NULL);
-                CREATE TABLE IF NOT EXISTS shipments(package TEXT PRIMARY KEY, created REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS request_batches(path TEXT NOT NULL, size INTEGER NOT NULL, created REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS shipments(package TEXT PRIMARY KEY, created REAL NOT NULL, ready_at REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS stocks(shop TEXT, item TEXT, payload TEXT, updated REAL,
                     PRIMARY KEY(shop,item));
-                CREATE TABLE IF NOT EXISTS documents(order_no TEXT PRIMARY KEY, created REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS documents(order_no TEXT PRIMARY KEY, created REAL NOT NULL, ready_at REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS downloads(order_no TEXT PRIMARY KEY, downloaded REAL NOT NULL);
             ''')
 
@@ -60,6 +66,12 @@ class Marketplace:
             with self.connect() as db:
                 return 200, {
                     'calls': dict(db.execute('SELECT path,total FROM calls')),
+                    'batch_sizes': {
+                        path: {'requests': requests, 'max': maximum}
+                        for path, requests, maximum in db.execute(
+                            'SELECT path,count(*),max(size) FROM request_batches GROUP BY path'
+                        )
+                    },
                     **{t: db.execute(f'SELECT count(*) FROM {t}').fetchone()[0]
                        for t in ('shipments', 'stocks', 'documents', 'downloads')},
                 }
@@ -74,6 +86,12 @@ class Marketplace:
         packages = body.get('package_list', [])
         orders = body.get('order_list', [])
         with self.connect() as db:
+            batch_size = len(packages) or len(orders)
+            if batch_size:
+                db.execute('INSERT INTO request_batches VALUES (?,?,?)', (path, batch_size, time.time()))
+            if op in ('mass_ship_order', 'get_mass_tracking_number', 'create_shipping_document',
+                      'get_shipping_document_result', 'download_shipping_document') and batch_size > self.channel_batch_size:
+                return 422, {'error': 'simulation_batch_limit', 'message': f'Maximum {self.channel_batch_size} entries per request'}
             if op == 'get_order_detail':
                 result['order_list'] = []
                 for order in query.get('order_sn_list', [''])[0].split(','):
@@ -100,32 +118,41 @@ class Marketplace:
                 result = {'info_needed': {'dropoff': []}, 'dropoff': {'branch_list': []}}
             elif op == 'mass_ship_order':
                 for p in packages:
-                    db.execute('INSERT OR IGNORE INTO shipments VALUES (?,?)', (p['package_number'], time.time()))
+                    now = time.time()
+                    db.execute('INSERT OR IGNORE INTO shipments VALUES (?,?,?)', (
+                        p['package_number'], now, now + self.delay_seconds(p['package_number'], self.awb_ready_after_ms),
+                    ))
                 result = {'success_list': packages, 'fail_list': []}
             elif op == 'get_mass_tracking_number':
                 result = {'success_list': [], 'fail_list': []}
                 for p in packages:
-                    if db.execute('SELECT 1 FROM shipments WHERE package=?', (p['package_number'],)).fetchone():
+                    shipment = db.execute('SELECT ready_at FROM shipments WHERE package=?', (p['package_number'],)).fetchone()
+                    if shipment and shipment[0] <= time.time():
                         result['success_list'].append({**p, 'tracking_number': 'AWB'+p['package_number']})
                     else:
                         result['fail_list'].append({**p, 'fail_reason': 'Not shipped yet'})
             elif op == 'get_tracking_number':
                 package = 'PKG'+query.get('order_sn', [''])[0]
-                found = db.execute('SELECT 1 FROM shipments WHERE package=?', (package,)).fetchone()
-                result = {'tracking_number': 'AWB'+package if found else ''}
+                shipment = db.execute('SELECT ready_at FROM shipments WHERE package=?', (package,)).fetchone()
+                result = {'tracking_number': 'AWB'+package if shipment and shipment[0] <= time.time() else ''}
             elif op == 'create_shipping_document':
                 for o in orders:
-                    db.execute('INSERT OR IGNORE INTO documents VALUES (?,?)', (o['order_sn'], time.time()))
+                    now = time.time()
+                    db.execute('INSERT OR IGNORE INTO documents VALUES (?,?,?)', (
+                        o['order_sn'], now, now + self.delay_seconds(o['order_sn'], self.document_ready_after_ms),
+                    ))
                 result = {'result_list': orders}
             elif op == 'get_shipping_document_result':
-                result = {'result_list': [{**o, 'status': 'READY' if db.execute(
-                    'SELECT 1 FROM documents WHERE order_no=?', (o['order_sn'],)).fetchone() else 'PROCESSING'} for o in orders]}
+                result = {'result_list': [{**o, 'status': 'READY' if (document := db.execute(
+                    'SELECT ready_at FROM documents WHERE order_no=?', (o['order_sn'],)).fetchone()) and document[0] <= time.time()
+                    else 'PROCESSING'} for o in orders]}
             elif op == 'get_shipping_document_parameter':
                 result = {'result_list': [{**o, 'shipping_document_type': 'NORMAL_AIR_WAYBILL',
                     'suggest_shipping_document_type': 'NORMAL_AIR_WAYBILL',
                     'selectable_shipping_document_type': ['NORMAL_AIR_WAYBILL']} for o in orders]}
             elif op == 'download_shipping_document':
-                if not orders or any(not db.execute('SELECT 1 FROM documents WHERE order_no=?', (o['order_sn'],)).fetchone() for o in orders):
+                if not orders or any(not (document := db.execute('SELECT ready_at FROM documents WHERE order_no=?', (o['order_sn'],)).fetchone())
+                                     or document[0] > time.time() for o in orders):
                     return 409, {'error': 'simulation_document_not_created'}
                 for o in orders:
                     db.execute('INSERT OR IGNORE INTO downloads VALUES (?,?)', (o['order_sn'], time.time()))
@@ -142,10 +169,21 @@ class Marketplace:
                 return 501, {'error': 'simulation_unsupported_endpoint', 'message': path}
         return 200, {'error': '', 'message': '', 'response': result}
 
+    def delay_seconds(self, identifier, milliseconds):
+        delay = milliseconds / 1000
+        digits = ''.join(char for char in identifier if char.isdigit())
+        if self.slow_every and digits and int(digits) % self.slow_every == 0:
+            delay *= 4
+        return delay
+
 
 def serve():
     mock = Marketplace(os.environ.get('SIM_LEDGER', '/data/marketplace.sqlite'),
-                       int(os.environ.get('SIM_LATENCY_MS', '100')), int(os.environ.get('SIM_FAIL_EVERY', '0')))
+                       int(os.environ.get('SIM_LATENCY_MS', '100')), int(os.environ.get('SIM_FAIL_EVERY', '0')),
+                       int(os.environ.get('SIM_CHANNEL_BATCH_SIZE', '50')),
+                       int(os.environ.get('SIM_AWB_READY_AFTER_MS', '0')),
+                       int(os.environ.get('SIM_DOCUMENT_READY_AFTER_MS', '0')),
+                       int(os.environ.get('SIM_ASYNC_SLOW_EVERY', '0')))
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
