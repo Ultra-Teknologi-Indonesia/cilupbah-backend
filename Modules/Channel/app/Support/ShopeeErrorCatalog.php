@@ -5,11 +5,27 @@ namespace Modules\Channel\Support;
 class ShopeeErrorCatalog
 {
     public const TOKEN = 'token';
+
     public const RETRYABLE = 'retryable';
+
     public const USER_FIXABLE = 'user_fixable';
+
     public const FATAL = 'fatal';
 
     protected const MAP = [
+        'logistics_download_later' => [self::RETRYABLE, 'Shopee masih menyiapkan file label. Sistem akan mencoba mengunduh lagi.'],
+        'logistics_package_print_failed' => [self::RETRYABLE, 'Sebagian label Shopee belum dapat diunduh. Sistem akan mencoba kembali.'],
+        'logistics_error_network' => [self::RETRYABLE, 'Koneksi dokumen Shopee terganggu. Sistem akan mencoba kembali.'],
+        'logistics_unknown_error' => [self::RETRYABLE, 'Shopee belum dapat menyiapkan dokumen. Coba kembali; hubungi Shopee jika berulang.'],
+        'logistics_shipping_document_should_print_first' => [self::RETRYABLE, 'Dokumen Shopee perlu disiapkan kembali sebelum diunduh.'],
+        'logistics_packages_can_not_download_together' => [self::USER_FIXABLE, 'Label ini tidak dapat diunduh dalam kelompok yang sama. Sistem menggunakan unduhan terpisah.'],
+        'logistics_order_not_exist' => [self::USER_FIXABLE, 'Pesanan tidak ditemukan di toko Shopee yang dipilih. Sinkronkan pesanan kembali.'],
+        'logistics_package_number_not_found' => [self::USER_FIXABLE, 'Paket Shopee tidak ditemukan. Sinkronkan data paket kembali.'],
+        'logistics_package_number_not_exist' => [self::USER_FIXABLE, 'Pesanan split membutuhkan nomor paket Shopee. Sinkronkan paket kembali.'],
+        'logistics_invalid_address_version' => [self::USER_FIXABLE, 'Alamat pengiriman perlu diperbarui di Shopee sebelum label dapat digunakan.'],
+        'logistics_error_booking_order' => [self::USER_FIXABLE, 'Pengiriman pesanan booking ini diatur oleh Shopee, bukan melalui pengiriman seller.'],
+        'error_server' => [self::RETRYABLE, 'Layanan Shopee sedang bermasalah. Sistem akan mencoba kembali.'],
+        'error_permission' => [self::USER_FIXABLE, 'Akses aplikasi ke dokumen Shopee belum diizinkan. Periksa otorisasi toko.'],
 
         'error_network' => [self::RETRYABLE, 'Koneksi ke Shopee gagal. Coba lagi.'],
         'error_system_busy' => [self::RETRYABLE, 'Shopee sedang sibuk. Coba lagi beberapa saat lagi.'],
@@ -213,7 +229,7 @@ class ShopeeErrorCatalog
         }
 
         $fallback = $detail !== ''
-            ? 'Permintaan ditolak Shopee: ' . $detail
+            ? 'Permintaan ditolak Shopee: '.$detail
             : 'Permintaan ditolak Shopee. Coba lagi atau hubungi Shopee.';
 
         return self::pack($code, self::FATAL, $fallback, $message, $detail);

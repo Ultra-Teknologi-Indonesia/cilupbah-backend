@@ -25,7 +25,7 @@ final class PrepareBulkShopeeShippingLabelsJob implements ShouldBeUnique, Should
 
     public array $backoff = [5, 15, 30];
 
-    public function __construct(public readonly string $batchId, public readonly array $itemIds)
+    public function __construct(public readonly string $batchId, public readonly array $itemIds, public readonly int $attempt = 0)
     {
         $this->onConnection(config('queue.routing.label_download.connection', 'redis-label-download'));
         $this->onQueue(ChannelQueue::for('shopee', 'label_download'));
@@ -33,11 +33,15 @@ final class PrepareBulkShopeeShippingLabelsJob implements ShouldBeUnique, Should
 
     public function uniqueId(): string
     {
-        return $this->batchId.':'.hash('sha256', implode(',', $this->itemIds));
+        $ids = $this->itemIds;
+        sort($ids);
+        $prefix = ($this->attempt ?? 0) === 0 ? $this->batchId : $this->batchId.':'.$this->attempt;
+
+        return $prefix.':'.hash('sha256', implode(',', $ids));
     }
 
     public function handle(BulkShippingLabelService $service): void
     {
-        $service->prepareShopeeChunk($this->batchId, $this->itemIds);
+        $service->prepareShopeeChunk($this->batchId, $this->itemIds, $this->attempt ?? 0);
     }
 }

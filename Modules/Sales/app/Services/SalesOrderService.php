@@ -1172,35 +1172,22 @@ class SalesOrderService
 
             $requestedDocType = $options['document_type'] ?? null;
 
-            $cacheUsable = $order->shipping_label_status === 'ready'
-                && $order->shipping_label_doc_type;
+            $cacheUsable = $order->shipping_label_status === 'ready';
 
             if ($cacheUsable) {
-                $download = $shopeeService->downloadShippingDocument(
-                    $shopId,
-                    $channelOrderNo,
-                    $order->shipping_label_doc_type
-                );
+                $type = $order->shipping_label_doc_type ?: ($requestedDocType ?: 'THERMAL_AIR_WAYBILL');
+                $content = app(ShopeeReadyLabelDownloader::class)->download($order, $type);
+                $this->cacheShippingLabelBytes($order, $content, $type);
 
-                if (! empty($download['binary']) || ! empty($download['content'])) {
-                    $content = (string) ($download['content'] ?? '');
-                    $this->cacheShippingLabelBytes($order, $content, $order->shipping_label_doc_type);
-
-                    return [
-                        'type' => 'base64',
-                        'content_type' => $download['content_type'] ?? 'application/pdf',
-                        'document_base64' => base64_encode($content),
-                        'source' => 'shopee',
-                    ];
-                }
-
+                return ['type' => 'base64', 'content_type' => 'application/pdf',
+                    'document_base64' => base64_encode($content), 'source' => 'shopee'];
             }
 
             if ($order->shipping_label_status === 'preparing') {
                 $liveStatus = null;
                 $liveDocType = $order->shipping_label_doc_type ?: 'THERMAL_AIR_WAYBILL';
                 try {
-                    $liveResult = $shopeeService->getShippingDocumentResult($shopId, $channelOrderNo, $liveDocType);
+                    $liveResult = $shopeeService->getShippingDocumentResult($shopId, $channelOrderNo, $liveDocType, $order->tracking_number, $order->package_number ?? null);
                     $liveRow = $liveResult['response']['result_list'][0] ?? [];
                     $liveStatus = strtoupper((string) ($liveRow['status'] ?? ''));
                 } catch (\Throwable $e) {
@@ -1217,7 +1204,7 @@ class SalesOrderService
                 }
 
                 if ($liveStatus === 'READY') {
-                    $download = $shopeeService->downloadShippingDocument($shopId, $channelOrderNo, $liveDocType);
+                    $download = ['binary' => true, 'content' => app(ShopeeReadyLabelDownloader::class)->download($order, $liveDocType)];
                     if (! empty($download['binary']) || ! empty($download['content'])) {
                         $content = (string) ($download['content'] ?? '');
                         $this->cacheShippingLabelBytes($order, $content, $liveDocType);

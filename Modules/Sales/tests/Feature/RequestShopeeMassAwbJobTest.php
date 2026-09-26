@@ -11,6 +11,7 @@ use Mockery;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
 use Modules\Channel\Services\ShopeeOrderService;
+use Modules\Sales\Jobs\CollectShopeeLabelPreparationJob;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
 use Modules\Sales\Jobs\RequestChannelAwbJob;
 use Modules\Sales\Jobs\RequestShopeeMassAwbJob;
@@ -138,7 +139,8 @@ final class RequestShopeeMassAwbJobTest extends TestCase
             ->count());
 
         Queue::assertNotPushed(RequestChannelAwbJob::class);
-        Queue::assertPushed(PrepareShopeeShippingLabelJob::class, 2);
+        Queue::assertNotPushed(PrepareShopeeShippingLabelJob::class);
+        Queue::assertPushed(CollectShopeeLabelPreparationJob::class, 1);
     }
 
     private function createWaitingOrder(
@@ -147,6 +149,7 @@ final class RequestShopeeMassAwbJobTest extends TestCase
         string $packageNumber,
     ): SalesOrder {
         $order = SalesOrder::factory()->create([
+            'channel_instant' => false,
             'source' => 'shopee',
             'channel_shop_id' => 'SHOP-MASS-AWB',
             'channel_order_no' => $orderSn,

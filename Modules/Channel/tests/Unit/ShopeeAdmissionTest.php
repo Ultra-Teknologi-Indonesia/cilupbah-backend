@@ -16,9 +16,9 @@ final class ShopeeAdmissionTest extends TestCase
     {
         return new class extends ShopeeClient
         {
-            public function admit(): void
+            public function admit(?string $path = null): void
             {
-                $this->throttle();
+                $this->throttle($path);
             }
         };
     }
@@ -47,5 +47,24 @@ final class ShopeeAdmissionTest extends TestCase
         $lock = Cache::lock('shopee-api:admission', 2);
         $this->assertTrue($lock->get());
         $lock->release();
+    }
+
+    public function test_label_cannot_consume_reserved_capacity_when_critical_requests_are_active(): void
+    {
+        config(['ratelimit.shopee_admission_wait_seconds' => 0, 'ratelimit.shopee_critical_priority' => true]);
+        Cache::store(config('cache.limiter'))->put('shopee-api:critical-demand', true, 2);
+        RateLimiter::shouldReceive('tooManyAttempts')->once()->with('shopee-api:noncritical', 2)->andReturnTrue();
+        RateLimiter::shouldReceive('attempt')->never();
+        $this->expectException(ShopeeApiException::class);
+        $this->client()->admit('/api/v2/logistics/download_shipping_document');
+    }
+
+    public function test_order_detail_still_obeys_the_global_limit_and_announces_critical_demand(): void
+    {
+        config(['ratelimit.shopee_admission_wait_seconds' => 0, 'ratelimit.shopee_critical_priority' => true]);
+        RateLimiter::shouldReceive('tooManyAttempts')->never();
+        RateLimiter::shouldReceive('attempt')->once()->with('shopee-api', 4, \Mockery::type('Closure'), 1)->andReturnTrue();
+        $this->client()->admit('/api/v2/order/get_order_detail');
+        $this->assertTrue(Cache::store(config('cache.limiter'))->has('shopee-api:critical-demand'));
     }
 }

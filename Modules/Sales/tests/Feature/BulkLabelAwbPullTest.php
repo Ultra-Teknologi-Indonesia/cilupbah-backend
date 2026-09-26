@@ -17,6 +17,7 @@ use Modules\Channel\Services\ChannelSyncSettingService;
 use Modules\Outbound\Http\Controllers\OutboundFulfillmentController;
 use Modules\Outbound\Services\OutboundFulfillmentService;
 use Modules\Sales\Http\Controllers\BulkShippingLabelController;
+use Modules\Sales\Jobs\CollectShopeeLabelPreparationJob;
 use Modules\Sales\Jobs\FinalizeBulkShippingLabelBatchJob;
 use Modules\Sales\Jobs\PrepareTikTokShippingLabelJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelItemJob;
@@ -50,6 +51,7 @@ class BulkLabelAwbPullTest extends TestCase
     private function orderWithoutAwb(array $overrides = []): SalesOrder
     {
         return SalesOrder::factory()->create(array_merge([
+            'channel_instant' => false,
             'source' => 'shopee',
             'tracking_number' => null,
             'channel_order_no' => '2608138CUCUBUP',
@@ -436,8 +438,8 @@ class BulkLabelAwbPullTest extends TestCase
 
         (new BulkShippingLabelService(Mockery::mock(SalesOrderService::class)))->onOrderAwbReady($order->id);
 
-        $this->assertSame(BulkShippingLabelItem::STATUS_PENDING, $this->itemOf($batch)->status);
-        Queue::assertPushed(ProcessBulkShippingLabelItemJob::class, function ($job) use ($batch): bool {
+        $this->assertSame(BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP, $this->itemOf($batch)->status);
+        Queue::assertPushed(CollectShopeeLabelPreparationJob::class, function ($job) use ($batch): bool {
             return $job->batchId === $batch->id;
         });
     }

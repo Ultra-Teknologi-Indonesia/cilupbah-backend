@@ -1518,7 +1518,10 @@ class ShopeeOrderService
                 '/api/v2/logistics/download_shipping_document',
                 [
                     'shipping_document_type' => $docType,
-                    'order_list' => array_map($this->shippingDocumentResultPayload(...), $chunk),
+                    'order_list' => array_map(static fn (array $row): array => array_filter([
+                        'order_sn' => $row['order_sn'],
+                        'package_number' => $row['package_number'] ?? null,
+                    ], static fn ($value): bool => $value !== null && $value !== ''), $chunk),
                 ],
                 $token,
                 $shop->shop_id,
@@ -1723,8 +1726,6 @@ class ShopeeOrderService
             'parcel has been shipped',
             'package has been shipped',
             'already shipped',
-            'can not print now',
-            'cannot print now',
             'sudah dikirim',
             'statusnya dikirim',
         ] as $marker) {
@@ -1793,9 +1794,6 @@ class ShopeeOrderService
         $shop = $this->requireShop($shopId);
 
         $orderPayload = ['order_sn' => $orderSn];
-        if (! empty($trackingNumber)) {
-            $orderPayload['tracking_number'] = $trackingNumber;
-        }
         if (! empty($packageNumber)) {
             $orderPayload['package_number'] = $packageNumber;
         }

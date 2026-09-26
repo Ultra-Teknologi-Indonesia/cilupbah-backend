@@ -136,6 +136,7 @@ final class RequestTikTokMassAwbJobTest extends TestCase
     private function createOrder(string $channelOrderNo, string $packageId): SalesOrder
     {
         return SalesOrder::factory()->create([
+            'channel_instant' => false,
             'source' => 'tiktok',
             'channel_shop_id' => 'SHOP-TIKTOK-MASS',
             'channel_order_no' => $channelOrderNo,

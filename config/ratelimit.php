@@ -33,6 +33,7 @@ return [
     ],
 
     'lazada_api_window_seconds' => (int) env('RATE_LIMIT_LAZADA_API_WINDOW_SECONDS', 2),
+    'shopee_critical_priority' => (bool) env('SHOPEE_CRITICAL_API_PRIORITY', true),
 
     'stock_cutover' => [
         'page_per_minute' => (int) env('RATE_LIMIT_STOCK_CUTOVER_PAGE', 30),

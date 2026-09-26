@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Modules\Sales\Enums\OrderActivityAction;
 use Modules\Sales\Jobs\ArchiveBulkShippingLabelJob;
+use Modules\Sales\Jobs\DownloadBulkMarketplaceLabelsJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelItemJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelJob;
 use Modules\Sales\Models\BulkShippingLabelBatch;
@@ -68,7 +69,7 @@ class BulkShippingLabelControllerTest extends TestCase
         Queue::fake();
 
         $order = SalesOrder::factory()->create([
-            'source' => 'shopee',
+            'source' => 'lazada',
             'tracking_number' => 'AWB-FANOUT-001',
         ]);
         $batch = BulkShippingLabelBatch::create([
@@ -87,8 +88,8 @@ class BulkShippingLabelControllerTest extends TestCase
 
         (new ProcessBulkShippingLabelJob($batch->id))->handle(app(BulkShippingLabelService::class));
 
-        Queue::assertPushed(ProcessBulkShippingLabelItemJob::class, function ($job) use ($batch, $item): bool {
-            return $job->batchId === $batch->id && $job->itemId === $item->id;
+        Queue::assertPushed(DownloadBulkMarketplaceLabelsJob::class, function ($job) use ($batch, $item): bool {
+            return $job->batchId === $batch->id && $job->itemIds === [$item->id] && $job->channel === 'lazada';
         });
     }
 

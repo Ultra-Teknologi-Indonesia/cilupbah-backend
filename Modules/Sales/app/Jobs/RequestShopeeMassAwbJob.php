@@ -97,6 +97,15 @@ final class RequestShopeeMassAwbJob implements ShouldBeUnique, ShouldQueue
         $orders = $orders->filter(
             fn (SalesOrder $order): bool => blank($order->tracking_number) || $this->hasUntrackedPackages($order),
         )->values();
+        $orders = $orders->reject(function (SalesOrder $order) use ($bulkLabels): bool {
+            if ($bulkLabels->isInstantCourier($order) && ! $this->verificationOnly) {
+                $bulkLabels->onOrderAwbSkippedInstant((string) $order->id);
+
+                return true;
+            }
+
+            return false;
+        })->values();
         if ($orders->isEmpty()) {
             return;
         }

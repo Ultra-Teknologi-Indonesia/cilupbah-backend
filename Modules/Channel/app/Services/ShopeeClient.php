@@ -90,7 +90,7 @@ class ShopeeClient
             'sign' => $sign,
         ];
 
-        $this->throttle();
+        $this->throttle($apiPath);
 
         $timeout = max(1, $timeoutSeconds ?? 30);
         $connectTimeout = min(15, $timeout);
@@ -187,7 +187,7 @@ class ShopeeClient
                     'sign' => $sign,
                 ];
 
-                $this->throttle();
+                $this->throttle($apiPath);
                 $url = $this->host.$apiPath.'?'.http_build_query(array_merge($common, $params));
                 $handles[(string) $key] = $pool
                     ->as((string) $key)
@@ -319,14 +319,23 @@ class ShopeeClient
             'sign' => $sign,
         ];
 
-        $this->throttle();
+        $this->throttle($apiPath);
 
         $url = $this->host.$apiPath.'?'.http_build_query($common);
-        $response = Http::asJson()->timeout(30)->connectTimeout(15)->post($url, $params);
+        $maxBytes = (int) config('bulk-labels.mass_download_max_bytes', 16 * 1024 * 1024);
+        $response = Http::asJson()->timeout(30)->connectTimeout(15)->withOptions([
+            'progress' => static function ($total, $downloaded) use ($maxBytes): void {
+                if ($total > $maxBytes || $downloaded > $maxBytes) {
+                    throw new \RuntimeException('Ukuran dokumen Shopee melebihi batas aman.');
+                }
+            },
+        ])->post($url, $params);
 
         $contentType = strtolower((string) $response->header('Content-Type'));
         $rawBody = (string) $response->body();
-
+        if (strlen($rawBody) > $maxBytes) {
+            throw new \RuntimeException('Ukuran dokumen Shopee melebihi batas aman.');
+        }
         $looksJson = str_contains($contentType, 'application/json')
             || (str_starts_with(ltrim($rawBody), '{') && json_decode($rawBody) !== null);
 
@@ -338,7 +347,15 @@ class ShopeeClient
                 $this->raiseApiError($apiPath, $error, $data, $shopId);
             }
 
-            return $data;
+        }
+
+        if ($response->failed()) {
+            throw new ShopeeApiException('http_'.$response->status(),
+                in_array($response->status(), [408, 425, 429], true) || $response->serverError() ? ShopeeErrorCatalog::RETRYABLE : ShopeeErrorCatalog::USER_FIXABLE,
+                'Unduhan label Shopee gagal. Coba kembali setelah beberapa saat.');
+        }
+        if ($looksJson) {
+            return (array) $data;
         }
 
         return [
@@ -459,7 +476,7 @@ class ShopeeClient
         return $data;
     }
 
-    protected function throttle(): void
+    protected function throttle(?string $apiPath = null): void
     {
         $limit = max(
             1,
@@ -467,12 +484,25 @@ class ShopeeClient
         );
 
         $deadline = microtime(true) + max(0, min(5, (float) config('ratelimit.shopee_admission_wait_seconds', 2)));
+        $critical = in_array($apiPath, ['/api/v2/order/get_order_detail', '/api/v2/product/update_stock', '/api/v2/product/get_model_list'], true);
+        $priority = (bool) config('ratelimit.shopee_critical_priority', true);
+        if ($priority && $critical) {
+            Cache::store(config('cache.limiter'))->put('shopee-api:critical-demand', true, 2);
+        }
         do {
 
             $lock = Cache::store(config('cache.limiter'))->lock('shopee-api:admission', 2);
             if ($lock->get()) {
                 try {
-                    if (RateLimiter::attempt('shopee-api', $limit, fn () => true, 1)) {
+                    $reserve = $priority && ! $critical && $limit > 1
+                        && Cache::store(config('cache.limiter'))->has('shopee-api:critical-demand');
+                    $lowLimit = max(1, intdiv($limit, 2));
+                    if ((! $reserve || ! RateLimiter::tooManyAttempts('shopee-api:noncritical', $lowLimit))
+                        && RateLimiter::attempt('shopee-api', $limit, fn () => true, 1)) {
+                        if ($reserve) {
+                            RateLimiter::hit('shopee-api:noncritical', 1);
+                        }
+
                         return;
                     }
                 } finally {

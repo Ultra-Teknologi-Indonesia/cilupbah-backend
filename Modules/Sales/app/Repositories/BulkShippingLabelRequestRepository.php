@@ -10,9 +10,69 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Modules\Sales\Models\BulkShippingLabelBatch;
 use Modules\Sales\Models\BulkShippingLabelItem;
+use Modules\Sales\Models\ChannelOperationAttempt;
+use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Support\ChannelOperationLedger;
 
 final class BulkShippingLabelRequestRepository
 {
+    public function invalidateShopeeDocument(SalesOrder $order): void
+    {
+        DB::transaction(function () use ($order): void {
+            $fresh = SalesOrder::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
+            if (! in_array($fresh->shipping_label_status, ['ready', 'preparing'], true)) {
+                return;
+            }
+            if ($fresh->shipping_label_prepared_at != $order->shipping_label_prepared_at
+                || $fresh->tracking_number !== $order->tracking_number
+                || $fresh->channel_package_ids !== $order->channel_package_ids) {
+                return;
+            }
+            $attempt = ChannelOperationAttempt::query()
+                ->where('order_id', $order->id)->where('operation', 'create_shipping_label')->lockForUpdate()->first();
+            if ($attempt) {
+                ChannelOperationLedger::markRetryable($attempt, 'Shopee: logistics.shipping_document_should_print_first');
+            }
+            $fresh->forceFill(['shipping_label_status' => null, 'shipping_label_prepared_at' => null])->saveQuietly();
+        });
+    }
+
+    public function eachWaitingShopeeChunk(string $batchId, Closure $callback): void
+    {
+        BulkShippingLabelItem::query()->where('batch_id', $batchId)->where('channel', 'shopee')
+            ->where('status', BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP)
+            ->whereHas('batch', fn ($q) => $q->where('status', BulkShippingLabelBatch::STATUS_PROCESSING))
+            ->with('order:id,channel_shop_id')->chunkById(100, $callback);
+    }
+
+    public function waitingShopeeBatchIds(string $orderId): array
+    {
+        return BulkShippingLabelItem::query()->where('order_id', $orderId)->where('channel', 'shopee')
+            ->where('status', BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP)
+            ->whereHas('batch', fn ($q) => $q->where('status', BulkShippingLabelBatch::STATUS_PROCESSING))
+            ->distinct()->pluck('batch_id')->all();
+    }
+
+    public function downloadItems(string $batchId, array $ids, string $channel): Collection
+    {
+        return BulkShippingLabelItem::query()->where('batch_id', $batchId)->whereIn('id', $ids)
+            ->where('channel', $channel)->whereIn('status', [BulkShippingLabelItem::STATUS_PENDING, BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP, BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP])
+            ->whereHas('batch', fn ($q) => $q->where('status', BulkShippingLabelBatch::STATUS_PROCESSING))
+            ->with('order')->limit(50)->get();
+    }
+
+    public function releaseForDownload(BulkShippingLabelItem $item): bool
+    {
+        return BulkShippingLabelItem::query()->whereKey($item->id)
+            ->whereIn('status', [BulkShippingLabelItem::STATUS_PENDING, BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP, BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP])
+            ->update(['status' => BulkShippingLabelItem::STATUS_PENDING, 'updated_at' => now()]) === 1;
+    }
+
+    public function markLabelReady(SalesOrder $order, string $type): void
+    {
+        $order->forceFill(['shipping_label_status' => 'ready', 'shipping_label_doc_type' => $type, 'shipping_label_prepared_at' => now()])->saveQuietly();
+    }
+
     public function eachPendingChunk(string $batchId, Closure $callback): void
     {
         BulkShippingLabelItem::query()->where('batch_id', $batchId)

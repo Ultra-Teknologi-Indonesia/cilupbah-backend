@@ -96,7 +96,7 @@ final class LazadaShippingDocumentService
         }
     }
 
-    private function download(array $document, int $remaining): string
+    public function download(array $document, int $remaining): string
     {
         if ($remaining <= 0) {
             throw new RuntimeException('Batas ukuran dokumen Lazada tercapai.');

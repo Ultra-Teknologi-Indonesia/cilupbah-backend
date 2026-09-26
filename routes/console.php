@@ -20,8 +20,6 @@ Schedule::command('products:poll-review-status')->everyThirtyMinutes()->withoutO
 
 Schedule::command('channel-downloads:reap-stale')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
 
-Schedule::command('bulk-shipping-labels:reap-stale')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
-
 Schedule::command('channel:monitor-download-health')->everyFifteenMinutes()->withoutOverlapping()->onOneServer();
 
 Schedule::command('channel:pull-orders --queue --hours=1 --overlap-minutes=5')

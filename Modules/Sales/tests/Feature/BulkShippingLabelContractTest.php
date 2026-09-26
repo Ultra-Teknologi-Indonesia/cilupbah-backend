@@ -15,6 +15,8 @@ use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Services\TikTokOrderService;
 use Modules\Sales\Exceptions\ShippingLabelPreparingException;
+use Modules\Sales\Jobs\CollectShopeeLabelPreparationJob;
+use Modules\Sales\Jobs\DownloadBulkMarketplaceLabelsJob;
 use Modules\Sales\Jobs\PrepareBulkShopeeShippingLabelsJob;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelItemJob;
@@ -180,7 +182,7 @@ class BulkShippingLabelContractTest extends TestCase
         Bus::swap($bus);
         $bus->shouldReceive('dispatch')->andReturnUsing(fn ($job) => $originalBus->dispatch($job))->byDefault();
         $bus->shouldReceive('dispatch')
-            ->with(Mockery::type(PrepareShopeeShippingLabelJob::class))
+            ->with(Mockery::type(CollectShopeeLabelPreparationJob::class))
             ->once()->andReturnUsing(function () use ($order, $service): bool {
                 $order->update(['shipping_label_status' => 'ready']);
                 $service->onOrderLabelReady($order->id);
@@ -447,12 +449,18 @@ class BulkShippingLabelContractTest extends TestCase
                 ],
             ]);
         $shopee->shouldReceive('getShippingDocumentResultsMass')
-            ->once()
+            ->twice()
             ->andReturn([
                 'results' => [
                     'ORDER-SHOPEE-1|PKG-SHOPEE-1A' => ['ready' => false, 'status' => 'PROCESSING'],
                     'ORDER-SHOPEE-1|PKG-SHOPEE-1B' => ['ready' => false, 'status' => 'PROCESSING'],
                     'ORDER-SHOPEE-2|' => ['ready' => false, 'status' => 'PROCESSING'],
+                ],
+            ], [
+                'results' => [
+                    'ORDER-SHOPEE-1|PKG-SHOPEE-1A' => ['ready' => true, 'status' => 'READY'],
+                    'ORDER-SHOPEE-1|PKG-SHOPEE-1B' => ['ready' => true, 'status' => 'READY'],
+                    'ORDER-SHOPEE-2|' => ['ready' => true, 'status' => 'READY'],
                 ],
             ]);
         $this->app->instance(ShopeeOrderService::class, $shopee);
@@ -466,7 +474,13 @@ class BulkShippingLabelContractTest extends TestCase
 
         $this->assertSame('preparing', $first->refresh()->shipping_label_status);
         $this->assertSame('preparing', $second->refresh()->shipping_label_status);
-        Queue::assertPushed(PrepareShopeeShippingLabelJob::class, 2);
+        Queue::assertNotPushed(PrepareShopeeShippingLabelJob::class);
+        Queue::assertPushed(PrepareBulkShopeeShippingLabelsJob::class, fn ($job) => $job->attempt === 1 && count($job->itemIds) === 2);
+        $retry = Queue::pushed(PrepareBulkShopeeShippingLabelsJob::class)->first(fn ($job) => $job->attempt === 1);
+        $retry->handle(app(BulkShippingLabelService::class));
+        $this->assertSame('ready', $first->refresh()->shipping_label_status);
+        $this->assertSame('ready', $second->refresh()->shipping_label_status);
+        Queue::assertPushed(DownloadBulkMarketplaceLabelsJob::class, 1);
     }
 
     public function test_lazada_label_url_siap_untuk_merge(): void

@@ -72,7 +72,7 @@ class SalesServiceProvider extends ModuleServiceProvider
             ->runInBackground();
 
         $schedule->command('bulk-shipping-labels:reap-stale')
-            ->everyFiveMinutes()
+            ->everyMinute()
             ->withoutOverlapping()
             ->runInBackground();
 

@@ -22,10 +22,15 @@ final class AuditLabelCapacity extends Command
             $overhead = (count($names) + 1) * (int) config('horizon.resident_process_budget_mb', 128);
             $workerMb = 0;
             $workers = 0;
+            $nativeMb = 0;
             foreach ($names as $name) {
                 $pool = $definitions[$name] ?? [];
                 $workers += (int) ($pool['maxProcesses'] ?? 0);
                 $workerMb += (int) ($pool['maxProcesses'] ?? 0) * (int) ($pool['memory'] ?? 0);
+                if (config('bulk-labels.mass_download_enabled', true)
+                    && in_array($name, ['supervisor-label-download-shopee', 'supervisor-label-download-lazada'], true)) {
+                    $nativeMb += (int) ($pool['maxProcesses'] ?? 0) * 128;
+                }
                 $connection = (string) ($pool['connection'] ?? '');
                 $retryAfter = (int) config("queue.connections.{$connection}.retry_after", 0);
                 if ($retryAfter <= (int) ($pool['timeout'] ?? 0)) {
@@ -33,13 +38,14 @@ final class AuditLabelCapacity extends Command
                 }
             }
             $limit = (int) config("horizon.profile_memory_limits_mb.{$profile}", 0);
-            $required = $workerMb + $overhead;
+            $required = $workerMb + $overhead + $nativeMb;
             if ($names === [] || $required > $limit) {
                 $issues[] = "{$profile}: anggaran worker melebihi limit atau profil tidak ditemukan.";
             }
             $profiles[$profile] = [
                 'max_workers_per_pod' => $workers, 'worker_recycle_budget_mb' => $workerMb,
                 'estimated_process_overhead_mb' => $overhead, 'configured_pod_limit_mb' => $limit,
+                'mass_pdf_native_budget_mb' => $nativeMb,
                 'remaining_budget_mb' => $limit - $required,
             ];
         }
@@ -55,6 +61,8 @@ final class AuditLabelCapacity extends Command
             'status' => $issues === [] ? 'configuration_checks_passed' : 'review_required',
             'profiles' => $profiles,
             'async_shopee_preparation' => (bool) config('bulk-labels.async_shopee_preparation'),
+            'mass_label_download' => (bool) config('bulk-labels.mass_download_enabled'),
+            'shopee_critical_api_priority' => (bool) config('ratelimit.shopee_critical_priority'),
             'tiktok_package_cap' => (int) config('bulk-labels.tiktok_mass_awb_chunk_size'),
             'local_first' => (bool) config('bulk-labels.local_first'),
             'archive_disk' => config('bulk-labels.archive_disk'),

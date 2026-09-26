@@ -5,6 +5,10 @@ return [
     'async_shopee_preparation' => (bool) env('LABEL_ASYNC_SHOPEE_PREPARATION', true),
 
     'tiktok_reuse_package_ids' => (bool) env('LABEL_TIKTOK_REUSE_PACKAGE_IDS', true),
+    'mass_download_enabled' => (bool) env('LABEL_MASS_DOWNLOAD_ENABLED', true),
+    'mass_download_max_bytes' => 16 * 1024 * 1024,
+    'mass_download_max_pages' => 100,
+    'shopee_preparation_delays' => [2, 3, 5, 8, 13, 30],
     'snapshot_max_items' => 500,
     'snapshot_max_bytes' => 64 * 1024 * 1024,
     'cache_max_bytes' => 32 * 1024 * 1024,
@@ -21,7 +25,7 @@ return [
 
     'marketplace_wait_recovery_minutes' => max(
         1,
-        (int) env('LABEL_MARKETPLACE_WAIT_RECOVERY_MINUTES', 5),
+        (int) env('LABEL_MARKETPLACE_WAIT_RECOVERY_MINUTES', 2),
     ),
 
     'awb_request_dedupe_seconds' => (int) env('LABEL_AWB_REQUEST_DEDUPE_SECONDS', 300),

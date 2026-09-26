@@ -23,6 +23,8 @@ use Modules\Channel\Support\ChannelFulfillmentGuard;
 use Modules\Realtime\Services\RealtimeEventPublisher;
 use Modules\Sales\Exceptions\ShippingLabelPreparingException;
 use Modules\Sales\Jobs\ArchiveBulkShippingLabelJob;
+use Modules\Sales\Jobs\CollectShopeeLabelPreparationJob;
+use Modules\Sales\Jobs\DownloadBulkMarketplaceLabelsJob;
 use Modules\Sales\Jobs\FinalizeBulkShippingLabelBatchJob;
 use Modules\Sales\Jobs\PrepareBulkShopeeShippingLabelsJob;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
@@ -36,6 +38,7 @@ use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Repositories\BulkShippingLabelRequestRepository;
 use Modules\Sales\Support\ChannelOperationLedger;
+use Modules\Sales\Support\ChannelOrderSideEffectGuard;
 use setasign\Fpdi\Fpdi;
 use setasign\Fpdi\PdfParser\StreamReader;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -468,6 +471,10 @@ class BulkShippingLabelService
         $hasAwb = ! empty($order->tracking_number) || ! empty($order->awb_no);
 
         if (! $hasAwb) {
+            if ($this->isInstantCourier($order)) {
+                return [BulkShippingLabelItem::STATUS_SKIPPED_INSTANT, BulkShippingLabelItem::REASON_INSTANT_COURIER];
+            }
+
             return $this->awaitAwbOrFail($order);
         }
 
@@ -498,7 +505,7 @@ class BulkShippingLabelService
 
     public function isInstantCourier(?SalesOrder $order): bool
     {
-        return false;
+        return $order === null || $order->channel_instant !== false;
     }
 
     public function processPendingItems(BulkShippingLabelBatch $batch, ?array $perChannelOpts): void
@@ -546,7 +553,12 @@ class BulkShippingLabelService
                 $this->prepareShopeeItems($pending->where('channel', self::CHANNEL_SHOPEE));
             }
 
-            foreach ($pending->whereIn('channel', [self::CHANNEL_LAZADA, self::CHANNEL_TIKTOK]) as $item) {
+            foreach ($pending->where('channel', self::CHANNEL_LAZADA)->groupBy('order.channel_shop_id') as $shopItems) {
+                foreach ($shopItems->chunk(20) as $chunk) {
+                    DownloadBulkMarketplaceLabelsJob::dispatch((string) $batch->id, $chunk->pluck('id')->all(), 'lazada');
+                }
+            }
+            foreach ($pending->where('channel', self::CHANNEL_TIKTOK) as $item) {
                 $this->dispatchItem($item);
             }
 
@@ -559,10 +571,34 @@ class BulkShippingLabelService
         $this->tryFinalize($batch);
     }
 
-    public function prepareShopeeChunk(string $batchId, array $itemIds): void
+    public function prepareShopeeChunk(string $batchId, array $itemIds, int $attempt = 0): void
     {
         $items = app(BulkShippingLabelRequestRepository::class)->shopeePreparationItems($batchId, $itemIds);
-        $this->prepareShopeeItems($items);
+        $locks = [];
+        $busyOrders = [];
+        try {
+            foreach ($items->pluck('order_id')->unique()->sort() as $orderId) {
+                $lock = Cache::lock("shipping-label:prepare:{$orderId}", 240);
+                if (! $lock->get()) {
+                    $busyOrders[] = $orderId;
+
+                    continue;
+                }
+                $locks[] = $lock;
+            }
+            if ($locks === [] && $busyOrders !== []) {
+                throw new \RuntimeException('Label masih disiapkan oleh proses lain; kelompok akan dicoba kembali.');
+            }
+            $this->prepareShopeeItems($items->whereNotIn('order_id', $busyOrders), $attempt);
+            if ($busyOrders !== []) {
+                PrepareBulkShopeeShippingLabelsJob::dispatch($batchId,
+                    $items->whereIn('order_id', $busyOrders)->pluck('id')->all(), $attempt)->delay(now()->addSeconds(5));
+            }
+        } finally {
+            foreach ($locks as $lock) {
+                $lock->release();
+            }
+        }
         $batch = app(BulkShippingLabelRequestRepository::class)->findBatch($batchId);
         if ($batch) {
             $batch->recomputeCounts();
@@ -570,7 +606,7 @@ class BulkShippingLabelService
         }
     }
 
-    private function prepareShopeeItems(Collection $items): void
+    private function prepareShopeeItems(Collection $items, int $attempt = 0): void
     {
         if ($items->isEmpty()) {
             return;
@@ -584,6 +620,8 @@ class BulkShippingLabelService
             ->get()
             ->keyBy('id');
         $shopee = app(ShopeeOrderService::class);
+        $downloadItems = [];
+        $retryItems = [];
 
         foreach ($items->groupBy(static function (BulkShippingLabelItem $item) use ($orders): string {
             return (string) ($orders->get($item->order_id)?->channel_shop_id ?? '');
@@ -599,9 +637,16 @@ class BulkShippingLabelService
             $rows = [];
             $claimed = [];
             $claimsByOrder = [];
-            $blockedOrders = [];
+            $createRows = [];
+            $executeByOrder = [];
             foreach ($shopItems as $item) {
                 $order = $orders->get($item->order_id);
+                if ($order && (ChannelOrderSideEffectGuard::active((string) $order->id, 'prepare_bulk_shipping_label') === null
+                    || ChannelFulfillmentGuard::blocks($order->channel_shop_id, 'shipping_label', $order->salesorder_no))) {
+                    $this->fail($item, BulkShippingLabelItem::REASON_FULFILLMENT_DISABLED);
+
+                    continue;
+                }
                 if (! $order || ! filled($order->tracking_number) || ! filled($order->channel_order_no)) {
                     $this->fail($item, BulkShippingLabelItem::REASON_NO_AWB);
 
@@ -609,33 +654,24 @@ class BulkShippingLabelService
                 }
 
                 if ($order->shipping_label_status === 'ready') {
-                    if ($requests->releaseShopeePreparation($item)) {
-                        $this->dispatchItem($item);
-                    }
+                    $downloadItems[(string) $item->batch_id][] = (string) $item->id;
 
                     continue;
                 }
 
                 $orderId = (string) $order->id;
-                if (isset($blockedOrders[$orderId])) {
-                    continue;
-                }
-
                 if (! isset($claimsByOrder[$orderId])) {
                     $claim = ChannelOperationLedger::claim($order, 'create_shipping_label');
-                    if (! $claim['should_execute']) {
-                        $blockedOrders[$orderId] = true;
-                        $order->forceFill(['shipping_label_status' => 'preparing'])->saveQuietly();
-                        PrepareShopeeShippingLabelJob::dispatch($orderId, 1);
-
-                        continue;
-                    }
                     $claimsByOrder[$orderId] = $claim['attempt'];
+                    $executeByOrder[$orderId] = $claim['should_execute'];
                 }
 
                 foreach ($this->shopeeShippingDocumentRows($order) as $row) {
                     $key = (string) $row['order_sn'].'|'.(string) ($row['package_number'] ?? '');
                     $rows[] = $row;
+                    if ($executeByOrder[$orderId]) {
+                        $createRows[] = $row;
+                    }
                     $claimed[$key] = [
                         'item' => $item,
                         'order' => $order,
@@ -650,13 +686,13 @@ class BulkShippingLabelService
             }
 
             try {
-                $created = $shopee->createShippingDocumentsMass($shopId, $rows);
+                $created = $createRows === [] ? ['results' => []] : $shopee->createShippingDocumentsMass($shopId, $createRows);
                 $checked = $shopee->getShippingDocumentResultsMass($shopId, $rows);
             } catch (Throwable $e) {
                 foreach ($claimed as $entry) {
                     ChannelOperationLedger::markUncertain($entry['attempt'], $e);
                     $entry['order']->forceFill(['shipping_label_status' => 'preparing'])->saveQuietly();
-                    PrepareShopeeShippingLabelJob::dispatch((string) $entry['order']->id, 1);
+                    $retryItems[(string) $entry['item']->batch_id][(string) $entry['item']->id] = $entry['item'];
                 }
 
                 Log::warning('Shopee bulk label prepare failed; switched to status verification', [
@@ -680,6 +716,7 @@ class BulkShippingLabelService
                     'retry' => false,
                     'terminal' => false,
                     'retry_marked' => false,
+                    'individual_prepare' => false,
                 ];
 
                 if ($states[$orderId]['terminal']) {
@@ -691,9 +728,16 @@ class BulkShippingLabelService
                 $createError = (string) ($createResult['error'] ?? '');
                 $checkError = (string) ($checkResult['error'] ?? '');
 
-                if (($createResult['accepted'] ?? false) === true) {
+                if (($checkResult['ready'] ?? false) === true) {
+                    $states[$orderId]['ready'][$key] = true;
 
+                    continue;
+                }
+
+                if (($createResult['accepted'] ?? false) === true) {
+                    ChannelOperationLedger::markAccepted($entry['attempt']);
                 } elseif ($createError !== '') {
+                    app(ShopeeShippingDocumentTypeCache::class)->forget($entry['order']);
                     if ($states[$orderId]['terminal']) {
                         continue;
                     }
@@ -710,20 +754,21 @@ class BulkShippingLabelService
                     }
 
                     if (! $states[$orderId]['retry_marked']) {
-                        ChannelOperationLedger::markRetryable($entry['attempt'], $createError, $createResult['response'] ?? null);
+                        if (($createResult['response'] ?? null) === null) {
+                            ChannelOperationLedger::markUncertain($entry['attempt'], new \RuntimeException($createError));
+                        } else {
+                            ChannelOperationLedger::markRetryable($entry['attempt'], $createError, $createResult['response']);
+                            // An explicit rejection gets fresh document parameters. A missing
+                            // response is only polled, never assumed safe to create again.
+                            $states[$orderId]['individual_prepare'] = true;
+                        }
                         $states[$orderId]['retry_marked'] = true;
                     }
                     $states[$orderId]['retry'] = true;
 
                     continue;
-                } else {
+                } elseif ($executeByOrder[$orderId]) {
                     $states[$orderId]['retry'] = true;
-                }
-
-                if (($checkResult['ready'] ?? false) === true) {
-                    $states[$orderId]['ready'][$key] = true;
-
-                    continue;
                 }
 
                 if (strtoupper((string) ($checkResult['status'] ?? '')) === 'FAILED' || $checkError !== '') {
@@ -754,7 +799,11 @@ class BulkShippingLabelService
                 ));
                 if ($state['retry'] || count($state['ready']) < $packageCount) {
                     $state['order']->forceFill(['shipping_label_status' => 'preparing'])->saveQuietly();
-                    PrepareShopeeShippingLabelJob::dispatch((string) $state['order']->id, 1);
+                    if ($state['individual_prepare']) {
+                        PrepareShopeeShippingLabelJob::dispatch((string) $state['order']->id);
+                    } else {
+                        $retryItems[(string) $state['item']->batch_id][(string) $state['item']->id] = $state['item'];
+                    }
 
                     continue;
                 }
@@ -765,8 +814,24 @@ class BulkShippingLabelService
                     'shipping_label_prepared_at' => now(),
                 ])->saveQuietly();
                 ChannelOperationLedger::markSucceeded($state['attempt']);
-                if ($requests->releaseShopeePreparation($state['item'])) {
-                    $this->dispatchItem($state['item']);
+                app(ShopeeShippingDocumentTypeCache::class)->confirm($state['order'], $state['doc_type']);
+                $downloadItems[(string) $state['item']->batch_id][] = (string) $state['item']->id;
+            }
+        }
+        foreach ($downloadItems as $batchId => $ids) {
+            foreach (array_chunk(array_values(array_unique($ids)), 50) as $chunk) {
+                DownloadBulkMarketplaceLabelsJob::dispatch($batchId, $chunk, 'shopee');
+            }
+        }
+        $delays = config('bulk-labels.shopee_preparation_delays', [2, 3, 5, 8, 13, 30]);
+        foreach ($retryItems as $batchId => $pending) {
+            if (isset($delays[$attempt])) {
+                foreach (array_chunk(array_keys($pending), 50) as $chunk) {
+                    PrepareBulkShopeeShippingLabelsJob::dispatch($batchId, $chunk, $attempt + 1)->delay(now()->addSeconds($delays[$attempt]));
+                }
+            } else {
+                foreach ($pending as $item) {
+                    PrepareShopeeShippingLabelJob::dispatch((string) $item->order_id, 1);
                 }
             }
         }
@@ -777,7 +842,7 @@ class BulkShippingLabelService
         $base = [
             'order_sn' => (string) $order->channel_order_no,
             'tracking_number' => (string) $order->tracking_number,
-            'shipping_document_type' => $order->shipping_label_doc_type ?: 'THERMAL_AIR_WAYBILL',
+            'shipping_document_type' => $order->shipping_label_doc_type ?: (app(ShopeeShippingDocumentTypeCache::class)->get($order) ?? 'THERMAL_AIR_WAYBILL'),
         ];
         $packageNumbers = array_values(array_unique(array_filter(array_map(
             'strval',
@@ -806,6 +871,7 @@ class BulkShippingLabelService
 
     private function markShopeeBatchFailure(SalesOrder $order, string $reason, string $message): void
     {
+        app(ShopeeShippingDocumentTypeCache::class)->forget($order);
         $rawData = is_array($order->shipping_label_raw_data)
             ? $order->shipping_label_raw_data
             : [];
@@ -925,6 +991,12 @@ class BulkShippingLabelService
             : SalesOrder::find($item->order_id);
         if (! $order) {
             $this->fail($item, BulkShippingLabelItem::REASON_NO_AWB);
+
+            return true;
+        }
+        if ($order->is_canceled || $order->status === 'cancelled'
+            || $order->channel_cancel_status === 'accepted' || $order->cancel_requested_at !== null) {
+            $this->fail($item, 'Pesanan dibatalkan atau sedang menunggu pembatalan.');
 
             return true;
         }
@@ -1439,7 +1511,7 @@ class BulkShippingLabelService
             $latestOrder = $order->fresh();
             $persistedFailure = data_get($latestOrder?->shipping_label_raw_data, 'shipping_label_failure.reason');
             $terminalReason = match (true) {
-                Str::contains($msg, ['parcel has been shipped', 'already shipped', 'can not print now', 'sudah dikirim']) => BulkShippingLabelItem::REASON_PARCEL_ALREADY_SHIPPED,
+                Str::contains($msg, ['parcel has been shipped', 'already shipped', 'sudah dikirim']) => BulkShippingLabelItem::REASON_PARCEL_ALREADY_SHIPPED,
                 $persistedFailure === BulkShippingLabelItem::REASON_PARCEL_ALREADY_SHIPPED => BulkShippingLabelItem::REASON_PARCEL_ALREADY_SHIPPED,
                 $latestOrder?->shipping_label_status === 'self_design_required' => BulkShippingLabelItem::REASON_SELF_DESIGN,
                 default => null,
@@ -1679,6 +1751,19 @@ class BulkShippingLabelService
         ?SalesOrder $order = null,
     ): void {
         $orderId = (string) ($order?->id ?? $item->order_id);
+        $fresh = SalesOrder::find($orderId);
+        if (! $fresh || $fresh->is_canceled || $fresh->status === 'cancelled'
+            || $fresh->channel_cancel_status === 'accepted' || $fresh->cancel_requested_at !== null) {
+            $this->fail($item, 'Pesanan dibatalkan atau sedang menunggu pembatalan.');
+
+            return;
+        }
+        if ($order && ($fresh->tracking_number !== $order->tracking_number
+            || $fresh->channel_package_ids !== $order->channel_package_ids)) {
+            $this->fail($item, 'Data paket berubah saat label diunduh. Muat ulang pesanan dan coba kembali.');
+
+            return;
+        }
         if ($order) {
             $this->salesOrderService->cacheShippingLabelBytes(
                 $order,
@@ -1906,12 +1991,18 @@ class BulkShippingLabelService
                 ->whereKey($item->id)
                 ->where('status', BulkShippingLabelItem::STATUS_WAITING_AWB)
                 ->update([
-                    'status' => BulkShippingLabelItem::STATUS_PENDING,
+                    'status' => $item->channel === self::CHANNEL_SHOPEE
+                        ? BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP
+                        : BulkShippingLabelItem::STATUS_PENDING,
                     'updated_at' => now(),
                 ]);
 
             if ($claimed === 1) {
-                $this->dispatchItem($item);
+                if ($item->channel === self::CHANNEL_SHOPEE) {
+                    CollectShopeeLabelPreparationJob::dispatch((string) $item->batch_id)->delay(now()->addSeconds(2));
+                } else {
+                    $this->dispatchItem($item);
+                }
             }
         }
 

@@ -94,6 +94,12 @@ final class RequestTikTokMassAwbJob implements ShouldBeUnique, ShouldQueue
                 continue;
             }
 
+            if ($bulkLabels->isInstantCourier($fresh) && ! $this->verificationOnly) {
+                $bulkLabels->onOrderAwbSkippedInstant((string) $fresh->id);
+
+                continue;
+            }
+
             if (ChannelFulfillmentGuard::blocks($fresh->channel_shop_id, 'ready_to_ship', $fresh->salesorder_no)) {
                 $bulkLabels->onOrderAwbGaveUp((string) $fresh->id, BulkShippingLabelItem::REASON_FULFILLMENT_DISABLED);
 

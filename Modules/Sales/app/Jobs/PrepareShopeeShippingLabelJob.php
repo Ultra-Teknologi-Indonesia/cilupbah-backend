@@ -16,6 +16,7 @@ use Modules\Sales\Jobs\Concerns\UsesShippingLabelPreparationLock;
 use Modules\Sales\Models\ChannelOperationAttempt;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\BulkShippingLabelService;
+use Modules\Sales\Services\ShopeeShippingDocumentTypeCache;
 use Modules\Sales\Support\ChannelOperationLedger;
 use Modules\Sales\Support\ChannelOrderSideEffectGuard;
 
@@ -75,6 +76,11 @@ class PrepareShopeeShippingLabelJob implements ShouldBeUnique, ShouldQueue
             if ($order === null) {
                 return;
             }
+            if ($order->shipping_label_status === 'ready') {
+                $this->notifyBulkListeners();
+
+                return;
+            }
 
             if (empty($order->tracking_number)) {
                 Log::info('PrepareShopeeShippingLabelJob: tracking_number kosong, skip', [
@@ -99,7 +105,8 @@ class PrepareShopeeShippingLabelJob implements ShouldBeUnique, ShouldQueue
             $order->update(['shipping_label_status' => 'preparing']);
 
             try {
-                $docType = $shopee->resolveSupportedDocType($shopId, $orderSn, 'THERMAL_AIR_WAYBILL');
+                $docType = app(ShopeeShippingDocumentTypeCache::class)->get($order)
+                    ?? $shopee->resolveSupportedDocType($shopId, $orderSn, 'THERMAL_AIR_WAYBILL');
             } catch (\Throwable $e) {
                 $docType = 'THERMAL_AIR_WAYBILL';
                 Log::warning('PrepareShopeeShippingLabelJob: resolveSupportedDocType gagal, pakai default', [
@@ -128,6 +135,7 @@ class PrepareShopeeShippingLabelJob implements ShouldBeUnique, ShouldQueue
                         );
                         ChannelOperationLedger::markAccepted($claim['attempt']);
                     } catch (\Throwable $e) {
+                        app(ShopeeShippingDocumentTypeCache::class)->forget($order);
                         $reason = $shopee->classifyShippingLabelFailure($e);
                         if ($reason !== null) {
                             ChannelOperationLedger::markRejected($claim['attempt'], $e->getMessage());
@@ -146,6 +154,7 @@ class PrepareShopeeShippingLabelJob implements ShouldBeUnique, ShouldQueue
                     }
 
                     if (! empty($create['error'])) {
+                        app(ShopeeShippingDocumentTypeCache::class)->forget($order);
                         $failDetail = $create['response']['result_list'][0]['fail_message']
                             ?? $create['response']['result_list'][0]['fail_error']
                             ?? ($create['message'] ?? null);
@@ -197,6 +206,7 @@ class PrepareShopeeShippingLabelJob implements ShouldBeUnique, ShouldQueue
                 $status = strtoupper((string) ($row['status'] ?? ''));
 
                 if ($status === 'READY') {
+                    app(ShopeeShippingDocumentTypeCache::class)->confirm($order, $docType);
                     $order->update([
                         'shipping_label_status' => 'ready',
                         'shipping_label_doc_type' => $docType,
@@ -222,6 +232,7 @@ class PrepareShopeeShippingLabelJob implements ShouldBeUnique, ShouldQueue
                 }
 
                 if ($status === 'FAILED') {
+                    app(ShopeeShippingDocumentTypeCache::class)->forget($order);
                     $reason = $shopee->classifyShippingLabelFailure($row);
                     if ($reason !== null) {
                         $this->markTerminalFailure($order, $reason);
