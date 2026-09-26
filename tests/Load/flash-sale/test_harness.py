@@ -83,6 +83,11 @@ class HarnessTest(unittest.TestCase):
                         if env.get('name') in ('SHOPEE_HOST', 'TIKTOK_BASE_URL', 'LAZADA_BASE_URL'):
                             self.assertEqual('http://marketplace:8080', value)
 
+        awb = next(m for m in manifests if m['kind'] == 'Deployment' and m['metadata']['name'] == 'worker-labels-awb')
+        awb_resources = awb['spec']['template']['spec']['containers'][0]['resources']
+        self.assertEqual('512Mi', awb_resources['requests']['memory'])
+        self.assertEqual('1Gi', awb_resources['limits']['memory'])
+
     def test_empty_queue_does_not_hide_missing_work(self):
         snapshot = {'cases': {'offered': 100, 'http_accepted': 100, 'stock_requested': 100, 'producer_errors': 0},
                     'orders': 99, 'awb_ready': 100, 'batches': [{'status': 'ready', 'labels': 100, 'failed': 0}],

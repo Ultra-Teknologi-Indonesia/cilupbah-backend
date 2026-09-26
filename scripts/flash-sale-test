@@ -23,6 +23,14 @@ PROFILES = {
     'marketplace-ops': ('cilupbah-horizon-critical', 240),
 }
 
+# The AWB simulation worker has a production request of 2Gi, which is a safe
+# reservation for production but prevents the isolated smoke namespace from
+# being scheduled on the shared administration node.  Keep the production
+# limit (so memory pressure is still visible) while using a simulation-only
+# scheduler request.  This does not change application behavior or production
+# resources.
+SIMULATION_AWB_MEMORY_REQUEST = '512Mi'
+
 
 def kubectl(*args, data=None, timeout=60):
     result = subprocess.run(['kubectl', '--request-timeout=30s', *args], input=data,
@@ -222,7 +230,10 @@ def manifests(args, audit_data):
         # silently creates zero child supervisors.
         obj = workload('worker-'+profile, args.image, ['php', 'artisan', 'horizon', '--environment=local'], limits['memory'], limits['cpu'], app=True,
                        extra=[{'name': k, 'value': v} for k, v in {**tuning, 'HORIZON_PROFILE': profile}.items()], grace=grace)
-        obj['spec']['template']['spec']['containers'][0]['resources'] = original['containers'][0]['resources']
+        resources = json.loads(json.dumps(original['containers'][0]['resources']))
+        if profile == 'labels-awb':
+            resources.setdefault('requests', {})['memory'] = SIMULATION_AWB_MEMORY_REQUEST
+        obj['spec']['template']['spec']['containers'][0]['resources'] = resources
     workload('coordinator', args.image, ['php', '/sim/console.php', 'coordinate'], '768Mi', '1', app=True)
     init = workload('initialize', args.image, ['sh', '-c', 'mkdir -p /data/documents /data/spool && chmod 0777 /data/documents /data/spool && exec php /sim/console.php init'], '1Gi', '1', app=True, job=True,
                     extra=[{'name': 'DB_HOST', 'value': 'postgres'}, {'name': 'DB_PORT', 'value': '5432'}])
