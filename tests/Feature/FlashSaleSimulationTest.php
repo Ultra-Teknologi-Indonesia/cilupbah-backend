@@ -59,7 +59,9 @@ class FlashSaleSimulationTest extends TestCase
                 'item_list' => [['item_id' => 1, 'item_name' => 'SIM SKU', 'model_id' => 1, 'model_sku' => 'SIM-SKU-1',
                     'model_quantity_purchased' => 1, 'model_discounted_price' => 10000]],
             ]]]]),
-            'http://marketplace:8080/api/v2/logistics/get_channel_list*' => Http::response(['response' => ['logistics_channel_list' => []]]),
+            'http://marketplace:8080/api/v2/logistics/get_channel_list*' => Http::response(['response' => ['logistics_channel_list' => [[
+                'logistics_channel_id' => 8001, 'service_type' => 'STANDARD',
+            ]]]]),
             'http://marketplace:8080/api/v2/logistics/get_tracking_number*' => Http::response(['response' => ['tracking_number' => '']]),
         ]);
         $this->assertSame(1, app(ShopeeOrderService::class)->pullOrderById('900001', 'SIM000000000001', true));

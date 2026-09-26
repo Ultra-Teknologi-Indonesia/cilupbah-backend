@@ -96,7 +96,10 @@ switch ($mode) {
                     'data' => ['ordersn' => sprintf('SIM%012d', $seq), 'status' => 'READY_TO_SHIP', 'update_time' => time()]], JSON_THROW_ON_ERROR);
                 $response = Http::timeout(15)->withHeaders(['Authorization' => ShopeeSignature::pushSign($url, $payload, 'simulation-only')])
                     ->withBody($payload, 'application/json')->post($url);
-                $repository->update($seq, ['http_status' => $response->status()]);
+                $repository->update($seq, [
+                    'http_status' => $response->status(),
+                    'webhook_accepted_at' => now(),
+                ]);
                 $requestedAt = now();
                 $outbox = app(ChannelStockSyncOutboxService::class)->request($repository->mapping($shop, $sku), 'sync_stock');
                 $repository->update($seq, ['outbox_id' => $outbox->id, 'stock_version' => $outbox->requested_version, 'stock_requested_at' => $requestedAt]);

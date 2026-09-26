@@ -26,7 +26,7 @@ final class SimulationRepository
         }
         DB::statement('CREATE TABLE simulation_cases (
             seq bigint PRIMARY KEY, order_no varchar(40) UNIQUE NOT NULL,
-            offered_at timestamptz NOT NULL, sent_at timestamptz, http_status integer,
+            offered_at timestamptz NOT NULL, sent_at timestamptz, webhook_accepted_at timestamptz, http_status integer,
             lag_seconds double precision NOT NULL DEFAULT 0,
             batch_id uuid, requested_at timestamptz,
             outbox_id uuid, stock_version bigint, stock_requested_at timestamptz,
@@ -141,21 +141,59 @@ final class SimulationRepository
         ];
         if ($final) {
 
-            $result['latency_seconds'] = DB::selectOne("SELECT
-                percentile_cont(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM (o.created_at-c.sent_at))) AS order_p95,
-                percentile_cont(0.99) WITHIN GROUP (ORDER BY extract(epoch FROM (o.created_at-c.sent_at))) AS order_p99,
-                percentile_cont(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM (c.awb_at-c.requested_at))) AS awb_p95,
-                percentile_cont(0.99) WITHIN GROUP (ORDER BY extract(epoch FROM (c.awb_at-c.requested_at))) AS awb_p99,
-                percentile_cont(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM (i.downloaded_at-c.requested_at))) AS label_download_p95,
-                percentile_cont(0.99) WITHIN GROUP (ORDER BY extract(epoch FROM (i.downloaded_at-c.requested_at))) AS label_download_p99,
-                percentile_cont(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM (s.completed_at-c.stock_requested_at))) AS stock_final_convergence_p95,
-                percentile_cont(0.99) WITHIN GROUP (ORDER BY extract(epoch FROM (s.completed_at-c.stock_requested_at))) AS stock_final_convergence_p99,
-                percentile_cont(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM (b.finished_at-c.requested_at))) AS bulk_pdf_p95,
-                percentile_cont(0.99) WITHIN GROUP (ORDER BY extract(epoch FROM (b.finished_at-c.requested_at))) AS bulk_pdf_p99
-                FROM simulation_cases c LEFT JOIN sales_orders o ON o.channel_order_no=c.order_no AND o.source='shopee'
-                LEFT JOIN bulk_shipping_label_batches b ON b.id=c.batch_id
-                LEFT JOIN bulk_shipping_label_items i ON i.batch_id=c.batch_id AND i.order_id=o.id
-                LEFT JOIN channel_stock_sync_outbox s ON s.id=c.outbox_id");
+            $latency = DB::selectOne("WITH timings AS (
+                SELECT
+                    extract(epoch FROM (c.webhook_accepted_at - c.sent_at)) AS webhook_accepted,
+                    extract(epoch FROM (o.created_at - c.sent_at)) AS order_recorded,
+                    extract(epoch FROM (c.awb_at - c.requested_at)) AS awb_ready,
+                    extract(epoch FROM (i.downloaded_at - c.requested_at)) AS label_downloaded,
+                    extract(epoch FROM (b.finished_at - c.requested_at)) AS merged_pdf,
+                    extract(epoch FROM (s.completed_at - c.stock_requested_at)) AS stock_converged
+                FROM simulation_cases c
+                LEFT JOIN sales_orders o ON o.channel_order_no = c.order_no AND o.source = 'shopee'
+                LEFT JOIN bulk_shipping_label_batches b ON b.id = c.batch_id
+                LEFT JOIN bulk_shipping_label_items i ON i.batch_id = c.batch_id AND i.order_id = o.id
+                LEFT JOIN channel_stock_sync_outbox s ON s.id = c.outbox_id
+            )
+            SELECT jsonb_build_object(
+                'webhook_accepted', (SELECT jsonb_build_object(
+                    'samples', count(webhook_accepted), 'min', min(webhook_accepted), 'average', avg(webhook_accepted),
+                    'p50', percentile_cont(0.50) WITHIN GROUP (ORDER BY webhook_accepted),
+                    'p95', percentile_cont(0.95) WITHIN GROUP (ORDER BY webhook_accepted),
+                    'p99', percentile_cont(0.99) WITHIN GROUP (ORDER BY webhook_accepted), 'max', max(webhook_accepted)
+                ) FROM timings WHERE webhook_accepted IS NOT NULL),
+                'order_recorded', (SELECT jsonb_build_object(
+                    'samples', count(order_recorded), 'min', min(order_recorded), 'average', avg(order_recorded),
+                    'p50', percentile_cont(0.50) WITHIN GROUP (ORDER BY order_recorded),
+                    'p95', percentile_cont(0.95) WITHIN GROUP (ORDER BY order_recorded),
+                    'p99', percentile_cont(0.99) WITHIN GROUP (ORDER BY order_recorded), 'max', max(order_recorded)
+                ) FROM timings WHERE order_recorded IS NOT NULL),
+                'awb_ready', (SELECT jsonb_build_object(
+                    'samples', count(awb_ready), 'min', min(awb_ready), 'average', avg(awb_ready),
+                    'p50', percentile_cont(0.50) WITHIN GROUP (ORDER BY awb_ready),
+                    'p95', percentile_cont(0.95) WITHIN GROUP (ORDER BY awb_ready),
+                    'p99', percentile_cont(0.99) WITHIN GROUP (ORDER BY awb_ready), 'max', max(awb_ready)
+                ) FROM timings WHERE awb_ready IS NOT NULL),
+                'label_downloaded', (SELECT jsonb_build_object(
+                    'samples', count(label_downloaded), 'min', min(label_downloaded), 'average', avg(label_downloaded),
+                    'p50', percentile_cont(0.50) WITHIN GROUP (ORDER BY label_downloaded),
+                    'p95', percentile_cont(0.95) WITHIN GROUP (ORDER BY label_downloaded),
+                    'p99', percentile_cont(0.99) WITHIN GROUP (ORDER BY label_downloaded), 'max', max(label_downloaded)
+                ) FROM timings WHERE label_downloaded IS NOT NULL),
+                'merged_pdf', (SELECT jsonb_build_object(
+                    'samples', count(merged_pdf), 'min', min(merged_pdf), 'average', avg(merged_pdf),
+                    'p50', percentile_cont(0.50) WITHIN GROUP (ORDER BY merged_pdf),
+                    'p95', percentile_cont(0.95) WITHIN GROUP (ORDER BY merged_pdf),
+                    'p99', percentile_cont(0.99) WITHIN GROUP (ORDER BY merged_pdf), 'max', max(merged_pdf)
+                ) FROM timings WHERE merged_pdf IS NOT NULL),
+                'stock_converged', (SELECT jsonb_build_object(
+                    'samples', count(stock_converged), 'min', min(stock_converged), 'average', avg(stock_converged),
+                    'p50', percentile_cont(0.50) WITHIN GROUP (ORDER BY stock_converged),
+                    'p95', percentile_cont(0.95) WITHIN GROUP (ORDER BY stock_converged),
+                    'p99', percentile_cont(0.99) WITHIN GROUP (ORDER BY stock_converged), 'max', max(stock_converged)
+                ) FROM timings WHERE stock_converged IS NOT NULL)
+            ) AS values");
+            $result['latency_seconds'] = json_decode($latency->values, true, 512, JSON_THROW_ON_ERROR);
             $result['missing_orders'] = DB::table('simulation_cases as c')->leftJoin('sales_orders as o', 'o.channel_order_no', '=', 'c.order_no')->whereNull('o.id')->count();
             $result['incomplete_stock_versions'] = DB::table('simulation_cases as c')->leftJoin('channel_stock_sync_outbox as s', 's.id', '=', 'c.outbox_id')
                 ->where(fn ($q) => $q->whereNull('s.id')->orWhere('s.status', '<>', 'succeeded')->orWhereColumn('s.dispatched_version', '<', 'c.stock_version'))->count();

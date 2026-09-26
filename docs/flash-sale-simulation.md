@@ -206,13 +206,33 @@ Setiap run membuat folder `flash-sale-results/<namespace>/`:
 - `manifest.json` — resource simulasi yang direncanakan.
 - `effective-worker-config.json` — queue routing, profile Horizon, backpressure, dan rate limit yang benar-benar aktif.
 - `samples.jsonl` — sampel periodik queue, pod CPU/memori, restart, node memory, dan disk. Format JSONL dipakai agar file satu hari tidak dimuat seluruhnya ke RAM.
-- `application-final.json` — jumlah order, status inbox, AWB, item label, batch PDF, stock outbox, failed jobs, koneksi dan lock database.
+- `application-final.json` — jumlah order, status inbox, AWB, item label, batch PDF, stock outbox, failed jobs, koneksi dan lock database. Bagian `latency_seconds` memuat sampel, tercepat (`min`), rata-rata (`average`), median (`p50`), `p95`, `p99`, dan terlama (`max`) untuk penerimaan webhook, pesanan tercatat, AWB siap, label terunduh, PDF gabungan selesai, serta stok mencapai versi terakhir.
 - `marketplace-final.json` — jumlah panggilan simulator, shipment, dokumen, unduhan, dan nilai stok terbaru.
 - `resource-summary.json` — puncak CPU/memori per container, puncak ready/delayed/reserved, umur job tertua, deferred peak, restart, dan OOM.
 - `file-verification.json` — pemeriksaan PDF dengan `pdfinfo` dan jumlah halaman.
 - `summary.json` — hasil akhir.
 
 `summary.completed=true` hanya jika seluruh target masuk, tidak ada pesanan hilang, AWB dan label selesai, PDF valid, stock outbox sudah konvergen ke versi terakhir, failed jobs nol, dan antrean `ready + delayed + reserved` menjadi nol. Queue yang kosong tanpa pemeriksaan database **tidak** dianggap lulus.
+
+### Menilai 10–20 ribu pesanan per hari
+
+Gunakan `--seconds 86400` untuk menilai laju harian yang sesungguhnya. Misalnya
+20.000 pesanan/hari berarti rata-rata sekitar 0,23 pesanan/detik, namun hasil tetap
+harus dibaca dari `p95`, `p99`, dan `max`, bukan hanya rata-rata. Jalankan juga
+lonjakan yang lebih rapat secara terpisah untuk mewakili jam flash sale; keduanya
+menjawab risiko yang berbeda.
+
+```bash
+./scripts/flash-sale-kubectl run \
+  --namespace "cilupbah-sim-20k-day-$(date +%Y%m%d-%H%M%S)" \
+  --count 20000 --seconds 86400 --drain-seconds 7200 \
+  --shops 50 --skus 500 --bulk 100 --producers 4 \
+  --pull-secret ghcr-creds --ack-shared-node-risk
+```
+
+Perintah ini menghasilkan **20.000 target untuk setiap alur** (webhook/pesanan,
+AWB, label+PDF, dan permintaan sinkronisasi stok), bukan 20.000 total gabungan.
+Jangan menjalankannya bersamaan dengan pengujian lain pada node production.
 
 ## Membaca penumpukan
 

@@ -93,7 +93,9 @@ class Marketplace:
                                        'model_discounted_price': 10000}],
                     })
             elif op == 'get_channel_list':
-                result = {'logistics_channel_list': [{'logistics_channel_id': 8001, 'logistics_channel_name': 'SIM REG'}]}
+                # Explicitly mark this synthetic courier as non-instant. Production
+                # logic deliberately refuses to arrange pickup for unknown/instant services.
+                result = {'logistics_channel_list': [{'logistics_channel_id': 8001, 'logistics_channel_name': 'SIM REG', 'service_type': 'STANDARD'}]}
             elif op in ('get_mass_shipping_parameter', 'get_shipping_parameter'):
                 result = {'info_needed': {'dropoff': []}, 'dropoff': {'branch_list': []}}
             elif op == 'mass_ship_order':
