@@ -52,7 +52,8 @@ class ShippingLabelPrefetchServiceTest extends TestCase
         ]);
         Queue::assertPushed(RequestChannelAwbJob::class, fn (RequestChannelAwbJob $job): bool => $job->orderId === $order->id
             && $job->prefetch
-            && $job->requestReadyToShip
+            && ! $job->requestReadyToShip
+            && $job->verificationOnly
             && $job->queue === config('shipping-label-prefetch.queue')
         );
     }

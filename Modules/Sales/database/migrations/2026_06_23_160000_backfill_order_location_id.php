@@ -12,10 +12,6 @@ return new class extends Migration
             return;
         }
 
-        // PostgreSQL stores these columns as boolean. Laravel normalises
-        // boolean bindings to integers (1/0), which PostgreSQL rejects when
-        // comparing against a boolean column. Use typed predicates here so a
-        // fresh PostgreSQL test database can run all migrations as well.
         $defaultLocation = DB::table('locations')
             ->whereRaw('"is_warehouse" IS TRUE')
             ->whereRaw('"is_active" IS TRUE')

@@ -132,8 +132,6 @@ final class ChannelWebhookService
             default => null,
         };
 
-        // Recovery shares the destination's budget, not the sum of unrelated
-        // queues. A catalog backlog must not block payment/cancellation intake.
         if ($queue === null || ! $this->canDispatchToQueue(
             (string) $row->channel,
             (string) $row->event_key,

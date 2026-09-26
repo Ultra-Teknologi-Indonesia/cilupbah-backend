@@ -30,10 +30,12 @@ class TikTokOrderOpsTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        Http::preventStrayRequests();
 
         $this->seedCatalogVariant('TK-S1');
 
         config([
+            'queue.channel_order_intake.cutoff_at' => null,
             'services.tiktok.app_key' => 'test_key',
             'services.tiktok.app_secret' => 'test_secret',
         ]);
@@ -76,6 +78,24 @@ class TikTokOrderOpsTest extends TestCase
         $this->assertArrayNotHasKey('MISSING', $snapshots);
         Http::assertSentCount(1);
         Http::assertSent(fn ($request): bool => $request->method() === 'GET' && $request['ids'] === 'A,B,MISSING');
+    }
+
+    public function test_mass_ship_caps_requests_by_package_count_and_does_not_drop_remainder(): void
+    {
+        Http::preventStrayRequests();
+        config(['bulk-labels.tiktok_mass_awb_chunk_size' => 100]);
+        Http::fake([self::BASE.'/fulfillment/202309/packages/ship*' => Http::response(['code' => 0, 'data' => ['errors' => []]])]);
+        $ids = array_map(static fn (int $id): string => 'PKG-'.$id, range(1, 101));
+
+        $results = app(TikTokOrderService::class)->requestTrackingNumbersMass($this->shop->shop_id, [...$ids, 'PKG-1', '']);
+
+        $this->assertCount(101, $results);
+        $this->assertSame($ids, array_column($results, 'package_id'));
+        $this->assertNotContains(false, array_column($results, 'shipped'));
+        Http::assertSentCount(3);
+        foreach (Http::recorded() as [$request]) {
+            $this->assertLessThanOrEqual(50, count($request['packages']));
+        }
     }
 
     public function test_batch_preflight_chunks_at_fifty_orders(): void
@@ -239,7 +259,7 @@ class TikTokOrderOpsTest extends TestCase
         $order = SalesOrder::where('salesorder_no', self::SALES_NO)->first();
         $this->assertNotNull($order);
         $this->assertEquals('READY_TO_SHIP', $order->channel_status);
-        $this->assertEquals('pending', $order->status, 'SKU belum di-download sehingga order masuk Gagal Download');
+        $this->assertEquals('reserved', $order->status, 'SKU TK-S1 sudah disediakan oleh fixture katalog sehingga pesanan dapat direservasi.');
     }
 
     public function test_ship_order_hits_ship_api_and_status_becomes_packed(): void
@@ -597,7 +617,8 @@ class TikTokOrderOpsTest extends TestCase
     public function test_handle_buyer_cancel_accept_hits_approve_and_cancels(): void
     {
         Http::fake([
-            self::BASE.'/return_refund/202309/cancellations/approve*' => Http::response(['code' => 0, 'data' => []], 200),
+            self::BASE.'/return_refund/202309/cancellations/search*' => Http::response(['code' => 0, 'data' => ['cancellations' => [['cancel_id' => 'C1', 'order_id' => self::ORDER_ID]]]], 200),
+            self::BASE.'/return_refund/202309/cancellations/C1/approve*' => Http::response(['code' => 0, 'data' => []], 200),
             self::BASE.'/order/202309/orders*' => Http::response($this->orderDetail('CANCELLED'), 200),
         ]);
 
@@ -607,7 +628,7 @@ class TikTokOrderOpsTest extends TestCase
             ])
             ->assertStatus(200);
 
-        Http::assertSent(fn ($r) => str_contains($r->url(), '/return_refund/202309/cancellations/approve') && $r->method() === 'POST');
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/return_refund/202309/cancellations/C1/approve') && $r->method() === 'POST');
 
         $order = SalesOrder::where('salesorder_no', self::SALES_NO)->first();
         $this->assertEquals('cancelled', $order->status);

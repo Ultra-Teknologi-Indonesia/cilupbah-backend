@@ -15,7 +15,6 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Modules\Channel\Exceptions\ChannelLabelUnsupportedException;
 use Modules\Channel\Jobs\RefreshChannelOrderJob;
@@ -64,6 +63,7 @@ use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderItem;
 use Modules\Sales\Models\SalesOrderStatusHistory;
 use Modules\Sales\Repositories\SalesOrderRepository;
+use Modules\Sales\Repositories\ShippingLabelCacheRepository;
 use Modules\Sales\Support\OrderTotals;
 use Modules\Sales\Support\SalesOrderDataNormalizer;
 use Modules\Sales\Support\ShadowOrderGuard;
@@ -1084,7 +1084,10 @@ class SalesOrderService
                     $storedDocuments,
                 ), static fn ($url): bool => is_string($url) && $url !== '')));
 
-                if ($storedUrls !== []) {
+                $storedPackageIds = array_values(array_unique(array_filter(array_column($storedDocuments, 'package_id'))));
+                $expectedPackages = $this->channelPackageIds($order);
+                if ($storedUrls !== [] && ($expectedPackages === [] || array_diff($expectedPackages, $storedPackageIds) === [])
+                    && count($storedDocuments) === count(array_filter($storedDocuments, static fn ($doc): bool => is_array($doc) && ! empty($doc['doc_url'] ?? $doc['url'] ?? null)))) {
                     return [
                         'type' => 'url',
 
@@ -1138,6 +1141,9 @@ class SalesOrderService
             }
 
             $urls = array_values(array_unique(array_column($documents, 'doc_url')));
+            if (count($documents) !== count($packageIds)) {
+                throw new ShippingLabelPreparingException('Label TikTok belum tersedia untuk seluruh paket. Dokumen sebagian tidak dicetak sebagai lengkap.');
+            }
             if ($urls !== []) {
                 $rawData = is_array($order->shipping_label_raw_data)
                     ? $order->shipping_label_raw_data
@@ -1347,7 +1353,7 @@ class SalesOrderService
             }
 
             if ($order->shipping_label_status === 'self_design_required') {
-                throw new \RuntimeException(
+                throw new ChannelLabelUnsupportedException(
                     'Order Lazada ini bertipe SOF/DBS — label tidak tersedia via API. '
                     .'Ambil resi langsung dari Lazada Seller Center.'
                 );
@@ -1368,7 +1374,7 @@ class SalesOrderService
                 $document = $lazadaService->getPackageDocument($shopId, $packageIds, 'PDF');
             } catch (ChannelLabelUnsupportedException $e) {
                 $order->update(['shipping_label_status' => 'self_design_required']);
-                throw new \RuntimeException($e->getMessage());
+                throw $e;
             }
 
             $isHtml = ($document['doc_type'] ?? 'PDF') === 'HTML';
@@ -1378,6 +1384,9 @@ class SalesOrderService
                     'channel' => 'lazada',
                     'document' => $document,
                 ];
+                if (! empty($document['package_ids'])) {
+                    unset($rawData['document']['file']);
+                }
                 if (! empty($document['file'])) {
                     $bytes = base64_decode((string) $document['file'], true);
                     if ($bytes !== false && $bytes !== '') {
@@ -1431,6 +1440,16 @@ class SalesOrderService
             return null;
         }
 
+        $packages = $this->channelPackageIds($order);
+        $cachedPackages = (array) data_get($order->shipping_label_raw_data, 'cache.package_ids', []);
+        if (count($packages) > 1 || $cachedPackages !== []) {
+            sort($packages);
+            sort($cachedPackages);
+            if ($packages !== $cachedPackages) {
+                return null;
+            }
+        }
+
         $path = data_get($order->shipping_label_raw_data, 'cache.path');
         $expectedHash = data_get($order->shipping_label_raw_data, 'cache.sha256');
         if (! is_string($path) || $path === '' || ! is_string($expectedHash) || $expectedHash === '') {
@@ -1438,13 +1457,8 @@ class SalesOrderService
         }
 
         try {
-            $disk = Storage::disk('documents');
-            if (! $disk->exists($path)) {
-                return null;
-            }
-
-            $bytes = $disk->get($path);
-            if ($bytes === '' || ! hash_equals($expectedHash, hash('sha256', $bytes))) {
+            $bytes = app(ShippingLabelCacheService::class)->read($path, $expectedHash);
+            if ($bytes === null) {
                 Log::warning('Shipping label cache tidak valid, ambil ulang dari channel', [
                     'order_id' => $order->id,
                     'path' => $path,
@@ -1482,15 +1496,11 @@ class SalesOrderService
 
         $hash = hash('sha256', $bytes);
         $path = "shipping-label-cache/{$order->id}/{$hash}.pdf";
-        $disk = Storage::disk('documents');
-        if (! $disk->exists($path)) {
-            $disk->put($path, $bytes);
-        }
+        app(ShippingLabelCacheService::class)->store($path, $bytes);
 
-        $metadata = $rawData
-            ?? (is_array($order->shipping_label_raw_data) ? $order->shipping_label_raw_data : []);
-        $metadata['cache'] = [
+        $cache = [
             'path' => $path,
+            'package_ids' => $this->channelPackageIds($order),
             'sha256' => $hash,
             'bytes' => strlen($bytes),
             'content_type' => strtoupper((string) $documentType) === 'HTML'
@@ -1500,7 +1510,9 @@ class SalesOrderService
             'cached_at' => now()->toIso8601String(),
         ];
 
-        $order->forceFill(['shipping_label_raw_data' => $metadata])->saveQuietly();
+        $metadata = app(ShippingLabelCacheRepository::class)->attachCache($order->id, $cache, $rawData);
+        $order->setAttribute('shipping_label_raw_data', $metadata);
+        $order->syncOriginalAttribute('shipping_label_raw_data');
     }
 
     public function cachedFpdiShippingLabelBytes(SalesOrder $order, string $sourceBytes): ?string
@@ -1510,16 +1522,8 @@ class SalesOrderService
         }
 
         $path = $this->fpdiShippingLabelCachePath($order, $sourceBytes);
-        $disk = Storage::disk('documents');
-
         try {
-            if (! $disk->exists($path)) {
-                return null;
-            }
-
-            $bytes = $disk->get($path);
-
-            return $bytes === '' ? null : $bytes;
+            return app(ShippingLabelCacheService::class)->read($path, legacyFallback: false);
         } catch (\Throwable $e) {
             Log::warning('FPDI shipping label cache gagal dibaca', [
                 'order_id' => $order->id,
@@ -1540,12 +1544,8 @@ class SalesOrderService
         }
 
         $path = $this->fpdiShippingLabelCachePath($order, $sourceBytes);
-        $disk = Storage::disk('documents');
-
         try {
-            if (! $disk->exists($path)) {
-                $disk->put($path, $preparedBytes);
-            }
+            app(ShippingLabelCacheService::class)->store($path, $preparedBytes);
         } catch (\Throwable $e) {
 
             Log::warning('FPDI shipping label cache gagal disimpan', [
@@ -1565,16 +1565,8 @@ class SalesOrderService
         }
 
         $path = $this->thermalShippingLabelCachePath($order, $sourceBytes, $sizeKey);
-        $disk = Storage::disk('documents');
-
         try {
-            if (! $disk->exists($path)) {
-                return null;
-            }
-
-            $bytes = $disk->get($path);
-
-            return $bytes === '' ? null : $bytes;
+            return app(ShippingLabelCacheService::class)->read($path, legacyFallback: false);
         } catch (\Throwable $e) {
             Log::warning('Thermal shipping label cache gagal dibaca', [
                 'order_id' => $order->id,
@@ -1597,12 +1589,8 @@ class SalesOrderService
         }
 
         $path = $this->thermalShippingLabelCachePath($order, $sourceBytes, $sizeKey);
-        $disk = Storage::disk('documents');
-
         try {
-            if (! $disk->exists($path)) {
-                $disk->put($path, $thermalBytes);
-            }
+            app(ShippingLabelCacheService::class)->store($path, $thermalBytes);
         } catch (\Throwable $e) {
             Log::warning('Thermal shipping label cache gagal disimpan', [
                 'order_id' => $order->id,
@@ -1800,6 +1788,38 @@ class SalesOrderService
 
     private function extractLabelBytes(array $result): ?string
     {
+        if (isset($result['urls']) && count($result['urls']) > 1) {
+            if (count($result['urls']) > 500) {
+                throw new \RuntimeException('Jumlah dokumen label melebihi batas aman.');
+            }
+            $documents = [];
+            $total = 0;
+            $deadline = microtime(true) + 90;
+            foreach ($result['urls'] as $url) {
+                if (microtime(true) > $deadline) {
+                    throw new ShippingLabelPreparingException('Pengambilan seluruh dokumen belum selesai. Coba kembali melalui proses label massal.');
+                }
+                $remaining = (int) config('bulk-labels.cache_max_bytes', 32 * 1024 * 1024) - $total;
+                $response = Http::connectTimeout(5)->timeout(20)->withOptions([
+                    'progress' => static function ($downloadTotal, $downloaded) use ($remaining): void {
+                        if ($downloadTotal > $remaining || $downloaded > $remaining) {
+                            throw new \RuntimeException('Ukuran unduhan label melebihi batas aman.');
+                        }
+                    },
+                ])->get($url);
+                if (! $response->successful() || $response->body() === '') {
+                    throw new ShippingLabelPreparingException('Belum semua dokumen paket berhasil diunduh. Tidak mencetak sebagian label.');
+                }
+                $bytes = $response->body();
+                $total += strlen($bytes);
+                if ($total > (int) config('bulk-labels.cache_max_bytes')) {
+                    throw new \RuntimeException('Ukuran gabungan label melebihi batas aman.');
+                }
+                $documents[] = $bytes;
+            }
+
+            return app(BulkShippingLabelService::class)->mergePdfBytes($documents);
+        }
         if (! empty($result['document_base64'])) {
             $decoded = base64_decode((string) $result['document_base64'], true);
 

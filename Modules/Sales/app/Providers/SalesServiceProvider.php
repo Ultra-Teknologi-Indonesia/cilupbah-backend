@@ -15,6 +15,7 @@ use Modules\Sales\Console\Commands\PurgeOrdersBeforeCutoff;
 use Modules\Sales\Console\Commands\ReapStaleBulkLabelBatches;
 use Modules\Sales\Console\Commands\ReconcileAcceptedAwbRequests;
 use Modules\Sales\Console\Commands\ReconcileFailedDownloadOrders;
+use Modules\Sales\Console\Commands\ReconcileShippingLabelCache;
 use Modules\Sales\Console\Commands\ReconcileStaleBundleOrderItems;
 use Modules\Sales\Console\Commands\RelocateOrdersToKecil;
 use Modules\Sales\Console\Commands\RestoreTrackingNumbers;
@@ -40,6 +41,7 @@ class SalesServiceProvider extends ModuleServiceProvider
         SyncOrderFinance::class,
         DispatchDueFinanceSync::class,
         DispatchDueShippingLabelPrefetch::class,
+        ReconcileShippingLabelCache::class,
         FinanceQueueHealth::class,
         SyncSettlements::class,
         BackfillSettlement::class,
@@ -61,6 +63,8 @@ class SalesServiceProvider extends ModuleServiceProvider
 
     protected function configureSchedules(Schedule $schedule): void
     {
+        $schedule->command('shipping-labels:reconcile-cache')->everyMinute()->withoutOverlapping(5)->runInBackground();
+
         $schedule->command('sales:cleanup-bulk-label-batches')
 
             ->hourlyAt(23)

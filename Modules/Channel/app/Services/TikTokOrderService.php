@@ -525,13 +525,19 @@ class TikTokOrderService
             return [];
         }
 
-        return $this->shipPackagesInBatch(
-            $shop,
-            'mass-awb',
-            ['shop_cipher' => $shop->shop_cipher ?? ''],
-            $packageIds,
-            null,
-        );
+        $results = [];
+        $size = max(1, min(50, (int) config('bulk-labels.tiktok_mass_awb_chunk_size', 50)));
+        foreach (array_chunk($packageIds, $size) as $chunk) {
+            array_push($results, ...$this->shipPackagesInBatch(
+                $shop,
+                'mass-awb',
+                ['shop_cipher' => $shop->shop_cipher ?? ''],
+                $chunk,
+                null,
+            ));
+        }
+
+        return $results;
     }
 
     private function shipPackages(
@@ -763,6 +769,16 @@ class TikTokOrderService
         array $packageIds,
         ?array $handover,
     ): array {
+        $size = max(1, min(50, (int) config('bulk-labels.tiktok_mass_awb_chunk_size', 50)));
+        if (count($packageIds) > $size) {
+            $results = [];
+            foreach (array_chunk($packageIds, $size) as $chunk) {
+                array_push($results, ...$this->shipPackagesInBatch($shop, $orderId, $queries, $chunk, $handover));
+            }
+
+            return $results;
+        }
+
         try {
             $response = $this->client->request(
                 'POST',
@@ -814,6 +830,7 @@ class TikTokOrderService
                     'package_id' => $packageId,
                     'shipped' => false,
                     'message' => $e->getMessage(),
+                    'uncertain' => ! $e instanceof TikTokApiException,
                     'error_code' => $e instanceof TikTokApiException ? $e->errorCode : null,
                     'error_category' => $e instanceof TikTokApiException ? $e->category : null,
                     'raw_message' => $e instanceof TikTokApiException ? $e->rawMessage : null,
@@ -989,13 +1006,6 @@ class TikTokOrderService
         return $this->fulfillmentSnapshotFromOrder($shop, $orderId, $res['data']['orders'][0] ?? null);
     }
 
-    /**
-     * Batch preflight only: missing/unreadable orders must be verified separately.
-     * Do not fan out into document/package API calls while preparing a mass shipment.
-     *
-     * @param  array<string>  $orderIds
-     * @return array<string, array>
-     */
     public function getOrderFulfillmentSnapshots(object $shop, array $orderIds): array
     {
         $orderIds = array_values(array_unique(array_filter(array_map('strval', $orderIds),
@@ -1014,9 +1024,7 @@ class TikTokOrderService
                 );
 
                 foreach ($res['data']['orders'] ?? [] as $order) {
-                    // TikTok's current contract uses `id`; accept the legacy
-                    // `order_id` alias as well so a versioned response cannot
-                    // silently turn a real order into a missing preflight.
+
                     $orderId = (string) ($order['id'] ?? $order['order_id'] ?? '');
                     if (! in_array($orderId, $chunk, true)) {
                         continue;

@@ -1457,8 +1457,7 @@ class SalesOrderRepository
             ->join('product_variants as pv', 'pv.id', '=', 'pvcm.variant_id')
             ->join('products as p', 'p.id', '=', 'pv.product_id')
             ->where('cs.shop_id', $externalShopId)
-            // PHP coerces numeric string array keys to integers. Marketplace
-            // identifiers/SKUs remain text, including under emulated prepares.
+
             ->whereIn('pcm.external_product_id', array_map('strval', array_keys($listingIds)))
             ->where('pcm.sync_status', 'synced')
             ->where('pv.is_active', true)

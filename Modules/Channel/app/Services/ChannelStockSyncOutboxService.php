@@ -28,8 +28,7 @@ class ChannelStockSyncOutboxService
         $now = now();
 
         $outbox = DB::transaction(function () use ($mapping, $syncStock, $syncPrice, $queueTier, $resetAttempts, $now): ChannelStockSyncOutbox {
-            // Lock an existing parent as well: a missing outbox row cannot be
-            // locked, and two first requests must not race the unique index.
+
             app(ChannelStockSyncOutboxRepository::class)->lockMapping((string) $mapping->id);
             $outbox = ChannelStockSyncOutbox::query()
                 ->where('product_channel_mapping_id', $mapping->id)
@@ -107,8 +106,7 @@ class ChannelStockSyncOutboxService
 
     public function dispatchDue(?int $limit = null): array
     {
-        // Scheduler and immediate wake jobs share the same per-shop budget.
-        // Serialize selection so two dispatchers cannot both spend the last slot.
+
         $lock = Cache::lock('channel-stock-outbox:dispatch', 60);
         if (! $lock->get()) {
             return ['claimed' => 0, 'reaped' => 0, 'revived' => 0, 'byChannel' => []];

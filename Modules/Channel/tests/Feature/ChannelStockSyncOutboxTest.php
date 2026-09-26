@@ -90,8 +90,6 @@ class ChannelStockSyncOutboxTest extends TestCase
         $service->request($mapping, 'sync_stock');
         Queue::fake();
 
-        // The prior wake job has been consumed; its unique marker must not
-        // suppress the new wake when the stale stock job is finally executed.
         $this->travel(6)->seconds();
 
         $this->assertFalse($service->shouldExecute($outbox->id, 1));

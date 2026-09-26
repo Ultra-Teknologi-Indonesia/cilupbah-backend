@@ -184,9 +184,6 @@ $configuration = [
 
 ];
 
-// Preserve the exact legacy endpoint AND key prefix during rolling deploys.
-// Laravel owns the name "horizon" and overwrites that connection at boot.
-// Old deployments used that runtime connection for application queues.
 $horizonSource = (string) env('HORIZON_REDIS_CONNECTION', 'default');
 $horizonSource = $horizonSource === 'horizon' ? 'horizon_store' : $horizonSource;
 if (! isset($configuration['redis'][$horizonSource])) {

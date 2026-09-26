@@ -62,8 +62,6 @@ class ReplayWebhookInbox extends Command
             $claimed += $rows->count();
 
             foreach ($rows as $row) {
-                // Finish this small claimed batch before checking the budget;
-                // abandoning rows here leaves undispatched work leased for 10m.
 
                 if (! in_array(strtolower((string) $row->channel), ['lazada', 'shopee', 'tiktok', 'woocommerce'], true)) {
                     $row->markFailed('Channel webhook tidak dikenal saat replay.');

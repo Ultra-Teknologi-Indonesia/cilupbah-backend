@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Storage;
 use Modules\Sales\Models\BulkShippingLabelBatch;
 use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Services\BulkShippingLabelService;
+use Modules\Sales\Services\BulkShippingLabelSnapshotService;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class BulkShippingLabelController extends Controller
@@ -60,6 +61,7 @@ class BulkShippingLabelController extends Controller
         }]);
 
         $waitingShopee = $batch->items
+            ->where('channel', 'shopee')
             ->whereIn('status', [
                 BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE,
                 BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP,
@@ -80,6 +82,12 @@ class BulkShippingLabelController extends Controller
             'failed' => $batch->failed_count,
             'skipped' => $batch->skipped_count,
             'waiting_shopee' => $waitingShopee,
+            'waiting_marketplace' => $batch->items->whereIn('status', [
+                BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE,
+                BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP,
+                BulkShippingLabelItem::STATUS_WAITING_TIKTOK_PREP,
+                BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP,
+            ])->count(),
             'waiting_awb' => $waitingAwb,
             'retryable_count' => $retryable,
             'started_at' => $batch->started_at,
@@ -127,6 +135,13 @@ class BulkShippingLabelController extends Controller
         return route('api.sales.shipping-labels.bulk.pdf', ['batch' => $batch->id]);
     }
 
+    public function snapshot(Request $req, BulkShippingLabelBatch $batch, BulkShippingLabelSnapshotService $snapshots): JsonResponse
+    {
+        $snapshot = $snapshots->create($req->user(), $batch);
+
+        return $this->successResponse(['batch_id' => $snapshot->id, 'total' => $snapshot->total_count], null, 202);
+    }
+
     private function statusLabel(string $status): string
     {
         return match ($status) {
@@ -138,6 +153,7 @@ class BulkShippingLabelController extends Controller
             BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE => 'Menunggu Marketplace',
             BulkShippingLabelItem::STATUS_WAITING_SHOPEE_PREP => 'Menunggu Shopee',
             BulkShippingLabelItem::STATUS_WAITING_LAZADA_PREP => 'Menunggu Lazada',
+            BulkShippingLabelItem::STATUS_WAITING_TIKTOK_PREP => 'Menunggu TikTok',
             BulkShippingLabelItem::STATUS_DONE => 'Berhasil',
             BulkShippingLabelItem::STATUS_SKIPPED_INSTANT => 'Instant courier',
             BulkShippingLabelItem::STATUS_FAILED => 'Gagal',
@@ -161,6 +177,7 @@ class BulkShippingLabelController extends Controller
             $item->status === $item_class::STATUS_WAITING_MARKETPLACE => 'Menunggu marketplace menyiapkan label...',
             $item->status === $item_class::STATUS_WAITING_SHOPEE_PREP => 'Menunggu Shopee menyiapkan label...',
             $item->status === $item_class::STATUS_WAITING_LAZADA_PREP => 'Menunggu Lazada menyiapkan label...',
+            $item->status === $item_class::STATUS_WAITING_TIKTOK_PREP => 'Menunggu TikTok menyiapkan label...',
             $item->status === $item_class::STATUS_DONE => 'Label pengiriman berhasil dibuat.',
             $item->status === $item_class::STATUS_SKIPPED_INSTANT => 'Pesanan dengan instant courier, panggil driver di tab Pengiriman',
             $item->status === $item_class::STATUS_FAILED => match (true) {

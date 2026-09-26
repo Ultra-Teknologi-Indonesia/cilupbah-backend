@@ -17,7 +17,6 @@ use Modules\Product\Models\ProductChannelMapping;
 use Modules\Product\Models\ProductVariantChannelMapping;
 use Symfony\Component\Process\Process;
 
-/** Test-only persistence. Never loaded by the application service providers. */
 final class SimulationRepository
 {
     public function initialize(int $shops, int $skus): void
@@ -141,7 +140,7 @@ final class SimulationRepository
                 (SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock') AS lock_waiters"),
         ];
         if ($final) {
-            // Execute percentile sorts only at final reporting, not every sample.
+
             $result['latency_seconds'] = DB::selectOne("SELECT
                 percentile_cont(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM (o.created_at-c.sent_at))) AS order_p95,
                 percentile_cont(0.99) WITHIN GROUP (ORDER BY extract(epoch FROM (o.created_at-c.sent_at))) AS order_p99,

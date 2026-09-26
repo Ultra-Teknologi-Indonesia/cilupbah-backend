@@ -107,22 +107,40 @@ final class RequestTikTokMassAwbJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
+        $snapshots = [];
+        $missing = [];
+        foreach ($candidates as $order) {
+            $packages = array_values(array_unique(array_filter(array_map('strval', (array) $order->channel_package_ids))));
+            $status = strtoupper((string) $order->channel_status);
+            if (config('bulk-labels.tiktok_reuse_package_ids', true)
+                && $packages !== []
+                && in_array($status, ['AWAITING_SHIPMENT', 'READY_TO_SHIP'], true)) {
+                $snapshots[(string) $order->channel_order_no] = [
+                    'order_found' => true,
+                    'status' => $status,
+                    'tracking_number' => null,
+                    'packages' => array_map(static fn (string $id): array => ['id' => $id, 'status' => $status], $packages),
+                ];
+            } else {
+                $missing[] = (string) $order->channel_order_no;
+            }
+        }
+
         try {
-            $snapshots = $tiktok->getOrderFulfillmentSnapshots(
+            $snapshots += $missing === [] ? [] : $tiktok->getOrderFulfillmentSnapshots(
                 $shop,
-                array_map(static fn (SalesOrder $order): string => (string) $order->channel_order_no, $candidates),
+                $missing,
             );
         } catch (Throwable $exception) {
             Log::warning('RequestTikTokMassAwbJob: preflight batch gagal; pindah ke verifikasi baca-saja.', [
                 'batch_id' => $this->batchId,
                 'exception' => $exception->getMessage(),
             ]);
-            $snapshots = [];
         }
 
         $entries = [];
         foreach ($candidates as $order) {
-            // A webhook may cancel the order or persist its AWB during the batch request.
+
             $fresh = ChannelOrderSideEffectGuard::active((string) $order->id, 'request_mass_awb');
             if ($fresh === null) {
                 continue;
@@ -209,6 +227,7 @@ final class RequestTikTokMassAwbJob implements ShouldBeUnique, ShouldQueue
                     'shipped' => false,
                     'message' => 'TikTok tidak mengembalikan hasil untuk package pada batch shipment.',
                     'error_category' => 'retryable',
+                    'uncertain' => true,
                 ]))
                 ->values();
 
@@ -218,6 +237,23 @@ final class RequestTikTokMassAwbJob implements ShouldBeUnique, ShouldQueue
                     'mass_request' => true,
                     'packages' => $packageResults->all(),
                 ]);
+                $this->dispatchVerification($entry['order']);
+
+                continue;
+            }
+
+            if ($packageResults->contains('shipped', true) || $failed->contains(fn (array $result): bool => ($result['uncertain'] ?? false)
+                || in_array((int) ($result['error_code'] ?? 0), [21011020, 21011040, 21001003, 21001028], true))) {
+                $response = [
+                    'verification_required' => true,
+                    'packages' => $packageResults->all(),
+                ];
+                if ($packageResults->contains('shipped', true)) {
+                    ChannelOperationLedger::markAccepted($entry['attempt'], $response);
+                } else {
+                    ChannelOperationLedger::markUncertain($entry['attempt'], new \RuntimeException('Hasil shipment belum pasti; verifikasi channel sebelum mengirim ulang.'));
+                    $entry['attempt']->forceFill(['last_response' => $response])->save();
+                }
                 $this->dispatchVerification($entry['order']);
 
                 continue;

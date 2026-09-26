@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Modules\Channel\Exceptions\ChannelLabelUnsupportedException;
 use Modules\Channel\Exceptions\ShopeeApiException;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Support\ChannelFulfillmentGuard;
@@ -124,8 +125,7 @@ class BulkShippingLabelService
         if ($accessIds !== null) {
             sort($accessIds);
         }
-        // Preserve requested print order. A changed warehouse access scope or
-        // document option must never reuse another request's batch.
+
         $requestKey = hash('sha256', json_encode([$orderIds, $canonicalize($perChannelOpts), $accessIds], JSON_THROW_ON_ERROR));
 
         [$batch, $created] = app(BulkShippingLabelRequestRepository::class)->firstOrCreateActive(
@@ -176,9 +176,7 @@ class BulkShippingLabelService
         );
 
         if (! $created) {
-            // A previous request may have committed the batch but failed to
-            // enqueue AWB work. Unique jobs/operation ledger suppress work
-            // already queued or accepted by the channel.
+
             $this->dispatchAwaitingAwb($batch, $orderIds);
 
             return $batch;
@@ -248,6 +246,12 @@ class BulkShippingLabelService
     {
         if ((string) $batch->user_id !== (string) $user->id) {
             throw new AuthorizationException('Batch label bukan milik pengguna ini.');
+        }
+
+        $warehouseIds = $user->allowedLocationIds();
+        if ($warehouseIds !== null && app(BulkShippingLabelRequestRepository::class)
+            ->hasInaccessibleCompletedItems((string) $batch->id, $warehouseIds)) {
+            throw new AuthorizationException('Akses gudang berubah. Pilih ulang pesanan yang dapat dicetak.');
         }
 
         if ($batch->status !== BulkShippingLabelBatch::STATUS_READY
@@ -530,8 +534,7 @@ class BulkShippingLabelService
     public function processQueuedBatch(BulkShippingLabelBatch $batch): void
     {
         app(BulkShippingLabelRequestRepository::class)->eachPendingChunk((string) $batch->id, function (Collection $pending) use ($batch): void {
-            // Keep marketplace I/O out of the PDF merge pool, while retaining
-            // Shopee's bulk endpoint rather than creating one API call per order.
+
             if (config('bulk-labels.async_shopee_preparation', false)) {
                 foreach ($pending->where('channel', self::CHANNEL_SHOPEE)->groupBy('order.channel_shop_id') as $shopItems) {
                     foreach ($shopItems->chunk(50) as $chunk) {
@@ -539,8 +542,7 @@ class BulkShippingLabelService
                     }
                 }
             } else {
-                // Rolling-deploy compatibility: old workers cannot deserialize
-                // PrepareBulkShopeeShippingLabelsJob until their image is updated.
+
                 $this->prepareShopeeItems($pending->where('channel', self::CHANNEL_SHOPEE));
             }
 
@@ -574,8 +576,6 @@ class BulkShippingLabelService
             return;
         }
 
-        // Subscribe before any API call or wake-up: a preparation callback
-        // can arrive on a different worker before the bulk request returns.
         $requests = app(BulkShippingLabelRequestRepository::class);
         $items = $items->filter(fn (BulkShippingLabelItem $item): bool => $requests->subscribeShopeePreparation($item));
 
@@ -936,8 +936,7 @@ class BulkShippingLabelService
             default => null,
         };
         if ($order->shipping_label_status === 'preparing' && $waitingStatus !== null) {
-            // Subscribe before waking preparation: a fast worker may publish
-            // readiness before dispatch() returns to this worker.
+
             $item->update([
                 'status' => $waitingStatus,
                 'reason' => null,
@@ -1548,17 +1547,31 @@ class BulkShippingLabelService
         return array_values(array_unique(array_filter($urls, static fn ($url): bool => is_string($url) && $url !== '')));
     }
 
-    private function mergePdfBytes(array $documents): string
+    public function mergePdfBytes(array $documents): string
     {
+        if ($documents === [] || count($documents) > 500
+            || array_sum(array_map('strlen', $documents)) > (int) config('bulk-labels.cache_max_bytes', 32 * 1024 * 1024)) {
+            throw new \RuntimeException('Ukuran atau jumlah dokumen label melebihi batas aman.');
+        }
         if (count($documents) === 1) {
             return $documents[0];
         }
 
         try {
             $pdf = new Fpdi;
+            $totalPages = 0;
             foreach ($documents as $document) {
                 $pageCount = $pdf->setSourceFile(StreamReader::createByString($document));
+                $totalPages += $pageCount;
+                if ($pageCount < 1 || $totalPages > 1000) {
+                    throw new \RuntimeException('Jumlah halaman label kosong atau melebihi batas aman.');
+                }
                 for ($page = 1; $page <= $pageCount; $page++) {
+                    $phpLimit = ini_parse_quantity((string) ini_get('memory_limit'));
+                    $safeMemory = $phpLimit > 0 ? min(160 * 1024 * 1024, $phpLimit - 48 * 1024 * 1024) : 160 * 1024 * 1024;
+                    if (memory_get_usage(true) > $safeMemory) {
+                        throw new \RuntimeException('Penggabungan label mencapai batas memori aman.');
+                    }
                     $template = $pdf->importPage($page);
                     $size = $pdf->getTemplateSize($template);
                     $pdf->AddPage($size['orientation'], [$size['width'], $size['height']]);
@@ -1585,8 +1598,7 @@ class BulkShippingLabelService
             $this->waitForMarketplace($item, $order);
 
             return;
-        } catch (\RuntimeException $e) {
-
+        } catch (ChannelLabelUnsupportedException $e) {
             $this->fail($item, BulkShippingLabelItem::REASON_SELF_DESIGN);
 
             return;
@@ -1616,7 +1628,7 @@ class BulkShippingLabelService
     {
         $item->update(['status' => BulkShippingLabelItem::STATUS_WAITING_MARKETPLACE, 'reason' => null]);
         app(ShippingLabelPreparationDispatcher::class)->dispatch($order);
-        // Includes a completion that raced with registration of this waiter.
+
         if (in_array($order->fresh()?->shipping_label_status, ['ready', 'failed', 'self_design_required'], true)) {
             $this->onOrderLabelReady((string) $order->id);
         }

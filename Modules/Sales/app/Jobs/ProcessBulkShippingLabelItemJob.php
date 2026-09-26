@@ -126,8 +126,6 @@ class ProcessBulkShippingLabelItemJob implements ShouldBeUniqueUntilProcessing, 
                         'updated_at' => now(),
                     ]);
 
-                // The shop limiter normally expires in one second. Do not add
-                // a fixed ten-second wait after a single exhausted slot.
                 $this->release(max(1, (int) config('queue.routing.labels.rate_limit_decay_seconds', 1)));
 
                 return;
@@ -135,8 +133,7 @@ class ProcessBulkShippingLabelItemJob implements ShouldBeUniqueUntilProcessing, 
             $batch->recomputeCounts();
             $service->tryFinalize($batch);
         } catch (Throwable $exception) {
-            // Only undo this job's claim, never a ready/waiting/transforming
-            // transition published concurrently by a preparation callback.
+
             BulkShippingLabelItem::query()
                 ->whereKey($this->itemId)
                 ->where('batch_id', $this->batchId)

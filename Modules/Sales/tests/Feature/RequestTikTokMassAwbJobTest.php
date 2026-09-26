@@ -36,6 +36,8 @@ final class RequestTikTokMassAwbJobTest extends TestCase
     {
         return [
             'both ready' => ['ready', 2],
+            'stored package fast path' => ['cached', 2],
+            'uncertain fast path response' => ['cached_uncertain', 2],
             'missing order' => ['missing', 1],
             'cancelled upstream' => ['cancelled', 1],
             'batch unavailable' => ['unavailable', 0],
@@ -46,6 +48,8 @@ final class RequestTikTokMassAwbJobTest extends TestCase
     #[DataProvider('preflightCases')]
     public function test_preflights_orders_then_ships_only_verified_packages_in_one_request(string $scenario, int $accepted): void
     {
+        $cached = str_starts_with($scenario, 'cached');
+        config(['bulk-labels.tiktok_reuse_package_ids' => $cached]);
         Queue::fake();
 
         $channel = Channel::create(['code' => 'tiktok', 'name' => 'TikTok Shop', 'is_active' => true]);
@@ -67,7 +71,7 @@ final class RequestTikTokMassAwbJobTest extends TestCase
         $tiktok = Mockery::mock(TikTokOrderService::class);
         $tiktok->shouldNotReceive('getOrderFulfillmentSnapshot');
         $tiktok->shouldReceive('getOrderFulfillmentSnapshots')
-            ->once()
+            ->times($cached ? 0 : 1)
             ->withArgs(fn ($shop, array $ids): bool => $shop->shop_id === 'SHOP-TIKTOK-MASS'
                 && count($ids) === 2 && in_array('TIKTOK-MASS-A', $ids, true) && in_array('TIKTOK-MASS-B', $ids, true))
             ->andReturnUsing(function () use ($scenario, $second): array {
@@ -78,7 +82,6 @@ final class RequestTikTokMassAwbJobTest extends TestCase
                     $second->forceFill(['status' => 'cancelled', 'channel_status' => 'CANCELLED'])->save();
                 }
 
-                // Deliberately reverse the response order; matching must use order IDs.
                 return match ($scenario) {
                     'missing' => ['TIKTOK-MASS-A' => $this->snapshot('PKG-A')],
                     'cancelled' => [
@@ -100,7 +103,10 @@ final class RequestTikTokMassAwbJobTest extends TestCase
 
                     return $shopId === 'SHOP-TIKTOK-MASS' && $packages === $expectedPackages;
                 })
-                ->andReturn(array_map(static fn (string $id): array => ['package_id' => $id, 'shipped' => true], $expectedPackages));
+                ->andReturn(array_map(static fn (string $id): array => [
+                    'package_id' => $id, 'shipped' => $scenario !== 'cached_uncertain',
+                    'uncertain' => $scenario === 'cached_uncertain',
+                ], $expectedPackages));
         } else {
             $tiktok->shouldNotReceive('requestTrackingNumbersMass');
         }
@@ -118,7 +124,7 @@ final class RequestTikTokMassAwbJobTest extends TestCase
 
         $this->assertSame($accepted, ChannelOperationAttempt::query()
             ->where('operation', 'request_awb')
-            ->where('status', ChannelOperationAttempt::STATUS_ACCEPTED)
+            ->where('status', $scenario === 'cached_uncertain' ? ChannelOperationAttempt::STATUS_UNCERTAIN : ChannelOperationAttempt::STATUS_ACCEPTED)
             ->count());
         Queue::assertPushed(
             RequestChannelAwbJob::class,

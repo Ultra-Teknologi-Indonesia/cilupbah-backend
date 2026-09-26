@@ -137,7 +137,7 @@ class ReplayFailedWebhooksTest extends TestCase
         ]);
         $capacity = Mockery::mock(QueueCapacityReader::class);
         $capacity->shouldReceive('inspect')->andReturnUsing(function ($connection, $queues): array {
-            // An unrelated catalog/fulfillment backlog must not stop this lane.
+
             return [
                 'allowed' => true, 'queue_depth' => is_array($queues) ? 1000 : 0,
                 'memory_ratio' => 0.1,

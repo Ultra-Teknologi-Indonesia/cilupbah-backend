@@ -106,7 +106,9 @@ class TikTokToInternalOrderMapper
 
         return [
             'channel_order_no' => (string) ($tiktokOrder['id'] ?? ''),
-            'channel_package_ids' => $this->extractPackageIds($packages),
+            ...(array_key_exists('packages', $tiktokOrder)
+                ? ['channel_package_ids' => $this->extractPackageIds($packages)]
+                : []),
             'channel_shop_id' => $shopId,
             'channel_buyer_id' => isset($tiktokOrder['user_id']) ? (string) $tiktokOrder['user_id'] : null,
             'customer_name' => $this->resolveCustomerName($address['name'] ?? null, $tiktokOrder['buyer_nickname'] ?? null, $tiktokOrder['buyer_email'] ?? null),

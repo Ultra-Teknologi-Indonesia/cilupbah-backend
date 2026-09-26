@@ -188,10 +188,7 @@ class CourierMappingService
         $map = [];
 
         Courier::query()
-            // `couriers.is_active` is a PostgreSQL boolean.  Do not bind the
-            // PHP boolean through the generic integer path (`= 1`), because
-            // PostgreSQL rejects boolean/integer comparisons and this lookup
-            // runs while materialising channel orders from webhooks.
+
             ->whereRaw('"is_active" IS TRUE')
             ->whereNull('tenant_id')
             ->orderByRaw('length(name)')

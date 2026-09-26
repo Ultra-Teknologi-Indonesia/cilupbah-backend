@@ -16,6 +16,7 @@ use Modules\Channel\Support\ChannelQueue;
 use Modules\Sales\Jobs\Concerns\UsesShippingLabelPreparationLock;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\BulkShippingLabelService;
+use Modules\Sales\Services\SalesOrderService;
 use Modules\Sales\Support\ChannelOrderSideEffectGuard;
 
 class PrepareLazadaShippingLabelJob implements ShouldBeUnique, ShouldQueue
@@ -119,11 +120,21 @@ class PrepareLazadaShippingLabelJob implements ShouldBeUnique, ShouldQueue
             }
 
             if (! empty($document['file']) || ! empty($document['pdf_url'])) {
+                $rawData = ['channel' => 'lazada', 'document' => $document];
+                if (! empty($document['package_ids']) && ! empty($document['file'])) {
+                    $bytes = base64_decode($document['file'], true);
+                    if ($bytes === false || $bytes === '') {
+                        throw new \RuntimeException('Gabungan label Lazada tidak valid.');
+                    }
+                    unset($rawData['document']['file']);
+                    app(SalesOrderService::class)->cacheShippingLabelBytes($order, $bytes, 'PDF', $rawData);
+                    $rawData = $order->shipping_label_raw_data;
+                }
                 $order->update([
                     'shipping_label_status' => 'ready',
                     'shipping_label_doc_type' => $document['doc_type'] ?? 'PDF',
                     'shipping_label_prepared_at' => now(),
-                    'shipping_label_raw_data' => ['channel' => 'lazada', 'document' => $document],
+                    'shipping_label_raw_data' => $rawData,
                 ]);
 
                 if ($order->driver_call_status === 'pending') {

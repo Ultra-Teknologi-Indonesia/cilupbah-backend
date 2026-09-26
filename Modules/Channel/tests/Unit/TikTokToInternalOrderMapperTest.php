@@ -7,6 +7,15 @@ use Tests\TestCase;
 
 class TikTokToInternalOrderMapperTest extends TestCase
 {
+    public function test_omitted_packages_preserves_existing_mapping_but_explicit_empty_is_authoritative(): void
+    {
+        $mapper = new TikTokToInternalOrderMapper;
+        $order = $this->order([]);
+        $this->assertArrayNotHasKey('channel_package_ids', $mapper->map($order, 'shop-1'));
+        $this->assertSame([], $mapper->map($order + ['packages' => []], 'shop-1')['channel_package_ids']);
+        $this->assertSame(['P1', 'P2'], $mapper->map($order + ['packages' => [['id' => 'P1'], ['id' => 'P2']]], 'shop-1')['channel_package_ids']);
+    }
+
     private function order(array $lineItems): array
     {
         return [

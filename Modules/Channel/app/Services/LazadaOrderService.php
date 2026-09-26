@@ -13,6 +13,7 @@ use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Sales\Exceptions\ChannelOrderBeforeIntakeCutoffException;
 use Modules\Sales\Jobs\RespondBuyerCancellationJob;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Services\LazadaShippingDocumentService;
 use Modules\Sales\Services\SalesOrderService;
 
 class LazadaOrderService
@@ -602,10 +603,18 @@ class LazadaOrderService
         if (empty($packageIds)) {
             throw new \RuntimeException("Order pada toko {$shopId} belum punya package_id untuk cetak dokumen Lazada.");
         }
+        if (count($packageIds) > 20) {
+            return app(LazadaShippingDocumentService::class)->collect(
+                $shopId,
+                $packageIds,
+                $docType,
+                fn (array $chunk): array => $this->getPackageDocument($shopId, $chunk, $docType),
+            );
+        }
 
         $shop = $this->requireShop($shopId);
 
-        $packages = array_map(fn ($id) => ['package_id' => $id], array_slice($packageIds, 0, 20));
+        $packages = array_map(fn ($id) => ['package_id' => $id], $packageIds);
 
         $params = [
             'getDocumentReq' => json_encode([
@@ -623,7 +632,9 @@ class LazadaOrderService
         $file = $data['file'] ?? null;
         $url = $data['pdf_url'] ?? $data['url'] ?? null;
 
-        if (! empty($file) || ! empty($url)) {
+        if ((! empty($file) || ! empty($url))
+            && in_array((string) ($result['error_code'] ?? '0'), ['', '0'], true)
+            && ($result['success'] ?? true) !== false) {
             return [
                 'file' => $file ?: null,
                 'pdf_url' => $url ?: null,

@@ -285,8 +285,6 @@ class BulkLabelAwbPullTest extends TestCase
             'status' => BulkShippingLabelItem::STATUS_DOWNLOADING,
         ]);
 
-        // A genuinely different print request gets its own items. An identical
-        // request now intentionally rejoins the active batch instead.
         $secondBatch = app(BulkShippingLabelService::class)->createBatch($this->user, [$order->id], [
             'document_size' => BulkShippingLabelService::SIZE_100X150,
         ]);

@@ -174,6 +174,7 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
 
         try {
             $requestMarketplace = $this->trackingAttempt === 0
+                && ! $this->prefetch
                 && $this->requestReadyToShip
                 && ($source === 'tiktok' || ! $this->channelAlreadyShipped($order))
                 && $this->shouldRequestReadyToShip($order);
@@ -194,7 +195,7 @@ class RequestChannelAwbJob implements ShouldBeUnique, ShouldQueue
                     'source' => $source,
                 ]);
 
-                if ($this->requiresShipmentRetry) {
+                if ($this->requiresShipmentRetry && ! $this->prefetch) {
                     $delay = $this->verificationDelaySeconds();
 
                     if ($this->trackingAttempt === 0 && ! $this->verificationOnly) {

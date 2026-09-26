@@ -2,23 +2,26 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use Modules\Sales\Http\Controllers\BuyerConfirmationController;
-use Modules\Sales\Http\Controllers\InternalStoreController;
-use Modules\Sales\Http\Controllers\OrderDirectCompletionController;
-use Modules\Sales\Http\Controllers\SalesOrderManualController;
-use Modules\Sales\Http\Controllers\SalesReturnController;
-use Modules\Sales\Http\Controllers\SalesOrderActivityController;
-use Modules\Sales\Http\Controllers\SalesOrderController;
-use Modules\Sales\Http\Controllers\SalesOrderImportController;
-use Modules\Sales\Http\Controllers\SalesInvoiceController;
-use Modules\Sales\Http\Controllers\SalesPaymentController;
-use Modules\Sales\Http\Controllers\SalesSettlementController;
-use Modules\Sales\Http\Controllers\OrderSettlementController;
-use Modules\Sales\Http\Controllers\SalesReturnSettlementController;
+use Modules\Outbound\Http\Controllers\OutboundFulfillmentController;
 use Modules\Outbound\Http\Controllers\PacklistController;
 use Modules\Outbound\Http\Controllers\PicklistController;
 use Modules\Outbound\Http\Controllers\ShipmentController;
-use Modules\Outbound\Http\Controllers\OutboundFulfillmentController;
+use Modules\Sales\Http\Controllers\BulkInvoiceController;
+use Modules\Sales\Http\Controllers\BulkShippingLabelController;
+use Modules\Sales\Http\Controllers\BuyerConfirmationController;
+use Modules\Sales\Http\Controllers\InternalStoreController;
+use Modules\Sales\Http\Controllers\OrderDirectCompletionController;
+use Modules\Sales\Http\Controllers\OrderSettlementController;
+use Modules\Sales\Http\Controllers\SalesInvoiceController;
+use Modules\Sales\Http\Controllers\SalesOrderActivityController;
+use Modules\Sales\Http\Controllers\SalesOrderController;
+use Modules\Sales\Http\Controllers\SalesOrderImportController;
+use Modules\Sales\Http\Controllers\SalesOrderManualController;
+use Modules\Sales\Http\Controllers\SalesPaymentController;
+use Modules\Sales\Http\Controllers\SalesReturnController;
+use Modules\Sales\Http\Controllers\SalesReturnSettingController;
+use Modules\Sales\Http\Controllers\SalesReturnSettlementController;
+use Modules\Sales\Http\Controllers\SalesSettlementController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
 
@@ -53,10 +56,10 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::get('sales/manual/lookup-sku', [SalesOrderManualController::class, 'lookupSku'])->name('sales.manual.lookup-sku')->middleware('role_or_permission:owner|view-produk');
 
     Route::middleware('role_or_permission:owner|view-pengaturan-sistem')->group(function () {
-        Route::get('systemsetting/sales-return-setting', [\Modules\Sales\Http\Controllers\SalesReturnSettingController::class, 'index'])->name('sales.returnSetting.index');
+        Route::get('systemsetting/sales-return-setting', [SalesReturnSettingController::class, 'index'])->name('sales.returnSetting.index');
     });
     Route::middleware('role_or_permission:owner|edit-pengaturan-sistem')->group(function () {
-        Route::post('systemsetting/sales-return-setting', [\Modules\Sales\Http\Controllers\SalesReturnSettingController::class, 'store'])->name('sales.returnSetting.store');
+        Route::post('systemsetting/sales-return-setting', [SalesReturnSettingController::class, 'store'])->name('sales.returnSetting.store');
     });
 
     Route::middleware('role_or_permission:owner|view-retur-penjualan')->group(function () {
@@ -265,8 +268,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::middleware('role_or_permission:owner|view-pesanan')->group(function () {
         Route::get('sales/{id}/activities', [SalesOrderActivityController::class, 'index'])->whereUuid('id')->name('sales.orders.activities');
         Route::get('sales/{id}/invoice', [SalesOrderController::class, 'invoice'])->whereUuid('id')->name('sales.orders.invoice');
-        Route::post('sales/invoices/bulk-pdf/async', [\Modules\Sales\Http\Controllers\BulkInvoiceController::class, 'bulkPdfAsync'])->name('sales.invoices.bulk-pdf-async');
-        Route::post('sales/invoices/bulk-pdf', [\Modules\Sales\Http\Controllers\BulkInvoiceController::class, 'bulkPdf'])->name('sales.invoices.bulk-pdf');
+        Route::post('sales/invoices/bulk-pdf/async', [BulkInvoiceController::class, 'bulkPdfAsync'])->name('sales.invoices.bulk-pdf-async');
+        Route::post('sales/invoices/bulk-pdf', [BulkInvoiceController::class, 'bulkPdf'])->name('sales.invoices.bulk-pdf');
         Route::get('sales/{id}/breakdown', [SalesOrderController::class, 'breakdown'])->whereUuid('id')->name('sales.orders.breakdown');
     });
 
@@ -274,17 +277,20 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
         Route::get('sales/{id}/shipping-label', [SalesOrderController::class, 'getShippingLabel'])->whereUuid('id')->name('sales.orders.shipping-label');
         Route::post('sales/{id}/shipping-label/retry', [SalesOrderController::class, 'retryShippingLabel'])->whereUuid('id')->name('sales.orders.shipping-label.retry');
 
-        Route::post('sales/shipping-labels/bulk', [\Modules\Sales\Http\Controllers\BulkShippingLabelController::class, 'store'])
+        Route::post('sales/shipping-labels/bulk', [BulkShippingLabelController::class, 'store'])
             ->name('sales.shipping-labels.bulk.store');
-        Route::get('sales/shipping-labels/bulk/{batch}', [\Modules\Sales\Http\Controllers\BulkShippingLabelController::class, 'show'])
+        Route::get('sales/shipping-labels/bulk/{batch}', [BulkShippingLabelController::class, 'show'])
             ->whereUuid('batch')
             ->name('sales.shipping-labels.bulk.show');
-        Route::get('sales/shipping-labels/bulk/{batch}/pdf', [\Modules\Sales\Http\Controllers\BulkShippingLabelController::class, 'downloadPdf'])
+        Route::get('sales/shipping-labels/bulk/{batch}/pdf', [BulkShippingLabelController::class, 'downloadPdf'])
             ->whereUuid('batch')
             ->name('sales.shipping-labels.bulk.pdf');
-        Route::post('sales/shipping-labels/bulk/{batch}/retry-failed', [\Modules\Sales\Http\Controllers\BulkShippingLabelController::class, 'retryFailed'])
+        Route::post('sales/shipping-labels/bulk/{batch}/retry-failed', [BulkShippingLabelController::class, 'retryFailed'])
             ->whereUuid('batch')
             ->name('sales.shipping-labels.bulk.retry-failed');
+        Route::post('sales/shipping-labels/bulk/{batch}/ready-snapshot', [BulkShippingLabelController::class, 'snapshot'])
+            ->whereUuid('batch')->middleware('throttle:10,1')
+            ->name('sales.shipping-labels.bulk.ready-snapshot');
         Route::post('sales/{id}/print-with-driver-call', [SalesOrderController::class, 'printWithDriverCall'])->whereUuid('id')->name('sales.orders.print-with-driver-call');
         Route::post('sales/{id}/driver-call/retry', [SalesOrderController::class, 'retryDriverCall'])->whereUuid('id')->name('sales.orders.driver-call.retry');
     });

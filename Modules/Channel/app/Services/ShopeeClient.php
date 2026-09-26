@@ -3,6 +3,7 @@
 namespace Modules\Channel\Services;
 
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
@@ -13,9 +14,10 @@ use Modules\Channel\Support\ShopeeErrorCatalog;
 
 class ShopeeClient
 {
-
     protected string $partnerId;
+
     protected string $partnerKey;
+
     protected string $host;
 
     public function __construct()
@@ -42,7 +44,7 @@ class ShopeeClient
 
         if ($state !== '') {
             $separator = str_contains($redirectUri, '?') ? '&' : '?';
-            $redirectUri .= $separator . 'state=' . urlencode($state);
+            $redirectUri .= $separator.'state='.urlencode($state);
         }
 
         $query = http_build_query([
@@ -52,7 +54,7 @@ class ShopeeClient
             'redirect' => $redirectUri,
         ]);
 
-        return $this->host . $path . '?' . $query;
+        return $this->host.$path.'?'.$query;
     }
 
     public function getAccessToken(string $code, string $shopId): array
@@ -95,10 +97,10 @@ class ShopeeClient
 
         try {
             if (strtoupper($method) === 'GET') {
-                $url = $this->host . $apiPath . '?' . http_build_query(array_merge($common, $params));
+                $url = $this->host.$apiPath.'?'.http_build_query(array_merge($common, $params));
                 $response = Http::timeout($timeout)->connectTimeout($connectTimeout)->get($url);
             } else {
-                $url = $this->host . $apiPath . '?' . http_build_query($common);
+                $url = $this->host.$apiPath.'?'.http_build_query($common);
                 $response = Http::asJson()->timeout($timeout)->connectTimeout($connectTimeout)->post($url, $params);
             }
         } catch (ConnectionException $e) {
@@ -186,7 +188,7 @@ class ShopeeClient
                 ];
 
                 $this->throttle();
-                $url = $this->host . $apiPath . '?' . http_build_query(array_merge($common, $params));
+                $url = $this->host.$apiPath.'?'.http_build_query(array_merge($common, $params));
                 $handles[(string) $key] = $pool
                     ->as((string) $key)
                     ->timeout($timeout)
@@ -202,6 +204,7 @@ class ShopeeClient
             $response = $responses[(string) $key] ?? null;
             if (! $response) {
                 $result[(string) $key] = [];
+
                 continue;
             }
 
@@ -233,6 +236,7 @@ class ShopeeClient
                 }
 
                 $result[(string) $key] = [];
+
                 continue;
             }
 
@@ -251,6 +255,7 @@ class ShopeeClient
                     'status' => $response->status(),
                 ]);
                 $result[(string) $key] = [];
+
                 continue;
             }
 
@@ -316,7 +321,7 @@ class ShopeeClient
 
         $this->throttle();
 
-        $url = $this->host . $apiPath . '?' . http_build_query($common);
+        $url = $this->host.$apiPath.'?'.http_build_query($common);
         $response = Http::asJson()->timeout(30)->connectTimeout(15)->post($url, $params);
 
         $contentType = strtolower((string) $response->header('Content-Type'));
@@ -354,7 +359,7 @@ class ShopeeClient
 
         $this->throttle();
 
-        $url = $this->host . $path . '?' . http_build_query([
+        $url = $this->host.$path.'?'.http_build_query([
             'partner_id' => $this->partnerId,
             'timestamp' => $timestamp,
             'sign' => $sign,
@@ -395,7 +400,7 @@ class ShopeeClient
 
         $this->throttle();
 
-        $url = $this->host . $path . '?' . http_build_query([
+        $url = $this->host.$path.'?'.http_build_query([
             'partner_id' => $this->partnerId,
             'timestamp' => $timestamp,
             'sign' => $sign,
@@ -410,7 +415,7 @@ class ShopeeClient
         $data = $response->json() ?? [];
 
         if (! empty($data['error'])) {
-            throw new \RuntimeException('Shopee upload_video_part error: ' . ($data['message'] ?? $data['error']));
+            throw new \RuntimeException('Shopee upload_video_part error: '.($data['message'] ?? $data['error']));
         }
 
         return $data;
@@ -434,7 +439,7 @@ class ShopeeClient
 
         $this->throttle();
 
-        $url = $this->host . $path . '?' . http_build_query([
+        $url = $this->host.$path.'?'.http_build_query([
             'partner_id' => $this->partnerId,
             'timestamp' => $timestamp,
             'sign' => $sign,
@@ -461,9 +466,30 @@ class ShopeeClient
             (int) config('ratelimit.channel_api_per_second_by_channel.shopee', 4),
         );
 
-        if (! RateLimiter::attempt('shopee-api', $limit, fn () => null, 1)) {
-            $wait = RateLimiter::availableIn('shopee-api');
-            usleep((int) ($wait * 1_000_000) + 50_000);
-        }
+        $deadline = microtime(true) + max(0, min(5, (float) config('ratelimit.shopee_admission_wait_seconds', 2)));
+        do {
+
+            $lock = Cache::store(config('cache.limiter'))->lock('shopee-api:admission', 2);
+            if ($lock->get()) {
+                try {
+                    if (RateLimiter::attempt('shopee-api', $limit, fn () => true, 1)) {
+                        return;
+                    }
+                } finally {
+                    $lock->release();
+                }
+            }
+            $remaining = $deadline - microtime(true);
+            if ($remaining <= 0) {
+                break;
+            }
+            usleep((int) (min($remaining, 0.1) * 1_000_000));
+        } while (microtime(true) < $deadline);
+
+        throw new ShopeeApiException(
+            'local_rate_limit',
+            ShopeeErrorCatalog::RETRYABLE,
+            'Antrean akses Shopee sedang penuh. Permintaan perlu dicoba kembali.',
+        );
     }
 }

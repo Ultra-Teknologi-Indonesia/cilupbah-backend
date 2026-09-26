@@ -2,8 +2,17 @@
 
 return [
 
-    // Enable after every label worker runs the image containing the new job.
-    'async_shopee_preparation' => (bool) env('LABEL_ASYNC_SHOPEE_PREPARATION', false),
+    'async_shopee_preparation' => (bool) env('LABEL_ASYNC_SHOPEE_PREPARATION', true),
+
+    'tiktok_reuse_package_ids' => (bool) env('LABEL_TIKTOK_REUSE_PACKAGE_IDS', true),
+    'snapshot_max_items' => 500,
+    'snapshot_max_bytes' => 64 * 1024 * 1024,
+    'cache_max_bytes' => 32 * 1024 * 1024,
+    'cache_free_reserve_bytes' => 512 * 1024 * 1024,
+    'cache_local_hours' => 24,
+    'lazada_document_max_packages' => 500,
+    'lazada_document_max_bytes' => 16 * 1024 * 1024,
+    'lazada_document_max_pages' => 1000,
 
     'local_first' => (bool) env('LABEL_LOCAL_FIRST', true),
     'spool_disk' => env('LABEL_PRINT_SPOOL_DISK', 'print_spool'),
@@ -35,5 +44,5 @@ return [
     'shopee_mass_awb_chunk_size' => max(1, min(100, (int) env('LABEL_SHOPEE_MASS_AWB_CHUNK_SIZE', 50))),
     'shopee_mass_awb_verification_delays' => [2, 5, 10, 20, 30, 60],
 
-    'tiktok_mass_awb_chunk_size' => max(1, min(100, (int) env('LABEL_TIKTOK_MASS_AWB_CHUNK_SIZE', 50))),
+    'tiktok_mass_awb_chunk_size' => max(1, min(50, (int) env('LABEL_TIKTOK_MASS_AWB_CHUNK_SIZE', 50))),
 ];

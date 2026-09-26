@@ -26,6 +26,36 @@ final class BulkShippingLabelRequestRepository
         return BulkShippingLabelBatch::find($batchId);
     }
 
+    public function printableItems(string $batchId, ?array $warehouseIds, int $limit): Collection
+    {
+        return BulkShippingLabelItem::query()->where('batch_id', $batchId)
+            ->whereIn('status', BulkShippingLabelItem::COMPLETED_STATUSES)
+            ->whereHas('order', function ($query) use ($warehouseIds): void {
+                $query->where('is_canceled', false)->where('status', '!=', 'cancelled')
+                    ->whereNull('cancel_requested_at')
+                    ->where(fn ($q) => $q->whereNull('channel_cancel_status')->orWhere('channel_cancel_status', '!=', 'accepted'));
+                if ($warehouseIds !== null) {
+                    $query->whereIn('location_id', $warehouseIds);
+                }
+            })
+            ->orderBy('created_at')->orderBy('id')->limit($limit)->get();
+    }
+
+    public function reusableSnapshot(string $userId, string $key): ?BulkShippingLabelBatch
+    {
+        return BulkShippingLabelBatch::query()->where('user_id', $userId)->where('request_key', $key)
+            ->whereIn('status', [BulkShippingLabelBatch::STATUS_PROCESSING, BulkShippingLabelBatch::STATUS_READY])
+            ->whereNull('file_purged_at')->latest()->first();
+    }
+
+    public function hasInaccessibleCompletedItems(string $batchId, array $warehouseIds): bool
+    {
+        return BulkShippingLabelItem::query()->where('batch_id', $batchId)
+            ->whereIn('status', BulkShippingLabelItem::COMPLETED_STATUSES)
+            ->whereDoesntHave('order', fn ($query) => $query->whereIn('location_id', $warehouseIds))
+            ->exists();
+    }
+
     public function subscribeShopeePreparation(BulkShippingLabelItem $item): bool
     {
         return BulkShippingLabelItem::query()->whereKey($item->id)
@@ -51,12 +81,10 @@ final class BulkShippingLabelRequestRepository
             ->get();
     }
 
-    /** @return array{0: BulkShippingLabelBatch, 1: bool} */
     public function firstOrCreateActive(string $userId, string $key, Closure $create): array
     {
         return DB::transaction(function () use ($userId, $key, $create): array {
-            // An existing row makes simultaneous first requests serializable,
-            // without relying on a cache lease expiring during batch creation.
+
             User::query()->whereKey($userId)->lockForUpdate()->firstOrFail();
             $existing = BulkShippingLabelBatch::query()
                 ->where('user_id', $userId)

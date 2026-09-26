@@ -78,8 +78,7 @@ class ChannelWebhookInbox extends Model
             }
 
             $attempts = (int) $row->attempts + 1;
-            // Capacity pressure is not a business failure. Once capacity returns,
-            // do not leave paid/cancelled orders waiting behind an hour of backoff.
+
             $delaySeconds = str_starts_with($message, 'QUEUE_CAPACITY_DEFERRED:')
                 ? max(5, min(30, (int) config('queue.backpressure.webhook_capacity_retry_seconds', 10)))
                 : min(3600, 30 * (2 ** min($attempts - 1, 7)));
@@ -164,7 +163,7 @@ class ChannelWebhookInbox extends Model
             }
 
             $rows = $query
-                // A repeatedly full lane moves behind other due retries.
+
                 ->orderBy('next_attempt_at')
                 ->orderBy('received_at')
                 ->limit($limit)

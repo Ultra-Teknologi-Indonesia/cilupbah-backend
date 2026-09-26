@@ -51,8 +51,7 @@ return [
             'queue' => env('REDIS_QUEUE', 'default'),
 
             'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 660),
-            // Block instead of polling every --sleep interval. This lowers
-            // Redis CPU usage and wakes workers immediately for new jobs.
+
             'block_for' => max(1, min(10, (int) env('REDIS_QUEUE_BLOCK_FOR', 5))),
 
             'after_commit' => true,
@@ -67,9 +66,6 @@ return [
             'after_commit' => true,
         ],
 
-        // Same Redis database/prefix as redis-long, with a shorter reservation
-        // lease for label downloads. A killed 120s job must not wait 36 minutes
-        // (the import queue lease) and expire its own 15-minute retry deadline.
         'redis-label-download' => [
             'driver' => 'redis',
             'connection' => $redisConnection('REDIS_LONG_CONNECTION', 'long'),
@@ -207,9 +203,6 @@ return [
 
     'webhook_retry_window_hours' => (int) env('WEBHOOK_RETRY_WINDOW_HOURS', 24),
 
-    // Events received before a completed channel cutover are historical data.
-    // They remain in the inbox for audit/retention, but must never consume the
-    // live replay capacity or make the new platform look unhealthy.
     'webhook_replay_after' => env('WEBHOOK_REPLAY_AFTER'),
 
     'health' => [

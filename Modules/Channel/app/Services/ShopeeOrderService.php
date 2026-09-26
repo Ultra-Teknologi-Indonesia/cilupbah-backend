@@ -226,8 +226,6 @@ class ShopeeOrderService
             return 0;
         }
 
-        // upsertFromChannel already persists/schedules eligible finance work.
-        // Webhook workers must not make the same API call a second time inline.
         if (! $deferFinance) {
             try {
                 $escrowRaw = $this->getEscrowDetail($shopId, $orderSn);

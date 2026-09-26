@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Tests\Feature;
 
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Redis;
@@ -17,12 +18,44 @@ use Modules\Sales\Models\BulkShippingLabelBatch;
 use Modules\Sales\Models\BulkShippingLabelItem;
 use Modules\Sales\Models\ChannelOperationAttempt;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Services\ShippingLabelPrefetchService;
 use Modules\Sales\Support\ChannelOperationLedger;
 use Tests\TestCase;
 
 class RequestChannelAwbJobTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_prefetch_cannot_request_or_schedule_shipment_even_for_old_serialized_jobs(): void
+    {
+        Queue::fake();
+        $channel = Channel::create(['code' => 'tiktok', 'name' => 'TikTok', 'is_active' => true]);
+        ChannelShop::create([
+            'channel_id' => $channel->id, 'shop_id' => 'PREFETCH-READ-ONLY', 'shop_name' => 'Test',
+            'access_token' => 'token', 'refresh_token' => 'refresh', 'token_expires_at' => now()->addHour(),
+            'is_active' => true, 'fulfillment_push_enabled' => true,
+        ]);
+        $order = SalesOrder::factory()->create([
+            'source' => 'tiktok', 'channel_shop_id' => 'PREFETCH-READ-ONLY', 'channel_order_no' => 'TT-READ-ONLY',
+            'channel_status' => 'AWAITING_SHIPMENT', 'status' => 'reserved', 'channel_instant' => false,
+            'tracking_number' => null, 'shipping_label_status' => null, 'is_canceled' => false,
+        ]);
+        $prefetch = Mockery::mock(ShippingLabelPrefetchService::class)->makePartial();
+        $prefetch->shouldReceive('begin')->once()->andReturn(['allowed' => true]);
+        $this->app->instance(ShippingLabelPrefetchService::class, $prefetch);
+        $tiktok = Mockery::mock(TikTokOrderService::class);
+        $tiktok->shouldNotReceive('requestTrackingNumber');
+        $tiktok->shouldReceive('getOrderFulfillmentSnapshot')->once()->andReturn([
+            'order_found' => true, 'status' => 'AWAITING_SHIPMENT', 'tracking_number' => null,
+            'packages' => [['id' => 'PKG-1', 'status' => 'AWAITING_SHIPMENT']],
+        ]);
+        $this->app->instance(TikTokOrderService::class, $tiktok);
+
+        (new RequestChannelAwbJob($order->id, 0, true, true, true, 'tiktok'))->handle();
+
+        Queue::assertPushed(RequestChannelAwbJob::class, fn ($job) => $job->prefetch && $job->verificationOnly && ! $job->requestReadyToShip);
+        Queue::assertNotPushed(RequestChannelAwbJob::class, fn ($job) => $job->requestReadyToShip);
+    }
 
     public function test_shopee_reads_existing_awb_before_posting_ship_order(): void
     {
@@ -86,7 +119,7 @@ class RequestChannelAwbJobTest extends TestCase
             'shipping_label_status' => 'ready',
         ]);
 
-        $user = \App\Models\User::factory()->create();
+        $user = User::factory()->create();
         $batch = BulkShippingLabelBatch::create([
             'user_id' => $user->id,
             'status' => BulkShippingLabelBatch::STATUS_PROCESSING,

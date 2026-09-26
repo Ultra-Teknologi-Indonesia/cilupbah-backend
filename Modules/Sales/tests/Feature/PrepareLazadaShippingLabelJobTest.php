@@ -4,10 +4,14 @@ namespace Modules\Sales\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Storage;
 use Modules\Channel\Exceptions\ChannelLabelUnsupportedException;
 use Modules\Channel\Services\LazadaOrderService;
+use Modules\Sales\Jobs\ArchiveShippingLabelCacheJob;
 use Modules\Sales\Jobs\PrepareLazadaShippingLabelJob;
 use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Services\SalesOrderService;
+use setasign\Fpdi\Fpdi;
 use Tests\TestCase;
 
 class PrepareLazadaShippingLabelJobTest extends TestCase
@@ -58,6 +62,28 @@ class PrepareLazadaShippingLabelJobTest extends TestCase
 
         $this->assertSame('not_ready', $order->refresh()->shipping_label_status);
         Queue::assertPushed(PrepareLazadaShippingLabelJob::class);
+    }
+
+    public function test_multi_batch_document_is_staged_locally_without_base64_in_order_metadata(): void
+    {
+        Queue::fake();
+        Storage::fake('documents');
+        Storage::fake('print_spool');
+        $ids = array_map('strval', range(1, 21));
+        $order = $this->makeOrder(['channel_package_ids' => $ids]);
+        $pdf = new Fpdi;
+        $pdf->AddPage();
+        $bytes = $pdf->Output('S');
+        $this->mock(LazadaOrderService::class, function ($mock) use ($ids, $bytes) {
+            $mock->shouldReceive('getPackageDocument')->once()->with('SELLER-1', $ids, 'PDF')
+                ->andReturn(['file' => base64_encode($bytes), 'pdf_url' => null, 'doc_type' => 'PDF', 'package_ids' => $ids]);
+        });
+        (new PrepareLazadaShippingLabelJob($order->id))->handle(app(LazadaOrderService::class));
+        $order->refresh();
+        $this->assertSame('ready', $order->shipping_label_status);
+        $this->assertArrayNotHasKey('file', $order->shipping_label_raw_data['document']);
+        $this->assertSame($bytes, app(SalesOrderService::class)->cachedShippingLabelBytes($order));
+        Queue::assertPushed(ArchiveShippingLabelCacheJob::class);
     }
 
     public function test_marks_self_design_required_for_sof_dbs_order(): void

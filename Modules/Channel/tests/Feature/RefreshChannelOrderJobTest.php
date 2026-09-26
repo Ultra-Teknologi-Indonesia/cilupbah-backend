@@ -80,7 +80,7 @@ final class RefreshChannelOrderJobTest extends TestCase
         ]);
         $shopee = \Mockery::mock(ShopeeOrderService::class);
         $shopee->shouldReceive('pullOrderById')->once()->andReturnUsing(function (): int {
-            // Payment/cancellation arrives after the current API read began.
+
             RefreshChannelOrderJob::dispatch('shopee', 'SHOP-1', 'ORDER-1', null, 'latest-event');
 
             return 1;

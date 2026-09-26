@@ -19,8 +19,6 @@ use Modules\Channel\Support\ChannelOrderLock;
 use Modules\Channel\Support\ChannelOrderPullGuard;
 use Modules\Channel\Support\WebhookFailureHandler;
 
-// Coalesce pending reads, but allow a newer event to queue another read while
-// this one is executing. WithoutOverlapping still serializes order writes.
 final class RefreshChannelOrderJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
 {
     use Dispatchable;

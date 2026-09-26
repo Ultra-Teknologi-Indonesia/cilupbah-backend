@@ -10,7 +10,11 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Mockery;
+use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Repositories\ChannelShopRepository;
 use Modules\Channel\Services\ShopeeOrderService;
+use Modules\Channel\Services\TikTokOrderService;
+use Modules\Sales\Exceptions\ShippingLabelPreparingException;
 use Modules\Sales\Jobs\PrepareBulkShopeeShippingLabelsJob;
 use Modules\Sales\Jobs\PrepareShopeeShippingLabelJob;
 use Modules\Sales\Jobs\ProcessBulkShippingLabelItemJob;
@@ -19,6 +23,8 @@ use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\BulkShippingLabelService;
 use Modules\Sales\Services\SalesOrderService;
 use Modules\Warehouse\Models\Location;
+use setasign\Fpdi\Fpdi;
+use setasign\Fpdi\PdfParser\StreamReader;
 use Tests\TestCase;
 
 class BulkShippingLabelContractTest extends TestCase
@@ -338,6 +344,55 @@ class BulkShippingLabelContractTest extends TestCase
             'https://tts.example/two.pdf',
         ], $result['urls']);
         Http::assertNothingSent();
+    }
+
+    public function test_direct_tiktok_print_merges_every_package_not_only_the_first_url(): void
+    {
+        Queue::fake();
+        $pdf = new Fpdi;
+        $pdf->AddPage();
+        $bytes = $pdf->Output('S');
+        Http::fake(['https://tts.example/*' => Http::response($bytes, 200, ['Content-Type' => 'application/pdf'])]);
+        Http::preventStrayRequests();
+        $order = SalesOrder::factory()->create([
+            'source' => 'tiktok', 'status' => 'reserved', 'channel_status' => 'AWAITING_SHIPMENT',
+            'channel_shop_id' => 'SHOP-1', 'channel_order_no' => 'TT-ALL-PAGES',
+            'channel_package_ids' => ['P1', 'P2'], 'shipping_label_status' => 'ready',
+            'shipping_label_raw_data' => ['documents' => [
+                ['package_id' => 'P1', 'doc_url' => 'https://tts.example/1.pdf'],
+                ['package_id' => 'P2', 'doc_url' => 'https://tts.example/2.pdf'],
+            ]],
+        ]);
+        $bulk = Mockery::mock(app(BulkShippingLabelService::class));
+        $bulk->shouldReceive('normalizeToTarget')->once()->andReturnUsing(fn ($bytes) => $bytes);
+        app()->instance(BulkShippingLabelService::class, $bulk);
+        $result = app(SalesOrderService::class)->prepareShippingLabelDocument($order, null);
+        $this->assertSame(2, (new Fpdi)->setSourceFile(
+            StreamReader::createByString(base64_decode($result['document_base64']))
+        ));
+        Http::assertSentCount(2);
+    }
+
+    public function test_tiktok_direct_fetch_rejects_missing_package_document(): void
+    {
+        Http::preventStrayRequests();
+        $order = SalesOrder::factory()->create([
+            'source' => 'tiktok', 'channel_shop_id' => 'SHOP-1', 'channel_order_no' => 'TT-PARTIAL',
+            'channel_package_ids' => ['P1', 'P2'], 'shipping_label_status' => 'not_ready',
+        ]);
+        $this->mock(ChannelShopRepository::class, function ($mock) {
+            $mock->shouldReceive('findByShopId')->andReturn(new ChannelShop(['access_token' => 'test']));
+        });
+        $this->mock(TikTokOrderService::class, function ($mock) {
+            $mock->shouldReceive('getOrderFulfillmentSnapshot')->once()->andReturn([
+                'tracking_number' => 'AWB', 'all_packages_shipped' => true, 'packages' => [['id' => 'P1'], ['id' => 'P2']],
+            ]);
+            $mock->shouldReceive('getShippingLabel')->with('SHOP-1', 'P1', 'SHIPPING_LABEL', 'A6')->once()
+                ->andReturn(['data' => ['doc_url' => 'https://tts.example/1.pdf']]);
+            $mock->shouldReceive('getShippingLabel')->with('SHOP-1', 'P2', 'SHIPPING_LABEL', 'A6')->once()->andReturn(['data' => []]);
+        });
+        $this->expectException(ShippingLabelPreparingException::class);
+        app(SalesOrderService::class)->getShippingLabel($order);
     }
 
     public function test_queued_shopee_batch_creates_and_checks_documents_in_bulk(): void

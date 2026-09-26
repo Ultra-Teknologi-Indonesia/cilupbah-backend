@@ -2,8 +2,6 @@
 
 declare(strict_types=1);
 
-// Explicit entry point, not auto-discovered by Laravel. No production commands
-// are changed. Every process verifies the sandbox identity before DB access.
 use FlashSaleSimulation\SimulationRepository;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\Artisan;
@@ -85,7 +83,7 @@ switch ($mode) {
             while (($remaining = $due - microtime(true)) > 0) {
                 usleep((int) (min(1, $remaining) * 1000000));
             }
-            // Do not silently extend the load window when producers cannot keep up.
+
             if (microtime(true) > $start + $duration) {
                 emit(['producer_deadline_exceeded' => true, 'next_sequence' => $seq]);
                 exit(3);
@@ -120,7 +118,7 @@ switch ($mode) {
                 $labels->queueBatch($batch);
             }
             if (++$tick % 10 === 0) {
-                // Recovery calls retain their own production backpressure/leases.
+
                 Artisan::call('channel:webhooks-replay', ['--minutes' => 1]);
                 Artisan::call('channel:dispatch-stock-outbox');
             }

@@ -103,9 +103,9 @@ class ShippingLabelPrefetchService
         RequestChannelAwbJob::dispatch(
             (string) $order->id,
             0,
-            true,
-            true,
             false,
+            true,
+            true,
             strtolower((string) $order->source),
         )->afterCommit();
 
@@ -131,6 +131,14 @@ class ShippingLabelPrefetchService
             ->size(config('queue.routing.label_awb.queue', 'label-awb'));
         $pendingManual += app('queue')->connection(config('queue.routing.labels.connection', 'redis-long'))
             ->size(config('queue.routing.labels.queue', 'labels'));
+        foreach (['label_awb_request', 'label_awb_poll', 'label_download'] as $lane) {
+            $connection = app('queue')->connection(config("queue.routing.{$lane}.connection", 'redis-long'));
+            foreach (array_unique((array) config("queue.routing.{$lane}.queues", [])) as $queue) {
+                $pendingManual += $connection->size($queue);
+            }
+        }
+        $pendingManual += app('queue')->connection(config('queue.routing.label_merge.connection', 'redis-long'))
+            ->size(config('queue.routing.label_merge.queue', 'label-merge'));
         $threshold = (int) config('shipping-label-prefetch.manual_queue_pause_threshold', 0);
 
         if ($pendingManual > $threshold) {
