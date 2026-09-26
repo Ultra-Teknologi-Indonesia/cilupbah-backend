@@ -423,8 +423,9 @@ def active_simulation_namespaces():
     )
 
 
-def preflight_report(args, baseline, objects):
+def preflight_report(args, baseline, objects, deployed_awb=None):
     """Read-only capacity and deployment checks for an isolated simulation."""
+    deployed_awb = deployed_awb or {'passed': True, 'status': 'not_checked', 'issue': None}
     node = next((item for item in baseline['nodes']['items']
                  if item['metadata']['labels'].get('kubernetes.io/hostname') == args.node), None)
     if not node:
@@ -458,6 +459,8 @@ def preflight_report(args, baseline, objects):
         issues.append('Pod production sedang OOMKilled: '+', '.join(health['live_oom_pods']))
     if active_simulations:
         issues.append('Masih ada namespace simulasi aktif: '+', '.join(active_simulations))
+    if not deployed_awb['passed']:
+        issues.append(deployed_awb['issue'])
     if allocatable - current_usage < requested * 1.3:
         issues.append('Memori aktual node tidak cukup untuk baseline request simulasi + margin 30%.')
     if allocatable - current_requested < requested:
@@ -482,19 +485,39 @@ def preflight_report(args, baseline, objects):
         },
         'production': health,
         'active_simulations': active_simulations,
+        'deployed_awb_optimization': deployed_awb,
     }
 
 
 def verify_deployed_awb_optimization(namespace):
-    """Ensure the image used by the simulation contains the no-repeat AWB path."""
+    """Return a readable compatibility result for the deployed no-repeat AWB path."""
     command = (
-        'set -eu; '
         'file=/var/www/html/Modules/Sales/app/Jobs/RequestShopeeMassAwbJob.php; '
-        'test -f "$file"; '
-        "grep -Fq 'channel_package_ids' \"$file\"; "
-        "grep -Fq 'massPackageCacheKey' \"$file\""
+        'if [ ! -f "$file" ]; then echo missing_file; '
+        "elif ! grep -Fq 'channel_package_ids' \"$file\"; then echo missing_channel_package_ids; "
+        "elif ! grep -Fq 'massPackageCacheKey' \"$file\"; then echo missing_mass_package_cache_key; "
+        'else echo ready; fi'
     )
-    kubectl('-n', namespace, 'exec', 'deploy/cilupbah-app', '--', 'sh', '-ceu', command)
+    try:
+        status = kubectl('-n', namespace, 'exec', 'deploy/cilupbah-app', '--', 'sh', '-c', command).strip()
+    except RuntimeError as error:
+        return {
+            'passed': False,
+            'status': 'unverifiable',
+            'issue': 'Optimasi AWB pada image production tidak dapat diverifikasi: '+str(error),
+        }
+    if status == 'ready':
+        return {'passed': True, 'status': status, 'issue': None}
+    messages = {
+        'missing_file': 'Image production belum memuat job RequestShopeeMassAwbJob.',
+        'missing_channel_package_ids': 'Image production belum memuat penyimpanan package ID AWB; deploy image backend terbaru sebelum tes.',
+        'missing_mass_package_cache_key': 'Image production belum memuat cache package ID AWB; deploy image backend terbaru sebelum tes.',
+    }
+    return {
+        'passed': False,
+        'status': status or 'unknown',
+        'issue': messages.get(status, 'Status optimasi AWB pada image production tidak dikenal; deploy image backend terbaru sebelum tes.'),
+    }
 
 
 def stop(ns):
@@ -586,8 +609,8 @@ def main():
     objects = manifests(args, baseline)
     save('manifest.json', objects)
     if args.action == 'preflight':
-        verify_deployed_awb_optimization(args.source_namespace)
-        preflight = preflight_report(args, baseline, objects)
+        deployed_awb = verify_deployed_awb_optimization(args.source_namespace)
+        preflight = preflight_report(args, baseline, objects, deployed_awb)
         save('preflight.json', preflight)
         print(json.dumps(preflight, indent=2))
         if not preflight['passed']:
@@ -604,7 +627,8 @@ def main():
         raise RuntimeError('Run refuses existing namespace. Use a new namespace; data is never reset.')
     # Re-run the same read-only gate immediately before creating the namespace:
     # an operator may have started another workload after a successful preflight.
-    preflight = preflight_report(args, baseline, objects)
+    deployed_awb = verify_deployed_awb_optimization(args.source_namespace)
+    preflight = preflight_report(args, baseline, objects, deployed_awb)
     save('preflight.json', preflight)
     if not preflight['passed']:
         raise RuntimeError('Preflight tidak lulus: '+' | '.join(preflight['issues']))
