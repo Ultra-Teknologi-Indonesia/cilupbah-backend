@@ -213,7 +213,14 @@ def manifests(args, audit_data):
         tuning = original['containers'][0]['tuning']
         tuning = {k: v for k, v in tuning.items() if k.startswith('HORIZON_') and k.endswith('_MAX_PROCESSES')}
         limits = original['containers'][0]['resources']['limits']
-        obj = workload('worker-'+profile, args.image, ['php', 'artisan', 'horizon'], limits['memory'], limits['cpu'], app=True,
+        # Laravel Horizon provisions supervisors from the named environment.
+        # The simulation intentionally uses APP_ENV=simulation so it cannot
+        # accidentally inherit production behavior, while the application
+        # config already provides the same default supervisors under `local`.
+        # Explicitly selecting local is therefore required; otherwise Horizon
+        # starts its master process but finds no `simulation` environment and
+        # silently creates zero child supervisors.
+        obj = workload('worker-'+profile, args.image, ['php', 'artisan', 'horizon', '--environment=local'], limits['memory'], limits['cpu'], app=True,
                        extra=[{'name': k, 'value': v} for k, v in {**tuning, 'HORIZON_PROFILE': profile}.items()], grace=grace)
         obj['spec']['template']['spec']['containers'][0]['resources'] = original['containers'][0]['resources']
     workload('coordinator', args.image, ['php', '/sim/console.php', 'coordinate'], '768Mi', '1', app=True)
