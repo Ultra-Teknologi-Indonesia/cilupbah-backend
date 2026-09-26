@@ -140,6 +140,15 @@ class HarnessTest(unittest.TestCase):
             self.assertEqual(1024**3, runner.node_requested_memory('test-node'))
         kubectl.assert_called_once_with('get', 'pods', '--all-namespaces', '-o', 'json')
 
+    def test_scheduler_memory_uses_node_effective_allocation(self):
+        described = '''Allocated resources:
+Resource           Requests       Limits
+--------           --------       ------
+memory             31416Mi (98%)  103266Mi (322%)
+'''
+        with patch.object(runner, 'kubectl', return_value=described):
+            self.assertEqual(31416 * 1024**2, runner.node_scheduler_requested_memory('test-node'))
+
     def test_preflight_rejects_active_simulation_and_unschedulable_memory(self):
         args = SimpleNamespace(namespace='cilupbah-sim-test', image='test:latest', node='test-node',
                                source_namespace='cilupbah')
@@ -154,6 +163,7 @@ class HarnessTest(unittest.TestCase):
         ]}}}}]
         health = {'missing_deployments': [], 'unavailable_deployments': [], 'live_oom_pods': []}
         with patch.object(runner, 'node_requested_memory', return_value=int(3.5 * 1024**3)), \
+             patch.object(runner, 'node_scheduler_requested_memory', return_value=int(3.5 * 1024**3)), \
              patch.object(runner, 'production_health', return_value=health), \
              patch.object(runner, 'active_simulation_namespaces', return_value=['cilupbah-sim-old']):
             report = runner.preflight_report(args, baseline, objects)

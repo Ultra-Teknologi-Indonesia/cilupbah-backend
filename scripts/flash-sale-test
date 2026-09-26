@@ -384,6 +384,21 @@ def node_requested_memory(node_name):
     return total
 
 
+def node_scheduler_requested_memory(node_name):
+    """Read the scheduler's own effective allocation, including resources omitted by pod scans.
+
+    `kubectl describe node` is the operational source shown to cluster operators
+    and accounts for effective pod requests as seen by the scheduler.  Keep the
+    parser deliberately strict: if the table format is unavailable, preflight
+    must refuse the shared-node run instead of underestimating capacity.
+    """
+    described = kubectl('describe', 'node', node_name)
+    match = re.search(r'^\s*memory\s+(\S+)\s+\(', described, re.MULTILINE)
+    if not match:
+        raise RuntimeError('Alokasi memory scheduler tidak dapat dibaca dari node; preflight ditolak demi keamanan.')
+    return quantity(match.group(1))
+
+
 def production_health(namespace):
     """Return only operational facts needed before sharing a node with a test."""
     deployments = {item['metadata']['name']: item for item in get('deployments', namespace=namespace)['items']}
@@ -445,7 +460,11 @@ def preflight_report(args, baseline, objects, deployed_awb=None):
     )
     allocatable = quantity(node['status']['allocatable']['memory'])
     current_usage = quantity(metrics['usage']['memory'])
-    current_requested = node_requested_memory(node['metadata']['name'])
+    pod_scanned_requested = node_requested_memory(node['metadata']['name'])
+    scheduler_requested = node_scheduler_requested_memory(node['metadata']['name'])
+    # Use the scheduler-facing figure. It may include effective/pod-level
+    # requests that are absent or normalized differently in a raw pod scan.
+    current_requested = max(pod_scanned_requested, scheduler_requested)
     ready = any(condition.get('type') == 'Ready' and condition.get('status') == 'True'
                 for condition in node.get('status', {}).get('conditions', []))
     health = production_health(args.source_namespace)
@@ -481,6 +500,8 @@ def preflight_report(args, baseline, objects, deployed_awb=None):
             'allocatable_bytes': int(allocatable),
             'current_usage_bytes': int(current_usage),
             'current_requested_bytes': int(current_requested),
+            'pod_scanned_requested_bytes': int(pod_scanned_requested),
+            'scheduler_reported_requested_bytes': int(scheduler_requested),
             'simulation_requested_bytes': int(requested),
             'actual_headroom_bytes': int(allocatable - current_usage),
             'schedulable_headroom_bytes': int(allocatable - current_requested),
