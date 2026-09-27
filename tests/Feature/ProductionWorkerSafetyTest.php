@@ -205,7 +205,8 @@ class ProductionWorkerSafetyTest extends TestCase
         $this->assertStringContainsString('report_failure', $workflow);
         $this->assertStringContainsString('stage=$DEPLOY_STAGE', $workflow);
         $this->assertStringContainsString('wait_for_terminating_pods', $workflow);
-        $this->assertStringContainsString('wait_for_all_terminating_pods 2040', $workflow);
+        $this->assertSame(1, substr_count($workflow, 'wait_for_all_terminating_pods 2040'));
+        $this->assertStringContainsString('Do not block the whole release on an old batch pod', $workflow);
         $this->assertStringContainsString('reap_stale_terminating_pods', $workflow);
         $this->assertStringContainsString('stale_after=$((grace_period + 60))', $workflow);
         $this->assertStringContainsString('replacement deployment/$deployment sudah Ready', $workflow);

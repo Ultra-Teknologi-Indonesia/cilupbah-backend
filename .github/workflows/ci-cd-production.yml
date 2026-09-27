@@ -496,7 +496,13 @@ jobs:
             apply_manifest "$K8S_DIR/08-keda-autoscaling.yaml"
 
             DEPLOY_STAGE="drain-previous-rollout"
-            wait_for_all_terminating_pods 2040
+            # Do not block the whole release on an old batch pod from a
+            # previous rollout. The per-workload rollout below first brings
+            # the replacement up, while the reaper safely removes only stale
+            # terminating pods after the replacement is Ready. Online pools
+            # therefore continue without waiting for a 31-minute batch grace
+            # period that belongs to another workload.
+            reap_stale_terminating_pods
 
             echo "==> Menjalankan rollout berurutan dengan capacity gate..."
             for workload in \
