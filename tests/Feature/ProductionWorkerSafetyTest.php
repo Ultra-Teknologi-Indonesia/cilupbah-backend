@@ -185,16 +185,23 @@ class ProductionWorkerSafetyTest extends TestCase
 
         $this->assertIsString($workflow);
         $this->assertStringContainsString('kubernetes-capacity-preflight', $workflow);
+        $this->assertStringContainsString('kubernetes-sanitize-manifest', $workflow);
         $this->assertStringContainsString('Menjalankan rollout berurutan dengan capacity gate', $workflow);
-        $this->assertStringContainsString('.spec.replicas = $replicas', $workflow);
+        $this->assertStringContainsString('cilupbah-app|cilupbah-horizon*', $workflow);
+        $this->assertStringContainsString('"$deployment" "$current_replicas"', $workflow);
         $this->assertStringContainsString("jsonpath='{.spec.progressDeadlineSeconds}'", $workflow);
         $this->assertStringContainsString('rollout_timeout=$((progress_deadline + 120))', $workflow);
         $this->assertStringContainsString('--timeout=180s', $workflow);
         $this->assertStringContainsString('mengumpulkan diagnostik', $workflow);
+        $this->assertStringContainsString('report_failure', $workflow);
+        $this->assertStringContainsString('stage=$DEPLOY_STAGE', $workflow);
         $this->assertStringContainsString('wait_for_terminating_pods', $workflow);
         $this->assertStringContainsString('wait_for_all_terminating_pods 2040', $workflow);
         $this->assertStringContainsString('select(.metadata.deletionTimestamp != null)', $workflow);
         $this->assertStringContainsString('melepaskan resource', $workflow);
+        $this->assertStringContainsString('final-image-verification', $workflow);
+        $this->assertStringContainsString('final-capacity-verification', $workflow);
+        $this->assertStringContainsString('final-horizon-verification', $workflow);
         $this->assertStringContainsString('cilupbah-horizon-maintenance', $workflow);
         $this->assertStringContainsString('--request-timeout=30s', $workflow);
         $this->assertStringNotContainsString('kubectl rollout restart', $workflow);

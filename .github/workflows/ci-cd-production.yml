@@ -100,7 +100,7 @@ jobs:
           host: ${{ secrets.PROD_DEPLOY_SERVER }}
           username: ${{ secrets.PROD_DEPLOY_USER }}
           key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
-          source: "k8s/production/*,scripts/kubernetes-capacity-preflight"
+          source: "k8s/production/*,scripts/kubernetes-capacity-preflight,scripts/kubernetes-sanitize-manifest"
           target: "/tmp/cilupbah-k8s-${{ github.run_id }}-${{ github.run_attempt }}"
 
       - name: Deploy via SSH ke server production
@@ -112,7 +112,7 @@ jobs:
           timeout: 20m
           command_timeout: 3h
           script: |
-            set -e
+            set -Eeuo pipefail
 
             VERSION="${{ needs.validate-input.outputs.version }}"
             IMAGE="ghcr.io/ultra-teknologi-indonesia/cilupbah:${VERSION}"
@@ -121,12 +121,28 @@ jobs:
             NAMESPACE="cilupbah"
             DEPLOY_ROOT="/tmp/cilupbah-k8s-${{ github.run_id }}-${{ github.run_attempt }}"
             K8S_DIR="$DEPLOY_ROOT/k8s/production"
+            DEPLOY_STAGE="bootstrap"
 
             cleanup() {
               rm -rf "$DEPLOY_ROOT"
             }
-            trap cleanup EXIT
 
+            report_failure() {
+              exit_code="$?"
+              line="$1"
+              trap - ERR
+              set +e
+              echo "Production deployment gagal pada stage=$DEPLOY_STAGE line=$line exit=$exit_code"
+              kubectl get deployments -n "$NAMESPACE" -o wide
+              kubectl get pods -n "$NAMESPACE" -o wide
+              kubectl get events -n "$NAMESPACE" --sort-by='.lastTimestamp' | tail -n 60
+              exit "$exit_code"
+            }
+
+            trap cleanup EXIT
+            trap 'report_failure "$LINENO"' ERR
+
+            DEPLOY_STAGE="prepare-manifests"
             echo "==> Mengupdate image tag di file YAML temporary..."
             if [ ! -f "$K8S_DIR/03-horizon-critical.yaml" ]; then
               echo "Manifest critical tidak ditemukan: $K8S_DIR/03-horizon-critical.yaml"
@@ -138,6 +154,7 @@ jobs:
 
             # Expand schema with the NEW image before any new application or
             # worker can query it. Failure leaves the running release intact.
+            DEPLOY_STAGE="database-migration"
             migration_job=$(kubectl create -f "$K8S_DIR/01-database-migration.yaml" \
               -n "$NAMESPACE" -o jsonpath='{.metadata.name}')
             if ! kubectl wait --for=condition=complete "job/$migration_job" \
@@ -170,6 +187,7 @@ jobs:
                 -n "$NAMESPACE" --cascade=foreground --wait=false --ignore-not-found
             done
 
+            DEPLOY_STAGE="platform-manifests"
             echo "==> Mengaplikasikan pool queue yang terpisah ke Kubernetes..."
             for manifest in "$K8S_DIR"/*.yaml; do
               case "$(basename "$manifest")" in
@@ -300,6 +318,7 @@ jobs:
             }
 
             echo "==> Memverifikasi platform..."
+            DEPLOY_STAGE="platform-rollout"
             for deployment in \
               cilupbah-pgbouncer \
               cilupbah-redis \
@@ -319,23 +338,34 @@ jobs:
             deploy_workload() {
               manifest="$1"
               deployment="$2"
+              DEPLOY_STAGE="workload:$deployment"
               "$DEPLOY_ROOT/scripts/kubernetes-capacity-preflight" "$NAMESPACE" 2048 90
-              current_replicas="$(kubectl get deployment "$deployment" -n "$NAMESPACE" \
-                -o jsonpath='{.spec.replicas}' 2>/dev/null || true)"
-              case "$current_replicas" in
-                ''|*[!0-9]*)
-                  kubectl apply -f "$K8S_DIR/$manifest" -n "$NAMESPACE"
+
+              case "$deployment" in
+                cilupbah-app|cilupbah-horizon*)
+                  current_replicas="$(kubectl get deployment "$deployment" -n "$NAMESPACE" \
+                    -o jsonpath='{.spec.replicas}' 2>/dev/null || true)"
+                  case "$current_replicas" in
+                    ''|*[!0-9]*)
+                      kubectl apply -f "$K8S_DIR/$manifest" -n "$NAMESPACE"
+                      ;;
+                    *)
+                      kubectl apply --dry-run=client -f "$K8S_DIR/$manifest" -o json \
+                        | "$DEPLOY_ROOT/scripts/kubernetes-sanitize-manifest" \
+                            "$deployment" "$current_replicas" \
+                        | kubectl apply -f - -n "$NAMESPACE"
+                      ;;
+                  esac
                   ;;
                 *)
-                  kubectl apply --dry-run=client -f "$K8S_DIR/$manifest" -o json \
-                    | jq --argjson replicas "$current_replicas" \
-                      'if .kind == "List" then .items |= map(if .kind == "Deployment" then .spec.replicas = $replicas else . end) else .spec.replicas = $replicas end' \
-                    | kubectl apply -f - -n "$NAMESPACE"
+                  kubectl apply -f "$K8S_DIR/$manifest" -n "$NAMESPACE"
                   ;;
               esac
+
               rollout_deployment "$deployment"
             }
 
+            DEPLOY_STAGE="keda-availability"
             if ! kubectl api-resources --api-group=keda.sh --no-headers 2>/dev/null \
               | grep -Eq '(^|[[:space:]])scaledobjects([[:space:]]|$)'; then
               echo "KEDA wajib tersedia untuk autoscaling produksi."
@@ -344,6 +374,7 @@ jobs:
 
             kubectl apply -f "$K8S_DIR/08-keda-autoscaling.yaml" -n "$NAMESPACE"
 
+            DEPLOY_STAGE="drain-previous-rollout"
             wait_for_all_terminating_pods 2040
 
             echo "==> Menjalankan rollout berurutan dengan capacity gate..."
@@ -381,6 +412,84 @@ jobs:
             do
               kubectl wait --for=condition=Ready "scaledobject/$scaled_object" \
                 -n "$NAMESPACE" --timeout=120s
+            done
+
+            DEPLOY_STAGE="final-convergence"
+            wait_for_all_terminating_pods 2040
+
+            for deployment in \
+              cilupbah-app \
+              cilupbah-scheduler \
+              cilupbah-horizon-critical \
+              cilupbah-horizon-order-intake \
+              cilupbah-horizon-fulfillment \
+              cilupbah-horizon-stock \
+              cilupbah-horizon-labels-awb \
+              cilupbah-horizon-labels \
+              cilupbah-horizon \
+              cilupbah-horizon-maintenance \
+              cilupbah-import-worker \
+              cilupbah-export-worker \
+              cilupbah-catalog-export-worker \
+              cilupbah-pdf-export-worker
+            do
+              rollout_deployment "$deployment"
+            done
+
+            DEPLOY_STAGE="final-image-verification"
+            for deployment in \
+              cilupbah-app \
+              cilupbah-scheduler \
+              cilupbah-horizon-critical \
+              cilupbah-horizon-order-intake \
+              cilupbah-horizon-fulfillment \
+              cilupbah-horizon-stock \
+              cilupbah-horizon-labels-awb \
+              cilupbah-horizon-labels \
+              cilupbah-horizon \
+              cilupbah-horizon-maintenance \
+              cilupbah-import-worker \
+              cilupbah-export-worker \
+              cilupbah-catalog-export-worker \
+              cilupbah-pdf-export-worker
+            do
+              mismatched_images="$(
+                kubectl get deployment "$deployment" -n "$NAMESPACE" -o json \
+                  | jq -r --arg image "$IMAGE" '
+                      [
+                        .spec.template.spec.initContainers[]?,
+                        .spec.template.spec.containers[]?
+                      ]
+                      | .[]
+                      | select(.image | startswith("ghcr.io/ultra-teknologi-indonesia/cilupbah:"))
+                      | select(.image != $image)
+                      | .image
+                    '
+              )"
+
+              if [ -n "$mismatched_images" ]; then
+                echo "Deployment $deployment masih memakai image aplikasi yang berbeda dari $IMAGE:"
+                printf '%s\n' "$mismatched_images"
+                exit 1
+              fi
+            done
+
+            DEPLOY_STAGE="final-capacity-verification"
+            "$DEPLOY_ROOT/scripts/kubernetes-capacity-preflight" "$NAMESPACE" 0 90
+
+            DEPLOY_STAGE="final-horizon-verification"
+            for deployment in \
+              cilupbah-horizon \
+              cilupbah-horizon-critical \
+              cilupbah-horizon-order-intake \
+              cilupbah-horizon-fulfillment \
+              cilupbah-horizon-stock \
+              cilupbah-horizon-labels-awb \
+              cilupbah-horizon-labels \
+              cilupbah-horizon-maintenance
+            do
+              kubectl exec -n "$NAMESPACE" "deployment/$deployment" -- \
+                php artisan horizon:status | grep -q running
             done
 
             echo "Production deployment success: $VERSION"

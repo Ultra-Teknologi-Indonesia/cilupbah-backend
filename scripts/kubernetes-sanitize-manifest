@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+deployment="${1:?Nama deployment wajib diisi.}"
+replicas="${2:?Jumlah replica wajib diisi.}"
+
+case "$replicas" in
+  ''|*[!0-9]*)
+    echo "Jumlah replica harus berupa bilangan bulat non-negatif." >&2
+    exit 64
+    ;;
+esac
+
+jq --arg deployment "$deployment" --argjson replicas "$replicas" '
+  def sanitize:
+    del(
+      .metadata.resourceVersion,
+      .metadata.uid,
+      .metadata.generation,
+      .metadata.creationTimestamp,
+      .metadata.managedFields,
+      .status
+    );
+
+  def prepare:
+    sanitize
+    | if .kind == "Deployment" and .metadata.name == $deployment
+      then .spec.replicas = $replicas
+      else .
+      end;
+
+  if .kind == "List"
+  then sanitize | .items |= map(prepare)
+  else prepare
+  end
+'

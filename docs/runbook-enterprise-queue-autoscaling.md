@@ -52,8 +52,22 @@ dan benar-benar melepaskan reservasi resource sebelum memulai surge berikutnya.
 Pod `Pending` singkat yang belum dinyatakan `Unschedulable` tidak menggagalkan
 rollout.
 
+Manifest deployment yang dikendalikan HPA/KEDA mempertahankan jumlah replica
+aktif saat rollout. Hasil render dibersihkan dari metadata milik API server
+seperti `resourceVersion`, `uid`, `generation`, `managedFields`, dan `status`
+sebelum diterapkan kembali. Deployment tetap seperti scheduler, import, export,
+catalog export, PDF export, dan Gotenberg mengikuti jumlah replica di manifest.
+Dengan aturan ini retry deploy aman untuk resource multi-document yang sudah
+ada, termasuk Service dan PodDisruptionBudget.
+
 KEDA wajib tersedia. Seluruh ScaledObject harus mencapai kondisi `Ready` agar
 deployment dinyatakan berhasil.
+
+Sebelum mencetak status sukses, pipeline melakukan konvergensi akhir, memastikan
+semua image aplikasi memakai versi yang diminta, menjalankan capacity gate tanpa
+surge, dan memastikan seluruh master Horizon berstatus running. Kegagalan
+mencetak nama stage, deployment, pod, dan event cluster agar akar masalah dapat
+dibaca dari satu log workflow.
 
 ## Verifikasi
 
