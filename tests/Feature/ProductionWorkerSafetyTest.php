@@ -206,6 +206,11 @@ class ProductionWorkerSafetyTest extends TestCase
         $this->assertStringContainsString('stage=$DEPLOY_STAGE', $workflow);
         $this->assertStringContainsString('wait_for_terminating_pods', $workflow);
         $this->assertStringContainsString('wait_for_all_terminating_pods 2040', $workflow);
+        $this->assertStringContainsString('reap_stale_terminating_pods', $workflow);
+        $this->assertStringContainsString('stale_after=$((grace_period + 60))', $workflow);
+        $this->assertStringContainsString('replacement deployment/$deployment sudah Ready', $workflow);
+        $this->assertStringContainsString('--grace-period=0 --force --wait=false', $workflow);
+        $this->assertStringContainsString('[ "$ready_replicas" -ge "$desired_replicas" ]', $workflow);
         $this->assertStringContainsString('select(.metadata.deletionTimestamp != null)', $workflow);
         $this->assertStringContainsString('melepaskan resource', $workflow);
         $this->assertStringContainsString('final-image-verification', $workflow);

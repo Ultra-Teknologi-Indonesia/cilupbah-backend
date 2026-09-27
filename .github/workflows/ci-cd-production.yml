@@ -219,6 +219,7 @@ jobs:
               started_at="$(date +%s)"
 
               while true; do
+                reap_stale_terminating_pods
                 terminating_pods="$(
                   kubectl get pods -n "$NAMESPACE" \
                     -l "app=$deployment" -o json \
@@ -248,6 +249,7 @@ jobs:
               started_at="$(date +%s)"
 
               while true; do
+                reap_stale_terminating_pods
                 terminating_pods="$(
                   kubectl get pods -n "$NAMESPACE" -o json \
                     | jq -r '.items[] | select(.metadata.deletionTimestamp != null) | .metadata.name'
@@ -269,6 +271,60 @@ jobs:
                 printf '%s\n' "$terminating_pods"
                 sleep 5
               done
+            }
+
+            reap_stale_terminating_pods() {
+              now="$(date +%s)"
+              terminating_pod_data="$(
+                kubectl get pods -n "$NAMESPACE" -o json \
+                  | jq -r '
+                      .items[]
+                      | select(.metadata.deletionTimestamp != null)
+                      | [
+                          .metadata.name,
+                          .metadata.deletionTimestamp,
+                          (.metadata.labels.app // "")
+                        ]
+                      | @tsv'
+              )"
+
+              while IFS=$'\t' read -r pod deletion_timestamp deployment; do
+                [ -n "$pod" ] || continue
+                [ -n "$deployment" ] || continue
+
+                grace_period="$(kubectl get deployment "$deployment" -n "$NAMESPACE" \
+                  -o jsonpath='{.spec.template.spec.terminationGracePeriodSeconds}' \
+                  2>/dev/null || true)"
+                ready_replicas="$(kubectl get deployment "$deployment" -n "$NAMESPACE" \
+                  -o jsonpath='{.status.readyReplicas}' 2>/dev/null || true)"
+                desired_replicas="$(kubectl get deployment "$deployment" -n "$NAMESPACE" \
+                  -o jsonpath='{.spec.replicas}' 2>/dev/null || true)"
+
+                case "$grace_period" in
+                  ''|*[!0-9]*) grace_period=180 ;;
+                esac
+                case "$ready_replicas" in
+                  ''|*[!0-9]*) ready_replicas=0 ;;
+                esac
+                case "$desired_replicas" in
+                  ''|*[!0-9]*) desired_replicas=0 ;;
+                esac
+
+                deletion_epoch="$(date -d "$deletion_timestamp" +%s 2>/dev/null || true)"
+                [ -n "$deletion_epoch" ] || continue
+                age=$((now - deletion_epoch))
+                stale_after=$((grace_period + 60))
+
+                # Only remove a stale object after a complete replacement is
+                # ready. The normal graceful shutdown window is never skipped.
+                if [ "$ready_replicas" -ge "$desired_replicas" ] \
+                  && [ "$desired_replicas" -gt 0 ] \
+                  && [ "$age" -ge "$stale_after" ]; then
+                  echo "Pod $pod stale selama ${age}s; replacement deployment/$deployment sudah Ready. Menghapus objek Terminating yang tersisa..."
+                  kubectl delete pod "$pod" -n "$NAMESPACE" \
+                    --grace-period=0 --force --wait=false || true
+                fi
+              done <<< "$terminating_pod_data"
             }
 
             rollout_deployment() {

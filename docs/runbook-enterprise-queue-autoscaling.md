@@ -52,6 +52,12 @@ dan benar-benar melepaskan reservasi resource sebelum memulai surge berikutnya.
 Pod `Pending` singkat yang belum dinyatakan `Unschedulable` tidak menggagalkan
 rollout.
 
+Jika replacement sudah Ready penuh tetapi objek pod lama tetap `Terminating`
+melewati `terminationGracePeriodSeconds + 60` detik, pipeline menghapus objek
+stale tersebut dengan force. Ini hanya dilakukan setelah seluruh replica
+pengganti Ready, sehingga proses aktif tetap memiliki waktu graceful shutdown
+dan worker tidak sengaja diturunkan ke nol.
+
 Manifest deployment yang dikendalikan HPA/KEDA mempertahankan jumlah replica
 aktif saat rollout. Hasil render dibersihkan dari metadata milik API server
 seperti `resourceVersion`, `uid`, `generation`, `managedFields`, dan `status`
