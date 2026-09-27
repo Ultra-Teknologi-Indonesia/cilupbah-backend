@@ -416,8 +416,8 @@ return [
         'stock' => 1024,
         'marketplace-ops' => 1024,
         'background' => 1024,
-        'labels-pdf' => 1024,
-        'labels-awb' => 1024,
+        'labels-pdf' => 1536,
+        'labels-awb' => 2048,
         'maintenance' => 768,
     ],
     'profile_memory_limits_mb' => [
