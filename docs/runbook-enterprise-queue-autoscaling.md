@@ -60,6 +60,12 @@ catalog export, PDF export, dan Gotenberg mengikuti jumlah replica di manifest.
 Dengan aturan ini retry deploy aman untuk resource multi-document yang sudah
 ada, termasuk Service dan PodDisruptionBudget.
 
+Semua resource jangka panjang diterapkan dengan server-side apply dan field
+manager `cilupbah-production`. Retry tidak lagi membaca ulang annotation
+client-side apply lama yang mungkin berisi metadata invalid seperti
+`resourceVersion: 0`. Aturan ini berlaku merata untuk platform, workload tetap,
+workload autoscaled, KEDA, Service, dan PodDisruptionBudget.
+
 KEDA wajib tersedia. Seluruh ScaledObject harus mencapai kondisi `Ready` agar
 deployment dinyatakan berhasil.
 

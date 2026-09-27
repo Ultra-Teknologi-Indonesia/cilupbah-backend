@@ -12,7 +12,7 @@ class ProductionWorkerSafetyTest extends TestCase
     {
         $workflow = file_get_contents(base_path('.github/workflows/ci-cd-production.yml'));
         $migration = strpos($workflow, 'migration_job=$(kubectl create');
-        $rollout = strpos($workflow, 'kubectl apply -f "$manifest"');
+        $rollout = strpos($workflow, 'apply_manifest "$manifest"');
         $this->assertNotFalse($migration);
         $this->assertNotFalse($rollout);
         $this->assertLessThan($rollout, $migration);
@@ -176,7 +176,7 @@ class ProductionWorkerSafetyTest extends TestCase
         $this->assertStringContainsString('08-keda-autoscaling.yaml', $workflow);
         $this->assertStringContainsString('api-resources --api-group=keda.sh', $workflow);
         $this->assertStringContainsString('KEDA wajib tersedia', $workflow);
-        $this->assertStringContainsString('kubectl apply -f "$K8S_DIR/08-keda-autoscaling.yaml"', $workflow);
+        $this->assertStringContainsString('apply_manifest "$K8S_DIR/08-keda-autoscaling.yaml"', $workflow);
     }
 
     public function test_production_deploy_allows_grace_period_and_reports_rollout_failures(): void
@@ -186,6 +186,15 @@ class ProductionWorkerSafetyTest extends TestCase
         $this->assertIsString($workflow);
         $this->assertStringContainsString('kubernetes-capacity-preflight', $workflow);
         $this->assertStringContainsString('kubernetes-sanitize-manifest', $workflow);
+        $this->assertStringContainsString('apply_manifest()', $workflow);
+        $this->assertStringContainsString('apply_manifest_from_stdin()', $workflow);
+        $this->assertStringContainsString('kubectl apply --server-side --force-conflicts', $workflow);
+        $this->assertStringContainsString('--field-manager=cilupbah-production', $workflow);
+        $this->assertStringContainsString('apply_manifest "$K8S_DIR/$manifest"', $workflow);
+        $this->assertStringContainsString('apply_manifest_from_stdin', $workflow);
+        $this->assertStringContainsString('apply_manifest "$K8S_DIR/08-keda-autoscaling.yaml"', $workflow);
+        $this->assertStringNotContainsString('kubectl apply -f "$K8S_DIR/$manifest"', $workflow);
+        $this->assertStringNotContainsString('kubectl apply -f - -n "$NAMESPACE"', $workflow);
         $this->assertStringContainsString('Menjalankan rollout berurutan dengan capacity gate', $workflow);
         $this->assertStringContainsString('cilupbah-app|cilupbah-horizon*', $workflow);
         $this->assertStringContainsString('"$deployment" "$current_replicas"', $workflow);

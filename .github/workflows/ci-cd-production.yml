@@ -152,6 +152,23 @@ jobs:
             fi
             sed -i "s|image: ghcr.io/ultra-teknologi-indonesia/cilupbah:.*|image: $IMAGE|g" "$K8S_DIR"/*.yaml
 
+            # Use one authoritative apply mode for every long-lived resource.
+            # Server-side apply does not replay a poisoned
+            # kubectl.kubernetes.io/last-applied-configuration annotation from
+            # an older client-side deployment (for example resourceVersion: 0
+            # on an existing PDB), so retries remain deterministic.
+            apply_manifest() {
+              kubectl apply --server-side --force-conflicts \
+                --field-manager=cilupbah-production \
+                -f "$1" -n "$NAMESPACE"
+            }
+
+            apply_manifest_from_stdin() {
+              kubectl apply --server-side --force-conflicts \
+                --field-manager=cilupbah-production \
+                -f - -n "$NAMESPACE"
+            }
+
             # Expand schema with the NEW image before any new application or
             # worker can query it. Failure leaves the running release intact.
             DEPLOY_STAGE="database-migration"
@@ -193,7 +210,7 @@ jobs:
               case "$(basename "$manifest")" in
                 01-database-migration.yaml|01-gotenberg.yaml|02-app.yaml|03-*.yaml|04-horizon-labels-awb.yaml|04-horizon-labels.yaml|04-scheduler.yaml|08-keda-autoscaling.yaml) continue ;;
               esac
-              kubectl apply -f "$manifest" -n "$NAMESPACE"
+              apply_manifest "$manifest"
             done
 
             wait_for_terminating_pods() {
@@ -347,18 +364,18 @@ jobs:
                     -o jsonpath='{.spec.replicas}' 2>/dev/null || true)"
                   case "$current_replicas" in
                     ''|*[!0-9]*)
-                      kubectl apply -f "$K8S_DIR/$manifest" -n "$NAMESPACE"
+                      apply_manifest "$K8S_DIR/$manifest"
                       ;;
                     *)
                       kubectl apply --dry-run=client -f "$K8S_DIR/$manifest" -o json \
                         | "$DEPLOY_ROOT/scripts/kubernetes-sanitize-manifest" \
                             "$deployment" "$current_replicas" \
-                        | kubectl apply -f - -n "$NAMESPACE"
+                        | apply_manifest_from_stdin
                       ;;
                   esac
                   ;;
                 *)
-                  kubectl apply -f "$K8S_DIR/$manifest" -n "$NAMESPACE"
+                  apply_manifest "$K8S_DIR/$manifest"
                   ;;
               esac
 
@@ -372,7 +389,7 @@ jobs:
               exit 1
             fi
 
-            kubectl apply -f "$K8S_DIR/08-keda-autoscaling.yaml" -n "$NAMESPACE"
+            apply_manifest "$K8S_DIR/08-keda-autoscaling.yaml"
 
             DEPLOY_STAGE="drain-previous-rollout"
             wait_for_all_terminating_pods 2040
