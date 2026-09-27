@@ -36,8 +36,25 @@ projected_mi=$((requested_mi + surge_mi))
 maximum_mi=$((allocatable_mi * maximum_percent / 100))
 
 if [ "$projected_mi" -gt "$maximum_mi" ]; then
-  echo "Rollout ditolak: request ${requested_mi}Mi + surge ${surge_mi}Mi melebihi ${maximum_percent}% dari ${allocatable_mi}Mi."
-  exit 1
+  # Requests are conservative. Permit a rollout above the request guard only
+  # when live metrics confirm a healthy node with a large reserve. Otherwise
+  # retain fail-closed behavior to prevent OOM.
+  usage_raw="$(kubectl top node "$node" --no-headers 2>/dev/null | awk 'NR == 1 {print $4}')"
+  usage_mi="$(quantity_mi "${usage_raw:-}")"
+  actual_limit_mi=$((allocatable_mi * 80 / 100))
+  actual_projected_mi=$((usage_mi + surge_mi))
+  memory_pressure="$(kubectl get node "$node" \
+    -o jsonpath='{range .status.conditions[?(@.type=="MemoryPressure")]}{.status}{end}' \
+    2>/dev/null || true)"
+
+  if [ -n "$usage_raw" ] \
+    && [ "$actual_projected_mi" -le "$actual_limit_mi" ] \
+    && [ "$memory_pressure" = "False" ]; then
+    echo "Capacity preflight lulus berdasarkan actual headroom: node=$node requested=${requested_mi}Mi projected=${projected_mi}Mi, actual=${usage_mi}Mi + surge=${surge_mi}Mi, reserve-limit=${actual_limit_mi}Mi."
+  else
+    echo "Rollout ditolak: request ${requested_mi}Mi + surge ${surge_mi}Mi melebihi ${maximum_percent}% dari ${allocatable_mi}Mi; actual headroom atau MemoryPressure tidak memenuhi batas aman."
+    exit 1
+  fi
 fi
 
 pending_pods_json="$(
