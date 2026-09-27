@@ -9,8 +9,6 @@ metadata:
 spec:
   scaleTargetRef:
     name: cilupbah-horizon
-  pollingInterval: 5
-  cooldownPeriod: 300
   minReplicaCount: 1
   maxReplicaCount: 2
   advanced:
@@ -79,8 +77,6 @@ metadata:
 spec:
   scaleTargetRef:
     name: cilupbah-horizon-maintenance
-  pollingInterval: 30
-  cooldownPeriod: 2400
   minReplicaCount: 1
   maxReplicaCount: 1
   triggers:
@@ -117,8 +113,6 @@ metadata:
 spec:
   scaleTargetRef:
     name: cilupbah-horizon-order-intake
-  pollingInterval: 5
-  cooldownPeriod: 300
   minReplicaCount: 1
   maxReplicaCount: 2
   advanced:
@@ -162,8 +156,6 @@ metadata:
 spec:
   scaleTargetRef:
     name: cilupbah-horizon-fulfillment
-  pollingInterval: 5
-  cooldownPeriod: 300
   minReplicaCount: 1
   maxReplicaCount: 2
   triggers:
@@ -188,8 +180,6 @@ metadata:
 spec:
   scaleTargetRef:
     name: cilupbah-horizon-stock
-  pollingInterval: 5
-  cooldownPeriod: 300
   minReplicaCount: 1
   maxReplicaCount: 2
   triggers:
@@ -218,8 +208,6 @@ metadata:
 spec:
   scaleTargetRef:
     name: cilupbah-horizon-critical
-  pollingInterval: 5
-  cooldownPeriod: 300
   minReplicaCount: 1
   maxReplicaCount: 2
   triggers:
@@ -252,8 +240,6 @@ metadata:
 spec:
   scaleTargetRef:
     name: cilupbah-horizon-labels-awb
-  pollingInterval: 5
-  cooldownPeriod: 300
   minReplicaCount: 1
   maxReplicaCount: 1
   triggers:
@@ -280,8 +266,6 @@ metadata:
 spec:
   scaleTargetRef:
     name: cilupbah-horizon-labels
-  pollingInterval: 5
-  cooldownPeriod: 300
   minReplicaCount: 1
   maxReplicaCount: 1
   triggers:

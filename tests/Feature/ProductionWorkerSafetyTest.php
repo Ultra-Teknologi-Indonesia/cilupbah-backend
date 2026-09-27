@@ -127,14 +127,14 @@ class ProductionWorkerSafetyTest extends TestCase
         $this->assertStringContainsString('name: cilupbah-horizon-maintenance', $yaml);
         $this->assertStringContainsString('minReplicaCount: 1', $yaml);
         $this->assertStringContainsString('maxReplicaCount: 2', $yaml);
-        $this->assertStringContainsString('pollingInterval: 5', $yaml);
+        $this->assertStringNotContainsString('pollingInterval:', $yaml);
         $this->assertStringContainsString('type: redis', $yaml);
         $this->assertStringContainsString('address: redis-horizon.cilupbah.svc.cluster.local:6379', $yaml);
         $this->assertStringContainsString('address: redis-long.cilupbah.svc.cluster.local:6379', $yaml);
         $this->assertStringContainsString('address: redis-finance.cilupbah.svc.cluster.local:6379', $yaml);
         $this->assertStringContainsString('listName: queues:default', $yaml);
         $this->assertStringContainsString('listName: queues:downloads', $yaml);
-        $this->assertStringContainsString('cooldownPeriod: 2400', $yaml);
+        $this->assertStringNotContainsString('cooldownPeriod:', $yaml);
         $this->assertStringContainsString('terminationGracePeriodSeconds: 360', $background);
         $this->assertStringContainsString('terminationGracePeriodSeconds: 1860', $maintenance);
 
@@ -195,6 +195,20 @@ class ProductionWorkerSafetyTest extends TestCase
         $this->assertStringContainsString('--request-timeout=30s', $workflow);
         $this->assertStringNotContainsString('kubectl rollout restart', $workflow);
         $this->assertStringNotContainsString('for horizon in cilupbah-horizon cilupbah-horizon-critical', $workflow);
+    }
+
+    public function test_capacity_gate_only_blocks_confirmed_unschedulable_pods(): void
+    {
+        $script = file_get_contents(base_path('scripts/kubernetes-capacity-preflight'));
+
+        $this->assertIsString($script);
+        $this->assertStringContainsString('.reason == "Unschedulable"', $script);
+        $this->assertStringContainsString('Pod Pending sementara tidak memblokir rollout', $script);
+        $this->assertStringContainsString('benar-benar tidak dapat dijadwalkan', $script);
+        $this->assertStringNotContainsString(
+            '--field-selector=status.phase=Pending -o name | grep -q .',
+            $script,
+        );
     }
 
     public function test_production_manifests_prioritize_online_work_over_recoverable_batches(): void

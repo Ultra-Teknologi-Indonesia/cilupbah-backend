@@ -40,9 +40,59 @@ if [ "$projected_mi" -gt "$maximum_mi" ]; then
   exit 1
 fi
 
-if kubectl get pods -n "$namespace" --field-selector=status.phase=Pending -o name | grep -q .; then
-  echo "Rollout ditolak: masih ada pod Pending di namespace $namespace."
+pending_pods_json="$(
+  kubectl get pods -n "$namespace" \
+    --field-selector=status.phase=Pending \
+    -o json
+)"
+
+unschedulable_pods="$(
+  jq -r '
+    .items[]
+    | . as $pod
+    | [
+        .status.conditions[]?
+        | select(
+            .type == "PodScheduled"
+            and .status == "False"
+            and .reason == "Unschedulable"
+          )
+      ] as $conditions
+    | select(($conditions | length) > 0)
+    | [
+        $pod.metadata.name,
+        ($conditions[0].reason // "Unschedulable"),
+        ($conditions[0].message // "Alasan penjadwalan tidak tersedia.")
+      ]
+    | @tsv
+  ' <<<"$pending_pods_json"
+)"
+
+if [ -n "$unschedulable_pods" ]; then
+  echo "Rollout ditolak: terdapat pod yang benar-benar tidak dapat dijadwalkan di namespace $namespace:"
+  printf '%s\n' "$unschedulable_pods"
   exit 1
+fi
+
+transient_pending_pods="$(
+  jq -r '
+    .items[]
+    | select(
+        any(
+          .status.conditions[]?;
+          .type == "PodScheduled"
+          and .status == "False"
+          and .reason == "Unschedulable"
+        )
+        | not
+      )
+    | .metadata.name
+  ' <<<"$pending_pods_json"
+)"
+
+if [ -n "$transient_pending_pods" ]; then
+  echo "Pod Pending sementara tidak memblokir rollout karena belum dinyatakan Unschedulable:"
+  printf '%s\n' "$transient_pending_pods"
 fi
 
 echo "Capacity preflight lulus: node=$node requested=${requested_mi}Mi projected=${projected_mi}Mi limit=${maximum_mi}Mi."
