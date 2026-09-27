@@ -8,24 +8,10 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Pilih versi. 'latest' = deploy versi terbaru otomatis; vX.Y.Z = rollback ke versi itu."
+        description: "Isi latest untuk versi Git tag terbaru, atau vX.Y.Z untuk deploy/rollback versi tertentu."
         required: true
-        type: choice
+        type: string
         default: latest
-        options:
-          - latest
-          # BEGIN_VERSIONS (di-generate otomatis oleh CI staging tiap rilis — jangan edit manual)
-          - v1.0.760
-          - v1.0.759
-          - v1.0.758
-          - v1.0.757
-          - v1.0.756
-          - v1.0.755
-          - v1.0.754
-          - v1.0.753
-          - v1.0.752
-          - v1.0.751
-          # END_VERSIONS
 
 concurrency:
   group: production-deploy
@@ -43,7 +29,7 @@ jobs:
     outputs:
       version: ${{ steps.resolve.outputs.version }}
     steps:
-      - name: Checkout (untuk baca git tag saat resolve 'latest')
+      - name: Checkout (untuk validasi workflow)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -53,9 +39,15 @@ jobs:
         run: |
           V="${{ inputs.version }}"
           if [ "$V" = "latest" ]; then
-            V=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+            # Read tags from the remote, not from a stale static selector or
+            # an incomplete local tag cache. This guarantees that `latest`
+            # resolves the newest release that actually exists on origin.
+            V=$(git ls-remote --tags --refs origin 'refs/tags/v[0-9]*' \
+              | awk -F/ '{print $3}' \
+              | sort -V \
+              | tail -n1)
             if [ -z "$V" ]; then
-              echo "Tak ada tag vX.Y.Z di repo."; exit 1
+              echo "Tak ada tag vX.Y.Z di remote origin."; exit 1
             fi
             echo "'latest' → $V"
           fi

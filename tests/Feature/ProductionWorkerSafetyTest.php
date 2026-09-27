@@ -338,11 +338,11 @@ class ProductionWorkerSafetyTest extends TestCase
 
         $this->assertIsString($workflow);
         $this->assertStringContainsString('name: CI/CD Pipeline (Production)', $workflow);
-        $this->assertStringContainsString('type: choice', $workflow);
-        $this->assertStringContainsString('options:', $workflow);
-        $this->assertStringContainsString('- latest', $workflow);
-        $this->assertStringContainsString('# BEGIN_VERSIONS', $workflow);
-        $this->assertStringContainsString('# END_VERSIONS', $workflow);
+        $this->assertStringContainsString('type: string', $workflow);
+        $this->assertStringContainsString('default: latest', $workflow);
+        $this->assertStringContainsString("Isi latest untuk versi Git tag terbaru", $workflow);
+        $this->assertStringNotContainsString('# BEGIN_VERSIONS', $workflow);
+        $this->assertStringNotContainsString('# END_VERSIONS', $workflow);
     }
 
     public function test_shared_label_spool_init_is_constant_time(): void
