@@ -23,7 +23,7 @@ final class KubernetesAdaptiveCapacityTest extends TestCase
             'cilupbah-horizon-fulfillment' => ['cilupbah-horizon-fulfillment', 2],
             'cilupbah-horizon-stock' => ['cilupbah-horizon-stock', 2],
             'cilupbah-horizon-marketplace-ops' => ['cilupbah-horizon-critical', 2],
-            'cilupbah-horizon-labels-awb' => ['cilupbah-horizon-labels-awb', 1],
+            'cilupbah-horizon-labels-awb' => ['cilupbah-horizon-labels-awb', 2],
             'cilupbah-horizon-labels' => ['cilupbah-horizon-labels', 1],
         ];
 

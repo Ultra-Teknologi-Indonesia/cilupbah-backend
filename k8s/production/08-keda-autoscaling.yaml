@@ -241,7 +241,10 @@ spec:
   scaleTargetRef:
     name: cilupbah-horizon-labels-awb
   minReplicaCount: 1
-  maxReplicaCount: 1
+  # AWB has independent request/poll lanes. A single replica is a hard
+  # throughput ceiling during a flash burst; cap at two to keep the one-node
+  # memory budget bounded while allowing KEDA to drain both lanes in parallel.
+  maxReplicaCount: 2
   triggers:
     - type: redis
       metadata: {address: redis.cilupbah.svc.cluster.local:6379, listName: cilupbah-superapp-database-queues:label-awb, listLength: "20", activationListLength: "1"}
