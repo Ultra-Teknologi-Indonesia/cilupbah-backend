@@ -182,8 +182,8 @@ class HorizonQueueCoverageTest extends TestCase
             'stock' => ['03-horizon-stock.yaml', '1Gi', '2560Mi'],
             'marketplace-ops' => ['03-horizon-critical.yaml', '1Gi', '2560Mi'],
             'background' => ['03-horizon.yaml', '1Gi', '2Gi'],
-            'labels-pdf' => ['04-horizon-labels.yaml', '1536Mi', '5Gi'],
-            'labels-awb' => ['04-horizon-labels-awb.yaml', '2Gi', '3Gi'],
+            'labels-pdf' => ['04-horizon-labels.yaml', '1Gi', '5Gi'],
+            'labels-awb' => ['04-horizon-labels-awb.yaml', '1Gi', '3Gi'],
             'maintenance' => ['03-horizon-maintenance.yaml', '768Mi', '2Gi'],
         ] as $profile => [$manifest, $request, $limit]) {
             $yaml = file_get_contents(base_path("k8s/production/{$manifest}"));

@@ -63,9 +63,9 @@ spec:
               value: "1"
             - name: REDIS_LONG_QUEUE_RETRY_AFTER
               value: "2160"
-          resources:
-            requests:
-              memory: "2Gi"
+            resources:
+              requests:
+              memory: "1Gi"
               cpu: "100m"
             limits:
               memory: "3Gi"

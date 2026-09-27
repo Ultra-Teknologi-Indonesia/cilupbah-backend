@@ -89,7 +89,7 @@ spec:
               mountPath: /var/www/html/storage/app/print-spool
           resources:
             requests:
-              memory: "1536Mi"
+              memory: "1Gi"
               cpu: "500m"
             limits:
               memory: "5Gi"
