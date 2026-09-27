@@ -222,6 +222,17 @@ class ProductionWorkerSafetyTest extends TestCase
         $this->assertStringNotContainsString('for horizon in cilupbah-horizon cilupbah-horizon-critical', $workflow);
     }
 
+    public function test_capacity_gate_uses_each_workloads_real_surge_budget(): void
+    {
+        $workflow = file_get_contents(base_path('.github/workflows/ci-cd-production.yml'));
+
+        $this->assertIsString($workflow);
+        $this->assertStringContainsString('manifest_surge_memory_mi', $workflow);
+        $this->assertStringContainsString('estimated rollout surge=${surge_memory_mi}Mi', $workflow);
+        $this->assertStringContainsString('"$NAMESPACE" "$surge_memory_mi" 90', $workflow);
+        $this->assertStringNotContainsString('"$NAMESPACE" 2048 90', $workflow);
+    }
+
     public function test_capacity_gate_only_blocks_confirmed_unschedulable_pods(): void
     {
         $script = file_get_contents(base_path('scripts/kubernetes-capacity-preflight'));

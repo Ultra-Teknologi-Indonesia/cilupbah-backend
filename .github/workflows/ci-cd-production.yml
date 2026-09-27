@@ -327,6 +327,60 @@ jobs:
               done <<< "$terminating_pod_data"
             }
 
+            memory_to_mi() {
+              value="$1"
+              case "$value" in
+                *Ki) echo $(( ${value%Ki} / 1024 )) ;;
+                *Mi) echo "${value%Mi}" ;;
+                *Gi) echo $(( ${value%Gi} * 1024 )) ;;
+                *) echo $(( value / 1024 / 1024 )) ;;
+              esac
+            }
+
+            manifest_surge_memory_mi() {
+              manifest="$1"
+              fallback_replicas="$2"
+              manifest_json="$(kubectl apply --dry-run=client -f "$manifest" -o json)"
+
+              pod_memory_mi=0
+              app_memory_mi=0
+              while IFS= read -r request; do
+                [ -n "$request" ] || continue
+                request_mi="$(memory_to_mi "$request")"
+                app_memory_mi=$((app_memory_mi + request_mi))
+              done < <(jq -r '.spec.template.spec.containers[]?.resources.requests.memory // empty' <<< "$manifest_json")
+
+              while IFS= read -r request; do
+                [ -n "$request" ] || continue
+                request_mi="$(memory_to_mi "$request")"
+                if [ "$request_mi" -gt "$pod_memory_mi" ]; then
+                  pod_memory_mi="$request_mi"
+                fi
+              done < <(jq -r '.spec.template.spec.initContainers[]?.resources.requests.memory // empty' <<< "$manifest_json")
+
+              if [ "$app_memory_mi" -gt "$pod_memory_mi" ]; then
+                pod_memory_mi="$app_memory_mi"
+              fi
+
+              replicas="$fallback_replicas"
+              case "$replicas" in
+                ''|*[!0-9]*) replicas="$(jq -r '.spec.replicas // 1' <<< "$manifest_json")" ;;
+              esac
+
+              surge="$(jq -r '.spec.strategy.rollingUpdate.maxSurge // 0' <<< "$manifest_json")"
+              surge_replicas=0
+              case "$surge" in
+                *%)
+                  percent="${surge%%%}"
+                  surge_replicas=$(( (replicas * percent + 99) / 100 ))
+                  ;;
+                ''|*[!0-9]*) surge_replicas=0 ;;
+                *) surge_replicas="$surge" ;;
+              esac
+
+              echo $((pod_memory_mi * surge_replicas))
+            }
+
             rollout_deployment() {
               deployment="$1"
               grace_period="$(kubectl get deployment "$deployment" -n "$NAMESPACE" \
@@ -412,12 +466,14 @@ jobs:
               manifest="$1"
               deployment="$2"
               DEPLOY_STAGE="workload:$deployment"
-              "$DEPLOY_ROOT/scripts/kubernetes-capacity-preflight" "$NAMESPACE" 2048 90
+              current_replicas="$(kubectl get deployment "$deployment" -n "$NAMESPACE" \
+                -o jsonpath='{.spec.replicas}' 2>/dev/null || true)"
+              surge_memory_mi="$(manifest_surge_memory_mi "$K8S_DIR/$manifest" "$current_replicas")"
+              echo "Capacity gate deployment/$deployment: estimated rollout surge=${surge_memory_mi}Mi."
+              "$DEPLOY_ROOT/scripts/kubernetes-capacity-preflight" "$NAMESPACE" "$surge_memory_mi" 90
 
               case "$deployment" in
                 cilupbah-app|cilupbah-horizon*)
-                  current_replicas="$(kubectl get deployment "$deployment" -n "$NAMESPACE" \
-                    -o jsonpath='{.spec.replicas}' 2>/dev/null || true)"
                   case "$current_replicas" in
                     ''|*[!0-9]*)
                       apply_manifest "$K8S_DIR/$manifest"
