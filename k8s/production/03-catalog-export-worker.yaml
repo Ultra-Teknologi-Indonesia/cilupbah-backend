@@ -6,7 +6,7 @@ metadata:
   labels:
     app: cilupbah-catalog-export-worker
 spec:
-  replicas: 2
+  replicas: 1
   revisionHistoryLimit: 2
   progressDeadlineSeconds: 1200
   minReadySeconds: 10
@@ -48,7 +48,7 @@ spec:
               value: "45"
           resources:
             requests:
-              memory: "384Mi"
+              memory: "320Mi"
               cpu: "150m"
             limits:
               memory: "1536Mi"

@@ -7,6 +7,7 @@ use Modules\Sales\Console\Commands\BackfillSettlement;
 use Modules\Sales\Console\Commands\BackfillShippedOrdersStockCommand;
 use Modules\Sales\Console\Commands\BackfillStatusHistory;
 use Modules\Sales\Console\Commands\CleanupBulkLabelBatchesCommand;
+use Modules\Sales\Console\Commands\CleanupCompletedBulkLabelPdfs;
 use Modules\Sales\Console\Commands\DispatchDueFinanceSync;
 use Modules\Sales\Console\Commands\DispatchDueShippingLabelPrefetch;
 use Modules\Sales\Console\Commands\FinanceQueueHealth;
@@ -54,6 +55,7 @@ class SalesServiceProvider extends ModuleServiceProvider
         SyncReturnTracking::class,
         SyncReturnDetail::class,
         CleanupBulkLabelBatchesCommand::class,
+        CleanupCompletedBulkLabelPdfs::class,
         ReapStaleBulkLabelBatches::class,
         ReconcileAcceptedAwbRequests::class,
         ReconcileFailedDownloadOrders::class,

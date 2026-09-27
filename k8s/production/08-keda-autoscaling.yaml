@@ -1,8 +1,3 @@
-# Optional cluster capability: install KEDA before applying this manifest.
-# The production workflow detects the CRD and skips this file when KEDA is not
-# installed, so the queue topology remains deployable during the migration.
-# Critical pools intentionally do not appear here: they keep one warm pod for
-# low-latency order, AWB, label, fulfillment, and stock operations.
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -14,13 +9,10 @@ metadata:
 spec:
   scaleTargetRef:
     name: cilupbah-horizon
-  # Webhook/background work must not wait for the old 15-second polling
-  # window. A warm replica handles the first jobs immediately; KEDA adds
-  # capacity within five seconds when backlog rises.
   pollingInterval: 5
   cooldownPeriod: 300
   minReplicaCount: 1
-  maxReplicaCount: 3
+  maxReplicaCount: 2
   advanced:
     horizontalPodAutoscalerConfig:
       behavior:
@@ -88,12 +80,8 @@ spec:
   scaleTargetRef:
     name: cilupbah-horizon-maintenance
   pollingInterval: 30
-  # The maintenance pool contains jobs with up to 30 minutes of runtime.
-  # Redis moves an active job to :reserved, so the scaler cannot infer active
-  # work from a ready-list length alone. Keep the cooldown longer than the
-  # maximum job timeout before allowing scale-to-zero.
   cooldownPeriod: 2400
-  minReplicaCount: 0
+  minReplicaCount: 1
   maxReplicaCount: 1
   triggers:
     - type: redis
@@ -120,3 +108,194 @@ spec:
         listName: queues:qr-labels
         listLength: "5"
         activationListLength: "1"
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: cilupbah-horizon-order-intake
+  namespace: cilupbah
+spec:
+  scaleTargetRef:
+    name: cilupbah-horizon-order-intake
+  pollingInterval: 5
+  cooldownPeriod: 300
+  minReplicaCount: 1
+  maxReplicaCount: 2
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 0
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 30
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 120
+  triggers:
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:orders, listLength: "25", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:shopee-orders, listLength: "25", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:tiktok-orders, listLength: "25", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:lazada-orders, listLength: "25", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:channel-order-refresh, listLength: "10", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:channel-sync, listLength: "10", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:channel-order-recovery, listLength: "10", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:product, listLength: "10", activationListLength: "1"}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: cilupbah-horizon-fulfillment
+  namespace: cilupbah
+spec:
+  scaleTargetRef:
+    name: cilupbah-horizon-fulfillment
+  pollingInterval: 5
+  cooldownPeriod: 300
+  minReplicaCount: 1
+  maxReplicaCount: 2
+  triggers:
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:fulfillment, listLength: "20", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:channel-fulfillment, listLength: "20", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:shopee-fulfillment, listLength: "20", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:tiktok-fulfillment, listLength: "20", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:lazada-fulfillment, listLength: "20", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:tiktok-packages, listLength: "20", activationListLength: "1"}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: cilupbah-horizon-stock
+  namespace: cilupbah
+spec:
+  scaleTargetRef:
+    name: cilupbah-horizon-stock
+  pollingInterval: 5
+  cooldownPeriod: 300
+  minReplicaCount: 1
+  maxReplicaCount: 2
+  triggers:
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:stock-sync, listLength: "10", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:stock-critical, listLength: "10", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:warehouse-safety, listLength: "10", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:channel-stock-critical, listLength: "10", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:channel-stock-outbox, listLength: "10", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:stock-default, listLength: "25", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:channel-stock, listLength: "25", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:channel-stock-normal, listLength: "25", activationListLength: "1"}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: cilupbah-horizon-marketplace-ops
+  namespace: cilupbah
+spec:
+  scaleTargetRef:
+    name: cilupbah-horizon-critical
+  pollingInterval: 5
+  cooldownPeriod: 300
+  minReplicaCount: 1
+  maxReplicaCount: 2
+  triggers:
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:channel-cancellation, listLength: "20", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:shopee-cancellation, listLength: "20", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:tiktok-cancellation, listLength: "20", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:lazada-cancellation, listLength: "20", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:tracking, listLength: "25", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:shopee-tracking-events, listLength: "25", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:shopee-tracking, listLength: "25", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:tiktok-webhooks, listLength: "25", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:shopee-webhooks, listLength: "25", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-horizon.cilupbah.svc.cluster.local:6379, listName: queues:lazada-webhooks, listLength: "25", activationListLength: "1"}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: cilupbah-horizon-labels-awb
+  namespace: cilupbah
+spec:
+  scaleTargetRef:
+    name: cilupbah-horizon-labels-awb
+  pollingInterval: 5
+  cooldownPeriod: 300
+  minReplicaCount: 1
+  maxReplicaCount: 1
+  triggers:
+    - type: redis
+      metadata: {address: redis-long.cilupbah.svc.cluster.local:6379, listName: queues:label-awb, listLength: "20", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-long.cilupbah.svc.cluster.local:6379, listName: queues:label-awb-request-shopee, listLength: "20", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-long.cilupbah.svc.cluster.local:6379, listName: queues:label-awb-request-tiktok, listLength: "20", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-long.cilupbah.svc.cluster.local:6379, listName: queues:label-awb-request-lazada, listLength: "20", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-long.cilupbah.svc.cluster.local:6379, listName: queues:label-awb-poll-shopee, listLength: "20", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-long.cilupbah.svc.cluster.local:6379, listName: queues:label-awb-poll-tiktok, listLength: "20", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-long.cilupbah.svc.cluster.local:6379, listName: queues:label-awb-poll-lazada, listLength: "20", activationListLength: "1"}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: cilupbah-horizon-labels
+  namespace: cilupbah
+spec:
+  scaleTargetRef:
+    name: cilupbah-horizon-labels
+  pollingInterval: 5
+  cooldownPeriod: 300
+  minReplicaCount: 1
+  maxReplicaCount: 1
+  triggers:
+    - type: redis
+      metadata: {address: redis-long.cilupbah.svc.cluster.local:6379, listName: queues:labels, listLength: "10", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-long.cilupbah.svc.cluster.local:6379, listName: queues:label-merge, listLength: "5", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-long.cilupbah.svc.cluster.local:6379, listName: queues:label-download-shopee, listLength: "10", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-long.cilupbah.svc.cluster.local:6379, listName: queues:label-download-tiktok, listLength: "10", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-long.cilupbah.svc.cluster.local:6379, listName: queues:label-download-lazada, listLength: "10", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-long.cilupbah.svc.cluster.local:6379, listName: queues:label-prefetch, listLength: "20", activationListLength: "1"}
+    - type: redis
+      metadata: {address: redis-long.cilupbah.svc.cluster.local:6379, listName: queues:label-archive, listLength: "10", activationListLength: "1"}

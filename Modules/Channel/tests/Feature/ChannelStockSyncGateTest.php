@@ -15,6 +15,8 @@ use Modules\Channel\Contracts\MarketplaceAdapterInterface;
 use Modules\Channel\Jobs\SyncProductToChannelJob;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
+use Modules\Channel\Models\ChannelStockSyncOutbox;
+use Modules\Channel\Services\ChannelStockSyncOutboxService;
 use Modules\Channel\Support\ChannelVariantMappingResolver;
 use Modules\Product\Models\Category;
 use Modules\Product\Models\Product;
@@ -208,6 +210,7 @@ class ChannelStockSyncGateTest extends TestCase
 
     public function test_price_stock_deterministic_failure_is_recorded_without_retrying(): void
     {
+        Queue::fake();
         $this->shop->forceFill(['stock_push_enabled' => true])->save();
         $product = $this->makeListedProduct([
             ['sku' => 'SKU-ERROR', 'model_id' => '333', 'sync_enabled' => true],
@@ -231,16 +234,13 @@ class ChannelStockSyncGateTest extends TestCase
             ->with('shopee')
             ->willReturn($adapter);
 
-        (new SyncProductToChannelJob(
-            $product->id,
-            $this->shop->id,
-            'sync_price_stock',
-            null,
-            null,
-            null,
-            'critical',
-            $mapping->id,
-        ))->handle($factory);
+        $outboxService = app(ChannelStockSyncOutboxService::class);
+        $outboxService->request($mapping, 'sync_price_stock');
+        $outboxService->dispatchDue();
+        $job = Queue::pushed(SyncProductToChannelJob::class)->first();
+
+        $this->assertInstanceOf(SyncProductToChannelJob::class, $job);
+        $job->handle($factory);
 
         $log = ProductSyncLog::query()
             ->where('product_id', $product->id)
@@ -447,14 +447,14 @@ class ChannelStockSyncGateTest extends TestCase
         (new SyncProductToChannelJob($product->id, $this->shop->id, 'sync_stock'))
             ->handle(app(AdapterFactory::class));
 
-        Queue::assertPushed(
-            SyncProductToChannelJob::class,
-            fn (SyncProductToChannelJob $job): bool => $job->channelMappingId === $listingA->id,
-        );
-        Queue::assertPushed(
-            SyncProductToChannelJob::class,
-            fn (SyncProductToChannelJob $job): bool => $job->channelMappingId === $listingB->id,
-        );
+        $this->assertDatabaseHas('channel_stock_sync_outbox', [
+            'product_channel_mapping_id' => $listingA->id,
+            'status' => ChannelStockSyncOutbox::STATUS_PENDING,
+        ]);
+        $this->assertDatabaseHas('channel_stock_sync_outbox', [
+            'product_channel_mapping_id' => $listingB->id,
+            'status' => ChannelStockSyncOutbox::STATUS_PENDING,
+        ]);
     }
 
     public function test_tiktok_stock_payload_is_limited_to_the_requested_listing(): void

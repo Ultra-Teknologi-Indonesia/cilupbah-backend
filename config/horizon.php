@@ -411,10 +411,10 @@ return [
     'memory_limit' => 192,
     'resident_process_budget_mb' => 128,
     'profile_memory_requests_mb' => [
-        'order-intake' => 768,
+        'order-intake' => 1024,
         'fulfillment' => 512,
-        'stock' => 768,
-        'marketplace-ops' => 768,
+        'stock' => 1024,
+        'marketplace-ops' => 1024,
         'background' => 1024,
         'labels-pdf' => 1536,
         'labels-awb' => 2048,

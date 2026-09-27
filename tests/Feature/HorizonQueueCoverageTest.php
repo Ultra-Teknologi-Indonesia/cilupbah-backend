@@ -177,10 +177,10 @@ class HorizonQueueCoverageTest extends TestCase
         }
 
         foreach ([
-            'order-intake' => ['03-horizon-order-intake.yaml', '768Mi', '2560Mi'],
+            'order-intake' => ['03-horizon-order-intake.yaml', '1Gi', '2560Mi'],
             'fulfillment' => ['03-horizon-fulfillment.yaml', '512Mi', '1536Mi'],
-            'stock' => ['03-horizon-stock.yaml', '768Mi', '2560Mi'],
-            'marketplace-ops' => ['03-horizon-critical.yaml', '768Mi', '2560Mi'],
+            'stock' => ['03-horizon-stock.yaml', '1Gi', '2560Mi'],
+            'marketplace-ops' => ['03-horizon-critical.yaml', '1Gi', '2560Mi'],
             'background' => ['03-horizon.yaml', '1Gi', '2Gi'],
             'labels-pdf' => ['04-horizon-labels.yaml', '1536Mi', '5Gi'],
             'labels-awb' => ['04-horizon-labels-awb.yaml', '2Gi', '3Gi'],

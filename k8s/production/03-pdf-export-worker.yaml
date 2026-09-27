@@ -4,7 +4,7 @@ metadata:
   name: cilupbah-pdf-export-worker
   namespace: cilupbah
 spec:
-  replicas: 2
+  replicas: 1
   revisionHistoryLimit: 2
   progressDeadlineSeconds: 1500
   minReadySeconds: 10

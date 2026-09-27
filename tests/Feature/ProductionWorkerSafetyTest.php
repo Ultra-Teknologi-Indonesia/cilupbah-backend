@@ -113,7 +113,7 @@ class ProductionWorkerSafetyTest extends TestCase
         }
     }
 
-    public function test_optional_keda_scaling_is_backlog_driven_and_never_scales_critical_pools_to_zero(): void
+    public function test_keda_scaling_is_backlog_driven_and_keeps_every_operational_pool_warm(): void
     {
         $yaml = file_get_contents(base_path('k8s/production/08-keda-autoscaling.yaml'));
         $background = file_get_contents(base_path('k8s/production/03-horizon.yaml'));
@@ -126,7 +126,7 @@ class ProductionWorkerSafetyTest extends TestCase
         $this->assertStringContainsString('name: cilupbah-horizon', $yaml);
         $this->assertStringContainsString('name: cilupbah-horizon-maintenance', $yaml);
         $this->assertStringContainsString('minReplicaCount: 1', $yaml);
-        $this->assertStringContainsString('maxReplicaCount: 3', $yaml);
+        $this->assertStringContainsString('maxReplicaCount: 2', $yaml);
         $this->assertStringContainsString('pollingInterval: 5', $yaml);
         $this->assertStringContainsString('type: redis', $yaml);
         $this->assertStringContainsString('address: redis-horizon.cilupbah.svc.cluster.local:6379', $yaml);
@@ -145,10 +145,10 @@ class ProductionWorkerSafetyTest extends TestCase
             'cilupbah-horizon-labels-awb',
             'cilupbah-horizon-labels',
         ] as $criticalDeployment) {
-            $this->assertStringNotContainsString(
+            $this->assertStringContainsString(
                 "name: {$criticalDeployment}",
                 $yaml,
-                "{$criticalDeployment} tidak boleh scale-to-zero melalui KEDA.",
+                "{$criticalDeployment} harus dikelola otomatis tanpa scale-to-zero.",
             );
         }
     }
@@ -168,14 +168,15 @@ class ProductionWorkerSafetyTest extends TestCase
         );
     }
 
-    public function test_production_workflow_applies_keda_only_when_the_cluster_supports_it(): void
+    public function test_production_workflow_requires_keda_before_workload_rollout(): void
     {
         $workflow = file_get_contents(base_path('.github/workflows/ci-cd-production.yml'));
 
         $this->assertIsString($workflow);
         $this->assertStringContainsString('08-keda-autoscaling.yaml', $workflow);
         $this->assertStringContainsString('api-resources --api-group=keda.sh', $workflow);
-        $this->assertStringContainsString('KEDA belum terpasang', $workflow);
+        $this->assertStringContainsString('KEDA wajib tersedia', $workflow);
+        $this->assertStringContainsString('kubectl apply -f "$K8S_DIR/08-keda-autoscaling.yaml"', $workflow);
     }
 
     public function test_production_deploy_allows_grace_period_and_reports_rollout_failures(): void
@@ -183,8 +184,9 @@ class ProductionWorkerSafetyTest extends TestCase
         $workflow = file_get_contents(base_path('.github/workflows/ci-cd-production.yml'));
 
         $this->assertIsString($workflow);
-        $this->assertStringContainsString('drain asynchronous untuk worker long-running', $workflow);
-        $this->assertStringContainsString('--timeout=15s', $workflow);
+        $this->assertStringContainsString('kubernetes-capacity-preflight', $workflow);
+        $this->assertStringContainsString('Menjalankan rollout berurutan dengan capacity gate', $workflow);
+        $this->assertStringContainsString('.spec.replicas = $replicas', $workflow);
         $this->assertStringContainsString("jsonpath='{.spec.progressDeadlineSeconds}'", $workflow);
         $this->assertStringContainsString('rollout_timeout=$((progress_deadline + 120))', $workflow);
         $this->assertStringContainsString('--timeout=180s', $workflow);
@@ -221,7 +223,7 @@ class ProductionWorkerSafetyTest extends TestCase
         $this->assertStringContainsString('progressDeadlineSeconds: 600', $yaml);
         $this->assertStringContainsString('startupProbe:', $yaml);
         $this->assertStringContainsString('failureThreshold: 60', $yaml);
-        $this->assertStringContainsString('maxReplicas: 6', $autoscaling);
+        $this->assertStringContainsString('maxReplicas: 4', $autoscaling);
         $this->assertStringContainsString('minAvailable: 2', $autoscaling);
     }
 

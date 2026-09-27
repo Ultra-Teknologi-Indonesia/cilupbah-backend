@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+namespace="${1:-cilupbah}"
+surge_mi="${2:-2048}"
+maximum_percent="${3:-90}"
+node="$(kubectl get nodes -o json | jq -r '.items[] | select(any(.status.conditions[]; .type == "Ready" and .status == "True")) | .metadata.name' | head -n 1)"
+
+quantity_mi() {
+  local value="$1"
+  case "$value" in
+    *Ki) echo $(( ${value%Ki} / 1024 )) ;;
+    *Mi) echo "${value%Mi}" ;;
+    *Gi) echo $(( ${value%Gi} * 1024 )) ;;
+    *) echo $(( value / 1024 / 1024 )) ;;
+  esac
+}
+
+if [ -z "$node" ]; then
+  echo "Tidak ada node Ready."
+  exit 1
+fi
+
+allocatable_raw="$(kubectl get node "$node" -o jsonpath='{.status.allocatable.memory}')"
+requested_raw="$(kubectl describe node "$node" | awk '/Allocated resources:/{found=1; next} found && $1 == "memory" {print $2; exit}')"
+
+if [ -z "$allocatable_raw" ] || [ -z "$requested_raw" ]; then
+  echo "Kapasitas node tidak dapat dibaca."
+  exit 1
+fi
+
+allocatable_mi="$(quantity_mi "$allocatable_raw")"
+requested_mi="$(quantity_mi "$requested_raw")"
+projected_mi=$((requested_mi + surge_mi))
+maximum_mi=$((allocatable_mi * maximum_percent / 100))
+
+if [ "$projected_mi" -gt "$maximum_mi" ]; then
+  echo "Rollout ditolak: request ${requested_mi}Mi + surge ${surge_mi}Mi melebihi ${maximum_percent}% dari ${allocatable_mi}Mi."
+  exit 1
+fi
+
+if kubectl get pods -n "$namespace" --field-selector=status.phase=Pending -o name | grep -q .; then
+  echo "Rollout ditolak: masih ada pod Pending di namespace $namespace."
+  exit 1
+fi
+
+echo "Capacity preflight lulus: node=$node requested=${requested_mi}Mi projected=${projected_mi}Mi limit=${maximum_mi}Mi."

@@ -1,20 +1,27 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Modules\Channel\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
-use Modules\Channel\Enums\WebhookInboxStatus;
+use Modules\Channel\Repositories\QueueHealthRepository;
 
-class MonitorRedisQueueHealth extends Command
+final class MonitorRedisQueueHealth extends Command
 {
     protected $signature = 'channel:monitor-queue-health {--json : Cetak satu snapshot JSON untuk monitoring eksternal}';
 
     protected $description = 'Log alarm saat Redis atau inbox webhook melewati batas operasional.';
+
+    public function __construct(
+        private readonly QueueHealthRepository $repository,
+    ) {
+        parent::__construct();
+    }
 
     public function handle(): int
     {
@@ -41,15 +48,7 @@ class MonitorRedisQueueHealth extends Command
         $staleThreshold = (int) config('queue.health.stale_webhook_warning', 100);
         $staleMinutes = (int) config('queue.health.stale_webhook_minutes', 15);
         $replayAfter = $this->replayAfter();
-        $staleQuery = DB::table('channel_webhook_inbox')
-            ->where('status', WebhookInboxStatus::RECEIVED->value)
-            ->where('received_at', '<', now()->subMinutes($staleMinutes));
-
-        if ($replayAfter !== null) {
-            $staleQuery->where('received_at', '>=', $replayAfter);
-        }
-
-        $stale = $staleQuery->selectRaw('count(*) as total, min(received_at) as oldest')->first();
+        $stale = $this->repository->staleWebhookSummary(now()->subMinutes($staleMinutes), $replayAfter);
 
         $staleTotal = (int) ($stale->total ?? 0);
         $snapshot['webhook_inbox'] = [
@@ -312,9 +311,7 @@ class MonitorRedisQueueHealth extends Command
 
         try {
             $since = now()->subMinutes($windowMinutes);
-            $total = (int) DB::table('failed_jobs')
-                ->where('failed_at', '>=', $since)
-                ->count();
+            $total = $this->repository->recentFailedJobsCount($since);
 
             $context = [
                 'total' => $total,

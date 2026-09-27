@@ -100,7 +100,7 @@ jobs:
           host: ${{ secrets.PROD_DEPLOY_SERVER }}
           username: ${{ secrets.PROD_DEPLOY_USER }}
           key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
-          source: "k8s/production/*"
+          source: "k8s/production/*,scripts/kubernetes-capacity-preflight"
           target: "/tmp/cilupbah-k8s-${{ github.run_id }}-${{ github.run_attempt }}"
 
       - name: Deploy via SSH ke server production
@@ -110,7 +110,7 @@ jobs:
           username: ${{ secrets.PROD_DEPLOY_USER }}
           key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
           timeout: 20m
-          command_timeout: 45m
+          command_timeout: 3h
           script: |
             set -e
 
@@ -170,43 +170,13 @@ jobs:
                 -n "$NAMESPACE" --cascade=foreground --wait=false --ignore-not-found
             done
 
-            echo "==> Menguras master Horizon generik lama sebelum menerapkan pool..."
-            # Only the legacy generic master is stopped. The critical pool
-            # already owns its dedicated queues, so scaling it to zero on every
-            # deployment creates an avoidable processing gap during traffic.
-            for horizon in cilupbah-horizon; do
-              if kubectl get deployment "$horizon" -n "$NAMESPACE" >/dev/null 2>&1; then
-                active_profile=$(kubectl get deployment "$horizon" -n "$NAMESPACE" \
-                  -o 'jsonpath={.spec.template.spec.containers[0].env[?(@.name=="HORIZON_PROFILE")].value}')
-                if [ "$active_profile" = "background" ]; then
-                  echo "Pool background sudah terisolasi; gunakan graceful rollout tanpa scale-to-zero."
-                  continue
-                fi
-                kubectl scale "deployment/$horizon" --replicas=0 -n "$NAMESPACE"
-                kubectl rollout status "deployment/$horizon" -n "$NAMESPACE" --timeout=360s
-              else
-                echo "Deployment $horizon belum ada; lanjutkan bootstrap."
-              fi
-            done
-
             echo "==> Mengaplikasikan pool queue yang terpisah ke Kubernetes..."
             for manifest in "$K8S_DIR"/*.yaml; do
-              # KEDA resources are applied separately below because the CRD is
-              # an optional cluster capability, not an application manifest.
-              if [ "$(basename "$manifest")" = "08-keda-autoscaling.yaml" ] \
-                || [ "$(basename "$manifest")" = "01-database-migration.yaml" ]; then
-                continue
-              fi
+              case "$(basename "$manifest")" in
+                01-database-migration.yaml|01-gotenberg.yaml|02-app.yaml|03-*.yaml|04-horizon-labels-awb.yaml|04-horizon-labels.yaml|04-scheduler.yaml|08-keda-autoscaling.yaml) continue ;;
+              esac
               kubectl apply -f "$manifest" -n "$NAMESPACE"
             done
-
-            if kubectl api-resources --api-group=keda.sh --no-headers 2>/dev/null \
-              | grep -Eq '(^|[[:space:]])scaledobjects([[:space:]]|$)'; then
-              echo "==> KEDA terdeteksi; mengaktifkan autoscaling berbasis backlog Redis..."
-              kubectl apply -f "$K8S_DIR/08-keda-autoscaling.yaml" -n "$NAMESPACE"
-            else
-              echo "KEDA belum terpasang; ScaledObject dilewati. Pool kritis tetap aman, autoscaling idle non-kritis belum aktif."
-            fi
 
             rollout_deployment() {
               deployment="$1"
@@ -269,31 +239,14 @@ jobs:
               return 1
             }
 
-            echo "==> Menunggu rollout aplikasi dan jalur operasional..."
-            # The image tag is immutable. `kubectl apply` already starts a
-            # rollout when the version changes, so do not force-restart every
-            # Horizon deployment. A forced restart turns a no-op deploy into
-            # a full long-running drain and can make SSH wait for 17-31 minutes.
-            #
-            # Only deployments that must be ready before the deploy is marked
-            # successful are waited synchronously. Long-running/background
-            # pools are checked below and are allowed to drain in Kubernetes.
+            echo "==> Memverifikasi platform..."
             for deployment in \
               cilupbah-pgbouncer \
               cilupbah-redis \
               cilupbah-redis-cache \
               cilupbah-redis-finance \
               cilupbah-redis-horizon \
-              cilupbah-redis-long \
-              cilupbah-gotenberg \
-              cilupbah-app \
-              cilupbah-scheduler \
-              cilupbah-horizon-critical \
-              cilupbah-horizon-order-intake \
-              cilupbah-horizon-fulfillment \
-              cilupbah-horizon-stock \
-              cilupbah-horizon-labels-awb \
-              cilupbah-horizon-labels
+              cilupbah-redis-long
             do
               if kubectl get deployment "$deployment" -n "$NAMESPACE" \
                 --request-timeout=30s >/dev/null 2>&1; then
@@ -303,35 +256,69 @@ jobs:
               fi
             done
 
-            echo "==> Memulai drain asynchronous untuk worker long-running..."
-            for deployment in \
-              cilupbah-horizon \
-              cilupbah-horizon-maintenance \
-              cilupbah-import-worker \
-              cilupbah-export-worker \
-              cilupbah-catalog-export-worker \
-              cilupbah-pdf-export-worker
-            do
-              if ! kubectl get deployment "$deployment" -n "$NAMESPACE" \
-                --request-timeout=30s >/dev/null 2>&1; then
-                echo "Worker $deployment tidak ada; dilewati."
-                continue
-              fi
+            deploy_workload() {
+              manifest="$1"
+              deployment="$2"
+              "$DEPLOY_ROOT/scripts/kubernetes-capacity-preflight" "$NAMESPACE" 2048 90
+              current_replicas="$(kubectl get deployment "$deployment" -n "$NAMESPACE" \
+                -o jsonpath='{.spec.replicas}' 2>/dev/null || true)"
+              case "$current_replicas" in
+                ''|*[!0-9]*)
+                  kubectl apply -f "$K8S_DIR/$manifest" -n "$NAMESPACE"
+                  ;;
+                *)
+                  kubectl apply --dry-run=client -f "$K8S_DIR/$manifest" -o json \
+                    | jq --argjson replicas "$current_replicas" \
+                      'if .kind == "List" then .items |= map(if .kind == "Deployment" then .spec.replicas = $replicas else . end) else .spec.replicas = $replicas end' \
+                    | kubectl apply -f - -n "$NAMESPACE"
+                  ;;
+              esac
+              rollout_deployment "$deployment"
+            }
 
-              # RollingUpdate keeps the previous worker available until the
-              # replacement is started. terminationGracePeriodSeconds lets a
-              # current job drain; Redis keeps pending jobs durable, so never
-              # force a fixed short rollout timeout for long-running queues.
-              if timeout 20s kubectl rollout status "deployment/$deployment" \
-                -n "$NAMESPACE" --request-timeout=30s --timeout=15s; then
-                echo "Worker $deployment sudah siap."
-              else
-                echo "Worker $deployment masih graceful-draining; rollout dilanjutkan oleh Kubernetes."
-                kubectl get deployment "$deployment" -n "$NAMESPACE" \
-                  --request-timeout=30s \
-                  -o custom-columns='NAME:.metadata.name,READY:.status.readyReplicas,UPDATED:.status.updatedReplicas,AVAILABLE:.status.availableReplicas,UNAVAILABLE:.status.unavailableReplicas' \
-                  --no-headers || true
-              fi
+            if ! kubectl api-resources --api-group=keda.sh --no-headers 2>/dev/null \
+              | grep -Eq '(^|[[:space:]])scaledobjects([[:space:]]|$)'; then
+              echo "KEDA wajib tersedia untuk autoscaling produksi."
+              exit 1
+            fi
+
+            kubectl apply -f "$K8S_DIR/08-keda-autoscaling.yaml" -n "$NAMESPACE"
+
+            echo "==> Menjalankan rollout berurutan dengan capacity gate..."
+            for workload in \
+              "01-gotenberg.yaml:cilupbah-gotenberg" \
+              "02-app.yaml:cilupbah-app" \
+              "04-scheduler.yaml:cilupbah-scheduler" \
+              "03-horizon-critical.yaml:cilupbah-horizon-critical" \
+              "03-horizon-order-intake.yaml:cilupbah-horizon-order-intake" \
+              "03-horizon-fulfillment.yaml:cilupbah-horizon-fulfillment" \
+              "03-horizon-stock.yaml:cilupbah-horizon-stock" \
+              "04-horizon-labels-awb.yaml:cilupbah-horizon-labels-awb" \
+              "04-horizon-labels.yaml:cilupbah-horizon-labels" \
+              "03-horizon.yaml:cilupbah-horizon" \
+              "03-horizon-maintenance.yaml:cilupbah-horizon-maintenance" \
+              "03-import-worker.yaml:cilupbah-import-worker" \
+              "03-export-worker.yaml:cilupbah-export-worker" \
+              "03-catalog-export-worker.yaml:cilupbah-catalog-export-worker" \
+              "03-pdf-export-worker.yaml:cilupbah-pdf-export-worker"
+            do
+              manifest="${workload%%:*}"
+              deployment="${workload#*:}"
+              deploy_workload "$manifest" "$deployment"
+            done
+
+            for scaled_object in \
+              cilupbah-horizon-background \
+              cilupbah-horizon-maintenance \
+              cilupbah-horizon-order-intake \
+              cilupbah-horizon-fulfillment \
+              cilupbah-horizon-stock \
+              cilupbah-horizon-marketplace-ops \
+              cilupbah-horizon-labels-awb \
+              cilupbah-horizon-labels
+            do
+              kubectl wait --for=condition=Ready "scaledobject/$scaled_object" \
+                -n "$NAMESPACE" --timeout=120s
             done
 
             echo "Production deployment success: $VERSION"

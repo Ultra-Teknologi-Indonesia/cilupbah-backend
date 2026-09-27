@@ -3,6 +3,7 @@
 namespace Modules\Channel\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
@@ -13,6 +14,27 @@ use Tests\TestCase;
 class MonitorRedisQueueHealthTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_live_monitor_reads_an_operational_snapshot_through_its_service(): void
+    {
+        $exitCode = Artisan::call('channel:monitor-live', ['--once' => true]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('Webhook Channel', $output);
+        $this->assertStringContainsString('Delayed / Reserved', $output);
+    }
+
+    public function test_stock_outbox_monitor_returns_a_json_snapshot_through_its_service(): void
+    {
+        $exitCode = Artisan::call('channel:monitor-stock-outbox', ['--json' => true]);
+        $snapshot = json_decode(Artisan::output(), true, 512, JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $exitCode);
+        $this->assertArrayHasKey('generated_at', $snapshot);
+        $this->assertSame([], $snapshot['summary']);
+        $this->assertSame([], $snapshot['errors']);
+    }
 
     public function test_monitor_in_an_intake_pod_also_checks_other_profiles_on_the_legacy_alias(): void
     {

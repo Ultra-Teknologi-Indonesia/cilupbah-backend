@@ -1,23 +1,32 @@
-# Runbook: Enterprise Queue Autoscaling
+# Runbook: Adaptive Production Queue Capacity
 
 ## Tujuan
 
-Menjaga jalur order, fulfillment, AWB, label, dan stok tetap cepat, sambil
-mengurangi RAM idle pada pekerjaan background dan maintenance.
+Menjalankan semua proses dalam satu mode otomatis. Order, stok, resi, label,
+background, maintenance, import, dan export selalu memiliki worker aktif.
+Kapasitas bertambah ketika antrean naik dan kembali ke batas minimum setelah
+stabil tanpa menghentikan jenis pekerjaan apa pun.
 
-## Model kapasitas
+## Model produksi
 
-- `order-intake`, `fulfillment`, `stock`, `labels-awb`, dan `labels-pdf` tetap
-  memiliki satu pod Horizon hangat.
-- `background` dan `maintenance` dapat turun ke nol replica ketika Redis queue
-  kosong.
-- KEDA menaikkan replica ketika list queue Redis memiliki pekerjaan siap proses.
-- Horizon tetap mengatur concurrency proses di dalam setiap pod melalui
-  `minProcesses`, `maxProcesses`, `maxJobs`, dan `maxTime`.
+| Pool | Minimum | Maksimum | Pemicu tambahan |
+|---|---:|---:|---|
+| App API | 3 | 4 | CPU dan memory |
+| Order intake | 1 | 2 | Queue order dan refresh |
+| Fulfillment | 1 | 2 | Queue fulfillment |
+| Stock | 1 | 2 | Queue stok kritis dan outbox |
+| Marketplace operations | 1 | 2 | Webhook, cancellation, tracking |
+| Background | 1 | 2 | Webhook umum, produk, finance |
+| AWB | 1 | 1 | Horizon process scaling |
+| Label | 1 | 1 | Horizon process scaling |
+| Maintenance | 1 | 1 | Selalu tersedia |
+| Import/export | 1 per deployment | 1 | Selalu tersedia |
 
-## Prasyarat satu kali di cluster
+Total request memory pada seluruh batas maksimum tidak boleh melebihi 25,600
+MiB. Batas tersebut menyisakan dua puluh persen kapasitas node untuk sistem
+operasi, Kubernetes, lonjakan proses, dan stabilitas.
 
-Jalankan dari mesin operator yang memiliki akses ke cluster production:
+## Prasyarat cluster
 
 ```bash
 helm repo add kedacore https://kedacore.github.io/charts
@@ -32,83 +41,61 @@ kubectl wait --for=condition=Established \
   --timeout=120s
 ```
 
-Manifest aplikasi tidak menyimpan password Redis. Cluster production saat ini
-menggunakan Redis internal tanpa autentikasi; jika autentikasi Redis diaktifkan,
-ubah trigger menjadi memakai `TriggerAuthentication` dan Secret Kubernetes,
-bukan memasukkan password ke Git.
-
 ## Deployment
 
-Jalankan pipeline production seperti biasa. Pipeline akan:
+Pipeline production menjalankan migrasi lebih dahulu, memeriksa kapasitas node,
+kemudian me-rollout setiap workload secara berurutan. Pipeline berhenti sebelum
+rollout berikutnya jika request memory plus kebutuhan surge melewati sembilan
+puluh persen kapasitas atau jika masih ada pod `Pending`.
 
-1. menerapkan deployment dasar;
-2. mendeteksi `scaledobjects.keda.sh`;
-3. menerapkan `08-keda-autoscaling.yaml` bila KEDA tersedia;
-4. mencetak peringatan eksplisit bila KEDA belum tersedia.
+KEDA wajib tersedia. Seluruh ScaledObject harus mencapai kondisi `Ready` agar
+deployment dinyatakan berhasil.
 
-Peringatan KEDA tidak membuat jalur kritis gagal deploy, tetapi berarti
-penghematan RAM idle untuk background/maintenance belum aktif.
-
-## Verifikasi setelah deploy
+## Verifikasi
 
 ```bash
 NS=cilupbah
 
 kubectl get scaledobjects -n "$NS"
-kubectl get hpa -n "$NS" | grep -E 'horizon|NAME'
-kubectl describe scaledobject -n "$NS" cilupbah-horizon-background
-kubectl describe scaledobject -n "$NS" cilupbah-horizon-maintenance
-
+kubectl get hpa -n "$NS"
 kubectl get deploy -n "$NS" \
-  cilupbah-horizon \
-  cilupbah-horizon-maintenance \
-  cilupbah-horizon-order-intake \
-  cilupbah-horizon-fulfillment \
-  cilupbah-horizon-stock \
-  cilupbah-horizon-labels-awb \
-  cilupbah-horizon-labels \
   -o custom-columns='NAME:.metadata.name,DESIRED:.spec.replicas,READY:.status.readyReplicas'
-```
 
-Saat idle, `cilupbah-horizon` dan `cilupbah-horizon-maintenance` boleh berada di
-`0` replica. Jalur kritis tidak boleh berada di `0`.
-
-Cooldown maintenance sengaja panjang karena job cutover dapat berjalan sampai
-30 menit. Ini mencegah scaler menghentikan pod hanya karena job aktif sudah
-berpindah dari Redis `ready` ke `reserved`.
-
-## Verifikasi antrean dan memory
-
-```bash
 kubectl exec -n "$NS" deploy/cilupbah-scheduler -- \
   php artisan channel:monitor-queue-health --json
 
-kubectl top pod -n "$NS" --containers --sort-by=memory \
-  | grep -E 'horizon|scheduler|app|pgbouncer'
+kubectl exec -n "$NS" deploy/cilupbah-scheduler -- \
+  php artisan channel:monitor-stock-outbox --json
+
+kubectl top node
+kubectl top pod -n "$NS" --containers --sort-by=memory
 
 kubectl get pods -n "$NS" \
-  -o custom-columns='POD:.metadata.name,STATUS:.status.phase,RESTARTS:.status.containerStatuses[0].restartCount' \
-  | grep -E 'horizon|scheduler|app|pgbouncer'
+  -o custom-columns='POD:.metadata.name,STATUS:.status.phase,RESTARTS:.status.containerStatuses[0].restartCount'
 ```
 
 Kriteria penerimaan:
 
-- tidak ada `OOMKilled` atau restart berulang;
-- oldest ready job kritis berada di bawah SLO 5 menit;
-- failed jobs tidak naik tanpa recovery;
-- memory idle tidak meningkat terus selama 60 menit;
-- PgBouncer tetap Ready dan tidak mengalami waiting client berkepanjangan;
-- saat queue background menerima job, KEDA menaikkan replica;
-- setelah queue kosong selama cooldown, replica background turun kembali.
+- seluruh deployment memiliki replica tersedia sesuai minimum;
+- tidak ada pod `Pending`, `OOMKilled`, atau restart berulang;
+- antrean kritis bertambah saat burst lalu turun kembali;
+- oldest ready job tidak terus naik;
+- failed job baru tidak bertambah tanpa recovery;
+- Redis tidak melakukan eviction;
+- PgBouncer tidak memiliki waiting client berkepanjangan;
+- throughput order, stok, AWB, dan label tetap bergerak bersamaan;
+- deployment tidak pernah menurunkan worker aktif ke nol.
+
+## Perubahan kapasitas
+
+Replica maksimum, process maksimum Horizon, memory request, dan marketplace rate
+limit tidak boleh dinaikkan terpisah. Setiap perubahan harus memperbarui tes
+kapasitas Kubernetes, lulus simulasi terisolasi, kemudian diverifikasi terhadap
+CPU, memory, queue age, failed jobs, Redis, PostgreSQL, dan PgBouncer.
 
 ## Rollback
 
-```bash
-kubectl delete scaledobject -n "$NS" \
-  cilupbah-horizon-background \
-  cilupbah-horizon-maintenance
-```
-
-Penghapusan ScaledObject tidak menghapus job Redis. Deployment dapat dikembalikan
-ke replica statis melalui manifest aplikasi. Jalur kritis tidak bergantung pada
-ScaledObject sehingga tetap berjalan selama rollback.
+Rollback menggunakan manifest versi terakhir yang lulus. Jangan menghapus
+ScaledObject ketika antrean masih aktif. Jika controller KEDA bermasalah,
+pertahankan seluruh deployment pada satu replica sampai controller pulih agar
+tidak ada jenis pekerjaan yang berhenti.
