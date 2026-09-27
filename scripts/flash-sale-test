@@ -656,6 +656,13 @@ def main():
     save('preflight.json', preflight)
     if not preflight['passed']:
         raise RuntimeError('Preflight tidak lulus: '+' | '.join(preflight['issues']))
+    # Keep the safety-stop comparison tied to the exact node evaluated by
+    # preflight.  The run loop samples the cluster independently and must not
+    # rely on an undefined local variable or on a potentially changed node.
+    node = next((item for item in baseline['nodes']['items']
+                 if item['metadata']['name'] == preflight['node']['name']), None)
+    if not node:
+        raise RuntimeError(f"Node target {preflight['node']['name']} tidak ditemukan setelah preflight.")
     first = [o for o in objects if o['kind'] not in ('Deployment', 'Job')]
     apply(first)
     copy_image_pull_secret(args.source_namespace, ns, args.pull_secret)
