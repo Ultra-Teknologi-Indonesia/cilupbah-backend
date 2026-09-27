@@ -16,7 +16,10 @@ metadata:
   name: cilupbah-redis-horizon
   namespace: cilupbah
 spec:
-  replicas: 1
+  # Queue traffic currently uses the primary `redis` service. This PVC-backed
+  # instance is a cold migration target; running it before an explicit
+  # drain/cutover wastes scheduler headroom and made KEDA watch an empty Redis.
+  replicas: 0
   strategy:
     type: Recreate
   selector:

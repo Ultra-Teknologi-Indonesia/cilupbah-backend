@@ -32,6 +32,7 @@ RUN apt-get update && apt-get install -y \
     zip \
     nginx \
     supervisor \
+    dumb-init \
     ghostscript \
     poppler-utils \
     libpng-dev \

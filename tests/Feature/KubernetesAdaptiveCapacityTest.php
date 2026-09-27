@@ -46,26 +46,26 @@ final class KubernetesAdaptiveCapacityTest extends TestCase
 
         $expected = [
             'cilupbah-horizon-order-intake' => [
-                'redis-horizon.cilupbah.svc.cluster.local:6379' => [
+                'cilupbah_superapp_horizon:' => [
                     'orders', 'shopee-orders', 'tiktok-orders', 'lazada-orders',
                     'channel-order-refresh', 'channel-sync', 'channel-order-recovery', 'product',
                 ],
             ],
             'cilupbah-horizon-stock' => [
-                'redis-horizon.cilupbah.svc.cluster.local:6379' => [
+                'cilupbah_superapp_horizon:' => [
                     'stock-sync', 'stock-critical', 'warehouse-safety', 'channel-stock-critical',
                     'channel-stock-outbox', 'stock-default', 'channel-stock', 'channel-stock-normal',
                 ],
             ],
             'cilupbah-horizon-labels-awb' => [
-                'redis-long.cilupbah.svc.cluster.local:6379' => [
+                'cilupbah-superapp-database-' => [
                     'label-awb', 'label-awb-request-shopee', 'label-awb-request-tiktok',
                     'label-awb-request-lazada', 'label-awb-poll-shopee',
                     'label-awb-poll-tiktok', 'label-awb-poll-lazada',
                 ],
             ],
             'cilupbah-horizon-labels' => [
-                'redis-long.cilupbah.svc.cluster.local:6379' => [
+                'cilupbah-superapp-database-' => [
                     'labels', 'label-merge', 'label-download-shopee', 'label-download-tiktok',
                     'label-download-lazada', 'label-prefetch', 'label-archive',
                 ],
@@ -75,15 +75,32 @@ final class KubernetesAdaptiveCapacityTest extends TestCase
         foreach ($expected as $name => $redisQueues) {
             $triggers = collect(data_get($scaledObjects->get($name), 'spec.triggers', []));
 
-            foreach ($redisQueues as $address => $queues) {
+            foreach ($redisQueues as $prefix => $queues) {
                 foreach ($queues as $queue) {
                     $this->assertTrue(
-                        $triggers->contains(fn (array $trigger): bool => data_get($trigger, 'metadata.address') === $address
-                            && data_get($trigger, 'metadata.listName') === "queues:{$queue}"),
-                        "{$name} tidak memantau {$address}/queues:{$queue}.",
+                        $triggers->contains(fn (array $trigger): bool => data_get($trigger, 'metadata.address') === 'redis.cilupbah.svc.cluster.local:6379'
+                            && data_get($trigger, 'metadata.listName') === "{$prefix}queues:{$queue}"),
+                        "{$name} tidak memantau Redis runtime/{$prefix}queues:{$queue}.",
                     );
                 }
             }
+        }
+    }
+
+    public function test_every_redis_scaler_uses_the_runtime_service_and_an_explicit_laravel_prefix(): void
+    {
+        $triggers = collect($this->productionObjects())
+            ->where('kind', 'ScaledObject')
+            ->flatMap(fn (array $object): array => data_get($object, 'spec.triggers', []));
+
+        $this->assertNotEmpty($triggers);
+
+        foreach ($triggers as $trigger) {
+            $this->assertSame('redis.cilupbah.svc.cluster.local:6379', data_get($trigger, 'metadata.address'));
+            $this->assertMatchesRegularExpression(
+                '/^cilupbah(?:_superapp_horizon:|-superapp-database-)queues:/',
+                (string) data_get($trigger, 'metadata.listName'),
+            );
         }
     }
 
@@ -121,7 +138,44 @@ final class KubernetesAdaptiveCapacityTest extends TestCase
                 return max($containerMi, $initMi) * $replicas;
             });
 
-        $this->assertLessThanOrEqual(25_600, $totalMi);
+        $this->assertLessThanOrEqual(23_040, $totalMi);
+    }
+
+    public function test_unused_dedicated_redis_targets_do_not_reserve_node_memory(): void
+    {
+        $deployments = collect($this->productionObjects())
+            ->where('kind', 'Deployment')
+            ->keyBy('metadata.name');
+
+        foreach ([
+            'cilupbah-redis-cache',
+            'cilupbah-redis-finance',
+            'cilupbah-redis-horizon',
+            'cilupbah-redis-long',
+        ] as $name) {
+            $this->assertSame(0, data_get($deployments->get($name), 'spec.replicas'), "{$name} harus cold standby.");
+        }
+    }
+
+    public function test_durable_batch_workloads_never_use_rollout_surge_memory(): void
+    {
+        $deployments = collect($this->productionObjects())
+            ->where('kind', 'Deployment')
+            ->keyBy('metadata.name');
+
+        foreach ([
+            'cilupbah-scheduler',
+            'cilupbah-horizon',
+            'cilupbah-horizon-maintenance',
+            'cilupbah-import-worker',
+            'cilupbah-export-worker',
+            'cilupbah-catalog-export-worker',
+            'cilupbah-pdf-export-worker',
+        ] as $name) {
+            $deployment = $deployments->get($name);
+            $this->assertSame(0, data_get($deployment, 'spec.strategy.rollingUpdate.maxSurge'), $name);
+            $this->assertSame(1, data_get($deployment, 'spec.strategy.rollingUpdate.maxUnavailable'), $name);
+        }
     }
 
     private function productionObjects(): array

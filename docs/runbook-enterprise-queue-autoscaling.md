@@ -22,9 +22,20 @@ stabil tanpa menghentikan jenis pekerjaan apa pun.
 | Maintenance | 1 | 1 | Selalu tersedia |
 | Import/export | 1 per deployment | 1 | Selalu tersedia |
 
-Total request memory pada seluruh batas maksimum tidak boleh melebihi 25,600
-MiB. Batas tersebut menyisakan dua puluh persen kapasitas node untuk sistem
-operasi, Kubernetes, lonjakan proses, dan stabilitas.
+Total request memory pada seluruh batas maksimum tidak boleh melebihi 23.040
+MiB. Batas tersebut menyisakan sedikitnya dua puluh delapan persen kapasitas
+node untuk sistem operasi, Kubernetes, PostgreSQL di host, lonjakan proses, dan
+stabilitas.
+
+Semua queue runtime saat ini berada pada Service `redis`. KEDA wajib memakai
+alamat yang sama dan nama list lengkap berikut:
+
+- `cilupbah_superapp_horizon:queues:<queue>` untuk koneksi `queue_legacy`;
+- `cilupbah-superapp-database-queues:<queue>` untuk koneksi long dan finance.
+
+Deployment `redis-cache`, `redis-horizon`, `redis-long`, dan `redis-finance`
+adalah cold standby PVC-backed dengan nol replica. Jangan menaikkannya atau
+mengubah `REDIS_*_HOST` tanpa prosedur drain/cutover queue yang terpisah.
 
 ## Prasyarat cluster
 
@@ -47,8 +58,9 @@ Pipeline production menjalankan migrasi lebih dahulu, memeriksa kapasitas node,
 kemudian me-rollout setiap workload secara berurutan. Pipeline berhenti sebelum
 rollout berikutnya jika request memory plus kebutuhan surge melewati sembilan
 puluh persen kapasitas atau jika ada pod yang dinyatakan `Unschedulable`.
-Setelah replica baru siap, pipeline menunggu pod lama menyelesaikan pekerjaannya
-dan benar-benar melepaskan reservasi resource sebelum memulai surge berikutnya.
+Untuk jalur online, setelah replica baru siap pipeline menunggu pod lama
+menyelesaikan pekerjaannya dan benar-benar melepaskan reservasi resource sebelum
+memulai surge berikutnya.
 Pod `Pending` singkat yang belum dinyatakan `Unschedulable` tidak menggagalkan
 rollout.
 
@@ -63,8 +75,10 @@ aktif saat rollout. Hasil render dibersihkan dari metadata milik API server
 seperti `resourceVersion`, `uid`, `generation`, `managedFields`, dan `status`
 sebelum diterapkan kembali. Deployment tetap seperti scheduler, import, export,
 catalog export, PDF export, dan Gotenberg mengikuti jumlah replica di manifest.
-Dengan aturan ini retry deploy aman untuk resource multi-document yang sudah
-ada, termasuk Service dan PodDisruptionBudget.
+Scheduler dan worker batch durable memakai `maxSurge: 0`, sehingga tidak
+menggandakan jatah RAM saat rollout; antrean tetap tersimpan selama jeda
+penggantian pod. Dengan aturan ini retry deploy aman untuk resource
+multi-document yang sudah ada, termasuk Service dan PodDisruptionBudget.
 
 Semua resource jangka panjang diterapkan dengan server-side apply dan field
 manager `cilupbah-production`. Retry tidak lagi membaca ulang annotation
@@ -114,7 +128,8 @@ Kriteria penerimaan:
 - Redis tidak melakukan eviction;
 - PgBouncer tidak memiliki waiting client berkepanjangan;
 - throughput order, stok, AWB, dan label tetap bergerak bersamaan;
-- deployment tidak pernah menurunkan worker aktif ke nol.
+- pool online tidak pernah menurunkan worker aktif ke nol; jeda singkat hanya
+  diperbolehkan pada pool batch/background dengan antrean durable.
 
 ## Perubahan kapasitas
 

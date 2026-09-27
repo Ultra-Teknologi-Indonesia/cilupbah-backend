@@ -4,7 +4,10 @@ metadata:
   name: cilupbah-redis-cache
   namespace: cilupbah
 spec:
-  replicas: 1
+  # Production still routes cache to DB 1 on the primary Redis. Keep this
+  # service as a cold migration target instead of reserving RAM for an unused
+  # datastore. A future cutover must raise replicas together with REDIS_CACHE_HOST.
+  replicas: 0
   strategy:
     type: Recreate
   selector:

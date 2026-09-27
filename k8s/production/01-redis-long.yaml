@@ -16,7 +16,9 @@ metadata:
   name: cilupbah-redis-long
   namespace: cilupbah
 spec:
-  replicas: 1
+  # Cold migration target. REDIS_LONG_HOST currently falls back to the primary
+  # Redis, so reserve no node memory until a controlled queue drain/cutover.
+  replicas: 0
   strategy:
     type: Recreate
   selector:

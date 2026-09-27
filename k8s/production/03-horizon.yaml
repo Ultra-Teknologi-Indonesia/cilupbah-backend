@@ -11,8 +11,10 @@ spec:
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxUnavailable: 0
-      maxSurge: 1
+      # Background queues are durable; replace in place so a deploy cannot
+      # temporarily double this memory-heavy multi-supervisor pool.
+      maxUnavailable: 1
+      maxSurge: 0
   selector:
     matchLabels:
       app: cilupbah-horizon

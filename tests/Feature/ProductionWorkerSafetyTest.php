@@ -104,8 +104,8 @@ class ProductionWorkerSafetyTest extends TestCase
 
             $this->assertIsString($yaml);
             $this->assertStringContainsString('type: RollingUpdate', $yaml, $manifest);
-            $this->assertStringContainsString('maxUnavailable: 0', $yaml, $manifest);
-            $this->assertStringContainsString('maxSurge: 1', $yaml, $manifest);
+            $this->assertStringContainsString('maxUnavailable: 1', $yaml, $manifest);
+            $this->assertStringContainsString('maxSurge: 0', $yaml, $manifest);
             $this->assertStringContainsString("terminationGracePeriodSeconds: {$grace}", $yaml, $manifest);
             $this->assertStringContainsString("progressDeadlineSeconds: {$deadline}", $yaml, $manifest);
             $this->assertMatchesRegularExpression('/--max-jobs=(?:[2-9][0-9]|[1-9][0-9]{2,})\b/', $yaml, $manifest);
@@ -129,11 +129,9 @@ class ProductionWorkerSafetyTest extends TestCase
         $this->assertStringContainsString('maxReplicaCount: 2', $yaml);
         $this->assertStringNotContainsString('pollingInterval:', $yaml);
         $this->assertStringContainsString('type: redis', $yaml);
-        $this->assertStringContainsString('address: redis-horizon.cilupbah.svc.cluster.local:6379', $yaml);
-        $this->assertStringContainsString('address: redis-long.cilupbah.svc.cluster.local:6379', $yaml);
-        $this->assertStringContainsString('address: redis-finance.cilupbah.svc.cluster.local:6379', $yaml);
-        $this->assertStringContainsString('listName: queues:default', $yaml);
-        $this->assertStringContainsString('listName: queues:downloads', $yaml);
+        $this->assertStringContainsString('address: redis.cilupbah.svc.cluster.local:6379', $yaml);
+        $this->assertStringContainsString('listName: cilupbah_superapp_horizon:queues:default', $yaml);
+        $this->assertStringContainsString('listName: cilupbah-superapp-database-queues:downloads', $yaml);
         $this->assertStringNotContainsString('cooldownPeriod:', $yaml);
         $this->assertStringContainsString('terminationGracePeriodSeconds: 360', $background);
         $this->assertStringContainsString('terminationGracePeriodSeconds: 1860', $maintenance);
@@ -151,6 +149,26 @@ class ProductionWorkerSafetyTest extends TestCase
                 "{$criticalDeployment} harus dikelola otomatis tanpa scale-to-zero.",
             );
         }
+    }
+
+    public function test_scheduler_uses_an_init_process_to_reap_background_commands(): void
+    {
+        $manifest = file_get_contents(base_path('k8s/production/04-scheduler.yaml'));
+        $schedule = file_get_contents(base_path('routes/console.php'));
+        $dockerfile = file_get_contents(base_path('Dockerfile'));
+        $staging = file_get_contents(base_path('docker-compose.staging.yml'));
+        $production = file_get_contents(base_path('docker-compose.production.yml'));
+
+        $this->assertIsString($manifest);
+        $this->assertIsString($schedule);
+        $this->assertIsString($dockerfile);
+        $this->assertIsString($staging);
+        $this->assertIsString($production);
+        $this->assertStringContainsString('dumb-init', $dockerfile);
+        $this->assertStringContainsString('/usr/bin/dumb-init', $manifest);
+        $this->assertStringContainsString('/usr/bin/dumb-init', $staging);
+        $this->assertStringContainsString('/usr/bin/dumb-init', $production);
+        $this->assertStringContainsString('runInBackground()', $schedule);
     }
 
     public function test_background_grace_period_is_nested_under_pod_template(): void

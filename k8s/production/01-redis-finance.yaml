@@ -16,7 +16,9 @@ metadata:
   name: cilupbah-redis-finance
   namespace: cilupbah
 spec:
-  replicas: 1
+  # Cold migration target. Finance jobs currently share the primary Redis and
+  # must not be moved while durable jobs may still exist on that endpoint.
+  replicas: 0
   strategy:
     type: Recreate
   selector:

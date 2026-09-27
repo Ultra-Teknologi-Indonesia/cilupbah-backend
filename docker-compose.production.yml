@@ -43,7 +43,7 @@ services:
       dockerfile: Dockerfile
     image: production-superapp-prod
     container_name: cilupbah-production-scheduler
-    entrypoint: ["php", "artisan", "schedule:work"]
+    entrypoint: ["/usr/bin/dumb-init", "--", "php", "artisan", "schedule:work", "--no-interaction"]
     volumes:
       - /var/www/cilupbah:/var/www/html
     environment:

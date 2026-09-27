@@ -34,7 +34,7 @@ services:
   scheduler:
     <<: *app-config
     container_name: cilupbah-staging-scheduler
-    entrypoint: [ "php", "artisan", "schedule:work" ]
+    entrypoint: [ "/usr/bin/dumb-init", "--", "php", "artisan", "schedule:work", "--no-interaction" ]
 
   redis:
     container_name: cilupbah-staging-redis

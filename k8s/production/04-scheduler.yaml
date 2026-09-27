@@ -8,8 +8,10 @@ spec:
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxUnavailable: 0
-      maxSurge: 1
+      # Never run two schedulers or reserve a second scheduler pod during a
+      # release. Durable commands tolerate the short replacement window.
+      maxUnavailable: 1
+      maxSurge: 0
   selector:
     matchLabels:
       app: cilupbah-scheduler
@@ -25,7 +27,11 @@ spec:
       containers:
         - name: scheduler
           image: ghcr.io/ultra-teknologi-indonesia/cilupbah:v1.0.0
-          command: ["php", "artisan", "schedule:work", "--no-interaction"]
+          # schedule:work is a long-lived PID 1 and Laravel's background
+          # commands can be orphaned while they finish. dumb-init adopts and
+          # reaps those descendants so completed PHP processes never become
+          # zombies and eventually exhaust the pod's PID cgroup.
+          command: ["/usr/bin/dumb-init", "--", "php", "artisan", "schedule:work", "--no-interaction"]
           envFrom:
             - secretRef:
                 name: cilupbah-env

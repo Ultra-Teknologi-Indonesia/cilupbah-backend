@@ -30,11 +30,22 @@ Use one adaptive production mode with these rules:
 - maintenance remains warm and bounded at one pod;
 - application replicas scale from three to four;
 - exports and imports remain active with one pod each;
-- maximum replica requests are limited to 25,600 MiB, leaving at least twenty
-  percent of the modeled 32,000 MiB node capacity uncommitted;
+- maximum replica requests are limited to 23,040 MiB, leaving at least twenty
+  eight percent of the modeled 32,000 MiB node capacity uncommitted;
 - production workloads roll out one at a time after a capacity preflight;
-- no active worker is scaled to zero during deployment;
+- online order, fulfillment, stock, marketplace, AWB, and label pools retain a
+  warm replica during rollout;
+- durable background, maintenance, import, and export pools replace in place
+  without surge memory; their queues remain durable during the brief pause;
 - KEDA is a mandatory production dependency.
+
+The current application configuration routes every queue to the primary
+`redis` Service. KEDA therefore reads that exact Service and the complete
+Laravel key names: `cilupbah_superapp_horizon:queues:*` for `queue_legacy`, and
+`cilupbah-superapp-database-queues:*` for long/finance queues. The dedicated
+Redis deployments remain PVC-backed cold migration targets at zero replicas.
+Moving queues to them requires an explicit drain/cutover and is not part of a
+normal application rollout.
 
 Queue delays and marketplace rate limits remain part of the application flow.
 Adding pods does not bypass marketplace quotas or cause repeated API calls.
