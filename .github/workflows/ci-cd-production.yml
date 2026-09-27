@@ -208,6 +208,34 @@ jobs:
               done
             }
 
+            wait_for_all_terminating_pods() {
+              wait_timeout="$1"
+              started_at="$(date +%s)"
+
+              while true; do
+                terminating_pods="$(
+                  kubectl get pods -n "$NAMESPACE" -o json \
+                    | jq -r '.items[] | select(.metadata.deletionTimestamp != null) | .metadata.name'
+                )"
+
+                if [ -z "$terminating_pods" ]; then
+                  return 0
+                fi
+
+                elapsed=$(( $(date +%s) - started_at ))
+                if [ "$elapsed" -ge "$wait_timeout" ]; then
+                  echo "Pod dari rollout sebelumnya belum melepaskan resource setelah ${wait_timeout}s:"
+                  printf '%s\n' "$terminating_pods"
+                  kubectl get pods -n "$NAMESPACE" -o wide || true
+                  return 1
+                fi
+
+                echo "Menunggu sisa pod dari rollout sebelumnya melepaskan resource:"
+                printf '%s\n' "$terminating_pods"
+                sleep 5
+              done
+            }
+
             rollout_deployment() {
               deployment="$1"
               grace_period="$(kubectl get deployment "$deployment" -n "$NAMESPACE" \
@@ -315,6 +343,8 @@ jobs:
             fi
 
             kubectl apply -f "$K8S_DIR/08-keda-autoscaling.yaml" -n "$NAMESPACE"
+
+            wait_for_all_terminating_pods 2040
 
             echo "==> Menjalankan rollout berurutan dengan capacity gate..."
             for workload in \

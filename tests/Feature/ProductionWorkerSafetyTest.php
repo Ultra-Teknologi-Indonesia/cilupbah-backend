@@ -191,6 +191,10 @@ class ProductionWorkerSafetyTest extends TestCase
         $this->assertStringContainsString('rollout_timeout=$((progress_deadline + 120))', $workflow);
         $this->assertStringContainsString('--timeout=180s', $workflow);
         $this->assertStringContainsString('mengumpulkan diagnostik', $workflow);
+        $this->assertStringContainsString('wait_for_terminating_pods', $workflow);
+        $this->assertStringContainsString('wait_for_all_terminating_pods 2040', $workflow);
+        $this->assertStringContainsString('select(.metadata.deletionTimestamp != null)', $workflow);
+        $this->assertStringContainsString('melepaskan resource', $workflow);
         $this->assertStringContainsString('cilupbah-horizon-maintenance', $workflow);
         $this->assertStringContainsString('--request-timeout=30s', $workflow);
         $this->assertStringNotContainsString('kubectl rollout restart', $workflow);
