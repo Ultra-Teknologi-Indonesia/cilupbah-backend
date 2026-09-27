@@ -46,7 +46,11 @@ kubectl wait --for=condition=Established \
 Pipeline production menjalankan migrasi lebih dahulu, memeriksa kapasitas node,
 kemudian me-rollout setiap workload secara berurutan. Pipeline berhenti sebelum
 rollout berikutnya jika request memory plus kebutuhan surge melewati sembilan
-puluh persen kapasitas atau jika masih ada pod `Pending`.
+puluh persen kapasitas atau jika ada pod yang dinyatakan `Unschedulable`.
+Setelah replica baru siap, pipeline menunggu pod lama menyelesaikan pekerjaannya
+dan benar-benar melepaskan reservasi resource sebelum memulai surge berikutnya.
+Pod `Pending` singkat yang belum dinyatakan `Unschedulable` tidak menggagalkan
+rollout.
 
 KEDA wajib tersedia. Seluruh ScaledObject harus mencapai kondisi `Ready` agar
 deployment dinyatakan berhasil.

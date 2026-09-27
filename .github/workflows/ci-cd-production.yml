@@ -178,6 +178,36 @@ jobs:
               kubectl apply -f "$manifest" -n "$NAMESPACE"
             done
 
+            wait_for_terminating_pods() {
+              deployment="$1"
+              wait_timeout="$2"
+              started_at="$(date +%s)"
+
+              while true; do
+                terminating_pods="$(
+                  kubectl get pods -n "$NAMESPACE" \
+                    -l "app=$deployment" -o json \
+                    | jq -r '.items[] | select(.metadata.deletionTimestamp != null) | .metadata.name'
+                )"
+
+                if [ -z "$terminating_pods" ]; then
+                  return 0
+                fi
+
+                elapsed=$(( $(date +%s) - started_at ))
+                if [ "$elapsed" -ge "$wait_timeout" ]; then
+                  echo "Pod lama deployment/$deployment belum melepaskan resource setelah ${wait_timeout}s:"
+                  printf '%s\n' "$terminating_pods"
+                  kubectl get pods -n "$NAMESPACE" -l "app=$deployment" -o wide || true
+                  return 1
+                fi
+
+                echo "Menunggu pod lama deployment/$deployment melepaskan resource:"
+                printf '%s\n' "$terminating_pods"
+                sleep 5
+              done
+            }
+
             rollout_deployment() {
               deployment="$1"
               grace_period="$(kubectl get deployment "$deployment" -n "$NAMESPACE" \
@@ -209,6 +239,7 @@ jobs:
               if timeout "${rollout_timeout}s" kubectl rollout status \
                 "deployment/$deployment" -n "$NAMESPACE" \
                 --request-timeout=30s --timeout="${rollout_timeout}s"; then
+                wait_for_terminating_pods "$deployment" "$grace_timeout"
                 return 0
               fi
 
@@ -219,6 +250,7 @@ jobs:
               if timeout 180s kubectl rollout status \
                 "deployment/$deployment" -n "$NAMESPACE" \
                 --request-timeout=30s --timeout=180s; then
+                wait_for_terminating_pods "$deployment" "$grace_timeout"
                 echo "Rollout deployment/$deployment selesai pada retry konvergensi."
                 return 0
               fi
