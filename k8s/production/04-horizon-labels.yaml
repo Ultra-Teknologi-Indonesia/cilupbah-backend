@@ -75,9 +75,9 @@ spec:
             - name: HORIZON_PROFILE
               value: "labels-pdf"
             - name: HORIZON_LABEL_RENDER_MAX_PROCESSES
-              value: "3"
+              value: "4"
             - name: HORIZON_LABEL_DOWNLOAD_MAX_PROCESSES
-              value: "2"
+              value: "3"
             - name: LABEL_LOCAL_FIRST
               value: "true"
             - name: LABEL_PRINT_SPOOL_ROOT

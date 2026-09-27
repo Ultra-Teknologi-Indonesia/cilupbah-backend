@@ -36,11 +36,19 @@ class SyncOrderFinanceJob implements ShouldBeUnique, ShouldQueue
         return $this->orderId;
     }
 
-    public int $tries = 5;
+    // A local Shopee admission throttle is expected during a flash burst. It
+    // must remain deferred until the API window opens instead of exhausting a
+    // small attempt budget and creating a failed job.
+    public int $tries = 0;
 
     public int $maxExceptions = 5;
 
     public array $backoff = [30, 120, 300, 900, 1800];
+
+    public function retryUntil(): \DateTimeInterface
+    {
+        return now()->addHours(2);
+    }
 
     public function __construct(
         public readonly string $orderId,
@@ -159,7 +167,9 @@ class SyncOrderFinanceJob implements ShouldBeUnique, ShouldQueue
         } catch (ShopeeApiException $e) {
             if ($e->isRetryable()) {
                 $control->markRetryable($order->id, $e, $this->backoffSeconds());
-                throw $e;
+                $this->release($this->backoffSeconds());
+
+                return;
             }
 
             $this->failWithoutRetry($e, $order, 'fetch');

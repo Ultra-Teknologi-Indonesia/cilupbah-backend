@@ -18,6 +18,7 @@ use Modules\Channel\Services\ChannelSyncSettingService;
 use Modules\Channel\Support\ChannelOrderLock;
 use Modules\Channel\Support\ChannelOrderPullGuard;
 use Modules\Channel\Support\WebhookFailureHandler;
+use Modules\Channel\Exceptions\ShopeeApiException;
 
 final class RefreshChannelOrderJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
 {
@@ -82,12 +83,28 @@ final class RefreshChannelOrderJob implements ShouldBeUniqueUntilProcessing, Sho
             return;
         }
 
-        $pulled = $orders->refresh(
-            $this->channel,
-            $this->shopId,
-            $this->orderId,
-            $allowWhilePaused,
-        );
+        try {
+            $pulled = $orders->refresh(
+                $this->channel,
+                $this->shopId,
+                $this->orderId,
+                $allowWhilePaused,
+            );
+        } catch (ShopeeApiException $exception) {
+            if ($exception->isRetryable()) {
+                Log::notice('Delayed channel order refresh deferred by upstream admission limit.', [
+                    'channel' => $this->channel,
+                    'shop_id' => $this->shopId,
+                    'order_id' => $this->orderId,
+                    'error_code' => $exception->errorCode,
+                ]);
+                $this->release(5);
+
+                return;
+            }
+
+            throw $exception;
+        }
 
         ChannelOrderPullGuard::requirePersisted(
             $this->channel,
