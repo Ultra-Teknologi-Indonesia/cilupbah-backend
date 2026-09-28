@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Services\ChannelDownloadService;
+use Modules\Channel\Services\ChannelOrderRefreshDispatcher;
 use Modules\Channel\Services\ChannelWebhookAuditService;
 use Modules\Channel\Services\ShopeeOrderService;
 use Modules\Channel\Support\ChannelOrderIntakeGate;
@@ -362,13 +363,13 @@ class ProcessShopeeWebhook implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        RefreshChannelOrderJob::dispatch(
+        app(ChannelOrderRefreshDispatcher::class)->dispatch(
             'shopee',
             $shopId,
             $orderSn,
-            null,
             $eventKey,
-        )->delay(now()->addSeconds(2));
+            2,
+        );
 
         $this->recordDeliveredEventIfApplicable($orderSn, $data);
     }

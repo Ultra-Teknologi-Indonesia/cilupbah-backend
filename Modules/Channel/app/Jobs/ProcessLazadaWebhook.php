@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Services\ChannelDownloadService;
+use Modules\Channel\Services\ChannelOrderRefreshDispatcher;
 use Modules\Channel\Services\ChannelWebhookAuditService;
 use Modules\Channel\Services\LazadaAuthService;
 use Modules\Channel\Services\LazadaOrderService;
@@ -209,7 +210,7 @@ class ProcessLazadaWebhook implements ShouldBeUnique, ShouldQueue
 
     protected function handleReverseEvent(LazadaOrderService $orderService, string $sellerId, array $data): void
     {
-        $this->handleOrderEvent($orderService, $sellerId, $data);
+        $this->handleOrderEvent($orderService, $sellerId, $data, false);
 
         $reverseStatus = strtoupper((string) ($data['reverse_status'] ?? $data['status'] ?? ''));
         $channelOrderId = (string) ($data['trade_order_id'] ?? $data['order_id'] ?? '');
@@ -291,8 +292,12 @@ class ProcessLazadaWebhook implements ShouldBeUnique, ShouldQueue
 
     protected bool $orderIntakeDeferred = false;
 
-    protected function handleOrderEvent(LazadaOrderService $orderService, string $sellerId, array $data): void
-    {
+    protected function handleOrderEvent(
+        LazadaOrderService $orderService,
+        string $sellerId,
+        array $data,
+        bool $batch = true,
+    ): void {
         $orderId = (string) ($data['trade_order_id'] ?? $data['order_id'] ?? $data['reverse_order_id'] ?? '');
 
         if ($orderId === '') {
@@ -307,17 +312,29 @@ class ProcessLazadaWebhook implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        if (! ChannelOrderPullGuard::pullOnce(
-            'lazada',
-            $sellerId,
-            $orderId,
-            fn (): int => $orderService->pullOrderById($sellerId, $orderId),
-            webhookEventKey: self::idempotencyKey($this->payload),
-        )) {
-            Log::info("Lazada webhook {$orderId} di-debounce (sudah di-pull dalam 15 detik).");
-            $this->recordLazadaTrackingEvent($orderId, $data);
+        $status = strtoupper((string) ($data['status'] ?? $data['order_status'] ?? ''));
+        $requiresImmediateRefresh = in_array($status, [
+            'READY_TO_SHIP',
+            'SHIPPED',
+            'DELIVERED',
+            'CANCELLED',
+        ], true);
 
-            return;
+        if ($batch && ! $requiresImmediateRefresh) {
+            app(ChannelOrderRefreshDispatcher::class)->dispatch(
+                'lazada',
+                $sellerId,
+                $orderId,
+                self::idempotencyKey($this->payload),
+            );
+        } else {
+            ChannelOrderPullGuard::pullOnce(
+                'lazada',
+                $sellerId,
+                $orderId,
+                fn (): int => $orderService->pullOrderById($sellerId, $orderId),
+                webhookEventKey: self::idempotencyKey($this->payload),
+            );
         }
 
         $this->recordLazadaTrackingEvent($orderId, $data);

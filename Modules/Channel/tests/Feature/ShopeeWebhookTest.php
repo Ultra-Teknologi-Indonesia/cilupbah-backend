@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Queue;
 use Mockery;
 use Modules\Channel\Helpers\ShopeeSignature;
 use Modules\Channel\Jobs\ProcessShopeeWebhook;
+use Modules\Channel\Jobs\RefreshChannelOrderBatchJob;
 use Modules\Channel\Jobs\RefreshChannelOrderJob;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
@@ -205,12 +206,11 @@ class ShopeeWebhookTest extends TestCase
         (new ProcessShopeeWebhook($first))->handle(app(ShopeeOrderService::class), app(ChannelDownloadService::class));
         (new ProcessShopeeWebhook($second))->handle(app(ShopeeOrderService::class), app(ChannelDownloadService::class));
 
-        Queue::assertPushed(RefreshChannelOrderJob::class, 1);
-        Queue::assertPushed(RefreshChannelOrderJob::class, function (RefreshChannelOrderJob $job): bool {
+        Queue::assertPushed(RefreshChannelOrderBatchJob::class, 1);
+        Queue::assertPushed(RefreshChannelOrderBatchJob::class, function (RefreshChannelOrderBatchJob $job): bool {
             return $job->channel === 'shopee'
                 && $job->shopId === '778899'
-                && $job->orderId === 'RAPID-ORDER'
-                && $job->uniqueId() === 'shopee:778899:RAPID-ORDER';
+                && $job->uniqueId() === 'shopee:778899';
         });
     }
 

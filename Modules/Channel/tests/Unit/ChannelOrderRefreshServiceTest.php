@@ -73,6 +73,28 @@ final class ChannelOrderRefreshServiceTest extends TestCase
         self::assertSame(1, $service->refresh('tiktok', 'SHOP-1', 'ORDER-1', true));
     }
 
+    public function test_refreshes_orders_in_one_channel_batch(): void
+    {
+        $shopee = $this->createMock(ShopeeOrderService::class);
+        $tiktok = $this->createMock(TikTokOrderService::class);
+        $lazada = $this->createMock(LazadaOrderService::class);
+        $woocommerce = $this->createMock(WooCommerceOrderService::class);
+        $settings = $this->createMock(ChannelSyncSettingService::class);
+        $settings->method('isPaused')->willReturn(false);
+
+        $shopee->expects(self::once())
+            ->method('pullOrdersByIds')
+            ->with('SHOP-1', ['ORDER-1', 'ORDER-2'], true)
+            ->willReturn(['pulled' => 2, 'failed' => []]);
+
+        $service = new ChannelOrderRefreshService($shopee, $tiktok, $lazada, $woocommerce, $settings);
+
+        self::assertSame(
+            ['pulled' => 2, 'failed' => []],
+            $service->refreshMany('shopee', 'SHOP-1', ['ORDER-1', 'ORDER-2']),
+        );
+    }
+
     public static function channels(): array
     {
         return [

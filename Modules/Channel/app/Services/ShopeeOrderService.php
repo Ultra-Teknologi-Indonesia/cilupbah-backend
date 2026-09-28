@@ -243,6 +243,82 @@ class ShopeeOrderService
         return 1;
     }
 
+    public function pullOrdersByIds(string $shopId, array $orderSns, bool $deferFinance = true): array
+    {
+        $orderSns = array_values(array_unique(array_filter(array_map(
+            static fn (mixed $orderSn): string => trim((string) $orderSn),
+            $orderSns,
+        ))));
+        if ($orderSns === []) {
+            return ['pulled' => 0, 'failed' => []];
+        }
+
+        $shop = $this->requireShop($shopId);
+        $details = $this->fetchOrderDetails(
+            $shop,
+            array_slice($orderSns, 0, self::LOGISTICS_MASS_LIMIT),
+            withLogistics: false,
+        );
+        $shippingChannelTypes = $this->shippingChannelTypes($shopId);
+        $returned = [];
+        $failed = [];
+        $count = 0;
+
+        foreach ($details as $order) {
+            $orderSn = (string) ($order['order_sn'] ?? '');
+            if ($orderSn === '') {
+                continue;
+            }
+
+            $returned[] = $orderSn;
+            try {
+                $localOrderId = $this->orderService->upsertFromChannel(
+                    $this->mapper->map($order, $shopId, $shippingChannelTypes),
+                );
+                if (! $localOrderId) {
+                    $failed[] = $orderSn;
+
+                    continue;
+                }
+
+                if (! $deferFinance) {
+                    try {
+                        $escrowRaw = $this->getEscrowDetail($shopId, $orderSn);
+                        if (! empty($escrowRaw)) {
+                            $this->orderService->updateOrderFinance(
+                                $localOrderId,
+                                app(ShopeeEscrowMapper::class)->map($escrowRaw),
+                            );
+                        }
+                    } catch (\Throwable $e) {
+                        Log::warning("Shopee: finance order {$orderSn} gagal setelah bulk intake.", [
+                            'shop_id' => $shopId,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+
+                $count++;
+            } catch (ChannelOrderBeforeIntakeCutoffException) {
+            } catch (\Throwable $e) {
+                Log::error("Shopee: gagal upsert order {$orderSn}: ".$e->getMessage(), [
+                    'shop_id' => $shopId,
+                ]);
+                $failed[] = $orderSn;
+            }
+        }
+
+        $failed = array_values(array_unique(array_merge(
+            $failed,
+            array_values(array_diff($orderSns, $returned)),
+        )));
+
+        $this->shopRepository->markIntegrationHealthy($shop->id);
+        $this->shopRepository->markOrderSyncOk($shop->id);
+
+        return ['pulled' => $count, 'failed' => $failed];
+    }
+
     public function listRecentOrderIds(string $shopId, ?int $timeFrom = null): array
     {
         $shop = $this->requireShop($shopId);
@@ -340,7 +416,7 @@ class ShopeeOrderService
         return $windows;
     }
 
-    protected function fetchOrderDetails(object $shop, array $orderSns): array
+    protected function fetchOrderDetails(object $shop, array $orderSns, bool $withLogistics = true): array
     {
         if (empty($orderSns)) {
             return [];
@@ -355,10 +431,13 @@ class ShopeeOrderService
 
         $orders = $res['response']['order_list'] ?? [];
 
-        foreach ($orders as &$order) {
-            $logistics = $this->resolveLogistics($shop, (string) ($order['order_sn'] ?? ''), (string) ($order['order_status'] ?? ''));
-            $order['tracking_number'] = $logistics['tracking_number'];
-            $order['pickup_code'] = $logistics['pickup_code'];
+        if ($withLogistics) {
+            foreach ($orders as &$order) {
+                $logistics = $this->resolveLogistics($shop, (string) ($order['order_sn'] ?? ''), (string) ($order['order_status'] ?? ''));
+                $order['tracking_number'] = $logistics['tracking_number'];
+                $order['pickup_code'] = $logistics['pickup_code'];
+            }
+            unset($order);
         }
 
         return $orders;

@@ -247,6 +247,78 @@ class LazadaOrderService
         return 1;
     }
 
+    public function pullOrdersByIds(string $shopId, array $orderIds): array
+    {
+        $orderIds = array_values(array_unique(array_filter(array_map(
+            static fn (mixed $orderId): string => trim((string) $orderId),
+            $orderIds,
+        ))));
+        if ($orderIds === []) {
+            return ['pulled' => 0, 'failed' => []];
+        }
+
+        $shop = $this->requireShop($shopId);
+        $orders = [];
+        $failed = [];
+
+        foreach (array_slice($orderIds, 0, 50) as $orderId) {
+            try {
+                $res = $this->callWithRefresh(
+                    $shop,
+                    fn (string $token) => $this->client->request('GET', '/order/get', ['order_id' => $orderId], $token),
+                );
+                $order = $res['data'] ?? [];
+                if (! is_array($order) || $order === []) {
+                    $failed[] = $orderId;
+
+                    continue;
+                }
+                $orders[$orderId] = $order;
+            } catch (\Throwable $e) {
+                Log::error("Lazada: gagal mengambil detail order {$orderId}: ".$e->getMessage(), [
+                    'shop_id' => $shopId,
+                ]);
+                $failed[] = $orderId;
+            }
+        }
+
+        $itemsByOrder = $this->fetchItemsForOrders($shop, array_keys($orders));
+        $count = 0;
+        foreach ($orders as $orderId => $order) {
+            try {
+                if (! array_key_exists($orderId, $itemsByOrder)) {
+                    $failed[] = $orderId;
+
+                    continue;
+                }
+
+                $localOrderId = $this->orderService->upsertFromChannel(
+                    $this->mapper->map($order, $itemsByOrder[$orderId], $shopId),
+                );
+                if (! $localOrderId) {
+                    $failed[] = $orderId;
+
+                    continue;
+                }
+                $count++;
+            } catch (ChannelOrderBeforeIntakeCutoffException) {
+            } catch (\Throwable $e) {
+                Log::error("Lazada: gagal upsert order {$orderId}: ".$e->getMessage(), [
+                    'shop_id' => $shopId,
+                ]);
+                $failed[] = $orderId;
+            }
+        }
+
+        return [
+            'pulled' => $count,
+            'failed' => array_values(array_unique(array_merge(
+                $failed,
+                array_values(array_diff($orderIds, array_keys($orders))),
+            ))),
+        ];
+    }
+
     public function fulfillPack(
         string $shopId,
         string $orderId,

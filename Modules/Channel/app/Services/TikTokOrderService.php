@@ -307,6 +307,93 @@ class TikTokOrderService
         return $count;
     }
 
+    public function pullOrdersByIds(string $shopId, array $orderIds): array
+    {
+        $orderIds = array_values(array_unique(array_filter(array_map(
+            static fn (mixed $orderId): string => trim((string) $orderId),
+            $orderIds,
+        ))));
+        if ($orderIds === []) {
+            return ['pulled' => 0, 'failed' => []];
+        }
+
+        $shop = $this->shopRepository->findByShopId($shopId);
+        if (! $shop || ! $shop->access_token) {
+            throw new \RuntimeException("No access token found for shop: {$shopId}");
+        }
+
+        $res = $this->client->request(
+            'GET',
+            '/order/202309/orders',
+            [
+                'shop_cipher' => $shop->shop_cipher ?? '',
+                'ids' => implode(',', array_slice($orderIds, 0, 50)),
+            ],
+            [],
+            $shop->access_token,
+        );
+
+        $items = $res['data']['orders'] ?? [];
+        $returned = [];
+        $failed = [];
+        $count = 0;
+        foreach ($items as $item) {
+            $orderId = (string) ($item['id'] ?? '');
+            if ($orderId === '') {
+                continue;
+            }
+
+            $returned[] = $orderId;
+            try {
+                $this->dumpInstantPayloadForResearch($item, $shopId);
+                $internalData = $this->mapper->map($item, $shopId);
+                $internalData = $this->enrichTrackingFromPackages(
+                    $internalData,
+                    $item,
+                    $shop->shop_cipher ?? '',
+                    $shop->access_token,
+                );
+                $localOrderId = $this->orderService->upsertFromChannel($internalData);
+                if (! $localOrderId) {
+                    $failed[] = $orderId;
+
+                    continue;
+                }
+
+                try {
+                    $statement = $this->getOrderStatement($shopId, $orderId);
+                    if (! empty($statement)) {
+                        $this->orderService->updateOrderFinance(
+                            $localOrderId,
+                            app(TikTokStatementMapper::class)->map($statement),
+                        );
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning("TikTok: finance order {$orderId} gagal setelah bulk intake.", [
+                        'shop_id' => $shopId,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+
+                $count++;
+            } catch (ChannelOrderBeforeIntakeCutoffException) {
+            } catch (\Throwable $e) {
+                Log::error("Failed to pull order {$orderId}: ".$e->getMessage(), [
+                    'shop_id' => $shopId,
+                ]);
+                $failed[] = $orderId;
+            }
+        }
+
+        return [
+            'pulled' => $count,
+            'failed' => array_values(array_unique(array_merge(
+                $failed,
+                array_values(array_diff($orderIds, $returned)),
+            ))),
+        ];
+    }
+
     protected function dumpInstantPayloadForResearch(array $item, string $shopId): void
     {
         if (! config('services.tiktok.dump_instant_payload')) {

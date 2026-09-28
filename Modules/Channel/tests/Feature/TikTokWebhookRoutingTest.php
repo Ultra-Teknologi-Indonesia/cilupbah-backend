@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Queue;
 use Mockery;
 use Modules\Channel\Enums\WebhookInboxStatus;
 use Modules\Channel\Jobs\ProcessTikTokWebhook;
+use Modules\Channel\Jobs\RefreshChannelOrderBatchJob;
 use Modules\Channel\Jobs\RefreshChannelOrderJob;
 use Modules\Channel\Models\Channel;
 use Modules\Channel\Models\ChannelShop;
@@ -55,13 +56,8 @@ class TikTokWebhookRoutingTest extends TestCase
                 'data' => ['order_id' => 'O-1', 'order_status' => 'UNPAID']],
         );
 
-        Queue::assertPushed(RefreshChannelOrderJob::class, fn (RefreshChannelOrderJob $job): bool => $job->channel === 'tiktok' && $job->shopId === 'TT1' && $job->orderId === 'O-1'
-            && $job->webhookEventKey === ProcessTikTokWebhook::idempotencyKey([
-                'type' => 1,
-                'shop_id' => 'TT1',
-                'tts_notification_id' => 'n1',
-                'data' => ['order_id' => 'O-1', 'order_status' => 'UNPAID'],
-            ])
+        Queue::assertPushed(RefreshChannelOrderBatchJob::class, fn (RefreshChannelOrderBatchJob $job): bool => $job->channel === 'tiktok' && $job->shopId === 'TT1'
+            && $job->uniqueId() === 'tiktok:TT1'
         );
     }
 
@@ -97,8 +93,7 @@ class TikTokWebhookRoutingTest extends TestCase
 
         $this->process($payload);
 
-        Queue::assertPushed(RefreshChannelOrderJob::class, fn (RefreshChannelOrderJob $job): bool => $job->channel === 'tiktok' && $job->shopId === 'TT1' && $job->orderId === 'O-EXISTING'
-        );
+        Queue::assertPushed(RefreshChannelOrderBatchJob::class, fn (RefreshChannelOrderBatchJob $job): bool => $job->channel === 'tiktok' && $job->shopId === 'TT1');
         $this->assertSame(WebhookInboxStatus::PROCESSED, ChannelWebhookInbox::query()
             ->where('event_key', $eventKey)
             ->value('status'));
@@ -294,7 +289,7 @@ class TikTokWebhookRoutingTest extends TestCase
         $this->process($payload);
         $this->process($payload);
 
-        Queue::assertPushed(RefreshChannelOrderJob::class, 1);
+        Queue::assertPushed(RefreshChannelOrderBatchJob::class, 1);
     }
 
     public function test_empty_order_is_queued_for_bounded_retry(): void
@@ -310,8 +305,7 @@ class TikTokWebhookRoutingTest extends TestCase
 
         $this->process($payload);
 
-        Queue::assertPushed(RefreshChannelOrderJob::class, fn (RefreshChannelOrderJob $job): bool => $job->channel === 'tiktok' && $job->shopId === 'TT1' && $job->orderId === 'O-EMPTY'
-        );
+        Queue::assertPushed(RefreshChannelOrderBatchJob::class, fn (RefreshChannelOrderBatchJob $job): bool => $job->channel === 'tiktok' && $job->shopId === 'TT1');
     }
 
     public function test_webhook_for_an_unavailable_shop_is_skipped_without_order_pull(): void

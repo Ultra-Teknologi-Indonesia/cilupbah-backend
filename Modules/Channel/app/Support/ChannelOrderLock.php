@@ -6,12 +6,15 @@ namespace Modules\Channel\Support;
 
 final class ChannelOrderLock
 {
-    private function __construct()
-    {
-    }
+    private function __construct() {}
 
     public static function forOrder(string $orderId): string
     {
         return 'channel-order-state:'.trim($orderId);
+    }
+
+    public static function forShop(string $channel, string $shopId): string
+    {
+        return 'channel-order-batch:'.strtolower(trim($channel)).':'.trim($shopId);
     }
 }

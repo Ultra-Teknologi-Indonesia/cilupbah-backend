@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Modules\Channel\Models\ChannelWebhookInbox;
 use Modules\Channel\Repositories\ChannelShopRepository;
+use Modules\Channel\Services\ChannelOrderRefreshDispatcher;
 use Modules\Channel\Services\ChannelWebhookAuditService;
 use Modules\Channel\Services\TikTokAuthService;
 use Modules\Channel\Services\TikTokOrderService;
@@ -323,13 +324,12 @@ class ProcessTikTokWebhook implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        RefreshChannelOrderJob::dispatch(
+        app(ChannelOrderRefreshDispatcher::class)->dispatch(
             'tiktok',
             $shopId,
             $orderId,
-            null,
             $eventKey,
-        )->delay(now()->addSeconds((int) config('channel.webhook_order_refresh_delay_seconds', 0)));
+        );
 
         $this->recordTikTokTrackingEvent($orderId, $data);
     }
