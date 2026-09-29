@@ -22,7 +22,7 @@ class ShopeeAuthTest extends TestCase
             'services.shopee.partner_id' => '200123',
             'services.shopee.partner_key' => 'test_partner_key',
             'services.shopee.host' => 'https://partner.shopeemobile.com',
-            'services.shopee.redirect_uri' => 'https://staging.ultra-fit.id/api/v1/shopee/callback',
+            'services.shopee.redirect_uri' => 'https://dev-backend-app.ultra-fit.id/api/v1/shopee/callback',
         ]);
 
         Channel::create(['code' => 'shopee', 'name' => 'Shopee', 'is_active' => true]);

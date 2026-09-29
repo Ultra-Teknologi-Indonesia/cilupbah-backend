@@ -22,7 +22,7 @@ class LazadaAuthTest extends TestCase
             'services.lazada.app_key' => 'test_key',
             'services.lazada.app_secret' => 'test_secret',
             'services.lazada.auth_url' => 'https://auth.lazada.com',
-            'services.lazada.redirect_uri' => 'https://staging.ultra-fit.id/api/v1/lazada/callback',
+            'services.lazada.redirect_uri' => 'https://dev-backend-app.ultra-fit.id/api/v1/lazada/callback',
         ]);
 
         Channel::create(['code' => 'lazada', 'name' => 'Lazada', 'is_active' => true]);

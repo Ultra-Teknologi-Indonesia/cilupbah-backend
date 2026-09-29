@@ -22,7 +22,7 @@
 //
 // Jalankan:
 //   docker run --rm -i \
-//     -e BASE_URL=https://staging.ultra-fit.id \
+//     -e BASE_URL=https://dev-backend-app.ultra-fit.id \
 //     -e EMAIL=cilupbah@ultra-fit.id \
 //     -e PASSWORD=password \
 //     -e VUS=100 \

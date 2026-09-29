@@ -24,10 +24,10 @@ class OAuthFrontendRedirectTest extends TestCase
             'services.lazada.app_key' => 'test_key',
             'services.lazada.app_secret' => 'test_secret',
             'services.lazada.auth_url' => 'https://auth.lazada.com',
-            'services.lazada.redirect_uri' => 'https://staging.ultra-fit.id/api/v1/lazada/callback',
+            'services.lazada.redirect_uri' => 'https://dev-backend-app.ultra-fit.id/api/v1/lazada/callback',
             'services.tiktok.app_key' => 'tt_key',
             'services.tiktok.app_secret' => 'tt_secret',
-            'services.tiktok.redirect_uri' => 'https://staging.ultra-fit.id/api/v1/tiktok/callback',
+            'services.tiktok.redirect_uri' => 'https://dev-backend-app.ultra-fit.id/api/v1/tiktok/callback',
         ]);
 
         Channel::create(['code' => 'lazada', 'name' => 'Lazada', 'is_active' => true]);
