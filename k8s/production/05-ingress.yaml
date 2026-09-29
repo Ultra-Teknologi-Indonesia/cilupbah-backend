@@ -10,9 +10,20 @@ spec:
   tls:
     - hosts:
         - backend.ultra-fit.id
+        - be-superapp.ultra-fit.id
       secretName: cilupbah-tl
   rules:
     - host: backend.ultra-fit.id
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: cilupbah-app
+                port:
+                  number: 80
+    - host: be-superapp.ultra-fit.id
       http:
         paths:
           - path: /
