@@ -7,6 +7,16 @@
 - [ ] CI/CD workflow dan aturan deployment dicatat.
 - [ ] Migration terakhir dan statusnya dicatat.
 
+## A1. Environment dan status penerimaan
+
+- [ ] Staging dicatat sebagai `https://dev-frontend-app.ultra-fit.id/` dan
+  `https://dev-backend-app.ultra-fit.id/`.
+- [ ] Production dicatat sebagai `https://app.ultra-fit.id/` dan
+  `https://be-superapp.ultra-fit.id/`.
+- [ ] Client menyetujui apakah dokumen ini untuk handover **as-is** atau untuk
+  Go-Live. Handover as-is tidak otomatis berarti Go-Live.
+- [ ] Audit terakhir diberi timestamp dan dinyatakan apakah rollout sudah selesai.
+
 ## B. Dokumentasi
 
 - [ ] Manual Web final.
@@ -40,6 +50,9 @@
 - [ ] Export/download dan object storage diuji.
 - [ ] Queue/Horizon/monitoring diuji.
 - [ ] Known limitations dan outstanding issue disetujui tertulis.
+- [ ] Pod lama `Terminating`, restart worker, dan Redis deployment `0/0` pada
+  audit rollout diberi status: selesai, diterima sebagai known limitation, atau
+  memiliki tindak lanjut.
 - [ ] Error koneksi marketplace (termasuk Shopee `Partner and shop has no linked`)
   memiliki pemilik tindakan dan bukti uji setelah perbaikan.
 - [ ] `failed_jobs` dan data operasional lama memiliki keputusan tertulis
@@ -64,3 +77,7 @@
 - [ ] Tidak ada secret yang dikirim melalui repository atau chat.
 - [ ] Known limitation, pihak yang bertanggung jawab, dan tanggal tindak lanjut
   ditandatangani kedua pihak.
+
+Jika client menerima kondisi as-is, checklist Go-Live di bagian ini diberi status
+**tidak diterapkan pada serah-terima ini**, dan dokumen
+`AS-IS-ACCEPTANCE.md` serta `KNOWN-LIMITATIONS.md` menjadi lampiran BAST.

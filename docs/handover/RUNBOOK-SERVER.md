@@ -21,18 +21,22 @@ langsung sebagai cara deployment normal.
 
 ## 2. Identitas deployment dan status audit
 
-Snapshot berikut berasal dari audit production pada 28 September 2026. Nilai
-yang belum tersedia tidak boleh ditebak; pemilik infrastruktur harus
-melengkapinya sebelum BAST.
+Snapshot berikut berasal dari audit cepat namespace `cilupbah` pada 28 September
+2026 pukul 13:09 WIB. Audit dijalankan ketika rollout masih berlangsung; angka
+dan status pod bukan bukti kondisi final setelah rollout.
 
 ```text
 Namespace: cilupbah
 Cluster/context: default (k3s, temet01bare127.neometal.id)
-Node: temet01bare127.neometal.id (16 vCPU, sekitar 32 GiB allocatable)
-Production image/tag: worker `v1.0.846`; event pod untuk app/Horizon juga menunjukkan image lokal `flash-hardening-0d90c370`. Tag/digest runtime belum dikunci sebagai satu release; catat digest image yang diterima sebelum BAST.
-Git commit: belum tercatat pada audit; ambil dari workflow CI/CD yang menghasilkan image production dan simpan bersama digest.
+Node: `temet01bare127.neometal.id`, k3s `v1.36.4+k3s1`, sekitar 32 GiB allocatable
+Production image/tag: `ghcr.io/ultra-teknologi-indonesia/cilupbah:v1.0.849`
+Production image digest: `sha256:d1b4004c096cdaa985b1740a68c09a3cc103294ec31e27804c72ea1c6e5a9d8b`
+Release commit yang tercatat pada audit: `c35e6a4d8ebdf70a2b1efbd8b8d80fd040a926b6`
+Staging image/commit: belum diambil dari environment staging; jangan disamakan dengan production.
 API base URL: https://be-superapp.ultra-fit.id
 Web base URL: https://app.ultra-fit.id
+Staging API base URL: https://dev-backend-app.ultra-fit.id
+Staging web base URL: https://dev-frontend-app.ultra-fit.id
 Swagger URL: https://be-superapp.ultra-fit.id/api/documentation
 Database backup location: belum tercatat; pemilik infrastruktur wajib mencatat lokasi, retensi, enkripsi, dan prosedur restore.
 Object storage/R2 bucket: R2 aktif (bucket dan endpoint terkonfigurasi); nama bucket tidak dicantumkan untuk menjaga kerahasiaan konfigurasi.
@@ -41,22 +45,29 @@ On-call contact: belum tercatat; catat nama, kanal, dan jam eskalasi.
 ```
 
 Secret value tidak ditulis di dokumen ini. Catat nama secret, pemilik akses, dan
-lokasi password manager secara terpisah. Audit mencatat endpoint publik sehat,
-R2 aktif, webhook inbox `0`, dan `failed_jobs=155` pada saat snapshot (nilai
-terbaru harus diambil ulang sebelum BAST). Audit juga menemukan restart worker
-tinggi dan pod lama yang sempat `Terminating`.
+lokasi password manager secara terpisah. Audit cepat mencatat node Ready dengan
+penggunaan sekitar 10% CPU dan 41% memori. Perkiraan baris database saat
+snapshot: `channel_catalog_sku_indexes=32085`, `channel_webhook_inbox=638`,
+`failed_jobs=191`, dan `product_sync_logs=3601`.
+Redis utama memakai sekitar 38 MB dari batas 3 GB, AOF aktif, dan status write
+terakhir OK. Empat deployment Redis khusus terlihat `0/0`; ini harus dicocokkan
+dengan konfigurasi queue, bukan langsung dianggap rusak.
 
-### Temuan domain dan TLS yang wajib ditutup
+Audit juga menemukan pod lama `Terminating` (maintenance sekitar 20 jam dan
+order-intake sekitar 10 menit) serta beberapa worker yang restart satu kali.
+Penyebab restart belum dapat disimpulkan dari audit cepat.
 
-Audit cluster masih menemukan Ingress dengan host `backend.ultra-fit.id` dan
-TLS secret `cilupbah-tl` tidak tersedia. Domain publik yang disepakati adalah
-`https://be-superapp.ultra-fit.id`. Audit publik 28 September 2026 menunjukkan
-health/Swagger merespons HTTP 200 dan sertifikat wildcard `*.ultra-fit.id`
-valid sampai 13 Desember 2026, tetapi respons Cloudflare belum membuktikan
-host tersebut sudah dikenali oleh Ingress origin. Sebelum handover, ubah dan
-verifikasi rule Ingress, DNS, mode Cloudflare (Full/Strict), dan sertifikat
-origin. Cluster juga belum memasang CRD cert-manager, sehingga annotation
-issuer tidak otomatis membuat sertifikat.
+### Temuan domain dan TLS yang wajib diverifikasi setelah rollout
+
+Pada saat audit rollout, Ingress namespace `cilupbah` masih menampilkan host
+`backend.ultra-fit.id`. Karena deployment belum selesai, ini belum dapat
+disimpulkan sebagai konfigurasi final. Setelah rollout, staging harus mengarah
+ke `dev-backend-app.ultra-fit.id`, sedangkan production harus mengarah ke
+`be-superapp.ultra-fit.id`.
+
+Audit sebelumnya juga tidak menemukan secret TLS `cilupbah-tl` dan CRD
+cert-manager. Hal tersebut perlu diverifikasi ulang pada environment yang benar;
+status edge Cloudflare tidak otomatis membuktikan TLS origin Ingress.
 
 Callback yang dikonfirmasi client:
 
@@ -78,11 +89,12 @@ kubectl -n "$NS" get svc,pods -o wide
 kubectl -n "$NS" get endpointslice -l kubernetes.io/service-name=cilupbah-app -o wide
 ```
 
-Nilai host Ingress harus `be-superapp.ultra-fit.id`; secret TLS harus bertipe
+Untuk production, nilai host Ingress harus `be-superapp.ultra-fit.id`; untuk
+staging gunakan `dev-backend-app.ultra-fit.id`. Secret TLS harus bertipe
 `kubernetes.io/tls`, sertifikat harus memuat `be-superapp.ultra-fit.id`, dan
 endpoint service harus memiliki pod ready. Jika salah satu tidak terpenuhi,
-status handover tetap **perlu perbaikan**, walaupun Cloudflare mengembalikan
-HTTP 200.
+status Go-Live tetap **belum terverifikasi**. Untuk handover as-is, catat hasil
+aktual dan pemilik tindak lanjutnya.
 
 ## 3. Preflight read-only
 

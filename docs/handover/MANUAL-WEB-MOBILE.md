@@ -18,9 +18,10 @@ dengan urutan kerja, pembagian tanggung jawab, dan langkah pemulihan.
 
 ### URL dan batas akses
 
-- Web: `https://app.ultra-fit.id/`
-- Backend/API: `https://be-superapp.ultra-fit.id/`
-- Dokumentasi API maintainer: `https://be-superapp.ultra-fit.id/api/documentation`
+| Environment | Web | Backend/API | Dokumentasi API |
+|---|---|---|---|
+| Staging | `https://dev-frontend-app.ultra-fit.id/` | `https://dev-backend-app.ultra-fit.id/` | `https://dev-backend-app.ultra-fit.id/api/documentation` |
+| Production | `https://app.ultra-fit.id/` | `https://be-superapp.ultra-fit.id/` | `https://be-superapp.ultra-fit.id/api/documentation` |
 
 Jika halaman masih mengarah ke host lama, laporkan ke maintainer. DNS, Ingress,
 dan callback marketplace harus dipindahkan bersama-sama dan diuji.

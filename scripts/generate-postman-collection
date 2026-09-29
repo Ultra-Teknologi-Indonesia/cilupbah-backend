@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+BACKEND_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SPEC_FILE="${BACKEND_DIR}/storage/api-docs/api-docs.json"
+OUTPUT_DIR="${BACKEND_DIR}/docs/handover/postman"
+OUTPUT_FILE="${OUTPUT_DIR}/Cilupbah-Super-App.postman_collection.json"
+
+command -v jq >/dev/null || {
+  echo "jq wajib tersedia untuk memproses collection." >&2
+  exit 1
+}
+
+test -s "${SPEC_FILE}" || {
+  echo "OpenAPI tidak ditemukan: ${SPEC_FILE}" >&2
+  exit 1
+}
+
+POSTMAN_BIN="$(command -v openapi2postmanv2 || true)"
+if [ -z "${POSTMAN_BIN}" ]; then
+  TOOL_DIR="$(mktemp -d "${TMPDIR:-/tmp}/cilupbah-postman.XXXXXX")"
+  npm install --prefix "${TOOL_DIR}" --no-save --ignore-scripts \
+    openapi-to-postmanv2@6.3.3 >/dev/null
+  POSTMAN_BIN="${TOOL_DIR}/node_modules/.bin/openapi2postmanv2"
+fi
+
+mkdir -p "${OUTPUT_DIR}"
+RAW_FILE="$(mktemp "${TMPDIR:-/tmp}/cilupbah-postman-raw.XXXXXX.json")"
+FINAL_FILE="$(mktemp "${TMPDIR:-/tmp}/cilupbah-postman-final.XXXXXX.json")"
+trap 'rm -f "${RAW_FILE}" "${FINAL_FILE}"' EXIT
+
+"${POSTMAN_BIN}" \
+  -s "${SPEC_FILE}" \
+  -o "${RAW_FILE}" \
+  -p >/dev/null
+
+jq '
+  .variable |= map(
+    if .key == "baseUrl"
+    then .value = "https://dev-backend-app.ultra-fit.id"
+    else .
+    end
+  )
+  | .variable += [{"key":"accessToken","value":"","type":"string"}]
+  | .auth = {"type":"bearer","bearer":[{"key":"token","value":"{{accessToken}}","type":"string"}]}
+  | (.. | objects | select(has("request"))
+      | select(.request.url.path == ["api","v1","auth","login"])
+      | .request.auth) = {"type":"noauth"}
+' "${RAW_FILE}" > "${FINAL_FILE}"
+
+mv "${FINAL_FILE}" "${OUTPUT_FILE}"
+echo "Postman collection dibuat: ${OUTPUT_FILE}"
+echo "Jumlah request: $(jq '[.. | objects | select(has("request"))] | length' "${OUTPUT_FILE}")"

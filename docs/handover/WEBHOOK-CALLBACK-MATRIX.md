@@ -4,6 +4,13 @@ Dokumen ini menjadi daftar serah-terima integrasi channel. URL aktual dan secret
 tidak ditulis di repository; pemilik integrasi harus mengisi nilai pada password
 manager/portal marketplace dan mencatat tanggal verifikasi.
 
+## Endpoint per environment
+
+| Environment | Frontend | Backend | Status |
+|---|---|---|---|
+| Staging | `https://dev-frontend-app.ultra-fit.id/` | `https://dev-backend-app.ultra-fit.id/` | Untuk uji; verifikasi Ingress setelah rollout |
+| Production | `https://app.ultra-fit.id/` | `https://be-superapp.ultra-fit.id/` | URL operasional yang disepakati |
+
 ## Endpoint production yang disepakati
 
 | Item | Nilai | Status audit |
@@ -12,7 +19,7 @@ manager/portal marketplace dan mencatat tanggal verifikasi.
 | Live Redirect URL Domain | `https://be-superapp.ultra-fit.id/` | Dikonfirmasi client sudah diubah di portal channel |
 | Webhook inbox | Endpoint channel pada route backend | Route harus diuji dengan signature/payload resmi; jangan menyimpulkan dari HTTP GET |
 | TLS publik | Sertifikat `*.ultra-fit.id` | Valid di edge publik sampai 13 Des 2026; ini belum membuktikan TLS origin Ingress |
-| TLS/Ingress origin | Host canonical `be-superapp.ultra-fit.id` | Belum lulus: manifest repository masih berisi `backend.ultra-fit.id`; secret `cilupbah-tl` dan cert-manager CRD belum ditemukan pada audit cluster |
+| TLS/Ingress origin | Host canonical `be-superapp.ultra-fit.id` | Audit dilakukan saat rollout dan masih melihat host lama; verifikasi ulang setelah rollout |
 
 ## URL yang telah dikonfirmasi client
 
@@ -36,9 +43,10 @@ manager/portal marketplace dan mencatat tanggal verifikasi.
 1. Pastikan DNS `be-superapp.ultra-fit.id` menunjuk ke Cloudflare/origin yang
    benar. Audit publik menemukan IP Cloudflare; origin belum dapat disimpulkan
    dari DNS saja.
-2. Pastikan Ingress memakai host canonical tersebut dan sertifikat valid. Audit
-   source saat ini masih menemukan `backend.ultra-fit.id`, sehingga manifest
-   harus diperbarui dan rollout diverifikasi sebelum BAST.
+2. Pastikan Ingress memakai host sesuai environment dan sertifikat valid. Untuk
+   staging gunakan `dev-backend-app.ultra-fit.id`; untuk production gunakan
+   `be-superapp.ultra-fit.id`. Audit 28 September dilakukan saat rollout, jadi
+   hasil tersebut harus diverifikasi ulang setelah rollout selesai.
 3. Untuk Lazada, masukkan domain pada **Authorized Seller Whitelist** sebelum
    melakukan connect.
 4. Kirim satu event uji dari portal channel atau staging.

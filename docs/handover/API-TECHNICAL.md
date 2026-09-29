@@ -14,13 +14,20 @@ File JSON adalah artefak generated, bukan tempat mengedit kontrak secara manual.
 Perubahan endpoint dilakukan pada route/request/resource/controller annotation,
 lalu spesifikasi dibuat ulang.
 
-## 1.1 Environment production
+## Postman Collection
 
-- Web client: `https://app.ultra-fit.id/`
-- API base URL: `https://be-superapp.ultra-fit.id/`
-- Swagger UI: `https://be-superapp.ultra-fit.id/api/documentation`
+Collection Postman dibuat otomatis dari OpenAPI yang sama sehingga tidak perlu
+ditulis manual. Gunakan `docs/handover/postman/README.md` untuk import collection
+dan memilih environment staging atau production.
 
-Host lama tidak boleh dipakai sebagai callback baru tanpa persetujuan cutover.
+## 1.1 Environment
+
+| Environment | Web client | API base URL | Swagger UI |
+|---|---|---|---|
+| Staging | `https://dev-frontend-app.ultra-fit.id/` | `https://dev-backend-app.ultra-fit.id/` | `https://dev-backend-app.ultra-fit.id/api/documentation` |
+| Production | `https://app.ultra-fit.id/` | `https://be-superapp.ultra-fit.id/` | `https://be-superapp.ultra-fit.id/api/documentation` |
+
+Host staging dan production tidak boleh dicampur pada konfigurasi callback.
 URL webhook/OAuth marketplace harus dicatat pada
 [Matriks Webhook & Callback](WEBHOOK-CALLBACK-MATRIX.md) dan diuji per channel.
 
@@ -40,11 +47,12 @@ jq '.openapi, .info, (.paths | length)' storage/api-docs/api-docs.json
 jq -e '.paths | type == "object"' storage/api-docs/api-docs.json
 ```
 
-Spesifikasi saat audit workspace ini berisi 101 path terdokumentasi. Route
-Laravel dapat lebih banyak karena route internal, detail, health check, atau
-endpoint yang belum dianotasi. Sebelum BAST, cocokkan daftar endpoint yang memang
-menjadi kontrak eksternal dengan OpenAPI; jangan mengklaim semua route otomatis
-terdokumentasi hanya karena Swagger UI tersedia.
+Spesifikasi saat audit workspace ini berisi 101 path dan 140 operation
+terdokumentasi. Route Laravel dapat jauh lebih banyak karena route internal,
+maintenance, detail, health check, callback, atau endpoint yang belum dianotasi.
+Postman hanya berisi 140 operation OpenAPI tersebut. Sebelum BAST, cocokkan
+daftar endpoint yang memang menjadi kontrak eksternal dengan OpenAPI; jangan
+mengklaim semua route otomatis terdokumentasi hanya karena Swagger UI tersedia.
 
 ## 3. Konvensi request/response
 
