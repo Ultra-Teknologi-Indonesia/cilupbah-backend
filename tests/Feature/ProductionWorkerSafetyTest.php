@@ -222,8 +222,11 @@ class ProductionWorkerSafetyTest extends TestCase
         $this->assertStringContainsString('mengumpulkan diagnostik', $workflow);
         $this->assertStringContainsString('report_failure', $workflow);
         $this->assertStringContainsString('stage=$DEPLOY_STAGE', $workflow);
-        $this->assertStringContainsString('wait_for_terminating_pods', $workflow);
-        $this->assertSame(1, substr_count($workflow, 'wait_for_all_terminating_pods 2040'));
+        $this->assertStringNotContainsString('wait_for_all_terminating_pods', $workflow);
+        $this->assertStringNotContainsString('wait_for_terminating_pods', $workflow);
+        $this->assertStringContainsString('report_terminating_pods()', $workflow);
+        $this->assertStringContainsString('post-deploy-drain-observation', $workflow);
+        $this->assertStringContainsString('tidak memblokir release', $workflow);
         $this->assertStringContainsString('Do not block the whole release on an old batch pod', $workflow);
         $this->assertStringContainsString('reap_stale_terminating_pods', $workflow);
         $this->assertStringContainsString('stale_after=$((grace_period + 60))', $workflow);
@@ -231,7 +234,7 @@ class ProductionWorkerSafetyTest extends TestCase
         $this->assertStringContainsString('--grace-period=0 --force --wait=false', $workflow);
         $this->assertStringContainsString('[ "$ready_replicas" -ge "$desired_replicas" ]', $workflow);
         $this->assertStringContainsString('select(.metadata.deletionTimestamp != null)', $workflow);
-        $this->assertStringContainsString('melepaskan resource', $workflow);
+        $this->assertStringContainsString('Post-deploy drain masih berjalan', $workflow);
         $this->assertStringContainsString('final-image-verification', $workflow);
         $this->assertStringContainsString('final-capacity-verification', $workflow);
         $this->assertStringContainsString('final-horizon-verification', $workflow);

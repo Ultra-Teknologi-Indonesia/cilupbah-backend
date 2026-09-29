@@ -205,64 +205,25 @@ jobs:
               apply_manifest "$manifest"
             done
 
-            wait_for_terminating_pods() {
-              deployment="$1"
-              wait_timeout="$2"
-              started_at="$(date +%s)"
+            report_terminating_pods() {
+              # A KEDA scale-down can legitimately leave an old worker in
+              # Terminating while its replacement is already Ready. This is
+              # operationally relevant, but it must not turn a healthy
+              # release into a false failed deployment.
+              reap_stale_terminating_pods
+              terminating_pods="$(
+                kubectl get pods -n "$NAMESPACE" -o json \
+                  | jq -r '.items[] | select(.metadata.deletionTimestamp != null) | .metadata.name'
+              )"
 
-              while true; do
-                reap_stale_terminating_pods
-                terminating_pods="$(
-                  kubectl get pods -n "$NAMESPACE" \
-                    -l "app=$deployment" -o json \
-                    | jq -r '.items[] | select(.metadata.deletionTimestamp != null) | .metadata.name'
-                )"
+              if [ -z "$terminating_pods" ]; then
+                echo "Tidak ada pod Terminating yang tertinggal setelah deploy."
+                return 0
+              fi
 
-                if [ -z "$terminating_pods" ]; then
-                  return 0
-                fi
-
-                elapsed=$(( $(date +%s) - started_at ))
-                if [ "$elapsed" -ge "$wait_timeout" ]; then
-                  echo "Pod lama deployment/$deployment belum melepaskan resource setelah ${wait_timeout}s:"
-                  printf '%s\n' "$terminating_pods"
-                  kubectl get pods -n "$NAMESPACE" -l "app=$deployment" -o wide || true
-                  return 1
-                fi
-
-                echo "Menunggu pod lama deployment/$deployment melepaskan resource:"
-                printf '%s\n' "$terminating_pods"
-                sleep 5
-              done
-            }
-
-            wait_for_all_terminating_pods() {
-              wait_timeout="$1"
-              started_at="$(date +%s)"
-
-              while true; do
-                reap_stale_terminating_pods
-                terminating_pods="$(
-                  kubectl get pods -n "$NAMESPACE" -o json \
-                    | jq -r '.items[] | select(.metadata.deletionTimestamp != null) | .metadata.name'
-                )"
-
-                if [ -z "$terminating_pods" ]; then
-                  return 0
-                fi
-
-                elapsed=$(( $(date +%s) - started_at ))
-                if [ "$elapsed" -ge "$wait_timeout" ]; then
-                  echo "Pod dari rollout sebelumnya belum melepaskan resource setelah ${wait_timeout}s:"
-                  printf '%s\n' "$terminating_pods"
-                  kubectl get pods -n "$NAMESPACE" -o wide || true
-                  return 1
-                fi
-
-                echo "Menunggu sisa pod dari rollout sebelumnya melepaskan resource:"
-                printf '%s\n' "$terminating_pods"
-                sleep 5
-              done
+              echo "::warning title=Post-deploy drain masih berjalan::Pod berikut sedang berhenti secara graceful dan tidak memblokir release karena seluruh deployment target sudah Ready:"
+              printf '%s\n' "$terminating_pods"
+              kubectl get pods -n "$NAMESPACE" -o wide || true
             }
 
             reap_stale_terminating_pods() {
@@ -404,7 +365,6 @@ jobs:
               if timeout "${rollout_timeout}s" kubectl rollout status \
                 "deployment/$deployment" -n "$NAMESPACE" \
                 --request-timeout=30s --timeout="${rollout_timeout}s"; then
-                wait_for_terminating_pods "$deployment" "$grace_timeout"
                 return 0
               fi
 
@@ -415,7 +375,6 @@ jobs:
               if timeout 180s kubectl rollout status \
                 "deployment/$deployment" -n "$NAMESPACE" \
                 --request-timeout=30s --timeout=180s; then
-                wait_for_terminating_pods "$deployment" "$grace_timeout"
                 echo "Rollout deployment/$deployment selesai pada retry konvergensi."
                 return 0
               fi
@@ -541,9 +500,7 @@ jobs:
                 -n "$NAMESPACE" --timeout=120s
             done
 
-            DEPLOY_STAGE="final-convergence"
-            wait_for_all_terminating_pods 2040
-
+            DEPLOY_STAGE="final-availability"
             for deployment in \
               cilupbah-app \
               cilupbah-scheduler \
@@ -562,6 +519,13 @@ jobs:
             do
               rollout_deployment "$deployment"
             done
+
+            DEPLOY_STAGE="post-deploy-drain-observation"
+            # Kubernetes must still release an old pod eventually, but a
+            # KEDA scale-down is not a rollout failure. Availability and the
+            # requested image have already been verified above; report and
+            # safely reap stale drains without blocking the release.
+            report_terminating_pods
 
             DEPLOY_STAGE="final-image-verification"
             for deployment in \
